@@ -1,0 +1,104 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mureo"
+version = "0.1.0"
+description = "Ad operations toolkit for AI agents — Google Ads & Meta Ads via CLI/MCP"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+readme = "README.md"
+keywords = ["advertising", "google-ads", "meta-ads", "mcp", "cli", "ai-agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
+
+dependencies = [
+    "google-ads>=28.0,<30",
+    "google-auth>=2.28,<3",
+    "google-auth-oauthlib>=1.2,<2",
+    "facebook-business>=20.0,<22",
+    "httpx>=0.27,<1",
+    "beautifulsoup4>=4.12,<5",
+    "lxml>=5.0,<6",
+    "pydantic>=2.5,<3",
+]
+
+[project.optional-dependencies]
+cli = [
+    "typer>=0.12,<1",
+    "rich>=13.0,<14",
+    "simple-term-menu>=1.6,<2",
+]
+mcp = [
+    "mcp>=1.0,<2",
+]
+dev = [
+    "pytest>=7.4,<9",
+    "pytest-asyncio>=0.23,<1",
+    "pytest-cov>=4.1,<7",
+    "pytest-mock>=3.12,<4",
+    "black>=23.12,<25",
+    "ruff>=0.3,<1",
+    "mypy>=1.8,<2",
+]
+
+[project.scripts]
+mureo = "mureo.cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/logly/mureo"
+Documentation = "https://github.com/logly/mureo/tree/main/docs"
+Repository = "https://github.com/logly/mureo"
+Issues = "https://github.com/logly/mureo/issues"
+Changelog = "https://github.com/logly/mureo/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mureo"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "A", "SIM", "TCH"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mureo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: ユニットテスト",
+    "integration: インテグレーションテスト",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "google.ads.googleads.*"
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["mureo"]
+omit = ["tests/*", "mureo/mcp/*"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
