@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mureo"
-version = "0.1.0"
-description = "Ad operations toolkit for AI agents — Google Ads & Meta Ads via CLI/MCP"
+version = "0.2.0"
+description = "Marketing operations toolkit for AI agents — CLI & MCP"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 readme = "README.md"

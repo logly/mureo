@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-03-31
+
+### Added
+- 78 new MCP tools (53 Google Ads + 25 Meta Ads), bringing total from 81 to 159
+- Google Ads: sitelinks, callouts, conversion tracking, device/location/schedule targeting, recommendations, bid adjustments, change history, performance analysis, budget analysis, RSA asset analysis, B2B optimizations, creative research, landing page analysis, monitoring & goal evaluation, screenshot capture
+- Meta Ads: campaign/ad set/ad pause & enable, audience get/delete/lookalike, creative list/create/dynamic, pixel management, performance analysis, audience analysis, placement analysis, cost investigation, ad comparison, creative improvement suggestions
+- Handler tests for all 159 MCP tools (92 new tests, 1257 total)
+- Project logo in README
+
+### Changed
+- Broadened project description from "Ad operations" to "Marketing operations" for multi-platform future
+- Default branch renamed from `master` to `main`
+- Split MCP tool definitions into category-based sub-modules for maintainability
+- Split MCP handler files by domain (extensions, analysis, extended, other)
+
+### Fixed
+- All ruff lint errors (A002, F541, TC002, TC003, SIM102, SIM103, SIM105, SIM401, E402, E741, F811, F841, I001, UP037)
+- All mypy type checking errors across Python 3.10 and 3.12
+- Black formatting applied to all source files
+- Bandit security warning (false-positive B104 on SSRF blocklist)
+- Input validation: customer_id format, account_id prefix, file path traversal protection, URL scheme validation
+
+### Security
+- Added file extension validation on image/video upload handlers
+- Added URL scheme validation on screenshot capture handler
+- Added customer_id numeric format validation
+- Added account_id `act_` prefix validation
+
 ## [0.1.0] - 2026-03-31
 
 ### Added
