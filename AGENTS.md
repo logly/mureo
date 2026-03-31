@@ -53,13 +53,19 @@ mureo/
 │   ├── _instagram.py    # InstagramMixin (accounts/media/boost)
 │   ├── _split_test.py   # SplitTestMixin (A/B split tests)
 │   └── _ad_rules.py     # AdRulesMixin (automated rules)
-├── mcp/                 # MCP server (81 tools: 29 Google Ads + 52 Meta Ads)
-│   ├── server.py        # MCP Server entry point (stdio-based)
-│   ├── tools_google_ads.py       # Google Ads tool definitions (29)
-│   ├── tools_meta_ads.py         # Meta Ads tool definitions (52)
-│   ├── _handlers_google_ads.py   # Google Ads handler implementations
-│   ├── _handlers_meta_ads.py     # Meta Ads handler implementations
-│   └── _helpers.py               # Shared handler utilities
+├── mcp/                 # MCP server (159 tools: 82 Google Ads + 77 Meta Ads)
+│   ├── server.py                          # MCP Server entry point (stdio-based)
+│   ├── _helpers.py                        # Shared handler utilities
+│   ├── tools_google_ads.py                # 82 Google Ads tool definitions (aggregator)
+│   ├── _tools_google_ads_*.py             # Tool definition sub-modules
+│   ├── _handlers_google_ads.py            # Google Ads base handlers
+│   ├── _handlers_google_ads_extensions.py # Extensions handlers
+│   ├── _handlers_google_ads_analysis.py   # Analysis handlers
+│   ├── tools_meta_ads.py                  # 77 Meta Ads tool definitions (aggregator)
+│   ├── _tools_meta_ads_*.py               # Tool definition sub-modules
+│   ├── _handlers_meta_ads.py              # Meta Ads base handlers
+│   ├── _handlers_meta_ads_extended.py     # Extended handlers
+│   └── _handlers_meta_ads_other.py        # Other handlers
 ├── cli/                 # Typer CLI wrapper
 │   ├── main.py          # CLI entry point (`mureo` command)
 │   ├── google_ads.py    # `mureo google-ads` subcommands
@@ -76,33 +82,47 @@ mureo/
 └── auth_setup.py        # Interactive setup wizard (browser OAuth flow)
 ```
 
-## MCP Tools (81 total)
+## MCP Tools (159 total)
 
-### Google Ads (29 tools)
+### Google Ads (82 tools)
 
 | Category | Tools |
 |----------|-------|
 | Campaigns (6) | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update`, `campaigns.update_status`, `campaigns.diagnose` |
 | Ad Groups (3) | `ad_groups.list`, `ad_groups.create`, `ad_groups.update` |
-| Ads (4) | `ads.list`, `ads.create`, `ads.update`, `ads.update_status` |
-| Keywords (5) | `keywords.list`, `keywords.add`, `keywords.remove`, `keywords.suggest`, `keywords.diagnose` |
-| Negative Keywords (2) | `negative_keywords.list`, `negative_keywords.add` |
-| Budget (2) | `budget.get`, `budget.update` |
-| Analysis (6) | `performance.report`, `search_terms.report`, `search_terms.review`, `auction_insights.analyze`, `cpc.detect_trend`, `device.analyze` |
+| Ads (5) | `ads.list`, `ads.create`, `ads.update`, `ads.update_status`, `ads.policy_details` |
+| Keywords (8) | `keywords.list`, `keywords.add`, `keywords.remove`, `keywords.suggest`, `keywords.diagnose`, `keywords.pause`, `keywords.audit`, `keywords.cross_adgroup_duplicates` |
+| Negative Keywords (5) | `negative_keywords.list`, `negative_keywords.add`, `negative_keywords.remove`, `negative_keywords.add_to_ad_group`, `negative_keywords.suggest` |
+| Budget (3) | `budget.get`, `budget.update`, `budget.create` |
+| Accounts (1) | `accounts.list` |
+| Search Terms (2) | `search_terms.report`, `search_terms.analyze` |
+| Sitelinks (3) | `sitelinks.list`, `sitelinks.create`, `sitelinks.remove` |
+| Callouts (3) | `callouts.list`, `callouts.create`, `callouts.remove` |
+| Conversions (7) | `conversions.list`, `conversions.get`, `conversions.performance`, `conversions.create`, `conversions.update`, `conversions.remove`, `conversions.tag` |
+| Targeting (11) | `recommendations.list`, `recommendations.apply`, `device_targeting.get`, `device_targeting.set`, `bid_adjustments.get`, `bid_adjustments.update`, `location_targeting.list`, `location_targeting.update`, `schedule_targeting.list`, `schedule_targeting.update`, `change_history.list` |
+| Analysis (13) | `performance.report`, `performance.analyze`, `cost_increase.investigate`, `health_check.all`, `ad_performance.compare`, `ad_performance.report`, `network_performance.report`, `budget.efficiency`, `budget.reallocation`, `auction_insights.get`, `rsa_assets.analyze`, `rsa_assets.audit`, `search_terms.review` |
+| B2B (1) | `btob.optimizations` |
+| Creative (2) | `landing_page.analyze`, `creative.research` |
+| Monitoring (4) | `monitoring.delivery_goal`, `monitoring.cpa_goal`, `monitoring.cv_goal`, `monitoring.zero_conversions` |
+| Capture (1) | `capture.screenshot` |
+| Device (1) | `device.analyze` |
+| CPC (1) | `cpc.detect_trend` |
 | Assets (1) | `assets.upload_image` |
 
-### Meta Ads (52 tools)
+### Meta Ads (77 tools)
 
 | Category | Tools |
 |----------|-------|
-| Campaigns (4) | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update` |
-| Ad Sets (3) | `ad_sets.list`, `ad_sets.create`, `ad_sets.update` |
-| Ads (3) | `ads.list`, `ads.create`, `ads.update` |
-| Creatives (2) | `creatives.create_carousel`, `creatives.create_collection` |
+| Campaigns (6) | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update`, `campaigns.pause`, `campaigns.enable` |
+| Ad Sets (5) | `ad_sets.list`, `ad_sets.create`, `ad_sets.update`, `ad_sets.get`, `ad_sets.pause`, `ad_sets.enable` |
+| Ads (6) | `ads.list`, `ads.create`, `ads.update`, `ads.get`, `ads.pause`, `ads.enable` |
+| Creatives (6) | `creatives.create_carousel`, `creatives.create_collection`, `creatives.list`, `creatives.create`, `creatives.create_dynamic`, `creatives.upload_image` |
 | Images (1) | `images.upload_file` |
 | Insights (2) | `insights.report`, `insights.breakdown` |
-| Audiences (2) | `audiences.list`, `audiences.create` |
+| Audiences (5) | `audiences.list`, `audiences.create`, `audiences.get`, `audiences.delete`, `audiences.create_lookalike` |
 | Conversions API (3) | `conversions.send`, `conversions.send_purchase`, `conversions.send_lead` |
+| Pixels (4) | `pixels.list`, `pixels.get`, `pixels.stats`, `pixels.events` |
+| Analysis (6) | `analysis.performance`, `analysis.audience`, `analysis.placements`, `analysis.cost`, `analysis.compare_ads`, `analysis.suggest_creative` |
 | Product Catalog (11) | `catalogs.list`, `catalogs.create`, `catalogs.get`, `catalogs.delete`, `products.list`, `products.add`, `products.get`, `products.update`, `products.delete`, `feeds.list`, `feeds.create` |
 | Lead Ads (5) | `lead_forms.list`, `lead_forms.get`, `lead_forms.create`, `leads.get`, `leads.get_by_ad` |
 | Videos (2) | `videos.upload`, `videos.upload_file` |
@@ -134,7 +154,7 @@ mureo/
 
 ## Test Coverage
 
-- 35+ test files, 95% coverage, 1165 tests
+- 40+ test files, 95% coverage, 1257 tests
 - Target: 80% minimum (enforced by `tool.coverage.report.fail_under`)
 - Framework: pytest + pytest-asyncio
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests

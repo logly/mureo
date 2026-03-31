@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 81 advertising operation tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP). Any MCP-compatible client can connect and call these tools over stdio.
+mureo exposes 159 advertising operation tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP). Any MCP-compatible client can connect and call these tools over stdio.
 
 ## Starting the Server
 
@@ -74,9 +74,9 @@ Or use `uv` to run it:
 }
 ```
 
-## Tool Reference (81 tools)
+## Tool Reference (159 tools)
 
-### Google Ads (29 tools)
+### Google Ads (82 tools)
 
 #### Campaigns
 
@@ -105,6 +105,7 @@ Or use `uv` to run it:
 | `google_ads.ads.create` | Create a responsive search ad (RSA) | `customer_id`, `ad_group_id`, `headlines`, `descriptions` |
 | `google_ads.ads.update` | Update an ad | `customer_id`, `ad_group_id`, `ad_id` |
 | `google_ads.ads.update_status` | Change ad status | `customer_id`, `ad_group_id`, `ad_id`, `status` |
+| `google_ads.ads.policy_details` | Get ad policy approval details | `customer_id`, `ad_group_id`, `ad_id` |
 
 #### Keywords
 
@@ -115,13 +116,19 @@ Or use `uv` to run it:
 | `google_ads.keywords.remove` | Remove a keyword | `customer_id`, `ad_group_id`, `criterion_id` |
 | `google_ads.keywords.suggest` | Get keyword suggestions (Keyword Planner) | `customer_id`, `seed_keywords` |
 | `google_ads.keywords.diagnose` | Diagnose keyword quality scores | `customer_id`, `campaign_id` |
+| `google_ads.keywords.pause` | Pause a keyword | `customer_id`, `ad_group_id`, `criterion_id` |
+| `google_ads.keywords.audit` | Audit keyword performance and quality | `customer_id`, `campaign_id` |
+| `google_ads.keywords.cross_adgroup_duplicates` | Find duplicate keywords across ad groups | `customer_id`, `campaign_id` |
 
 #### Negative Keywords
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads.negative_keywords.list` | List negative keywords | `customer_id`, `campaign_id` |
-| `google_ads.negative_keywords.add` | Add negative keywords | `customer_id`, `campaign_id`, `keywords` |
+| `google_ads.negative_keywords.add` | Add negative keywords to a campaign | `customer_id`, `campaign_id`, `keywords` |
+| `google_ads.negative_keywords.remove` | Remove a negative keyword | `customer_id`, `campaign_id`, `criterion_id` |
+| `google_ads.negative_keywords.add_to_ad_group` | Add negative keywords to an ad group | `customer_id`, `ad_group_id`, `keywords` |
+| `google_ads.negative_keywords.suggest` | Suggest negative keywords based on search terms | `customer_id`, `campaign_id` |
 
 #### Budget
 
@@ -129,17 +136,117 @@ Or use `uv` to run it:
 |------|-------------|-------------------|
 | `google_ads.budget.get` | Get campaign budget | `customer_id`, `campaign_id` |
 | `google_ads.budget.update` | Update budget | `customer_id`, `budget_id`, `amount` |
+| `google_ads.budget.create` | Create a new campaign budget | `customer_id`, `name`, `amount` |
+
+#### Accounts
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads.accounts.list` | List accessible Google Ads accounts | *(none)* |
+
+#### Search Terms
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads.search_terms.report` | Get search terms report | `customer_id` |
+| `google_ads.search_terms.analyze` | Analyze search terms with intent classification | `customer_id`, `campaign_id` |
+
+#### Sitelinks
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads.sitelinks.list` | List sitelink extensions | `customer_id`, `campaign_id` |
+| `google_ads.sitelinks.create` | Create a sitelink extension | `customer_id`, `campaign_id`, `sitelink_text`, `final_url` |
+| `google_ads.sitelinks.remove` | Remove a sitelink extension | `customer_id`, `campaign_id`, `extension_id` |
+
+#### Callouts
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads.callouts.list` | List callout extensions | `customer_id`, `campaign_id` |
+| `google_ads.callouts.create` | Create a callout extension | `customer_id`, `campaign_id`, `callout_text` |
+| `google_ads.callouts.remove` | Remove a callout extension | `customer_id`, `campaign_id`, `extension_id` |
+
+#### Conversions
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads.conversions.list` | List conversion actions | `customer_id` |
+| `google_ads.conversions.get` | Get conversion action details | `customer_id`, `conversion_action_id` |
+| `google_ads.conversions.performance` | Get conversion performance metrics | `customer_id` |
+| `google_ads.conversions.create` | Create a conversion action | `customer_id`, `name`, `type` |
+| `google_ads.conversions.update` | Update a conversion action | `customer_id`, `conversion_action_id` |
+| `google_ads.conversions.remove` | Remove a conversion action | `customer_id`, `conversion_action_id` |
+| `google_ads.conversions.tag` | Get conversion tracking tag snippet | `customer_id`, `conversion_action_id` |
+
+#### Targeting
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads.recommendations.list` | List optimization recommendations | `customer_id` |
+| `google_ads.recommendations.apply` | Apply an optimization recommendation | `customer_id`, `recommendation_id` |
+| `google_ads.device_targeting.get` | Get device targeting settings | `customer_id`, `campaign_id` |
+| `google_ads.device_targeting.set` | Set device targeting bid adjustments | `customer_id`, `campaign_id`, `device_type`, `bid_modifier` |
+| `google_ads.bid_adjustments.get` | Get bid adjustment settings | `customer_id`, `campaign_id` |
+| `google_ads.bid_adjustments.update` | Update bid adjustments | `customer_id`, `campaign_id` |
+| `google_ads.location_targeting.list` | List location targeting criteria | `customer_id`, `campaign_id` |
+| `google_ads.location_targeting.update` | Update location targeting | `customer_id`, `campaign_id` |
+| `google_ads.schedule_targeting.list` | List ad schedule targeting | `customer_id`, `campaign_id` |
+| `google_ads.schedule_targeting.update` | Update ad schedule targeting | `customer_id`, `campaign_id` |
+| `google_ads.change_history.list` | List account change history | `customer_id` |
 
 #### Analysis & Reporting
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads.performance.report` | Get performance report | `customer_id` |
-| `google_ads.search_terms.report` | Get search terms report | `customer_id` |
+| `google_ads.performance.analyze` | Analyze performance trends and anomalies | `customer_id` |
+| `google_ads.cost_increase.investigate` | Investigate sudden cost increases | `customer_id`, `campaign_id` |
+| `google_ads.health_check.all` | Run a comprehensive account health check | `customer_id` |
+| `google_ads.ad_performance.compare` | Compare ad performance across variants | `customer_id`, `ad_group_id` |
+| `google_ads.ad_performance.report` | Get detailed ad-level performance report | `customer_id` |
+| `google_ads.network_performance.report` | Get network-level performance breakdown | `customer_id` |
+| `google_ads.budget.efficiency` | Analyze budget utilization efficiency | `customer_id` |
+| `google_ads.budget.reallocation` | Suggest budget reallocation across campaigns | `customer_id` |
+| `google_ads.auction_insights.get` | Get auction insights (competitor analysis) | `customer_id`, `campaign_id` |
+| `google_ads.rsa_assets.analyze` | Analyze RSA asset performance | `customer_id`, `ad_group_id` |
+| `google_ads.rsa_assets.audit` | Audit RSA assets for best practices | `customer_id`, `campaign_id` |
 | `google_ads.search_terms.review` | Review search terms with rule-based scoring | `customer_id`, `campaign_id` |
-| `google_ads.auction_insights.analyze` | Analyze auction insights (competitors) | `customer_id`, `campaign_id` |
-| `google_ads.cpc.detect_trend` | Detect CPC trend (rising/stable/falling) | `customer_id`, `campaign_id` |
+
+#### B2B
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads.btob.optimizations` | Get B2B-specific optimization suggestions | `customer_id` |
+
+#### Creative
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads.landing_page.analyze` | Analyze landing page relevance and quality | `customer_id`, `campaign_id` |
+| `google_ads.creative.research` | Research competitive creative strategies | `customer_id` |
+
+#### Monitoring
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads.monitoring.delivery_goal` | Monitor campaign delivery against goals | `customer_id`, `campaign_id` |
+| `google_ads.monitoring.cpa_goal` | Monitor CPA against target goals | `customer_id`, `campaign_id` |
+| `google_ads.monitoring.cv_goal` | Monitor conversion volume against goals | `customer_id`, `campaign_id` |
+| `google_ads.monitoring.zero_conversions` | Detect campaigns with zero conversions | `customer_id` |
+
+#### Capture
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads.capture.screenshot` | Capture a screenshot of a URL | `url` |
+
+#### Device & CPC
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
 | `google_ads.device.analyze` | Analyze device-level performance | `customer_id`, `campaign_id` |
+| `google_ads.cpc.detect_trend` | Detect CPC trend (rising/stable/falling) | `customer_id`, `campaign_id` |
 
 #### Image Assets
 
@@ -147,7 +254,7 @@ Or use `uv` to run it:
 |------|-------------|-------------------|
 | `google_ads.assets.upload_image` | Upload a local image file as a Google Ads asset | `customer_id`, `file_path` |
 
-### Meta Ads (52 tools)
+### Meta Ads (77 tools)
 
 #### Campaigns
 
@@ -157,6 +264,8 @@ Or use `uv` to run it:
 | `meta_ads.campaigns.get` | Get campaign details | `account_id`, `campaign_id` |
 | `meta_ads.campaigns.create` | Create a campaign | `account_id`, `name`, `objective` |
 | `meta_ads.campaigns.update` | Update a campaign | `account_id`, `campaign_id` |
+| `meta_ads.campaigns.pause` | Pause a campaign | `account_id`, `campaign_id` |
+| `meta_ads.campaigns.enable` | Enable a paused campaign | `account_id`, `campaign_id` |
 
 #### Ad Sets
 
@@ -165,6 +274,9 @@ Or use `uv` to run it:
 | `meta_ads.ad_sets.list` | List ad sets | `account_id` |
 | `meta_ads.ad_sets.create` | Create an ad set | `account_id`, `campaign_id`, `name`, `daily_budget` |
 | `meta_ads.ad_sets.update` | Update an ad set | `account_id`, `ad_set_id` |
+| `meta_ads.ad_sets.get` | Get ad set details | `account_id`, `ad_set_id` |
+| `meta_ads.ad_sets.pause` | Pause an ad set | `account_id`, `ad_set_id` |
+| `meta_ads.ad_sets.enable` | Enable a paused ad set | `account_id`, `ad_set_id` |
 
 #### Ads
 
@@ -173,6 +285,26 @@ Or use `uv` to run it:
 | `meta_ads.ads.list` | List ads | `account_id` |
 | `meta_ads.ads.create` | Create an ad | `account_id`, `ad_set_id`, `name`, `creative_id` |
 | `meta_ads.ads.update` | Update an ad | `account_id`, `ad_id` |
+| `meta_ads.ads.get` | Get ad details | `account_id`, `ad_id` |
+| `meta_ads.ads.pause` | Pause an ad | `account_id`, `ad_id` |
+| `meta_ads.ads.enable` | Enable a paused ad | `account_id`, `ad_id` |
+
+#### Creatives
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `meta_ads.creatives.list` | List ad creatives | `account_id` |
+| `meta_ads.creatives.create` | Create a standard ad creative | `account_id`, `name` |
+| `meta_ads.creatives.create_carousel` | Create a carousel creative (2-10 cards) | `account_id`, `page_id`, `cards`, `link` |
+| `meta_ads.creatives.create_collection` | Create a collection creative | `account_id`, `page_id`, `product_ids`, `link` |
+| `meta_ads.creatives.create_dynamic` | Create a dynamic product ad creative | `account_id`, `catalog_id` |
+| `meta_ads.creatives.upload_image` | Upload an image for use in creatives | `account_id`, `file_path` |
+
+#### Images
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `meta_ads.images.upload_file` | Upload an image from local file | `account_id`, `file_path` |
 
 #### Insights
 
@@ -187,6 +319,9 @@ Or use `uv` to run it:
 |------|-------------|-------------------|
 | `meta_ads.audiences.list` | List custom audiences | `account_id` |
 | `meta_ads.audiences.create` | Create a custom audience | `account_id`, `name`, `subtype` |
+| `meta_ads.audiences.get` | Get audience details | `account_id`, `audience_id` |
+| `meta_ads.audiences.delete` | Delete a custom audience | `account_id`, `audience_id` |
+| `meta_ads.audiences.create_lookalike` | Create a lookalike audience | `account_id`, `source_audience_id`, `country` |
 
 #### Conversions API (CAPI)
 
@@ -195,6 +330,26 @@ Or use `uv` to run it:
 | `meta_ads.conversions.send` | Send conversion events (generic) | `account_id`, `pixel_id`, `events` |
 | `meta_ads.conversions.send_purchase` | Send a purchase event | `account_id`, `pixel_id`, `event_time`, `user_data`, `currency`, `value` |
 | `meta_ads.conversions.send_lead` | Send a lead event | `account_id`, `pixel_id`, `event_time`, `user_data` |
+
+#### Pixels
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `meta_ads.pixels.list` | List pixels | `account_id` |
+| `meta_ads.pixels.get` | Get pixel details | `account_id`, `pixel_id` |
+| `meta_ads.pixels.stats` | Get pixel firing statistics | `account_id`, `pixel_id` |
+| `meta_ads.pixels.events` | List pixel events | `account_id`, `pixel_id` |
+
+#### Analysis
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `meta_ads.analysis.performance` | Analyze overall performance trends | `account_id` |
+| `meta_ads.analysis.audience` | Analyze audience performance and overlap | `account_id` |
+| `meta_ads.analysis.placements` | Analyze placement performance breakdown | `account_id` |
+| `meta_ads.analysis.cost` | Analyze cost trends and efficiency | `account_id` |
+| `meta_ads.analysis.compare_ads` | Compare performance across ads | `account_id` |
+| `meta_ads.analysis.suggest_creative` | Suggest creative improvements based on data | `account_id` |
 
 #### Product Catalog (DPA)
 
@@ -231,16 +386,7 @@ Or use `uv` to run it:
 
 #### Creatives (Carousel & Collection)
 
-| Tool | Description | Required Parameters |
-|------|-------------|-------------------|
-| `meta_ads.creatives.create_carousel` | Create a carousel creative (2-10 cards) | `account_id`, `page_id`, `cards`, `link` |
-| `meta_ads.creatives.create_collection` | Create a collection creative | `account_id`, `page_id`, `product_ids`, `link` |
-
-#### Images
-
-| Tool | Description | Required Parameters |
-|------|-------------|-------------------|
-| `meta_ads.images.upload_file` | Upload an image from local file | `account_id`, `file_path` |
+*(See Creatives section above for carousel and collection tools.)*
 
 #### Split Tests (A/B Testing)
 

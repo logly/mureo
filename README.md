@@ -143,9 +143,14 @@ Add to `.cursor/mcp.json`:
 }
 ```
 
-### Tool list (81 tools)
+### Tool list (159 tools)
 
-#### Google Ads (29 tools)
+#### Google Ads (82 tools)
+
+<details>
+<summary>Click to expand Google Ads tools</summary>
+
+**Campaigns (6)**
 
 | Tool | Description |
 |------|-------------|
@@ -155,33 +160,185 @@ Add to `.cursor/mcp.json`:
 | `google_ads.campaigns.update` | Update campaign settings |
 | `google_ads.campaigns.update_status` | Change campaign status (ENABLED/PAUSED/REMOVED) |
 | `google_ads.campaigns.diagnose` | Diagnose campaign delivery status |
+
+**Ad Groups (3)**
+
+| Tool | Description |
+|------|-------------|
 | `google_ads.ad_groups.list` | List ad groups |
 | `google_ads.ad_groups.create` | Create an ad group |
 | `google_ads.ad_groups.update` | Update an ad group |
+
+**Ads (5)**
+
+| Tool | Description |
+|------|-------------|
 | `google_ads.ads.list` | List ads |
 | `google_ads.ads.create` | Create a responsive search ad (RSA) |
 | `google_ads.ads.update` | Update an ad |
 | `google_ads.ads.update_status` | Change ad status |
+| `google_ads.ads.policy_details` | Get ad policy approval details |
+
+**Keywords (8)**
+
+| Tool | Description |
+|------|-------------|
 | `google_ads.keywords.list` | List keywords |
 | `google_ads.keywords.add` | Add keywords |
 | `google_ads.keywords.remove` | Remove a keyword |
 | `google_ads.keywords.suggest` | Get keyword suggestions (Keyword Planner) |
 | `google_ads.keywords.diagnose` | Diagnose keyword quality scores |
+| `google_ads.keywords.pause` | Pause a keyword |
+| `google_ads.keywords.audit` | Audit keyword performance and quality |
+| `google_ads.keywords.cross_adgroup_duplicates` | Find duplicate keywords across ad groups |
+
+**Negative Keywords (5)**
+
+| Tool | Description |
+|------|-------------|
 | `google_ads.negative_keywords.list` | List negative keywords |
-| `google_ads.negative_keywords.add` | Add negative keywords |
+| `google_ads.negative_keywords.add` | Add negative keywords to a campaign |
+| `google_ads.negative_keywords.remove` | Remove a negative keyword |
+| `google_ads.negative_keywords.add_to_ad_group` | Add negative keywords to an ad group |
+| `google_ads.negative_keywords.suggest` | Suggest negative keywords based on search terms |
+
+**Budget (3)**
+
+| Tool | Description |
+|------|-------------|
 | `google_ads.budget.get` | Get campaign budget |
 | `google_ads.budget.update` | Update budget |
-| `google_ads.performance.report` | Get performance report |
+| `google_ads.budget.create` | Create a new campaign budget |
+
+**Accounts (1)**
+
+| Tool | Description |
+|------|-------------|
+| `google_ads.accounts.list` | List accessible Google Ads accounts |
+
+**Search Terms (2)**
+
+| Tool | Description |
+|------|-------------|
 | `google_ads.search_terms.report` | Get search terms report |
+| `google_ads.search_terms.analyze` | Analyze search terms with intent classification |
+
+**Sitelinks (3)**
+
+| Tool | Description |
+|------|-------------|
+| `google_ads.sitelinks.list` | List sitelink extensions |
+| `google_ads.sitelinks.create` | Create a sitelink extension |
+| `google_ads.sitelinks.remove` | Remove a sitelink extension |
+
+**Callouts (3)**
+
+| Tool | Description |
+|------|-------------|
+| `google_ads.callouts.list` | List callout extensions |
+| `google_ads.callouts.create` | Create a callout extension |
+| `google_ads.callouts.remove` | Remove a callout extension |
+
+**Conversions (7)**
+
+| Tool | Description |
+|------|-------------|
+| `google_ads.conversions.list` | List conversion actions |
+| `google_ads.conversions.get` | Get conversion action details |
+| `google_ads.conversions.performance` | Get conversion performance metrics |
+| `google_ads.conversions.create` | Create a conversion action |
+| `google_ads.conversions.update` | Update a conversion action |
+| `google_ads.conversions.remove` | Remove a conversion action |
+| `google_ads.conversions.tag` | Get conversion tracking tag snippet |
+
+**Targeting (11)**
+
+| Tool | Description |
+|------|-------------|
+| `google_ads.recommendations.list` | List optimization recommendations |
+| `google_ads.recommendations.apply` | Apply an optimization recommendation |
+| `google_ads.device_targeting.get` | Get device targeting settings |
+| `google_ads.device_targeting.set` | Set device targeting bid adjustments |
+| `google_ads.bid_adjustments.get` | Get bid adjustment settings |
+| `google_ads.bid_adjustments.update` | Update bid adjustments |
+| `google_ads.location_targeting.list` | List location targeting criteria |
+| `google_ads.location_targeting.update` | Update location targeting |
+| `google_ads.schedule_targeting.list` | List ad schedule targeting |
+| `google_ads.schedule_targeting.update` | Update ad schedule targeting |
+| `google_ads.change_history.list` | List account change history |
+
+**Analysis (13)**
+
+| Tool | Description |
+|------|-------------|
+| `google_ads.performance.report` | Get performance report |
+| `google_ads.performance.analyze` | Analyze performance trends and anomalies |
+| `google_ads.cost_increase.investigate` | Investigate sudden cost increases |
+| `google_ads.health_check.all` | Run a comprehensive account health check |
+| `google_ads.ad_performance.compare` | Compare ad performance across variants |
+| `google_ads.ad_performance.report` | Get detailed ad-level performance report |
+| `google_ads.network_performance.report` | Get network-level performance breakdown |
+| `google_ads.budget.efficiency` | Analyze budget utilization efficiency |
+| `google_ads.budget.reallocation` | Suggest budget reallocation across campaigns |
+| `google_ads.auction_insights.get` | Get auction insights (competitor analysis) |
+| `google_ads.rsa_assets.analyze` | Analyze RSA asset performance |
+| `google_ads.rsa_assets.audit` | Audit RSA assets for best practices |
 | `google_ads.search_terms.review` | Review search terms and suggest additions/exclusions |
-| `google_ads.auction_insights.analyze` | Analyze auction insights |
-| `google_ads.cpc.detect_trend` | Detect CPC trend (rising/stable/falling) |
+
+**B2B (1)**
+
+| Tool | Description |
+|------|-------------|
+| `google_ads.btob.optimizations` | Get B2B-specific optimization suggestions |
+
+**Creative (2)**
+
+| Tool | Description |
+|------|-------------|
+| `google_ads.landing_page.analyze` | Analyze landing page relevance and quality |
+| `google_ads.creative.research` | Research competitive creative strategies |
+
+**Monitoring (4)**
+
+| Tool | Description |
+|------|-------------|
+| `google_ads.monitoring.delivery_goal` | Monitor campaign delivery against goals |
+| `google_ads.monitoring.cpa_goal` | Monitor CPA against target goals |
+| `google_ads.monitoring.cv_goal` | Monitor conversion volume against goals |
+| `google_ads.monitoring.zero_conversions` | Detect campaigns with zero conversions |
+
+**Capture (1)**
+
+| Tool | Description |
+|------|-------------|
+| `google_ads.capture.screenshot` | Capture a screenshot of a URL |
+
+**Device (1)**
+
+| Tool | Description |
+|------|-------------|
 | `google_ads.device.analyze` | Analyze device-level performance |
+
+**CPC (1)**
+
+| Tool | Description |
+|------|-------------|
+| `google_ads.cpc.detect_trend` | Detect CPC trend (rising/stable/falling) |
+
+**Assets (1)**
+
+| Tool | Description |
+|------|-------------|
 | `google_ads.assets.upload_image` | Upload an image asset |
 
-#### Meta Ads (52 tools)
+</details>
 
-**Campaigns (4)**
+#### Meta Ads (77 tools)
+
+<details>
+<summary>Click to expand Meta Ads tools</summary>
+
+**Campaigns (6)**
 
 | Tool | Description |
 |------|-------------|
@@ -189,29 +346,46 @@ Add to `.cursor/mcp.json`:
 | `meta_ads.campaigns.get` | Get campaign details |
 | `meta_ads.campaigns.create` | Create a campaign |
 | `meta_ads.campaigns.update` | Update a campaign |
+| `meta_ads.campaigns.pause` | Pause a campaign |
+| `meta_ads.campaigns.enable` | Enable a paused campaign |
 
-**Ad Sets (3)**
+**Ad Sets (6)**
 
 | Tool | Description |
 |------|-------------|
 | `meta_ads.ad_sets.list` | List ad sets |
 | `meta_ads.ad_sets.create` | Create an ad set |
 | `meta_ads.ad_sets.update` | Update an ad set |
+| `meta_ads.ad_sets.get` | Get ad set details |
+| `meta_ads.ad_sets.pause` | Pause an ad set |
+| `meta_ads.ad_sets.enable` | Enable a paused ad set |
 
-**Ads (3)**
+**Ads (6)**
 
 | Tool | Description |
 |------|-------------|
 | `meta_ads.ads.list` | List ads |
 | `meta_ads.ads.create` | Create an ad |
 | `meta_ads.ads.update` | Update an ad |
+| `meta_ads.ads.get` | Get ad details |
+| `meta_ads.ads.pause` | Pause an ad |
+| `meta_ads.ads.enable` | Enable a paused ad |
 
-**Creatives (3)**
+**Creatives (6)**
 
 | Tool | Description |
 |------|-------------|
 | `meta_ads.creatives.create_carousel` | Create a carousel creative (2-10 cards) |
 | `meta_ads.creatives.create_collection` | Create a collection creative |
+| `meta_ads.creatives.list` | List ad creatives |
+| `meta_ads.creatives.create` | Create a standard ad creative |
+| `meta_ads.creatives.create_dynamic` | Create a dynamic product ad creative |
+| `meta_ads.creatives.upload_image` | Upload an image for use in creatives |
+
+**Images (1)**
+
+| Tool | Description |
+|------|-------------|
 | `meta_ads.images.upload_file` | Upload an image from local file |
 
 **Insights (2)**
@@ -221,12 +395,15 @@ Add to `.cursor/mcp.json`:
 | `meta_ads.insights.report` | Get performance report |
 | `meta_ads.insights.breakdown` | Get breakdown report (age, gender, placement, etc.) |
 
-**Audiences (2)**
+**Audiences (5)**
 
 | Tool | Description |
 |------|-------------|
 | `meta_ads.audiences.list` | List custom audiences |
 | `meta_ads.audiences.create` | Create a custom audience |
+| `meta_ads.audiences.get` | Get audience details |
+| `meta_ads.audiences.delete` | Delete a custom audience |
+| `meta_ads.audiences.create_lookalike` | Create a lookalike audience |
 
 **Conversions API (3)**
 
@@ -235,6 +412,26 @@ Add to `.cursor/mcp.json`:
 | `meta_ads.conversions.send` | Send a conversion event (generic) |
 | `meta_ads.conversions.send_purchase` | Send a purchase event |
 | `meta_ads.conversions.send_lead` | Send a lead event |
+
+**Pixels (4)**
+
+| Tool | Description |
+|------|-------------|
+| `meta_ads.pixels.list` | List pixels |
+| `meta_ads.pixels.get` | Get pixel details |
+| `meta_ads.pixels.stats` | Get pixel firing statistics |
+| `meta_ads.pixels.events` | List pixel events |
+
+**Analysis (6)**
+
+| Tool | Description |
+|------|-------------|
+| `meta_ads.analysis.performance` | Analyze overall performance trends |
+| `meta_ads.analysis.audience` | Analyze audience performance and overlap |
+| `meta_ads.analysis.placements` | Analyze placement performance breakdown |
+| `meta_ads.analysis.cost` | Analyze cost trends and efficiency |
+| `meta_ads.analysis.compare_ads` | Compare performance across ads |
+| `meta_ads.analysis.suggest_creative` | Suggest creative improvements based on data |
 
 **Product Catalog (11)**
 
@@ -302,6 +499,8 @@ Add to `.cursor/mcp.json`:
 | `meta_ads.instagram.accounts` | List connected Instagram accounts |
 | `meta_ads.instagram.media` | List Instagram posts |
 | `meta_ads.instagram.boost` | Boost an Instagram post |
+
+</details>
 
 ## CLI
 
@@ -392,7 +591,7 @@ mureo/
 ├── auth_setup.py            # Interactive setup wizard (OAuth + MCP config)
 ├── _image_validation.py     # Image file validation utilities
 ├── google_ads/              # Google Ads API client (google-ads SDK wrapper)
-│   ├── client.py            # GoogleAdsApiClient (5 Mixin: Analysis, Creative, Diagnostics, Media, Monitoring)
+│   ├── client.py            # GoogleAdsApiClient (8 Mixin: Ads, Keywords, Analysis, Creative, Diagnostics, Extensions, Media, Monitoring)
 │   ├── mappers.py           # Response mapping to structured dicts
 │   ├── _ads.py              # Ad CRUD operations
 │   ├── _keywords.py         # Keyword management
@@ -439,14 +638,20 @@ mureo/
 │   ├── auth_cmd.py          # mureo auth * (status, check-google, check-meta, setup)
 │   ├── google_ads.py        # mureo google-ads *
 │   └── meta_ads.py          # mureo meta-ads *
-└── mcp/                     # MCP server
-    ├── __main__.py           # python -m mureo.mcp entry point
-    ├── server.py             # MCP server setup (stdio transport)
-    ├── _helpers.py           # Shared handler utilities
-    ├── tools_google_ads.py   # 29 Google Ads tool definitions
-    ├── _handlers_google_ads.py # Google Ads tool handlers
-    ├── tools_meta_ads.py     # 52 Meta Ads tool definitions
-    └── _handlers_meta_ads.py # Meta Ads tool handlers
+└── mcp/                     # MCP server (159 tools)
+    ├── __main__.py                        # python -m mureo.mcp entry point
+    ├── server.py                          # MCP server setup (stdio transport)
+    ├── _helpers.py                        # Shared handler utilities
+    ├── tools_google_ads.py                # 82 Google Ads tool definitions (aggregator)
+    ├── _tools_google_ads_*.py             # Tool definition sub-modules
+    ├── _handlers_google_ads.py            # Google Ads base handlers
+    ├── _handlers_google_ads_extensions.py # Extensions handlers
+    ├── _handlers_google_ads_analysis.py   # Analysis handlers
+    ├── tools_meta_ads.py                  # 77 Meta Ads tool definitions (aggregator)
+    ├── _tools_meta_ads_*.py               # Tool definition sub-modules
+    ├── _handlers_meta_ads.py              # Meta Ads base handlers
+    ├── _handlers_meta_ads_extended.py     # Extended handlers
+    └── _handlers_meta_ads_other.py        # Other handlers
 ```
 
 **Design principles:**

@@ -49,14 +49,20 @@ mureo/
 │   ├── auth_cmd.py          # mureo auth *
 │   ├── google_ads.py        # mureo google-ads *
 │   └── meta_ads.py          # mureo meta-ads *
-└── mcp/                     # MCP server
-    ├── __main__.py           # python -m mureo.mcp entry point
-    ├── server.py             # MCP server setup (stdio transport)
-    ├── _helpers.py           # Shared handler utilities
-    ├── _handlers_google_ads.py  # Google Ads handler implementations
-    ├── _handlers_meta_ads.py    # Meta Ads handler implementations
-    ├── tools_google_ads.py   # 29 Google Ads tool definitions + dispatch
-    └── tools_meta_ads.py     # 52 Meta Ads tool definitions + dispatch
+└── mcp/                     # MCP server (159 tools)
+    ├── __main__.py                        # python -m mureo.mcp entry point
+    ├── server.py                          # MCP server setup (stdio transport)
+    ├── _helpers.py                        # Shared handler utilities
+    ├── tools_google_ads.py                # 82 Google Ads tool definitions (aggregator)
+    ├── _tools_google_ads_*.py             # Tool definition sub-modules
+    ├── _handlers_google_ads.py            # Google Ads base handlers
+    ├── _handlers_google_ads_extensions.py # Extensions handlers
+    ├── _handlers_google_ads_analysis.py   # Analysis handlers
+    ├── tools_meta_ads.py                  # 77 Meta Ads tool definitions (aggregator)
+    ├── _tools_meta_ads_*.py               # Tool definition sub-modules
+    ├── _handlers_meta_ads.py              # Meta Ads base handlers
+    ├── _handlers_meta_ads_extended.py     # Extended handlers
+    └── _handlers_meta_ads_other.py        # Other handlers
 ```
 
 ## Design Principles
