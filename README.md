@@ -3,16 +3,16 @@
 </p>
 
 <p align="center">
-  Ad operations toolkit for AI agents — Google Ads & Meta Ads via CLI/MCP.
+  Marketing operations toolkit for AI agents — CLI & MCP.
 </p>
 
 ## What is mureo?
 
-**mureo** gives AI agents (Claude Code, Cursor, etc.) hands-on access to Google Ads and Meta Ads accounts.
+**mureo** is an open toolkit that lets AI agents (Claude Code, Cursor, etc.) operate marketing platforms directly. Currently supports **Google Ads** and **Meta Ads**, with more platforms planned.
 
-- **MCP server** -- expose 81 ad-operation tools over the Model Context Protocol so agents can read, create, update, and analyze campaigns directly.
+- **MCP server** -- expose marketing-operation tools over the Model Context Protocol so agents can read, create, update, and analyze campaigns directly.
 - **CLI** -- the same operations available as shell commands for scripting and quick checks.
-- **No DB, no LLM** -- mureo is the "hands" of your agent, not the "brain." It wraps the advertising APIs and returns structured JSON. All reasoning stays on the agent side.
+- **No DB, no LLM** -- mureo is the "hands" of your agent, not the "brain." It wraps platform APIs and returns structured JSON. All reasoning stays on the agent side.
 - **File-based context** -- optional `STRATEGY.md` and `STATE.json` files let agents persist strategy notes and campaign state without a database.
 
 ## Quick Start
