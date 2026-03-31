@@ -319,7 +319,7 @@ class LPAnalyzer:
         """ul/olリスト項目から特徴を抽出"""
         items: list[str] = []
         for list_tag in soup.find_all(["ul", "ol"]):
-            for li in list_tag.find_all("li", recursive=False):  # type: ignore[union-attr]
+            for li in list_tag.find_all("li", recursive=False):  # type: ignore[union-attr, unused-ignore]
                 text = li.get_text(strip=True)
                 if text and len(text) > 3:
                     items.append(text)

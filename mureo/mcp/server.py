@@ -66,7 +66,7 @@ def _create_server() -> Server:
     """MCP Server インスタンスを作成し、ハンドラーを登録する"""
     server = Server("mureo")
 
-    @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
+    @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator, unused-ignore]
     async def list_tools() -> list[Any]:
         return await handle_list_tools()
 

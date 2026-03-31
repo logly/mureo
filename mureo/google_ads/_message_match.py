@@ -64,7 +64,7 @@ class LPScreenshotter:
                     url, timeout=_SCREENSHOT_TIMEOUT_MS, wait_until="networkidle"
                 )
                 screenshot = await page.screenshot(full_page=False, type="png")
-                return screenshot
+                return screenshot  # type: ignore[no-any-return, unused-ignore]
             finally:
                 await browser.close()
 

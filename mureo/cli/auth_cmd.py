@@ -14,7 +14,7 @@ from mureo.auth import load_google_ads_credentials, load_meta_ads_credentials
 auth_app = typer.Typer(name="auth", help="Authentication management")
 
 
-@auth_app.command("status")
+@auth_app.command("status")  # type: ignore[untyped-decorator, unused-ignore]
 def auth_status() -> None:
     """認証状態の表示"""
     google_creds = load_google_ads_credentials()
@@ -34,7 +34,7 @@ def auth_status() -> None:
         typer.echo("Meta Ads: 未認証")
 
 
-@auth_app.command("check-google")
+@auth_app.command("check-google")  # type: ignore[untyped-decorator, unused-ignore]
 def check_google() -> None:
     """Google Ads認証情報のチェック"""
     creds = load_google_ads_credentials()
@@ -53,7 +53,7 @@ def check_google() -> None:
     typer.echo(json.dumps(info, indent=2, ensure_ascii=False))
 
 
-@auth_app.command("check-meta")
+@auth_app.command("check-meta")  # type: ignore[untyped-decorator, unused-ignore]
 def check_meta() -> None:
     """Meta Ads認証情報のチェック"""
     creds = load_meta_ads_credentials()
@@ -74,7 +74,7 @@ def check_meta() -> None:
 # ---------------------------------------------------------------------------
 
 
-@auth_app.command("setup")
+@auth_app.command("setup")  # type: ignore[untyped-decorator, unused-ignore]
 def auth_setup() -> None:
     """対話型セットアップウィザード"""
     import asyncio

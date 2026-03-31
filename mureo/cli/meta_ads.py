@@ -51,7 +51,7 @@ def _output(data: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-@meta_ads_app.command("campaigns-list")
+@meta_ads_app.command("campaigns-list")  # type: ignore[untyped-decorator, unused-ignore]
 def campaigns_list(
     account_id: str = typer.Option(
         ..., "--account-id", help="Meta Ads account ID (act_XXXX)"
@@ -64,7 +64,7 @@ def campaigns_list(
     _output(result)
 
 
-@meta_ads_app.command("campaigns-get")
+@meta_ads_app.command("campaigns-get")  # type: ignore[untyped-decorator, unused-ignore]
 def campaigns_get(
     account_id: str = typer.Option(..., "--account-id", help="Meta Ads account ID"),
     campaign_id: str = typer.Option(..., "--campaign-id", help="Campaign ID"),
@@ -76,7 +76,7 @@ def campaigns_get(
     _output(result)
 
 
-@meta_ads_app.command("ad-sets-list")
+@meta_ads_app.command("ad-sets-list")  # type: ignore[untyped-decorator, unused-ignore]
 def ad_sets_list(
     account_id: str = typer.Option(..., "--account-id", help="Meta Ads account ID"),
 ) -> None:
@@ -87,7 +87,7 @@ def ad_sets_list(
     _output(result)
 
 
-@meta_ads_app.command("ads-list")
+@meta_ads_app.command("ads-list")  # type: ignore[untyped-decorator, unused-ignore]
 def ads_list(
     account_id: str = typer.Option(..., "--account-id", help="Meta Ads account ID"),
 ) -> None:
@@ -98,7 +98,7 @@ def ads_list(
     _output(result)
 
 
-@meta_ads_app.command("insights-report")
+@meta_ads_app.command("insights-report")  # type: ignore[untyped-decorator, unused-ignore]
 def insights_report(
     account_id: str = typer.Option(..., "--account-id", help="Meta Ads account ID"),
     days: int = typer.Option(7, "--days", help="レポート期間（日数）"),

@@ -44,7 +44,7 @@ def _output(data: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-@google_ads_app.command("campaigns-list")
+@google_ads_app.command("campaigns-list")  # type: ignore[untyped-decorator, unused-ignore]
 def campaigns_list(
     customer_id: str = typer.Option(
         ..., "--customer-id", help="Google Ads customer ID"
@@ -57,7 +57,7 @@ def campaigns_list(
     _output(result)
 
 
-@google_ads_app.command("campaigns-get")
+@google_ads_app.command("campaigns-get")  # type: ignore[untyped-decorator, unused-ignore]
 def campaigns_get(
     customer_id: str = typer.Option(
         ..., "--customer-id", help="Google Ads customer ID"
@@ -71,7 +71,7 @@ def campaigns_get(
     _output(result)
 
 
-@google_ads_app.command("ads-list")
+@google_ads_app.command("ads-list")  # type: ignore[untyped-decorator, unused-ignore]
 def ads_list(
     customer_id: str = typer.Option(
         ..., "--customer-id", help="Google Ads customer ID"
@@ -85,7 +85,7 @@ def ads_list(
     _output(result)
 
 
-@google_ads_app.command("keywords-list")
+@google_ads_app.command("keywords-list")  # type: ignore[untyped-decorator, unused-ignore]
 def keywords_list(
     customer_id: str = typer.Option(
         ..., "--customer-id", help="Google Ads customer ID"
@@ -99,7 +99,7 @@ def keywords_list(
     _output(result)
 
 
-@google_ads_app.command("budget-get")
+@google_ads_app.command("budget-get")  # type: ignore[untyped-decorator, unused-ignore]
 def budget_get(
     customer_id: str = typer.Option(
         ..., "--customer-id", help="Google Ads customer ID"
@@ -113,7 +113,7 @@ def budget_get(
     _output(result)
 
 
-@google_ads_app.command("performance-report")
+@google_ads_app.command("performance-report")  # type: ignore[untyped-decorator, unused-ignore]
 def performance_report(
     customer_id: str = typer.Option(
         ..., "--customer-id", help="Google Ads customer ID"
