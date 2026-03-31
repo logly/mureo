@@ -68,13 +68,9 @@ class _AdsMixin:
             descriptions = descriptions[:4]
 
         if len(headlines) < 3:
-            raise ValueError(
-                f"見出しは3個以上必要です（現在{len(headlines)}個）"
-            )
+            raise ValueError(f"見出しは3個以上必要です（現在{len(headlines)}個）")
         if len(descriptions) < 2:
-            raise ValueError(
-                f"説明文は2個以上必要です（現在{len(descriptions)}個）"
-            )
+            raise ValueError(f"説明文は2個以上必要です（現在{len(descriptions)}個）")
         return headlines, descriptions, rsa_result
 
     @staticmethod
@@ -144,23 +140,33 @@ class _AdsMixin:
             descriptions: list[str] = []
             if ad_type == "RESPONSIVE_SEARCH_AD":
                 rsa = row.ad_group_ad.ad.responsive_search_ad
-                headlines = [asset.text for asset in rsa.headlines] if rsa.headlines else []
-                descriptions = [asset.text for asset in rsa.descriptions] if rsa.descriptions else []
-            results.append({
-                "id": str(row.ad_group_ad.ad.id),
-                "ad_group_id": str(row.ad_group.id),
-                "ad_group_name": row.ad_group.name,
-                "campaign_id": str(row.campaign.id),
-                "campaign_name": row.campaign.name,
-                "campaign_status": map_entity_status(row.campaign.status),
-                "status": map_entity_status(row.ad_group_ad.status),
-                "type": ad_type,
-                "ad_strength": map_ad_strength(row.ad_group_ad.ad_strength),
-                "headlines": headlines,
-                "descriptions": descriptions,
-                "review_status": map_review_status(ps.review_status) if ps else "",
-                "approval_status": map_approval_status(ps.approval_status) if ps else "",
-            })
+                headlines = (
+                    [asset.text for asset in rsa.headlines] if rsa.headlines else []
+                )
+                descriptions = (
+                    [asset.text for asset in rsa.descriptions]
+                    if rsa.descriptions
+                    else []
+                )
+            results.append(
+                {
+                    "id": str(row.ad_group_ad.ad.id),
+                    "ad_group_id": str(row.ad_group.id),
+                    "ad_group_name": row.ad_group.name,
+                    "campaign_id": str(row.campaign.id),
+                    "campaign_name": row.campaign.name,
+                    "campaign_status": map_entity_status(row.campaign.status),
+                    "status": map_entity_status(row.ad_group_ad.status),
+                    "type": ad_type,
+                    "ad_strength": map_ad_strength(row.ad_group_ad.ad_strength),
+                    "headlines": headlines,
+                    "descriptions": descriptions,
+                    "review_status": map_review_status(ps.review_status) if ps else "",
+                    "approval_status": (
+                        map_approval_status(ps.approval_status) if ps else ""
+                    ),
+                }
+            )
         return results
 
     async def get_ad_policy_details(
@@ -186,15 +192,19 @@ class _AdsMixin:
             policy_issues: list[dict[str, Any]] = []
             if ps and ps.policy_topic_entries:
                 for entry in ps.policy_topic_entries:
-                    policy_issues.append({
-                        "topic": str(entry.topic),
-                        "type": map_policy_topic_type(entry.type_),
-                        "evidences": self._extract_evidences(entry),
-                    })
+                    policy_issues.append(
+                        {
+                            "topic": str(entry.topic),
+                            "type": map_policy_topic_type(entry.type_),
+                            "evidences": self._extract_evidences(entry),
+                        }
+                    )
             return {
                 "ad_id": str(row.ad_group_ad.ad.id),
                 "status": map_entity_status(row.ad_group_ad.status),
-                "approval_status": map_approval_status(ps.approval_status) if ps else "",
+                "approval_status": (
+                    map_approval_status(ps.approval_status) if ps else ""
+                ),
                 "review_status": map_review_status(ps.review_status) if ps else "",
                 "policy_issues": policy_issues,
             }
@@ -235,7 +245,11 @@ class _AdsMixin:
             "resource_name": response.results[0].resource_name,
         }
         return self._build_ad_strength_result(
-            result, rsa_result, headlines, descriptions, params.get("keywords"),
+            result,
+            rsa_result,
+            headlines,
+            descriptions,
+            params.get("keywords"),
         )
 
     @_wrap_mutate_error("広告テキスト更新")
@@ -290,7 +304,11 @@ class _AdsMixin:
             "resource_name": response.results[0].resource_name,
         }
         return self._build_ad_strength_result(
-            result, rsa_result, headlines, descriptions, params.get("keywords"),
+            result,
+            rsa_result,
+            headlines,
+            descriptions,
+            params.get("keywords"),
         )
 
     _MAX_ENABLED_RSA_PER_AD_GROUP = 3
@@ -310,7 +328,8 @@ class _AdsMixin:
                 ads_data = await self.list_ads(ad_group_id=ad_group_id)
                 ads = ads_data.get("ads", []) if isinstance(ads_data, dict) else []
                 enabled_rsa = sum(
-                    1 for a in ads
+                    1
+                    for a in ads
                     if a.get("status") == "ENABLED"
                     and a.get("type") == "RESPONSIVE_SEARCH_AD"
                     and str(a.get("id", "")) != ad_id

@@ -24,9 +24,7 @@ class _BtoBAnalysisMixin:
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
 
     async def get_campaign(self, campaign_id: str) -> dict[str, Any] | None: ...
-    async def get_search_terms_report(
-        self, **kwargs: Any
-    ) -> list[dict[str, Any]]: ...
+    async def get_search_terms_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
     async def list_schedule_targeting(
         self, campaign_id: str
     ) -> list[dict[str, Any]]: ...
@@ -81,29 +79,32 @@ class _BtoBAnalysisMixin:
             return
 
         if not schedules:
-            suggestions.append({
-                "category": "schedule",
-                "priority": "HIGH",
-                "message": "広告スケジュールが未設定です。"
-                "BtoBでは営業時間帯（平日9-18時）に集中配信することで"
-                "無駄なコストを削減できます。",
-            })
+            suggestions.append(
+                {
+                    "category": "schedule",
+                    "priority": "HIGH",
+                    "message": "広告スケジュールが未設定です。"
+                    "BtoBでは営業時間帯（平日9-18時）に集中配信することで"
+                    "無駄なコストを削減できます。",
+                }
+            )
             return
 
         # 土日配信チェック
         weekend_days = {"SATURDAY", "SUNDAY"}
         weekend_schedules = [
-            s for s in schedules
-            if s.get("day_of_week", "") in weekend_days
+            s for s in schedules if s.get("day_of_week", "") in weekend_days
         ]
         if weekend_schedules:
-            suggestions.append({
-                "category": "schedule",
-                "priority": "MEDIUM",
-                "message": "土日に広告が配信されています。"
-                "BtoBでは土日のCV率が低い傾向があります。"
-                "配信停止または入札調整率の引き下げを検討してください。",
-            })
+            suggestions.append(
+                {
+                    "category": "schedule",
+                    "priority": "MEDIUM",
+                    "message": "土日に広告が配信されています。"
+                    "BtoBでは土日のCV率が低い傾向があります。"
+                    "配信停止または入札調整率の引き下げを検討してください。",
+                }
+            )
 
     async def _check_device_for_btob(
         self,
@@ -130,14 +131,21 @@ class _BtoBAnalysisMixin:
         if mobile and desktop:
             mobile_cpa = mobile.get("cpa")
             desktop_cpa = desktop.get("cpa")
-            if mobile_cpa and desktop_cpa and desktop_cpa > 0 and mobile_cpa > desktop_cpa * 1.3:
-                    suggestions.append({
+            if (
+                mobile_cpa
+                and desktop_cpa
+                and desktop_cpa > 0
+                and mobile_cpa > desktop_cpa * 1.3
+            ):
+                suggestions.append(
+                    {
                         "category": "device",
                         "priority": "MEDIUM",
                         "message": f"モバイルCPA（{mobile_cpa}円）がPC（{desktop_cpa}円）より高いです。"
                         "BtoBではPC経由のCVが多い傾向があります。"
                         "モバイルの入札調整率引き下げを検討してください。",
-                    })
+                    }
+                )
 
         # タブレットのCV0チェック
         tablet = next(
@@ -145,12 +153,14 @@ class _BtoBAnalysisMixin:
             None,
         )
         if tablet and tablet.get("conversions", 0) == 0 and tablet.get("cost", 0) > 0:
-            suggestions.append({
-                "category": "device",
-                "priority": "LOW",
-                "message": f"タブレットはCV0で{tablet['cost']}円のコストが発生しています。"
-                "BtoBではタブレットからの問い合わせは稀です。配信除外を検討してください。",
-            })
+            suggestions.append(
+                {
+                    "category": "device",
+                    "priority": "LOW",
+                    "message": f"タブレットはCV0で{tablet['cost']}円のコストが発生しています。"
+                    "BtoBではタブレットからの問い合わせは稀です。配信除外を検討してください。",
+                }
+            )
 
     async def _check_search_terms_for_btob(
         self,
@@ -179,10 +189,12 @@ class _BtoBAnalysisMixin:
         if total > 0:
             ratio = informational_count / total * 100
             if ratio > 20:
-                suggestions.append({
-                    "category": "search_terms",
-                    "priority": "MEDIUM",
-                    "message": f"情報収集系の検索語句が{round(ratio)}%を占めています。"
-                    "BtoBでは「とは」「比較」「無料」等の語句は"
-                    "CVに繋がりにくい傾向があります。除外キーワードの追加を検討してください。",
-                })
+                suggestions.append(
+                    {
+                        "category": "search_terms",
+                        "priority": "MEDIUM",
+                        "message": f"情報収集系の検索語句が{round(ratio)}%を占めています。"
+                        "BtoBでは「とは」「比較」「無料」等の語句は"
+                        "CVに繋がりにくい傾向があります。除外キーワードの追加を検討してください。",
+                    }
+                )

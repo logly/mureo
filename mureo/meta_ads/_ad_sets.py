@@ -110,9 +110,7 @@ class AdSetsMixin:
             data["targeting"] = json.dumps(targeting)
         else:
             # デフォルトのターゲティング（日本全国）
-            data["targeting"] = json.dumps(
-                {"geo_locations": {"countries": ["JP"]}}
-            )
+            data["targeting"] = json.dumps({"geo_locations": {"countries": ["JP"]}})
         if use_dynamic_creative:
             data["use_dynamic_creative"] = True
 

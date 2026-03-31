@@ -79,17 +79,19 @@ class _AuctionAnalysisMixin:
             clicks = int(row.metrics.clicks)
             cvr = round(conversions / clicks * 100, 2) if clicks > 0 else 0
 
-            devices.append({
-                "device_type": device_type,
-                "impressions": int(row.metrics.impressions),
-                "clicks": clicks,
-                "cost": round(cost, 0),
-                "conversions": conversions,
-                "ctr": round(float(row.metrics.ctr) * 100, 2),
-                "average_cpc": round(float(row.metrics.average_cpc) / 1_000_000, 0),
-                "cpa": cpa,
-                "cvr": cvr,
-            })
+            devices.append(
+                {
+                    "device_type": device_type,
+                    "impressions": int(row.metrics.impressions),
+                    "clicks": clicks,
+                    "cost": round(cost, 0),
+                    "conversions": conversions,
+                    "ctr": round(float(row.metrics.ctr) * 100, 2),
+                    "average_cpc": round(float(row.metrics.average_cpc) / 1_000_000, 0),
+                    "cpa": cpa,
+                    "cvr": cvr,
+                }
+            )
 
         # コスト降順ソート
         devices.sort(key=lambda x: x["cost"], reverse=True)
@@ -136,7 +138,9 @@ class _AuctionAnalysisMixin:
 
         # モバイルvsPCのCTR比較
         mobile = next((d for d in devices if d["device_type"] in ("MOBILE", "2")), None)
-        desktop = next((d for d in devices if d["device_type"] in ("DESKTOP", "1")), None)
+        desktop = next(
+            (d for d in devices if d["device_type"] in ("DESKTOP", "1")), None
+        )
         if mobile and desktop and desktop["ctr"] > 0:
             ctr_ratio = mobile["ctr"] / desktop["ctr"]
             if ctr_ratio < 0.5:
@@ -198,19 +202,19 @@ class _AuctionAnalysisMixin:
         cpc_values: list[float] = []
         for row in rows:
             cpc = round(float(row.metrics.average_cpc) / 1_000_000, 1)
-            daily_data.append({
-                "date": str(row.segments.date),
-                "average_cpc": cpc,
-                "clicks": int(row.metrics.clicks),
-                "impressions": int(row.metrics.impressions),
-                "cost": round(float(row.metrics.cost_micros) / 1_000_000, 0),
-            })
+            daily_data.append(
+                {
+                    "date": str(row.segments.date),
+                    "average_cpc": cpc,
+                    "clicks": int(row.metrics.clicks),
+                    "impressions": int(row.metrics.impressions),
+                    "cost": round(float(row.metrics.cost_micros) / 1_000_000, 0),
+                }
+            )
             cpc_values.append(cpc)
 
         trend_info = self._calculate_cpc_trend(cpc_values)
-        insights = self._generate_cpc_insights(
-            cpc_values, trend_info, daily_data
-        )
+        insights = self._generate_cpc_insights(cpc_values, trend_info, daily_data)
 
         return {
             "campaign_id": campaign_id,
@@ -240,9 +244,7 @@ class _AuctionAnalysisMixin:
         # 簡易線形回帰
         x_mean = (n - 1) / 2.0
         y_mean = sum(cpc_values) / n
-        numerator = sum(
-            (i - x_mean) * (y - y_mean) for i, y in enumerate(cpc_values)
-        )
+        numerator = sum((i - x_mean) * (y - y_mean) for i, y in enumerate(cpc_values))
         denominator = sum((i - x_mean) ** 2 for i in range(n))
 
         slope = numerator / denominator if denominator != 0 else 0.0
@@ -313,10 +315,7 @@ class _AuctionAnalysisMixin:
         # スパイク検出（平均の2倍超の日）
         avg_cpc = trend_info.get("avg_cpc", 0)
         if avg_cpc > 0:
-            spikes = [
-                d for d in daily_data
-                if d["average_cpc"] > avg_cpc * 2
-            ]
+            spikes = [d for d in daily_data if d["average_cpc"] > avg_cpc * 2]
             if spikes:
                 spike_dates = ", ".join(s["date"] for s in spikes[:3])
                 insights.append(
@@ -363,15 +362,34 @@ class _AuctionAnalysisMixin:
         for row in rows:
             ai = row.auction_insight
             m = row.metrics
-            results.append({
-                "display_domain": ai.display_domain,
-                "impression_share": round(float(m.auction_insight_search_impression_share) * 100, 1),
-                "overlap_rate": round(float(m.auction_insight_search_overlap_rate) * 100, 1),
-                "position_above_rate": round(float(m.auction_insight_search_position_above_rate) * 100, 1),
-                "top_impression_pct": round(float(m.auction_insight_search_top_impression_percentage) * 100, 1),
-                "abs_top_impression_pct": round(float(m.auction_insight_search_absolute_top_impression_percentage) * 100, 1),
-                "outranking_share": round(float(m.auction_insight_search_outranking_share) * 100, 1),
-            })
+            results.append(
+                {
+                    "display_domain": ai.display_domain,
+                    "impression_share": round(
+                        float(m.auction_insight_search_impression_share) * 100, 1
+                    ),
+                    "overlap_rate": round(
+                        float(m.auction_insight_search_overlap_rate) * 100, 1
+                    ),
+                    "position_above_rate": round(
+                        float(m.auction_insight_search_position_above_rate) * 100, 1
+                    ),
+                    "top_impression_pct": round(
+                        float(m.auction_insight_search_top_impression_percentage) * 100,
+                        1,
+                    ),
+                    "abs_top_impression_pct": round(
+                        float(
+                            m.auction_insight_search_absolute_top_impression_percentage
+                        )
+                        * 100,
+                        1,
+                    ),
+                    "outranking_share": round(
+                        float(m.auction_insight_search_outranking_share) * 100, 1
+                    ),
+                }
+            )
 
         results.sort(key=lambda x: x["impression_share"], reverse=True)
         return results
@@ -431,9 +449,7 @@ class _AuctionAnalysisMixin:
                 )
 
         # 競合分析
-        strong_competitors = [
-            c for c in competitors if c["impression_share"] > 30
-        ]
+        strong_competitors = [c for c in competitors if c["impression_share"] > 30]
         if strong_competitors:
             top_comp = strong_competitors[0]
             insights.append(

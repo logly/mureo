@@ -46,7 +46,9 @@ def _output(data: Any) -> None:
 
 @google_ads_app.command("campaigns-list")
 def campaigns_list(
-    customer_id: str = typer.Option(..., "--customer-id", help="Google Ads customer ID"),
+    customer_id: str = typer.Option(
+        ..., "--customer-id", help="Google Ads customer ID"
+    ),
 ) -> None:
     """Google Adsキャンペーン一覧を取得"""
     creds = _require_creds()
@@ -57,7 +59,9 @@ def campaigns_list(
 
 @google_ads_app.command("campaigns-get")
 def campaigns_get(
-    customer_id: str = typer.Option(..., "--customer-id", help="Google Ads customer ID"),
+    customer_id: str = typer.Option(
+        ..., "--customer-id", help="Google Ads customer ID"
+    ),
     campaign_id: str = typer.Option(..., "--campaign-id", help="Campaign ID"),
 ) -> None:
     """Google Adsキャンペーン詳細を取得"""
@@ -69,7 +73,9 @@ def campaigns_get(
 
 @google_ads_app.command("ads-list")
 def ads_list(
-    customer_id: str = typer.Option(..., "--customer-id", help="Google Ads customer ID"),
+    customer_id: str = typer.Option(
+        ..., "--customer-id", help="Google Ads customer ID"
+    ),
     ad_group_id: str = typer.Option(..., "--ad-group-id", help="Ad group ID"),
 ) -> None:
     """広告一覧を取得"""
@@ -81,7 +87,9 @@ def ads_list(
 
 @google_ads_app.command("keywords-list")
 def keywords_list(
-    customer_id: str = typer.Option(..., "--customer-id", help="Google Ads customer ID"),
+    customer_id: str = typer.Option(
+        ..., "--customer-id", help="Google Ads customer ID"
+    ),
     ad_group_id: str = typer.Option(..., "--ad-group-id", help="Ad group ID"),
 ) -> None:
     """キーワード一覧を取得"""
@@ -93,7 +101,9 @@ def keywords_list(
 
 @google_ads_app.command("budget-get")
 def budget_get(
-    customer_id: str = typer.Option(..., "--customer-id", help="Google Ads customer ID"),
+    customer_id: str = typer.Option(
+        ..., "--customer-id", help="Google Ads customer ID"
+    ),
     campaign_id: str = typer.Option(..., "--campaign-id", help="Campaign ID"),
 ) -> None:
     """キャンペーン予算を取得"""
@@ -105,7 +115,9 @@ def budget_get(
 
 @google_ads_app.command("performance-report")
 def performance_report(
-    customer_id: str = typer.Option(..., "--customer-id", help="Google Ads customer ID"),
+    customer_id: str = typer.Option(
+        ..., "--customer-id", help="Google Ads customer ID"
+    ),
     days: int = typer.Option(7, "--days", help="レポート期間（日数）"),
 ) -> None:
     """パフォーマンスレポートを取得"""

@@ -60,7 +60,9 @@ class LPScreenshotter:
                 page = await browser.new_page(
                     viewport={"width": _VIEWPORT_WIDTH, "height": _VIEWPORT_HEIGHT},
                 )
-                await page.goto(url, timeout=_SCREENSHOT_TIMEOUT_MS, wait_until="networkidle")
+                await page.goto(
+                    url, timeout=_SCREENSHOT_TIMEOUT_MS, wait_until="networkidle"
+                )
                 screenshot = await page.screenshot(full_page=False, type="png")
                 return screenshot
             finally:

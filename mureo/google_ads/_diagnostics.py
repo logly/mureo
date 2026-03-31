@@ -62,28 +62,30 @@ _PRIMARY_STATUS_REASON_JA: dict[str, str] = {
 }
 
 # primary_status_reasons のうち issue として扱うもの（配信不可に直結）
-_REASON_IS_ISSUE: frozenset[str] = frozenset({
-    "CAMPAIGN_PAUSED",
-    "CAMPAIGN_REMOVED",
-    "CAMPAIGN_ENDED",
-    "BIDDING_STRATEGY_MISCONFIGURED",
-    "BUDGET_MISCONFIGURED",
-    "NO_AD_GROUPS",
-    "NO_KEYWORDS",
-    "NO_AD_GROUP_ADS",
-    "AD_GROUPS_PAUSED",
-    "KEYWORDS_PAUSED",
-    "AD_GROUP_ADS_PAUSED",
-    "HAS_ADS_DISAPPROVED",
-    "MISSING_LEAD_FORM_EXTENSION",
-    "MISSING_CALL_EXTENSION",
-    "LEAD_FORM_EXTENSION_DISAPPROVED",
-    "CALL_EXTENSION_DISAPPROVED",
-    "NO_ACTIVE_MOBILE_APP_STORE_LINKS",
-    "APP_NOT_RELEASED",
-    "HAS_ASSET_GROUPS_DISAPPROVED",
-    "NO_ASSET_GROUPS",
-})
+_REASON_IS_ISSUE: frozenset[str] = frozenset(
+    {
+        "CAMPAIGN_PAUSED",
+        "CAMPAIGN_REMOVED",
+        "CAMPAIGN_ENDED",
+        "BIDDING_STRATEGY_MISCONFIGURED",
+        "BUDGET_MISCONFIGURED",
+        "NO_AD_GROUPS",
+        "NO_KEYWORDS",
+        "NO_AD_GROUP_ADS",
+        "AD_GROUPS_PAUSED",
+        "KEYWORDS_PAUSED",
+        "AD_GROUP_ADS_PAUSED",
+        "HAS_ADS_DISAPPROVED",
+        "MISSING_LEAD_FORM_EXTENSION",
+        "MISSING_CALL_EXTENSION",
+        "LEAD_FORM_EXTENSION_DISAPPROVED",
+        "CALL_EXTENSION_DISAPPROVED",
+        "NO_ACTIVE_MOBILE_APP_STORE_LINKS",
+        "APP_NOT_RELEASED",
+        "HAS_ASSET_GROUPS_DISAPPROVED",
+        "NO_ASSET_GROUPS",
+    }
+)
 
 # bidding_strategy_system_status の学習中ステータス → 日本語理由
 _LEARNING_STATUS_REASON: dict[str, str] = {
@@ -96,12 +98,14 @@ _LEARNING_STATUS_REASON: dict[str, str] = {
 }
 
 # スマート入札戦略（コンバージョントラッキングが前提）
-_SMART_BIDDING_STRATEGIES: frozenset[str] = frozenset({
-    "MAXIMIZE_CONVERSIONS",
-    "TARGET_CPA",
-    "TARGET_ROAS",
-    "MAXIMIZE_CONVERSION_VALUE",
-})
+_SMART_BIDDING_STRATEGIES: frozenset[str] = frozenset(
+    {
+        "MAXIMIZE_CONVERSIONS",
+        "TARGET_CPA",
+        "TARGET_ROAS",
+        "MAXIMIZE_CONVERSION_VALUE",
+    }
+)
 
 
 class _DiagnosticsMixin:
@@ -133,11 +137,15 @@ class _DiagnosticsMixin:
         if strategy == "TARGET_IMPRESSION_SHARE":
             tis = campaign.target_impression_share
             loc_map = {
-                0: "UNSPECIFIED", 1: "UNKNOWN",
-                2: "ANYWHERE_ON_PAGE", 3: "TOP_OF_PAGE",
+                0: "UNSPECIFIED",
+                1: "UNKNOWN",
+                2: "ANYWHERE_ON_PAGE",
+                3: "TOP_OF_PAGE",
                 4: "ABSOLUTE_TOP_OF_PAGE",
             }
-            loc_val = int(tis.location) if hasattr(tis.location, '__int__') else tis.location
+            loc_val = (
+                int(tis.location) if hasattr(tis.location, "__int__") else tis.location
+            )
             details["location"] = loc_map.get(loc_val, str(loc_val))
             details["target_fraction_percent"] = tis.location_fraction_micros / 10_000
             details["cpc_bid_ceiling"] = tis.cpc_bid_ceiling_micros / 1_000_000
@@ -146,7 +154,9 @@ class _DiagnosticsMixin:
             if tis.cpc_bid_ceiling_micros == 0:
                 bid_issues.append("上限CPC=¥0: オークションに参加できません")
             if tis.location_fraction_micros == 0:
-                bid_issues.append("目標インプレッションシェア=0%: 表示目標が設定されていません")
+                bid_issues.append(
+                    "目標インプレッションシェア=0%: 表示目標が設定されていません"
+                )
             if bid_issues:
                 details["issue"] = "; ".join(bid_issues)
         elif strategy == "TARGET_CPA":
@@ -164,9 +174,7 @@ class _DiagnosticsMixin:
             details["target_roas"] = campaign.target_roas.target_roas
         return details
 
-    async def diagnose_campaign_delivery(
-        self, campaign_id: str
-    ) -> dict[str, Any]:
+    async def diagnose_campaign_delivery(self, campaign_id: str) -> dict[str, Any]:
         """キャンペーンの配信状態を総合診断する
 
         配信されない原因を体系的にチェックし、問題点と推奨アクションを返す。
@@ -193,9 +201,7 @@ class _DiagnosticsMixin:
             )
         serving_st = campaign_data.get("serving_status", "")
         if serving_st and serving_st != "SERVING":
-            issues.append(
-                f"配信ステータスが {serving_st} です（SERVINGではない）"
-            )
+            issues.append(f"配信ステータスが {serving_st} です（SERVINGではない）")
 
         # --- NEW: primary_status / primary_status_reasons 分析 ---
         primary_st = campaign_data.get("primary_status", "")
@@ -251,9 +257,7 @@ class _DiagnosticsMixin:
                     "1〜2週間は安定するまで待つことを推奨します"
                 )
             elif bidding_sys_st.startswith("LIMITED"):
-                warnings.append(
-                    f"入札戦略が制限されています（{bidding_sys_st}）"
-                )
+                warnings.append(f"入札戦略が制限されています（{bidding_sys_st}）")
 
         # --- NEW: キャンペーン期間チェック ---
         today = date.today()
@@ -320,17 +324,25 @@ class _DiagnosticsMixin:
         for row in kw_response:
             kw = row.ad_group_criterion
             approval = map_criterion_approval_status(kw.approval_status)
-            sys_status = str(kw.system_serving_status) if hasattr(kw, "system_serving_status") else ""
-            enabled_kws.append({
-                "text": kw.keyword.text,
-                "match_type": str(kw.keyword.match_type),
-                "approval_status": approval,
-                "system_serving_status": sys_status,
-            })
+            sys_status = (
+                str(kw.system_serving_status)
+                if hasattr(kw, "system_serving_status")
+                else ""
+            )
+            enabled_kws.append(
+                {
+                    "text": kw.keyword.text,
+                    "match_type": str(kw.keyword.match_type),
+                    "approval_status": approval,
+                    "system_serving_status": sys_status,
+                }
+            )
             if "RARELY_SERVED" in sys_status:
                 rarely_served_kws.append(kw.keyword.text)
         result["keywords_enabled_count"] = len(enabled_kws)
-        disapproved_kws = [k for k in enabled_kws if k["approval_status"] == "DISAPPROVED"]
+        disapproved_kws = [
+            k for k in enabled_kws if k["approval_status"] == "DISAPPROVED"
+        ]
         if not enabled_kws:
             issues.append("有効なキーワードがありません")
         if disapproved_kws:
@@ -384,19 +396,23 @@ class _DiagnosticsMixin:
             approval = map_approval_status(ad.policy_summary.approval_status)
             review = map_review_status(ad.policy_summary.review_status)
             ad_type = map_ad_type(ad.ad.type_)
-            enabled_ads.append({
-                "ad_id": str(ad.ad.id),
-                "ad_type": ad_type,
-                "approval_status": approval,
-                "review_status": review,
-            })
+            enabled_ads.append(
+                {
+                    "ad_id": str(ad.ad.id),
+                    "ad_type": ad_type,
+                    "approval_status": approval,
+                    "review_status": review,
+                }
+            )
             # final_urls収集
             for url in list(getattr(ad.ad, "final_urls", [])):
                 final_urls_set.add(str(url))
             # RSA見出し・説明文数＋テキスト
             if ad_type == "RESPONSIVE_SEARCH_AD":
                 headlines = list(getattr(ad.ad.responsive_search_ad, "headlines", []))
-                descriptions = list(getattr(ad.ad.responsive_search_ad, "descriptions", []))
+                descriptions = list(
+                    getattr(ad.ad.responsive_search_ad, "descriptions", [])
+                )
                 rsa_headline_counts.append(len(headlines))
                 rsa_description_counts.append(len(descriptions))
                 for h in headlines:
@@ -411,20 +427,32 @@ class _DiagnosticsMixin:
             ag_id = str(row.ad_group.id)
             ag_name = str(row.ad_group.name)
             if ag_id not in ad_group_ad_map:
-                ad_group_ad_map[ag_id] = {"ad_group_id": ag_id, "name": ag_name, "ad_count": 0}
+                ad_group_ad_map[ag_id] = {
+                    "ad_group_id": ag_id,
+                    "name": ag_name,
+                    "ad_count": 0,
+                }
             ad_group_ad_map[ag_id]["ad_count"] += 1
 
         result["ads_enabled_count"] = len(enabled_ads)
         result["has_rsa"] = len(rsa_headline_counts) > 0
-        result["rsa_min_headlines"] = min(rsa_headline_counts) if rsa_headline_counts else 0
-        result["rsa_min_descriptions"] = min(rsa_description_counts) if rsa_description_counts else 0
+        result["rsa_min_headlines"] = (
+            min(rsa_headline_counts) if rsa_headline_counts else 0
+        )
+        result["rsa_min_descriptions"] = (
+            min(rsa_description_counts) if rsa_description_counts else 0
+        )
         result["rsa_headline_texts"] = rsa_headline_texts
         result["rsa_description_texts"] = rsa_description_texts
         result["ad_final_urls"] = sorted(final_urls_set)
         result["ad_group_ad_counts"] = list(ad_group_ad_map.values())
 
-        disapproved_ads = [a for a in enabled_ads if a["approval_status"] == "DISAPPROVED"]
-        limited_ads = [a for a in enabled_ads if a["approval_status"] == "APPROVED_LIMITED"]
+        disapproved_ads = [
+            a for a in enabled_ads if a["approval_status"] == "DISAPPROVED"
+        ]
+        limited_ads = [
+            a for a in enabled_ads if a["approval_status"] == "APPROVED_LIMITED"
+        ]
         if not enabled_ads:
             issues.append("有効な広告がありません")
         if disapproved_ads:
@@ -448,10 +476,12 @@ class _DiagnosticsMixin:
         locations = []
         for row in loc_response:
             cc = row.campaign_criterion
-            locations.append({
-                "geo_target": str(cc.location.geo_target_constant),
-                "negative": bool(cc.negative),
-            })
+            locations.append(
+                {
+                    "geo_target": str(cc.location.geo_target_constant),
+                    "negative": bool(cc.negative),
+                }
+            )
         result["location_targeting_count"] = len(locations)
         if not locations:
             warnings.append(
@@ -468,7 +498,9 @@ class _DiagnosticsMixin:
                 result["performance_last_30_days"] = perf[0].get("metrics", {})
             else:
                 result["performance_last_30_days"] = {
-                    "impressions": 0, "clicks": 0, "cost": 0
+                    "impressions": 0,
+                    "clicks": 0,
+                    "cost": 0,
                 }
         except Exception:
             result["performance_last_30_days"] = "取得失敗"
@@ -539,30 +571,32 @@ class _DiagnosticsMixin:
             cv_by_action_response = await self._search(cv_by_action_query)
 
             # キャンペーン全体のコストとCV数を取得してCPA算出用に使う
-            total_cost = float(result.get("performance_last_30_days", {}).get("cost", 0))
-            total_cv = float(result.get("performance_last_30_days", {}).get("conversions", 0))
+            total_cost = float(
+                result.get("performance_last_30_days", {}).get("cost", 0)
+            )
+            total_cv = float(
+                result.get("performance_last_30_days", {}).get("conversions", 0)
+            )
             campaign_cpa = total_cost / total_cv if total_cv > 0 else 0
 
             conversion_actions_detail: list[dict[str, Any]] = []
             for row in cv_by_action_response:
-                action_name = str(
-                    getattr(row.segments, "conversion_action_name", "")
-                )
+                action_name = str(getattr(row.segments, "conversion_action_name", ""))
                 conversions = float(row.metrics.conversions)
                 # CV按分でCPAを推定
                 action_cpa = campaign_cpa if total_cv > 0 else 0
-                conversion_actions_detail.append({
-                    "name": action_name,
-                    "conversions": conversions,
-                    "conversions_value": float(
-                        getattr(row.metrics, "conversions_value", 0)
-                    ),
-                    "cost_per_conversion": round(action_cpa, 0),
-                })
+                conversion_actions_detail.append(
+                    {
+                        "name": action_name,
+                        "conversions": conversions,
+                        "conversions_value": float(
+                            getattr(row.metrics, "conversions_value", 0)
+                        ),
+                        "cost_per_conversion": round(action_cpa, 0),
+                    }
+                )
             # CV数降順でソート
-            conversion_actions_detail.sort(
-                key=lambda x: x["conversions"], reverse=True
-            )
+            conversion_actions_detail.sort(key=lambda x: x["conversions"], reverse=True)
             result["conversion_actions_detail"] = conversion_actions_detail
         except Exception:
             logger.debug("コンバージョンアクション別実績の取得に失敗", exc_info=True)
@@ -585,7 +619,9 @@ class _DiagnosticsMixin:
                 is_data: dict[str, Any] = {}
                 search_is = getattr(m, "search_impression_share", None)
                 if search_is is not None:
-                    is_data["search_impression_share"] = round(float(search_is) * 100, 1)
+                    is_data["search_impression_share"] = round(
+                        float(search_is) * 100, 1
+                    )
                 rank_lost = getattr(m, "search_rank_lost_impression_share", None)
                 if rank_lost is not None:
                     is_data["rank_lost_pct"] = round(float(rank_lost) * 100, 1)
@@ -669,7 +705,6 @@ class _DiagnosticsMixin:
         result["warnings"] = warnings
         result["recommendations"] = recommendations
         result["diagnosis"] = (
-            "問題なし" if not issues
-            else f"{len(issues)}件の問題が見つかりました"
+            "問題なし" if not issues else f"{len(issues)}件の問題が見つかりました"
         )
         return result

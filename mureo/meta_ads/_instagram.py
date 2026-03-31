@@ -43,9 +43,7 @@ class InstagramMixin:
         params: dict[str, Any] = {
             "fields": self._IG_ACCOUNT_FIELDS,
         }
-        result = await self._get(
-            f"/{self._ad_account_id}/instagram_accounts", params
-        )
+        result = await self._get(f"/{self._ad_account_id}/instagram_accounts", params)
         return result.get("data", [])
 
     async def list_instagram_media(
@@ -86,17 +84,17 @@ class InstagramMixin:
             作成された広告情報
         """
         object_story_id = f"{ig_user_id}_{media_id}"
-        ad_name = (
-            name if name is not None else f"IG Boost: {object_story_id}"
-        )
+        ad_name = name if name is not None else f"IG Boost: {object_story_id}"
 
         data: dict[str, Any] = {
             "name": ad_name,
             "adset_id": ad_set_id,
-            "creative": json.dumps({
-                "object_story_id": object_story_id,
-                "instagram_actor_id": ig_user_id,
-            }),
+            "creative": json.dumps(
+                {
+                    "object_story_id": object_story_id,
+                    "instagram_actor_id": ig_user_id,
+                }
+            ),
             "status": "PAUSED",
         }
         return await self._post(f"/{self._ad_account_id}/ads", data)

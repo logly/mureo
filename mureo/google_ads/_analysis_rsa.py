@@ -94,9 +94,15 @@ class _RsaAnalysisMixin:
 
         # 勝ち・負けアセットの特定
         best_headlines = [h for h in headlines if h["performance_label"] == "BEST"]
-        worst_headlines = [h for h in headlines if h["performance_label"] in ("LOW", "POOR")]
-        best_descriptions = [d for d in descriptions if d["performance_label"] == "BEST"]
-        worst_descriptions = [d for d in descriptions if d["performance_label"] in ("LOW", "POOR")]
+        worst_headlines = [
+            h for h in headlines if h["performance_label"] in ("LOW", "POOR")
+        ]
+        best_descriptions = [
+            d for d in descriptions if d["performance_label"] == "BEST"
+        ]
+        worst_descriptions = [
+            d for d in descriptions if d["performance_label"] in ("LOW", "POOR")
+        ]
 
         # インサイト生成
         insights: list[str] = []
@@ -105,7 +111,9 @@ class _RsaAnalysisMixin:
             insights.append(f"高パフォーマンス見出し: {', '.join(texts)}")
         if worst_headlines:
             texts = [h["text"] for h in worst_headlines[:3]]
-            insights.append(f"低パフォーマンス見出し（差し替え検討）: {', '.join(texts)}")
+            insights.append(
+                f"低パフォーマンス見出し（差し替え検討）: {', '.join(texts)}"
+            )
         if not headlines:
             insights.append("アセット別パフォーマンスデータがまだ蓄積されていません")
 
@@ -153,9 +161,7 @@ class _RsaAnalysisMixin:
         label_dist = self._count_label_distribution(headlines, descriptions)
 
         # アセット数チェック
-        self._check_asset_counts(
-            len(headlines), len(descriptions), recommendations
-        )
+        self._check_asset_counts(len(headlines), len(descriptions), recommendations)
 
         # LOW/POORアセットの差し替え推奨
         self._recommend_asset_replacements(
@@ -168,12 +174,14 @@ class _RsaAnalysisMixin:
         learning_count = label_dist.get("LEARNING", 0) + label_dist.get("UNKNOWN", 0)
         total = sum(label_dist.values())
         if total > 0 and learning_count / total > 0.5:
-            recommendations.append({
-                "type": "wait_for_data",
-                "priority": "LOW",
-                "message": f"アセットの{round(learning_count / total * 100)}%がまだ学習中・未評価です。"
-                "十分なデータが蓄積されてから棚卸しを行うことを推奨します。",
-            })
+            recommendations.append(
+                {
+                    "type": "wait_for_data",
+                    "priority": "LOW",
+                    "message": f"アセットの{round(learning_count / total * 100)}%がまだ学習中・未評価です。"
+                    "十分なデータが蓄積されてから棚卸しを行うことを推奨します。",
+                }
+            )
 
         return {
             "campaign_id": campaign_id,
@@ -209,19 +217,23 @@ class _RsaAnalysisMixin:
     ) -> None:
         """アセット数の過不足をチェックし推奨を追加する。"""
         if headline_count < 8:
-            recommendations.append({
-                "type": "add_headlines",
-                "priority": "HIGH",
-                "message": f"見出しが{headline_count}本しかありません。"
-                "Google推奨は最低8本（理想15本）です。見出しを追加してください。",
-            })
+            recommendations.append(
+                {
+                    "type": "add_headlines",
+                    "priority": "HIGH",
+                    "message": f"見出しが{headline_count}本しかありません。"
+                    "Google推奨は最低8本（理想15本）です。見出しを追加してください。",
+                }
+            )
         if description_count < 3:
-            recommendations.append({
-                "type": "add_descriptions",
-                "priority": "HIGH",
-                "message": f"説明文が{description_count}本しかありません。"
-                "Google推奨は最低3本（理想4本）です。説明文を追加してください。",
-            })
+            recommendations.append(
+                {
+                    "type": "add_descriptions",
+                    "priority": "HIGH",
+                    "message": f"説明文が{description_count}本しかありません。"
+                    "Google推奨は最低3本（理想4本）です。説明文を追加してください。",
+                }
+            )
 
     @staticmethod
     def _recommend_asset_replacements(
@@ -231,20 +243,24 @@ class _RsaAnalysisMixin:
     ) -> None:
         """LOW/POORアセットの差し替え推奨を追加する。"""
         for asset in worst_headlines:
-            recommendations.append({
-                "type": "replace_headline",
-                "priority": "MEDIUM",
-                "asset_text": asset["text"],
-                "performance_label": asset["performance_label"],
-                "message": f"見出し「{asset['text']}」がパフォーマンス{asset['performance_label']}です。"
-                "差し替えを検討してください。",
-            })
+            recommendations.append(
+                {
+                    "type": "replace_headline",
+                    "priority": "MEDIUM",
+                    "asset_text": asset["text"],
+                    "performance_label": asset["performance_label"],
+                    "message": f"見出し「{asset['text']}」がパフォーマンス{asset['performance_label']}です。"
+                    "差し替えを検討してください。",
+                }
+            )
         for asset in worst_descriptions:
-            recommendations.append({
-                "type": "replace_description",
-                "priority": "MEDIUM",
-                "asset_text": asset["text"],
-                "performance_label": asset["performance_label"],
-                "message": f"説明文「{asset['text']}」がパフォーマンス{asset['performance_label']}です。"
-                "差し替えを検討してください。",
-            })
+            recommendations.append(
+                {
+                    "type": "replace_description",
+                    "priority": "MEDIUM",
+                    "asset_text": asset["text"],
+                    "performance_label": asset["performance_label"],
+                    "message": f"説明文「{asset['text']}」がパフォーマンス{asset['performance_label']}です。"
+                    "差し替えを検討してください。",
+                }
+            )

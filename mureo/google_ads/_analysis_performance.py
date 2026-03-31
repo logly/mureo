@@ -33,21 +33,22 @@ class _PerformanceAnalysisMixin:
     async def list_campaigns(
         self, status_filter: str | None = None
     ) -> list[dict[str, Any]]: ...
-    async def get_performance_report(
-        self, **kwargs: Any
-    ) -> list[dict[str, Any]]: ...
-    async def get_search_terms_report(
-        self, **kwargs: Any
-    ) -> list[dict[str, Any]]: ...
+    async def get_performance_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
+    async def get_search_terms_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
     async def list_recommendations(
         self, campaign_id: str | None = None, recommendation_type: str | None = None
     ) -> list[dict[str, Any]]: ...
     async def list_change_history(
         self, start_date: str | None = None, end_date: str | None = None
     ) -> list[dict[str, Any]]: ...
-    async def list_negative_keywords(self, campaign_id: str) -> list[dict[str, Any]]: ...
+    async def list_negative_keywords(
+        self, campaign_id: str
+    ) -> list[dict[str, Any]]: ...
     async def get_ad_performance_report(
-        self, ad_group_id: str | None = None, campaign_id: str | None = None, period: str = "LAST_30_DAYS"
+        self,
+        ad_group_id: str | None = None,
+        campaign_id: str | None = None,
+        period: str = "LAST_30_DAYS",
     ) -> list[dict[str, Any]]: ...
 
     # =================================================================
@@ -187,8 +188,7 @@ class _PerformanceAnalysisMixin:
         # 前期に存在しない検索語句を特定
         prev_term_set = {t.get("search_term", "") for t in previous_terms}
         new_terms = [
-            t for t in current_terms
-            if t.get("search_term", "") not in prev_term_set
+            t for t in current_terms if t.get("search_term", "") not in prev_term_set
         ]
         new_terms_sorted = sorted(
             new_terms,
@@ -198,7 +198,8 @@ class _PerformanceAnalysisMixin:
 
         # CVなしで高コストの語句を候補として抽出
         wasteful_terms = [
-            t for t in current_terms
+            t
+            for t in current_terms
             if t.get("metrics", {}).get("cost", 0) > 0
             and t.get("metrics", {}).get("conversions", 0) == 0
         ]
@@ -358,9 +359,13 @@ class _PerformanceAnalysisMixin:
         try:
             change_history = await self.list_change_history()
             bid_budget_changes = [
-                c for c in change_history
-                if c.get("resource_type", "") in (
-                    "CAMPAIGN_BUDGET", "CAMPAIGN", "AD_GROUP",
+                c
+                for c in change_history
+                if c.get("resource_type", "")
+                in (
+                    "CAMPAIGN_BUDGET",
+                    "CAMPAIGN",
+                    "AD_GROUP",
                     "CAMPAIGN_BID_MODIFIER",
                 )
             ]
@@ -374,9 +379,7 @@ class _PerformanceAnalysisMixin:
             result["bid_budget_changes"] = "取得失敗"
 
         # 5. 除外キーワード候補
-        await self._find_negative_keyword_candidates(
-            campaign_id, result, actions
-        )
+        await self._find_negative_keyword_candidates(campaign_id, result, actions)
 
         # サマリー
         if cpc_change is not None and cpc_change > 10:
@@ -435,14 +438,13 @@ class _PerformanceAnalysisMixin:
         """除外キーワード候補を特定する。"""
         try:
             existing_negatives = await self.list_negative_keywords(campaign_id)
-            existing_neg_texts = {
-                n.get("text", "").lower() for n in existing_negatives
-            }
+            existing_neg_texts = {n.get("text", "").lower() for n in existing_negatives}
             result["existing_negative_keywords_count"] = len(existing_negatives)
 
             if isinstance(result.get("wasteful_search_terms"), list):
                 neg_candidates = [
-                    t for t in result["wasteful_search_terms"]
+                    t
+                    for t in result["wasteful_search_terms"]
                     if t.get("search_term", "").lower() not in existing_neg_texts
                 ]
                 result["negative_keyword_candidates"] = neg_candidates[:10]
@@ -506,22 +508,24 @@ class _PerformanceAnalysisMixin:
             cid = str(camp_summary["campaign_id"])
             try:
                 diag = await self.diagnose_campaign_delivery(cid)
-                detailed_diagnostics.append({
-                    "campaign_id": cid,
-                    "name": camp_summary["name"],
-                    "issues": diag.get("issues", []),
-                    "warnings": diag.get("warnings", []),
-                    "recommendations": diag.get("recommendations", []),
-                })
-            except Exception:
-                logger.warning(
-                    "キャンペーン %s の詳細診断に失敗", cid, exc_info=True
+                detailed_diagnostics.append(
+                    {
+                        "campaign_id": cid,
+                        "name": camp_summary["name"],
+                        "issues": diag.get("issues", []),
+                        "warnings": diag.get("warnings", []),
+                        "recommendations": diag.get("recommendations", []),
+                    }
                 )
-                detailed_diagnostics.append({
-                    "campaign_id": cid,
-                    "name": camp_summary["name"],
-                    "error": "詳細診断の取得に失敗",
-                })
+            except Exception:
+                logger.warning("キャンペーン %s の詳細診断に失敗", cid, exc_info=True)
+                detailed_diagnostics.append(
+                    {
+                        "campaign_id": cid,
+                        "name": camp_summary["name"],
+                        "error": "詳細診断の取得に失敗",
+                    }
+                )
         result["detailed_diagnostics"] = detailed_diagnostics
 
         # --- 4. 横断サマリー ---
@@ -538,9 +542,9 @@ class _PerformanceAnalysisMixin:
                 "詳細診断を確認してください"
             )
         elif warning:
-            result["summary"]["message"] = (
-                f"{len(warning)}件のキャンペーンに注意事項があります"
-            )
+            result["summary"][
+                "message"
+            ] = f"{len(warning)}件のキャンペーンに注意事項があります"
         else:
             result["summary"]["message"] = "全キャンペーンが正常に稼働しています"
 
@@ -611,9 +615,7 @@ class _PerformanceAnalysisMixin:
                 verdict = "LOSER"
             ranked_ads.append({**ad, "rank": rank, "verdict": verdict})
 
-        winner = next(
-            (a for a in ranked_ads if a.get("verdict") == "WINNER"), None
-        )
+        winner = next((a for a in ranked_ads if a.get("verdict") == "WINNER"), None)
 
         # 推奨アクション
         if len(ads_data) < 2:

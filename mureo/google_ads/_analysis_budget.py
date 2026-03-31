@@ -23,9 +23,7 @@ class _BudgetAnalysisMixin:
     async def list_campaigns(
         self, status_filter: str | None = None
     ) -> list[dict[str, Any]]: ...
-    async def get_performance_report(
-        self, **kwargs: Any
-    ) -> list[dict[str, Any]]: ...
+    async def get_performance_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
     async def get_budget(self, campaign_id: str) -> dict[str, Any] | None: ...
 
     # =================================================================
@@ -46,9 +44,7 @@ class _BudgetAnalysisMixin:
         for camp in campaigns:
             cid = str(camp.get("id", ""))
             try:
-                perf = await self.get_performance_report(
-                    campaign_id=cid, period=period
-                )
+                perf = await self.get_performance_report(campaign_id=cid, period=period)
                 m = _safe_metrics(perf)
                 cost = float(m.get("cost", 0))
                 convs = float(m.get("conversions", 0))
@@ -63,21 +59,21 @@ class _BudgetAnalysisMixin:
 
             total_cost += cost
             total_conversions += convs
-            campaign_data.append({
-                "campaign_id": cid,
-                "name": camp.get("name", ""),
-                "cost": cost,
-                "conversions": convs,
-            })
+            campaign_data.append(
+                {
+                    "campaign_id": cid,
+                    "name": camp.get("name", ""),
+                    "cost": cost,
+                    "conversions": convs,
+                }
+            )
 
         # コストシェア・CVシェア・効率比を算出
         enriched_data: list[dict[str, Any]] = []
         for cd in campaign_data:
             cost_share = cd["cost"] / total_cost if total_cost > 0 else 0.0
             cv_share = (
-                cd["conversions"] / total_conversions
-                if total_conversions > 0
-                else 0.0
+                cd["conversions"] / total_conversions if total_conversions > 0 else 0.0
             )
             if cost_share > 0:
                 ratio = round(cv_share / cost_share, 2)
@@ -95,23 +91,21 @@ class _BudgetAnalysisMixin:
                 if cd["conversions"] > 0
                 else None
             )
-            enriched_data.append({
-                **cd,
-                "cost_share": round(cost_share, 4),
-                "cv_share": round(cv_share, 4),
-                "efficiency_ratio": ratio,
-                "verdict": verdict,
-                "cpa": cpa,
-            })
+            enriched_data.append(
+                {
+                    **cd,
+                    "cost_share": round(cost_share, 4),
+                    "cv_share": round(cv_share, 4),
+                    "efficiency_ratio": ratio,
+                    "verdict": verdict,
+                    "cpa": cpa,
+                }
+            )
 
         # 推奨事項
         recommendations: list[str] = []
-        inefficient = [
-            c for c in enriched_data if c.get("verdict") == "INEFFICIENT"
-        ]
-        efficient = [
-            c for c in enriched_data if c.get("verdict") == "EFFICIENT"
-        ]
+        inefficient = [c for c in enriched_data if c.get("verdict") == "INEFFICIENT"]
+        efficient = [c for c in enriched_data if c.get("verdict") == "EFFICIENT"]
         if inefficient:
             names = ", ".join(c["name"] for c in inefficient[:3])
             recommendations.append(
@@ -173,12 +167,9 @@ class _BudgetAnalysisMixin:
             try:
                 budget_info = await self.get_budget(cid)
                 camp["current_daily_budget"] = (
-                    budget_info.get("daily_budget", 0)
-                    if budget_info else 0
+                    budget_info.get("daily_budget", 0) if budget_info else 0
                 )
-                camp["budget_id"] = (
-                    budget_info.get("id", "") if budget_info else ""
-                )
+                camp["budget_id"] = budget_info.get("id", "") if budget_info else ""
             except Exception:
                 logger.warning("キャンペーン %s の予算取得に失敗", cid, exc_info=True)
                 camp["current_daily_budget"] = 0
@@ -186,14 +177,12 @@ class _BudgetAnalysisMixin:
 
         # 再配分ロジック: 非効率→効率への移動
         inefficient = [
-            c for c in campaigns
+            c
+            for c in campaigns
             if c.get("verdict") == "INEFFICIENT"
             and c.get("current_daily_budget", 0) > 0
         ]
-        efficient = [
-            c for c in campaigns
-            if c.get("verdict") == "EFFICIENT"
-        ]
+        efficient = [c for c in campaigns if c.get("verdict") == "EFFICIENT"]
 
         reallocation_plan: list[dict[str, Any]] = []
         total_freed: float = 0.0
@@ -205,18 +194,20 @@ class _BudgetAnalysisMixin:
             if reduction < 100:
                 continue
             new_budget = current - reduction
-            reallocation_plan.append({
-                "campaign_id": camp["campaign_id"],
-                "campaign_name": camp.get("name", ""),
-                "action": "DECREASE",
-                "current_daily_budget": current,
-                "proposed_daily_budget": new_budget,
-                "change_amount": -reduction,
-                "reason": (
-                    f"効率比 {camp.get('efficiency_ratio', 0)} "
-                    f"(CPA: ¥{camp.get('cpa', 0):,.0f})"
-                ),
-            })
+            reallocation_plan.append(
+                {
+                    "campaign_id": camp["campaign_id"],
+                    "campaign_name": camp.get("name", ""),
+                    "action": "DECREASE",
+                    "current_daily_budget": current,
+                    "proposed_daily_budget": new_budget,
+                    "change_amount": -reduction,
+                    "reason": (
+                        f"効率比 {camp.get('efficiency_ratio', 0)} "
+                        f"(CPA: ¥{camp.get('cpa', 0):,.0f})"
+                    ),
+                }
+            )
             total_freed += reduction
 
         # 効率キャンペーンに均等配分
@@ -225,18 +216,20 @@ class _BudgetAnalysisMixin:
             for camp in efficient:
                 current = camp.get("current_daily_budget", 0)
                 new_budget = current + per_campaign
-                reallocation_plan.append({
-                    "campaign_id": camp["campaign_id"],
-                    "campaign_name": camp.get("name", ""),
-                    "action": "INCREASE",
-                    "current_daily_budget": current,
-                    "proposed_daily_budget": new_budget,
-                    "change_amount": per_campaign,
-                    "reason": (
-                        f"効率比 {camp.get('efficiency_ratio', 0)} "
-                        f"(CPA: ¥{camp.get('cpa', 0):,.0f})"
-                    ),
-                })
+                reallocation_plan.append(
+                    {
+                        "campaign_id": camp["campaign_id"],
+                        "campaign_name": camp.get("name", ""),
+                        "action": "INCREASE",
+                        "current_daily_budget": current,
+                        "proposed_daily_budget": new_budget,
+                        "change_amount": per_campaign,
+                        "reason": (
+                            f"効率比 {camp.get('efficiency_ratio', 0)} "
+                            f"(CPA: ¥{camp.get('cpa', 0):,.0f})"
+                        ),
+                    }
+                )
 
         summary_parts: list[str] = []
         decreases = [p for p in reallocation_plan if p["action"] == "DECREASE"]

@@ -82,7 +82,9 @@ class MetaAdsApiClient(
         self._ad_account_id = ad_account_id
         self._http = httpx.AsyncClient(timeout=30.0)
 
-    async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _get(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """GETリクエスト（レート制限対応付き）
 
         Args:
@@ -97,7 +99,9 @@ class MetaAdsApiClient(
         """
         return await self._request("GET", path, params=params)
 
-    async def _post(self, path: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _post(
+        self, path: str, data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """POSTリクエスト（レート制限対応付き）
 
         Args:
@@ -153,9 +157,7 @@ class MetaAdsApiClient(
                         url, params=params, data=data, headers=headers
                     )
                 elif method == "DELETE":
-                    resp = await self._http.delete(
-                        url, params=params, headers=headers
-                    )
+                    resp = await self._http.delete(url, params=params, headers=headers)
                 else:
                     raise ValueError(f"未対応のHTTPメソッド: {method}")
 

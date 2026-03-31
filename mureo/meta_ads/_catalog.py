@@ -54,14 +54,10 @@ class CatalogMixin:
             カタログ情報のリスト
         """
         params: dict[str, Any] = {"fields": _CATALOG_FIELDS}
-        result = await self._get(
-            f"/{business_id}/owned_product_catalogs", params
-        )
+        result = await self._get(f"/{business_id}/owned_product_catalogs", params)
         return result.get("data", [])
 
-    async def create_catalog(
-        self, business_id: str, name: str
-    ) -> dict[str, Any]:
+    async def create_catalog(self, business_id: str, name: str) -> dict[str, Any]:
         """カタログを作成する
 
         Args:
@@ -72,9 +68,7 @@ class CatalogMixin:
             作成されたカタログ情報（idを含む）
         """
         data: dict[str, Any] = {"name": name}
-        return await self._post(
-            f"/{business_id}/owned_product_catalogs", data=data
-        )
+        return await self._post(f"/{business_id}/owned_product_catalogs", data=data)
 
     async def get_catalog(self, catalog_id: str) -> dict[str, Any]:
         """カタログ詳細を取得する
@@ -132,9 +126,7 @@ class CatalogMixin:
         Returns:
             作成された商品情報（idを含む）
         """
-        return await self._post(
-            f"/{catalog_id}/products", data=product_data
-        )
+        return await self._post(f"/{catalog_id}/products", data=product_data)
 
     async def get_product(self, product_id: str) -> dict[str, Any]:
         """商品詳細を取得する
@@ -175,9 +167,7 @@ class CatalogMixin:
 
     # === フィード管理 ===
 
-    async def list_product_feeds(
-        self, catalog_id: str
-    ) -> list[dict[str, Any]]:
+    async def list_product_feeds(self, catalog_id: str) -> list[dict[str, Any]]:
         """フィード一覧を取得する
 
         Args:
@@ -215,6 +205,4 @@ class CatalogMixin:
                 "interval": schedule,
             },
         }
-        return await self._post(
-            f"/{catalog_id}/product_feeds", data=data
-        )
+        return await self._post(f"/{catalog_id}/product_feeds", data=data)

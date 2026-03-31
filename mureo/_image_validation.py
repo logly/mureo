@@ -34,7 +34,9 @@ def _validate_media_file(
     """
     # パストラバーサル防止（..チェック + resolve()で正規化）
     if ".." in file_path:
-        raise ValueError(f"不正なファイルパス: パスに '..' を含めることはできません: {file_path}")
+        raise ValueError(
+            f"不正なファイルパス: パスに '..' を含めることはできません: {file_path}"
+        )
 
     path = Path(file_path)
 
@@ -45,7 +47,9 @@ def _validate_media_file(
     # シンボリックリンク解決後に通常ファイルであることを確認
     resolved = path.resolve()
     if not resolved.is_file():
-        raise ValueError(f"不正なファイルパス: 通常のファイルではありません: {file_path}")
+        raise ValueError(
+            f"不正なファイルパス: 通常のファイルではありません: {file_path}"
+        )
 
     # 拡張子チェック
     ext = path.suffix.lower().lstrip(".")

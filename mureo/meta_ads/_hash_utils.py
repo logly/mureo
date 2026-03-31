@@ -3,6 +3,7 @@
 Meta CAPI では em(email), ph(phone), fn(名), ln(姓) 等の
 個人情報フィールドを SHA-256 でハッシュ化して送信する必要がある。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -116,8 +117,7 @@ def normalize_user_data(user_data: dict[str, object]) -> dict[str, object]:
 
         if isinstance(value, list):
             result[key] = [
-                _hash_pii_value(key, v) if isinstance(v, str) else v
-                for v in value
+                _hash_pii_value(key, v) if isinstance(v, str) else v for v in value
             ]
         elif isinstance(value, str):
             result[key] = _hash_pii_value(key, value)

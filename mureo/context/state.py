@@ -157,9 +157,7 @@ def upsert_campaign(path: Path, campaign: CampaignSnapshot) -> StateDocument:
     return new_doc
 
 
-def get_campaign(
-    doc: StateDocument, campaign_id: str
-) -> CampaignSnapshot | None:
+def get_campaign(doc: StateDocument, campaign_id: str) -> CampaignSnapshot | None:
     """campaign_idでキャンペーンを検索する."""
     for c in doc.campaigns:
         if c.campaign_id == campaign_id:

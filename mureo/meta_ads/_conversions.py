@@ -6,6 +6,7 @@ CAPI による計測精度向上は必須。
 
 エンドポイント: POST https://graph.facebook.com/v21.0/{pixel_id}/events
 """
+
 from __future__ import annotations
 
 import json
@@ -52,9 +53,7 @@ class ConversionsMixin:
         for event in events:
             normalized = {**event}
             if "user_data" in normalized:
-                normalized["user_data"] = normalize_user_data(
-                    normalized["user_data"]
-                )
+                normalized["user_data"] = normalize_user_data(normalized["user_data"])
             normalized_events.append(normalized)
 
         post_data: dict[str, Any] = {
@@ -115,9 +114,7 @@ class ConversionsMixin:
         if event_source_url is not None:
             event["event_source_url"] = event_source_url
 
-        return await self.send_event(
-            pixel_id, [event], test_event_code=test_event_code
-        )
+        return await self.send_event(pixel_id, [event], test_event_code=test_event_code)
 
     async def send_lead_event(
         self,
@@ -148,6 +145,4 @@ class ConversionsMixin:
         if event_source_url is not None:
             event["event_source_url"] = event_source_url
 
-        return await self.send_event(
-            pixel_id, [event], test_event_code=test_event_code
-        )
+        return await self.send_event(pixel_id, [event], test_event_code=test_event_code)

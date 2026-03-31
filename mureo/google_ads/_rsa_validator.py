@@ -73,6 +73,7 @@ def _is_valid_url(url: str) -> bool:
     except Exception:
         return False
 
+
 # === 警告系（禁止表現） ===
 
 # 最上級・No.1表現（景表法 優良誤認、根拠なき最上級表示）
@@ -264,9 +265,7 @@ def validate_rsa_texts(
     for h in headlines:
         cleaned, fixes = _sanitize_text(h)
         if fixes:
-            all_warnings.extend(
-                f"見出し自動修正: {fix}" for fix in fixes
-            )
+            all_warnings.extend(f"見出し自動修正: {fix}" for fix in fixes)
         if cleaned:
             sanitized_headlines.append(cleaned)
         else:
@@ -276,9 +275,7 @@ def validate_rsa_texts(
     for d in descriptions:
         cleaned, fixes = _sanitize_text(d)
         if fixes:
-            all_warnings.extend(
-                f"説明文自動修正: {fix}" for fix in fixes
-            )
+            all_warnings.extend(f"説明文自動修正: {fix}" for fix in fixes)
         if cleaned:
             sanitized_descriptions.append(cleaned)
         else:
@@ -419,7 +416,9 @@ def _check_headline_diversity(
         for j in range(i + 1, len(headlines)):
             total_pairs += 1
             sim = _bigram_similarity(headlines[i], headlines[j])
-            if sim >= _SIMILARITY_THRESHOLD or _has_synonym_overlap(headlines[i], headlines[j]):
+            if sim >= _SIMILARITY_THRESHOLD or _has_synonym_overlap(
+                headlines[i], headlines[j]
+            ):
                 similar_pairs.append((headlines[i], headlines[j]))
 
     if total_pairs == 0:
@@ -511,10 +510,15 @@ def _eval_headline_count(
             f"（現在{len(headlines)}個、推奨8個以上）"
         )
         msg += "（推奨8個以上）"
-    return AdStrengthFactor(
-        name="headline_count", score=score,
-        weight=_WEIGHT_HEADLINE_COUNT, message=msg,
-    ), suggestions
+    return (
+        AdStrengthFactor(
+            name="headline_count",
+            score=score,
+            weight=_WEIGHT_HEADLINE_COUNT,
+            message=msg,
+        ),
+        suggestions,
+    )
 
 
 def _eval_description_count(
@@ -530,10 +534,15 @@ def _eval_description_count(
             f"説明文を{4 - count}個追加してください（現在{count}個、推奨4個）"
         )
         msg += "（推奨4個）"
-    return AdStrengthFactor(
-        name="description_count", score=score,
-        weight=_WEIGHT_DESCRIPTION_COUNT, message=msg,
-    ), suggestions
+    return (
+        AdStrengthFactor(
+            name="description_count",
+            score=score,
+            weight=_WEIGHT_DESCRIPTION_COUNT,
+            message=msg,
+        ),
+        suggestions,
+    )
 
 
 def _eval_diversity(
@@ -544,10 +553,15 @@ def _eval_diversity(
     msg = f"見出し多様性: {score:.0%}"
     if msgs:
         msg += "（類似表現あり）"
-    return AdStrengthFactor(
-        name="headline_diversity", score=score,
-        weight=_WEIGHT_HEADLINE_DIVERSITY, message=msg,
-    ), msgs
+    return (
+        AdStrengthFactor(
+            name="headline_diversity",
+            score=score,
+            weight=_WEIGHT_HEADLINE_DIVERSITY,
+            message=msg,
+        ),
+        msgs,
+    )
 
 
 def _eval_keyword_relevance(
@@ -557,7 +571,9 @@ def _eval_keyword_relevance(
 ) -> tuple[AdStrengthFactor, list[str]]:
     """キーワード関連性を評価する。"""
     score, missing = _check_keyword_relevance(
-        headlines, descriptions, keywords or [],
+        headlines,
+        descriptions,
+        keywords or [],
     )
     msg = f"キーワード関連性: {score:.0%}"
     suggestions: list[str] = []
@@ -566,10 +582,15 @@ def _eval_keyword_relevance(
     elif missing:
         suggestions.append(f"未含有キーワード: {', '.join(missing[:5])}")
         msg += f"（{len(missing)}個未含有）"
-    return AdStrengthFactor(
-        name="keyword_relevance", score=score,
-        weight=_WEIGHT_KEYWORD_RELEVANCE, message=msg,
-    ), suggestions
+    return (
+        AdStrengthFactor(
+            name="keyword_relevance",
+            score=score,
+            weight=_WEIGHT_KEYWORD_RELEVANCE,
+            message=msg,
+        ),
+        suggestions,
+    )
 
 
 def _eval_pin_penalty(
@@ -582,10 +603,15 @@ def _eval_pin_penalty(
     if pinned_count > 0:
         suggestions.append("ピン留め（位置固定）を外すとAd Strengthが向上します")
         msg += "（ピン留めはAd Strength低下要因）"
-    return AdStrengthFactor(
-        name="pin_penalty", score=score,
-        weight=_WEIGHT_PIN_PENALTY, message=msg,
-    ), suggestions
+    return (
+        AdStrengthFactor(
+            name="pin_penalty",
+            score=score,
+            weight=_WEIGHT_PIN_PENALTY,
+            message=msg,
+        ),
+        suggestions,
+    )
 
 
 def _eval_sitelink_bonus(
@@ -598,10 +624,15 @@ def _eval_sitelink_bonus(
     if not has_sitelinks:
         suggestions.append("サイトリンクを6個以上設定するとAd Strengthが向上します")
         msg += "（設定推奨）"
-    return AdStrengthFactor(
-        name="sitelink_bonus", score=score,
-        weight=_WEIGHT_SITELINK_BONUS, message=msg,
-    ), suggestions
+    return (
+        AdStrengthFactor(
+            name="sitelink_bonus",
+            score=score,
+            weight=_WEIGHT_SITELINK_BONUS,
+            message=msg,
+        ),
+        suggestions,
+    )
 
 
 def _score_to_level(score: float) -> str:

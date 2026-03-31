@@ -2,6 +2,7 @@
 
 AdCreative作成・画像アップロード・ダイナミッククリエイティブ対応。
 """
+
 from __future__ import annotations
 
 import json
@@ -16,15 +17,11 @@ logger = logging.getLogger(__name__)
 
 # Meta Ads 画像アップロード制限
 _META_MAX_IMAGE_SIZE_BYTES = 30 * 1024 * 1024  # 30MB
-_META_ALLOWED_IMAGE_EXTENSIONS = frozenset(
-    {"jpg", "jpeg", "png", "gif", "bmp", "tiff"}
-)
+_META_ALLOWED_IMAGE_EXTENSIONS = frozenset({"jpg", "jpeg", "png", "gif", "bmp", "tiff"})
 
 # Meta Ads 動画アップロード制限
 _META_MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024  # 100MB（実用上の制限）
-_META_ALLOWED_VIDEO_EXTENSIONS = frozenset(
-    {"mp4", "mov", "avi", "wmv", "mkv"}
-)
+_META_ALLOWED_VIDEO_EXTENSIONS = frozenset({"mp4", "mov", "avi", "wmv", "mkv"})
 
 # カルーセルカード枚数制限
 _CAROUSEL_MIN_CARDS = 2
@@ -69,9 +66,7 @@ class CreativesMixin:
             "fields": _CREATIVE_FIELDS,
             "limit": limit,
         }
-        result = await self._get(
-            f"/{self._ad_account_id}/adcreatives", params
-        )
+        result = await self._get(f"/{self._ad_account_id}/adcreatives", params)
         return result.get("data", [])
 
     async def create_ad_creative(
@@ -131,9 +126,7 @@ class CreativesMixin:
             "object_story_spec": json.dumps(object_story_spec),
         }
 
-        return await self._post(
-            f"/{self._ad_account_id}/adcreatives", data
-        )
+        return await self._post(f"/{self._ad_account_id}/adcreatives", data)
 
     async def upload_ad_image(
         self,
@@ -151,9 +144,7 @@ class CreativesMixin:
             "url": image_url,
         }
 
-        result = await self._post(
-            f"/{self._ad_account_id}/adimages", data
-        )
+        result = await self._post(f"/{self._ad_account_id}/adimages", data)
 
         images = result.get("images")
         if not images or not isinstance(images, dict):
@@ -257,9 +248,7 @@ class CreativesMixin:
         }
 
         if descriptions:
-            asset_feed_spec["descriptions"] = [
-                {"text": d} for d in descriptions
-            ]
+            asset_feed_spec["descriptions"] = [{"text": d} for d in descriptions]
         if call_to_actions:
             asset_feed_spec["call_to_action_types"] = call_to_actions
 
@@ -269,9 +258,7 @@ class CreativesMixin:
             "asset_feed_spec": json.dumps(asset_feed_spec),
         }
 
-        return await self._post(
-            f"/{self._ad_account_id}/adcreatives", data
-        )
+        return await self._post(f"/{self._ad_account_id}/adcreatives", data)
 
     # ------------------------------------------------------------------
     # 動画アップロード
@@ -295,9 +282,7 @@ class CreativesMixin:
         if title:
             data["title"] = title
 
-        return await self._post(
-            f"/{self._ad_account_id}/advideos", data
-        )
+        return await self._post(f"/{self._ad_account_id}/advideos", data)
 
     async def upload_ad_video_file(
         self, file_path: str, title: str | None = None
@@ -397,9 +382,7 @@ class CreativesMixin:
         if name:
             creative_data["name"] = name
 
-        return await self._post(
-            f"/{self._ad_account_id}/adcreatives", creative_data
-        )
+        return await self._post(f"/{self._ad_account_id}/adcreatives", creative_data)
 
     # ------------------------------------------------------------------
     # コレクションクリエイティブ
@@ -453,6 +436,4 @@ class CreativesMixin:
         if name:
             collection_data["name"] = name
 
-        return await self._post(
-            f"/{self._ad_account_id}/adcreatives", collection_data
-        )
+        return await self._post(f"/{self._ad_account_id}/adcreatives", collection_data)

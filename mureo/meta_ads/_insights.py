@@ -181,21 +181,27 @@ class InsightsMixin:
             conversions = 0.0
             if actions:
                 for a in actions:
-                    if a.get("action_type") in ("lead", "purchase", "complete_registration"):
+                    if a.get("action_type") in (
+                        "lead",
+                        "purchase",
+                        "complete_registration",
+                    ):
                         conversions += float(a.get("value", 0))
 
             cpa = round(spend / conversions, 0) if conversions > 0 else None
 
-            segments.append({
-                "age": row.get("age", ""),
-                "gender": row.get("gender", ""),
-                "impressions": impressions,
-                "clicks": clicks,
-                "spend": round(spend, 2),
-                "ctr": round(ctr, 2),
-                "conversions": conversions,
-                "cpa": cpa,
-            })
+            segments.append(
+                {
+                    "age": row.get("age", ""),
+                    "gender": row.get("gender", ""),
+                    "impressions": impressions,
+                    "clicks": clicks,
+                    "spend": round(spend, 2),
+                    "ctr": round(ctr, 2),
+                    "conversions": conversions,
+                    "cpa": cpa,
+                }
+            )
 
         # コスト降順ソート
         segments.sort(key=lambda x: x["spend"], reverse=True)

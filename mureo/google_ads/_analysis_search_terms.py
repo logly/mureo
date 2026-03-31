@@ -84,13 +84,13 @@ class _SearchTermsAnalysisMixin:
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
 
-    async def get_search_terms_report(
-        self, **kwargs: Any
-    ) -> list[dict[str, Any]]: ...
+    async def get_search_terms_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
     async def list_keywords(
         self, ad_group_id: str | None = None, campaign_id: str | None = None
     ) -> list[dict[str, Any]]: ...
-    async def list_negative_keywords(self, campaign_id: str) -> list[dict[str, Any]]: ...
+    async def list_negative_keywords(
+        self, campaign_id: str
+    ) -> list[dict[str, Any]]: ...
 
     # PerformanceAnalysisMixin のメソッド
     async def _resolve_target_cpa(
@@ -154,22 +154,19 @@ class _SearchTermsAnalysisMixin:
         )
 
         # キーワードテキストの集合（小文字）
-        keyword_texts: set[str] = {
-            kw.get("text", "").lower() for kw in keywords
-        }
+        keyword_texts: set[str] = {kw.get("text", "").lower() for kw in keywords}
 
         # オーバーラップ率
         overlap_count = sum(
-            1 for t in search_terms
-            if t.get("search_term", "").lower() in keyword_texts
+            1 for t in search_terms if t.get("search_term", "").lower() in keyword_texts
         )
-        overlap_rate = (
-            overlap_count / len(search_terms) if search_terms else 0.0
-        )
+        overlap_rate = overlap_count / len(search_terms) if search_terms else 0.0
 
         # N-gram分布（1-3gram）
         ngram_agg: dict[int, dict[str, dict[str, float]]] = {
-            1: {}, 2: {}, 3: {},
+            1: {},
+            2: {},
+            3: {},
         }
         for t in search_terms:
             text = t.get("search_term", "")
@@ -385,9 +382,7 @@ class _SearchTermsAnalysisMixin:
                 "前期に出現していないため経過観察を推奨します"
             )
         if not suggestions and not watch_terms and total_wasteful_cost == 0:
-            insights.append(
-                "除外判定閾値を超えるCVなし検索語句は見つかりませんでした"
-            )
+            insights.append("除外判定閾値を超えるCVなし検索語句は見つかりませんでした")
 
         result: dict[str, Any] = {
             "campaign_id": campaign_id,
@@ -405,14 +400,18 @@ class _SearchTermsAnalysisMixin:
 
         # 意図分析（オプション）
         if use_intent_analysis:
-            logger.info("suggest_negative_keywords: 意図分析開始 campaign_id=%s", campaign_id)
+            logger.info(
+                "suggest_negative_keywords: 意図分析開始 campaign_id=%s", campaign_id
+            )
             intent_additions = await self._suggest_by_intent(
                 campaign_id=campaign_id,
                 search_terms=search_terms,
                 existing_suggestions=suggestions,
                 existing_neg_texts=existing_neg_texts,
             )
-            logger.info("suggest_negative_keywords: 意図分析完了 campaign_id=%s", campaign_id)
+            logger.info(
+                "suggest_negative_keywords: 意図分析完了 campaign_id=%s", campaign_id
+            )
             if intent_additions:
                 result["intent_based_suggestions"] = intent_additions
                 insights.append(
@@ -538,63 +537,115 @@ class _SearchTermsAnalysisMixin:
 
         # Rule 1: CV>=2 & 未登録 → add EXACT (score=90)
         if conversions >= 2 and not is_registered:
-            add_candidates.append(_build_add_candidate(
-                term_text, conversions, clicks, cost, ctr,
-                "EXACT", 90, f"CV{conversions:.0f}件、キーワード未登録",
-            ))
+            add_candidates.append(
+                _build_add_candidate(
+                    term_text,
+                    conversions,
+                    clicks,
+                    cost,
+                    ctr,
+                    "EXACT",
+                    90,
+                    f"CV{conversions:.0f}件、キーワード未登録",
+                )
+            )
             return
 
         # Rule 2: CV=1 & CPA<=目標CPA & 未登録 → add EXACT (score=70)
         if conversions == 1 and not is_registered and resolved_cpa is not None:
             cpa = cost
             if cpa <= resolved_cpa:
-                add_candidates.append(_build_add_candidate(
-                    term_text, conversions, clicks, cost, ctr,
-                    "EXACT", 70,
-                    f"CV1件、CPA ¥{cpa:,.0f} ≤ 目標CPA ¥{resolved_cpa:,.0f}",
-                ))
+                add_candidates.append(
+                    _build_add_candidate(
+                        term_text,
+                        conversions,
+                        clicks,
+                        cost,
+                        ctr,
+                        "EXACT",
+                        70,
+                        f"CV1件、CPA ¥{cpa:,.0f} ≤ 目標CPA ¥{resolved_cpa:,.0f}",
+                    )
+                )
                 return
 
         # Rule 3: CV=0 & Click>=20 & CTR>=3% & 未登録 → add PHRASE (score=50)
         if conversions == 0 and clicks >= 20 and ctr >= 0.03 and not is_registered:
-            add_candidates.append(_build_add_candidate(
-                term_text, conversions, clicks, cost, ctr,
-                "PHRASE", 50,
-                f"CTR {ctr:.1%}（高CTR）、クリック{clicks}回",
-            ))
+            add_candidates.append(
+                _build_add_candidate(
+                    term_text,
+                    conversions,
+                    clicks,
+                    cost,
+                    ctr,
+                    "PHRASE",
+                    50,
+                    f"CTR {ctr:.1%}（高CTR）、クリック{clicks}回",
+                )
+            )
             return
 
         # 除外候補: 既に除外キーワードとして登録済みならスキップ
         is_already_excluded = term_text.lower() in existing_neg_texts
 
         # Rule 4: CV=0 & コスト>=目標CPA×2 → exclude EXACT (score=80)
-        if conversions == 0 and resolved_cpa is not None and cost >= resolved_cpa * 2 and not is_already_excluded:
+        if (
+            conversions == 0
+            and resolved_cpa is not None
+            and cost >= resolved_cpa * 2
+            and not is_already_excluded
+        ):
             entry = _build_exclude_candidate(
-                term_text, conversions, clicks, cost, ctr,
-                "EXACT", 80,
+                term_text,
+                conversions,
+                clicks,
+                cost,
+                ctr,
+                "EXACT",
+                80,
                 f"CV0、コスト ¥{cost:,.0f} ≥ 目標CPA×2 (¥{resolved_cpa * 2:,.0f})",
             )
-            self._route_by_newness(entry, term_text, is_new, exclude_candidates, watch_candidates)
+            self._route_by_newness(
+                entry, term_text, is_new, exclude_candidates, watch_candidates
+            )
             return
 
         # Rule 5: CV=0 & Click>=30 & CTR<1% → exclude EXACT (score=60)
         if conversions == 0 and clicks >= 30 and ctr < 0.01 and not is_already_excluded:
             entry = _build_exclude_candidate(
-                term_text, conversions, clicks, cost, ctr,
-                "EXACT", 60,
+                term_text,
+                conversions,
+                clicks,
+                cost,
+                ctr,
+                "EXACT",
+                60,
                 f"CV0、クリック{clicks}回でCTR {ctr:.2%}（低CTR）",
             )
-            self._route_by_newness(entry, term_text, is_new, exclude_candidates, watch_candidates)
+            self._route_by_newness(
+                entry, term_text, is_new, exclude_candidates, watch_candidates
+            )
             return
 
         # Rule 6: 情報収集パターン & CV=0 → exclude PHRASE (score=40)
-        if conversions == 0 and _is_informational_term(term_text) and not is_already_excluded:
+        if (
+            conversions == 0
+            and _is_informational_term(term_text)
+            and not is_already_excluded
+        ):
             entry = _build_exclude_candidate(
-                term_text, conversions, clicks, cost, ctr,
-                "PHRASE", 40,
+                term_text,
+                conversions,
+                clicks,
+                cost,
+                ctr,
+                "PHRASE",
+                40,
                 "情報収集意図の検索語句（CV0）",
             )
-            self._route_by_newness(entry, term_text, is_new, exclude_candidates, watch_candidates)
+            self._route_by_newness(
+                entry, term_text, is_new, exclude_candidates, watch_candidates
+            )
 
     # =================================================================
     # 意図ベース検索語句分析（LLMヘルパー/スタブ）
@@ -609,7 +660,11 @@ class _SearchTermsAnalysisMixin:
         keyword_texts: set[str],
     ) -> dict[str, Any]:
         """LLM意図分析のスタブ。mureo-coreではLLM依存を除去。"""
-        return {"classified_count": 0, "adjustments": [], "note": "LLM意図分析はManaged側で実施"}
+        return {
+            "classified_count": 0,
+            "adjustments": [],
+            "note": "LLM意図分析はManaged側で実施",
+        }
 
     async def _suggest_by_intent(
         self,
@@ -621,8 +676,6 @@ class _SearchTermsAnalysisMixin:
         """LLM意図分析による追加提案のスタブ。"""
         return []
 
-    async def _get_strategic_context_for_intent(
-        self, campaign_id: str
-    ) -> str | None:
+    async def _get_strategic_context_for_intent(self, campaign_id: str) -> str | None:
         """戦略コンテキスト取得のスタブ。"""
         return None

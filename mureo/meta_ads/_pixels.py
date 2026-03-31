@@ -2,6 +2,7 @@
 
 ピクセル一覧・詳細・統計・イベント確認（読み取り専用）。
 """
+
 from __future__ import annotations
 
 import logging
@@ -52,9 +53,7 @@ class PixelsMixin:
             "fields": _PIXEL_FIELDS,
             "limit": limit,
         }
-        result = await self._get(
-            f"/{self._ad_account_id}/adspixels", params
-        )
+        result = await self._get(f"/{self._ad_account_id}/adspixels", params)
         return result.get("data", [])
 
     async def get_pixel(self, pixel_id: str) -> dict[str, Any]:

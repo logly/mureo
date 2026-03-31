@@ -20,12 +20,14 @@ INTENT_COMMERCIAL = "commercial_investigation"
 INTENT_INFORMATIONAL = "informational"
 INTENT_NAVIGATIONAL = "navigational"
 
-VALID_INTENTS: frozenset[str] = frozenset({
-    INTENT_TRANSACTIONAL,
-    INTENT_COMMERCIAL,
-    INTENT_INFORMATIONAL,
-    INTENT_NAVIGATIONAL,
-})
+VALID_INTENTS: frozenset[str] = frozenset(
+    {
+        INTENT_TRANSACTIONAL,
+        INTENT_COMMERCIAL,
+        INTENT_INFORMATIONAL,
+        INTENT_NAVIGATIONAL,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -33,7 +35,9 @@ class SearchTermIntent:
     """検索語句の意図分類結果"""
 
     search_term: str
-    intent: str  # transactional / commercial_investigation / informational / navigational
+    intent: (
+        str  # transactional / commercial_investigation / informational / navigational
+    )
     relevance_score: int  # 0-100: 広告主ビジネスへの関連度
     reasoning: str
     exclude_recommendation: bool  # 除外を推奨するか
@@ -119,9 +123,7 @@ class IntentClassifier:
 
         context_section = ""
         if strategic_context:
-            context_section = (
-                f"\n### 戦略情報（ペルソナ・USP）\n{strategic_context}"
-            )
+            context_section = f"\n### 戦略情報（ペルソナ・USP）\n{strategic_context}"
 
         return _CLASSIFY_PROMPT.format(
             campaign_name=campaign_name or "（未指定）",

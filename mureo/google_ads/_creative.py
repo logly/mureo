@@ -64,7 +64,10 @@ class _CreativeMixin:
             return asdict(lp_content)
         except Exception as exc:
             logger.warning("LP解析に失敗: url=%s, error=%s", url, exc)
-            return {"url": url, "error": "LP解析に失敗しました。URLが正しいか確認してください。"}
+            return {
+                "url": url,
+                "error": "LP解析に失敗しました。URLが正しいか確認してください。",
+            }
 
     # =================================================================
     # 2. クリエイティブリサーチ（統合収集）
@@ -176,17 +179,21 @@ class _CreativeMixin:
             ad = row.ad_group_ad.ad
             rsa = ad.responsive_search_ad
             headlines = [asset.text for asset in rsa.headlines] if rsa.headlines else []
-            descriptions = [asset.text for asset in rsa.descriptions] if rsa.descriptions else []
-            ads.append({
-                "ad_id": str(ad.id),
-                "headlines": headlines,
-                "descriptions": descriptions,
-                "final_urls": list(ad.final_urls),
-                "impressions": row.metrics.impressions,
-                "clicks": row.metrics.clicks,
-                "conversions": row.metrics.conversions,
-                "ctr": round(row.metrics.ctr * 100, 2) if row.metrics.ctr else 0,
-            })
+            descriptions = (
+                [asset.text for asset in rsa.descriptions] if rsa.descriptions else []
+            )
+            ads.append(
+                {
+                    "ad_id": str(ad.id),
+                    "headlines": headlines,
+                    "descriptions": descriptions,
+                    "final_urls": list(ad.final_urls),
+                    "impressions": row.metrics.impressions,
+                    "clicks": row.metrics.clicks,
+                    "conversions": row.metrics.conversions,
+                    "ctr": round(row.metrics.ctr * 100, 2) if row.metrics.ctr else 0,
+                }
+            )
         return ads
 
     async def _extract_search_term_insights(

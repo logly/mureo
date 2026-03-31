@@ -27,8 +27,14 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
-                "status_filter": {"type": "string", "description": "ステータスフィルター（ENABLED/PAUSED）"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
+                "status_filter": {
+                    "type": "string",
+                    "description": "ステータスフィルター（ENABLED/PAUSED）",
+                },
             },
             "required": ["customer_id"],
         },
@@ -39,7 +45,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
             },
             "required": ["customer_id", "campaign_id"],
@@ -51,9 +60,15 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "name": {"type": "string", "description": "キャンペーン名"},
-                "bidding_strategy": {"type": "string", "description": "入札戦略（MAXIMIZE_CLICKS等）"},
+                "bidding_strategy": {
+                    "type": "string",
+                    "description": "入札戦略（MAXIMIZE_CLICKS等）",
+                },
                 "budget_id": {"type": "string", "description": "予算ID"},
             },
             "required": ["customer_id", "name"],
@@ -65,7 +80,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
                 "name": {"type": "string", "description": "新しいキャンペーン名"},
                 "bidding_strategy": {"type": "string", "description": "入札戦略"},
@@ -79,9 +97,15 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
-                "status": {"type": "string", "description": "新ステータス（ENABLED/PAUSED/REMOVED）"},
+                "status": {
+                    "type": "string",
+                    "description": "新ステータス（ENABLED/PAUSED/REMOVED）",
+                },
             },
             "required": ["customer_id", "campaign_id", "status"],
         },
@@ -92,7 +116,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
             },
             "required": ["customer_id", "campaign_id"],
@@ -105,9 +132,18 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
-                "campaign_id": {"type": "string", "description": "キャンペーンIDでフィルタ"},
-                "status_filter": {"type": "string", "description": "ステータスフィルター"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
+                "campaign_id": {
+                    "type": "string",
+                    "description": "キャンペーンIDでフィルタ",
+                },
+                "status_filter": {
+                    "type": "string",
+                    "description": "ステータスフィルター",
+                },
             },
             "required": ["customer_id"],
         },
@@ -118,10 +154,16 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "所属キャンペーンID"},
                 "name": {"type": "string", "description": "広告グループ名"},
-                "cpc_bid_micros": {"type": "integer", "description": "CPC入札額（マイクロ単位）"},
+                "cpc_bid_micros": {
+                    "type": "integer",
+                    "description": "CPC入札額（マイクロ単位）",
+                },
             },
             "required": ["customer_id", "campaign_id", "name"],
         },
@@ -132,11 +174,20 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "ad_group_id": {"type": "string", "description": "広告グループID"},
                 "name": {"type": "string", "description": "新しい名前"},
-                "status": {"type": "string", "description": "ステータス（ENABLED/PAUSED）"},
-                "cpc_bid_micros": {"type": "integer", "description": "CPC入札額（マイクロ単位）"},
+                "status": {
+                    "type": "string",
+                    "description": "ステータス（ENABLED/PAUSED）",
+                },
+                "cpc_bid_micros": {
+                    "type": "integer",
+                    "description": "CPC入札額（マイクロ単位）",
+                },
             },
             "required": ["customer_id", "ad_group_id"],
         },
@@ -148,9 +199,18 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
-                "ad_group_id": {"type": "string", "description": "広告グループIDでフィルタ"},
-                "status_filter": {"type": "string", "description": "ステータスフィルター"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
+                "ad_group_id": {
+                    "type": "string",
+                    "description": "広告グループIDでフィルタ",
+                },
+                "status_filter": {
+                    "type": "string",
+                    "description": "ステータスフィルター",
+                },
             },
             "required": ["customer_id"],
         },
@@ -161,14 +221,19 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "ad_group_id": {"type": "string", "description": "広告グループID"},
                 "headlines": {
-                    "type": "array", "items": {"type": "string"},
+                    "type": "array",
+                    "items": {"type": "string"},
                     "description": "見出しリスト（3個以上15個以下）",
                 },
                 "descriptions": {
-                    "type": "array", "items": {"type": "string"},
+                    "type": "array",
+                    "items": {"type": "string"},
                     "description": "説明文リスト（2個以上4個以下）",
                 },
                 "final_url": {"type": "string", "description": "最終URL"},
@@ -184,15 +249,20 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "ad_group_id": {"type": "string", "description": "広告グループID"},
                 "ad_id": {"type": "string", "description": "広告ID"},
                 "headlines": {
-                    "type": "array", "items": {"type": "string"},
+                    "type": "array",
+                    "items": {"type": "string"},
                     "description": "見出しリスト",
                 },
                 "descriptions": {
-                    "type": "array", "items": {"type": "string"},
+                    "type": "array",
+                    "items": {"type": "string"},
                     "description": "説明文リスト",
                 },
             },
@@ -205,10 +275,16 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "ad_group_id": {"type": "string", "description": "広告グループID"},
                 "ad_id": {"type": "string", "description": "広告ID"},
-                "status": {"type": "string", "description": "新ステータス（ENABLED/PAUSED）"},
+                "status": {
+                    "type": "string",
+                    "description": "新ステータス（ENABLED/PAUSED）",
+                },
             },
             "required": ["customer_id", "ad_group_id", "ad_id", "status"],
         },
@@ -220,10 +296,22 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
-                "campaign_id": {"type": "string", "description": "キャンペーンIDでフィルタ"},
-                "ad_group_id": {"type": "string", "description": "広告グループIDでフィルタ"},
-                "status_filter": {"type": "string", "description": "ステータスフィルター"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
+                "campaign_id": {
+                    "type": "string",
+                    "description": "キャンペーンIDでフィルタ",
+                },
+                "ad_group_id": {
+                    "type": "string",
+                    "description": "広告グループIDでフィルタ",
+                },
+                "status_filter": {
+                    "type": "string",
+                    "description": "ステータスフィルター",
+                },
             },
             "required": ["customer_id"],
         },
@@ -234,7 +322,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "ad_group_id": {"type": "string", "description": "広告グループID"},
                 "keywords": {
                     "type": "array",
@@ -242,7 +333,10 @@ TOOLS: list[Tool] = [
                         "type": "object",
                         "properties": {
                             "text": {"type": "string"},
-                            "match_type": {"type": "string", "description": "BROAD/PHRASE/EXACT"},
+                            "match_type": {
+                                "type": "string",
+                                "description": "BROAD/PHRASE/EXACT",
+                            },
                         },
                         "required": ["text"],
                     },
@@ -258,9 +352,15 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "ad_group_id": {"type": "string", "description": "広告グループID"},
-                "criterion_id": {"type": "string", "description": "キーワードのcriterion ID"},
+                "criterion_id": {
+                    "type": "string",
+                    "description": "キーワードのcriterion ID",
+                },
             },
             "required": ["customer_id", "ad_group_id", "criterion_id"],
         },
@@ -271,13 +371,23 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "seed_keywords": {
-                    "type": "array", "items": {"type": "string"},
+                    "type": "array",
+                    "items": {"type": "string"},
                     "description": "シードキーワードリスト",
                 },
-                "language_id": {"type": "string", "description": "言語ID（デフォルト: 1005=日本語）"},
-                "geo_id": {"type": "string", "description": "地域ID（デフォルト: 2392=日本）"},
+                "language_id": {
+                    "type": "string",
+                    "description": "言語ID（デフォルト: 1005=日本語）",
+                },
+                "geo_id": {
+                    "type": "string",
+                    "description": "地域ID（デフォルト: 2392=日本）",
+                },
             },
             "required": ["customer_id", "seed_keywords"],
         },
@@ -288,7 +398,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
             },
             "required": ["customer_id", "campaign_id"],
@@ -301,7 +414,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
             },
             "required": ["customer_id", "campaign_id"],
@@ -313,7 +429,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
                 "keywords": {
                     "type": "array",
@@ -321,7 +440,10 @@ TOOLS: list[Tool] = [
                         "type": "object",
                         "properties": {
                             "text": {"type": "string"},
-                            "match_type": {"type": "string", "description": "BROAD/PHRASE/EXACT"},
+                            "match_type": {
+                                "type": "string",
+                                "description": "BROAD/PHRASE/EXACT",
+                            },
                         },
                         "required": ["text"],
                     },
@@ -338,7 +460,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
             },
             "required": ["customer_id", "campaign_id"],
@@ -350,7 +475,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "budget_id": {"type": "string", "description": "予算ID"},
                 "amount": {"type": "number", "description": "新しい日次予算額"},
             },
@@ -364,9 +492,18 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
-                "campaign_id": {"type": "string", "description": "キャンペーンIDでフィルタ"},
-                "period": {"type": "string", "description": "期間（LAST_7_DAYS, LAST_30_DAYS等）"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
+                "campaign_id": {
+                    "type": "string",
+                    "description": "キャンペーンIDでフィルタ",
+                },
+                "period": {
+                    "type": "string",
+                    "description": "期間（LAST_7_DAYS, LAST_30_DAYS等）",
+                },
             },
             "required": ["customer_id"],
         },
@@ -377,9 +514,18 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
-                "campaign_id": {"type": "string", "description": "キャンペーンIDでフィルタ"},
-                "ad_group_id": {"type": "string", "description": "広告グループIDでフィルタ"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
+                "campaign_id": {
+                    "type": "string",
+                    "description": "キャンペーンIDでフィルタ",
+                },
+                "ad_group_id": {
+                    "type": "string",
+                    "description": "広告グループIDでフィルタ",
+                },
                 "period": {"type": "string", "description": "期間"},
             },
             "required": ["customer_id"],
@@ -391,9 +537,15 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
-                "period": {"type": "string", "description": "期間（デフォルト: LAST_7_DAYS）"},
+                "period": {
+                    "type": "string",
+                    "description": "期間（デフォルト: LAST_7_DAYS）",
+                },
                 "target_cpa": {"type": "number", "description": "目標CPA"},
             },
             "required": ["customer_id", "campaign_id"],
@@ -405,7 +557,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
                 "period": {"type": "string", "description": "期間"},
             },
@@ -418,7 +573,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
                 "period": {"type": "string", "description": "期間"},
             },
@@ -431,7 +589,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
                 "period": {"type": "string", "description": "期間"},
             },
@@ -445,7 +606,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "customer_id": {"type": "string", "description": "Google Ads カスタマーID"},
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads カスタマーID",
+                },
                 "file_path": {"type": "string", "description": "画像ファイルのパス"},
                 "name": {"type": "string", "description": "アセット名（省略可）"},
             },

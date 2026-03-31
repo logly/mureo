@@ -28,9 +28,7 @@ class PagePostsMixin:
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    _PAGE_POST_FIELDS = (
-        "id,message,created_time,permalink_url,full_picture,type"
-    )
+    _PAGE_POST_FIELDS = "id,message,created_time,permalink_url,full_picture,type"
 
     async def list_page_posts(
         self, page_id: str, limit: int = 25

@@ -53,7 +53,9 @@ def _output(data: Any) -> None:
 
 @meta_ads_app.command("campaigns-list")
 def campaigns_list(
-    account_id: str = typer.Option(..., "--account-id", help="Meta Ads account ID (act_XXXX)"),
+    account_id: str = typer.Option(
+        ..., "--account-id", help="Meta Ads account ID (act_XXXX)"
+    ),
 ) -> None:
     """Meta Adsキャンペーン一覧を取得"""
     creds = _require_creds()

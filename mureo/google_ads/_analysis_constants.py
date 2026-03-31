@@ -43,8 +43,17 @@ _STATUS_MAP: dict[int, str] = {
 # ---------------------------------------------------------------------------
 
 _INFORMATIONAL_PATTERNS: tuple[str, ...] = (
-    "とは", "比較", "方法", "無料", "やり方", "仕組み",
-    "口コミ", "評判", "ランキング", "おすすめ", "違い",
+    "とは",
+    "比較",
+    "方法",
+    "無料",
+    "やり方",
+    "仕組み",
+    "口コミ",
+    "評判",
+    "ランキング",
+    "おすすめ",
+    "違い",
 )
 
 
@@ -68,7 +77,9 @@ def _get_comparison_date_ranges(period: str) -> tuple[str, str]:
     prev_start = prev_end - timedelta(days=days - 1)
 
     fmt = "%Y-%m-%d"
-    current = f"BETWEEN '{current_start.strftime(fmt)}' AND '{current_end.strftime(fmt)}'"
+    current = (
+        f"BETWEEN '{current_start.strftime(fmt)}' AND '{current_end.strftime(fmt)}'"
+    )
     previous = f"BETWEEN '{prev_start.strftime(fmt)}' AND '{prev_end.strftime(fmt)}'"
     return current, previous
 

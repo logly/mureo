@@ -225,5 +225,9 @@ def map_insights(raw: dict[str, Any]) -> dict[str, Any]:
         **({"gender": raw["gender"]} if "gender" in raw else {}),
         **({"country": raw["country"]} if "country" in raw else {}),
         **({"region": raw["region"]} if "region" in raw else {}),
-        **({"publisher_platform": raw["publisher_platform"]} if "publisher_platform" in raw else {}),
+        **(
+            {"publisher_platform": raw["publisher_platform"]}
+            if "publisher_platform" in raw
+            else {}
+        ),
     }

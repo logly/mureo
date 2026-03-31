@@ -284,12 +284,14 @@ class _KeywordsMixin:
         recommendations = []
         for category, kw_list in issues.items():
             if kw_list:
-                recommendations.append({
-                    "category": category,
-                    "category_label": category_labels[category],
-                    "count": len(kw_list),
-                    "actions": category_actions[category],
-                })
+                recommendations.append(
+                    {
+                        "category": category,
+                        "category_label": category_labels[category],
+                        "count": len(kw_list),
+                        "actions": category_actions[category],
+                    }
+                )
 
         issue_keyword_ids.discard(None)
 

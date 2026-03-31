@@ -382,9 +382,7 @@ async def handle_products_list(args: dict[str, Any]) -> list[TextContent]:
     if client is None:
         return _no_meta_creds()
     catalog_id = _require(args, "catalog_id")
-    result = await client.list_products(
-        catalog_id, limit=_opt(args, "limit", 100)
-    )
+    result = await client.list_products(catalog_id, limit=_opt(args, "limit", 100))
     return _json_result(result)
 
 
@@ -428,7 +426,16 @@ async def handle_products_update(args: dict[str, Any]) -> list[TextContent]:
         return _no_meta_creds()
     product_id = _require(args, "product_id")
     updates: dict[str, Any] = {}
-    for key in ("name", "description", "availability", "price", "url", "image_url", "brand", "category"):
+    for key in (
+        "name",
+        "description",
+        "availability",
+        "price",
+        "url",
+        "image_url",
+        "brand",
+        "category",
+    ):
         val = _opt(args, key)
         if val is not None:
             updates[key] = val
@@ -487,9 +494,7 @@ async def handle_lead_forms_list(args: dict[str, Any]) -> list[TextContent]:
     if client is None:
         return _no_meta_creds()
     page_id = _require(args, "page_id")
-    result = await client.list_lead_forms(
-        page_id, limit=_opt(args, "limit", 50)
-    )
+    result = await client.list_lead_forms(page_id, limit=_opt(args, "limit", 50))
     return _json_result(result)
 
 

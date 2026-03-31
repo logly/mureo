@@ -21,20 +21,28 @@ class _MonitoringMixin:
         @staticmethod
         def _validate_id(value: str, field_name: str) -> str: ...
         async def get_campaign(self, campaign_id: str) -> dict[str, Any] | None: ...
-        async def get_performance_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
-        async def diagnose_campaign_delivery(self, campaign_id: str) -> dict[str, Any]: ...
-        async def analyze_performance(self, campaign_id: str, period: str = "LAST_7_DAYS") -> dict[str, Any]: ...
-        async def investigate_cost_increase(self, campaign_id: str) -> dict[str, Any]: ...
-        async def get_search_terms_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
+        async def get_performance_report(
+            self, **kwargs: Any
+        ) -> list[dict[str, Any]]: ...
+        async def diagnose_campaign_delivery(
+            self, campaign_id: str
+        ) -> dict[str, Any]: ...
+        async def analyze_performance(
+            self, campaign_id: str, period: str = "LAST_7_DAYS"
+        ) -> dict[str, Any]: ...
+        async def investigate_cost_increase(
+            self, campaign_id: str
+        ) -> dict[str, Any]: ...
+        async def get_search_terms_report(
+            self, **kwargs: Any
+        ) -> list[dict[str, Any]]: ...
         async def list_conversion_actions(self) -> list[dict[str, Any]]: ...
 
     # =================================================================
     # 1. 配信目標の評価
     # =================================================================
 
-    async def evaluate_delivery_goal(
-        self, campaign_id: str
-    ) -> dict[str, Any]:
+    async def evaluate_delivery_goal(self, campaign_id: str) -> dict[str, Any]:
         """配信目標を評価し、配信状態・パフォーマンスを統合して判定する。"""
         self._validate_id(campaign_id, "campaign_id")
         issues: list[str] = []
@@ -84,7 +92,11 @@ class _MonitoringMixin:
         if impressions == 0:
             issues.append("前日のインプレッションが0件です")
 
-        is_critical = has_issues or (campaign_status and campaign_status != "ENABLED") or impressions == 0
+        is_critical = (
+            has_issues
+            or (campaign_status and campaign_status != "ENABLED")
+            or impressions == 0
+        )
         is_warning = has_warnings or (
             not is_critical and impressions > 0 and impressions < 10
         )
@@ -179,9 +191,7 @@ class _MonitoringMixin:
 
         # 4. 乖離率算出・status判定
         if current_cpa is not None:
-            deviation_pct = round(
-                (current_cpa - target_cpa) / target_cpa * 100, 1
-            )
+            deviation_pct = round((current_cpa - target_cpa) / target_cpa * 100, 1)
             result["deviation_pct"] = deviation_pct
 
             if current_cpa <= target_cpa:
@@ -322,16 +332,12 @@ class _MonitoringMixin:
             bottleneck = "ctr"
             if status != "healthy":
                 ctr_value = round(clicks / impressions * 100, 2)
-                issues.append(
-                    f"CTRが低い状態です（{ctr_value}%、業界平均2%未満）"
-                )
+                issues.append(f"CTRが低い状態です（{ctr_value}%、業界平均2%未満）")
         elif clicks > 0 and (conversions / clicks) < 0.01:
             bottleneck = "cvr"
             if status != "healthy":
                 cvr_value = round(conversions / clicks * 100, 2)
-                issues.append(
-                    f"CVRが低い状態です（{cvr_value}%、1%未満）"
-                )
+                issues.append(f"CVRが低い状態です（{cvr_value}%、1%未満）")
         else:
             bottleneck = "cvr"
 
@@ -373,9 +379,7 @@ class _MonitoringMixin:
     # 4. CV獲得改善の診断
     # =================================================================
 
-    async def diagnose_zero_conversions(
-        self, campaign_id: str
-    ) -> dict[str, Any]:
+    async def diagnose_zero_conversions(self, campaign_id: str) -> dict[str, Any]:
         """CV=0問題の診断。LLMが改善戦略を立案するために必要なデータを一括収集する。"""
         self._validate_id(campaign_id, "campaign_id")
         issues: list[str] = []
@@ -398,9 +402,7 @@ class _MonitoringMixin:
 
         total_actions = len(cv_actions)
         enabled_actions = sum(
-            1
-            for a in cv_actions
-            if a.get("status", "").upper() == "ENABLED"
+            1 for a in cv_actions if a.get("status", "").upper() == "ENABLED"
         )
         has_cv_issue = total_actions == 0 or enabled_actions == 0
         result["conversion_tracking"] = {
@@ -497,19 +499,17 @@ class _MonitoringMixin:
                     campaign_id=campaign_id, period="LAST_7_DAYS"
                 )
                 zero_cv_terms = [
-                    t for t in terms
+                    t
+                    for t in terms
                     if float(t.get("metrics", {}).get("conversions", 0)) == 0
                 ]
                 zero_cv_cost = sum(
-                    float(t.get("metrics", {}).get("cost", 0))
-                    for t in zero_cv_terms
+                    float(t.get("metrics", {}).get("cost", 0)) for t in zero_cv_terms
                 )
                 # CVなし高コスト上位10件
                 sorted_wasteful = sorted(
                     zero_cv_terms,
-                    key=lambda t: float(
-                        t.get("metrics", {}).get("cost", 0)
-                    ),
+                    key=lambda t: float(t.get("metrics", {}).get("cost", 0)),
                     reverse=True,
                 )
                 search_term_quality = {
@@ -530,7 +530,12 @@ class _MonitoringMixin:
         result["search_term_quality"] = search_term_quality
 
         # ステータス判定
-        if has_cv_issue or bidding_issue or bottleneck == "no_delivery" or bottleneck == "no_clicks":
+        if (
+            has_cv_issue
+            or bidding_issue
+            or bottleneck == "no_delivery"
+            or bottleneck == "no_clicks"
+        ):
             status = "critical"
         elif conversions == 0:
             status = "warning"
@@ -586,49 +591,61 @@ class _MonitoringMixin:
         priority = 1
 
         if has_cv_issue:
-            actions.append({
-                "priority": priority,
-                "action": "fix_cv_tracking",
-                "description": "コンバージョン計測の設定・修正",
-            })
+            actions.append(
+                {
+                    "priority": priority,
+                    "action": "fix_cv_tracking",
+                    "description": "コンバージョン計測の設定・修正",
+                }
+            )
             priority += 1
 
         if bidding_issue:
-            actions.append({
-                "priority": priority,
-                "action": "fix_bidding_strategy",
-                "description": "入札戦略とCV計測の整合性を修正",
-            })
+            actions.append(
+                {
+                    "priority": priority,
+                    "action": "fix_bidding_strategy",
+                    "description": "入札戦略とCV計測の整合性を修正",
+                }
+            )
             priority += 1
 
         if search_term_quality and search_term_quality["zero_cv_terms"] > 0:
-            actions.append({
-                "priority": priority,
-                "action": "add_negative_keywords",
-                "description": "CVなし検索語句の除外キーワード追加",
-            })
+            actions.append(
+                {
+                    "priority": priority,
+                    "action": "add_negative_keywords",
+                    "description": "CVなし検索語句の除外キーワード追加",
+                }
+            )
             priority += 1
 
         if bottleneck in ("no_delivery", "no_clicks"):
-            actions.append({
-                "priority": priority,
-                "action": "fix_delivery",
-                "description": "配信・クリック獲得の改善",
-            })
+            actions.append(
+                {
+                    "priority": priority,
+                    "action": "fix_delivery",
+                    "description": "配信・クリック獲得の改善",
+                }
+            )
             priority += 1
 
         # 常に提案候補
-        actions.append({
-            "priority": priority,
-            "action": "improve_ads_and_keywords",
-            "description": "広告文改善・キーワード拡張",
-        })
+        actions.append(
+            {
+                "priority": priority,
+                "action": "improve_ads_and_keywords",
+                "description": "広告文改善・キーワード拡張",
+            }
+        )
         priority += 1
 
-        actions.append({
-            "priority": priority,
-            "action": "review_landing_page",
-            "description": "ランディングページの改善（テキストアドバイス）",
-        })
+        actions.append(
+            {
+                "priority": priority,
+                "action": "review_landing_page",
+                "description": "ランディングページの改善（テキストアドバイス）",
+            }
+        )
 
         return actions

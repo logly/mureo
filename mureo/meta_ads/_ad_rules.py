@@ -49,9 +49,7 @@ class AdRulesMixin:
             "fields": _RULE_FIELDS,
             "limit": limit,
         }
-        result = await self._get(
-            f"/{self._ad_account_id}/adrules_library", params
-        )
+        result = await self._get(f"/{self._ad_account_id}/adrules_library", params)
         return result.get("data", [])
 
     async def get_ad_rule(self, rule_id: str) -> dict[str, Any]:
@@ -98,9 +96,7 @@ class AdRulesMixin:
             data["status"] = status
 
         logger.info("自動ルール作成: name=%s", name)
-        return await self._post(
-            f"/{self._ad_account_id}/adrules_library", data
-        )
+        return await self._post(f"/{self._ad_account_id}/adrules_library", data)
 
     async def update_ad_rule(
         self, rule_id: str, updates: dict[str, Any]

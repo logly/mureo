@@ -82,9 +82,18 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
-                "status_filter": {"type": "string", "description": "ステータスフィルター（ACTIVE/PAUSED等）"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 50）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
+                "status_filter": {
+                    "type": "string",
+                    "description": "ステータスフィルター（ACTIVE/PAUSED等）",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 50）",
+                },
             },
             "required": ["account_id"],
         },
@@ -95,7 +104,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
             },
             "required": ["account_id", "campaign_id"],
@@ -107,12 +119,27 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "name": {"type": "string", "description": "キャンペーン名"},
-                "objective": {"type": "string", "description": "キャンペーン目的（CONVERSIONS, LINK_CLICKS等）"},
-                "status": {"type": "string", "description": "初期ステータス（デフォルト: PAUSED）"},
-                "daily_budget": {"type": "integer", "description": "日次予算（セント単位）"},
-                "lifetime_budget": {"type": "integer", "description": "通算予算（セント単位）"},
+                "objective": {
+                    "type": "string",
+                    "description": "キャンペーン目的（CONVERSIONS, LINK_CLICKS等）",
+                },
+                "status": {
+                    "type": "string",
+                    "description": "初期ステータス（デフォルト: PAUSED）",
+                },
+                "daily_budget": {
+                    "type": "integer",
+                    "description": "日次予算（セント単位）",
+                },
+                "lifetime_budget": {
+                    "type": "integer",
+                    "description": "通算予算（セント単位）",
+                },
             },
             "required": ["account_id", "name", "objective"],
         },
@@ -123,11 +150,17 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
                 "name": {"type": "string", "description": "新しいキャンペーン名"},
                 "status": {"type": "string", "description": "ステータス"},
-                "daily_budget": {"type": "integer", "description": "日次予算（セント単位）"},
+                "daily_budget": {
+                    "type": "integer",
+                    "description": "日次予算（セント単位）",
+                },
             },
             "required": ["account_id", "campaign_id"],
         },
@@ -139,9 +172,18 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
-                "campaign_id": {"type": "string", "description": "キャンペーンIDでフィルタ"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 50）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
+                "campaign_id": {
+                    "type": "string",
+                    "description": "キャンペーンIDでフィルタ",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 50）",
+                },
             },
             "required": ["account_id"],
         },
@@ -152,14 +194,29 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "campaign_id": {"type": "string", "description": "所属キャンペーンID"},
                 "name": {"type": "string", "description": "広告セット名"},
-                "daily_budget": {"type": "integer", "description": "日次予算（セント単位）"},
-                "billing_event": {"type": "string", "description": "課金イベント（デフォルト: IMPRESSIONS）"},
-                "optimization_goal": {"type": "string", "description": "最適化目標（デフォルト: REACH）"},
+                "daily_budget": {
+                    "type": "integer",
+                    "description": "日次予算（セント単位）",
+                },
+                "billing_event": {
+                    "type": "string",
+                    "description": "課金イベント（デフォルト: IMPRESSIONS）",
+                },
+                "optimization_goal": {
+                    "type": "string",
+                    "description": "最適化目標（デフォルト: REACH）",
+                },
                 "targeting": {"type": "object", "description": "ターゲティング設定"},
-                "status": {"type": "string", "description": "初期ステータス（デフォルト: PAUSED）"},
+                "status": {
+                    "type": "string",
+                    "description": "初期ステータス（デフォルト: PAUSED）",
+                },
             },
             "required": ["account_id", "campaign_id", "name", "daily_budget"],
         },
@@ -170,11 +227,17 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "ad_set_id": {"type": "string", "description": "広告セットID"},
                 "name": {"type": "string", "description": "新しい名前"},
                 "status": {"type": "string", "description": "ステータス"},
-                "daily_budget": {"type": "integer", "description": "日次予算（セント単位）"},
+                "daily_budget": {
+                    "type": "integer",
+                    "description": "日次予算（セント単位）",
+                },
                 "targeting": {"type": "object", "description": "ターゲティング設定"},
             },
             "required": ["account_id", "ad_set_id"],
@@ -187,9 +250,18 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
-                "ad_set_id": {"type": "string", "description": "広告セットIDでフィルタ"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 50）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
+                "ad_set_id": {
+                    "type": "string",
+                    "description": "広告セットIDでフィルタ",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 50）",
+                },
             },
             "required": ["account_id"],
         },
@@ -200,11 +272,17 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "ad_set_id": {"type": "string", "description": "所属広告セットID"},
                 "name": {"type": "string", "description": "広告名"},
                 "creative_id": {"type": "string", "description": "クリエイティブID"},
-                "status": {"type": "string", "description": "初期ステータス（デフォルト: PAUSED）"},
+                "status": {
+                    "type": "string",
+                    "description": "初期ステータス（デフォルト: PAUSED）",
+                },
             },
             "required": ["account_id", "ad_set_id", "name", "creative_id"],
         },
@@ -215,7 +293,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "ad_id": {"type": "string", "description": "広告ID"},
                 "name": {"type": "string", "description": "新しい名前"},
                 "status": {"type": "string", "description": "ステータス"},
@@ -230,10 +311,22 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
-                "campaign_id": {"type": "string", "description": "キャンペーンIDでフィルタ"},
-                "period": {"type": "string", "description": "期間（today, yesterday, last_7d, last_30d等）"},
-                "level": {"type": "string", "description": "集計レベル（campaign, adset, ad）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
+                "campaign_id": {
+                    "type": "string",
+                    "description": "キャンペーンIDでフィルタ",
+                },
+                "period": {
+                    "type": "string",
+                    "description": "期間（today, yesterday, last_7d, last_30d等）",
+                },
+                "level": {
+                    "type": "string",
+                    "description": "集計レベル（campaign, adset, ad）",
+                },
             },
             "required": ["account_id"],
         },
@@ -244,9 +337,15 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "campaign_id": {"type": "string", "description": "キャンペーンID"},
-                "breakdown": {"type": "string", "description": "ブレイクダウン種別（age, gender等）"},
+                "breakdown": {
+                    "type": "string",
+                    "description": "ブレイクダウン種別（age, gender等）",
+                },
                 "period": {"type": "string", "description": "期間"},
             },
             "required": ["account_id", "campaign_id"],
@@ -259,8 +358,14 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 50）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 50）",
+                },
             },
             "required": ["account_id"],
         },
@@ -271,11 +376,20 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "name": {"type": "string", "description": "オーディエンス名"},
-                "subtype": {"type": "string", "description": "サブタイプ（WEBSITE, CUSTOM, APP等）"},
+                "subtype": {
+                    "type": "string",
+                    "description": "サブタイプ（WEBSITE, CUSTOM, APP等）",
+                },
                 "description": {"type": "string", "description": "説明"},
-                "retention_days": {"type": "integer", "description": "リテンション期間（日数）"},
+                "retention_days": {
+                    "type": "integer",
+                    "description": "リテンション期間（日数）",
+                },
                 "pixel_id": {"type": "string", "description": "Meta PixelID"},
             },
             "required": ["account_id", "name", "subtype"],
@@ -288,7 +402,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "pixel_id": {"type": "string", "description": "Meta Pixel ID"},
                 "events": {
                     "type": "array",
@@ -296,17 +413,43 @@ TOOLS: list[Tool] = [
                     "items": {
                         "type": "object",
                         "properties": {
-                            "event_name": {"type": "string", "description": "イベント名（Purchase, Lead等）"},
-                            "event_time": {"type": "integer", "description": "イベント発生時刻（UNIXタイムスタンプ）"},
-                            "action_source": {"type": "string", "description": "アクションソース（website等）"},
-                            "user_data": {"type": "object", "description": "ユーザー情報（em, ph等はSHA-256ハッシュ化される）"},
-                            "custom_data": {"type": "object", "description": "カスタムデータ（currency, value等）"},
-                            "event_source_url": {"type": "string", "description": "イベント発生URL"},
+                            "event_name": {
+                                "type": "string",
+                                "description": "イベント名（Purchase, Lead等）",
+                            },
+                            "event_time": {
+                                "type": "integer",
+                                "description": "イベント発生時刻（UNIXタイムスタンプ）",
+                            },
+                            "action_source": {
+                                "type": "string",
+                                "description": "アクションソース（website等）",
+                            },
+                            "user_data": {
+                                "type": "object",
+                                "description": "ユーザー情報（em, ph等はSHA-256ハッシュ化される）",
+                            },
+                            "custom_data": {
+                                "type": "object",
+                                "description": "カスタムデータ（currency, value等）",
+                            },
+                            "event_source_url": {
+                                "type": "string",
+                                "description": "イベント発生URL",
+                            },
                         },
-                        "required": ["event_name", "event_time", "action_source", "user_data"],
+                        "required": [
+                            "event_name",
+                            "event_time",
+                            "action_source",
+                            "user_data",
+                        ],
                     },
                 },
-                "test_event_code": {"type": "string", "description": "テストイベントコード（テストモード用）"},
+                "test_event_code": {
+                    "type": "string",
+                    "description": "テストイベントコード（テストモード用）",
+                },
             },
             "required": ["account_id", "pixel_id", "events"],
         },
@@ -317,17 +460,46 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "pixel_id": {"type": "string", "description": "Meta Pixel ID"},
-                "event_time": {"type": "integer", "description": "イベント発生時刻（UNIXタイムスタンプ）"},
-                "user_data": {"type": "object", "description": "ユーザー情報（em, ph等はSHA-256ハッシュ化される）"},
-                "currency": {"type": "string", "description": "通貨コード（USD, JPY等）"},
+                "event_time": {
+                    "type": "integer",
+                    "description": "イベント発生時刻（UNIXタイムスタンプ）",
+                },
+                "user_data": {
+                    "type": "object",
+                    "description": "ユーザー情報（em, ph等はSHA-256ハッシュ化される）",
+                },
+                "currency": {
+                    "type": "string",
+                    "description": "通貨コード（USD, JPY等）",
+                },
                 "value": {"type": "number", "description": "購入金額"},
-                "content_ids": {"type": "array", "items": {"type": "string"}, "description": "商品IDリスト"},
-                "event_source_url": {"type": "string", "description": "イベント発生URL"},
-                "test_event_code": {"type": "string", "description": "テストイベントコード"},
+                "content_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "商品IDリスト",
+                },
+                "event_source_url": {
+                    "type": "string",
+                    "description": "イベント発生URL",
+                },
+                "test_event_code": {
+                    "type": "string",
+                    "description": "テストイベントコード",
+                },
             },
-            "required": ["account_id", "pixel_id", "event_time", "user_data", "currency", "value"],
+            "required": [
+                "account_id",
+                "pixel_id",
+                "event_time",
+                "user_data",
+                "currency",
+                "value",
+            ],
         },
     ),
     Tool(
@@ -336,12 +508,27 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "pixel_id": {"type": "string", "description": "Meta Pixel ID"},
-                "event_time": {"type": "integer", "description": "イベント発生時刻（UNIXタイムスタンプ）"},
-                "user_data": {"type": "object", "description": "ユーザー情報（em, ph等はSHA-256ハッシュ化される）"},
-                "event_source_url": {"type": "string", "description": "イベント発生URL"},
-                "test_event_code": {"type": "string", "description": "テストイベントコード"},
+                "event_time": {
+                    "type": "integer",
+                    "description": "イベント発生時刻（UNIXタイムスタンプ）",
+                },
+                "user_data": {
+                    "type": "object",
+                    "description": "ユーザー情報（em, ph等はSHA-256ハッシュ化される）",
+                },
+                "event_source_url": {
+                    "type": "string",
+                    "description": "イベント発生URL",
+                },
+                "test_event_code": {
+                    "type": "string",
+                    "description": "テストイベントコード",
+                },
             },
             "required": ["account_id", "pixel_id", "event_time", "user_data"],
         },
@@ -353,7 +540,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "business_id": {"type": "string", "description": "ビジネスID"},
             },
             "required": ["account_id", "business_id"],
@@ -365,7 +555,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "business_id": {"type": "string", "description": "ビジネスID"},
                 "name": {"type": "string", "description": "カタログ名"},
             },
@@ -378,7 +571,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "catalog_id": {"type": "string", "description": "カタログID"},
             },
             "required": ["account_id", "catalog_id"],
@@ -390,7 +586,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "catalog_id": {"type": "string", "description": "カタログID"},
             },
             "required": ["account_id", "catalog_id"],
@@ -402,9 +601,15 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "catalog_id": {"type": "string", "description": "カタログID"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 100）"},
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 100）",
+                },
             },
             "required": ["account_id", "catalog_id"],
         },
@@ -415,20 +620,42 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "catalog_id": {"type": "string", "description": "カタログID"},
                 "retailer_id": {"type": "string", "description": "商品SKU/ID"},
                 "name": {"type": "string", "description": "商品名"},
                 "description": {"type": "string", "description": "商品説明"},
-                "availability": {"type": "string", "description": "在庫状況（in stock, out of stock等）"},
-                "condition": {"type": "string", "description": "商品状態（new, refurbished, used）"},
+                "availability": {
+                    "type": "string",
+                    "description": "在庫状況（in stock, out of stock等）",
+                },
+                "condition": {
+                    "type": "string",
+                    "description": "商品状態（new, refurbished, used）",
+                },
                 "price": {"type": "string", "description": "価格（例: '1000 JPY'）"},
                 "url": {"type": "string", "description": "商品URL"},
                 "image_url": {"type": "string", "description": "商品画像URL"},
                 "brand": {"type": "string", "description": "ブランド名"},
-                "category": {"type": "string", "description": "カテゴリ（例: '衣類 > トップス'）"},
+                "category": {
+                    "type": "string",
+                    "description": "カテゴリ（例: '衣類 > トップス'）",
+                },
             },
-            "required": ["account_id", "catalog_id", "retailer_id", "name", "availability", "condition", "price", "url", "image_url"],
+            "required": [
+                "account_id",
+                "catalog_id",
+                "retailer_id",
+                "name",
+                "availability",
+                "condition",
+                "price",
+                "url",
+                "image_url",
+            ],
         },
     ),
     Tool(
@@ -437,7 +664,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "product_id": {"type": "string", "description": "商品ID"},
             },
             "required": ["account_id", "product_id"],
@@ -449,7 +679,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "product_id": {"type": "string", "description": "商品ID"},
                 "name": {"type": "string", "description": "商品名"},
                 "description": {"type": "string", "description": "商品説明"},
@@ -469,7 +702,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "product_id": {"type": "string", "description": "商品ID"},
             },
             "required": ["account_id", "product_id"],
@@ -481,7 +717,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "catalog_id": {"type": "string", "description": "カタログID"},
             },
             "required": ["account_id", "catalog_id"],
@@ -493,11 +732,17 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "catalog_id": {"type": "string", "description": "カタログID"},
                 "name": {"type": "string", "description": "フィード名"},
                 "feed_url": {"type": "string", "description": "フィードURL"},
-                "schedule": {"type": "string", "description": "取込スケジュール（DAILY, HOURLY, WEEKLY。デフォルト: DAILY）"},
+                "schedule": {
+                    "type": "string",
+                    "description": "取込スケジュール（DAILY, HOURLY, WEEKLY。デフォルト: DAILY）",
+                },
             },
             "required": ["account_id", "catalog_id", "name", "feed_url"],
         },
@@ -509,9 +754,15 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "page_id": {"type": "string", "description": "Facebook ページID"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 50）"},
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 50）",
+                },
             },
             "required": ["account_id", "page_id"],
         },
@@ -522,7 +773,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "form_id": {"type": "string", "description": "リードフォームID"},
             },
             "required": ["account_id", "form_id"],
@@ -534,7 +788,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "page_id": {"type": "string", "description": "Facebook ページID"},
                 "name": {"type": "string", "description": "フォーム名"},
                 "questions": {
@@ -544,8 +801,14 @@ TOOLS: list[Tool] = [
                         "type": "object",
                         "properties": {
                             "type": {"type": "string", "description": "質問タイプ"},
-                            "key": {"type": "string", "description": "カスタム質問キー（CUSTOM時のみ）"},
-                            "label": {"type": "string", "description": "カスタム質問ラベル（CUSTOM時のみ）"},
+                            "key": {
+                                "type": "string",
+                                "description": "カスタム質問キー（CUSTOM時のみ）",
+                            },
+                            "label": {
+                                "type": "string",
+                                "description": "カスタム質問ラベル（CUSTOM時のみ）",
+                            },
                             "options": {
                                 "type": "array",
                                 "description": "選択肢（CUSTOM時のみ）",
@@ -560,10 +823,22 @@ TOOLS: list[Tool] = [
                         "required": ["type"],
                     },
                 },
-                "privacy_policy_url": {"type": "string", "description": "プライバシーポリシーURL"},
-                "follow_up_action_url": {"type": "string", "description": "フォーム送信後のリダイレクトURL"},
+                "privacy_policy_url": {
+                    "type": "string",
+                    "description": "プライバシーポリシーURL",
+                },
+                "follow_up_action_url": {
+                    "type": "string",
+                    "description": "フォーム送信後のリダイレクトURL",
+                },
             },
-            "required": ["account_id", "page_id", "name", "questions", "privacy_policy_url"],
+            "required": [
+                "account_id",
+                "page_id",
+                "name",
+                "questions",
+                "privacy_policy_url",
+            ],
         },
     ),
     Tool(
@@ -572,9 +847,15 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "form_id": {"type": "string", "description": "リードフォームID"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 100）"},
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 100）",
+                },
             },
             "required": ["account_id", "form_id"],
         },
@@ -585,9 +866,15 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "ad_id": {"type": "string", "description": "広告ID"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 100）"},
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 100）",
+                },
             },
             "required": ["account_id", "ad_id"],
         },
@@ -599,7 +886,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "video_url": {"type": "string", "description": "動画URL"},
                 "title": {"type": "string", "description": "動画タイトル（省略可）"},
             },
@@ -612,7 +902,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "file_path": {"type": "string", "description": "動画ファイルのパス"},
                 "title": {"type": "string", "description": "動画タイトル（省略可）"},
             },
@@ -626,7 +919,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "page_id": {"type": "string", "description": "FacebookページID"},
                 "cards": {
                     "type": "array",
@@ -637,7 +933,10 @@ TOOLS: list[Tool] = [
                             "link": {"type": "string", "description": "リンクURL"},
                             "name": {"type": "string", "description": "カード名"},
                             "description": {"type": "string", "description": "説明文"},
-                            "image_hash": {"type": "string", "description": "画像ハッシュ"},
+                            "image_hash": {
+                                "type": "string",
+                                "description": "画像ハッシュ",
+                            },
                             "image_url": {"type": "string", "description": "画像URL"},
                             "video_id": {"type": "string", "description": "動画ID"},
                         },
@@ -656,7 +955,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "page_id": {"type": "string", "description": "FacebookページID"},
                 "product_ids": {
                     "type": "array",
@@ -664,8 +966,14 @@ TOOLS: list[Tool] = [
                     "items": {"type": "string"},
                 },
                 "link": {"type": "string", "description": "メインリンクURL"},
-                "cover_image_hash": {"type": "string", "description": "カバー画像ハッシュ（省略可）"},
-                "cover_video_id": {"type": "string", "description": "カバー動画ID（省略可）"},
+                "cover_image_hash": {
+                    "type": "string",
+                    "description": "カバー画像ハッシュ（省略可）",
+                },
+                "cover_video_id": {
+                    "type": "string",
+                    "description": "カバー動画ID（省略可）",
+                },
                 "name": {"type": "string", "description": "クリエイティブ名（省略可）"},
             },
             "required": ["account_id", "page_id", "product_ids", "link"],
@@ -678,7 +986,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "file_path": {"type": "string", "description": "画像ファイルのパス"},
                 "name": {"type": "string", "description": "画像名（省略可）"},
             },
@@ -692,8 +1003,14 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 50）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 50）",
+                },
             },
             "required": ["account_id"],
         },
@@ -704,7 +1021,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "study_id": {"type": "string", "description": "スタディID"},
             },
             "required": ["account_id", "study_id"],
@@ -716,7 +1036,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "name": {"type": "string", "description": "テスト名"},
                 "cells": {
                     "type": "array",
@@ -725,15 +1048,31 @@ TOOLS: list[Tool] = [
                 },
                 "objectives": {
                     "type": "array",
-                    "description": "目的（例: [{\"type\": \"COST_PER_RESULT\"}]）",
+                    "description": '目的（例: [{"type": "COST_PER_RESULT"}]）',
                     "items": {"type": "object"},
                 },
-                "start_time": {"type": "string", "description": "開始日時（ISO 8601形式）"},
-                "end_time": {"type": "string", "description": "終了日時（ISO 8601形式）"},
-                "confidence_level": {"type": "integer", "description": "信頼度（デフォルト: 95）"},
+                "start_time": {
+                    "type": "string",
+                    "description": "開始日時（ISO 8601形式）",
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": "終了日時（ISO 8601形式）",
+                },
+                "confidence_level": {
+                    "type": "integer",
+                    "description": "信頼度（デフォルト: 95）",
+                },
                 "description": {"type": "string", "description": "テスト説明"},
             },
-            "required": ["account_id", "name", "cells", "objectives", "start_time", "end_time"],
+            "required": [
+                "account_id",
+                "name",
+                "cells",
+                "objectives",
+                "start_time",
+                "end_time",
+            ],
         },
     ),
     Tool(
@@ -742,7 +1081,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "study_id": {"type": "string", "description": "スタディID"},
             },
             "required": ["account_id", "study_id"],
@@ -755,8 +1097,14 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 50）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 50）",
+                },
             },
             "required": ["account_id"],
         },
@@ -767,7 +1115,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "rule_id": {"type": "string", "description": "ルールID"},
             },
             "required": ["account_id", "rule_id"],
@@ -779,10 +1130,19 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "name": {"type": "string", "description": "ルール名"},
-                "evaluation_spec": {"type": "object", "description": "評価条件（evaluation_type, trigger, filters）"},
-                "execution_spec": {"type": "object", "description": "実行アクション（execution_type: NOTIFICATION, PAUSE_CAMPAIGN等）"},
+                "evaluation_spec": {
+                    "type": "object",
+                    "description": "評価条件（evaluation_type, trigger, filters）",
+                },
+                "execution_spec": {
+                    "type": "object",
+                    "description": "実行アクション（execution_type: NOTIFICATION, PAUSE_CAMPAIGN等）",
+                },
                 "schedule_spec": {"type": "object", "description": "スケジュール設定"},
                 "status": {"type": "string", "description": "初期ステータス"},
             },
@@ -795,7 +1155,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "rule_id": {"type": "string", "description": "ルールID"},
                 "name": {"type": "string", "description": "ルール名"},
                 "evaluation_spec": {"type": "object", "description": "評価条件"},
@@ -812,7 +1175,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "rule_id": {"type": "string", "description": "ルールID"},
             },
             "required": ["account_id", "rule_id"],
@@ -825,9 +1191,15 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "page_id": {"type": "string", "description": "FacebookページID"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 25）"},
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 25）",
+                },
             },
             "required": ["account_id", "page_id"],
         },
@@ -838,7 +1210,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "page_id": {"type": "string", "description": "FacebookページID"},
                 "post_id": {"type": "string", "description": "投稿ID"},
                 "ad_set_id": {"type": "string", "description": "所属広告セットID"},
@@ -854,7 +1229,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
             },
             "required": ["account_id"],
         },
@@ -865,9 +1243,15 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "ig_user_id": {"type": "string", "description": "InstagramユーザーID"},
-                "limit": {"type": "integer", "description": "取得件数上限（デフォルト: 25）"},
+                "limit": {
+                    "type": "integer",
+                    "description": "取得件数上限（デフォルト: 25）",
+                },
             },
             "required": ["account_id", "ig_user_id"],
         },
@@ -878,7 +1262,10 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {"type": "string", "description": "広告アカウントID（act_XXXX形式）"},
+                "account_id": {
+                    "type": "string",
+                    "description": "広告アカウントID（act_XXXX形式）",
+                },
                 "ig_user_id": {"type": "string", "description": "InstagramユーザーID"},
                 "media_id": {"type": "string", "description": "メディアID"},
                 "ad_set_id": {"type": "string", "description": "所属広告セットID"},

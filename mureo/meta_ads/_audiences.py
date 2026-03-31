@@ -2,6 +2,7 @@
 
 カスタムオーディエンス管理・類似オーディエンス作成。
 """
+
 from __future__ import annotations
 
 import json
@@ -50,14 +51,10 @@ class AudiencesMixin:
             "fields": _AUDIENCE_FIELDS,
             "limit": limit,
         }
-        result = await self._get(
-            f"/{self._ad_account_id}/customaudiences", params
-        )
+        result = await self._get(f"/{self._ad_account_id}/customaudiences", params)
         return result.get("data", [])
 
-    async def get_custom_audience(
-        self, audience_id: str
-    ) -> dict[str, Any]:
+    async def get_custom_audience(self, audience_id: str) -> dict[str, Any]:
         """カスタムオーディエンス詳細を取得する
 
         Args:
@@ -110,13 +107,9 @@ class AudiencesMixin:
         if customer_file_source:
             data["customer_file_source"] = customer_file_source
 
-        return await self._post(
-            f"/{self._ad_account_id}/customaudiences", data
-        )
+        return await self._post(f"/{self._ad_account_id}/customaudiences", data)
 
-    async def delete_custom_audience(
-        self, audience_id: str
-    ) -> dict[str, Any]:
+    async def delete_custom_audience(self, audience_id: str) -> dict[str, Any]:
         """カスタムオーディエンスを削除する
 
         Args:
@@ -161,6 +154,4 @@ class AudiencesMixin:
             "lookalike_spec": json.dumps(lookalike_spec),
         }
 
-        return await self._post(
-            f"/{self._ad_account_id}/customaudiences", data
-        )
+        return await self._post(f"/{self._ad_account_id}/customaudiences", data)

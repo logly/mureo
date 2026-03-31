@@ -65,26 +65,30 @@ class _KeywordsAnalysisMixin:
         try:
             response = await self._search(query)
         except Exception:
-            logger.warning("キーワードパフォーマンス取得に失敗: campaign_id=%s", campaign_id)
+            logger.warning(
+                "キーワードパフォーマンス取得に失敗: campaign_id=%s", campaign_id
+            )
             return []
         results: list[dict[str, Any]] = []
         for row in response:
             cost_micros = row.metrics.cost_micros
             raw_match = row.ad_group_criterion.keyword.match_type
             raw_status = row.ad_group_criterion.status
-            results.append({
-                "criterion_id": str(row.ad_group_criterion.criterion_id),
-                "ad_group_id": str(row.ad_group.id),
-                "text": row.ad_group_criterion.keyword.text,
-                "match_type": _resolve_enum(raw_match, _MATCH_TYPE_MAP),
-                "status": _resolve_enum(raw_status, _STATUS_MAP),
-                "metrics": {
-                    "impressions": row.metrics.impressions,
-                    "clicks": row.metrics.clicks,
-                    "cost": cost_micros / 1_000_000,
-                    "conversions": row.metrics.conversions,
-                },
-            })
+            results.append(
+                {
+                    "criterion_id": str(row.ad_group_criterion.criterion_id),
+                    "ad_group_id": str(row.ad_group.id),
+                    "text": row.ad_group_criterion.keyword.text,
+                    "match_type": _resolve_enum(raw_match, _MATCH_TYPE_MAP),
+                    "status": _resolve_enum(raw_status, _STATUS_MAP),
+                    "metrics": {
+                        "impressions": row.metrics.impressions,
+                        "clicks": row.metrics.clicks,
+                        "cost": cost_micros / 1_000_000,
+                        "conversions": row.metrics.conversions,
+                    },
+                }
+            )
         return results
 
     # =================================================================
@@ -135,9 +139,15 @@ class _KeywordsAnalysisMixin:
             "avg_cvr": round(avg_cvr, 4),
             "recommendations": recommendations,
             "summary": {
-                "high_priority": len([r for r in recommendations if r["priority"] == "HIGH"]),
-                "medium_priority": len([r for r in recommendations if r["priority"] == "MEDIUM"]),
-                "low_priority": len([r for r in recommendations if r["priority"] == "LOW"]),
+                "high_priority": len(
+                    [r for r in recommendations if r["priority"] == "HIGH"]
+                ),
+                "medium_priority": len(
+                    [r for r in recommendations if r["priority"] == "MEDIUM"]
+                ),
+                "low_priority": len(
+                    [r for r in recommendations if r["priority"] == "LOW"]
+                ),
             },
         }
 
@@ -165,7 +175,12 @@ class _KeywordsAnalysisMixin:
         }
 
         # Rule 1: BROAD & CV=0 & コスト>目標CPA → narrow_to_phrase (HIGH)
-        if match_type == "BROAD" and conversions == 0 and resolved_cpa is not None and cost > resolved_cpa:
+        if (
+            match_type == "BROAD"
+            and conversions == 0
+            and resolved_cpa is not None
+            and cost > resolved_cpa
+        ):
             return {
                 **base,
                 "action": "narrow_to_phrase",
@@ -248,8 +263,8 @@ class _KeywordsAnalysisMixin:
         keyword_groups = self._group_keywords_by_normalized_key(response)
 
         # 重複を抽出
-        duplicate_groups, total_removable, total_waste = (
-            self._extract_duplicate_groups(keyword_groups)
+        duplicate_groups, total_removable, total_waste = self._extract_duplicate_groups(
+            keyword_groups
         )
 
         # 重複数降順でソート
@@ -343,33 +358,35 @@ class _KeywordsAnalysisMixin:
             total_waste += waste
             total_removable += len(removable)
 
-            duplicate_groups.append({
-                "keyword": best["text"],
-                "match_type": best["match_type"],
-                "duplicate_count": len(entries),
-                "keep": {
-                    "criterion_id": best["criterion_id"],
-                    "ad_group_id": best["ad_group_id"],
-                    "ad_group_name": best["ad_group_name"],
-                    "status": best["status"],
-                    "metrics": best["metrics"],
-                    "reason": "パフォーマンスが最も高いため残す",
-                },
-                "remove": [
-                    {
-                        "criterion_id": e["criterion_id"],
-                        "ad_group_id": e["ad_group_id"],
-                        "ad_group_name": e["ad_group_name"],
-                        "status": e["status"],
-                        "metrics": e["metrics"],
-                        "reason": (
-                            "重複キーワード: "
-                            f"「{best['ad_group_name']}」に同じKWがあり、"
-                            "そちらのパフォーマンスが優れているため削除推奨"
-                        ),
-                    }
-                    for e in removable
-                ],
-            })
+            duplicate_groups.append(
+                {
+                    "keyword": best["text"],
+                    "match_type": best["match_type"],
+                    "duplicate_count": len(entries),
+                    "keep": {
+                        "criterion_id": best["criterion_id"],
+                        "ad_group_id": best["ad_group_id"],
+                        "ad_group_name": best["ad_group_name"],
+                        "status": best["status"],
+                        "metrics": best["metrics"],
+                        "reason": "パフォーマンスが最も高いため残す",
+                    },
+                    "remove": [
+                        {
+                            "criterion_id": e["criterion_id"],
+                            "ad_group_id": e["ad_group_id"],
+                            "ad_group_name": e["ad_group_name"],
+                            "status": e["status"],
+                            "metrics": e["metrics"],
+                            "reason": (
+                                "重複キーワード: "
+                                f"「{best['ad_group_name']}」に同じKWがあり、"
+                                "そちらのパフォーマンスが優れているため削除推奨"
+                            ),
+                        }
+                        for e in removable
+                    ],
+                }
+            )
 
         return duplicate_groups, total_removable, total_waste

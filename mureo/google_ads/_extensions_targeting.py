@@ -70,7 +70,9 @@ class _TargetingMixin:
     def _validate_recommendation_type(rec_type: str) -> str: ...  # type: ignore[empty-body]
     @staticmethod
     def _validate_resource_name(  # type: ignore[empty-body]
-        value: str, pattern: re.Pattern[str], field_name: str,
+        value: str,
+        pattern: re.Pattern[str],
+        field_name: str,
     ) -> str: ...
 
     def _get_service(self, service_name: str) -> Any: ...
@@ -157,12 +159,15 @@ class _TargetingMixin:
         # 常に3デバイス全て返す（明示設定なし＝デフォルト配信中）
         all_devices = ["DESKTOP", "MOBILE", "TABLET"]
         return [
-            found.get(d, {
-                "criterion_id": None,
-                "device_type": d,
-                "bid_modifier": None,
-                "enabled": True,
-            })
+            found.get(
+                d,
+                {
+                    "criterion_id": None,
+                    "device_type": d,
+                    "bid_modifier": None,
+                    "enabled": True,
+                },
+            )
             for d in all_devices
         ]
 
@@ -180,7 +185,9 @@ class _TargetingMixin:
         valid_devices = {"MOBILE", "DESKTOP", "TABLET"}
         invalid = enabled_devices - valid_devices
         if invalid:
-            raise ValueError(f"無効なデバイスタイプ: {invalid}。有効値: {valid_devices}")
+            raise ValueError(
+                f"無効なデバイスタイプ: {invalid}。有効値: {valid_devices}"
+            )
         if not enabled_devices:
             raise ValueError("最低1つのデバイスを有効にしてください")
 
@@ -227,11 +234,14 @@ class _TargetingMixin:
                 criterion_id = existing["criterion_id"]
                 criterion = op.update
                 criterion.resource_name = cc_service.campaign_criterion_path(
-                    self._customer_id, campaign_id, criterion_id,
+                    self._customer_id,
+                    campaign_id,
+                    criterion_id,
                 )
                 criterion.bid_modifier = new_modifier
                 self._client.copy_from(
-                    op.update_mask, PbFieldMask(paths=["bid_modifier"]),
+                    op.update_mask,
+                    PbFieldMask(paths=["bid_modifier"]),
                 )
                 op_type = "UPDATE"
             else:
@@ -240,19 +250,23 @@ class _TargetingMixin:
                     "CampaignService",
                 ).campaign_path(self._customer_id, campaign_id)
                 criterion.device.type_ = getattr(
-                    self._client.enums.DeviceEnum, device_type,
+                    self._client.enums.DeviceEnum,
+                    device_type,
                 )
                 criterion.bid_modifier = new_modifier
                 op_type = "CREATE"
 
             try:
                 resp = cc_service.mutate_campaign_criteria(
-                    customer_id=self._customer_id, operations=[op],
+                    customer_id=self._customer_id,
+                    operations=[op],
                 )
                 updated.extend(r.resource_name for r in resp.results)
                 logger.info(
                     "デバイス %s: %s 成功 (bid_modifier=%.1f)",
-                    device_type, op_type, new_modifier,
+                    device_type,
+                    op_type,
+                    new_modifier,
                 )
             except Exception as exc:
                 detail = (
@@ -262,14 +276,15 @@ class _TargetingMixin:
                 )
                 logger.error(
                     "デバイス %s: %s 失敗 (bid_modifier=%.1f): %s",
-                    device_type, op_type, new_modifier, detail,
+                    device_type,
+                    op_type,
+                    new_modifier,
+                    detail,
                 )
                 errors.append(f"{device_type}({op_type}): {detail}")
 
         if not updated and errors:
-            raise ValueError(
-                f"全デバイスの設定に失敗しました: {'; '.join(errors)}"
-            )
+            raise ValueError(f"全デバイスの設定に失敗しました: {'; '.join(errors)}")
 
         return {
             "message": "デバイスターゲティングを更新しました",

@@ -75,6 +75,7 @@ def _select_account(
         print("無効な選択です。後から設定できます。")
         return None
 
+
 _META_GRAPH_API_BASE = "https://graph.facebook.com/v21.0"
 _META_AUTH_URL = "https://www.facebook.com/v21.0/dialog/oauth"
 _META_OAUTH_SCOPES = "ads_management,ads_read"
@@ -134,7 +135,8 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
             if received_state != self.server.expected_state:
                 self.server.error = "state パラメータが一致しません（CSRF検証失敗）"
                 self._send_html(
-                    "認証エラー: stateパラメータが一致しません。", status=403,
+                    "認証エラー: stateパラメータが一致しません。",
+                    status=403,
                 )
                 return
 
@@ -520,7 +522,9 @@ async def setup_google_ads(
     client_secret = input_func("OAuth Client Secret: ").strip()
 
     # ブラウザOAuthフロー
-    print("\nブラウザが開きます。Googleアカウントでログインし、アクセスを許可してください...")
+    print(
+        "\nブラウザが開きます。Googleアカウントでログインし、アクセスを許可してください..."
+    )
     oauth_result = await run_google_oauth(
         client_id=client_id,
         client_secret=client_secret,
@@ -647,9 +651,7 @@ async def _exchange_code_for_short_token(
             data = response.json()
             return data["access_token"]
     except Exception as exc:
-        raise RuntimeError(
-            f"Short-Lived Token の取得に失敗しました: {exc}"
-        ) from exc
+        raise RuntimeError(f"Short-Lived Token の取得に失敗しました: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -696,9 +698,7 @@ async def _exchange_short_for_long_token(
                 expires_in=data.get("expires_in", 5184000),
             )
     except Exception as exc:
-        raise RuntimeError(
-            f"Long-Lived Token への変換に失敗しました: {exc}"
-        ) from exc
+        raise RuntimeError(f"Long-Lived Token への変換に失敗しました: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -737,9 +737,7 @@ async def list_meta_ad_accounts(access_token: str) -> list[dict[str, Any]]:
             data = response.json()
             return data.get("data", [])
     except Exception as exc:
-        raise RuntimeError(
-            f"広告アカウント一覧の取得に失敗しました: {exc}"
-        ) from exc
+        raise RuntimeError(f"広告アカウント一覧の取得に失敗しました: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -846,9 +844,7 @@ async def setup_meta_ads(
         MetaAdsCredentials
     """
     resolved_path = (
-        credentials_path
-        if credentials_path is not None
-        else _resolve_default_path()
+        credentials_path if credentials_path is not None else _resolve_default_path()
     )
 
     # ガイダンス表示

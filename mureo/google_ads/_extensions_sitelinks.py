@@ -74,7 +74,9 @@ class _SitelinksMixin:
         """
 
         campaign_response = await self._search(campaign_query)
-        results = [{**map_sitelink(row), "level": "campaign"} for row in campaign_response]
+        results = [
+            {**map_sitelink(row), "level": "campaign"} for row in campaign_response
+        ]
 
         # 重複を避けるため、既存のasset IDを記録
         seen_ids: set[str | None] = {r.get("id") for r in results}

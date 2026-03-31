@@ -25,6 +25,7 @@ class _HasIdAndName(Protocol):
     id: int
     name: str
 
+
 # ---------------------------------------------------------------------------
 # protobuf enum int → 文字列 マッピング定数
 # ---------------------------------------------------------------------------
@@ -39,8 +40,7 @@ _ENTITY_STATUS_MAP: dict[int, str] = {
 
 # protobuf enum から自動生成 — 手動転記ミスを原理的に排除
 _BIDDING_STRATEGY_MAP: dict[int, str] = {
-    member.value: member.name
-    for member in BiddingStrategyTypeEnum.BiddingStrategyType
+    member.value: member.name for member in BiddingStrategyTypeEnum.BiddingStrategyType
 }
 # v23ではMAXIMIZE_CLICKSがTARGET_SPEND(enum=9)に統合されている。
 # 管理画面では「クリック数の最大化」と表示されるため、ユーザー向け名称に合わせる。
@@ -48,14 +48,12 @@ _BIDDING_STRATEGY_MAP[9] = "MAXIMIZE_CLICKS"
 
 # protobuf enum から自動生成
 _AD_TYPE_MAP: dict[int, str] = {
-    member.value: member.name
-    for member in AdTypeEnum.AdType
+    member.value: member.name for member in AdTypeEnum.AdType
 }
 
 # protobuf enum から自動生成
 _AD_STRENGTH_MAP: dict[int, str] = {
-    member.value: member.name
-    for member in AdStrengthEnum.AdStrength
+    member.value: member.name for member in AdStrengthEnum.AdStrength
 }
 
 _SERVING_STATUS_MAP: dict[int, str] = {
@@ -238,9 +236,7 @@ def map_campaign(campaign: Any) -> dict[str, Any]:
     return result
 
 
-def map_ad_group(
-    ad_group: Any, campaign: Any | None = None
-) -> dict[str, Any]:
+def map_ad_group(ad_group: Any, campaign: Any | None = None) -> dict[str, Any]:
     """広告グループ情報を整形"""
     result: dict[str, Any] = {
         "id": str(ad_group.id),
@@ -290,7 +286,10 @@ def map_keyword_quality_info(
     result = map_keyword(criterion, campaign, ad_group)
 
     # system_serving_status
-    if hasattr(criterion, "system_serving_status") and criterion.system_serving_status is not None:
+    if (
+        hasattr(criterion, "system_serving_status")
+        and criterion.system_serving_status is not None
+    ):
         raw = criterion.system_serving_status
         if isinstance(raw, int):
             serving_map: dict[int, str] = {
@@ -345,7 +344,9 @@ def map_keyword(
         "match_type": (
             str(keyword.keyword.match_type) if hasattr(keyword, "keyword") else None
         ),
-        "status": map_entity_status(keyword.status) if hasattr(keyword, "status") else None,
+        "status": (
+            map_entity_status(keyword.status) if hasattr(keyword, "status") else None
+        ),
     }
     # approval_status=0 (UNSPECIFIED) は protobuf 未設定時のデフォルト値。
     # is not None で 0 を通過させ、明示的に返却する。
@@ -423,8 +424,6 @@ def map_ad_performance_report(rows: list[Any]) -> list[dict[str, Any]]:
 def _micros_to_currency(micros: int) -> float:
     """micros 単位を通貨単位に変換する（通貨非依存）。"""
     return micros / 1_000_000
-
-
 
 
 def _safe_int(obj: Any, attr: str) -> int:
@@ -534,7 +533,9 @@ def map_conversion_action(action: Any) -> dict[str, Any]:
         "id": str(action.id) if hasattr(action, "id") else None,
         "name": _safe_str(action, "name"),
         "type": str(action.type_) if hasattr(action, "type_") else None,
-        "status": map_entity_status(action.status) if hasattr(action, "status") else None,
+        "status": (
+            map_entity_status(action.status) if hasattr(action, "status") else None
+        ),
         "category": str(action.category) if hasattr(action, "category") else None,
     }
 

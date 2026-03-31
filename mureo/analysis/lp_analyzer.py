@@ -28,9 +28,7 @@ logger = logging.getLogger(__name__)
 _MAX_BODY_BYTES = 500_000  # 500KB
 _TIMEOUT_SECONDS = 15
 _MAX_MAIN_TEXT_LENGTH = 1500
-_USER_AGENT = (
-    "Mozilla/5.0 (compatible; MarketingAgent/1.0; +https://example.com/bot)"
-)
+_USER_AGENT = "Mozilla/5.0 (compatible; MarketingAgent/1.0; +https://example.com/bot)"
 
 # 価格パターン（日本円）
 _PRICE_PATTERN = re.compile(r"[￥¥][\d,]+|[\d,]+円")
@@ -39,7 +37,15 @@ _PRICE_PATTERN = re.compile(r"[￥¥][\d,]+|[\d,]+円")
 _INDUSTRY_KEYWORDS: dict[str, tuple[str, ...]] = {
     "美容": ("エステ", "脱毛", "美容", "化粧品", "スキンケア", "コスメ", "美白"),
     "不動産": ("物件", "賃貸", "マンション", "不動産", "住宅", "リフォーム", "建売"),
-    "SaaS": ("クラウド", "SaaS", "ツール", "プラン", "無料トライアル", "API", "ダッシュボード"),
+    "SaaS": (
+        "クラウド",
+        "SaaS",
+        "ツール",
+        "プラン",
+        "無料トライアル",
+        "API",
+        "ダッシュボード",
+    ),
     "EC": ("通販", "ショップ", "カート", "送料無料", "お買い物", "購入", "注文"),
     "医療": ("クリニック", "病院", "診療", "治療", "医師", "予約", "健康診断"),
     "教育": ("スクール", "講座", "学習", "資格", "セミナー", "研修", "受講"),
@@ -56,14 +62,16 @@ _EXCLUDE_TAGS = frozenset({"script", "style", "nav", "footer", "header", "noscri
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
 
 # SSRF対策: ブロックするホスト名
-_BLOCKED_HOSTS = frozenset({
-    "localhost",
-    "127.0.0.1",
-    "0.0.0.0",  # nosec B104
-    "::1",
-    "169.254.169.254",  # クラウドメタデータサービス
-    "metadata.google.internal",
-})
+_BLOCKED_HOSTS = frozenset(
+    {
+        "localhost",
+        "127.0.0.1",
+        "0.0.0.0",  # nosec B104
+        "::1",
+        "169.254.169.254",  # クラウドメタデータサービス
+        "metadata.google.internal",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -161,8 +169,15 @@ class LPAnalyzer:
                 resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)
                 for _, _, _, _, addr in resolved:
                     ip = ipaddress.ip_address(addr[0])
-                    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                        raise ValueError("内部ネットワークに解決されるURLは許可されていません")
+                    if (
+                        ip.is_private
+                        or ip.is_loopback
+                        or ip.is_link_local
+                        or ip.is_reserved
+                    ):
+                        raise ValueError(
+                            "内部ネットワークに解決されるURLは許可されていません"
+                        )
             except socket.gaierror:
                 pass  # DNS解決失敗はHTTPリクエスト時にエラーになる
 
@@ -243,7 +258,9 @@ class LPAnalyzer:
     @staticmethod
     def _extract_headings(soup: BeautifulSoup, tag_name: str) -> tuple[str, ...]:
         return tuple(
-            h.get_text(strip=True) for h in soup.find_all(tag_name) if h.get_text(strip=True)
+            h.get_text(strip=True)
+            for h in soup.find_all(tag_name)
+            if h.get_text(strip=True)
         )
 
     @staticmethod

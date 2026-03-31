@@ -31,9 +31,13 @@ logger = logging.getLogger(__name__)
 
 
 _VALID_STATUSES = frozenset({"ENABLED", "PAUSED", "REMOVED"})
-_SMART_BIDDING_STRATEGIES = frozenset({
-    "MAXIMIZE_CONVERSIONS", "TARGET_CPA", "TARGET_ROAS",
-})
+_SMART_BIDDING_STRATEGIES = frozenset(
+    {
+        "MAXIMIZE_CONVERSIONS",
+        "TARGET_CPA",
+        "TARGET_ROAS",
+    }
+)
 _VALID_MATCH_TYPES = frozenset({"BROAD", "PHRASE", "EXACT"})
 _VALID_RECOMMENDATION_TYPES = frozenset(
     {
@@ -92,9 +96,7 @@ def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
                         "IDが正しいか確認してください。"
                         "一覧取得ツール（ads.list等）で最新のIDを取得してから再試行してください。"
                     ) from exc
-                raise RuntimeError(
-                    f"{label}の処理中にエラーが発生しました。"
-                ) from exc
+                raise RuntimeError(f"{label}の処理中にエラーが発生しました。") from exc
 
         return wrapper  # type: ignore[return-value]
 
@@ -183,10 +185,7 @@ class GoogleAdsApiClient(
         # login_customer_id の決定順序:
         # 1. 明示的に指定された値
         # 2. customer_id 自身（独立アカウント用フォールバック）
-        resolved_login_id = (
-            login_customer_id
-            or customer_id.replace("-", "")
-        )
+        resolved_login_id = login_customer_id or customer_id.replace("-", "")
         self._client = GoogleAdsClient(
             credentials=credentials,
             developer_token=developer_token,
@@ -209,9 +208,7 @@ class GoogleAdsApiClient(
         logger.info("_search 開始: %s", query_hint)
 
         def _do_search() -> list[Any]:
-            response = ga_service.search(
-                customer_id=self._customer_id, query=query
-            )
+            response = ga_service.search(customer_id=self._customer_id, query=query)
             return list(response)
 
         loop = asyncio.get_running_loop()
@@ -228,7 +225,9 @@ class GoogleAdsApiClient(
         return str(exc)
 
     @staticmethod
-    def _has_error_code(exc: GoogleAdsException, attr_name: str, error_name: str) -> bool:
+    def _has_error_code(
+        exc: GoogleAdsException, attr_name: str, error_name: str
+    ) -> bool:
         """特定のエラーコードを持つか判定"""
         for error in exc.failure.errors:
             err_val = getattr(error.error_code, attr_name, None)
@@ -290,9 +289,7 @@ class GoogleAdsApiClient(
             camp = map_campaign(row.campaign)
             # campaign_budget.amount_micros から日予算（円）を算出
             if hasattr(row, "campaign_budget") and row.campaign_budget.amount_micros:
-                camp["daily_budget"] = (
-                    row.campaign_budget.amount_micros / 1_000_000
-                )
+                camp["daily_budget"] = row.campaign_budget.amount_micros / 1_000_000
             results.append(camp)
         return results
 
@@ -375,8 +372,7 @@ class GoogleAdsApiClient(
         )
         campaign.status = self._client.enums.CampaignStatusEnum.PAUSED
         campaign.contains_eu_political_advertising = (
-            self._client.enums.EuPoliticalAdvertisingStatusEnum
-            .DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING
+            self._client.enums.EuPoliticalAdvertisingStatusEnum.DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING
         )
         campaign.network_settings.target_google_search = True
         campaign.network_settings.target_search_network = True
@@ -397,17 +393,21 @@ class GoogleAdsApiClient(
             if not self._has_error_code(e, "campaign_error", "DUPLICATE_CAMPAIGN_NAME"):
                 detail = self._extract_error_detail(e)
                 logger.error("キャンペーン作成に失敗: %s", detail)
-                raise RuntimeError("キャンペーン作成の処理中にエラーが発生しました。") from e
+                raise RuntimeError(
+                    "キャンペーン作成の処理中にエラーが発生しました。"
+                ) from e
             logger.warning("同名キャンペーンが既に存在: name=%s", params["name"])
             return await self._find_campaign_by_name(params["name"])
 
-    _SUPPORTED_BIDDING_STRATEGIES = frozenset({
-        "MAXIMIZE_CLICKS",
-        "MANUAL_CPC",
-        "MAXIMIZE_CONVERSIONS",
-        "TARGET_CPA",
-        "TARGET_ROAS",
-    })
+    _SUPPORTED_BIDDING_STRATEGIES = frozenset(
+        {
+            "MAXIMIZE_CLICKS",
+            "MANUAL_CPC",
+            "MAXIMIZE_CONVERSIONS",
+            "TARGET_CPA",
+            "TARGET_ROAS",
+        }
+    )
 
     def _set_bidding_strategy(
         self, campaign: Any, strategy: str, params: dict[str, Any]
@@ -798,25 +798,29 @@ class GoogleAdsApiClient(
             conversions = float(row.metrics.conversions)
             cost = cost_micros / 1_000_000
             cpa = cost / conversions if conversions > 0 else 0
-            results.append({
-                "campaign_id": str(row.campaign.id),
-                "campaign_name": str(row.campaign.name),
-                "network_type": (
-                    "SEARCH" if network_type in ("SEARCH", "2") else "SEARCH_PARTNERS"
-                ),
-                "network_label": (
-                    "Google検索" if network_type in ("SEARCH", "2") else "検索パートナー"
-                ),
-                "impressions": int(row.metrics.impressions),
-                "clicks": int(row.metrics.clicks),
-                "cost": round(cost, 0),
-                "conversions": conversions,
-                "ctr": round(float(row.metrics.ctr) * 100, 2),
-                "average_cpc": round(
-                    float(row.metrics.average_cpc) / 1_000_000, 0
-                ),
-                "cost_per_conversion": round(cpa, 0),
-            })
+            results.append(
+                {
+                    "campaign_id": str(row.campaign.id),
+                    "campaign_name": str(row.campaign.name),
+                    "network_type": (
+                        "SEARCH"
+                        if network_type in ("SEARCH", "2")
+                        else "SEARCH_PARTNERS"
+                    ),
+                    "network_label": (
+                        "Google検索"
+                        if network_type in ("SEARCH", "2")
+                        else "検索パートナー"
+                    ),
+                    "impressions": int(row.metrics.impressions),
+                    "clicks": int(row.metrics.clicks),
+                    "cost": round(cost, 0),
+                    "conversions": conversions,
+                    "ctr": round(float(row.metrics.ctr) * 100, 2),
+                    "average_cpc": round(float(row.metrics.average_cpc) / 1_000_000, 0),
+                    "cost_per_conversion": round(cpa, 0),
+                }
+            )
         return results
 
     async def get_ad_performance_report(
@@ -865,9 +869,7 @@ class GoogleAdsApiClient(
             )
         amount = params["amount"]
         if amount <= 0:
-            raise ValueError(
-                f"日予算は正の数値を指定してください（指定値: {amount}）"
-            )
+            raise ValueError(f"日予算は正の数値を指定してください（指定値: {amount}）")
         # 注意: BudgetGuardによる絶対上限チェックはManaged側で実施する。
         budget_service = self._get_service("CampaignBudgetService")
         budget_op = self._client.get_type("CampaignBudgetOperation")
@@ -910,7 +912,9 @@ class GoogleAdsApiClient(
                 "amount_micros": row.campaign_budget.amount_micros,
                 "note": "同名の予算が既に存在するため、既存の予算を返しました",
             }
-        raise ValueError(f"同名予算 '{name}' が存在するはずですが、検索で見つかりませんでした")
+        raise ValueError(
+            f"同名予算 '{name}' が存在するはずですが、検索で見つかりませんでした"
+        )
 
     def _period_to_date_clause(self, period: str) -> str:
         """GAQL の日付条件句を返す。

@@ -18,18 +18,42 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
 
-_VALID_CONVERSION_ACTION_TYPES = frozenset({
-    "WEBPAGE", "UPLOAD_CLICKS", "UPLOAD_CALLS", "AD_CALL",
-    "WEBSITE_CALL", "STORE_SALES_DIRECT_UPLOAD", "STORE_SALES",
-})
-_VALID_CONVERSION_ACTION_CATEGORIES = frozenset({
-    "DEFAULT", "PAGE_VIEW", "PURCHASE", "SIGNUP", "DOWNLOAD",
-    "ADD_TO_CART", "BEGIN_CHECKOUT", "SUBSCRIBE_PAID", "PHONE_CALL_LEAD",
-    "IMPORTED_LEAD", "SUBMIT_LEAD_FORM", "BOOK_APPOINTMENT",
-    "REQUEST_QUOTE", "GET_DIRECTIONS", "OUTBOUND_CLICK", "CONTACT",
-    "ENGAGEMENT", "STORE_VISIT", "STORE_SALE",
-    "QUALIFIED_LEAD", "CONVERTED_LEAD",
-})
+_VALID_CONVERSION_ACTION_TYPES = frozenset(
+    {
+        "WEBPAGE",
+        "UPLOAD_CLICKS",
+        "UPLOAD_CALLS",
+        "AD_CALL",
+        "WEBSITE_CALL",
+        "STORE_SALES_DIRECT_UPLOAD",
+        "STORE_SALES",
+    }
+)
+_VALID_CONVERSION_ACTION_CATEGORIES = frozenset(
+    {
+        "DEFAULT",
+        "PAGE_VIEW",
+        "PURCHASE",
+        "SIGNUP",
+        "DOWNLOAD",
+        "ADD_TO_CART",
+        "BEGIN_CHECKOUT",
+        "SUBSCRIBE_PAID",
+        "PHONE_CALL_LEAD",
+        "IMPORTED_LEAD",
+        "SUBMIT_LEAD_FORM",
+        "BOOK_APPOINTMENT",
+        "REQUEST_QUOTE",
+        "GET_DIRECTIONS",
+        "OUTBOUND_CLICK",
+        "CONTACT",
+        "ENGAGEMENT",
+        "STORE_VISIT",
+        "STORE_SALE",
+        "QUALIFIED_LEAD",
+        "CONVERTED_LEAD",
+    }
+)
 _VALID_CONVERSION_ACTION_STATUSES = frozenset({"ENABLED", "HIDDEN", "REMOVED"})
 
 
@@ -103,26 +127,24 @@ class _ConversionsMixin:
         for row in response:
             cid = str(row.campaign.id)
             cname = str(row.campaign.name)
-            action_name = str(
-                getattr(row.segments, "conversion_action_name", "")
-            )
+            action_name = str(getattr(row.segments, "conversion_action_name", ""))
             cv_date = str(getattr(row.segments, "date", ""))
             cvs = float(row.metrics.conversions)
-            cv_value = float(
-                getattr(row.metrics, "conversions_value", 0)
-            )
+            cv_value = float(getattr(row.metrics, "conversions_value", 0))
 
             campaign_cv_totals[cid] = campaign_cv_totals.get(cid, 0) + cvs
 
             # 日別明細
-            daily_details.append({
-                "date": cv_date,
-                "campaign_id": cid,
-                "campaign_name": cname,
-                "conversion_action_name": action_name,
-                "conversions": cvs,
-                "conversions_value": cv_value,
-            })
+            daily_details.append(
+                {
+                    "date": cv_date,
+                    "campaign_id": cid,
+                    "campaign_name": cname,
+                    "conversion_action_name": action_name,
+                    "conversions": cvs,
+                    "conversions_value": cv_value,
+                }
+            )
 
             # アクション別サマリー集計
             summary_key = f"{cid}:{action_name}"
@@ -169,9 +191,7 @@ class _ConversionsMixin:
                 total_cost = campaign_costs.get(cid, 0)
                 total_cv = campaign_cv_totals.get(cid, 0)
                 if total_cv > 0 and total_cost > 0:
-                    action["cost_per_conversion"] = round(
-                        total_cost / total_cv, 0
-                    )
+                    action["cost_per_conversion"] = round(total_cost / total_cv, 0)
                 else:
                     action["cost_per_conversion"] = 0
         except Exception:
@@ -202,19 +222,21 @@ class _ConversionsMixin:
         try:
             lp_response = await self._search(lp_query)
             for row in lp_response:
-                landing_pages.append({
-                    "date": str(getattr(row.segments, "date", "")),
-                    "landing_page_url": str(
-                        row.landing_page_view.unexpanded_final_url
-                    ),
-                    "campaign_id": str(row.campaign.id),
-                    "campaign_name": str(row.campaign.name),
-                    "conversions": float(row.metrics.conversions),
-                    "conversions_value": float(
-                        getattr(row.metrics, "conversions_value", 0)
-                    ),
-                    "clicks": int(row.metrics.clicks),
-                })
+                landing_pages.append(
+                    {
+                        "date": str(getattr(row.segments, "date", "")),
+                        "landing_page_url": str(
+                            row.landing_page_view.unexpanded_final_url
+                        ),
+                        "campaign_id": str(row.campaign.id),
+                        "campaign_name": str(row.campaign.name),
+                        "conversions": float(row.metrics.conversions),
+                        "conversions_value": float(
+                            getattr(row.metrics, "conversions_value", 0)
+                        ),
+                        "clicks": int(row.metrics.clicks),
+                    }
+                )
         except Exception:
             logger.warning("ランディングページ別CV取得に失敗")
 
@@ -251,9 +273,7 @@ class _ConversionsMixin:
         return None
 
     @_wrap_mutate_error("コンバージョンアクション作成")
-    async def create_conversion_action(
-        self, params: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def create_conversion_action(self, params: dict[str, Any]) -> dict[str, Any]:
         """コンバージョンアクション作成"""
         name = params.get("name", "")
         if not name:
@@ -279,9 +299,7 @@ class _ConversionsMixin:
         op = self._client.get_type("ConversionActionOperation")
         action = op.create
         action.name = name
-        action.type_ = getattr(
-            self._client.enums.ConversionActionTypeEnum, action_type
-        )
+        action.type_ = getattr(self._client.enums.ConversionActionTypeEnum, action_type)
         action.category = getattr(
             self._client.enums.ConversionActionCategoryEnum, category
         )
@@ -315,9 +333,7 @@ class _ConversionsMixin:
         return {"resource_name": response.results[0].resource_name}
 
     @_wrap_mutate_error("コンバージョンアクション更新")
-    async def update_conversion_action(
-        self, params: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def update_conversion_action(self, params: dict[str, Any]) -> dict[str, Any]:
         """コンバージョンアクション更新"""
         self._validate_id(params["conversion_action_id"], "conversion_action_id")
 
@@ -326,9 +342,7 @@ class _ConversionsMixin:
         action = op.update
         action.resource_name = self._client.get_service(
             "ConversionActionService"
-        ).conversion_action_path(
-            self._customer_id, params["conversion_action_id"]
-        )
+        ).conversion_action_path(self._customer_id, params["conversion_action_id"])
 
         paths: list[str] = []
 
@@ -398,18 +412,14 @@ class _ConversionsMixin:
         return {"resource_name": response.results[0].resource_name}
 
     @_wrap_mutate_error("コンバージョンアクション削除")
-    async def remove_conversion_action(
-        self, params: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def remove_conversion_action(self, params: dict[str, Any]) -> dict[str, Any]:
         """コンバージョンアクション削除"""
         self._validate_id(params["conversion_action_id"], "conversion_action_id")
         ca_service = self._get_service("ConversionActionService")
         op = self._client.get_type("ConversionActionOperation")
         op.remove = self._client.get_service(
             "ConversionActionService"
-        ).conversion_action_path(
-            self._customer_id, params["conversion_action_id"]
-        )
+        ).conversion_action_path(self._customer_id, params["conversion_action_id"])
         response = ca_service.mutate_conversion_actions(
             customer_id=self._customer_id,
             operations=[op],
