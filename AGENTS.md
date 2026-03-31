@@ -19,7 +19,7 @@ pytest tests/ --cov=mureo --cov-report=term-missing
 
 ```
 mureo/
-├── google_ads/          # Google Ads API client (7 Mixin composition)
+├── google_ads/          # Google Ads API client (8 Mixin composition)
 │   ├── client.py        # GoogleAdsApiClient (main entry)
 │   ├── mappers.py       # Response mapping to structured dicts
 │   ├── _ads.py          # AdsMixin (create/update/status/list)
@@ -29,26 +29,36 @@ mureo/
 │   ├── _extensions.py   # ExtensionsMixin (sitelinks/callouts/conversions/targeting)
 │   ├── _monitoring.py   # MonitoringMixin (anomaly detection/reporting)
 │   ├── _creative.py     # CreativeMixin (LP analysis/message match)
+│   ├── _media.py        # MediaMixin (image asset upload)
 │   ├── _rsa_validator.py     # RSA ad validator
 │   ├── _rsa_insights.py      # RSA asset performance insights
 │   ├── _intent_classifier.py # Search term intent classification
 │   └── _message_match.py     # Message match evaluator
-├── meta_ads/            # Meta Ads API client (8 Mixin composition)
+├── meta_ads/            # Meta Ads API client (15 Mixin composition)
 │   ├── client.py        # MetaAdsApiClient (main entry)
 │   ├── mappers.py       # Response mapping
 │   ├── _campaigns.py    # CampaignsMixin
 │   ├── _ad_sets.py      # AdSetsMixin
 │   ├── _ads.py          # AdsMixin
-│   ├── _creatives.py    # CreativesMixin
+│   ├── _creatives.py    # CreativesMixin (image/carousel/collection/dynamic)
 │   ├── _audiences.py    # AudiencesMixin
 │   ├── _pixels.py       # PixelsMixin
 │   ├── _insights.py     # InsightsMixin
-│   └── _analysis.py     # AnalysisMixin
-├── mcp/                 # MCP server (42 tools: 28 Google Ads + 14 Meta Ads)
+│   ├── _analysis.py     # AnalysisMixin
+│   ├── _catalog.py      # CatalogMixin (product catalogs/feeds)
+│   ├── _conversions.py  # ConversionsMixin (Conversions API / CAPI)
+│   ├── _hash_utils.py   # SHA-256 PII hashing for CAPI
+│   ├── _leads.py        # LeadsMixin (lead forms/leads)
+│   ├── _page_posts.py   # PagePostsMixin (page posts/boost)
+│   ├── _instagram.py    # InstagramMixin (accounts/media/boost)
+│   ├── _split_test.py   # SplitTestMixin (A/B split tests)
+│   └── _ad_rules.py     # AdRulesMixin (automated rules)
+├── mcp/                 # MCP server (81 tools: 29 Google Ads + 52 Meta Ads)
 │   ├── server.py        # MCP Server entry point (stdio-based)
-│   ├── tools_google_ads.py       # Google Ads tool definitions (28)
-│   ├── tools_meta_ads.py         # Meta Ads tool definitions (14)
+│   ├── tools_google_ads.py       # Google Ads tool definitions (29)
+│   ├── tools_meta_ads.py         # Meta Ads tool definitions (52)
 │   ├── _handlers_google_ads.py   # Google Ads handler implementations
+│   ├── _handlers_meta_ads.py     # Meta Ads handler implementations
 │   └── _helpers.py               # Shared handler utilities
 ├── cli/                 # Typer CLI wrapper
 │   ├── main.py          # CLI entry point (`mureo` command)
@@ -66,9 +76,9 @@ mureo/
 └── auth_setup.py        # Interactive setup wizard (browser OAuth flow)
 ```
 
-## MCP Tools (42 total)
+## MCP Tools (81 total)
 
-### Google Ads (28 tools)
+### Google Ads (29 tools)
 
 | Category | Tools |
 |----------|-------|
@@ -79,16 +89,27 @@ mureo/
 | Negative Keywords (2) | `negative_keywords.list`, `negative_keywords.add` |
 | Budget (2) | `budget.get`, `budget.update` |
 | Analysis (6) | `performance.report`, `search_terms.report`, `search_terms.review`, `auction_insights.analyze`, `cpc.detect_trend`, `device.analyze` |
+| Assets (1) | `assets.upload_image` |
 
-### Meta Ads (14 tools)
+### Meta Ads (52 tools)
 
 | Category | Tools |
 |----------|-------|
 | Campaigns (4) | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update` |
 | Ad Sets (3) | `ad_sets.list`, `ad_sets.create`, `ad_sets.update` |
 | Ads (3) | `ads.list`, `ads.create`, `ads.update` |
+| Creatives (2) | `creatives.create_carousel`, `creatives.create_collection` |
+| Images (1) | `images.upload_file` |
 | Insights (2) | `insights.report`, `insights.breakdown` |
 | Audiences (2) | `audiences.list`, `audiences.create` |
+| Conversions API (3) | `conversions.send`, `conversions.send_purchase`, `conversions.send_lead` |
+| Product Catalog (11) | `catalogs.list`, `catalogs.create`, `catalogs.get`, `catalogs.delete`, `products.list`, `products.add`, `products.get`, `products.update`, `products.delete`, `feeds.list`, `feeds.create` |
+| Lead Ads (5) | `lead_forms.list`, `lead_forms.get`, `lead_forms.create`, `leads.get`, `leads.get_by_ad` |
+| Videos (2) | `videos.upload`, `videos.upload_file` |
+| Split Tests (4) | `split_tests.list`, `split_tests.get`, `split_tests.create`, `split_tests.end` |
+| Ad Rules (5) | `ad_rules.list`, `ad_rules.get`, `ad_rules.create`, `ad_rules.update`, `ad_rules.delete` |
+| Page Posts (2) | `page_posts.list`, `page_posts.boost` |
+| Instagram (3) | `instagram.accounts`, `instagram.media`, `instagram.boost` |
 
 ## Design Constraints
 
@@ -113,7 +134,7 @@ mureo/
 
 ## Test Coverage
 
-- 25+ test files, 92% coverage
+- 35+ test files, 95% coverage, 1165 tests
 - Target: 80% minimum (enforced by `tool.coverage.report.fail_under`)
 - Framework: pytest + pytest-asyncio
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests
