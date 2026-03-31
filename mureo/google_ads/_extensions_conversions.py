@@ -80,7 +80,7 @@ class _ConversionsMixin:
             FROM conversion_action
             ORDER BY conversion_action.id
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         return [map_conversion_action(row.conversion_action) for row in response]
 
     async def get_conversion_performance(
@@ -95,7 +95,7 @@ class _ConversionsMixin:
         cost_per_conversion は segments.conversion_action_name と同時取得
         できないため、別クエリでキャンペーン別コストを取得しCPAを算出する。
         """
-        date_clause = self._period_to_date_clause(period)
+        date_clause = self._period_to_date_clause(period)  # type: ignore[attr-defined]
         campaign_filter = ""
         if campaign_id:
             self._validate_id(campaign_id, "campaign_id")
@@ -117,7 +117,7 @@ class _ConversionsMixin:
                 {campaign_filter}
             ORDER BY segments.date DESC
         """
-        response = await self._search(cv_query)
+        response = await self._search(cv_query)  # type: ignore[attr-defined]
 
         # 日別明細とアクション別サマリーを同時構築
         daily_details: list[dict[str, Any]] = []
@@ -179,7 +179,7 @@ class _ConversionsMixin:
                 {campaign_filter}
         """
         try:
-            cost_response = await self._search(cost_query)
+            cost_response = await self._search(cost_query)  # type: ignore[attr-defined]
             campaign_costs: dict[str, float] = {}
             for row in cost_response:
                 cid = str(row.campaign.id)
@@ -220,7 +220,7 @@ class _ConversionsMixin:
         """
         landing_pages: list[dict[str, Any]] = []
         try:
-            lp_response = await self._search(lp_query)
+            lp_response = await self._search(lp_query)  # type: ignore[attr-defined]
             for row in lp_response:
                 landing_pages.append(
                     {
@@ -267,7 +267,7 @@ class _ConversionsMixin:
             FROM conversion_action
             WHERE conversion_action.id = {conversion_action_id}
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         for row in response:
             return map_conversion_action(row.conversion_action)
         return None
@@ -440,7 +440,7 @@ class _ConversionsMixin:
             FROM conversion_action
             WHERE conversion_action.id = {conversion_action_id}
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         for row in response:
             snippets = row.conversion_action.tag_snippets
             return [map_tag_snippet(s) for s in snippets]

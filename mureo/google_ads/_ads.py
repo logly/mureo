@@ -131,7 +131,7 @@ class _AdsMixin:
             conditions.append(f"ad_group_ad.status = '{validated}'")
         if conditions:
             query += "\n            WHERE " + " AND ".join(conditions)
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         results = []
         for row in response:
             ps = row.ad_group_ad.policy_summary
@@ -186,7 +186,7 @@ class _AdsMixin:
             WHERE ad_group.id = {ad_group_id}
                 AND ad_group_ad.ad.id = {ad_id}
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         for row in response:
             ps = row.ad_group_ad.policy_summary
             policy_issues: list[dict[str, Any]] = []
@@ -326,9 +326,9 @@ class _AdsMixin:
         if validated_status == "ENABLED":
             try:
                 ads_data = await self.list_ads(ad_group_id=ad_group_id)
-                ads = ads_data.get("ads", []) if isinstance(ads_data, dict) else []
+                ads = ads_data.get("ads", []) if isinstance(ads_data, dict) else []  # type: ignore[var-annotated]
                 enabled_rsa = sum(
-                    1
+                    1  # type: ignore[misc]
                     for a in ads
                     if a.get("status") == "ENABLED"
                     and a.get("type") == "RESPONSIVE_SEARCH_AD"

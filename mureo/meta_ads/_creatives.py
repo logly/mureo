@@ -44,11 +44,11 @@ class CreativesMixin:
     _access_token: str
     BASE_URL: str
 
-    async def _get(
+    async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    async def _post(
+    async def _post(  # type: ignore[empty-body]
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
@@ -67,7 +67,7 @@ class CreativesMixin:
             "limit": limit,
         }
         result = await self._get(f"/{self._ad_account_id}/adcreatives", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def create_ad_creative(
         self,

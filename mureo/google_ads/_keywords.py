@@ -44,7 +44,7 @@ class _KeywordsMixin:
     @staticmethod
     def _has_error_code(exc: GoogleAdsException, attr_name: str, error_name: str) -> bool: ...  # type: ignore[empty-body]
     def _get_service(self, service_name: str) -> Any: ...
-    def _period_to_date_clause(self, period: str) -> str: ...
+    def _period_to_date_clause(self, period: str) -> str: ...  # type: ignore[empty-body]
 
     # === キーワード ===
 
@@ -78,7 +78,7 @@ class _KeywordsMixin:
         if status_filter:
             validated = self._validate_status(status_filter)
             query += f"\n            AND ad_group_criterion.status = '{validated}'"
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         return [
             map_keyword(row.ad_group_criterion, row.campaign, row.ad_group)
             for row in response
@@ -186,7 +186,7 @@ class _KeywordsMixin:
                 AND ad_group_criterion.status != 'REMOVED'
                 AND campaign.id = {campaign_id}
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         keywords = [
             map_keyword_quality_info(row.ad_group_criterion, row.campaign, row.ad_group)
             for row in response
@@ -363,7 +363,7 @@ class _KeywordsMixin:
                 AND campaign_criterion.negative = true
                 AND campaign.id = {campaign_id}
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         return [map_negative_keyword(row.campaign_criterion) for row in response]
 
     @_wrap_mutate_error("除外キーワード追加")
@@ -461,5 +461,5 @@ class _KeywordsMixin:
         if ad_group_id:
             self._validate_id(ad_group_id, "ad_group_id")
             query += f"\n            AND ad_group.id = {ad_group_id}"
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         return [map_search_term(row) for row in response]

@@ -32,7 +32,7 @@ class InsightsMixin:
 
     _ad_account_id: str
 
-    async def _get(
+    async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
@@ -68,7 +68,7 @@ class InsightsMixin:
             path = f"/{account_id}/insights"
 
         result = await self._get(path, params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def analyze_performance(
         self,
@@ -261,4 +261,4 @@ class InsightsMixin:
         }
 
         result = await self._get(f"/{campaign_id}/insights", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]

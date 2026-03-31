@@ -14,11 +14,11 @@ class AdsMixin:
 
     _ad_account_id: str
 
-    async def _get(
+    async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    async def _post(
+    async def _post(  # type: ignore[empty-body]
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
@@ -56,7 +56,7 @@ class AdsMixin:
             path = f"/{account_id}/ads"
 
         result = await self._get(path, params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_ad(self, ad_id: str) -> dict[str, Any]:
         """広告詳細を取得する

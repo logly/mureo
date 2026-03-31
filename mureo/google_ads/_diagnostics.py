@@ -121,11 +121,11 @@ class _DiagnosticsMixin:
 
     # 親クラスのメソッド（Mixin が呼び出す）
     async def get_campaign(self, campaign_id: str) -> dict[str, Any] | None: ...
-    async def list_ad_groups(
+    async def list_ad_groups(  # type: ignore[empty-body]
         self, campaign_id: str = "", **kwargs: Any
     ) -> list[dict[str, Any]]: ...
-    async def get_performance_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
-    async def list_sitelinks(self, campaign_id: str) -> list[dict[str, Any]]: ...
+    async def get_performance_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...  # type: ignore[empty-body]
+    async def list_sitelinks(self, campaign_id: str) -> list[dict[str, Any]]: ...  # type: ignore[empty-body]
 
     @staticmethod
     def _extract_bidding_details(campaign: Any) -> dict[str, Any]:
@@ -318,7 +318,7 @@ class _DiagnosticsMixin:
                 AND campaign.id = {campaign_id}
                 AND ad_group_criterion.status = 'ENABLED'
         """
-        kw_response = await self._search(kw_query)
+        kw_response = await self._search(kw_query)  # type: ignore[attr-defined]
         enabled_kws = []
         rarely_served_kws: list[str] = []
         for row in kw_response:
@@ -383,7 +383,7 @@ class _DiagnosticsMixin:
             WHERE campaign.id = {campaign_id}
                 AND ad_group_ad.status = 'ENABLED'
         """
-        ad_response = await self._search(ad_query)
+        ad_response = await self._search(ad_query)  # type: ignore[attr-defined]
         enabled_ads = []
         rsa_headline_counts: list[int] = []
         rsa_description_counts: list[int] = []
@@ -472,7 +472,7 @@ class _DiagnosticsMixin:
             WHERE campaign.id = {campaign_id}
                 AND campaign_criterion.type = 'LOCATION'
         """
-        loc_response = await self._search(loc_query)
+        loc_response = await self._search(loc_query)  # type: ignore[attr-defined]
         locations = []
         for row in loc_response:
             cc = row.campaign_criterion
@@ -520,7 +520,7 @@ class _DiagnosticsMixin:
                 FROM billing_setup
                 WHERE billing_setup.status = 'APPROVED'
             """
-            billing_response = await self._search(billing_query)
+            billing_response = await self._search(billing_query)  # type: ignore[attr-defined]
             has_billing = any(True for _ in billing_response)
             result["billing_setup"] = "APPROVED" if has_billing else "未設定"
             if not has_billing:
@@ -542,7 +542,7 @@ class _DiagnosticsMixin:
                     FROM conversion_action
                     WHERE conversion_action.status = 'ENABLED'
                 """
-                cv_response = await self._search(cv_query)
+                cv_response = await self._search(cv_query)  # type: ignore[attr-defined]
                 active_cv_count = sum(1 for _ in cv_response)
                 result["active_conversion_actions"] = active_cv_count
                 if active_cv_count == 0:
@@ -568,7 +568,7 @@ class _DiagnosticsMixin:
                     AND segments.date DURING LAST_30_DAYS
                     AND metrics.conversions > 0
             """
-            cv_by_action_response = await self._search(cv_by_action_query)
+            cv_by_action_response = await self._search(cv_by_action_query)  # type: ignore[attr-defined]
 
             # キャンペーン全体のコストとCV数を取得してCPA算出用に使う
             total_cost = float(
@@ -613,7 +613,7 @@ class _DiagnosticsMixin:
                 WHERE campaign.id = {campaign_id}
                     AND segments.date DURING LAST_30_DAYS
             """
-            is_response = await self._search(is_query)
+            is_response = await self._search(is_query)  # type: ignore[attr-defined]
             for row in is_response:
                 m = row.metrics
                 is_data: dict[str, Any] = {}

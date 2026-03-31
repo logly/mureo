@@ -27,15 +27,15 @@ class AudiencesMixin:
 
     _ad_account_id: str
 
-    async def _get(
+    async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    async def _post(
+    async def _post(  # type: ignore[empty-body]
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    async def _delete(self, path: str) -> dict[str, Any]: ...
+    async def _delete(self, path: str) -> dict[str, Any]: ...  # type: ignore[empty-body]
 
     async def list_custom_audiences(
         self,
@@ -52,7 +52,7 @@ class AudiencesMixin:
             "limit": limit,
         }
         result = await self._get(f"/{self._ad_account_id}/customaudiences", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_custom_audience(self, audience_id: str) -> dict[str, Any]:
         """カスタムオーディエンス詳細を取得する

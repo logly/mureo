@@ -26,11 +26,11 @@ class _KeywordsAnalysisMixin:
 
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
-    def _period_to_date_clause(self, period: str) -> str: ...
-    async def _search(self, query: str) -> list[Any]: ...
+    def _period_to_date_clause(self, period: str) -> str: ...  # type: ignore[empty-body]
+    async def _search(self, query: str) -> list[Any]: ...  # type: ignore[empty-body]
 
     # PerformanceAnalysisMixin のメソッド
-    async def _resolve_target_cpa(
+    async def _resolve_target_cpa(  # type: ignore[empty-body]
         self, campaign_id: str, explicit: float | None = None
     ) -> tuple[float | None, str]: ...
 

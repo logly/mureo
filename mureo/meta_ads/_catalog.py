@@ -32,15 +32,15 @@ class CatalogMixin:
 
     _ad_account_id: str
 
-    async def _get(
+    async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    async def _post(
+    async def _post(  # type: ignore[empty-body]
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    async def _delete(self, path: str) -> dict[str, Any]: ...
+    async def _delete(self, path: str) -> dict[str, Any]: ...  # type: ignore[empty-body]
 
     # === カタログ管理 ===
 
@@ -55,7 +55,7 @@ class CatalogMixin:
         """
         params: dict[str, Any] = {"fields": _CATALOG_FIELDS}
         result = await self._get(f"/{business_id}/owned_product_catalogs", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def create_catalog(self, business_id: str, name: str) -> dict[str, Any]:
         """カタログを作成する
@@ -112,7 +112,7 @@ class CatalogMixin:
             "limit": limit,
         }
         result = await self._get(f"/{catalog_id}/products", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def add_product(
         self, catalog_id: str, product_data: dict[str, Any]
@@ -178,7 +178,7 @@ class CatalogMixin:
         """
         params: dict[str, Any] = {"fields": _FEED_FIELDS}
         result = await self._get(f"/{catalog_id}/product_feeds", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def create_product_feed(
         self,

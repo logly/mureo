@@ -103,7 +103,7 @@ class _TargetingMixin:
             conditions.append(f"recommendation.type = '{validated_type}'")
         if conditions:
             query += "\n            WHERE " + " AND ".join(conditions)
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         return [map_recommendation(row.recommendation) for row in response]
 
     @_wrap_mutate_error("推奨事項適用")
@@ -143,7 +143,7 @@ class _TargetingMixin:
             WHERE campaign.id = {campaign_id}
                 AND campaign_criterion.type = 'DEVICE'
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         found: dict[str, dict[str, Any]] = {}
         for row in response:
             normalized = _normalize_device_type(
@@ -202,7 +202,7 @@ class _TargetingMixin:
             WHERE campaign.id = {campaign_id}
                 AND campaign_criterion.type = 'DEVICE'
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         criterion_map: dict[str, dict[str, Any]] = {}
         for row in response:
             normalized = _normalize_device_type(
@@ -270,7 +270,7 @@ class _TargetingMixin:
                 )
             except Exception as exc:
                 detail = (
-                    self._extract_error_detail(exc)
+                    self._extract_error_detail(exc)  # type: ignore[attr-defined]
                     if hasattr(exc, "failure")
                     else str(exc)
                 )
@@ -310,7 +310,7 @@ class _TargetingMixin:
             WHERE campaign.id = {campaign_id}
                 AND campaign_criterion.bid_modifier IS NOT NULL
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         return [
             {
                 "criterion_id": str(row.campaign_criterion.criterion_id),
@@ -400,7 +400,7 @@ class _TargetingMixin:
         query += "\n            WHERE " + " AND ".join(conditions)
         query += "\n            ORDER BY change_event.change_date_time DESC"
         query += "\n            LIMIT 100"
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         return [map_change_event(row.change_event) for row in response]
 
     # === 地域ターゲティング ===
@@ -418,7 +418,7 @@ class _TargetingMixin:
             WHERE campaign_criterion.type = 'LOCATION'
                 AND campaign.id = {campaign_id}
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         return [
             {
                 "criterion_id": str(row.campaign_criterion.criterion_id),
@@ -493,7 +493,7 @@ class _TargetingMixin:
             WHERE campaign_criterion.type = 'AD_SCHEDULE'
                 AND campaign.id = {campaign_id}
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         return [
             {
                 "criterion_id": str(row.campaign_criterion.criterion_id),

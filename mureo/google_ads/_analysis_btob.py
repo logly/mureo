@@ -24,11 +24,11 @@ class _BtoBAnalysisMixin:
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
 
     async def get_campaign(self, campaign_id: str) -> dict[str, Any] | None: ...
-    async def get_search_terms_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
-    async def list_schedule_targeting(
+    async def get_search_terms_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...  # type: ignore[empty-body]
+    async def list_schedule_targeting(  # type: ignore[empty-body]
         self, campaign_id: str
     ) -> list[dict[str, Any]]: ...
-    async def analyze_device_performance(
+    async def analyze_device_performance(  # type: ignore[empty-body]
         self, campaign_id: str, period: str = "LAST_30_DAYS"
     ) -> dict[str, Any]: ...
 

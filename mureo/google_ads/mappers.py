@@ -40,7 +40,7 @@ _ENTITY_STATUS_MAP: dict[int, str] = {
 
 # protobuf enum から自動生成 — 手動転記ミスを原理的に排除
 _BIDDING_STRATEGY_MAP: dict[int, str] = {
-    member.value: member.name for member in BiddingStrategyTypeEnum.BiddingStrategyType
+    member.value: member.name for member in BiddingStrategyTypeEnum.BiddingStrategyType  # type: ignore[attr-defined]
 }
 # v23ではMAXIMIZE_CLICKSがTARGET_SPEND(enum=9)に統合されている。
 # 管理画面では「クリック数の最大化」と表示されるため、ユーザー向け名称に合わせる。
@@ -48,12 +48,12 @@ _BIDDING_STRATEGY_MAP[9] = "MAXIMIZE_CLICKS"
 
 # protobuf enum から自動生成
 _AD_TYPE_MAP: dict[int, str] = {
-    member.value: member.name for member in AdTypeEnum.AdType
+    member.value: member.name for member in AdTypeEnum.AdType  # type: ignore[attr-defined]
 }
 
 # protobuf enum から自動生成
 _AD_STRENGTH_MAP: dict[int, str] = {
-    member.value: member.name for member in AdStrengthEnum.AdStrength
+    member.value: member.name for member in AdStrengthEnum.AdStrength  # type: ignore[attr-defined]
 }
 
 _SERVING_STATUS_MAP: dict[int, str] = {
@@ -80,7 +80,7 @@ _APPROVAL_STATUS_MAP: dict[int, str] = {
 # ※ PolicyApprovalStatusEnum とは enum 値が異なるため別マップが必要
 _CRITERION_APPROVAL_STATUS_MAP: dict[int, str] = {
     member.value: member.name
-    for member in AdGroupCriterionApprovalStatusEnum.AdGroupCriterionApprovalStatus
+    for member in AdGroupCriterionApprovalStatusEnum.AdGroupCriterionApprovalStatus  # type: ignore[attr-defined]
 }
 
 _REVIEW_STATUS_MAP: dict[int, str] = {
@@ -95,7 +95,7 @@ _REVIEW_STATUS_MAP: dict[int, str] = {
 # protobuf enum から自動生成
 _POLICY_TOPIC_TYPE_MAP: dict[int, str] = {
     member.value: member.name
-    for member in PolicyTopicEntryTypeEnum.PolicyTopicEntryType
+    for member in PolicyTopicEntryTypeEnum.PolicyTopicEntryType  # type: ignore[attr-defined]
 }
 
 _PRIMARY_STATUS_MAP: dict[int, str] = {
@@ -115,13 +115,13 @@ _PRIMARY_STATUS_MAP: dict[int, str] = {
 # protobuf enum から自動生成
 _PRIMARY_STATUS_REASON_MAP: dict[int, str] = {
     member.value: member.name
-    for member in CampaignPrimaryStatusReasonEnum.CampaignPrimaryStatusReason
+    for member in CampaignPrimaryStatusReasonEnum.CampaignPrimaryStatusReason  # type: ignore[attr-defined]
 }
 
 # protobuf enum から自動生成
 _BIDDING_SYSTEM_STATUS_MAP: dict[int, str] = {
     member.value: member.name
-    for member in BiddingStrategySystemStatusEnum.BiddingStrategySystemStatus
+    for member in BiddingStrategySystemStatusEnum.BiddingStrategySystemStatus  # type: ignore[attr-defined]
 }
 
 

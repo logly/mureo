@@ -299,7 +299,7 @@ class LPAnalyzer:
         # a.btn* (CSSクラス名にbtnを含むリンク)
         for a_tag in soup.find_all("a", class_=True):
             if isinstance(a_tag, Tag):
-                classes = a_tag.get("class", [])
+                classes = a_tag.get("class", [])  # type: ignore[arg-type]
                 if isinstance(classes, list) and any("btn" in c for c in classes):
                     text = a_tag.get_text(strip=True)
                     if text:
@@ -319,7 +319,7 @@ class LPAnalyzer:
         """ul/olリスト項目から特徴を抽出"""
         items: list[str] = []
         for list_tag in soup.find_all(["ul", "ol"]):
-            for li in list_tag.find_all("li", recursive=False):
+            for li in list_tag.find_all("li", recursive=False):  # type: ignore[union-attr]
                 text = li.get_text(strip=True)
                 if text and len(text) > 3:
                     items.append(text)

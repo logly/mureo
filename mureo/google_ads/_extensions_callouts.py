@@ -48,7 +48,7 @@ class _CalloutsMixin:
             WHERE campaign_asset.field_type = 'CALLOUT'
                 AND campaign.id = {campaign_id}
         """
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         return [map_callout(row) for row in response]
 
     @_wrap_mutate_error("コールアウト作成")

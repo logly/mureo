@@ -73,7 +73,7 @@ class _SitelinksMixin:
             WHERE customer_asset.field_type = 'SITELINK'
         """
 
-        campaign_response = await self._search(campaign_query)
+        campaign_response = await self._search(campaign_query)  # type: ignore[attr-defined]
         results = [
             {**map_sitelink(row), "level": "campaign"} for row in campaign_response
         ]
@@ -82,7 +82,7 @@ class _SitelinksMixin:
         seen_ids: set[str | None] = {r.get("id") for r in results}
 
         try:
-            account_response = await self._search(account_query)
+            account_response = await self._search(account_query)  # type: ignore[attr-defined]
             for row in account_response:
                 mapped = map_sitelink(row)
                 if mapped.get("id") not in seen_ids:

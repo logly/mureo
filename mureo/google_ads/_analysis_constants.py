@@ -94,7 +94,7 @@ def _calc_change_rate(current: float, previous: float) -> float | None:
 def _safe_metrics(perf: list[dict[str, Any]]) -> dict[str, Any]:
     """パフォーマンスレポートから最初のメトリクスを安全に取り出す。"""
     if perf:
-        return perf[0].get("metrics", {})
+        return perf[0].get("metrics", {})  # type: ignore[no-any-return]
     return {"impressions": 0, "clicks": 0, "cost": 0}
 
 

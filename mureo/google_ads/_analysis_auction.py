@@ -20,8 +20,8 @@ class _AuctionAnalysisMixin:
 
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
-    def _period_to_date_clause(self, period: str) -> str: ...
-    async def _search(self, query: str) -> list[Any]: ...
+    def _period_to_date_clause(self, period: str) -> str: ...  # type: ignore[empty-body]
+    async def _search(self, query: str) -> list[Any]: ...  # type: ignore[empty-body]
     async def get_campaign(self, campaign_id: str) -> dict[str, Any] | None: ...
 
     # =================================================================

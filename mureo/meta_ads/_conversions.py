@@ -24,7 +24,7 @@ class ConversionsMixin:
     MetaAdsApiClient に多重継承して使用する。
     """
 
-    async def _post(
+    async def _post(  # type: ignore[empty-body]
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 

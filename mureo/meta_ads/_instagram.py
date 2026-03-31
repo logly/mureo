@@ -20,11 +20,11 @@ class InstagramMixin:
 
     _ad_account_id: str
 
-    async def _get(
+    async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    async def _post(
+    async def _post(  # type: ignore[empty-body]
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
@@ -44,7 +44,7 @@ class InstagramMixin:
             "fields": self._IG_ACCOUNT_FIELDS,
         }
         result = await self._get(f"/{self._ad_account_id}/instagram_accounts", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def list_instagram_media(
         self, ig_user_id: str, limit: int = 25
@@ -63,7 +63,7 @@ class InstagramMixin:
             "limit": limit,
         }
         result = await self._get(f"/{ig_user_id}/media", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def boost_instagram_post(
         self,

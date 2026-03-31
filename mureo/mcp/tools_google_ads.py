@@ -637,4 +637,4 @@ async def handle_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]
     handler = _HANDLERS.get(name)
     if handler is None:
         raise ValueError(f"Unknown tool: {name}")
-    return await handler(arguments)
+    return await handler(arguments)  # type: ignore[no-any-return]

@@ -33,11 +33,11 @@ class LeadsMixin:
 
     _ad_account_id: str
 
-    async def _get(
+    async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    async def _post(
+    async def _post(  # type: ignore[empty-body]
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
@@ -61,7 +61,7 @@ class LeadsMixin:
             "limit": limit,
         }
         result = await self._get(f"/{page_id}/leadgen_forms", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_lead_form(self, form_id: str) -> dict[str, Any]:
         """リードフォーム詳細を取得する
@@ -142,7 +142,7 @@ class LeadsMixin:
         # 個人情報を含むためログ出力しない
         leads = result.get("data", [])
         logger.info("リードデータ取得: form_id=%s, 件数=%d", form_id, len(leads))
-        return leads
+        return leads  # type: ignore[no-any-return]
 
     async def get_ad_leads(
         self,
@@ -170,4 +170,4 @@ class LeadsMixin:
         # 個人情報を含むためログ出力しない
         leads = result.get("data", [])
         logger.info("広告別リードデータ取得: ad_id=%s, 件数=%d", ad_id, len(leads))
-        return leads
+        return leads  # type: ignore[no-any-return]

@@ -28,11 +28,11 @@ class SplitTestMixin:
 
     _ad_account_id: str
 
-    async def _get(
+    async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    async def _post(
+    async def _post(  # type: ignore[empty-body]
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
@@ -50,7 +50,7 @@ class SplitTestMixin:
             "limit": limit,
         }
         result = await self._get(f"/{self._ad_account_id}/adstudies", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_split_test(self, study_id: str) -> dict[str, Any]:
         """スプリットテスト詳細・結果を取得する

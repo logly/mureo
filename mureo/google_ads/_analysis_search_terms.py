@@ -84,16 +84,16 @@ class _SearchTermsAnalysisMixin:
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
 
-    async def get_search_terms_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
-    async def list_keywords(
+    async def get_search_terms_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...  # type: ignore[empty-body]
+    async def list_keywords(  # type: ignore[empty-body]
         self, ad_group_id: str | None = None, campaign_id: str | None = None
     ) -> list[dict[str, Any]]: ...
-    async def list_negative_keywords(
+    async def list_negative_keywords(  # type: ignore[empty-body]
         self, campaign_id: str
     ) -> list[dict[str, Any]]: ...
 
     # PerformanceAnalysisMixin のメソッド
-    async def _resolve_target_cpa(
+    async def _resolve_target_cpa(  # type: ignore[empty-body]
         self, campaign_id: str, explicit: float | None = None
     ) -> tuple[float | None, str]: ...
 

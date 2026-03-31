@@ -163,7 +163,7 @@ def create_google_ads_client(
     Returns:
         GoogleAdsApiClient インスタンス
     """
-    oauth_credentials = Credentials(
+    oauth_credentials = Credentials(  # type: ignore[no-untyped-call]
         token=None,
         refresh_token=credentials.refresh_token,
         client_id=credentials.client_id,

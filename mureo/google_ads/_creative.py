@@ -30,19 +30,19 @@ class _CreativeMixin:
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
     def _get_service(self, service_name: str) -> Any: ...
 
-    async def list_keywords(
+    async def list_keywords(  # type: ignore[empty-body]
         self,
         ad_group_id: str | None = None,
         campaign_id: str | None = None,
         status_filter: str | None = None,
     ) -> list[dict[str, Any]]: ...
-    async def get_search_terms_report(
+    async def get_search_terms_report(  # type: ignore[empty-body]
         self,
         campaign_id: str | None = None,
         ad_group_id: str | None = None,
         period: str = "LAST_30_DAYS",
     ) -> list[dict[str, Any]]: ...
-    async def suggest_keywords(
+    async def suggest_keywords(  # type: ignore[empty-body]
         self,
         seed_keywords: list[str],
         language_id: str = "1005",
@@ -173,7 +173,7 @@ class _CreativeMixin:
             query += f"\n                AND ad_group.id = {ad_group_id}"
         query += "\n            ORDER BY metrics.impressions DESC\n            LIMIT 5"
 
-        response = await self._search(query)
+        response = await self._search(query)  # type: ignore[attr-defined]
         ads: list[dict[str, Any]] = []
         for row in response:
             ad = row.ad_group_ad.ad

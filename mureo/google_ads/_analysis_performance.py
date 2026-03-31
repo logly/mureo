@@ -27,24 +27,24 @@ class _PerformanceAnalysisMixin:
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
     def _get_service(self, service_name: str) -> Any: ...
-    def _period_to_date_clause(self, period: str) -> str: ...
+    def _period_to_date_clause(self, period: str) -> str: ...  # type: ignore[empty-body]
 
     async def get_campaign(self, campaign_id: str) -> dict[str, Any] | None: ...
-    async def list_campaigns(
+    async def list_campaigns(  # type: ignore[empty-body]
         self, status_filter: str | None = None
     ) -> list[dict[str, Any]]: ...
-    async def get_performance_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
-    async def get_search_terms_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
-    async def list_recommendations(
+    async def get_performance_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...  # type: ignore[empty-body]
+    async def get_search_terms_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...  # type: ignore[empty-body]
+    async def list_recommendations(  # type: ignore[empty-body]
         self, campaign_id: str | None = None, recommendation_type: str | None = None
     ) -> list[dict[str, Any]]: ...
-    async def list_change_history(
+    async def list_change_history(  # type: ignore[empty-body]
         self, start_date: str | None = None, end_date: str | None = None
     ) -> list[dict[str, Any]]: ...
-    async def list_negative_keywords(
+    async def list_negative_keywords(  # type: ignore[empty-body]
         self, campaign_id: str
     ) -> list[dict[str, Any]]: ...
-    async def get_ad_performance_report(
+    async def get_ad_performance_report(  # type: ignore[empty-body]
         self,
         ad_group_id: str | None = None,
         campaign_id: str | None = None,
@@ -507,7 +507,7 @@ class _PerformanceAnalysisMixin:
         for camp_summary in targets:
             cid = str(camp_summary["campaign_id"])
             try:
-                diag = await self.diagnose_campaign_delivery(cid)
+                diag = await self.diagnose_campaign_delivery(cid)  # type: ignore[attr-defined]
                 detailed_diagnostics.append(
                     {
                         "campaign_id": cid,

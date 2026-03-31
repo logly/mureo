@@ -35,7 +35,7 @@ class AnalysisMixin:
     get_performance_report / get_breakdown_report は InsightsMixin が提供。
     """
 
-    async def get_performance_report(
+    async def get_performance_report(  # type: ignore[empty-body]
         self,
         *,
         campaign_id: str | None = None,
@@ -43,7 +43,7 @@ class AnalysisMixin:
         level: str = "campaign",
     ) -> list[dict[str, Any]]: ...
 
-    async def get_breakdown_report(
+    async def get_breakdown_report(  # type: ignore[empty-body]
         self,
         campaign_id: str,
         breakdown: str = "age,gender",

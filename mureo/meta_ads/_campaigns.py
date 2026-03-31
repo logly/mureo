@@ -15,11 +15,11 @@ class CampaignsMixin:
 
     _ad_account_id: str
 
-    async def _get(
+    async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    async def _post(
+    async def _post(  # type: ignore[empty-body]
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
@@ -56,7 +56,7 @@ class CampaignsMixin:
             )
 
         result = await self._get(f"/{account_id}/campaigns", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_campaign(self, campaign_id: str) -> dict[str, Any]:
         """キャンペーン詳細を取得する

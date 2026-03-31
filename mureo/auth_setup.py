@@ -58,7 +58,7 @@ def _select_account(
             return None
         selected = accounts[idx]
         print(f"選択: {selected['name']} ({selected['id']})")
-        return selected["id"]
+        return selected["id"]  # type: ignore[no-any-return]
     except ImportError:
         # simple-term-menuがない場合は番号入力にフォールバック
         for i, label in enumerate(labels, 1):
@@ -69,7 +69,7 @@ def _select_account(
             if 1 <= choice <= len(accounts):
                 selected = accounts[choice - 1]
                 print(f"選択: {selected['name']} ({selected['id']})")
-                return selected["id"]
+                return selected["id"]  # type: ignore[no-any-return]
         except (ValueError, IndexError):
             pass
         print("無効な選択です。後から設定できます。")
@@ -123,7 +123,7 @@ class _OAuthHTTPServer(http.server.HTTPServer):
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
     """OAuthコールバックを受信するHTTPハンドラー（Google/Meta共通）"""
 
-    server: _OAuthHTTPServer  # type: ignore[assignment]
+    server: _OAuthHTTPServer
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urllib.parse.urlparse(self.path)
@@ -265,7 +265,7 @@ async def list_accessible_accounts(
     from google.ads.googleads.client import GoogleAdsClient
     from google.oauth2.credentials import Credentials as OAuthCredentials
 
-    oauth_creds = OAuthCredentials(
+    oauth_creds = OAuthCredentials(  # type: ignore[no-untyped-call]
         token=None,
         refresh_token=credentials.refresh_token,
         client_id=credentials.client_id,
@@ -649,7 +649,7 @@ async def _exchange_code_for_short_token(
             )
             response.raise_for_status()
             data = response.json()
-            return data["access_token"]
+            return data["access_token"]  # type: ignore[no-any-return]
     except Exception as exc:
         raise RuntimeError(f"Short-Lived Token の取得に失敗しました: {exc}") from exc
 
@@ -735,7 +735,7 @@ async def list_meta_ad_accounts(access_token: str) -> list[dict[str, Any]]:
             )
             response.raise_for_status()
             data = response.json()
-            return data.get("data", [])
+            return data.get("data", [])  # type: ignore[no-any-return]
     except Exception as exc:
         raise RuntimeError(f"広告アカウント一覧の取得に失敗しました: {exc}") from exc
 

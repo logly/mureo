@@ -35,7 +35,7 @@ class PixelsMixin:
 
     _ad_account_id: str
 
-    async def _get(
+    async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
@@ -54,7 +54,7 @@ class PixelsMixin:
             "limit": limit,
         }
         result = await self._get(f"/{self._ad_account_id}/adspixels", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_pixel(self, pixel_id: str) -> dict[str, Any]:
         """ピクセル詳細を取得する
@@ -92,7 +92,7 @@ class PixelsMixin:
             "end_time": now.strftime("%Y-%m-%dT%H:%M:%S+0000"),
         }
         result = await self._get(f"/{pixel_id}/stats", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_pixel_events(
         self,
@@ -110,4 +110,4 @@ class PixelsMixin:
             "fields": "event_name,count",
         }
         result = await self._get(f"/{pixel_id}/stats", params)
-        return result.get("data", [])
+        return result.get("data", [])  # type: ignore[no-any-return]

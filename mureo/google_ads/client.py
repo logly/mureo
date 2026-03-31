@@ -112,7 +112,7 @@ from mureo.google_ads._keywords import _KeywordsMixin  # noqa: E402
 PARTNER_CPA_WARNING_RATIO: float = 2.0
 
 
-class GoogleAdsApiClient(
+class GoogleAdsApiClient(  # type: ignore[misc]
     _AdsMixin,
     _KeywordsMixin,
     _MonitoringMixin,
@@ -596,7 +596,7 @@ class GoogleAdsApiClient(
 
     # === 広告グループ ===
 
-    async def list_ad_groups(
+    async def list_ad_groups(  # type: ignore[override]
         self,
         campaign_id: str | None = None,
         status_filter: str | None = None,
@@ -742,7 +742,7 @@ class GoogleAdsApiClient(
 
     # === パフォーマンスレポート ===
 
-    async def get_performance_report(
+    async def get_performance_report(  # type: ignore[override]
         self,
         campaign_id: str | None = None,
         period: str = "LAST_30_DAYS",

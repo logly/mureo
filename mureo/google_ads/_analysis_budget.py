@@ -20,10 +20,10 @@ class _BudgetAnalysisMixin:
     _customer_id: str
     _client: GoogleAdsClient
 
-    async def list_campaigns(
+    async def list_campaigns(  # type: ignore[empty-body]
         self, status_filter: str | None = None
     ) -> list[dict[str, Any]]: ...
-    async def get_performance_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...
+    async def get_performance_report(self, **kwargs: Any) -> list[dict[str, Any]]: ...  # type: ignore[empty-body]
     async def get_budget(self, campaign_id: str) -> dict[str, Any] | None: ...
 
     # =================================================================

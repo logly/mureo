@@ -123,5 +123,5 @@ def performance_report(
     """パフォーマンスレポートを取得"""
     creds = _require_creds()
     client = create_google_ads_client(creds, customer_id)
-    result = asyncio.run(client.get_performance_report(days=days))
+    result = asyncio.run(client.get_performance_report(days=days))  # type: ignore[call-arg]
     _output(result)
