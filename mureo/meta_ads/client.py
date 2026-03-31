@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from mureo.meta_ads._ad_rules import AdRulesMixin
 from mureo.meta_ads._ad_sets import AdSetsMixin
 from mureo.meta_ads._ads import AdsMixin
 from mureo.meta_ads._analysis import AnalysisMixin
@@ -14,14 +15,13 @@ from mureo.meta_ads._audiences import AudiencesMixin
 from mureo.meta_ads._campaigns import CampaignsMixin
 from mureo.meta_ads._catalog import CatalogMixin
 from mureo.meta_ads._conversions import ConversionsMixin
-from mureo.meta_ads._pixels import PixelsMixin
 from mureo.meta_ads._creatives import CreativesMixin
 from mureo.meta_ads._insights import InsightsMixin
 from mureo.meta_ads._instagram import InstagramMixin
 from mureo.meta_ads._leads import LeadsMixin
 from mureo.meta_ads._page_posts import PagePostsMixin
+from mureo.meta_ads._pixels import PixelsMixin
 from mureo.meta_ads._split_test import SplitTestMixin
-from mureo.meta_ads._ad_rules import AdRulesMixin
 
 logger = logging.getLogger(__name__)
 

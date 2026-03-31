@@ -106,7 +106,6 @@ from mureo.google_ads._ads import _AdsMixin  # noqa: E402
 from mureo.google_ads._extensions import _ExtensionsMixin  # noqa: E402
 from mureo.google_ads._keywords import _KeywordsMixin  # noqa: E402
 
-
 # 検索パートナーCPAがGoogle検索の何倍以上で警告とするかの閾値
 PARTNER_CPA_WARNING_RATIO: float = 2.0
 
@@ -268,7 +267,6 @@ class GoogleAdsApiClient(
         self, status_filter: str | None = None
     ) -> list[dict[str, Any]]:
         """キャンペーン一覧"""
-        ga_service = self._get_service("GoogleAdsService")
         query = """
             SELECT
                 campaign.id, campaign.name, campaign.status,
@@ -301,7 +299,6 @@ class GoogleAdsApiClient(
     async def get_campaign(self, campaign_id: str) -> dict[str, Any] | None:
         """キャンペーン詳細（入札戦略パラメータ含む）"""
         self._validate_id(campaign_id, "campaign_id")
-        ga_service = self._get_service("GoogleAdsService")
         query = f"""
             SELECT
                 campaign.id, campaign.name, campaign.status,
@@ -342,7 +339,6 @@ class GoogleAdsApiClient(
         self._validate_id(budget_id, "budget_id")
         if bidding_strategy.upper() not in _SMART_BIDDING_STRATEGIES:
             return
-        ga_service = self._get_service("GoogleAdsService")
         query = f"""
             SELECT campaign_budget.explicitly_shared
             FROM campaign_budget
@@ -474,7 +470,6 @@ class GoogleAdsApiClient(
 
     async def _find_campaign_by_name(self, name: str) -> dict[str, Any]:
         """キャンペーン名で既存キャンペーンを検索"""
-        ga_service = self._get_service("GoogleAdsService")
         safe_name = self._escape_gaql_string(name)
         query = f"""
             SELECT campaign.id, campaign.name, campaign.status
@@ -607,7 +602,6 @@ class GoogleAdsApiClient(
         status_filter: str | None = None,
     ) -> list[dict[str, Any]]:
         """広告グループ一覧"""
-        ga_service = self._get_service("GoogleAdsService")
         query = """
             SELECT
                 ad_group.id, ad_group.name, ad_group.status,
@@ -700,7 +694,6 @@ class GoogleAdsApiClient(
     async def get_budget(self, campaign_id: str) -> dict[str, Any] | None:
         """キャンペーン予算を取得"""
         self._validate_id(campaign_id, "campaign_id")
-        ga_service = self._get_service("GoogleAdsService")
         query = f"""
             SELECT
                 campaign.id,
@@ -755,7 +748,6 @@ class GoogleAdsApiClient(
         period: str = "LAST_30_DAYS",
     ) -> list[dict[str, Any]]:
         """パフォーマンスレポート"""
-        ga_service = self._get_service("GoogleAdsService")
         date_clause = self._period_to_date_clause(period)
         query = f"""
             SELECT
@@ -834,7 +826,6 @@ class GoogleAdsApiClient(
         period: str = "LAST_30_DAYS",
     ) -> list[dict[str, Any]]:
         """広告単位のパフォーマンスレポート"""
-        ga_service = self._get_service("GoogleAdsService")
         date_clause = self._period_to_date_clause(period)
         query = f"""
             SELECT
@@ -901,7 +892,6 @@ class GoogleAdsApiClient(
 
     async def _find_budget_by_name(self, name: str) -> dict[str, Any]:
         """予算名で既存予算を検索して返す"""
-        ga_service = self._get_service("GoogleAdsService")
         safe_name = self._escape_gaql_string(name)
         query = f"""
             SELECT

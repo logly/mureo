@@ -16,7 +16,7 @@ class _AuctionAnalysisMixin:
 
     # 親クラスが提供する属性・メソッドの型宣言
     _customer_id: str
-    _client: "GoogleAdsClient"
+    _client: GoogleAdsClient
 
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]

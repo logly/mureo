@@ -18,7 +18,7 @@ class _BtoBAnalysisMixin:
 
     # 親クラスが提供する属性・メソッドの型宣言
     _customer_id: str
-    _client: "GoogleAdsClient"
+    _client: GoogleAdsClient
 
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
@@ -130,8 +130,7 @@ class _BtoBAnalysisMixin:
         if mobile and desktop:
             mobile_cpa = mobile.get("cpa")
             desktop_cpa = desktop.get("cpa")
-            if mobile_cpa and desktop_cpa and desktop_cpa > 0:
-                if mobile_cpa > desktop_cpa * 1.3:
+            if mobile_cpa and desktop_cpa and desktop_cpa > 0 and mobile_cpa > desktop_cpa * 1.3:
                     suggestions.append({
                         "category": "device",
                         "priority": "MEDIUM",

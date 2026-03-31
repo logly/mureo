@@ -9,7 +9,10 @@ from __future__ import annotations
 import functools
 import json
 import logging
-from typing import Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
 
 from mcp.types import TextContent
 

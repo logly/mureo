@@ -156,9 +156,9 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
         body = f"<html><body><h1>{safe_message}</h1></body></html>"
         self.wfile.write(body.encode("utf-8"))
 
-    def log_message(self, format: str, *args: Any) -> None:
+    def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
         """標準出力へのログ出力を抑制する"""
-        logger.debug(format, *args)
+        logger.debug(fmt, *args)
 
 
 class OAuthCallbackServer:
@@ -785,7 +785,7 @@ async def run_meta_oauth(
     server_thread.start()
 
     # ブラウザで認証URLを開く
-    print(f"\nブラウザで認証ページを開きます...")
+    print("\nブラウザで認証ページを開きます...")
     print(f"URL: {auth_url}")
     webbrowser.open(auth_url)
 

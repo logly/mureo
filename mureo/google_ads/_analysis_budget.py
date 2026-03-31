@@ -18,7 +18,7 @@ class _BudgetAnalysisMixin:
 
     # 親クラスが提供する属性・メソッドの型宣言
     _customer_id: str
-    _client: "GoogleAdsClient"
+    _client: GoogleAdsClient
 
     async def list_campaigns(
         self, status_filter: str | None = None
@@ -27,11 +27,6 @@ class _BudgetAnalysisMixin:
         self, **kwargs: Any
     ) -> list[dict[str, Any]]: ...
     async def get_budget(self, campaign_id: str) -> dict[str, Any] | None: ...
-
-    # _PerformanceAnalysisMixin
-    async def analyze_budget_efficiency(
-        self, period: str = "LAST_30_DAYS"
-    ) -> dict[str, Any]: ...
 
     # =================================================================
     # 予算配分効率分析

@@ -6,7 +6,6 @@ list_sitelinks / create_sitelink / remove_sitelink を提供する。
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING, Any
 
 from mureo.google_ads.client import _wrap_mutate_error

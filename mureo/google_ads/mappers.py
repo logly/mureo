@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-
-class _HasIdAndName(Protocol):
-    id: int
-    name: str
-
 from google.ads.googleads.v23.enums.types.ad_group_criterion_approval_status import (
     AdGroupCriterionApprovalStatusEnum,
 )
@@ -24,6 +19,11 @@ from google.ads.googleads.v23.enums.types.campaign_primary_status_reason import 
 from google.ads.googleads.v23.enums.types.policy_topic_entry_type import (
     PolicyTopicEntryTypeEnum,
 )
+
+
+class _HasIdAndName(Protocol):
+    id: int
+    name: str
 
 # ---------------------------------------------------------------------------
 # protobuf enum int → 文字列 マッピング定数

@@ -157,14 +157,12 @@ class _TargetingMixin:
         # 常に3デバイス全て返す（明示設定なし＝デフォルト配信中）
         all_devices = ["DESKTOP", "MOBILE", "TABLET"]
         return [
-            found[d]
-            if d in found
-            else {
+            found.get(d, {
                 "criterion_id": None,
                 "device_type": d,
                 "bid_modifier": None,
                 "enabled": True,
-            }
+            })
             for d in all_devices
         ]
 

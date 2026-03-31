@@ -14,10 +14,6 @@ from mcp.types import TextContent, Tool
 from mureo.mcp._handlers_google_ads import (  # noqa: F401
     HANDLERS as _HANDLERS,
 )
-from mureo.mcp._handlers_google_ads import (
-    create_google_ads_client,
-    load_google_ads_credentials,
-)
 
 # ---------------------------------------------------------------------------
 # ツール定義（29個）

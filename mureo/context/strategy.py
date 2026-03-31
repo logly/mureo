@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from mureo.context.errors import ContextFileError
 from mureo.context.models import StrategyEntry
@@ -172,9 +175,7 @@ def remove_strategy_entry(
     def _should_keep(e: StrategyEntry) -> bool:
         if e.context_type != context_type:
             return True
-        if title is not None and e.title != title:
-            return True
-        return False
+        return bool(title is not None and e.title != title)
 
     filtered = [e for e in entries if _should_keep(e)]
     write_strategy_file(path, filtered)

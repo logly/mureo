@@ -6,9 +6,10 @@ tools_google_ads.py から呼び出される各ツールのハンドラー関数
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from mcp.types import TextContent
+if TYPE_CHECKING:
+    from mcp.types import TextContent
 
 from mureo.auth import (
     create_google_ads_client,

@@ -6,7 +6,6 @@ list / get / create / update / remove / tag / performance を提供する。
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING, Any
 
 from google.protobuf.field_mask_pb2 import FieldMask as PbFieldMask

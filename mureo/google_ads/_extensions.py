@@ -12,28 +12,28 @@ _MAX_CALLOUTS_PER_CAMPAIGN も再エクスポートする。
 
 from __future__ import annotations
 
+from mureo.google_ads._extensions_callouts import (  # noqa: F401
+    _MAX_CALLOUTS_PER_CAMPAIGN,
+    _CalloutsMixin,
+)
+
 # 後方互換用の再エクスポート
 from mureo.google_ads._extensions_conversions import (  # noqa: F401
     _VALID_CONVERSION_ACTION_CATEGORIES,
     _VALID_CONVERSION_ACTION_STATUSES,
     _VALID_CONVERSION_ACTION_TYPES,
+    _ConversionsMixin,
 )
 from mureo.google_ads._extensions_sitelinks import (  # noqa: F401
     _MAX_SITELINKS_PER_CAMPAIGN,
-)
-from mureo.google_ads._extensions_callouts import (  # noqa: F401
-    _MAX_CALLOUTS_PER_CAMPAIGN,
+    _SitelinksMixin,
 )
 from mureo.google_ads._extensions_targeting import (  # noqa: F401
     _DEVICE_ENUM_MAP,
     _RESOURCE_NAME_PATTERN,
     _normalize_device_type,
+    _TargetingMixin,
 )
-
-from mureo.google_ads._extensions_sitelinks import _SitelinksMixin
-from mureo.google_ads._extensions_callouts import _CalloutsMixin
-from mureo.google_ads._extensions_conversions import _ConversionsMixin
-from mureo.google_ads._extensions_targeting import _TargetingMixin
 
 
 class _ExtensionsMixin(

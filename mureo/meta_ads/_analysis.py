@@ -242,12 +242,12 @@ class AnalysisMixin:
         winner = None
         if len(ads) >= 2:
             w = ads[0]
-            l = ads[-1]
+            loser = ads[-1]
             reasons: list[str] = []
-            if w["ctr"] > l["ctr"]:
-                reasons.append(f"CTR {w['ctr']}% > {l['ctr']}%")
-            if w["conversions"] > l["conversions"]:
-                reasons.append(f"CV {w['conversions']} > {l['conversions']}")
+            if w["ctr"] > loser["ctr"]:
+                reasons.append(f"CTR {w['ctr']}% > {loser['ctr']}%")
+            if w["conversions"] > loser["conversions"]:
+                reasons.append(f"CV {w['conversions']} > {loser['conversions']}")
             winner = {
                 "ad_id": w["ad_id"],
                 "ad_name": w["ad_name"],
