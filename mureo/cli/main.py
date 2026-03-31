@@ -1,7 +1,7 @@
-"""mureo CLI メインエントリポイント
+"""mureo CLI main entry point.
 
-Typerアプリ定義とサブコマンドグループの登録。
-``mureo`` コマンドとして pyproject.toml に登録済み。
+Typer app definition and subcommand group registration.
+Registered as the ``mureo`` command in pyproject.toml.
 """
 
 from __future__ import annotations

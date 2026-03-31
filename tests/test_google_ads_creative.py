@@ -153,7 +153,7 @@ class TestBuildContextSummary:
             "existing_keywords": [],
         }
         summary = _CreativeMixin._build_context_summary(result)
-        assert "LP情報" in summary
+        assert "LP Information" in summary
         assert "Test LP" in summary
         assert "見出し" in summary
 
@@ -171,7 +171,7 @@ class TestBuildContextSummary:
             "existing_keywords": [],
         }
         summary = _CreativeMixin._build_context_summary(result)
-        assert "既存広告" in summary
+        assert "Existing Ads" in summary
 
     def test_with_search_term_insights(self) -> None:
         result = {
@@ -186,7 +186,7 @@ class TestBuildContextSummary:
             "existing_keywords": [],
         }
         summary = _CreativeMixin._build_context_summary(result)
-        assert "CV獲得検索語句" in summary
+        assert "Converting Search Terms" in summary
 
     def test_with_existing_keywords(self) -> None:
         result = {
@@ -199,7 +199,7 @@ class TestBuildContextSummary:
             ],
         }
         summary = _CreativeMixin._build_context_summary(result)
-        assert "ターゲットキーワード" in summary
+        assert "Target Keywords" in summary
 
     def test_no_data(self) -> None:
         result = {
@@ -209,7 +209,7 @@ class TestBuildContextSummary:
             "existing_keywords": [],
         }
         summary = _CreativeMixin._build_context_summary(result)
-        assert summary == "LP解析データなし"
+        assert summary == "No LP analysis data"
 
 
 # ---------------------------------------------------------------------------

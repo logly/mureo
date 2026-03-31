@@ -1,11 +1,11 @@
-"""分析・調査系の統合ファサード Mixin。
+"""Integrated analysis facade mixin.
 
-各サブモジュールの Mixin を多重継承で統合する。
-外部からは ``from mureo.google_ads._analysis import _AnalysisMixin`` で
-従来と同じ1つのクラスとしてインポートできる。
+Integrates sub-module mixins via multiple inheritance.
+Can be imported as ``from mureo.google_ads._analysis import _AnalysisMixin``
+as a single class, maintaining backward compatibility.
 
-後方互換: _PERIOD_DAYS, _get_comparison_date_ranges, _calc_change_rate,
-_safe_metrics, _extract_ngrams, _INFORMATIONAL_PATTERNS も再エクスポートする。
+Backward compatibility: re-exports _PERIOD_DAYS, _get_comparison_date_ranges, _calc_change_rate,
+_safe_metrics, _extract_ngrams, _INFORMATIONAL_PATTERNS.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from mureo.google_ads._analysis_auction import _AuctionAnalysisMixin
 from mureo.google_ads._analysis_btob import _BtoBAnalysisMixin
 from mureo.google_ads._analysis_budget import _BudgetAnalysisMixin
 
-# 後方互換用の再エクスポート
+# Backward-compatible re-exports
 from mureo.google_ads._analysis_constants import (  # noqa: F401
     _INFORMATIONAL_PATTERNS,
     _MATCH_TYPE_MAP,
@@ -40,6 +40,6 @@ class _AnalysisMixin(
     _AuctionAnalysisMixin,
     _BtoBAnalysisMixin,
 ):
-    """分析・調査系の複合ツールを提供する Mixin（ファサード）"""
+    """Mixin providing composite analysis and research tools (facade)."""
 
     pass

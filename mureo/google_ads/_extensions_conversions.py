@@ -1,6 +1,6 @@
-"""コンバージョンアクション操作 Mixin。
+"""Conversion action operations mixin.
 
-list / get / create / update / remove / tag / performance を提供する。
+Provides list / get / create / update / remove / tag / performance.
 """
 
 from __future__ import annotations
@@ -58,9 +58,9 @@ _VALID_CONVERSION_ACTION_STATUSES = frozenset({"ENABLED", "HIDDEN", "REMOVED"})
 
 
 class _ConversionsMixin:
-    """コンバージョンアクション操作を提供する Mixin。"""
+    """Mixin providing conversion action operations."""
 
-    # 親クラス (GoogleAdsApiClient) が提供する属性の型宣言
+    # Type declarations for attributes provided by parent class (GoogleAdsApiClient)
     _customer_id: str
     _client: GoogleAdsClient
 
@@ -70,7 +70,7 @@ class _ConversionsMixin:
     def _get_service(self, service_name: str) -> Any: ...
 
     async def list_conversion_actions(self) -> list[dict[str, Any]]:
-        """コンバージョンアクション一覧"""
+        """List conversion actions."""
 
         query = """
             SELECT
@@ -88,12 +88,12 @@ class _ConversionsMixin:
         campaign_id: str | None = None,
         period: str = "LAST_30_DAYS",
     ) -> dict[str, Any]:
-        """コンバージョンアクション別の実績を取得する。
+        """Get performance by conversion action.
 
-        キャンペーン単位またはアカウント全体のコンバージョンアクション別
-        CV数・CV値を日別ブレイクダウン付きで返す。
-        cost_per_conversion は segments.conversion_action_name と同時取得
-        できないため、別クエリでキャンペーン別コストを取得しCPAを算出する。
+        Returns conversion counts and values per conversion action,
+        with daily breakdown, at campaign or account level.
+        cost_per_conversion cannot be retrieved simultaneously with
+        segments.conversion_action_name, so a separate query fetches cost for CPA calculation.
         """
         date_clause = self._period_to_date_clause(period)  # type: ignore[attr-defined]
         campaign_filter = ""
@@ -101,7 +101,7 @@ class _ConversionsMixin:
             self._validate_id(campaign_id, "campaign_id")
             campaign_filter = f"AND campaign.id = {campaign_id}"
 
-        # CV アクション別 × 日別 実績
+        # CV action x daily performance
         cv_query = f"""
             SELECT
                 campaign.id,
@@ -119,7 +119,7 @@ class _ConversionsMixin:
         """
         response = await self._search(cv_query)  # type: ignore[attr-defined]
 
-        # 日別明細とアクション別サマリーを同時構築
+        # Build daily details and action summary simultaneously
         daily_details: list[dict[str, Any]] = []
         action_summary: dict[str, dict[str, Any]] = {}
         campaign_cv_totals: dict[str, float] = {}
@@ -134,7 +134,7 @@ class _ConversionsMixin:
 
             campaign_cv_totals[cid] = campaign_cv_totals.get(cid, 0) + cvs
 
-            # 日別明細
+            # Daily details
             daily_details.append(
                 {
                     "date": cv_date,
@@ -146,7 +146,7 @@ class _ConversionsMixin:
                 }
             )
 
-            # アクション別サマリー集計
+            # Action summary aggregation
             summary_key = f"{cid}:{action_name}"
             if summary_key not in action_summary:
                 action_summary[summary_key] = {
@@ -161,7 +161,7 @@ class _ConversionsMixin:
             s = action_summary[summary_key]
             s["conversions"] += cvs
             s["conversions_value"] += cv_value
-            # 日付範囲を更新（降順なので最初が最新）
+            # Update date range (descending, so first is latest)
             if cv_date < s["first_date"]:
                 s["first_date"] = cv_date
             if cv_date > s["last_date"]:
@@ -169,7 +169,7 @@ class _ConversionsMixin:
 
         actions = list(action_summary.values())
 
-        # キャンペーン別コストを別クエリで取得（CPA算出用）
+        # Retrieve cost per campaign via separate query (for CPA calculation)
         cost_query = f"""
             SELECT
                 campaign.id,
@@ -195,11 +195,11 @@ class _ConversionsMixin:
                 else:
                     action["cost_per_conversion"] = 0
         except Exception:
-            logger.warning("キャンペーン別コスト取得に失敗、CPAは0で返却")
+            logger.warning("Failed to retrieve cost per campaign; CPA returned as 0")
             for action in actions:
                 action["cost_per_conversion"] = 0
 
-        # ランディングページ別CV実績を取得
+        # Retrieve CV performance by landing page
         lp_campaign_filter = ""
         if campaign_id:
             lp_campaign_filter = f"AND campaign.id = {campaign_id}"
@@ -238,9 +238,9 @@ class _ConversionsMixin:
                     }
                 )
         except Exception:
-            logger.warning("ランディングページ別CV取得に失敗")
+            logger.warning("Failed to retrieve CV by landing page")
 
-        # CV数降順でソート
+        # Sort by CV count descending
         actions.sort(key=lambda x: x["conversions"], reverse=True)
 
         total_conversions = sum(a["conversions"] for a in actions)
@@ -256,7 +256,7 @@ class _ConversionsMixin:
     async def get_conversion_action(
         self, conversion_action_id: str
     ) -> dict[str, Any] | None:
-        """コンバージョンアクション詳細"""
+        """Conversion action details."""
         self._validate_id(conversion_action_id, "conversion_action_id")
 
         query = f"""
@@ -272,27 +272,27 @@ class _ConversionsMixin:
             return map_conversion_action(row.conversion_action)
         return None
 
-    @_wrap_mutate_error("コンバージョンアクション作成")
+    @_wrap_mutate_error("conversion action creation")
     async def create_conversion_action(self, params: dict[str, Any]) -> dict[str, Any]:
-        """コンバージョンアクション作成"""
+        """Create conversion action."""
         name = params.get("name", "")
         if not name:
-            raise ValueError("name は必須です")
+            raise ValueError("name is required")
         if len(name) > 256:
-            raise ValueError("name は256文字以内で指定してください")
+            raise ValueError("name must be 256 characters or less")
 
         action_type = params.get("type", "WEBPAGE").upper()
         if action_type not in _VALID_CONVERSION_ACTION_TYPES:
             raise ValueError(
-                f"不正な type: {action_type}。"
-                f"有効な値: {sorted(_VALID_CONVERSION_ACTION_TYPES)}"
+                f"Invalid type: {action_type}. "
+                f"Valid values: {sorted(_VALID_CONVERSION_ACTION_TYPES)}"
             )
 
         category = params.get("category", "DEFAULT").upper()
         if category not in _VALID_CONVERSION_ACTION_CATEGORIES:
             raise ValueError(
-                f"不正な category: {category}。"
-                f"有効な値: {sorted(_VALID_CONVERSION_ACTION_CATEGORIES)}"
+                f"Invalid category: {category}. "
+                f"Valid values: {sorted(_VALID_CONVERSION_ACTION_CATEGORIES)}"
             )
 
         ca_service = self._get_service("ConversionActionService")
@@ -315,14 +315,14 @@ class _ConversionsMixin:
             days = int(params["click_through_lookback_window_days"])
             if not (1 <= days <= 90):
                 raise ValueError(
-                    "click_through_lookback_window_days は 1〜90 の範囲で指定してください"
+                    "click_through_lookback_window_days must be between 1 and 90"
                 )
             action.click_through_lookback_window_days = days
         if "view_through_lookback_window_days" in params:
             days = int(params["view_through_lookback_window_days"])
             if not (1 <= days <= 30):
                 raise ValueError(
-                    "view_through_lookback_window_days は 1〜30 の範囲で指定してください"
+                    "view_through_lookback_window_days must be between 1 and 30"
                 )
             action.view_through_lookback_window_days = days
 
@@ -332,9 +332,9 @@ class _ConversionsMixin:
         )
         return {"resource_name": response.results[0].resource_name}
 
-    @_wrap_mutate_error("コンバージョンアクション更新")
+    @_wrap_mutate_error("conversion action update")
     async def update_conversion_action(self, params: dict[str, Any]) -> dict[str, Any]:
-        """コンバージョンアクション更新"""
+        """Update conversion action."""
         self._validate_id(params["conversion_action_id"], "conversion_action_id")
 
         ca_service = self._get_service("ConversionActionService")
@@ -348,15 +348,15 @@ class _ConversionsMixin:
 
         if "name" in params:
             if len(params["name"]) > 256:
-                raise ValueError("name は256文字以内で指定してください")
+                raise ValueError("name must be 256 characters or less")
             action.name = params["name"]
             paths.append("name")
         if "category" in params:
             cat = params["category"].upper()
             if cat not in _VALID_CONVERSION_ACTION_CATEGORIES:
                 raise ValueError(
-                    f"不正な category: {cat}。"
-                    f"有効な値: {sorted(_VALID_CONVERSION_ACTION_CATEGORIES)}"
+                    f"Invalid category: {cat}. "
+                    f"Valid values: {sorted(_VALID_CONVERSION_ACTION_CATEGORIES)}"
                 )
             action.category = getattr(
                 self._client.enums.ConversionActionCategoryEnum, cat
@@ -366,8 +366,8 @@ class _ConversionsMixin:
             status = params["status"].upper()
             if status not in _VALID_CONVERSION_ACTION_STATUSES:
                 raise ValueError(
-                    f"不正な status: {status}。"
-                    f"有効な値: {sorted(_VALID_CONVERSION_ACTION_STATUSES)}"
+                    f"Invalid status: {status}. "
+                    f"Valid values: {sorted(_VALID_CONVERSION_ACTION_STATUSES)}"
                 )
             action.status = getattr(
                 self._client.enums.ConversionActionStatusEnum, status
@@ -385,7 +385,7 @@ class _ConversionsMixin:
             days = int(params["click_through_lookback_window_days"])
             if not (1 <= days <= 90):
                 raise ValueError(
-                    "click_through_lookback_window_days は 1〜90 の範囲で指定してください"
+                    "click_through_lookback_window_days must be between 1 and 90"
                 )
             action.click_through_lookback_window_days = days
             paths.append("click_through_lookback_window_days")
@@ -393,13 +393,13 @@ class _ConversionsMixin:
             days = int(params["view_through_lookback_window_days"])
             if not (1 <= days <= 30):
                 raise ValueError(
-                    "view_through_lookback_window_days は 1〜30 の範囲で指定してください"
+                    "view_through_lookback_window_days must be between 1 and 30"
                 )
             action.view_through_lookback_window_days = days
             paths.append("view_through_lookback_window_days")
 
         if not paths:
-            raise ValueError("更新するフィールドを1つ以上指定してください")
+            raise ValueError("At least one field must be specified for update")
 
         self._client.copy_from(
             op.update_mask,
@@ -411,9 +411,9 @@ class _ConversionsMixin:
         )
         return {"resource_name": response.results[0].resource_name}
 
-    @_wrap_mutate_error("コンバージョンアクション削除")
+    @_wrap_mutate_error("conversion action removal")
     async def remove_conversion_action(self, params: dict[str, Any]) -> dict[str, Any]:
-        """コンバージョンアクション削除"""
+        """Remove conversion action."""
         self._validate_id(params["conversion_action_id"], "conversion_action_id")
         ca_service = self._get_service("ConversionActionService")
         op = self._client.get_type("ConversionActionOperation")
@@ -429,7 +429,7 @@ class _ConversionsMixin:
     async def get_conversion_action_tag(
         self, conversion_action_id: str
     ) -> list[dict[str, Any]]:
-        """コンバージョンアクションのタグスニペット取得"""
+        """Get conversion action tag snippets."""
         self._validate_id(conversion_action_id, "conversion_action_id")
 
         query = f"""

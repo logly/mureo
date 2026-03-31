@@ -1,7 +1,7 @@
-"""Meta Ads MCPツール ハンドラー実装
+"""Meta Ads MCP tool handler implementation
 
-tools_meta_ads.py からハンドラー関数を分離し、ファイルサイズ肥大化を防ぐ。
-ツール定義(TOOLS)とハンドラーマッピング(HANDLERS)は tools_meta_ads.py に残る。
+Separates handler functions from tools_meta_ads.py to prevent file size bloat.
+Tool definitions (TOOLS) and handler mapping (HANDLERS) remain in tools_meta_ads.py.
 """
 
 from __future__ import annotations
@@ -28,14 +28,14 @@ from mureo.mcp._helpers import (
 logger = logging.getLogger(__name__)
 
 _NO_CREDS_MSG = (
-    "認証情報が見つかりません。環境変数 "
+    "Credentials not found. Set environment variable "
     "(META_ADS_ACCESS_TOKEN) "
-    "または ~/.mureo/credentials.json を設定してください。"
+    "or configure ~/.mureo/credentials.json."
 )
 
 
 def _get_client(arguments: dict[str, Any]) -> Any:
-    """認証情報を読み込みクライアントを生成する。Noneの場合は認証エラー。"""
+    """Load credentials and create a client. Returns None on auth error."""
     account_id = _require(arguments, "account_id")
     if not str(account_id).startswith("act_"):
         raise ValueError(
@@ -48,12 +48,12 @@ def _get_client(arguments: dict[str, Any]) -> Any:
 
 
 def _no_meta_creds() -> list[TextContent]:
-    """Meta Ads認証情報なしエラーを返す。"""
+    """Return a Meta Ads credentials-not-found error."""
     return _no_creds_result(_NO_CREDS_MSG)
 
 
 # ---------------------------------------------------------------------------
-# キャンペーン ハンドラー
+# Campaign handlers
 # ---------------------------------------------------------------------------
 
 
@@ -112,7 +112,7 @@ async def handle_campaigns_update(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 広告セット ハンドラー
+# Ad set handlers
 # ---------------------------------------------------------------------------
 
 
@@ -162,7 +162,7 @@ async def handle_ad_sets_update(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 広告 ハンドラー
+# Ad handlers
 # ---------------------------------------------------------------------------
 
 
@@ -211,7 +211,7 @@ async def handle_ads_update(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# インサイト ハンドラー
+# Insights handlers
 # ---------------------------------------------------------------------------
 
 
@@ -243,7 +243,7 @@ async def handle_insights_breakdown(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# オーディエンス ハンドラー
+# Audience handlers
 # ---------------------------------------------------------------------------
 
 
@@ -276,7 +276,7 @@ async def handle_audiences_create(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# コンバージョン (CAPI) ハンドラー
+# Conversions (CAPI) handlers
 # ---------------------------------------------------------------------------
 
 
@@ -331,7 +331,7 @@ async def handle_conversions_send_lead(args: dict[str, Any]) -> list[TextContent
 
 
 # ---------------------------------------------------------------------------
-# カタログ ハンドラー
+# Catalog handlers
 # ---------------------------------------------------------------------------
 
 
@@ -377,7 +377,7 @@ async def handle_catalogs_delete(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 商品 ハンドラー
+# Product handlers
 # ---------------------------------------------------------------------------
 
 
@@ -459,7 +459,7 @@ async def handle_products_delete(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# フィード ハンドラー
+# Feed handlers
 # ---------------------------------------------------------------------------
 
 
@@ -489,7 +489,7 @@ async def handle_feeds_create(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# リード広告 ハンドラー
+# Lead ad handlers
 # ---------------------------------------------------------------------------
 
 
@@ -552,7 +552,7 @@ async def handle_leads_get_by_ad(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 画像アップロード ハンドラー
+# Image upload handlers
 # ---------------------------------------------------------------------------
 
 
@@ -575,7 +575,7 @@ async def handle_images_upload_file(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 動画・カルーセル・コレクション ハンドラー
+# Video, carousel, collection handlers
 # ---------------------------------------------------------------------------
 
 
@@ -639,8 +639,8 @@ async def handle_creatives_create_collection(args: dict[str, Any]) -> list[TextC
 
 
 # ---------------------------------------------------------------------------
-# ページ投稿・Instagram・Split Test・Ad Rules ハンドラーは
-# _handlers_meta_ads_other.py に分離。後方互換のため re-export する。
+# Page posts, Instagram, Split Test, Ad Rules handlers are separated into
+# _handlers_meta_ads_other.py. Re-exported here for backward compatibility.
 # ---------------------------------------------------------------------------
 
 from mureo.mcp._handlers_meta_ads_other import (  # noqa: E402, F401

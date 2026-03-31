@@ -1,4 +1,4 @@
-"""パフォーマンス分析・コスト調査 Mixin。"""
+"""Performance analysis and cost investigation mixin."""
 
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 class _PerformanceAnalysisMixin:
-    """パフォーマンス分析・コスト調査系メソッドを提供する Mixin。"""
+    """Mixin providing performance analysis and cost investigation methods."""
 
-    # 親クラス (GoogleAdsApiClient) が提供する属性・メソッドの型宣言
+    # Type declarations for attributes/methods provided by parent class (GoogleAdsApiClient)
     _customer_id: str
     _client: GoogleAdsClient
 
@@ -52,7 +52,7 @@ class _PerformanceAnalysisMixin:
     ) -> list[dict[str, Any]]: ...
 
     # =================================================================
-    # 目標CPA解決ヘルパー
+    # Target CPA resolution helper
     # =================================================================
 
     async def _resolve_target_cpa(
@@ -60,17 +60,17 @@ class _PerformanceAnalysisMixin:
         campaign_id: str,
         explicit: float | None = None,
     ) -> tuple[float | None, str]:
-        """目標CPAを解決する。
+        """Resolve target CPA.
 
-        優先順: 引数 → 入札戦略(target_cpa) → 実績CPA(cost/conversions)
+        Priority: argument -> bidding strategy (target_cpa) -> actual CPA (cost/conversions)
 
         Returns:
-            (cpa値, ソース種別: "explicit"|"bidding_strategy"|"actual"|"none")
+            (cpa_value, source_type: "explicit"|"bidding_strategy"|"actual"|"none")
         """
         if explicit is not None:
             return explicit, "explicit"
 
-        # 入札戦略から取得
+        # Retrieve from bidding strategy
         try:
             campaign = await self.get_campaign(campaign_id)
             if campaign:
@@ -81,9 +81,11 @@ class _PerformanceAnalysisMixin:
                 if target_cpa is not None and target_cpa > 0:
                     return float(target_cpa), "bidding_strategy"
         except Exception:
-            logger.debug("入札戦略からの目標CPA取得に失敗: %s", campaign_id)
+            logger.debug(
+                "Failed to retrieve target CPA from bidding strategy: %s", campaign_id
+            )
 
-        # 実績CPAから算出
+        # Calculate from actual CPA
         try:
             perf = await self.get_performance_report(
                 campaign_id=campaign_id, period="LAST_30_DAYS"
@@ -94,12 +96,12 @@ class _PerformanceAnalysisMixin:
             if convs > 0:
                 return round(cost / convs, 0), "actual"
         except Exception:
-            logger.debug("実績CPAの算出に失敗: %s", campaign_id)
+            logger.debug("Failed to calculate actual CPA: %s", campaign_id)
 
         return None, "none"
 
     # =================================================================
-    # 共通ヘルパー
+    # Common helpers
     # =================================================================
 
     async def _fetch_performance_comparison(
@@ -107,7 +109,7 @@ class _PerformanceAnalysisMixin:
         campaign_id: str,
         period: str,
     ) -> tuple[dict[str, Any], dict[str, Any], dict[str, float | None]]:
-        """当期・前期のパフォーマンスを取得し、変化率を算出する。
+        """Retrieve current and previous period performance and calculate change rates.
 
         Returns:
             (current_metrics, previous_metrics, changes_pct)
@@ -136,24 +138,32 @@ class _PerformanceAnalysisMixin:
         current_m: dict[str, Any],
         previous_m: dict[str, Any],
     ) -> tuple[list[str], dict[str, Any]]:
-        """パフォーマンス変化率からインサイトとCPA情報を生成する。"""
+        """Generate insights and CPA information from performance change rates."""
         insights: list[str] = []
         cpa_info: dict[str, Any] = {}
 
         imp_change = changes.get("impressions_change_pct")
         if imp_change is not None and imp_change < -20:
-            insights.append(f"インプレッションが前期比 {imp_change}% 減少しています")
+            insights.append(
+                f"Impressions decreased {imp_change}% compared to previous period"
+            )
         click_change = changes.get("clicks_change_pct")
         if click_change is not None and click_change < -20:
-            insights.append(f"クリック数が前期比 {click_change}% 減少しています")
+            insights.append(
+                f"Clicks decreased {click_change}% compared to previous period"
+            )
         cost_change = changes.get("cost_change_pct")
         if cost_change is not None and cost_change > 30:
-            insights.append(f"広告費が前期比 {cost_change}% 増加しています")
+            insights.append(
+                f"Ad spend increased {cost_change}% compared to previous period"
+            )
         conv_change = changes.get("conversions_change_pct")
         if conv_change is not None and conv_change < -20:
-            insights.append(f"コンバージョンが前期比 {conv_change}% 減少しています")
+            insights.append(
+                f"Conversions decreased {conv_change}% compared to previous period"
+            )
 
-        # CPA 比較
+        # CPA comparison
         cur_cost = float(current_m.get("cost", 0))
         cur_conv = float(current_m.get("conversions", 0))
         prev_cost = float(previous_m.get("cost", 0))
@@ -168,7 +178,9 @@ class _PerformanceAnalysisMixin:
             cpa_change = _calc_change_rate(cur_cpa, prev_cpa)
             cpa_info["cpa_change_pct"] = cpa_change
             if cpa_change is not None and cpa_change > 20:
-                insights.append(f"CPAが前期比 {cpa_change}% 悪化しています")
+                insights.append(
+                    f"CPA deteriorated {cpa_change}% compared to previous period"
+                )
 
         return insights, cpa_info
 
@@ -176,7 +188,7 @@ class _PerformanceAnalysisMixin:
         self,
         campaign_id: str,
     ) -> dict[str, Any]:
-        """検索語句の変動を分析し、新規語句と無駄な語句を特定する。"""
+        """Analyze search term changes and identify new and wasteful terms."""
         current_period, previous_period = _get_comparison_date_ranges("LAST_7_DAYS")
         current_terms = await self.get_search_terms_report(
             campaign_id=campaign_id, period=current_period
@@ -185,7 +197,7 @@ class _PerformanceAnalysisMixin:
             campaign_id=campaign_id, period=previous_period
         )
 
-        # 前期に存在しない検索語句を特定
+        # Identify search terms not present in previous period
         prev_term_set = {t.get("search_term", "") for t in previous_terms}
         new_terms = [
             t for t in current_terms if t.get("search_term", "") not in prev_term_set
@@ -196,7 +208,7 @@ class _PerformanceAnalysisMixin:
             reverse=True,
         )
 
-        # CVなしで高コストの語句を候補として抽出
+        # Extract high-cost terms with no conversions as candidates
         wasteful_terms = [
             t
             for t in current_terms
@@ -215,8 +227,8 @@ class _PerformanceAnalysisMixin:
                 t.get("metrics", {}).get("cost", 0) for t in new_terms_sorted
             )
             finding = (
-                f"新規流入検索語句が{len(new_terms)}件あり、"
-                f"合計 ¥{total_new_cost:,.0f} のコストが発生しています"
+                f"{len(new_terms)} new search terms found, "
+                f"with a total cost of ¥{total_new_cost:,.0f}"
             )
 
         return {
@@ -226,7 +238,7 @@ class _PerformanceAnalysisMixin:
         }
 
     # =================================================================
-    # 1. パフォーマンス総合分析
+    # 1. Comprehensive performance analysis
     # =================================================================
 
     async def analyze_performance(
@@ -234,7 +246,7 @@ class _PerformanceAnalysisMixin:
         campaign_id: str,
         period: str = "LAST_7_DAYS",
     ) -> dict[str, Any]:
-        """キャンペーンのパフォーマンスを総合分析する。"""
+        """Perform comprehensive campaign performance analysis."""
         self._validate_id(campaign_id, "campaign_id")
         issues: list[str] = []
         insights: list[str] = []
@@ -242,15 +254,15 @@ class _PerformanceAnalysisMixin:
 
         result: dict[str, Any] = {"campaign_id": campaign_id, "period": period}
 
-        # 1. キャンペーン基本情報
+        # 1. Campaign basic info
         campaign = await self.get_campaign(campaign_id)
         if not campaign:
-            return {"error": f"キャンペーンID {campaign_id} が見つかりません"}
+            return {"error": f"Campaign ID {campaign_id} not found"}
         result["campaign"] = campaign
         if campaign.get("status") != "ENABLED":
-            issues.append(f"キャンペーンのステータスが {campaign.get('status')} です")
+            issues.append(f"Campaign status is {campaign.get('status')}")
 
-        # 2. パフォーマンス比較（当期 vs 前期、非重複期間）
+        # 2. Performance comparison (current vs previous, non-overlapping periods)
         try:
             current_m, previous_m, changes = await self._fetch_performance_comparison(
                 campaign_id, period
@@ -264,10 +276,10 @@ class _PerformanceAnalysisMixin:
             insights.extend(perf_insights)
             result.update(cpa_info)
         except Exception:
-            logger.warning("パフォーマンス比較の取得に失敗", exc_info=True)
-            result["performance_current"] = "取得失敗"
+            logger.warning("Failed to retrieve performance comparison", exc_info=True)
+            result["performance_current"] = "Retrieval failed"
 
-        # 3. 検索語句 上位20件
+        # 3. Top 20 search terms
         try:
             search_terms = await self.get_search_terms_report(
                 campaign_id=campaign_id, period=period
@@ -279,49 +291,49 @@ class _PerformanceAnalysisMixin:
             )
             result["top_search_terms"] = sorted_terms[:20]
         except Exception:
-            logger.warning("検索語句レポートの取得に失敗", exc_info=True)
-            result["top_search_terms"] = "取得失敗"
+            logger.warning("Failed to retrieve search terms report", exc_info=True)
+            result["top_search_terms"] = "Retrieval failed"
 
-        # 4. Google 推奨事項
+        # 4. Google recommendations
         try:
             recommendations = await self.list_recommendations(campaign_id=campaign_id)
             result["recommendations_from_google"] = recommendations[:10]
             if recommendations:
-                recs.append(f"Googleから{len(recommendations)}件の推奨事項があります")
+                recs.append(f"Google has {len(recommendations)} recommendations")
         except Exception:
-            logger.warning("推奨事項の取得に失敗", exc_info=True)
-            result["recommendations_from_google"] = "取得失敗"
+            logger.warning("Failed to retrieve recommendations", exc_info=True)
+            result["recommendations_from_google"] = "Retrieval failed"
 
-        # 5. 直近の変更履歴
+        # 5. Recent change history
         try:
             changes_history = await self.list_change_history()
             result["recent_changes"] = changes_history[:10]
         except Exception:
-            logger.warning("変更履歴の取得に失敗", exc_info=True)
-            result["recent_changes"] = "取得失敗"
+            logger.warning("Failed to retrieve change history", exc_info=True)
+            result["recent_changes"] = "Retrieval failed"
 
-        # 6. 分析サマリー
+        # 6. Analysis summary
         result["issues"] = issues
         result["insights"] = insights
         result["recommendations"] = recs
         return result
 
     # =================================================================
-    # 2. 広告費増加・CPA悪化調査
+    # 2. Ad spend increase / CPA deterioration investigation
     # =================================================================
 
     async def investigate_cost_increase(
         self,
         campaign_id: str,
     ) -> dict[str, Any]:
-        """広告費増加・CPA悪化の原因を調査する。"""
+        """Investigate causes of ad spend increase and CPA deterioration."""
         self._validate_id(campaign_id, "campaign_id")
         findings: list[str] = []
         actions: list[str] = []
 
         result: dict[str, Any] = {"campaign_id": campaign_id}
 
-        # 1. 7日 vs 前7日のパフォーマンス比較（非重複期間）
+        # 1. 7-day vs prior 7-day performance comparison (non-overlapping)
         current_m: dict[str, Any] = {}
         previous_m: dict[str, Any] = {}
         changes: dict[str, float | None] = {}
@@ -333,17 +345,17 @@ class _PerformanceAnalysisMixin:
             result["performance_previous_7d"] = previous_m
             result["changes"] = changes
         except Exception:
-            logger.warning("パフォーマンス比較の取得に失敗", exc_info=True)
-            result["performance_current_7d"] = "取得失敗"
+            logger.warning("Failed to retrieve performance comparison", exc_info=True)
+            result["performance_current_7d"] = "Retrieval failed"
 
-        # 2. コスト増加の内訳（CPC上昇 vs クリック数増加）
+        # 2. Cost increase breakdown (CPC increase vs click increase)
         cost_breakdown, breakdown_findings, cpc_change, clicks_change = (
             self._build_cost_breakdown(current_m, previous_m)
         )
         result["cost_breakdown"] = cost_breakdown
         findings.extend(breakdown_findings)
 
-        # 3. 検索語句の変動分析
+        # 3. Search term change analysis
         try:
             term_analysis = await self._analyze_search_term_changes(campaign_id)
             result["new_search_terms"] = term_analysis["new_search_terms"]
@@ -351,11 +363,11 @@ class _PerformanceAnalysisMixin:
             if term_analysis["finding"]:
                 findings.append(term_analysis["finding"])
         except Exception:
-            logger.warning("検索語句分析に失敗", exc_info=True)
-            result["new_search_terms"] = "取得失敗"
-            result["wasteful_search_terms"] = "取得失敗"
+            logger.warning("Search term analysis failed", exc_info=True)
+            result["new_search_terms"] = "Retrieval failed"
+            result["wasteful_search_terms"] = "Retrieval failed"
 
-        # 4. 入札・予算の変更履歴
+        # 4. Bid and budget change history
         try:
             change_history = await self.list_change_history()
             bid_budget_changes = [
@@ -372,18 +384,18 @@ class _PerformanceAnalysisMixin:
             result["bid_budget_changes"] = bid_budget_changes[:10]
             if bid_budget_changes:
                 findings.append(
-                    f"直近の入札・予算関連の変更が{len(bid_budget_changes)}件あります"
+                    f"There are {len(bid_budget_changes)} recent bid/budget-related changes"
                 )
         except Exception:
-            logger.warning("変更履歴の取得に失敗", exc_info=True)
-            result["bid_budget_changes"] = "取得失敗"
+            logger.warning("Failed to retrieve change history", exc_info=True)
+            result["bid_budget_changes"] = "Retrieval failed"
 
-        # 5. 除外キーワード候補
+        # 5. Negative keyword candidates
         await self._find_negative_keyword_candidates(campaign_id, result, actions)
 
-        # サマリー
+        # Summary
         if cpc_change is not None and cpc_change > 10:
-            actions.append("入札戦略の見直しや上限CPCの調整を検討してください")
+            actions.append("Consider reviewing bidding strategy or adjusting max CPC")
 
         result["findings"] = findings
         result["recommended_actions"] = actions
@@ -394,7 +406,7 @@ class _PerformanceAnalysisMixin:
         current_m: dict[str, Any],
         previous_m: dict[str, Any],
     ) -> tuple[dict[str, Any], list[str], float | None, float | None]:
-        """コスト内訳（CPC vs クリック数変動）を構築する。
+        """Build cost breakdown (CPC vs click volume changes).
 
         Returns:
             (cost_breakdown, findings, cpc_change, clicks_change)
@@ -419,13 +431,13 @@ class _PerformanceAnalysisMixin:
         findings: list[str] = []
         if cpc_change is not None and cpc_change > 10:
             findings.append(
-                f"平均CPCが {cpc_change}% 上昇しています。"
-                "競合の入札強化やオークション環境の変化が考えられます"
+                f"Average CPC increased {cpc_change}%. "
+                "This may be due to increased competitor bidding or changes in auction environment"
             )
         if clicks_change is not None and clicks_change > 20:
             findings.append(
-                f"クリック数が {clicks_change}% 増加しています。"
-                "検索語句の拡がりや新規流入語句の影響が考えられます"
+                f"Clicks increased {clicks_change}%. "
+                "This may be due to broader search terms or new incoming queries"
             )
         return cost_breakdown, findings, cpc_change, clicks_change
 
@@ -435,7 +447,7 @@ class _PerformanceAnalysisMixin:
         result: dict[str, Any],
         actions: list[str],
     ) -> None:
-        """除外キーワード候補を特定する。"""
+        """Identify negative keyword candidates."""
         try:
             existing_negatives = await self.list_negative_keywords(campaign_id)
             existing_neg_texts = {n.get("text", "").lower() for n in existing_negatives}
@@ -450,26 +462,26 @@ class _PerformanceAnalysisMixin:
                 result["negative_keyword_candidates"] = neg_candidates[:10]
                 if neg_candidates:
                     actions.append(
-                        f"CVなしで広告費が発生している検索語句が{len(neg_candidates)}件あります。"
-                        "除外キーワードへの追加を検討してください"
+                        f"There are {len(neg_candidates)} search terms with cost but no conversions. "
+                        "Consider adding them as negative keywords"
                     )
         except Exception:
-            logger.warning("除外キーワード分析に失敗", exc_info=True)
-            result["negative_keyword_candidates"] = "取得失敗"
+            logger.warning("Negative keyword analysis failed", exc_info=True)
+            result["negative_keyword_candidates"] = "Retrieval failed"
 
     # =================================================================
-    # 3. 全キャンペーン横断健全性チェック
+    # 3. Cross-campaign health check
     # =================================================================
 
     async def health_check_all_campaigns(self) -> dict[str, Any]:
-        """全キャンペーンの健全性を横断チェックする。"""
-        # --- 1. 全キャンペーン一覧 ---
+        """Perform cross-campaign health check."""
+        # --- 1. All campaigns list ---
         campaigns = await self.list_campaigns()
         result: dict[str, Any] = {
             "total_campaigns": len(campaigns),
         }
 
-        # ENABLEDのみ対象
+        # Only ENABLED campaigns
         enabled = [c for c in campaigns if c.get("status") == "ENABLED"]
         paused = [c for c in campaigns if c.get("status") == "PAUSED"]
         removed = [c for c in campaigns if c.get("status") == "REMOVED"]
@@ -478,7 +490,7 @@ class _PerformanceAnalysisMixin:
         result["paused_count"] = len(paused)
         result["removed_count"] = len(removed)
 
-        # --- 2. primary_status による分類 ---
+        # --- 2. Classification by primary_status ---
         healthy: list[dict[str, Any]] = []
         warning: list[dict[str, Any]] = []
         problem: list[dict[str, Any]] = []
@@ -501,7 +513,7 @@ class _PerformanceAnalysisMixin:
         result["warning_campaigns"] = warning
         result["problem_campaigns"] = problem
 
-        # --- 3. 問題キャンペーンの詳細診断 ---
+        # --- 3. Detailed diagnostics for problem campaigns ---
         targets = (problem + warning)[:5]
         detailed_diagnostics: list[dict[str, Any]] = []
         for camp_summary in targets:
@@ -518,17 +530,21 @@ class _PerformanceAnalysisMixin:
                     }
                 )
             except Exception:
-                logger.warning("キャンペーン %s の詳細診断に失敗", cid, exc_info=True)
+                logger.warning(
+                    "Failed to run detailed diagnostics for campaign %s",
+                    cid,
+                    exc_info=True,
+                )
                 detailed_diagnostics.append(
                     {
                         "campaign_id": cid,
                         "name": camp_summary["name"],
-                        "error": "詳細診断の取得に失敗",
+                        "error": "Detailed diagnostics retrieval failed",
                     }
                 )
         result["detailed_diagnostics"] = detailed_diagnostics
 
-        # --- 4. 横断サマリー ---
+        # --- 4. Cross-campaign summary ---
         result["summary"] = {
             "total_enabled": len(enabled),
             "healthy": len(healthy),
@@ -538,20 +554,18 @@ class _PerformanceAnalysisMixin:
 
         if problem:
             result["summary"]["message"] = (
-                f"{len(problem)}件のキャンペーンに問題があります。"
-                "詳細診断を確認してください"
+                f"{len(problem)} campaigns have problems. "
+                "Please review detailed diagnostics"
             )
         elif warning:
-            result["summary"][
-                "message"
-            ] = f"{len(warning)}件のキャンペーンに注意事項があります"
+            result["summary"]["message"] = f"{len(warning)} campaigns have warnings"
         else:
-            result["summary"]["message"] = "全キャンペーンが正常に稼働しています"
+            result["summary"]["message"] = "All campaigns are operating normally"
 
         return result
 
     # =================================================================
-    # 広告A/B比較
+    # Ad A/B comparison
     # =================================================================
 
     async def compare_ad_performance(
@@ -559,14 +573,14 @@ class _PerformanceAnalysisMixin:
         ad_group_id: str,
         period: str = "LAST_30_DAYS",
     ) -> dict[str, Any]:
-        """広告グループ内の広告パフォーマンスを比較する。"""
+        """Compare ad performance within an ad group."""
         self._validate_id(ad_group_id, "ad_group_id")
 
         ad_perf = await self.get_ad_performance_report(
             ad_group_id=ad_group_id, period=period
         )
 
-        # ENABLED の広告のみ
+        # Only ENABLED ads
         enabled_ads = [a for a in ad_perf if a.get("status") == "ENABLED"]
 
         ads_data: list[dict[str, Any]] = []
@@ -581,7 +595,7 @@ class _PerformanceAnalysisMixin:
             cvr = conversions / clicks if clicks > 0 else 0.0
             cpa = cost / conversions if conversions > 0 else None
 
-            # スコア: CVがあれば ctr*cvr、なければ ctr のみ
+            # Score: ctr*cvr if CV exists, otherwise ctr only
             score = ctr * cvr if conversions > 0 else ctr
 
             entry: dict[str, Any] = {
@@ -595,14 +609,14 @@ class _PerformanceAnalysisMixin:
                 "cpa": round(cpa, 0) if cpa is not None else None,
                 "score": round(score, 6),
             }
-            # RSA情報があれば含める
+            # Include RSA information if available
             if "headlines" in a:
                 entry["headlines"] = a["headlines"]
             if "descriptions" in a:
                 entry["descriptions"] = a["descriptions"]
             ads_data.append(entry)
 
-        # スコアでソートしてランク・verdict を付与
+        # Sort by score and assign rank/verdict
         sorted_ads = sorted(ads_data, key=lambda x: x["score"], reverse=True)
         best_score = sorted_ads[0]["score"] if sorted_ads else 0.0
         ranked_ads: list[dict[str, Any]] = []
@@ -617,35 +631,36 @@ class _PerformanceAnalysisMixin:
 
         winner = next((a for a in ranked_ads if a.get("verdict") == "WINNER"), None)
 
-        # 推奨アクション
+        # Recommended action
         if len(ads_data) < 2:
             recommendation = (
-                "比較対象の広告が不足しています。"
-                "A/Bテストのために広告を追加してください"
+                "Not enough ads for comparison. " "Please add more ads for A/B testing"
             )
         elif winner:
             recommendation = (
-                f"広告 {winner['ad_id']} が最もパフォーマンスが高いです。"
-                "LOSERの広告を停止し、新しいバリエーションでテストすることを推奨します"
+                f"Ad {winner['ad_id']} has the best performance. "
+                "We recommend pausing LOSER ads and testing new variations"
             )
         else:
-            recommendation = "十分なデータが蓄積されるまでテストを継続してください"
+            recommendation = (
+                "Continue testing until sufficient data has been accumulated"
+            )
 
-        # インサイト
+        # Insights
         insights: list[str] = []
         insufficient = [
             a for a in ranked_ads if a.get("verdict") == "INSUFFICIENT_DATA"
         ]
         if insufficient:
             insights.append(
-                f"{len(insufficient)}件の広告がデータ不足です"
-                "（インプレッション100未満）"
+                f"{len(insufficient)} ads have insufficient data "
+                "(less than 100 impressions)"
             )
         losers = [a for a in ranked_ads if a.get("verdict") == "LOSER"]
         if losers and winner:
             insights.append(
-                f"WINNER（広告 {winner['ad_id']}）のCTRは{winner['ctr']:.2%}で、"
-                f"他の{len(losers)}件の広告を上回っています"
+                f"WINNER (ad {winner['ad_id']}) has a CTR of {winner['ctr']:.2%}, "
+                f"outperforming {len(losers)} other ads"
             )
 
         return {

@@ -1,24 +1,24 @@
-"""Google Ads ツール定義 — キャンペーン・広告グループ・広告・予算・アカウント"""
+"""Google Ads tool definitions — Campaigns, ad groups, ads, budgets, account"""
 
 from __future__ import annotations
 
 from mcp.types import Tool
 
 TOOLS: list[Tool] = [
-    # === キャンペーン ===
+    # === Campaigns ===
     Tool(
         name="google_ads.campaigns.list",
-        description="Google Ads キャンペーン一覧を取得する",
+        description="List Google Ads campaigns",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "status_filter": {
                     "type": "string",
-                    "description": "ステータスフィルター（ENABLED/PAUSED）",
+                    "description": "Status filter (ENABLED/PAUSED)",
                 },
             },
             "required": ["customer_id"],
@@ -26,70 +26,73 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.campaigns.get",
-        description="Google Ads キャンペーン詳細を取得する",
+        description="Get Google Ads campaign details",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
     Tool(
         name="google_ads.campaigns.create",
-        description="Google Ads キャンペーンを作成する",
+        description="Create a Google Ads campaign",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "name": {"type": "string", "description": "キャンペーン名"},
+                "name": {"type": "string", "description": "Campaign name"},
                 "bidding_strategy": {
                     "type": "string",
-                    "description": "入札戦略（MAXIMIZE_CLICKS等）",
+                    "description": "Bidding strategy (MAXIMIZE_CLICKS etc.)",
                 },
-                "budget_id": {"type": "string", "description": "予算ID"},
+                "budget_id": {"type": "string", "description": "Budget ID"},
             },
             "required": ["customer_id", "name"],
         },
     ),
     Tool(
         name="google_ads.campaigns.update",
-        description="Google Ads キャンペーンの設定を更新する",
+        description="Update Google Ads campaign settings",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
-                "name": {"type": "string", "description": "新しいキャンペーン名"},
-                "bidding_strategy": {"type": "string", "description": "入札戦略"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
+                "name": {"type": "string", "description": "New campaign name"},
+                "bidding_strategy": {
+                    "type": "string",
+                    "description": "Bidding strategy",
+                },
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
     Tool(
         name="google_ads.campaigns.update_status",
-        description="Google Ads キャンペーンのステータスを変更する（ENABLED/PAUSED/REMOVED）",
+        description="Change Google Ads campaign status (ENABLED/PAUSED/REMOVED)",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "status": {
                     "type": "string",
-                    "description": "新ステータス（ENABLED/PAUSED/REMOVED）",
+                    "description": "New status (ENABLED/PAUSED/REMOVED)",
                 },
             },
             "required": ["customer_id", "campaign_id", "status"],
@@ -97,37 +100,37 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.campaigns.diagnose",
-        description="Google Ads キャンペーンの配信状態を総合診断する",
+        description="Diagnose Google Ads campaign delivery status",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
-    # === 広告グループ ===
+    # === Ad Groups ===
     Tool(
         name="google_ads.ad_groups.list",
-        description="Google Ads 広告グループ一覧を取得する",
+        description="List Google Ads ad groups",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "campaign_id": {
                     "type": "string",
-                    "description": "キャンペーンIDでフィルタ",
+                    "description": "Filter by campaign ID",
                 },
                 "status_filter": {
                     "type": "string",
-                    "description": "ステータスフィルター",
+                    "description": "Status filter",
                 },
             },
             "required": ["customer_id"],
@@ -135,19 +138,19 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.ad_groups.create",
-        description="Google Ads 広告グループを作成する",
+        description="Create a Google Ads ad group",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "所属キャンペーンID"},
-                "name": {"type": "string", "description": "広告グループ名"},
+                "campaign_id": {"type": "string", "description": "Parent campaign ID"},
+                "name": {"type": "string", "description": "Ad group name"},
                 "cpc_bid_micros": {
                     "type": "integer",
-                    "description": "CPC入札額（マイクロ単位）",
+                    "description": "CPC bid amount (in micros)",
                 },
             },
             "required": ["customer_id", "campaign_id", "name"],
@@ -155,46 +158,46 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.ad_groups.update",
-        description="Google Ads 広告グループを更新する",
+        description="Update a Google Ads ad group",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "ad_group_id": {"type": "string", "description": "広告グループID"},
-                "name": {"type": "string", "description": "新しい名前"},
+                "ad_group_id": {"type": "string", "description": "Ad group ID"},
+                "name": {"type": "string", "description": "New name"},
                 "status": {
                     "type": "string",
-                    "description": "ステータス（ENABLED/PAUSED）",
+                    "description": "Status (ENABLED/PAUSED)",
                 },
                 "cpc_bid_micros": {
                     "type": "integer",
-                    "description": "CPC入札額（マイクロ単位）",
+                    "description": "CPC bid amount (in micros)",
                 },
             },
             "required": ["customer_id", "ad_group_id"],
         },
     ),
-    # === 広告 ===
+    # === Ads ===
     Tool(
         name="google_ads.ads.list",
-        description="Google Ads 広告一覧を取得する",
+        description="List Google Ads ads",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "ad_group_id": {
                     "type": "string",
-                    "description": "広告グループIDでフィルタ",
+                    "description": "Filter by ad group ID",
                 },
                 "status_filter": {
                     "type": "string",
-                    "description": "ステータスフィルター",
+                    "description": "Status filter",
                 },
             },
             "required": ["customer_id"],
@@ -202,53 +205,53 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.ads.create",
-        description="Google Ads レスポンシブ検索広告（RSA）を作成する",
+        description="Create a Google Ads responsive search ad (RSA)",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "ad_group_id": {"type": "string", "description": "広告グループID"},
+                "ad_group_id": {"type": "string", "description": "Ad group ID"},
                 "headlines": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "見出しリスト（3個以上15個以下）",
+                    "description": "List of headlines (3 to 15)",
                 },
                 "descriptions": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "説明文リスト（2個以上4個以下）",
+                    "description": "List of descriptions (2 to 4)",
                 },
-                "final_url": {"type": "string", "description": "最終URL"},
-                "path1": {"type": "string", "description": "表示パス1"},
-                "path2": {"type": "string", "description": "表示パス2"},
+                "final_url": {"type": "string", "description": "Final URL"},
+                "path1": {"type": "string", "description": "Display path 1"},
+                "path2": {"type": "string", "description": "Display path 2"},
             },
             "required": ["customer_id", "ad_group_id", "headlines", "descriptions"],
         },
     ),
     Tool(
         name="google_ads.ads.update",
-        description="Google Ads 広告を更新する",
+        description="Update a Google Ads ad",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "ad_group_id": {"type": "string", "description": "広告グループID"},
-                "ad_id": {"type": "string", "description": "広告ID"},
+                "ad_group_id": {"type": "string", "description": "Ad group ID"},
+                "ad_id": {"type": "string", "description": "Ad ID"},
                 "headlines": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "見出しリスト",
+                    "description": "List of headlines",
                 },
                 "descriptions": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "説明文リスト",
+                    "description": "List of descriptions",
                 },
             },
             "required": ["customer_id", "ad_group_id", "ad_id"],
@@ -256,100 +259,100 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.ads.update_status",
-        description="Google Ads 広告のステータスを変更する",
+        description="Change Google Ads ad status",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "ad_group_id": {"type": "string", "description": "広告グループID"},
-                "ad_id": {"type": "string", "description": "広告ID"},
+                "ad_group_id": {"type": "string", "description": "Ad group ID"},
+                "ad_id": {"type": "string", "description": "Ad ID"},
                 "status": {
                     "type": "string",
-                    "description": "新ステータス（ENABLED/PAUSED）",
+                    "description": "New status (ENABLED/PAUSED)",
                 },
             },
             "required": ["customer_id", "ad_group_id", "ad_id", "status"],
         },
     ),
-    # === 広告ポリシー詳細 ===
+    # === Ad policy details ===
     Tool(
         name="google_ads.ads.policy_details",
-        description="Google Ads 広告のポリシー詳細（不承認理由等）を取得する",
+        description="Get Google Ads ad policy details (disapproval reasons etc.)",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "ad_group_id": {"type": "string", "description": "広告グループID"},
-                "ad_id": {"type": "string", "description": "広告ID"},
+                "ad_group_id": {"type": "string", "description": "Ad group ID"},
+                "ad_id": {"type": "string", "description": "Ad ID"},
             },
             "required": ["customer_id", "ad_group_id", "ad_id"],
         },
     ),
-    # === 予算 ===
+    # === Budgets ===
     Tool(
         name="google_ads.budget.get",
-        description="Google Ads キャンペーン予算を取得する",
+        description="Get Google Ads campaign budget",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
     Tool(
         name="google_ads.budget.update",
-        description="Google Ads 予算を更新する",
+        description="Update a Google Ads budget",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "budget_id": {"type": "string", "description": "予算ID"},
-                "amount": {"type": "number", "description": "新しい日次予算額"},
+                "budget_id": {"type": "string", "description": "Budget ID"},
+                "amount": {"type": "number", "description": "New daily budget amount"},
             },
             "required": ["customer_id", "budget_id", "amount"],
         },
     ),
-    # === 予算作成 ===
+    # === Budget creation ===
     Tool(
         name="google_ads.budget.create",
-        description="Google Ads キャンペーン予算を新規作成する",
+        description="Create a new Google Ads campaign budget",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "name": {"type": "string", "description": "予算名"},
-                "amount": {"type": "number", "description": "日次予算額"},
+                "name": {"type": "string", "description": "Budget name"},
+                "amount": {"type": "number", "description": "Daily budget amount"},
             },
             "required": ["customer_id", "name", "amount"],
         },
     ),
-    # === アカウント ===
+    # === Account ===
     Tool(
         name="google_ads.accounts.list",
-        description="Google Ads 管理アカウント一覧を取得する",
+        description="List Google Ads managed accounts",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
             },
             "required": ["customer_id"],

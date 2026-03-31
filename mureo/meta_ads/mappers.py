@@ -4,16 +4,16 @@ from typing import Any
 
 
 def _cents_to_amount(cents_str: str | int | None) -> float:
-    """セント単位の金額をアカウント通貨の実数値に変換する
+    """Convert a cent-denominated amount to a real currency value.
 
-    Meta APIは予算等の金額をセント単位（整数文字列）で返す。
-    通貨に関わらず100で割って実数値にする。
+    Meta API returns budget amounts in cents (integer strings).
+    Divide by 100 regardless of currency to get the real value.
 
     Args:
-        cents_str: セント単位の金額（文字列または整数）
+        cents_str: Amount in cents (string or integer)
 
     Returns:
-        アカウント通貨単位の金額
+        Amount in account currency units
     """
     if cents_str is None:
         return 0.0
@@ -21,7 +21,7 @@ def _cents_to_amount(cents_str: str | int | None) -> float:
 
 
 def _safe_float(value: str | int | float | None) -> float:
-    """安全にfloatに変換する"""
+    """Safely convert a value to float."""
     if value is None:
         return 0.0
     try:
@@ -31,7 +31,7 @@ def _safe_float(value: str | int | float | None) -> float:
 
 
 def _safe_int(value: str | int | None) -> int:
-    """安全にintに変換する"""
+    """Safely convert a value to int."""
     if value is None:
         return 0
     try:
@@ -41,21 +41,21 @@ def _safe_int(value: str | int | None) -> int:
 
 
 def _extract_conversions(actions: list[dict[str, Any]] | None) -> float:
-    """actionsからコンバージョン数を抽出する
+    """Extract conversion count from actions.
 
-    Meta APIのactionsは配列で [{"action_type": "...", "value": "..."}] 形式。
-    コンバージョン関連のaction_typeを集計する。
+    Meta API actions are an array in [{"action_type": "...", "value": "..."}] format.
+    Aggregates conversion-related action_types.
 
     Args:
-        actions: actionsデータ
+        actions: Actions data
 
     Returns:
-        コンバージョン数合計
+        Total conversion count
     """
     if not actions:
         return 0.0
 
-    # コンバージョンとして扱うaction_type
+    # action_types treated as conversions
     cv_action_types = {
         "offsite_conversion.fb_pixel_purchase",
         "offsite_conversion.fb_pixel_lead",
@@ -82,13 +82,13 @@ def _extract_conversions(actions: list[dict[str, Any]] | None) -> float:
 def _extract_cost_per_conversion(
     cost_per_action_type: list[dict[str, Any]] | None,
 ) -> float | None:
-    """cost_per_action_typeからCPAを抽出する
+    """Extract CPA from cost_per_action_type.
 
     Args:
-        cost_per_action_type: コスト情報データ
+        cost_per_action_type: Cost data
 
     Returns:
-        CPA（コンバージョン単価）。該当データがない場合はNone
+        CPA (cost per acquisition). None if no matching data is found.
     """
     if not cost_per_action_type:
         return None
@@ -111,13 +111,13 @@ def _extract_cost_per_conversion(
 
 
 def map_campaign(raw: dict[str, Any]) -> dict[str, Any]:
-    """Meta APIのキャンペーンレスポンスを共通フォーマットに変換する
+    """Convert a Meta API campaign response to a common format.
 
     Args:
-        raw: Meta API生レスポンス
+        raw: Meta API raw response
 
     Returns:
-        整形済みキャンペーン情報
+        Formatted campaign information
     """
     return {
         "campaign_id": raw.get("id", ""),
@@ -137,13 +137,13 @@ def map_campaign(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def map_ad_set(raw: dict[str, Any]) -> dict[str, Any]:
-    """Meta APIの広告セットレスポンスを共通フォーマットに変換する
+    """Convert a Meta API ad set response to a common format.
 
     Args:
-        raw: Meta API生レスポンス
+        raw: Meta API raw response
 
     Returns:
-        整形済み広告セット情報
+        Formatted ad set information
     """
     return {
         "ad_set_id": raw.get("id", ""),
@@ -164,13 +164,13 @@ def map_ad_set(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def map_ad(raw: dict[str, Any]) -> dict[str, Any]:
-    """Meta APIの広告レスポンスを共通フォーマットに変換する
+    """Convert a Meta API ad response to a common format.
 
     Args:
-        raw: Meta API生レスポンス
+        raw: Meta API raw response
 
     Returns:
-        整形済み広告情報
+        Formatted ad information
     """
     creative = raw.get("creative", {})
     return {
@@ -187,15 +187,15 @@ def map_ad(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def map_insights(raw: dict[str, Any]) -> dict[str, Any]:
-    """Meta APIのInsightsレスポンスを共通フォーマットに変換する
+    """Convert a Meta API Insights response to a common format.
 
-    actionsからCV数を抽出し、cost_per_action_typeからCPAを抽出する。
+    Extracts conversion count from actions and CPA from cost_per_action_type.
 
     Args:
-        raw: Meta API生レスポンス
+        raw: Meta API raw response
 
     Returns:
-        整形済みインサイト情報
+        Formatted insights information
     """
     actions = raw.get("actions")
     cost_per_action_type = raw.get("cost_per_action_type")
@@ -220,7 +220,7 @@ def map_insights(raw: dict[str, Any]) -> dict[str, Any]:
         "frequency": _safe_float(raw.get("frequency")),
         "conversions": conversions,
         "cpa": cpa,
-        # ブレイクダウンフィールド（存在する場合のみ）
+        # Breakdown fields (only when present)
         **({"age": raw["age"]} if "age" in raw else {}),
         **({"gender": raw["gender"]} if "gender" in raw else {}),
         **({"country": raw["country"]} if "country" in raw else {}),

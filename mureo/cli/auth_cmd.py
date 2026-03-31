@@ -1,4 +1,4 @@
-"""認証管理コマンド
+"""Authentication management commands
 
 ``mureo auth status`` / ``mureo auth check-google`` / ``mureo auth check-meta``
 """
@@ -16,33 +16,33 @@ auth_app = typer.Typer(name="auth", help="Authentication management")
 
 @auth_app.command("status")  # type: ignore[untyped-decorator, unused-ignore]
 def auth_status() -> None:
-    """認証状態の表示"""
+    """Display authentication status."""
     google_creds = load_google_ads_credentials()
     meta_creds = load_meta_ads_credentials()
 
-    typer.echo("=== 認証状態 ===")
+    typer.echo("=== Authentication Status ===")
     typer.echo("")
 
     if google_creds is not None:
-        typer.echo("Google Ads: 認証済み")
+        typer.echo("Google Ads: Authenticated")
     else:
-        typer.echo("Google Ads: 未認証")
+        typer.echo("Google Ads: Not authenticated")
 
     if meta_creds is not None:
-        typer.echo("Meta Ads: 認証済み")
+        typer.echo("Meta Ads: Authenticated")
     else:
-        typer.echo("Meta Ads: 未認証")
+        typer.echo("Meta Ads: Not authenticated")
 
 
 @auth_app.command("check-google")  # type: ignore[untyped-decorator, unused-ignore]
 def check_google() -> None:
-    """Google Ads認証情報のチェック"""
+    """Check Google Ads credentials."""
     creds = load_google_ads_credentials()
     if creds is None:
-        typer.echo("Error: Google Ads認証情報が見つかりません", err=True)
+        typer.echo("Error: Google Ads credentials not found", err=True)
         raise typer.Exit(1)
 
-    # シークレット部分をマスクして表示
+    # Display with masked secret parts
     info = {
         "developer_token": _mask(creds.developer_token),
         "client_id": creds.client_id,
@@ -55,10 +55,10 @@ def check_google() -> None:
 
 @auth_app.command("check-meta")  # type: ignore[untyped-decorator, unused-ignore]
 def check_meta() -> None:
-    """Meta Ads認証情報のチェック"""
+    """Check Meta Ads credentials."""
     creds = load_meta_ads_credentials()
     if creds is None:
-        typer.echo("Error: Meta Ads認証情報が見つかりません", err=True)
+        typer.echo("Error: Meta Ads credentials not found", err=True)
         raise typer.Exit(1)
 
     info = {
@@ -70,20 +70,20 @@ def check_meta() -> None:
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
+# Helpers
 # ---------------------------------------------------------------------------
 
 
 @auth_app.command("setup")  # type: ignore[untyped-decorator, unused-ignore]
 def auth_setup() -> None:
-    """対話型セットアップウィザード"""
+    """Interactive setup wizard."""
     import asyncio
 
-    typer.echo("=== mureo セットアップウィザード ===")
+    typer.echo("=== mureo Setup Wizard ===")
     typer.echo("")
 
-    google = typer.confirm("Google Adsを設定しますか？", default=True)
-    meta = typer.confirm("Meta Adsを設定しますか？", default=False)
+    google = typer.confirm("Configure Google Ads?", default=True)
+    meta = typer.confirm("Configure Meta Ads?", default=False)
 
     if google:
         from mureo.auth_setup import setup_google_ads
@@ -96,24 +96,24 @@ def auth_setup() -> None:
         asyncio.run(setup_meta_ads())
 
     if not google and not meta:
-        typer.echo("セットアップをスキップしました。")
+        typer.echo("Setup skipped.")
         return
 
-    # MCP設定の配置
+    # MCP configuration deployment
     from mureo.auth_setup import setup_mcp_config
 
     setup_mcp_config()
 
-    typer.echo("\nセットアップが完了しました。")
+    typer.echo("\nSetup complete.")
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
+# Helpers
 # ---------------------------------------------------------------------------
 
 
 def _mask(value: str, visible: int = 4) -> str:
-    """シークレット文字列の末尾以外をマスクする"""
+    """Mask all but the last characters of a secret string."""
     if len(value) <= visible:
         return "****"
     return "*" * (len(value) - visible) + value[-visible:]

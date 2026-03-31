@@ -1,4 +1,4 @@
-"""mureo context -- ファイルベース戦略コンテキスト（STRATEGY.md / STATE.json）."""
+"""mureo context -- File-based strategy context (STRATEGY.md / STATE.json)."""
 
 from mureo.context.errors import ContextFileError
 from mureo.context.models import CampaignSnapshot, StateDocument, StrategyEntry

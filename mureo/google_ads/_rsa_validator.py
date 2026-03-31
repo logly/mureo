@@ -1,7 +1,7 @@
-"""RSA（レスポンシブ検索広告）テキストのバリデーションモジュール。
+"""RSA (Responsive Search Ad) text validation module.
 
-Google広告のレギュレーションに基づき、広告テキストをAPIコール前に検証・自動修正する。
-自動修正可能な違反は修正し、修正不可能な重大違反のみValueErrorで拒否する。
+Validates and auto-corrects ad text before API calls based on Google Ads regulations.
+Auto-correctable violations are fixed; only unfixable critical violations raise ValueError.
 """
 
 from __future__ import annotations
@@ -11,52 +11,52 @@ import unicodedata
 import urllib.parse
 from dataclasses import dataclass
 
-# === Google Ads 文字幅制限 ===
-# 全角文字=2、半角文字=1 で計測。見出し上限30、説明文上限90。
+# === Google Ads character width limits ===
+# Full-width=2, half-width=1. Headline max 30, description max 90.
 HEADLINE_MAX_WIDTH = 30
 DESCRIPTION_MAX_WIDTH = 90
 
-# === 自動修正系（正規表現） ===
+# === Auto-correction patterns (regex) ===
 
-# 句読点・感嘆符の連続（2個以上）
+# Consecutive punctuation/exclamation (2 or more)
 _CONSECUTIVE_PUNCTUATION = re.compile(r"([！？!?。、，．]{2,})")
 
-# 装飾記号の連続（3個以上）
+# Consecutive decorative symbols (3 or more)
 _SYMBOL_REPEAT = re.compile(r"([◆◇★☆●○▲△■□♪♫◎※→←↑↓]{3,})")
 
-# 全角スペースの連続
+# Consecutive full-width spaces
 _ZENKAKU_SPACES = re.compile(r"\u3000{2,}")
 
-# 先頭・末尾の不要記号
+# Leading/trailing unnecessary symbols
 _EDGE_SYMBOLS = re.compile(r"^[！？!?。、]+|[。、]+$")
 
-# 半角カタカナ（Google不承認対象）→ 全角カタカナに自動変換
+# Half-width katakana (Google disapproval target) -> auto-convert to full-width
 _HALFWIDTH_KATAKANA = re.compile(r"[\uFF65-\uFF9F]+")
 
-# 絵文字（Google広告テキストで不承認対象）→ 自動除去
-# 注意: \u2600-\u26FF, \u2700-\u27BF は装飾記号（★☆♪等）を含むため除外。
-# 実際の絵文字はUnicode補助面（U+1Fxxx）にあるため、そちらのみ対象とする。
+# Emoji (disapproval target in Google ad text) -> auto-remove
+# Note: \u2600-\u26FF, \u2700-\u27BF contain decorative symbols and are excluded.
+# Actual emoji are in Unicode supplementary planes (U+1Fxxx), so only those are targeted.
 _EMOJI = re.compile(
-    r"[\U0001F600-\U0001F64F"  # 顔文字
-    r"\U0001F300-\U0001F5FF"  # 記号・絵文字
-    r"\U0001F680-\U0001F6FF"  # 交通・地図
-    r"\U0001F900-\U0001F9FF"  # 補足絵文字
-    r"\U0001FA00-\U0001FA6F"  # チェス等
-    r"\U0001FA70-\U0001FAFF"  # 拡張絵文字
-    r"\uFE0F]+",  # 異体字セレクタ
+    r"[\U0001F600-\U0001F64F"  # emoticons
+    r"\U0001F300-\U0001F5FF"  # symbols & pictographs
+    r"\U0001F680-\U0001F6FF"  # transport & map
+    r"\U0001F900-\U0001F9FF"  # supplemental symbols
+    r"\U0001FA00-\U0001FA6F"  # chess etc.
+    r"\U0001FA70-\U0001FAFF"  # extended symbols
+    r"\uFE0F]+",  # variation selector
 )
 
-# === URL検証 ===
+# === URL validation ===
 
 
 def display_width(text: str) -> int:
-    """Google Ads方式の表示幅を計算する。
+    """Calculate display width using Google Ads rules.
 
-    East Asian Width カテゴリ:
-      W (Wide), F (Fullwidth) → 2
-      A (Ambiguous) → 2（日本語コンテキストではGoogle Adsが全角扱いする。
-        例: ""…—※①℃ 等）
-      Na (Narrow), N (Neutral), H (Halfwidth) → 1
+    East Asian Width categories:
+      W (Wide), F (Fullwidth) -> 2
+      A (Ambiguous) -> 2 (Google Ads treats these as full-width in Japanese context.
+        e.g., quotation marks, ellipsis, em dash, etc.)
+      Na (Narrow), N (Neutral), H (Halfwidth) -> 1
     """
     width = 0
     for ch in text:
@@ -66,7 +66,7 @@ def display_width(text: str) -> int:
 
 
 def _is_valid_url(url: str) -> bool:
-    """URLの基本的な構造チェック（スキーム + ホスト名の存在）。"""
+    """Basic URL structure check (scheme + hostname presence)."""
     try:
         parsed = urllib.parse.urlparse(url)
         return parsed.scheme in ("http", "https") and bool(parsed.netloc)
@@ -74,9 +74,9 @@ def _is_valid_url(url: str) -> bool:
         return False
 
 
-# === 警告系（禁止表現） ===
+# === Warnings (prohibited expressions) ===
 
-# 最上級・No.1表現（景表法 優良誤認、根拠なき最上級表示）
+# Superlative/No.1 claims (Act against Unjustifiable Premiums: misleading superiority claims)
 _SUPERLATIVE_CLAIMS: frozenset[str] = frozenset(
     {
         "世界一",
@@ -98,7 +98,7 @@ _SUPERLATIVE_CLAIMS: frozenset[str] = frozenset(
     }
 )
 
-# 価格・無料系（景表法 有利誤認）
+# Price/free claims (Act against Unjustifiable Premiums: misleading advantage claims)
 _PRICE_CLAIMS: frozenset[str] = frozenset(
     {
         "最安値",
@@ -112,7 +112,7 @@ _PRICE_CLAIMS: frozenset[str] = frozenset(
     }
 )
 
-# 効果保証・断定表現（景表法 優良誤認、Google編集ポリシー違反）
+# Guarantee/absolute claims (misleading superiority, Google editorial policy violation)
 _GUARANTEE_CLAIMS: frozenset[str] = frozenset(
     {
         "絶対",
@@ -129,7 +129,7 @@ _GUARANTEE_CLAIMS: frozenset[str] = frozenset(
     }
 )
 
-# 医療・健康・ダイエット系（薬機法・Google ヘルスケアポリシー）
+# Medical/health claims (Pharmaceutical Affairs Act, Google healthcare policy)
 _MEDICAL_CLAIMS: frozenset[str] = frozenset(
     {
         "治る",
@@ -143,7 +143,7 @@ _MEDICAL_CLAIMS: frozenset[str] = frozenset(
     }
 )
 
-# クリックベイト表現（Google編集ポリシー「不明瞭な関連性」）
+# Clickbait expressions (Google editorial policy: unclear relevance)
 _CLICKBAIT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"こちらをクリック"),
     re.compile(r"ここをクリック"),
@@ -151,7 +151,7 @@ _CLICKBAIT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"click\s*here", re.IGNORECASE),
 )
 
-# 全カテゴリ統合（文字列マッチ用）
+# All categories combined (for string matching)
 _PROHIBITED_EXPRESSIONS: frozenset[str] = (
     _SUPERLATIVE_CLAIMS | _PRICE_CLAIMS | _GUARANTEE_CLAIMS | _MEDICAL_CLAIMS
 )
@@ -159,77 +159,79 @@ _PROHIBITED_EXPRESSIONS: frozenset[str] = (
 
 @dataclass(frozen=True)
 class RSAValidationResult:
-    """RSAバリデーション結果。"""
+    """RSA validation result."""
 
     headlines: tuple[str, ...]
     descriptions: tuple[str, ...]
     warnings: tuple[str, ...]
 
 
-# サニタイズ対象テキストの最大長。RSA見出し30文字・説明文90文字に対して余裕を持たせた値。
-# これを超える入力は先に切り詰めてから正規表現を適用する（ReDoS防御）。
+# Max length for sanitization target text. Generous margin for RSA headline (30) / description (90).
+# Inputs exceeding this are truncated first before regex (ReDoS defense).
 _MAX_SANITIZE_LENGTH = 200
 
 
 def _sanitize_text(text: str) -> tuple[str, list[str]]:
-    """1つのテキストを正規化し、適用した修正のリストを返す。
+    """Normalize a single text and return a list of applied fixes.
 
-    順序: 長さ制限 → 半角カナ変換 → 絵文字除去 → 句読点縮約 → 記号反復縮約
-          → 全角スペース正規化 → 先頭末尾記号除去
+    Order: length limit -> half-width kana conversion -> emoji removal -> punctuation reduction -> symbol repeat reduction
+          -> full-width space normalization -> leading/trailing symbol removal
     """
     fixes: list[str] = []
     if len(text) > _MAX_SANITIZE_LENGTH:
         text = text[:_MAX_SANITIZE_LENGTH]
-        fixes.append(f"テキストが{_MAX_SANITIZE_LENGTH}文字を超過したため切り詰め")
+        fixes.append(f"Text exceeded {_MAX_SANITIZE_LENGTH} characters; truncated")
     original = text
 
-    # 半角カタカナ → 全角カタカナ（NFKC正規化）
+    # Half-width katakana -> full-width katakana (NFKC normalization)
     if _HALFWIDTH_KATAKANA.search(text):
         text = unicodedata.normalize("NFKC", text)
-        fixes.append(f"半角カタカナを全角に変換: '{original}' → '{text}'")
+        fixes.append(
+            f"Converted half-width katakana to full-width: '{original}' -> '{text}'"
+        )
 
-    # 絵文字除去
+    # Remove emoji
     if _EMOJI.search(text):
         text = _EMOJI.sub("", text)
-        fixes.append("絵文字を除去")
+        fixes.append("Removed emoji")
 
-    # 句読点・感嘆符の連続を1個に縮約
+    # Reduce consecutive punctuation/exclamation to single
     if _CONSECUTIVE_PUNCTUATION.search(text):
         text = _CONSECUTIVE_PUNCTUATION.sub(lambda m: m.group(1)[0], text)
-        fixes.append("句読点の連続を1個に縮約")
+        fixes.append("Reduced consecutive punctuation to single")
 
-    # 装飾記号の反復を1個に縮約
+    # Reduce decorative symbol repetition to single
     if _SYMBOL_REPEAT.search(text):
         text = _SYMBOL_REPEAT.sub(lambda m: m.group(1)[0], text)
-        fixes.append("装飾記号の反復を1個に縮約")
+        fixes.append("Reduced decorative symbol repetition to single")
 
-    # 全角スペースの連続を半角スペース1個に変換
+    # Consecutive full-width spacesを半角スペース1個に変換
     if _ZENKAKU_SPACES.search(text):
         text = _ZENKAKU_SPACES.sub(" ", text)
-        fixes.append("全角スペースの連続を半角スペースに変換")
+        fixes.append("Converted consecutive full-width spaces to half-width space")
 
-    # 先頭・末尾の不要記号を除去
+    # Leading/trailing unnecessary symbolsを除去
     if _EDGE_SYMBOLS.search(text):
         text = _EDGE_SYMBOLS.sub("", text)
-        fixes.append("先頭・末尾の不要記号を除去")
+        fixes.append("Removed leading/trailing unnecessary symbols")
 
     return text.strip(), fixes
 
 
 def _check_prohibited(text: str) -> list[str]:
-    """禁止表現チェック。文字列マッチ + 正規表現パターンの両方を検査。"""
+    """Check prohibited expressions via both string matching and regex patterns."""
     warnings: list[str] = []
 
-    # 文字列マッチ
+    # String matching
     for expr in _PROHIBITED_EXPRESSIONS:
         if expr in text:
-            warnings.append(f"禁止表現 '{expr}' を検出: '{text}'")
+            warnings.append(f"Prohibited expression '{expr}' detected: '{text}'")
 
-    # 正規表現パターン（クリックベイト）
+    # Regex patterns (clickbait)
     for pattern in _CLICKBAIT_PATTERNS:
         if pattern.search(text):
             warnings.append(
-                f"クリックベイト表現を検出 (パターン: {pattern.pattern}): '{text}'"
+                f"Clickbait expression detected (pattern: {pattern.pattern}): '{text}'"
             )
 
     return warnings
@@ -240,79 +242,83 @@ def validate_rsa_texts(
     descriptions: list[str],
     final_url: str,
 ) -> RSAValidationResult:
-    """RSA広告テキストをバリデーションし、修正済みテキストを返す。
+    """Validate RSA ad text and return corrected text.
 
     処理順序:
-    1. final_url のURL形式チェック（不正ならValueError）
-    2. 各テキストを _sanitize_text で自動修正
-    3. 各テキストの禁止表現チェック（_check_prohibited）
-    4. 見出しの重複除去
-    5. RSAValidationResult を返却
+    1. URL format check for final_url (ValueError if invalid)
+    2. Auto-correct each text via _sanitize_text
+    3. Check each text for prohibited expressions (_check_prohibited)
+    4. Deduplicate headlines
+    5. Return RSAValidationResult
     """
     all_warnings: list[str] = []
 
-    # 1. URL形式チェック
+    # 1. URL format check
     if not final_url:
-        raise ValueError("final_url（リンク先URL）は必須です")
+        raise ValueError("final_url (destination URL) is required")
     if not _is_valid_url(final_url):
         raise ValueError(
-            f"不正なURL形式です: '{final_url}' "
-            "(http:// または https:// で始まるURLを指定してください)"
+            f"Invalid URL format: '{final_url}' "
+            "(please specify a URL starting with http:// or https://)"
         )
 
-    # 2. 各テキストをサニタイズ（空文字列になったテキストは除外）
+    # 2. Sanitize each text (exclude texts that become empty)
     sanitized_headlines: list[str] = []
     for h in headlines:
         cleaned, fixes = _sanitize_text(h)
         if fixes:
-            all_warnings.extend(f"見出し自動修正: {fix}" for fix in fixes)
+            all_warnings.extend(f"Headline auto-fix: {fix}" for fix in fixes)
         if cleaned:
             sanitized_headlines.append(cleaned)
         else:
-            all_warnings.append(f"サニタイズ後に空になった見出しを除外: '{h}'")
+            all_warnings.append(
+                f"Excluded headline that became empty after sanitization: '{h}'"
+            )
 
     sanitized_descriptions: list[str] = []
     for d in descriptions:
         cleaned, fixes = _sanitize_text(d)
         if fixes:
-            all_warnings.extend(f"説明文自動修正: {fix}" for fix in fixes)
+            all_warnings.extend(f"Description auto-fix: {fix}" for fix in fixes)
         if cleaned:
             sanitized_descriptions.append(cleaned)
         else:
-            all_warnings.append(f"サニタイズ後に空になった説明文を除外: '{d}'")
+            all_warnings.append(
+                f"Excluded description that became empty after sanitization: '{d}'"
+            )
 
-    # 3. 禁止表現チェック
+    # 3. Prohibited expression check
     for h in sanitized_headlines:
         all_warnings.extend(_check_prohibited(h))
     for d in sanitized_descriptions:
         all_warnings.extend(_check_prohibited(d))
 
-    # 4. 文字幅チェック（全角=2, 半角=1）
+    # 4. Character width check (full-width=2, half-width=1)
     too_long_errors: list[str] = []
     for i, h in enumerate(sanitized_headlines):
         w = display_width(h)
         if w > HEADLINE_MAX_WIDTH:
             too_long_errors.append(
-                f"見出し{i + 1}が長すぎます（{w}/{HEADLINE_MAX_WIDTH}）: '{h}'"
+                f"Headline {i + 1} is too long ({w}/{HEADLINE_MAX_WIDTH}): '{h}'"
             )
     for i, d in enumerate(sanitized_descriptions):
         w = display_width(d)
         if w > DESCRIPTION_MAX_WIDTH:
             too_long_errors.append(
-                f"説明文{i + 1}が長すぎます（{w}/{DESCRIPTION_MAX_WIDTH}）: '{d}'"
+                f"Description {i + 1} is too long ({w}/{DESCRIPTION_MAX_WIDTH}): '{d}'"
             )
     if too_long_errors:
         raise ValueError(
-            "Google Ads文字数制限超過（全角=2文字, 半角=1文字でカウント）:\n"
+            "Google Ads character limit exceeded (full-width=2, half-width=1):\n"
             + "\n".join(too_long_errors)
         )
 
-    # 5. 見出しの重複除去
+    # 5. Deduplicate headlines
     seen: set[str] = set()
     unique_headlines: list[str] = []
     for h in sanitized_headlines:
         if h in seen:
-            all_warnings.append(f"重複する見出しを除去: '{h}'")
+            all_warnings.append(f"Removed duplicate headline: '{h}'")
         else:
             seen.add(h)
             unique_headlines.append(h)
@@ -324,9 +330,9 @@ def validate_rsa_texts(
     )
 
 
-# === Ad Strength 予測 ===
+# === Ad Strength Prediction ===
 
-# Ad Strength スコア配分（合計 1.0）
+# Ad Strength score weights (total 1.0)
 _WEIGHT_HEADLINE_COUNT = 0.25
 _WEIGHT_DESCRIPTION_COUNT = 0.15
 _WEIGHT_HEADLINE_DIVERSITY = 0.25
@@ -334,15 +340,15 @@ _WEIGHT_KEYWORD_RELEVANCE = 0.20
 _WEIGHT_PIN_PENALTY = 0.10
 _WEIGHT_SITELINK_BONUS = 0.05
 
-# レベル判定閾値
+# Level determination thresholds
 _THRESHOLD_EXCELLENT = 0.85
 _THRESHOLD_GOOD = 0.65
 _THRESHOLD_AVERAGE = 0.40
 
-# 見出し類似度の閾値（bigram Jaccard係数）
+# Headline similarity threshold (bigram Jaccard coefficient)
 _SIMILARITY_THRESHOLD = 0.6
 
-# 同義語ペア辞書（見出し多様性チェックで使用）— タプルに事前変換済み
+# Synonym pair dictionary (for headline diversity check) - pre-converted to tuples
 _SYNONYM_PAIRS_TUPLES: tuple[tuple[str, str], ...] = (
     ("安い", "格安"),
     ("無料", "0円"),
@@ -361,10 +367,10 @@ _SYNONYM_PAIRS_TUPLES: tuple[tuple[str, str], ...] = (
 class AdStrengthFactor:
     """Ad Strength 評価因子。"""
 
-    name: str  # 因子名
+    name: str  # Factor name
     score: float  # 0.0 ~ 1.0
-    weight: float  # 重み
-    message: str  # 改善メッセージ（日本語）
+    weight: float  # Weight
+    message: str  # Improvement message
 
 
 @dataclass(frozen=True)
@@ -374,11 +380,11 @@ class AdStrengthResult:
     level: str  # "POOR" | "AVERAGE" | "GOOD" | "EXCELLENT"
     score: float  # 0.0 ~ 1.0
     factors: tuple[AdStrengthFactor, ...]
-    suggestions: tuple[str, ...]  # LLMフィードバック用
+    suggestions: tuple[str, ...]  # For LLM feedback
 
 
 def _bigram_similarity(a: str, b: str) -> float:
-    """2文字bigramのJaccard係数で文字列の類似度を測定する。"""
+    """Measure string similarity using 2-character bigram Jaccard coefficient."""
     if len(a) < 2 or len(b) < 2:
         return 1.0 if a == b else 0.0
     bigrams_a = {a[i : i + 2] for i in range(len(a) - 1)}
@@ -391,7 +397,7 @@ def _bigram_similarity(a: str, b: str) -> float:
 
 
 def _has_synonym_overlap(a: str, b: str) -> bool:
-    """同義語ペア辞書に基づき、2つのテキストに同義語関係があるか判定する。"""
+    """Check if two texts have a synonym relationship based on synonym pair dictionary."""
     for w0, w1 in _SYNONYM_PAIRS_TUPLES:
         if (w0 in a and w1 in b) or (w1 in a and w0 in b):
             return True
@@ -401,10 +407,10 @@ def _has_synonym_overlap(a: str, b: str) -> bool:
 def _check_headline_diversity(
     headlines: list[str],
 ) -> tuple[float, list[str]]:
-    """見出しの多様性を評価する。
+    """Evaluate headline diversity.
 
     Returns:
-        (多様性スコア 0.0~1.0, 改善メッセージリスト)
+        (diversity_score 0.0~1.0, improvement_message_list)
     """
     if len(headlines) <= 1:
         return 1.0, []
@@ -427,20 +433,20 @@ def _check_headline_diversity(
     diversity_score = 1.0 - (len(similar_pairs) / total_pairs)
     messages: list[str] = []
     for a, b in similar_pairs[:3]:  # 最大3件まで報告
-        messages.append(f"類似する見出し: 「{a}」と「{b}」")
+        messages.append(f'Similar headlines: "{a}" and "{b}"')
 
     return max(0.0, diversity_score), messages
 
 
 def _strip_match_type(keyword: str) -> str:
-    """マッチタイプのプレフィックス・サフィックスを除去する。"""
+    """Remove match type prefix/suffix."""
     kw = keyword.strip()
-    # フレーズマッチ: "keyword" / 完全一致: [keyword]
+    # Phrase match: "keyword" / Exact match: [keyword]
     if (kw.startswith('"') and kw.endswith('"')) or (
         kw.startswith("[") and kw.endswith("]")
     ):
         kw = kw[1:-1]
-    # 絞り込み部分一致: +keyword
+    # Modified broad match: +keyword
     if kw.startswith("+"):
         kw = kw[1:]
     return kw.strip()
@@ -451,10 +457,10 @@ def _check_keyword_relevance(
     descriptions: list[str],
     keywords: list[str],
 ) -> tuple[float, list[str]]:
-    """キーワードの広告テキストへの含有率を評価する。
+    """Evaluate keyword inclusion rate in ad text.
 
     Returns:
-        (関連性スコア 0.0~1.0, 未含有キーワードリスト)
+        (relevance_score 0.0~1.0, missing_keyword_list)
     """
     if not keywords:
         return 0.5, []
@@ -479,7 +485,7 @@ def _check_keyword_relevance(
 
 
 def _interpolate_headline_score(count: int) -> float:
-    """見出し数からスコアを線形補間で算出する。"""
+    """Calculate score from headline count via linear interpolation."""
     breakpoints = [(3, 0.2), (5, 0.4), (8, 0.6), (10, 0.75), (13, 0.85), (15, 1.0)]
 
     if count <= breakpoints[0][0]:
@@ -500,16 +506,16 @@ def _interpolate_headline_score(count: int) -> float:
 def _eval_headline_count(
     headlines: list[str],
 ) -> tuple[AdStrengthFactor, list[str]]:
-    """見出し数を評価する。"""
+    """Evaluate headline count."""
     score = _interpolate_headline_score(len(headlines))
-    msg = f"見出し数: {len(headlines)}個"
+    msg = f"Headline count: {len(headlines)}"
     suggestions: list[str] = []
     if len(headlines) < 8:
         suggestions.append(
-            f"見出しを{8 - len(headlines)}個追加してください"
-            f"（現在{len(headlines)}個、推奨8個以上）"
+            f"Please add {8 - len(headlines)} more headlines"
+            f" (currently {len(headlines)}, recommended 8+)"
         )
-        msg += "（推奨8個以上）"
+        msg += " (recommended 8+)"
     return (
         AdStrengthFactor(
             name="headline_count",
@@ -524,16 +530,16 @@ def _eval_headline_count(
 def _eval_description_count(
     descriptions: list[str],
 ) -> tuple[AdStrengthFactor, list[str]]:
-    """説明文数を評価する。"""
+    """Evaluate description count."""
     count = len(descriptions)
     score = 1.0 if count >= 4 else (0.75 if count == 3 else 0.5)
-    msg = f"説明文数: {count}個"
+    msg = f"Description count: {count}"
     suggestions: list[str] = []
     if count < 4:
         suggestions.append(
-            f"説明文を{4 - count}個追加してください（現在{count}個、推奨4個）"
+            f"Please add {4 - count} more descriptions (currently {count}, recommended 4)"
         )
-        msg += "（推奨4個）"
+        msg += " (recommended 4)"
     return (
         AdStrengthFactor(
             name="description_count",
@@ -548,11 +554,11 @@ def _eval_description_count(
 def _eval_diversity(
     headlines: list[str],
 ) -> tuple[AdStrengthFactor, list[str]]:
-    """見出し多様性を評価する。"""
+    """Evaluate headline diversity."""
     score, msgs = _check_headline_diversity(headlines)
-    msg = f"見出し多様性: {score:.0%}"
+    msg = f"Headline diversity: {score:.0%}"
     if msgs:
-        msg += "（類似表現あり）"
+        msg += " (similar expressions found)"
     return (
         AdStrengthFactor(
             name="headline_diversity",
@@ -569,19 +575,19 @@ def _eval_keyword_relevance(
     descriptions: list[str],
     keywords: list[str] | None,
 ) -> tuple[AdStrengthFactor, list[str]]:
-    """キーワード関連性を評価する。"""
+    """Evaluate keyword relevance."""
     score, missing = _check_keyword_relevance(
         headlines,
         descriptions,
         keywords or [],
     )
-    msg = f"キーワード関連性: {score:.0%}"
+    msg = f"Keyword relevance: {score:.0%}"
     suggestions: list[str] = []
     if keywords is None:
-        msg += "（キーワード未指定）"
+        msg += " (no keywords specified)"
     elif missing:
-        suggestions.append(f"未含有キーワード: {', '.join(missing[:5])}")
-        msg += f"（{len(missing)}個未含有）"
+        suggestions.append(f"Missing keywords: {', '.join(missing[:5])}")
+        msg += f" ({len(missing)} missing)"
     return (
         AdStrengthFactor(
             name="keyword_relevance",
@@ -596,13 +602,13 @@ def _eval_keyword_relevance(
 def _eval_pin_penalty(
     pinned_count: int,
 ) -> tuple[AdStrengthFactor, list[str]]:
-    """ピン留めペナルティを評価する。"""
+    """Evaluate pin penalty."""
     score = 0.3 if pinned_count > 0 else 1.0
-    msg = f"ピン留め: {pinned_count}個"
+    msg = f"Pinned: {pinned_count}"
     suggestions: list[str] = []
     if pinned_count > 0:
-        suggestions.append("ピン留め（位置固定）を外すとAd Strengthが向上します")
-        msg += "（ピン留めはAd Strength低下要因）"
+        suggestions.append("Removing pins (position locking) will improve Ad Strength")
+        msg += " (pinning reduces Ad Strength)"
     return (
         AdStrengthFactor(
             name="pin_penalty",
@@ -617,13 +623,13 @@ def _eval_pin_penalty(
 def _eval_sitelink_bonus(
     has_sitelinks: bool,
 ) -> tuple[AdStrengthFactor, list[str]]:
-    """サイトリンクボーナスを評価する。"""
+    """Evaluate sitelink bonus."""
     score = 1.0 if has_sitelinks else 0.5
-    msg = "サイトリンク: " + ("あり" if has_sitelinks else "なし")
+    msg = "Sitelinks: " + ("present" if has_sitelinks else "none")
     suggestions: list[str] = []
     if not has_sitelinks:
-        suggestions.append("サイトリンクを6個以上設定するとAd Strengthが向上します")
-        msg += "（設定推奨）"
+        suggestions.append("Setting 6+ sitelinks will improve Ad Strength")
+        msg += " (recommended)"
     return (
         AdStrengthFactor(
             name="sitelink_bonus",
@@ -636,7 +642,7 @@ def _eval_sitelink_bonus(
 
 
 def _score_to_level(score: float) -> str:
-    """総合スコアからAd Strengthレベルを判定する。"""
+    """Determine Ad Strength level from overall score."""
     if score >= _THRESHOLD_EXCELLENT:
         return "EXCELLENT"
     if score >= _THRESHOLD_GOOD:
@@ -653,10 +659,11 @@ def predict_ad_strength(
     has_sitelinks: bool = False,
     pinned_count: int = 0,
 ) -> AdStrengthResult:
-    """広告のAd Strength（有効性）を予測する。
+    """Predict ad Ad Strength (effectiveness).
 
-    Google Adsの Ad Strength 評価基準に基づき、見出し数・説明文数・
-    多様性・キーワード関連性・ピン留め・サイトリンクを総合評価する。
+    Comprehensively evaluates headline count, description count,
+    diversity, keyword relevance, pinning, and sitelinks
+    based on Google Ads Ad Strength criteria.
     """
     evaluators = [
         _eval_headline_count(headlines),

@@ -27,7 +27,7 @@ class _HasIdAndName(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# protobuf enum int → 文字列 マッピング定数
+# protobuf enum int -> string mapping constants
 # ---------------------------------------------------------------------------
 
 _ENTITY_STATUS_MAP: dict[int, str] = {
@@ -38,20 +38,20 @@ _ENTITY_STATUS_MAP: dict[int, str] = {
     4: "REMOVED",
 }
 
-# protobuf enum から自動生成 — 手動転記ミスを原理的に排除
+# Auto-generated from protobuf enums — eliminates manual transcription errors
 _BIDDING_STRATEGY_MAP: dict[int, str] = {
     member.value: member.name for member in BiddingStrategyTypeEnum.BiddingStrategyType  # type: ignore[attr-defined]
 }
-# v23ではMAXIMIZE_CLICKSがTARGET_SPEND(enum=9)に統合されている。
-# 管理画面では「クリック数の最大化」と表示されるため、ユーザー向け名称に合わせる。
+# In v23, MAXIMIZE_CLICKS is merged into TARGET_SPEND (enum=9).
+# The UI displays "Maximize clicks", so we use the user-facing name.
 _BIDDING_STRATEGY_MAP[9] = "MAXIMIZE_CLICKS"
 
-# protobuf enum から自動生成
+# Auto-generated from protobuf enum
 _AD_TYPE_MAP: dict[int, str] = {
     member.value: member.name for member in AdTypeEnum.AdType  # type: ignore[attr-defined]
 }
 
-# protobuf enum から自動生成
+# Auto-generated from protobuf enum
 _AD_STRENGTH_MAP: dict[int, str] = {
     member.value: member.name for member in AdStrengthEnum.AdStrength  # type: ignore[attr-defined]
 }
@@ -66,7 +66,7 @@ _SERVING_STATUS_MAP: dict[int, str] = {
     6: "SUSPENDED",
 }
 
-# PolicyApprovalStatusEnum 用（広告のポリシー審査に使用）
+# For PolicyApprovalStatusEnum (used for ad policy review)
 _APPROVAL_STATUS_MAP: dict[int, str] = {
     0: "UNSPECIFIED",
     1: "UNKNOWN",
@@ -76,8 +76,8 @@ _APPROVAL_STATUS_MAP: dict[int, str] = {
     5: "AREA_OF_INTEREST_ONLY",
 }
 
-# AdGroupCriterionApprovalStatusEnum 用（キーワード等のクライテリアに使用）
-# ※ PolicyApprovalStatusEnum とは enum 値が異なるため別マップが必要
+# For AdGroupCriterionApprovalStatusEnum (used for keyword criteria)
+# Note: Requires a separate map because enum values differ from PolicyApprovalStatusEnum
 _CRITERION_APPROVAL_STATUS_MAP: dict[int, str] = {
     member.value: member.name
     for member in AdGroupCriterionApprovalStatusEnum.AdGroupCriterionApprovalStatus  # type: ignore[attr-defined]
@@ -92,7 +92,7 @@ _REVIEW_STATUS_MAP: dict[int, str] = {
     5: "ELIGIBLE_MAY_SERVE",
 }
 
-# protobuf enum から自動生成
+# Auto-generated from protobuf enum
 _POLICY_TOPIC_TYPE_MAP: dict[int, str] = {
     member.value: member.name
     for member in PolicyTopicEntryTypeEnum.PolicyTopicEntryType  # type: ignore[attr-defined]
@@ -112,13 +112,13 @@ _PRIMARY_STATUS_MAP: dict[int, str] = {
     10: "NOT_ELIGIBLE",
 }
 
-# protobuf enum から自動生成
+# Auto-generated from protobuf enum
 _PRIMARY_STATUS_REASON_MAP: dict[int, str] = {
     member.value: member.name
     for member in CampaignPrimaryStatusReasonEnum.CampaignPrimaryStatusReason  # type: ignore[attr-defined]
 }
 
-# protobuf enum から自動生成
+# Auto-generated from protobuf enum
 _BIDDING_SYSTEM_STATUS_MAP: dict[int, str] = {
     member.value: member.name
     for member in BiddingStrategySystemStatusEnum.BiddingStrategySystemStatus  # type: ignore[attr-defined]
@@ -126,84 +126,84 @@ _BIDDING_SYSTEM_STATUS_MAP: dict[int, str] = {
 
 
 def _map_enum(value: Any, mapping: dict[int, str]) -> str:
-    """protobuf enum int を文字列に変換する汎用ヘルパー"""
+    """Generic helper to convert protobuf enum int to string."""
     if isinstance(value, int):
         return mapping.get(value, str(value))
     return str(value)
 
 
 # ---------------------------------------------------------------------------
-# 公開 enum 変換関数
+# Public enum conversion functions
 # ---------------------------------------------------------------------------
 
 
 def map_ad_type(ad_type: Any) -> str:
-    """AdTypeEnum を文字列に変換"""
+    """Convert AdTypeEnum to string."""
     return _map_enum(ad_type, _AD_TYPE_MAP)
 
 
 def map_ad_strength(strength: Any) -> str:
-    """AdStrengthEnum を文字列に変換"""
+    """Convert AdStrengthEnum to string."""
     return _map_enum(strength, _AD_STRENGTH_MAP)
 
 
 def map_entity_status(status: Any) -> str:
-    """エンティティステータスを文字列に変換（Campaign / AdGroup / Ad 共通）"""
+    """Convert entity status to string (common for Campaign / AdGroup / Ad)."""
     return _map_enum(status, _ENTITY_STATUS_MAP)
 
 
 def map_bidding_strategy_type(strategy: Any) -> str:
-    """BiddingStrategyTypeEnum を文字列に変換"""
+    """Convert BiddingStrategyTypeEnum to string."""
     return _map_enum(strategy, _BIDDING_STRATEGY_MAP)
 
 
 def map_serving_status(status: Any) -> str:
-    """CampaignServingStatusEnum を文字列に変換"""
+    """Convert CampaignServingStatusEnum to string."""
     return _map_enum(status, _SERVING_STATUS_MAP)
 
 
 def map_approval_status(status: Any) -> str:
-    """PolicyApprovalStatusEnum を文字列に変換（広告のポリシー審査用）"""
+    """Convert PolicyApprovalStatusEnum to string (for ad policy review)."""
     return _map_enum(status, _APPROVAL_STATUS_MAP)
 
 
 def map_criterion_approval_status(status: Any) -> str:
-    """AdGroupCriterionApprovalStatusEnum を文字列に変換（キーワード等の承認ステータス用）"""
+    """Convert AdGroupCriterionApprovalStatusEnum to string (for keyword approval status)."""
     return _map_enum(status, _CRITERION_APPROVAL_STATUS_MAP)
 
 
 def map_review_status(status: Any) -> str:
-    """PolicyReviewStatusEnum を文字列に変換"""
+    """Convert PolicyReviewStatusEnum to string."""
     return _map_enum(status, _REVIEW_STATUS_MAP)
 
 
 def map_policy_topic_type(type_val: Any) -> str:
-    """PolicyTopicEntryTypeEnum を文字列に変換"""
+    """Convert PolicyTopicEntryTypeEnum to string."""
     return _map_enum(type_val, _POLICY_TOPIC_TYPE_MAP)
 
 
 def map_primary_status(status: Any) -> str:
-    """CampaignPrimaryStatusEnum を文字列に変換"""
+    """Convert CampaignPrimaryStatusEnum to string."""
     return _map_enum(status, _PRIMARY_STATUS_MAP)
 
 
 def map_primary_status_reason(reason: Any) -> str:
-    """CampaignPrimaryStatusReasonEnum を文字列に変換"""
+    """Convert CampaignPrimaryStatusReasonEnum to string."""
     return _map_enum(reason, _PRIMARY_STATUS_REASON_MAP)
 
 
 def map_bidding_system_status(status: Any) -> str:
-    """BiddingStrategySystemStatusEnum を文字列に変換"""
+    """Convert BiddingStrategySystemStatusEnum to string."""
     return _map_enum(status, _BIDDING_SYSTEM_STATUS_MAP)
 
 
 # ---------------------------------------------------------------------------
-# エンティティ変換関数
+# Entity conversion functions
 # ---------------------------------------------------------------------------
 
 
 def map_campaign(campaign: Any) -> dict[str, Any]:
-    """キャンペーン情報をLLMが理解しやすい形に整形"""
+    """Format campaign information for LLM consumption."""
     result: dict[str, Any] = {
         "id": str(campaign.id),
         "name": campaign.name,
@@ -237,7 +237,7 @@ def map_campaign(campaign: Any) -> dict[str, Any]:
 
 
 def map_ad_group(ad_group: Any, campaign: Any | None = None) -> dict[str, Any]:
-    """広告グループ情報を整形"""
+    """Format ad group information."""
     result: dict[str, Any] = {
         "id": str(ad_group.id),
         "name": ad_group.name,
@@ -266,9 +266,9 @@ _QUALITY_SCORE_COMPONENT_MAP: dict[int, str] = {
 
 
 def _map_quality_component(value: Any) -> str:
-    """品質スコア構成要素の enum 値を文字列に変換する。
+    """Convert quality score component enum value to string.
 
-    protobuf int 値と enum 型（.name 属性）の両方に対応。
+    Supports both protobuf int values and enum types (.name attribute).
     """
     if isinstance(value, int):
         return _QUALITY_SCORE_COMPONENT_MAP.get(value, str(value))
@@ -282,7 +282,7 @@ def map_keyword_quality_info(
     campaign: _HasIdAndName | None = None,
     ad_group: _HasIdAndName | None = None,
 ) -> dict[str, Any]:
-    """キーワード品質情報を含むキーワード情報を整形"""
+    """Format keyword information including quality score data."""
     result = map_keyword(criterion, campaign, ad_group)
 
     # system_serving_status
@@ -333,7 +333,7 @@ def map_keyword(
     campaign: _HasIdAndName | None = None,
     ad_group: _HasIdAndName | None = None,
 ) -> dict[str, Any]:
-    """キーワード情報を整形"""
+    """Format keyword information."""
     result: dict[str, Any] = {
         "id": (
             str(keyword.criterion_id)
@@ -348,8 +348,8 @@ def map_keyword(
             map_entity_status(keyword.status) if hasattr(keyword, "status") else None
         ),
     }
-    # approval_status=0 (UNSPECIFIED) は protobuf 未設定時のデフォルト値。
-    # is not None で 0 を通過させ、明示的に返却する。
+    # approval_status=0 (UNSPECIFIED) is the default for unset protobuf fields.
+    # Use "is not None" to allow 0 through and return it explicitly.
     if hasattr(keyword, "approval_status") and keyword.approval_status is not None:
         result["approval_status"] = map_criterion_approval_status(
             keyword.approval_status
@@ -364,7 +364,7 @@ def map_keyword(
 
 
 def _build_metrics_dict(metrics: Any) -> dict[str, Any]:
-    """共通メトリクス辞書を構築"""
+    """Build common metrics dictionary."""
     return {
         "impressions": _safe_int(metrics, "impressions"),
         "clicks": _safe_int(metrics, "clicks"),
@@ -382,7 +382,7 @@ def _build_metrics_dict(metrics: Any) -> dict[str, Any]:
 
 
 def map_performance_report(rows: list[Any]) -> list[dict[str, Any]]:
-    """パフォーマンスレポートを整形"""
+    """Format performance report."""
     result = []
     for row in rows:
         metrics = row.metrics if hasattr(row, "metrics") else row
@@ -397,7 +397,7 @@ def map_performance_report(rows: list[Any]) -> list[dict[str, Any]]:
 
 
 def map_ad_performance_report(rows: list[Any]) -> list[dict[str, Any]]:
-    """広告単位パフォーマンスレポートを整形"""
+    """Format ad-level performance report."""
     result = []
     for row in rows:
         metrics = row.metrics if hasattr(row, "metrics") else row
@@ -422,7 +422,7 @@ def map_ad_performance_report(rows: list[Any]) -> list[dict[str, Any]]:
 
 
 def _micros_to_currency(micros: int) -> float:
-    """micros 単位を通貨単位に変換する（通貨非依存）。"""
+    """Convert micros to currency units (currency-agnostic)."""
     return micros / 1_000_000
 
 
@@ -441,11 +441,11 @@ def _safe_str(obj: Any, attr: str, default: str = "") -> str:
     return str(val) if val else default
 
 
-# === 除外キーワード ===
+# === Negative Keywords ===
 
 
 def map_negative_keyword(criterion: Any) -> dict[str, Any]:
-    """除外キーワード情報を整形"""
+    """Format negative keyword information."""
     return {
         "criterion_id": (
             str(criterion.criterion_id) if hasattr(criterion, "criterion_id") else None
@@ -459,11 +459,11 @@ def map_negative_keyword(criterion: Any) -> dict[str, Any]:
     }
 
 
-# === 検索語句レポート ===
+# === Search Terms Report ===
 
 
 def map_search_term(row: Any) -> dict[str, Any]:
-    """検索語句レポート行を整形"""
+    """Format search term report row."""
     search_term_view = row.search_term_view if hasattr(row, "search_term_view") else row
     metrics = row.metrics if hasattr(row, "metrics") else row
     return {
@@ -479,11 +479,11 @@ def map_search_term(row: Any) -> dict[str, Any]:
     }
 
 
-# === サイトリンク ===
+# === Sitelinks ===
 
 
 def map_sitelink(asset: Any) -> dict[str, Any]:
-    """サイトリンクアセット情報を整形"""
+    """Format sitelink asset information."""
     sitelink = (
         asset.asset.sitelink_asset
         if hasattr(asset, "asset") and hasattr(asset.asset, "sitelink_asset")
@@ -505,11 +505,11 @@ def map_sitelink(asset: Any) -> dict[str, Any]:
     }
 
 
-# === コールアウト ===
+# === Callouts ===
 
 
 def map_callout(asset: Any) -> dict[str, Any]:
-    """コールアウトアセット情報を整形"""
+    """Format callout asset information."""
     callout = (
         asset.asset.callout_asset
         if hasattr(asset, "asset") and hasattr(asset.asset, "callout_asset")
@@ -524,11 +524,11 @@ def map_callout(asset: Any) -> dict[str, Any]:
     }
 
 
-# === コンバージョンアクション ===
+# === Conversion Actions ===
 
 
 def map_conversion_action(action: Any) -> dict[str, Any]:
-    """コンバージョンアクション情報を整形"""
+    """Format conversion action information."""
     return {
         "id": str(action.id) if hasattr(action, "id") else None,
         "name": _safe_str(action, "name"),
@@ -541,7 +541,7 @@ def map_conversion_action(action: Any) -> dict[str, Any]:
 
 
 def map_tag_snippet(snippet: Any) -> dict[str, Any]:
-    """コンバージョンタグスニペットを整形"""
+    """Format conversion tag snippet."""
     return {
         "type": str(snippet.type_) if hasattr(snippet, "type_") else None,
         "page_header": _safe_str(snippet, "page_header"),
@@ -549,11 +549,11 @@ def map_tag_snippet(snippet: Any) -> dict[str, Any]:
     }
 
 
-# === 推奨事項 ===
+# === Recommendations ===
 
 
 def map_recommendation(rec: Any) -> dict[str, Any]:
-    """Google推奨事項を整形"""
+    """Format Google recommendation."""
     return {
         "resource_name": (
             str(rec.resource_name) if hasattr(rec, "resource_name") else None
@@ -589,11 +589,11 @@ def map_recommendation(rec: Any) -> dict[str, Any]:
     }
 
 
-# === 変更履歴 ===
+# === Change History ===
 
 
 def map_change_event(event: Any) -> dict[str, Any]:
-    """変更履歴イベントを整形"""
+    """Format change history event."""
     return {
         "change_date_time": _safe_str(event, "change_date_time"),
         "change_resource_type": (

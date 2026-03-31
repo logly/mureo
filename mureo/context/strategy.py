@@ -1,4 +1,4 @@
-"""STRATEGY.md の読み書き."""
+"""Read and write STRATEGY.md."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from mureo.context.state import _atomic_write
 
 logger = logging.getLogger(__name__)
 
-# セクション見出し → context_type のマッピング
+# Section heading -> context_type mapping
 _SECTION_MAP: dict[str, str] = {
     "Persona": "persona",
     "USP": "usp",
@@ -25,25 +25,25 @@ _SECTION_MAP: dict[str, str] = {
     "Operation Mode": "operation_mode",
 }
 
-# context_type から見出し名への逆マッピング（Custom/Deep Research/Sales Material以外）
+# Reverse mapping from context_type to heading (except Custom/Deep Research/Sales Material)
 _TYPE_TO_HEADING: dict[str, str] = {v: k for k, v in _SECTION_MAP.items()}
 
-# コロン付きプレフィックス → context_type
+# Colon-prefixed prefix -> context_type
 _PREFIX_TYPES: dict[str, str] = {
     "Custom": "custom",
     "Deep Research": "deep_research",
     "Sales Material": "sales_material",
 }
 
-# context_type → プレフィックス名（SUGGESTION-1: モジュールレベル定数化）
+# context_type -> prefix name (SUGGESTION-1: module-level constants)
 _TYPE_TO_PREFIX: dict[str, str] = {v: k for k, v in _PREFIX_TYPES.items()}
 
-# h2見出しのパターン
+# h2 heading pattern
 _H2_PATTERN = re.compile(r"^##\s+(.+)$")
 
 
 def parse_strategy(text: str) -> list[StrategyEntry]:
-    """Markdown文字列をパースしてStrategyEntryのリストを返す."""
+    """Parse a Markdown string and return a list of StrategyEntry."""
     if not text.strip():
         return []
 
@@ -78,27 +78,27 @@ def parse_strategy(text: str) -> list[StrategyEntry]:
 
 
 def _resolve_heading(heading: str) -> tuple[str | None, str]:
-    """見出し文字列から (context_type, title) を解決する.
+    """Resolve (context_type, title) from a heading string.
 
-    未知の見出しの場合は (None, heading) を返し、warningをログ出力する。
+    Returns (None, heading) for unknown headings and logs a warning.
     """
-    # 完全一致チェック
+    # Exact match check
     if heading in _SECTION_MAP:
         return _SECTION_MAP[heading], heading
 
-    # プレフィックス型チェック（"Custom: タイトル" 等）
+    # Prefix-type check (e.g. "Custom: title")
     for prefix, ctx_type in _PREFIX_TYPES.items():
         if heading.startswith(f"{prefix}:"):
             title = heading[len(prefix) + 1 :].strip()
             return ctx_type, title
 
-    # WARNING-3: 未知セクションのlogging.warning
-    logger.warning("未知のセクション見出しをスキップしました: '%s'", heading)
+    # WARNING-3: logging.warning for unknown sections
+    logger.warning("Skipping unknown section heading: '%s'", heading)
     return None, heading
 
 
 def render_strategy(entries: list[StrategyEntry]) -> str:
-    """StrategyEntryのリストからMarkdown文字列を生成する."""
+    """Generate a Markdown string from a list of StrategyEntry."""
     lines: list[str] = ["# Strategy", ""]
 
     for entry in entries:
@@ -111,11 +111,11 @@ def render_strategy(entries: list[StrategyEntry]) -> str:
 
 
 def _make_heading(entry: StrategyEntry) -> str:
-    """StrategyEntryから見出し文字列を生成する."""
+    """Generate a heading string from a StrategyEntry."""
     if entry.context_type in _TYPE_TO_HEADING:
         return _TYPE_TO_HEADING[entry.context_type]
 
-    # SUGGESTION-1: モジュールレベル定数を使用
+    # SUGGESTION-1: Use module-level constants
     if entry.context_type in _TYPE_TO_PREFIX:
         return f"{_TYPE_TO_PREFIX[entry.context_type]}: {entry.title}"
 
@@ -123,32 +123,30 @@ def _make_heading(entry: StrategyEntry) -> str:
 
 
 def read_strategy_file(path: Path) -> list[StrategyEntry]:
-    """STRATEGY.md ファイルを読み取ってStrategyEntryのリストを返す.
+    """Read a STRATEGY.md file and return a list of StrategyEntry.
 
-    ファイルが存在しない場合は空リストを返す。
+    Returns an empty list if the file does not exist.
     """
     if not path.exists():
         return []
     try:
         text = path.read_text(encoding="utf-8")
     except PermissionError as exc:
-        raise ContextFileError(
-            f"STRATEGY.md の読み取り権限がありません: {path}"
-        ) from exc
+        raise ContextFileError(f"No read permission for STRATEGY.md: {path}") from exc
     return parse_strategy(text)
 
 
 def write_strategy_file(path: Path, entries: list[StrategyEntry]) -> None:
-    """StrategyEntryのリストをSTRATEGY.md ファイルにアトミックに書き込む."""
+    """Atomically write a list of StrategyEntry to a STRATEGY.md file."""
     text = render_strategy(entries)
     _atomic_write(path, text)
 
 
 def add_strategy_entry(path: Path, entry: StrategyEntry) -> list[StrategyEntry]:
-    """既存ファイルにエントリを追加する.
+    """Append an entry to the existing file.
 
     Returns:
-        更新後のエントリリスト
+        Updated list of entries.
     """
     entries = read_strategy_file(path)
     entries = [*entries, entry]
@@ -162,13 +160,13 @@ def remove_strategy_entry(
     *,
     title: str | None = None,
 ) -> list[StrategyEntry]:
-    """特定のcontext_type（およびtitle）のエントリを削除する.
+    """Remove entries matching a specific context_type (and optionally title).
 
-    titleが指定された場合はcontext_typeとtitleの両方が一致するエントリのみ削除。
-    titleが未指定の場合はcontext_typeが一致する全エントリを削除。
+    If title is specified, only entries matching both context_type and title are removed.
+    If title is not specified, all entries matching context_type are removed.
 
     Returns:
-        更新後のエントリリスト
+        Updated list of entries.
     """
     entries = read_strategy_file(path)
 

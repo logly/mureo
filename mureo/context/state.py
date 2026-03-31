@@ -1,4 +1,4 @@
-"""STATE.json の読み書き."""
+"""Read and write STATE.json."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 from mureo.context.errors import ContextFileError
 from mureo.context.models import CampaignSnapshot, StateDocument
 
-# キャンペーンの必須フィールド
+# Required campaign fields
 _CAMPAIGN_REQUIRED_FIELDS: tuple[str, ...] = (
     "campaign_id",
     "campaign_name",
@@ -23,7 +23,7 @@ _CAMPAIGN_REQUIRED_FIELDS: tuple[str, ...] = (
 
 
 def parse_state(text: str) -> StateDocument:
-    """JSON文字列をパースしてStateDocumentを返す."""
+    """Parse a JSON string and return a StateDocument."""
     data = json.loads(text)
     campaigns_raw = data.get("campaigns", [])
     campaigns = tuple(_parse_campaign(c) for c in campaigns_raw)
@@ -36,12 +36,10 @@ def parse_state(text: str) -> StateDocument:
 
 
 def _parse_campaign(c: dict[str, Any]) -> CampaignSnapshot:
-    """辞書からCampaignSnapshotを生成する（必須フィールドバリデーション付き）."""
+    """Create a CampaignSnapshot from a dict (with required field validation)."""
     for field_name in _CAMPAIGN_REQUIRED_FIELDS:
         if field_name not in c:
-            raise ValueError(
-                f"キャンペーンに必須フィールド '{field_name}' がありません: {c}"
-            )
+            raise ValueError(f"Campaign is missing required field '{field_name}': {c}")
     device_targeting_raw = c.get("device_targeting")
     device_targeting: tuple[dict[str, Any], ...] | None = None
     if device_targeting_raw is not None:
@@ -60,7 +58,7 @@ def _parse_campaign(c: dict[str, Any]) -> CampaignSnapshot:
 
 
 def render_state(doc: StateDocument) -> str:
-    """StateDocumentからJSON文字列を生成する."""
+    """Generate a JSON string from a StateDocument."""
     data: dict[str, Any] = {
         "version": doc.version,
         "last_synced_at": doc.last_synced_at,
@@ -71,7 +69,7 @@ def render_state(doc: StateDocument) -> str:
 
 
 def _snapshot_to_dict(c: CampaignSnapshot) -> dict[str, Any]:
-    """CampaignSnapshotを辞書に変換する."""
+    """Convert a CampaignSnapshot to a dictionary."""
     device_targeting: list[dict[str, Any]] | None = None
     if c.device_targeting is not None:
         device_targeting = list(c.device_targeting)
@@ -89,7 +87,7 @@ def _snapshot_to_dict(c: CampaignSnapshot) -> dict[str, Any]:
 
 
 def _atomic_write(path: Path, content: str) -> None:
-    """アトミックにファイルを書き込む（一時ファイル→rename）."""
+    """Atomically write a file (temp file -> rename)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
@@ -103,37 +101,33 @@ def _atomic_write(path: Path, content: str) -> None:
 
 
 def read_state_file(path: Path) -> StateDocument:
-    """STATE.json ファイルを読み取ってStateDocumentを返す.
+    """Read a STATE.json file and return a StateDocument.
 
-    ファイルが存在しない場合はデフォルト値のStateDocumentを返す。
+    Returns a default StateDocument if the file does not exist.
     """
     if not path.exists():
         return StateDocument()
     try:
         text = path.read_text(encoding="utf-8")
     except PermissionError as exc:
-        raise ContextFileError(
-            f"STATE.json の読み取り権限がありません: {path}"
-        ) from exc
+        raise ContextFileError(f"No read permission for STATE.json: {path}") from exc
     try:
         return parse_state(text)
     except json.JSONDecodeError as exc:
-        raise ContextFileError(
-            f"STATE.json の JSON パースに失敗しました: {path}"
-        ) from exc
+        raise ContextFileError(f"Failed to parse JSON in STATE.json: {path}") from exc
 
 
 def write_state_file(path: Path, doc: StateDocument) -> None:
-    """StateDocumentをSTATE.json ファイルにアトミックに書き込む."""
+    """Atomically write a StateDocument to a STATE.json file."""
     text = render_state(doc)
     _atomic_write(path, text)
 
 
 def upsert_campaign(path: Path, campaign: CampaignSnapshot) -> StateDocument:
-    """キャンペーンをupsertする（既存なら更新、なければ追加）.
+    """Upsert a campaign (update if exists, add if not).
 
     Returns:
-        更新後のStateDocument
+        Updated StateDocument
     """
     doc = read_state_file(path)
     found = False
@@ -158,7 +152,7 @@ def upsert_campaign(path: Path, campaign: CampaignSnapshot) -> StateDocument:
 
 
 def get_campaign(doc: StateDocument, campaign_id: str) -> CampaignSnapshot | None:
-    """campaign_idでキャンペーンを検索する."""
+    """Search for a campaign by campaign_id."""
     for c in doc.campaigns:
         if c.campaign_id == campaign_id:
             return c

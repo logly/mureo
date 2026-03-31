@@ -1,24 +1,24 @@
-"""Meta Ads ツール定義 — クリエイティブ・画像・動画"""
+"""Meta Ads tool definitions — Creatives, images, videos"""
 
 from __future__ import annotations
 
 from mcp.types import Tool
 
 TOOLS: list[Tool] = [
-    # === クリエイティブ list / create / dynamic / upload_image ===
+    # === Creative list / create / dynamic / upload_image ===
     Tool(
         name="meta_ads.creatives.list",
-        description="Meta Ads AdCreative一覧を取得する",
+        description="List Meta Ads AdCreatives",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 50）",
+                    "description": "Max results (default: 50)",
                 },
             },
             "required": ["account_id"],
@@ -26,31 +26,31 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.creatives.create",
-        description="Meta Ads AdCreativeを作成する（画像URL or image_hash指定）",
+        description="Create a Meta Ads AdCreative (specify image URL or image_hash)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "name": {"type": "string", "description": "クリエイティブ名"},
-                "page_id": {"type": "string", "description": "FacebookページID"},
-                "link_url": {"type": "string", "description": "リンク先URL"},
+                "name": {"type": "string", "description": "Creative name"},
+                "page_id": {"type": "string", "description": "Facebook page ID"},
+                "link_url": {"type": "string", "description": "Destination URL"},
                 "image_url": {
                     "type": "string",
-                    "description": "画像URL（image_hashと排他）",
+                    "description": "Image URL (mutually exclusive with image_hash)",
                 },
                 "image_hash": {
                     "type": "string",
-                    "description": "アップロード済み画像のハッシュ（image_urlと排他）",
+                    "description": "Uploaded image hash (mutually exclusive with image_url)",
                 },
-                "message": {"type": "string", "description": "広告本文"},
-                "headline": {"type": "string", "description": "見出し"},
-                "description": {"type": "string", "description": "説明文"},
+                "message": {"type": "string", "description": "Ad body text"},
+                "headline": {"type": "string", "description": "Headline"},
+                "description": {"type": "string", "description": "Description"},
                 "call_to_action": {
                     "type": "string",
-                    "description": "CTAボタンタイプ（LEARN_MORE, SIGN_UP等）",
+                    "description": "CTA button type (LEARN_MORE, SIGN_UP etc.)",
                 },
             },
             "required": ["account_id", "name", "page_id", "link_url"],
@@ -58,41 +58,41 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.creatives.create_dynamic",
-        description="Meta Ads ダイナミッククリエイティブ用AdCreativeを作成する（Meta自動最適化）",
+        description="Create a Meta Ads dynamic creative AdCreative (Meta auto-optimization)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "name": {"type": "string", "description": "クリエイティブ名"},
-                "page_id": {"type": "string", "description": "FacebookページID"},
+                "name": {"type": "string", "description": "Creative name"},
+                "page_id": {"type": "string", "description": "Facebook page ID"},
                 "image_hashes": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "画像ハッシュのリスト（2〜10枚推奨）",
+                    "description": "List of image hashes (2 to 10 recommended)",
                 },
                 "bodies": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "広告本文のリスト",
+                    "description": "List of ad body texts",
                 },
                 "titles": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "見出しのリスト",
+                    "description": "List of headlines",
                 },
-                "link_url": {"type": "string", "description": "リンク先URL"},
+                "link_url": {"type": "string", "description": "Destination URL"},
                 "descriptions": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "説明文のリスト（任意）",
+                    "description": "List of descriptions (optional)",
                 },
                 "call_to_actions": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "CTAタイプのリスト（任意）",
+                    "description": "List of CTA types (optional)",
                 },
             },
             "required": [
@@ -108,135 +108,138 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.creatives.upload_image",
-        description="画像URLを指定してMeta Adsにアップロードする（image_hashを取得）",
+        description="Upload an image to Meta Ads by URL (to get image_hash)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
                 "image_url": {
                     "type": "string",
-                    "description": "アップロード元の画像URL",
+                    "description": "Source image URL",
                 },
             },
             "required": ["account_id", "image_url"],
         },
     ),
-    # === カルーセル・コレクション ===
+    # === Carousel & Collection ===
     Tool(
         name="meta_ads.creatives.create_carousel",
-        description="Meta Ads カルーセルクリエイティブを作成する（2〜10枚）",
+        description="Create a Meta Ads carousel creative (2 to 10 cards)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "page_id": {"type": "string", "description": "FacebookページID"},
+                "page_id": {"type": "string", "description": "Facebook page ID"},
                 "cards": {
                     "type": "array",
-                    "description": "カードのリスト（各要素に link, name, image_hash 等を含む）",
+                    "description": "List of cards (each containing link, name, image_hash etc.)",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "link": {"type": "string", "description": "リンクURL"},
-                            "name": {"type": "string", "description": "カード名"},
-                            "description": {"type": "string", "description": "説明文"},
+                            "link": {"type": "string", "description": "Link URL"},
+                            "name": {"type": "string", "description": "Card name"},
+                            "description": {
+                                "type": "string",
+                                "description": "Description",
+                            },
                             "image_hash": {
                                 "type": "string",
-                                "description": "画像ハッシュ",
+                                "description": "Image hash",
                             },
-                            "image_url": {"type": "string", "description": "画像URL"},
-                            "video_id": {"type": "string", "description": "動画ID"},
+                            "image_url": {"type": "string", "description": "Image URL"},
+                            "video_id": {"type": "string", "description": "Video ID"},
                         },
                         "required": ["link"],
                     },
                 },
-                "link": {"type": "string", "description": "メインリンクURL"},
-                "name": {"type": "string", "description": "クリエイティブ名（省略可）"},
+                "link": {"type": "string", "description": "Main link URL"},
+                "name": {"type": "string", "description": "Creative name (optional)"},
             },
             "required": ["account_id", "page_id", "cards", "link"],
         },
     ),
     Tool(
         name="meta_ads.creatives.create_collection",
-        description="Meta Ads コレクションクリエイティブを作成する",
+        description="Create a Meta Ads collection creative",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "page_id": {"type": "string", "description": "FacebookページID"},
+                "page_id": {"type": "string", "description": "Facebook page ID"},
                 "product_ids": {
                     "type": "array",
-                    "description": "商品IDのリスト",
+                    "description": "List of product IDs",
                     "items": {"type": "string"},
                 },
-                "link": {"type": "string", "description": "メインリンクURL"},
+                "link": {"type": "string", "description": "Main link URL"},
                 "cover_image_hash": {
                     "type": "string",
-                    "description": "カバー画像ハッシュ（省略可）",
+                    "description": "Cover image hash (optional)",
                 },
                 "cover_video_id": {
                     "type": "string",
-                    "description": "カバー動画ID（省略可）",
+                    "description": "Cover video ID (optional)",
                 },
-                "name": {"type": "string", "description": "クリエイティブ名（省略可）"},
+                "name": {"type": "string", "description": "Creative name (optional)"},
             },
             "required": ["account_id", "page_id", "product_ids", "link"],
         },
     ),
-    # === 画像アップロード ===
+    # === Image upload ===
     Tool(
         name="meta_ads.images.upload_file",
-        description="ローカルファイルから画像をMeta Adsにアップロードする",
+        description="Upload an image to Meta Ads from a local file",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "file_path": {"type": "string", "description": "画像ファイルのパス"},
-                "name": {"type": "string", "description": "画像名（省略可）"},
+                "file_path": {"type": "string", "description": "Image file path"},
+                "name": {"type": "string", "description": "Image name (optional)"},
             },
             "required": ["account_id", "file_path"],
         },
     ),
-    # === 動画アップロード ===
+    # === Video Upload ===
     Tool(
         name="meta_ads.videos.upload",
-        description="URL指定で動画をMeta Adsにアップロードする",
+        description="Upload a video to Meta Ads by URL",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "video_url": {"type": "string", "description": "動画URL"},
-                "title": {"type": "string", "description": "動画タイトル（省略可）"},
+                "video_url": {"type": "string", "description": "Video URL"},
+                "title": {"type": "string", "description": "Video title (optional)"},
             },
             "required": ["account_id", "video_url"],
         },
     ),
     Tool(
         name="meta_ads.videos.upload_file",
-        description="ローカルファイルから動画をMeta Adsにアップロードする",
+        description="Upload a video to Meta Ads from a local file",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "file_path": {"type": "string", "description": "動画ファイルのパス"},
-                "title": {"type": "string", "description": "動画タイトル（省略可）"},
+                "file_path": {"type": "string", "description": "Video file path"},
+                "title": {"type": "string", "description": "Video title (optional)"},
             },
             "required": ["account_id", "file_path"],
         },

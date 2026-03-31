@@ -1,25 +1,25 @@
-"""Meta Ads ツール定義 — リードフォーム・リード"""
+"""Meta Ads tool definitions — Lead forms, leads"""
 
 from __future__ import annotations
 
 from mcp.types import Tool
 
 TOOLS: list[Tool] = [
-    # === リード広告 (Lead Ads) ===
+    # === Lead Ads ===
     Tool(
         name="meta_ads.lead_forms.list",
-        description="Meta Ads リードフォーム一覧を取得する（Page単位）",
+        description="List Meta Ads lead forms (per page)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "page_id": {"type": "string", "description": "Facebook ページID"},
+                "page_id": {"type": "string", "description": "Facebook page ID"},
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 50）",
+                    "description": "Max results (default: 50)",
                 },
             },
             "required": ["account_id", "page_id"],
@@ -27,49 +27,49 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.lead_forms.get",
-        description="Meta Ads リードフォーム詳細を取得する",
+        description="Get Meta Ads lead form details",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "form_id": {"type": "string", "description": "リードフォームID"},
+                "form_id": {"type": "string", "description": "Lead form ID"},
             },
             "required": ["account_id", "form_id"],
         },
     ),
     Tool(
         name="meta_ads.lead_forms.create",
-        description="Meta Ads リードフォームを作成する（Page単位）",
+        description="Create a Meta Ads lead form (per page)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "page_id": {"type": "string", "description": "Facebook ページID"},
-                "name": {"type": "string", "description": "フォーム名"},
+                "page_id": {"type": "string", "description": "Facebook page ID"},
+                "name": {"type": "string", "description": "Form name"},
                 "questions": {
                     "type": "array",
-                    "description": "質問リスト（FULL_NAME, EMAIL, PHONE_NUMBER, COMPANY_NAME, CUSTOM等）",
+                    "description": "List of questions (FULL_NAME, EMAIL, PHONE_NUMBER, COMPANY_NAME, CUSTOM etc.)",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "type": {"type": "string", "description": "質問タイプ"},
+                            "type": {"type": "string", "description": "Question type"},
                             "key": {
                                 "type": "string",
-                                "description": "カスタム質問キー（CUSTOM時のみ）",
+                                "description": "Custom question key (CUSTOM type only)",
                             },
                             "label": {
                                 "type": "string",
-                                "description": "カスタム質問ラベル（CUSTOM時のみ）",
+                                "description": "Custom question label (CUSTOM type only)",
                             },
                             "options": {
                                 "type": "array",
-                                "description": "選択肢（CUSTOM時のみ）",
+                                "description": "Options (CUSTOM type only)",
                                 "items": {
                                     "type": "object",
                                     "properties": {
@@ -83,11 +83,11 @@ TOOLS: list[Tool] = [
                 },
                 "privacy_policy_url": {
                     "type": "string",
-                    "description": "プライバシーポリシーURL",
+                    "description": "Privacy policy URL",
                 },
                 "follow_up_action_url": {
                     "type": "string",
-                    "description": "フォーム送信後のリダイレクトURL",
+                    "description": "Redirect URL after form submission",
                 },
             },
             "required": [
@@ -101,18 +101,18 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.leads.get",
-        description="Meta Ads リードデータを取得する（フォーム単位）",
+        description="Get Meta Ads lead data (per form)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "form_id": {"type": "string", "description": "リードフォームID"},
+                "form_id": {"type": "string", "description": "Lead form ID"},
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 100）",
+                    "description": "Max results (default: 100)",
                 },
             },
             "required": ["account_id", "form_id"],
@@ -120,18 +120,18 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.leads.get_by_ad",
-        description="Meta Ads 広告別リードデータを取得する",
+        description="Get Meta Ads lead data by ad",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ad_id": {"type": "string", "description": "広告ID"},
+                "ad_id": {"type": "string", "description": "Ad ID"},
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 100）",
+                    "description": "Max results (default: 100)",
                 },
             },
             "required": ["account_id", "ad_id"],

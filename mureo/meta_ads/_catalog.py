@@ -1,7 +1,7 @@
-"""Meta Ads 商品カタログ & Dynamic Product Ads (DPA) Mixin
+"""Meta Ads product catalog and Dynamic Product Ads (DPA) mixin.
 
-Product Catalogの管理、商品CRUD、フィード管理を提供する。
-EC事業者向けDynamic Product Adsの基盤機能。
+Provides product catalog management, product CRUD, and feed management.
+Foundation for Dynamic Product Ads targeting e-commerce businesses.
 """
 
 from __future__ import annotations
@@ -11,23 +11,23 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 商品取得用フィールド
+# Product retrieval fields
 _PRODUCT_FIELDS = (
     "id,retailer_id,name,description,availability,condition,"
     "price,url,image_url,brand,category"
 )
 
-# カタログ取得用フィールド
+# Catalog retrieval fields
 _CATALOG_FIELDS = "id,name,product_count,vertical"
 
-# フィード取得用フィールド
+# Feed retrieval fields
 _FEED_FIELDS = "id,name,schedule,product_count,latest_upload"
 
 
 class CatalogMixin:
-    """Meta Ads 商品カタログ & DPA操作Mixin
+    """Meta Ads product catalog & DPA operations mixin.
 
-    MetaAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     _ad_account_id: str
@@ -42,70 +42,70 @@ class CatalogMixin:
 
     async def _delete(self, path: str) -> dict[str, Any]: ...  # type: ignore[empty-body]
 
-    # === カタログ管理 ===
+    # === Catalog management ===
 
     async def list_catalogs(self, business_id: str) -> list[dict[str, Any]]:
-        """カタログ一覧を取得する
+        """List catalogs.
 
         Args:
-            business_id: ビジネスID
+            business_id: Business ID
 
         Returns:
-            カタログ情報のリスト
+            List of catalog information
         """
         params: dict[str, Any] = {"fields": _CATALOG_FIELDS}
         result = await self._get(f"/{business_id}/owned_product_catalogs", params)
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def create_catalog(self, business_id: str, name: str) -> dict[str, Any]:
-        """カタログを作成する
+        """Create a catalog.
 
         Args:
-            business_id: ビジネスID
-            name: カタログ名
+            business_id: Business ID
+            name: Catalog name
 
         Returns:
-            作成されたカタログ情報（idを含む）
+            Created catalog information (includes id)
         """
         data: dict[str, Any] = {"name": name}
         return await self._post(f"/{business_id}/owned_product_catalogs", data=data)
 
     async def get_catalog(self, catalog_id: str) -> dict[str, Any]:
-        """カタログ詳細を取得する
+        """Get catalog details.
 
         Args:
-            catalog_id: カタログID
+            catalog_id: Catalog ID
 
         Returns:
-            カタログ詳細情報
+            Catalog detail information
         """
         params: dict[str, Any] = {"fields": _CATALOG_FIELDS}
         return await self._get(f"/{catalog_id}", params)
 
     async def delete_catalog(self, catalog_id: str) -> dict[str, Any]:
-        """カタログを削除する
+        """Delete a catalog.
 
         Args:
-            catalog_id: カタログID
+            catalog_id: Catalog ID
 
         Returns:
-            削除結果
+            Deletion result
         """
         return await self._delete(f"/{catalog_id}")
 
-    # === 商品管理 ===
+    # === Product management ===
 
     async def list_products(
         self, catalog_id: str, *, limit: int = 100
     ) -> list[dict[str, Any]]:
-        """商品一覧を取得する
+        """List products.
 
         Args:
-            catalog_id: カタログID
-            limit: 取得件数上限（デフォルト: 100）
+            catalog_id: Catalog ID
+            limit: Maximum number of results (default: 100)
 
         Returns:
-            商品情報のリスト
+            List of product information
         """
         params: dict[str, Any] = {
             "fields": _PRODUCT_FIELDS,
@@ -117,25 +117,25 @@ class CatalogMixin:
     async def add_product(
         self, catalog_id: str, product_data: dict[str, Any]
     ) -> dict[str, Any]:
-        """商品を追加する
+        """Add a product.
 
         Args:
-            catalog_id: カタログID
-            product_data: 商品データ（retailer_id, name, price等）
+            catalog_id: Catalog ID
+            product_data: Product data (retailer_id, name, price, etc.)
 
         Returns:
-            作成された商品情報（idを含む）
+            Created product information (includes id)
         """
         return await self._post(f"/{catalog_id}/products", data=product_data)
 
     async def get_product(self, product_id: str) -> dict[str, Any]:
-        """商品詳細を取得する
+        """Get product details.
 
         Args:
-            product_id: 商品ID
+            product_id: Product ID
 
         Returns:
-            商品詳細情報
+            Product detail information
         """
         params: dict[str, Any] = {"fields": _PRODUCT_FIELDS}
         return await self._get(f"/{product_id}", params)
@@ -143,38 +143,38 @@ class CatalogMixin:
     async def update_product(
         self, product_id: str, updates: dict[str, Any]
     ) -> dict[str, Any]:
-        """商品を更新する
+        """Update a product.
 
         Args:
-            product_id: 商品ID
-            updates: 更新データ
+            product_id: Product ID
+            updates: Update data
 
         Returns:
-            更新結果
+            Update result
         """
         return await self._post(f"/{product_id}", data=updates)
 
     async def delete_product(self, product_id: str) -> dict[str, Any]:
-        """商品を削除する
+        """Delete a product.
 
         Args:
-            product_id: 商品ID
+            product_id: Product ID
 
         Returns:
-            削除結果
+            Deletion result
         """
         return await self._delete(f"/{product_id}")
 
-    # === フィード管理 ===
+    # === Feed management ===
 
     async def list_product_feeds(self, catalog_id: str) -> list[dict[str, Any]]:
-        """フィード一覧を取得する
+        """List product feeds.
 
         Args:
-            catalog_id: カタログID
+            catalog_id: Catalog ID
 
         Returns:
-            フィード情報のリスト
+            List of feed information
         """
         params: dict[str, Any] = {"fields": _FEED_FIELDS}
         result = await self._get(f"/{catalog_id}/product_feeds", params)
@@ -187,16 +187,16 @@ class CatalogMixin:
         feed_url: str,
         schedule: str = "DAILY",
     ) -> dict[str, Any]:
-        """フィードを作成する（URL指定、スケジュール自動取込）
+        """Create a product feed (URL-based, with scheduled auto-import).
 
         Args:
-            catalog_id: カタログID
-            name: フィード名
-            feed_url: フィードURL
-            schedule: 取込スケジュール（DAILY, HOURLY, WEEKLY）
+            catalog_id: Catalog ID
+            name: Feed name
+            feed_url: Feed URL
+            schedule: Import schedule (DAILY, HOURLY, WEEKLY)
 
         Returns:
-            作成されたフィード情報（idを含む）
+            Created feed information (includes id)
         """
         data: dict[str, Any] = {
             "name": name,

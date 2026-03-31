@@ -1,6 +1,6 @@
-"""広告（Ad）操作のMixin。
+"""Ad operations mixin.
 
-list_ads, get_ad_policy_details, create_ad, update_ad, update_ad_status を提供する。
+Provides list_ads, get_ad_policy_details, create_ad, update_ad, update_ad_status.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class _AdsMixin:
-    """広告の一覧・詳細・作成・ステータス変更"""
+    """Ad listing, details, creation, and status changes."""
 
     _customer_id: str
     _client: GoogleAdsClient
@@ -45,7 +45,7 @@ class _AdsMixin:
     @staticmethod
     def _extract_evidences(entry: Any) -> list[str]: ...  # type: ignore[empty-body]
 
-    # === 広告 ===
+    # === Ads ===
 
     @staticmethod
     def _validate_and_prepare_rsa(
@@ -53,24 +53,32 @@ class _AdsMixin:
         descriptions: list[str],
         final_url: str,
     ) -> tuple[list[str], list[str], RSAValidationResult]:
-        """RSAバリデーション + 上限切り詰め + 最小個数チェックの共通処理。"""
+        """Common processing for RSA validation + limit truncation + minimum count check."""
         rsa_result = validate_rsa_texts(headlines, descriptions, final_url)
         headlines = list(rsa_result.headlines)
         descriptions = list(rsa_result.descriptions)
         if rsa_result.warnings:
-            logger.warning("RSAバリデーション警告: %s", rsa_result.warnings)
+            logger.warning("RSA validation warnings: %s", rsa_result.warnings)
 
         if len(headlines) > 15:
-            logger.info("見出しが上限超過のため切り詰め: %d → 15", len(headlines))
+            logger.info(
+                "Truncating headlines exceeding limit: %d -> 15", len(headlines)
+            )
             headlines = headlines[:15]
         if len(descriptions) > 4:
-            logger.info("説明文が上限超過のため切り詰め: %d → 4", len(descriptions))
+            logger.info(
+                "Truncating descriptions exceeding limit: %d -> 4", len(descriptions)
+            )
             descriptions = descriptions[:4]
 
         if len(headlines) < 3:
-            raise ValueError(f"見出しは3個以上必要です（現在{len(headlines)}個）")
+            raise ValueError(
+                f"At least 3 headlines are required (currently {len(headlines)})"
+            )
         if len(descriptions) < 2:
-            raise ValueError(f"説明文は2個以上必要です（現在{len(descriptions)}個）")
+            raise ValueError(
+                f"At least 2 descriptions are required (currently {len(descriptions)})"
+            )
         return headlines, descriptions, rsa_result
 
     @staticmethod
@@ -81,7 +89,7 @@ class _AdsMixin:
         descriptions: list[str],
         keywords: list[str] | None,
     ) -> dict[str, Any]:
-        """Ad Strength予測結果を result に追加する共通処理。"""
+        """Common processing to add Ad Strength prediction results to result."""
         if rsa_result.warnings:
             result["warnings"] = list(rsa_result.warnings)
 
@@ -97,7 +105,7 @@ class _AdsMixin:
         }
         if ad_strength.level == "POOR":
             result["warnings"] = result.get("warnings", []) + [
-                f"Ad Strength予測: {ad_strength.level}（{ad_strength.score:.0%}）— 改善を推奨"
+                f"Ad Strength prediction: {ad_strength.level} ({ad_strength.score:.0%}) - improvement recommended"
             ]
         return result
 
@@ -106,7 +114,7 @@ class _AdsMixin:
         ad_group_id: str | None = None,
         status_filter: str | None = None,
     ) -> list[dict[str, Any]]:
-        """広告一覧"""
+        """List ads."""
         query = """
             SELECT
                 ad_group_ad.ad.id, ad_group_ad.ad.name,
@@ -172,7 +180,7 @@ class _AdsMixin:
     async def get_ad_policy_details(
         self, ad_group_id: str, ad_id: str
     ) -> dict[str, Any] | None:
-        """広告のポリシー詳細（不承認理由等）を取得"""
+        """Get ad policy details (disapproval reasons, etc.)."""
         self._validate_id(ad_group_id, "ad_group_id")
         self._validate_id(ad_id, "ad_id")
         query = f"""
@@ -210,9 +218,9 @@ class _AdsMixin:
             }
         return None
 
-    @_wrap_mutate_error("広告作成")
+    @_wrap_mutate_error("ad creation")
     async def create_ad(self, params: dict[str, Any]) -> dict[str, Any]:
-        """レスポンシブ検索広告を作成"""
+        """Create a responsive search ad."""
         final_url = params.get("final_url", "")
         headlines, descriptions, rsa_result = self._validate_and_prepare_rsa(
             params.get("headlines", []),
@@ -252,18 +260,18 @@ class _AdsMixin:
             params.get("keywords"),
         )
 
-    @_wrap_mutate_error("広告テキスト更新")
+    @_wrap_mutate_error("ad text update")
     async def update_ad(self, params: dict[str, Any]) -> dict[str, Any]:
-        """既存のレスポンシブ検索広告の見出し・説明文を更新する。
+        """Update headlines and descriptions of an existing responsive search ad.
 
-        AdService.mutate_ads を使用（AdGroupAdService ではない）。
-        見出し・説明文は差分ではなく全置換。
+        Uses AdService.mutate_ads (not AdGroupAdService).
+        Headlines and descriptions are fully replaced, not patched.
         """
         ad_id = params.get("ad_id", "")
         self._validate_id(ad_id, "ad_id")
         final_url = params.get("final_url")
 
-        # final_url 未指定時はダミーURLでバリデーションを通す（URL自体は更新しない）
+        # Use dummy URL for validation when final_url is not specified (URL itself is not updated)
         validation_url = final_url if final_url else "https://placeholder.example.com"
         headlines, descriptions, rsa_result = self._validate_and_prepare_rsa(
             params.get("headlines", []),
@@ -271,7 +279,7 @@ class _AdsMixin:
             validation_url,
         )
 
-        # AdService で更新（AdGroupAdService ではない）
+        # Update via AdService (not AdGroupAdService)
         ad_service = self._get_service("AdService")
         op = self._client.get_type("AdOperation")
         ad = op.update
@@ -286,7 +294,7 @@ class _AdsMixin:
             text_asset.text = d
             ad.responsive_search_ad.descriptions.append(text_asset)
 
-        # FieldMask 構築
+        # Build FieldMask
         paths = [
             "responsive_search_ad.headlines",
             "responsive_search_ad.descriptions",
@@ -313,16 +321,16 @@ class _AdsMixin:
 
     _MAX_ENABLED_RSA_PER_AD_GROUP = 3
 
-    @_wrap_mutate_error("広告ステータス変更")
+    @_wrap_mutate_error("ad status change")
     async def update_ad_status(
         self, ad_group_id: str, ad_id: str, status: str
     ) -> dict[str, Any]:
-        """広告のステータスを変更"""
+        """Change ad status."""
         self._validate_id(ad_group_id, "ad_group_id")
         self._validate_id(ad_id, "ad_id")
         validated_status = self._validate_status(status)
 
-        # ENABLED に変更する場合、RSA上限チェック
+        # Check RSA limit when changing to ENABLED
         if validated_status == "ENABLED":
             try:
                 ads_data = await self.list_ads(ad_group_id=ad_group_id)
@@ -339,13 +347,13 @@ class _AdsMixin:
                         "error": True,
                         "error_type": "validation_error",
                         "message": (
-                            f"この広告グループには既に有効なRSAが{enabled_rsa}件あります"
-                            f"（上限{self._MAX_ENABLED_RSA_PER_AD_GROUP}件）。"
-                            "既存の広告を一時停止してから有効化してください。"
+                            f"This ad group already has {enabled_rsa} active RSAs"
+                            f" (limit: {self._MAX_ENABLED_RSA_PER_AD_GROUP})."
+                            " Please pause existing ads before enabling."
                         ),
                     }
             except Exception:
-                logger.debug("RSA上限チェックに失敗（続行）", exc_info=True)
+                logger.debug("RSA limit check failed (continuing)", exc_info=True)
 
         ad_group_ad_service = self._get_service("AdGroupAdService")
         op = self._client.get_type("AdGroupAdOperation")

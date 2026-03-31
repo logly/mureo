@@ -1,32 +1,32 @@
-"""Meta Ads ツール定義 — インサイト・分析"""
+"""Meta Ads tool definitions — Insights, analysis"""
 
 from __future__ import annotations
 
 from mcp.types import Tool
 
 TOOLS: list[Tool] = [
-    # === インサイト ===
+    # === Insights ===
     Tool(
         name="meta_ads.insights.report",
-        description="Meta Ads パフォーマンスレポートを取得する",
+        description="Get Meta Ads performance report",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
                 "campaign_id": {
                     "type": "string",
-                    "description": "キャンペーンIDでフィルタ",
+                    "description": "Filter by campaign ID",
                 },
                 "period": {
                     "type": "string",
-                    "description": "期間（today, yesterday, last_7d, last_30d等）",
+                    "description": "Period (today, yesterday, last_7d, last_30d etc.)",
                 },
                 "level": {
                     "type": "string",
-                    "description": "集計レベル（campaign, adset, ad）",
+                    "description": "Aggregation level (campaign, adset, ad)",
                 },
             },
             "required": ["account_id"],
@@ -34,42 +34,42 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.insights.breakdown",
-        description="Meta Ads ブレイクダウン付きレポートを取得する",
+        description="Get Meta Ads report with breakdown",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "breakdown": {
                     "type": "string",
-                    "description": "ブレイクダウン種別（age, gender等）",
+                    "description": "Breakdown type (age, gender etc.)",
                 },
-                "period": {"type": "string", "description": "期間"},
+                "period": {"type": "string", "description": "Period"},
             },
             "required": ["account_id", "campaign_id"],
         },
     ),
-    # === パフォーマンス分析 ===
+    # === Performance analysis ===
     Tool(
         name="meta_ads.analysis.performance",
-        description="Meta Ads キャンペーンのパフォーマンスを総合分析する（前期比較・インサイト付き）",
+        description="Comprehensively analyze Meta Ads campaign performance (with period comparison and insights)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
                 "campaign_id": {
                     "type": "string",
-                    "description": "キャンペーンID（省略時はアカウント全体）",
+                    "description": "Campaign ID (omit for entire account)",
                 },
                 "period": {
                     "type": "string",
-                    "description": "期間（today, yesterday, last_7d, last_30d等）",
+                    "description": "Period (today, yesterday, last_7d, last_30d etc.)",
                 },
             },
             "required": ["account_id"],
@@ -77,18 +77,18 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.analysis.audience",
-        description="Meta Ads 年齢×性別のオーディエンス効率を分析する",
+        description="Analyze Meta Ads audience efficiency by age and gender",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {
                     "type": "string",
-                    "description": "期間（last_7d, last_30d等）",
+                    "description": "Period (last_7d, last_30d etc.)",
                 },
             },
             "required": ["account_id", "campaign_id"],
@@ -96,18 +96,18 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.analysis.placements",
-        description="Meta Ads 配信面別パフォーマンスを分析する",
+        description="Analyze Meta Ads performance by placement",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {
                     "type": "string",
-                    "description": "期間（last_7d, last_30d等）",
+                    "description": "Period (last_7d, last_30d etc.)",
                 },
             },
             "required": ["account_id", "campaign_id"],
@@ -115,18 +115,18 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.analysis.cost",
-        description="Meta Ads 広告費増加・CPA悪化の原因を調査する",
+        description="Investigate causes of Meta Ads cost increase or CPA degradation",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {
                     "type": "string",
-                    "description": "期間（last_7d, last_30d等）",
+                    "description": "Period (last_7d, last_30d etc.)",
                 },
             },
             "required": ["account_id", "campaign_id"],
@@ -134,18 +134,18 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.analysis.compare_ads",
-        description="Meta Ads 広告セット内の広告パフォーマンスをA/B比較する",
+        description="A/B compare ad performance within a Meta Ads ad set",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ad_set_id": {"type": "string", "description": "広告セットID"},
+                "ad_set_id": {"type": "string", "description": "Ad set ID"},
                 "period": {
                     "type": "string",
-                    "description": "期間（last_7d, last_30d等）",
+                    "description": "Period (last_7d, last_30d etc.)",
                 },
             },
             "required": ["account_id", "ad_set_id"],
@@ -153,18 +153,18 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.analysis.suggest_creative",
-        description="Meta Ads 広告パフォーマンスに基づくクリエイティブ改善提案を生成する",
+        description="Generate creative improvement suggestions based on Meta Ads ad performance",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {
                     "type": "string",
-                    "description": "期間（last_7d, last_30d等）",
+                    "description": "Period (last_7d, last_30d etc.)",
                 },
             },
             "required": ["account_id", "campaign_id"],

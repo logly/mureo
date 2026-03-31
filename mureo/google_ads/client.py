@@ -71,9 +71,9 @@ _F = TypeVar("_F", bound=Callable[..., Any])
 
 
 def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
-    """GoogleAdsException をログに記録し、汎用メッセージで再送出するデコレータ
+    """Decorator that logs GoogleAdsException details and re-raises with a generic message.
 
-    APIエラーの技術的詳細はログのみに記録し、LLMには汎用メッセージを返す。
+    Technical API error details are only logged; a generic message is returned to the LLM.
     """
 
     def decorator(fn: _F) -> _F:
@@ -84,31 +84,33 @@ def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
             except GoogleAdsException as exc:
                 detail = self._extract_error_detail(exc)
                 logger.error(
-                    "%sに失敗: %s (campaign=%s)",
+                    "%s failed: %s (campaign=%s)",
                     label,
                     detail,
                     args[0] if args else kwargs,
                 )
-                # RESOURCE_NOT_FOUND の場合は具体的なヒントを返す
+                # Return a specific hint for RESOURCE_NOT_FOUND
                 if self._has_error_code(exc, "mutate_error", "RESOURCE_NOT_FOUND"):
                     raise RuntimeError(
-                        f"{label}に失敗: 指定されたリソースが見つかりません。"
-                        "IDが正しいか確認してください。"
-                        "一覧取得ツール（ads.list等）で最新のIDを取得してから再試行してください。"
+                        f"{label} failed: The specified resource was not found. "
+                        "Please verify the ID is correct. "
+                        "Retrieve the latest ID using a list tool (e.g., ads.list) and try again."
                     ) from exc
-                raise RuntimeError(f"{label}の処理中にエラーが発生しました。") from exc
+                raise RuntimeError(
+                    f"An error occurred while processing {label}."
+                ) from exc
 
         return wrapper  # type: ignore[return-value]
 
     return decorator
 
 
-# _wrap_mutate_error 定義後にインポート（循環参照回避）
+# Import after _wrap_mutate_error definition (avoid circular import)
 from mureo.google_ads._ads import _AdsMixin  # noqa: E402
 from mureo.google_ads._extensions import _ExtensionsMixin  # noqa: E402
 from mureo.google_ads._keywords import _KeywordsMixin  # noqa: E402
 
-# 検索パートナーCPAがGoogle検索の何倍以上で警告とするかの閾値
+# Threshold ratio for warning when search partner CPA exceeds Google Search CPA
 PARTNER_CPA_WARNING_RATIO: float = 2.0
 
 
@@ -122,47 +124,47 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     _CreativeMixin,
     _MediaMixin,
 ):
-    """Google Ads APIの操作をラップするクライアント"""
+    """Client wrapping Google Ads API operations."""
 
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str:
-        """IDが数値のみであることを検証する"""
+        """Validate that ID contains only digits."""
         if not _ID_PATTERN.fullmatch(value):
-            raise ValueError(f"不正な{field_name}: {value}")
+            raise ValueError(f"Invalid {field_name}: {value}")
         return value
 
     @staticmethod
     def _validate_status(status: str) -> str:
-        """ステータス値をホワイトリストで検証する"""
+        """Validate status value against whitelist."""
         upper = status.upper()
         if upper not in _VALID_STATUSES:
-            raise ValueError(f"不正なステータス: {status}")
+            raise ValueError(f"Invalid status: {status}")
         return upper
 
     @staticmethod
     def _validate_match_type(match_type: str) -> str:
-        """マッチタイプをホワイトリストで検証する"""
+        """Validate match type against whitelist."""
         upper = match_type.upper()
         if upper not in _VALID_MATCH_TYPES:
             raise ValueError(
-                f"不正なmatch_type: {match_type} (BROAD, PHRASE, EXACT のいずれかを指定)"
+                f"Invalid match_type: {match_type} (must be one of BROAD, PHRASE, EXACT)"
             )
         return upper
 
     @staticmethod
     def _validate_recommendation_type(rec_type: str) -> str:
-        """推奨事項タイプをホワイトリストで検証する"""
+        """Validate recommendation type against whitelist."""
         upper = rec_type.upper()
         if upper not in _VALID_RECOMMENDATION_TYPES:
-            raise ValueError(f"不正なrecommendation_type: {rec_type}")
+            raise ValueError(f"Invalid recommendation_type: {rec_type}")
         return upper
 
     @staticmethod
     def _validate_date(value: str, field_name: str) -> str:
-        """YYYY-MM-DD形式であることを検証する"""
+        """Validate YYYY-MM-DD date format."""
         if not _DATE_PATTERN.fullmatch(value):
             raise ValueError(
-                f"不正な{field_name}: {value} (YYYY-MM-DD形式で指定してください)"
+                f"Invalid {field_name}: {value} (please specify in YYYY-MM-DD format)"
             )
         return value
 
@@ -170,9 +172,9 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     def _validate_resource_name(
         value: str, pattern: re.Pattern[str], field_name: str
     ) -> str:
-        """リソース名のフォーマットを検証する"""
+        """Validate resource name format."""
         if not pattern.fullmatch(value):
-            raise ValueError(f"不正な{field_name}: {value}")
+            raise ValueError(f"Invalid {field_name}: {value}")
         return value
 
     def __init__(
@@ -182,9 +184,9 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         developer_token: str,
         login_customer_id: str | None = None,
     ) -> None:
-        # login_customer_id の決定順序:
-        # 1. 明示的に指定された値
-        # 2. customer_id 自身（独立アカウント用フォールバック）
+        # login_customer_id resolution order:
+        # 1. Explicitly provided value
+        # 2. customer_id itself (fallback for standalone accounts)
         resolved_login_id = login_customer_id or customer_id.replace("-", "")
         self._client = GoogleAdsClient(
             credentials=credentials,
@@ -197,15 +199,15 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         return self._client.get_service(service_name)
 
     async def _search(self, query: str) -> list[Any]:
-        """Google Ads GAQL検索をスレッドプールで実行する
+        """Execute Google Ads GAQL search in thread pool.
 
-        gRPC呼び出しは同期的でイベントループをブロックするため、
-        run_in_executorでスレッドに逃がす。
+        gRPC calls are synchronous and block the event loop,
+        so we offload them to a thread via run_in_executor.
         """
         ga_service = self._get_service("GoogleAdsService")
-        # クエリの先頭部分をログに出力（デバッグ用）
+        # Log the beginning of the query for debugging
         query_hint = query.strip().split("\n")[0][:60]
-        logger.info("_search 開始: %s", query_hint)
+        logger.info("_search start: %s", query_hint)
 
         def _do_search() -> list[Any]:
             response = ga_service.search(customer_id=self._customer_id, query=query)
@@ -213,12 +215,12 @@ class GoogleAdsApiClient(  # type: ignore[misc]
 
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, _do_search)
-        logger.info("_search 完了: %s (%d件)", query_hint, len(result))
+        logger.info("_search done: %s (%d rows)", query_hint, len(result))
         return result
 
     @staticmethod
     def _extract_error_detail(exc: GoogleAdsException) -> str:
-        """GoogleAdsException から最初のエラーメッセージを抽出"""
+        """Extract the first error message from GoogleAdsException."""
         for error in exc.failure.errors:
             if hasattr(error, "message"):
                 return str(error.message)
@@ -228,7 +230,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     def _has_error_code(
         exc: GoogleAdsException, attr_name: str, error_name: str
     ) -> bool:
-        """特定のエラーコードを持つか判定"""
+        """Check if the exception has a specific error code."""
         for error in exc.failure.errors:
             err_val = getattr(error.error_code, attr_name, None)
             if err_val is not None:  # noqa: SIM102
@@ -238,12 +240,12 @@ class GoogleAdsApiClient(  # type: ignore[misc]
 
     @staticmethod
     def _escape_gaql_string(value: str) -> str:
-        """GAQL文字列リテラル用にエスケープする"""
+        """Escape for GAQL string literals."""
         return value.replace("\\", "\\\\").replace("'", "\\'")
 
     @staticmethod
     def _extract_evidences(entry: Any) -> list[str]:
-        """ポリシートピックエントリからエビデンステキストを抽出する"""
+        """Extract evidence text from a policy topic entry."""
         evidences: list[str] = []
         if not entry.evidences:
             return evidences
@@ -252,20 +254,20 @@ class GoogleAdsApiClient(  # type: ignore[misc]
                 evidences.extend(list(ev.text_list.texts))
         return evidences
 
-    # === アカウント ===
+    # === Account ===
 
     async def list_accounts(self) -> list[dict[str, Any]]:
-        """管理アカウント一覧"""
+        """List accessible accounts."""
         service = self._get_service("CustomerService")
         response = service.list_accessible_customers()
         return [{"customer_id": cid} for cid in response.resource_names]
 
-    # === キャンペーン ===
+    # === Campaigns ===
 
     async def list_campaigns(
         self, status_filter: str | None = None
     ) -> list[dict[str, Any]]:
-        """キャンペーン一覧"""
+        """List campaigns."""
         query = """
             SELECT
                 campaign.id, campaign.name, campaign.status,
@@ -287,14 +289,14 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         results = []
         for row in rows:
             camp = map_campaign(row.campaign)
-            # campaign_budget.amount_micros から日予算（円）を算出
+            # Calculate daily budget from campaign_budget.amount_micros
             if hasattr(row, "campaign_budget") and row.campaign_budget.amount_micros:
                 camp["daily_budget"] = row.campaign_budget.amount_micros / 1_000_000
             results.append(camp)
         return results
 
     async def get_campaign(self, campaign_id: str) -> dict[str, Any] | None:
-        """キャンペーン詳細（入札戦略パラメータ含む）"""
+        """Campaign details (including bidding strategy parameters)."""
         self._validate_id(campaign_id, "campaign_id")
         query = f"""
             SELECT
@@ -320,11 +322,11 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         response = await self._search(query)
         for row in response:
             result = map_campaign(row.campaign)
-            # 予算情報
+            # Budget information
             b = row.campaign_budget
             result["budget_daily"] = b.amount_micros / 1_000_000
             result["budget_status"] = map_entity_status(b.status)
-            # 入札戦略の詳細パラメータ
+            # Bidding strategy detail parameters
             result["bidding_details"] = self._extract_bidding_details(row.campaign)
             return result
         return None
@@ -332,7 +334,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     async def _check_budget_bidding_compatibility(
         self, budget_id: str, bidding_strategy: str
     ) -> None:
-        """共有予算とスマート入札戦略の互換性を検証する"""
+        """Validate compatibility between shared budgets and smart bidding strategies."""
         self._validate_id(budget_id, "budget_id")
         if bidding_strategy.upper() not in _SMART_BIDDING_STRATEGIES:
             return
@@ -345,17 +347,17 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         for row in response:
             if row.campaign_budget.explicitly_shared:
                 raise ValueError(
-                    f"入札戦略 {bidding_strategy} は共有予算と互換性がありません。"
-                    "budget.createで個別予算を作成するか、"
-                    "MAXIMIZE_CLICKS/MANUAL_CPC戦略を選択してください。"
+                    f"Bidding strategy {bidding_strategy} is not compatible with shared budgets. "
+                    "Create an individual budget with budget.create, or "
+                    "select MAXIMIZE_CLICKS/MANUAL_CPC strategy."
                 )
 
     async def create_campaign(self, params: dict[str, Any]) -> dict[str, Any]:
-        """キャンペーン作成"""
+        """Create campaign."""
         name = params["name"]
         if len(name) > 256:
             raise ValueError(
-                f"キャンペーン名は256文字以内にしてください（現在{len(name)}文字）"
+                f"Campaign name must be 256 characters or less (currently {len(name)} chars)"
             )
         bidding_strategy = params.get("bidding_strategy", "MAXIMIZE_CLICKS")
         if "budget_id" in params:
@@ -392,11 +394,13 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         except GoogleAdsException as e:
             if not self._has_error_code(e, "campaign_error", "DUPLICATE_CAMPAIGN_NAME"):
                 detail = self._extract_error_detail(e)
-                logger.error("キャンペーン作成に失敗: %s", detail)
+                logger.error("Campaign creation failed: %s", detail)
                 raise RuntimeError(
-                    "キャンペーン作成の処理中にエラーが発生しました。"
+                    "An error occurred while processing campaign creation."
                 ) from e
-            logger.warning("同名キャンペーンが既に存在: name=%s", params["name"])
+            logger.warning(
+                "Campaign with same name already exists: name=%s", params["name"]
+            )
             return await self._find_campaign_by_name(params["name"])
 
     _SUPPORTED_BIDDING_STRATEGIES = frozenset(
@@ -412,22 +416,22 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     def _set_bidding_strategy(
         self, campaign: Any, strategy: str, params: dict[str, Any]
     ) -> None:
-        """キャンペーンの入札戦略を設定"""
+        """Set campaign bidding strategy."""
         strategy_upper = strategy.upper()
         if strategy_upper not in self._SUPPORTED_BIDDING_STRATEGIES:
             raise ValueError(
-                f"サポートされていない入札戦略: {strategy}。"
-                f"使用可能: {', '.join(sorted(self._SUPPORTED_BIDDING_STRATEGIES))}"
+                f"Unsupported bidding strategy: {strategy}. "
+                f"Available: {', '.join(sorted(self._SUPPORTED_BIDDING_STRATEGIES))}"
             )
         if strategy_upper == "MAXIMIZE_CLICKS":
-            # v23ではMAXIMIZE_CLICKSはtarget_spendフィールドで制御
+            # In v23, MAXIMIZE_CLICKS is controlled via target_spend field
             target_spend = self._client.get_type("TargetSpend")
             ceiling = params.get("cpc_bid_ceiling_micros")
             if ceiling is not None:
                 ceiling_val = int(ceiling)
                 if ceiling_val <= 0:
                     raise ValueError(
-                        f"cpc_bid_ceiling_microsは正の整数である必要があります: {ceiling_val}"
+                        f"cpc_bid_ceiling_micros must be a positive integer: {ceiling_val}"
                     )
                 target_spend.cpc_bid_ceiling_micros = ceiling_val
             self._client.copy_from(campaign.target_spend, target_spend)
@@ -444,12 +448,12 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         elif strategy_upper == "TARGET_CPA":
             if "target_cpa_micros" not in params:
                 raise ValueError(
-                    "TARGET_CPA戦略にはtarget_cpa_micros（目標CPA）の指定が必要です"
+                    "TARGET_CPA strategy requires target_cpa_micros (target CPA)"
                 )
             cpa_value = int(params["target_cpa_micros"])
             if cpa_value <= 0:
                 raise ValueError(
-                    f"target_cpa_microsは正の整数である必要があります: {cpa_value}"
+                    f"target_cpa_micros must be a positive integer: {cpa_value}"
                 )
             target_cpa = self._client.get_type("TargetCpa")
             target_cpa.target_cpa_micros = cpa_value
@@ -457,19 +461,19 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         elif strategy_upper == "TARGET_ROAS":
             if "target_roas_value" not in params:
                 raise ValueError(
-                    "TARGET_ROAS戦略にはtarget_roas_value（目標ROAS）の指定が必要です"
+                    "TARGET_ROAS strategy requires target_roas_value (target ROAS)"
                 )
             roas_value = float(params["target_roas_value"])
             if roas_value <= 0:
                 raise ValueError(
-                    f"target_roas_valueは正の数値である必要があります: {roas_value}"
+                    f"target_roas_value must be a positive number: {roas_value}"
                 )
             target_roas = self._client.get_type("TargetRoas")
             target_roas.target_roas = roas_value
             self._client.copy_from(campaign.target_roas, target_roas)
 
     async def _find_campaign_by_name(self, name: str) -> dict[str, Any]:
-        """キャンペーン名で既存キャンペーンを検索"""
+        """Search for existing campaign by name."""
         safe_name = self._escape_gaql_string(name)
         query = f"""
             SELECT campaign.id, campaign.name, campaign.status
@@ -482,13 +486,13 @@ class GoogleAdsApiClient(  # type: ignore[misc]
             return {
                 "resource_name": row.campaign.resource_name,
                 "campaign_id": str(row.campaign.id),
-                "note": "同名のキャンペーンが既に存在するため、既存のキャンペーンを返しました",
+                "note": "A campaign with the same name already exists; returning the existing campaign",
             }
-        raise ValueError(f"同名キャンペーン '{name}' が見つかりませんでした")
+        raise ValueError(f"Campaign with same name '{name}' was not found")
 
-    # 入札戦略 → FieldMask パスの対応
-    # v23ではサブフィールドを持つ入札戦略は親パスだと
-    # "field with subfields" エラーになるため、リーフパスを指定する
+    # Bidding strategy -> FieldMask path mapping
+    # In v23, bidding strategies with sub-fields cause
+    # "field with subfields" error with parent paths, so we specify leaf paths
     _BIDDING_FIELD_PATHS: dict[str, list[str]] = {
         "MAXIMIZE_CLICKS": ["target_spend.target_spend_micros"],
         "MANUAL_CPC": ["manual_cpc.enhanced_cpc_enabled"],
@@ -497,9 +501,9 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         "TARGET_ROAS": ["target_roas.target_roas"],
     }
 
-    @_wrap_mutate_error("キャンペーン更新")
+    @_wrap_mutate_error("campaign update")
     async def update_campaign(self, params: dict[str, Any]) -> dict[str, Any]:
-        """キャンペーンの設定を更新（名前・入札戦略等）"""
+        """Update campaign settings (name, bidding strategy, etc.)."""
         campaign_service = self._get_service("CampaignService")
         campaign_op = self._client.get_type("CampaignOperation")
         campaign = campaign_op.update
@@ -514,12 +518,12 @@ class GoogleAdsApiClient(  # type: ignore[misc]
             campaign.name = params["name"]
             field_paths.append("name")
 
-        # パラメータの不正な組み合わせを検出
+        # Detect invalid parameter combinations
         strategy_raw = params.get("bidding_strategy", "").upper()
         if strategy_raw == "MAXIMIZE_CLICKS" and "target_cpa_micros" in params:
             raise ValueError(
-                "MAXIMIZE_CLICKS（クリック数の最大化）にtarget_cpa_micros（目標CPA）は使用できません。"
-                "上限CPCを設定するにはcpc_bid_ceiling_microsを使用してください"
+                "MAXIMIZE_CLICKS does not support target_cpa_micros. "
+                "Use cpc_bid_ceiling_micros to set a max CPC"
             )
 
         if "bidding_strategy" in params:
@@ -527,24 +531,26 @@ class GoogleAdsApiClient(  # type: ignore[misc]
             self._set_bidding_strategy(campaign, strategy, params)
             bidding_paths = self._BIDDING_FIELD_PATHS.get(strategy)
             if bidding_paths is None:
-                raise ValueError(f"入札戦略 {strategy} のフィールドパスが未定義です")
+                raise ValueError(
+                    f"Field paths for bidding strategy {strategy} are undefined"
+                )
             field_paths.extend(bidding_paths)
-            # 上限CPC指定時は追加パス
+            # Additional path when max CPC is specified
             if strategy == "MAXIMIZE_CLICKS" and "cpc_bid_ceiling_micros" in params:
                 field_paths.append("target_spend.cpc_bid_ceiling_micros")
         elif "cpc_bid_ceiling_micros" in params:
-            # 入札戦略変更なしで上限CPCのみ更新
+            # Update only max CPC without changing bidding strategy
             ceiling_val = int(params["cpc_bid_ceiling_micros"])
             if ceiling_val <= 0:
                 raise ValueError(
-                    f"cpc_bid_ceiling_microsは正の整数である必要があります: {ceiling_val}"
+                    f"cpc_bid_ceiling_micros must be a positive integer: {ceiling_val}"
                 )
             campaign.target_spend.cpc_bid_ceiling_micros = ceiling_val
             field_paths.append("target_spend.cpc_bid_ceiling_micros")
 
         if not field_paths:
             raise ValueError(
-                "更新するフィールドが指定されていません（name, bidding_strategy 等）"
+                "No fields specified for update (name, bidding_strategy, etc.)"
             )
 
         self._client.copy_from(
@@ -557,14 +563,14 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         )
         return {"resource_name": response.results[0].resource_name}
 
-    @_wrap_mutate_error("キャンペーンステータス変更")
+    @_wrap_mutate_error("campaign status change")
     async def update_campaign_status(
         self, campaign_id: str, status: str
     ) -> dict[str, Any]:
-        """キャンペーンのステータスを変更
+        """Change campaign status
 
-        REMOVEDの場合はAPIの制約上removeオペレーションを使用する。
-        ENABLED/PAUSEDの場合はupdateオペレーションでステータスを変更する。
+        For REMOVED, use remove operation due to API constraints。
+        For ENABLED/PAUSED, use update operation to change status。
         """
         self._validate_id(campaign_id, "campaign_id")
         validated_status = self._validate_status(status)
@@ -572,7 +578,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         campaign_op = self._client.get_type("CampaignOperation")
 
         if validated_status == "REMOVED":
-            # REMOVEDはupdateではなくremoveオペレーションが必要
+            # REMOVED requires a remove operation, not update
             campaign_op.remove = campaign_service.campaign_path(
                 self._customer_id, campaign_id
             )
@@ -594,14 +600,14 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         )
         return {"resource_name": response.results[0].resource_name}
 
-    # === 広告グループ ===
+    # === Ad Groups ===
 
     async def list_ad_groups(  # type: ignore[override]
         self,
         campaign_id: str | None = None,
         status_filter: str | None = None,
     ) -> list[dict[str, Any]]:
-        """広告グループ一覧"""
+        """List ad groups."""
         query = """
             SELECT
                 ad_group.id, ad_group.name, ad_group.status,
@@ -624,9 +630,9 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         response = await self._search(query)
         return [map_ad_group(row.ad_group, row.campaign) for row in response]
 
-    @_wrap_mutate_error("広告グループ作成")
+    @_wrap_mutate_error("ad group creation")
     async def create_ad_group(self, params: dict[str, Any]) -> dict[str, Any]:
-        """広告グループ作成"""
+        """Create ad group."""
         ad_group_service = self._get_service("AdGroupService")
         ad_group_op = self._client.get_type("AdGroupOperation")
         ad_group = ad_group_op.create
@@ -643,9 +649,9 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         )
         return {"resource_name": response.results[0].resource_name}
 
-    @_wrap_mutate_error("広告グループ更新")
+    @_wrap_mutate_error("ad group update")
     async def update_ad_group(self, params: dict[str, Any]) -> dict[str, Any]:
-        """広告グループ更新"""
+        """Update ad group."""
         ad_group_service = self._get_service("AdGroupService")
         ad_group_op = self._client.get_type("AdGroupOperation")
         ad_group = ad_group_op.update
@@ -666,7 +672,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
                 return {
                     "error": True,
                     "error_type": "validation_error",
-                    "message": f"無効なstatusです: {params['status']}。ENABLED または PAUSED を指定してください。",
+                    "message": f"Invalid status: {params['status']}. Specify ENABLED or PAUSED.",
                 }
             ad_group.status = status_val
             update_fields.append("status")
@@ -677,7 +683,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
             return {
                 "error": True,
                 "error_type": "validation_error",
-                "message": "更新するフィールドが指定されていません。name, status, cpc_bid_micros のいずれかを指定してください。",
+                "message": "No fields specified for update. Specify at least one of name, status, or cpc_bid_micros.",
             }
         self._client.copy_from(
             ad_group_op.update_mask,
@@ -689,10 +695,10 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         )
         return {"resource_name": response.results[0].resource_name}
 
-    # === 予算 ===
+    # === Budgets ===
 
     async def get_budget(self, campaign_id: str) -> dict[str, Any] | None:
-        """キャンペーン予算を取得"""
+        """Get campaign budget."""
         self._validate_id(campaign_id, "campaign_id")
         query = f"""
             SELECT
@@ -715,11 +721,11 @@ class GoogleAdsApiClient(  # type: ignore[misc]
             }
         return None
 
-    @_wrap_mutate_error("予算更新")
+    @_wrap_mutate_error("budget update")
     async def update_budget(self, params: dict[str, Any]) -> dict[str, Any]:
-        """予算更新
+        """Update budget
 
-        注意: BudgetGuardによるバリデーションはManaged側で実施する。
+        Note: BudgetGuard validation is performed on the Managed side.
         """
         new_amount = params["amount"]
 
@@ -740,14 +746,14 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         )
         return {"resource_name": response.results[0].resource_name}
 
-    # === パフォーマンスレポート ===
+    # === Performance Report ===
 
     async def get_performance_report(  # type: ignore[override]
         self,
         campaign_id: str | None = None,
         period: str = "LAST_30_DAYS",
     ) -> list[dict[str, Any]]:
-        """パフォーマンスレポート"""
+        """Performance report."""
         date_clause = self._period_to_date_clause(period)
         query = f"""
             SELECT
@@ -769,7 +775,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         campaign_id: str | None = None,
         period: str = "LAST_30_DAYS",
     ) -> list[dict[str, Any]]:
-        """ネットワーク別パフォーマンスレポート（Google検索 vs 検索パートナー）"""
+        """Network-level performance report (Google Search vs Search Partners)."""
         date_clause = self._period_to_date_clause(period)
         query = f"""
             SELECT
@@ -791,7 +797,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
             network_type = str(row.segments.ad_network_type).replace(
                 "AdNetworkType.", ""
             )
-            # SEARCH = Google検索, SEARCH_PARTNERS = 検索パートナー, その他はスキップ
+            # SEARCH = Google Search, SEARCH_PARTNERS = Search Partners, skip others
             if network_type not in ("SEARCH", "SEARCH_PARTNERS", "2", "3"):
                 continue
             cost_micros = row.metrics.cost_micros
@@ -808,9 +814,9 @@ class GoogleAdsApiClient(  # type: ignore[misc]
                         else "SEARCH_PARTNERS"
                     ),
                     "network_label": (
-                        "Google検索"
+                        "Google Search"
                         if network_type in ("SEARCH", "2")
-                        else "検索パートナー"
+                        else "Search Partners"
                     ),
                     "impressions": int(row.metrics.impressions),
                     "clicks": int(row.metrics.clicks),
@@ -829,7 +835,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         campaign_id: str | None = None,
         period: str = "LAST_30_DAYS",
     ) -> list[dict[str, Any]]:
-        """広告単位のパフォーマンスレポート"""
+        """Ad-level performance report."""
         date_clause = self._period_to_date_clause(period)
         query = f"""
             SELECT
@@ -858,19 +864,21 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         response = await self._search(query)
         return map_ad_performance_report(list(response))
 
-    # === 予算作成 ===
+    # === Budget Creation ===
 
     async def create_budget(self, params: dict[str, Any]) -> dict[str, Any]:
-        """キャンペーン予算を新規作成"""
+        """Create a new campaign budget."""
         name = params["name"]
         if len(name) > 256:
             raise ValueError(
-                f"予算名は256文字以内にしてください（現在{len(name)}文字）"
+                f"Budget name must be 256 characters or less (currently {len(name)} chars)"
             )
         amount = params["amount"]
         if amount <= 0:
-            raise ValueError(f"日予算は正の数値を指定してください（指定値: {amount}）")
-        # 注意: BudgetGuardによる絶対上限チェックはManaged側で実施する。
+            raise ValueError(
+                f"Daily budget must be a positive number (specified: {amount})"
+            )
+        # Note: BudgetGuard absolute ceiling check is performed on the Managed side.
         budget_service = self._get_service("CampaignBudgetService")
         budget_op = self._client.get_type("CampaignBudgetOperation")
         budget = budget_op.create
@@ -887,13 +895,17 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         except GoogleAdsException as e:
             if not self._has_error_code(e, "campaign_budget_error", "DUPLICATE_NAME"):
                 detail = self._extract_error_detail(e)
-                logger.error("予算作成に失敗: %s", detail)
-                raise RuntimeError("予算作成の処理中にエラーが発生しました。") from e
-            logger.warning("同名予算が既に存在: name=%s", params["name"])
+                logger.error("Budget creation failed: %s", detail)
+                raise RuntimeError(
+                    "An error occurred while processing budget creation."
+                ) from e
+            logger.warning(
+                "Budget with same name already exists: name=%s", params["name"]
+            )
             return await self._find_budget_by_name(params["name"])
 
     async def _find_budget_by_name(self, name: str) -> dict[str, Any]:
-        """予算名で既存予算を検索して返す"""
+        """Search for existing budget by name and return it."""
         safe_name = self._escape_gaql_string(name)
         query = f"""
             SELECT
@@ -910,19 +922,19 @@ class GoogleAdsApiClient(  # type: ignore[misc]
                 "resource_name": row.campaign_budget.resource_name,
                 "budget_id": str(row.campaign_budget.id),
                 "amount_micros": row.campaign_budget.amount_micros,
-                "note": "同名の予算が既に存在するため、既存の予算を返しました",
+                "note": "A budget with the same name already exists; returning the existing budget",
             }
         raise ValueError(
-            f"同名予算 '{name}' が存在するはずですが、検索で見つかりませんでした"
+            f"Budget with same name '{name}' should exist but was not found"
         )
 
     def _period_to_date_clause(self, period: str) -> str:
-        """GAQL の日付条件句を返す。
+        """Return a GAQL date condition clause.
 
-        定義済み期間 → ``DURING LAST_7_DAYS`` 形式
-        カスタム範囲 → ``BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`` 形式
+        Predefined period -> ``DURING LAST_7_DAYS`` format
+        Custom range -> ``BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`` format
 
-        戻り値は ``WHERE segments.date {return_value}`` としてそのまま使える。
+        The return value can be used directly as ``WHERE segments.date {return_value}``.
         """
         if period.upper().startswith("BETWEEN"):
             return period
@@ -937,5 +949,5 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         }
         result = period_map.get(period.upper())
         if result is None:
-            raise ValueError(f"不正なperiod: {period}")
+            raise ValueError(f"Invalid period: {period}")
         return f"DURING {result}"

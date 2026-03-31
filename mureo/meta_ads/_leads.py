@@ -1,8 +1,8 @@
-"""Meta Ads Lead Ads (リード広告) 操作Mixin
+"""Meta Ads Lead Ads operations mixin.
 
-リードフォーム管理・リードデータ取得。
-Lead FormsはPageに紐づくため、page_idが必要。
-リードデータには個人情報が含まれるためログに出力しない。
+Lead form management and lead data retrieval.
+Lead Forms are linked to Pages, so page_id is required.
+Lead data contains PII and is not logged.
 """
 
 from __future__ import annotations
@@ -13,22 +13,22 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# リードフォーム取得用フィールド
+# Lead form retrieval fields
 _LEAD_FORM_FIELDS = (
     "id,name,status,locale,questions,privacy_policy,"
     "follow_up_action_url,created_time,expired_leads_count,"
     "leads_count,organic_leads_count"
 )
 
-# リードデータ取得用フィールド
+# Lead data retrieval fields
 _LEAD_FIELDS = "id,created_time,field_data,ad_id,ad_name,form_id"
 
 
 class LeadsMixin:
-    """Meta Ads Lead Ads (リード広告) 操作Mixin
+    """Meta Ads Lead Ads operations mixin
 
-    MetaAdsApiClientに多重継承して使用する。
-    Lead FormsはFacebook Pageに紐づくため、操作にはpage_idが必要。
+    Used via multiple inheritance with MetaAdsApiClient.
+    Lead Forms are linked to Facebook Pages, so page_id is required.
     """
 
     _ad_account_id: str
@@ -47,14 +47,14 @@ class LeadsMixin:
         *,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """リードフォーム一覧を取得する
+        """List lead forms
 
         Args:
-            page_id: Facebook ページID
-            limit: 取得件数上限
+            page_id: Facebook page ID
+            limit: Maximum number of items to retrieve
 
         Returns:
-            リードフォーム情報のリスト
+            List of lead form information.
         """
         params: dict[str, Any] = {
             "fields": _LEAD_FORM_FIELDS,
@@ -64,13 +64,13 @@ class LeadsMixin:
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_lead_form(self, form_id: str) -> dict[str, Any]:
-        """リードフォーム詳細を取得する
+        """Get lead form details
 
         Args:
-            form_id: リードフォームID
+            form_id: Lead form ID
 
         Returns:
-            リードフォーム詳細情報
+            Lead form detail information.
         """
         params: dict[str, Any] = {"fields": _LEAD_FORM_FIELDS}
         return await self._get(f"/{form_id}", params)
@@ -85,18 +85,18 @@ class LeadsMixin:
         follow_up_action_url: str | None = None,
         locale: str | None = None,
     ) -> dict[str, Any]:
-        """リードフォームを作成する
+        """Create a lead form
 
         Args:
-            page_id: Facebook ページID
-            name: フォーム名
-            questions: 質問リスト（FULL_NAME, EMAIL, PHONE_NUMBER, COMPANY_NAME, CUSTOM等）
-            privacy_policy_url: プライバシーポリシーURL
-            follow_up_action_url: フォーム送信後のリダイレクトURL
-            locale: ロケール
+            page_id: Facebook page ID
+            name: Form name
+            questions: List of questions (FULL_NAME, EMAIL, PHONE_NUMBER, COMPANY_NAME, CUSTOM, etc.)
+            privacy_policy_url: Privacy policy URL
+            follow_up_action_url: Redirect URL after form submission
+            locale: Locale
 
         Returns:
-            作成されたリードフォーム情報
+            Created lead form information.
         """
         data: dict[str, Any] = {
             "name": name,
@@ -110,7 +110,7 @@ class LeadsMixin:
             data["locale"] = locale
 
         logger.info(
-            "リードフォーム作成: page_id=%s, name=%s",
+            "Lead form creation: page_id=%s, name=%s",
             page_id,
             name,
         )
@@ -122,26 +122,26 @@ class LeadsMixin:
         *,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """フォームに送信されたリードデータを取得する
+        """Get lead data submitted to a form
 
-        リードデータには個人情報（名前・メール・電話番号等）が含まれるため、
-        ログには出力しない。
+        Lead data contains PII (name, email, phone, etc.) and
+        is not logged.
 
         Args:
-            form_id: リードフォームID
-            limit: 取得件数上限
+            form_id: Lead form ID
+            limit: Maximum number of items to retrieve
 
         Returns:
-            リードデータのリスト
+            List of lead data.
         """
         params: dict[str, Any] = {
             "fields": _LEAD_FIELDS,
             "limit": limit,
         }
         result = await self._get(f"/{form_id}/leads", params)
-        # 個人情報を含むためログ出力しない
+        # Not logged because it contains PII
         leads = result.get("data", [])
-        logger.info("リードデータ取得: form_id=%s, 件数=%d", form_id, len(leads))
+        logger.info("Lead data retrieval: form_id=%s, count=%d", form_id, len(leads))
         return leads  # type: ignore[no-any-return]
 
     async def get_ad_leads(
@@ -150,24 +150,24 @@ class LeadsMixin:
         *,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """広告経由のリードデータを取得する
+        """Get lead data via ads
 
-        リードデータには個人情報（名前・メール・電話番号等）が含まれるため、
-        ログには出力しない。
+        Lead data contains PII (name, email, phone, etc.) and
+        is not logged.
 
         Args:
-            ad_id: 広告ID
-            limit: 取得件数上限
+            ad_id: Ad ID
+            limit: Maximum number of items to retrieve
 
         Returns:
-            リードデータのリスト
+            List of lead data.
         """
         params: dict[str, Any] = {
             "fields": _LEAD_FIELDS,
             "limit": limit,
         }
         result = await self._get(f"/{ad_id}/leads", params)
-        # 個人情報を含むためログ出力しない
+        # Not logged because it contains PII
         leads = result.get("data", [])
-        logger.info("広告別リードデータ取得: ad_id=%s, 件数=%d", ad_id, len(leads))
+        logger.info("Lead data by ad: ad_id=%s, count=%d", ad_id, len(leads))
         return leads  # type: ignore[no-any-return]

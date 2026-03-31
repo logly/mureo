@@ -1,4 +1,4 @@
-"""mureo.google_ads - Google Ads API操作ロジック（DB非依存）"""
+"""mureo.google_ads - Google Ads API operations (database-independent)."""
 
 from mureo.google_ads.client import GoogleAdsApiClient
 

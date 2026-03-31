@@ -77,12 +77,12 @@ class TestRSAInsightExtractorBuildPrompt:
 
         prompt = RSAInsightExtractor.build_prompt(asset_data=asset_data)
 
-        assert "（未指定）" in prompt
+        assert "(Not specified)" in prompt
 
     def test_空データ(self) -> None:
         prompt = RSAInsightExtractor.build_prompt(asset_data={})
 
-        assert "（データなし）" in prompt
+        assert "(No data)" in prompt
 
 
 @pytest.mark.unit
@@ -220,7 +220,7 @@ class TestIntentClassifierParseResponse:
         for r in results:
             assert r.intent == INTENT_INFORMATIONAL
             assert r.relevance_score == 50
-            assert "パース失敗" in r.reasoning
+            assert "parse failure" in r.reasoning
 
     def test_不正intent値のフォールバック(self) -> None:
         response = json.dumps(
@@ -419,10 +419,10 @@ class TestMessageMatchResult:
             strengths=(),
             weaknesses=(),
             suggestions=(),
-            error="評価失敗",
+            error="Failed to parse",
         )
 
-        assert result.error == "評価失敗"
+        assert result.error == "Failed to parse"
 
 
 @pytest.mark.unit
@@ -454,9 +454,9 @@ class TestLPScreenshotterCapture:
 
         with patch(
             "mureo.analysis.lp_analyzer.LPAnalyzer._validate_url",
-            side_effect=ValueError("URLが不正です"),
+            side_effect=ValueError("Invalid URL"),
         ):
-            with pytest.raises(ValueError, match="URLが不正です"):
+            with pytest.raises(ValueError, match="Invalid URL"):
                 await screenshotter.capture("http://127.0.0.1/internal")
 
     @pytest.mark.asyncio

@@ -1,7 +1,7 @@
-"""Google Ads MCPツール ハンドラー実装（分析・監視・クリエイティブ）
+"""Google Ads MCP tool handler implementation (analysis, monitoring, creative)
 
-パフォーマンス分析、予算分析、オークション分析、RSA分析、
-BtoB最適化、クリエイティブ、監視、キャプチャ関連のハンドラー。
+Handlers for performance analysis, budget analysis, auction insights,
+RSA analysis, B2B optimization, creative, monitoring, and capture.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# キャンペーン & 予算（追加分）
+# Campaigns & budget (additional)
 # ---------------------------------------------------------------------------
 
 
@@ -82,7 +82,7 @@ async def handle_ad_performance_report(
 
 
 # ---------------------------------------------------------------------------
-# キーワード（追加分）
+# Keywords (additional)
 # ---------------------------------------------------------------------------
 
 
@@ -130,7 +130,7 @@ async def handle_negative_keywords_add_to_ad_group(
 
 
 # ---------------------------------------------------------------------------
-# 広告（追加分）
+# Ads (additional)
 # ---------------------------------------------------------------------------
 
 
@@ -149,7 +149,7 @@ async def handle_ads_policy_details(
 
 
 # ---------------------------------------------------------------------------
-# 検索語句分析
+# Search term analysis
 # ---------------------------------------------------------------------------
 
 
@@ -184,7 +184,7 @@ async def handle_negative_keywords_suggest(
 
 
 # ---------------------------------------------------------------------------
-# キーワード分析
+# Keyword analysis
 # ---------------------------------------------------------------------------
 
 
@@ -216,7 +216,7 @@ async def handle_keywords_cross_adgroup_duplicates(
 
 
 # ---------------------------------------------------------------------------
-# パフォーマンス分析
+# Performance analysis
 # ---------------------------------------------------------------------------
 
 
@@ -271,7 +271,7 @@ async def handle_ad_performance_compare(
 
 
 # ---------------------------------------------------------------------------
-# 予算分析
+# Budget analysis
 # ---------------------------------------------------------------------------
 
 
@@ -300,7 +300,7 @@ async def handle_budget_reallocation(
 
 
 # ---------------------------------------------------------------------------
-# オークション分析
+# Auction insights
 # ---------------------------------------------------------------------------
 
 
@@ -319,7 +319,7 @@ async def handle_auction_insights_get(
 
 
 # ---------------------------------------------------------------------------
-# RSA分析
+# RSA analysis
 # ---------------------------------------------------------------------------
 
 
@@ -350,7 +350,7 @@ async def handle_rsa_assets_audit(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# BtoB
+# B2B
 # ---------------------------------------------------------------------------
 
 
@@ -369,7 +369,7 @@ async def handle_btob_optimizations(
 
 
 # ---------------------------------------------------------------------------
-# クリエイティブ
+# Creative
 # ---------------------------------------------------------------------------
 
 
@@ -400,7 +400,7 @@ async def handle_creative_research(
 
 
 # ---------------------------------------------------------------------------
-# 監視
+# Monitoring
 # ---------------------------------------------------------------------------
 
 
@@ -455,7 +455,7 @@ async def handle_zero_conversions_diagnose(
 
 
 # ---------------------------------------------------------------------------
-# キャプチャ
+# Capture
 # ---------------------------------------------------------------------------
 
 
@@ -480,50 +480,50 @@ async def handle_capture(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーマッピング
+# Handler mapping
 # ---------------------------------------------------------------------------
 
 HANDLERS_ANALYSIS: dict[str, Any] = {
-    # キャンペーン & 予算（追加分）
+    # Campaigns & budget (additional)
     "google_ads.budget.create": handle_budget_create,
     "google_ads.accounts.list": handle_accounts_list,
     "google_ads.network_performance.report": handle_network_performance_report,
     "google_ads.ad_performance.report": handle_ad_performance_report,
-    # キーワード（追加分）
+    # Keywords (additional)
     "google_ads.keywords.pause": handle_keywords_pause,
     "google_ads.negative_keywords.remove": handle_negative_keywords_remove,
     "google_ads.negative_keywords.add_to_ad_group": handle_negative_keywords_add_to_ad_group,
-    # 広告（追加分）
+    # Ads (additional)
     "google_ads.ads.policy_details": handle_ads_policy_details,
-    # 検索語句分析
+    # Search term analysis
     "google_ads.search_terms.analyze": handle_search_terms_analyze,
     "google_ads.negative_keywords.suggest": handle_negative_keywords_suggest,
-    # キーワード分析
+    # Keyword analysis
     "google_ads.keywords.audit": handle_keywords_audit,
     "google_ads.keywords.cross_adgroup_duplicates": handle_keywords_cross_adgroup_duplicates,
-    # パフォーマンス分析
+    # Performance analysis
     "google_ads.performance.analyze": handle_performance_analyze,
     "google_ads.cost_increase.investigate": handle_cost_increase_investigate,
     "google_ads.health_check.all": handle_health_check,
     "google_ads.ad_performance.compare": handle_ad_performance_compare,
-    # 予算分析
+    # Budget analysis
     "google_ads.budget.efficiency": handle_budget_efficiency,
     "google_ads.budget.reallocation": handle_budget_reallocation,
-    # オークション分析
+    # Auction insights
     "google_ads.auction_insights.get": handle_auction_insights_get,
-    # RSA分析
+    # RSA analysis
     "google_ads.rsa_assets.analyze": handle_rsa_assets_analyze,
     "google_ads.rsa_assets.audit": handle_rsa_assets_audit,
-    # BtoB
+    # B2B
     "google_ads.btob.optimizations": handle_btob_optimizations,
-    # クリエイティブ
+    # Creative
     "google_ads.landing_page.analyze": handle_landing_page_analyze,
     "google_ads.creative.research": handle_creative_research,
-    # 監視
+    # Monitoring
     "google_ads.monitoring.delivery_goal": handle_delivery_goal_evaluate,
     "google_ads.monitoring.cpa_goal": handle_cpa_goal_evaluate,
     "google_ads.monitoring.cv_goal": handle_cv_goal_evaluate,
     "google_ads.monitoring.zero_conversions": handle_zero_conversions_diagnose,
-    # キャプチャ
+    # Capture
     "google_ads.capture.screenshot": handle_capture,
 }

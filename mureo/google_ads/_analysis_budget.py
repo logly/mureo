@@ -1,4 +1,4 @@
-"""予算効率分析 Mixin。"""
+"""Budget efficiency analysis mixin."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 class _BudgetAnalysisMixin:
-    """予算配分効率分析系メソッドを提供する Mixin。"""
+    """Mixin providing budget allocation efficiency analysis methods."""
 
-    # 親クラスが提供する属性・メソッドの型宣言
+    # Type declarations for attributes/methods provided by parent class
     _customer_id: str
     _client: GoogleAdsClient
 
@@ -27,14 +27,14 @@ class _BudgetAnalysisMixin:
     async def get_budget(self, campaign_id: str) -> dict[str, Any] | None: ...
 
     # =================================================================
-    # 予算配分効率分析
+    # Budget allocation efficiency analysis
     # =================================================================
 
     async def analyze_budget_efficiency(
         self,
         period: str = "LAST_30_DAYS",
     ) -> dict[str, Any]:
-        """全有効キャンペーンの予算配分効率を分析する。"""
+        """Analyze budget allocation efficiency across all enabled campaigns."""
         campaigns = await self.list_campaigns(status_filter="ENABLED")
 
         campaign_data: list[dict[str, Any]] = []
@@ -50,7 +50,7 @@ class _BudgetAnalysisMixin:
                 convs = float(m.get("conversions", 0))
             except Exception:
                 logger.warning(
-                    "キャンペーン %s のパフォーマンス取得に失敗",
+                    "Failed to retrieve performance for campaign %s",
                     cid,
                     exc_info=True,
                 )
@@ -68,7 +68,7 @@ class _BudgetAnalysisMixin:
                 }
             )
 
-        # コストシェア・CVシェア・効率比を算出
+        # Calculate cost share, CV share, and efficiency ratio
         enriched_data: list[dict[str, Any]] = []
         for cd in campaign_data:
             cost_share = cd["cost"] / total_cost if total_cost > 0 else 0.0
@@ -102,34 +102,34 @@ class _BudgetAnalysisMixin:
                 }
             )
 
-        # 推奨事項
+        # Recommendations
         recommendations: list[str] = []
         inefficient = [c for c in enriched_data if c.get("verdict") == "INEFFICIENT"]
         efficient = [c for c in enriched_data if c.get("verdict") == "EFFICIENT"]
         if inefficient:
             names = ", ".join(c["name"] for c in inefficient[:3])
             recommendations.append(
-                f"非効率なキャンペーン（{names}）の予算を削減し、"
-                "効率の良いキャンペーンへ再配分することを検討してください"
+                f"Consider reducing budget for inefficient campaigns ({names}) "
+                "and reallocating to efficient campaigns"
             )
         if efficient:
             names = ", ".join(c["name"] for c in efficient[:3])
             recommendations.append(
-                f"効率の良いキャンペーン（{names}）の予算増額を検討してください"
+                f"Consider increasing budget for efficient campaigns ({names})"
             )
 
-        # インサイト
+        # Insights
         insights: list[str] = []
         if total_conversions > 0:
             overall_cpa = total_cost / total_conversions
-            insights.append(f"全体CPAは ¥{overall_cpa:,.0f} です")
+            insights.append(f"Overall CPA is ¥{overall_cpa:,.0f}")
         if len(enriched_data) > 1:
             normal_count = len(
                 [c for c in enriched_data if c.get("verdict") == "NORMAL"]
             )
             insights.append(
-                f"効率的: {len(efficient)}件、通常: {normal_count}件、"
-                f"非効率: {len(inefficient)}件"
+                f"Efficient: {len(efficient)}, Normal: {normal_count}, "
+                f"Inefficient: {len(inefficient)}"
             )
 
         return {
@@ -142,14 +142,14 @@ class _BudgetAnalysisMixin:
         }
 
     # =================================================================
-    # 予算再配分提案
+    # Budget reallocation suggestion
     # =================================================================
 
     async def suggest_budget_reallocation(
         self,
         period: str = "LAST_30_DAYS",
     ) -> dict[str, Any]:
-        """全キャンペーンの予算配分効率を分析し、具体的な再配分案を生成する。"""
+        """Analyze budget allocation efficiency and generate concrete reallocation proposals."""
         efficiency = await self.analyze_budget_efficiency(period=period)
         campaigns = efficiency.get("campaigns", [])
         total_cost = efficiency.get("total_cost", 0)
@@ -158,10 +158,10 @@ class _BudgetAnalysisMixin:
             return {
                 **efficiency,
                 "reallocation_plan": [],
-                "summary": "データ不足のため再配分提案を生成できません",
+                "summary": "Insufficient data to generate reallocation proposals",
             }
 
-        # 各キャンペーンの現在の日予算を取得
+        # Get current daily budget for each campaign
         for camp in campaigns:
             cid = camp.get("campaign_id", "")
             try:
@@ -171,11 +171,13 @@ class _BudgetAnalysisMixin:
                 )
                 camp["budget_id"] = budget_info.get("id", "") if budget_info else ""
             except Exception:
-                logger.warning("キャンペーン %s の予算取得に失敗", cid, exc_info=True)
+                logger.warning(
+                    "Failed to retrieve budget for campaign %s", cid, exc_info=True
+                )
                 camp["current_daily_budget"] = 0
                 camp["budget_id"] = ""
 
-        # 再配分ロジック: 非効率→効率への移動
+        # Reallocation logic: move from inefficient to efficient
         inefficient = [
             c
             for c in campaigns
@@ -187,7 +189,7 @@ class _BudgetAnalysisMixin:
         reallocation_plan: list[dict[str, Any]] = []
         total_freed: float = 0.0
 
-        # 非効率キャンペーンから最大20%削減
+        # Reduce up to 20% from inefficient campaigns
         for camp in inefficient:
             current = camp["current_daily_budget"]
             reduction = round(current * 0.2)
@@ -210,7 +212,7 @@ class _BudgetAnalysisMixin:
             )
             total_freed += reduction
 
-        # 効率キャンペーンに均等配分
+        # Distribute equally to efficient campaigns
         if efficient and total_freed > 0:
             per_campaign = round(total_freed / len(efficient))
             for camp in efficient:
@@ -236,12 +238,14 @@ class _BudgetAnalysisMixin:
         increases = [p for p in reallocation_plan if p["action"] == "INCREASE"]
         if decreases:
             summary_parts.append(
-                f"削減対象: {len(decreases)}件（合計 ¥{total_freed:,.0f}/日）"
+                f"Decrease targets: {len(decreases)} (total ¥{total_freed:,.0f}/day)"
             )
         if increases:
-            summary_parts.append(f"増額対象: {len(increases)}件")
+            summary_parts.append(f"Increase targets: {len(increases)}")
         if not reallocation_plan:
-            summary_parts.append("現在の予算配分は適切です。再配分の必要はありません")
+            summary_parts.append(
+                "Current budget allocation is appropriate. No reallocation needed"
+            )
 
         return {
             **efficiency,

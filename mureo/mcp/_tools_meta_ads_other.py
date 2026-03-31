@@ -1,24 +1,24 @@
-"""Meta Ads ツール定義 — スプリットテスト・自動ルール・ページ投稿・Instagram"""
+"""Meta Ads tool definitions — Split tests, automated rules, page posts, Instagram"""
 
 from __future__ import annotations
 
 from mcp.types import Tool
 
 TOOLS: list[Tool] = [
-    # === スプリットテスト (A/Bテスト) ===
+    # === Split Test (A/B Test) ===
     Tool(
         name="meta_ads.split_tests.list",
-        description="Meta Ads スプリットテスト（A/Bテスト）一覧を取得する",
+        description="List Meta Ads split tests (A/B tests)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 50）",
+                    "description": "Max results (default: 50)",
                 },
             },
             "required": ["account_id"],
@@ -26,53 +26,53 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.split_tests.get",
-        description="Meta Ads スプリットテスト詳細・結果を取得する",
+        description="Get Meta Ads split test details and results",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "study_id": {"type": "string", "description": "スタディID"},
+                "study_id": {"type": "string", "description": "Study ID"},
             },
             "required": ["account_id", "study_id"],
         },
     ),
     Tool(
         name="meta_ads.split_tests.create",
-        description="Meta Ads スプリットテスト（A/Bテスト）を作成する",
+        description="Create a Meta Ads split test (A/B test)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "name": {"type": "string", "description": "テスト名"},
+                "name": {"type": "string", "description": "Test name"},
                 "cells": {
                     "type": "array",
-                    "description": "セル定義（各セルにname, adsetsを含む）",
+                    "description": "Cell definitions (each cell contains name, adsets)",
                     "items": {"type": "object"},
                 },
                 "objectives": {
                     "type": "array",
-                    "description": '目的（例: [{"type": "COST_PER_RESULT"}]）',
+                    "description": 'Objectives (e.g. [{"type": "COST_PER_RESULT"}])',
                     "items": {"type": "object"},
                 },
                 "start_time": {
                     "type": "string",
-                    "description": "開始日時（ISO 8601形式）",
+                    "description": "Start time (ISO 8601 format)",
                 },
                 "end_time": {
                     "type": "string",
-                    "description": "終了日時（ISO 8601形式）",
+                    "description": "End time (ISO 8601 format)",
                 },
                 "confidence_level": {
                     "type": "integer",
-                    "description": "信頼度（デフォルト: 95）",
+                    "description": "Confidence level (default: 95)",
                 },
-                "description": {"type": "string", "description": "テスト説明"},
+                "description": {"type": "string", "description": "Test description"},
             },
             "required": [
                 "account_id",
@@ -86,33 +86,33 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.split_tests.end",
-        description="Meta Ads スプリットテストを終了する",
+        description="End a Meta Ads split test",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "study_id": {"type": "string", "description": "スタディID"},
+                "study_id": {"type": "string", "description": "Study ID"},
             },
             "required": ["account_id", "study_id"],
         },
     ),
-    # === 自動ルール (Ad Rules) ===
+    # === Automated Rules (Ad Rules) ===
     Tool(
         name="meta_ads.ad_rules.list",
-        description="Meta Ads 自動ルール一覧を取得する",
+        description="List Meta Ads automated rules",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 50）",
+                    "description": "Max results (default: 50)",
                 },
             },
             "required": ["account_id"],
@@ -120,94 +120,94 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.ad_rules.get",
-        description="Meta Ads 自動ルール詳細を取得する",
+        description="Get Meta Ads automated rule details",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "rule_id": {"type": "string", "description": "ルールID"},
+                "rule_id": {"type": "string", "description": "Rule ID"},
             },
             "required": ["account_id", "rule_id"],
         },
     ),
     Tool(
         name="meta_ads.ad_rules.create",
-        description="Meta Ads 自動ルールを作成する（CPA高騰アラート・自動停止等）",
+        description="Create a Meta Ads automated rule (CPA spike alert, auto-pause etc.)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "name": {"type": "string", "description": "ルール名"},
+                "name": {"type": "string", "description": "Rule name"},
                 "evaluation_spec": {
                     "type": "object",
-                    "description": "評価条件（evaluation_type, trigger, filters）",
+                    "description": "Evaluation spec (evaluation_type, trigger, filters)",
                 },
                 "execution_spec": {
                     "type": "object",
-                    "description": "実行アクション（execution_type: NOTIFICATION, PAUSE_CAMPAIGN等）",
+                    "description": "Execution spec (execution_type: NOTIFICATION, PAUSE_CAMPAIGN etc.)",
                 },
-                "schedule_spec": {"type": "object", "description": "スケジュール設定"},
-                "status": {"type": "string", "description": "初期ステータス"},
+                "schedule_spec": {"type": "object", "description": "Schedule settings"},
+                "status": {"type": "string", "description": "Initial status"},
             },
             "required": ["account_id", "name", "evaluation_spec", "execution_spec"],
         },
     ),
     Tool(
         name="meta_ads.ad_rules.update",
-        description="Meta Ads 自動ルールを更新する",
+        description="Update a Meta Ads automated rule",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "rule_id": {"type": "string", "description": "ルールID"},
-                "name": {"type": "string", "description": "ルール名"},
-                "evaluation_spec": {"type": "object", "description": "評価条件"},
-                "execution_spec": {"type": "object", "description": "実行アクション"},
-                "schedule_spec": {"type": "object", "description": "スケジュール設定"},
-                "status": {"type": "string", "description": "ステータス"},
+                "rule_id": {"type": "string", "description": "Rule ID"},
+                "name": {"type": "string", "description": "Rule name"},
+                "evaluation_spec": {"type": "object", "description": "Evaluation spec"},
+                "execution_spec": {"type": "object", "description": "Execution spec"},
+                "schedule_spec": {"type": "object", "description": "Schedule settings"},
+                "status": {"type": "string", "description": "Status"},
             },
             "required": ["account_id", "rule_id"],
         },
     ),
     Tool(
         name="meta_ads.ad_rules.delete",
-        description="Meta Ads 自動ルールを削除する",
+        description="Delete a Meta Ads automated rule",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "rule_id": {"type": "string", "description": "ルールID"},
+                "rule_id": {"type": "string", "description": "Rule ID"},
             },
             "required": ["account_id", "rule_id"],
         },
     ),
-    # === ページ投稿 ===
+    # === Page Posts ===
     Tool(
         name="meta_ads.page_posts.list",
-        description="Facebookページの投稿一覧を取得する",
+        description="List Facebook page posts",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "page_id": {"type": "string", "description": "FacebookページID"},
+                "page_id": {"type": "string", "description": "Facebook page ID"},
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 25）",
+                    "description": "Max results (default: 25)",
                 },
             },
             "required": ["account_id", "page_id"],
@@ -215,18 +215,21 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.page_posts.boost",
-        description="Facebookページの投稿を広告化する（Boost Post）",
+        description="Boost a Facebook page post (Boost Post)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "page_id": {"type": "string", "description": "FacebookページID"},
-                "post_id": {"type": "string", "description": "投稿ID"},
-                "ad_set_id": {"type": "string", "description": "所属広告セットID"},
-                "name": {"type": "string", "description": "広告名（省略時は自動生成）"},
+                "page_id": {"type": "string", "description": "Facebook page ID"},
+                "post_id": {"type": "string", "description": "Post ID"},
+                "ad_set_id": {"type": "string", "description": "Parent ad set ID"},
+                "name": {
+                    "type": "string",
+                    "description": "Ad name (auto-generated if omitted)",
+                },
             },
             "required": ["account_id", "page_id", "post_id", "ad_set_id"],
         },
@@ -234,13 +237,13 @@ TOOLS: list[Tool] = [
     # === Instagram ===
     Tool(
         name="meta_ads.instagram.accounts",
-        description="連携Instagramアカウント一覧を取得する",
+        description="List linked Instagram accounts",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
             },
             "required": ["account_id"],
@@ -248,18 +251,18 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.instagram.media",
-        description="Instagram投稿一覧を取得する",
+        description="List Instagram posts",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ig_user_id": {"type": "string", "description": "InstagramユーザーID"},
+                "ig_user_id": {"type": "string", "description": "Instagram user ID"},
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 25）",
+                    "description": "Max results (default: 25)",
                 },
             },
             "required": ["account_id", "ig_user_id"],
@@ -267,18 +270,21 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.instagram.boost",
-        description="Instagram投稿を広告化する",
+        description="Boost an Instagram post",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ig_user_id": {"type": "string", "description": "InstagramユーザーID"},
-                "media_id": {"type": "string", "description": "メディアID"},
-                "ad_set_id": {"type": "string", "description": "所属広告セットID"},
-                "name": {"type": "string", "description": "広告名（省略時は自動生成）"},
+                "ig_user_id": {"type": "string", "description": "Instagram user ID"},
+                "media_id": {"type": "string", "description": "Media ID"},
+                "ad_set_id": {"type": "string", "description": "Parent ad set ID"},
+                "name": {
+                    "type": "string",
+                    "description": "Ad name (auto-generated if omitted)",
+                },
             },
             "required": ["account_id", "ig_user_id", "media_id", "ad_set_id"],
         },

@@ -265,7 +265,7 @@ async def test_list_meta_ad_accounts_error() -> None:
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
 
-        with pytest.raises(RuntimeError, match="広告アカウント"):
+        with pytest.raises(RuntimeError, match="Failed to retrieve ad account list"):
             await list_meta_ad_accounts(access_token="invalid-token")
 
 

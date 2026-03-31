@@ -8,9 +8,9 @@ logger = logging.getLogger(__name__)
 
 
 class AdSetsMixin:
-    """Meta Ads 広告セット操作Mixin
+    """Meta Ads ad set operations mixin
 
-    MetaAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     _ad_account_id: str
@@ -23,7 +23,7 @@ class AdSetsMixin:
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    # 共通フィールド定義
+    # Common field definitions
     _AD_SET_FIELDS = (
         "id,name,status,campaign_id,daily_budget,lifetime_budget,"
         "billing_event,optimization_goal,targeting,start_time,end_time,"
@@ -36,14 +36,14 @@ class AdSetsMixin:
         *,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """広告セット一覧を取得する
+        """List ad sets.
 
         Args:
-            campaign_id: キャンペーンID（指定時はそのキャンペーン配下のみ）
-            limit: 取得件数上限
+            campaign_id: Campaign ID (when specified, only ad sets under this campaign)
+            limit: Maximum number of results
 
         Returns:
-            広告セット情報のリスト
+            List of ad set information
         """
         params: dict[str, Any] = {
             "fields": self._AD_SET_FIELDS,
@@ -60,13 +60,13 @@ class AdSetsMixin:
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_ad_set(self, ad_set_id: str) -> dict[str, Any]:
-        """広告セット詳細を取得する
+        """Get ad set details.
 
         Args:
-            ad_set_id: 広告セットID
+            ad_set_id: Ad set ID
 
         Returns:
-            広告セット詳細情報
+            Ad set detail information
         """
         params: dict[str, Any] = {"fields": self._AD_SET_FIELDS}
         return await self._get(f"/{ad_set_id}", params)
@@ -82,20 +82,20 @@ class AdSetsMixin:
         status: str = "PAUSED",
         use_dynamic_creative: bool = False,
     ) -> dict[str, Any]:
-        """広告セットを作成する
+        """Create an ad set
 
         Args:
-            campaign_id: 所属キャンペーンID
-            name: 広告セット名
-            daily_budget: 日次予算（セント単位）
-            billing_event: 課金イベント（IMPRESSIONS, LINK_CLICKS等）
-            optimization_goal: 最適化目標（REACH, LINK_CLICKS, CONVERSIONS等）
-            targeting: ターゲティング設定
-            status: 初期ステータス（デフォルト: PAUSED）
-            use_dynamic_creative: ダイナミッククリエイティブを有効化
+            campaign_id: Parent campaign ID
+            name: Ad set name
+            daily_budget: Daily budget (in cents)
+            billing_event: Billing event (IMPRESSIONS, LINK_CLICKS, etc.)
+            optimization_goal: Optimization goal (REACH, LINK_CLICKS, CONVERSIONS, etc.)
+            targeting: Targeting settings
+            status: Initial status (default: PAUSED)
+            use_dynamic_creative: Enable dynamic creative
 
         Returns:
-            作成された広告セット情報
+            Created ad set information.
         """
         account_id = self._ad_account_id
         data: dict[str, Any] = {
@@ -109,7 +109,7 @@ class AdSetsMixin:
         if targeting is not None:
             data["targeting"] = json.dumps(targeting)
         else:
-            # デフォルトのターゲティング（日本全国）
+            # Default targeting (all of Japan)
             data["targeting"] = json.dumps({"geo_locations": {"countries": ["JP"]}})
         if use_dynamic_creative:
             data["use_dynamic_creative"] = True
@@ -121,15 +121,15 @@ class AdSetsMixin:
         ad_set_id: str,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """広告セットを更新する
+        """Update an ad set
 
         Args:
-            ad_set_id: 広告セットID
-            **kwargs: 更新するフィールド（name, status, daily_budget,
-                      targeting, optimization_goal等）
+            ad_set_id: Ad set ID
+            **kwargs: Fields to update (name, status, daily_budget,
+                      targeting, optimization_goal, etc.)
 
         Returns:
-            更新結果
+            Update result.
         """
         data: dict[str, Any] = {}
         for key, value in kwargs.items():
@@ -142,23 +142,23 @@ class AdSetsMixin:
         return await self._post(f"/{ad_set_id}", data)
 
     async def pause_ad_set(self, ad_set_id: str) -> dict[str, Any]:
-        """広告セットを一時停止する
+        """Pause an ad set
 
         Args:
-            ad_set_id: 広告セットID
+            ad_set_id: Ad set ID
 
         Returns:
-            更新結果
+            Update result.
         """
         return await self.update_ad_set(ad_set_id, status="PAUSED")
 
     async def enable_ad_set(self, ad_set_id: str) -> dict[str, Any]:
-        """広告セットを有効化する
+        """Enable an ad set
 
         Args:
-            ad_set_id: 広告セットID
+            ad_set_id: Ad set ID
 
         Returns:
-            更新結果
+            Update result.
         """
         return await self.update_ad_set(ad_set_id, status="ACTIVE")

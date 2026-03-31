@@ -1,4 +1,4 @@
-"""python -m mureo.mcp でMCPサーバーを起動するエントリポイント"""
+"""Entry point to start the MCP server via python -m mureo.mcp."""
 
 import asyncio
 

@@ -1,87 +1,87 @@
-"""Meta Ads ツール定義 — カタログ・商品・フィード"""
+"""Meta Ads tool definitions — Catalog, products, feeds"""
 
 from __future__ import annotations
 
 from mcp.types import Tool
 
 TOOLS: list[Tool] = [
-    # === カタログ（商品カタログ & DPA） ===
+    # === Catalog (Product Catalog & DPA) ===
     Tool(
         name="meta_ads.catalogs.list",
-        description="Meta Ads 商品カタログ一覧を取得する",
+        description="List Meta Ads product catalogs",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "business_id": {"type": "string", "description": "ビジネスID"},
+                "business_id": {"type": "string", "description": "Business ID"},
             },
             "required": ["account_id", "business_id"],
         },
     ),
     Tool(
         name="meta_ads.catalogs.create",
-        description="Meta Ads 商品カタログを作成する",
+        description="Create a Meta Ads product catalog",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "business_id": {"type": "string", "description": "ビジネスID"},
-                "name": {"type": "string", "description": "カタログ名"},
+                "business_id": {"type": "string", "description": "Business ID"},
+                "name": {"type": "string", "description": "Catalog name"},
             },
             "required": ["account_id", "business_id", "name"],
         },
     ),
     Tool(
         name="meta_ads.catalogs.get",
-        description="Meta Ads 商品カタログ詳細を取得する",
+        description="Get Meta Ads product catalog details",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "catalog_id": {"type": "string", "description": "カタログID"},
+                "catalog_id": {"type": "string", "description": "Catalog ID"},
             },
             "required": ["account_id", "catalog_id"],
         },
     ),
     Tool(
         name="meta_ads.catalogs.delete",
-        description="Meta Ads 商品カタログを削除する",
+        description="Delete a Meta Ads product catalog",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "catalog_id": {"type": "string", "description": "カタログID"},
+                "catalog_id": {"type": "string", "description": "Catalog ID"},
             },
             "required": ["account_id", "catalog_id"],
         },
     ),
-    # === 商品 ===
+    # === Products ===
     Tool(
         name="meta_ads.products.list",
-        description="Meta Ads カタログ内の商品一覧を取得する",
+        description="List products in a Meta Ads catalog",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "catalog_id": {"type": "string", "description": "カタログID"},
+                "catalog_id": {"type": "string", "description": "Catalog ID"},
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 100）",
+                    "description": "Max results (default: 100)",
                 },
             },
             "required": ["account_id", "catalog_id"],
@@ -89,33 +89,33 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.products.add",
-        description="Meta Ads カタログに商品を追加する",
+        description="Add a product to a Meta Ads catalog",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "catalog_id": {"type": "string", "description": "カタログID"},
-                "retailer_id": {"type": "string", "description": "商品SKU/ID"},
-                "name": {"type": "string", "description": "商品名"},
-                "description": {"type": "string", "description": "商品説明"},
+                "catalog_id": {"type": "string", "description": "Catalog ID"},
+                "retailer_id": {"type": "string", "description": "Product SKU/ID"},
+                "name": {"type": "string", "description": "Product name"},
+                "description": {"type": "string", "description": "Product description"},
                 "availability": {
                     "type": "string",
-                    "description": "在庫状況（in stock, out of stock等）",
+                    "description": "Availability (in stock, out of stock etc.)",
                 },
                 "condition": {
                     "type": "string",
-                    "description": "商品状態（new, refurbished, used）",
+                    "description": "Product condition (new, refurbished, used)",
                 },
-                "price": {"type": "string", "description": "価格（例: '1000 JPY'）"},
-                "url": {"type": "string", "description": "商品URL"},
-                "image_url": {"type": "string", "description": "商品画像URL"},
-                "brand": {"type": "string", "description": "ブランド名"},
+                "price": {"type": "string", "description": "Price (e.g. '1000 JPY')"},
+                "url": {"type": "string", "description": "Product URL"},
+                "image_url": {"type": "string", "description": "Product image URL"},
+                "brand": {"type": "string", "description": "Brand name"},
                 "category": {
                     "type": "string",
-                    "description": "カテゴリ（例: '衣類 > トップス'）",
+                    "description": "Category (e.g. 'Clothing > Tops')",
                 },
             },
             "required": [
@@ -133,89 +133,89 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.products.get",
-        description="Meta Ads 商品詳細を取得する",
+        description="Get Meta Ads product details",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "product_id": {"type": "string", "description": "商品ID"},
+                "product_id": {"type": "string", "description": "Product ID"},
             },
             "required": ["account_id", "product_id"],
         },
     ),
     Tool(
         name="meta_ads.products.update",
-        description="Meta Ads 商品を更新する",
+        description="Update a Meta Ads product",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "product_id": {"type": "string", "description": "商品ID"},
-                "name": {"type": "string", "description": "商品名"},
-                "description": {"type": "string", "description": "商品説明"},
-                "availability": {"type": "string", "description": "在庫状況"},
-                "price": {"type": "string", "description": "価格"},
-                "url": {"type": "string", "description": "商品URL"},
-                "image_url": {"type": "string", "description": "商品画像URL"},
-                "brand": {"type": "string", "description": "ブランド名"},
-                "category": {"type": "string", "description": "カテゴリ"},
+                "product_id": {"type": "string", "description": "Product ID"},
+                "name": {"type": "string", "description": "Product name"},
+                "description": {"type": "string", "description": "Product description"},
+                "availability": {"type": "string", "description": "Availability"},
+                "price": {"type": "string", "description": "Price"},
+                "url": {"type": "string", "description": "Product URL"},
+                "image_url": {"type": "string", "description": "Product image URL"},
+                "brand": {"type": "string", "description": "Brand name"},
+                "category": {"type": "string", "description": "Category"},
             },
             "required": ["account_id", "product_id"],
         },
     ),
     Tool(
         name="meta_ads.products.delete",
-        description="Meta Ads 商品を削除する",
+        description="Delete a Meta Ads product",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "product_id": {"type": "string", "description": "商品ID"},
+                "product_id": {"type": "string", "description": "Product ID"},
             },
             "required": ["account_id", "product_id"],
         },
     ),
-    # === フィード ===
+    # === Feeds ===
     Tool(
         name="meta_ads.feeds.list",
-        description="Meta Ads カタログのフィード一覧を取得する",
+        description="List feeds in a Meta Ads catalog",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "catalog_id": {"type": "string", "description": "カタログID"},
+                "catalog_id": {"type": "string", "description": "Catalog ID"},
             },
             "required": ["account_id", "catalog_id"],
         },
     ),
     Tool(
         name="meta_ads.feeds.create",
-        description="Meta Ads カタログにフィードを作成する（URL指定、スケジュール自動取込）",
+        description="Create a feed in a Meta Ads catalog (by URL, with scheduled import)",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "catalog_id": {"type": "string", "description": "カタログID"},
-                "name": {"type": "string", "description": "フィード名"},
-                "feed_url": {"type": "string", "description": "フィードURL"},
+                "catalog_id": {"type": "string", "description": "Catalog ID"},
+                "name": {"type": "string", "description": "Feed name"},
+                "feed_url": {"type": "string", "description": "Feed URL"},
                 "schedule": {
                     "type": "string",
-                    "description": "取込スケジュール（DAILY, HOURLY, WEEKLY。デフォルト: DAILY）",
+                    "description": "Import schedule (DAILY, HOURLY, WEEKLY. Default: DAILY)",
                 },
             },
             "required": ["account_id", "catalog_id", "name", "feed_url"],

@@ -511,13 +511,13 @@ class TestInsightsMixin:
 
         client._get = AsyncMock(side_effect=fake_get)
         result = await client.analyze_performance(period="last_7d")
-        assert any("減少" in i for i in result["insights"])
+        assert any("decreased" in i.lower() for i in result["insights"])
 
     @pytest.mark.asyncio
     async def test_analyze_audience_no_data(self, client) -> None:
         client._get = AsyncMock(return_value={"data": []})
         result = await client.analyze_audience("camp1")
-        assert result["message"] == "ブレイクダウンデータがありません"
+        assert result["message"] == "No breakdown data available"
 
     @pytest.mark.asyncio
     async def test_analyze_audience_with_segments(self, client) -> None:
@@ -546,7 +546,7 @@ class TestInsightsMixin:
         result = await client.analyze_audience("camp1")
         assert len(result["segments"]) == 2
         # CV0 + spend > 0 のインサイト
-        assert any("CV0" in i for i in result["insights"])
+        assert any("0 CV" in i for i in result["insights"])
 
     @pytest.mark.asyncio
     async def test_get_breakdown_report(self, client) -> None:
@@ -601,7 +601,7 @@ class TestAnalysisMixin:
     @pytest.mark.asyncio
     async def test_analyze_placements_no_data(self, client) -> None:
         result = await client.analyze_placements("camp1")
-        assert result["message"] == "配信面データがありません"
+        assert result["message"] == "No placement data available"
 
     @pytest.mark.asyncio
     async def test_analyze_placements_with_data(self, client) -> None:
@@ -631,7 +631,7 @@ class TestAnalysisMixin:
     @pytest.mark.asyncio
     async def test_investigate_cost_no_data(self, client) -> None:
         result = await client.investigate_cost("camp1")
-        assert "パフォーマンスデータがありません" in result["message"]
+        assert "No performance data" in result["message"]
 
     @pytest.mark.asyncio
     async def test_investigate_cost_with_increase(self, client) -> None:
@@ -646,7 +646,7 @@ class TestAnalysisMixin:
         client.get_performance_report = AsyncMock(side_effect=fake_report)
         result = await client.investigate_cost("camp1")
         assert len(result["findings"]) > 0
-        assert any("増加" in f or "上昇" in f for f in result["findings"])
+        assert any("increased" in f.lower() for f in result["findings"])
 
     @pytest.mark.asyncio
     async def test_compare_ads_no_data(self, client) -> None:

@@ -1,10 +1,10 @@
 """Meta Ads Conversions API (CAPI) Mixin
 
-サーバーサイドからコンバージョンイベントを Meta Ads に送信する。
-iOS ATT 等でブラウザピクセルの精度が低下しているため、
-CAPI による計測精度向上は必須。
+Send conversion events to Meta Ads from the server side.
+Browser pixel accuracy has decreased due to iOS ATT, etc.,
+making CAPI essential for improving measurement accuracy.
 
-エンドポイント: POST https://graph.facebook.com/v21.0/{pixel_id}/events
+Endpoint: POST https://graph.facebook.com/v21.0/{pixel_id}/events
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class ConversionsMixin:
     """Meta Ads Conversions API (CAPI)
 
-    MetaAdsApiClient に多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     async def _post(  # type: ignore[empty-body]
@@ -34,21 +34,21 @@ class ConversionsMixin:
         events: list[dict[str, Any]],
         test_event_code: str | None = None,
     ) -> dict[str, Any]:
-        """コンバージョンイベントを送信する
+        """Send conversion events.
 
         Args:
             pixel_id: Meta Pixel ID
-            events: イベントデータのリスト。各イベントは event_name,
-                     event_time, action_source, user_data を含む。
-            test_event_code: テストモード用コード（本番では None）
+            events: List of event data. Each event includes event_name,
+                     event_time, action_source, and user_data.
+            test_event_code: Test mode code (None for production)
 
         Returns:
-            API レスポンス（events_received, fbtrace_id 等）
+            API response (events_received, fbtrace_id, etc.)
 
         Raises:
-            RuntimeError: API リクエストに失敗した場合
+            RuntimeError: If the API request fails
         """
-        # user_data 内の PII を自動ハッシュ化
+        # Auto-hash PII in user_data
         normalized_events = []
         for event in events:
             normalized = {**event}
@@ -63,10 +63,10 @@ class ConversionsMixin:
             post_data["test_event_code"] = test_event_code
 
         logger.info(
-            "CAPI イベント送信: pixel_id=%s, events=%d件, test=%s",
+            "CAPI event send: pixel_id=%s, events=%d, test=%s",
             pixel_id,
             len(events),
-            test_event_code or "なし",
+            test_event_code or "none",
         )
 
         return await self._post(f"/{pixel_id}/events", data=post_data)
@@ -82,20 +82,20 @@ class ConversionsMixin:
         event_source_url: str | None = None,
         test_event_code: str | None = None,
     ) -> dict[str, Any]:
-        """購入イベントを送信するヘルパー
+        """Helper to send a purchase event.
 
         Args:
             pixel_id: Meta Pixel ID
-            event_time: イベント発生時刻（UNIX タイムスタンプ）
-            user_data: ユーザー情報（em, ph, client_ip_address 等）
-            currency: 通貨コード（USD, JPY 等）
-            value: 購入金額
-            content_ids: 商品 ID のリスト
-            event_source_url: イベント発生 URL
-            test_event_code: テストモード用コード
+            event_time: Event timestamp (UNIX timestamp)
+            user_data: User information (em, ph, client_ip_address, etc.)
+            currency: Currency code (USD, JPY, etc.)
+            value: Purchase amount
+            content_ids: List of product IDs
+            event_source_url: Event source URL
+            test_event_code: Test mode code
 
         Returns:
-            API レスポンス
+            API response
         """
         custom_data: dict[str, Any] = {
             "currency": currency,
@@ -124,17 +124,17 @@ class ConversionsMixin:
         event_source_url: str | None = None,
         test_event_code: str | None = None,
     ) -> dict[str, Any]:
-        """リードイベントを送信するヘルパー
+        """Helper to send a lead event.
 
         Args:
             pixel_id: Meta Pixel ID
-            event_time: イベント発生時刻（UNIX タイムスタンプ）
-            user_data: ユーザー情報
-            event_source_url: イベント発生 URL
-            test_event_code: テストモード用コード
+            event_time: Event timestamp (UNIX timestamp)
+            user_data: User information
+            event_source_url: Event source URL
+            test_event_code: Test mode code
 
         Returns:
-            API レスポンス
+            API response
         """
         event: dict[str, Any] = {
             "event_name": "Lead",

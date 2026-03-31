@@ -25,10 +25,10 @@ from mureo.meta_ads._split_test import SplitTestMixin
 
 logger = logging.getLogger(__name__)
 
-# レート制限の警告閾値（使用率%）
+# Rate limit warning threshold (usage %)
 _RATE_LIMIT_WARNING_THRESHOLD = 80
 
-# リトライ設定
+# Retry configuration
 _MAX_RETRIES = 3
 _INITIAL_BACKOFF_SECONDS = 1.0
 
@@ -50,11 +50,11 @@ class MetaAdsApiClient(
     SplitTestMixin,
     AdRulesMixin,
 ):
-    """Meta Marketing API クライアント
+    """Meta Marketing API client.
 
-    Graph API v21.0を使用してMeta Ads（Facebook/Instagram）を操作する。
-    レート制限の監視と指数バックオフによるリトライを内蔵。
-    Mixin多重継承でキャンペーン・広告セット・広告・インサイト操作を提供。
+    Operates Meta Ads (Facebook/Instagram) using Graph API v21.0.
+    Includes built-in rate limit monitoring and exponential backoff retry.
+    Provides campaigns, ad sets, ads, and insights operations via mixin multiple inheritance.
     """
 
     BASE_URL = "https://graph.facebook.com/v21.0"
@@ -66,17 +66,15 @@ class MetaAdsApiClient(
     ) -> None:
         """
         Args:
-            access_token: Meta Graph API アクセストークン（平文）
-            ad_account_id: 広告アカウントID（"act_XXXX" 形式）
+            access_token: Meta Graph API access token (plaintext)
+            ad_account_id: Ad account ID ("act_XXXX" format)
         """
         if not access_token:
-            raise ValueError("access_tokenは必須です")
+            raise ValueError("access_token is required")
         if not ad_account_id:
-            raise ValueError("ad_account_idは必須です")
+            raise ValueError("ad_account_id is required")
         if not ad_account_id.startswith("act_"):
-            raise ValueError(
-                f"ad_account_idは 'act_' で始まる形式が必要です: {ad_account_id}"
-            )
+            raise ValueError(f"ad_account_id must start with 'act_': {ad_account_id}")
 
         self._access_token = access_token
         self._ad_account_id = ad_account_id
@@ -85,39 +83,39 @@ class MetaAdsApiClient(
     async def _get(
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """GETリクエスト（レート制限対応付き）
+        """GET request (with rate limit handling).
 
         Args:
-            path: APIパス（例: "/{ad_account_id}/campaigns"）
-            params: クエリパラメータ
+            path: API path (e.g. "/{ad_account_id}/campaigns")
+            params: Query parameters
 
         Returns:
-            APIレスポンスのJSON
+            API response JSON
 
         Raises:
-            RuntimeError: APIリクエストに失敗した場合
+            RuntimeError: If the API request fails
         """
         return await self._request("GET", path, params=params)
 
     async def _post(
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """POSTリクエスト（レート制限対応付き）
+        """POST request (with rate limit handling).
 
         Args:
-            path: APIパス
-            data: リクエストボディ
+            path: API path
+            data: Request body
 
         Returns:
-            APIレスポンスのJSON
+            API response JSON
 
         Raises:
-            RuntimeError: APIリクエストに失敗した場合
+            RuntimeError: If the API request fails
         """
         return await self._request("POST", path, data=data)
 
     async def _delete(self, path: str) -> dict[str, Any]:
-        """DELETEリクエスト（レート制限対応付き）"""
+        """DELETE request (with rate limit handling)."""
         return await self._request("DELETE", path)
 
     async def _request(
@@ -127,19 +125,19 @@ class MetaAdsApiClient(
         params: dict[str, Any] | None = None,
         data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """HTTPリクエストを実行（レート制限対応・指数バックオフリトライ付き）
+        """Execute an HTTP request (with rate limit handling and exponential backoff retry).
 
         Args:
-            method: HTTPメソッド
-            path: APIパス
-            params: クエリパラメータ
-            data: リクエストボディ
+            method: HTTP method
+            path: API path
+            params: Query parameters
+            data: Request body
 
         Returns:
-            APIレスポンスのJSON
+            API response JSON
 
         Raises:
-            RuntimeError: 最大リトライ回数を超えた場合
+            RuntimeError: If the maximum retry count is exceeded
         """
         url = f"{self.BASE_URL}{path}"
         headers = {"Authorization": f"Bearer {self._access_token}"}
@@ -159,16 +157,16 @@ class MetaAdsApiClient(
                 elif method == "DELETE":
                     resp = await self._http.delete(url, params=params, headers=headers)
                 else:
-                    raise ValueError(f"未対応のHTTPメソッド: {method}")
+                    raise ValueError(f"Unsupported HTTP method: {method}")
 
-                # レート制限ヘッダーを監視
+                # Monitor rate limit headers
                 self._check_rate_limit(resp)
 
-                # 429 Too Many Requests → バックオフリトライ
+                # 429 Too Many Requests -> backoff retry
                 if resp.status_code == 429:
                     backoff = _INITIAL_BACKOFF_SECONDS * (2**attempt)
                     logger.warning(
-                        "Meta API レート制限 (429): %s秒後にリトライ (試行 %d/%d)",
+                        "Meta API rate limit (429): retrying in %ss (attempt %d/%d)",
                         backoff,
                         attempt + 1,
                         _MAX_RETRIES,
@@ -179,14 +177,14 @@ class MetaAdsApiClient(
                 if resp.status_code != 200:
                     error_body = resp.text[:500]
                     logger.error(
-                        "Meta API エラー: method=%s, path=%s, status=%d, body=%s",
+                        "Meta API error: method=%s, path=%s, status=%d, body=%s",
                         method,
                         path,
                         resp.status_code,
                         error_body,
                     )
                     raise RuntimeError(
-                        f"Meta API リクエストに失敗しました "
+                        f"Meta API request failed "
                         f"(status={resp.status_code}, path={path})"
                     )
 
@@ -197,7 +195,7 @@ class MetaAdsApiClient(
                 if attempt < _MAX_RETRIES - 1:
                     backoff = _INITIAL_BACKOFF_SECONDS * (2**attempt)
                     logger.warning(
-                        "Meta API 通信エラー: %s。%s秒後にリトライ (試行 %d/%d)",
+                        "Meta API communication error: %s. Retrying in %ss (attempt %d/%d)",
                         exc,
                         backoff,
                         attempt + 1,
@@ -206,22 +204,22 @@ class MetaAdsApiClient(
                     await asyncio.sleep(backoff)
                     continue
                 raise RuntimeError(
-                    f"Meta API リクエストに失敗しました (path={path}): {exc}"
+                    f"Meta API request failed (path={path}): {exc}"
                 ) from exc
 
         raise RuntimeError(
-            f"Meta API リクエストが最大リトライ回数 ({_MAX_RETRIES}) を超えました: "
+            f"Meta API request exceeded maximum retry count ({_MAX_RETRIES}): "
             f"path={path}"
         ) from last_error
 
     def _check_rate_limit(self, resp: httpx.Response) -> None:
-        """レスポンスヘッダーからレート制限使用率を確認する
+        """Check rate limit usage from response headers.
 
-        x-business-use-case-usage ヘッダーを解析し、
-        使用率が閾値を超えている場合は警告ログを出力する。
+        Parses the x-business-use-case-usage header and logs a warning
+        if usage exceeds the threshold.
 
         Args:
-            resp: HTTPレスポンス
+            resp: HTTP response
         """
         usage_header = resp.headers.get("x-business-use-case-usage")
         if not usage_header:
@@ -240,7 +238,7 @@ class MetaAdsApiClient(
                     max_usage = max(call_count, total_cputime, total_time)
                     if max_usage >= _RATE_LIMIT_WARNING_THRESHOLD:
                         logger.warning(
-                            "Meta API レート制限使用率が高い: "
+                            "Meta API rate limit usage is high: "
                             "business_id=%s, call_count=%d%%, "
                             "cputime=%d%%, time=%d%%",
                             business_id,
@@ -250,12 +248,12 @@ class MetaAdsApiClient(
                         )
         except (json.JSONDecodeError, TypeError, AttributeError):
             logger.debug(
-                "x-business-use-case-usage ヘッダーの解析に失敗: %s",
+                "Failed to parse x-business-use-case-usage header: %s",
                 usage_header[:200],
             )
 
     async def close(self) -> None:
-        """HTTPクライアントを閉じる"""
+        """Close the HTTP client."""
         await self._http.aclose()
 
     async def __aenter__(self) -> MetaAdsApiClient:

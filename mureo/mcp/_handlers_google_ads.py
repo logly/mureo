@@ -1,6 +1,6 @@
-"""Google Ads MCPツール ハンドラー実装
+"""Google Ads MCP tool handler implementation
 
-tools_google_ads.py から呼び出される各ツールのハンドラー関数群。
+Handler functions called from tools_google_ads.py.
 """
 
 from __future__ import annotations
@@ -27,15 +27,15 @@ from mureo.mcp._helpers import (
 logger = logging.getLogger(__name__)
 
 _NO_CREDS_MSG = (
-    "認証情報が見つかりません。環境変数 "
+    "Credentials not found. Set environment variables "
     "(GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID, "
     "GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN) "
-    "または ~/.mureo/credentials.json を設定してください。"
+    "or configure ~/.mureo/credentials.json."
 )
 
 
 def _get_client(arguments: dict[str, Any]) -> Any:
-    """認証情報を読み込みクライアントを生成する。Noneの場合は認証エラー。"""
+    """Load credentials and create a client. Returns None on auth error."""
     customer_id = _require(arguments, "customer_id")
     if not str(customer_id).replace("-", "").isdigit():
         raise ValueError(
@@ -48,12 +48,12 @@ def _get_client(arguments: dict[str, Any]) -> Any:
 
 
 def _no_google_creds() -> list[TextContent]:
-    """Google Ads認証情報なしエラーを返す。"""
+    """Return a Google Ads credentials-not-found error."""
     return _no_creds_result(_NO_CREDS_MSG)
 
 
 # ---------------------------------------------------------------------------
-# キャンペーン
+# Campaigns
 # ---------------------------------------------------------------------------
 
 
@@ -124,7 +124,7 @@ async def handle_campaigns_diagnose(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 広告グループ
+# Ad groups
 # ---------------------------------------------------------------------------
 
 
@@ -171,7 +171,7 @@ async def handle_ad_groups_update(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 広告
+# Ads
 # ---------------------------------------------------------------------------
 
 
@@ -237,7 +237,7 @@ async def handle_ads_update_status(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# キーワード
+# Keywords
 # ---------------------------------------------------------------------------
 
 
@@ -326,7 +326,7 @@ async def handle_negative_keywords_add(args: dict[str, Any]) -> list[TextContent
 
 
 # ---------------------------------------------------------------------------
-# 予算
+# Budget
 # ---------------------------------------------------------------------------
 
 
@@ -353,7 +353,7 @@ async def handle_budget_update(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 分析
+# Analysis
 # ---------------------------------------------------------------------------
 
 
@@ -435,7 +435,7 @@ async def handle_device_analyze(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 画像アセット
+# Image assets
 # ---------------------------------------------------------------------------
 
 
@@ -458,9 +458,8 @@ async def handle_assets_upload_image(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーマッピング
+# Handler mapping
 # ---------------------------------------------------------------------------
-
 _HANDLERS_BASE: dict[str, Any] = {
     "google_ads.campaigns.list": handle_campaigns_list,
     "google_ads.campaigns.get": handle_campaigns_get,
@@ -493,7 +492,7 @@ _HANDLERS_BASE: dict[str, Any] = {
     "google_ads.assets.upload_image": handle_assets_upload_image,
 }
 
-# 拡張・分析ハンドラーをマージ
+# Merge extension and analysis handlers
 from mureo.mcp._handlers_google_ads_analysis import (  # noqa: E402
     HANDLERS_ANALYSIS,
 )

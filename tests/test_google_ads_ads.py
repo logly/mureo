@@ -140,13 +140,13 @@ class TestValidateAndPrepareRsa:
         assert len(d) == 4
 
     def test_見出し3未満_エラー(self) -> None:
-        with pytest.raises(ValueError, match="見出しは3個以上"):
+        with pytest.raises(ValueError, match="At least 3 headlines"):
             GoogleAdsApiClient._validate_and_prepare_rsa(
                 ["見出し1", "見出し2"], ["説明1", "説明2"], "https://example.com"
             )
 
     def test_説明文2未満_エラー(self) -> None:
-        with pytest.raises(ValueError, match="説明文は2個以上"):
+        with pytest.raises(ValueError, match="At least 2 descriptions"):
             GoogleAdsApiClient._validate_and_prepare_rsa(
                 ["見出し1", "見出し2", "見出し3"], ["説明1"], "https://example.com"
             )
@@ -299,7 +299,7 @@ class TestGetAdPolicyDetails:
     @pytest.mark.asyncio
     async def test_不正なID(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="不正なad_group_id"):
+        with pytest.raises(ValueError, match="Invalid ad_group_id"):
             await client.get_ad_policy_details("abc", "1")
 
 
@@ -335,7 +335,7 @@ class TestCreateAd:
     @pytest.mark.asyncio
     async def test_見出し不足_エラー(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="見出しは3個以上"):
+        with pytest.raises(ValueError, match="At least 3 headlines"):
             await client.create_ad({
                 "ad_group_id": "100",
                 "headlines": ["見出し1"],
@@ -353,7 +353,7 @@ class TestCreateAd:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        with pytest.raises(RuntimeError, match="エラーが発生しました"):
+        with pytest.raises(RuntimeError, match="error occurred"):
             await client.create_ad({
                 "ad_group_id": "100",
                 "headlines": ["見出し1", "見出し2", "見出し3"],
@@ -412,7 +412,7 @@ class TestUpdateAd:
     @pytest.mark.asyncio
     async def test_不正なad_id(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="不正なad_id"):
+        with pytest.raises(ValueError, match="Invalid ad_id"):
             await client.update_ad({
                 "ad_id": "abc",
                 "headlines": ["見出し1", "見出し2", "見出し3"],
@@ -483,13 +483,13 @@ class TestUpdateAdStatus:
     @pytest.mark.asyncio
     async def test_不正なad_group_id(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="不正なad_group_id"):
+        with pytest.raises(ValueError, match="Invalid ad_group_id"):
             await client.update_ad_status("abc", "1", "PAUSED")
 
     @pytest.mark.asyncio
     async def test_不正なad_id(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="不正なad_id"):
+        with pytest.raises(ValueError, match="Invalid ad_id"):
             await client.update_ad_status("100", "abc", "PAUSED")
 
     @pytest.mark.asyncio
@@ -502,5 +502,5 @@ class TestUpdateAdStatus:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        with pytest.raises(RuntimeError, match="エラーが発生しました"):
+        with pytest.raises(RuntimeError, match="error occurred"):
             await client.update_ad_status("100", "1", "PAUSED")

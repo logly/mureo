@@ -1,32 +1,32 @@
-"""Google Ads ツール定義 — キーワード・除外キーワード"""
+"""Google Ads tool definitions — Keywords, negative keywords"""
 
 from __future__ import annotations
 
 from mcp.types import Tool
 
 TOOLS: list[Tool] = [
-    # === キーワード ===
+    # === Keywords ===
     Tool(
         name="google_ads.keywords.list",
-        description="Google Ads キーワード一覧を取得する",
+        description="List Google Ads keywords",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "campaign_id": {
                     "type": "string",
-                    "description": "キャンペーンIDでフィルタ",
+                    "description": "Filter by campaign ID",
                 },
                 "ad_group_id": {
                     "type": "string",
-                    "description": "広告グループIDでフィルタ",
+                    "description": "Filter by ad group ID",
                 },
                 "status_filter": {
                     "type": "string",
-                    "description": "ステータスフィルター",
+                    "description": "Status filter",
                 },
             },
             "required": ["customer_id"],
@@ -34,15 +34,15 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.keywords.add",
-        description="Google Ads キーワードを追加する",
+        description="Add Google Ads keywords",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "ad_group_id": {"type": "string", "description": "広告グループID"},
+                "ad_group_id": {"type": "string", "description": "Ad group ID"},
                 "keywords": {
                     "type": "array",
                     "items": {
@@ -56,7 +56,7 @@ TOOLS: list[Tool] = [
                         },
                         "required": ["text"],
                     },
-                    "description": "追加するキーワードリスト",
+                    "description": "List of keywords to add",
                 },
             },
             "required": ["customer_id", "ad_group_id", "keywords"],
@@ -64,18 +64,18 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.keywords.remove",
-        description="Google Ads キーワードを削除する",
+        description="Remove a Google Ads keyword",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "ad_group_id": {"type": "string", "description": "広告グループID"},
+                "ad_group_id": {"type": "string", "description": "Ad group ID"},
                 "criterion_id": {
                     "type": "string",
-                    "description": "キーワードのcriterion ID",
+                    "description": "Keyword criterion ID",
                 },
             },
             "required": ["customer_id", "ad_group_id", "criterion_id"],
@@ -83,26 +83,26 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.keywords.suggest",
-        description="Google Ads キーワード提案（Keyword Planner）",
+        description="Google Ads keyword suggestions (Keyword Planner)",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "seed_keywords": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "シードキーワードリスト",
+                    "description": "List of seed keywords",
                 },
                 "language_id": {
                     "type": "string",
-                    "description": "言語ID（デフォルト: 1005=日本語）",
+                    "description": "Language ID (default: 1005=Japanese)",
                 },
                 "geo_id": {
                     "type": "string",
-                    "description": "地域ID（デフォルト: 2392=日本）",
+                    "description": "Geo target ID (default: 2392=Japan)",
                 },
             },
             "required": ["customer_id", "seed_keywords"],
@@ -110,46 +110,46 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.keywords.diagnose",
-        description="Google Ads キーワードの品質スコア・配信状況を診断する",
+        description="Diagnose Google Ads keyword quality scores and delivery status",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
-    # === 除外キーワード ===
+    # === Negative Keywords ===
     Tool(
         name="google_ads.negative_keywords.list",
-        description="Google Ads 除外キーワード一覧を取得する",
+        description="List Google Ads negative keywords",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
     Tool(
         name="google_ads.negative_keywords.add",
-        description="Google Ads 除外キーワードを追加する",
+        description="Add a Google Ads negative keyword",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "keywords": {
                     "type": "array",
                     "items": {
@@ -163,64 +163,64 @@ TOOLS: list[Tool] = [
                         },
                         "required": ["text"],
                     },
-                    "description": "追加する除外キーワードリスト",
+                    "description": "List of negative keywords to add",
                 },
             },
             "required": ["customer_id", "campaign_id", "keywords"],
         },
     ),
-    # === キーワード一時停止 ===
+    # === Keyword pause ===
     Tool(
         name="google_ads.keywords.pause",
-        description="Google Ads キーワードを一時停止する",
+        description="Pause a Google Ads keyword",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "ad_group_id": {"type": "string", "description": "広告グループID"},
+                "ad_group_id": {"type": "string", "description": "Ad group ID"},
                 "criterion_id": {
                     "type": "string",
-                    "description": "キーワードのcriterion ID",
+                    "description": "Keyword criterion ID",
                 },
             },
             "required": ["customer_id", "ad_group_id", "criterion_id"],
         },
     ),
-    # === 除外キーワード削除 ===
+    # === Negative keyword removal ===
     Tool(
         name="google_ads.negative_keywords.remove",
-        description="Google Ads 除外キーワードを削除する",
+        description="Remove a Google Ads negative keyword",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "criterion_id": {
                     "type": "string",
-                    "description": "除外キーワードのcriterion ID",
+                    "description": "Negative keyword criterion ID",
                 },
             },
             "required": ["customer_id", "campaign_id", "criterion_id"],
         },
     ),
-    # === 広告グループレベル除外キーワード追加 ===
+    # === Ad group-level negative keyword addition ===
     Tool(
         name="google_ads.negative_keywords.add_to_ad_group",
-        description="Google Ads 広告グループレベルの除外キーワードを追加する",
+        description="Add Google Ads ad group-level negative keywords",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "ad_group_id": {"type": "string", "description": "広告グループID"},
+                "ad_group_id": {"type": "string", "description": "Ad group ID"},
                 "keywords": {
                     "type": "array",
                     "items": {
@@ -234,65 +234,65 @@ TOOLS: list[Tool] = [
                         },
                         "required": ["text"],
                     },
-                    "description": "追加する除外キーワードリスト",
+                    "description": "List of negative keywords to add",
                 },
             },
             "required": ["customer_id", "ad_group_id", "keywords"],
         },
     ),
-    # === 除外キーワード自動提案 ===
+    # === Automatic negative keyword suggestions ===
     Tool(
         name="google_ads.negative_keywords.suggest",
-        description="Google Ads 除外キーワード候補を自動提案する",
+        description="Automatically suggest Google Ads negative keyword candidates",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
-                "period": {"type": "string", "description": "期間"},
-                "target_cpa": {"type": "number", "description": "目標CPA"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
+                "period": {"type": "string", "description": "Period"},
+                "target_cpa": {"type": "number", "description": "Target CPA"},
                 "ad_group_id": {
                     "type": "string",
-                    "description": "広告グループIDでフィルタ",
+                    "description": "Filter by ad group ID",
                 },
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
-    # === キーワード棚卸し ===
+    # === Keyword Inventory ===
     Tool(
         name="google_ads.keywords.audit",
-        description="Google Ads キーワードの棚卸しを行い改善アクションを提案する",
+        description="Audit Google Ads keywords and suggest improvement actions",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
-                "period": {"type": "string", "description": "期間"},
-                "target_cpa": {"type": "number", "description": "目標CPA"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
+                "period": {"type": "string", "description": "Period"},
+                "target_cpa": {"type": "number", "description": "Target CPA"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
-    # === 広告グループ間キーワード重複検出 ===
+    # === Cross-ad-group keyword duplicate detection ===
     Tool(
         name="google_ads.keywords.cross_adgroup_duplicates",
-        description="Google Ads 広告グループ間のキーワード重複を検出し統合・削除の推奨を返す",
+        description="Detect cross-ad-group keyword duplicates and return consolidation/removal recommendations",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
-                "period": {"type": "string", "description": "期間"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
+                "period": {"type": "string", "description": "Period"},
             },
             "required": ["customer_id", "campaign_id"],
         },

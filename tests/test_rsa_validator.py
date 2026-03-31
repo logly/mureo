@@ -62,7 +62,7 @@ class TestSanitizeText:
     def test_連続感嘆符の縮約(self) -> None:
         text, fixes = _sanitize_text("素晴らしい！！！")
         assert text == "素晴らしい！"
-        assert any("句読点" in f for f in fixes)
+        assert any("punctuation" in f.lower() for f in fixes)
 
     def test_連続疑問符の縮約(self) -> None:
         text, fixes = _sanitize_text("本当？？？")
@@ -71,27 +71,27 @@ class TestSanitizeText:
     def test_装飾記号の縮約(self) -> None:
         text, fixes = _sanitize_text("★★★限定")
         assert text == "★限定"
-        assert any("装飾記号" in f for f in fixes)
+        assert any("decorative symbol" in f.lower() for f in fixes)
 
     def test_全角スペースの正規化(self) -> None:
         text, fixes = _sanitize_text("商品\u3000\u3000紹介")
         assert text == "商品 紹介"
-        assert any("全角スペース" in f for f in fixes)
+        assert any("full-width space" in f.lower() for f in fixes)
 
     def test_先頭末尾記号の除去(self) -> None:
         text, fixes = _sanitize_text("！見出し。")
         assert text == "見出し"
-        assert any("先頭・末尾" in f for f in fixes)
+        assert any("leading" in f.lower() for f in fixes)
 
     def test_半角カタカナの変換(self) -> None:
         text, fixes = _sanitize_text("ｷｰﾜｰﾄﾞ")
         assert text == "キーワード"
-        assert any("半角カタカナ" in f for f in fixes)
+        assert any("half-width katakana" in f.lower() for f in fixes)
 
     def test_絵文字の除去(self) -> None:
         text, fixes = _sanitize_text("限定セール\U0001f525")
         assert text == "限定セール"
-        assert any("絵文字" in f for f in fixes)
+        assert any("emoji" in f.lower() for f in fixes)
 
     def test_正常テキストは修正なし(self) -> None:
         text, fixes = _sanitize_text("正常な広告テキスト")
@@ -102,7 +102,7 @@ class TestSanitizeText:
         long_text = "あ" * 300
         text, fixes = _sanitize_text(long_text)
         assert len(text) <= 200
-        assert any("切り詰め" in f for f in fixes)
+        assert any("truncated" in f.lower() for f in fixes)
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +130,7 @@ class TestCheckProhibited:
 
     def test_クリックベイト(self) -> None:
         warnings = _check_prohibited("こちらをクリック")
-        assert any("クリックベイト" in w for w in warnings)
+        assert any("clickbait" in w.lower() for w in warnings)
 
     def test_正常テキスト(self) -> None:
         warnings = _check_prohibited("高品質な商品をお届け")
@@ -164,7 +164,7 @@ class TestValidateRsaTexts:
             )
 
     def test_不正URLでValueError(self) -> None:
-        with pytest.raises(ValueError, match="不正なURL"):
+        with pytest.raises(ValueError, match="Invalid URL"):
             validate_rsa_texts(
                 headlines=["見出し"],
                 descriptions=["説明文"],
@@ -179,11 +179,11 @@ class TestValidateRsaTexts:
         )
 
         assert len(result.headlines) == 2
-        assert any("重複" in w for w in result.warnings)
+        assert any("duplicate" in w for w in result.warnings)
 
     def test_文字幅超過でValueError(self) -> None:
         long_headline = "あ" * 20  # 全角20文字 = 幅40 > 30
-        with pytest.raises(ValueError, match="文字数制限"):
+        with pytest.raises(ValueError, match="character limit"):
             validate_rsa_texts(
                 headlines=[long_headline],
                 descriptions=["説明文"],

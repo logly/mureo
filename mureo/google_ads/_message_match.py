@@ -1,8 +1,8 @@
-"""マルチモーダル メッセージマッチ評価
+"""Multimodal message match evaluation.
 
-Playwrightでスクリーンショットを取得する機能を提供する。
-mureo-coreではLLM依存を除去しているため、Vision LLMによる評価は行わない。
-LLMによるメッセージマッチ評価はManaged側で実施すること。
+Provides screenshot capture functionality via Playwright.
+LLM dependency is removed in mureo-core; no Vision LLM evaluation is performed here.
+Message match evaluation via LLM should be done on the Managed side.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ _VIEWPORT_HEIGHT = 800
 
 @dataclass(frozen=True)
 class MessageMatchResult:
-    """メッセージマッチ評価結果"""
+    """Message match evaluation result."""
 
     url: str
     overall_score: int  # 1-10
@@ -34,24 +34,24 @@ class MessageMatchResult:
 
 
 class LPScreenshotter:
-    """PlaywrightでLPのスクリーンショットを取得する"""
+    """Capture LP screenshots using Playwright."""
 
     async def capture(self, url: str) -> bytes:
-        """URLのスクリーンショットをPNGバイナリで返す
+        """Return PNG binary screenshot of the URL.
 
         Raises:
-            RuntimeError: スクリーンショット取得に失敗した場合
+            RuntimeError: If screenshot capture fails.
         """
         from mureo.analysis.lp_analyzer import LPAnalyzer
 
-        # SSRF対策: LPAnalyzerと同じURL検証を使用
+        # SSRF protection: Use same URL validation as LPAnalyzer
         LPAnalyzer._validate_url(url)
 
         try:
             from playwright.async_api import async_playwright
         except ImportError as exc:
             raise RuntimeError(
-                "Playwrightが利用できません。pip install playwright && playwright install を実行してください"
+                "Playwright is not available. Run: pip install playwright && playwright install"
             ) from exc
 
         async with async_playwright() as p:
@@ -70,11 +70,11 @@ class LPScreenshotter:
 
 
 class MessageMatchEvaluator:
-    """広告文とLPのメッセージマッチ評価。
+    """Ad copy and LP message match evaluation.
 
-    mureo-coreではLLM依存を除去しているため、Vision LLMによる評価は行わない。
-    プロンプト生成とレスポンスパースのみを担当する。
-    LLMによる評価はManaged側で実施すること。
+    LLM dependency is removed in mureo-core; no Vision LLM evaluation is performed.
+    Handles prompt generation and response parsing only.
+    LLM evaluation should be done on the Managed side.
     """
 
     _EVAL_PROMPT = """\
@@ -116,9 +116,9 @@ JSON のみを出力してください。"""
         descriptions: list[str],
         strategic_context: str | None = None,
     ) -> str:
-        """LLM評価用のプロンプトを生成する。
+        """Generate prompt for LLM evaluation.
 
-        LLM呼び出し自体はManaged側で実施する。
+        The actual LLM call is performed on the Managed side.
         """
         ctx_section = ""
         if strategic_context:
@@ -137,7 +137,7 @@ JSON のみを出力してください。"""
 
     @staticmethod
     def parse_response(content: str) -> MessageMatchResult:
-        """LLMレスポンスをパースする"""
+        """Parse LLM response."""
         # JSONブロックを抽出
         text = content.strip()
         if "```json" in text:
@@ -148,7 +148,7 @@ JSON のみを出力してください。"""
         try:
             data = json.loads(text)
         except (json.JSONDecodeError, ValueError) as exc:
-            logger.warning("メッセージマッチ評価のJSONパースに失敗: %s", exc)
+            logger.warning("Failed to parse message match evaluation JSON: %s", exc)
             return MessageMatchResult(
                 url="",
                 overall_score=0,
@@ -158,7 +158,7 @@ JSON のみを出力してください。"""
                 strengths=(),
                 weaknesses=(),
                 suggestions=(),
-                error=f"評価結果のパースに失敗しました: {exc}",
+                error=f"Failed to parse evaluation result: {exc}",
             )
 
         return MessageMatchResult(

@@ -7,9 +7,9 @@ logger = logging.getLogger(__name__)
 
 
 class AdsMixin:
-    """Meta Ads 広告操作Mixin
+    """Meta Ads ad operations mixin
 
-    MetaAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     _ad_account_id: str
@@ -22,7 +22,7 @@ class AdsMixin:
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    # 共通フィールド定義
+    # Common field definitions
     _AD_FIELDS = (
         "id,name,status,adset_id,campaign_id,"
         "creative{id,name,title,body,image_url,thumbnail_url,object_story_spec},"
@@ -35,14 +35,14 @@ class AdsMixin:
         *,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """広告一覧を取得する
+        """List ads.
 
         Args:
-            ad_set_id: 広告セットID（指定時はその広告セット配下のみ）
-            limit: 取得件数上限
+            ad_set_id: Ad set ID (when specified, only ads under this ad set)
+            limit: Maximum number of results
 
         Returns:
-            広告情報のリスト
+            List of ad information
         """
         params: dict[str, Any] = {
             "fields": self._AD_FIELDS,
@@ -59,13 +59,13 @@ class AdsMixin:
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_ad(self, ad_id: str) -> dict[str, Any]:
-        """広告詳細を取得する
+        """Get ad details.
 
         Args:
-            ad_id: 広告ID
+            ad_id: Ad ID
 
         Returns:
-            広告詳細情報
+            Ad detail information
         """
         params: dict[str, Any] = {"fields": self._AD_FIELDS}
         return await self._get(f"/{ad_id}", params)
@@ -77,16 +77,16 @@ class AdsMixin:
         creative_id: str,
         status: str = "PAUSED",
     ) -> dict[str, Any]:
-        """広告を作成する
+        """Create an ad.
 
         Args:
-            ad_set_id: 所属広告セットID
-            name: 広告名
-            creative_id: クリエイティブID
-            status: 初期ステータス（デフォルト: PAUSED）
+            ad_set_id: Parent ad set ID
+            name: Ad name
+            creative_id: Creative ID
+            status: Initial status (default: PAUSED)
 
         Returns:
-            作成された広告情報
+            Created ad information
         """
         import json as _json
 
@@ -104,14 +104,14 @@ class AdsMixin:
         ad_id: str,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """広告を更新する
+        """Update an ad.
 
         Args:
-            ad_id: 広告ID
-            **kwargs: 更新するフィールド（name, status, creative等）
+            ad_id: Ad ID
+            **kwargs: Fields to update (name, status, creative, etc.)
 
         Returns:
-            更新結果
+            Update result
         """
         data: dict[str, Any] = {}
         for key, value in kwargs.items():
@@ -120,23 +120,23 @@ class AdsMixin:
         return await self._post(f"/{ad_id}", data)
 
     async def pause_ad(self, ad_id: str) -> dict[str, Any]:
-        """広告を一時停止する
+        """Pause an ad.
 
         Args:
-            ad_id: 広告ID
+            ad_id: Ad ID
 
         Returns:
-            更新結果
+            Update result
         """
         return await self._post(f"/{ad_id}", {"status": "PAUSED"})
 
     async def enable_ad(self, ad_id: str) -> dict[str, Any]:
-        """広告を有効化する
+        """Enable an ad.
 
         Args:
-            ad_id: 広告ID
+            ad_id: Ad ID
 
         Returns:
-            更新結果
+            Update result
         """
         return await self._post(f"/{ad_id}", {"status": "ACTIVE"})

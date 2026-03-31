@@ -438,7 +438,7 @@ class TestMetaAdsErrorHandling:
                 "meta_ads.campaigns.list", {"account_id": "act_123"}
             )
         assert len(result) == 1
-        assert "認証情報" in result[0].text
+        assert "Credentials not found" in result[0].text
 
     async def test_handler_api_error(self) -> None:
         """API例外がTextContentエラーメッセージに変換されること"""
@@ -456,5 +456,5 @@ class TestMetaAdsErrorHandling:
             )
 
         assert len(result) == 1
-        assert "APIエラー" in result[0].text
+        assert "API error" in result[0].text
         assert "Meta API接続エラー" in result[0].text

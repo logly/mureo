@@ -167,7 +167,7 @@ class TestSplitTestMixin:
     async def test_api_error(self, client: SplitTestMixin) -> None:
         """APIエラー時にRuntimeErrorが伝播すること"""
         client._get = AsyncMock(
-            side_effect=RuntimeError("Meta API リクエストに失敗しました")
+            side_effect=RuntimeError("Meta API request failed")
         )
         with pytest.raises(RuntimeError, match="Meta API"):
             await client.list_split_tests()

@@ -188,7 +188,7 @@ class TestUploadAdVideoFileInvalidFormat:
         txt_file = tmp_path / "document.txt"
         txt_file.write_bytes(b"not a video")
 
-        with pytest.raises(ValueError, match="対応していない動画形式"):
+        with pytest.raises(ValueError, match="Unsupported video format"):
             await meta_client.upload_ad_video_file(str(txt_file))
 
     @pytest.mark.asyncio()
@@ -229,7 +229,7 @@ class TestUploadAdVideoFileInvalidFormat:
         self, meta_client: Any, tmp_path: Path
     ) -> None:
         """パストラバーサルを含むパスが拒否されること"""
-        with pytest.raises(ValueError, match="不正なファイルパス"):
+        with pytest.raises(ValueError, match="Invalid file path"):
             await meta_client.upload_ad_video_file(
                 str(tmp_path / ".." / ".." / "etc" / "passwd")
             )
@@ -353,7 +353,7 @@ class TestCreateCarouselCreativeTooFew:
             },
         ]
 
-        with pytest.raises(ValueError, match="2〜10"):
+        with pytest.raises(ValueError, match="2.+10"):
             await meta_client.create_carousel_creative(
                 page_id="page_123",
                 cards=cards,
@@ -374,7 +374,7 @@ class TestCreateCarouselCreativeTooFew:
             for i in range(11)
         ]
 
-        with pytest.raises(ValueError, match="2〜10"):
+        with pytest.raises(ValueError, match="2.+10"):
             await meta_client.create_carousel_creative(
                 page_id="page_123",
                 cards=cards,

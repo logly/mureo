@@ -1,6 +1,6 @@
-"""Meta Ads MCPツール ハンドラー実装 — ページ投稿・Instagram・Split Test・Ad Rules
+"""Meta Ads MCP tool handler implementation -- Page posts, Instagram, Split Test, Ad Rules
 
-_handlers_meta_ads.py から分離して800行制限を維持する。
+Separated from _handlers_meta_ads.py to maintain the 800-line limit.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from mureo.mcp._helpers import (
 )
 
 # ---------------------------------------------------------------------------
-# ページ投稿ハンドラー
+# Page post handlers
 # ---------------------------------------------------------------------------
 
 
@@ -49,7 +49,7 @@ async def handle_page_posts_boost(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# Instagramハンドラー
+# Instagram handlers
 # ---------------------------------------------------------------------------
 
 
@@ -90,7 +90,7 @@ async def handle_instagram_boost(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# Split Test (A/Bテスト) ハンドラー
+# Split Test (A/B test) handlers
 # ---------------------------------------------------------------------------
 
 
@@ -146,7 +146,7 @@ async def handle_split_tests_end(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# Ad Rules (自動ルール) ハンドラー
+# Ad Rules (automated rules) handlers
 # ---------------------------------------------------------------------------
 
 

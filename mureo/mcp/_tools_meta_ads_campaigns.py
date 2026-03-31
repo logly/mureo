@@ -1,28 +1,28 @@
-"""Meta Ads ツール定義 — キャンペーン・広告セット・広告"""
+"""Meta Ads tool definitions — Campaigns, ad sets, ads"""
 
 from __future__ import annotations
 
 from mcp.types import Tool
 
 TOOLS: list[Tool] = [
-    # === キャンペーン ===
+    # === Campaigns ===
     Tool(
         name="meta_ads.campaigns.list",
-        description="Meta Ads キャンペーン一覧を取得する",
+        description="List Meta Ads campaigns",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
                 "status_filter": {
                     "type": "string",
-                    "description": "ステータスフィルター（ACTIVE/PAUSED等）",
+                    "description": "Status filter (ACTIVE/PAUSED etc.)",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 50）",
+                    "description": "Max results (default: 50)",
                 },
             },
             "required": ["account_id"],
@@ -30,45 +30,45 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.campaigns.get",
-        description="Meta Ads キャンペーン詳細を取得する",
+        description="Get Meta Ads campaign details",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["account_id", "campaign_id"],
         },
     ),
     Tool(
         name="meta_ads.campaigns.create",
-        description="Meta Ads キャンペーンを作成する",
+        description="Create a Meta Ads campaign",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "name": {"type": "string", "description": "キャンペーン名"},
+                "name": {"type": "string", "description": "Campaign name"},
                 "objective": {
                     "type": "string",
-                    "description": "キャンペーン目的（CONVERSIONS, LINK_CLICKS等）",
+                    "description": "Campaign objective (CONVERSIONS, LINK_CLICKS etc.)",
                 },
                 "status": {
                     "type": "string",
-                    "description": "初期ステータス（デフォルト: PAUSED）",
+                    "description": "Initial status (default: PAUSED)",
                 },
                 "daily_budget": {
                     "type": "integer",
-                    "description": "日次予算（セント単位）",
+                    "description": "Daily budget (in cents)",
                 },
                 "lifetime_budget": {
                     "type": "integer",
-                    "description": "通算予算（セント単位）",
+                    "description": "Lifetime budget (in cents)",
                 },
             },
             "required": ["account_id", "name", "objective"],
@@ -76,74 +76,74 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.campaigns.update",
-        description="Meta Ads キャンペーンを更新する",
+        description="Update a Meta Ads campaign",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
-                "name": {"type": "string", "description": "新しいキャンペーン名"},
-                "status": {"type": "string", "description": "ステータス"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
+                "name": {"type": "string", "description": "New campaign name"},
+                "status": {"type": "string", "description": "Status"},
                 "daily_budget": {
                     "type": "integer",
-                    "description": "日次予算（セント単位）",
+                    "description": "Daily budget (in cents)",
                 },
             },
             "required": ["account_id", "campaign_id"],
         },
     ),
-    # === キャンペーン pause / enable ===
+    # === Campaign pause / enable ===
     Tool(
         name="meta_ads.campaigns.pause",
-        description="Meta Ads キャンペーンを一時停止する",
+        description="Pause a Meta Ads campaign",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["account_id", "campaign_id"],
         },
     ),
     Tool(
         name="meta_ads.campaigns.enable",
-        description="Meta Ads キャンペーンを有効化（ACTIVE）する",
+        description="Enable (ACTIVE) a Meta Ads campaign",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["account_id", "campaign_id"],
         },
     ),
-    # === 広告セット ===
+    # === Ad sets ===
     Tool(
         name="meta_ads.ad_sets.list",
-        description="Meta Ads 広告セット一覧を取得する",
+        description="List Meta Ads ad sets",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
                 "campaign_id": {
                     "type": "string",
-                    "description": "キャンペーンIDでフィルタ",
+                    "description": "Filter by campaign ID",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 50）",
+                    "description": "Max results (default: 50)",
                 },
             },
             "required": ["account_id"],
@@ -151,32 +151,32 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.ad_sets.create",
-        description="Meta Ads 広告セットを作成する",
+        description="Create a Meta Ads ad set",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "campaign_id": {"type": "string", "description": "所属キャンペーンID"},
-                "name": {"type": "string", "description": "広告セット名"},
+                "campaign_id": {"type": "string", "description": "Parent campaign ID"},
+                "name": {"type": "string", "description": "Ad set name"},
                 "daily_budget": {
                     "type": "integer",
-                    "description": "日次予算（セント単位）",
+                    "description": "Daily budget (in cents)",
                 },
                 "billing_event": {
                     "type": "string",
-                    "description": "課金イベント（デフォルト: IMPRESSIONS）",
+                    "description": "Billing event (default: IMPRESSIONS)",
                 },
                 "optimization_goal": {
                     "type": "string",
-                    "description": "最適化目標（デフォルト: REACH）",
+                    "description": "Optimization goal (default: REACH)",
                 },
-                "targeting": {"type": "object", "description": "ターゲティング設定"},
+                "targeting": {"type": "object", "description": "Targeting settings"},
                 "status": {
                     "type": "string",
-                    "description": "初期ステータス（デフォルト: PAUSED）",
+                    "description": "Initial status (default: PAUSED)",
                 },
             },
             "required": ["account_id", "campaign_id", "name", "daily_budget"],
@@ -184,90 +184,90 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.ad_sets.update",
-        description="Meta Ads 広告セットを更新する",
+        description="Update a Meta Ads ad set",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ad_set_id": {"type": "string", "description": "広告セットID"},
-                "name": {"type": "string", "description": "新しい名前"},
-                "status": {"type": "string", "description": "ステータス"},
+                "ad_set_id": {"type": "string", "description": "Ad set ID"},
+                "name": {"type": "string", "description": "New name"},
+                "status": {"type": "string", "description": "Status"},
                 "daily_budget": {
                     "type": "integer",
-                    "description": "日次予算（セント単位）",
+                    "description": "Daily budget (in cents)",
                 },
-                "targeting": {"type": "object", "description": "ターゲティング設定"},
+                "targeting": {"type": "object", "description": "Targeting settings"},
             },
             "required": ["account_id", "ad_set_id"],
         },
     ),
-    # === 広告セット get / pause / enable ===
+    # === Ad set get / pause / enable ===
     Tool(
         name="meta_ads.ad_sets.get",
-        description="Meta Ads 広告セット詳細を取得する",
+        description="Get Meta Ads ad set details",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ad_set_id": {"type": "string", "description": "広告セットID"},
+                "ad_set_id": {"type": "string", "description": "Ad set ID"},
             },
             "required": ["account_id", "ad_set_id"],
         },
     ),
     Tool(
         name="meta_ads.ad_sets.pause",
-        description="Meta Ads 広告セットを一時停止する",
+        description="Pause a Meta Ads ad set",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ad_set_id": {"type": "string", "description": "広告セットID"},
+                "ad_set_id": {"type": "string", "description": "Ad set ID"},
             },
             "required": ["account_id", "ad_set_id"],
         },
     ),
     Tool(
         name="meta_ads.ad_sets.enable",
-        description="Meta Ads 広告セットを有効化（ACTIVE）する",
+        description="Enable (ACTIVE) a Meta Ads ad set",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ad_set_id": {"type": "string", "description": "広告セットID"},
+                "ad_set_id": {"type": "string", "description": "Ad set ID"},
             },
             "required": ["account_id", "ad_set_id"],
         },
     ),
-    # === 広告 ===
+    # === Ads ===
     Tool(
         name="meta_ads.ads.list",
-        description="Meta Ads 広告一覧を取得する",
+        description="List Meta Ads ads",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
                 "ad_set_id": {
                     "type": "string",
-                    "description": "広告セットIDでフィルタ",
+                    "description": "Filter by ad set ID",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 50）",
+                    "description": "Max results (default: 50)",
                 },
             },
             "required": ["account_id"],
@@ -275,20 +275,20 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.ads.create",
-        description="Meta Ads 広告を作成する",
+        description="Create a Meta Ads ad",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ad_set_id": {"type": "string", "description": "所属広告セットID"},
-                "name": {"type": "string", "description": "広告名"},
-                "creative_id": {"type": "string", "description": "クリエイティブID"},
+                "ad_set_id": {"type": "string", "description": "Parent ad set ID"},
+                "name": {"type": "string", "description": "Ad name"},
+                "creative_id": {"type": "string", "description": "Creative ID"},
                 "status": {
                     "type": "string",
-                    "description": "初期ステータス（デフォルト: PAUSED）",
+                    "description": "Initial status (default: PAUSED)",
                 },
             },
             "required": ["account_id", "ad_set_id", "name", "creative_id"],
@@ -296,63 +296,63 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.ads.update",
-        description="Meta Ads 広告を更新する",
+        description="Update a Meta Ads ad",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ad_id": {"type": "string", "description": "広告ID"},
-                "name": {"type": "string", "description": "新しい名前"},
-                "status": {"type": "string", "description": "ステータス"},
+                "ad_id": {"type": "string", "description": "Ad ID"},
+                "name": {"type": "string", "description": "New name"},
+                "status": {"type": "string", "description": "Status"},
             },
             "required": ["account_id", "ad_id"],
         },
     ),
-    # === 広告 get / pause / enable ===
+    # === Ad get / pause / enable ===
     Tool(
         name="meta_ads.ads.get",
-        description="Meta Ads 広告詳細を取得する",
+        description="Get Meta Ads ad details",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ad_id": {"type": "string", "description": "広告ID"},
+                "ad_id": {"type": "string", "description": "Ad ID"},
             },
             "required": ["account_id", "ad_id"],
         },
     ),
     Tool(
         name="meta_ads.ads.pause",
-        description="Meta Ads 広告を一時停止する",
+        description="Pause a Meta Ads ad",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ad_id": {"type": "string", "description": "広告ID"},
+                "ad_id": {"type": "string", "description": "Ad ID"},
             },
             "required": ["account_id", "ad_id"],
         },
     ),
     Tool(
         name="meta_ads.ads.enable",
-        description="Meta Ads 広告を有効化（ACTIVE）する",
+        description="Enable (ACTIVE) a Meta Ads ad",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "ad_id": {"type": "string", "description": "広告ID"},
+                "ad_id": {"type": "string", "description": "Ad ID"},
             },
             "required": ["account_id", "ad_id"],
         },

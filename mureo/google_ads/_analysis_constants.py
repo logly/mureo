@@ -1,4 +1,4 @@
-"""分析モジュール共通の定数・ヘルパー関数。"""
+"""Common constants and helper functions for analysis modules."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# 期間名 → 日数マッピング（非重複の前期比較用）
+# Period name -> days mapping (for non-overlapping period-over-period comparison)
 # ---------------------------------------------------------------------------
 
 _PERIOD_DAYS: dict[str, int] = {
@@ -19,7 +19,7 @@ _PERIOD_DAYS: dict[str, int] = {
 }
 
 # ---------------------------------------------------------------------------
-# 共通マッピング定数（重複定義を排除）
+# Common mapping constants (eliminate duplicate definitions)
 # ---------------------------------------------------------------------------
 
 _MATCH_TYPE_MAP: dict[int, str] = {
@@ -39,7 +39,7 @@ _STATUS_MAP: dict[int, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# 情報収集パターン
+# Informational query patterns
 # ---------------------------------------------------------------------------
 
 _INFORMATIONAL_PATTERNS: tuple[str, ...] = (
@@ -58,16 +58,16 @@ _INFORMATIONAL_PATTERNS: tuple[str, ...] = (
 
 
 # ---------------------------------------------------------------------------
-# 共通ヘルパー関数
+# Common helper functions
 # ---------------------------------------------------------------------------
 
 
 def _get_comparison_date_ranges(period: str) -> tuple[str, str]:
-    """指定期間に対する非重複の当期・前期を BETWEEN 形式で返す。
+    """Return non-overlapping current and previous periods in BETWEEN format for a given period.
 
-    例: LAST_7_DAYS →
-      当期: BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' (直近7日)
-      前期: BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' (その前の7日)
+    Example: LAST_7_DAYS ->
+      Current: BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' (last 7 days)
+      Previous: BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' (prior 7 days)
     """
     days = _PERIOD_DAYS.get(period.upper(), 7)
     today = date.today()
@@ -85,21 +85,21 @@ def _get_comparison_date_ranges(period: str) -> tuple[str, str]:
 
 
 def _calc_change_rate(current: float, previous: float) -> float | None:
-    """変化率を計算する（%）。前期が0の場合はNoneを返す。"""
+    """Calculate change rate (%). Returns None if previous value is 0."""
     if previous == 0:
         return None
     return round((current - previous) / previous * 100, 1)
 
 
 def _safe_metrics(perf: list[dict[str, Any]]) -> dict[str, Any]:
-    """パフォーマンスレポートから最初のメトリクスを安全に取り出す。"""
+    """Safely extract the first metrics entry from a performance report."""
     if perf:
         return perf[0].get("metrics", {})  # type: ignore[no-any-return]
     return {"impressions": 0, "clicks": 0, "cost": 0}
 
 
 def _extract_ngrams(text: str, n: int) -> list[str]:
-    """テキストからN-gramを抽出（スペース分割）"""
+    """Extract N-grams from text (space-delimited)."""
     words = text.strip().split()
     if len(words) < n:
         return [text.strip()] if text.strip() else []
@@ -107,7 +107,7 @@ def _extract_ngrams(text: str, n: int) -> list[str]:
 
 
 def _resolve_enum(raw_value: int | Any, mapping: dict[int, str]) -> str:
-    """protobuf enum int を文字列に変換。enum型の場合は.nameを使う。"""
+    """Convert protobuf enum int to string. Uses .name for enum types."""
     if isinstance(raw_value, int):
         return mapping.get(raw_value, str(raw_value))
     return raw_value.name if hasattr(raw_value, "name") else str(raw_value)

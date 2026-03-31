@@ -1,7 +1,7 @@
-"""MCPハンドラー共通ヘルパー
+"""MCP handler common helpers.
 
-Google Ads / Meta Ads ハンドラーで共通利用するユーティリティ関数と
-APIエラーハンドリングデコレータを提供する。
+Provides utility functions and API error handling decorators
+shared by Google Ads / Meta Ads handlers.
 """
 
 from __future__ import annotations
@@ -20,42 +20,42 @@ logger = logging.getLogger(__name__)
 
 
 def _require(arguments: dict[str, Any], key: str) -> Any:
-    """必須パラメータを取得。欠損時は ValueError を送出する。"""
+    """Retrieve a required parameter. Raises ValueError if missing."""
     value = arguments.get(key)
     if value is None or value == "":
-        raise ValueError(f"必須パラメータ {key} が指定されていません")
+        raise ValueError(f"Required parameter {key} is not specified")
     return value
 
 
 def _opt(arguments: dict[str, Any], key: str, default: Any = None) -> Any:
-    """オプションパラメータを取得する。"""
+    """Retrieve an optional parameter."""
     return arguments.get(key, default)
 
 
 def _json_result(data: Any) -> list[TextContent]:
-    """結果をJSON文字列の TextContent リストに変換する。"""
+    """Convert a result to a list of TextContent containing a JSON string."""
     return [TextContent(type="text", text=json.dumps(data, ensure_ascii=False))]
 
 
 def _no_creds_result(msg: str) -> list[TextContent]:
-    """認証情報なしエラーを返す。"""
+    """Return a credentials-not-found error."""
     return [TextContent(type="text", text=msg)]
 
 
 def api_error_handler(
     func: Callable[..., Coroutine[Any, Any, list[TextContent]]],
 ) -> Callable[..., Coroutine[Any, Any, list[TextContent]]]:
-    """API呼び出し例外を TextContent エラーメッセージに変換するデコレータ。"""
+    """Decorator that converts API call exceptions to TextContent error messages."""
 
     @functools.wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> list[TextContent]:
         try:
             return await func(*args, **kwargs)
         except ValueError:
-            # 必須パラメータ欠損など、呼び出し元で処理すべき例外はそのまま再送出
+            # Re-raise errors such as missing required parameters for the caller to handle
             raise
         except Exception as exc:
             logger.exception("%s failed", func.__name__)
-            return [TextContent(type="text", text=f"APIエラー: {exc}")]
+            return [TextContent(type="text", text=f"API error: {exc}")]
 
     return wrapper

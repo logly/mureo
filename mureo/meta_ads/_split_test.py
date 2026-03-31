@@ -1,6 +1,6 @@
-"""Meta Ads Split Test (A/Bテスト) 操作Mixin
+"""Meta Ads Split Test (A/B test) operations mixin.
 
-Ad Studies API を使用したスプリットテストの作成・一覧・詳細取得・終了。
+Split test creation, listing, details retrieval, and termination via Ad Studies API.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# スプリットテスト取得用フィールド
+# Split test retrieval fields
 _STUDY_FIELDS = (
     "id,name,description,type,start_time,end_time,"
     "cells,objectives,confidence_level,results"
@@ -21,9 +21,9 @@ _VALID_CONFIDENCE_LEVELS = frozenset({80, 90, 95})
 
 
 class SplitTestMixin:
-    """Meta Ads Split Test (A/Bテスト) 操作Mixin
+    """Meta Ads Split Test (A/B test) operations mixin.
 
-    MetaAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     _ad_account_id: str
@@ -37,13 +37,13 @@ class SplitTestMixin:
     ) -> dict[str, Any]: ...
 
     async def list_split_tests(self, *, limit: int = 50) -> list[dict[str, Any]]:
-        """スプリットテスト一覧を取得する
+        """List split tests.
 
         Args:
-            limit: 取得件数上限
+            limit: Maximum number of results
 
         Returns:
-            スプリットテスト情報のリスト
+            List of split test information
         """
         params: dict[str, Any] = {
             "fields": _STUDY_FIELDS,
@@ -53,13 +53,13 @@ class SplitTestMixin:
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_split_test(self, study_id: str) -> dict[str, Any]:
-        """スプリットテスト詳細・結果を取得する
+        """Get split test details and results.
 
         Args:
-            study_id: スタディID
+            study_id: Study ID
 
         Returns:
-            スプリットテスト詳細情報
+            Split test detail information
         """
         params: dict[str, Any] = {"fields": _STUDY_FIELDS}
         return await self._get(f"/{study_id}", params)
@@ -75,24 +75,24 @@ class SplitTestMixin:
         confidence_level: int = 95,
         description: str | None = None,
     ) -> dict[str, Any]:
-        """スプリットテストを作成する
+        """Create a split test.
 
         Args:
-            name: テスト名
-            cells: セル定義（各セルにname, adsetsを含む）
-            objectives: 目的（例: [{"type": "COST_PER_RESULT"}]）
-            start_time: 開始日時（ISO 8601形式）
-            end_time: 終了日時（ISO 8601形式）
-            confidence_level: 信頼度（デフォルト: 95）
-            description: テスト説明
+            name: Test name
+            cells: Cell definitions (each cell includes name and adsets)
+            objectives: Objectives (e.g. [{"type": "COST_PER_RESULT"}])
+            start_time: Start time (ISO 8601 format)
+            end_time: End time (ISO 8601 format)
+            confidence_level: Confidence level (default: 95)
+            description: Test description
 
         Returns:
-            作成されたスプリットテスト情報
+            Created split test information
         """
         if confidence_level not in _VALID_CONFIDENCE_LEVELS:
             raise ValueError(
-                f"confidence_levelは {sorted(_VALID_CONFIDENCE_LEVELS)} "
-                f"のいずれかを指定してください: {confidence_level}"
+                f"confidence_level must be one of {sorted(_VALID_CONFIDENCE_LEVELS)}: "
+                f"{confidence_level}"
             )
 
         data: dict[str, Any] = {
@@ -108,7 +108,7 @@ class SplitTestMixin:
             data["description"] = description
 
         logger.info(
-            "スプリットテスト作成: name=%s, cells=%d, confidence=%d%%",
+            "Split test creation: name=%s, cells=%d, confidence=%d%%",
             name,
             len(cells),
             confidence_level,
@@ -116,13 +116,13 @@ class SplitTestMixin:
         return await self._post(f"/{self._ad_account_id}/adstudies", data)
 
     async def end_split_test(self, study_id: str) -> dict[str, Any]:
-        """スプリットテストを終了する
+        """End a split test.
 
         Args:
-            study_id: スタディID
+            study_id: Study ID
 
         Returns:
-            終了結果
+            Termination result
         """
-        logger.info("スプリットテスト終了: study_id=%s", study_id)
+        logger.info("Split test ended: study_id=%s", study_id)
         return await self._post(f"/{study_id}", {"status": "COMPLETED"})

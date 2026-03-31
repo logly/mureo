@@ -199,7 +199,7 @@ class TestSendEvent:
     async def test_send_event_api_error(self, client: ConversionsMixin) -> None:
         """APIエラー時にRuntimeErrorを伝搬"""
         client._post = AsyncMock(  # type: ignore[assignment]
-            side_effect=RuntimeError("Meta API リクエストに失敗しました")
+            side_effect=RuntimeError("Meta API request failed")
         )
         events = [
             {

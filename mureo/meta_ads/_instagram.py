@@ -1,6 +1,6 @@
-"""Instagram連携Mixin
+"""Instagram integration mixin.
 
-Instagramアカウント管理、投稿一覧取得、投稿の広告化を提供する。
+Provides Instagram account management, post listing, and post promotion.
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class InstagramMixin:
-    """Meta Ads Instagram連携Mixin
+    """Meta Ads Instagram integration mixin
 
-    MetaAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     _ad_account_id: str
@@ -35,10 +35,10 @@ class InstagramMixin:
     )
 
     async def list_instagram_accounts(self) -> list[dict[str, Any]]:
-        """連携Instagramアカウント一覧を取得する
+        """List linked Instagram accounts
 
         Returns:
-            Instagramアカウント情報のリスト
+            List of Instagram account information.
         """
         params: dict[str, Any] = {
             "fields": self._IG_ACCOUNT_FIELDS,
@@ -49,14 +49,14 @@ class InstagramMixin:
     async def list_instagram_media(
         self, ig_user_id: str, limit: int = 25
     ) -> list[dict[str, Any]]:
-        """Instagram投稿一覧を取得する
+        """List Instagram posts
 
         Args:
-            ig_user_id: InstagramユーザーID
-            limit: 取得件数上限（デフォルト: 25）
+            ig_user_id: Instagram user ID
+            limit: Maximum number of items to retrieve (default: 25)
 
         Returns:
-            Instagram投稿情報のリスト
+            List of Instagram post information.
         """
         params: dict[str, Any] = {
             "fields": self._IG_MEDIA_FIELDS,
@@ -72,16 +72,16 @@ class InstagramMixin:
         ad_set_id: str,
         name: str | None = None,
     ) -> dict[str, Any]:
-        """Instagram投稿を広告化する
+        """Promote an Instagram post as an ad
 
         Args:
-            ig_user_id: InstagramユーザーID
-            media_id: メディアID
-            ad_set_id: 所属広告セットID
-            name: 広告名（未指定時は自動生成）
+            ig_user_id: Instagram user ID
+            media_id: Media ID
+            ad_set_id: Parent ad set ID
+            name: Ad name (auto-generated if not specified)
 
         Returns:
-            作成された広告情報
+            Created ad information.
         """
         object_story_id = f"{ig_user_id}_{media_id}"
         ad_name = name if name is not None else f"IG Boost: {object_story_id}"

@@ -1,6 +1,6 @@
-"""Meta Ads オーディエンス操作Mixin
+"""Meta Ads audience operations mixin.
 
-カスタムオーディエンス管理・類似オーディエンス作成。
+Custom audience management and lookalike audience creation.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# カスタムオーディエンス取得用フィールド
+# Custom audience retrieval fields
 _AUDIENCE_FIELDS = (
     "id,name,subtype,description,approximate_count,"
     "delivery_status,operation_status,retention_days,"
@@ -20,9 +20,9 @@ _AUDIENCE_FIELDS = (
 
 
 class AudiencesMixin:
-    """Meta Ads オーディエンス操作Mixin
+    """Meta Ads audience operations mixin
 
-    MetaAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     _ad_account_id: str
@@ -42,10 +42,10 @@ class AudiencesMixin:
         *,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """カスタムオーディエンス一覧を取得する
+        """List custom audiences.
 
         Returns:
-            カスタムオーディエンス情報のリスト
+            List of custom audience information
         """
         params: dict[str, Any] = {
             "fields": _AUDIENCE_FIELDS,
@@ -55,13 +55,13 @@ class AudiencesMixin:
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_custom_audience(self, audience_id: str) -> dict[str, Any]:
-        """カスタムオーディエンス詳細を取得する
+        """Get custom audience details.
 
         Args:
-            audience_id: オーディエンスID
+            audience_id: Audience ID
 
         Returns:
-            オーディエンス詳細情報
+            Audience detail information
         """
         params: dict[str, Any] = {"fields": _AUDIENCE_FIELDS}
         return await self._get(f"/{audience_id}", params)
@@ -77,19 +77,19 @@ class AudiencesMixin:
         pixel_id: str | None = None,
         customer_file_source: str | None = None,
     ) -> dict[str, Any]:
-        """カスタムオーディエンスを作成する
+        """Create a custom audience.
 
         Args:
-            name: オーディエンス名
-            subtype: サブタイプ（WEBSITE, CUSTOM, APP, ENGAGEMENT等）
-            description: 説明
-            retention_days: リテンション期間（日数、WEBSITE用）
-            rule: ルール定義（WEBSITE用、JSON形式）
-            pixel_id: Meta PixelID（WEBSITE用）
-            customer_file_source: 顧客ファイルソース（CUSTOM用）
+            name: Audience name
+            subtype: Subtype (WEBSITE, CUSTOM, APP, ENGAGEMENT, etc.)
+            description: Description
+            retention_days: Retention period (in days, for WEBSITE)
+            rule: Rule definition (for WEBSITE, JSON format)
+            pixel_id: Meta Pixel ID (for WEBSITE)
+            customer_file_source: Customer file source (for CUSTOM)
 
         Returns:
-            作成されたオーディエンス情報
+            Created audience information
         """
         data: dict[str, Any] = {
             "name": name,
@@ -110,13 +110,13 @@ class AudiencesMixin:
         return await self._post(f"/{self._ad_account_id}/customaudiences", data)
 
     async def delete_custom_audience(self, audience_id: str) -> dict[str, Any]:
-        """カスタムオーディエンスを削除する
+        """Delete a custom audience.
 
         Args:
-            audience_id: オーディエンスID
+            audience_id: Audience ID
 
         Returns:
-            削除結果
+            Deletion result
         """
         return await self._delete(f"/{audience_id}")
 
@@ -129,17 +129,17 @@ class AudiencesMixin:
         *,
         starting_ratio: float = 0.0,
     ) -> dict[str, Any]:
-        """類似オーディエンスを作成する
+        """Create a lookalike audience.
 
         Args:
-            name: オーディエンス名
-            source_audience_id: ソースとなるカスタムオーディエンスID
-            country: 対象国コード（単一 or リスト）
-            ratio: 類似度（0.01=上位1%, 0.05=上位5%, 最大0.20）
-            starting_ratio: 類似度の開始位置（デフォルト0.0、範囲指定時に使用）
+            name: Audience name
+            source_audience_id: Source custom audience ID
+            country: Target country code (single or list)
+            ratio: Similarity ratio (0.01=top 1%, 0.05=top 5%, max 0.20)
+            starting_ratio: Starting position of similarity (default 0.0, used for range specification)
 
         Returns:
-            作成された類似オーディエンス情報
+            Created lookalike audience information
         """
         lookalike_spec = {
             "origin_audience_id": source_audience_id,

@@ -1,9 +1,9 @@
-"""mureo MCP サーバー本体
+"""mureo MCP server
 
-MCPプロトコルで Google Ads / Meta Ads ツールを公開する。
-stdio ベースで Claude Code / Cursor 等の MCP クライアントから呼び出される。
+Exposes Google Ads / Meta Ads tools via the MCP protocol.
+Invoked over stdio by MCP clients such as Claude Code or Cursor.
 
-ツール定義・ハンドラーは tools_google_ads.py / tools_meta_ads.py に分離。
+Tool definitions and handlers are separated into tools_google_ads.py / tools_meta_ads.py.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# 統合ツール一覧
+# Combined tool list
 # ---------------------------------------------------------------------------
 
 _ALL_TOOLS: list[Tool] = [*GOOGLE_ADS_TOOLS, *META_ADS_TOOLS]
@@ -35,20 +35,20 @@ _META_ADS_NAMES: frozenset[str] = frozenset(t.name for t in META_ADS_TOOLS)
 
 
 # ---------------------------------------------------------------------------
-# ハンドラー（テストから直接呼べるようにモジュールレベル関数として定義）
+# Handlers (defined as module-level functions so tests can call them directly)
 # ---------------------------------------------------------------------------
 
 
 async def handle_list_tools() -> list[Any]:
-    """登録済みツール一覧を返す"""
+    """Return the list of registered tools."""
     return list(_ALL_TOOLS)
 
 
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
-    """ツールを実行して結果を返す
+    """Execute a tool and return the result.
 
     Raises:
-        ValueError: 未知のツール名、または必須パラメータの欠損
+        ValueError: Unknown tool name or missing required parameter
     """
     if name in _GOOGLE_ADS_NAMES:
         return await handle_google_ads_tool(name, arguments)
@@ -58,12 +58,12 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
 
 
 # ---------------------------------------------------------------------------
-# MCP サーバーセットアップ & エントリポイント
+# MCP server setup & entry point
 # ---------------------------------------------------------------------------
 
 
 def _create_server() -> Server:
-    """MCP Server インスタンスを作成し、ハンドラーを登録する"""
+    """Create an MCP Server instance and register handlers."""
     server = Server("mureo")
 
     @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator, unused-ignore]
@@ -78,7 +78,7 @@ def _create_server() -> Server:
 
 
 async def main() -> None:
-    """stdio ベースで MCP サーバーを起動する"""
+    """Start the MCP server over stdio."""
     server = _create_server()
     async with stdio_server() as (read_stream, write_stream):
         await server.run(

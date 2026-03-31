@@ -1,6 +1,6 @@
-"""ページ投稿操作Mixin
+"""Page post operations mixin.
 
-Facebookページ投稿の一覧取得と広告化（Boost Post）を提供する。
+Provides Facebook page post listing and boosting (Boost Post).
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class PagePostsMixin:
-    """Meta Ads ページ投稿操作Mixin
+    """Meta Ads page post operations mixin
 
-    MetaAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     _ad_account_id: str
@@ -33,14 +33,14 @@ class PagePostsMixin:
     async def list_page_posts(
         self, page_id: str, limit: int = 25
     ) -> list[dict[str, Any]]:
-        """ページ投稿一覧を取得する
+        """List page posts.
 
         Args:
-            page_id: FacebookページID
-            limit: 取得件数上限（デフォルト: 25）
+            page_id: Facebook page ID
+            limit: Maximum number of results (default: 25)
 
         Returns:
-            投稿情報のリスト
+            List of post information
         """
         params: dict[str, Any] = {
             "fields": self._PAGE_POST_FIELDS,
@@ -56,18 +56,18 @@ class PagePostsMixin:
         ad_set_id: str,
         name: str | None = None,
     ) -> dict[str, Any]:
-        """ページ投稿を広告化する（Boost Post）
+        """Boost a page post (Boost Post).
 
-        既存のページ投稿をobject_story_idで参照して広告を作成する。
+        Creates an ad by referencing an existing page post via object_story_id.
 
         Args:
-            page_id: FacebookページID
-            post_id: 投稿ID
-            ad_set_id: 所属広告セットID
-            name: 広告名（未指定時は自動生成）
+            page_id: Facebook page ID
+            post_id: Post ID
+            ad_set_id: Parent ad set ID
+            name: Ad name (auto-generated if not specified)
 
         Returns:
-            作成された広告情報
+            Created ad information
         """
         object_story_id = f"{page_id}_{post_id}"
         ad_name = name if name is not None else f"Boost: {object_story_id}"

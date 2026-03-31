@@ -38,7 +38,7 @@ class _MockExtensionsClient(_ExtensionsMixin):
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str:
         if not value or not value.isdigit():
-            raise ValueError(f"{field_name} は数値文字列である必要があります: {value}")
+            raise ValueError(f"Invalid {field_name}: {value}")
         return value
 
     @staticmethod
@@ -179,7 +179,7 @@ class TestCreateSitelink:
                 "final_url": "https://example.com",
             })
         assert result["error"] is True
-        assert "最大20件" in result["message"]
+        assert "Maximum 20" in result["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +225,7 @@ class TestCreateCallout:
                 "callout_text": "Test",
             })
         assert result["error"] is True
-        assert "最大20件" in result["message"]
+        assert "Maximum 20" in result["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -264,27 +264,27 @@ class TestCreateConversionActionValidation:
 
     @pytest.mark.asyncio
     async def test_empty_name_raises(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="name は必須"):
+        with pytest.raises(ValueError, match="name is required"):
             await client.create_conversion_action({"name": ""})
 
     @pytest.mark.asyncio
     async def test_long_name_raises(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="256文字以内"):
+        with pytest.raises(ValueError, match="256 characters"):
             await client.create_conversion_action({"name": "x" * 257})
 
     @pytest.mark.asyncio
     async def test_invalid_type_raises(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="不正な type"):
+        with pytest.raises(ValueError, match="Invalid type"):
             await client.create_conversion_action({"name": "Test", "type": "INVALID"})
 
     @pytest.mark.asyncio
     async def test_invalid_category_raises(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="不正な category"):
+        with pytest.raises(ValueError, match="Invalid category"):
             await client.create_conversion_action({"name": "Test", "category": "INVALID"})
 
     @pytest.mark.asyncio
     async def test_lookback_window_out_of_range(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="1〜90"):
+        with pytest.raises(ValueError, match="1.+90"):
             await client.create_conversion_action({
                 "name": "Test",
                 "click_through_lookback_window_days": 100,
@@ -292,7 +292,7 @@ class TestCreateConversionActionValidation:
 
     @pytest.mark.asyncio
     async def test_view_through_lookback_out_of_range(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="1〜30"):
+        with pytest.raises(ValueError, match="1.+30"):
             await client.create_conversion_action({
                 "name": "Test",
                 "view_through_lookback_window_days": 31,
@@ -312,12 +312,12 @@ class TestUpdateConversionActionValidation:
 
     @pytest.mark.asyncio
     async def test_no_fields_raises(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="更新するフィールドを1つ以上"):
+        with pytest.raises(ValueError, match="At least one field must be specified"):
             await client.update_conversion_action({"conversion_action_id": "123"})
 
     @pytest.mark.asyncio
     async def test_invalid_status_raises(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="不正な status"):
+        with pytest.raises(ValueError, match="Invalid status"):
             await client.update_conversion_action({
                 "conversion_action_id": "123",
                 "status": "INVALID",
@@ -325,7 +325,7 @@ class TestUpdateConversionActionValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_category_raises(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="不正な category"):
+        with pytest.raises(ValueError, match="Invalid category"):
             await client.update_conversion_action({
                 "conversion_action_id": "123",
                 "category": "BADCAT",
@@ -468,7 +468,7 @@ class TestSetDeviceTargetingValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_device_raises(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="無効なデバイスタイプ"):
+        with pytest.raises(ValueError, match="Invalid device type"):
             await client.set_device_targeting({
                 "campaign_id": "123",
                 "enabled_devices": ["PHONE"],
@@ -476,7 +476,7 @@ class TestSetDeviceTargetingValidation:
 
     @pytest.mark.asyncio
     async def test_empty_devices_raises(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="最低1つ"):
+        with pytest.raises(ValueError, match="At least one"):
             await client.set_device_targeting({
                 "campaign_id": "123",
                 "enabled_devices": [],
@@ -528,7 +528,7 @@ class TestUpdateBidAdjustmentValidation:
 
     @pytest.mark.asyncio
     async def test_bid_modifier_too_low(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="0.1 ~ 10.0"):
+        with pytest.raises(ValueError, match="0\\.1.+10\\.0"):
             await client.update_bid_adjustment({
                 "campaign_id": "123",
                 "criterion_id": "1",
@@ -537,7 +537,7 @@ class TestUpdateBidAdjustmentValidation:
 
     @pytest.mark.asyncio
     async def test_bid_modifier_too_high(self, client: _MockExtensionsClient) -> None:
-        with pytest.raises(ValueError, match="0.1 ~ 10.0"):
+        with pytest.raises(ValueError, match="0\\.1.+10\\.0"):
             await client.update_bid_adjustment({
                 "campaign_id": "123",
                 "criterion_id": "1",
@@ -888,7 +888,7 @@ class TestRemoveCallout:
     @pytest.mark.asyncio
     async def test_remove_callout_invalid_campaign_id(self, client: _MockExtensionsClient) -> None:
         """無効なcampaign_idでバリデーションエラー"""
-        with pytest.raises(ValueError, match="数値文字列"):
+        with pytest.raises(ValueError, match="Invalid"):
             await client.remove_callout({
                 "campaign_id": "abc",
                 "asset_id": "456",
@@ -897,7 +897,7 @@ class TestRemoveCallout:
     @pytest.mark.asyncio
     async def test_remove_callout_invalid_asset_id(self, client: _MockExtensionsClient) -> None:
         """無効なasset_idでバリデーションエラー"""
-        with pytest.raises(ValueError, match="数値文字列"):
+        with pytest.raises(ValueError, match="Invalid"):
             await client.remove_callout({
                 "campaign_id": "123",
                 "asset_id": "abc",
@@ -1074,7 +1074,7 @@ class TestRemoveSitelink:
     @pytest.mark.asyncio
     async def test_remove_sitelink_invalid_ids(self, client: _MockExtensionsClient) -> None:
         """無効なIDでバリデーションエラー"""
-        with pytest.raises(ValueError, match="数値文字列"):
+        with pytest.raises(ValueError, match="Invalid"):
             await client.remove_sitelink({
                 "campaign_id": "abc",
                 "asset_id": "456",
@@ -1203,7 +1203,7 @@ class TestUpdateConversionActionSuccess:
     @pytest.mark.asyncio
     async def test_update_long_name_raises(self, client: _MockExtensionsClient) -> None:
         """更新時のname長チェック"""
-        with pytest.raises(ValueError, match="256文字以内"):
+        with pytest.raises(ValueError, match="256 characters"):
             await client.update_conversion_action({
                 "conversion_action_id": "456",
                 "name": "x" * 257,
@@ -1212,7 +1212,7 @@ class TestUpdateConversionActionSuccess:
     @pytest.mark.asyncio
     async def test_update_lookback_window_out_of_range(self, client: _MockExtensionsClient) -> None:
         """更新時のlookback windowバリデーション"""
-        with pytest.raises(ValueError, match="1〜90"):
+        with pytest.raises(ValueError, match="1.+90"):
             await client.update_conversion_action({
                 "conversion_action_id": "456",
                 "click_through_lookback_window_days": 91,
@@ -1221,7 +1221,7 @@ class TestUpdateConversionActionSuccess:
     @pytest.mark.asyncio
     async def test_update_view_through_out_of_range(self, client: _MockExtensionsClient) -> None:
         """更新時のview_through_lookback_window_daysバリデーション"""
-        with pytest.raises(ValueError, match="1〜30"):
+        with pytest.raises(ValueError, match="1.+30"):
             await client.update_conversion_action({
                 "conversion_action_id": "456",
                 "view_through_lookback_window_days": 31,
@@ -1261,7 +1261,7 @@ class TestRemoveConversionAction:
     @pytest.mark.asyncio
     async def test_remove_invalid_id(self, client: _MockExtensionsClient) -> None:
         """無効なIDでバリデーションエラー"""
-        with pytest.raises(ValueError, match="数値文字列"):
+        with pytest.raises(ValueError, match="Invalid"):
             await client.remove_conversion_action({"conversion_action_id": "abc"})
 
 
@@ -1398,7 +1398,7 @@ class TestSetDeviceTargetingSuccess:
         client._client.enums.DeviceEnum.MOBILE = "MOBILE"
         client._client.enums.DeviceEnum.TABLET = "TABLET"
 
-        with pytest.raises(ValueError, match="全デバイスの設定に失敗"):
+        with pytest.raises(ValueError, match="Failed to set all devices"):
             await client.set_device_targeting({
                 "campaign_id": "456",
                 "enabled_devices": ["DESKTOP"],

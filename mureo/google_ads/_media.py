@@ -1,6 +1,6 @@
-"""Google Ads メディアアセット操作Mixin
+"""Google Ads media asset operations mixin.
 
-画像アセットのアップロードを提供する。
+Provides image asset uploading.
 """
 
 from __future__ import annotations
@@ -13,15 +13,15 @@ from mureo._image_validation import validate_image_file
 
 logger = logging.getLogger(__name__)
 
-# Google Ads 画像アセット制限
+# Google Ads image asset limits
 _GOOGLE_MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024  # 5MB
 _GOOGLE_ALLOWED_IMAGE_EXTENSIONS = frozenset({"jpg", "jpeg", "png", "gif"})
 
 
 class _MediaMixin:
-    """Google Ads メディアアセット操作Mixin
+    """Google Ads media asset operations mixin.
 
-    GoogleAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with GoogleAdsApiClient.
     """
 
     _client: Any
@@ -32,18 +32,18 @@ class _MediaMixin:
         file_path: str,
         name: str | None = None,
     ) -> dict[str, Any]:
-        """ローカルファイルから画像アセットをアップロードする。
+        """Upload image assets from a local file.
 
         Args:
-            file_path: ローカル画像ファイルのパス
-            name: アセット名（省略時はファイル名を使用）
+            file_path: Local image file path
+            name: Asset name (defaults to filename if omitted)
 
         Returns:
             {"resource_name": "customers/123/assets/456", "id": "456", "name": "..."}
 
         Raises:
-            FileNotFoundError: ファイルが存在しない場合
-            ValueError: バリデーションエラー
+            FileNotFoundError: File does not exist
+            ValueError: Validation error
         """
         path = validate_image_file(
             file_path,
@@ -74,7 +74,7 @@ class _MediaMixin:
         response = await loop.run_in_executor(None, _do_mutate)
 
         resource_name = response.results[0].resource_name
-        # resource_nameからIDを抽出: "customers/123/assets/456" -> "456"
+        # Extract ID from resource_name: "customers/123/assets/456" -> "456"
         asset_id = resource_name.rsplit("/", 1)[-1]
 
         return {

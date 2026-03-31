@@ -135,7 +135,7 @@ class TestValidateId:
         assert GoogleAdsApiClient._validate_id("12345", "test") == "12345"
 
     def test_非数値_エラー(self) -> None:
-        with pytest.raises(ValueError, match="不正なtest"):
+        with pytest.raises(ValueError, match="Invalid test"):
             GoogleAdsApiClient._validate_id("abc", "test")
 
     def test_空文字_エラー(self) -> None:
@@ -157,7 +157,7 @@ class TestValidateStatus:
         assert GoogleAdsApiClient._validate_status("enabled") == "ENABLED"
 
     def test_無効なステータス(self) -> None:
-        with pytest.raises(ValueError, match="不正なステータス"):
+        with pytest.raises(ValueError, match="Invalid status"):
             GoogleAdsApiClient._validate_status("INVALID")
 
 
@@ -171,7 +171,7 @@ class TestValidateMatchType:
         assert GoogleAdsApiClient._validate_match_type("broad") == "BROAD"
 
     def test_無効なマッチタイプ(self) -> None:
-        with pytest.raises(ValueError, match="不正なmatch_type"):
+        with pytest.raises(ValueError, match="Invalid match_type"):
             GoogleAdsApiClient._validate_match_type("INVALID")
 
 
@@ -191,7 +191,7 @@ class TestValidateRecommendationType:
         assert GoogleAdsApiClient._validate_recommendation_type("KEYWORD") == "KEYWORD"
 
     def test_無効なタイプ(self) -> None:
-        with pytest.raises(ValueError, match="不正なrecommendation_type"):
+        with pytest.raises(ValueError, match="Invalid recommendation_type"):
             GoogleAdsApiClient._validate_recommendation_type("INVALID")
 
 
@@ -208,7 +208,7 @@ class TestValidateResourceName:
     def test_不正(self) -> None:
         import re
         pattern = re.compile(r"customers/\d+/campaigns/\d+")
-        with pytest.raises(ValueError, match="不正なresource"):
+        with pytest.raises(ValueError, match="Invalid resource"):
             GoogleAdsApiClient._validate_resource_name("invalid", pattern, "resource")
 
 
@@ -322,7 +322,7 @@ class TestPeriodToDateClause:
 
     def test_不正なperiod(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="不正なperiod"):
+        with pytest.raises(ValueError, match="Invalid period"):
             client._period_to_date_clause("INVALID")
 
 
@@ -388,7 +388,7 @@ class TestListCampaigns:
     @pytest.mark.asyncio
     async def test_不正なステータスフィルタ(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="不正なステータス"):
+        with pytest.raises(ValueError, match="Invalid status"):
             await client.list_campaigns(status_filter="INVALID")
 
 
@@ -433,7 +433,7 @@ class TestGetCampaign:
     @pytest.mark.asyncio
     async def test_不正なID(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="不正なcampaign_id"):
+        with pytest.raises(ValueError, match="Invalid campaign_id"):
             await client.get_campaign("abc")
 
 
@@ -463,7 +463,7 @@ class TestCreateCampaign:
     @pytest.mark.asyncio
     async def test_名前256文字超_エラー(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="256文字以内"):
+        with pytest.raises(ValueError, match="256 characters"):
             await client.create_campaign({"name": "a" * 257})
 
     @pytest.mark.asyncio
@@ -538,7 +538,7 @@ class TestUpdateCampaignStatus:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        with pytest.raises(RuntimeError, match="エラーが発生しました"):
+        with pytest.raises(RuntimeError, match="error occurred"):
             await client.update_campaign_status("111", "PAUSED")
 
 
@@ -649,7 +649,7 @@ class TestUpdateAdGroup:
             "status": "INVALID",
         })
         assert result["error"] is True
-        assert "無効なstatus" in result["message"]
+        assert "Invalid status" in result["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -720,13 +720,13 @@ class TestBudget:
     @pytest.mark.asyncio
     async def test_create_budget_名前256文字超(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="256文字以内"):
+        with pytest.raises(ValueError, match="256 characters"):
             await client.create_budget({"name": "a" * 257, "amount": 1000})
 
     @pytest.mark.asyncio
     async def test_create_budget_金額0以下(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="正の数値"):
+        with pytest.raises(ValueError, match="positive number"):
             await client.create_budget({"name": "test", "amount": 0})
 
     @pytest.mark.asyncio
@@ -781,7 +781,7 @@ class TestUpdateCampaign:
         client._client.get_service.return_value = MagicMock()
         client._client.get_type.return_value = MagicMock()
 
-        with pytest.raises(ValueError, match="更新するフィールド"):
+        with pytest.raises(ValueError, match="No fields specified"):
             await client.update_campaign({"campaign_id": "111"})
 
     @pytest.mark.asyncio
@@ -808,7 +808,7 @@ class TestSetBiddingStrategy:
     def test_未サポート戦略_エラー(self) -> None:
         client = _make_client()
         campaign = MagicMock()
-        with pytest.raises(ValueError, match="サポートされていない入札戦略"):
+        with pytest.raises(ValueError, match="Unsupported bidding strategy"):
             client._set_bidding_strategy(campaign, "INVALID_STRATEGY", {})
 
     def test_TARGET_CPA_パラメータ不足(self) -> None:
@@ -820,7 +820,7 @@ class TestSetBiddingStrategy:
     def test_TARGET_CPA_負の値(self) -> None:
         client = _make_client()
         campaign = MagicMock()
-        with pytest.raises(ValueError, match="正の整数"):
+        with pytest.raises(ValueError, match="positive integer"):
             client._set_bidding_strategy(
                 campaign, "TARGET_CPA", {"target_cpa_micros": -1}
             )
@@ -834,7 +834,7 @@ class TestSetBiddingStrategy:
     def test_TARGET_ROAS_負の値(self) -> None:
         client = _make_client()
         campaign = MagicMock()
-        with pytest.raises(ValueError, match="正の数値"):
+        with pytest.raises(ValueError, match="positive number"):
             client._set_bidding_strategy(
                 campaign, "TARGET_ROAS", {"target_roas_value": -1.0}
             )
@@ -843,7 +843,7 @@ class TestSetBiddingStrategy:
         client = _make_client()
         campaign = MagicMock()
         client._client.get_type.return_value = MagicMock()
-        with pytest.raises(ValueError, match="正の整数"):
+        with pytest.raises(ValueError, match="positive integer"):
             client._set_bidding_strategy(
                 campaign, "MAXIMIZE_CLICKS", {"cpc_bid_ceiling_micros": -100}
             )
@@ -903,7 +903,7 @@ class TestGetNetworkPerformanceReport:
 
         assert len(result) == 1
         assert result[0]["network_type"] == "SEARCH"
-        assert result[0]["network_label"] == "Google検索"
+        assert result[0]["network_label"] == "Google Search"
 
     @pytest.mark.asyncio
     async def test_DISPLAY等はスキップ(self) -> None:
@@ -991,7 +991,7 @@ class TestWrapMutateError:
                 raise exc
 
         client = FakeClient()
-        with pytest.raises(RuntimeError, match="リソースが見つかりません"):
+        with pytest.raises(RuntimeError, match="not found"):
             await client.do_something()
 
     @pytest.mark.asyncio
@@ -1014,7 +1014,7 @@ class TestWrapMutateError:
                 raise exc
 
         client = FakeClient()
-        with pytest.raises(RuntimeError, match="エラーが発生しました"):
+        with pytest.raises(RuntimeError, match="error occurred"):
             await client.do_something()
 
 
@@ -1032,7 +1032,7 @@ class TestCheckBudgetBiddingCompatibility:
         row.campaign_budget.explicitly_shared = True
 
         with patch.object(client, "_search", return_value=[row]):
-            with pytest.raises(ValueError, match="共有予算と互換性がありません"):
+            with pytest.raises(ValueError, match="not compatible with shared budget"):
                 await client._check_budget_bidding_compatibility("100", "MAXIMIZE_CONVERSIONS")
 
     @pytest.mark.asyncio

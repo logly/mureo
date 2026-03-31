@@ -78,7 +78,7 @@ class TestEvaluateDeliveryGoal:
 
         result = await client.evaluate_delivery_goal("123")
         assert result["status"] == "healthy"
-        assert "正常" in result["summary"]
+        assert "normally" in result["summary"]
 
     @pytest.mark.asyncio
     async def test_critical_no_impressions(self, client: _MockMonitoringClient) -> None:

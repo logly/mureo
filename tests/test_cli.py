@@ -774,7 +774,7 @@ class TestAuthSetupCommand:
         assert result.exit_code == 0
         mock_setup_google.assert_called_once()
         mock_setup_mcp.assert_called_once()
-        assert "セットアップが完了しました" in result.output
+        assert "Setup complete." in result.output
 
     def test_auth_setup_meta_only(self):
         """Meta Adsのみ設定するフロー"""
@@ -798,7 +798,7 @@ class TestAuthSetupCommand:
         assert result.exit_code == 0
         mock_setup_meta.assert_called_once()
         mock_setup_mcp.assert_called_once()
-        assert "セットアップが完了しました" in result.output
+        assert "Setup complete." in result.output
 
     def test_auth_setup_both(self):
         """両方設定するフロー"""
@@ -828,7 +828,7 @@ class TestAuthSetupCommand:
         mock_setup_google.assert_called_once()
         mock_setup_meta.assert_called_once()
         mock_setup_mcp.assert_called_once()
-        assert "セットアップが完了しました" in result.output
+        assert "Setup complete." in result.output
 
     def test_auth_setup_skip(self):
         """両方スキップした場合"""
@@ -837,7 +837,7 @@ class TestAuthSetupCommand:
         result = runner.invoke(app, ["auth", "setup"], input="n\nn\n")
 
         assert result.exit_code == 0
-        assert "セットアップをスキップしました" in result.output
+        assert "Setup skipped." in result.output
 
     def test_auth_setup_mcp_error(self):
         """MCP設定でエラーが出ても認証は成功（例外が伝播する）"""

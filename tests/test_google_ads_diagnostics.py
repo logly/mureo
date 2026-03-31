@@ -14,8 +14,8 @@ import pytest
 
 from mureo.google_ads._diagnostics import (
     _DiagnosticsMixin,
-    _LEARNING_STATUS_REASON,
-    _PRIMARY_STATUS_REASON_JA,
+    _LEARNING_STATUS_DESC,
+    _PRIMARY_STATUS_REASON_DESC,
     _REASON_IS_ISSUE,
     _SMART_BIDDING_STRATEGIES,
 )
@@ -199,7 +199,7 @@ class TestDiagnoseCampaignDelivery:
                 result = await client.diagnose_campaign_delivery("123")
 
         # 基本的な検証（地域未設定は warnings に入る）
-        assert result["diagnosis"] == "問題なし" or "問題が見つかりました" in result["diagnosis"]
+        assert result["diagnosis"] == "No issues" or "issues found" in result["diagnosis"]
         assert "campaign" in result
 
     @pytest.mark.asyncio
@@ -277,7 +277,7 @@ class TestDiagnoseCampaignDelivery:
         # スマート入札 + CV0 → issue
         cv_actions = result.get("active_conversion_actions")
         if cv_actions == 0:
-            assert any("コンバージョンアクション" in i for i in result["issues"])
+            assert any("conversion" in i.lower() for i in result["issues"])
 
 
 # ---------------------------------------------------------------------------
@@ -287,14 +287,14 @@ class TestDiagnoseCampaignDelivery:
 
 @pytest.mark.unit
 class TestDiagnosticsConstants:
-    def test_reason_is_issue_subset_of_reason_ja(self) -> None:
-        """_REASON_IS_ISSUEの全キーが_PRIMARY_STATUS_REASON_JAに存在する"""
+    def test_reason_is_issue_subset_of_reason_desc(self) -> None:
+        """All keys in _REASON_IS_ISSUE exist in _PRIMARY_STATUS_REASON_DESC."""
         for reason in _REASON_IS_ISSUE:
-            assert reason in _PRIMARY_STATUS_REASON_JA, f"{reason} が _PRIMARY_STATUS_REASON_JA にない"
+            assert reason in _PRIMARY_STATUS_REASON_DESC, f"{reason} not in _PRIMARY_STATUS_REASON_DESC"
 
     def test_learning_status_reasons(self) -> None:
-        """学習ステータスの理由がすべてLEARNING_で始まる"""
-        for key in _LEARNING_STATUS_REASON:
+        """All learning status reason keys start with LEARNING_."""
+        for key in _LEARNING_STATUS_DESC:
             assert key.startswith("LEARNING_")
 
     def test_smart_bidding_strategies(self) -> None:
@@ -375,7 +375,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        assert any("未来" in issue or "開始日" in issue for issue in result["issues"])
+        assert any("start date" in issue.lower() and "future" in issue.lower() for issue in result["issues"])
 
     @pytest.mark.asyncio
     async def test_past_end_date(self, client: _MockDiagClient) -> None:
@@ -386,7 +386,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        assert any("終了日" in issue for issue in result["issues"])
+        assert any("end date" in issue.lower() for issue in result["issues"])
 
     @pytest.mark.asyncio
     async def test_invalid_start_date_format(self, client: _MockDiagClient) -> None:
@@ -409,7 +409,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        assert any("予算" in issue and "PAUSED" in issue for issue in result["issues"])
+        assert any("budget" in issue.lower() and "PAUSED" in issue for issue in result["issues"])
 
     @pytest.mark.asyncio
     async def test_bidding_details_issue(self, client: _MockDiagClient) -> None:
@@ -422,7 +422,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        assert any("入札戦略の問題" in issue for issue in result["issues"])
+        assert any("Bidding strategy issue" in issue for issue in result["issues"])
 
     @pytest.mark.asyncio
     async def test_disapproved_keywords_warning(self, client: _MockDiagClient) -> None:
@@ -453,7 +453,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
             result = await client.diagnose_campaign_delivery("123")
 
-        assert any("不承認" in w for w in result["warnings"])
+        assert any("disapproved" in w.lower() for w in result["warnings"])
 
     @pytest.mark.asyncio
     async def test_rarely_served_keywords_warning(self, client: _MockDiagClient) -> None:
@@ -538,7 +538,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
             result = await client.diagnose_campaign_delivery("123")
 
-        assert any("不承認" in issue for issue in result["issues"])
+        assert any("disapproved" in issue.lower() for issue in result["issues"])
 
     @pytest.mark.asyncio
     async def test_limited_ads_warning(self, client: _MockDiagClient) -> None:
@@ -606,7 +606,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        assert result["performance_last_30_days"] == "取得失敗"
+        assert result["performance_last_30_days"] == "Retrieval failed"
 
     @pytest.mark.asyncio
     async def test_sitelinks_exception(self, client: _MockDiagClient) -> None:
@@ -640,7 +640,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         client._search = _search_side_effect
 
         result = await client.diagnose_campaign_delivery("123")
-        assert result["billing_setup"] == "確認失敗"
+        assert result["billing_setup"] == "Verification failed"
 
     @pytest.mark.asyncio
     async def test_impression_share_warnings(self, client: _MockDiagClient) -> None:
@@ -668,9 +668,9 @@ class TestDiagnoseCampaignDeliveryAdditional:
         result = await client.diagnose_campaign_delivery("123")
         assert "impression_share" in result
         # 予算制限 warning
-        assert any("予算制限" in w for w in result["warnings"])
-        # 広告ランク warning
-        assert any("広告ランク" in w for w in result["warnings"])
+        assert any("budget" in w.lower() for w in result["warnings"])
+        # Ad rank warning
+        assert any("ad rank" in w.lower() for w in result["warnings"])
 
     @pytest.mark.asyncio
     async def test_recommendations_for_primary_reasons(self, client: _MockDiagClient) -> None:
@@ -691,10 +691,10 @@ class TestDiagnoseCampaignDeliveryAdditional:
         result = await client.diagnose_campaign_delivery("123")
 
         recs = result["recommendations"]
-        assert any("入札戦略の設定" in r for r in recs)
-        assert any("日予算" in r for r in recs)
-        assert any("キーワード" in r for r in recs)
-        assert any("不承認の広告" in r for r in recs)
+        assert any("bidding strategy" in r.lower() for r in recs)
+        assert any("daily budget" in r.lower() for r in recs)
+        assert any("keyword" in r.lower() for r in recs)
+        assert any("disapproved" in r.lower() for r in recs)
 
     @pytest.mark.asyncio
     async def test_target_impression_share_recommendations(self, client: _MockDiagClient) -> None:
@@ -714,9 +714,9 @@ class TestDiagnoseCampaignDeliveryAdditional:
         result = await client.diagnose_campaign_delivery("123")
 
         recs = result["recommendations"]
-        assert any("上限CPC" in r for r in recs)
-        assert any("目標インプレッションシェア" in r for r in recs)
-        assert any("掲載位置" in r for r in recs)
+        assert any("max cpc" in r.lower() for r in recs)
+        assert any("target impression share" in r.lower() for r in recs)
+        assert any("ad placement" in r.lower() for r in recs)
 
 
 @pytest.mark.unit

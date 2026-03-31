@@ -201,4 +201,4 @@ class TestCallToolErrors:
 
         assert len(result) == 1
         assert result[0].type == "text"
-        assert "認証情報" in result[0].text
+        assert "Credentials not found" in result[0].text

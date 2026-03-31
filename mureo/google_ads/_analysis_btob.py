@@ -1,4 +1,4 @@
-"""BtoB最適化提案 Mixin。"""
+"""B2B optimization suggestion mixin."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 class _BtoBAnalysisMixin:
-    """BtoB最適化提案系メソッドを提供する Mixin。"""
+    """Mixin providing B2B optimization suggestion methods."""
 
-    # 親クラスが提供する属性・メソッドの型宣言
+    # Type declarations for attributes/methods provided by parent class
     _customer_id: str
     _client: GoogleAdsClient
 
@@ -33,7 +33,7 @@ class _BtoBAnalysisMixin:
     ) -> dict[str, Any]: ...
 
     # =================================================================
-    # BtoB最適化提案
+    # B2B optimization suggestions
     # =================================================================
 
     async def suggest_btob_optimizations(
@@ -41,22 +41,22 @@ class _BtoBAnalysisMixin:
         campaign_id: str,
         period: str = "LAST_30_DAYS",
     ) -> dict[str, Any]:
-        """BtoBビジネス向けの最適化チェックを実行し、改善提案を生成する。"""
+        """Run optimization checks for B2B businesses and generate improvement suggestions."""
         self._validate_id(campaign_id, "campaign_id")
 
         campaign = await self.get_campaign(campaign_id)
         if not campaign:
-            return {"error": f"キャンペーンID {campaign_id} が見つかりません"}
+            return {"error": f"Campaign ID {campaign_id} not found"}
 
         suggestions: list[dict[str, Any]] = []
 
-        # 1. 広告スケジュール（営業時間外配信チェック）
+        # 1. Ad schedule (non-business hours delivery check)
         await self._check_schedule_for_btob(campaign_id, suggestions)
 
-        # 2. デバイス別CPA格差チェック
+        # 2. Device CPA disparity check
         await self._check_device_for_btob(campaign_id, period, suggestions)
 
-        # 3. 検索語句の情報収集系比率チェック
+        # 3. Informational search terms ratio check
         await self._check_search_terms_for_btob(campaign_id, period, suggestions)
 
         return {
@@ -72,7 +72,7 @@ class _BtoBAnalysisMixin:
         campaign_id: str,
         suggestions: list[dict[str, Any]],
     ) -> None:
-        """広告スケジュールのBtoB最適化チェック。"""
+        """B2B optimization check for ad schedule."""
         try:
             schedules = await self.list_schedule_targeting(campaign_id)
         except Exception:
@@ -83,14 +83,14 @@ class _BtoBAnalysisMixin:
                 {
                     "category": "schedule",
                     "priority": "HIGH",
-                    "message": "広告スケジュールが未設定です。"
-                    "BtoBでは営業時間帯（平日9-18時）に集中配信することで"
-                    "無駄なコストを削減できます。",
+                    "message": "No ad schedule is configured. "
+                    "For B2B, concentrating delivery during business hours (weekdays 9-18) "
+                    "can reduce wasted costs.",
                 }
             )
             return
 
-        # 土日配信チェック
+        # Weekend delivery check
         weekend_days = {"SATURDAY", "SUNDAY"}
         weekend_schedules = [
             s for s in schedules if s.get("day_of_week", "") in weekend_days
@@ -100,9 +100,9 @@ class _BtoBAnalysisMixin:
                 {
                     "category": "schedule",
                     "priority": "MEDIUM",
-                    "message": "土日に広告が配信されています。"
-                    "BtoBでは土日のCV率が低い傾向があります。"
-                    "配信停止または入札調整率の引き下げを検討してください。",
+                    "message": "Ads are being delivered on weekends. "
+                    "In B2B, weekend conversion rates tend to be low. "
+                    "Consider stopping delivery or lowering bid adjustments.",
                 }
             )
 
@@ -112,7 +112,7 @@ class _BtoBAnalysisMixin:
         period: str,
         suggestions: list[dict[str, Any]],
     ) -> None:
-        """デバイス別CPAのBtoB最適化チェック。"""
+        """B2B optimization check for device CPA."""
         try:
             device_result = await self.analyze_device_performance(campaign_id, period)
         except Exception:
@@ -141,13 +141,13 @@ class _BtoBAnalysisMixin:
                     {
                         "category": "device",
                         "priority": "MEDIUM",
-                        "message": f"モバイルCPA（{mobile_cpa}円）がPC（{desktop_cpa}円）より高いです。"
-                        "BtoBではPC経由のCVが多い傾向があります。"
-                        "モバイルの入札調整率引き下げを検討してください。",
+                        "message": f"Mobile CPA ({mobile_cpa}) is higher than desktop ({desktop_cpa}). "
+                        "In B2B, conversions tend to come more from desktop. "
+                        "Consider lowering mobile bid adjustments.",
                     }
                 )
 
-        # タブレットのCV0チェック
+        # Tablet zero-conversion check
         tablet = next(
             (d for d in devices if d["device_type"] in ("TABLET", "6")),
             None,
@@ -157,8 +157,8 @@ class _BtoBAnalysisMixin:
                 {
                     "category": "device",
                     "priority": "LOW",
-                    "message": f"タブレットはCV0で{tablet['cost']}円のコストが発生しています。"
-                    "BtoBではタブレットからの問い合わせは稀です。配信除外を検討してください。",
+                    "message": f"Tablet has 0 conversions with a cost of {tablet['cost']}. "
+                    "In B2B, inquiries from tablets are rare. Consider excluding tablet delivery.",
                 }
             )
 
@@ -168,7 +168,7 @@ class _BtoBAnalysisMixin:
         period: str,
         suggestions: list[dict[str, Any]],
     ) -> None:
-        """検索語句のBtoB最適化チェック。"""
+        """B2B optimization check for search terms."""
         try:
             search_terms = await self.get_search_terms_report(
                 campaign_id=campaign_id, period=period
@@ -193,8 +193,8 @@ class _BtoBAnalysisMixin:
                     {
                         "category": "search_terms",
                         "priority": "MEDIUM",
-                        "message": f"情報収集系の検索語句が{round(ratio)}%を占めています。"
-                        "BtoBでは「とは」「比較」「無料」等の語句は"
-                        "CVに繋がりにくい傾向があります。除外キーワードの追加を検討してください。",
+                        "message": f"Informational search terms account for {round(ratio)}% of total. "
+                        "In B2B, terms like explanatory or comparison queries "
+                        "tend to have low conversion rates. Consider adding negative keywords.",
                     }
                 )

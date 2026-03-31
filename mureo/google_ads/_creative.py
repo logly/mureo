@@ -1,7 +1,7 @@
-"""クリエイティブリサーチ Mixin
+"""Creative research mixin.
 
-LP解析 + 既存広告 + 検索語句 + キーワード提案を統合収集し、
-広告クリエイティブ立案に必要なデータを一括で返す。
+Integrates LP analysis, existing ads, search terms, and keyword suggestions
+to return all data needed for ad creative planning.
 """
 
 from __future__ import annotations
@@ -19,13 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 class _CreativeMixin:
-    """広告クリエイティブ関連の複合ツールを提供する Mixin"""
+    """Mixin providing composite ad creative tools."""
 
-    # 親クラス (GoogleAdsApiClient) が提供する属性の型宣言
+    # Type declarations for attributes provided by parent class (GoogleAdsApiClient)
     _customer_id: str
     _client: GoogleAdsClient
 
-    # 親クラスのメソッド（Mixin が呼び出す）
+    # Parent class methods (called by mixin)
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
     def _get_service(self, service_name: str) -> Any: ...
@@ -50,27 +50,27 @@ class _CreativeMixin:
     ) -> list[dict[str, Any]]: ...
 
     # =================================================================
-    # 1. LP解析
+    # 1. LP analysis
     # =================================================================
 
     async def analyze_landing_page(self, url: str) -> dict[str, Any]:
-        """LPを解析し、構造化データをdict形式で返す。
+        """Analyze LP and return structured data as dict.
 
-        エラー時もエラー付きdictを返す（例外を投げない）。
+        Returns error dict on failure (does not raise exceptions).
         """
         try:
             analyzer = LPAnalyzer()
             lp_content = await analyzer.analyze(url)
             return asdict(lp_content)
         except Exception as exc:
-            logger.warning("LP解析に失敗: url=%s, error=%s", url, exc)
+            logger.warning("LP analysis failed: url=%s, error=%s", url, exc)
             return {
                 "url": url,
-                "error": "LP解析に失敗しました。URLが正しいか確認してください。",
+                "error": "LP analysis failed. Please verify the URL is correct.",
             }
 
     # =================================================================
-    # 2. クリエイティブリサーチ（統合収集）
+    # 2. Creative research (integrated collection)
     # =================================================================
 
     async def research_creative(
@@ -79,9 +79,9 @@ class _CreativeMixin:
         url: str,
         ad_group_id: str | None = None,
     ) -> dict[str, Any]:
-        """LP解析+既存広告+検索語句+KW提案を一括収集するマクロツール。
+        """Macro tool that collects LP analysis + existing ads + search terms + keyword suggestions.
 
-        各ステップはtry-exceptで隔離し、1箇所の失敗が全体に影響しない。
+        Each step is isolated with try-except so one failure does not affect the whole.
         """
         self._validate_id(campaign_id, "campaign_id")
         if ad_group_id:
@@ -92,29 +92,29 @@ class _CreativeMixin:
             "url": url,
         }
 
-        # --- 1. LP解析 ---
+        # --- 1. LP analysis ---
         lp_data = await self.analyze_landing_page(url)
         result["lp_analysis"] = lp_data
 
-        # --- 2. 既存広告の詳細（上位5件） ---
+        # --- 2. Existing ad details (top 5) ---
         try:
             result["existing_ads"] = await self._fetch_existing_ads(
                 campaign_id, ad_group_id
             )
         except Exception:
-            logger.warning("既存広告の取得に失敗", exc_info=True)
+            logger.warning("Failed to retrieve existing ads", exc_info=True)
             result["existing_ads"] = "取得失敗"
 
-        # --- 3. 検索語句インサイト ---
+        # --- 3. Search term insights ---
         try:
             result["search_term_insights"] = await self._extract_search_term_insights(
                 campaign_id, ad_group_id
             )
         except Exception:
-            logger.warning("検索語句インサイトの取得に失敗", exc_info=True)
+            logger.warning("Failed to retrieve search term insights", exc_info=True)
             result["search_term_insights"] = "取得失敗"
 
-        # --- 4. キーワード提案 ---
+        # --- 4. Keyword suggestions ---
         try:
             seeds = self._generate_seed_keywords(lp_data)
             if seeds:
@@ -122,25 +122,25 @@ class _CreativeMixin:
             else:
                 result["keyword_suggestions"] = []
         except Exception:
-            logger.warning("キーワード提案の取得に失敗", exc_info=True)
+            logger.warning("Failed to retrieve keyword suggestions", exc_info=True)
             result["keyword_suggestions"] = "取得失敗"
 
-        # --- 5. 既存キーワード ---
+        # --- 5. Existing keywords ---
         try:
             result["existing_keywords"] = await self.list_keywords(
                 campaign_id=campaign_id
             )
         except Exception:
-            logger.warning("既存キーワードの取得に失敗", exc_info=True)
+            logger.warning("Failed to retrieve existing keywords", exc_info=True)
             result["existing_keywords"] = "取得失敗"
 
-        # --- 6. LLM向けコンテキスト要約 ---
+        # --- 6. Context summary for LLM ---
         result["context_summary"] = self._build_context_summary(result)
 
         return result
 
     # =================================================================
-    # ヘルパーメソッド
+    # Helper methods
     # =================================================================
 
     async def _fetch_existing_ads(
@@ -148,8 +148,8 @@ class _CreativeMixin:
         campaign_id: str,
         ad_group_id: str | None,
     ) -> list[dict[str, Any]]:
-        """既存広告のheadlines/descriptions/パフォーマンスを取得"""
-        # 防御的バリデーション（呼び出し元でも検証済みだが、直接呼び出しに備える）
+        """Retrieve existing ad headlines/descriptions/performance."""
+        # Defensive validation (already validated by caller, but for direct calls)
         self._validate_id(campaign_id, "campaign_id")
         if ad_group_id:
             self._validate_id(ad_group_id, "ad_group_id")
@@ -201,20 +201,20 @@ class _CreativeMixin:
         campaign_id: str,
         ad_group_id: str | None,
     ) -> dict[str, Any]:
-        """検索語句から高CV語句・高クリック語句を抽出"""
+        """Extract high-CV and high-click terms from search terms."""
         kwargs: dict[str, Any] = {"campaign_id": campaign_id}
         if ad_group_id:
             kwargs["ad_group_id"] = ad_group_id
         terms = await self.get_search_terms_report(**kwargs)
 
-        # 高CV語句（CV > 0、CV降順）
+        # High-CV terms (CV > 0, sorted by CV desc)
         high_cv = sorted(
             [t for t in terms if t.get("metrics", {}).get("conversions", 0) > 0],
             key=lambda x: x.get("metrics", {}).get("conversions", 0),
             reverse=True,
         )
 
-        # 高クリック語句（クリック降順）
+        # High-click terms (sorted by clicks desc)
         high_click = sorted(
             terms,
             key=lambda x: x.get("metrics", {}).get("clicks", 0),
@@ -229,74 +229,74 @@ class _CreativeMixin:
 
     @staticmethod
     def _generate_seed_keywords(lp_data: dict[str, Any]) -> list[str]:
-        """LP解析結果からキーワード提案用のシードを生成"""
+        """Generate seed keywords for suggestions from LP analysis results."""
         seeds: list[str] = []
 
-        # タイトルからキーワード抽出
+        # Extract keywords from title
         title = lp_data.get("title", "")
         if title:
             seeds.append(title)
 
-        # h1テキスト
+        # h1 text
         for h1 in lp_data.get("h1_texts", []):
             if h1 and h1 not in seeds:
                 seeds.append(h1)
 
-        # メタディスクリプション
+        # Meta description
         meta = lp_data.get("meta_description", "")
         if meta and meta not in seeds:
             seeds.append(meta)
 
-        # 最大5件に制限
+        # Limit to 5
         return seeds[:5]
 
     @staticmethod
     def _build_context_summary(result: dict[str, Any]) -> str:
-        """リサーチ結果をLLM向けのコンテキスト文字列にまとめる"""
+        """Summarize research results as context string for LLM."""
         parts: list[str] = []
 
-        # LP情報
+        # LP information
         lp = result.get("lp_analysis", {})
         if isinstance(lp, dict) and not lp.get("error"):
-            parts.append("【LP情報】")
+            parts.append("[LP Information]")
             if lp.get("title"):
-                parts.append(f"タイトル: {lp['title']}")
+                parts.append(f"Title: {lp['title']}")
             if lp.get("meta_description"):
-                parts.append(f"説明: {lp['meta_description']}")
+                parts.append(f"Description: {lp['meta_description']}")
             if lp.get("h1_texts"):
-                parts.append(f"見出し(H1): {', '.join(lp['h1_texts'])}")
+                parts.append(f"H1 Headings: {', '.join(lp['h1_texts'])}")
             if lp.get("cta_texts"):
                 parts.append(f"CTA: {', '.join(lp['cta_texts'])}")
             if lp.get("features"):
-                parts.append(f"特徴: {', '.join(lp['features'][:5])}")
+                parts.append(f"Features: {', '.join(lp['features'][:5])}")
             if lp.get("prices"):
-                parts.append(f"価格: {', '.join(lp['prices'])}")
+                parts.append(f"Prices: {', '.join(lp['prices'])}")
             if lp.get("industry_hints"):
-                parts.append(f"業界: {', '.join(lp['industry_hints'])}")
+                parts.append(f"Industry: {', '.join(lp['industry_hints'])}")
 
-        # 既存広告の高パフォーマンス要素
+        # High-performance elements from existing ads
         ads = result.get("existing_ads", [])
         if isinstance(ads, list) and ads:
-            parts.append("\n【既存広告のパフォーマンス上位】")
+            parts.append("\n[Top Performing Existing Ads]")
             for ad in ads[:3]:
                 parts.append(
-                    f"- 見出し: {', '.join(ad.get('headlines', [])[:3])} "
+                    f"- Headlines: {', '.join(ad.get('headlines', [])[:3])} "
                     f"(CTR: {ad.get('ctr', 0)}%, CV: {ad.get('conversions', 0)})"
                 )
 
-        # 検索語句インサイト
+        # Search term insights
         insights = result.get("search_term_insights", {})
         if isinstance(insights, dict):
             high_cv = insights.get("high_cv_terms", [])
             if high_cv:
                 cv_terms = [t.get("search_term", "") for t in high_cv[:5]]
-                parts.append(f"\n【CV獲得検索語句】{', '.join(cv_terms)}")
+                parts.append(f"\n[Converting Search Terms] {', '.join(cv_terms)}")
 
-        # ターゲットキーワード
+        # Target keywords
         keywords = result.get("existing_keywords", [])
         if isinstance(keywords, list) and keywords:
             kw_texts = [kw.get("text", "") for kw in keywords[:10] if kw.get("text")]
             if kw_texts:
-                parts.append(f"\n【ターゲットキーワード】\n{', '.join(kw_texts)}")
+                parts.append(f"\n[Target Keywords]\n{', '.join(kw_texts)}")
 
-        return "\n".join(parts) if parts else "LP解析データなし"
+        return "\n".join(parts) if parts else "No LP analysis data"

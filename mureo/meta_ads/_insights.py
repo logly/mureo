@@ -5,7 +5,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Meta APIのdate_presetマッピング
+# Meta API date_preset mapping
 _PERIOD_TO_DATE_PRESET: dict[str, str] = {
     "today": "today",
     "yesterday": "yesterday",
@@ -15,7 +15,7 @@ _PERIOD_TO_DATE_PRESET: dict[str, str] = {
     "last_month": "last_month",
 }
 
-# Insightsの共通取得フィールド
+# Common Insights retrieval fields
 _INSIGHTS_FIELDS = (
     "campaign_name,campaign_id,adset_name,adset_id,ad_name,ad_id,"
     "impressions,clicks,spend,cpc,cpm,ctr,"
@@ -25,9 +25,9 @@ _INSIGHTS_FIELDS = (
 
 
 class InsightsMixin:
-    """Meta Ads インサイト（パフォーマンスレポート）操作Mixin
+    """Meta Ads insights (performance report) operations mixin
 
-    MetaAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     _ad_account_id: str
@@ -43,15 +43,15 @@ class InsightsMixin:
         period: str = "last_7d",
         level: str = "campaign",
     ) -> list[dict[str, Any]]:
-        """パフォーマンスレポートを取得する
+        """Get performance report
 
         Args:
-            campaign_id: キャンペーンID（指定時はそのキャンペーンのみ）
-            period: 期間（today, yesterday, last_7d, last_30d, this_month, last_month）
-            level: 集計レベル（campaign, adset, ad）
+            campaign_id: Campaign ID (limits to this campaign when specified)
+            period: Period (today, yesterday, last_7d, last_30d, this_month, last_month)
+            level: Aggregation level (campaign, adset, ad)
 
         Returns:
-            インサイトデータのリスト
+            List of insight data.
         """
         date_preset = _PERIOD_TO_DATE_PRESET.get(period, "last_7d")
 
@@ -76,15 +76,15 @@ class InsightsMixin:
         campaign_id: str | None = None,
         period: str = "last_7d",
     ) -> dict[str, Any]:
-        """キャンペーンのパフォーマンスを総合分析する。
+        """Comprehensively analyze campaign performance.
 
-        当期と前期のインサイトを比較し、問題点とインサイトを生成する。
+        Compares current and previous period insights to identify issues.
         """
         current = await self.get_performance_report(
             campaign_id=campaign_id, period=period
         )
 
-        # 前期データ取得
+        # Get previous period data
         prev_period_map = {
             "last_7d": "last_30d",
             "last_30d": "last_month",
@@ -115,15 +115,15 @@ class InsightsMixin:
 
         imp_change = _change_pct(cur_imp, prev_imp)
         if imp_change is not None and imp_change < -20:
-            insights.append(f"表示回数が前期比{imp_change}%減少しています")
+            insights.append(f"Impressions decreased {imp_change}% vs. previous period")
 
         click_change = _change_pct(cur_clicks, prev_clicks)
         if click_change is not None and click_change < -20:
-            insights.append(f"クリック数が前期比{click_change}%減少しています")
+            insights.append(f"Clicks decreased {click_change}% vs. previous period")
 
         spend_change = _change_pct(cur_spend, prev_spend)
         if spend_change is not None and spend_change > 30:
-            insights.append(f"広告費が前期比{spend_change}%増加しています")
+            insights.append(f"Ad spend increased {spend_change}% vs. previous period")
 
         return {
             "campaign_id": campaign_id,
@@ -153,7 +153,7 @@ class InsightsMixin:
         campaign_id: str,
         period: str = "last_7d",
     ) -> dict[str, Any]:
-        """年齢×性別のブレイクダウンからオーディエンス効率を分析する。"""
+        """Analyze audience efficiency from age x gender breakdown."""
         breakdown_data = await self.get_breakdown_report(
             campaign_id=campaign_id,
             breakdown="age,gender",
@@ -164,7 +164,7 @@ class InsightsMixin:
             return {
                 "campaign_id": campaign_id,
                 "period": period,
-                "message": "ブレイクダウンデータがありません",
+                "message": "No breakdown data available",
                 "segments": [],
                 "insights": [],
             }
@@ -176,7 +176,7 @@ class InsightsMixin:
             impressions = int(row.get("impressions", 0) or 0)
             ctr = float(row.get("ctr", 0) or 0)
 
-            # actionsからCV数を抽出
+            # Extract CV count from actions
             actions = row.get("actions", [])
             conversions = 0.0
             if actions:
@@ -203,29 +203,29 @@ class InsightsMixin:
                 }
             )
 
-        # コスト降順ソート
+        # Sort by cost descending
         segments.sort(key=lambda x: x["spend"], reverse=True)
 
         insights: list[str] = []
 
-        # CPA算出可能なセグメントでベスト・ワーストを比較
+        # Compare best and worst segments where CPA can be calculated
         with_cpa = [s for s in segments if s["cpa"] is not None]
         if len(with_cpa) >= 2:
             best = min(with_cpa, key=lambda x: x["cpa"])
             worst = max(with_cpa, key=lambda x: x["cpa"])
             if worst["cpa"] > best["cpa"] * 2:
                 insights.append(
-                    f"{worst['age']}・{worst['gender']}のCPA（{worst['cpa']}円）が"
-                    f"{best['age']}・{best['gender']}（{best['cpa']}円）の"
-                    f"{round(worst['cpa'] / best['cpa'], 1)}倍です。"
-                    "ターゲティングの見直しを検討してください。"
+                    f"{worst['age']}・{worst['gender']} CPA ({worst['cpa']}) is "
+                    f"{best['age']}・{best['gender']}（{best['cpa']}) of "
+                    f"{round(worst['cpa'] / best['cpa'], 1)}x."
+                    "Consider reviewing your targeting."
                 )
 
-        # CV0で高コストのセグメント
+        # Segments with 0 CV and high cost
         for s in segments:
             if s["conversions"] == 0 and s["spend"] > 0:
                 insights.append(
-                    f"{s['age']}・{s['gender']}はCV0で{s['spend']}円のコストが発生しています。"
+                    f"{s['age']}・{s['gender']} has 0 CV with {s['spend']} in cost."
                 )
 
         return {
@@ -241,16 +241,16 @@ class InsightsMixin:
         breakdown: str = "age,gender",
         period: str = "last_7d",
     ) -> list[dict[str, Any]]:
-        """ブレイクダウン付きレポートを取得する
+        """Get a report with breakdown
 
         Args:
-            campaign_id: キャンペーンID
-            breakdown: ブレイクダウン種別（age, gender, age,gender,
-                       country, region, publisher_platform等）
-            period: 期間（today, yesterday, last_7d, last_30d, this_month, last_month）
+            campaign_id: Campaign ID
+            breakdown: Breakdown type (age, gender, age,gender,
+                       country, region, publisher_platform, etc.)
+            period: Period (today, yesterday, last_7d, last_30d, this_month, last_month)
 
         Returns:
-            ブレイクダウン付きインサイトデータのリスト
+            List of insight data with breakdowns.
         """
         date_preset = _PERIOD_TO_DATE_PRESET.get(period, "last_7d")
 

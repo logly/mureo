@@ -1,7 +1,7 @@
-"""ターゲティング・推奨事項・変更履歴 Mixin。
+"""Targeting, recommendations, and change history mixin.
 
-デバイスターゲティング、入札調整、地域ターゲティング、
-スケジュールターゲティング、推奨事項、変更履歴を提供する。
+Provides device targeting, bid adjustments, geographic targeting,
+schedule targeting, recommendations, and change history.
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 
 _RESOURCE_NAME_PATTERN = re.compile(r"customers/\d+/recommendations/\d+")
 
-# Google Ads DeviceEnum の整数値→デバイス名マッピング
-# API v23 の campaign_criterion.device.type_ は int を返す
+# Google Ads DeviceEnum integer -> device name mapping
+# API v23 campaign_criterion.device.type_ returns int
 _DEVICE_ENUM_MAP: dict[int, str] = {
     2: "MOBILE",
     3: "TABLET",
@@ -34,31 +34,31 @@ _DEVICE_ENUM_MAP: dict[int, str] = {
 
 
 def _normalize_device_type(raw: Any) -> str:
-    """device.type_ の値をデバイス名に正規化する。
+    """Normalize device.type_ values to device name strings.
 
-    APIは整数(2,3,4)を返すが、Mockテスト等では文字列("DESKTOP"等)や
-    "DeviceType.DESKTOP"形式を返す場合がある。全パターンに対応する。
+    The API returns integers (2,3,4), but mock tests may return strings
+    ("DESKTOP", etc.) or "DeviceType.DESKTOP" format. Handle all patterns.
     """
-    # 整数の場合
+    # Integer case
     if isinstance(raw, int):
         return _DEVICE_ENUM_MAP.get(raw, f"UNKNOWN({raw})")
     s = str(raw)
     # "DeviceType.DESKTOP" 形式
     if "." in s:
         return s.split(".")[-1]
-    # 整数文字列 "2", "3", "4"
+    # Integer string "2", "3", "4"
     try:
         return _DEVICE_ENUM_MAP.get(int(s), s)
     except ValueError:
         pass
-    # そのまま "DESKTOP" 等
+    # Already a string like "DESKTOP"
     return s
 
 
 class _TargetingMixin:
-    """ターゲティング・推奨事項・変更履歴を提供する Mixin。"""
+    """Mixin providing targeting, recommendations, and change history."""
 
-    # 親クラス (GoogleAdsApiClient) が提供する属性の型宣言
+    # Type declarations for attributes provided by parent class (GoogleAdsApiClient)
     _customer_id: str
     _client: GoogleAdsClient
 
@@ -77,14 +77,14 @@ class _TargetingMixin:
 
     def _get_service(self, service_name: str) -> Any: ...
 
-    # === 推奨事項 ===
+    # === Recommendations ===
 
     async def list_recommendations(
         self,
         campaign_id: str | None = None,
         recommendation_type: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Google推奨事項一覧"""
+        """List Google recommendations."""
 
         query = """
             SELECT
@@ -106,9 +106,9 @@ class _TargetingMixin:
         response = await self._search(query)  # type: ignore[attr-defined]
         return [map_recommendation(row.recommendation) for row in response]
 
-    @_wrap_mutate_error("推奨事項適用")
+    @_wrap_mutate_error("recommendation application")
     async def apply_recommendation(self, params: dict[str, Any]) -> dict[str, Any]:
-        """推奨事項を適用"""
+        """Apply recommendation."""
         resource_name = self._validate_resource_name(
             params["resource_name"],
             _RESOURCE_NAME_PATTERN,
@@ -123,14 +123,14 @@ class _TargetingMixin:
         )
         return {"resource_name": response.results[0].resource_name}
 
-    # === デバイスターゲティング ===
+    # === Device Targeting ===
 
     async def get_device_targeting(self, campaign_id: str) -> list[dict[str, Any]]:
-        """キャンペーンのデバイスターゲティング設定を取得
+        """Get campaign device targeting settings.
 
-        全DEVICEタイプのcriterionを取得し、bid_modifierの値で配信状態を判定する。
-        bid_modifier=0.0は配信停止(-100%)、それ以外は配信中。
-        criterionが存在しないデバイスはデフォルト配信中として返す。
+        Retrieves all DEVICE type criteria and determines delivery state from bid_modifier.
+        bid_modifier=0.0 means delivery stopped (-100%), otherwise delivery active.
+        Devices without criteria are returned as default active.
         """
         self._validate_id(campaign_id, "campaign_id")
 
@@ -156,7 +156,7 @@ class _TargetingMixin:
                 "bid_modifier": bid_modifier,
                 "enabled": not math.isclose(bid_modifier, 0.0, abs_tol=1e-9),
             }
-        # 常に3デバイス全て返す（明示設定なし＝デフォルト配信中）
+        # Always return all 3 devices (no explicit setting = default active)
         all_devices = ["DESKTOP", "MOBILE", "TABLET"]
         return [
             found.get(
@@ -171,12 +171,12 @@ class _TargetingMixin:
             for d in all_devices
         ]
 
-    @_wrap_mutate_error("デバイスターゲティング更新")
+    @_wrap_mutate_error("device targeting update")
     async def set_device_targeting(self, params: dict[str, Any]) -> dict[str, Any]:
-        """デバイスターゲティングを設定（指定デバイスのみ配信）
+        """Set device targeting (deliver only to specified devices).
 
-        全デバイスcriterionのbid_modifierを常に明示的に設定する。
-        デバイスごとに個別にmutateを実行し、1件の失敗が他に影響しないようにする。
+        Always explicitly set bid_modifier for all device criteria.
+        Execute mutate individually per device so one failure does not affect others.
         """
         campaign_id = params["campaign_id"]
         self._validate_id(campaign_id, "campaign_id")
@@ -186,12 +186,12 @@ class _TargetingMixin:
         invalid = enabled_devices - valid_devices
         if invalid:
             raise ValueError(
-                f"無効なデバイスタイプ: {invalid}。有効値: {valid_devices}"
+                f"Invalid device type: {invalid}. Valid values: {valid_devices}"
             )
         if not enabled_devices:
-            raise ValueError("最低1つのデバイスを有効にしてください")
+            raise ValueError("At least one device must be enabled")
 
-        # 全デバイスcriterionのIDを取得（bid_modifier設定有無に関わらず）
+        # Get all device criterion IDs (regardless of bid_modifier setting)
 
         query = f"""
             SELECT
@@ -214,7 +214,7 @@ class _TargetingMixin:
             }
 
         logger.info(
-            "デバイスターゲティング設定: campaign=%s, 既存criteria=%s, 有効化=%s",
+            "Device targeting settings: campaign=%s, existing criteria=%s, enabling=%s",
             campaign_id,
             {k: v["criterion_id"] for k, v in criterion_map.items()},
             sorted(enabled_devices),
@@ -263,7 +263,7 @@ class _TargetingMixin:
                 )
                 updated.extend(r.resource_name for r in resp.results)
                 logger.info(
-                    "デバイス %s: %s 成功 (bid_modifier=%.1f)",
+                    "Device %s: %s success (bid_modifier=%.1f)",
                     device_type,
                     op_type,
                     new_modifier,
@@ -275,7 +275,7 @@ class _TargetingMixin:
                     else str(exc)
                 )
                 logger.error(
-                    "デバイス %s: %s 失敗 (bid_modifier=%.1f): %s",
+                    "Device %s: %s failed (bid_modifier=%.1f): %s",
                     device_type,
                     op_type,
                     new_modifier,
@@ -284,20 +284,20 @@ class _TargetingMixin:
                 errors.append(f"{device_type}({op_type}): {detail}")
 
         if not updated and errors:
-            raise ValueError(f"全デバイスの設定に失敗しました: {'; '.join(errors)}")
+            raise ValueError(f"Failed to set all devices: {'; '.join(errors)}")
 
         return {
-            "message": "デバイスターゲティングを更新しました",
+            "message": "Device targeting updated",
             "enabled_devices": sorted(enabled_devices),
             "disabled_devices": sorted(valid_devices - enabled_devices),
             "updated": updated,
             "errors": errors if errors else None,
         }
 
-    # === 入札調整 ===
+    # === Bid Adjustments ===
 
     async def get_bid_adjustments(self, campaign_id: str) -> list[dict[str, Any]]:
-        """キャンペーンの入札調整率を取得"""
+        """Get campaign bid adjustments."""
         self._validate_id(campaign_id, "campaign_id")
 
         query = f"""
@@ -330,18 +330,18 @@ class _TargetingMixin:
             for row in response
         ]
 
-    @_wrap_mutate_error("入札調整率更新")
+    @_wrap_mutate_error("bid adjustment update")
     async def update_bid_adjustment(self, params: dict[str, Any]) -> dict[str, Any]:
-        """入札調整率を更新
+        """Update bid adjustment.
 
-        注意: BudgetGuardによるバリデーション（validate_bid_adjustment）はManaged側で実施する。
+        Note: BudgetGuard validation (validate_bid_adjustment) is performed on the Managed side.
         """
         self._validate_id(params["campaign_id"], "campaign_id")
         self._validate_id(params["criterion_id"], "criterion_id")
         bid_modifier = float(params["bid_modifier"])
         if not (0.1 <= bid_modifier <= 10.0):
             raise ValueError(
-                f"bid_modifier は 0.1 ~ 10.0 の範囲で指定してください: {bid_modifier}"
+                f"bid_modifier must be between 0.1 and 10.0: {bid_modifier}"
             )
 
         cc_service = self._get_service("CampaignCriterionService")
@@ -365,16 +365,16 @@ class _TargetingMixin:
         )
         return {"resource_name": response.results[0].resource_name}
 
-    # === 変更履歴 ===
+    # === Change History ===
 
     async def list_change_history(
         self,
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> list[dict[str, Any]]:
-        """変更履歴一覧
+        """List change history.
 
-        APIは日付範囲フィルターを必須とするため、未指定時は直近14日間をデフォルトとする。
+        API requires date range filter, so defaults to last 14 days when unspecified.
         """
 
         query = """
@@ -386,7 +386,7 @@ class _TargetingMixin:
                 change_event.user_email
             FROM change_event
         """
-        # APIは CHANGE_DATE_RANGE_INFINITE を拒否するため、デフォルト日付範囲を設定
+        # API rejects CHANGE_DATE_RANGE_INFINITE, so set default date range
         if not start_date:
             start_date = (date.today() - timedelta(days=14)).isoformat()
         if not end_date:
@@ -403,10 +403,10 @@ class _TargetingMixin:
         response = await self._search(query)  # type: ignore[attr-defined]
         return [map_change_event(row.change_event) for row in response]
 
-    # === 地域ターゲティング ===
+    # === Geographic Targeting ===
 
     async def list_location_targeting(self, campaign_id: str) -> list[dict[str, Any]]:
-        """キャンペーンの地域ターゲティング一覧"""
+        """List campaign location targeting."""
         self._validate_id(campaign_id, "campaign_id")
 
         query = f"""
@@ -435,32 +435,32 @@ class _TargetingMixin:
             for row in response
         ]
 
-    @_wrap_mutate_error("地域ターゲティング更新")
+    @_wrap_mutate_error("location targeting update")
     async def update_location_targeting(
         self, params: dict[str, Any]
     ) -> list[dict[str, Any]]:
-        """地域ターゲティング更新（追加/削除）
+        """Update location targeting (add/remove).
 
-        注意: BudgetGuardによるターゲティング拡大ガード（validate_targeting_expansion）はManaged側で実施する。
+        Note: BudgetGuard targeting expansion guard (validate_targeting_expansion) is performed on the Managed side.
         """
         cc_service = self._get_service("CampaignCriterionService")
         operations = []
 
-        # 追加
+        # Add
         for loc_id in params.get("add_locations", []):
             op = self._client.get_type("CampaignCriterionOperation")
             criterion = op.create
             criterion.campaign = self._client.get_service(
                 "CampaignService"
             ).campaign_path(self._customer_id, params["campaign_id"])
-            # "geoTargetConstants/2392" と "2392" の両方を受け付ける
+            # Accept both "geoTargetConstants/2392" and "2392" formats
             loc_str = str(loc_id)
             if not loc_str.startswith("geoTargetConstants/"):
                 loc_str = f"geoTargetConstants/{loc_str}"
             criterion.location.geo_target_constant = loc_str
             operations.append(op)
 
-        # 削除
+        # Remove
         for cid in params.get("remove_criterion_ids", []):
             op = self._client.get_type("CampaignCriterionOperation")
             op.remove = self._client.get_service(
@@ -474,10 +474,10 @@ class _TargetingMixin:
         )
         return [{"resource_name": r.resource_name} for r in response.results]
 
-    # === 広告スケジュール ===
+    # === Ad Schedule ===
 
     async def list_schedule_targeting(self, campaign_id: str) -> list[dict[str, Any]]:
-        """キャンペーンの広告スケジュール一覧"""
+        """List campaign ad schedule."""
         self._validate_id(campaign_id, "campaign_id")
 
         query = f"""
@@ -512,15 +512,15 @@ class _TargetingMixin:
             for row in response
         ]
 
-    @_wrap_mutate_error("広告スケジュール更新")
+    @_wrap_mutate_error("ad schedule update")
     async def update_schedule_targeting(
         self, params: dict[str, Any]
     ) -> list[dict[str, Any]]:
-        """広告スケジュール更新"""
+        """Update ad schedule."""
         cc_service = self._get_service("CampaignCriterionService")
         operations = []
 
-        # 追加
+        # Add
         for schedule in params.get("add_schedules", []):
             op = self._client.get_type("CampaignCriterionOperation")
             criterion = op.create
@@ -538,7 +538,7 @@ class _TargetingMixin:
             criterion.ad_schedule.end_minute = minute_enum.ZERO
             operations.append(op)
 
-        # 削除
+        # Remove
         for cid in params.get("remove_criterion_ids", []):
             op = self._client.get_type("CampaignCriterionOperation")
             op.remove = self._client.get_service(

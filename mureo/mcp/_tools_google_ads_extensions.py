@@ -1,91 +1,91 @@
-"""Google Ads ツール定義 — サイトリンク・コールアウト・コンバージョン・ターゲティング"""
+"""Google Ads tool definitions — Sitelinks, callouts, conversions, targeting"""
 
 from __future__ import annotations
 
 from mcp.types import Tool
 
 TOOLS: list[Tool] = [
-    # === サイトリンク ===
+    # === Sitelinks ===
     Tool(
         name="google_ads.sitelinks.list",
-        description="Google Ads キャンペーンのサイトリンク一覧を取得する",
+        description="List Google Ads campaign sitelinks",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
     Tool(
         name="google_ads.sitelinks.create",
-        description="Google Ads サイトリンクを作成しキャンペーンにリンクする",
+        description="Create a Google Ads sitelink and link it to a campaign",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
-                "link_text": {"type": "string", "description": "リンクテキスト"},
-                "final_url": {"type": "string", "description": "最終URL"},
-                "description1": {"type": "string", "description": "説明文1"},
-                "description2": {"type": "string", "description": "説明文2"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
+                "link_text": {"type": "string", "description": "Link text"},
+                "final_url": {"type": "string", "description": "Final URL"},
+                "description1": {"type": "string", "description": "Description line 1"},
+                "description2": {"type": "string", "description": "Description line 2"},
             },
             "required": ["customer_id", "campaign_id", "link_text", "final_url"],
         },
     ),
     Tool(
         name="google_ads.sitelinks.remove",
-        description="Google Ads サイトリンクを削除する",
+        description="Remove a Google Ads sitelink",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
-                "asset_id": {"type": "string", "description": "アセットID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
+                "asset_id": {"type": "string", "description": "Asset ID"},
             },
             "required": ["customer_id", "campaign_id", "asset_id"],
         },
     ),
-    # === コールアウト ===
+    # === Callouts ===
     Tool(
         name="google_ads.callouts.list",
-        description="Google Ads キャンペーンのコールアウト一覧を取得する",
+        description="List Google Ads campaign callouts",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
     Tool(
         name="google_ads.callouts.create",
-        description="Google Ads コールアウトを作成しキャンペーンにリンクする",
+        description="Create a Google Ads callout and link it to a campaign",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "callout_text": {
                     "type": "string",
-                    "description": "コールアウトテキスト",
+                    "description": "Callout text",
                 },
             },
             "required": ["customer_id", "campaign_id", "callout_text"],
@@ -93,30 +93,30 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.callouts.remove",
-        description="Google Ads コールアウトを削除する",
+        description="Remove a Google Ads callout",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
-                "asset_id": {"type": "string", "description": "アセットID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
+                "asset_id": {"type": "string", "description": "Asset ID"},
             },
             "required": ["customer_id", "campaign_id", "asset_id"],
         },
     ),
-    # === コンバージョン ===
+    # === Conversions ===
     Tool(
         name="google_ads.conversions.list",
-        description="Google Ads コンバージョンアクション一覧を取得する",
+        description="List Google Ads conversion actions",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
             },
             "required": ["customer_id"],
@@ -124,17 +124,17 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.conversions.get",
-        description="Google Ads コンバージョンアクション詳細を取得する",
+        description="Get Google Ads conversion action details",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "conversion_action_id": {
                     "type": "string",
-                    "description": "コンバージョンアクションID",
+                    "description": "Conversion action ID",
                 },
             },
             "required": ["customer_id", "conversion_action_id"],
@@ -142,60 +142,60 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.conversions.performance",
-        description="Google Ads コンバージョンアクション別の実績を取得する",
+        description="Get Google Ads conversion performance by conversion action",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "campaign_id": {
                     "type": "string",
-                    "description": "キャンペーンIDでフィルタ",
+                    "description": "Filter by campaign ID",
                 },
-                "period": {"type": "string", "description": "期間"},
+                "period": {"type": "string", "description": "Period"},
             },
             "required": ["customer_id"],
         },
     ),
     Tool(
         name="google_ads.conversions.create",
-        description="Google Ads コンバージョンアクションを作成する",
+        description="Create a Google Ads conversion action",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "name": {
                     "type": "string",
-                    "description": "コンバージョンアクション名",
+                    "description": "Conversion action name",
                 },
                 "type": {
                     "type": "string",
-                    "description": "種別（WEBPAGE/UPLOAD_CLICKS等）",
+                    "description": "Type (WEBPAGE/UPLOAD_CLICKS etc.)",
                 },
                 "category": {
                     "type": "string",
-                    "description": "カテゴリ（PURCHASE/SIGNUP等）",
+                    "description": "Category (PURCHASE/SIGNUP etc.)",
                 },
                 "default_value": {
                     "type": "number",
-                    "description": "デフォルトコンバージョン値",
+                    "description": "Default conversion value",
                 },
                 "always_use_default_value": {
                     "type": "boolean",
-                    "description": "常にデフォルト値を使用するか",
+                    "description": "Whether to always use the default value",
                 },
                 "click_through_lookback_window_days": {
                     "type": "integer",
-                    "description": "クリックスルー計測期間（1-90日）",
+                    "description": "Click-through lookback window (1-90 days)",
                 },
                 "view_through_lookback_window_days": {
                     "type": "integer",
-                    "description": "ビュースルー計測期間（1-30日）",
+                    "description": "View-through lookback window (1-30 days)",
                 },
             },
             "required": ["customer_id", "name"],
@@ -203,39 +203,39 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.conversions.update",
-        description="Google Ads コンバージョンアクションを更新する",
+        description="Update a Google Ads conversion action",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "conversion_action_id": {
                     "type": "string",
-                    "description": "コンバージョンアクションID",
+                    "description": "Conversion action ID",
                 },
-                "name": {"type": "string", "description": "新しい名前"},
-                "category": {"type": "string", "description": "カテゴリ"},
+                "name": {"type": "string", "description": "New name"},
+                "category": {"type": "string", "description": "Category"},
                 "status": {
                     "type": "string",
-                    "description": "ステータス（ENABLED/HIDDEN/REMOVED）",
+                    "description": "Status (ENABLED/HIDDEN/REMOVED)",
                 },
                 "default_value": {
                     "type": "number",
-                    "description": "デフォルトコンバージョン値",
+                    "description": "Default conversion value",
                 },
                 "always_use_default_value": {
                     "type": "boolean",
-                    "description": "常にデフォルト値を使用するか",
+                    "description": "Whether to always use the default value",
                 },
                 "click_through_lookback_window_days": {
                     "type": "integer",
-                    "description": "クリックスルー計測期間（1-90日）",
+                    "description": "Click-through lookback window (1-90 days)",
                 },
                 "view_through_lookback_window_days": {
                     "type": "integer",
-                    "description": "ビュースルー計測期間（1-30日）",
+                    "description": "View-through lookback window (1-30 days)",
                 },
             },
             "required": ["customer_id", "conversion_action_id"],
@@ -243,17 +243,17 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.conversions.remove",
-        description="Google Ads コンバージョンアクションを削除する",
+        description="Remove a Google Ads conversion action",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "conversion_action_id": {
                     "type": "string",
-                    "description": "コンバージョンアクションID",
+                    "description": "Conversion action ID",
                 },
             },
             "required": ["customer_id", "conversion_action_id"],
@@ -261,40 +261,40 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.conversions.tag",
-        description="Google Ads コンバージョンアクションのタグスニペットを取得する",
+        description="Get Google Ads conversion action tag snippet",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "conversion_action_id": {
                     "type": "string",
-                    "description": "コンバージョンアクションID",
+                    "description": "Conversion action ID",
                 },
             },
             "required": ["customer_id", "conversion_action_id"],
         },
     ),
-    # === 推奨事項 ===
+    # === Recommendations ===
     Tool(
         name="google_ads.recommendations.list",
-        description="Google Ads Google推奨事項一覧を取得する",
+        description="List Google Ads recommendations",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "campaign_id": {
                     "type": "string",
-                    "description": "キャンペーンIDでフィルタ",
+                    "description": "Filter by campaign ID",
                 },
                 "recommendation_type": {
                     "type": "string",
-                    "description": "推奨事項タイプでフィルタ",
+                    "description": "Filter by recommendation type",
                 },
             },
             "required": ["customer_id"],
@@ -302,165 +302,165 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.recommendations.apply",
-        description="Google Ads 推奨事項を適用する",
+        description="Apply a Google Ads recommendation",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "resource_name": {
                     "type": "string",
-                    "description": "推奨事項のリソース名",
+                    "description": "Recommendation resource name",
                 },
             },
             "required": ["customer_id", "resource_name"],
         },
     ),
-    # === デバイスターゲティング ===
+    # === Device Targeting ===
     Tool(
         name="google_ads.device_targeting.get",
-        description="Google Ads キャンペーンのデバイスターゲティング設定を取得する",
+        description="Get Google Ads campaign device targeting settings",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
     Tool(
         name="google_ads.device_targeting.set",
-        description="Google Ads デバイスターゲティングを設定する（指定デバイスのみ配信）",
+        description="Set Google Ads device targeting (serve only on specified devices)",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "enabled_devices": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "有効にするデバイスリスト（MOBILE/DESKTOP/TABLET）",
+                    "description": "List of devices to enable (MOBILE/DESKTOP/TABLET)",
                 },
             },
             "required": ["customer_id", "campaign_id", "enabled_devices"],
         },
     ),
-    # === 入札調整 ===
+    # === Bid adjustments ===
     Tool(
         name="google_ads.bid_adjustments.get",
-        description="Google Ads キャンペーンの入札調整率を取得する",
+        description="Get Google Ads campaign bid adjustments",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
     Tool(
         name="google_ads.bid_adjustments.update",
-        description="Google Ads 入札調整率を更新する",
+        description="Update Google Ads bid adjustments",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "criterion_id": {
                     "type": "string",
-                    "description": "クライテリオンID",
+                    "description": "Criterion ID",
                 },
                 "bid_modifier": {
                     "type": "number",
-                    "description": "入札調整率（0.1〜10.0）",
+                    "description": "Bid modifier (0.1 to 10.0)",
                 },
             },
             "required": ["customer_id", "campaign_id", "criterion_id", "bid_modifier"],
         },
     ),
-    # === 地域ターゲティング ===
+    # === Geographic Targeting ===
     Tool(
         name="google_ads.location_targeting.list",
-        description="Google Ads キャンペーンの地域ターゲティング一覧を取得する",
+        description="List Google Ads campaign location targeting",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
     Tool(
         name="google_ads.location_targeting.update",
-        description="Google Ads 地域ターゲティングを更新する（追加/削除）",
+        description="Update Google Ads location targeting (add/remove)",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "add_locations": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "追加する地域ID（geoTargetConstants/2392 形式）",
+                    "description": "Location IDs to add (geoTargetConstants/2392 format)",
                 },
                 "remove_criterion_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "削除するcriterion IDリスト",
+                    "description": "List of criterion IDs to remove",
                 },
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
-    # === 広告スケジュール ===
+    # === Ad schedules ===
     Tool(
         name="google_ads.schedule_targeting.list",
-        description="Google Ads キャンペーンの広告スケジュール一覧を取得する",
+        description="List Google Ads campaign ad schedules",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
     Tool(
         name="google_ads.schedule_targeting.update",
-        description="Google Ads 広告スケジュールを更新する（追加/削除）",
+        description="Update Google Ads ad schedules (add/remove)",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
-                "campaign_id": {"type": "string", "description": "キャンペーンID"},
+                "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "add_schedules": {
                     "type": "array",
                     "items": {
@@ -468,48 +468,48 @@ TOOLS: list[Tool] = [
                         "properties": {
                             "day": {
                                 "type": "string",
-                                "description": "曜日（MONDAY〜SUNDAY）",
+                                "description": "Day of week (MONDAY to SUNDAY)",
                             },
                             "start_hour": {
                                 "type": "integer",
-                                "description": "開始時間（0-23）",
+                                "description": "Start hour (0-23)",
                             },
                             "end_hour": {
                                 "type": "integer",
-                                "description": "終了時間（1-24）",
+                                "description": "End hour (1-24)",
                             },
                         },
                         "required": ["day"],
                     },
-                    "description": "追加するスケジュールリスト",
+                    "description": "List of schedules to add",
                 },
                 "remove_criterion_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "削除するcriterion IDリスト",
+                    "description": "List of criterion IDs to remove",
                 },
             },
             "required": ["customer_id", "campaign_id"],
         },
     ),
-    # === 変更履歴 ===
+    # === Change History ===
     Tool(
         name="google_ads.change_history.list",
-        description="Google Ads 変更履歴一覧を取得する（デフォルト直近14日間）",
+        description="List Google Ads change history (default: last 14 days)",
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads カスタマーID",
+                    "description": "Google Ads customer ID",
                 },
                 "start_date": {
                     "type": "string",
-                    "description": "開始日（YYYY-MM-DD）",
+                    "description": "Start date (YYYY-MM-DD)",
                 },
                 "end_date": {
                     "type": "string",
-                    "description": "終了日（YYYY-MM-DD）",
+                    "description": "End date (YYYY-MM-DD)",
                 },
             },
             "required": ["customer_id"],

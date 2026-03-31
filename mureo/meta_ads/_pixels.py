@@ -1,6 +1,6 @@
-"""Meta Ads Pixel操作Mixin
+"""Meta Ads pixel operations mixin.
 
-ピクセル一覧・詳細・統計・イベント確認（読み取り専用）。
+Pixel listing, details, statistics, and event checking (read-only).
 """
 
 from __future__ import annotations
@@ -11,14 +11,14 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# ピクセル取得用フィールド
+# Pixel retrieval fields
 _PIXEL_FIELDS = (
     "id,name,creation_time,last_fired_time,"
     "is_created_by_business,owner_ad_account,"
     "code,data_use_setting"
 )
 
-# 期間→日数マッピング
+# Period -> days mapping
 _PERIOD_DAYS: dict[str, int] = {
     "last_7d": 7,
     "last_14d": 14,
@@ -28,9 +28,9 @@ _PERIOD_DAYS: dict[str, int] = {
 
 
 class PixelsMixin:
-    """Meta Ads Pixel操作Mixin（読み取り専用）
+    """Meta Ads pixel operations mixin (read-only)
 
-    MetaAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     _ad_account_id: str
@@ -44,10 +44,10 @@ class PixelsMixin:
         *,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """広告アカウントに紐づくピクセル一覧を取得する
+        """List pixels linked to the ad account
 
         Returns:
-            ピクセル情報のリスト
+            List of pixel information.
         """
         params: dict[str, Any] = {
             "fields": _PIXEL_FIELDS,
@@ -57,13 +57,13 @@ class PixelsMixin:
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_pixel(self, pixel_id: str) -> dict[str, Any]:
-        """ピクセル詳細を取得する
+        """Get pixel details
 
         Args:
-            pixel_id: ピクセルID
+            pixel_id: Pixel ID
 
         Returns:
-            ピクセル詳細情報
+            Pixel detail information.
         """
         params: dict[str, Any] = {"fields": _PIXEL_FIELDS}
         return await self._get(f"/{pixel_id}", params)
@@ -73,14 +73,14 @@ class PixelsMixin:
         pixel_id: str,
         period: str = "last_7d",
     ) -> list[dict[str, Any]]:
-        """ピクセルのイベント統計を取得する
+        """Get pixel event statistics
 
         Args:
-            pixel_id: ピクセルID
-            period: 集計期間（last_7d, last_14d, last_30d, last_90d）
+            pixel_id: Pixel ID
+            period: Aggregation period (last_7d, last_14d, last_30d, last_90d)
 
         Returns:
-            イベント統計のリスト
+            List of event statistics.
         """
         days = _PERIOD_DAYS.get(period, 7)
         now = datetime.now(timezone.utc)
@@ -98,13 +98,13 @@ class PixelsMixin:
         self,
         pixel_id: str,
     ) -> list[dict[str, Any]]:
-        """ピクセルで受信しているイベント種別一覧を取得する
+        """List event types received by the pixel
 
         Args:
-            pixel_id: ピクセルID
+            pixel_id: Pixel ID
 
         Returns:
-            イベント種別と件数のリスト
+            List of event types and counts.
         """
         params: dict[str, Any] = {
             "fields": "event_name,count",

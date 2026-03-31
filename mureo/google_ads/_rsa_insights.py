@@ -1,8 +1,8 @@
-"""RSAインサイト抽出
+"""RSA insight extraction.
 
-RSA広告のアセット別パフォーマンスを分析し、
-「なぜ勝ち広告が勝ったのか」を構造化して説明する。
-さらに勝因に基づく新規広告バリエーションを生成する。
+Analyzes RSA ad performance by asset, structurally explains
+why winning ads won, and generates new ad variations based on
+winning factors.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class RSAInsight:
-    """RSAインサイト抽出結果"""
+    """RSA insight extraction result."""
 
     winning_patterns: tuple[str, ...]
     losing_patterns: tuple[str, ...]
@@ -26,7 +26,7 @@ class RSAInsight:
     error: str | None = None
 
 
-# Managed側（src/plugins/google_ads）でLLM呼び出しに使うプロンプトテンプレート
+# Prompt template for LLM calls on the Managed side (src/plugins/google_ads)
 _INSIGHT_PROMPT = """\
 あなたはリスティング広告のRSA（レスポンシブ検索広告）の専門家です。
 
@@ -97,9 +97,9 @@ JSON のみを出力してください。"""
 
 
 def _format_assets(assets: list[dict[str, Any]]) -> str:
-    """アセットリストを文字列フォーマット"""
+    """Format asset list as string."""
     if not assets:
-        return "（データなし）"
+        return "(No data)"
     lines: list[str] = []
     for a in assets:
         lines.append(
@@ -114,11 +114,11 @@ def _format_assets(assets: list[dict[str, Any]]) -> str:
 
 
 class RSAInsightExtractor:
-    """RSAアセットパフォーマンスデータを構造化するクラス。
+    """Class for structuring RSA asset performance data.
 
-    mureo-coreではLLM依存を除去しているため、勝因分析・新広告案生成は行わない。
-    アセットデータの構造化とプロンプト生成までを担当する。
-    LLMによる分析はManaged側で実施すること。
+    LLM dependency is removed in mureo-core, so winning factor analysis and
+    new ad generation are not performed here. Handles asset data structuring
+    and prompt generation only. LLM analysis should be done on the Managed side.
     """
 
     @staticmethod
@@ -127,9 +127,9 @@ class RSAInsightExtractor:
         keywords: list[str] | None = None,
         strategic_context: str | None = None,
     ) -> str:
-        """LLM分析用のプロンプトを生成する。
+        """Generate a prompt for LLM analysis.
 
-        LLM呼び出し自体はManaged側で実施する。
+        The actual LLM call is performed on the Managed side.
         """
         ctx_section = ""
         if strategic_context:
@@ -147,15 +147,15 @@ class RSAInsightExtractor:
             worst_descriptions=_format_assets(asset_data.get("worst_descriptions", [])),
             all_headlines=_format_assets(asset_data.get("headlines", [])),
             all_descriptions=_format_assets(asset_data.get("descriptions", [])),
-            keywords=", ".join(keywords) if keywords else "（未指定）",
+            keywords=", ".join(keywords) if keywords else "(Not specified)",
             strategic_context_section=ctx_section,
         )
 
     @staticmethod
     def parse_response(content: str) -> RSAInsight:
-        """LLMレスポンスをパースする。
+        """Parse an LLM response.
 
-        Managed側でLLM呼び出し後にこのメソッドで結果をパースする。
+        Used to parse results after the LLM call on the Managed side.
         """
         text = content.strip()
         if "```json" in text:
@@ -166,13 +166,13 @@ class RSAInsightExtractor:
         try:
             data = json.loads(text)
         except (json.JSONDecodeError, ValueError) as exc:
-            logger.warning("RSAインサイトのJSONパースに失敗: %s", exc)
+            logger.warning("Failed to parse RSA insight JSON: %s", exc)
             return RSAInsight(
                 winning_patterns=(),
                 losing_patterns=(),
                 recommendations=(),
                 new_ad_variants=(),
-                error=f"結果のパースに失敗しました: {exc}",
+                error=f"Failed to parse result: {exc}",
             )
 
         return RSAInsight(

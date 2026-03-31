@@ -1,6 +1,6 @@
-"""Meta Ads 分析系Mixin
+"""Meta Ads analysis mixin.
 
-プレースメント分析・コスト調査・A/B比較・クリエイティブ改善提案。
+Placement analysis, cost investigation, A/B comparison, and creative improvement suggestions.
 """
 
 from __future__ import annotations
@@ -29,10 +29,10 @@ def _extract_cv(row: dict[str, Any]) -> float:
 
 
 class AnalysisMixin:
-    """Meta Ads 分析系Mixin
+    """Meta Ads analysis mixin.
 
-    MetaAdsApiClientに多重継承して使用する。
-    get_performance_report / get_breakdown_report は InsightsMixin が提供。
+    Used via multiple inheritance with MetaAdsApiClient.
+    get_performance_report / get_breakdown_report are provided by InsightsMixin.
     """
 
     async def get_performance_report(  # type: ignore[empty-body]
@@ -51,7 +51,7 @@ class AnalysisMixin:
     ) -> list[dict[str, Any]]: ...
 
     # =================================================================
-    # プレースメント分析
+    # Placement analysis
     # =================================================================
 
     async def analyze_placements(
@@ -59,7 +59,7 @@ class AnalysisMixin:
         campaign_id: str,
         period: str = "last_7d",
     ) -> dict[str, Any]:
-        """配信面別パフォーマンスを分析する。"""
+        """Analyze performance by placement."""
         data = await self.get_breakdown_report(
             campaign_id=campaign_id,
             breakdown="publisher_platform",
@@ -70,7 +70,7 @@ class AnalysisMixin:
             return {
                 "campaign_id": campaign_id,
                 "period": period,
-                "message": "配信面データがありません",
+                "message": "No placement data available",
                 "placements": [],
                 "insights": [],
             }
@@ -104,16 +104,16 @@ class AnalysisMixin:
             worst = max(with_cpa, key=lambda x: x["cpa"])
             if worst["cpa"] > best["cpa"] * 2:
                 insights.append(
-                    f"{worst['publisher_platform']}のCPA（{worst['cpa']}円）が"
-                    f"{best['publisher_platform']}（{best['cpa']}円）の"
-                    f"{round(worst['cpa'] / best['cpa'], 1)}倍です。"
-                    "配信面の除外または入札調整を検討してください。"
+                    f"{worst['publisher_platform']} CPA ({worst['cpa']}) is "
+                    f"{round(worst['cpa'] / best['cpa'], 1)}x of "
+                    f"{best['publisher_platform']} ({best['cpa']}). "
+                    "Consider excluding this placement or adjusting bids."
                 )
 
         for p in placements:
             if p["conversions"] == 0 and p["spend"] > 0:
                 insights.append(
-                    f"{p['publisher_platform']}はCV0で{p['spend']}円のコストが発生しています。"
+                    f"{p['publisher_platform']} has 0 CV with {p['spend']} in spend."
                 )
 
         return {
@@ -124,7 +124,7 @@ class AnalysisMixin:
         }
 
     # =================================================================
-    # コスト調査
+    # Cost investigation
     # =================================================================
 
     async def investigate_cost(
@@ -132,7 +132,7 @@ class AnalysisMixin:
         campaign_id: str,
         period: str = "last_7d",
     ) -> dict[str, Any]:
-        """広告費増加・CPA悪化の原因を調査する。"""
+        """Investigate causes of ad spend increase or CPA degradation."""
         prev_map = {"last_7d": "last_30d", "last_30d": "last_month"}
         prev_period = prev_map.get(period, "last_30d")
 
@@ -146,7 +146,7 @@ class AnalysisMixin:
         if not current:
             return {
                 "campaign_id": campaign_id,
-                "message": "パフォーマンスデータがありません",
+                "message": "No performance data available",
             }
 
         def _sum(data: list[dict[str, Any]], key: str) -> float:
@@ -167,15 +167,15 @@ class AnalysisMixin:
         findings: list[str] = []
         spend_change = _pct(cur_spend, prev_spend)
         if spend_change is not None and spend_change > 20:
-            findings.append(f"広告費が前期比{spend_change}%増加しています")
+            findings.append(f"Ad spend increased {spend_change}% vs. previous period")
         cpc_change = _pct(cur_cpc, prev_cpc)
         if cpc_change is not None and cpc_change > 15:
             findings.append(
-                f"CPCが前期比{cpc_change}%上昇しています。競合の入札強化の可能性があります"
+                f"CPC increased {cpc_change}% vs. previous period. Possible competitor bid escalation"
             )
         clicks_change = _pct(cur_clicks, prev_clicks)
         if clicks_change is not None and clicks_change > 20:
-            findings.append(f"クリック数が前期比{clicks_change}%増加しています")
+            findings.append(f"Clicks increased {clicks_change}% vs. previous period")
 
         return {
             "campaign_id": campaign_id,
@@ -199,7 +199,7 @@ class AnalysisMixin:
         }
 
     # =================================================================
-    # A/B比較
+    # A/B comparison
     # =================================================================
 
     async def compare_ads(
@@ -207,19 +207,19 @@ class AnalysisMixin:
         ad_set_id: str,
         period: str = "last_7d",
     ) -> dict[str, Any]:
-        """広告セット内の広告パフォーマンスをA/B比較する。"""
+        """A/B compare ad performance within an ad set."""
         data = await self.get_performance_report(
             campaign_id=None, period=period, level="ad"
         )
 
-        # ad_set_id でフィルタ（レスポンスにadset_idが含まれる場合のみ）
+        # Filter by ad_set_id (only when response includes adset_id)
         if ad_set_id:
             ads_data = [
                 r
                 for r in data
                 if r.get("adset_id", "") == ad_set_id or not r.get("adset_id")
             ]
-            # フィルタ結果が空なら該当広告セットのデータなしとして返す
+            # If filter result is empty, return as no data for the specified ad set
             if not ads_data:
                 return {"error": "No ads found for the specified ad_set_id", "ads": []}
         else:
@@ -230,7 +230,7 @@ class AnalysisMixin:
                 "ad_set_id": ad_set_id,
                 "ads": [],
                 "winner": None,
-                "message": "広告データがありません",
+                "message": "No ad data available",
             }
 
         ads: list[dict[str, Any]] = []
@@ -239,7 +239,7 @@ class AnalysisMixin:
             cpc = _safe_float(r.get("cpc"))
             cv = _extract_cv(r)
             spend = _safe_float(r.get("spend"))
-            # スコア: CTR重視 + CV加点
+            # Score: CTR-weighted + CV bonus
             score = ctr * 10 + (cv * 5 if cv > 0 else 0)
 
             ads.append(
@@ -270,18 +270,22 @@ class AnalysisMixin:
             winner = {
                 "ad_id": w["ad_id"],
                 "ad_name": w["ad_name"],
-                "reason": "、".join(reasons) if reasons else "総合スコアが最も高い",
+                "reason": ", ".join(reasons) if reasons else "Highest overall score",
             }
 
         return {
             "ad_set_id": ad_set_id,
             "ads": ads,
             "winner": winner,
-            **({"message": "比較には2つ以上の広告が必要です"} if len(ads) < 2 else {}),
+            **(
+                {"message": "At least 2 ads are required for comparison"}
+                if len(ads) < 2
+                else {}
+            ),
         }
 
     # =================================================================
-    # クリエイティブ改善提案
+    # Creative improvement suggestions
     # =================================================================
 
     async def suggest_creative_improvements(
@@ -289,7 +293,7 @@ class AnalysisMixin:
         campaign_id: str,
         period: str = "last_7d",
     ) -> dict[str, Any]:
-        """広告パフォーマンスに基づくクリエイティブ改善提案を生成する。"""
+        """Generate creative improvement suggestions based on ad performance."""
         data = await self.get_performance_report(
             campaign_id=campaign_id, period=period, level="ad"
         )
@@ -321,7 +325,7 @@ class AnalysisMixin:
 
         suggestions: list[dict[str, Any]] = []
 
-        # 低CTR広告の検出
+        # Detect low-CTR ads
         avg_ctr = sum(a["ctr"] for a in ads) / len(ads) if ads else 0
         for a in ads:
             if avg_ctr > 0 and a["ctr"] < avg_ctr * 0.5:
@@ -331,12 +335,12 @@ class AnalysisMixin:
                         "ad_id": a["ad_id"],
                         "ad_name": a["ad_name"],
                         "priority": "HIGH",
-                        "message": f"「{a['ad_name']}」のCTR（{a['ctr']}%）が平均（{round(avg_ctr, 2)}%）の半分以下です。"
-                        "見出しや画像の見直しを検討してください。",
+                        "message": f"'{a['ad_name']}' CTR ({a['ctr']}%) is less than half the average ({round(avg_ctr, 2)}%). "
+                        "Consider revising the headline or image.",
                     }
                 )
 
-        # CV0で高コストの広告
+        # Ads with 0 CV and high cost
         for a in ads:
             if a["conversions"] == 0 and a["spend"] > 0:
                 suggestions.append(
@@ -345,12 +349,12 @@ class AnalysisMixin:
                         "ad_id": a["ad_id"],
                         "ad_name": a["ad_name"],
                         "priority": "MEDIUM",
-                        "message": f"「{a['ad_name']}」はCV0で{a['spend']}円のコストが発生しています。"
-                        "一時停止またはクリエイティブの差し替えを検討してください。",
+                        "message": f"'{a['ad_name']}' has 0 CV with {a['spend']} in spend. "
+                        "Consider pausing or replacing the creative.",
                     }
                 )
 
-        # CPA格差の検出
+        # Detect CPA disparity
         with_cpa = [a for a in ads if a["cpa"] is not None]
         if len(with_cpa) >= 2:
             best = min(with_cpa, key=lambda x: x["cpa"])
@@ -362,8 +366,8 @@ class AnalysisMixin:
                             "ad_id": a["ad_id"],
                             "ad_name": a["ad_name"],
                             "priority": "MEDIUM",
-                            "message": f"「{a['ad_name']}」のCPA（{a['cpa']}円）が"
-                            f"最良広告（{best['cpa']}円）の{round(a['cpa'] / best['cpa'], 1)}倍です。",
+                            "message": f"'{a['ad_name']}' CPA ({a['cpa']}) is "
+                            f"{round(a['cpa'] / best['cpa'], 1)}x of the best ad ({best['cpa']}).",
                         }
                     )
 

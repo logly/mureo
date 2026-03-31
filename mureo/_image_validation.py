@@ -1,6 +1,6 @@
-"""メディアファイルアップロード共通バリデーション
+"""Common media file upload validation
 
-Meta Ads / Google Ads 両方で使用するファイル検証ロジック（画像・動画対応）。
+File validation logic shared by Meta Ads / Google Ads (supports images and videos).
 """
 
 from __future__ import annotations
@@ -16,56 +16,51 @@ def _validate_media_file(
     allowed_extensions: frozenset[str],
     media_type_label: str,
 ) -> Path:
-    """メディアファイルの入力バリデーションを実行する（画像・動画共通）。
+    """Validate a media file (shared by images and videos).
 
     Args:
-        file_path: ローカルファイルのパス
-        max_size_bytes: ファイルサイズ上限（バイト）
-        max_size_label: エラーメッセージ用のサイズ表示（例: "30MB"）
-        allowed_extensions: 許可する拡張子の集合（小文字、ドットなし）
-        media_type_label: エラーメッセージ用のメディア種別（例: "画像", "動画"）
+        file_path: Local file path
+        max_size_bytes: Maximum file size in bytes
+        max_size_label: Size label for error messages (e.g. "30MB")
+        allowed_extensions: Set of allowed extensions (lowercase, no dot)
+        media_type_label: Media type label for error messages (e.g. "image", "video")
 
     Returns:
-        検証済みのPathオブジェクト
+        Validated Path object.
 
     Raises:
-        ValueError: パストラバーサル、未対応形式、サイズ超過
-        FileNotFoundError: ファイルが存在しない
+        ValueError: Path traversal, unsupported format, or size exceeded.
+        FileNotFoundError: File does not exist.
     """
-    # パストラバーサル防止（..チェック + resolve()で正規化）
+    # Prevent path traversal (.. check + resolve() normalization)
     if ".." in file_path:
-        raise ValueError(
-            f"不正なファイルパス: パスに '..' を含めることはできません: {file_path}"
-        )
+        raise ValueError(f"Invalid file path: path must not contain '..' : {file_path}")
 
     path = Path(file_path)
 
-    # ファイル存在チェック
+    # File existence check
     if not path.exists():
-        raise FileNotFoundError(f"ファイルが見つかりません: {file_path}")
+        raise FileNotFoundError(f"File not found: {file_path}")
 
-    # シンボリックリンク解決後に通常ファイルであることを確認
+    # Verify it is a regular file after resolving symlinks
     resolved = path.resolve()
     if not resolved.is_file():
-        raise ValueError(
-            f"不正なファイルパス: 通常のファイルではありません: {file_path}"
-        )
+        raise ValueError(f"Invalid file path: not a regular file: {file_path}")
 
-    # 拡張子チェック
+    # Extension check
     ext = path.suffix.lower().lstrip(".")
     if ext not in allowed_extensions:
         allowed_str = ", ".join(sorted(allowed_extensions))
         raise ValueError(
-            f"対応していない{media_type_label}形式です: .{ext} "
-            f"(対応形式: {allowed_str})"
+            f"Unsupported {media_type_label} format: .{ext} "
+            f"(supported formats: {allowed_str})"
         )
 
-    # ファイルサイズチェック
+    # File size check
     size = path.stat().st_size
     if size > max_size_bytes:
         raise ValueError(
-            f"ファイルサイズが上限を超えています: "
-            f"{size:,} bytes (上限: {max_size_label})"
+            f"File size exceeds the limit: " f"{size:,} bytes (limit: {max_size_label})"
         )
 
     return path
@@ -78,27 +73,27 @@ def validate_image_file(
     max_size_label: str,
     allowed_extensions: frozenset[str],
 ) -> Path:
-    """画像ファイルの入力バリデーションを実行する。
+    """Validate an image file.
 
     Args:
-        file_path: ローカル画像ファイルのパス
-        max_size_bytes: ファイルサイズ上限（バイト）
-        max_size_label: エラーメッセージ用のサイズ表示（例: "30MB"）
-        allowed_extensions: 許可する拡張子の集合（小文字、ドットなし）
+        file_path: Local image file path
+        max_size_bytes: Maximum file size in bytes
+        max_size_label: Size label for error messages (e.g. "30MB")
+        allowed_extensions: Set of allowed extensions (lowercase, no dot)
 
     Returns:
-        検証済みのPathオブジェクト
+        Validated Path object.
 
     Raises:
-        ValueError: パストラバーサル、未対応形式、サイズ超過
-        FileNotFoundError: ファイルが存在しない
+        ValueError: Path traversal, unsupported format, or size exceeded.
+        FileNotFoundError: File does not exist.
     """
     return _validate_media_file(
         file_path,
         max_size_bytes=max_size_bytes,
         max_size_label=max_size_label,
         allowed_extensions=allowed_extensions,
-        media_type_label="画像",
+        media_type_label="image",
     )
 
 
@@ -109,25 +104,25 @@ def validate_video_file(
     max_size_label: str,
     allowed_extensions: frozenset[str],
 ) -> Path:
-    """動画ファイルの入力バリデーションを実行する。
+    """Validate a video file.
 
     Args:
-        file_path: ローカル動画ファイルのパス
-        max_size_bytes: ファイルサイズ上限（バイト）
-        max_size_label: エラーメッセージ用のサイズ表示（例: "100MB"）
-        allowed_extensions: 許可する拡張子の集合（小文字、ドットなし）
+        file_path: Local video file path
+        max_size_bytes: Maximum file size in bytes
+        max_size_label: Size label for error messages (e.g. "100MB")
+        allowed_extensions: Set of allowed extensions (lowercase, no dot)
 
     Returns:
-        検証済みのPathオブジェクト
+        Validated Path object.
 
     Raises:
-        ValueError: パストラバーサル、未対応形式、サイズ超過
-        FileNotFoundError: ファイルが存在しない
+        ValueError: Path traversal, unsupported format, or size exceeded.
+        FileNotFoundError: File does not exist.
     """
     return _validate_media_file(
         file_path,
         max_size_bytes=max_size_bytes,
         max_size_label=max_size_label,
         allowed_extensions=allowed_extensions,
-        media_type_label="動画",
+        media_type_label="video",
     )

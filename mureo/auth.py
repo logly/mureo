@@ -1,7 +1,7 @@
-"""認証情報の読み込みモジュール
+"""Credential loading module
 
-~/.mureo/credentials.json からGoogle Ads / Meta Adsの認証情報を読み込む。
-ファイルが存在しない場合は環境変数にフォールバックする。
+Load Google Ads / Meta Ads credentials from ~/.mureo/credentials.json.
+Falls back to environment variables if the file does not exist.
 """
 
 from __future__ import annotations
@@ -24,13 +24,13 @@ _TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
 # ---------------------------------------------------------------------------
-# データクラス
+# Data classes
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class GoogleAdsCredentials:
-    """Google Ads認証情報（イミュータブル）"""
+    """Google Ads credentials (immutable)."""
 
     developer_token: str
     client_id: str
@@ -41,7 +41,7 @@ class GoogleAdsCredentials:
 
 @dataclass(frozen=True)
 class MetaAdsCredentials:
-    """Meta Ads認証情報（イミュータブル）"""
+    """Meta Ads credentials (immutable)."""
 
     access_token: str
     app_id: str | None = None
@@ -49,34 +49,34 @@ class MetaAdsCredentials:
 
 
 # ---------------------------------------------------------------------------
-# 読み込み関数
+# Loading functions
 # ---------------------------------------------------------------------------
 
 
 def load_credentials(path: Path | None = None) -> dict[str, Any]:
-    """~/.mureo/credentials.json から認証情報を読み込む。
+    """Load credentials from ~/.mureo/credentials.json.
 
     Args:
-        path: credentials.jsonのパス。Noneの場合はデフォルトパスを使用。
+        path: Path to credentials.json. Uses default path if None.
 
     Returns:
-        認証情報の辞書。ファイルが存在しない・不正JSON の場合は空辞書。
+        Credential dict. Returns empty dict if file is missing or invalid JSON.
     """
     resolved = path if path is not None else _resolve_default_path()
 
     if not resolved.exists():
-        logger.debug("credentials.jsonが見つかりません: %s", resolved)
+        logger.debug("credentials.json not found: %s", resolved)
         return {}
 
     try:
         text = resolved.read_text(encoding="utf-8")
         data = json.loads(text)
     except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("credentials.jsonの読み込みに失敗: %s", exc)
+        logger.warning("Failed to read credentials.json: %s", exc)
         return {}
 
     if not isinstance(data, dict):
-        logger.warning("credentials.jsonのルートがオブジェクトではありません")
+        logger.warning("credentials.json root is not an object")
         return {}
 
     return data
@@ -85,14 +85,14 @@ def load_credentials(path: Path | None = None) -> dict[str, Any]:
 def load_google_ads_credentials(
     path: Path | None = None,
 ) -> GoogleAdsCredentials | None:
-    """Google Ads認証情報を読み込む。環境変数フォールバック付き。
+    """Load Google Ads credentials with environment variable fallback.
 
-    優先順位:
-        1. credentials.json の google_ads セクション
-        2. 環境変数 (GOOGLE_ADS_*)
+    Priority:
+        1. google_ads section in credentials.json
+        2. Environment variables (GOOGLE_ADS_*)
 
     Returns:
-        GoogleAdsCredentials または None（必須項目が不足している場合）
+        GoogleAdsCredentials or None if required fields are missing.
     """
     data = load_credentials(path)
     google_section = data.get("google_ads")
@@ -113,21 +113,21 @@ def load_google_ads_credentials(
                 login_customer_id=login_customer_id,
             )
 
-    # 環境変数フォールバック
+    # Environment variable fallback
     return _load_google_ads_from_env()
 
 
 def load_meta_ads_credentials(
     path: Path | None = None,
 ) -> MetaAdsCredentials | None:
-    """Meta Ads認証情報を読み込む。環境変数フォールバック付き。
+    """Load Meta Ads credentials with environment variable fallback.
 
-    優先順位:
-        1. credentials.json の meta_ads セクション
-        2. 環境変数 (META_ADS_*)
+    Priority:
+        1. meta_ads section in credentials.json
+        2. Environment variables (META_ADS_*)
 
     Returns:
-        MetaAdsCredentials または None（必須項目が不足している場合）
+        MetaAdsCredentials or None if required fields are missing.
     """
     data = load_credentials(path)
     meta_section = data.get("meta_ads")
@@ -141,12 +141,12 @@ def load_meta_ads_credentials(
                 app_secret=meta_section.get("app_secret"),
             )
 
-    # 環境変数フォールバック
+    # Environment variable fallback
     return _load_meta_ads_from_env()
 
 
 # ---------------------------------------------------------------------------
-# クライアント生成ヘルパー
+# Client factory helpers
 # ---------------------------------------------------------------------------
 
 
@@ -154,14 +154,14 @@ def create_google_ads_client(
     credentials: GoogleAdsCredentials,
     customer_id: str,
 ) -> GoogleAdsApiClient:
-    """認証情報からGoogleAdsApiClientを生成する。
+    """Create a GoogleAdsApiClient from credentials.
 
     Args:
-        credentials: Google Ads認証情報
-        customer_id: 操作対象のGoogle Adsアカウント（customer_id）
+        credentials: Google Ads credentials
+        customer_id: Target Google Ads account (customer_id)
 
     Returns:
-        GoogleAdsApiClient インスタンス
+        GoogleAdsApiClient instance
     """
     oauth_credentials = Credentials(  # type: ignore[no-untyped-call]
         token=None,
@@ -183,14 +183,14 @@ def create_meta_ads_client(
     credentials: MetaAdsCredentials,
     account_id: str,
 ) -> MetaAdsApiClient:
-    """認証情報からMetaAdsApiClientを生成する。
+    """Create a MetaAdsApiClient from credentials.
 
     Args:
-        credentials: Meta Ads認証情報
-        account_id: 広告アカウントID（"act_XXXX" 形式）
+        credentials: Meta Ads credentials
+        account_id: Ad account ID ("act_XXXX" format)
 
     Returns:
-        MetaAdsApiClient インスタンス
+        MetaAdsApiClient instance
     """
     return MetaAdsApiClient(
         access_token=credentials.access_token,
@@ -199,17 +199,17 @@ def create_meta_ads_client(
 
 
 # ---------------------------------------------------------------------------
-# 内部ヘルパー
+# Internal helpers
 # ---------------------------------------------------------------------------
 
 
 def _resolve_default_path() -> Path:
-    """デフォルトのcredentials.jsonパスを解決する"""
+    """Resolve the default credentials.json path."""
     return Path.home() / ".mureo" / "credentials.json"
 
 
 def _load_google_ads_from_env() -> GoogleAdsCredentials | None:
-    """環境変数からGoogle Ads認証情報を読み込む"""
+    """Load Google Ads credentials from environment variables."""
     developer_token = os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", "")
     client_id = os.environ.get("GOOGLE_ADS_CLIENT_ID", "")
     client_secret = os.environ.get("GOOGLE_ADS_CLIENT_SECRET", "")
@@ -229,7 +229,7 @@ def _load_google_ads_from_env() -> GoogleAdsCredentials | None:
 
 
 def _load_meta_ads_from_env() -> MetaAdsCredentials | None:
-    """環境変数からMeta Ads認証情報を読み込む"""
+    """Load Meta Ads credentials from environment variables."""
     access_token = os.environ.get("META_ADS_ACCESS_TOKEN", "")
 
     if not access_token:

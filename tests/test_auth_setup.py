@@ -408,7 +408,7 @@ async def test_run_google_oauth_no_refresh_token() -> None:
         "mureo.auth_setup.InstalledAppFlow.from_client_config",
         return_value=mock_flow,
     ):
-        with pytest.raises(RuntimeError, match="refresh_tokenを取得できませんでした"):
+        with pytest.raises(RuntimeError, match="Failed to obtain refresh_token"):
             await run_google_oauth(
                 client_id="test-cid",
                 client_secret="test-csec",
@@ -583,13 +583,13 @@ async def test_run_google_oauth_flow_exception() -> None:
     from mureo.auth_setup import run_google_oauth
 
     mock_flow = MagicMock()
-    mock_flow.run_local_server.side_effect = Exception("ブラウザを開けません")
+    mock_flow.run_local_server.side_effect = Exception("Cannot open browser")
 
     with patch(
         "mureo.auth_setup.InstalledAppFlow.from_client_config",
         return_value=mock_flow,
     ):
-        with pytest.raises(Exception, match="ブラウザを開けません"):
+        with pytest.raises(Exception, match="Cannot open browser"):
             await run_google_oauth(
                 client_id="test-cid",
                 client_secret="test-csec",
@@ -1140,7 +1140,7 @@ async def test_list_meta_ad_accounts_error() -> None:
         instance.__aexit__ = AsyncMock(return_value=False)
         MockClient.return_value = instance
 
-        with pytest.raises(RuntimeError, match="広告アカウント一覧"):
+        with pytest.raises(RuntimeError, match="Failed to retrieve ad account list"):
             await list_meta_ad_accounts("test-token")
 
 
@@ -1221,7 +1221,7 @@ async def test_run_meta_oauth_timeout() -> None:
         server_instance.authorization_code = None  # タイムアウト
         server_instance.wait_for_callback = MagicMock()
 
-        with pytest.raises(RuntimeError, match="タイムアウト"):
+        with pytest.raises(RuntimeError, match="Authentication timed out"):
             await run_meta_oauth(
                 app_id="test-app-id",
                 app_secret="test-app-secret",
@@ -1338,7 +1338,7 @@ async def test_setup_meta_ads_no_accounts(tmp_path: Path) -> None:
             return_value=[],
         ),
     ):
-        with pytest.raises(RuntimeError, match="広告アカウントが見つかりません"):
+        with pytest.raises(RuntimeError, match="No ad accounts found"):
             await setup_meta_ads(credentials_path=cred_path)
 
 

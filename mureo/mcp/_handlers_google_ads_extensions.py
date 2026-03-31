@@ -1,6 +1,6 @@
-"""Google Ads MCPツール ハンドラー実装（拡張機能）
+"""Google Ads MCP tool handler implementation (extensions)
 
-サイトリンク、コールアウト、コンバージョン、ターゲティング関連のハンドラー。
+Handlers for sitelinks, callouts, conversions, and targeting.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# サイトリンク
+# Sitelinks
 # ---------------------------------------------------------------------------
 
 
@@ -68,7 +68,7 @@ async def handle_sitelinks_remove(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# コールアウト
+# Callouts
 # ---------------------------------------------------------------------------
 
 
@@ -108,7 +108,7 @@ async def handle_callouts_remove(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# コンバージョン
+# Conversions
 # ---------------------------------------------------------------------------
 
 
@@ -215,7 +215,7 @@ async def handle_conversions_tag(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# ターゲティング
+# Targeting
 # ---------------------------------------------------------------------------
 
 
@@ -373,19 +373,19 @@ async def handle_change_history_list(
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーマッピング
+# Handler mapping
 # ---------------------------------------------------------------------------
 
 HANDLERS_EXTENSIONS: dict[str, Any] = {
-    # サイトリンク
+    # Sitelinks
     "google_ads.sitelinks.list": handle_sitelinks_list,
     "google_ads.sitelinks.create": handle_sitelinks_create,
     "google_ads.sitelinks.remove": handle_sitelinks_remove,
-    # コールアウト
+    # Callouts
     "google_ads.callouts.list": handle_callouts_list,
     "google_ads.callouts.create": handle_callouts_create,
     "google_ads.callouts.remove": handle_callouts_remove,
-    # コンバージョン
+    # Conversions
     "google_ads.conversions.list": handle_conversions_list,
     "google_ads.conversions.get": handle_conversions_get,
     "google_ads.conversions.performance": handle_conversions_performance,
@@ -393,7 +393,7 @@ HANDLERS_EXTENSIONS: dict[str, Any] = {
     "google_ads.conversions.update": handle_conversions_update,
     "google_ads.conversions.remove": handle_conversions_remove,
     "google_ads.conversions.tag": handle_conversions_tag,
-    # ターゲティング
+    # Targeting
     "google_ads.recommendations.list": handle_recommendations_list,
     "google_ads.recommendations.apply": handle_recommendations_apply,
     "google_ads.device_targeting.get": handle_device_targeting_get,

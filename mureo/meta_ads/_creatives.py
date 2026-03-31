@@ -1,6 +1,6 @@
-"""Meta Ads クリエイティブ操作Mixin
+"""Meta Ads creative operations mixin.
 
-AdCreative作成・画像アップロード・ダイナミッククリエイティブ対応。
+Covers AdCreative creation, image upload, and dynamic creative support.
 """
 
 from __future__ import annotations
@@ -15,19 +15,19 @@ from mureo._image_validation import validate_image_file, validate_video_file
 
 logger = logging.getLogger(__name__)
 
-# Meta Ads 画像アップロード制限
+# Meta Ads image upload limits
 _META_MAX_IMAGE_SIZE_BYTES = 30 * 1024 * 1024  # 30MB
 _META_ALLOWED_IMAGE_EXTENSIONS = frozenset({"jpg", "jpeg", "png", "gif", "bmp", "tiff"})
 
-# Meta Ads 動画アップロード制限
-_META_MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024  # 100MB（実用上の制限）
+# Meta Ads video upload limits
+_META_MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024  # 100MB (practical limit)
 _META_ALLOWED_VIDEO_EXTENSIONS = frozenset({"mp4", "mov", "avi", "wmv", "mkv"})
 
-# カルーセルカード枚数制限
+# Carousel card count limits
 _CAROUSEL_MIN_CARDS = 2
 _CAROUSEL_MAX_CARDS = 10
 
-# AdCreative取得用フィールド
+# AdCreative retrieval fields
 _CREATIVE_FIELDS = (
     "id,name,status,title,body,image_url,image_hash,"
     "thumbnail_url,object_story_spec,url_tags"
@@ -35,9 +35,9 @@ _CREATIVE_FIELDS = (
 
 
 class CreativesMixin:
-    """Meta Ads クリエイティブ操作Mixin
+    """Meta Ads creative operations mixin.
 
-    MetaAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     _ad_account_id: str
@@ -57,10 +57,10 @@ class CreativesMixin:
         *,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """AdCreative一覧を取得する
+        """List AdCreatives
 
         Returns:
-            AdCreative情報のリスト
+            List of AdCreative information.
         """
         params: dict[str, Any] = {
             "fields": _CREATIVE_FIELDS,
@@ -82,21 +82,21 @@ class CreativesMixin:
         description: str | None = None,
         call_to_action: str | None = None,
     ) -> dict[str, Any]:
-        """AdCreativeを作成する（画像URL or image_hash指定）
+        """Create an AdCreative (specify image_url or image_hash)
 
         Args:
-            name: クリエイティブ名
-            page_id: FacebookページID
-            link_url: リンク先URL
-            image_url: 画像URL（image_hashと排他）
-            image_hash: アップロード済み画像のハッシュ（image_urlと排他）
-            message: 広告本文
-            headline: 見出し
-            description: 説明文
-            call_to_action: CTAボタンタイプ（LEARN_MORE, SIGN_UP等）
+            name: Creative name
+            page_id: Facebook page ID
+            link_url: Destination link URL
+            image_url: Image URL (mutually exclusive with image_hash)
+            image_hash: Uploaded image hash (mutually exclusive with image_url)
+            message: Ad body text
+            headline: Headline
+            description: Description text
+            call_to_action: CTA button type (LEARN_MORE, SIGN_UP, etc.)
 
         Returns:
-            作成されたAdCreative情報
+            Created AdCreative information.
         """
         link_data: dict[str, Any] = {
             "link": link_url,
@@ -132,10 +132,10 @@ class CreativesMixin:
         self,
         image_url: str,
     ) -> dict[str, Any]:
-        """画像URLを指定してMeta APIにアップロードする
+        """Upload an image to Meta API from a URL
 
         Args:
-            image_url: アップロード元の画像URL
+            image_url: Source image URL
 
         Returns:
             {"hash": "...", "url": "..."} or {"error": "..."}
@@ -148,9 +148,9 @@ class CreativesMixin:
 
         images = result.get("images")
         if not images or not isinstance(images, dict):
-            return {"error": "画像アップロードに失敗しました"}
+            return {"error": "Image upload failed"}
 
-        # imagesは {filename: {hash, url}} の形式
+        # images is in {filename: {hash, url}} format
         first_image = next(iter(images.values()))
         return {
             "hash": first_image.get("hash", ""),
@@ -162,18 +162,18 @@ class CreativesMixin:
         file_path: str,
         name: str | None = None,
     ) -> dict[str, Any]:
-        """ローカルファイルから画像をアップロードする。
+        """Upload an image from a local file.
 
         Args:
-            file_path: ローカル画像ファイルのパス
-            name: 画像名（省略時はファイル名を使用）
+            file_path: Local image file path
+            name: Image name (defaults to filename)
 
         Returns:
             {"hash": "...", "url": "..."} or {"error": "..."}
 
         Raises:
-            FileNotFoundError: ファイルが存在しない場合
-            ValueError: バリデーションエラー
+            FileNotFoundError: If the file does not exist.
+            ValueError: Validation error
         """
         path = validate_image_file(
             file_path,
@@ -196,7 +196,7 @@ class CreativesMixin:
 
         images = result.get("images")
         if not images or not isinstance(images, dict):
-            return {"error": "画像アップロードに失敗しました"}
+            return {"error": "Image upload failed"}
 
         first_image = next(iter(images.values()))
         return {
@@ -216,22 +216,22 @@ class CreativesMixin:
         descriptions: list[str] | None = None,
         call_to_actions: list[str] | None = None,
     ) -> dict[str, Any]:
-        """ダイナミッククリエイティブ用AdCreativeを作成する
+        """Create a dynamic creative AdCreative
 
-        複数の画像・本文・見出しを登録し、Meta側が自動最適化する。
+        Registers multiple images, body texts, and headlines; Meta auto-optimizes.
 
         Args:
-            name: クリエイティブ名
-            page_id: FacebookページID
-            image_hashes: 画像ハッシュのリスト（2〜10枚推奨）
-            bodies: 広告本文のリスト
-            titles: 見出しのリスト
-            link_url: リンク先URL
-            descriptions: 説明文のリスト（任意）
-            call_to_actions: CTAタイプのリスト（任意）
+            name: Creative name
+            page_id: Facebook page ID
+            image_hashes: List of image hashes (2-10 recommended)
+            bodies: List of ad body texts
+            titles: List of headlines
+            link_url: Destination link URL
+            descriptions: List of descriptions (optional)
+            call_to_actions: List of CTA types (optional)
 
         Returns:
-            作成されたAdCreative情報
+            Created AdCreative information.
         """
         object_story_spec = {
             "page_id": page_id,
@@ -261,20 +261,20 @@ class CreativesMixin:
         return await self._post(f"/{self._ad_account_id}/adcreatives", data)
 
     # ------------------------------------------------------------------
-    # 動画アップロード
+    # Video upload
     # ------------------------------------------------------------------
 
     async def upload_ad_video(
         self, video_url: str, title: str | None = None
     ) -> dict[str, Any]:
-        """URL指定で動画をアップロードする
+        """Upload a video from URL
 
         Args:
-            video_url: アップロード元の動画URL
-            title: 動画タイトル（任意）
+            video_url: Source video URL
+            title: Video title (optional)
 
         Returns:
-            {"id": "..."} 形式のレスポンス
+            Response in {"id": "..."} format
         """
         data: dict[str, Any] = {
             "file_url": video_url,
@@ -287,18 +287,18 @@ class CreativesMixin:
     async def upload_ad_video_file(
         self, file_path: str, title: str | None = None
     ) -> dict[str, Any]:
-        """ローカルファイルから動画をアップロードする
+        """Upload a video from a local file
 
         Args:
-            file_path: ローカル動画ファイルのパス
-            title: 動画タイトル（任意）
+            file_path: Local video file path
+            title: Video title (optional)
 
         Returns:
-            {"id": "..."} 形式のレスポンス
+            Response in {"id": "..."} format
 
         Raises:
-            FileNotFoundError: ファイルが存在しない場合
-            ValueError: バリデーションエラー
+            FileNotFoundError: If the file does not exist.
+            ValueError: Validation error
         """
         path = validate_video_file(
             file_path,
@@ -321,7 +321,7 @@ class CreativesMixin:
         return response.json()  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
-    # カルーセルクリエイティブ
+    # Carousel creative
     # ------------------------------------------------------------------
 
     async def create_carousel_creative(
@@ -331,25 +331,23 @@ class CreativesMixin:
         link: str,
         name: str | None = None,
     ) -> dict[str, Any]:
-        """カルーセルクリエイティブを作成する
+        """Create a carousel creative
 
         Args:
-            page_id: FacebookページID
-            cards: カードのリスト（各要素に link, name, image_hash 等を含む）
-                   2〜10枚が必須
-            link: メインリンクURL
-            name: クリエイティブ名（任意）
+            page_id: Facebook page ID
+            cards: List of cards (each with link, name, image_hash, etc.)
+                   2-10 required
+            link: Main link URL
+            name: Creative name (optional)
 
         Returns:
-            作成されたAdCreative情報
+            Created AdCreative information.
 
         Raises:
-            ValueError: カード枚数が2〜10の範囲外の場合
+            ValueError: If card count is outside the 2-10 range.
         """
         if not (_CAROUSEL_MIN_CARDS <= len(cards) <= _CAROUSEL_MAX_CARDS):
-            raise ValueError(
-                f"カルーセルのカード枚数は2〜10枚です（指定: {len(cards)}枚）"
-            )
+            raise ValueError(f"Carousel requires 2-10 cards (specified: {len(cards)})")
 
         child_attachments = []
         for card in cards:
@@ -385,7 +383,7 @@ class CreativesMixin:
         return await self._post(f"/{self._ad_account_id}/adcreatives", creative_data)
 
     # ------------------------------------------------------------------
-    # コレクションクリエイティブ
+    # Collection creative
     # ------------------------------------------------------------------
 
     async def create_collection_creative(
@@ -397,18 +395,18 @@ class CreativesMixin:
         cover_video_id: str | None = None,
         name: str | None = None,
     ) -> dict[str, Any]:
-        """コレクションクリエイティブを作成する
+        """Create a collection creative
 
         Args:
-            page_id: FacebookページID
-            product_ids: 商品IDのリスト
-            link: メインリンクURL
-            cover_image_hash: カバー画像ハッシュ（cover_video_idと排他）
-            cover_video_id: カバー動画ID（cover_image_hashと排他）
-            name: クリエイティブ名（任意）
+            page_id: Facebook page ID
+            product_ids: List of product IDs
+            link: Main link URL
+            cover_image_hash: Cover image hash (mutually exclusive with cover_video_id)
+            cover_video_id: Cover video ID (mutually exclusive with cover_image_hash)
+            name: Creative name (optional)
 
         Returns:
-            作成されたAdCreative情報
+            Created AdCreative information.
         """
         template_data: dict[str, Any] = {
             "call_to_action": {

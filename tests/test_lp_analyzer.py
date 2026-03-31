@@ -194,27 +194,27 @@ class TestValidateUrl:
         analyzer._validate_url("https://example.com")
 
     def test_localhostブロック(self, analyzer: LPAnalyzer) -> None:
-        with pytest.raises(ValueError, match="内部ネットワーク"):
+        with pytest.raises(ValueError, match="(?i)internal network"):
             analyzer._validate_url("http://localhost/test")
 
     def test_127_0_0_1ブロック(self, analyzer: LPAnalyzer) -> None:
-        with pytest.raises(ValueError, match="内部ネットワーク"):
+        with pytest.raises(ValueError, match="(?i)internal network"):
             analyzer._validate_url("http://127.0.0.1/test")
 
     def test_メタデータサービスブロック(self, analyzer: LPAnalyzer) -> None:
-        with pytest.raises(ValueError, match="内部ネットワーク"):
+        with pytest.raises(ValueError, match="(?i)internal network"):
             analyzer._validate_url("http://169.254.169.254/latest/meta-data")
 
     def test_ftpスキームブロック(self, analyzer: LPAnalyzer) -> None:
-        with pytest.raises(ValueError, match="許可されていないURL"):
+        with pytest.raises(ValueError, match="not allowed"):
             analyzer._validate_url("ftp://example.com/file")
 
     def test_ホスト名なしブロック(self, analyzer: LPAnalyzer) -> None:
-        with pytest.raises(ValueError, match="ホスト名"):
+        with pytest.raises(ValueError, match="hostname"):
             analyzer._validate_url("https://")
 
     def test_プライベートIPブロック(self, analyzer: LPAnalyzer) -> None:
-        with pytest.raises(ValueError, match="内部ネットワーク"):
+        with pytest.raises(ValueError, match="(?i)internal network"):
             analyzer._validate_url("http://10.0.0.1/test")
 
     def test_ipv6_loopbackブロック(self, analyzer: LPAnalyzer) -> None:

@@ -329,18 +329,18 @@ class TestLeadsApiError:
     async def test_api_error_propagates(self, client: LeadsMixin) -> None:
         """APIエラーが適切に伝播すること"""
         client._get = AsyncMock(
-            side_effect=RuntimeError("Meta API リクエストに失敗しました (status=400, path=/page_123/leadgen_forms)")
+            side_effect=RuntimeError("Meta API request failed (status=400, path=/page_123/leadgen_forms)")
         )
-        with pytest.raises(RuntimeError, match="Meta API リクエストに失敗しました"):
+        with pytest.raises(RuntimeError, match="Meta API request failed"):
             await client.list_lead_forms("page_123")
 
     @pytest.mark.asyncio
     async def test_api_error_on_create(self, client: LeadsMixin) -> None:
         """フォーム作成時のAPIエラーが適切に伝播すること"""
         client._post = AsyncMock(
-            side_effect=RuntimeError("Meta API リクエストに失敗しました (status=403, path=/page_123/leadgen_forms)")
+            side_effect=RuntimeError("Meta API request failed (status=403, path=/page_123/leadgen_forms)")
         )
-        with pytest.raises(RuntimeError, match="Meta API リクエストに失敗しました"):
+        with pytest.raises(RuntimeError, match="Meta API request failed"):
             await client.create_lead_form(
                 page_id="page_123",
                 name="テスト",
@@ -352,7 +352,7 @@ class TestLeadsApiError:
     async def test_api_error_on_get_leads(self, client: LeadsMixin) -> None:
         """リードデータ取得時のAPIエラーが適切に伝播すること"""
         client._get = AsyncMock(
-            side_effect=RuntimeError("Meta API リクエストに失敗しました")
+            side_effect=RuntimeError("Meta API request failed")
         )
         with pytest.raises(RuntimeError):
             await client.get_leads("form_1")
@@ -543,7 +543,7 @@ class TestLeadFormsMcpHandlers:
                 {"account_id": "act_123", "form_id": "form_1"},
             )
         assert len(result) == 1
-        assert "認証情報" in result[0].text
+        assert "Credentials not found" in result[0].text
 
 
 @pytest.mark.unit

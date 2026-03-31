@@ -1,8 +1,8 @@
-"""検索語句の意図分類
+"""Search term intent classification.
 
-検索語句の意図分類に必要なデータモデル・プロンプト・パーサーを提供する。
-mureo-coreではLLM依存を除去しているため、LLM呼び出しは行わない。
-LLMによるバッチ分類はManaged側で実施すること。
+Provides data models, prompts, and parsers for search term intent classification.
+LLM dependency is removed in mureo-core; no LLM calls are made here.
+Batch classification via LLM should be done on the Managed side.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 意図カテゴリ定数
+# Intent category constants
 INTENT_TRANSACTIONAL = "transactional"
 INTENT_COMMERCIAL = "commercial_investigation"
 INTENT_INFORMATIONAL = "informational"
@@ -32,15 +32,15 @@ VALID_INTENTS: frozenset[str] = frozenset(
 
 @dataclass(frozen=True)
 class SearchTermIntent:
-    """検索語句の意図分類結果"""
+    """Search term intent classification result."""
 
     search_term: str
     intent: (
         str  # transactional / commercial_investigation / informational / navigational
     )
-    relevance_score: int  # 0-100: 広告主ビジネスへの関連度
+    relevance_score: int  # 0-100: Relevance to advertiser business
     reasoning: str
-    exclude_recommendation: bool  # 除外を推奨するか
+    exclude_recommendation: bool  # Whether exclusion is recommended
 
 
 _CLASSIFY_PROMPT = """\
@@ -99,11 +99,11 @@ JSON配列のみを出力してください。"""
 
 
 class IntentClassifier:
-    """検索語句の意図分類。
+    """Search term intent classifier.
 
-    mureo-coreではLLM依存を除去しているため、LLM呼び出しは行わない。
-    プロンプト生成とレスポンスパースのみを担当する。
-    LLMによる分類はManaged側で実施すること。
+    LLM dependency is removed in mureo-core; no LLM calls are made here.
+    Handles prompt generation and response parsing only.
+    Classification via LLM should be done on the Managed side.
     """
 
     @staticmethod
@@ -113,9 +113,9 @@ class IntentClassifier:
         keywords: list[str] | None = None,
         strategic_context: str | None = None,
     ) -> str:
-        """LLM分類用のプロンプトを生成する。
+        """Generate a prompt for LLM classification.
 
-        LLM呼び出し自体はManaged側で実施する。
+        The actual LLM call is performed on the Managed side.
         """
         terms_text = "\n".join(
             f"{idx + 1}. {term}" for idx, term in enumerate(search_terms)
@@ -136,7 +136,7 @@ class IntentClassifier:
     def parse_response(
         content: str, original_terms: list[str]
     ) -> list[SearchTermIntent]:
-        """LLMレスポンスをパースする"""
+        """Parse an LLM response."""
         text = content.strip()
         if "```json" in text:
             text = text.split("```json", 1)[1].split("```", 1)[0].strip()
@@ -146,13 +146,13 @@ class IntentClassifier:
         try:
             data = json.loads(text)
         except (json.JSONDecodeError, ValueError) as exc:
-            logger.warning("意図分類のJSONパースに失敗: %s", exc)
+            logger.warning("Failed to parse intent classification JSON: %s", exc)
             return [
                 SearchTermIntent(
                     search_term=t,
                     intent=INTENT_INFORMATIONAL,
                     relevance_score=50,
-                    reasoning=f"パース失敗のためデフォルト分類: {exc}",
+                    reasoning=f"Default classification due to parse failure: {exc}",
                     exclude_recommendation=False,
                 )
                 for t in original_terms
@@ -161,7 +161,7 @@ class IntentClassifier:
         if not isinstance(data, list):
             data = [data]
 
-        # LLM出力を元の語句リストとマッチング
+        # Match LLM output against original term list
         result_map: dict[str, dict[str, Any]] = {}
         for item in data:
             if isinstance(item, dict):
@@ -184,7 +184,7 @@ class IntentClassifier:
                     search_term=term,
                     intent=intent,
                     relevance_score=relevance,
-                    reasoning=str(item.get("reasoning", "分類情報なし")),
+                    reasoning=str(item.get("reasoning", "No classification info")),
                     exclude_recommendation=bool(
                         item.get("exclude_recommendation", False)
                     ),

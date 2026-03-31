@@ -386,7 +386,7 @@ class TestPerformanceAnalysisMixin:
             _PerformanceAnalysisMixin._build_cost_breakdown(current_m, previous_m)
         )
         assert clicks_change is not None and clicks_change > 20
-        assert any("クリック" in f for f in findings)
+        assert any("click" in f.lower() for f in findings)
 
     @pytest.mark.unit
     async def test_investigate_cost_increase_basic(self) -> None:
@@ -432,7 +432,7 @@ class TestPerformanceAnalysisMixin:
             {"id": "1", "name": "Good", "status": "ENABLED", "primary_status": "ELIGIBLE"},
         ]
         result = await client.health_check_all_campaigns()
-        assert "正常" in result["summary"]["message"]
+        assert "normally" in result["summary"]["message"]
 
     @pytest.mark.unit
     async def test_compare_ad_performance_basic(self) -> None:
@@ -466,7 +466,7 @@ class TestPerformanceAnalysisMixin:
         ]
         result = await client.compare_ad_performance("ag1")
         assert result["ads"][0]["verdict"] == "INSUFFICIENT_DATA"
-        assert "比較対象" in result["recommendation"]
+        assert "comparison" in result["recommendation"]
 
     @pytest.mark.unit
     async def test_compare_ad_performance_empty(self) -> None:
@@ -537,7 +537,7 @@ class TestSearchTermsAnalysisMixin:
         client._route_by_newness(entry, "term", True, main, watch)
         assert len(watch) == 1
         assert entry["action"] == "watch"
-        assert "新規語句" in entry["reason"]
+        assert "New term" in entry["reason"]
 
     @pytest.mark.unit
     def test_route_by_newness_existing(self) -> None:
@@ -1066,7 +1066,7 @@ class TestBudgetAnalysisMixin:
         client.list_campaigns.return_value = []
         result = await client.suggest_budget_reallocation()
         assert result["reallocation_plan"] == []
-        assert "データ不足" in result["summary"]
+        assert "Insufficient data" in result["summary"]
 
 
 # =====================================================================
@@ -1135,7 +1135,7 @@ class TestRsaAnalysisMixin:
         result = await client.analyze_rsa_assets("123")
         assert result["headlines"] == []
         assert result["descriptions"] == []
-        assert any("まだ蓄積されていません" in i for i in result["insights"])
+        assert any("not yet been accumulated" in i for i in result["insights"])
 
     @pytest.mark.unit
     async def test_audit_rsa_assets_few_headlines(self) -> None:
@@ -1154,7 +1154,7 @@ class TestRsaAnalysisMixin:
         client = self._make_client()
         client._search.return_value = []
         result = await client.audit_rsa_assets("123")
-        assert result["message"] == "RSAアセットデータがありません"
+        assert result["message"] == "No RSA asset data available"
 
     @pytest.mark.unit
     async def test_audit_rsa_assets_error(self) -> None:
@@ -1267,7 +1267,7 @@ class TestAuctionAnalysisMixin:
         client._search.return_value = []
         result = await client.analyze_device_performance("123")
         assert result["devices"] == []
-        assert "データがありません" in result["message"]
+        assert "No" in result["message"]
 
     @pytest.mark.unit
     def test_generate_device_insights_cv0_cost(self) -> None:
@@ -1275,7 +1275,7 @@ class TestAuctionAnalysisMixin:
             {"device_type": "TABLET", "conversions": 0, "cost": 1000, "cpa": None, "ctr": 5.0},
         ]
         insights = _AuctionAnalysisMixin._generate_device_insights(devices)
-        assert any("TABLET" in i and "CV0" in i for i in insights)
+        assert any("TABLET" in i and "0 conversions" in i for i in insights)
 
     @pytest.mark.unit
     def test_generate_device_insights_cpa_gap(self) -> None:
@@ -1284,7 +1284,7 @@ class TestAuctionAnalysisMixin:
             {"device_type": "MOBILE", "conversions": 2, "cost": 4000, "cpa": 2000, "ctr": 5.0},
         ]
         insights = _AuctionAnalysisMixin._generate_device_insights(devices)
-        assert any("倍" in i for i in insights)
+        assert any("x that of" in i for i in insights)
 
     @pytest.mark.unit
     def test_generate_device_insights_mobile_low_ctr(self) -> None:
@@ -1293,7 +1293,7 @@ class TestAuctionAnalysisMixin:
             {"device_type": "MOBILE", "conversions": 2, "cost": 2000, "cpa": 1000, "ctr": 3.0},
         ]
         insights = _AuctionAnalysisMixin._generate_device_insights(devices)
-        assert any("モバイルのCTR" in i for i in insights)
+        assert any("Mobile CTR" in i for i in insights)
 
     # --- CPC トレンド ---
 
@@ -1331,13 +1331,13 @@ class TestAuctionAnalysisMixin:
     def test_generate_cpc_insights_rising(self) -> None:
         trend = {"direction": "rising", "change_rate_per_day_pct": 2.5, "avg_cpc": 100}
         insights = _AuctionAnalysisMixin._generate_cpc_insights([100], trend, [])
-        assert any("上昇トレンド" in i for i in insights)
+        assert any("rising trend" in i for i in insights)
 
     @pytest.mark.unit
     def test_generate_cpc_insights_falling(self) -> None:
         trend = {"direction": "falling", "change_rate_per_day_pct": -2.5, "avg_cpc": 100}
         insights = _AuctionAnalysisMixin._generate_cpc_insights([100], trend, [])
-        assert any("下降トレンド" in i for i in insights)
+        assert any("declining trend" in i for i in insights)
 
     @pytest.mark.unit
     def test_generate_cpc_insights_weekly_spike(self) -> None:
@@ -1345,7 +1345,7 @@ class TestAuctionAnalysisMixin:
         values = [100] * 7 + [130] * 7
         trend = {"direction": "rising", "change_rate_per_day_pct": 1.5, "avg_cpc": 115}
         insights = _AuctionAnalysisMixin._generate_cpc_insights(values, trend, [])
-        assert any("急騰" in i for i in insights)
+        assert any("surged" in i for i in insights)
 
     @pytest.mark.unit
     def test_generate_cpc_insights_spike_detection(self) -> None:
@@ -1355,7 +1355,7 @@ class TestAuctionAnalysisMixin:
         ]
         trend = {"direction": "stable", "change_rate_per_day_pct": 0, "avg_cpc": 100}
         insights = _AuctionAnalysisMixin._generate_cpc_insights([100, 300], trend, daily_data)
-        assert any("異常値" in i for i in insights)
+        assert any("anomal" in i for i in insights)
 
     @pytest.mark.unit
     async def test_detect_cpc_trend_not_found(self) -> None:
@@ -1445,7 +1445,7 @@ class TestAuctionAnalysisMixin:
         client._search.return_value = []
         result = await client.analyze_auction_insights("123")
         assert result["competitors"] == []
-        assert "データがありません" in result["message"]
+        assert "No" in result["message"]
 
     @pytest.mark.unit
     async def test_analyze_auction_insights_low_is(self) -> None:
@@ -1456,8 +1456,8 @@ class TestAuctionAnalysisMixin:
             self._make_auction_row("competitor.com", 0.5, outranking=0.6),
         ]
         result = await client.analyze_auction_insights("123")
-        assert any("表示機会" in i for i in result["insights"])
-        assert any("上回られ" in i for i in result["insights"])
+        assert any("impression share" in i for i in result["insights"])
+        assert any("outranking" in i for i in result["insights"])
 
     @pytest.mark.unit
     async def test_analyze_auction_insights_low_abs_top(self) -> None:
@@ -1467,7 +1467,7 @@ class TestAuctionAnalysisMixin:
             self._make_auction_row("", 0.6, abs_top=0.1),  # abs_top 10% < 20%
         ]
         result = await client.analyze_auction_insights("123")
-        assert any("最上位表示率" in i for i in result["insights"])
+        assert any("absolute top" in i.lower() for i in result["insights"])
 
 
 # =====================================================================
@@ -1509,7 +1509,7 @@ class TestBtoBAnalysisMixin:
         await client._check_schedule_for_btob("123", suggestions)
         assert len(suggestions) == 1
         assert suggestions[0]["priority"] == "MEDIUM"
-        assert "土日" in suggestions[0]["message"]
+        assert "weekend" in suggestions[0]["message"]
 
     @pytest.mark.unit
     async def test_check_schedule_weekday_only(self) -> None:
@@ -1557,7 +1557,7 @@ class TestBtoBAnalysisMixin:
         })
         suggestions: list[dict[str, Any]] = []
         await client._check_device_for_btob("123", "LAST_30_DAYS", suggestions)
-        assert any(s["category"] == "device" and "タブレット" in s["message"] for s in suggestions)
+        assert any(s["category"] == "device" and "tablet" in s["message"] for s in suggestions)
 
     @pytest.mark.unit
     async def test_check_search_terms_high_info_ratio(self) -> None:

@@ -1,6 +1,6 @@
-"""Meta Adsサブコマンド
+"""Meta Ads subcommands.
 
-``mureo meta-ads campaigns-list`` 等のコマンドを定義する。
+Defines commands such as ``mureo meta-ads campaigns-list``.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from mureo.auth import (
 
 meta_ads_app = typer.Typer(name="meta-ads", help="Meta Ads operations")
 
-# 日数 → Meta APIのdate_presetマッピング
+# Days -> Meta API date_preset mapping
 _DAYS_TO_PERIOD: dict[int, str] = {
     1: "yesterday",
     7: "last_7d",
@@ -28,26 +28,26 @@ _DAYS_TO_PERIOD: dict[int, str] = {
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
+# Helpers
 # ---------------------------------------------------------------------------
 
 
 def _require_creds() -> MetaAdsCredentials:
-    """認証情報を読み込み、なければエラー終了する"""
+    """Load credentials or exit with an error if not found."""
     creds = load_meta_ads_credentials()
     if creds is None:
-        typer.echo("Error: Meta Ads認証情報が見つかりません", err=True)
+        typer.echo("Error: Meta Ads credentials not found", err=True)
         raise typer.Exit(1)
     return creds
 
 
 def _output(data: Any) -> None:
-    """結果をJSON形式で出力する"""
+    """Output results in JSON format."""
     typer.echo(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
 
 # ---------------------------------------------------------------------------
-# コマンド
+# Commands
 # ---------------------------------------------------------------------------
 
 
@@ -57,7 +57,7 @@ def campaigns_list(
         ..., "--account-id", help="Meta Ads account ID (act_XXXX)"
     ),
 ) -> None:
-    """Meta Adsキャンペーン一覧を取得"""
+    """List Meta Ads campaigns."""
     creds = _require_creds()
     client = create_meta_ads_client(creds, account_id)
     result = asyncio.run(client.list_campaigns())
@@ -69,7 +69,7 @@ def campaigns_get(
     account_id: str = typer.Option(..., "--account-id", help="Meta Ads account ID"),
     campaign_id: str = typer.Option(..., "--campaign-id", help="Campaign ID"),
 ) -> None:
-    """Meta Adsキャンペーン詳細を取得"""
+    """Get Meta Ads campaign details."""
     creds = _require_creds()
     client = create_meta_ads_client(creds, account_id)
     result = asyncio.run(client.get_campaign(campaign_id))
@@ -80,7 +80,7 @@ def campaigns_get(
 def ad_sets_list(
     account_id: str = typer.Option(..., "--account-id", help="Meta Ads account ID"),
 ) -> None:
-    """広告セット一覧を取得"""
+    """List ad sets."""
     creds = _require_creds()
     client = create_meta_ads_client(creds, account_id)
     result = asyncio.run(client.list_ad_sets())
@@ -91,7 +91,7 @@ def ad_sets_list(
 def ads_list(
     account_id: str = typer.Option(..., "--account-id", help="Meta Ads account ID"),
 ) -> None:
-    """広告一覧を取得"""
+    """List ads."""
     creds = _require_creds()
     client = create_meta_ads_client(creds, account_id)
     result = asyncio.run(client.list_ads())
@@ -101,9 +101,9 @@ def ads_list(
 @meta_ads_app.command("insights-report")  # type: ignore[untyped-decorator, unused-ignore]
 def insights_report(
     account_id: str = typer.Option(..., "--account-id", help="Meta Ads account ID"),
-    days: int = typer.Option(7, "--days", help="レポート期間（日数）"),
+    days: int = typer.Option(7, "--days", help="Report period (days)"),
 ) -> None:
-    """パフォーマンスレポートを取得"""
+    """Get performance report."""
     creds = _require_creds()
     client = create_meta_ads_client(creds, account_id)
     period = _DAYS_TO_PERIOD.get(days, f"last_{days}d")

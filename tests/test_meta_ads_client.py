@@ -33,11 +33,11 @@ class TestMetaAdsApiClientInit:
         assert client._ad_account_id == "act_123"
 
     def test_empty_token_raises(self) -> None:
-        with pytest.raises(ValueError, match="access_tokenは必須"):
+        with pytest.raises(ValueError, match="access_token is required"):
             MetaAdsApiClient("", "act_123")
 
     def test_empty_account_id_raises(self) -> None:
-        with pytest.raises(ValueError, match="ad_account_idは必須"):
+        with pytest.raises(ValueError, match="ad_account_id is required"):
             MetaAdsApiClient("token", "")
 
     def test_invalid_account_id_format(self) -> None:
@@ -182,7 +182,7 @@ class TestRequest:
         client._http.get = AsyncMock(return_value=mock_429)
 
         with patch("mureo.meta_ads.client.asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(RuntimeError, match="最大リトライ回数"):
+            with pytest.raises(RuntimeError, match="maximum retry count"):
                 await client._get("/test")
 
     @pytest.mark.asyncio
@@ -211,12 +211,12 @@ class TestRequest:
         )
 
         with patch("mureo.meta_ads.client.asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(RuntimeError, match="リクエストに失敗"):
+            with pytest.raises(RuntimeError, match="request failed"):
                 await client._get("/test")
 
     @pytest.mark.asyncio
     async def test_unsupported_method_raises(self, client: MetaAdsApiClient) -> None:
-        with pytest.raises(ValueError, match="未対応のHTTPメソッド"):
+        with pytest.raises(ValueError, match="Unsupported HTTP method"):
             await client._request("PATCH", "/test")
 
 

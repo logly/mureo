@@ -1,6 +1,6 @@
-"""サイトリンク操作 Mixin。
+"""Sitelink operations mixin.
 
-list_sitelinks / create_sitelink / remove_sitelink を提供する。
+Provides list_sitelinks / create_sitelink / remove_sitelink.
 """
 
 from __future__ import annotations
@@ -16,14 +16,14 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
 
-# キャンペーンあたりのサイトリンク上限
+# Sitelink limit per campaign
 _MAX_SITELINKS_PER_CAMPAIGN = 20
 
 
 class _SitelinksMixin:
-    """サイトリンク操作を提供する Mixin。"""
+    """Mixin providing sitelink operations."""
 
-    # 親クラス (GoogleAdsApiClient) が提供する属性の型宣言
+    # Type declarations for attributes provided by parent class (GoogleAdsApiClient)
     _customer_id: str
     _client: GoogleAdsClient
 
@@ -32,22 +32,22 @@ class _SitelinksMixin:
 
     def _get_service(self, service_name: str) -> Any: ...
 
-    # クラス変数として上限値を公開
+    # Expose limit value as class variable
     _MAX_SITELINKS_PER_CAMPAIGN = _MAX_SITELINKS_PER_CAMPAIGN
 
     async def list_sitelinks(self, campaign_id: str) -> list[dict[str, Any]]:
-        """キャンペーンに適用されるサイトリンク一覧（キャンペーン＋アカウントレベル）
+        """List sitelinks applied to campaign (campaign + account level).
 
-        Google Adsではサイトリンクは以下の3階層で設定可能:
-        - アカウントレベル (customer_asset): 全キャンペーンに適用
-        - キャンペーンレベル (campaign_asset): 指定キャンペーンのみ
-        - 広告グループレベル (ad_group_asset): 指定広告グループのみ
+        In Google Ads, sitelinks can be set at 3 levels:
+        - Account level (customer_asset): Applied to all campaigns
+        - Campaign level (campaign_asset): Specified campaign only
+        - Ad group level (ad_group_asset): Specified ad group only
 
-        このメソッドはキャンペーンレベルとアカウントレベルの両方を返す。
+        This method returns both campaign-level and account-level sitelinks.
         """
         self._validate_id(campaign_id, "campaign_id")
 
-        # キャンペーンレベル
+        # Campaign level
         campaign_query = f"""
             SELECT
                 campaign.id,
@@ -61,7 +61,7 @@ class _SitelinksMixin:
                 AND campaign.id = {campaign_id}
         """
 
-        # アカウントレベル（全キャンペーンに適用）
+        # Account level (applied to all campaigns)
         account_query = """
             SELECT
                 asset.id, asset.resource_name,
@@ -78,7 +78,7 @@ class _SitelinksMixin:
             {**map_sitelink(row), "level": "campaign"} for row in campaign_response
         ]
 
-        # 重複を避けるため、既存のasset IDを記録
+        # Record existing asset IDs to avoid duplicates
         seen_ids: set[str | None] = {r.get("id") for r in results}
 
         try:
@@ -90,14 +90,14 @@ class _SitelinksMixin:
                     results.append(mapped)
                     seen_ids.add(mapped.get("id"))
         except Exception:
-            logger.debug("アカウントレベルのサイトリンク取得に失敗", exc_info=True)
+            logger.debug("Failed to retrieve account-level sitelinks", exc_info=True)
 
         return results
 
-    @_wrap_mutate_error("サイトリンク作成")
+    @_wrap_mutate_error("sitelink creation")
     async def create_sitelink(self, params: dict[str, Any]) -> dict[str, Any]:
-        """サイトリンク作成＆キャンペーンにリンク"""
-        # 上限チェック
+        """Create sitelink and link to campaign."""
+        # Limit check
         campaign_id = params["campaign_id"]
         existing = await self.list_sitelinks(campaign_id)
         campaign_count = sum(1 for s in existing if s.get("level") == "campaign")
@@ -105,11 +105,11 @@ class _SitelinksMixin:
             return {
                 "error": True,
                 "error_type": "validation_error",
-                "message": f"サイトリンクは1キャンペーンあたり最大{self._MAX_SITELINKS_PER_CAMPAIGN}件です。"
-                f"現在{campaign_count}件登録済みのため、不要なサイトリンクを削除してから追加してください。",
+                "message": f"Maximum {self._MAX_SITELINKS_PER_CAMPAIGN} sitelinks per campaign. "
+                f"Currently {campaign_count} registered; please delete unnecessary sitelinks before adding.",
             }
 
-        # 1. アセット作成
+        # 1. Create asset
         asset_service = self._get_service("AssetService")
         asset_op = self._client.get_type("AssetOperation")
         asset = asset_op.create
@@ -125,7 +125,7 @@ class _SitelinksMixin:
         )
         asset_resource_name = asset_response.results[0].resource_name
 
-        # 2. キャンペーンにリンク
+        # 2. Link to campaign
         campaign_asset_service = self._get_service("CampaignAssetService")
         ca_op = self._client.get_type("CampaignAssetOperation")
         campaign_asset = ca_op.create
@@ -140,9 +140,9 @@ class _SitelinksMixin:
         )
         return {"resource_name": asset_resource_name}
 
-    @_wrap_mutate_error("サイトリンク削除")
+    @_wrap_mutate_error("sitelink removal")
     async def remove_sitelink(self, params: dict[str, Any]) -> dict[str, Any]:
-        """サイトリンク削除"""
+        """Remove sitelink."""
         self._validate_id(params["campaign_id"], "campaign_id")
         self._validate_id(params["asset_id"], "asset_id")
         campaign_asset_service = self._get_service("CampaignAssetService")

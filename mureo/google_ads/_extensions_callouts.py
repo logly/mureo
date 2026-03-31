@@ -1,6 +1,6 @@
-"""コールアウト操作 Mixin。
+"""Callout operations mixin.
 
-list_callouts / create_callout / remove_callout を提供する。
+Provides list_callouts / create_callout / remove_callout.
 """
 
 from __future__ import annotations
@@ -16,14 +16,14 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
 
-# キャンペーンあたりのコールアウト上限
+# Callout limit per campaign
 _MAX_CALLOUTS_PER_CAMPAIGN = 20
 
 
 class _CalloutsMixin:
-    """コールアウト操作を提供する Mixin。"""
+    """Mixin providing callout operations."""
 
-    # 親クラス (GoogleAdsApiClient) が提供する属性の型宣言
+    # Type declarations for attributes provided by parent class (GoogleAdsApiClient)
     _customer_id: str
     _client: GoogleAdsClient
 
@@ -32,11 +32,11 @@ class _CalloutsMixin:
 
     def _get_service(self, service_name: str) -> Any: ...
 
-    # クラス変数として上限値を公開
+    # Expose limit value as class variable
     _MAX_CALLOUTS_PER_CAMPAIGN = _MAX_CALLOUTS_PER_CAMPAIGN
 
     async def list_callouts(self, campaign_id: str) -> list[dict[str, Any]]:
-        """キャンペーンのコールアウト拡張一覧"""
+        """List callout extensions for campaign."""
         self._validate_id(campaign_id, "campaign_id")
 
         query = f"""
@@ -51,21 +51,21 @@ class _CalloutsMixin:
         response = await self._search(query)  # type: ignore[attr-defined]
         return [map_callout(row) for row in response]
 
-    @_wrap_mutate_error("コールアウト作成")
+    @_wrap_mutate_error("callout creation")
     async def create_callout(self, params: dict[str, Any]) -> dict[str, Any]:
-        """コールアウト作成＆キャンペーンにリンク"""
-        # 上限チェック
+        """Create callout and link to campaign."""
+        # Limit check
         campaign_id = params["campaign_id"]
         existing = await self.list_callouts(campaign_id)
         if len(existing) >= self._MAX_CALLOUTS_PER_CAMPAIGN:
             return {
                 "error": True,
                 "error_type": "validation_error",
-                "message": f"コールアウトは1キャンペーンあたり最大{self._MAX_CALLOUTS_PER_CAMPAIGN}件です。"
-                f"現在{len(existing)}件登録済みのため、不要なコールアウトを削除してから追加してください。",
+                "message": f"Maximum {self._MAX_CALLOUTS_PER_CAMPAIGN} callouts per campaign. "
+                f"Currently {len(existing)} registered; please delete unnecessary callouts before adding.",
             }
 
-        # 1. アセット作成
+        # 1. Create asset
         asset_service = self._get_service("AssetService")
         asset_op = self._client.get_type("AssetOperation")
         asset = asset_op.create
@@ -76,7 +76,7 @@ class _CalloutsMixin:
         )
         asset_resource_name = asset_response.results[0].resource_name
 
-        # 2. キャンペーンにリンク
+        # 2. Link to campaign
         campaign_asset_service = self._get_service("CampaignAssetService")
         ca_op = self._client.get_type("CampaignAssetOperation")
         campaign_asset = ca_op.create
@@ -91,9 +91,9 @@ class _CalloutsMixin:
         )
         return {"resource_name": asset_resource_name}
 
-    @_wrap_mutate_error("コールアウト削除")
+    @_wrap_mutate_error("callout removal")
     async def remove_callout(self, params: dict[str, Any]) -> dict[str, Any]:
-        """コールアウト削除"""
+        """Remove callout."""
         self._validate_id(params["campaign_id"], "campaign_id")
         self._validate_id(params["asset_id"], "asset_id")
         campaign_asset_service = self._get_service("CampaignAssetService")

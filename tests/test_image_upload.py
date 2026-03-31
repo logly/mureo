@@ -134,7 +134,7 @@ class TestMetaUploadAdImageFile:
         txt_file = tmp_path / "document.txt"
         txt_file.write_bytes(b"not an image")
 
-        with pytest.raises(ValueError, match="対応していない画像形式"):
+        with pytest.raises(ValueError, match="Unsupported image format"):
             await meta_client.upload_ad_image_file(str(txt_file))
 
     @pytest.mark.asyncio()
@@ -142,7 +142,7 @@ class TestMetaUploadAdImageFile:
         self, meta_client: Any, tmp_path: Path
     ) -> None:
         """パストラバーサルを含むパスが拒否されること"""
-        with pytest.raises(ValueError, match="不正なファイルパス"):
+        with pytest.raises(ValueError, match="Invalid file path"):
             await meta_client.upload_ad_image_file(
                 str(tmp_path / ".." / ".." / "etc" / "passwd")
             )
@@ -264,7 +264,7 @@ class TestGoogleAdsUploadImageAsset:
         bmp_file = tmp_path / "image.bmp"
         bmp_file.write_bytes(b"\x00" * 100)
 
-        with pytest.raises(ValueError, match="対応していない画像形式"):
+        with pytest.raises(ValueError, match="Unsupported image format"):
             await google_client.upload_image_asset(str(bmp_file))
 
     @pytest.mark.asyncio()
@@ -272,7 +272,7 @@ class TestGoogleAdsUploadImageAsset:
         self, google_client: Any, tmp_path: Path
     ) -> None:
         """パストラバーサルを含むパスが拒否されること"""
-        with pytest.raises(ValueError, match="不正なファイルパス"):
+        with pytest.raises(ValueError, match="Invalid file path"):
             await google_client.upload_image_asset(
                 str(tmp_path / ".." / ".." / "etc" / "passwd")
             )

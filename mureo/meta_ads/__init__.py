@@ -1,4 +1,4 @@
-"""mureo.meta_ads - Meta Ads API操作ロジック（DB非依存）"""
+"""mureo.meta_ads - Meta Ads API operations (database-independent)."""
 
 from mureo.meta_ads.client import MetaAdsApiClient
 from mureo.meta_ads.mappers import (

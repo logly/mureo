@@ -1,17 +1,16 @@
-"""Meta Ads MCPツール 追加ハンドラー実装
+"""Meta Ads MCP additional tool handler implementation
 
-_handlers_meta_ads.py のファイルサイズ肥大化を防ぐため、
-追加ツールのハンドラーを分離する。
+Separated from _handlers_meta_ads.py to prevent file size bloat.
 
-対象カテゴリ:
-- キャンペーン（pause / enable）
-- 広告セット（get / pause / enable）
-- 広告（get / pause / enable）
-- オーディエンス（get / delete / lookalike）
-- クリエイティブ（list / create / dynamic / upload_image）
-- ピクセル（list / get / stats / events）
-- 分析（analyze_performance / analyze_audience / analyze_placements /
-        investigate_cost / compare_ads / suggest_creative_improvements）
+Covered categories:
+- Campaigns (pause / enable)
+- Ad sets (get / pause / enable)
+- Ads (get / pause / enable)
+- Audiences (get / delete / lookalike)
+- Creatives (list / create / dynamic / upload_image)
+- Pixels (list / get / stats / events)
+- Analysis (analyze_performance / analyze_audience / analyze_placements /
+        investigate_cost / compare_ads / suggest_creative_improvements)
 """
 
 from __future__ import annotations
@@ -34,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# キャンペーン pause / enable
+# Campaign pause / enable
 # ---------------------------------------------------------------------------
 
 
@@ -59,7 +58,7 @@ async def handle_campaigns_enable(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 広告セット get / pause / enable
+# Ad set get / pause / enable
 # ---------------------------------------------------------------------------
 
 
@@ -94,7 +93,7 @@ async def handle_ad_sets_enable(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 広告 get / pause / enable
+# Ad get / pause / enable
 # ---------------------------------------------------------------------------
 
 
@@ -129,7 +128,7 @@ async def handle_ads_enable(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# オーディエンス get / delete / lookalike
+# Audience get / delete / lookalike
 # ---------------------------------------------------------------------------
 
 
@@ -174,7 +173,7 @@ async def handle_audiences_create_lookalike(
 
 
 # ---------------------------------------------------------------------------
-# クリエイティブ list / create / dynamic / upload_image
+# Creative list / create / dynamic / upload_image
 # ---------------------------------------------------------------------------
 
 
@@ -250,7 +249,7 @@ async def handle_creatives_upload_image(
 
 
 # ---------------------------------------------------------------------------
-# ピクセル list / get / stats / events
+# Pixel list / get / stats / events
 # ---------------------------------------------------------------------------
 
 
@@ -297,7 +296,7 @@ async def handle_pixels_events(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
-# 分析系ハンドラー
+# Analysis handlers
 # ---------------------------------------------------------------------------
 
 

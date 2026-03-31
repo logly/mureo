@@ -697,7 +697,7 @@ class TestGoogleAdsErrorHandling:
                 "google_ads.campaigns.list", {"customer_id": "123"}
             )
         assert len(result) == 1
-        assert "認証情報" in result[0].text
+        assert "Credentials not found" in result[0].text
 
     async def test_diagnose_campaign_handler(self) -> None:
         """campaigns.diagnose ハンドラーが動作すること"""
@@ -733,5 +733,5 @@ class TestGoogleAdsErrorHandling:
             )
 
         assert len(result) == 1
-        assert "APIエラー" in result[0].text
+        assert "API error" in result[0].text
         assert "API接続エラー" in result[0].text

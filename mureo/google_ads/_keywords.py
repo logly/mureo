@@ -1,8 +1,8 @@
-"""キーワード操作のMixin。
+"""Keyword operations mixin.
 
-list_keywords, add_keywords, remove_keyword,
+Provides list_keywords, add_keywords, remove_keyword,
 suggest_keywords, list_negative_keywords, add_negative_keywords,
-remove_negative_keyword, get_search_terms_report を提供する。
+remove_negative_keyword, get_search_terms_report.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class _KeywordsMixin:
-    """キーワードの一覧・追加・削除・提案、除外キーワード、検索語句レポート"""
+    """Keyword listing, adding, removing, suggestions, negative keywords, and search terms report."""
 
     _customer_id: str
     _client: GoogleAdsClient
@@ -46,7 +46,7 @@ class _KeywordsMixin:
     def _get_service(self, service_name: str) -> Any: ...
     def _period_to_date_clause(self, period: str) -> str: ...  # type: ignore[empty-body]
 
-    # === キーワード ===
+    # === Keywords ===
 
     async def list_keywords(
         self,
@@ -54,7 +54,7 @@ class _KeywordsMixin:
         campaign_id: str | None = None,
         status_filter: str | None = None,
     ) -> list[dict[str, Any]]:
-        """キーワード一覧"""
+        """List keywords."""
         query = """
             SELECT
                 ad_group_criterion.criterion_id,
@@ -84,18 +84,18 @@ class _KeywordsMixin:
             for row in response
         ]
 
-    @_wrap_mutate_error("キーワード追加")
+    @_wrap_mutate_error("keyword addition")
     async def add_keywords(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        """キーワード追加"""
+        """Add keywords."""
         keywords = params.get("keywords", [])
         if not keywords:
-            raise ValueError("キーワードを1つ以上指定してください")
+            raise ValueError("At least one keyword must be specified")
         for kw in keywords:
             text = kw.get("text", "")
             if len(text) > 80:
                 raise ValueError(
-                    f"キーワードは80文字以内にしてください: "
-                    f"'{text[:20]}...'（{len(text)}文字）"
+                    f"Keywords must be 80 characters or less: "
+                    f"'{text[:20]}...'（{len(text)} chars)"
                 )
         agc_service = self._get_service("AdGroupCriterionService")
         operations = []
@@ -117,9 +117,9 @@ class _KeywordsMixin:
         )
         return [{"resource_name": r.resource_name} for r in response.results]
 
-    @_wrap_mutate_error("キーワード削除")
+    @_wrap_mutate_error("keyword removal")
     async def remove_keyword(self, params: dict[str, Any]) -> dict[str, Any]:
-        """キーワード削除"""
+        """Remove keyword."""
         self._validate_id(params["ad_group_id"], "ad_group_id")
         self._validate_id(params["criterion_id"], "criterion_id")
         agc_service = self._get_service("AdGroupCriterionService")
@@ -137,9 +137,9 @@ class _KeywordsMixin:
         )
         return {"resource_name": response.results[0].resource_name}
 
-    @_wrap_mutate_error("キーワード一時停止")
+    @_wrap_mutate_error("keyword pause")
     async def pause_keyword(self, params: dict[str, Any]) -> dict[str, Any]:
-        """キーワードを一時停止する"""
+        """Pause a keyword."""
         self._validate_id(params["ad_group_id"], "ad_group_id")
         self._validate_id(params["criterion_id"], "criterion_id")
         agc_service = self._get_service("AdGroupCriterionService")
@@ -160,10 +160,10 @@ class _KeywordsMixin:
         )
         return {"resource_name": response.results[0].resource_name}
 
-    # === キーワード品質診断 ===
+    # === Keyword Quality Diagnostics ===
 
     async def diagnose_keywords(self, campaign_id: str) -> dict[str, Any]:
-        """キーワードの品質スコア・配信状況を診断する"""
+        """Diagnose keyword quality scores and delivery status."""
         self._validate_id(campaign_id, "campaign_id")
         query = f"""
             SELECT
@@ -192,12 +192,12 @@ class _KeywordsMixin:
             for row in response
         ]
 
-        # キャンペーン名を取得（最初の行から）
+        # Get campaign name (from the first row)
         campaign_name = ""
         if keywords:
             campaign_name = keywords[0].get("campaign_name", "")
 
-        # 品質スコア分布
+        # Quality score distribution
         high_count = 0
         medium_count = 0
         low_count = 0
@@ -213,7 +213,7 @@ class _KeywordsMixin:
             else:
                 low_count += 1
 
-        # 問題分類
+        # Issue classification
         issues: dict[str, list[dict[str, Any]]] = {
             "low_quality_score": [],
             "rarely_served": [],
@@ -246,38 +246,38 @@ class _KeywordsMixin:
                 issues["below_average_landing_page"].append(kw)
                 issue_keyword_ids.add(kw_id)
 
-        # カテゴリごとの改善アクション
+        # Improvement actions per category
         category_labels: dict[str, str] = {
-            "low_quality_score": "品質スコア低（1-4）",
-            "rarely_served": "配信制限",
-            "disapproved": "不承認",
-            "below_average_ctr": "推定クリック率が平均以下",
-            "below_average_ad_relevance": "広告の関連性が平均以下",
-            "below_average_landing_page": "ランディングページの利便性が平均以下",
+            "low_quality_score": "Low quality score (1-4)",
+            "rarely_served": "Delivery restricted",
+            "disapproved": "Disapproved",
+            "below_average_ctr": "Predicted CTR below average",
+            "below_average_ad_relevance": "Ad relevance below average",
+            "below_average_landing_page": "Landing page experience below average",
         }
         category_actions: dict[str, list[str]] = {
             "low_quality_score": [
-                "広告文にキーワードを含めてください",
-                "ランディングページの内容をキーワードに合わせてください",
-                "マッチタイプの見直しを検討してください",
+                "Include keywords in your ad text",
+                "Align landing page content with keywords",
+                "Consider reviewing match types",
             ],
             "rarely_served": [
-                "検索ボリュームが低い可能性があります。部分一致への変更や関連キーワードの追加を検討してください",
+                "Search volume may be low. Consider switching to broad match or adding related keywords",
             ],
             "disapproved": [
-                "Google Ads管理画面でポリシー違反の詳細を確認し、修正してください",
+                "Check policy violation details in Google Ads dashboard and fix them",
             ],
             "below_average_ctr": [
-                "広告見出しをより魅力的に改善してください",
-                "動的キーワード挿入の活用を検討してください",
+                "Improve ad headlines to be more compelling",
+                "Consider using dynamic keyword insertion",
             ],
             "below_average_ad_relevance": [
-                "広告グループのテーマを絞り込んでください",
-                "広告文にキーワードを反映してください",
+                "Narrow down the ad group theme",
+                "Reflect keywords in ad text",
             ],
             "below_average_landing_page": [
-                "ランディングページの読み込み速度を改善してください",
-                "ランディングページの内容とキーワードの一致度を向上させてください",
+                "Improve landing page loading speed",
+                "Improve the relevance between landing page content and keywords",
             ],
         }
 
@@ -311,12 +311,12 @@ class _KeywordsMixin:
             "keywords": keywords[:50],
         }
 
-    # === キーワード提案 ===
+    # === Keyword Suggestions ===
 
     async def suggest_keywords(
         self, seed_keywords: list[str], language_id: str = "1005", geo_id: str = "2392"
     ) -> list[dict[str, Any]]:
-        """キーワード提案（Keyword Planner）"""
+        """Keyword suggestions (Keyword Planner)."""
         kp_service = self._get_service("KeywordPlanIdeaService")
         request = self._client.get_type("GenerateKeywordIdeasRequest")
         request.customer_id = self._customer_id
@@ -330,14 +330,14 @@ class _KeywordsMixin:
                 exc, "authorization_error", "DEVELOPER_TOKEN_NOT_APPROVED"
             ):
                 raise ValueError(
-                    "キーワード提案機能にはBasicまたはStandardアクセスが必要です。"
-                    "現在のDeveloper TokenはExplorerアクセスのため利用できません。"
-                    "Google Ads APIセンターからアクセスレベルの申請を行ってください。"
+                    "Keyword suggestion requires Basic or Standard access. "
+                    "The current Developer Token has Explorer access and cannot use this feature. "
+                    "Please apply for access level upgrade from the Google Ads API Center."
                 ) from exc
             detail = self._extract_error_detail(exc)
-            logger.error("キーワード提案に失敗: %s", detail)
+            logger.error("Keyword suggestion failed: %s", detail)
             raise RuntimeError(
-                "キーワード提案の処理中にエラーが発生しました。"
+                "An error occurred while processing keyword suggestions."
             ) from exc
         return [
             {
@@ -348,10 +348,10 @@ class _KeywordsMixin:
             for idea in response.results[:20]
         ]
 
-    # === 除外キーワード ===
+    # === Negative Keywords ===
 
     async def list_negative_keywords(self, campaign_id: str) -> list[dict[str, Any]]:
-        """キャンペーンレベルの除外キーワード一覧"""
+        """List campaign-level negative keywords."""
         self._validate_id(campaign_id, "campaign_id")
         query = f"""
             SELECT
@@ -366,11 +366,11 @@ class _KeywordsMixin:
         response = await self._search(query)  # type: ignore[attr-defined]
         return [map_negative_keyword(row.campaign_criterion) for row in response]
 
-    @_wrap_mutate_error("除外キーワード追加")
+    @_wrap_mutate_error("negative keyword addition")
     async def add_negative_keywords(
         self, params: dict[str, Any]
     ) -> list[dict[str, Any]]:
-        """除外キーワード追加"""
+        """Add negative keywords."""
         cc_service = self._get_service("CampaignCriterionService")
         operations = []
         for kw in params.get("keywords", []):
@@ -391,11 +391,11 @@ class _KeywordsMixin:
         )
         return [{"resource_name": r.resource_name} for r in response.results]
 
-    @_wrap_mutate_error("広告グループレベル除外キーワード追加")
+    @_wrap_mutate_error("ad group-level negative keyword addition")
     async def add_negative_keywords_to_ad_group(
         self, params: dict[str, Any]
     ) -> list[dict[str, Any]]:
-        """広告グループレベルの除外キーワード追加"""
+        """Add ad group-level negative keywords."""
         self._validate_id(params["ad_group_id"], "ad_group_id")
         ag_service = self._get_service("AdGroupCriterionService")
         operations = []
@@ -417,9 +417,9 @@ class _KeywordsMixin:
         )
         return [{"resource_name": r.resource_name} for r in response.results]
 
-    @_wrap_mutate_error("除外キーワード削除")
+    @_wrap_mutate_error("negative keyword removal")
     async def remove_negative_keyword(self, params: dict[str, Any]) -> dict[str, Any]:
-        """除外キーワード削除"""
+        """Remove negative keyword."""
         self._validate_id(params["campaign_id"], "campaign_id")
         self._validate_id(params["criterion_id"], "criterion_id")
         cc_service = self._get_service("CampaignCriterionService")
@@ -437,7 +437,7 @@ class _KeywordsMixin:
         )
         return {"resource_name": response.results[0].resource_name}
 
-    # === 検索語句レポート ===
+    # === Search Terms Report ===
 
     async def get_search_terms_report(
         self,
@@ -445,7 +445,7 @@ class _KeywordsMixin:
         ad_group_id: str | None = None,
         period: str = "LAST_30_DAYS",
     ) -> list[dict[str, Any]]:
-        """検索語句レポート"""
+        """Search terms report."""
         date_clause = self._period_to_date_clause(period)
         query = f"""
             SELECT

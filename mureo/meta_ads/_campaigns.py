@@ -8,9 +8,9 @@ logger = logging.getLogger(__name__)
 
 
 class CampaignsMixin:
-    """Meta Ads キャンペーン操作Mixin
+    """Meta Ads campaign operations mixin
 
-    MetaAdsApiClientに多重継承して使用する。
+    Used via multiple inheritance with MetaAdsApiClient.
     """
 
     _ad_account_id: str
@@ -23,7 +23,7 @@ class CampaignsMixin:
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
-    # 共通フィールド定義
+    # Common field definitions
     _CAMPAIGN_FIELDS = (
         "id,name,status,objective,daily_budget,lifetime_budget,"
         "created_time,updated_time,start_time,stop_time,"
@@ -36,14 +36,14 @@ class CampaignsMixin:
         status_filter: str | None = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """キャンペーン一覧を取得する
+        """List campaigns.
 
         Args:
-            status_filter: ステータスフィルター（ACTIVE, PAUSED, ARCHIVED, DELETED）
-            limit: 取得件数上限
+            status_filter: Status filter (ACTIVE, PAUSED, ARCHIVED, DELETED)
+            limit: Maximum number of results
 
         Returns:
-            キャンペーン情報のリスト
+            List of campaign information
         """
         account_id = self._ad_account_id
         params: dict[str, Any] = {
@@ -59,13 +59,13 @@ class CampaignsMixin:
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_campaign(self, campaign_id: str) -> dict[str, Any]:
-        """キャンペーン詳細を取得する
+        """Get campaign details.
 
         Args:
-            campaign_id: キャンペーンID
+            campaign_id: Campaign ID
 
         Returns:
-            キャンペーン詳細情報
+            Campaign detail information
         """
         params: dict[str, Any] = {"fields": self._CAMPAIGN_FIELDS}
         return await self._get(f"/{campaign_id}", params)
@@ -80,18 +80,18 @@ class CampaignsMixin:
         lifetime_budget: int | None = None,
         special_ad_categories: list[str] | None = None,
     ) -> dict[str, Any]:
-        """キャンペーンを作成する
+        """Create a campaign.
 
         Args:
-            name: キャンペーン名
-            objective: キャンペーン目的（CONVERSIONS, LINK_CLICKS, REACH等）
-            status: 初期ステータス（デフォルト: PAUSED）
-            daily_budget: 日次予算（セント単位）
-            lifetime_budget: 通算予算（セント単位）
-            special_ad_categories: 特別広告カテゴリ（HOUSING, CREDIT等）
+            name: Campaign name
+            objective: Campaign objective (CONVERSIONS, LINK_CLICKS, REACH, etc.)
+            status: Initial status (default: PAUSED)
+            daily_budget: Daily budget (in cents)
+            lifetime_budget: Lifetime budget (in cents)
+            special_ad_categories: Special ad categories (HOUSING, CREDIT, etc.)
 
         Returns:
-            作成されたキャンペーン情報
+            Created campaign information
         """
         account_id = self._ad_account_id
         data: dict[str, Any] = {
@@ -106,7 +106,7 @@ class CampaignsMixin:
         if special_ad_categories is not None:
             data["special_ad_categories"] = json.dumps(special_ad_categories)
         else:
-            # Meta APIはspecial_ad_categoriesが必須（空配列でも可）
+            # Meta API requires special_ad_categories (empty array is acceptable)
             data["special_ad_categories"] = json.dumps([])
 
         return await self._post(f"/{account_id}/campaigns", data)
@@ -116,14 +116,14 @@ class CampaignsMixin:
         campaign_id: str,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """キャンペーンを更新する
+        """Update a campaign.
 
         Args:
-            campaign_id: キャンペーンID
-            **kwargs: 更新するフィールド（name, status, daily_budget, lifetime_budget等）
+            campaign_id: Campaign ID
+            **kwargs: Fields to update (name, status, daily_budget, lifetime_budget, etc.)
 
         Returns:
-            更新結果
+            Update result
         """
         data: dict[str, Any] = {}
         for key, value in kwargs.items():
@@ -133,23 +133,23 @@ class CampaignsMixin:
         return await self._post(f"/{campaign_id}", data)
 
     async def pause_campaign(self, campaign_id: str) -> dict[str, Any]:
-        """キャンペーンを一時停止する
+        """Pause a campaign.
 
         Args:
-            campaign_id: キャンペーンID
+            campaign_id: Campaign ID
 
         Returns:
-            更新結果
+            Update result
         """
         return await self.update_campaign(campaign_id, status="PAUSED")
 
     async def enable_campaign(self, campaign_id: str) -> dict[str, Any]:
-        """キャンペーンを有効化する
+        """Enable a campaign.
 
         Args:
-            campaign_id: キャンペーンID
+            campaign_id: Campaign ID
 
         Returns:
-            更新結果
+            Update result
         """
         return await self.update_campaign(campaign_id, status="ACTIVE")

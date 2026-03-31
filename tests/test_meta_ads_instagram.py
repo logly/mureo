@@ -162,7 +162,7 @@ class TestBoostPost:
     @pytest.mark.asyncio
     async def test_boost_post_api_error(self, client: PagePostsMixin) -> None:
         """APIエラー時にRuntimeErrorが発生すること"""
-        client._post = AsyncMock(side_effect=RuntimeError("Meta API リクエストに失敗しました"))
+        client._post = AsyncMock(side_effect=RuntimeError("Meta API request failed"))
         with pytest.raises(RuntimeError, match="Meta API"):
             await client.boost_post(
                 page_id="111",
@@ -315,7 +315,7 @@ class TestBoostInstagramPost:
     ) -> None:
         """APIエラー時にRuntimeErrorが発生すること"""
         client._post = AsyncMock(
-            side_effect=RuntimeError("Meta API リクエストに失敗しました")
+            side_effect=RuntimeError("Meta API request failed")
         )
         with pytest.raises(RuntimeError, match="Meta API"):
             await client.boost_instagram_post(

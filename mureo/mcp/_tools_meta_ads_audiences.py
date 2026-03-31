@@ -1,24 +1,24 @@
-"""Meta Ads ツール定義 — オーディエンス・ピクセル"""
+"""Meta Ads tool definitions — Audiences, pixels"""
 
 from __future__ import annotations
 
 from mcp.types import Tool
 
 TOOLS: list[Tool] = [
-    # === オーディエンス ===
+    # === Audiences ===
     Tool(
         name="meta_ads.audiences.list",
-        description="Meta Ads カスタムオーディエンス一覧を取得する",
+        description="List Meta Ads custom audiences",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 50）",
+                    "description": "Max results (default: 50)",
                 },
             },
             "required": ["account_id"],
@@ -26,77 +26,77 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.audiences.create",
-        description="Meta Ads カスタムオーディエンスを作成する",
+        description="Create a Meta Ads custom audience",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "name": {"type": "string", "description": "オーディエンス名"},
+                "name": {"type": "string", "description": "Audience name"},
                 "subtype": {
                     "type": "string",
-                    "description": "サブタイプ（WEBSITE, CUSTOM, APP等）",
+                    "description": "Subtype (WEBSITE, CUSTOM, APP etc.)",
                 },
-                "description": {"type": "string", "description": "説明"},
+                "description": {"type": "string", "description": "Description"},
                 "retention_days": {
                     "type": "integer",
-                    "description": "リテンション期間（日数）",
+                    "description": "Retention period (in days)",
                 },
-                "pixel_id": {"type": "string", "description": "Meta PixelID"},
+                "pixel_id": {"type": "string", "description": "Meta Pixel ID"},
             },
             "required": ["account_id", "name", "subtype"],
         },
     ),
-    # === オーディエンス get / delete / lookalike ===
+    # === Audience get / delete / lookalike ===
     Tool(
         name="meta_ads.audiences.get",
-        description="Meta Ads カスタムオーディエンス詳細を取得する",
+        description="Get Meta Ads custom audience details",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "audience_id": {"type": "string", "description": "オーディエンスID"},
+                "audience_id": {"type": "string", "description": "Audience ID"},
             },
             "required": ["account_id", "audience_id"],
         },
     ),
     Tool(
         name="meta_ads.audiences.delete",
-        description="Meta Ads カスタムオーディエンスを削除する",
+        description="Delete a Meta Ads custom audience",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "audience_id": {"type": "string", "description": "オーディエンスID"},
+                "audience_id": {"type": "string", "description": "Audience ID"},
             },
             "required": ["account_id", "audience_id"],
         },
     ),
     Tool(
         name="meta_ads.audiences.create_lookalike",
-        description="Meta Ads 類似オーディエンスを作成する",
+        description="Create a Meta Ads lookalike audience",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "name": {"type": "string", "description": "オーディエンス名"},
+                "name": {"type": "string", "description": "Audience name"},
                 "source_audience_id": {
                     "type": "string",
-                    "description": "ソースとなるカスタムオーディエンスID",
+                    "description": "Source custom audience ID",
                 },
                 "country": {
-                    "description": "対象国コード（文字列 or 配列）",
+                    "description": "Target country code (string or array)",
                     "oneOf": [
                         {"type": "string"},
                         {"type": "array", "items": {"type": "string"}},
@@ -104,11 +104,11 @@ TOOLS: list[Tool] = [
                 },
                 "ratio": {
                     "type": "number",
-                    "description": "類似度（0.01=上位1%, 最大0.20）",
+                    "description": "Similarity ratio (0.01=top 1%, max 0.20)",
                 },
                 "starting_ratio": {
                     "type": "number",
-                    "description": "類似度の開始位置（デフォルト: 0.0）",
+                    "description": "Starting ratio (default: 0.0)",
                 },
             },
             "required": [
@@ -120,20 +120,20 @@ TOOLS: list[Tool] = [
             ],
         },
     ),
-    # === ピクセル ===
+    # === Pixels ===
     Tool(
         name="meta_ads.pixels.list",
-        description="Meta Ads ピクセル一覧を取得する",
+        description="List Meta Ads pixels",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "取得件数上限（デフォルト: 50）",
+                    "description": "Max results (default: 50)",
                 },
             },
             "required": ["account_id"],
@@ -141,33 +141,33 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.pixels.get",
-        description="Meta Ads ピクセル詳細を取得する",
+        description="Get Meta Ads pixel details",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "pixel_id": {"type": "string", "description": "ピクセルID"},
+                "pixel_id": {"type": "string", "description": "Pixel ID"},
             },
             "required": ["account_id", "pixel_id"],
         },
     ),
     Tool(
         name="meta_ads.pixels.stats",
-        description="Meta Ads ピクセルのイベント統計を取得する",
+        description="Get Meta Ads pixel event statistics",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "pixel_id": {"type": "string", "description": "ピクセルID"},
+                "pixel_id": {"type": "string", "description": "Pixel ID"},
                 "period": {
                     "type": "string",
-                    "description": "集計期間（last_7d, last_14d, last_30d, last_90d）",
+                    "description": "Aggregation period (last_7d, last_14d, last_30d, last_90d)",
                 },
             },
             "required": ["account_id", "pixel_id"],
@@ -175,15 +175,15 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.pixels.events",
-        description="Meta Ads ピクセルで受信しているイベント種別一覧を取得する",
+        description="List event types received by a Meta Ads pixel",
         inputSchema={
             "type": "object",
             "properties": {
                 "account_id": {
                     "type": "string",
-                    "description": "広告アカウントID（act_XXXX形式）",
+                    "description": "Ad account ID (act_XXXX format)",
                 },
-                "pixel_id": {"type": "string", "description": "ピクセルID"},
+                "pixel_id": {"type": "string", "description": "Pixel ID"},
             },
             "required": ["account_id", "pixel_id"],
         },
