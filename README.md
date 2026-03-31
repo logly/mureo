@@ -1,6 +1,10 @@
-# mureo
+<p align="center">
+  <img src="docs/img/logo.png" alt="mureo" width="300">
+</p>
 
-Ad operations toolkit for AI agents -- Google Ads & Meta Ads via CLI/MCP.
+<p align="center">
+  Ad operations toolkit for AI agents — Google Ads & Meta Ads via CLI/MCP.
+</p>
 
 ## What is mureo?
 
