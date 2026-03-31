@@ -1,0 +1,529 @@
+"""Google Ads MCPツール ハンドラー実装（分析・監視・クリエイティブ）
+
+パフォーマンス分析、予算分析、オークション分析、RSA分析、
+BtoB最適化、クリエイティブ、監視、キャプチャ関連のハンドラー。
+"""
+
+from __future__ import annotations
+
+import base64
+import logging
+from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from mcp.types import TextContent
+
+from mureo.mcp._handlers_google_ads import _get_client, _no_google_creds
+from mureo.mcp._helpers import (
+    _json_result,
+    _opt,
+    _require,
+    api_error_handler,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# キャンペーン & 予算（追加分）
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_budget_create(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    params: dict[str, Any] = {
+        "name": _require(args, "name"),
+        "amount": _require(args, "amount"),
+    }
+    result = await client.create_budget(params)
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_accounts_list(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.list_accounts()
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_network_performance_report(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.get_network_performance_report(
+        campaign_id=_opt(args, "campaign_id"),
+        period=_opt(args, "period", "LAST_30_DAYS"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_ad_performance_report(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.get_ad_performance_report(
+        ad_group_id=_opt(args, "ad_group_id"),
+        campaign_id=_opt(args, "campaign_id"),
+        period=_opt(args, "period", "LAST_30_DAYS"),
+    )
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# キーワード（追加分）
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_keywords_pause(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    params: dict[str, Any] = {
+        "ad_group_id": _require(args, "ad_group_id"),
+        "criterion_id": _require(args, "criterion_id"),
+    }
+    result = await client.pause_keyword(params)
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_negative_keywords_remove(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    params: dict[str, Any] = {
+        "campaign_id": _require(args, "campaign_id"),
+        "criterion_id": _require(args, "criterion_id"),
+    }
+    result = await client.remove_negative_keyword(params)
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_negative_keywords_add_to_ad_group(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    params: dict[str, Any] = {
+        "ad_group_id": _require(args, "ad_group_id"),
+        "keywords": _require(args, "keywords"),
+    }
+    result = await client.add_negative_keywords_to_ad_group(params)
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# 広告（追加分）
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_ads_policy_details(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.get_ad_policy_details(
+        _require(args, "ad_group_id"),
+        _require(args, "ad_id"),
+    )
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# 検索語句分析
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_search_terms_analyze(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.analyze_search_terms(
+        _require(args, "campaign_id"),
+        period=_opt(args, "period", "LAST_30_DAYS"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_negative_keywords_suggest(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.suggest_negative_keywords(
+        campaign_id=_require(args, "campaign_id"),
+        period=_opt(args, "period", "LAST_30_DAYS"),
+        target_cpa=_opt(args, "target_cpa"),
+        ad_group_id=_opt(args, "ad_group_id"),
+    )
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# キーワード分析
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_keywords_audit(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.audit_keywords(
+        campaign_id=_require(args, "campaign_id"),
+        period=_opt(args, "period", "LAST_30_DAYS"),
+        target_cpa=_opt(args, "target_cpa"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_keywords_cross_adgroup_duplicates(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.find_cross_adgroup_duplicates(
+        campaign_id=_require(args, "campaign_id"),
+        period=_opt(args, "period", "LAST_30_DAYS"),
+    )
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# パフォーマンス分析
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_performance_analyze(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.analyze_performance(
+        campaign_id=_require(args, "campaign_id"),
+        period=_opt(args, "period", "LAST_7_DAYS"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_cost_increase_investigate(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.investigate_cost_increase(
+        _require(args, "campaign_id"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_health_check(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.health_check_all_campaigns()
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_ad_performance_compare(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.compare_ad_performance(
+        ad_group_id=_require(args, "ad_group_id"),
+        period=_opt(args, "period", "LAST_30_DAYS"),
+    )
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# 予算分析
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_budget_efficiency(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.analyze_budget_efficiency(
+        period=_opt(args, "period", "LAST_30_DAYS"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_budget_reallocation(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.suggest_budget_reallocation(
+        period=_opt(args, "period", "LAST_30_DAYS"),
+    )
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# オークション分析
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_auction_insights_get(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.get_auction_insights(
+        campaign_id=_require(args, "campaign_id"),
+        period=_opt(args, "period", "LAST_30_DAYS"),
+    )
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# RSA分析
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_rsa_assets_analyze(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.analyze_rsa_assets(
+        campaign_id=_require(args, "campaign_id"),
+        period=_opt(args, "period", "LAST_30_DAYS"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_rsa_assets_audit(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.audit_rsa_assets(
+        campaign_id=_require(args, "campaign_id"),
+        period=_opt(args, "period", "LAST_30_DAYS"),
+    )
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# BtoB
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_btob_optimizations(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.suggest_btob_optimizations(
+        campaign_id=_require(args, "campaign_id"),
+        period=_opt(args, "period", "LAST_30_DAYS"),
+    )
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# クリエイティブ
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_landing_page_analyze(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.analyze_landing_page(_require(args, "url"))
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_creative_research(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.research_creative(
+        campaign_id=_require(args, "campaign_id"),
+        url=_require(args, "url"),
+        ad_group_id=_opt(args, "ad_group_id"),
+    )
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# 監視
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_delivery_goal_evaluate(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.evaluate_delivery_goal(_require(args, "campaign_id"))
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_cpa_goal_evaluate(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.evaluate_cpa_goal(
+        _require(args, "campaign_id"),
+        _require(args, "target_cpa"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_cv_goal_evaluate(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.evaluate_cv_goal(
+        _require(args, "campaign_id"),
+        _require(args, "target_cv_daily"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_zero_conversions_diagnose(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.diagnose_zero_conversions(
+        _require(args, "campaign_id"),
+    )
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# キャプチャ
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_capture(args: dict[str, Any]) -> list[TextContent]:
+    from mureo.google_ads._message_match import LPScreenshotter
+
+    url = _require(args, "url")
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
+    screenshotter = LPScreenshotter()
+    screenshot_bytes = await screenshotter.capture(url)
+    encoded = base64.b64encode(screenshot_bytes).decode("ascii")
+    return _json_result(
+        {
+            "url": url,
+            "screenshot_base64": encoded,
+            "format": "png",
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# ハンドラーマッピング
+# ---------------------------------------------------------------------------
+
+HANDLERS_ANALYSIS: dict[str, Any] = {
+    # キャンペーン & 予算（追加分）
+    "google_ads.budget.create": handle_budget_create,
+    "google_ads.accounts.list": handle_accounts_list,
+    "google_ads.network_performance.report": handle_network_performance_report,
+    "google_ads.ad_performance.report": handle_ad_performance_report,
+    # キーワード（追加分）
+    "google_ads.keywords.pause": handle_keywords_pause,
+    "google_ads.negative_keywords.remove": handle_negative_keywords_remove,
+    "google_ads.negative_keywords.add_to_ad_group": handle_negative_keywords_add_to_ad_group,
+    # 広告（追加分）
+    "google_ads.ads.policy_details": handle_ads_policy_details,
+    # 検索語句分析
+    "google_ads.search_terms.analyze": handle_search_terms_analyze,
+    "google_ads.negative_keywords.suggest": handle_negative_keywords_suggest,
+    # キーワード分析
+    "google_ads.keywords.audit": handle_keywords_audit,
+    "google_ads.keywords.cross_adgroup_duplicates": handle_keywords_cross_adgroup_duplicates,
+    # パフォーマンス分析
+    "google_ads.performance.analyze": handle_performance_analyze,
+    "google_ads.cost_increase.investigate": handle_cost_increase_investigate,
+    "google_ads.health_check.all": handle_health_check,
+    "google_ads.ad_performance.compare": handle_ad_performance_compare,
+    # 予算分析
+    "google_ads.budget.efficiency": handle_budget_efficiency,
+    "google_ads.budget.reallocation": handle_budget_reallocation,
+    # オークション分析
+    "google_ads.auction_insights.get": handle_auction_insights_get,
+    # RSA分析
+    "google_ads.rsa_assets.analyze": handle_rsa_assets_analyze,
+    "google_ads.rsa_assets.audit": handle_rsa_assets_audit,
+    # BtoB
+    "google_ads.btob.optimizations": handle_btob_optimizations,
+    # クリエイティブ
+    "google_ads.landing_page.analyze": handle_landing_page_analyze,
+    "google_ads.creative.research": handle_creative_research,
+    # 監視
+    "google_ads.monitoring.delivery_goal": handle_delivery_goal_evaluate,
+    "google_ads.monitoring.cpa_goal": handle_cpa_goal_evaluate,
+    "google_ads.monitoring.cv_goal": handle_cv_goal_evaluate,
+    "google_ads.monitoring.zero_conversions": handle_zero_conversions_diagnose,
+    # キャプチャ
+    "google_ads.capture.screenshot": handle_capture,
+}

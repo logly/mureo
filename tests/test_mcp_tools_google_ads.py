@@ -34,9 +34,9 @@ class TestGoogleAdsToolDefinitions:
     """Google Adsツール一覧が正しく定義されていることを検証する"""
 
     def test_tool_count(self) -> None:
-        """全29ツールが定義されていること"""
+        """全82ツールが定義されていること"""
         mod = _import_google_ads_tools()
-        assert len(mod.TOOLS) == 29
+        assert len(mod.TOOLS) == 82
 
     def test_all_tool_names(self) -> None:
         """全ツール名がgoogle_ads.で始まること"""

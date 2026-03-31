@@ -6,6 +6,7 @@ tools_google_ads.py から呼び出される各ツールのハンドラー関数
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -36,6 +37,10 @@ _NO_CREDS_MSG = (
 def _get_client(arguments: dict[str, Any]) -> Any:
     """認証情報を読み込みクライアントを生成する。Noneの場合は認証エラー。"""
     customer_id = _require(arguments, "customer_id")
+    if not str(customer_id).replace("-", "").isdigit():
+        raise ValueError(
+            f"Invalid customer_id format: {customer_id} (must be numeric, hyphens allowed)"
+        )
     creds = load_google_ads_credentials()
     if creds is None:
         return None
@@ -440,6 +445,13 @@ async def handle_assets_upload_image(args: dict[str, Any]) -> list[TextContent]:
     if client is None:
         return _no_google_creds()
     file_path = _require(args, "file_path")
+    if not os.path.isfile(file_path):
+        raise ValueError(f"File not found: {file_path}")
+    _allowed_image_ext = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+    if not file_path.lower().endswith(_allowed_image_ext):
+        raise ValueError(
+            f"Unsupported image format. Allowed: {', '.join(_allowed_image_ext)}"
+        )
     name = _opt(args, "name")
     result = await client.upload_image_asset(file_path, name=name)
     return _json_result(result)
@@ -449,7 +461,7 @@ async def handle_assets_upload_image(args: dict[str, Any]) -> list[TextContent]:
 # ハンドラーマッピング
 # ---------------------------------------------------------------------------
 
-HANDLERS: dict[str, Any] = {
+_HANDLERS_BASE: dict[str, Any] = {
     "google_ads.campaigns.list": handle_campaigns_list,
     "google_ads.campaigns.get": handle_campaigns_get,
     "google_ads.campaigns.create": handle_campaigns_create,
@@ -479,4 +491,18 @@ HANDLERS: dict[str, Any] = {
     "google_ads.cpc.detect_trend": handle_cpc_detect_trend,
     "google_ads.device.analyze": handle_device_analyze,
     "google_ads.assets.upload_image": handle_assets_upload_image,
+}
+
+# 拡張・分析ハンドラーをマージ
+from mureo.mcp._handlers_google_ads_analysis import (  # noqa: E402
+    HANDLERS_ANALYSIS,
+)
+from mureo.mcp._handlers_google_ads_extensions import (  # noqa: E402
+    HANDLERS_EXTENSIONS,
+)
+
+HANDLERS: dict[str, Any] = {
+    **_HANDLERS_BASE,
+    **HANDLERS_EXTENSIONS,
+    **HANDLERS_ANALYSIS,
 }
