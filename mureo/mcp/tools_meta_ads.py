@@ -24,11 +24,6 @@ if TYPE_CHECKING:
     from mcp.types import TextContent, Tool
 
 from mureo.mcp._handlers_meta_ads import (
-    handle_ad_rules_create,
-    handle_ad_rules_delete,
-    handle_ad_rules_get,
-    handle_ad_rules_list,
-    handle_ad_rules_update,
     handle_ad_sets_create,
     handle_ad_sets_list,
     handle_ad_sets_update,
@@ -55,25 +50,16 @@ from mureo.mcp._handlers_meta_ads import (
     handle_images_upload_file,
     handle_insights_breakdown,
     handle_insights_report,
-    handle_instagram_accounts,
-    handle_instagram_boost,
-    handle_instagram_media,
     handle_lead_forms_create,
     handle_lead_forms_get,
     handle_lead_forms_list,
     handle_leads_get,
     handle_leads_get_by_ad,
-    handle_page_posts_boost,
-    handle_page_posts_list,
     handle_products_add,
     handle_products_delete,
     handle_products_get,
     handle_products_list,
     handle_products_update,
-    handle_split_tests_create,
-    handle_split_tests_end,
-    handle_split_tests_get,
-    handle_split_tests_list,
     handle_videos_upload,
     handle_videos_upload_file,
 )
@@ -103,6 +89,22 @@ from mureo.mcp._handlers_meta_ads_extended import (
     handle_pixels_get,
     handle_pixels_list,
     handle_pixels_stats,
+)
+from mureo.mcp._handlers_meta_ads_other import (
+    handle_ad_rules_create,
+    handle_ad_rules_delete,
+    handle_ad_rules_get,
+    handle_ad_rules_list,
+    handle_ad_rules_update,
+    handle_instagram_accounts,
+    handle_instagram_boost,
+    handle_instagram_media,
+    handle_page_posts_boost,
+    handle_page_posts_list,
+    handle_split_tests_create,
+    handle_split_tests_end,
+    handle_split_tests_get,
+    handle_split_tests_list,
 )
 
 # カテゴリ別ツール定義をインポート
