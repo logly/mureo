@@ -14,6 +14,8 @@ from google.protobuf.field_mask_pb2 import FieldMask as PbFieldMask
 if TYPE_CHECKING:
     from google.oauth2.credentials import Credentials
 
+    from mureo.throttle import Throttler
+
 from mureo.google_ads._analysis import _AnalysisMixin
 from mureo.google_ads._creative import _CreativeMixin
 from mureo.google_ads._diagnostics import _DiagnosticsMixin
@@ -183,6 +185,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         customer_id: str,
         developer_token: str,
         login_customer_id: str | None = None,
+        throttler: Throttler | None = None,
     ) -> None:
         # login_customer_id resolution order:
         # 1. Explicitly provided value
@@ -194,6 +197,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
             login_customer_id=resolved_login_id,
         )
         self._customer_id = customer_id.replace("-", "")
+        self._throttler = throttler
 
     def _get_service(self, service_name: str) -> Any:
         return self._client.get_service(service_name)
@@ -204,6 +208,8 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         gRPC calls are synchronous and block the event loop,
         so we offload them to a thread via run_in_executor.
         """
+        if self._throttler is not None:
+            await self._throttler.acquire()
         ga_service = self._get_service("GoogleAdsService")
         # Log the beginning of the query for debugging
         query_hint = query.strip().split("\n")[0][:60]

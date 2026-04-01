@@ -11,12 +11,15 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from google.oauth2.credentials import Credentials
 
 from mureo.google_ads import GoogleAdsApiClient
 from mureo.meta_ads import MetaAdsApiClient
+
+if TYPE_CHECKING:
+    from mureo.throttle import Throttler
 
 logger = logging.getLogger(__name__)
 
@@ -153,12 +156,14 @@ def load_meta_ads_credentials(
 def create_google_ads_client(
     credentials: GoogleAdsCredentials,
     customer_id: str,
+    throttler: Throttler | None = None,
 ) -> GoogleAdsApiClient:
     """Create a GoogleAdsApiClient from credentials.
 
     Args:
         credentials: Google Ads credentials
         customer_id: Target Google Ads account (customer_id)
+        throttler: Optional rate-limit throttler
 
     Returns:
         GoogleAdsApiClient instance
@@ -176,18 +181,21 @@ def create_google_ads_client(
         customer_id=customer_id,
         developer_token=credentials.developer_token,
         login_customer_id=credentials.login_customer_id,
+        throttler=throttler,
     )
 
 
 def create_meta_ads_client(
     credentials: MetaAdsCredentials,
     account_id: str,
+    throttler: Throttler | None = None,
 ) -> MetaAdsApiClient:
     """Create a MetaAdsApiClient from credentials.
 
     Args:
         credentials: Meta Ads credentials
         account_id: Ad account ID ("act_XXXX" format)
+        throttler: Optional rate-limit throttler
 
     Returns:
         MetaAdsApiClient instance
@@ -195,6 +203,7 @@ def create_meta_ads_client(
     return MetaAdsApiClient(
         access_token=credentials.access_token,
         ad_account_id=account_id,
+        throttler=throttler,
     )
 
 

@@ -316,6 +316,7 @@ def test_create_google_ads_client() -> None:
             customer_id="5555555555",
             developer_token="dev-tok",
             login_customer_id="1234567890",
+            throttler=None,
         )
 
 
@@ -341,6 +342,7 @@ def test_create_google_ads_client_without_login_customer_id() -> None:
             customer_id="5555555555",
             developer_token="dev-tok",
             login_customer_id=None,
+            throttler=None,
         )
 
 
@@ -367,6 +369,7 @@ def test_create_meta_ads_client() -> None:
         mock_client_cls.assert_called_once_with(
             access_token="meta-tok",
             ad_account_id="act_12345",
+            throttler=None,
         )
 
 

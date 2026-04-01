@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -22,6 +22,9 @@ from mureo.meta_ads._leads import LeadsMixin
 from mureo.meta_ads._page_posts import PagePostsMixin
 from mureo.meta_ads._pixels import PixelsMixin
 from mureo.meta_ads._split_test import SplitTestMixin
+
+if TYPE_CHECKING:
+    from mureo.throttle import Throttler
 
 logger = logging.getLogger(__name__)
 
@@ -63,11 +66,13 @@ class MetaAdsApiClient(
         self,
         access_token: str,
         ad_account_id: str,
+        throttler: Throttler | None = None,
     ) -> None:
         """
         Args:
             access_token: Meta Graph API access token (plaintext)
             ad_account_id: Ad account ID ("act_XXXX" format)
+            throttler: Optional rate-limit throttler
         """
         if not access_token:
             raise ValueError("access_token is required")
@@ -79,6 +84,7 @@ class MetaAdsApiClient(
         self._access_token = access_token
         self._ad_account_id = ad_account_id
         self._http = httpx.AsyncClient(timeout=30.0)
+        self._throttler = throttler
 
     async def _get(
         self, path: str, params: dict[str, Any] | None = None
@@ -139,6 +145,9 @@ class MetaAdsApiClient(
         Raises:
             RuntimeError: If the maximum retry count is exceeded
         """
+        if self._throttler is not None:
+            await self._throttler.acquire()
+
         url = f"{self.BASE_URL}{path}"
         headers = {"Authorization": f"Bearer {self._access_token}"}
 

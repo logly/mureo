@@ -24,6 +24,7 @@ from mureo.mcp._helpers import (
     _require,
     api_error_handler,
 )
+from mureo.throttle import META_ADS_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,8 @@ _NO_CREDS_MSG = (
     "(META_ADS_ACCESS_TOKEN) "
     "or configure ~/.mureo/credentials.json."
 )
+
+_throttler = Throttler(META_ADS_THROTTLE)
 
 
 def _get_client(arguments: dict[str, Any]) -> Any:
@@ -44,7 +47,7 @@ def _get_client(arguments: dict[str, Any]) -> Any:
     creds = load_meta_ads_credentials()
     if creds is None:
         return None
-    return create_meta_ads_client(creds, account_id)
+    return create_meta_ads_client(creds, account_id, throttler=_throttler)
 
 
 def _no_meta_creds() -> list[TextContent]:
