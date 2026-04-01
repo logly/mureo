@@ -19,3 +19,10 @@ build/
 
 # pytest
 .pytest_cache/
+
+# mypy
+.mypy_cache/
+
+# Generated docs (not tracked)
+*.pdf
+generate_tech_doc.py
