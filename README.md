@@ -17,6 +17,60 @@
 - **Token auto-refresh** -- Meta Ads Long-Lived Tokens are automatically refreshed before expiry when `app_id` and `app_secret` are configured.
 - **File-based context** -- optional `STRATEGY.md` and `STATE.json` files let agents persist strategy notes and campaign state without a database.
 
+## Beyond an API Wrapper
+
+mureo is not just a thin wrapper around ad platform APIs. It includes **built-in analysis, diagnostics, and optimization logic** that turns raw API data into actionable insights — so your agent can make informed decisions, not just execute commands.
+
+### Analysis & Diagnostics
+
+| Capability | Description |
+|------------|-------------|
+| **Campaign diagnostics** | Delivery status analysis with 30+ reason codes, learning period detection, smart bidding strategy classification |
+| **Performance analysis** | Period-over-period comparison, cost increase investigation, cross-campaign health checks |
+| **Search term analysis** | N-gram distribution, intent pattern detection, automated add/exclude candidate scoring |
+| **Budget efficiency** | Cross-campaign budget allocation analysis, reallocation recommendations |
+| **RSA ad validation** | Prohibited expression detection, character width calculation, auto-correction, ad strength prediction |
+| **RSA asset audit** | Asset-level performance analysis, replacement/addition recommendations |
+| **Device analysis** | CPA gap detection, zero-conversion device identification |
+| **Auction insights** | Competitive landscape analysis, impression share trends |
+| **B2B optimization** | Industry-specific campaign checks and recommendations |
+
+### Creative & Landing Page
+
+| Capability | Description |
+|------------|-------------|
+| **Landing page analysis** | HTML parsing with SSRF protection, structured data extraction, industry estimation, CTA/feature/price detection |
+| **Creative research** | Aggregates LP analysis + existing ads + search terms + keyword suggestions into a unified research package |
+| **Message match evaluation** | Framework for scoring ad copy ↔ landing page alignment (screenshot capture via Playwright) |
+
+### Monitoring & Goal Evaluation
+
+| Capability | Description |
+|------------|-------------|
+| **Delivery goal evaluation** | Integrates campaign status + diagnostics + performance into critical/warning/healthy classification |
+| **CPA goal tracking** | Compares actual CPA against targets with trend analysis |
+| **CV goal tracking** | Daily conversion volume monitoring against targets |
+| **Zero-conversion diagnosis** | Root cause analysis for campaigns with no conversions |
+
+### Meta Ads Analysis
+
+| Capability | Description |
+|------------|-------------|
+| **Placement analysis** | Performance breakdown by publisher platform (Facebook, Instagram, Audience Network) |
+| **Cost investigation** | CPA degradation root cause analysis |
+| **Ad comparison** | A/B performance comparison within ad sets |
+| **Creative suggestions** | Data-driven creative improvement recommendations |
+| **PII hashing** | SHA-256 hashing with field-specific normalization for Conversions API compliance |
+
+### Infrastructure
+
+| Capability | Description |
+|------------|-------------|
+| **Rate limiting** | Token bucket + hourly cap prevents API bans from high-speed agent requests |
+| **Token auto-refresh** | Meta Ads Long-Lived Tokens automatically refreshed before 60-day expiry |
+| **Strategy context** | Markdown-based strategy persistence (STRATEGY.md) + JSON campaign state (STATE.json) |
+| **Image/video validation** | Path traversal prevention, extension allowlists, size limits on uploads |
+
 ## Quick Start
 
 ```bash
