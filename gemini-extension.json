@@ -1,6 +1,6 @@
 {
   "name": "mureo",
-  "version": "0.1.0",
-  "description": "Ad operations toolkit for AI agents — Google Ads & Meta Ads via CLI/MCP",
+  "version": "0.2.0",
+  "description": "Marketing operations toolkit for AI agents — CLI & MCP",
   "contextFileName": "CONTEXT.md"
 }

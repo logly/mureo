@@ -32,7 +32,7 @@ Paste any error messages or logs here
 
 - **OS**: [e.g., macOS 15, Ubuntu 24.04]
 - **Python version**: [e.g., 3.12.3]
-- **mureo version**: [e.g., 0.1.0]
+- **mureo version**: [e.g., 0.2.0]
 - **Installation method**: [e.g., pip, pipx]
 
 ## Component
