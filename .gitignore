@@ -22,7 +22,3 @@ build/
 
 # mypy
 .mypy_cache/
-
-# Generated docs (not tracked)
-*.pdf
-generate_tech_doc.py
