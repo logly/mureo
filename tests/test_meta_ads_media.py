@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mureo.auth import MetaAdsCredentials
 
 # ---------------------------------------------------------------------------
 # フィクスチャ
@@ -574,7 +575,7 @@ class TestMetaAdsMediaHandlers:
 
         with patch(
             "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
-            return_value={"access_token": "tok"},
+            return_value=MetaAdsCredentials(access_token="tok"),
         ), patch(
             "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
             return_value=mock_client,
@@ -603,7 +604,7 @@ class TestMetaAdsMediaHandlers:
 
         with patch(
             "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
-            return_value={"access_token": "tok"},
+            return_value=MetaAdsCredentials(access_token="tok"),
         ), patch(
             "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
             return_value=mock_client,
@@ -632,7 +633,7 @@ class TestMetaAdsMediaHandlers:
 
         with patch(
             "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
-            return_value={"access_token": "tok"},
+            return_value=MetaAdsCredentials(access_token="tok"),
         ), patch(
             "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
             return_value=mock_client,
@@ -667,7 +668,7 @@ class TestMetaAdsMediaHandlers:
 
         with patch(
             "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
-            return_value={"access_token": "tok"},
+            return_value=MetaAdsCredentials(access_token="tok"),
         ), patch(
             "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
             return_value=mock_client,

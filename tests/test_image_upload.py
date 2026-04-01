@@ -345,9 +345,12 @@ class TestMcpMetaUploadFile:
             "hash": "abc", "url": "https://example.com/img.png"
         }
 
+        from mureo.auth import MetaAdsCredentials
+
+        creds = MetaAdsCredentials(access_token="tok")
         with patch(
             "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
-            return_value={"access_token": "tok"},
+            return_value=creds,
         ), patch(
             "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
             return_value=mock_client,

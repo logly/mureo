@@ -25,7 +25,7 @@ from mureo.mcp._helpers import (
 
 @api_error_handler
 async def handle_page_posts_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     page_id = _require(args, "page_id")
@@ -35,7 +35,7 @@ async def handle_page_posts_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_page_posts_boost(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     page_id = _require(args, "page_id")
@@ -55,7 +55,7 @@ async def handle_page_posts_boost(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_instagram_accounts(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     result = await client.list_instagram_accounts()
@@ -64,7 +64,7 @@ async def handle_instagram_accounts(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_instagram_media(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     ig_user_id = _require(args, "ig_user_id")
@@ -76,7 +76,7 @@ async def handle_instagram_media(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_instagram_boost(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     ig_user_id = _require(args, "ig_user_id")
@@ -96,7 +96,7 @@ async def handle_instagram_boost(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_split_tests_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     result = await client.list_split_tests(limit=_opt(args, "limit", 50))
@@ -105,7 +105,7 @@ async def handle_split_tests_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_split_tests_get(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     study_id = _require(args, "study_id")
@@ -115,7 +115,7 @@ async def handle_split_tests_get(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_split_tests_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     kwargs: dict[str, Any] = {
@@ -137,7 +137,7 @@ async def handle_split_tests_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_split_tests_end(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     study_id = _require(args, "study_id")
@@ -152,7 +152,7 @@ async def handle_split_tests_end(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ad_rules_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     result = await client.list_ad_rules(limit=_opt(args, "limit", 50))
@@ -161,7 +161,7 @@ async def handle_ad_rules_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ad_rules_get(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     rule_id = _require(args, "rule_id")
@@ -171,7 +171,7 @@ async def handle_ad_rules_get(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ad_rules_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     kwargs: dict[str, Any] = {
@@ -191,7 +191,7 @@ async def handle_ad_rules_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ad_rules_update(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     rule_id = _require(args, "rule_id")
@@ -206,7 +206,7 @@ async def handle_ad_rules_update(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ad_rules_delete(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     rule_id = _require(args, "rule_id")

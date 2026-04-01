@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from mureo.auth import (
     create_meta_ads_client,
     load_meta_ads_credentials,
+    refresh_meta_token_if_needed,
 )
 from mureo.mcp._helpers import (
     _json_result,
@@ -37,8 +38,11 @@ _NO_CREDS_MSG = (
 _throttler = Throttler(META_ADS_THROTTLE)
 
 
-def _get_client(arguments: dict[str, Any]) -> Any:
-    """Load credentials and create a client. Returns None on auth error."""
+async def _get_client(arguments: dict[str, Any]) -> Any:
+    """Load credentials, refresh token if needed, and create a client.
+
+    Returns None on auth error.
+    """
     account_id = _require(arguments, "account_id")
     if not str(account_id).startswith("act_"):
         raise ValueError(
@@ -47,6 +51,7 @@ def _get_client(arguments: dict[str, Any]) -> Any:
     creds = load_meta_ads_credentials()
     if creds is None:
         return None
+    creds = await refresh_meta_token_if_needed(creds)
     return create_meta_ads_client(creds, account_id, throttler=_throttler)
 
 
@@ -62,7 +67,7 @@ def _no_meta_creds() -> list[TextContent]:
 
 @api_error_handler
 async def handle_campaigns_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     result = await client.list_campaigns(
@@ -74,7 +79,7 @@ async def handle_campaigns_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_campaigns_get(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     campaign_id = _require(args, "campaign_id")
@@ -84,7 +89,7 @@ async def handle_campaigns_get(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_campaigns_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     kwargs: dict[str, Any] = {
@@ -101,7 +106,7 @@ async def handle_campaigns_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_campaigns_update(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     campaign_id = _require(args, "campaign_id")
@@ -121,7 +126,7 @@ async def handle_campaigns_update(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ad_sets_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     result = await client.list_ad_sets(
@@ -133,7 +138,7 @@ async def handle_ad_sets_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ad_sets_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     kwargs: dict[str, Any] = {
@@ -151,7 +156,7 @@ async def handle_ad_sets_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ad_sets_update(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     ad_set_id = _require(args, "ad_set_id")
@@ -171,7 +176,7 @@ async def handle_ad_sets_update(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ads_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     result = await client.list_ads(
@@ -183,7 +188,7 @@ async def handle_ads_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ads_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     kwargs: dict[str, Any] = {
@@ -200,7 +205,7 @@ async def handle_ads_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ads_update(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     ad_id = _require(args, "ad_id")
@@ -220,7 +225,7 @@ async def handle_ads_update(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_insights_report(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     result = await client.get_performance_report(
@@ -233,7 +238,7 @@ async def handle_insights_report(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_insights_breakdown(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     campaign_id = _require(args, "campaign_id")
@@ -252,7 +257,7 @@ async def handle_insights_breakdown(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_audiences_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     result = await client.list_custom_audiences(
@@ -263,7 +268,7 @@ async def handle_audiences_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_audiences_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     kwargs: dict[str, Any] = {
@@ -285,7 +290,7 @@ async def handle_audiences_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_conversions_send(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     pixel_id = _require(args, "pixel_id")
@@ -297,7 +302,7 @@ async def handle_conversions_send(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_conversions_send_purchase(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     kwargs: dict[str, Any] = {
@@ -317,7 +322,7 @@ async def handle_conversions_send_purchase(args: dict[str, Any]) -> list[TextCon
 
 @api_error_handler
 async def handle_conversions_send_lead(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     kwargs: dict[str, Any] = {
@@ -340,7 +345,7 @@ async def handle_conversions_send_lead(args: dict[str, Any]) -> list[TextContent
 
 @api_error_handler
 async def handle_catalogs_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     business_id = _require(args, "business_id")
@@ -350,7 +355,7 @@ async def handle_catalogs_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_catalogs_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     business_id = _require(args, "business_id")
@@ -361,7 +366,7 @@ async def handle_catalogs_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_catalogs_get(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     catalog_id = _require(args, "catalog_id")
@@ -371,7 +376,7 @@ async def handle_catalogs_get(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_catalogs_delete(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     catalog_id = _require(args, "catalog_id")
@@ -386,7 +391,7 @@ async def handle_catalogs_delete(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_products_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     catalog_id = _require(args, "catalog_id")
@@ -396,7 +401,7 @@ async def handle_products_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_products_add(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     catalog_id = _require(args, "catalog_id")
@@ -419,7 +424,7 @@ async def handle_products_add(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_products_get(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     product_id = _require(args, "product_id")
@@ -429,7 +434,7 @@ async def handle_products_get(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_products_update(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     product_id = _require(args, "product_id")
@@ -453,7 +458,7 @@ async def handle_products_update(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_products_delete(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     product_id = _require(args, "product_id")
@@ -468,7 +473,7 @@ async def handle_products_delete(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_feeds_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     catalog_id = _require(args, "catalog_id")
@@ -478,7 +483,7 @@ async def handle_feeds_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_feeds_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     catalog_id = _require(args, "catalog_id")
@@ -498,7 +503,7 @@ async def handle_feeds_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_lead_forms_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     page_id = _require(args, "page_id")
@@ -508,7 +513,7 @@ async def handle_lead_forms_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_lead_forms_get(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     form_id = _require(args, "form_id")
@@ -518,7 +523,7 @@ async def handle_lead_forms_get(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_lead_forms_create(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     kwargs: dict[str, Any] = {
@@ -536,7 +541,7 @@ async def handle_lead_forms_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_leads_get(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     form_id = _require(args, "form_id")
@@ -546,7 +551,7 @@ async def handle_leads_get(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_leads_get_by_ad(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     ad_id = _require(args, "ad_id")
@@ -561,7 +566,7 @@ async def handle_leads_get_by_ad(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_images_upload_file(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     file_path = _require(args, "file_path")
@@ -584,7 +589,7 @@ async def handle_images_upload_file(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_videos_upload(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     video_url = _require(args, "video_url")
@@ -595,7 +600,7 @@ async def handle_videos_upload(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_videos_upload_file(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     file_path = _require(args, "file_path")
@@ -613,7 +618,7 @@ async def handle_videos_upload_file(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_creatives_create_carousel(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     result = await client.create_carousel_creative(
@@ -627,7 +632,7 @@ async def handle_creatives_create_carousel(args: dict[str, Any]) -> list[TextCon
 
 @api_error_handler
 async def handle_creatives_create_collection(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
+    client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     result = await client.create_collection_creative(

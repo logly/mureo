@@ -6,13 +6,18 @@ Falls back to environment variables if the file does not exist.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 import os
-from dataclasses import dataclass
+import tempfile
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
 from google.oauth2.credentials import Credentials
 
 from mureo.google_ads import GoogleAdsApiClient
@@ -49,6 +54,7 @@ class MetaAdsCredentials:
     access_token: str
     app_id: str | None = None
     app_secret: str | None = None
+    token_obtained_at: str | None = None  # ISO 8601 timestamp
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +148,7 @@ def load_meta_ads_credentials(
                 access_token=access_token,
                 app_id=meta_section.get("app_id"),
                 app_secret=meta_section.get("app_secret"),
+                token_obtained_at=meta_section.get("token_obtained_at"),
             )
 
     # Environment variable fallback
@@ -208,6 +215,159 @@ def create_meta_ads_client(
 
 
 # ---------------------------------------------------------------------------
+# Meta Ads token refresh
+# ---------------------------------------------------------------------------
+
+_TOKEN_REFRESH_THRESHOLD_DAYS = 53
+_META_GRAPH_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token"
+_refresh_lock = asyncio.Lock()
+
+
+async def refresh_meta_token_if_needed(
+    credentials: MetaAdsCredentials,
+    path: Path | None = None,
+) -> MetaAdsCredentials:
+    """Check if Meta Ads token needs refresh and refresh if needed.
+
+    Refreshes when:
+    - app_id and app_secret are available
+    - token_obtained_at is known
+    - Token will expire within 7 days (53+ days old)
+
+    Returns original credentials if refresh is not needed or not possible.
+    """
+    if not _should_refresh(credentials):
+        return credentials
+
+    async with _refresh_lock:
+        # Re-check after acquiring lock (another coroutine may have refreshed)
+        if not _should_refresh(credentials):
+            return credentials
+
+        try:
+            new_token, new_obtained_at = await _call_refresh_api(credentials)
+        except Exception:
+            logger.warning("Failed to refresh Meta Ads token", exc_info=True)
+            return credentials
+
+        refreshed = replace(
+            credentials,
+            access_token=new_token,
+            token_obtained_at=new_obtained_at,
+        )
+
+        resolved = path if path is not None else _resolve_default_path()
+        try:
+            _save_meta_token(resolved, new_token, new_obtained_at)
+        except Exception:
+            logger.warning(
+                "Failed to save refreshed Meta Ads token to %s",
+                resolved,
+                exc_info=True,
+            )
+
+        return refreshed
+
+
+def _should_refresh(credentials: MetaAdsCredentials) -> bool:
+    """Return True if the token should be refreshed."""
+    if not credentials.app_id or not credentials.app_secret:
+        return False
+    if not credentials.token_obtained_at:
+        return False
+
+    try:
+        obtained = datetime.fromisoformat(credentials.token_obtained_at)
+    except (ValueError, TypeError):
+        logger.warning(
+            "Invalid token_obtained_at format: %s",
+            credentials.token_obtained_at,
+        )
+        return False
+
+    age = datetime.now(tz=timezone.utc) - obtained.astimezone(timezone.utc)
+    return age >= timedelta(days=_TOKEN_REFRESH_THRESHOLD_DAYS)
+
+
+async def _call_refresh_api(
+    credentials: MetaAdsCredentials,
+) -> tuple[str, str]:
+    """Call the Meta Graph API to refresh the token.
+
+    Returns:
+        Tuple of (new_access_token, new_obtained_at_iso).
+
+    Raises:
+        httpx.HTTPError: On network errors.
+        ValueError: On unexpected API response.
+    """
+    params = {
+        "grant_type": "fb_exchange_token",
+        "client_id": credentials.app_id,
+        "client_secret": credentials.app_secret,
+        "fb_exchange_token": credentials.access_token,
+    }
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+        resp = await client.get(_META_GRAPH_TOKEN_URL, params=params)
+
+    if resp.status_code != 200:
+        raise ValueError(
+            f"Meta token refresh failed with status {resp.status_code}: " f"{resp.text}"
+        )
+
+    data = resp.json()
+    new_token = data.get("access_token")
+    if not new_token:
+        raise ValueError("No access_token in refresh response")
+
+    new_obtained_at = datetime.now(tz=timezone.utc).isoformat()
+    return new_token, new_obtained_at
+
+
+def _save_meta_token(
+    path: Path,
+    new_token: str,
+    new_obtained_at: str,
+) -> None:
+    """Atomically update meta_ads token in credentials.json.
+
+    Reads the current file, updates the meta_ads section, and writes back
+    using a temp file + os.replace for atomicity.
+    """
+    data: dict[str, Any] = {}
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            data = {}
+
+    if not isinstance(data, dict):
+        data = {}
+
+    meta_section = data.get("meta_ads", {})
+    if not isinstance(meta_section, dict):
+        meta_section = {}
+
+    meta_section["access_token"] = new_token
+    meta_section["token_obtained_at"] = new_obtained_at
+    data["meta_ads"] = meta_section
+
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    os.fchmod(fd, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -248,4 +408,5 @@ def _load_meta_ads_from_env() -> MetaAdsCredentials | None:
         access_token=access_token,
         app_id=os.environ.get("META_ADS_APP_ID"),
         app_secret=os.environ.get("META_ADS_APP_SECRET"),
+        token_obtained_at=os.environ.get("META_ADS_TOKEN_OBTAINED_AT"),
     )
