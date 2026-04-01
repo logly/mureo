@@ -5,8 +5,9 @@
 ```
 mureo/
 ├── __init__.py              # Package root (version)
-├── auth.py                  # Credential loading & client factory
+├── auth.py                  # Credential loading & client factory (+ Meta token auto-refresh)
 ├── auth_setup.py            # Interactive setup wizard (OAuth + MCP config)
+├── throttle.py              # Rate limiting (token bucket + rolling hourly cap)
 ├── google_ads/              # Google Ads API client
 │   ├── client.py            # GoogleAdsApiClient (8 Mixins)
 │   ├── mappers.py           # Response mapping to structured dicts
@@ -123,7 +124,7 @@ The base class (`GoogleAdsApiClient`) provides:
 - Input validation: `_validate_id()`, `_validate_status()`, `_validate_match_type()`, `_validate_date()`
 - Error handling: `_wrap_mutate_error()` decorator that catches `GoogleAdsException` and returns user-friendly messages
 
-### Meta Ads Client -- 16 Mixins
+### Meta Ads Client -- 15 Mixins
 
 ```python
 class MetaAdsApiClient(
@@ -193,6 +194,30 @@ Key implementation details:
 3. **Error handling**: the `@api_error_handler` decorator catches exceptions and converts them to `TextContent` error messages, so the agent always gets a text response.
 4. **Credential loading** happens per-request. Each handler call loads credentials from file/env, creates a fresh client, and executes the operation.
 
+## Rate Limiting
+
+mureo includes a built-in rate limiter (`mureo/throttle.py`) to prevent API bans caused by high-speed requests from AI agents.
+
+### Algorithm
+
+Each platform throttler combines two mechanisms:
+
+1. **Token bucket** -- controls instantaneous QPS (queries per second) with configurable burst allowance.
+2. **Rolling hourly cap** -- enforces a hard ceiling on total requests per hour.
+
+### Default Limits
+
+| Platform | QPS | Burst | Hourly Limit | Notes |
+|----------|-----|-------|-------------|-------|
+| Google Ads | 10 | 5 | *(none)* | Conservative defaults; Google uses dynamic server-side limits |
+| Meta Ads | 20 | 10 | 50,000 | Tuned to stay within the Business Use Case (BUC) quota |
+
+### Integration
+
+- **Module-level singletons** -- one `Throttler` instance per platform, shared across all MCP tool calls in the same process.
+- **Transparent** -- tool handlers call `await throttler.acquire()` before making API requests. No configuration is needed from the user.
+- **Graceful** -- when the token bucket is empty, `acquire()` awaits until a token becomes available rather than raising an error.
+
 ## Authentication Flow
 
 ```
@@ -215,3 +240,7 @@ Key implementation details:
 ```
 
 The credential resolution logic is centralized in `mureo/auth.py`. Both the CLI and MCP server use the same `load_*_credentials()` and `create_*_client()` functions.
+
+### Meta Ads Token Auto-Refresh
+
+When loading Meta Ads credentials, `mureo/auth.py` checks the `token_obtained_at` timestamp in `credentials.json`. If the Long-Lived Token is 53+ days old (7-day safety margin before the 60-day expiry), mureo automatically exchanges it for a fresh token via the Meta Graph API. This requires `app_id` and `app_secret` to be present in the credentials. The refresh is protected by an `asyncio.Lock` to prevent concurrent refresh races, and the updated token is written atomically to `credentials.json` with `0600` file permissions. If the refresh fails (network error, invalid app credentials, etc.), mureo falls back to the existing token and logs a warning.

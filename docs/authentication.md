@@ -148,7 +148,48 @@ fb_exchange_token=SHORT_LIVED_TOKEN"
 2. Navigate to your app > **Settings > Basic**.
 3. Copy the **App ID** and **App Secret**.
 
-These are optional for mureo but required if you need to exchange tokens programmatically.
+These are optional for basic use, but **required for automatic token refresh** (see below).
+
+## Meta Ads Token Auto-Refresh
+
+mureo can automatically refresh Long-Lived Tokens before they expire, so you never have to manually exchange tokens again.
+
+### How It Works
+
+1. When `mureo auth setup` saves a Meta Ads token, it records a `token_obtained_at` ISO 8601 timestamp in `credentials.json`.
+2. Each time Meta Ads credentials are loaded, mureo checks the token age.
+3. If the token is **53+ days old** (7-day safety margin before the 60-day expiry), mureo exchanges it for a fresh Long-Lived Token via the Meta Graph API.
+4. The new token and timestamp are written back to `credentials.json` atomically.
+
+### Requirements
+
+| Field | Required | Why |
+|-------|----------|-----|
+| `app_id` | Yes | Needed for the token exchange API call |
+| `app_secret` | Yes | Needed for the token exchange API call |
+| `token_obtained_at` | Auto | Written by `mureo auth setup`; can be added manually (ISO 8601 format) |
+
+If `app_id` or `app_secret` are missing, auto-refresh is silently skipped and the existing token is used as-is.
+
+### credentials.json with auto-refresh fields
+
+```json
+{
+  "meta_ads": {
+    "access_token": "YOUR_ACCESS_TOKEN",
+    "app_id": "YOUR_APP_ID",
+    "app_secret": "YOUR_APP_SECRET",
+    "token_obtained_at": "2025-12-01T00:00:00Z"
+  }
+}
+```
+
+### Safety Features
+
+- **Concurrent protection** -- an `asyncio.Lock` prevents multiple simultaneous refresh attempts.
+- **Atomic file write** -- credentials are written to a temp file first, then renamed, to prevent corruption.
+- **0600 permissions** -- the credentials file is restricted to the owner only.
+- **Graceful fallback** -- if the refresh fails for any reason (network error, expired app secret, etc.), mureo continues with the existing token and logs a warning. No tool calls are blocked.
 
 ## Quick Setup with `mureo auth setup`
 

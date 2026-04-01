@@ -13,6 +13,8 @@
 - **MCP server** -- expose marketing-operation tools over the Model Context Protocol so agents can read, create, update, and analyze campaigns directly.
 - **CLI** -- the same operations available as shell commands for scripting and quick checks.
 - **No DB, no LLM** -- mureo is the "hands" of your agent, not the "brain." It wraps platform APIs and returns structured JSON. All reasoning stays on the agent side.
+- **Rate limiting** -- built-in token bucket throttling prevents API bans when agents issue high-speed requests (Google Ads: 10 QPS, Meta Ads: 20 QPS + 50K/hr cap).
+- **Token auto-refresh** -- Meta Ads Long-Lived Tokens are automatically refreshed before expiry when `app_id` and `app_secret` are configured.
 - **File-based context** -- optional `STRATEGY.md` and `STATE.json` files let agents persist strategy notes and campaign state without a database.
 
 ## Quick Start
@@ -587,8 +589,9 @@ A JSON snapshot of current campaign state. Updated automatically when agents rea
 ```
 mureo/
 ├── __init__.py              # Package root
-├── auth.py                  # Credential loading (~/.mureo/credentials.json + env vars)
+├── auth.py                  # Credential loading (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
 ├── auth_setup.py            # Interactive setup wizard (OAuth + MCP config)
+├── throttle.py              # Rate limiting (token bucket + rolling hourly cap)
 ├── _image_validation.py     # Image file validation utilities
 ├── google_ads/              # Google Ads API client (google-ads SDK wrapper)
 │   ├── client.py            # GoogleAdsApiClient (8 Mixin: Ads, Keywords, Analysis, Creative, Diagnostics, Extensions, Media, Monitoring)

@@ -78,8 +78,9 @@ mureo/
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   └── lp_analyzer.py   # Landing page analyzer
-├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars)
-└── auth_setup.py        # Interactive setup wizard (browser OAuth flow)
+├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
+├── auth_setup.py        # Interactive setup wizard (browser OAuth flow)
+└── throttle.py          # Rate limiting (token bucket + rolling hourly cap)
 ```
 
 ## MCP Tools (159 total)
@@ -114,7 +115,7 @@ mureo/
 | Category | Tools |
 |----------|-------|
 | Campaigns (6) | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update`, `campaigns.pause`, `campaigns.enable` |
-| Ad Sets (5) | `ad_sets.list`, `ad_sets.create`, `ad_sets.update`, `ad_sets.get`, `ad_sets.pause`, `ad_sets.enable` |
+| Ad Sets (6) | `ad_sets.list`, `ad_sets.create`, `ad_sets.update`, `ad_sets.get`, `ad_sets.pause`, `ad_sets.enable` |
 | Ads (6) | `ads.list`, `ads.create`, `ads.update`, `ads.get`, `ads.pause`, `ads.enable` |
 | Creatives (6) | `creatives.create_carousel`, `creatives.create_collection`, `creatives.list`, `creatives.create`, `creatives.create_dynamic`, `creatives.upload_image` |
 | Images (1) | `images.upload_file` |
@@ -139,6 +140,8 @@ mureo/
 - **Tools return structured JSON data only** — no formatted text, no Markdown in tool responses.
 - **All data models use frozen dataclasses** — immutable by default.
 - **Credentials via file or env vars** — `~/.mureo/credentials.json` with environment variable fallback.
+- **Built-in rate limiting** — token bucket throttling per platform prevents API bans from high-speed agent requests (Google Ads: 10 QPS, Meta Ads: 20 QPS + 50K/hr cap). See `mureo/throttle.py`.
+- **Meta token auto-refresh** — Long-Lived Tokens are automatically refreshed when 53+ days old (requires `app_id` and `app_secret`). See `mureo/auth.py`.
 
 ## Coding Standards
 
@@ -154,7 +157,7 @@ mureo/
 
 ## Test Coverage
 
-- 40+ test files, 95% coverage, 1257 tests
+- 40+ test files, 95% coverage, 1277 tests
 - Target: 80% minimum (enforced by `tool.coverage.report.fail_under`)
 - Framework: pytest + pytest-asyncio
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests

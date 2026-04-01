@@ -525,3 +525,18 @@ ValueError: Required parameter customer_id is not specified
 
 - **Google Ads**: Uses gRPC with automatic retry built into the SDK.
 - **Meta Ads**: mureo monitors the `x-business-use-case-usage` response header and automatically retries on HTTP 429 with exponential backoff (up to 3 attempts).
+
+## Rate Limiting
+
+AI agents can issue tool calls at high speed, which risks hitting API rate limits and triggering temporary bans. mureo includes a built-in throttling layer (`mureo/throttle.py`) that transparently rate-limits all outgoing API requests.
+
+### Default Limits
+
+| Platform | QPS | Burst | Hourly Cap |
+|----------|-----|-------|------------|
+| Google Ads | 10 | 5 | -- |
+| Meta Ads | 20 | 10 | 50,000 |
+
+The throttler uses a **token bucket algorithm** combined with a **rolling hourly cap** (Meta Ads only). When the bucket is empty, the request awaits until a token becomes available -- no errors are raised and no tool calls are dropped.
+
+Each platform has a module-level singleton throttler that is shared across all MCP tool calls in the same server process. No user configuration is required; throttling is always active.
