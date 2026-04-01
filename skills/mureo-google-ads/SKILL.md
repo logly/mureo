@@ -2,7 +2,7 @@
 name: mureo-google-ads
 description: "Google Ads: Manage campaigns, ad groups, ads, keywords, budgets, and performance analysis."
 metadata:
-  version: 0.1.0
+  version: 0.2.0
   openclaw:
     category: "advertising"
     requires:
@@ -14,7 +14,7 @@ metadata:
 # Google Ads (v18)
 > PREREQUISITE: Read `../mureo-shared/SKILL.md` for auth, global flags, and security rules.
 
-## Tool Summary (28 tools)
+## Tool Summary (82 tools)
 
 | # | Tool Name | Category | Type | Description |
 |---|-----------|----------|------|-------------|
@@ -31,21 +31,75 @@ metadata:
 | 11 | `google_ads.ads.create` | Ad | Write | Create an RSA ad |
 | 12 | `google_ads.ads.update` | Ad | Write | Update ad content |
 | 13 | `google_ads.ads.update_status` | Ad | Write | Change ad status |
-| 14 | `google_ads.keywords.list` | Keyword | Read | List keywords |
-| 15 | `google_ads.keywords.add` | Keyword | Write | Add keywords |
-| 16 | `google_ads.keywords.remove` | Keyword | Write | Remove a keyword |
-| 17 | `google_ads.keywords.suggest` | Keyword | Read | Suggest keywords via Keyword Planner |
-| 18 | `google_ads.keywords.diagnose` | Keyword | Read | Diagnose keyword quality scores |
-| 19 | `google_ads.negative_keywords.list` | Negative KW | Read | List negative keywords |
-| 20 | `google_ads.negative_keywords.add` | Negative KW | Write | Add negative keywords |
-| 21 | `google_ads.budget.get` | Budget | Read | Get campaign budget |
-| 22 | `google_ads.budget.update` | Budget | Write | Update daily budget |
-| 23 | `google_ads.performance.report` | Analysis | Read | Performance report |
-| 24 | `google_ads.search_terms.report` | Analysis | Read | Search terms report |
-| 25 | `google_ads.search_terms.review` | Analysis | Read | Review search terms with add/exclude suggestions |
-| 26 | `google_ads.auction_insights.analyze` | Analysis | Read | Auction insights analysis |
-| 27 | `google_ads.cpc.detect_trend` | Analysis | Read | Detect CPC trend direction |
-| 28 | `google_ads.device.analyze` | Analysis | Read | Device performance analysis |
+| 14 | `google_ads.ads.policy_details` | Ad | Read | Get ad policy approval details |
+| 15 | `google_ads.keywords.list` | Keyword | Read | List keywords |
+| 16 | `google_ads.keywords.add` | Keyword | Write | Add keywords |
+| 17 | `google_ads.keywords.remove` | Keyword | Write | Remove a keyword |
+| 18 | `google_ads.keywords.suggest` | Keyword | Read | Suggest keywords via Keyword Planner |
+| 19 | `google_ads.keywords.diagnose` | Keyword | Read | Diagnose keyword quality scores |
+| 20 | `google_ads.keywords.pause` | Keyword | Write | Pause a keyword |
+| 21 | `google_ads.keywords.audit` | Keyword | Read | Audit keyword performance and quality |
+| 22 | `google_ads.keywords.cross_adgroup_duplicates` | Keyword | Read | Find duplicate keywords across ad groups |
+| 23 | `google_ads.negative_keywords.list` | Negative KW | Read | List negative keywords |
+| 24 | `google_ads.negative_keywords.add` | Negative KW | Write | Add negative keywords to a campaign |
+| 25 | `google_ads.negative_keywords.remove` | Negative KW | Write | Remove a negative keyword |
+| 26 | `google_ads.negative_keywords.add_to_ad_group` | Negative KW | Write | Add negative keywords to an ad group |
+| 27 | `google_ads.negative_keywords.suggest` | Negative KW | Read | Suggest negative keywords from search terms |
+| 28 | `google_ads.budget.get` | Budget | Read | Get campaign budget |
+| 29 | `google_ads.budget.update` | Budget | Write | Update daily budget |
+| 30 | `google_ads.budget.create` | Budget | Write | Create a new campaign budget |
+| 31 | `google_ads.accounts.list` | Account | Read | List accessible Google Ads accounts |
+| 32 | `google_ads.search_terms.report` | Search Terms | Read | Search terms report |
+| 33 | `google_ads.search_terms.review` | Search Terms | Read | Review search terms with rule-based scoring |
+| 34 | `google_ads.search_terms.analyze` | Search Terms | Read | Analyze search terms with intent classification |
+| 35 | `google_ads.sitelinks.list` | Extension | Read | List sitelink extensions |
+| 36 | `google_ads.sitelinks.create` | Extension | Write | Create a sitelink extension |
+| 37 | `google_ads.sitelinks.remove` | Extension | Write | Remove a sitelink extension |
+| 38 | `google_ads.callouts.list` | Extension | Read | List callout extensions |
+| 39 | `google_ads.callouts.create` | Extension | Write | Create a callout extension |
+| 40 | `google_ads.callouts.remove` | Extension | Write | Remove a callout extension |
+| 41 | `google_ads.conversions.list` | Conversion | Read | List conversion actions |
+| 42 | `google_ads.conversions.get` | Conversion | Read | Get conversion action details |
+| 43 | `google_ads.conversions.performance` | Conversion | Read | Get conversion performance metrics |
+| 44 | `google_ads.conversions.create` | Conversion | Write | Create a conversion action |
+| 45 | `google_ads.conversions.update` | Conversion | Write | Update a conversion action |
+| 46 | `google_ads.conversions.remove` | Conversion | Write | Remove a conversion action |
+| 47 | `google_ads.conversions.tag` | Conversion | Read | Get conversion tracking tag snippet |
+| 48 | `google_ads.recommendations.list` | Targeting | Read | List optimization recommendations |
+| 49 | `google_ads.recommendations.apply` | Targeting | Write | Apply an optimization recommendation |
+| 50 | `google_ads.device_targeting.get` | Targeting | Read | Get device targeting settings |
+| 51 | `google_ads.device_targeting.set` | Targeting | Write | Set device targeting bid adjustments |
+| 52 | `google_ads.bid_adjustments.get` | Targeting | Read | Get bid adjustment settings |
+| 53 | `google_ads.bid_adjustments.update` | Targeting | Write | Update bid adjustments |
+| 54 | `google_ads.location_targeting.list` | Targeting | Read | List location targeting criteria |
+| 55 | `google_ads.location_targeting.update` | Targeting | Write | Update location targeting |
+| 56 | `google_ads.schedule_targeting.list` | Targeting | Read | List ad schedule targeting |
+| 57 | `google_ads.schedule_targeting.update` | Targeting | Write | Update ad schedule targeting |
+| 58 | `google_ads.change_history.list` | Targeting | Read | List account change history |
+| 59 | `google_ads.performance.report` | Analysis | Read | Performance report |
+| 60 | `google_ads.performance.analyze` | Analysis | Read | Analyze performance trends and anomalies |
+| 61 | `google_ads.cost_increase.investigate` | Analysis | Read | Investigate sudden cost increases |
+| 62 | `google_ads.health_check.all` | Analysis | Read | Comprehensive account health check |
+| 63 | `google_ads.ad_performance.compare` | Analysis | Read | Compare ad performance across variants |
+| 64 | `google_ads.ad_performance.report` | Analysis | Read | Detailed ad-level performance report |
+| 65 | `google_ads.network_performance.report` | Analysis | Read | Network-level performance breakdown |
+| 66 | `google_ads.budget.efficiency` | Analysis | Read | Analyze budget utilization efficiency |
+| 67 | `google_ads.budget.reallocation` | Analysis | Read | Suggest budget reallocation across campaigns |
+| 68 | `google_ads.auction_insights.get` | Analysis | Read | Get auction insights (competitor analysis) |
+| 69 | `google_ads.auction_insights.analyze` | Analysis | Read | Auction insights analysis |
+| 70 | `google_ads.rsa_assets.analyze` | Analysis | Read | Analyze RSA asset performance |
+| 71 | `google_ads.rsa_assets.audit` | Analysis | Read | Audit RSA assets for best practices |
+| 72 | `google_ads.cpc.detect_trend` | Analysis | Read | Detect CPC trend direction |
+| 73 | `google_ads.device.analyze` | Analysis | Read | Device performance analysis |
+| 74 | `google_ads.btob.optimizations` | B2B | Read | Get B2B-specific optimization suggestions |
+| 75 | `google_ads.landing_page.analyze` | Creative | Read | Analyze landing page relevance and quality |
+| 76 | `google_ads.creative.research` | Creative | Read | Research competitive creative strategies |
+| 77 | `google_ads.monitoring.delivery_goal` | Monitoring | Read | Monitor campaign delivery against goals |
+| 78 | `google_ads.monitoring.cpa_goal` | Monitoring | Read | Monitor CPA against target goals |
+| 79 | `google_ads.monitoring.cv_goal` | Monitoring | Read | Monitor conversion volume against goals |
+| 80 | `google_ads.monitoring.zero_conversions` | Monitoring | Read | Detect campaigns with zero conversions |
+| 81 | `google_ads.capture.screenshot` | Capture | Read | Capture a screenshot of a URL |
+| 82 | `google_ads.assets.upload_image` | Asset | Write | Upload image as Google Ads asset |
 
 ## API Resources
 
@@ -56,48 +110,16 @@ metadata:
   Required: customer_id (string)
   Optional: status_filter (string: "ENABLED" | "PAUSED")
   ```
-  ```json
-  // Example call
-  {"customer_id": "1234567890"}
-
-  // Example response
-  {
-    "campaigns": [
-      {
-        "campaign_id": "111222333",
-        "name": "Brand Search - Tokyo",
-        "status": "ENABLED",
-        "bidding_strategy_type": "MAXIMIZE_CONVERSIONS",
-        "daily_budget": 5000.0,
-        "impressions": 12500,
-        "clicks": 890,
-        "conversions": 45
-      }
-    ]
-  }
-  ```
 
 - `get` -- Get detailed information about a specific campaign.
   ```
   Required: customer_id, campaign_id (string)
   ```
-  ```json
-  {"customer_id": "1234567890", "campaign_id": "111222333"}
-  ```
 
 - `create` -- Create a new search campaign. **Requires user confirmation.**
   ```
   Required: customer_id, name (string)
-  Optional: bidding_strategy (string: "MAXIMIZE_CLICKS" | "MAXIMIZE_CONVERSIONS" | "TARGET_CPA" | ...),
-            budget_id (string)
-  ```
-  ```json
-  {
-    "customer_id": "1234567890",
-    "name": "New Product Launch 2026",
-    "bidding_strategy": "MAXIMIZE_CONVERSIONS",
-    "budget_id": "444555666"
-  }
+  Optional: bidding_strategy (string: "MAXIMIZE_CLICKS" | "MAXIMIZE_CONVERSIONS" | "TARGET_CPA" | ...), budget_id (string)
   ```
 
 - `update` -- Update campaign settings (name, bidding strategy). **Requires user confirmation.**
@@ -106,12 +128,12 @@ metadata:
   Optional: name (string), bidding_strategy (string)
   ```
 
-- `update_status` -- Change campaign status (enable, pause, remove). **Requires user confirmation.**
+- `update_status` -- Change campaign status. **Requires user confirmation.**
   ```
   Required: customer_id, campaign_id, status (string: "ENABLED" | "PAUSED" | "REMOVED")
   ```
 
-- `diagnose` -- Comprehensive delivery diagnosis for a campaign. Returns serving status, policy issues, budget constraints, and recommendations.
+- `diagnose` -- Comprehensive delivery diagnosis. Returns serving status, policy issues, budget constraints.
   ```
   Required: customer_id, campaign_id (string)
   ```
@@ -128,14 +150,6 @@ metadata:
   ```
   Required: customer_id, campaign_id, name (string)
   Optional: cpc_bid_micros (integer, in micros: 1,000,000 = 1 currency unit)
-  ```
-  ```json
-  {
-    "customer_id": "1234567890",
-    "campaign_id": "111222333",
-    "name": "Exact Match - Core Terms",
-    "cpc_bid_micros": 500000
-  }
   ```
 
 - `update` -- Update ad group settings. **Requires user confirmation.**
@@ -159,24 +173,6 @@ metadata:
             descriptions (array of strings, 2-4 items)
   Optional: final_url (string), path1 (string), path2 (string)
   ```
-  ```json
-  {
-    "customer_id": "1234567890",
-    "ad_group_id": "777888999",
-    "headlines": [
-      "Official Store - Free Shipping",
-      "New Arrivals 2026 Collection",
-      "Limited Time 30% Off"
-    ],
-    "descriptions": [
-      "Shop the latest collection. Free shipping on orders over $50.",
-      "Trusted by 100,000+ customers. Easy returns within 30 days."
-    ],
-    "final_url": "https://example.com/products",
-    "path1": "products",
-    "path2": "new"
-  }
-  ```
 
 - `update` -- Update RSA ad content. **Requires user confirmation.**
   ```
@@ -187,6 +183,11 @@ metadata:
 - `update_status` -- Change ad status. **Requires user confirmation.**
   ```
   Required: customer_id, ad_group_id, ad_id, status (string: "ENABLED" | "PAUSED")
+  ```
+
+- `policy_details` -- Get ad policy approval details and disapproval reasons.
+  ```
+  Required: customer_id, ad_group_id, ad_id (string)
   ```
 
 ### keywords
@@ -202,17 +203,6 @@ metadata:
   Required: customer_id, ad_group_id (string),
             keywords (array of {text: string, match_type?: "BROAD" | "PHRASE" | "EXACT"})
   ```
-  ```json
-  {
-    "customer_id": "1234567890",
-    "ad_group_id": "777888999",
-    "keywords": [
-      {"text": "running shoes", "match_type": "PHRASE"},
-      {"text": "marathon training shoes", "match_type": "EXACT"},
-      {"text": "best running shoes 2026"}
-    ]
-  }
-  ```
   Note: `match_type` defaults to `BROAD` if omitted.
 
 - `remove` -- Remove a keyword by criterion ID. **Requires user confirmation.**
@@ -222,19 +212,27 @@ metadata:
 
 - `suggest` -- Get keyword suggestions from Keyword Planner.
   ```
-  Required: customer_id (string),
-            seed_keywords (array of strings)
+  Required: customer_id (string), seed_keywords (array of strings)
   Optional: language_id (string, default: "1005" = Japanese),
             geo_id (string, default: "2392" = Japan)
   ```
-  ```json
-  {
-    "customer_id": "1234567890",
-    "seed_keywords": ["running shoes", "athletic footwear"]
-  }
-  ```
 
 - `diagnose` -- Diagnose keyword quality scores and delivery status for a campaign.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `pause` -- Pause a keyword. **Requires user confirmation.**
+  ```
+  Required: customer_id, ad_group_id, criterion_id (string)
+  ```
+
+- `audit` -- Audit keyword performance and quality scores across a campaign.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `cross_adgroup_duplicates` -- Find duplicate keywords across ad groups in a campaign.
   ```
   Required: customer_id, campaign_id (string)
   ```
@@ -251,16 +249,21 @@ metadata:
   Required: customer_id, campaign_id (string),
             keywords (array of {text: string, match_type?: "BROAD" | "PHRASE" | "EXACT"})
   ```
-  ```json
-  {
-    "customer_id": "1234567890",
-    "campaign_id": "111222333",
-    "keywords": [
-      {"text": "free", "match_type": "BROAD"},
-      {"text": "cheap", "match_type": "BROAD"},
-      {"text": "how to", "match_type": "PHRASE"}
-    ]
-  }
+
+- `remove` -- Remove a negative keyword. **Requires user confirmation.**
+  ```
+  Required: customer_id, campaign_id, criterion_id (string)
+  ```
+
+- `add_to_ad_group` -- Add negative keywords to an ad group. **Requires user confirmation.**
+  ```
+  Required: customer_id, ad_group_id (string),
+            keywords (array of {text: string, match_type?: "BROAD" | "PHRASE" | "EXACT"})
+  ```
+
+- `suggest` -- Suggest negative keywords based on search term analysis.
+  ```
+  Required: customer_id, campaign_id (string)
   ```
 
 ### budget
@@ -269,41 +272,25 @@ metadata:
   ```
   Required: customer_id, campaign_id (string)
   ```
-  ```json
-  // Example response
-  {
-    "budget_id": "444555666",
-    "campaign_id": "111222333",
-    "amount": 5000.0,
-    "delivery_method": "STANDARD"
-  }
-  ```
 
 - `update` -- Update daily budget amount. **Requires user confirmation.** Always show current vs. new amount.
   ```
   Required: customer_id, budget_id (string), amount (number)
   ```
-  ```json
-  {
-    "customer_id": "1234567890",
-    "budget_id": "444555666",
-    "amount": 8000.0
-  }
+
+- `create` -- Create a new campaign budget. **Requires user confirmation.**
+  ```
+  Required: customer_id, name (string), amount (number)
   ```
 
-### performance (Analysis)
+### accounts
 
-- `report` -- Get performance metrics aggregated by campaign.
+- `list` -- List all accessible Google Ads accounts under the manager account.
   ```
-  Required: customer_id (string)
-  Optional: campaign_id (string), period (string, default: "LAST_30_DAYS")
-  ```
-  Period options: `TODAY`, `YESTERDAY`, `LAST_7_DAYS`, `LAST_14_DAYS`, `LAST_30_DAYS`, `THIS_MONTH`, `LAST_MONTH`
-  ```json
-  {"customer_id": "1234567890", "period": "LAST_7_DAYS"}
+  Required: (none)
   ```
 
-### search_terms (Analysis)
+### search_terms
 
 - `report` -- Get search terms report showing actual queries that triggered ads.
   ```
@@ -311,41 +298,280 @@ metadata:
   Optional: campaign_id (string), ad_group_id (string), period (string, default: "LAST_30_DAYS")
   ```
 
-- `review` -- Multi-rule review of search terms with add/exclude recommendations. Evaluates each search term against performance thresholds and suggests candidates for keyword addition or negative keyword exclusion.
+- `review` -- Multi-rule review of search terms with add/exclude recommendations.
   ```
   Required: customer_id, campaign_id (string)
   Optional: period (string, default: "LAST_7_DAYS"), target_cpa (number)
   ```
-  ```json
-  {
-    "customer_id": "1234567890",
-    "campaign_id": "111222333",
-    "target_cpa": 3000.0
-  }
+
+- `analyze` -- Analyze search terms with intent classification and clustering.
+  ```
+  Required: customer_id, campaign_id (string)
   ```
 
-### auction_insights (Analysis)
+### sitelinks
 
-- `analyze` -- Analyze auction insights: impression share, overlap rate, top-of-page rate, and competitor domains.
+- `list` -- List sitelink extensions for a campaign.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `create` -- Create a sitelink extension. **Requires user confirmation.**
+  ```
+  Required: customer_id, campaign_id, sitelink_text, final_url (string)
+  ```
+
+- `remove` -- Remove a sitelink extension. **Requires user confirmation.**
+  ```
+  Required: customer_id, campaign_id, extension_id (string)
+  ```
+
+### callouts
+
+- `list` -- List callout extensions for a campaign.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `create` -- Create a callout extension. **Requires user confirmation.**
+  ```
+  Required: customer_id, campaign_id, callout_text (string)
+  ```
+
+- `remove` -- Remove a callout extension. **Requires user confirmation.**
+  ```
+  Required: customer_id, campaign_id, extension_id (string)
+  ```
+
+### conversions
+
+- `list` -- List all conversion actions in the account.
+  ```
+  Required: customer_id (string)
+  ```
+
+- `get` -- Get details of a specific conversion action.
+  ```
+  Required: customer_id, conversion_action_id (string)
+  ```
+
+- `performance` -- Get conversion performance metrics across campaigns.
+  ```
+  Required: customer_id (string)
+  ```
+
+- `create` -- Create a new conversion action. **Requires user confirmation.**
+  ```
+  Required: customer_id, name, type (string)
+  ```
+
+- `update` -- Update a conversion action. **Requires user confirmation.**
+  ```
+  Required: customer_id, conversion_action_id (string)
+  ```
+
+- `remove` -- Remove a conversion action. **Requires user confirmation.**
+  ```
+  Required: customer_id, conversion_action_id (string)
+  ```
+
+- `tag` -- Get the conversion tracking tag (JavaScript snippet) for a conversion action.
+  ```
+  Required: customer_id, conversion_action_id (string)
+  ```
+
+### targeting
+
+- `recommendations.list` -- List optimization recommendations from Google.
+  ```
+  Required: customer_id (string)
+  ```
+
+- `recommendations.apply` -- Apply an optimization recommendation. **Requires user confirmation.**
+  ```
+  Required: customer_id, recommendation_id (string)
+  ```
+
+- `device_targeting.get` -- Get device targeting bid adjustment settings.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `device_targeting.set` -- Set device targeting bid adjustments. **Requires user confirmation.**
+  ```
+  Required: customer_id, campaign_id, device_type, bid_modifier (string/number)
+  ```
+
+- `bid_adjustments.get` -- Get bid adjustment settings for a campaign.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `bid_adjustments.update` -- Update bid adjustments. **Requires user confirmation.**
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `location_targeting.list` -- List location targeting criteria.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `location_targeting.update` -- Update location targeting settings. **Requires user confirmation.**
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `schedule_targeting.list` -- List ad schedule targeting rules.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `schedule_targeting.update` -- Update ad schedule targeting. **Requires user confirmation.**
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `change_history.list` -- List account change history (who changed what, when).
+  ```
+  Required: customer_id (string)
+  ```
+
+### analysis & reporting
+
+- `performance.report` -- Get performance metrics aggregated by campaign.
+  ```
+  Required: customer_id (string)
+  Optional: campaign_id (string), period (string, default: "LAST_30_DAYS")
+  ```
+  Period options: `TODAY`, `YESTERDAY`, `LAST_7_DAYS`, `LAST_14_DAYS`, `LAST_30_DAYS`, `THIS_MONTH`, `LAST_MONTH`
+
+- `performance.analyze` -- Analyze performance trends, detect anomalies, and surface insights.
+  ```
+  Required: customer_id (string)
+  ```
+
+- `cost_increase.investigate` -- Investigate sudden cost increases and identify root causes.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `health_check.all` -- Run a comprehensive account health check across all campaigns.
+  ```
+  Required: customer_id (string)
+  ```
+
+- `ad_performance.compare` -- Compare ad performance across variants in an ad group.
+  ```
+  Required: customer_id, ad_group_id (string)
+  ```
+
+- `ad_performance.report` -- Get detailed ad-level performance report.
+  ```
+  Required: customer_id (string)
+  ```
+
+- `network_performance.report` -- Get performance breakdown by network (Search, Display, etc.).
+  ```
+  Required: customer_id (string)
+  ```
+
+- `budget.efficiency` -- Analyze budget utilization efficiency across campaigns.
+  ```
+  Required: customer_id (string)
+  ```
+
+- `budget.reallocation` -- Suggest budget reallocation across campaigns based on performance.
+  ```
+  Required: customer_id (string)
+  ```
+
+- `auction_insights.get` -- Get auction insights with competitor impression share and overlap rate.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `auction_insights.analyze` -- Analyze auction insights: impression share, overlap rate, top-of-page rate, and competitor domains.
   ```
   Required: customer_id, campaign_id (string)
   Optional: period (string, default: "LAST_30_DAYS")
   ```
 
-### cpc (Analysis)
+- `rsa_assets.analyze` -- Analyze RSA asset (headline/description) performance ratings.
+  ```
+  Required: customer_id, ad_group_id (string)
+  ```
 
-- `detect_trend` -- Detect CPC trend direction (rising / stable / falling) using linear regression on daily CPC data. Also detects sudden spikes and week-over-week changes.
+- `rsa_assets.audit` -- Audit RSA assets for best practices and coverage gaps.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `cpc.detect_trend` -- Detect CPC trend direction (rising / stable / falling) using linear regression on daily CPC data. Also detects sudden spikes and week-over-week changes.
   ```
   Required: customer_id, campaign_id (string)
   Optional: period (string, default: "LAST_30_DAYS")
   ```
 
-### device (Analysis)
-
-- `analyze` -- Compare performance across devices (Desktop / Mobile / Tablet). Shows CPA, CVR, CTR per device, detects CPA gaps, and identifies wasted spend on zero-conversion devices.
+- `device.analyze` -- Compare performance across devices (Desktop / Mobile / Tablet). Shows CPA, CVR, CTR per device, detects CPA gaps, and identifies wasted spend on zero-conversion devices.
   ```
   Required: customer_id, campaign_id (string)
   Optional: period (string, default: "LAST_30_DAYS")
+  ```
+
+### b2b
+
+- `btob.optimizations` -- Get B2B-specific optimization suggestions (lead quality, audience targeting, etc.).
+  ```
+  Required: customer_id (string)
+  ```
+
+### creative
+
+- `landing_page.analyze` -- Analyze landing page relevance and quality signals for a campaign.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `creative.research` -- Research competitive creative strategies and ad copy patterns.
+  ```
+  Required: customer_id (string)
+  ```
+
+### monitoring
+
+- `monitoring.delivery_goal` -- Monitor campaign delivery pace against goals.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `monitoring.cpa_goal` -- Monitor CPA against target goals and alert on deviations.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `monitoring.cv_goal` -- Monitor conversion volume against goals.
+  ```
+  Required: customer_id, campaign_id (string)
+  ```
+
+- `monitoring.zero_conversions` -- Detect campaigns with zero conversions in recent periods.
+  ```
+  Required: customer_id (string)
+  ```
+
+### capture
+
+- `capture.screenshot` -- Capture a screenshot of a URL (useful for landing page audits).
+  ```
+  Required: url (string)
+  ```
+
+### assets
+
+- `assets.upload_image` -- Upload a local image file as a Google Ads asset.
+  ```
+  Required: customer_id, file_path (string)
   ```
 
 ## Common Workflows
@@ -361,14 +587,20 @@ Step 1: List campaigns to identify active ones
 Step 2: Get overall performance report
   -> google_ads.performance.report {customer_id, period: "LAST_7_DAYS"}
 
-Step 3: For underperforming campaigns, run diagnostics
+Step 3: Run comprehensive health check
+  -> google_ads.health_check.all {customer_id}
+
+Step 4: For underperforming campaigns, run diagnostics
   -> google_ads.campaigns.diagnose {customer_id, campaign_id}
 
-Step 4: Check keyword quality scores
+Step 5: Check keyword quality scores
   -> google_ads.keywords.diagnose {customer_id, campaign_id}
 
-Step 5: Analyze device performance for CPA gaps
+Step 6: Analyze device performance for CPA gaps
   -> google_ads.device.analyze {customer_id, campaign_id}
+
+Step 7: Monitor conversion goals
+  -> google_ads.monitoring.zero_conversions {customer_id}
 ```
 
 ### 2. Negative Keyword Addition
@@ -382,10 +614,16 @@ Step 1: Get search terms report
 Step 2: Or use automated review for suggestions
   -> google_ads.search_terms.review {customer_id, campaign_id, target_cpa: 3000}
 
-Step 3: Review current negative keywords to avoid duplicates
+Step 3: Analyze search terms with intent classification
+  -> google_ads.search_terms.analyze {customer_id, campaign_id}
+
+Step 4: Get AI-suggested negative keywords
+  -> google_ads.negative_keywords.suggest {customer_id, campaign_id}
+
+Step 5: Review current negative keywords to avoid duplicates
   -> google_ads.negative_keywords.list {customer_id, campaign_id}
 
-Step 4: Add negative keywords (CONFIRM WITH USER)
+Step 6: Add negative keywords (CONFIRM WITH USER)
   -> google_ads.negative_keywords.add {customer_id, campaign_id, keywords: [...]}
 ```
 
@@ -394,22 +632,34 @@ Step 4: Add negative keywords (CONFIRM WITH USER)
 Full campaign setup from scratch:
 
 ```
-Step 1: Create the campaign
+Step 1: Create a budget
+  -> google_ads.budget.create {customer_id, name, amount}
+
+Step 2: Create the campaign
   -> google_ads.campaigns.create {customer_id, name, bidding_strategy, budget_id}
 
-Step 2: Create ad groups
+Step 3: Create ad groups
   -> google_ads.ad_groups.create {customer_id, campaign_id, name}
 
-Step 3: Add keywords to each ad group
+Step 4: Add keywords to each ad group
   -> google_ads.keywords.add {customer_id, ad_group_id, keywords: [...]}
 
-Step 4: Create RSA ads for each ad group
+Step 5: Create RSA ads for each ad group
   -> google_ads.ads.create {customer_id, ad_group_id, headlines: [...], descriptions: [...], final_url}
 
-Step 5: Add campaign-level negative keywords
+Step 6: Add campaign-level negative keywords
   -> google_ads.negative_keywords.add {customer_id, campaign_id, keywords: [...]}
 
-Step 6: Enable the campaign (starts with PAUSED by default)
+Step 7: Add sitelink extensions
+  -> google_ads.sitelinks.create {customer_id, campaign_id, sitelink_text, final_url}
+
+Step 8: Add callout extensions
+  -> google_ads.callouts.create {customer_id, campaign_id, callout_text}
+
+Step 9: Set up conversion tracking
+  -> google_ads.conversions.create {customer_id, name, type}
+
+Step 10: Enable the campaign
   -> google_ads.campaigns.update_status {customer_id, campaign_id, status: "ENABLED"}
 ```
 
@@ -420,15 +670,12 @@ Safe budget change workflow:
 ```
 Step 1: Get current budget
   -> google_ads.budget.get {customer_id, campaign_id}
-  (Note the budget_id and current amount)
 
-Step 2: Calculate change percentage
-  Example: current 5,000 -> new 6,000 = +20%
+Step 2: Analyze budget efficiency
+  -> google_ads.budget.efficiency {customer_id}
 
-Step 3: Show user the change details and get confirmation
-  "Budget change: 5,000 -> 6,000 (+20%)
-   This exceeds the 20% threshold. Smart bidding learning may be affected.
-   Proceed? [y/n]"
+Step 3: Get reallocation suggestions
+  -> google_ads.budget.reallocation {customer_id}
 
 Step 4: Update budget (CONFIRM WITH USER)
   -> google_ads.budget.update {customer_id, budget_id, amount: 6000}
@@ -448,13 +695,19 @@ Step 2: Run comprehensive delivery diagnosis
 Step 3: Check keyword quality and delivery status
   -> google_ads.keywords.diagnose {customer_id, campaign_id}
 
-Step 4: Check CPC trends (are bids competitive?)
+Step 4: Check ad policy details for disapprovals
+  -> google_ads.ads.policy_details {customer_id, ad_group_id, ad_id}
+
+Step 5: Check CPC trends (are bids competitive?)
   -> google_ads.cpc.detect_trend {customer_id, campaign_id}
 
-Step 5: Analyze auction insights (competitor landscape)
+Step 6: Analyze auction insights (competitor landscape)
   -> google_ads.auction_insights.analyze {customer_id, campaign_id}
 
-Step 6: Review budget constraints
+Step 7: Monitor delivery pace
+  -> google_ads.monitoring.delivery_goal {customer_id, campaign_id}
+
+Step 8: Review budget constraints
   -> google_ads.budget.get {customer_id, campaign_id}
 ```
 
@@ -466,14 +719,62 @@ Understanding the competitive landscape:
 Step 1: Analyze auction insights
   -> google_ads.auction_insights.analyze {customer_id, campaign_id, period: "LAST_30_DAYS"}
 
-Step 2: Detect CPC trend (rising CPC may indicate increased competition)
+Step 2: Get auction insights data
+  -> google_ads.auction_insights.get {customer_id, campaign_id}
+
+Step 3: Detect CPC trend (rising CPC may indicate increased competition)
   -> google_ads.cpc.detect_trend {customer_id, campaign_id}
 
-Step 3: Review device performance (competitors may dominate certain devices)
-  -> google_ads.device.analyze {customer_id, campaign_id}
+Step 4: Investigate cost increases
+  -> google_ads.cost_increase.investigate {customer_id, campaign_id}
 
-Step 4: Get keyword suggestions to find new opportunities
+Step 5: Research competitive creative strategies
+  -> google_ads.creative.research {customer_id}
+
+Step 6: Get keyword suggestions to find new opportunities
   -> google_ads.keywords.suggest {customer_id, seed_keywords: ["..."]}
+```
+
+### 7. RSA Optimization
+
+Improving responsive search ad performance:
+
+```
+Step 1: Analyze RSA asset performance
+  -> google_ads.rsa_assets.analyze {customer_id, ad_group_id}
+
+Step 2: Audit RSA assets for best practices
+  -> google_ads.rsa_assets.audit {customer_id, campaign_id}
+
+Step 3: Compare ad variants
+  -> google_ads.ad_performance.compare {customer_id, ad_group_id}
+
+Step 4: Check landing page relevance
+  -> google_ads.landing_page.analyze {customer_id, campaign_id}
+```
+
+### 8. Account Audit
+
+Comprehensive account review:
+
+```
+Step 1: List all accessible accounts
+  -> google_ads.accounts.list {}
+
+Step 2: Run health check
+  -> google_ads.health_check.all {customer_id}
+
+Step 3: Audit keywords
+  -> google_ads.keywords.audit {customer_id, campaign_id}
+
+Step 4: Find duplicate keywords
+  -> google_ads.keywords.cross_adgroup_duplicates {customer_id, campaign_id}
+
+Step 5: Review change history
+  -> google_ads.change_history.list {customer_id}
+
+Step 6: Check optimization recommendations
+  -> google_ads.recommendations.list {customer_id}
 ```
 
 ## Important Notes
@@ -482,3 +783,4 @@ Step 4: Get keyword suggestions to find new opportunities
 - **Period values**: Use Google Ads date range constants like `LAST_7_DAYS`, `LAST_30_DAYS`, `THIS_MONTH`.
 - **customer_id**: Always a 10-digit string without dashes (e.g., `"1234567890"`, not `"123-456-7890"`).
 - **RSA limits**: Headlines 3-15, descriptions 2-4. Maximum 3 enabled RSA ads per ad group.
+- **Write operations**: All tools that create, update, or remove resources require user confirmation before execution.
