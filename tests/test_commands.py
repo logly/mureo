@@ -22,6 +22,8 @@ EXPECTED_COMMANDS = [
     "budget-rebalance.md",
     "competitive-scan.md",
     "sync-state.md",
+    "goal-review.md",
+    "weekly-report.md",
 ]
 
 # Known MCP tool names extracted from SKILL.md files
@@ -204,7 +206,7 @@ def _extract_tool_references(content: str) -> set[str]:
 
 
 class TestCommandFilesExist:
-    """Verify all 8 command files exist in .claude/commands/."""
+    """Verify all 10 command files exist in .claude/commands/."""
 
     @pytest.mark.unit
     @pytest.mark.parametrize("filename", EXPECTED_COMMANDS)
@@ -217,7 +219,7 @@ class TestCommandFilesExist:
         assert COMMANDS_DIR.is_dir(), f"Commands directory missing: {COMMANDS_DIR}"
 
     @pytest.mark.unit
-    def test_exactly_eight_commands(self) -> None:
+    def test_exactly_ten_commands(self) -> None:
         md_files = list(COMMANDS_DIR.glob("*.md"))
         assert len(md_files) == len(EXPECTED_COMMANDS), (
             f"Expected {len(EXPECTED_COMMANDS)} command files, "
@@ -360,3 +362,44 @@ class TestWorkflowSkill:
         ]
         for cmd in commands:
             assert cmd in content, f"SKILL.md missing command reference: {cmd}"
+
+
+class TestGoalAndCrossPlatformCommands:
+    """Verify goal-review and weekly-report commands are valid and well-formed."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("filename", ["goal-review.md", "weekly-report.md"])
+    def test_new_command_exists(self, filename: str) -> None:
+        filepath = COMMANDS_DIR / filename
+        assert filepath.exists(), f"Command file missing: {filepath}"
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("filename", ["goal-review.md", "weekly-report.md"])
+    def test_new_command_references_mcp_tool(self, filename: str) -> None:
+        filepath = COMMANDS_DIR / filename
+        content = filepath.read_text(encoding="utf-8")
+        referenced_tools = _extract_tool_references(content)
+        assert len(referenced_tools) > 0, (
+            f"Command {filename} does not reference any MCP tools"
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("filename", ["goal-review.md", "weekly-report.md"])
+    def test_new_command_has_steps_section(self, filename: str) -> None:
+        filepath = COMMANDS_DIR / filename
+        content = filepath.read_text(encoding="utf-8")
+        assert "## Steps" in content, (
+            f"Command {filename} missing ## Steps section"
+        )
+
+    @pytest.mark.unit
+    def test_all_commands_reference_strategy_or_state(self) -> None:
+        """Verify all 10 commands reference STRATEGY.md or STATE.json."""
+        for filename in EXPECTED_COMMANDS:
+            filepath = COMMANDS_DIR / filename
+            content = filepath.read_text(encoding="utf-8")
+            has_strategy = "STRATEGY.md" in content
+            has_state = "STATE.json" in content
+            assert has_strategy or has_state, (
+                f"Command {filename} does not reference STRATEGY.md or STATE.json"
+            )

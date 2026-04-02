@@ -19,8 +19,13 @@ Guide me through setting up mureo for a new advertising account.
 
 4. **Initialize STATE.json**: Snapshot all campaigns with their current status, budgets, and bidding strategies into STATE.json.
 
-5. **Initial diagnosis**: Run `google_ads.health_check.all` and report any immediate issues.
+5. **Set up Goals**: Ask about quantitative marketing goals:
+   - "What are your key marketing goals? (e.g., CPA target, lead volume, ROAS target)"
+   - For each goal, ask for: target value, deadline, and which platforms it applies to
+   - Create `## Goal: <title>` sections in STRATEGY.md with Target, Deadline, Current (TBD), Platform, and Priority fields
 
-6. **Summary**: Show what was set up and recommend next steps.
+6. **Initial diagnosis**: Run `google_ads.health_check.all` and `meta_ads.analysis.performance` to report any immediate issues.
+
+7. **Summary**: Show what was set up and recommend next steps.
 
 IMPORTANT: Ask me questions interactively — don't assume answers. Each STRATEGY.md section should reflect MY actual business, not generic examples.
