@@ -64,6 +64,19 @@ mureo/
     ├── _handlers_meta_ads.py              # Meta Ads base handlers
     ├── _handlers_meta_ads_extended.py     # Extended handlers
     └── _handlers_meta_ads_other.py        # Other handlers
+
+.claude/commands/                # Workflow slash commands for Claude Code
+├── onboard.md                   # Account setup + STRATEGY.md generation
+├── daily-check.md               # Mode-aware daily health monitoring
+├── rescue.md                    # Emergency performance rescue
+├── search-term-cleanup.md       # Strategy-aligned search term hygiene
+├── creative-refresh.md          # Persona/USP-driven ad copy refresh
+├── budget-rebalance.md          # Mode-guided budget reallocation
+├── competitive-scan.md          # Auction analysis with Market Context
+└── sync-state.md                # Manual STATE.json synchronization
+
+skills/mureo-workflows/          # Workflow skill reference
+└── SKILL.md                     # Operation Mode reference + command docs
 ```
 
 ## Design Principles
@@ -244,3 +257,40 @@ The credential resolution logic is centralized in `mureo/auth.py`. Both the CLI 
 ### Meta Ads Token Auto-Refresh
 
 When loading Meta Ads credentials, `mureo/auth.py` checks the `token_obtained_at` timestamp in `credentials.json`. If the Long-Lived Token is 53+ days old (7-day safety margin before the 60-day expiry), mureo automatically exchanges it for a fresh token via the Meta Graph API. This requires `app_id` and `app_secret` to be present in the credentials. The refresh is protected by an `asyncio.Lock` to prevent concurrent refresh races, and the updated token is written atomically to `credentials.json` with `0600` file permissions. If the refresh fails (network error, invalid app credentials, etc.), mureo falls back to the existing token and logs a warning.
+
+## Command-Based Workflow System
+
+In addition to the 159 individual MCP tools, mureo provides 8 **workflow commands** as Claude Code slash commands (`.claude/commands/`). These commands orchestrate multiple MCP tools into coherent operational workflows, guided by the strategy context in `STRATEGY.md`.
+
+### How It Works
+
+```
+User runs /daily-check in Claude Code
+  │
+  ├── Read STRATEGY.md → extract Operation Mode, Persona, Market Context
+  ├── Read STATE.json → get current campaign state
+  │
+  ├── Select MCP tools based on Operation Mode:
+  │     ├── EFFICIENCY_STABILIZE → CPA monitoring, budget efficiency, search term review
+  │     ├── GROWTH_SCALE → impression share, conversion volume, auction insights
+  │     └── ...
+  │
+  ├── Execute selected MCP tools via the MCP server
+  │
+  └── Synthesize results into a strategy-aware report
+```
+
+### Commands
+
+| Command | Strategy Sections Used | Key MCP Tools Invoked |
+|---------|----------------------|----------------------|
+| `/onboard` | *(generates all sections)* | `accounts.list`, `campaigns.list` |
+| `/daily-check` | Operation Mode | `health_check.all`, `monitoring.*`, `performance.analyze` |
+| `/rescue` | All sections | `campaigns.diagnose`, `cost_increase.investigate`, `zero_conversions` |
+| `/search-term-cleanup` | Persona, USP | `search_terms.analyze`, `search_terms.review`, `negative_keywords.suggest` |
+| `/creative-refresh` | Persona, USP, Brand Voice | `rsa_assets.audit`, `creative.research`, `ads.create` |
+| `/budget-rebalance` | Operation Mode | `budget.efficiency`, `budget.reallocation` |
+| `/competitive-scan` | Market Context | `auction_insights.get`, `cpc.detect_trend` |
+| `/sync-state` | *(writes STATE.json)* | `campaigns.list`, `campaigns.get` |
+
+The workflow skill reference (`skills/mureo-workflows/SKILL.md`) documents the full set of Operation Modes and their behavioral implications for each command.

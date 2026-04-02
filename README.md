@@ -71,6 +71,30 @@ mureo is not just a thin wrapper around ad platform APIs. It includes **built-in
 | **Strategy context** | Markdown-based strategy persistence (STRATEGY.md) + JSON campaign state (STATE.json) |
 | **Image/video validation** | Path traversal prevention, extension allowlists, size limits on uploads |
 
+## Workflow Commands
+
+Beyond individual MCP tools, mureo provides **8 slash commands** for Claude Code that connect your strategy (`STRATEGY.md`) with the 159 MCP tools to enable strategy-driven ad operations.
+
+| Command | Purpose |
+|---------|---------|
+| `/onboard` | Interactive account setup, STRATEGY.md generation, STATE.json init |
+| `/daily-check` | Mode-aware daily health monitoring |
+| `/rescue` | Emergency performance rescue |
+| `/search-term-cleanup` | Strategy-aligned search term hygiene |
+| `/creative-refresh` | Persona/USP-driven ad copy refresh |
+| `/budget-rebalance` | Mode-guided budget reallocation |
+| `/competitive-scan` | Auction analysis with Market Context |
+| `/sync-state` | Manual STATE.json synchronization |
+
+Run `/onboard` first to set up your account and generate STRATEGY.md. Then use `/daily-check` for routine monitoring:
+
+```
+# In Claude Code
+/daily-check
+```
+
+Commands are defined in `.claude/commands/` and use the strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) to tailor their behavior. See [skills/mureo-workflows/SKILL.md](skills/mureo-workflows/SKILL.md) for the full Operation Mode reference.
+
 ## Quick Start
 
 ```bash

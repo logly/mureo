@@ -422,6 +422,25 @@ Or use `uv` to run it:
 | `meta_ads.instagram.media` | List Instagram posts | `account_id`, `ig_user_id` |
 | `meta_ads.instagram.boost` | Boost an Instagram post (create ad from post) | `account_id`, `ig_user_id`, `media_id`, `ad_set_id` |
 
+## Workflow Commands
+
+Beyond individual MCP tools, mureo provides higher-level operational workflows via **Claude Code slash commands**. These commands orchestrate multiple MCP tools in sequence, guided by the strategy context defined in `STRATEGY.md`.
+
+| Command | Purpose |
+|---------|---------|
+| `/onboard` | Interactive account setup, STRATEGY.md generation, STATE.json init |
+| `/daily-check` | Mode-aware daily health monitoring |
+| `/rescue` | Emergency performance rescue |
+| `/search-term-cleanup` | Strategy-aligned search term hygiene |
+| `/creative-refresh` | Persona/USP-driven ad copy refresh |
+| `/budget-rebalance` | Mode-guided budget reallocation |
+| `/competitive-scan` | Auction analysis with Market Context |
+| `/sync-state` | Manual STATE.json synchronization |
+
+Each command reads strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) from `STRATEGY.md` and campaign state from `STATE.json`, then selects and invokes the appropriate MCP tools. For example, `/daily-check` adapts its monitoring focus based on the current Operation Mode -- an `EFFICIENCY_STABILIZE` mode prioritizes CPA and budget efficiency, while a `GROWTH_SCALE` mode focuses on impression share and conversion volume.
+
+Command definitions live in `.claude/commands/`. See [strategy-context.md](strategy-context.md) for details on the strategy files, and `skills/mureo-workflows/SKILL.md` for the full Operation Mode reference.
+
 ## Input Parameters
 
 ### Google Ads: `customer_id`

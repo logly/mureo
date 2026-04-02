@@ -216,6 +216,30 @@ Parent directories are created automatically if they don't exist.
 
 If a file doesn't exist when reading, the functions return empty/default values (empty list for STRATEGY.md, default `StateDocument` for STATE.json) rather than raising an error.
 
+## Workflow Commands: Strategy in Action
+
+The strategy context files are not just passive documentation -- they are actively consumed by mureo's **workflow commands** (`.claude/commands/`). These 8 slash commands bridge the gap between strategy and action by reading `STRATEGY.md` and `STATE.json`, then orchestrating the appropriate MCP tools.
+
+### How Commands Use Strategy Context
+
+| Strategy Section | Commands That Use It |
+|-----------------|---------------------|
+| **Operation Mode** | `/daily-check`, `/rescue`, `/budget-rebalance` -- adapts monitoring focus and reallocation logic |
+| **Persona** | `/creative-refresh` -- generates ad copy aligned with target customer profile |
+| **USP** | `/creative-refresh` -- ensures ad messaging highlights differentiators |
+| **Brand Voice** | `/creative-refresh` -- maintains tone consistency across ad variants |
+| **Market Context** | `/competitive-scan` -- interprets auction insights against known market conditions |
+
+### Workflow
+
+1. Run `/onboard` to set up credentials, generate `STRATEGY.md`, and initialize `STATE.json`.
+2. Use `/daily-check` for routine monitoring -- the command reads `Operation Mode` to decide which metrics to prioritize.
+3. When performance degrades, `/rescue` reads the full strategy context to diagnose issues and recommend fixes that align with business goals.
+4. Periodic maintenance commands (`/search-term-cleanup`, `/creative-refresh`, `/budget-rebalance`, `/competitive-scan`) each read the relevant strategy sections to make context-aware decisions.
+5. Run `/sync-state` to manually refresh `STATE.json` when campaign settings change outside of mureo.
+
+See `skills/mureo-workflows/SKILL.md` for the complete Operation Mode reference and detailed command behavior.
+
 ## Data Model Immutability
 
 All data models are frozen dataclasses:

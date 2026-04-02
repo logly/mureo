@@ -5,7 +5,9 @@ Guidelines for AI agents contributing to the mureo codebase.
 ## Project Overview
 
 mureo is a Python CLI/MCP toolkit for managing Google Ads and Meta Ads accounts.
-It is designed to be used by AI agents — no database, no LLM SDK, no web framework.
+It provides 159 MCP tools for direct platform operations and 8 workflow commands
+for strategy-driven ad operations via Claude Code slash commands.
+Designed for AI agents — no database, no LLM SDK, no web framework.
 
 ## Build & Test
 
@@ -78,6 +80,17 @@ mureo/
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   └── lp_analyzer.py   # Landing page analyzer
+.claude/commands/            # Workflow slash commands (8 commands)
+│   ├── onboard.md           # Account setup + STRATEGY.md generation
+│   ├── daily-check.md       # Mode-aware daily health monitoring
+│   ├── rescue.md            # Emergency performance rescue
+│   ├── search-term-cleanup.md # Strategy-aligned search term hygiene
+│   ├── creative-refresh.md  # Persona/USP-driven ad copy refresh
+│   ├── budget-rebalance.md  # Mode-guided budget reallocation
+│   ├── competitive-scan.md  # Auction analysis with Market Context
+│   └── sync-state.md        # Manual STATE.json synchronization
+skills/mureo-workflows/      # Workflow skill reference
+│   └── SKILL.md             # Operation Mode reference + command docs
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
 ├── auth_setup.py        # Interactive setup wizard (browser OAuth flow)
 └── throttle.py          # Rate limiting (token bucket + rolling hourly cap)
