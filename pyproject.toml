@@ -5,11 +5,11 @@ build-backend = "hatchling.build"
 [project]
 name = "mureo"
 version = "0.2.0"
-description = "Marketing operations toolkit for AI agents — CLI & MCP"
+description = "Marketing orchestration framework for AI agents"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 readme = "README.md"
-keywords = ["advertising", "google-ads", "meta-ads", "mcp", "cli", "ai-agent"]
+keywords = ["advertising", "google-ads", "meta-ads", "mcp", "cli", "ai-agent", "orchestration", "workflow", "strategy"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -83,8 +83,8 @@ known-first-party = ["mureo"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
-    "unit: ユニットテスト",
-    "integration: インテグレーションテスト",
+    "unit: Unit tests",
+    "integration: Integration tests",
 ]
 
 [tool.mypy]

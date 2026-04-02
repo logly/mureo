@@ -3,23 +3,21 @@
 </p>
 
 <p align="center">
-  Marketing operations toolkit for AI agents — CLI & MCP.
+  Marketing orchestration framework for AI agents.
 </p>
 
 ## What is mureo?
 
-**mureo** is an open toolkit that lets AI agents (Claude Code, Cursor, etc.) operate marketing platforms directly. Currently supports **Google Ads** and **Meta Ads**, with more platforms planned.
+**mureo** is a marketing orchestration framework that helps AI agents achieve real business goals — awareness, leads, sales, retention — not just execute API calls. It combines strategy context, workflow commands, and built-in domain knowledge to guide agents through marketing operations across multiple platforms.
 
-- **MCP server** -- expose marketing-operation tools over the Model Context Protocol so agents can read, create, update, and analyze campaigns directly.
-- **CLI** -- the same operations available as shell commands for scripting and quick checks.
-- **No DB, no LLM** -- mureo is the "hands" of your agent, not the "brain." It wraps platform APIs and returns structured JSON. All reasoning stays on the agent side.
-- **Rate limiting** -- built-in token bucket throttling prevents API bans when agents issue high-speed requests (Google Ads: 10 QPS, Meta Ads: 20 QPS + 50K/hr cap).
-- **Token auto-refresh** -- Meta Ads Long-Lived Tokens are automatically refreshed before expiry when `app_id` and `app_secret` are configured.
-- **File-based context** -- optional `STRATEGY.md` and `STATE.json` files let agents persist strategy notes and campaign state without a database.
+Ad platform APIs will increasingly be exposed through official MCPs from Google, Meta, and others. mureo's value is not in wrapping those APIs. It is in the **orchestration layer on top**: knowing *what* to do, *when* to do it, and *why* — informed by your business strategy.
 
-## Beyond an API Wrapper
-
-mureo is not just a thin wrapper around ad platform APIs. It includes **built-in analysis, diagnostics, and optimization logic** that turns raw API data into actionable insights — so your agent can make informed decisions, not just execute commands.
+- **Strategy-driven** -- `STRATEGY.md` defines your persona, USP, brand voice, goals, and operation mode. Every decision the agent makes is grounded in your strategy, not just raw metrics.
+- **Workflow commands** -- 8 slash commands (`/daily-check`, `/rescue`, `/creative-refresh`, etc.) guide agents through complete marketing operations, connecting strategy context with the right tools in the right order.
+- **Cross-platform** -- orchestrates across Google Ads, Meta Ads, and GA4 (with more platforms planned), enabling coordinated decisions that no single-platform tool can make.
+- **Built-in domain knowledge** -- analysis, diagnostics, and optimization logic that turns raw API data into actionable insights. Campaign diagnostics with 30+ reason codes, search term intent analysis, budget efficiency scoring, RSA validation, and more.
+- **MCP + CLI interface** -- 159 MCP tools for AI agents (Claude Code, Cursor, etc.) plus a CLI for scripting and quick checks.
+- **No DB, no LLM dependency** -- mureo is the "hands" of your agent, not the "brain." All state lives in local files (`STRATEGY.md`, `STATE.json`) or the ad platforms themselves. All reasoning stays on the agent side.
 
 ### Analysis & Diagnostics
 
@@ -776,7 +774,7 @@ mureo/
 **Design principles:**
 
 - **No database** -- all state is either in the ad platform APIs or in local files (`STRATEGY.md`, `STATE.json`).
-- **No LLM dependency** -- mureo is a pure API toolkit. Inference, planning, and decision-making are the agent's responsibility.
+- **No LLM dependency** -- mureo does not embed an LLM. Inference, planning, and decision-making are the agent's responsibility.
 - **Immutable data models** -- all dataclasses use `frozen=True` to prevent accidental mutation.
 - **Credentials stay local** -- loaded from `~/.mureo/credentials.json` or environment variables. Never sent anywhere except the official ad platform APIs.
 

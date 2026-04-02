@@ -4,9 +4,9 @@ Instructions for AI agents that **use** mureo as a tool to operate ad accounts.
 
 ## What is mureo?
 
-mureo is an ad operations toolkit for AI agents. It provides CLI commands and MCP tools
-to manage Google Ads and Meta Ads accounts. All outputs are structured JSON — designed
-for machine consumption.
+mureo is a marketing orchestration framework for AI agents. It provides MCP tools, CLI commands,
+and workflow commands to manage marketing operations across Google Ads, Meta Ads, and more.
+All outputs are structured JSON — designed for machine consumption.
 
 ## Security Rules
 

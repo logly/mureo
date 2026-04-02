@@ -4,9 +4,11 @@ Guidelines for AI agents contributing to the mureo codebase.
 
 ## Project Overview
 
-mureo is a Python CLI/MCP toolkit for managing Google Ads and Meta Ads accounts.
-It provides 159 MCP tools for direct platform operations and 8 workflow commands
-for strategy-driven ad operations via Claude Code slash commands.
+mureo is a marketing orchestration framework for AI agents. It combines strategy
+context, workflow commands, and domain knowledge to help agents achieve marketing
+goals across platforms. Currently supports Google Ads and Meta Ads, with more
+platforms planned. Provides 159 MCP tools for direct platform operations and
+8 workflow commands for strategy-driven ad operations via Claude Code slash commands.
 Designed for AI agents — no database, no LLM SDK, no web framework.
 
 ## Build & Test
@@ -147,6 +149,9 @@ skills/mureo-workflows/      # Workflow skill reference
 
 ## Design Constraints
 
+- **Strategy-driven** — all operations are guided by STRATEGY.md context.
+- **Workflow-first** — slash commands orchestrate multi-step operations.
+- **Platform-agnostic** — designed to work with official platform MCPs as they become available.
 - **No database dependencies** — no SQLAlchemy, no ORM. File-based context only (STRATEGY.md / STATE.json).
 - **No LLM dependencies** — no OpenAI SDK, no Anthropic SDK. Tools return structured data for agents to interpret.
 - **No web framework dependencies** — no FastAPI, no Flask. CLI (Typer) and MCP (stdio) only.

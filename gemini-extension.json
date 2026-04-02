@@ -1,6 +1,6 @@
 {
   "name": "mureo",
   "version": "0.2.0",
-  "description": "Marketing operations toolkit for AI agents — CLI & MCP",
+  "description": "Marketing orchestration framework for AI agents",
   "contextFileName": "CONTEXT.md"
 }

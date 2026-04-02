@@ -1,5 +1,55 @@
 # Architecture
 
+mureo is a **marketing orchestration framework** that bridges the gap between marketing strategy and advertising platform execution. Rather than a simple API wrapper, mureo provides a layered system where human-defined goals flow through strategy context, get orchestrated by AI-powered workflows, and execute via pluggable platform connections.
+
+## System Architecture
+
+The system is organized into four layers. Each layer has a clear responsibility and communicates downward through well-defined interfaces.
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Marketing Goals                                     │
+│  (awareness, lead generation, sales, retention)      │
+├─────────────────────────────────────────────────────┤
+│  Strategy Context                                    │
+│  STRATEGY.md: Persona, USP, Brand Voice, Goals,     │
+│               Operation Mode, Market Context         │
+│  STATE.json: Campaign snapshots, action log          │
+├─────────────────────────────────────────────────────┤
+│  Orchestration Layer                                 │
+│  Workflow Commands: /daily-check, /rescue, etc.      │
+│  Domain Knowledge: Skills (analysis, diagnostics)    │
+│  AI Agent (LLM): Strategic judgment, creative gen    │
+├─────────────────────────────────────────────────────┤
+│  Tool Connection Layer                               │
+│  ┌──────────┐ ┌──────────┐ ┌─────┐ ┌────────┐      │
+│  │Google Ads│ │Meta Ads  │ │ GA4 │ │Future  │      │
+│  │(mureo)   │ │(mureo)   │ │(MCP)│ │tools   │      │
+│  └──────────┘ └──────────┘ └─────┘ └────────┘      │
+└─────────────────────────────────────────────────────┘
+```
+
+### Marketing Goals (Top Layer)
+
+The user defines high-level marketing objectives -- awareness, lead generation, sales, retention. These goals drive every decision downstream. mureo does not prescribe goals; it receives them from the marketer and ensures all operations align with them.
+
+### Strategy Context
+
+mureo persists marketing strategy in two files that travel with the project:
+
+- **STRATEGY.md** captures the durable strategic context: target persona, unique selling proposition (USP), brand voice guidelines, marketing goals, the current operation mode (e.g., EFFICIENCY_STABILIZE, GROWTH_SCALE), and market context including competitors.
+- **STATE.json** holds ephemeral operational state: campaign snapshots, recent action logs, and metric baselines used for anomaly detection.
+
+Together these files give the AI agent enough context to make strategy-aware decisions without requiring a database.
+
+### Orchestration Layer
+
+This is where mureo's workflow commands, domain knowledge (skills), and the AI agent converge. Workflow commands like `/daily-check` and `/rescue` define multi-step operational procedures. Skills provide domain-specific reference material (operation mode definitions, diagnostic patterns). The AI agent (LLM) supplies strategic judgment, creative generation, and adaptive decision-making. The orchestration layer reads the strategy context, selects the appropriate tools, and synthesizes results into actionable recommendations.
+
+### Tool Connection Layer
+
+The bottom layer provides concrete connections to advertising platforms and analytics services. mureo ships its own MCP tools for Google Ads and Meta Ads. Third-party MCP servers (e.g., GA4) can be composed alongside mureo's tools. This layer is intentionally replaceable -- as platforms release official MCP servers, mureo's built-in connectors can be swapped out without affecting the orchestration layer above.
+
 ## Package Structure
 
 ```
@@ -85,9 +135,9 @@ skills/mureo-workflows/          # Workflow skill reference
 
 mureo has zero database dependencies. All state lives either in the advertising platform APIs or in optional local files (`STRATEGY.md`, `STATE.json`). This makes it trivially deployable -- `pip install mureo` is all you need.
 
-### No LLM Dependency
+### No Embedded LLM
 
-mureo is the "hands" of your AI agent, not the "brain." It wraps advertising APIs and returns structured JSON dictionaries. All reasoning, planning, and decision-making are the responsibility of the calling agent.
+mureo does not bundle or call an LLM itself. The tool connection layer wraps advertising APIs and returns structured JSON dictionaries. The orchestration layer relies on an external AI agent (e.g., Claude via Claude Code) for reasoning, planning, and creative generation. This separation keeps mureo lightweight and model-agnostic.
 
 ### Immutable Data Models
 

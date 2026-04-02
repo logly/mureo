@@ -18,7 +18,7 @@ metadata:
 
 ## Overview
 
-**mureo** is an ad operations toolkit for AI agents. It provides:
+**mureo** is a marketing orchestration framework for AI agents. It provides:
 - **CLI** (`mureo`) for direct command-line usage
 - **MCP Server** for integration with AI agent hosts (Claude Code, Cursor, etc.)
 - **Python library** for programmatic access

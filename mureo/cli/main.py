@@ -14,7 +14,7 @@ from mureo.cli.meta_ads import meta_ads_app
 
 app = typer.Typer(
     name="mureo",
-    help="Ad operations toolkit for AI agents",
+    help="Marketing orchestration framework for AI agents",
     no_args_is_help=True,
 )
 
