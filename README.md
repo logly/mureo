@@ -142,23 +142,14 @@ You approve → Agent calls google_ads.ads.update
 
 ### Installing workflow commands
 
-Workflow commands are not included in `pip install mureo` — they are Claude Code configuration files that need to be placed in your project directory:
+Workflow commands are not included in `pip install mureo` — they are Claude Code configuration files. Install them at the **user level** so they are available in all projects:
 
 ```bash
-# In your project directory (where you run Claude Code)
-mkdir -p .claude/commands
-cp -r /path/to/mureo/.claude/commands/* .claude/commands/
+# Install commands for all projects (user-level)
+cp -r /path/to/mureo/.claude/commands/* ~/.claude/commands/
 ```
 
-Or if you cloned the mureo repository:
-
-```bash
-# Symlink (auto-updates when mureo is updated)
-mkdir -p .claude
-ln -s /path/to/mureo/.claude/commands .claude/commands
-```
-
-After installation, restart Claude Code and the `/onboard`, `/daily-check`, etc. commands will appear.
+After copying, the `/onboard`, `/daily-check`, etc. commands will be available in any Claude Code session.
 
 Commands use the strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) to tailor their behavior. See [skills/mureo-workflows/SKILL.md](skills/mureo-workflows/SKILL.md) for the full Operation Mode reference.
 
