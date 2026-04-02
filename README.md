@@ -140,17 +140,6 @@ Agent presents to you for approval:
 You approve → Agent calls google_ads.ads.update
 ```
 
-### Installing workflow commands
-
-Workflow commands are not included in `pip install mureo` — they are Claude Code configuration files. Install them at the **user level** so they are available in all projects:
-
-```bash
-# Install commands for all projects (user-level)
-cp -r /path/to/mureo/.claude/commands/* ~/.claude/commands/
-```
-
-After copying, the `/onboard`, `/daily-check`, etc. commands will be available in any Claude Code session.
-
 Commands use the strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) to tailor their behavior. See [skills/mureo-workflows/SKILL.md](skills/mureo-workflows/SKILL.md) for the full Operation Mode reference.
 
 ## Quick Start
@@ -177,6 +166,45 @@ pip install "mureo[cli]"     # + CLI (typer, rich)
 pip install "mureo[mcp]"     # + MCP server
 pip install "mureo[cli,mcp]" # everything
 ```
+
+## Installing Commands & Skills
+
+`pip install mureo` installs the Python package (API clients, MCP server, CLI), but **workflow commands and skills are not included** — they are configuration files for Claude Code. To use them, clone the repository and copy them to your environment.
+
+```bash
+git clone https://github.com/logly/mureo.git
+```
+
+### Workflow commands
+
+Copy to the **user level** so they are available in all projects:
+
+```bash
+mkdir -p ~/.claude/commands
+cp mureo/.claude/commands/* ~/.claude/commands/
+```
+
+After copying, `/onboard`, `/daily-check`, `/rescue`, etc. will appear in any Claude Code session.
+
+### Skills
+
+Skills provide reference knowledge that Claude Code uses to make better decisions. Copy to the **user level**:
+
+```bash
+cp -r mureo/skills/* ~/.claude/skills/
+```
+
+This installs 5 skills:
+
+| Skill | Purpose |
+|-------|---------|
+| `mureo-google-ads` | Google Ads tool reference (82 tools, parameters, examples) |
+| `mureo-meta-ads` | Meta Ads tool reference (77 tools, parameters, examples) |
+| `mureo-shared` | Authentication, security rules, output formatting |
+| `mureo-strategy` | STRATEGY.md / STATE.json format and usage guide |
+| `mureo-workflows` | Operation Mode matrix, KPI thresholds, command reference |
+
+> **Note:** If you cloned the mureo repository and run Claude Code from that directory, commands and skills are automatically available without copying.
 
 ## Authentication
 
@@ -755,29 +783,14 @@ mureo/
 ## Development
 
 ```bash
-git clone https://github.com/logly/mureo.git
-cd mureo-core
-
-# Install with all extras
+git clone https://github.com/logly/mureo.git && cd mureo
 pip install -e ".[dev,cli,mcp]"
-
-# Run tests
-pytest tests/ -v
-
-# With coverage
-pytest --cov=mureo --cov-report=term-missing
-
-# Lint & format
-ruff check mureo/
-black mureo/
-mypy mureo/
+pytest tests/ -v                              # run tests
+pytest --cov=mureo --cov-report=term-missing  # with coverage
+ruff check mureo/ && black mureo/ && mypy mureo/  # lint & format
 ```
 
-### Requirements
-
-- Python 3.10+
-- For Google Ads: a Google Ads developer token and OAuth 2.0 credentials
-- For Meta Ads: a Meta (Facebook) access token
+Python 3.10+ required. See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guidelines.
 
 ## License
 
