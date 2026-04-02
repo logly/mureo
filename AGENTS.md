@@ -170,7 +170,7 @@ skills/mureo-workflows/      # Workflow skill reference
 
 ## Test Coverage
 
-- 40+ test files, 95% coverage, 1277 tests
+- 40+ test files, 95% coverage, 1327 tests
 - Target: 80% minimum (enforced by `tool.coverage.report.fail_under`)
 - Framework: pytest + pytest-asyncio
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests
