@@ -41,6 +41,7 @@ These files live in the project working directory and are read by AI agents to m
 | `## Custom: <title>` | `custom` | Freeform custom strategy entry |
 | `## Deep Research: <title>` | `deep_research` | Results from website/competitor research |
 | `## Sales Material: <title>` | `sales_material` | Extracted info from sales documents |
+| `## Goal: <title>` | `goal` | Quantitative marketing goal with target, deadline, and priority |
 
 ### Example STRATEGY.md
 
@@ -94,6 +95,22 @@ EFFICIENCY_STABILIZE
 - Q3 (Jul-Sep): Peak season, maximize budget utilization
 - Q4 (Oct-Dec): Holiday campaigns, shift to Meta Ads for brand awareness
 
+## Goal: Reduce CPA below 5000 JPY
+
+- Target: CPA < 5,000 JPY
+- Deadline: 2026-06-30
+- Current: CPA 6,200 JPY
+- Platform: Google Ads, Meta Ads
+- Priority: HIGH
+
+## Goal: Increase monthly leads to 100
+
+- Target: Leads >= 100/month
+- Deadline: 2026-05-31
+- Current: 72 leads/month
+- Platform: Google Ads
+- Priority: MEDIUM
+
 ## Deep Research: example.com
 
 **Service Overview:** Cloud-based project management tool for remote teams
@@ -109,6 +126,20 @@ EFFICIENCY_STABILIZE
 - Custom/research sections use the `Prefix: Title` format
 - Unknown section headings are logged as warnings and skipped during parsing
 - The file always starts with `# Strategy` (h1 level)
+
+### Goal Format
+
+Goal sections define quantitative marketing objectives. Each goal uses the `## Goal: <title>` heading and contains bullet-point fields:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `Target` | Yes | Measurable success criterion (e.g., `CPA < 5,000 JPY`) |
+| `Deadline` | Yes | Target date in `YYYY-MM-DD` format |
+| `Current` | No | Current baseline value for tracking progress |
+| `Platform` | No | Applicable ad platforms (e.g., `Google Ads, Meta Ads`) |
+| `Priority` | No | `HIGH`, `MEDIUM`, or `LOW` |
+
+Multiple goals can coexist in a single STRATEGY.md. Agents should reference goals when making optimization decisions to ensure actions are aligned with measurable business objectives.
 
 ### Operation Modes
 

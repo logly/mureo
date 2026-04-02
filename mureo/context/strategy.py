@@ -33,6 +33,7 @@ _PREFIX_TYPES: dict[str, str] = {
     "Custom": "custom",
     "Deep Research": "deep_research",
     "Sales Material": "sales_material",
+    "Goal": "goal",
 }
 
 # context_type -> prefix name (SUGGESTION-1: module-level constants)

@@ -12,7 +12,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from mureo.context.errors import ContextFileError
-from mureo.context.models import CampaignSnapshot, StateDocument
+from mureo.context.models import (
+    ActionLogEntry,
+    CampaignSnapshot,
+    PlatformState,
+    StateDocument,
+)
 
 # Required campaign fields
 _CAMPAIGN_REQUIRED_FIELDS: tuple[str, ...] = (
@@ -27,11 +32,44 @@ def parse_state(text: str) -> StateDocument:
     data = json.loads(text)
     campaigns_raw = data.get("campaigns", [])
     campaigns = tuple(_parse_campaign(c) for c in campaigns_raw)
+
+    # v2: platforms
+    platforms: dict[str, PlatformState] | None = None
+    platforms_raw = data.get("platforms")
+    if platforms_raw is not None:
+        platforms = {}
+        for platform_key, platform_data in platforms_raw.items():
+            platform_campaigns = tuple(
+                _parse_campaign(c) for c in platform_data.get("campaigns", [])
+            )
+            platforms[platform_key] = PlatformState(
+                account_id=platform_data["account_id"],
+                campaigns=platform_campaigns,
+            )
+
+    # v2: action_log
+    action_log_raw = data.get("action_log", [])
+    action_log = tuple(_parse_action_log_entry(e) for e in action_log_raw)
+
     return StateDocument(
         version=data.get("version", "1"),
         last_synced_at=data.get("last_synced_at"),
         customer_id=data.get("customer_id"),
         campaigns=campaigns,
+        platforms=platforms,
+        action_log=action_log,
+    )
+
+
+def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
+    """Create an ActionLogEntry from a dict."""
+    return ActionLogEntry(
+        timestamp=e["timestamp"],
+        action=e["action"],
+        platform=e["platform"],
+        campaign_id=e.get("campaign_id"),
+        summary=e.get("summary"),
+        command=e.get("command"),
     )
 
 
@@ -65,7 +103,43 @@ def render_state(doc: StateDocument) -> str:
         "customer_id": doc.customer_id,
         "campaigns": [_snapshot_to_dict(c) for c in doc.campaigns],
     }
+
+    # v2: platforms
+    if doc.platforms is not None:
+        data["platforms"] = {
+            key: _platform_state_to_dict(ps) for key, ps in doc.platforms.items()
+        }
+    else:
+        data["platforms"] = None
+
+    # v2: action_log
+    data["action_log"] = [_action_log_entry_to_dict(e) for e in doc.action_log]
+
     return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def _platform_state_to_dict(ps: PlatformState) -> dict[str, Any]:
+    """Convert a PlatformState to a dictionary."""
+    return {
+        "account_id": ps.account_id,
+        "campaigns": [_snapshot_to_dict(c) for c in ps.campaigns],
+    }
+
+
+def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
+    """Convert an ActionLogEntry to a dictionary."""
+    result: dict[str, Any] = {
+        "timestamp": e.timestamp,
+        "action": e.action,
+        "platform": e.platform,
+    }
+    if e.campaign_id is not None:
+        result["campaign_id"] = e.campaign_id
+    if e.summary is not None:
+        result["summary"] = e.summary
+    if e.command is not None:
+        result["command"] = e.command
+    return result
 
 
 def _snapshot_to_dict(c: CampaignSnapshot) -> dict[str, Any]:
@@ -146,6 +220,30 @@ def upsert_campaign(path: Path, campaign: CampaignSnapshot) -> StateDocument:
         last_synced_at=doc.last_synced_at,
         customer_id=doc.customer_id,
         campaigns=tuple(new_campaigns),
+        platforms=doc.platforms,
+        action_log=doc.action_log,
+    )
+    write_state_file(path, new_doc)
+    return new_doc
+
+
+def append_action_log(path: Path, entry: ActionLogEntry) -> StateDocument:
+    """Append an action log entry to STATE.json.
+
+    Reads the current state, appends the entry, and writes back atomically.
+
+    Returns:
+        Updated StateDocument
+    """
+    doc = read_state_file(path)
+    new_log = (*doc.action_log, entry)
+    new_doc = StateDocument(
+        version=doc.version,
+        last_synced_at=doc.last_synced_at,
+        customer_id=doc.customer_id,
+        campaigns=doc.campaigns,
+        platforms=doc.platforms,
+        action_log=new_log,
     )
     write_state_file(path, new_doc)
     return new_doc
