@@ -356,7 +356,24 @@ class _AuctionAnalysisMixin:
             rows = await self._search(query)
         except Exception as exc:
             logger.warning("Failed to retrieve auction insights data: %s", exc)
-            return []
+            return [
+                {
+                    "error": "auction_insights_unavailable",
+                    "reason": str(exc),
+                    "hint": "Auction insights require sufficient impression data. "
+                    "Try a longer period or a campaign with more traffic.",
+                }
+            ]
+
+        if not rows:
+            return [
+                {
+                    "error": "no_data",
+                    "reason": "No auction insights data for this campaign and period.",
+                    "hint": "The campaign may have insufficient impressions. "
+                    "Try LAST_30_DAYS or a higher-traffic campaign.",
+                }
+            ]
 
         results: list[dict[str, Any]] = []
         for row in rows:
@@ -407,7 +424,7 @@ class _AuctionAnalysisMixin:
             return {"error": f"Campaign ID {campaign_id} not found"}
 
         auction_data = await self.get_auction_insights(campaign_id, period)
-        if not auction_data:
+        if not auction_data or (auction_data and "error" in auction_data[0]):
             return {
                 "campaign_id": campaign_id,
                 "campaign_name": campaign.get("name", ""),

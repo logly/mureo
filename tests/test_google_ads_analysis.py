@@ -1429,7 +1429,9 @@ class TestAuctionAnalysisMixin:
         client = self._make_client()
         client._search.side_effect = Exception("API error")
         result = await client.get_auction_insights("123")
-        assert result == []
+        assert len(result) == 1
+        assert result[0]["error"] == "auction_insights_unavailable"
+        assert "API error" in result[0]["reason"]
 
     @pytest.mark.unit
     async def test_analyze_auction_insights_not_found(self) -> None:
