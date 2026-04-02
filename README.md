@@ -140,7 +140,27 @@ Agent presents to you for approval:
 You approve → Agent calls google_ads.ads.update
 ```
 
-Commands are defined in `.claude/commands/` and use the strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) to tailor their behavior. See [skills/mureo-workflows/SKILL.md](skills/mureo-workflows/SKILL.md) for the full Operation Mode reference.
+### Installing workflow commands
+
+Workflow commands are not included in `pip install mureo` — they are Claude Code configuration files that need to be placed in your project directory:
+
+```bash
+# In your project directory (where you run Claude Code)
+mkdir -p .claude/commands
+cp -r /path/to/mureo/.claude/commands/* .claude/commands/
+```
+
+Or if you cloned the mureo repository:
+
+```bash
+# Symlink (auto-updates when mureo is updated)
+mkdir -p .claude
+ln -s /path/to/mureo/.claude/commands .claude/commands
+```
+
+After installation, restart Claude Code and the `/onboard`, `/daily-check`, etc. commands will appear.
+
+Commands use the strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) to tailor their behavior. See [skills/mureo-workflows/SKILL.md](skills/mureo-workflows/SKILL.md) for the full Operation Mode reference.
 
 ## Quick Start
 
@@ -698,39 +718,14 @@ mureo/
 ├── google_ads/              # Google Ads API client (google-ads SDK wrapper)
 │   ├── client.py            # GoogleAdsApiClient (8 Mixin: Ads, Keywords, Analysis, Creative, Diagnostics, Extensions, Media, Monitoring)
 │   ├── mappers.py           # Response mapping to structured dicts
-│   ├── _ads.py              # Ad CRUD operations
-│   ├── _keywords.py         # Keyword management
-│   ├── _analysis.py         # Performance analysis, auction insights, CPC trends, device analysis
-│   ├── _analysis_*.py       # Analysis sub-modules (auction, btob, budget, keywords, performance, rsa, search_terms)
-│   ├── _creative.py         # LP analysis + creative research
-│   ├── _diagnostics.py      # Campaign/keyword diagnostics
-│   ├── _extensions.py       # Sitelinks, callouts, conversions, targeting
-│   ├── _media.py            # Image asset upload
-│   ├── _monitoring.py       # Anomaly detection, reports, goal tracking
-│   ├── _rsa_validator.py    # RSA ad validator
-│   ├── _rsa_insights.py     # RSA asset performance insights
-│   ├── _message_match.py    # Message match evaluation (Vision LLM)
-│   └── _intent_classifier.py # Search term intent classification
-├── meta_ads/                # Meta Ads API client (httpx-based, Meta Marketing API)
-│   ├── client.py            # MetaAdsApiClient (15 Mixin: Campaigns, AdSets, Ads, Creatives, Audiences,
-│   │                        #   Pixels, Insights, Analysis, Catalog, Conversions, Leads, PagePosts,
-│   │                        #   Instagram, SplitTest, AdRules)
+│   └── _*.py                # 8 Mixin modules (ads, keywords, analysis, extensions, diagnostics,
+│                            #   creative, monitoring, media) + validators + classifiers
+├── meta_ads/                # Meta Ads API client (15 Mixins, httpx-based)
+│   ├── client.py            # MetaAdsApiClient (Campaigns, AdSets, Ads, Creatives, Audiences, Pixels,
+│   │                        #   Insights, Analysis, Catalog, Conversions, Leads, PagePosts, Instagram,
+│   │                        #   SplitTest, AdRules)
 │   ├── mappers.py           # Response mapping to structured dicts
-│   ├── _campaigns.py        # Campaign CRUD
-│   ├── _ad_sets.py          # Ad set CRUD
-│   ├── _ads.py              # Ad CRUD
-│   ├── _creatives.py        # Carousel, collection creatives + image upload
-│   ├── _audiences.py        # Custom audience management
-│   ├── _pixels.py           # Pixel management
-│   ├── _insights.py         # Performance reports + breakdowns
-│   ├── _analysis.py         # Cross-cutting analysis utilities
-│   ├── _catalog.py          # Product catalog + feeds + products
-│   ├── _conversions.py      # Conversions API (CAPI)
-│   ├── _leads.py            # Lead forms + lead data retrieval
-│   ├── _page_posts.py       # Facebook Page post management + boosting
-│   ├── _instagram.py        # Instagram accounts, media, boosting
-│   ├── _split_test.py       # A/B test management
-│   └── _ad_rules.py         # Automated rules (CPA alerts, auto-pause)
+│   └── _*.py                # 15 Mixin modules (campaigns, ads, creatives, audiences, etc.)
 ├── analysis/                # Cross-platform analysis utilities
 │   └── lp_analyzer.py       # Landing page analysis engine
 ├── context/                 # File-based context (STRATEGY.md, STATE.json)
