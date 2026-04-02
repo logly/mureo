@@ -75,22 +75,69 @@ mureo is not just a thin wrapper around ad platform APIs. It includes **built-in
 
 Beyond individual MCP tools, mureo provides **8 slash commands** for Claude Code that connect your strategy (`STRATEGY.md`) with the 159 MCP tools to enable strategy-driven ad operations.
 
-| Command | Purpose |
-|---------|---------|
-| `/onboard` | Interactive account setup, STRATEGY.md generation, STATE.json init |
-| `/daily-check` | Mode-aware daily health monitoring |
-| `/rescue` | Emergency performance rescue |
-| `/search-term-cleanup` | Strategy-aligned search term hygiene |
-| `/creative-refresh` | Persona/USP-driven ad copy refresh |
-| `/budget-rebalance` | Mode-guided budget reallocation |
-| `/competitive-scan` | Auction analysis with Market Context |
-| `/sync-state` | Manual STATE.json synchronization |
+### How it works
+
+Each command orchestrates three layers working together:
+
+| Layer | Role | Example (`/creative-refresh`) |
+|-------|------|-------------------------------|
+| **mureo (MCP tools)** | Data retrieval, analysis, validation | RSA asset audit, LP analysis, ad text validation |
+| **AI agent (LLM)** | Strategic judgment, creative generation | Drafts new headlines from Persona + USP + Brand Voice |
+| **You (human)** | Final approval | Review and approve before any changes are made |
+
+mureo does not embed an LLM. Instead, it provides structured data and clear instructions so that the AI agent (Claude Code, Cursor, etc.) can make informed, strategy-aligned decisions. The commands tell the agent *what tools to use*, *what strategy context to consider*, and *what to ask you before acting*.
+
+### Commands
+
+| Command | What mureo does (tools) | What the AI agent decides (LLM) |
+|---------|------------------------|--------------------------------|
+| `/onboard` | Fetch accounts, campaigns, init STATE.json | Interview you to build Persona, USP, Brand Voice into STRATEGY.md |
+| `/daily-check` | Health check, performance analysis, goal evaluation | Judge which metrics matter based on Operation Mode, generate report |
+| `/rescue` | Search term review, cost investigation, zero-CV diagnosis | Prioritize actions, explain why each change is needed |
+| `/search-term-cleanup` | N-gram analysis, scoring, exclude candidates | Judge if a search term matches the Persona/USP or not |
+| `/creative-refresh` | RSA audit, LP analysis, text validation | Write new headlines/descriptions from Persona + USP + Brand Voice |
+| `/budget-rebalance` | Budget efficiency analysis, performance reports | Decide which campaigns deserve more/less budget and why |
+| `/competitive-scan` | Auction insights, CPC trend detection | Compare with Market Context, propose strategic response |
+| `/sync-state` | Fetch all campaign data, update STATE.json | Summarize changes since last sync in plain language |
+
+### Getting started
 
 Run `/onboard` first to set up your account and generate STRATEGY.md. Then use `/daily-check` for routine monitoring:
 
 ```
 # In Claude Code
-/daily-check
+/onboard          # First time: set up strategy + state
+/daily-check      # Routine: check all campaigns
+/rescue           # When performance drops
+```
+
+### Example: `/creative-refresh` flow
+
+```
+You: /creative-refresh
+
+Agent reads STRATEGY.md:
+  Persona: "Budget-constrained SaaS marketer"
+  USP: "AI reduces ad ops workload by 10h/week"
+  Brand Voice: "Data-driven, no hype"
+
+Agent calls mureo tools:
+  → rsa_assets.audit     → 3 headlines rated LOW
+  → landing_page.analyze → LP highlights: free trial, ROI improvement
+  → search_terms.review  → "ad automation" has high CVR
+
+Agent (LLM) generates new copy:
+  "Cut Ad Ops Time by 60% with AI"        ← addresses Persona pain point
+  "Free Trial | Ad Automation Platform"    ← matches LP + high-CVR keyword
+  "Data-Driven Ad Optimization for Teams"  ← fits Brand Voice
+
+Agent calls mureo validation:
+  → RSA validator → character count OK, no prohibited expressions
+
+Agent presents to you for approval:
+  "I suggest replacing 3 underperforming headlines. Here's why..."
+
+You approve → Agent calls google_ads.ads.update
 ```
 
 Commands are defined in `.claude/commands/` and use the strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) to tailor their behavior. See [skills/mureo-workflows/SKILL.md](skills/mureo-workflows/SKILL.md) for the full Operation Mode reference.
@@ -617,7 +664,7 @@ mureo supports two optional local files that let agents persist context across s
 
 ### STRATEGY.md
 
-A Markdown file containing strategic context for ad operations. Agents can read this to understand business goals before making changes.
+A Markdown file containing strategic context: Persona, USP, Target Audience, Brand Voice, Market Context, and Operation Mode. Agents read this before making changes. Run `/onboard` to generate it interactively.
 
 ```markdown
 # Strategy
@@ -628,39 +675,16 @@ B2B SaaS decision-makers, 30-50 years old, IT managers and CTOs.
 ## USP
 Only platform that integrates AI agents with ad operations.
 
-## Target Audience
-Small-to-mid size marketing teams running Google Ads and Meta Ads.
-
 ## Brand Voice
 Professional but approachable. Data-driven recommendations.
 
-## Market Context
-Competitive CPC rising 15% YoY in the SaaS category.
-
-## Custom: Q1 Goals
-Reduce CPA by 20% while maintaining conversion volume.
+## Operation Mode
+EFFICIENCY_STABILIZE
 ```
 
 ### STATE.json
 
-A JSON snapshot of current campaign state. Updated automatically when agents read campaigns via tools.
-
-```json
-{
-  "version": "1",
-  "last_synced_at": "2025-01-15T10:30:00Z",
-  "customer_id": "1234567890",
-  "campaigns": [
-    {
-      "campaign_id": "111222333",
-      "campaign_name": "Brand - Search",
-      "status": "ENABLED",
-      "bidding_strategy_type": "TARGET_CPA",
-      "daily_budget": 5000
-    }
-  ]
-}
-```
+A JSON snapshot of current campaign state. Updated automatically when agents read campaigns via tools. Contains campaign IDs, statuses, budgets, bidding strategies, and operational notes.
 
 ## Architecture
 
