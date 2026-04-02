@@ -340,7 +340,7 @@ class _AuctionAnalysisMixin:
 
         query = f"""
             SELECT
-                auction_insight.display_domain,
+                auction_insight.display_url,
                 metrics.auction_insight_search_impression_share,
                 metrics.auction_insight_search_overlap_rate,
                 metrics.auction_insight_search_position_above_rate,
@@ -381,7 +381,7 @@ class _AuctionAnalysisMixin:
             m = row.metrics
             results.append(
                 {
-                    "display_domain": ai.display_domain,
+                    "display_url": ai.display_url,
                     "impression_share": round(
                         float(m.auction_insight_search_impression_share) * 100, 1
                     ),
@@ -434,11 +434,11 @@ class _AuctionAnalysisMixin:
                 "insights": [],
             }
 
-        # Extract own data (empty display_domain = self)
+        # Extract own data (empty display_url = self)
         my_data: dict[str, Any] | None = None
         competitors: list[dict[str, Any]] = []
         for entry in auction_data:
-            if entry["display_domain"] == "":
+            if entry["display_url"] == "":
                 my_data = entry
             else:
                 competitors.append(entry)
@@ -470,7 +470,7 @@ class _AuctionAnalysisMixin:
         if strong_competitors:
             top_comp = strong_competitors[0]
             insights.append(
-                f"The top competitor is \"{top_comp['display_domain']}\" "
+                f"The top competitor is \"{top_comp['display_url']}\" "
                 f"(IS: {top_comp['impression_share']}%, "
                 f"top impression rate: {top_comp['top_impression_pct']}%)."
             )
@@ -478,7 +478,7 @@ class _AuctionAnalysisMixin:
         for comp in competitors[:5]:
             if comp["outranking_share"] > 50 and my_data:
                 insights.append(
-                    f"\"{comp['display_domain']}\" is outranking you {comp['outranking_share']}% of the time. "
+                    f"\"{comp['display_url']}\" is outranking you {comp['outranking_share']}% of the time. "
                     "Consider reviewing your bidding strategy."
                 )
 
