@@ -109,13 +109,13 @@ class SearchConsoleApiClient:
     async def list_sites(self) -> list[dict[str, Any]]:
         """List all verified Search Console sites."""
         data = await self._get(f"{BASE_URL}/sites")
-        return data.get("siteEntry", [])
+        return data.get("siteEntry", [])  # type: ignore[no-any-return]
 
     async def get_site(self, site_url: str) -> dict[str, Any]:
         """Get details for a specific site."""
         encoded = self._encode_site_url(site_url)
         data = await self._get(f"{BASE_URL}/sites/{encoded}")
-        return data
+        return data  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
     # Search Analytics
@@ -157,7 +157,7 @@ class SearchConsoleApiClient:
         data = await self._post(
             f"{BASE_URL}/sites/{encoded}/searchAnalytics/query", body
         )
-        return data.get("rows", [])
+        return data.get("rows", [])  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
     # Sitemaps
@@ -167,7 +167,7 @@ class SearchConsoleApiClient:
         """List sitemaps for a site."""
         encoded = self._encode_site_url(site_url)
         data = await self._get(f"{BASE_URL}/sites/{encoded}/sitemaps")
-        return data.get("sitemap", [])
+        return data.get("sitemap", [])  # type: ignore[no-any-return]
 
     async def submit_sitemap(self, site_url: str, feedpath: str) -> dict[str, Any]:
         """Submit a sitemap.
@@ -203,4 +203,4 @@ class SearchConsoleApiClient:
             "siteUrl": site_url,
         }
         data = await self._post(f"{INSPECTION_URL}/urlInspection/index:inspect", body)
-        return data
+        return data  # type: ignore[no-any-return]
