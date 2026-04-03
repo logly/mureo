@@ -8,7 +8,7 @@ mureo is a marketing orchestration framework for AI agents. It combines strategy
 context, workflow commands, and domain knowledge to help agents achieve marketing
 goals across platforms. Currently supports Google Ads and Meta Ads, with more
 platforms planned. Provides 159 MCP tools for direct platform operations and
-8 workflow commands for strategy-driven ad operations via Claude Code slash commands.
+10 workflow commands for strategy-driven ad operations via Claude Code slash commands.
 Designed for AI agents — no database, no LLM SDK, no web framework.
 
 ## Build & Test
@@ -82,7 +82,7 @@ mureo/
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   └── lp_analyzer.py   # Landing page analyzer
-.claude/commands/            # Workflow slash commands (8 commands)
+.claude/commands/            # Workflow slash commands (10 commands)
 │   ├── onboard.md           # Account setup + STRATEGY.md generation
 │   ├── daily-check.md       # Mode-aware daily health monitoring
 │   ├── rescue.md            # Emergency performance rescue

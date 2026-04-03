@@ -46,6 +46,10 @@ Together these files give the AI agent enough context to make strategy-aware dec
 
 This is where mureo's workflow commands, domain knowledge (skills), and the AI agent converge. Workflow commands like `/daily-check` and `/rescue` define multi-step operational procedures. Skills provide domain-specific reference material (operation mode definitions, diagnostic patterns). The AI agent (LLM) supplies strategic judgment, creative generation, and adaptive decision-making. The orchestration layer reads the strategy context, selects the appropriate tools, and synthesizes results into actionable recommendations.
 
+#### PDCA Operational Loop
+
+The 10 workflow commands form a continuous Plan-Do-Check-Act cycle: `/onboard` defines strategy and goals (Plan); `/daily-check` and its downstream commands execute operations (Do); `/goal-review` and `/weekly-report` evaluate progress (Check); and `/goal-review` recommendations feed back into the Do phase by adjusting the Operation Mode, which changes how every command behaves (Act). This loop runs daily (Do) and weekly (Check), with the Act phase closing the loop by updating STRATEGY.md when conditions change. See `skills/mureo-workflows/SKILL.md` for the full PDCA diagram and Operation Mode transition rules.
+
 ### Tool Connection Layer
 
 The bottom layer provides concrete connections to advertising platforms and analytics services. mureo ships its own MCP tools for Google Ads and Meta Ads. Third-party MCP servers (e.g., GA4) can be composed alongside mureo's tools. This layer is intentionally replaceable -- as platforms release official MCP servers, mureo's built-in connectors can be swapped out without affecting the orchestration layer above.
@@ -310,7 +314,7 @@ When loading Meta Ads credentials, `mureo/auth.py` checks the `token_obtained_at
 
 ## Command-Based Workflow System
 
-In addition to the 159 individual MCP tools, mureo provides 8 **workflow commands** as Claude Code slash commands (`.claude/commands/`). These commands orchestrate multiple MCP tools into coherent operational workflows, guided by the strategy context in `STRATEGY.md`.
+In addition to the 159 individual MCP tools, mureo provides 10 **workflow commands** as Claude Code slash commands (`.claude/commands/`). These commands orchestrate multiple MCP tools into coherent operational workflows, guided by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 
@@ -341,6 +345,8 @@ User runs /daily-check in Claude Code
 | `/creative-refresh` | Persona, USP, Brand Voice | `rsa_assets.audit`, `creative.research`, `ads.create` |
 | `/budget-rebalance` | Operation Mode | `budget.efficiency`, `budget.reallocation` |
 | `/competitive-scan` | Market Context | `auction_insights.get`, `cpc.detect_trend` |
+| `/goal-review` | Operation Mode, Goals | `monitoring.*`, `performance.analyze` |
+| `/weekly-report` | All sections | *(aggregates outputs from other commands)* |
 | `/sync-state` | *(writes STATE.json)* | `campaigns.list`, `campaigns.get` |
 
 The workflow skill reference (`skills/mureo-workflows/SKILL.md`) documents the full set of Operation Modes and their behavioral implications for each command.

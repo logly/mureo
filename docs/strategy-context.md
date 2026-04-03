@@ -218,7 +218,7 @@ If a file doesn't exist when reading, the functions return empty/default values 
 
 ## Workflow Commands: Strategy in Action
 
-The strategy context files are not just passive documentation -- they are actively consumed by mureo's **workflow commands** (`.claude/commands/`). These 8 slash commands bridge the gap between strategy and action by reading `STRATEGY.md` and `STATE.json`, then orchestrating the appropriate MCP tools.
+The strategy context files are not just passive documentation -- they are actively consumed by mureo's **workflow commands** (`.claude/commands/`). These 10 slash commands bridge the gap between strategy and action by reading `STRATEGY.md` and `STATE.json`, then orchestrating the appropriate MCP tools.
 
 ### How Commands Use Strategy Context
 
@@ -239,6 +239,17 @@ The strategy context files are not just passive documentation -- they are active
 5. Run `/sync-state` to manually refresh `STATE.json` when campaign settings change outside of mureo.
 
 See `skills/mureo-workflows/SKILL.md` for the complete Operation Mode reference and detailed command behavior.
+
+### PDCA Loop: How Strategy Evolves
+
+STRATEGY.md is not a static document -- it evolves through the PDCA operational loop:
+
+- **Plan**: `/onboard` creates the initial STRATEGY.md with Persona, USP, Goals, and Operation Mode.
+- **Do**: Daily commands read the current Operation Mode and Goals to drive context-aware actions.
+- **Check**: `/goal-review` compares current performance against the Goals defined in STRATEGY.md. `/weekly-report` summarizes what actions were taken and their measured impact.
+- **Act**: When `/goal-review` detects that goals are off-track, it recommends an Operation Mode change (e.g., EFFICIENCY_STABILIZE to TURNAROUND_RESCUE). When business context shifts (new product launch, seasonal change), `/onboard` is revisited to update Goals and Market Context sections.
+
+The key fields that change through this loop are **Operation Mode** (updated when campaign conditions trigger a transition) and **Goal "Current" values** (updated as `/goal-review` captures actual performance against targets). STATE.json evolves in parallel, with `/sync-state` and other commands keeping campaign snapshots current.
 
 ## Data Model Immutability
 

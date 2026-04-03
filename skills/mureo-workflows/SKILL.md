@@ -16,7 +16,7 @@ Operational workflow reference for strategy-driven ad campaign management using 
 
 ## Overview
 
-mureo provides 8 slash commands that combine MCP tool calls with business strategy context (STRATEGY.md + STATE.json) to manage advertising campaigns across Google Ads and Meta Ads. Every command reads strategy context before taking action, ensuring all operations are aligned with business goals.
+mureo provides 10 slash commands that combine MCP tool calls with business strategy context (STRATEGY.md + STATE.json) to manage advertising campaigns across Google Ads and Meta Ads. Every command reads strategy context before taking action, ensuring all operations are aligned with business goals.
 
 ### Core Principle
 
@@ -33,16 +33,44 @@ mureo provides 8 slash commands that combine MCP tool calls with business strate
 | `/creative-refresh` | Ad copy refresh | Monthly | STRATEGY.md, STATE.json |
 | `/budget-rebalance` | Budget optimization | Monthly | STRATEGY.md, STATE.json |
 | `/competitive-scan` | Competitive analysis | Bi-weekly/Monthly | STRATEGY.md, STATE.json |
+| `/goal-review` | Goal progress evaluation | Weekly | STRATEGY.md, STATE.json |
+| `/weekly-report` | Weekly operations summary | Weekly | STRATEGY.md, STATE.json |
 | `/sync-state` | State synchronization | As needed | STATE.json (or run /onboard) |
+
+## PDCA Operational Loop
+
+The 10 commands form a continuous **Plan-Do-Check-Act** cycle that drives all mureo operations:
+
+```
+Plan:  /onboard → Define strategy, goals, initial state
+  ↓
+Do:    /daily-check → /rescue, /search-term-cleanup, /creative-refresh,
+                      /budget-rebalance, /competitive-scan
+  ↓
+Check: /goal-review → Evaluate goal progress across platforms
+       /weekly-report → Summarize actions + impact
+  ↓
+Act:   /goal-review recommendations → Adjust Operation Mode → Back to Do
+       /onboard (revisit) → Update Goals if business context changed
+```
+
+**How the loop runs:**
+
+- **Daily**: The Do phase executes via `/daily-check`, which triages into specialized commands (`/rescue`, `/search-term-cleanup`, etc.) based on detected issues. `/sync-state` keeps STATE.json current throughout.
+- **Weekly**: The Check phase runs `/goal-review` and `/weekly-report` to measure progress against the goals defined in STRATEGY.md.
+- **Act phase trigger**: `/goal-review` closes the loop by recommending which Do commands to prioritize next and whether the Operation Mode should change (e.g., EFFICIENCY_STABILIZE to TURNAROUND_RESCUE if CPA has drifted too far above target).
+- **Strategy refresh**: When business context changes (new product launch, seasonal shift, budget reallocation), revisit `/onboard` to update STRATEGY.md, restarting the Plan phase.
+
+Operation Mode is the mechanism that connects Act back to Do. When `/goal-review` recommends a mode change, the updated mode alters how every Do command behaves (see the Operation Mode Behavior Matrix below).
 
 ## Dependency Graph
 
 ```
-/onboard (run first)
+/onboard (run first — Plan phase)
   |
   +-- Creates STRATEGY.md + STATE.json
   |
-  +---> /daily-check (routine monitoring)
+  +---> /daily-check (routine monitoring — Do phase)
   |       |
   |       +---> /rescue (if performance problems detected)
   |       +---> /search-term-cleanup (if wasted spend detected)
@@ -50,7 +78,13 @@ mureo provides 8 slash commands that combine MCP tool calls with business strate
   |       +---> /budget-rebalance (if budget inefficiency detected)
   |       +---> /competitive-scan (if impression share drops)
   |
-  +---> /sync-state (manual refresh of STATE.json)
+  +---> /goal-review (evaluate goal progress — Check phase)
+  +---> /weekly-report (summarize actions + impact — Check phase)
+  |       |
+  |       +---> Recommendations feed back into Do commands (Act phase)
+  |       +---> Operation Mode change → alters Do command behavior
+  |
+  +---> /sync-state (manual refresh of STATE.json — runs throughout)
 ```
 
 **Critical path**: `/onboard` must run first. All other commands depend on STRATEGY.md and STATE.json existing.

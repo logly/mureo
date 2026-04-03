@@ -13,7 +13,7 @@
 Ad platform APIs will increasingly be exposed through official MCPs from Google, Meta, and others. mureo's value is not in wrapping those APIs. It is in the **orchestration layer on top**: knowing *what* to do, *when* to do it, and *why* — informed by your business strategy.
 
 - **Strategy-driven** -- `STRATEGY.md` defines your persona, USP, brand voice, goals, and operation mode. Every decision the agent makes is grounded in your strategy, not just raw metrics.
-- **Workflow commands** -- 8 slash commands (`/daily-check`, `/rescue`, `/creative-refresh`, etc.) guide agents through complete marketing operations, connecting strategy context with the right tools in the right order.
+- **Workflow commands** -- 10 slash commands (`/daily-check`, `/rescue`, `/creative-refresh`, etc.) guide agents through complete marketing operations, connecting strategy context with the right tools in the right order.
 - **Cross-platform** -- orchestrates across Google Ads, Meta Ads, and GA4 (with more platforms planned), enabling coordinated decisions that no single-platform tool can make.
 - **Built-in domain knowledge** -- analysis, diagnostics, and optimization logic that turns raw API data into actionable insights. Campaign diagnostics with 30+ reason codes, search term intent analysis, budget efficiency scoring, RSA validation, and more.
 - **MCP + CLI interface** -- 159 MCP tools for AI agents (Claude Code, Cursor, etc.) plus a CLI for scripting and quick checks.
@@ -71,7 +71,7 @@ Ad platform APIs will increasingly be exposed through official MCPs from Google,
 
 ## Workflow Commands
 
-Beyond individual MCP tools, mureo provides **8 slash commands** for Claude Code that connect your strategy (`STRATEGY.md`) with the 159 MCP tools to enable strategy-driven ad operations.
+Beyond individual MCP tools, mureo provides **10 slash commands** for Claude Code that connect your strategy (`STRATEGY.md`) with the 159 MCP tools to enable strategy-driven ad operations.
 
 ### How it works
 
