@@ -1,9 +1,10 @@
 """mureo MCP server
 
-Exposes Google Ads / Meta Ads tools via the MCP protocol.
+Exposes Google Ads / Meta Ads / Search Console tools via the MCP protocol.
 Invoked over stdio by MCP clients such as Claude Code or Cursor.
 
-Tool definitions and handlers are separated into tools_google_ads.py / tools_meta_ads.py.
+Tool definitions and handlers are separated into per-service modules
+(tools_google_ads.py, tools_meta_ads.py, tools_search_console.py).
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
 from mureo.mcp.tools_google_ads import handle_tool as handle_google_ads_tool
 from mureo.mcp.tools_meta_ads import TOOLS as META_ADS_TOOLS
 from mureo.mcp.tools_meta_ads import handle_tool as handle_meta_ads_tool
+from mureo.mcp.tools_search_console import TOOLS as SEARCH_CONSOLE_TOOLS
+from mureo.mcp.tools_search_console import handle_tool as handle_search_console_tool
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +32,14 @@ logger = logging.getLogger(__name__)
 # Combined tool list
 # ---------------------------------------------------------------------------
 
-_ALL_TOOLS: list[Tool] = [*GOOGLE_ADS_TOOLS, *META_ADS_TOOLS]
+_ALL_TOOLS: list[Tool] = [
+    *GOOGLE_ADS_TOOLS,
+    *META_ADS_TOOLS,
+    *SEARCH_CONSOLE_TOOLS,
+]
 _GOOGLE_ADS_NAMES: frozenset[str] = frozenset(t.name for t in GOOGLE_ADS_TOOLS)
 _META_ADS_NAMES: frozenset[str] = frozenset(t.name for t in META_ADS_TOOLS)
+_SEARCH_CONSOLE_NAMES: frozenset[str] = frozenset(t.name for t in SEARCH_CONSOLE_TOOLS)
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +62,8 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         return await handle_google_ads_tool(name, arguments)
     if name in _META_ADS_NAMES:
         return await handle_meta_ads_tool(name, arguments)
+    if name in _SEARCH_CONSOLE_NAMES:
+        return await handle_search_console_tool(name, arguments)
     raise ValueError(f"Unknown tool: {name}")
 
 

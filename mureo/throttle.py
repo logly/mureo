@@ -51,6 +51,10 @@ GOOGLE_ADS_THROTTLE = ThrottleConfig(rate=10.0, burst=5)
 # See https://developers.facebook.com/docs/marketing-api/overview/rate-limiting
 META_ADS_THROTTLE = ThrottleConfig(rate=20.0, burst=10, hourly_limit=50_000)
 
+# Search Console: Conservative defaults.
+# See https://developers.google.com/webmaster-tools/limits
+SEARCH_CONSOLE_THROTTLE = ThrottleConfig(rate=5.0, burst=5)
+
 
 # ---------------------------------------------------------------------------
 # Throttler

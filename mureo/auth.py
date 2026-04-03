@@ -22,6 +22,7 @@ from google.oauth2.credentials import Credentials
 
 from mureo.google_ads import GoogleAdsApiClient
 from mureo.meta_ads import MetaAdsApiClient
+from mureo.search_console import SearchConsoleApiClient
 
 if TYPE_CHECKING:
     from mureo.throttle import Throttler
@@ -188,6 +189,36 @@ def create_google_ads_client(
         customer_id=customer_id,
         developer_token=credentials.developer_token,
         login_customer_id=credentials.login_customer_id,
+        throttler=throttler,
+    )
+
+
+def create_search_console_client(
+    credentials: GoogleAdsCredentials,
+    throttler: Throttler | None = None,
+) -> SearchConsoleApiClient:
+    """Create a SearchConsoleApiClient from Google Ads credentials.
+
+    Search Console uses the same OAuth2 credentials (client_id,
+    client_secret, refresh_token) as Google Ads.
+
+    Args:
+        credentials: Google Ads credentials (reused for OAuth2)
+        throttler: Optional rate-limit throttler
+
+    Returns:
+        SearchConsoleApiClient instance
+    """
+    oauth_credentials = Credentials(  # type: ignore[no-untyped-call]
+        token=None,
+        refresh_token=credentials.refresh_token,
+        client_id=credentials.client_id,
+        client_secret=credentials.client_secret,
+        token_uri=_TOKEN_URI,
+    )
+
+    return SearchConsoleApiClient(
+        credentials=oauth_credentials,
         throttler=throttler,
     )
 
