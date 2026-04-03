@@ -204,6 +204,10 @@ This installs 5 skills:
 
 > **Note:** If you cloned the mureo repository and run Claude Code from that directory, commands and skills are automatically available without copying.
 
+### Connecting Additional MCP Servers
+
+mureo works alongside other MCP servers (GA4, Search Console, CRM tools) in the same client session. Add them to your `.mcp.json` and workflow commands will incorporate their data opportunistically. See [docs/integrations.md](docs/integrations.md) for details.
+
 ## Authentication
 
 ### Interactive Setup (Recommended)

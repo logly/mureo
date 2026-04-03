@@ -441,6 +441,14 @@ Each command reads strategy context (Operation Mode, Persona, USP, Brand Voice, 
 
 Command definitions live in `.claude/commands/`. See [strategy-context.md](strategy-context.md) for details on the strategy files, and `skills/mureo-workflows/SKILL.md` for the full Operation Mode reference.
 
+## Working with External MCP Servers
+
+mureo is designed to work alongside other MCP servers in the same client session. For example, you can configure a GA4 MCP server next to mureo so that workflow commands like `/daily-check` and `/budget-rebalance` can incorporate analytics data into their analysis.
+
+mureo's workflow commands check for external tool availability opportunistically -- if a GA4 or other MCP server responds, the agent uses that data; if not, the command proceeds with mureo's own data. There is no hard dependency on any external MCP server.
+
+For detailed setup instructions, supported platforms, and configuration examples, see [integrations.md](integrations.md).
+
 ## Input Parameters
 
 ### Google Ads: `customer_id`

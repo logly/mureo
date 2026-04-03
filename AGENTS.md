@@ -93,6 +93,7 @@ mureo/
 │   └── sync-state.md        # Manual STATE.json synchronization
 skills/mureo-workflows/      # Workflow skill reference
 │   └── SKILL.md             # Operation Mode reference + command docs
+docs/integrations.md         # External MCP server integration guide (GA4, Search Console, CRM)
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
 ├── auth_setup.py        # Interactive setup wizard (browser OAuth flow)
 └── throttle.py          # Rate limiting (token bucket + rolling hourly cap)

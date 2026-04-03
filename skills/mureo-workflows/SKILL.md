@@ -196,6 +196,28 @@ Use these thresholds to classify campaign health in daily checks and reports.
 | **Warning** | CPC rising 10-20% week-over-week |
 | **Critical** | CPC rising >20% week-over-week or sudden spike >50% |
 
+## External Tool Integration
+
+mureo workflow commands can leverage data from external MCP servers (e.g., GA4, Search Console, CRM) when configured alongside mureo in the same client.
+
+### Opportunistic Data Access
+
+Commands check for external tool availability at runtime. If a GA4 MCP is configured and responds, the agent incorporates analytics data (conversion rates, user behavior, traffic sources) into its analysis. If the external MCP is not available, the command proceeds normally using only mureo's Google Ads and Meta Ads data.
+
+**No hard dependency**: No mureo command requires any external MCP server to function. External data is always additive, never blocking.
+
+### Which Commands Benefit
+
+| Command | External Data Value |
+|---------|-------------------|
+| `/daily-check` | GA4 LP conversion rates enrich health assessment |
+| `/creative-refresh` | GA4 engagement metrics inform copy decisions |
+| `/budget-rebalance` | GA4 e-commerce data and CRM LTV data improve budget allocation |
+| `/competitive-scan` | Search Console organic data reveals full competitive picture |
+| `/search-term-cleanup` | Search Console keyword overlap identifies SEO/SEM coordination opportunities |
+
+See [docs/integrations.md](../../docs/integrations.md) for configuration instructions and supported platforms.
+
 ## Workflow Best Practices
 
 ### Recommended Weekly Cadence
