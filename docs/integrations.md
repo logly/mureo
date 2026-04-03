@@ -1,6 +1,6 @@
 # External Tool Integration Guide
 
-mureo's core value is orchestration -- knowing *what* to do, *when*, and *why* across multiple marketing platforms. For analytics, SEO, and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
+mureo's core value is orchestration -- knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads, Meta Ads, and Google Search Console. For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
 
 ## How It Works
 
@@ -53,19 +53,36 @@ GA4 MCP servers typically require Google Cloud service account credentials or OA
 
 ## Google Search Console
 
-### Status: Not yet available as MCP
+### Status: Built into mureo
 
-No official or widely-adopted MCP server exists for Google Search Console at the time of writing.
+Search Console is built into mureo as a first-party integration (10 MCP tools). It reuses the same Google OAuth2 credentials as Google Ads -- no additional authentication or configuration is required.
 
-### What It Would Add
+### What It Provides
 
 - **Organic vs paid keyword overlap** -- identify keywords where you rank organically and can reduce paid spend
 - **SEO/SEM coordination** -- adjust bidding strategy based on organic ranking changes
 - **Search appearance data** -- understand how your pages appear in organic results alongside paid ads
+- **Indexing status** -- inspect URLs for indexing issues via the URL Inspection API
+- **Sitemap management** -- list and submit sitemaps
 
-### When Available
+### Tools
 
-Once a Search Console MCP becomes available, add it to `.mcp.json` alongside mureo and GA4. The `/search-term-cleanup` and `/competitive-scan` commands would benefit most from this data.
+| Tool | Description |
+|------|-------------|
+| `search_console.sites.list` | List verified sites |
+| `search_console.sites.get` | Get site details |
+| `search_console.analytics.query` | Query search analytics data |
+| `search_console.analytics.top_queries` | Get top search queries |
+| `search_console.analytics.top_pages` | Get top pages by clicks/impressions |
+| `search_console.analytics.device_breakdown` | Get performance breakdown by device |
+| `search_console.analytics.compare_periods` | Compare search performance across time periods |
+| `search_console.sitemaps.list` | List sitemaps for a site |
+| `search_console.sitemaps.submit` | Submit a sitemap |
+| `search_console.url_inspection.inspect` | Inspect a URL for indexing status |
+
+### Workflow Integration
+
+The `/search-term-cleanup` and `/competitive-scan` commands benefit most from Search Console data, enabling the agent to cross-reference paid keyword performance with organic search rankings.
 
 ## CRM / Marketing Automation (HubSpot, Salesforce)
 

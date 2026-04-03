@@ -14,9 +14,9 @@ Ad platform APIs will increasingly be exposed through official MCPs from Google,
 
 - **Strategy-driven** -- `STRATEGY.md` defines your persona, USP, brand voice, goals, and operation mode. Every decision the agent makes is grounded in your strategy, not just raw metrics.
 - **Workflow commands** -- 10 slash commands (`/daily-check`, `/rescue`, `/creative-refresh`, etc.) guide agents through complete marketing operations, connecting strategy context with the right tools in the right order.
-- **Cross-platform** -- orchestrates across Google Ads, Meta Ads, and GA4 (with more platforms planned), enabling coordinated decisions that no single-platform tool can make.
+- **Cross-platform** -- orchestrates across Google Ads, Meta Ads, Search Console, and GA4 (with more platforms planned), enabling coordinated decisions that no single-platform tool can make.
 - **Built-in domain knowledge** -- analysis, diagnostics, and optimization logic that turns raw API data into actionable insights. Campaign diagnostics with 30+ reason codes, search term intent analysis, budget efficiency scoring, RSA validation, and more.
-- **MCP + CLI interface** -- 159 MCP tools for AI agents (Claude Code, Cursor, etc.) plus a CLI for scripting and quick checks.
+- **MCP + CLI interface** -- 169 MCP tools for AI agents (Claude Code, Cursor, etc.) plus a CLI for scripting and quick checks.
 - **No DB, no LLM dependency** -- mureo is the "hands" of your agent, not the "brain." All state lives in local files (`STRATEGY.md`, `STATE.json`) or the ad platforms themselves. All reasoning stays on the agent side.
 
 ### Analysis & Diagnostics
@@ -71,7 +71,7 @@ Ad platform APIs will increasingly be exposed through official MCPs from Google,
 
 ## Workflow Commands
 
-Beyond individual MCP tools, mureo provides **10 slash commands** for Claude Code that connect your strategy (`STRATEGY.md`) with the 159 MCP tools to enable strategy-driven ad operations.
+Beyond individual MCP tools, mureo provides **10 slash commands** for Claude Code that connect your strategy (`STRATEGY.md`) with the 169 MCP tools to enable strategy-driven ad operations.
 
 ### How it works
 
@@ -206,7 +206,7 @@ This installs 5 skills:
 
 ### Connecting Additional MCP Servers
 
-mureo works alongside other MCP servers (GA4, Search Console, CRM tools) in the same client session. Add them to your `.mcp.json` and workflow commands will incorporate their data opportunistically. See [docs/integrations.md](docs/integrations.md) for details.
+mureo works alongside other MCP servers (GA4, CRM tools) in the same client session. Add them to your `.mcp.json` and workflow commands will incorporate their data opportunistically. See [docs/integrations.md](docs/integrations.md) for details.
 
 ## Authentication
 
@@ -222,7 +222,7 @@ The setup wizard walks you through:
 2. **Meta Ads** -- Enter App ID/Secret, open browser for OAuth, obtain a Long-Lived Token, select an ad account
 3. **MCP config** -- Automatically writes `.mcp.json` (project-level) or `~/.claude/settings.json` (global) so Claude Code / Cursor can discover the server
 
-Credentials are saved to `~/.mureo/credentials.json`.
+Credentials are saved to `~/.mureo/credentials.json`. Search Console reuses the same Google OAuth2 credentials as Google Ads -- no additional authentication is required.
 
 ### credentials.json
 
@@ -311,7 +311,7 @@ Add to `.cursor/mcp.json`:
 }
 ```
 
-### Tool list (159 tools)
+### Tool list (169 tools)
 
 #### Google Ads (82 tools)
 
@@ -670,62 +670,57 @@ Add to `.cursor/mcp.json`:
 
 </details>
 
+#### Search Console (10 tools)
+
+<details>
+<summary>Click to expand Search Console tools</summary>
+
+**Sites (2)**
+
+| Tool | Description |
+|------|-------------|
+| `search_console.sites.list` | List verified sites |
+| `search_console.sites.get` | Get site details |
+
+**Analytics (4)**
+
+| Tool | Description |
+|------|-------------|
+| `search_console.analytics.query` | Query search analytics data |
+| `search_console.analytics.top_queries` | Get top search queries |
+| `search_console.analytics.top_pages` | Get top pages by clicks/impressions |
+| `search_console.analytics.device_breakdown` | Get performance breakdown by device |
+| `search_console.analytics.compare_periods` | Compare search performance across time periods |
+
+**Sitemaps (2)**
+
+| Tool | Description |
+|------|-------------|
+| `search_console.sitemaps.list` | List sitemaps for a site |
+| `search_console.sitemaps.submit` | Submit a sitemap |
+
+**URL Inspection (1)**
+
+| Tool | Description |
+|------|-------------|
+| `search_console.url_inspection.inspect` | Inspect a URL for indexing status |
+
+</details>
+
 ## CLI
 
-```
-mureo [google-ads|meta-ads|auth] <command> [options]
-```
-
-### Google Ads examples
-
 ```bash
-# List campaigns
 mureo google-ads campaigns-list --customer-id 1234567890
-
-# Get campaign details
-mureo google-ads campaigns-get --customer-id 1234567890 --campaign-id 111222333
-
-# Performance report
-mureo google-ads performance-report --customer-id 1234567890 --period LAST_7_DAYS
-```
-
-### Meta Ads examples
-
-```bash
-# List campaigns
 mureo meta-ads campaigns-list --account-id act_1234567890
-
-# Get insights
-mureo meta-ads insights-report --account-id act_1234567890 --period last_7d
+mureo auth setup   # Interactive OAuth wizard
 ```
 
 ## Strategy Context
 
-mureo supports two optional local files that let agents persist context across sessions.
+Two local files drive strategy-aware operations. Run `/onboard` to generate them interactively.
 
-### STRATEGY.md
-
-A Markdown file containing strategic context: Persona, USP, Target Audience, Brand Voice, Market Context, and Operation Mode. Agents read this before making changes. Run `/onboard` to generate it interactively.
-
-```markdown
-# Strategy
-
-## Persona
-B2B SaaS decision-makers, 30-50 years old, IT managers and CTOs.
-
-## USP
-Only platform that integrates AI agents with ad operations.
-
-## Brand Voice
-Professional but approachable. Data-driven recommendations.
-
-## Operation Mode
-EFFICIENCY_STABILIZE
-```
-
-### STATE.json
-
-A JSON snapshot of current campaign state. Updated automatically when agents read campaigns via tools. Contains campaign IDs, statuses, budgets, bidding strategies, and operational notes.
+- **STRATEGY.md** -- Persona, USP, Brand Voice, Goals, Operation Mode. See [docs/strategy-context.md](docs/strategy-context.md).
+- **STATE.json** -- Campaign snapshots, action log. Updated automatically by workflow commands.
 
 ## Architecture
 
@@ -747,6 +742,8 @@ mureo/
 │   │                        #   SplitTest, AdRules)
 │   ├── mappers.py           # Response mapping to structured dicts
 │   └── _*.py                # 15 Mixin modules (campaigns, ads, creatives, audiences, etc.)
+├── search_console/          # Google Search Console API client (reuses Google OAuth2 credentials)
+│   └── client.py            # SearchConsoleApiClient
 ├── analysis/                # Cross-platform analysis utilities
 │   └── lp_analyzer.py       # Landing page analysis engine
 ├── context/                 # File-based context (STRATEGY.md, STATE.json)
@@ -759,7 +756,7 @@ mureo/
 │   ├── auth_cmd.py          # mureo auth * (status, check-google, check-meta, setup)
 │   ├── google_ads.py        # mureo google-ads *
 │   └── meta_ads.py          # mureo meta-ads *
-└── mcp/                     # MCP server (159 tools)
+└── mcp/                     # MCP server (169 tools)
     ├── __main__.py                        # python -m mureo.mcp entry point
     ├── server.py                          # MCP server setup (stdio transport)
     ├── _helpers.py                        # Shared handler utilities
@@ -772,7 +769,9 @@ mureo/
     ├── _tools_meta_ads_*.py               # Tool definition sub-modules
     ├── _handlers_meta_ads.py              # Meta Ads base handlers
     ├── _handlers_meta_ads_extended.py     # Extended handlers
-    └── _handlers_meta_ads_other.py        # Other handlers
+    ├── _handlers_meta_ads_other.py        # Other handlers
+    ├── tools_search_console.py            # 10 Search Console tool definitions
+    └── _handlers_search_console.py        # Search Console handlers
 ```
 
 **Design principles:**

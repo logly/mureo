@@ -6,8 +6,8 @@ Guidelines for AI agents contributing to the mureo codebase.
 
 mureo is a marketing orchestration framework for AI agents. It combines strategy
 context, workflow commands, and domain knowledge to help agents achieve marketing
-goals across platforms. Currently supports Google Ads and Meta Ads, with more
-platforms planned. Provides 159 MCP tools for direct platform operations and
+goals across platforms. Currently supports Google Ads, Meta Ads, and Google Search Console, with more
+platforms planned. Provides 169 MCP tools for direct platform operations and
 10 workflow commands for strategy-driven ad operations via Claude Code slash commands.
 Designed for AI agents — no database, no LLM SDK, no web framework.
 
@@ -57,7 +57,9 @@ mureo/
 │   ├── _instagram.py    # InstagramMixin (accounts/media/boost)
 │   ├── _split_test.py   # SplitTestMixin (A/B split tests)
 │   └── _ad_rules.py     # AdRulesMixin (automated rules)
-├── mcp/                 # MCP server (159 tools: 82 Google Ads + 77 Meta Ads)
+├── search_console/      # Google Search Console API client (reuses Google OAuth2 credentials)
+│   └── client.py        # SearchConsoleApiClient
+├── mcp/                 # MCP server (169 tools: 82 Google Ads + 77 Meta Ads + 10 Search Console)
 │   ├── server.py                          # MCP Server entry point (stdio-based)
 │   ├── _helpers.py                        # Shared handler utilities
 │   ├── tools_google_ads.py                # 82 Google Ads tool definitions (aggregator)
@@ -69,7 +71,9 @@ mureo/
 │   ├── _tools_meta_ads_*.py               # Tool definition sub-modules
 │   ├── _handlers_meta_ads.py              # Meta Ads base handlers
 │   ├── _handlers_meta_ads_extended.py     # Extended handlers
-│   └── _handlers_meta_ads_other.py        # Other handlers
+│   ├── _handlers_meta_ads_other.py        # Other handlers
+│   ├── tools_search_console.py            # 10 Search Console tool definitions
+│   └── _handlers_search_console.py        # Search Console handlers
 ├── cli/                 # Typer CLI wrapper
 │   ├── main.py          # CLI entry point (`mureo` command)
 │   ├── google_ads.py    # `mureo google-ads` subcommands
@@ -99,7 +103,7 @@ docs/integrations.md         # External MCP server integration guide (GA4, Searc
 └── throttle.py          # Rate limiting (token bucket + rolling hourly cap)
 ```
 
-## MCP Tools (159 total)
+## MCP Tools (169 total)
 
 ### Google Ads (82 tools)
 
@@ -148,6 +152,15 @@ docs/integrations.md         # External MCP server integration guide (GA4, Searc
 | Page Posts (2) | `page_posts.list`, `page_posts.boost` |
 | Instagram (3) | `instagram.accounts`, `instagram.media`, `instagram.boost` |
 
+### Search Console (10 tools)
+
+| Category | Tools |
+|----------|-------|
+| Sites (2) | `sites.list`, `sites.get` |
+| Analytics (5) | `analytics.query`, `analytics.top_queries`, `analytics.top_pages`, `analytics.device_breakdown`, `analytics.compare_periods` |
+| Sitemaps (2) | `sitemaps.list`, `sitemaps.submit` |
+| URL Inspection (1) | `url_inspection.inspect` |
+
 ## Design Constraints
 
 - **Strategy-driven** — all operations are guided by STRATEGY.md context.
@@ -159,7 +172,7 @@ docs/integrations.md         # External MCP server integration guide (GA4, Searc
 - **Tools return structured JSON data only** — no formatted text, no Markdown in tool responses.
 - **All data models use frozen dataclasses** — immutable by default.
 - **Credentials via file or env vars** — `~/.mureo/credentials.json` with environment variable fallback.
-- **Built-in rate limiting** — token bucket throttling per platform prevents API bans from high-speed agent requests (Google Ads: 10 QPS, Meta Ads: 20 QPS + 50K/hr cap). See `mureo/throttle.py`.
+- **Built-in rate limiting** — token bucket throttling per platform prevents API bans from high-speed agent requests (Google Ads: 10 QPS, Meta Ads: 20 QPS + 50K/hr cap, Search Console: 5 QPS). See `mureo/throttle.py`.
 - **Meta token auto-refresh** — Long-Lived Tokens are automatically refreshed when 53+ days old (requires `app_id` and `app_secret`). See `mureo/auth.py`.
 
 ## Coding Standards
@@ -176,7 +189,7 @@ docs/integrations.md         # External MCP server integration guide (GA4, Searc
 
 ## Test Coverage
 
-- 40+ test files, 95% coverage, 1327 tests
+- 40+ test files, 95% coverage, 1412 tests
 - Target: 80% minimum (enforced by `tool.coverage.report.fail_under`)
 - Framework: pytest + pytest-asyncio
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests

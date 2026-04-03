@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 159 advertising operation tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP). Any MCP-compatible client can connect and call these tools over stdio.
+mureo exposes 169 advertising and SEO operation tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP). Any MCP-compatible client can connect and call these tools over stdio.
 
 ## Starting the Server
 
@@ -74,7 +74,7 @@ Or use `uv` to run it:
 }
 ```
 
-## Tool Reference (159 tools)
+## Tool Reference (169 tools)
 
 ### Google Ads (82 tools)
 
@@ -422,6 +422,40 @@ Or use `uv` to run it:
 | `meta_ads.instagram.media` | List Instagram posts | `account_id`, `ig_user_id` |
 | `meta_ads.instagram.boost` | Boost an Instagram post (create ad from post) | `account_id`, `ig_user_id`, `media_id`, `ad_set_id` |
 
+### Search Console (10 tools)
+
+Search Console tools reuse the same Google OAuth2 credentials as Google Ads -- no additional authentication is required.
+
+#### Sites
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `search_console.sites.list` | List verified sites | *(none)* |
+| `search_console.sites.get` | Get site details | `site_url` |
+
+#### Analytics
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `search_console.analytics.query` | Query search analytics data | `site_url` |
+| `search_console.analytics.top_queries` | Get top search queries | `site_url` |
+| `search_console.analytics.top_pages` | Get top pages by clicks/impressions | `site_url` |
+| `search_console.analytics.device_breakdown` | Get performance breakdown by device | `site_url` |
+| `search_console.analytics.compare_periods` | Compare search performance across time periods | `site_url` |
+
+#### Sitemaps
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `search_console.sitemaps.list` | List sitemaps for a site | `site_url` |
+| `search_console.sitemaps.submit` | Submit a sitemap | `site_url`, `sitemap_url` |
+
+#### URL Inspection
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `search_console.url_inspection.inspect` | Inspect a URL for indexing status | `site_url`, `inspection_url` |
+
 ## Workflow Commands
 
 Beyond individual MCP tools, mureo provides higher-level operational workflows via **Claude Code slash commands**. These commands orchestrate multiple MCP tools in sequence, guided by the strategy context defined in `STRATEGY.md`.
@@ -563,6 +597,7 @@ AI agents can issue tool calls at high speed, which risks hitting API rate limit
 |----------|-----|-------|------------|
 | Google Ads | 10 | 5 | -- |
 | Meta Ads | 20 | 10 | 50,000 |
+| Search Console | 5 | 5 | -- |
 
 The throttler uses a **token bucket algorithm** combined with a **rolling hourly cap** (Meta Ads only). When the bucket is empty, the request awaits until a token becomes available -- no errors are raised and no tool calls are dropped.
 

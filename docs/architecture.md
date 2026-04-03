@@ -22,10 +22,11 @@ The system is organized into four layers. Each layer has a clear responsibility 
 │  AI Agent (LLM): Strategic judgment, creative gen    │
 ├─────────────────────────────────────────────────────┤
 │  Tool Connection Layer                               │
-│  ┌──────────┐ ┌──────────┐ ┌─────┐ ┌────────┐      │
-│  │Google Ads│ │Meta Ads  │ │ GA4 │ │Future  │      │
-│  │(mureo)   │ │(mureo)   │ │(MCP)│ │tools   │      │
-│  └──────────┘ └──────────┘ └─────┘ └────────┘      │
+│  ┌──────────┐ ┌──────────┐ ┌────────┐ ┌─────┐      │
+│  │Google Ads│ │Meta Ads  │ │Search  │ │ GA4 │      │
+│  │(mureo)   │ │(mureo)   │ │Console │ │(MCP)│      │
+│  │          │ │          │ │(mureo) │ │     │      │
+│  └──────────┘ └──────────┘ └────────┘ └─────┘      │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -52,7 +53,7 @@ The 10 workflow commands form a continuous Plan-Do-Check-Act cycle: `/onboard` d
 
 ### Tool Connection Layer
 
-The bottom layer provides concrete connections to advertising platforms and analytics services. mureo ships its own MCP tools for Google Ads and Meta Ads. Third-party MCP servers (e.g., GA4) can be composed alongside mureo's tools. This layer is intentionally replaceable -- as platforms release official MCP servers, mureo's built-in connectors can be swapped out without affecting the orchestration layer above.
+The bottom layer provides concrete connections to advertising platforms and analytics services. mureo ships its own MCP tools for Google Ads, Meta Ads, and Google Search Console. Third-party MCP servers (e.g., GA4) can be composed alongside mureo's tools. This layer is intentionally replaceable -- as platforms release official MCP servers, mureo's built-in connectors can be swapped out without affecting the orchestration layer above.
 
 ## Package Structure
 
@@ -92,6 +93,8 @@ mureo/
 │   ├── _page_posts.py       # PagePostsMixin (page posts, boost)
 │   ├── _instagram.py        # InstagramMixin (accounts, media, boost)
 │   └── _hash_utils.py       # SHA-256 hashing utilities for CAPI user data
+├── search_console/          # Google Search Console API client (reuses Google OAuth2 credentials)
+│   └── client.py            # SearchConsoleApiClient
 ├── analysis/                # Cross-platform analysis utilities
 │   └── lp_analyzer.py       # Landing page analysis
 ├── context/                 # File-based context (STRATEGY.md, STATE.json)
@@ -104,7 +107,7 @@ mureo/
 │   ├── auth_cmd.py          # mureo auth *
 │   ├── google_ads.py        # mureo google-ads *
 │   └── meta_ads.py          # mureo meta-ads *
-└── mcp/                     # MCP server (159 tools)
+└── mcp/                     # MCP server (169 tools)
     ├── __main__.py                        # python -m mureo.mcp entry point
     ├── server.py                          # MCP server setup (stdio transport)
     ├── _helpers.py                        # Shared handler utilities
@@ -117,7 +120,9 @@ mureo/
     ├── _tools_meta_ads_*.py               # Tool definition sub-modules
     ├── _handlers_meta_ads.py              # Meta Ads base handlers
     ├── _handlers_meta_ads_extended.py     # Extended handlers
-    └── _handlers_meta_ads_other.py        # Other handlers
+    ├── _handlers_meta_ads_other.py        # Other handlers
+    ├── tools_search_console.py            # 10 Search Console tool definitions
+    └── _handlers_search_console.py        # Search Console handlers
 
 .claude/commands/                # Workflow slash commands for Claude Code
 ├── onboard.md                   # Account setup + STRATEGY.md generation
@@ -231,7 +236,7 @@ Agent (Claude Code / Cursor / etc.)
   ▼
 server.py :: _create_server()
   │
-  ├── list_tools()  → returns _ALL_TOOLS (GOOGLE_ADS_TOOLS + META_ADS_TOOLS)
+  ├── list_tools()  → returns _ALL_TOOLS (GOOGLE_ADS_TOOLS + META_ADS_TOOLS + SEARCH_CONSOLE_TOOLS)
   │
   └── call_tool(name, arguments)
         │
@@ -249,6 +254,14 @@ server.py :: _create_server()
         │           │
         │           ├── load_meta_ads_credentials()
         │           ├── create_meta_ads_client(creds, account_id)
+        │           └── client.method() → list[TextContent]
+        │
+        ├── name in _SEARCH_CONSOLE_NAMES? → handle_search_console_tool(name, args)
+        │     │
+        │     └── _HANDLERS[name](args)
+        │           │
+        │           ├── load_google_ads_credentials()  (reuses Google OAuth2)
+        │           ├── create_search_console_client(creds)
         │           └── client.method() → list[TextContent]
         │
         └── else → ValueError("Unknown tool")
@@ -278,6 +291,7 @@ Each platform throttler combines two mechanisms:
 |----------|-----|-------|-------------|-------|
 | Google Ads | 10 | 5 | *(none)* | Conservative defaults; Google uses dynamic server-side limits |
 | Meta Ads | 20 | 10 | 50,000 | Tuned to stay within the Business Use Case (BUC) quota |
+| Search Console | 5 | 5 | *(none)* | Reuses Google OAuth2 credentials |
 
 ### Integration
 
@@ -314,7 +328,7 @@ When loading Meta Ads credentials, `mureo/auth.py` checks the `token_obtained_at
 
 ## Command-Based Workflow System
 
-In addition to the 159 individual MCP tools, mureo provides 10 **workflow commands** as Claude Code slash commands (`.claude/commands/`). These commands orchestrate multiple MCP tools into coherent operational workflows, guided by the strategy context in `STRATEGY.md`.
+In addition to the 169 individual MCP tools, mureo provides 10 **workflow commands** as Claude Code slash commands (`.claude/commands/`). These commands orchestrate multiple MCP tools into coherent operational workflows, guided by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 
