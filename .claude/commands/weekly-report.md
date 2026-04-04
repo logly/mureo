@@ -8,33 +8,37 @@ Generate a weekly marketing operations report.
 
 1. **Load context**: Read STRATEGY.md and STATE.json.
 
-2. **Period**: Determine the reporting period (last 7 days from today).
+2. **Discover platforms**: Identify all configured platforms and available data sources.
 
-3. **Goal progress**: For each Goal, compare current metrics vs. last week:
-   - Google Ads: Use `google_ads.performance.report` with date range for current and previous week
-   - Meta Ads: Use `meta_ads.insights.report` with date range for current and previous week
-   - Show week-over-week change for each Goal metric
+3. **Period**: Determine the reporting period (last 7 days from today).
 
-4. **Actions taken**: Read `action_log` from STATE.json, filter to the reporting period.
+4. **Goal progress**: For each Goal, pull performance data from the relevant platforms using their reporting tools. Compare current week vs previous week. Show week-over-week change for each Goal metric. If GA4 is available, include website-level metrics (sessions, conversion rate, revenue) for a holistic view.
+
+5. **Actions taken**: Read `action_log` from STATE.json, filter to the reporting period.
    Present as a timeline:
    | Date | Command | Action | Platform | Summary |
    |------|---------|--------|----------|---------|
 
-5. **Impact assessment**: For each action taken, evaluate if it had the expected effect:
-   - Compare metrics before and after the action date
-   - Use `google_ads.performance.analyze` and `meta_ads.analysis.performance` for trend data
-   - Example: "Added 5 negative keywords on Mon -> CPA decreased 8% by Thu"
-   - Example: "Shifted 20% budget to Google on Tue -> impressions increased 15%"
+6. **Impact assessment**: For each action taken, evaluate impact using the relevant platform's trend/analysis tools. Cross-reference with GA4 data if available to validate on-site impact.
+   - Example: "Added 5 negative keywords on Mon → CPA decreased 8% by Thu"
+   - Example: "Shifted 20% budget to Platform A on Tue → impressions increased 15%"
 
-6. **Next week recommendations**:
+7. **Cross-platform insights**:
+   - Compare performance across platforms (CPA, CVR, ROAS)
+   - Identify platforms gaining or losing efficiency
+   - If Search Console data is available, include organic search trend summary (clicks, impressions, CTR WoW change) and paid/organic keyword overlap changes
+   - Suggest cross-platform shifts if one platform significantly outperforms others toward Goal achievement
+
+8. **Next week recommendations**:
    - Based on Goal trajectory, suggest focus areas
    - Recommend specific commands to run (`/rescue`, `/budget-rebalance`, `/creative-refresh`, `/goal-review`)
-   - Suggest Operation Mode change if appropriate (e.g., "Goals on track -- consider switching from TURNAROUND_RESCUE to EFFICIENCY_STABILIZE")
+   - Suggest Operation Mode change if appropriate (e.g., "Goals on track — consider switching from TURNAROUND_RESCUE to EFFICIENCY_STABILIZE")
 
-7. **Present report** in a structured format suitable for sharing with stakeholders:
+9. **Present report** in a structured format suitable for sharing with stakeholders:
    - Executive summary (2-3 sentences)
    - Goal progress table
+   - Cross-platform performance comparison
    - Key actions and their impact
    - Recommendations for next week
 
-8. **Log to action_log** in STATE.json that a weekly report was generated, including the reporting period.
+10. **Log to action_log** in STATE.json that a weekly report was generated, including the reporting period.

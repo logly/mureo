@@ -86,18 +86,20 @@ mureo/
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   └── lp_analyzer.py   # Landing page analyzer
-.claude/commands/            # Workflow slash commands (10 commands)
-│   ├── onboard.md           # Account setup + STRATEGY.md generation
-│   ├── daily-check.md       # Mode-aware daily health monitoring
-│   ├── rescue.md            # Emergency performance rescue
-│   ├── search-term-cleanup.md # Strategy-aligned search term hygiene
-│   ├── creative-refresh.md  # Persona/USP-driven ad copy refresh
-│   ├── budget-rebalance.md  # Mode-guided budget reallocation
-│   ├── competitive-scan.md  # Auction analysis with Market Context
-│   └── sync-state.md        # Manual STATE.json synchronization
+.claude/commands/            # Workflow slash commands (10 orchestration commands)
+│   ├── onboard.md           # Platform discovery + strategy setup
+│   ├── daily-check.md       # Cross-platform health monitoring (ad platforms + SC + GA4)
+│   ├── rescue.md            # Multi-platform emergency rescue (with GA4 site-side diagnosis)
+│   ├── search-term-cleanup.md # Cross-platform keyword hygiene (with paid/organic overlap)
+│   ├── creative-refresh.md  # Multi-platform creative refresh (with organic keyword insights)
+│   ├── budget-rebalance.md  # Cross-platform budget optimization (with organic intelligence)
+│   ├── competitive-scan.md  # Paid + organic competitive landscape analysis
+│   ├── goal-review.md       # Multi-source goal evaluation
+│   ├── weekly-report.md     # Cross-platform weekly operations report
+│   └── sync-state.md        # Multi-platform STATE.json synchronization
 skills/mureo-workflows/      # Workflow skill reference
-│   └── SKILL.md             # Operation Mode reference + command docs
-docs/integrations.md         # External MCP server integration guide (GA4, Search Console, CRM)
+│   └── SKILL.md             # Orchestration paradigm + Operation Mode reference
+docs/integrations.md         # Platform discovery + external MCP integration guide
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
 ├── auth_setup.py        # Interactive setup wizard (browser OAuth flow)
 └── throttle.py          # Rate limiting (token bucket + rolling hourly cap)

@@ -1,32 +1,40 @@
-Review and clean up search terms across all Google Ads campaigns.
+Review and clean up search terms and keywords across all platforms.
 
 ## Prerequisites
 - STRATEGY.md and STATE.json must exist (run `/onboard` first)
 
 ## Steps
 
-1. **Load context**: Read STRATEGY.md (Persona, USP, Target Audience) and STATE.json.
+1. **Load context**: Read STRATEGY.md (Persona, USP, Target Audience, Data Sources) and STATE.json.
 
-2. **Review search terms** for each active campaign:
-   - Run `google_ads.search_terms.review` with target CPA from STATE.json bidding_details
-   - Run `google_ads.search_terms.analyze` for N-gram and intent analysis
+2. **Discover platforms**: Identify all configured platforms that support search term data from STATE.json `platforms`.
 
-3. **Score candidates** against strategy:
+3. **Review search terms**: For each ad platform that supports search term data, review search terms using the platform's search term analysis tools. Analyze N-gram patterns and user intent.
+
+4. **Paid/organic cross-reference** (if Search Console is available):
+   - Pull top organic queries for the site
+   - Cross-reference with paid search terms to identify overlap
+   - For terms ranking well organically (position 1-3), consider reducing paid bids or pausing paid keywords
+   - For terms with strong paid performance but weak organic ranking, flag as SEO opportunity
+   - Present a paid/organic overlap matrix
+
+5. **Landing page quality check** (if GA4 is available): Check landing page performance for key search terms. Terms driving traffic to high-bounce-rate pages may need LP improvements rather than keyword changes.
+
+6. **Score candidates** against strategy:
    - **Exclude candidates**: Terms with 0 conversions + high cost, informational-only queries, terms misaligned with Persona
    - **Add candidates**: High-converting terms not yet added as keywords, terms matching USP themes
+   - **Reduce candidates**: Terms well-covered by organic rankings
 
-4. **Present recommendations** in a table:
-   | Term | Action | Reason | Score | Campaign |
-   |------|--------|--------|-------|----------|
+7. **Present recommendations** in a table:
+   | Term | Platform | Action | Reason | Score | Campaign |
+   |------|----------|--------|--------|-------|----------|
 
-   Group by campaign. Show estimated cost savings from exclusions.
+   Group by platform and campaign. Show estimated cost savings from exclusions.
 
-5. **Ask for approval**: Let me select which recommendations to apply.
+8. **Ask for approval**: Let me select which recommendations to apply.
 
-6. **Execute**:
-   - Add negative keywords: `google_ads.negative_keywords.add`
-   - Add positive keywords: `google_ads.keywords.add`
+9. **Execute**: Use each platform's keyword management tools to apply approved changes (add negative keywords, add positive keywords, adjust bids).
 
-7. **Update STATE.json** with notes about the cleanup.
+10. **Update STATE.json** with notes about the cleanup.
 
 IMPORTANT: Always explain WHY a term should be excluded/added, referencing the Persona or USP from STRATEGY.md.

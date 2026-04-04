@@ -1,4 +1,4 @@
-Guide me through setting up mureo for a new advertising account.
+Guide me through setting up mureo for a new marketing account.
 
 ## Steps
 
@@ -13,19 +13,23 @@ Guide me through setting up mureo for a new advertising account.
    - **Operation Mode**: Start with `ONBOARDING_LEARNING` for new accounts
    Write the completed STRATEGY.md to the current directory.
 
-3. **Discover accounts**:
-   - Google Ads: Use `google_ads.accounts.list` to list accessible accounts, then `google_ads.campaigns.list` for the selected account
-   - Meta Ads: Use `meta_ads.campaigns.list` for the configured account
+3. **Discover platforms and data sources**:
+   - For each advertising platform with configured credentials, discover accessible accounts and list campaigns
+   - Check if Search Console credentials are available — if so, run site discovery and list verified sites
+   - Check if GA4 MCP is available by probing for analytics tools
+   - Record all available platforms and data sources in STRATEGY.md under a `## Data Sources` section
 
-4. **Initialize STATE.json**: Snapshot all campaigns with their current status, budgets, and bidding strategies into STATE.json.
+4. **Initialize STATE.json**: For each discovered platform, snapshot campaigns into STATE.json under the corresponding `platforms` key.
 
 5. **Set up Goals**: Ask about quantitative marketing goals:
-   - "What are your key marketing goals? (e.g., CPA target, lead volume, ROAS target)"
-   - For each goal, ask for: target value, deadline, and which platforms it applies to
+   - "What are your key marketing goals? (e.g., CPA target, lead volume, ROAS target, organic traffic growth)"
+   - For each goal, ask for: target value, deadline, and which platforms/data sources it applies to
+   - For goals involving website conversions or user behavior, note that GA4 data will be used for tracking
+   - For goals involving organic search, note Search Console as the data source
    - Create `## Goal: <title>` sections in STRATEGY.md with Target, Deadline, Current (TBD), Platform, and Priority fields
 
-6. **Initial diagnosis**: Run `google_ads.health_check.all` and `meta_ads.analysis.performance` to report any immediate issues.
+6. **Initial diagnosis**: Run health checks on each configured ad platform using the platform's diagnostic tools. If Search Console is available, run a top-queries check to establish an organic baseline. If GA4 is available, check overall site conversion metrics.
 
-7. **Summary**: Show what was set up and recommend next steps.
+7. **Summary**: Show what was set up — platforms discovered, data sources available, goals defined — and recommend next steps.
 
 IMPORTANT: Ask me questions interactively — don't assume answers. Each STRATEGY.md section should reflect MY actual business, not generic examples.

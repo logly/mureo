@@ -1,10 +1,10 @@
 ---
 name: mureo-workflows
-description: "Operational workflow reference: strategy-driven ad operations with mureo commands."
+description: "Operational workflow reference: strategy-driven marketing orchestration with mureo commands."
 metadata:
-  version: 0.2.0
+  version: 0.3.0
   openclaw:
-    category: "advertising"
+    category: "marketing"
     requires:
       bins:
         - mureo
@@ -12,43 +12,47 @@ metadata:
 
 # mureo Workflows
 
-Operational workflow reference for strategy-driven ad campaign management using mureo slash commands.
+Operational workflow reference for strategy-driven marketing orchestration using mureo slash commands.
 
 ## Overview
 
-mureo provides 10 slash commands that combine MCP tool calls with business strategy context (STRATEGY.md + STATE.json) to manage advertising campaigns across Google Ads and Meta Ads. Every command reads strategy context before taking action, ensuring all operations are aligned with business goals.
+mureo provides 10 slash commands that orchestrate marketing operations across all configured platforms (Google Ads, Meta Ads, Search Console, GA4, and future platforms). Every command reads strategy context before taking action, discovers available platforms at runtime, and adapts its behavior to what is configured — no hardcoded platform assumptions.
 
-### Core Principle
+### Core Principles
 
-**Strategy-first operations**: Every optimization, budget change, and creative decision is validated against the business strategy defined in STRATEGY.md and the current campaign state in STATE.json.
+1. **Strategy-first operations**: Every optimization, budget change, and creative decision is validated against the business strategy defined in STRATEGY.md and the current state in STATE.json.
+
+2. **Platform discovery**: Commands iterate over `STATE.json.platforms` and probe for external data sources (GA4, CRM) at runtime. Operations scale automatically as platforms are added.
+
+3. **Cross-platform correlation**: Commands leverage multiple data sources to provide insights that no single platform can offer (paid vs organic overlap, ad platform vs on-site conversion data, cross-platform budget efficiency).
 
 ## Command Quick Reference
 
-| Command | Purpose | Frequency | Prerequisites |
-|---------|---------|-----------|---------------|
-| `/onboard` | Initial account setup | Once | mureo installed |
-| `/daily-check` | Daily health monitoring | Daily | STRATEGY.md, STATE.json |
-| `/rescue` | Emergency performance fix | As needed | STRATEGY.md, STATE.json |
-| `/search-term-cleanup` | Search term hygiene | Weekly/Bi-weekly | STRATEGY.md, STATE.json |
-| `/creative-refresh` | Ad copy refresh | Monthly | STRATEGY.md, STATE.json |
-| `/budget-rebalance` | Budget optimization | Monthly | STRATEGY.md, STATE.json |
-| `/competitive-scan` | Competitive analysis | Bi-weekly/Monthly | STRATEGY.md, STATE.json |
-| `/goal-review` | Goal progress evaluation | Weekly | STRATEGY.md, STATE.json |
-| `/weekly-report` | Weekly operations summary | Weekly | STRATEGY.md, STATE.json |
-| `/sync-state` | State synchronization | As needed | STATE.json (or run /onboard) |
+| Command | Purpose | Frequency | Data Sources |
+|---------|---------|-----------|--------------|
+| `/onboard` | Initial account setup | Once | All discovered platforms |
+| `/daily-check` | Daily health monitoring | Daily | Ad platforms + Search Console + GA4 |
+| `/rescue` | Emergency performance fix | As needed | Ad platforms + GA4 (site-side diagnosis) |
+| `/search-term-cleanup` | Search term hygiene | Weekly/Bi-weekly | Ad platforms + Search Console + GA4 |
+| `/creative-refresh` | Ad copy refresh | Monthly | Ad platforms + Search Console + GA4 |
+| `/budget-rebalance` | Budget optimization | Monthly | Ad platforms + Search Console + GA4 |
+| `/competitive-scan` | Competitive analysis | Bi-weekly/Monthly | Ad platforms + Search Console + GA4 |
+| `/goal-review` | Goal progress evaluation | Weekly | All platforms + all data sources |
+| `/weekly-report` | Weekly operations summary | Weekly | All platforms + all data sources |
+| `/sync-state` | State synchronization | As needed | All platforms |
 
 ## PDCA Operational Loop
 
 The 10 commands form a continuous **Plan-Do-Check-Act** cycle that drives all mureo operations:
 
 ```
-Plan:  /onboard → Define strategy, goals, initial state
+Plan:  /onboard → Discover platforms, define strategy, set goals
   ↓
 Do:    /daily-check → /rescue, /search-term-cleanup, /creative-refresh,
                       /budget-rebalance, /competitive-scan
   ↓
-Check: /goal-review → Evaluate goal progress across platforms
-       /weekly-report → Summarize actions + impact
+Check: /goal-review → Evaluate goal progress across all platforms & data sources
+       /weekly-report → Summarize actions + impact with cross-platform insights
   ↓
 Act:   /goal-review recommendations → Adjust Operation Mode → Back to Do
        /onboard (revisit) → Update Goals if business context changed
@@ -56,38 +60,55 @@ Act:   /goal-review recommendations → Adjust Operation Mode → Back to Do
 
 **How the loop runs:**
 
-- **Daily**: The Do phase executes via `/daily-check`, which triages into specialized commands (`/rescue`, `/search-term-cleanup`, etc.) based on detected issues. `/sync-state` keeps STATE.json current throughout.
-- **Weekly**: The Check phase runs `/goal-review` and `/weekly-report` to measure progress against the goals defined in STRATEGY.md.
-- **Act phase trigger**: `/goal-review` closes the loop by recommending which Do commands to prioritize next and whether the Operation Mode should change (e.g., EFFICIENCY_STABILIZE to TURNAROUND_RESCUE if CPA has drifted too far above target).
-- **Strategy refresh**: When business context changes (new product launch, seasonal shift, budget reallocation), revisit `/onboard` to update STRATEGY.md, restarting the Plan phase.
-
-Operation Mode is the mechanism that connects Act back to Do. When `/goal-review` recommends a mode change, the updated mode alters how every Do command behaves (see the Operation Mode Behavior Matrix below).
+- **Daily**: The Do phase executes via `/daily-check`, which discovers all platforms, runs diagnostics, checks organic search pulse (Search Console), correlates on-site behavior (GA4), and triages into specialized commands based on detected issues.
+- **Weekly**: The Check phase runs `/goal-review` and `/weekly-report` to measure progress against goals using data from all configured sources.
+- **Act phase trigger**: `/goal-review` closes the loop by recommending which Do commands to prioritize next and whether the Operation Mode should change.
+- **Strategy refresh**: When business context changes, revisit `/onboard` to update STRATEGY.md, restarting the Plan phase.
 
 ## Dependency Graph
 
 ```
 /onboard (run first — Plan phase)
   |
-  +-- Creates STRATEGY.md + STATE.json
+  +-- Discovers platforms, creates STRATEGY.md + STATE.json
   |
   +---> /daily-check (routine monitoring — Do phase)
   |       |
+  |       +--- Discovers platforms + data sources at runtime
+  |       |
   |       +---> /rescue (if performance problems detected)
   |       +---> /search-term-cleanup (if wasted spend detected)
-  |       +---> /creative-refresh (if LOW/POOR assets detected)
+  |       +---> /creative-refresh (if underperforming creatives)
   |       +---> /budget-rebalance (if budget inefficiency detected)
   |       +---> /competitive-scan (if impression share drops)
   |
   +---> /goal-review (evaluate goal progress — Check phase)
+  |       |
+  |       +--- Gathers metrics from all platforms + GA4 + Search Console
+  |       +--- Synthesizes unified goal progress view
+  |
   +---> /weekly-report (summarize actions + impact — Check phase)
   |       |
-  |       +---> Recommendations feed back into Do commands (Act phase)
-  |       +---> Operation Mode change → alters Do command behavior
+  |       +--- Cross-platform performance comparison
+  |       +--- Recommendations feed back into Do commands (Act phase)
+  |       +--- Operation Mode change → alters Do command behavior
   |
   +---> /sync-state (manual refresh of STATE.json — runs throughout)
 ```
 
 **Critical path**: `/onboard` must run first. All other commands depend on STRATEGY.md and STATE.json existing.
+
+## Cross-Platform Data Correlation
+
+Commands leverage multiple data sources together for deeper insights:
+
+| Correlation | Sources | Value |
+|------------|---------|-------|
+| Paid vs organic keyword overlap | Ad platforms + Search Console | Reduce paid spend on terms with strong organic ranking; identify SEO opportunities from high-performing paid terms |
+| Ad platform vs on-site conversions | Ad platforms + GA4 | Detect conversion tracking discrepancies; identify landing page issues vs ad issues |
+| Landing page quality by source | Ad platforms + GA4 | Evaluate bounce rate, time on page, scroll depth by traffic source to inform budget allocation |
+| Full-funnel visibility | Ad platforms + GA4 + CRM | Impression → click → session → conversion → lead quality pipeline |
+| Competitive landscape (paid + organic) | Ad platforms + Search Console | Unified view of competitive position across paid auction and organic rankings |
 
 ## Operation Mode Behavior Matrix
 
@@ -98,7 +119,7 @@ The Operation Mode in STRATEGY.md controls how each command behaves. The matrix 
 | Aspect | Behavior |
 |--------|----------|
 | **Priority** | Let smart bidding algorithms learn; collect data |
-| **Daily check focus** | Monitor learning status via campaign diagnostics |
+| **Daily check focus** | Monitor learning status on each platform |
 | **Allowed actions** | Read-only analysis, minor negative keyword additions |
 | **Avoid** | Budget changes, bid strategy changes, pausing campaigns |
 | **Transition trigger** | Learning period complete (typically 2-4 weeks) |
@@ -109,7 +130,7 @@ The Operation Mode in STRATEGY.md controls how each command behaves. The matrix 
 | Aspect | Behavior |
 |--------|----------|
 | **Priority** | Maintain or improve CPA/ROAS within stable performance |
-| **Daily check focus** | CPA trend analysis, performance anomaly detection |
+| **Daily check focus** | CPA trend analysis across all platforms, performance anomaly detection |
 | **Allowed actions** | Search term cleanup, incremental budget shifts (<10%), creative testing |
 | **Avoid** | Large budget swings (>20%), drastic structural changes |
 | **Transition trigger** | CPA exceeds target by >30% for 7+ days |
@@ -120,7 +141,7 @@ The Operation Mode in STRATEGY.md controls how each command behaves. The matrix 
 | Aspect | Behavior |
 |--------|----------|
 | **Priority** | Stop wasted spend, restore conversions |
-| **Daily check focus** | Zero-conversion campaigns, cost spikes, search term waste |
+| **Daily check focus** | Zero-conversion campaigns, cost spikes across all platforms |
 | **Allowed actions** | Aggressive negative keywords, budget cuts on waste, device bid adjustments |
 | **Avoid** | Scaling, new campaigns, experimental features |
 | **Transition trigger** | CPA returns to within 10% of target for 7+ days |
@@ -131,7 +152,7 @@ The Operation Mode in STRATEGY.md controls how each command behaves. The matrix 
 | Aspect | Behavior |
 |--------|----------|
 | **Priority** | Grow volume while maintaining acceptable efficiency |
-| **Daily check focus** | Budget utilization, impression share headroom, new keyword opportunities |
+| **Daily check focus** | Budget utilization across all platforms, impression share headroom |
 | **Allowed actions** | Budget increases, new keyword expansion, new campaign tests |
 | **Avoid** | Cutting budgets on learning campaigns, over-optimizing for CPA at expense of volume |
 | **Transition trigger** | CPA rises above acceptable threshold |
@@ -142,7 +163,7 @@ The Operation Mode in STRATEGY.md controls how each command behaves. The matrix 
 | Aspect | Behavior |
 |--------|----------|
 | **Priority** | Protect impression share on core brand/product terms |
-| **Daily check focus** | Auction insights, impression share trends, CPC trends |
+| **Daily check focus** | Auction insights, impression share trends, organic ranking trends |
 | **Allowed actions** | Budget increases on core terms, bid adjustments, cross-platform shifts |
 | **Avoid** | Broad expansion into new areas, reducing spend on core terms |
 | **Transition trigger** | Impression share stabilizes at acceptable levels |
@@ -153,8 +174,8 @@ The Operation Mode in STRATEGY.md controls how each command behaves. The matrix 
 | Aspect | Behavior |
 |--------|----------|
 | **Priority** | Test and iterate on ad creatives to find winning messages |
-| **Daily check focus** | RSA asset ratings, ad variant performance, landing page relevance |
-| **Allowed actions** | New headline/description creation, ad copy A/B tests, LP analysis |
+| **Daily check focus** | Ad asset ratings across all platforms, creative performance comparison |
+| **Allowed actions** | New creative creation, A/B tests, LP analysis |
 | **Avoid** | Budget changes, keyword changes, structural campaign edits |
 | **Transition trigger** | Winning creative identified (statistically significant) |
 | **Next mode** | EFFICIENCY_STABILIZE or SCALE_EXPANSION |
@@ -164,7 +185,7 @@ The Operation Mode in STRATEGY.md controls how each command behaves. The matrix 
 | Aspect | Behavior |
 |--------|----------|
 | **Priority** | Improve lead/conversion quality over volume |
-| **Daily check focus** | Search term quality, audience alignment, conversion quality signals |
+| **Daily check focus** | Search term quality, audience alignment across all platforms |
 | **Allowed actions** | Search term refinement, audience exclusions, quality-focused bid adjustments |
 | **Avoid** | Broad targeting, volume-maximizing bid strategies |
 | **Transition trigger** | Lead quality meets target thresholds |
@@ -232,25 +253,36 @@ Use these thresholds to classify campaign health in daily checks and reports.
 
 ## External Tool Integration
 
-mureo workflow commands can leverage data from external MCP servers (e.g., GA4, Search Console, CRM) when configured alongside mureo in the same client.
+mureo commands leverage data from all available sources. Built-in platforms (Google Ads, Meta Ads, Search Console) are accessed directly. External data sources (GA4, CRM) are accessed via companion MCP servers configured alongside mureo.
 
-### Opportunistic Data Access
+### Platform Types
 
-Commands check for external tool availability at runtime. If a GA4 MCP is configured and responds, the agent incorporates analytics data (conversion rates, user behavior, traffic sources) into its analysis. If the external MCP is not available, the command proceeds normally using only mureo's Google Ads and Meta Ads data.
+| Type | Platform | Access | Required? |
+|------|----------|--------|-----------|
+| Built-in | Google Ads | mureo MCP (82 tools) | At least one ad platform |
+| Built-in | Meta Ads | mureo MCP (77 tools) | At least one ad platform |
+| Built-in | Search Console | mureo MCP (10 tools) | No — additive |
+| Companion | GA4 | Google's official MCP | No — additive |
+| Companion | CRM | Third-party MCP | No — additive |
 
-**No hard dependency**: No mureo command requires any external MCP server to function. External data is always additive, never blocking.
+**No hard dependency on any single platform**: Commands adapt to whatever is configured. At minimum, one ad platform is needed.
 
-### Which Commands Benefit
+### Which Commands Benefit from Each Data Source
 
-| Command | External Data Value |
-|---------|-------------------|
-| `/daily-check` | GA4 LP conversion rates enrich health assessment |
-| `/creative-refresh` | GA4 engagement metrics inform copy decisions |
-| `/budget-rebalance` | GA4 e-commerce data and CRM LTV data improve budget allocation |
-| `/competitive-scan` | Search Console organic data reveals full competitive picture |
-| `/search-term-cleanup` | Search Console keyword overlap identifies SEO/SEM coordination opportunities |
+| Command | Search Console Value | GA4 Value |
+|---------|---------------------|-----------|
+| `/daily-check` | Organic ranking drops needing paid coverage | LP conversion rates, on-site behavior correlation |
+| `/search-term-cleanup` | Paid/organic keyword overlap matrix | LP bounce rates for keyword quality signals |
+| `/creative-refresh` | Top organic queries for ad copy inspiration | LP engagement metrics for creative direction |
+| `/budget-rebalance` | Organic coverage to reduce paid spend | Conversion quality by traffic source |
+| `/competitive-scan` | Organic competitive landscape | Brand/direct traffic trend signals |
+| `/rescue` | Organic alternatives for wasted paid terms | Site-side vs platform-side diagnosis |
+| `/goal-review` | Organic metrics for SEO-related goals | Website conversion data for holistic tracking |
+| `/weekly-report` | Organic trend summary (WoW) | Website-level metrics for holistic view |
+| `/onboard` | Organic baseline establishment | Site conversion metric baseline |
+| `/sync-state` | Site access verification | Connectivity verification |
 
-See [docs/integrations.md](../../docs/integrations.md) for configuration instructions and supported platforms.
+See [docs/integrations.md](../../docs/integrations.md) for configuration instructions.
 
 ## Workflow Best Practices
 
@@ -258,21 +290,22 @@ See [docs/integrations.md](../../docs/integrations.md) for configuration instruc
 
 | Day | Activity |
 |-----|----------|
-| Monday | `/daily-check` + `/competitive-scan` |
+| Monday | `/daily-check` + `/competitive-scan` (include organic competitive pulse) |
 | Tuesday-Thursday | `/daily-check` |
-| Friday | `/daily-check` + `/search-term-cleanup` |
+| Friday | `/daily-check` + `/search-term-cleanup` (include paid/organic overlap review) |
+| Weekly | `/goal-review` + `/weekly-report` |
 | Monthly (1st week) | `/budget-rebalance` + `/creative-refresh` |
 
 ### Safety Rules
 
-1. **Never auto-execute write operations** -- all commands ask for approval before changes
-2. **Budget changes >20% trigger a warning** -- smart bidding may reset its learning period
-3. **Always show current vs proposed values** -- for budgets, bids, and status changes
-4. **Batch keyword operations** -- add/remove in groups of 20 or fewer
-5. **Respect learning periods** -- ONBOARDING_LEARNING mode blocks most changes
+1. **Never auto-execute write operations** — all commands ask for approval before changes
+2. **Budget changes >20% trigger a warning** — smart bidding may reset its learning period
+3. **Always show current vs proposed values** — for budgets, bids, and status changes
+4. **Batch keyword operations** — add/remove in groups of 20 or fewer
+5. **Respect learning periods** — ONBOARDING_LEARNING mode blocks most changes
 
 ### Strategy File Maintenance
 
-- **STRATEGY.md**: Review quarterly; update immediately when business strategy changes
+- **STRATEGY.md**: Review quarterly; update immediately when business strategy changes. Keep `Data Sources` section current when platforms are added/removed.
 - **STATE.json**: Auto-updated by commands; use `/sync-state` for manual refresh
 - **Operation Mode**: Update when campaign conditions change (see transition triggers above)

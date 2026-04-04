@@ -6,34 +6,40 @@ Review progress toward all marketing goals across all platforms.
 
 ## Steps
 
-1. **Load context**: Read STRATEGY.md (all Goal sections) and STATE.json.
+1. **Load context**: Read STRATEGY.md (all Goal sections, Data Sources) and STATE.json.
 
-2. **For each Goal**, gather current metrics from all relevant platforms:
-   - If Goal mentions Google Ads: get performance data via `google_ads.performance.report` and `google_ads.performance.analyze`
-   - If Goal mentions Meta Ads: get performance data via `meta_ads.analysis.performance` and `meta_ads.insights.report`
-   - If GA4 MCP is available: include website conversion data for LP-related Goals
+2. **Discover platforms**: Identify all configured platforms and available data sources.
 
-3. **Evaluate progress** for each Goal:
+3. **For each Goal**, gather current metrics from all relevant platforms and data sources:
+   - Ad platforms: Use performance reporting tools for each platform
+   - GA4 (if available): Website conversion data, user behavior metrics
+   - Search Console (if available): Organic search metrics for SEO-related goals
+   - CRM (if available): Lead quality, pipeline data for LTV-related goals
+
+   For goals that span multiple data sources, synthesize a unified view. Example: "Total leads = Platform A 62 + Platform B 28 + Organic 15 = 105 total"
+
+4. **Evaluate progress** for each Goal:
    - Compare current value against target
    - Calculate % of target achieved
    - Calculate days remaining until deadline
    - Assess trajectory: on-track / at-risk / off-track
 
-4. **Present Goal dashboard**:
+5. **Present Goal dashboard**:
    | Goal | Target | Current | Progress | Deadline | Status |
    |------|--------|---------|----------|----------|--------|
 
    Status indicators:
-   - On track -- current value meets or exceeds the pace needed to hit target by deadline
-   - At risk -- current value is within 20% of target but trajectory is concerning
-   - Off track -- current value is more than 20% away from target pace
+   - On track — current value meets or exceeds the pace needed to hit target by deadline
+   - At risk — current value is within 20% of target but trajectory is concerning
+   - Off track — current value is more than 20% away from target pace
 
-5. **Recommend actions** for off-track Goals:
+6. **Recommend actions** for off-track Goals:
+   - Tie recommendations to the specific platform(s) where the Goal is off-track
+   - If cross-platform rebalancing could help, suggest it
    - Suggest specific commands to run (`/rescue`, `/budget-rebalance`, `/creative-refresh`)
-   - Tie recommendations to the Goal context (e.g., "CPA is 24% over target on Meta -- run `/rescue` focused on Meta Ads")
    - Prioritize recommendations by Goal priority (P0 > P1 > P2)
 
-6. **Update STATE.json**:
+7. **Update STATE.json**:
    - Log the review to `action_log` with a summary of Goal statuses
    - Update Current values in STRATEGY.md Goal sections if approved
 

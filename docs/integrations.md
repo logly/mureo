@@ -1,12 +1,21 @@
 # External Tool Integration Guide
 
-mureo's core value is orchestration -- knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads, Meta Ads, and Google Search Console. For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
+mureo's core value is orchestration — knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads (82 tools), Meta Ads (77 tools), and Google Search Console (10 tools). For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
 
 ## How It Works
 
-MCP clients (Claude Code, Cursor, Claude Desktop) can connect to multiple MCP servers simultaneously. Each server exposes its own set of tools. When mureo's workflow commands run, the AI agent can call tools from any connected MCP server in the same session. This means a `/daily-check` can pull Google Ads data via mureo *and* conversion data from a GA4 MCP, combining both into a single analysis.
+MCP clients (Claude Code, Cursor, Claude Desktop) can connect to multiple MCP servers simultaneously. Each server exposes its own set of tools. When mureo's workflow commands run, the AI agent **discovers all configured platforms at runtime** and adapts its behavior accordingly — calling tools from any connected MCP server in the same session.
 
-**Key principle**: mureo workflow commands check for external tool availability opportunistically. If a GA4 MCP is configured and responds, the agent uses that data to enrich its analysis. If not, the command proceeds normally with mureo's own data. There is no hard dependency on any external MCP server.
+### Platform Discovery
+
+Every mureo workflow command follows this pattern:
+
+1. Read STATE.json `platforms` dict to find configured ad platforms
+2. Check for built-in data sources (Search Console credentials)
+3. Probe for external MCP availability (GA4, CRM) by checking tool namespaces
+4. Execute operations across all discovered platforms — no hardcoded assumptions
+
+**Key principle**: No mureo command requires any specific platform. Commands adapt to whatever is configured. At minimum, one ad platform is needed. All additional data sources (Search Console, GA4, CRM) are additive, never blocking.
 
 ## GA4 (Google Analytics 4)
 
@@ -41,11 +50,16 @@ Add both mureo and the GA4 MCP to your `.mcp.json` (project-level) or `~/.claude
 
 | mureo Command | GA4 Data Value |
 |---------------|----------------|
-| `/daily-check` | LP conversion rates, bounce rates, session quality metrics for richer health assessment |
-| `/creative-refresh` | Landing page engagement data (time on page, scroll depth) to inform ad copy decisions |
-| `/goal-review` | Traffic source attribution, user behavior flows, assisted conversions for goal progress |
-| `/budget-rebalance` | E-commerce metrics (revenue, ROAS by channel) and cross-channel attribution for budget decisions |
-| `/competitive-scan` | Organic vs paid traffic mix to understand full competitive landscape |
+| `/daily-check` | LP conversion rates, bounce rates, session quality — correlate with ad performance |
+| `/search-term-cleanup` | LP bounce rates for keyword quality signals |
+| `/creative-refresh` | LP engagement metrics (time on page, scroll depth) to inform creative direction |
+| `/goal-review` | Website conversion data for holistic goal tracking |
+| `/budget-rebalance` | Conversion quality by traffic source to inform allocation decisions |
+| `/competitive-scan` | Brand/direct traffic trends — competitor mind share signals |
+| `/rescue` | Site-side vs platform-side diagnosis before making ad changes |
+| `/weekly-report` | Website-level metrics for holistic cross-platform reporting |
+| `/onboard` | Site conversion metric baseline |
+| `/sync-state` | Connectivity verification |
 
 ### Authentication
 
@@ -82,7 +96,20 @@ Search Console is built into mureo as a first-party integration (10 MCP tools). 
 
 ### Workflow Integration
 
-The `/search-term-cleanup` and `/competitive-scan` commands benefit most from Search Console data, enabling the agent to cross-reference paid keyword performance with organic search rankings.
+All 10 mureo workflow commands can leverage Search Console data. Key use cases:
+
+| Command | Search Console Value |
+|---------|---------------------|
+| `/daily-check` | Organic ranking drops needing paid coverage |
+| `/search-term-cleanup` | Paid/organic keyword overlap matrix — reduce paid spend on strong organic terms |
+| `/competitive-scan` | Organic competitive landscape alongside paid auction insights |
+| `/creative-refresh` | Top organic queries as ad copy inspiration |
+| `/budget-rebalance` | Organic coverage data to inform paid budget allocation |
+| `/rescue` | Identify terms better served by organic instead of paid |
+| `/goal-review` | Organic metrics for SEO-related goals |
+| `/weekly-report` | Organic trend summary (WoW changes) |
+| `/onboard` | Organic baseline establishment |
+| `/sync-state` | Site access verification |
 
 ## CRM / Marketing Automation (HubSpot, Salesforce)
 
