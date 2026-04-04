@@ -262,43 +262,35 @@ class TestCommandFilesValid:
 
 
 class TestCommandToolReferences:
-    """Verify MCP tool names referenced in commands exist in the tool registry."""
+    """Verify commands follow orchestration patterns (no hardcoded tool names)."""
 
     @pytest.mark.unit
     @pytest.mark.parametrize("filename", EXPECTED_COMMANDS)
-    def test_tool_references_are_valid(self, filename: str) -> None:
+    def test_no_hardcoded_tool_names(self, filename: str) -> None:
+        """Commands should use intent-based descriptions, not hardcoded tool names."""
         filepath = COMMANDS_DIR / filename
         content = filepath.read_text(encoding="utf-8")
         referenced_tools = _extract_tool_references(content)
 
-        invalid_tools = referenced_tools - ALL_KNOWN_TOOLS
-        assert not invalid_tools, (
-            f"Command {filename} references unknown tools: {sorted(invalid_tools)}"
+        assert len(referenced_tools) == 0, (
+            f"Command {filename} contains hardcoded tool names: {sorted(referenced_tools)}. "
+            f"Commands should use intent-based descriptions for platform-agnostic orchestration."
         )
 
     @pytest.mark.unit
-    def test_all_commands_reference_at_least_one_tool(self) -> None:
-        for filename in EXPECTED_COMMANDS:
-            filepath = COMMANDS_DIR / filename
-            content = filepath.read_text(encoding="utf-8")
-            referenced_tools = _extract_tool_references(content)
-            assert len(referenced_tools) > 0, (
-                f"Command {filename} does not reference any MCP tools"
-            )
-
-    @pytest.mark.unit
-    def test_total_tool_coverage(self) -> None:
-        """Verify commands collectively reference a meaningful subset of tools."""
-        all_referenced: set[str] = set()
-        for filename in EXPECTED_COMMANDS:
-            filepath = COMMANDS_DIR / filename
-            content = filepath.read_text(encoding="utf-8")
-            all_referenced |= _extract_tool_references(content)
-
-        # Commands should reference at least 15 distinct tools
-        assert len(all_referenced) >= 15, (
-            f"Commands only reference {len(all_referenced)} distinct tools, "
-            f"expected at least 15"
+    @pytest.mark.parametrize("filename", EXPECTED_COMMANDS)
+    def test_command_has_platform_discovery(self, filename: str) -> None:
+        """All commands should discover platforms or reference STATE.json platforms."""
+        filepath = COMMANDS_DIR / filename
+        content = filepath.read_text(encoding="utf-8").lower()
+        has_discovery = (
+            "discover platform" in content
+            or "discover available" in content
+            or "platforms" in content
+            or "platform" in content
+        )
+        assert has_discovery, (
+            f"Command {filename} does not include platform discovery pattern"
         )
 
 
@@ -321,7 +313,7 @@ class TestWorkflowSkill:
     def test_skill_has_required_metadata(self) -> None:
         content = SKILL_FILE.read_text(encoding="utf-8")
         assert "name: mureo-workflows" in content
-        assert "version: 0.2.0" in content
+        assert "version: 0.3.0" in content
 
     @pytest.mark.unit
     def test_skill_has_operation_mode_matrix(self) -> None:
@@ -375,12 +367,18 @@ class TestGoalAndCrossPlatformCommands:
 
     @pytest.mark.unit
     @pytest.mark.parametrize("filename", ["goal-review.md", "weekly-report.md"])
-    def test_new_command_references_mcp_tool(self, filename: str) -> None:
+    def test_new_command_uses_orchestration_pattern(self, filename: str) -> None:
+        """Goal/weekly commands should follow orchestration pattern."""
         filepath = COMMANDS_DIR / filename
         content = filepath.read_text(encoding="utf-8")
+        # Should not have hardcoded tool names
         referenced_tools = _extract_tool_references(content)
-        assert len(referenced_tools) > 0, (
-            f"Command {filename} does not reference any MCP tools"
+        assert len(referenced_tools) == 0, (
+            f"Command {filename} contains hardcoded tool names: {sorted(referenced_tools)}"
+        )
+        # Should reference platform discovery
+        assert "platform" in content.lower(), (
+            f"Command {filename} does not reference platform discovery"
         )
 
     @pytest.mark.unit
