@@ -425,12 +425,12 @@ _CREDENTIAL_GUARD_HOOK_READ = {
         {
             "type": "command",
             "command": (
-                f"python3 -c \""
+                f'python3 -c "'
                 f"import sys,json; "
                 f"d=json.loads(sys.stdin.read()); "
                 f"p=d.get('tool_input',{{}}).get('file_path',''); "
                 f"sys.exit(1) if 'credentials' in p and '.mureo' in p else sys.exit(0)"
-                f"\" # {_MUREO_HOOK_TAG}"
+                f'" # {_MUREO_HOOK_TAG}'
             ),
         }
     ],
@@ -442,13 +442,13 @@ _CREDENTIAL_GUARD_HOOK_BASH = {
         {
             "type": "command",
             "command": (
-                f"python3 -c \""
+                f'python3 -c "'
                 f"import sys,json; "
                 f"d=json.loads(sys.stdin.read()); "
                 f"c=d.get('tool_input',{{}}).get('command',''); "
                 f"sys.exit(1) if '.mureo/credentials' in c or "
                 f"('.mureo' in c and 'credentials' in c) else sys.exit(0)"
-                f"\" # {_MUREO_HOOK_TAG}"
+                f'" # {_MUREO_HOOK_TAG}'
             ),
         }
     ],

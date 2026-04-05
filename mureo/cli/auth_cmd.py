@@ -110,9 +110,7 @@ def auth_setup() -> None:
     result = install_credential_guard()
     if result is not None:
         typer.echo(f"Credential guard installed: {result}")
-        typer.echo(
-            "  AI agents are now blocked from reading ~/.mureo/credentials.json"
-        )
+        typer.echo("  AI agents are now blocked from reading ~/.mureo/credentials.json")
     else:
         typer.echo("Credential guard already installed.")
 
