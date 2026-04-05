@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-06
+
+### Added
+- Evidence-based learning feedback loop with `mureo-learning` skill
+- `ActionLogEntry.metrics_at_action` field for recording metrics at action time
+- `ActionLogEntry.observation_due` field for scheduling outcome evaluation
+- Statistical thinking framework: observation windows, minimum sample sizes, evidence lifecycle (OBSERVING → CANDIDATE → VALIDATED)
+- Noise guards in all 10 workflow commands to prevent premature optimization
+- Google Search Console API client with 10 MCP tools, bringing total to 169
+- Japanese README (README.ja.md)
+
+### Changed
+- All 10 workflow commands transformed to platform-agnostic orchestration (no hardcoded tool names)
+- Commands now discover platforms at runtime from STATE.json `platforms` dict
+- Search Console and GA4 integrated as data sources across all commands
+- STATE.json format updated to v2 with multi-platform `platforms` dict
+- SKILL.md version bumped to 0.3.0 with orchestration paradigm
+- Workflow skill count increased from 5 to 6
+
+### Fixed
+- CONTEXT.md tool count corrected from 42 to 169
+- Search Console tool reference pointed to correct documentation file
+
 ## [0.2.0] - 2026-03-31
 
 ### Added

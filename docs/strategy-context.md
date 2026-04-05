@@ -115,28 +115,38 @@ markdown = render_strategy(entries)
 
 ### Format
 
-STATE.json is a JSON file containing a snapshot of campaign state.
+STATE.json is a JSON file containing campaign state snapshots across platforms, plus an action log for tracking changes and their outcomes.
 
 ```json
 {
-  "version": "1",
-  "last_synced_at": "2025-01-15T10:30:00Z",
-  "customer_id": "1234567890",
-  "campaigns": [
+  "version": "2",
+  "last_synced_at": "2026-04-01T10:00:00Z",
+  "platforms": {
+    "google_ads": {
+      "account_id": "1234567890",
+      "campaigns": [
+        {
+          "campaign_id": "111222333",
+          "campaign_name": "Brand - Search",
+          "status": "ENABLED",
+          "bidding_strategy_type": "TARGET_CPA",
+          "bidding_details": {"target_cpa_micros": 5000000},
+          "daily_budget": 5000,
+          "campaign_goal": "Maximize conversions at target CPA"
+        }
+      ]
+    }
+  },
+  "action_log": [
     {
+      "timestamp": "2026-04-01T10:30:00+09:00",
+      "action": "Added 15 negative keywords",
+      "platform": "google_ads",
       "campaign_id": "111222333",
-      "campaign_name": "Brand - Search",
-      "status": "ENABLED",
-      "bidding_strategy_type": "TARGET_CPA",
-      "bidding_details": {
-        "target_cpa_micros": 5000000
-      },
-      "daily_budget": 5000,
-      "device_targeting": [
-        {"device": "MOBILE", "bid_modifier": 1.2}
-      ],
-      "campaign_goal": "Maximize conversions at target CPA",
-      "notes": "Learning period ends 2025-01-20"
+      "command": "/search-term-cleanup",
+      "summary": "Excluded informational queries",
+      "metrics_at_action": {"cpa": 5200, "conversions": 45, "clicks": 1200},
+      "observation_due": "2026-04-15"
     }
   ]
 }
@@ -148,10 +158,12 @@ STATE.json is a JSON file containing a snapshot of campaign state.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `version` | `string` | Schema version (currently `"1"`) |
+| `version` | `string` | Schema version (`"2"` for multi-platform format) |
 | `last_synced_at` | `string \| null` | ISO 8601 timestamp of last sync |
-| `customer_id` | `string \| null` | Google Ads customer ID or Meta Ads account ID |
-| `campaigns` | `array` | List of campaign snapshots |
+| `platforms` | `object \| null` | Per-platform state (v2) |
+| `action_log` | `array` | Log of actions with outcome tracking |
+| `customer_id` | `string \| null` | Legacy v1 field (kept for backward compatibility) |
+| `campaigns` | `array` | Legacy v1 field (kept for backward compatibility) |
 
 #### Campaign Snapshot
 
@@ -166,6 +178,23 @@ STATE.json is a JSON file containing a snapshot of campaign state.
 | `device_targeting` | `array` | No | Device bid modifiers |
 | `campaign_goal` | `string` | No | Human-readable campaign goal |
 | `notes` | `string` | No | Free-form notes |
+
+#### Action Log Entry
+
+Each entry in `action_log` records an action taken by a workflow command, with optional fields for evidence-based outcome tracking.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `timestamp` | `string` | Yes | ISO 8601 timestamp of the action |
+| `action` | `string` | Yes | Description of the action taken |
+| `platform` | `string` | Yes | Platform the action was taken on |
+| `campaign_id` | `string` | No | Campaign affected |
+| `command` | `string` | No | Slash command that initiated the action |
+| `summary` | `string` | No | Human-readable summary |
+| `metrics_at_action` | `object` | No | Key metrics at the time of action (e.g., `{"cpa": 5200, "conversions": 45}`) |
+| `observation_due` | `string` | No | ISO 8601 date when the outcome should be evaluated (e.g., `"2026-04-15"`) |
+
+The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. When an action's observation window has passed, the agent compares current metrics against `metrics_at_action` to assess the action's impact. See `skills/mureo-learning/SKILL.md` for the evidence-based decision framework.
 
 ### Python API
 
@@ -257,6 +286,8 @@ All data models are frozen dataclasses:
 
 - `StrategyEntry(frozen=True)` -- context_type, title, content
 - `CampaignSnapshot(frozen=True)` -- campaign state fields, with defensive deep-copy of mutable fields
-- `StateDocument(frozen=True)` -- version, metadata, tuple of campaigns
+- `ActionLogEntry(frozen=True)` -- action details + metrics_at_action + observation_due, with defensive deep-copy
+- `PlatformState(frozen=True)` -- per-platform account_id + campaigns
+- `StateDocument(frozen=True)` -- version, metadata, platforms dict, action_log tuple
 
-To "update" a record, create a new instance. The `upsert_campaign()` function handles this internally.
+To "update" a record, create a new instance. The `upsert_campaign()` and `append_action_log()` functions handle this internally.

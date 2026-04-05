@@ -161,25 +161,35 @@ The `Operation Mode` section contains one of 7 predefined modes that control age
 
 ```json
 {
-  "version": "1",
-  "last_synced_at": "2026-03-29T10:30:00+09:00",
-  "customer_id": "1234567890",
-  "campaigns": [
+  "version": "2",
+  "last_synced_at": "2026-04-01T10:00:00+09:00",
+  "platforms": {
+    "google_ads": {
+      "account_id": "1234567890",
+      "campaigns": [
+        {
+          "campaign_id": "111222333",
+          "campaign_name": "Brand Search - Tokyo",
+          "status": "ENABLED",
+          "bidding_strategy_type": "MAXIMIZE_CONVERSIONS",
+          "bidding_details": {"target_cpa": 5000},
+          "daily_budget": 8000.0,
+          "campaign_goal": "Lead generation for SaaS trial signups",
+          "notes": "Learning period ends ~April 5. Do not change bids."
+        }
+      ]
+    }
+  },
+  "action_log": [
     {
+      "timestamp": "2026-04-01T10:30:00+09:00",
+      "action": "Added 15 negative keywords",
+      "platform": "google_ads",
       "campaign_id": "111222333",
-      "campaign_name": "Brand Search - Tokyo",
-      "status": "ENABLED",
-      "bidding_strategy_type": "MAXIMIZE_CONVERSIONS",
-      "bidding_details": {
-        "target_cpa": 5000
-      },
-      "daily_budget": 8000.0,
-      "device_targeting": [
-        {"type": "DESKTOP", "bid_modifier": 1.0},
-        {"type": "MOBILE", "bid_modifier": 1.2}
-      ],
-      "campaign_goal": "Lead generation for SaaS trial signups",
-      "notes": "Learning period ends ~April 5. Do not change bids."
+      "command": "/search-term-cleanup",
+      "summary": "Excluded informational queries misaligned with Persona",
+      "metrics_at_action": {"cpa": 5200, "conversions": 45, "clicks": 1200},
+      "observation_due": "2026-04-15"
     }
   ]
 }
@@ -199,12 +209,28 @@ The `Operation Mode` section contains one of 7 predefined modes that control age
 | `campaign_goal` | string | No | Business objective for this campaign |
 | `notes` | string | No | Important notes (learning period, restrictions, etc.) |
 
+### Action Log Entry Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `timestamp` | string | Yes | ISO 8601 timestamp of the action |
+| `action` | string | Yes | Description of the action taken |
+| `platform` | string | Yes | Platform the action was taken on |
+| `campaign_id` | string | No | Campaign affected |
+| `command` | string | No | Slash command that initiated the action |
+| `summary` | string | No | Human-readable summary |
+| `metrics_at_action` | object | No | Key metrics at the time of action (for outcome evaluation) |
+| `observation_due` | string | No | ISO 8601 date when the outcome should be evaluated |
+
+The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/mureo-learning/SKILL.md` for the decision framework.
+
 ### State Lifecycle
 
 1. **Initial sync**: Agent calls campaign list/get tools, populates STATE.json
 2. **Upsert on read**: After any read tool call, the campaign snapshot is upserted
 3. **Notes on write**: After write operations, action logs and notes are updated
-4. **Agent reads STATE.json** before making decisions, ensuring context continuity
+4. **Outcome tracking**: Write operations record `metrics_at_action` and `observation_due` for later evaluation
+5. **Agent reads STATE.json** before making decisions, ensuring context continuity
 
 ## Strategy-Driven Workflows
 

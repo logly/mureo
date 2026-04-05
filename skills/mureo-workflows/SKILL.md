@@ -63,6 +63,7 @@ Act:   /goal-review recommendations → Adjust Operation Mode → Back to Do
 - **Daily**: The Do phase executes via `/daily-check`, which discovers all platforms, runs diagnostics, checks organic search pulse (Search Console), correlates on-site behavior (GA4), and triages into specialized commands based on detected issues.
 - **Weekly**: The Check phase runs `/goal-review` and `/weekly-report` to measure progress against goals using data from all configured sources.
 - **Act phase trigger**: `/goal-review` closes the loop by recommending which Do commands to prioritize next and whether the Operation Mode should change.
+- **Evidence gate**: Strategy changes (Operation Mode, Goals) should only be made when backed by sufficient evidence. See `skills/mureo-learning/SKILL.md` for observation windows, sample sizes, and the OBSERVING → CANDIDATE → VALIDATED lifecycle.
 - **Strategy refresh**: When business context changes, revisit `/onboard` to update STRATEGY.md, restarting the Plan phase.
 
 ## Dependency Graph
@@ -303,6 +304,7 @@ See [docs/integrations.md](../../docs/integrations.md) for configuration instruc
 3. **Always show current vs proposed values** — for budgets, bids, and status changes
 4. **Batch keyword operations** — add/remove in groups of 20 or fewer
 5. **Respect learning periods** — ONBOARDING_LEARNING mode blocks most changes
+6. **Evidence before strategy changes** — do not change STRATEGY.md based on unvalidated data. See `mureo-learning` skill for the evidence lifecycle
 
 ### Strategy File Maintenance
 

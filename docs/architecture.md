@@ -135,7 +135,9 @@ mureo/
 └── sync-state.md                # Manual STATE.json synchronization
 
 skills/mureo-workflows/          # Workflow skill reference
-└── SKILL.md                     # Operation Mode reference + command docs
+│   └── SKILL.md                 # Orchestration paradigm + Operation Mode reference
+skills/mureo-learning/           # Evidence-based decision framework
+│   └── SKILL.md                 # Statistical thinking for marketing decisions
 ```
 
 ## Design Principles
