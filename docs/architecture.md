@@ -328,39 +328,43 @@ When loading Meta Ads credentials, `mureo/auth.py` checks the `token_obtained_at
 
 ## Command-Based Workflow System
 
-In addition to the 169 individual MCP tools, mureo provides 10 **workflow commands** as Claude Code slash commands (`.claude/commands/`). These commands orchestrate multiple MCP tools into coherent operational workflows, guided by the strategy context in `STRATEGY.md`.
+In addition to the 169 individual MCP tools, mureo provides 10 **workflow commands** as Claude Code slash commands (`.claude/commands/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 
 ```
 User runs /daily-check in Claude Code
   │
-  ├── Read STRATEGY.md → extract Operation Mode, Persona, Market Context
-  ├── Read STATE.json → get current campaign state
+  ├── Read STRATEGY.md → extract Operation Mode, Persona, Data Sources
+  ├── Read STATE.json → discover configured platforms (platforms dict)
   │
-  ├── Select MCP tools based on Operation Mode:
-  │     ├── EFFICIENCY_STABILIZE → CPA monitoring, budget efficiency, search term review
-  │     ├── GROWTH_SCALE → impression share, conversion volume, auction insights
-  │     └── ...
+  ├── For each configured platform, select appropriate MCP tools based on Operation Mode
+  │   (no hardcoded platform assumptions — adapts to whatever is configured)
   │
-  ├── Execute selected MCP tools via the MCP server
+  ├── Check availability of enrichment data sources:
+  │     ├── Search Console (built-in) → organic search pulse
+  │     └── GA4 (external MCP) → on-site behavior correlation
   │
-  └── Synthesize results into a strategy-aware report
+  ├── Execute selected tools across all discovered platforms
+  │
+  └── Synthesize results into a unified, strategy-aware cross-platform report
 ```
 
 ### Commands
 
-| Command | Strategy Sections Used | Key MCP Tools Invoked |
-|---------|----------------------|----------------------|
-| `/onboard` | *(generates all sections)* | `accounts.list`, `campaigns.list` |
-| `/daily-check` | Operation Mode | `health_check.all`, `monitoring.*`, `performance.analyze` |
-| `/rescue` | All sections | `campaigns.diagnose`, `cost_increase.investigate`, `zero_conversions` |
-| `/search-term-cleanup` | Persona, USP | `search_terms.analyze`, `search_terms.review`, `negative_keywords.suggest` |
-| `/creative-refresh` | Persona, USP, Brand Voice | `rsa_assets.audit`, `creative.research`, `ads.create` |
-| `/budget-rebalance` | Operation Mode | `budget.efficiency`, `budget.reallocation` |
-| `/competitive-scan` | Market Context | `auction_insights.get`, `cpc.detect_trend` |
-| `/goal-review` | Operation Mode, Goals | `monitoring.*`, `performance.analyze` |
-| `/weekly-report` | All sections | *(aggregates outputs from other commands)* |
-| `/sync-state` | *(writes STATE.json)* | `campaigns.list`, `campaigns.get` |
+All 10 commands follow the same orchestration pattern: **discover platforms → select tools → correlate data sources → present unified results**. Commands do not hardcode tool names; the AI agent chooses appropriate tools per platform at runtime.
 
-The workflow skill reference (`skills/mureo-workflows/SKILL.md`) documents the full set of Operation Modes and their behavioral implications for each command.
+| Command | Purpose | Strategy Sections Used |
+|---------|---------|-----------------------|
+| `/onboard` | Platform discovery + strategy generation | *(generates all sections)* |
+| `/daily-check` | Cross-platform health monitoring | Operation Mode, Data Sources |
+| `/rescue` | Emergency performance fix with site-side diagnosis | All sections |
+| `/search-term-cleanup` | Keyword hygiene with paid/organic overlap | Persona, USP, Data Sources |
+| `/creative-refresh` | Multi-platform creative refresh | Persona, USP, Brand Voice, Data Sources |
+| `/budget-rebalance` | Cross-platform budget optimization | Operation Mode, Goals, Data Sources |
+| `/competitive-scan` | Paid + organic competitive analysis | Market Context, Data Sources |
+| `/goal-review` | Multi-source goal evaluation | Operation Mode, Goals, Data Sources |
+| `/weekly-report` | Cross-platform weekly report | All sections |
+| `/sync-state` | Multi-platform state synchronization | *(writes STATE.json)* |
+
+The workflow skill reference (`skills/mureo-workflows/SKILL.md`) documents the full set of Operation Modes and their behavioral implications for each command, as well as cross-platform data correlation patterns.

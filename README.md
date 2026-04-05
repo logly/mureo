@@ -6,6 +6,10 @@
   Marketing orchestration framework for AI agents.
 </p>
 
+<p align="center">
+  <a href="README.ja.md">日本語</a>
+</p>
+
 ## What is mureo?
 
 **mureo** is a marketing orchestration framework that helps AI agents achieve real business goals — awareness, leads, sales, retention — not just execute API calls. It combines strategy context, workflow commands, and built-in domain knowledge to guide agents through marketing operations across multiple platforms.
@@ -75,28 +79,38 @@ Beyond individual MCP tools, mureo provides **10 slash commands** for Claude Cod
 
 ### How it works
 
-Each command orchestrates three layers working together:
+Commands are **platform-agnostic orchestration instructions**. They do not hardcode which tools to call. Instead, each command tells the AI agent:
+
+1. **Discover platforms** — check STATE.json to see which platforms are configured
+2. **Choose tools** — select appropriate MCP tools for each discovered platform
+3. **Correlate data sources** — combine ad platform data with Search Console (organic search) and GA4 (on-site behavior) when available
+4. **Synthesize insights** — produce unified cross-platform recommendations
+5. **Ask before acting** — get user approval for any write operation
+
+This means adding a new platform (e.g., TikTok Ads) requires no command changes. The agent automatically adapts based on what is configured.
+
+Three layers work together:
 
 | Layer | Role | Example (`/creative-refresh`) |
 |-------|------|-------------------------------|
-| **mureo (MCP tools)** | Data retrieval, analysis, validation | RSA asset audit, LP analysis, ad text validation |
-| **AI agent (LLM)** | Strategic judgment, creative generation | Drafts new headlines from Persona + USP + Brand Voice |
+| **mureo (MCP tools)** | Data retrieval, analysis, validation | Creative audit, LP analysis, text validation across all platforms |
+| **AI agent (LLM)** | Platform discovery, tool selection, creative generation | Detects configured platforms, drafts platform-appropriate creatives from Persona + USP |
 | **You (human)** | Final approval | Review and approve before any changes are made |
-
-mureo does not embed an LLM. Instead, it provides structured data and clear instructions so that the AI agent (Claude Code, Cursor, etc.) can make informed, strategy-aligned decisions. The commands tell the agent *what tools to use*, *what strategy context to consider*, and *what to ask you before acting*.
 
 ### Commands
 
-| Command | What mureo does (tools) | What the AI agent decides (LLM) |
-|---------|------------------------|--------------------------------|
-| `/onboard` | Fetch accounts, campaigns, init STATE.json | Interview you to build Persona, USP, Brand Voice into STRATEGY.md |
-| `/daily-check` | Health check, performance analysis, goal evaluation | Judge which metrics matter based on Operation Mode, generate report |
-| `/rescue` | Search term review, cost investigation, zero-CV diagnosis | Prioritize actions, explain why each change is needed |
-| `/search-term-cleanup` | N-gram analysis, scoring, exclude candidates | Judge if a search term matches the Persona/USP or not |
-| `/creative-refresh` | RSA audit, LP analysis, text validation | Write new headlines/descriptions from Persona + USP + Brand Voice |
-| `/budget-rebalance` | Budget efficiency analysis, performance reports | Decide which campaigns deserve more/less budget and why |
-| `/competitive-scan` | Auction insights, CPC trend detection | Compare with Market Context, propose strategic response |
-| `/sync-state` | Fetch all campaign data, update STATE.json | Summarize changes since last sync in plain language |
+| Command | Purpose | Data sources |
+|---------|---------|--------------|
+| `/onboard` | Discover platforms, generate STRATEGY.md, initialize STATE.json | All configured |
+| `/daily-check` | Cross-platform health monitoring with organic pulse and on-site correlation | Ad platforms + Search Console + GA4 |
+| `/rescue` | Emergency performance fix with site-side vs platform-side diagnosis | Ad platforms + GA4 |
+| `/search-term-cleanup` | Keyword hygiene with paid/organic overlap analysis | Ad platforms + Search Console + GA4 |
+| `/creative-refresh` | Multi-platform creative refresh with organic keyword insights | Ad platforms + Search Console + GA4 |
+| `/budget-rebalance` | Cross-platform budget optimization with organic coverage awareness | Ad platforms + Search Console + GA4 |
+| `/competitive-scan` | Paid + organic competitive landscape analysis | Ad platforms + Search Console + GA4 |
+| `/goal-review` | Multi-source goal progress evaluation | All platforms + all data sources |
+| `/weekly-report` | Cross-platform weekly operations report | All platforms + all data sources |
+| `/sync-state` | Multi-platform STATE.json synchronization | All configured |
 
 ### Getting started
 
@@ -118,24 +132,28 @@ Agent reads STRATEGY.md:
   Persona: "Budget-constrained SaaS marketer"
   USP: "AI reduces ad ops workload by 10h/week"
   Brand Voice: "Data-driven, no hype"
+  Data Sources: Google Ads, Meta Ads, Search Console, GA4
 
-Agent calls mureo tools:
-  → rsa_assets.audit     → 3 headlines rated LOW
-  → landing_page.analyze → LP highlights: free trial, ROI improvement
-  → search_terms.review  → "ad automation" has high CVR
+Agent discovers configured platforms from STATE.json:
+  → Google Ads + Meta Ads
 
-Agent (LLM) generates new copy:
-  "Cut Ad Ops Time by 60% with AI"        ← addresses Persona pain point
-  "Free Trial | Ad Automation Platform"    ← matches LP + high-CVR keyword
-  "Data-Driven Ad Optimization for Teams"  ← fits Brand Voice
+Agent calls tools across platforms and data sources:
+  → Creative audit on each ad platform → 3 underperforming assets
+  → Landing page analysis → LP highlights: free trial, ROI improvement
+  → Search Console top queries → "ad automation" has strong organic clicks
+  → GA4 LP engagement → high bounce rate on pricing page
 
-Agent calls mureo validation:
-  → RSA validator → character count OK, no prohibited expressions
+Agent (LLM) generates platform-appropriate copy:
+  Google Ads (search): "Cut Ad Ops Time by 60% with AI"  ← Persona pain point
+  Google Ads (search): "Free Trial | Ad Automation"       ← LP + organic keyword
+  Meta Ads (social):   "Stop drowning in ad reports..."   ← Brand Voice + social format
 
-Agent presents to you for approval:
-  "I suggest replacing 3 underperforming headlines. Here's why..."
+Agent calls validation tools for each platform.
 
-You approve → Agent calls google_ads.ads.update
+Agent presents recommendations grouped by platform for approval:
+  "I suggest replacing 3 Google Ads headlines and 2 Meta ads. Here's why..."
+
+You approve → Agent calls each platform's update tools.
 ```
 
 Commands use the strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) to tailor their behavior. See [skills/mureo-workflows/SKILL.md](skills/mureo-workflows/SKILL.md) for the full Operation Mode reference.
@@ -200,7 +218,7 @@ This installs 5 skills:
 | `mureo-meta-ads` | Meta Ads tool reference (77 tools, parameters, examples) |
 | `mureo-shared` | Authentication, security rules, output formatting |
 | `mureo-strategy` | STRATEGY.md / STATE.json format and usage guide |
-| `mureo-workflows` | Operation Mode matrix, KPI thresholds, command reference |
+| `mureo-workflows` | Orchestration paradigm, Operation Mode matrix, KPI thresholds, command reference |
 
 > **Note:** If you cloned the mureo repository and run Claude Code from that directory, commands and skills are automatically available without copying.
 
