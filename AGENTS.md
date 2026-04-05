@@ -99,6 +99,8 @@ mureo/
 │   └── sync-state.md        # Multi-platform STATE.json synchronization
 skills/mureo-workflows/      # Workflow skill reference
 │   └── SKILL.md             # Orchestration paradigm + Operation Mode reference
+skills/mureo-learning/       # Evidence-based decision framework
+│   └── SKILL.md             # Statistical thinking for marketing decisions
 docs/integrations.md         # Platform discovery + external MCP integration guide
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
 ├── auth_setup.py        # Interactive setup wizard (browser OAuth flow)

@@ -182,9 +182,22 @@ A JSON file tracking campaign state snapshots across platforms:
       "campaigns": [...]
     }
   },
-  "action_log": [...]
+  "action_log": [
+    {
+      "timestamp": "2026-04-01T10:30:00+09:00",
+      "action": "Added 15 negative keywords",
+      "platform": "google_ads",
+      "campaign_id": "12345",
+      "command": "/search-term-cleanup",
+      "summary": "Excluded informational queries",
+      "metrics_at_action": {"cpa": 5200, "conversions": 45, "clicks": 1200},
+      "observation_due": "2026-04-15"
+    }
+  ]
 }
 ```
+
+The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/mureo-learning/SKILL.md` for the decision framework.
 
 Use `mureo.context.state` to parse and write STATE.json programmatically.
 

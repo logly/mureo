@@ -34,11 +34,18 @@ Generate a weekly marketing operations report.
    - Recommend specific commands to run (`/rescue`, `/budget-rebalance`, `/creative-refresh`, `/goal-review`)
    - Suggest Operation Mode change if appropriate (e.g., "Goals on track — consider switching from TURNAROUND_RESCUE to EFFICIENCY_STABILIZE")
 
-9. **Present report** in a structured format suitable for sharing with stakeholders:
-   - Executive summary (2-3 sentences)
-   - Goal progress table
-   - Cross-platform performance comparison
-   - Key actions and their impact
-   - Recommendations for next week
+9. **Evidence pipeline**: Include an evidence assessment section:
+   - List actions with `observation_due` dates that passed this week — evaluate their outcomes by comparing `metrics_at_action` with current metrics
+   - List actions still in observation — note them as "pending, do not draw conclusions"
+   - Rate confidence in reported improvements: low (< 1 week data), medium (1 observation period), high (2+ consistent periods)
+   - Do NOT present pending observations as confirmed wins
 
-10. **Log to action_log** in STATE.json that a weekly report was generated, including the reporting period.
+10. **Present report** in a structured format suitable for sharing with stakeholders:
+    - Executive summary (2-3 sentences)
+    - Goal progress table
+    - Cross-platform performance comparison
+    - Key actions and their impact (with confidence level)
+    - Evidence pipeline summary
+    - Recommendations for next week
+
+11. **Log to action_log** in STATE.json that a weekly report was generated, including the reporting period.

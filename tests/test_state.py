@@ -422,6 +422,39 @@ class TestStateV2Models:
             entry.action = "something_else"  # type: ignore[misc]
 
     @pytest.mark.unit
+    def test_action_log_entry_with_metrics_and_observation(self) -> None:
+        """ActionLogEntry supports metrics_at_action and observation_due."""
+        entry = ActionLogEntry(
+            timestamp="2026-04-01T10:30:00+09:00",
+            action="Added 15 negative keywords",
+            platform="google_ads",
+            metrics_at_action={"cpa": 5200, "conversions": 45},
+            observation_due="2026-04-15",
+        )
+        assert entry.metrics_at_action == {"cpa": 5200, "conversions": 45}
+        assert entry.observation_due == "2026-04-15"
+
+    @pytest.mark.unit
+    def test_action_log_entry_metrics_defaults_to_none(self) -> None:
+        """New fields default to None for backwards compatibility."""
+        entry = ActionLogEntry(
+            timestamp="t", action="a", platform="p",
+        )
+        assert entry.metrics_at_action is None
+        assert entry.observation_due is None
+
+    @pytest.mark.unit
+    def test_action_log_entry_metrics_defensive_copy(self) -> None:
+        """metrics_at_action dict is defensively copied."""
+        original = {"cpa": 5200}
+        entry = ActionLogEntry(
+            timestamp="t", action="a", platform="p",
+            metrics_at_action=original,
+        )
+        original["cpa"] = 9999
+        assert entry.metrics_at_action["cpa"] == 5200
+
+    @pytest.mark.unit
     def test_platform_state_frozen(self) -> None:
         """PlatformState is immutable (frozen dataclass)."""
         ps = PlatformState(account_id="1234567890")
@@ -557,6 +590,68 @@ class TestParseStateV2:
         assert doc.action_log[1].campaign_id is None
         assert doc.action_log[1].summary is None
         assert doc.action_log[1].command is None
+        # New fields default to None when absent from JSON
+        assert doc.action_log[0].metrics_at_action is None
+        assert doc.action_log[0].observation_due is None
+
+    @pytest.mark.unit
+    def test_parse_v2_action_log_with_metrics(self) -> None:
+        """Parse action_log entries with metrics_at_action and observation_due."""
+        data = {
+            "version": "2",
+            "action_log": [
+                {
+                    "timestamp": "2026-04-01T10:30:00+09:00",
+                    "action": "Added 15 negative keywords",
+                    "platform": "google_ads",
+                    "campaign_id": "12345",
+                    "metrics_at_action": {"cpa": 5200, "conversions": 45},
+                    "observation_due": "2026-04-15",
+                },
+            ],
+            "campaigns": [],
+        }
+        doc = parse_state(json.dumps(data))
+        entry = doc.action_log[0]
+        assert entry.metrics_at_action == {"cpa": 5200, "conversions": 45}
+        assert entry.observation_due == "2026-04-15"
+
+    @pytest.mark.unit
+    def test_render_action_log_with_metrics_roundtrip(self) -> None:
+        """Render and re-parse action_log with metrics_at_action."""
+        doc = StateDocument(
+            version="2",
+            action_log=(
+                ActionLogEntry(
+                    timestamp="2026-04-01T10:30:00+09:00",
+                    action="budget change",
+                    platform="google_ads",
+                    metrics_at_action={"cpa": 5200, "cost": 234000},
+                    observation_due="2026-04-08",
+                ),
+            ),
+        )
+        rendered = render_state(doc)
+        reparsed = parse_state(rendered)
+        assert reparsed.action_log[0].metrics_at_action == {"cpa": 5200, "cost": 234000}
+        assert reparsed.action_log[0].observation_due == "2026-04-08"
+
+    @pytest.mark.unit
+    def test_render_action_log_omits_none_metrics(self) -> None:
+        """Render omits metrics_at_action and observation_due when None."""
+        doc = StateDocument(
+            version="2",
+            action_log=(
+                ActionLogEntry(
+                    timestamp="t", action="a", platform="p",
+                ),
+            ),
+        )
+        rendered = render_state(doc)
+        parsed_data = json.loads(rendered)
+        entry_dict = parsed_data["action_log"][0]
+        assert "metrics_at_action" not in entry_dict
+        assert "observation_due" not in entry_dict
 
     @pytest.mark.unit
     def test_parse_v2_empty_platforms_and_log(self) -> None:

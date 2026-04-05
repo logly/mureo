@@ -45,6 +45,10 @@ Analyze budget allocation and suggest rebalancing across all campaigns.
 
 13. **Ask for approval** before any changes.
 
-14. **Execute**: Use each platform's budget update tools to apply approved changes.
+14. **Check pending observations**: Before executing, check `action_log` for campaigns being modified. If a previous budget change is still within its observation window, warn about stacking changes.
 
-15. **Update STATE.json** with new budget values, notes, and log the rebalancing action to `action_log`.
+15. **Execute**: Use each platform's budget update tools to apply approved changes.
+
+16. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current cost, impressions, clicks, conversions, CPA, budget utilization) and `observation_due` (7 days from today for budget changes).
+
+17. **Update STATE.json** with new budget values, notes, and log the rebalancing action to `action_log`.

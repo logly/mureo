@@ -33,8 +33,12 @@ Review and clean up search terms and keywords across all platforms.
 
 8. **Ask for approval**: Let me select which recommendations to apply.
 
-9. **Execute**: Use each platform's keyword management tools to apply approved changes (add negative keywords, add positive keywords, adjust bids).
+9. **Check pending observations**: Before executing, check `action_log` for this campaign. If a previous action is still within its observation window, warn that stacking changes will make outcome evaluation difficult. Recommend waiting if possible.
 
-10. **Update STATE.json** with notes about the cleanup.
+10. **Execute**: Use each platform's keyword management tools to apply approved changes (add negative keywords, add positive keywords, adjust bids).
 
-IMPORTANT: Always explain WHY a term should be excluded/added, referencing the Persona or USP from STRATEGY.md.
+11. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current CPA, conversions, clicks, CTR, impressions, cost) and `observation_due` (14 days from today). This enables evidence-based evaluation later.
+
+12. **Update STATE.json** with notes about the cleanup.
+
+IMPORTANT: Always explain WHY a term should be excluded/added, referencing the Persona or USP from STRATEGY.md. Consult past action_log entries — if a similar cleanup was previously evaluated, reference whether it was effective.

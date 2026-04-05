@@ -33,8 +33,10 @@ Run an emergency performance rescue workflow for underperforming campaigns.
 
 9. **Execute approved actions**: Only after I approve each recommendation, execute the changes using each platform's update tools.
 
-10. **Update STATE.json**: Record all changes made in campaign notes with timestamps. Log all rescue actions to the `action_log` with platform, action type, and expected impact.
+10. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current CPA, conversions, clicks, cost, impressions) and `observation_due` (7 days for budget changes, 14 days for keyword/creative changes).
 
-11. **Summary**: List all changes made per platform with expected impact on Goal metrics.
+11. **Update STATE.json**: Record all changes made in campaign notes with timestamps. Log all rescue actions to the `action_log` with platform, action type, and expected impact.
 
-IMPORTANT: Never make changes without explicit approval. Present each action as a recommendation first.
+12. **Summary**: List all changes made per platform with expected impact on Goal metrics.
+
+IMPORTANT: Never make changes without explicit approval. Present each action as a recommendation first. Do NOT trigger rescue based on a single bad day — at least 7 consecutive days of critical metrics (>30% off target) before recommending rescue actions.

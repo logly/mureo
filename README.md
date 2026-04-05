@@ -210,7 +210,7 @@ Skills provide reference knowledge that Claude Code uses to make better decision
 cp -r mureo/skills/* ~/.claude/skills/
 ```
 
-This installs 5 skills:
+This installs 6 skills:
 
 | Skill | Purpose |
 |-------|---------|
@@ -219,6 +219,7 @@ This installs 5 skills:
 | `mureo-shared` | Authentication, security rules, output formatting |
 | `mureo-strategy` | STRATEGY.md / STATE.json format and usage guide |
 | `mureo-workflows` | Orchestration paradigm, Operation Mode matrix, KPI thresholds, command reference |
+| `mureo-learning` | Evidence-based marketing decision framework (observation windows, sample sizes, noise guards) |
 
 > **Note:** If you cloned the mureo repository and run Claude Code from that directory, commands and skills are automatically available without copying.
 

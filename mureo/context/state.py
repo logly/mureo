@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 import os
 import tempfile
@@ -70,6 +71,8 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         campaign_id=e.get("campaign_id"),
         summary=e.get("summary"),
         command=e.get("command"),
+        metrics_at_action=e.get("metrics_at_action"),
+        observation_due=e.get("observation_due"),
     )
 
 
@@ -139,6 +142,10 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["summary"] = e.summary
     if e.command is not None:
         result["command"] = e.command
+    if e.metrics_at_action is not None:
+        result["metrics_at_action"] = copy.deepcopy(e.metrics_at_action)
+    if e.observation_due is not None:
+        result["observation_due"] = e.observation_due
     return result
 
 

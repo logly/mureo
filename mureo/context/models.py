@@ -48,7 +48,13 @@ class CampaignSnapshot:
 
 @dataclass(frozen=True)
 class ActionLogEntry:
-    """Immutable record of a single action performed on a campaign."""
+    """Immutable record of a single action performed on a campaign.
+
+    metrics_at_action: Key metrics at the time of action (e.g., {"cpa": 5200, "conversions": 45}).
+        Used by the agent to evaluate the outcome of the action after the observation window.
+    observation_due: ISO 8601 date when the agent should evaluate the outcome (e.g., "2026-04-15").
+        Typical windows: budget changes 7 days, keyword/creative changes 14 days.
+    """
 
     timestamp: str
     action: str
@@ -56,6 +62,15 @@ class ActionLogEntry:
     campaign_id: str | None = None
     summary: str | None = None
     command: str | None = None
+    metrics_at_action: dict[str, Any] | None = None
+    observation_due: str | None = None
+
+    def __post_init__(self) -> None:
+        """Take defensive copy of mutable metrics_at_action dict."""
+        if self.metrics_at_action is not None:
+            object.__setattr__(
+                self, "metrics_at_action", copy.deepcopy(self.metrics_at_action)
+            )
 
 
 @dataclass(frozen=True)

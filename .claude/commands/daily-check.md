@@ -33,11 +33,16 @@ Run a daily health check on all marketing accounts using the strategy context.
    Goal: Organic clicks +20% -- Search Console: +12% IN PROGRESS
    ```
 
-9. **Report**: Summarize findings as:
-   - Healthy — no action needed
-   - Watch — minor issues to monitor
-   - Action needed — requires immediate attention
+9. **Evidence check**: Review `action_log` entries that have `observation_due` dates:
+   - For entries whose observation window has passed: collect current metrics for the same campaign, compare with `metrics_at_action`, and evaluate the outcome. Report findings with confidence level (see `mureo-learning` skill).
+   - For entries still within their observation window: note them as "pending observation" and do NOT recommend further changes to those campaigns.
+   - Do NOT attribute metric movements to specific actions without checking sample sizes and observation windows.
 
-   For each issue, suggest specific actions aligned with the current Operation Mode.
+10. **Report**: Summarize findings as:
+    - Healthy — no action needed
+    - Watch — minor issues to monitor
+    - Action needed — requires immediate attention
 
-10. **Update STATE.json**: Update campaign snapshots, add notes for flagged issues, and log this daily check to the `action_log` with a summary of findings.
+    For each issue, suggest specific actions aligned with the current Operation Mode. Do NOT recommend actions based on single-day fluctuations — at least 7 consecutive days of critical metrics (>30% off target) before suggesting rescue.
+
+11. **Update STATE.json**: Update campaign snapshots, add notes for flagged issues, and log this daily check to the `action_log` with a summary of findings.

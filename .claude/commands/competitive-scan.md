@@ -24,13 +24,15 @@ Scan the competitive landscape and suggest strategic responses across all channe
    - Are new competitors appearing?
    - Has the competitive landscape changed since STRATEGY.md was last updated?
 
-7. **Strategic recommendations**: Based on findings and USP, suggest responses across all channels:
+7. **Noise guard**: Look at trends over 4+ weeks, not week-to-week changes. A single week's impression share dip is not a competitive threat — it may be seasonality or auction noise. Only flag competitive changes that are consistent over multiple weeks.
+
+8. **Strategic recommendations**: Based on findings and USP, suggest responses across all channels:
    - Paid adjustments (bid, budget, targeting) per platform
    - Organic content gaps to address (from Search Console data)
    - Cross-channel coordination opportunities
 
-8. **Ask for my approval** before updating any files or making changes.
+9. **Ask for my approval** before updating any files or making changes.
 
-9. **Update STRATEGY.md** Market Context section if approved.
+10. **Update STRATEGY.md** Market Context section if approved.
 
-10. **Update STATE.json** with competitive insights in campaign notes.
+11. **Update STATE.json** with competitive insights in campaign notes.

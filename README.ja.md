@@ -210,7 +210,7 @@ cp mureo/.claude/commands/* ~/.claude/commands/
 cp -r mureo/skills/* ~/.claude/skills/
 ```
 
-これにより5つのスキルがインストールされます：
+これにより6つのスキルがインストールされます：
 
 | スキル | 用途 |
 |-------|------|
@@ -219,6 +219,7 @@ cp -r mureo/skills/* ~/.claude/skills/
 | `mureo-shared` | 認証、セキュリティルール、出力フォーマット |
 | `mureo-strategy` | STRATEGY.md / STATE.json のフォーマットと使い方 |
 | `mureo-workflows` | オーケストレーションパラダイム、運用モードマトリクス、KPI閾値、コマンドリファレンス |
+| `mureo-learning` | エビデンスベースのマーケティング判断フレームワーク（観察期間、サンプルサイズ、ノイズガード） |
 
 > **注:** mureoリポジトリをクローンしたディレクトリ内でClaude Codeを実行する場合、コピーなしで自動的にコマンドとスキルが利用可能です。
 

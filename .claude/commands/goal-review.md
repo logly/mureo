@@ -33,13 +33,19 @@ Review progress toward all marketing goals across all platforms.
    - At risk — current value is within 20% of target but trajectory is concerning
    - Off track — current value is more than 20% away from target pace
 
-6. **Recommend actions** for off-track Goals:
+6. **Consult evidence**: Before recommending actions, check `action_log` for past actions with evaluated outcomes:
+   - Reference validated findings when proposing similar actions ("Negative keyword cleanup has consistently improved CPA by 10-20% on this account")
+   - Flag previously rejected actions ("Device bid adjustments had no significant impact in the last 2 attempts")
+   - Do NOT attribute goal progress to specific actions without checking observation windows and sample sizes
+
+7. **Recommend actions** for off-track Goals:
    - Tie recommendations to the specific platform(s) where the Goal is off-track
    - If cross-platform rebalancing could help, suggest it
    - Suggest specific commands to run (`/rescue`, `/budget-rebalance`, `/creative-refresh`)
    - Prioritize recommendations by Goal priority (P0 > P1 > P2)
+   - Prefer actions backed by past validated evidence over unproven strategies
 
-7. **Update STATE.json**:
+8. **Update STATE.json**:
    - Log the review to `action_log` with a summary of Goal statuses
    - Update Current values in STRATEGY.md Goal sections if approved
 

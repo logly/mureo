@@ -32,8 +32,12 @@ Refresh ad creatives based on strategy context and performance data across all p
 
 9. **Ask for approval** before creating/updating any ads.
 
-10. **Execute approved changes**: Use each platform's ad creation/update tools to apply changes.
+10. **Check pending observations**: Before executing, check `action_log` for campaigns being modified. If a previous creative change is still within its observation window, warn about stacking changes.
 
-11. **Update STATE.json** with notes.
+11. **Execute approved changes**: Use each platform's ad creation/update tools to apply changes.
 
-IMPORTANT: Every headline/description must have a clear rationale tied to Persona, USP, or LP content. Never generate generic ad copy.
+12. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current CTR, CPA, conversions, impressions, clicks) and `observation_due` (14 days from today).
+
+13. **Update STATE.json** with notes.
+
+IMPORTANT: Every headline/description must have a clear rationale tied to Persona, USP, or LP content. Never generate generic ad copy. Consult past action_log — if previous creative refreshes have evaluated outcomes, reference what worked.
