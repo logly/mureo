@@ -104,6 +104,18 @@ def auth_setup() -> None:
 
     setup_mcp_config()
 
+    # Credential guard hook
+    from mureo.auth_setup import install_credential_guard
+
+    result = install_credential_guard()
+    if result is not None:
+        typer.echo(f"Credential guard installed: {result}")
+        typer.echo(
+            "  AI agents are now blocked from reading ~/.mureo/credentials.json"
+        )
+    else:
+        typer.echo("Credential guard already installed.")
+
     typer.echo("\nSetup complete.")
 
 

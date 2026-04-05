@@ -672,6 +672,108 @@ def test_install_mcp_config_merges_existing(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# install_credential_guard テスト
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_install_credential_guard_new(tmp_path: Path) -> None:
+    """Credential guard hooks are added to empty settings."""
+    from mureo.auth_setup import install_credential_guard
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings_path = claude_dir / "settings.json"
+    settings_path.write_text("{}")
+
+    with patch("mureo.auth_setup.Path.home", return_value=tmp_path):
+        result = install_credential_guard()
+
+    assert result is not None
+    settings = json.loads(result.read_text(encoding="utf-8"))
+    pre_tool_use = settings["hooks"]["PreToolUse"]
+    assert len(pre_tool_use) == 2
+    assert pre_tool_use[0]["matcher"] == "Read"
+    assert pre_tool_use[1]["matcher"] == "Bash"
+    assert "[mureo-credential-guard]" in pre_tool_use[0]["hooks"][0]["command"]
+
+
+@pytest.mark.unit
+def test_install_credential_guard_preserves_existing_hooks(tmp_path: Path) -> None:
+    """Existing hooks are preserved when adding credential guard."""
+    from mureo.auth_setup import install_credential_guard
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings_path = claude_dir / "settings.json"
+    existing = {
+        "hooks": {
+            "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "echo done"}]}],
+            "PreToolUse": [{"matcher": "Write", "hooks": [{"type": "command", "command": "echo check"}]}],
+        },
+        "someOtherSetting": True,
+    }
+    settings_path.write_text(json.dumps(existing))
+
+    with patch("mureo.auth_setup.Path.home", return_value=tmp_path):
+        result = install_credential_guard()
+
+    assert result is not None
+    settings = json.loads(result.read_text(encoding="utf-8"))
+    # Existing hooks preserved
+    assert "Stop" in settings["hooks"]
+    assert settings["someOtherSetting"] is True
+    # Existing PreToolUse hook preserved + 2 mureo hooks appended
+    pre_tool_use = settings["hooks"]["PreToolUse"]
+    assert len(pre_tool_use) == 3
+    assert pre_tool_use[0]["matcher"] == "Write"  # original
+    assert pre_tool_use[1]["matcher"] == "Read"    # mureo
+    assert pre_tool_use[2]["matcher"] == "Bash"    # mureo
+
+
+@pytest.mark.unit
+def test_install_credential_guard_skip_if_already_installed(tmp_path: Path) -> None:
+    """Skip if mureo credential guard is already installed."""
+    from mureo.auth_setup import install_credential_guard
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings_path = claude_dir / "settings.json"
+
+    # Install once
+    settings_path.write_text("{}")
+    with patch("mureo.auth_setup.Path.home", return_value=tmp_path):
+        install_credential_guard()
+
+    # Install again — should skip
+    with patch("mureo.auth_setup.Path.home", return_value=tmp_path):
+        result = install_credential_guard()
+
+    assert result is None
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    # Still only 2 mureo hooks (no duplicates)
+    assert len(settings["hooks"]["PreToolUse"]) == 2
+
+
+@pytest.mark.unit
+def test_install_credential_guard_skip_on_corrupt_json(tmp_path: Path) -> None:
+    """Skip gracefully if settings.json is corrupt."""
+    from mureo.auth_setup import install_credential_guard
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings_path = claude_dir / "settings.json"
+    settings_path.write_text("{invalid json")
+
+    with patch("mureo.auth_setup.Path.home", return_value=tmp_path):
+        result = install_credential_guard()
+
+    assert result is None  # skipped, not crashed
+    # File is untouched
+    assert settings_path.read_text() == "{invalid json"
+
+
+# ---------------------------------------------------------------------------
 # _select_account テスト
 # ---------------------------------------------------------------------------
 

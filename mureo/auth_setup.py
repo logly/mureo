@@ -413,6 +413,101 @@ def setup_mcp_config() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Credential guard hook
+# ---------------------------------------------------------------------------
+
+# Unique identifier to detect mureo-installed hooks
+_MUREO_HOOK_TAG = "[mureo-credential-guard]"
+
+_CREDENTIAL_GUARD_HOOK_READ = {
+    "matcher": "Read",
+    "hooks": [
+        {
+            "type": "command",
+            "command": (
+                f"python3 -c \""
+                f"import sys,json; "
+                f"d=json.loads(sys.stdin.read()); "
+                f"p=d.get('tool_input',{{}}).get('file_path',''); "
+                f"sys.exit(1) if 'credentials' in p and '.mureo' in p else sys.exit(0)"
+                f"\" # {_MUREO_HOOK_TAG}"
+            ),
+        }
+    ],
+}
+
+_CREDENTIAL_GUARD_HOOK_BASH = {
+    "matcher": "Bash",
+    "hooks": [
+        {
+            "type": "command",
+            "command": (
+                f"python3 -c \""
+                f"import sys,json; "
+                f"d=json.loads(sys.stdin.read()); "
+                f"c=d.get('tool_input',{{}}).get('command',''); "
+                f"sys.exit(1) if '.mureo/credentials' in c or "
+                f"('.mureo' in c and 'credentials' in c) else sys.exit(0)"
+                f"\" # {_MUREO_HOOK_TAG}"
+            ),
+        }
+    ],
+}
+
+
+def install_credential_guard() -> Path | None:
+    """Add PreToolUse hooks to block AI agents from reading credentials.
+
+    Safely merges into ~/.claude/settings.json without overwriting
+    existing hooks. Uses a tag comment to detect previously installed
+    mureo hooks and avoid duplicates.
+
+    Returns:
+        Path to settings file if hooks were added. None if skipped
+        (already installed or file could not be parsed).
+    """
+    settings_path = Path.home() / ".claude" / "settings.json"
+
+    # Load existing settings (never overwrite on failure)
+    existing: dict[str, Any] = {}
+    if settings_path.exists():
+        try:
+            existing = json.loads(settings_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            logger.warning(
+                "Could not parse %s — skipping credential guard installation",
+                settings_path,
+            )
+            return None
+
+    # Get or create hooks.PreToolUse
+    hooks = existing.setdefault("hooks", {})
+    pre_tool_use: list[dict[str, Any]] = hooks.setdefault("PreToolUse", [])
+
+    # Check if mureo hooks are already installed (by tag)
+    for entry in pre_tool_use:
+        for h in entry.get("hooks", []):
+            cmd = h.get("command", "")
+            if _MUREO_HOOK_TAG in cmd:
+                logger.info("Credential guard already installed: %s", settings_path)
+                return None
+
+    # Append mureo hooks (do NOT replace existing hooks)
+    pre_tool_use.append(_CREDENTIAL_GUARD_HOOK_READ)
+    pre_tool_use.append(_CREDENTIAL_GUARD_HOOK_BASH)
+
+    # Write back (preserve all existing content)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(
+        json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    logger.info("Credential guard hooks installed: %s", settings_path)
+    return settings_path
+
+
+# ---------------------------------------------------------------------------
 # credentials.json saving
 # ---------------------------------------------------------------------------
 
