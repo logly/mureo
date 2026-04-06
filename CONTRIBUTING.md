@@ -15,8 +15,8 @@ Thank you for your interest in contributing to mureo. This guide covers the deve
 git clone https://github.com/yourorg/mureo-core.git
 cd mureo-core
 
-# Install with all extras (dev tools, CLI, MCP server)
-pip install -e ".[dev,cli,mcp]"
+# Install with dev tools
+pip install -e ".[dev]"
 ```
 
 ### Verify Installation

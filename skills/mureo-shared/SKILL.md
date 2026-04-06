@@ -113,7 +113,7 @@ Add to your MCP client configuration:
 }
 ```
 
-The MCP server exposes **42 tools** (28 Google Ads + 14 Meta Ads) over stdio.
+The MCP server exposes **169 tools** (82 Google Ads + 77 Meta Ads + 10 Search Console) over stdio.
 
 ### Verify MCP Connection
 
