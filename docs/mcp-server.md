@@ -5,8 +5,7 @@ mureo exposes 169 advertising and SEO operation tools via the [Model Context Pro
 ## Starting the Server
 
 ```bash
-# Requires the mcp extra
-pip install "mureo[mcp]"
+pip install mureo
 
 # Start the MCP server
 python -m mureo.mcp

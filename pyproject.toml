@@ -30,17 +30,13 @@ dependencies = [
     "beautifulsoup4>=4.12,<5",
     "lxml>=5.0,<6",
     "pydantic>=2.5,<3",
-]
-
-[project.optional-dependencies]
-cli = [
     "typer>=0.12,<1",
     "rich>=13.0,<14",
     "simple-term-menu>=1.6,<2",
-]
-mcp = [
     "mcp>=1.0,<2",
 ]
+
+[project.optional-dependencies]
 dev = [
     "pytest>=7.4,<9",
     "pytest-asyncio>=0.23,<1",

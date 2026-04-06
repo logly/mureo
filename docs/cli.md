@@ -5,7 +5,7 @@ mureo provides a command-line interface for setup, authentication, and environme
 ## Installation
 
 ```bash
-pip install "mureo[cli,mcp]"
+pip install mureo
 ```
 
 ## Command Structure

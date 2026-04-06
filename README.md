@@ -163,7 +163,7 @@ Commands use the strategy context (Operation Mode, Persona, USP, Brand Voice, Ma
 ### Claude Code (recommended)
 
 ```bash
-pip install "mureo[cli,mcp]"
+pip install mureo
 mureo setup claude-code
 ```
 
@@ -179,7 +179,7 @@ After setup, run `/onboard` in Claude Code to get started.
 ### Cursor
 
 ```bash
-pip install "mureo[cli,mcp]"
+pip install mureo
 mureo setup cursor
 ```
 
@@ -188,7 +188,7 @@ Cursor supports MCP tools (169 tools) but does not support workflow commands or 
 ### CLI only (authentication management)
 
 ```bash
-pip install "mureo[cli]"
+pip install mureo
 mureo auth setup
 mureo auth status
 ```
@@ -797,7 +797,7 @@ mureo/
 
 ```bash
 git clone https://github.com/logly/mureo.git && cd mureo
-pip install -e ".[dev,cli,mcp]"
+pip install -e ".[dev]"
 pytest tests/ -v                              # run tests
 pytest --cov=mureo --cov-report=term-missing  # with coverage
 ruff check mureo/ && black mureo/ && mypy mureo/  # lint & format

@@ -2,7 +2,7 @@ Guide me through setting up mureo for a new marketing account.
 
 ## Steps
 
-1. **Check installation**: Verify mureo is installed by running `mureo --help`. If not found, guide the user to run `pip install "mureo[cli,mcp]"`.
+1. **Check installation**: Verify mureo is installed by running `mureo --help`. If not found, guide the user to run `pip install mureo`.
 
 2. **Check authentication**: Run `mureo auth status` to verify credentials are configured. If no credentials are found, run `mureo auth setup` to walk through Google Ads and/or Meta Ads OAuth authentication. This step is interactive — it requires the user to enter tokens and authenticate in a browser.
 

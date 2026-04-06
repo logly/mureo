@@ -14,7 +14,7 @@ Designed for AI agents — no database, no LLM SDK, no web framework.
 ## Build & Test
 
 ```bash
-pip install -e ".[dev,cli,mcp]"
+pip install -e ".[dev]"
 pytest tests/ -v
 pytest tests/ --cov=mureo --cov-report=term-missing
 ```

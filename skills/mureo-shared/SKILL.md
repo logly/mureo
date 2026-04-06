@@ -28,25 +28,15 @@ All three interfaces share the same authentication, security rules, and output f
 ## Installation
 
 ```bash
-# Core library
 pip install mureo
-
-# With CLI support
-pip install "mureo[cli]"
-
-# With MCP server support
-pip install "mureo[mcp]"
-
-# Everything
-pip install "mureo[cli,mcp]"
 ```
 
-## Authentication Setup
+## Setup
 
-### Interactive Setup (Recommended)
+### Claude Code (Recommended)
 
 ```bash
-mureo auth setup
+mureo setup claude-code
 ```
 
 This launches a wizard that:
