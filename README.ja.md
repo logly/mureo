@@ -185,12 +185,12 @@ mureo setup cursor
 
 CursorはMCPツール（169ツール）をサポートしますが、ワークフローコマンドとスキルには対応していません。
 
-### CLIのみ
+### CLIのみ（認証管理）
 
 ```bash
 pip install "mureo[cli]"
 mureo auth setup
-mureo google-ads campaigns-list --customer-id 1234567890
+mureo auth status
 ```
 
 ### インストール内容の比較
@@ -313,9 +313,11 @@ mureo auth check-meta
 ## CLI
 
 ```bash
-mureo google-ads campaigns-list --customer-id 1234567890
-mureo meta-ads campaigns-list --account-id act_1234567890
-mureo auth setup   # 対話型OAuthウィザード
+mureo setup claude-code    # Claude Codeのワンコマンドセットアップ
+mureo setup cursor         # Cursorのセットアップ
+mureo auth status          # 認証状態の確認
+mureo auth check-google    # Google広告の認証確認
+mureo auth check-meta      # Meta広告の認証確認
 ```
 
 ## 戦略コンテキスト

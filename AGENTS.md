@@ -74,12 +74,10 @@ mureo/
 │   ├── _handlers_meta_ads_other.py        # Other handlers
 │   ├── tools_search_console.py            # 10 Search Console tool definitions
 │   └── _handlers_search_console.py        # Search Console handlers
-├── cli/                 # Typer CLI wrapper
+├── cli/                 # Typer CLI (setup + auth only; ad operations are via MCP)
 │   ├── main.py          # CLI entry point (`mureo` command)
 │   ├── setup_cmd.py     # `mureo setup claude-code` / `mureo setup cursor`
-│   ├── google_ads.py    # `mureo google-ads` subcommands
-│   ├── meta_ads.py      # `mureo meta-ads` subcommands
-│   └── auth_cmd.py      # `mureo auth` subcommands
+│   └── auth_cmd.py      # `mureo auth setup` / `status` / `check-*`
 ├── context/             # File-based strategy context (no DB)
 │   ├── strategy.py      # STRATEGY.md parser/writer
 │   ├── state.py         # STATE.json parser/writer

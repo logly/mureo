@@ -103,11 +103,12 @@ mureo auth setup
 ## Using mureo via CLI
 
 ```bash
-mureo google-ads campaigns-list --customer-id 1234567890
-mureo google-ads performance-report --customer-id 1234567890 --days 7
-mureo meta-ads campaigns-list --account-id act_123456
-mureo meta-ads insights-report --account-id act_123456 --days 7
+mureo auth status          # Check authentication status
+mureo auth check-google    # Verify Google Ads credentials
+mureo auth check-meta      # Verify Meta Ads credentials
 ```
+
+Ad platform operations are available through MCP tools (169 tools), not the CLI.
 
 ## Output Format
 

@@ -102,12 +102,10 @@ mureo/
 │   ├── strategy.py          # STRATEGY.md parser / renderer
 │   ├── state.py             # STATE.json parser / renderer
 │   └── errors.py            # Context-specific exceptions
-├── cli/                     # Typer CLI commands
+├── cli/                     # Typer CLI (setup + auth only; ad operations are via MCP)
 │   ├── main.py              # Entry point (mureo command)
 │   ├── setup_cmd.py         # mureo setup claude-code / cursor
-│   ├── auth_cmd.py          # mureo auth *
-│   ├── google_ads.py        # mureo google-ads *
-│   └── meta_ads.py          # mureo meta-ads *
+│   └── auth_cmd.py          # mureo auth setup / status / check-*
 └── mcp/                     # MCP server (169 tools)
     ├── __main__.py                        # python -m mureo.mcp entry point
     ├── server.py                          # MCP server setup (stdio transport)

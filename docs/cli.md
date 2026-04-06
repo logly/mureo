@@ -1,15 +1,12 @@
 # CLI Guide
 
-mureo provides a command-line interface for interacting with Google Ads and Meta Ads accounts directly from the terminal.
+mureo provides a command-line interface for setup, authentication, and environment configuration. Ad platform operations are handled through MCP tools (169 tools) used by AI agents, not through the CLI.
 
 ## Installation
 
 ```bash
-# CLI requires the cli extra
-pip install "mureo[cli]"
+pip install "mureo[cli,mcp]"
 ```
-
-This installs [Typer](https://typer.tiangolo.com/) and [Rich](https://rich.readthedocs.io/) as additional dependencies.
 
 ## Command Structure
 
@@ -17,15 +14,41 @@ This installs [Typer](https://typer.tiangolo.com/) and [Rich](https://rich.readt
 mureo <subcommand-group> <command> [options]
 ```
 
-Subcommand groups:
-
 | Group | Description |
 |-------|-------------|
-| `google-ads` | Google Ads operations |
-| `meta-ads` | Meta Ads operations |
+| `setup` | Environment setup (Claude Code, Cursor) |
 | `auth` | Authentication management |
 
-Run `mureo --help` to see all available groups. Run `mureo <group> --help` to see commands within a group.
+Run `mureo --help` to see all available groups.
+
+## Setup Commands
+
+### Claude Code (recommended)
+
+```bash
+mureo setup claude-code
+```
+
+One-command setup that handles:
+1. Google Ads / Meta Ads authentication (OAuth)
+2. MCP server configuration (`~/.claude/settings.json`)
+3. Credential guard (blocks AI agents from reading secrets)
+4. 10 workflow commands (`~/.claude/commands/`)
+5. 6 skills (`~/.claude/skills/`)
+
+Use `--skip-auth` to install commands, skills, MCP config, and credential guard without running OAuth:
+
+```bash
+mureo setup claude-code --skip-auth
+```
+
+### Cursor
+
+```bash
+mureo setup cursor
+```
+
+Sets up authentication and MCP configuration for Cursor. Cursor does not support workflow commands or skills.
 
 ## Authentication Commands
 
@@ -39,139 +62,40 @@ mureo auth check-google
 # Check Meta Ads credentials (masked output)
 mureo auth check-meta
 
-# Interactive setup wizard (OAuth flow + MCP config placement)
+# Interactive authentication wizard (OAuth flow)
 mureo auth setup
 ```
 
-The `mureo auth setup` wizard walks you through:
+`mureo auth setup` is also called as part of `mureo setup claude-code`. It walks you through:
 
 1. Google Ads OAuth setup (optional) -- opens a browser for OAuth consent and saves the refresh token.
 2. Meta Ads token setup (optional) -- prompts for access token, app ID, and app secret.
-3. MCP configuration placement -- offers to write the MCP server config to either `~/.claude/settings.json` (global) or `.mcp.json` (project-level).
+3. MCP configuration placement.
 
-See [authentication.md](authentication.md) for details on setting up credentials.
-
-## Google Ads Commands
-
-All Google Ads commands require `--customer-id` (your 10-digit Google Ads customer ID).
-
-### List Campaigns
-
-```bash
-mureo google-ads campaigns-list --customer-id 1234567890
-```
-
-### Get Campaign Details
-
-```bash
-mureo google-ads campaigns-get --customer-id 1234567890 --campaign-id 111222333
-```
-
-### List Ads
-
-```bash
-mureo google-ads ads-list --customer-id 1234567890 --ad-group-id 444555666
-```
-
-### List Keywords
-
-```bash
-mureo google-ads keywords-list --customer-id 1234567890 --ad-group-id 444555666
-```
-
-### Get Campaign Budget
-
-```bash
-mureo google-ads budget-get --customer-id 1234567890 --campaign-id 111222333
-```
-
-### Performance Report
-
-```bash
-# Default: last 7 days
-mureo google-ads performance-report --customer-id 1234567890
-
-# Custom period
-mureo google-ads performance-report --customer-id 1234567890 --days 30
-```
-
-## Meta Ads Commands
-
-All Meta Ads commands require `--account-id` (your Meta Ads account ID in `act_XXXX` format).
-
-### List Campaigns
-
-```bash
-mureo meta-ads campaigns-list --account-id act_1234567890
-```
-
-### Get Campaign Details
-
-```bash
-mureo meta-ads campaigns-get --account-id act_1234567890 --campaign-id 23851234567890
-```
-
-### List Ad Sets
-
-```bash
-mureo meta-ads ad-sets-list --account-id act_1234567890
-```
-
-### List Ads
-
-```bash
-mureo meta-ads ads-list --account-id act_1234567890
-```
-
-### Insights Report
-
-```bash
-# Default: last 7 days
-mureo meta-ads insights-report --account-id act_1234567890
-
-# Custom period (1 = yesterday, 7 = last 7 days, 30 = last 30 days)
-mureo meta-ads insights-report --account-id act_1234567890 --days 30
-```
+See [authentication.md](authentication.md) for details on credentials.
 
 ## Output Format
 
-All commands output JSON to stdout. This makes it easy to pipe results to other tools:
+Authentication check commands output JSON to stdout:
 
 ```bash
-# Pretty-print with jq
-mureo google-ads campaigns-list --customer-id 1234567890 | jq .
-
-# Extract campaign names
-mureo google-ads campaigns-list --customer-id 1234567890 | jq '.[].name'
-
-# Save to file
-mureo meta-ads insights-report --account-id act_1234567890 > report.json
+mureo auth check-google | jq .
 ```
-
-Example output:
 
 ```json
-[
-  {
-    "id": "111222333",
-    "name": "Brand - Search",
-    "status": "ENABLED",
-    "bidding_strategy_type": "TARGET_CPA",
-    "budget": {
-      "amount_micros": 50000000,
-      "delivery_method": "STANDARD"
-    }
-  }
-]
+{
+  "developer_token": "***************abcd",
+  "client_id": "123456789.apps.googleusercontent.com",
+  "client_secret": "***************wxyz",
+  "refresh_token": "***************efgh",
+  "login_customer_id": "1234567890"
+}
 ```
 
-## Error Handling
+Secrets are masked, showing only the last 4 characters.
 
-If credentials are missing, the CLI prints an error to stderr and exits with code 1:
+## Ad Platform Operations
 
-```bash
-$ mureo google-ads campaigns-list --customer-id 1234567890
-Error: Google Ads authentication credentials not found
-```
+Ad platform operations (listing campaigns, creating ads, analyzing performance, etc.) are available through **169 MCP tools**, not the CLI. AI agents (Claude Code, Cursor) call these tools directly.
 
-API errors are propagated as runtime exceptions with a descriptive message.
+See [mcp-server.md](mcp-server.md) for the full tool reference.
