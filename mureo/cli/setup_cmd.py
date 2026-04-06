@@ -88,7 +88,7 @@ def install_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     return count, dest
 
 
-@setup_app.command("claude-code")
+@setup_app.command("claude-code")  # type: ignore[untyped-decorator, unused-ignore]
 def setup_claude_code() -> None:
     """One-command setup for Claude Code users.
 
@@ -158,7 +158,7 @@ def setup_claude_code() -> None:
     typer.echo("Run /onboard in Claude Code to get started.")
 
 
-@setup_app.command("cursor")
+@setup_app.command("cursor")  # type: ignore[untyped-decorator, unused-ignore]
 def setup_cursor() -> None:
     """Setup for Cursor users (MCP configuration only).
 
