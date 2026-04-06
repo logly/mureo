@@ -160,57 +160,50 @@ Commands use the strategy context (Operation Mode, Persona, USP, Brand Voice, Ma
 
 ## Quick Start
 
-```bash
-pip install mureo
+### Claude Code (recommended)
 
-# Interactive setup wizard (OAuth + MCP config)
+```bash
+pip install "mureo[cli,mcp]"
+mureo setup claude-code
+```
+
+This single command handles everything:
+1. Google Ads / Meta Ads authentication (OAuth)
+2. MCP server configuration for Claude Code
+3. Credential guard (blocks AI agents from reading secrets)
+4. 10 workflow commands (`/daily-check`, `/rescue`, etc.)
+5. 6 skills (tool references, strategy guide, evidence-based decisions)
+
+After setup, run `/onboard` in Claude Code to get started.
+
+### Cursor
+
+```bash
+pip install "mureo[cli,mcp]"
+mureo setup cursor
+```
+
+Cursor supports MCP tools (169 tools) but does not support workflow commands or skills.
+
+### CLI only
+
+```bash
+pip install "mureo[cli]"
 mureo auth setup
-
-# MCP server (for Claude Code / Cursor)
-python -m mureo.mcp
-
-# CLI
 mureo google-ads campaigns-list --customer-id 1234567890
-mureo meta-ads campaigns-list --account-id act_1234567890
 ```
 
-Install only the pieces you need:
+### What gets installed
 
-```bash
-pip install mureo            # core (API clients only)
-pip install "mureo[cli]"     # + CLI (typer, rich)
-pip install "mureo[mcp]"     # + MCP server
-pip install "mureo[cli,mcp]" # everything
-```
+| Component | `mureo setup claude-code` | `mureo setup cursor` | `mureo auth setup` |
+|-----------|:---:|:---:|:---:|
+| Authentication (~/.mureo/credentials.json) | Yes | Yes | Yes |
+| MCP configuration | Yes | Yes | Yes |
+| Credential guard (PreToolUse hook) | Yes | N/A | Yes |
+| 10 workflow commands (~/.claude/commands/) | Yes | N/A | No |
+| 6 skills (~/.claude/skills/) | Yes | N/A | No |
 
-## Installing Commands & Skills
-
-`pip install mureo` installs the Python package (API clients, MCP server, CLI), but **workflow commands and skills are not included** — they are configuration files for Claude Code. To use them, clone the repository and copy them to your environment.
-
-```bash
-git clone https://github.com/logly/mureo.git
-```
-
-### Workflow commands
-
-Copy to the **user level** so they are available in all projects:
-
-```bash
-mkdir -p ~/.claude/commands
-cp mureo/.claude/commands/* ~/.claude/commands/
-```
-
-After copying, `/onboard`, `/daily-check`, `/rescue`, etc. will appear in any Claude Code session.
-
-### Skills
-
-Skills provide reference knowledge that Claude Code uses to make better decisions. Copy to the **user level**:
-
-```bash
-cp -r mureo/skills/* ~/.claude/skills/
-```
-
-This installs 6 skills:
+### Skills reference
 
 | Skill | Purpose |
 |-------|---------|
@@ -220,8 +213,6 @@ This installs 6 skills:
 | `mureo-strategy` | STRATEGY.md / STATE.json format and usage guide |
 | `mureo-workflows` | Orchestration paradigm, Operation Mode matrix, KPI thresholds, command reference |
 | `mureo-learning` | Evidence-based marketing decision framework (observation windows, sample sizes, noise guards) |
-
-> **Note:** If you cloned the mureo repository and run Claude Code from that directory, commands and skills are automatically available without copying.
 
 ### Connecting Additional MCP Servers
 

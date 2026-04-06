@@ -11,6 +11,7 @@ import typer
 from mureo.cli.auth_cmd import auth_app
 from mureo.cli.google_ads import google_ads_app
 from mureo.cli.meta_ads import meta_ads_app
+from mureo.cli.setup_cmd import setup_app
 
 app = typer.Typer(
     name="mureo",
@@ -21,6 +22,7 @@ app = typer.Typer(
 app.add_typer(google_ads_app)
 app.add_typer(meta_ads_app)
 app.add_typer(auth_app)
+app.add_typer(setup_app)
 
 if __name__ == "__main__":
     app()

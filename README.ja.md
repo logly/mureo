@@ -160,57 +160,50 @@
 
 ## クイックスタート
 
-```bash
-pip install mureo
+### Claude Code（推奨）
 
-# 対話型セットアップウィザード（OAuth + MCP設定）
+```bash
+pip install "mureo[cli,mcp]"
+mureo setup claude-code
+```
+
+このコマンド1つで全てが完了します：
+1. Google広告 / Meta広告の認証（OAuth）
+2. Claude Code用MCP設定
+3. 認証情報ガード（AIエージェントによるシークレット読み取りをブロック）
+4. 10個のワークフローコマンド（`/daily-check`、`/rescue` など）
+5. 6個のスキル（ツールリファレンス、戦略ガイド、エビデンスベース判断）
+
+セットアップ後、Claude Codeで `/onboard` を実行して開始します。
+
+### Cursor
+
+```bash
+pip install "mureo[cli,mcp]"
+mureo setup cursor
+```
+
+CursorはMCPツール（169ツール）をサポートしますが、ワークフローコマンドとスキルには対応していません。
+
+### CLIのみ
+
+```bash
+pip install "mureo[cli]"
 mureo auth setup
-
-# MCPサーバー（Claude Code / Cursor向け）
-python -m mureo.mcp
-
-# CLI
 mureo google-ads campaigns-list --customer-id 1234567890
-mureo meta-ads campaigns-list --account-id act_1234567890
 ```
 
-必要な機能だけインストール可能です：
+### インストール内容の比較
 
-```bash
-pip install mureo            # コアのみ（APIクライアント）
-pip install "mureo[cli]"     # + CLI (typer, rich)
-pip install "mureo[mcp]"     # + MCPサーバー
-pip install "mureo[cli,mcp]" # すべて
-```
+| コンポーネント | `mureo setup claude-code` | `mureo setup cursor` | `mureo auth setup` |
+|-------------|:---:|:---:|:---:|
+| 認証（~/.mureo/credentials.json） | Yes | Yes | Yes |
+| MCP設定 | Yes | Yes | Yes |
+| 認証情報ガード（PreToolUseフック） | Yes | N/A | Yes |
+| 10ワークフローコマンド（~/.claude/commands/） | Yes | N/A | No |
+| 6スキル（~/.claude/skills/） | Yes | N/A | No |
 
-## コマンドとスキルのインストール
-
-`pip install mureo` ではPythonパッケージ（APIクライアント、MCPサーバー、CLI）のみがインストールされますが、**ワークフローコマンドとスキルは含まれません** — これらはClaude Code用の設定ファイルです。使用するにはリポジトリをクローンして環境にコピーしてください。
-
-```bash
-git clone https://github.com/logly/mureo.git
-```
-
-### ワークフローコマンド
-
-全プロジェクトで利用できるよう **ユーザーレベル** にコピーします：
-
-```bash
-mkdir -p ~/.claude/commands
-cp mureo/.claude/commands/* ~/.claude/commands/
-```
-
-コピー後は、任意のClaude Codeセッションで `/onboard`、`/daily-check`、`/rescue` などが利用できます。
-
-### スキル
-
-スキルはClaude Codeがより良い判断をするためのリファレンス知識です。**ユーザーレベル** にコピーします：
-
-```bash
-cp -r mureo/skills/* ~/.claude/skills/
-```
-
-これにより6つのスキルがインストールされます：
+### スキル一覧
 
 | スキル | 用途 |
 |-------|------|
@@ -220,8 +213,6 @@ cp -r mureo/skills/* ~/.claude/skills/
 | `mureo-strategy` | STRATEGY.md / STATE.json のフォーマットと使い方 |
 | `mureo-workflows` | オーケストレーションパラダイム、運用モードマトリクス、KPI閾値、コマンドリファレンス |
 | `mureo-learning` | エビデンスベースのマーケティング判断フレームワーク（観察期間、サンプルサイズ、ノイズガード） |
-
-> **注:** mureoリポジトリをクローンしたディレクトリ内でClaude Codeを実行する場合、コピーなしで自動的にコマンドとスキルが利用可能です。
 
 ### 追加のMCPサーバー接続
 

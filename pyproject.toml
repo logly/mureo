@@ -64,6 +64,10 @@ Changelog = "https://github.com/logly/mureo/blob/main/CHANGELOG.md"
 [tool.hatch.build.targets.wheel]
 packages = ["mureo"]
 
+[tool.hatch.build.targets.wheel.force-include]
+".claude/commands" = "mureo/_data/commands"
+"skills" = "mureo/_data/skills"
+
 [tool.black]
 line-length = 88
 target-version = ["py310"]
