@@ -76,6 +76,7 @@ mureo/
 │   └── _handlers_search_console.py        # Search Console handlers
 ├── cli/                 # Typer CLI wrapper
 │   ├── main.py          # CLI entry point (`mureo` command)
+│   ├── setup_cmd.py     # `mureo setup claude-code` / `mureo setup cursor`
 │   ├── google_ads.py    # `mureo google-ads` subcommands
 │   ├── meta_ads.py      # `mureo meta-ads` subcommands
 │   └── auth_cmd.py      # `mureo auth` subcommands

@@ -87,17 +87,24 @@ See `skills/mureo-meta-ads/SKILL.md` for the full tool reference.
 
 See `docs/integrations.md` (Search Console section) for the full tool reference.
 
+## Setup
+
+```bash
+# Claude Code users (recommended — does everything in one command)
+mureo setup claude-code
+
+# Cursor users
+mureo setup cursor
+
+# Authentication only
+mureo auth setup
+```
+
 ## Using mureo via CLI
 
 ```bash
-# Authentication setup (interactive wizard)
-mureo auth setup
-
-# Google Ads examples
 mureo google-ads campaigns-list --customer-id 1234567890
 mureo google-ads performance-report --customer-id 1234567890 --days 7
-
-# Meta Ads examples
 mureo meta-ads campaigns-list --account-id act_123456
 mureo meta-ads insights-report --account-id act_123456 --days 7
 ```

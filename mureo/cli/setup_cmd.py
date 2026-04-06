@@ -89,11 +89,17 @@ def install_skills(target_dir: Path | None = None) -> tuple[int, Path]:
 
 
 @setup_app.command("claude-code")  # type: ignore[untyped-decorator, unused-ignore]
-def setup_claude_code() -> None:
+def setup_claude_code(
+    skip_auth: bool = typer.Option(
+        False,
+        "--skip-auth",
+        help="Skip authentication (install commands, skills, MCP config, and guard only)",
+    ),
+) -> None:
     """One-command setup for Claude Code users.
 
     Runs the full setup flow:
-    1. Authentication (Google Ads / Meta Ads)
+    1. Authentication (Google Ads / Meta Ads) — skipped with --skip-auth
     2. MCP configuration
     3. Credential guard hook
     4. Workflow commands installation
@@ -104,38 +110,40 @@ def setup_claude_code() -> None:
     typer.echo("=== mureo Setup for Claude Code ===\n")
 
     # 1. Authentication
-    google = typer.confirm("Configure Google Ads?", default=True)
-    meta = typer.confirm("Configure Meta Ads?", default=False)
+    if not skip_auth:
+        google = typer.confirm("Configure Google Ads?", default=True)
+        meta = typer.confirm("Configure Meta Ads?", default=False)
 
-    if google:
-        from mureo.auth_setup import setup_google_ads
+        if google:
+            from mureo.auth_setup import setup_google_ads
 
-        asyncio.run(setup_google_ads())
+            asyncio.run(setup_google_ads())
 
-    if meta:
-        from mureo.auth_setup import setup_meta_ads
+        if meta:
+            from mureo.auth_setup import setup_meta_ads
 
-        asyncio.run(setup_meta_ads())
+            asyncio.run(setup_meta_ads())
+    else:
+        typer.echo("Skipping authentication (--skip-auth).")
+        typer.echo("Run /onboard in Claude Code later to configure credentials.\n")
 
     # 2. MCP configuration
-    if google or meta:
-        from mureo.auth_setup import setup_mcp_config
+    from mureo.auth_setup import install_mcp_config
 
-        setup_mcp_config()
-
-        # 3. Credential guard
-        from mureo.auth_setup import install_credential_guard
-
-        result = install_credential_guard()
-        if result is not None:
-            typer.echo(f"Credential guard installed: {result}")
-            typer.echo(
-                "  AI agents are now blocked from reading" " ~/.mureo/credentials.json"
-            )
-        else:
-            typer.echo("Credential guard already installed.")
+    mcp_result = install_mcp_config(scope="global")
+    if mcp_result is not None:
+        typer.echo(f"MCP configuration added: {mcp_result}")
     else:
-        typer.echo("\nSkipping authentication, MCP config, and credential guard.")
+        typer.echo("MCP configuration already exists.")
+
+    # 3. Credential guard
+    from mureo.auth_setup import install_credential_guard
+
+    guard_result = install_credential_guard()
+    if guard_result is not None:
+        typer.echo(f"Credential guard installed: {guard_result}")
+    else:
+        typer.echo("Credential guard already installed.")
 
     # 4. Workflow commands
     typer.echo("\n--- Installing workflow commands ---")
@@ -155,7 +163,10 @@ def setup_claude_code() -> None:
 
     # Summary
     typer.echo("\n=== Setup complete ===")
-    typer.echo("Run /onboard in Claude Code to get started.")
+    if skip_auth:
+        typer.echo("Next: Open Claude Code and run /onboard to configure credentials.")
+    else:
+        typer.echo("Next: Open Claude Code and run /onboard to get started.")
 
 
 @setup_app.command("cursor")  # type: ignore[untyped-decorator, unused-ignore]

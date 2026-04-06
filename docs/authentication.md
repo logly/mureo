@@ -1,5 +1,24 @@
 # Authentication Guide
 
+## Recommended Setup
+
+For most users, the one-command setup is the easiest way to get started:
+
+```bash
+# Claude Code users (authentication + MCP + commands + skills + credential guard)
+mureo setup claude-code
+
+# Cursor users (authentication + MCP only)
+mureo setup cursor
+
+# CLI-only users (authentication only)
+mureo auth setup
+```
+
+`mureo setup claude-code --skip-auth` installs commands, skills, MCP config, and credential guard without running OAuth. Useful for the double-click installer flow where authentication is handled later via `/onboard` in Claude Code.
+
+## How Credentials Work
+
 mureo loads credentials from `~/.mureo/credentials.json`, falling back to environment variables if the file is missing or incomplete.
 
 ## credentials.json Format
@@ -191,21 +210,13 @@ If `app_id` or `app_secret` are missing, auto-refresh is silently skipped and th
 - **0600 permissions** -- the credentials file is restricted to the owner only.
 - **Graceful fallback** -- if the refresh fails for any reason (network error, expired app secret, etc.), mureo continues with the existing token and logs a warning. No tool calls are blocked.
 
-## Quick Setup with `mureo auth setup`
+## Interactive Setup Wizard
 
-The easiest way to configure credentials is the interactive setup wizard:
+`mureo auth setup` (also called as part of `mureo setup claude-code`) walks you through authentication interactively:
 
-```bash
-mureo auth setup
-```
-
-This walks you through:
-
-1. **Google Ads OAuth** -- Opens a browser for OAuth consent, then saves the refresh token to `~/.mureo/credentials.json`.
-2. **Meta Ads token** -- Prompts for your access token, app ID, and app secret.
-3. **MCP configuration** -- Offers to place the MCP server config automatically. You choose between:
-   - **Global** (`~/.claude/settings.json`) -- available in all projects
-   - **Project-level** (`.mcp.json` in the current directory) -- scoped to this project only
+1. **Google Ads OAuth** -- Enter Developer Token + Client ID/Secret, open browser for OAuth, select account.
+2. **Meta Ads OAuth** -- Enter App ID/Secret, open browser for OAuth, obtain Long-Lived Token, select account.
+3. **MCP configuration** -- Choose global (`~/.claude/settings.json`) or project-level (`.mcp.json`).
 
 ### Project-Level MCP Configuration (`.mcp.json`)
 

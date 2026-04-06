@@ -61,7 +61,7 @@ The bottom layer provides concrete connections to advertising platforms and anal
 mureo/
 ├── __init__.py              # Package root (version)
 ├── auth.py                  # Credential loading & client factory (+ Meta token auto-refresh)
-├── auth_setup.py            # Interactive setup wizard (OAuth + MCP config)
+├── auth_setup.py            # Interactive setup wizard (OAuth + MCP config + credential guard)
 ├── throttle.py              # Rate limiting (token bucket + rolling hourly cap)
 ├── google_ads/              # Google Ads API client
 │   ├── client.py            # GoogleAdsApiClient (8 Mixins)
@@ -104,6 +104,7 @@ mureo/
 │   └── errors.py            # Context-specific exceptions
 ├── cli/                     # Typer CLI commands
 │   ├── main.py              # Entry point (mureo command)
+│   ├── setup_cmd.py         # mureo setup claude-code / cursor
 │   ├── auth_cmd.py          # mureo auth *
 │   ├── google_ads.py        # mureo google-ads *
 │   └── meta_ads.py          # mureo meta-ads *
