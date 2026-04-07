@@ -216,7 +216,7 @@ def create_search_console_client(
         client_secret=credentials.client_secret,
         token_uri=_TOKEN_URI,
         scopes=[
-            "https://www.googleapis.com/auth/webmasters.readonly",
+            "https://www.googleapis.com/auth/webmasters",
         ],
     )
 

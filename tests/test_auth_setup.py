@@ -387,7 +387,7 @@ async def test_run_google_oauth() -> None:
     assert client_config["installed"]["client_secret"] == "test-csec"
     assert call_args[1]["scopes"] == [
         "https://www.googleapis.com/auth/adwords",
-        "https://www.googleapis.com/auth/webmasters.readonly",
+        "https://www.googleapis.com/auth/webmasters",
     ]
 
     # run_local_serverがport=8085, prompt="consent"で呼ばれること
