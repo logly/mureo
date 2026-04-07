@@ -16,6 +16,20 @@ import pytest
 from mureo.auth import MetaAdsCredentials, refresh_meta_token_if_needed
 
 
+@pytest.fixture(autouse=True)
+def _mock_save_token(request):
+    """Prevent tests from writing to real ~/.mureo/credentials.json.
+
+    Tests that explicitly use tmp_path for credential file operations
+    can opt out by using @pytest.mark.real_save marker.
+    """
+    if "real_save" in {m.name for m in request.node.iter_markers()}:
+        yield
+    else:
+        with patch("mureo.auth._save_meta_token"):
+            yield
+
+
 def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
@@ -146,6 +160,7 @@ async def test_no_refresh_without_obtained_at() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.real_save
 async def test_refresh_updates_credentials_file(tmp_path: Path) -> None:
     """After refresh, credentials.json should contain the new token."""
     cred_path = tmp_path / "credentials.json"
@@ -319,6 +334,7 @@ async def test_no_refresh_at_52_days() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.real_save
 async def test_refresh_preserves_other_credential_sections(
     tmp_path: Path,
 ) -> None:
