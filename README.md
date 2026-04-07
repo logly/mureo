@@ -14,13 +14,13 @@
 
 **mureo** is a marketing orchestration framework that helps AI agents achieve real business goals — awareness, leads, sales, retention — not just execute API calls. It combines strategy context, workflow commands, and built-in domain knowledge to guide agents through marketing operations across multiple platforms.
 
-Ad platform APIs will increasingly be exposed through official MCPs from Google, Meta, and others. mureo's value is not in wrapping those APIs. It is in the **orchestration layer on top**: knowing *what* to do, *when* to do it, and *why* — informed by your business strategy.
+If ad platforms release official MCP servers in the future, mureo can work alongside them or switch to them seamlessly. mureo's value is not in wrapping APIs — it is in the **orchestration layer on top**: knowing *what* to do, *when* to do it, and *why* — informed by your business strategy.
 
 - **Strategy-driven** -- `STRATEGY.md` defines your persona, USP, brand voice, goals, and operation mode. Every decision the agent makes is grounded in your strategy, not just raw metrics.
 - **Workflow commands** -- 10 slash commands (`/daily-check`, `/rescue`, `/creative-refresh`, etc.) guide agents through complete marketing operations, connecting strategy context with the right tools in the right order.
 - **Cross-platform** -- orchestrates across Google Ads, Meta Ads, Search Console, and GA4 (with more platforms planned), enabling coordinated decisions that no single-platform tool can make.
 - **Built-in domain knowledge** -- analysis, diagnostics, and optimization logic that turns raw API data into actionable insights. Campaign diagnostics with 30+ reason codes, search term intent analysis, budget efficiency scoring, RSA validation, and more.
-- **MCP + CLI interface** -- 169 MCP tools for AI agents (Claude Code, Cursor, etc.) plus a CLI for scripting and quick checks.
+- **MCP tools** -- 169 MCP tools for AI agents (Claude Code, Cursor, etc.). CLI is for setup and authentication only — ad operations are handled through MCP.
 - **No DB, no LLM dependency** -- mureo is the "hands" of your agent, not the "brain." All state lives in local files (`STRATEGY.md`, `STATE.json`) or the ad platforms themselves. All reasoning stays on the agent side.
 
 ### Analysis & Diagnostics
@@ -214,9 +214,47 @@ mureo auth status
 | `mureo-workflows` | Orchestration paradigm, Operation Mode matrix, KPI thresholds, command reference |
 | `mureo-learning` | Evidence-based marketing decision framework (observation windows, sample sizes, noise guards) |
 
-### Connecting Additional MCP Servers
+### Connecting GA4 (Google Analytics 4)
 
-mureo works alongside other MCP servers (GA4, CRM tools) in the same client session. Add them to your `.mcp.json` and workflow commands will incorporate their data opportunistically. See [docs/integrations.md](docs/integrations.md) for details.
+mureo's workflow commands can leverage GA4 data (conversion rates, user behavior, landing page performance) when a GA4 MCP server is configured alongside mureo. GA4 data is optional — all commands work without it.
+
+Setup using [Google Analytics MCP](https://github.com/googleanalytics/google-analytics-mcp):
+
+```bash
+# Install
+pipx install analytics-mcp
+
+# Authenticate (requires gcloud CLI)
+gcloud auth application-default login \
+  --scopes https://www.googleapis.com/auth/analytics.readonly,https://www.googleapis.com/auth/cloud-platform
+```
+
+Add to `~/.claude/settings.json` alongside mureo:
+
+```json
+{
+  "mcpServers": {
+    "mureo": {
+      "command": "python",
+      "args": ["-m", "mureo.mcp"]
+    },
+    "analytics-mcp": {
+      "command": "pipx",
+      "args": ["run", "analytics-mcp"],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/application_default_credentials.json",
+        "GOOGLE_PROJECT_ID": "your-gcp-project-id"
+      }
+    }
+  }
+}
+```
+
+Prerequisites: Enable **Google Analytics Admin API** and **Google Analytics Data API** in your GCP project.
+
+### Connecting Other MCP Servers
+
+mureo works alongside any MCP server in the same client session. Add them to your settings and workflow commands will incorporate their data when available. See [docs/integrations.md](docs/integrations.md) for details.
 
 ## Authentication
 
@@ -763,11 +801,10 @@ mureo/
 │   ├── strategy.py          # STRATEGY.md parser / renderer
 │   ├── state.py             # STATE.json parser / renderer
 │   └── errors.py            # Context-related errors
-├── cli/                     # Typer CLI commands
+├── cli/                     # Typer CLI (setup + auth only)
 │   ├── main.py              # Entry point (mureo command)
-│   ├── auth_cmd.py          # mureo auth * (status, check-google, check-meta, setup)
-│   ├── google_ads.py        # mureo google-ads *
-│   └── meta_ads.py          # mureo meta-ads *
+│   ├── setup_cmd.py         # mureo setup claude-code / cursor
+│   └── auth_cmd.py          # mureo auth setup / status / check-*
 └── mcp/                     # MCP server (169 tools)
     ├── __main__.py                        # python -m mureo.mcp entry point
     ├── server.py                          # MCP server setup (stdio transport)
