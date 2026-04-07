@@ -93,10 +93,10 @@ class AudiencesMixin:
         """
         data: dict[str, Any] = {
             "name": name,
+            "subtype": subtype,
         }
-        # Meta API no longer accepts subtype as a create parameter.
-        # customer_file_source is required instead.
-        if customer_file_source is None:
+        # customer_file_source is required for CUSTOM subtype
+        if customer_file_source is None and subtype == "CUSTOM":
             customer_file_source = "USER_PROVIDED_ONLY"
 
         if description:

@@ -8,7 +8,7 @@ _get / _post / _delete をモックしてテストする。
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -330,19 +330,49 @@ class TestCreativesMixin:
 
     @pytest.mark.asyncio
     async def test_upload_ad_image_success(self, client) -> None:
+        # Mock image download
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b"fake-image-bytes"
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_http = AsyncMock()
+        mock_http.get = AsyncMock(return_value=mock_resp)
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+
         client._post = AsyncMock(
             return_value={
                 "images": {"img.jpg": {"hash": "abc", "url": "https://cdn/img.jpg"}}
             }
         )
-        result = await client.upload_ad_image("https://example.com/img.jpg")
+        with patch(
+            "mureo.meta_ads._creatives.httpx.AsyncClient", return_value=mock_http
+        ):
+            result = await client.upload_ad_image("https://example.com/img.jpg")
         assert result["hash"] == "abc"
         assert result["url"] == "https://cdn/img.jpg"
+        # Verify base64 bytes were sent
+        post_data = client._post.call_args[0][1]
+        assert "bytes" in post_data
 
     @pytest.mark.asyncio
     async def test_upload_ad_image_failure(self, client) -> None:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b"fake-image-bytes"
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_http = AsyncMock()
+        mock_http.get = AsyncMock(return_value=mock_resp)
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+
         client._post = AsyncMock(return_value={"images": None})
-        result = await client.upload_ad_image("https://example.com/bad.jpg")
+        with patch(
+            "mureo.meta_ads._creatives.httpx.AsyncClient", return_value=mock_http
+        ):
+            result = await client.upload_ad_image("https://example.com/bad.jpg")
         assert "error" in result
 
     @pytest.mark.asyncio
@@ -404,8 +434,7 @@ class TestAudiencesMixin:
         )
         data = client._post.call_args[0][1]
         assert data["name"] == "WebVisitors"
-        # subtype is no longer sent (deprecated in Meta API)
-        assert "subtype" not in data
+        assert data["subtype"] == "WEBSITE"
         assert data["retention_days"] == 30
         assert data["pixel_id"] == "pixel1"
         assert json.loads(data["rule"]) == {"inclusions": {"operator": "or"}}

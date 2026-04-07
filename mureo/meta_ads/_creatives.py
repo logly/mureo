@@ -141,7 +141,10 @@ class CreativesMixin:
         self,
         image_url: str,
     ) -> dict[str, Any]:
-        """Upload an image to Meta API from a URL
+        """Upload an image to Meta API from a URL.
+
+        Downloads the image from the URL, converts to base64, and uploads
+        via the adimages endpoint (which requires base64 bytes, not URLs).
 
         Args:
             image_url: Source image URL
@@ -149,8 +152,19 @@ class CreativesMixin:
         Returns:
             {"hash": "...", "url": "..."} or {"error": "..."}
         """
+        import base64
+
+        # Download the image
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as http:
+                resp = await http.get(image_url)
+                resp.raise_for_status()
+                image_bytes = base64.b64encode(resp.content).decode("utf-8")
+        except Exception as exc:
+            return {"error": f"Failed to download image from {image_url}: {exc}"}
+
         data: dict[str, Any] = {
-            "url": image_url,
+            "bytes": image_bytes,
         }
 
         result = await self._post(f"/{self._ad_account_id}/adimages", data)
