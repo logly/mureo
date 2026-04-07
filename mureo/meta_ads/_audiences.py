@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Custom audience retrieval fields
 _AUDIENCE_FIELDS = (
-    "id,name,subtype,description,approximate_count,"
+    "id,name,subtype,description,"
     "delivery_status,operation_status,retention_days,"
     "rule,lookalike_spec,time_created,time_updated"
 )
@@ -93,8 +93,12 @@ class AudiencesMixin:
         """
         data: dict[str, Any] = {
             "name": name,
-            "subtype": subtype,
         }
+        # subtype is no longer accepted as a create parameter in API v21+.
+        # Use customer_file_source for CUSTOM audiences, or rule+pixel_id
+        # for WEBSITE audiences instead.
+        if customer_file_source is None and subtype == "CUSTOM":
+            customer_file_source = "USER_PROVIDED_ONLY"
 
         if description:
             data["description"] = description

@@ -178,8 +178,12 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": "Initial status (default: PAUSED)",
                 },
+                "bid_amount": {
+                    "type": "integer",
+                    "description": "Bid amount in cents (required for some optimization goals)",
+                },
             },
-            "required": ["campaign_id", "name", "daily_budget"],
+            "required": ["campaign_id", "name"],
         },
     ),
     Tool(

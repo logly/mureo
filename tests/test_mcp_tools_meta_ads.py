@@ -65,7 +65,7 @@ class TestMetaAdsToolDefinitions:
             ("meta_ads.ad_sets.list", []),
             (
                 "meta_ads.ad_sets.create",
-                ["campaign_id", "name", "daily_budget"],
+                ["campaign_id", "name"],
             ),
             ("meta_ads.ad_sets.update", ["ad_set_id"]),
             ("meta_ads.ads.list", []),

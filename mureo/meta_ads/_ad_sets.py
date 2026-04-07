@@ -75,24 +75,26 @@ class AdSetsMixin:
         self,
         campaign_id: str,
         name: str,
-        daily_budget: int,
+        daily_budget: int = 0,
         billing_event: str = "IMPRESSIONS",
         optimization_goal: str = "REACH",
         targeting: dict[str, Any] | None = None,
         status: str = "PAUSED",
         use_dynamic_creative: bool = False,
+        bid_amount: int | None = None,
     ) -> dict[str, Any]:
         """Create an ad set
 
         Args:
             campaign_id: Parent campaign ID
             name: Ad set name
-            daily_budget: Daily budget (in cents)
+            daily_budget: Daily budget (in cents). Set to 0 for CBO campaigns.
             billing_event: Billing event (IMPRESSIONS, LINK_CLICKS, etc.)
             optimization_goal: Optimization goal (REACH, LINK_CLICKS, CONVERSIONS, etc.)
             targeting: Targeting settings
             status: Initial status (default: PAUSED)
             use_dynamic_creative: Enable dynamic creative
+            bid_amount: Bid amount in cents (required for some optimization goals)
 
         Returns:
             Created ad set information.
@@ -101,11 +103,15 @@ class AdSetsMixin:
         data: dict[str, Any] = {
             "campaign_id": campaign_id,
             "name": name,
-            "daily_budget": daily_budget,
             "billing_event": billing_event,
             "optimization_goal": optimization_goal,
             "status": status,
         }
+        # Only include daily_budget if > 0 (CBO campaigns manage budget at campaign level)
+        if daily_budget > 0:
+            data["daily_budget"] = daily_budget
+        if bid_amount is not None:
+            data["bid_amount"] = bid_amount
         if targeting is not None:
             data["targeting"] = json.dumps(targeting)
         else:

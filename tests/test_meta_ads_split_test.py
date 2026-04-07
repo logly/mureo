@@ -59,7 +59,7 @@ class TestSplitTestMixin:
         assert result[0]["id"] == "study_001"
         client._get.assert_called_once()
         call_args = client._get.call_args
-        assert "/act_123/adstudies" in call_args[0][0]
+        assert "/act_123/ad_studies" in call_args[0][0]
 
     # -----------------------------------------------------------------------
     # 2. test_get_split_test
@@ -105,7 +105,7 @@ class TestSplitTestMixin:
         assert result["id"] == "study_new"
         client._post.assert_called_once()
         call_args = client._post.call_args
-        assert "/act_123/adstudies" in call_args[0][0]
+        assert "/act_123/ad_studies" in call_args[0][0]
         data = call_args[1].get("data") or call_args[0][1]
         assert data["name"] == "CPA比較テスト"
         assert data["confidence_level"] == 95

@@ -49,7 +49,7 @@ class SplitTestMixin:
             "fields": _STUDY_FIELDS,
             "limit": limit,
         }
-        result = await self._get(f"/{self._ad_account_id}/adstudies", params)
+        result = await self._get(f"/{self._ad_account_id}/ad_studies", params)
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_split_test(self, study_id: str) -> dict[str, Any]:
@@ -113,7 +113,7 @@ class SplitTestMixin:
             len(cells),
             confidence_level,
         )
-        return await self._post(f"/{self._ad_account_id}/adstudies", data)
+        return await self._post(f"/{self._ad_account_id}/ad_studies", data)
 
     async def end_split_test(self, study_id: str) -> dict[str, Any]:
         """End a split test.

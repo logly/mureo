@@ -154,9 +154,15 @@ async def handle_ad_sets_create(args: dict[str, Any]) -> list[TextContent]:
     kwargs: dict[str, Any] = {
         "campaign_id": _require(args, "campaign_id"),
         "name": _require(args, "name"),
-        "daily_budget": _require(args, "daily_budget"),
     }
-    for key in ("billing_event", "optimization_goal", "targeting", "status"):
+    for key in (
+        "daily_budget",
+        "billing_event",
+        "optimization_goal",
+        "targeting",
+        "status",
+        "bid_amount",
+    ):
         val = _opt(args, key)
         if val is not None:
             kwargs[key] = val
