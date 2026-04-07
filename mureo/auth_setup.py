@@ -28,6 +28,8 @@ from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 logger = logging.getLogger(__name__)
 
 _GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
+_SEARCH_CONSOLE_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly"
+_GOOGLE_SCOPES = [_GOOGLE_ADS_SCOPE, _SEARCH_CONSOLE_SCOPE]
 
 
 def _select_account(
@@ -229,7 +231,7 @@ async def run_google_oauth(
 
     flow = InstalledAppFlow.from_client_config(
         client_config,
-        scopes=[_GOOGLE_ADS_SCOPE],
+        scopes=_GOOGLE_SCOPES,
     )
 
     # Browser OAuth (local server auto-starts and auto-stops)

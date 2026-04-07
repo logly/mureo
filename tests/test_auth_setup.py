@@ -385,7 +385,10 @@ async def test_run_google_oauth() -> None:
     client_config = call_args[0][0]
     assert client_config["installed"]["client_id"] == "test-cid"
     assert client_config["installed"]["client_secret"] == "test-csec"
-    assert call_args[1]["scopes"] == ["https://www.googleapis.com/auth/adwords"]
+    assert call_args[1]["scopes"] == [
+        "https://www.googleapis.com/auth/adwords",
+        "https://www.googleapis.com/auth/webmasters.readonly",
+    ]
 
     # run_local_serverがport=8085, prompt="consent"で呼ばれること
     mock_flow.run_local_server.assert_called_once_with(port=8085, prompt="consent")

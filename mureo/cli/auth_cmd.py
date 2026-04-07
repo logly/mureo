@@ -117,6 +117,59 @@ def auth_setup() -> None:
     typer.echo("\nSetup complete.")
 
 
+@auth_app.command("upgrade-google")  # type: ignore[untyped-decorator, unused-ignore]
+def auth_upgrade_google() -> None:
+    """Re-authenticate Google to add Search Console access.
+
+    Uses existing client_id/client_secret from credentials.json
+    to run a new OAuth flow with expanded scopes (Google Ads +
+    Search Console). The new refresh_token replaces the old one.
+    """
+    import asyncio
+
+    from mureo.auth import load_google_ads_credentials
+    from mureo.auth_setup import run_google_oauth, save_credentials
+
+    creds = load_google_ads_credentials()
+    if creds is None:
+        typer.echo(
+            "Error: Google Ads credentials not found. Run mureo auth setup first."
+        )
+        raise typer.Exit(1)
+
+    typer.echo("=== Upgrade Google OAuth Scopes ===")
+    typer.echo("")
+    typer.echo("This will open a browser to re-authenticate with Google.")
+    typer.echo(
+        "Your existing credentials (Developer Token, Client ID, etc.) are preserved."
+    )
+    typer.echo("Only the refresh_token will be updated with expanded scopes")
+    typer.echo("(Google Ads + Search Console).")
+    typer.echo("")
+
+    oauth_result = asyncio.run(
+        run_google_oauth(
+            client_id=creds.client_id,
+            client_secret=creds.client_secret,
+        )
+    )
+
+    from mureo.auth import GoogleAdsCredentials
+
+    updated_creds = GoogleAdsCredentials(
+        developer_token=creds.developer_token,
+        client_id=creds.client_id,
+        client_secret=creds.client_secret,
+        refresh_token=oauth_result.refresh_token,
+        login_customer_id=creds.login_customer_id,
+    )
+
+    save_credentials(google=updated_creds, customer_id=creds.login_customer_id)
+
+    typer.echo("\nGoogle OAuth scopes upgraded successfully.")
+    typer.echo("Search Console access is now available.")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
