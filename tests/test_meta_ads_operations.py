@@ -434,7 +434,8 @@ class TestAudiencesMixin:
         )
         data = client._post.call_args[0][1]
         assert data["name"] == "WebVisitors"
-        assert data["subtype"] == "WEBSITE"
+        # subtype not sent in API v21 (deprecated)
+        assert "subtype" not in data
         assert data["retention_days"] == 30
         assert data["pixel_id"] == "pixel1"
         assert json.loads(data["rule"]) == {"inclusions": {"operator": "or"}}

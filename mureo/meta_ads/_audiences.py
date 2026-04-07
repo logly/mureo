@@ -93,10 +93,10 @@ class AudiencesMixin:
         """
         data: dict[str, Any] = {
             "name": name,
-            "subtype": subtype,
         }
-        # customer_file_source is required for CUSTOM subtype
-        if customer_file_source is None and subtype == "CUSTOM":
+        # subtype is not accepted in API v21.0 (accepted in v25.0+).
+        # customer_file_source is always required as a replacement.
+        if customer_file_source is None:
             customer_file_source = "USER_PROVIDED_ONLY"
 
         if description:
