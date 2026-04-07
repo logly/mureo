@@ -93,18 +93,45 @@ class AudiencesMixin:
         """
         data: dict[str, Any] = {
             "name": name,
-            "subtype": subtype,
             "customer_file_source": customer_file_source or "USER_PROVIDED_ONLY",
         }
 
         if description:
             data["description"] = description
-        if retention_days is not None:
-            data["retention_days"] = retention_days
+
+        # In API v21+, subtype is not accepted. Instead, use rule + pixel_id
+        # to define WEBSITE audiences, or customer_file_source for CUSTOM.
         if rule is not None:
             data["rule"] = json.dumps(rule)
+        elif subtype == "WEBSITE" and pixel_id:
+            # Auto-generate a basic PageView rule for WEBSITE audiences
+            data["rule"] = json.dumps(
+                {
+                    "inclusions": {
+                        "operator": "or",
+                        "rules": [
+                            {
+                                "event_sources": [{"type": "pixel", "id": pixel_id}],
+                                "retention_seconds": (retention_days or 30) * 86400,
+                                "filter": {
+                                    "operator": "and",
+                                    "filters": [
+                                        {
+                                            "field": "event",
+                                            "operator": "eq",
+                                            "value": "PageView",
+                                        }
+                                    ],
+                                },
+                            }
+                        ],
+                    }
+                }
+            )
         if pixel_id:
             data["pixel_id"] = pixel_id
+        if retention_days is not None:
+            data["retention_days"] = retention_days
 
         return await self._post(f"/{self._ad_account_id}/customaudiences", data)
 

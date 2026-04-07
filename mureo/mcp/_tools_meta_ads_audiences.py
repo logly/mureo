@@ -37,16 +37,27 @@ TOOLS: list[Tool] = [
                 "name": {"type": "string", "description": "Audience name"},
                 "subtype": {
                     "type": "string",
-                    "description": "Subtype (WEBSITE, CUSTOM, APP etc.)",
+                    "description": "Audience type hint (WEBSITE, CUSTOM, APP). Used to auto-generate rule if rule is not provided.",
                 },
                 "description": {"type": "string", "description": "Description"},
                 "retention_days": {
                     "type": "integer",
-                    "description": "Retention period (in days)",
+                    "description": "Retention period in days (default: 30)",
                 },
-                "pixel_id": {"type": "string", "description": "Meta Pixel ID"},
+                "pixel_id": {
+                    "type": "string",
+                    "description": "Meta Pixel ID (required for WEBSITE audiences)",
+                },
+                "rule": {
+                    "type": "object",
+                    "description": "Audience rule definition (JSON). If not provided and subtype=WEBSITE, a default PageView rule is auto-generated.",
+                },
+                "customer_file_source": {
+                    "type": "string",
+                    "description": "Customer file source (USER_PROVIDED_ONLY, PARTNER_PROVIDED_ONLY, BOTH_USER_AND_PARTNER_PROVIDED). Default: USER_PROVIDED_ONLY.",
+                },
             },
-            "required": ["name", "subtype"],
+            "required": ["name"],
         },
     ),
     # === Audience get / delete / lookalike ===

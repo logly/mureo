@@ -434,8 +434,11 @@ class TestAudiencesMixin:
         )
         data = client._post.call_args[0][1]
         assert data["name"] == "WebVisitors"
-        assert data["subtype"] == "WEBSITE"
+        # subtype not sent to API (replaced by rule in v21+)
+        assert "subtype" not in data
         assert data["customer_file_source"] == "USER_PROVIDED_ONLY"
+        # WEBSITE + pixel_id auto-generates a rule
+        assert "rule" in data
         assert data["retention_days"] == 30
         assert data["pixel_id"] == "pixel1"
         assert json.loads(data["rule"]) == {"inclusions": {"operator": "or"}}

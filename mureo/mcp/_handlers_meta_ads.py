@@ -289,9 +289,15 @@ async def handle_audiences_create(args: dict[str, Any]) -> list[TextContent]:
         return _no_meta_creds()
     kwargs: dict[str, Any] = {
         "name": _require(args, "name"),
-        "subtype": _require(args, "subtype"),
+        "subtype": _opt(args, "subtype", "CUSTOM"),
     }
-    for key in ("description", "retention_days", "pixel_id"):
+    for key in (
+        "description",
+        "retention_days",
+        "pixel_id",
+        "rule",
+        "customer_file_source",
+    ):
         val = _opt(args, key)
         if val is not None:
             kwargs[key] = val

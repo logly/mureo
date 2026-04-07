@@ -80,7 +80,7 @@ class TestMetaAdsToolDefinitions:
                 ["campaign_id"],
             ),
             ("meta_ads.audiences.list", []),
-            ("meta_ads.audiences.create", ["name", "subtype"]),
+            ("meta_ads.audiences.create", ["name"]),
         ],
     )
     def test_required_fields(
