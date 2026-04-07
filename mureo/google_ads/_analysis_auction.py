@@ -340,7 +340,6 @@ class _AuctionAnalysisMixin:
 
         query = f"""
             SELECT
-                segments.domain,
                 metrics.auction_insight_search_impression_share,
                 metrics.auction_insight_search_overlap_rate,
                 metrics.auction_insight_search_position_above_rate,
@@ -380,7 +379,7 @@ class _AuctionAnalysisMixin:
             m = row.metrics
             results.append(
                 {
-                    "display_url": row.segments.domain,
+                    "display_url": row.segments.auction_insight_domain,
                     "impression_share": round(
                         float(m.auction_insight_search_impression_share) * 100, 1
                     ),
