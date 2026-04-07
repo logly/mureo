@@ -93,10 +93,9 @@ class AudiencesMixin:
         """
         data: dict[str, Any] = {
             "name": name,
+            "subtype": subtype,
         }
-        # subtype is no longer accepted as a create parameter in API v21+.
-        # Use customer_file_source for CUSTOM audiences, or rule+pixel_id
-        # for WEBSITE audiences instead.
+        # customer_file_source is required for CUSTOM subtype
         if customer_file_source is None and subtype == "CUSTOM":
             customer_file_source = "USER_PROVIDED_ONLY"
 
