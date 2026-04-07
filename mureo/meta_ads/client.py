@@ -192,9 +192,24 @@ class MetaAdsApiClient(
                         resp.status_code,
                         error_body,
                     )
+                    # Extract detailed error from Meta API response
+                    detail = ""
+                    try:
+                        err = resp.json().get("error", {})
+                        parts = []
+                        if err.get("message"):
+                            parts.append(err["message"])
+                        if err.get("error_user_title"):
+                            parts.append(err["error_user_title"])
+                        if err.get("error_user_msg"):
+                            parts.append(err["error_user_msg"])
+                        if parts:
+                            detail = " | ".join(parts)
+                    except Exception:
+                        detail = error_body
                     raise RuntimeError(
                         f"Meta API request failed "
-                        f"(status={resp.status_code}, path={path})"
+                        f"(status={resp.status_code}, path={path}): {detail}"
                     )
 
                 return resp.json()  # type: ignore[no-any-return]
