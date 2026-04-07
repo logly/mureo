@@ -155,7 +155,9 @@ class TestGoogleAdsCampaignHandlers:
             patch.object(h, "load_google_ads_credentials", return_value=creds),
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
-            result = await mod.handle_tool("google_ads.campaigns.list", {"customer_id": "123"})
+            result = await mod.handle_tool(
+                "google_ads.campaigns.list", {"customer_id": "123"}
+            )
 
         client.list_campaigns.assert_awaited_once()
         parsed = json.loads(result[0].text)
@@ -183,7 +185,9 @@ class TestGoogleAdsCampaignHandlers:
     async def test_campaigns_create(self) -> None:
         mod = _import_google_ads_tools()
         creds, client = _mock_google_ads_context()
-        client.create_campaign.return_value = {"resource_name": "customers/123/campaigns/789"}
+        client.create_campaign.return_value = {
+            "resource_name": "customers/123/campaigns/789"
+        }
 
         h = _import_handlers()
         with (
@@ -202,7 +206,9 @@ class TestGoogleAdsCampaignHandlers:
     async def test_campaigns_update(self) -> None:
         mod = _import_google_ads_tools()
         creds, client = _mock_google_ads_context()
-        client.update_campaign.return_value = {"resource_name": "customers/123/campaigns/456"}
+        client.update_campaign.return_value = {
+            "resource_name": "customers/123/campaigns/456"
+        }
 
         h = _import_handlers()
         with (
@@ -221,7 +227,9 @@ class TestGoogleAdsCampaignHandlers:
     async def test_campaigns_update_status(self) -> None:
         mod = _import_google_ads_tools()
         creds, client = _mock_google_ads_context()
-        client.update_campaign_status.return_value = {"resource_name": "customers/123/campaigns/456"}
+        client.update_campaign_status.return_value = {
+            "resource_name": "customers/123/campaigns/456"
+        }
 
         h = _import_handlers()
         with (
@@ -267,7 +275,9 @@ class TestGoogleAdsAdGroupHandlers:
     async def test_ad_groups_create(self) -> None:
         mod = _import_google_ads_tools()
         creds, client = _mock_google_ads_context()
-        client.create_ad_group.return_value = {"resource_name": "customers/123/adGroups/99"}
+        client.create_ad_group.return_value = {
+            "resource_name": "customers/123/adGroups/99"
+        }
 
         h = _import_handlers()
         with (
@@ -284,7 +294,9 @@ class TestGoogleAdsAdGroupHandlers:
     async def test_ad_groups_update(self) -> None:
         mod = _import_google_ads_tools()
         creds, client = _mock_google_ads_context()
-        client.update_ad_group.return_value = {"resource_name": "customers/123/adGroups/99"}
+        client.update_ad_group.return_value = {
+            "resource_name": "customers/123/adGroups/99"
+        }
 
         h = _import_handlers()
         with (
@@ -677,10 +689,14 @@ class TestGoogleAdsErrorHandling:
     """エラーハンドリングの検証"""
 
     async def test_missing_required_param(self) -> None:
-        """必須パラメータ欠損でValueErrorが発生"""
+        """customer_id未指定 + credentials.jsonにもない場合にエラーテキスト返却"""
         mod = _import_google_ads_tools()
-        with pytest.raises(ValueError, match="customer_id"):
-            await mod.handle_tool("google_ads.campaigns.list", {})
+        with patch(
+            "mureo.mcp._handlers_google_ads.load_google_ads_credentials",
+            return_value=None,
+        ):
+            result = await mod.handle_tool("google_ads.campaigns.list", {})
+            assert any("Credentials not found" in r.text for r in result)
 
     async def test_unknown_tool_raises_error(self) -> None:
         """未知のツール名でValueErrorが発生"""

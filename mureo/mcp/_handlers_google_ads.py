@@ -38,15 +38,27 @@ _throttler = Throttler(GOOGLE_ADS_THROTTLE)
 
 
 def _get_client(arguments: dict[str, Any]) -> Any:
-    """Load credentials and create a client. Returns None on auth error."""
-    customer_id = _require(arguments, "customer_id")
+    """Load credentials and create a client.
+
+    Falls back to login_customer_id from credentials.json if customer_id
+    is not provided in the tool arguments.
+
+    Returns None on auth error.
+    """
+    creds = load_google_ads_credentials()
+    if creds is None:
+        return None
+
+    customer_id = _opt(arguments, "customer_id") or creds.login_customer_id
+    if not customer_id:
+        raise ValueError(
+            "customer_id is required. Provide it as a parameter or configure it "
+            "in ~/.mureo/credentials.json via mureo auth setup."
+        )
     if not str(customer_id).replace("-", "").isdigit():
         raise ValueError(
             f"Invalid customer_id format: {customer_id} (must be numeric, hyphens allowed)"
         )
-    creds = load_google_ads_credentials()
-    if creds is None:
-        return None
     return create_google_ads_client(creds, customer_id, throttler=_throttler)
 
 

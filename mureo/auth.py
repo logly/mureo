@@ -56,6 +56,7 @@ class MetaAdsCredentials:
     app_id: str | None = None
     app_secret: str | None = None
     token_obtained_at: str | None = None  # ISO 8601 timestamp
+    account_id: str | None = None  # act_XXXX format
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +151,7 @@ def load_meta_ads_credentials(
                 app_id=meta_section.get("app_id"),
                 app_secret=meta_section.get("app_secret"),
                 token_obtained_at=meta_section.get("token_obtained_at"),
+                account_id=meta_section.get("account_id"),
             )
 
     # Environment variable fallback

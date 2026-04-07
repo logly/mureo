@@ -41,16 +41,26 @@ _throttler = Throttler(META_ADS_THROTTLE)
 async def _get_client(arguments: dict[str, Any]) -> Any:
     """Load credentials, refresh token if needed, and create a client.
 
+    Falls back to account_id from credentials.json if not provided
+    in the tool arguments.
+
     Returns None on auth error.
     """
-    account_id = _require(arguments, "account_id")
+    creds = load_meta_ads_credentials()
+    if creds is None:
+        return None
+
+    account_id = _opt(arguments, "account_id") or creds.account_id
+    if not account_id:
+        raise ValueError(
+            "account_id is required. Provide it as a parameter or configure it "
+            "in ~/.mureo/credentials.json via mureo auth setup."
+        )
     if not str(account_id).startswith("act_"):
         raise ValueError(
             f"Invalid account_id format: {account_id} (must start with 'act_')"
         )
-    creds = load_meta_ads_credentials()
-    if creds is None:
-        return None
+
     creds = await refresh_meta_token_if_needed(creds)
     return create_meta_ads_client(creds, account_id, throttler=_throttler)
 

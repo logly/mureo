@@ -99,10 +99,10 @@ class TestCallToolCampaignsList:
 
         mock_creds = MagicMock()
         with (
-            patch.object(ga_mod, "load_google_ads_credentials", return_value=mock_creds),
             patch.object(
-                ga_mod, "create_google_ads_client", return_value=mock_client
+                ga_mod, "load_google_ads_credentials", return_value=mock_creds
             ),
+            patch.object(ga_mod, "create_google_ads_client", return_value=mock_client),
         ):
             result = await mod.handle_call_tool(
                 "google_ads.campaigns.list",
@@ -136,10 +136,10 @@ class TestCallToolCampaignsGet:
 
         mock_creds = MagicMock()
         with (
-            patch.object(ga_mod, "load_google_ads_credentials", return_value=mock_creds),
             patch.object(
-                ga_mod, "create_google_ads_client", return_value=mock_client
+                ga_mod, "load_google_ads_credentials", return_value=mock_creds
             ),
+            patch.object(ga_mod, "create_google_ads_client", return_value=mock_client),
         ):
             result = await mod.handle_call_tool(
                 "google_ads.campaigns.get",
@@ -165,11 +165,15 @@ class TestCallToolErrors:
             await mod.handle_call_tool("nonexistent.tool", {})
 
     async def test_missing_required_param_customer_id(self) -> None:
-        """campaigns.list で customer_id が欠損した場合にエラーになること"""
+        """campaigns.list で customer_id が欠損 + credentials.jsonにもない場合"""
         mod = _import_server_module()
 
-        with pytest.raises(ValueError, match="customer_id"):
-            await mod.handle_call_tool("google_ads.campaigns.list", {})
+        with patch(
+            "mureo.mcp._handlers_google_ads.load_google_ads_credentials",
+            return_value=None,
+        ):
+            result = await mod.handle_call_tool("google_ads.campaigns.list", {})
+            assert any("Credentials not found" in r.text for r in result)
 
     async def test_missing_required_param_campaign_id(self) -> None:
         """campaigns.get で campaign_id が欠損した場合にエラーになること"""
@@ -177,7 +181,9 @@ class TestCallToolErrors:
         ga_mod = _import_google_ads_handlers()
 
         mock_creds = MagicMock()
-        with patch.object(ga_mod, "load_google_ads_credentials", return_value=mock_creds):
+        with patch.object(
+            ga_mod, "load_google_ads_credentials", return_value=mock_creds
+        ):
             with pytest.raises(ValueError, match="campaign_id"):
                 await mod.handle_call_tool(
                     "google_ads.campaigns.get",

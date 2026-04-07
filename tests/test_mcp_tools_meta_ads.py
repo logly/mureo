@@ -418,10 +418,14 @@ class TestMetaAdsErrorHandling:
     """エラーハンドリングの検証"""
 
     async def test_missing_required_param(self) -> None:
-        """必須パラメータ欠損でValueErrorが発生"""
+        """account_id未指定 + credentials.jsonにもない場合にエラーテキスト返却"""
         mod = _import_meta_ads_tools()
-        with pytest.raises(ValueError, match="account_id"):
-            await mod.handle_tool("meta_ads.campaigns.list", {})
+        with patch(
+            "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
+            return_value=None,
+        ):
+            result = await mod.handle_tool("meta_ads.campaigns.list", {})
+            assert any("Credentials not found" in r.text for r in result)
 
     async def test_unknown_tool_raises_error(self) -> None:
         """未知のツール名でValueErrorが発生"""
