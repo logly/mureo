@@ -55,32 +55,32 @@ class TestMetaAdsToolDefinitions:
     @pytest.mark.parametrize(
         "tool_name,expected_required",
         [
-            ("meta_ads.campaigns.list", ["account_id"]),
-            ("meta_ads.campaigns.get", ["account_id", "campaign_id"]),
+            ("meta_ads.campaigns.list", []),
+            ("meta_ads.campaigns.get", ["campaign_id"]),
             (
                 "meta_ads.campaigns.create",
-                ["account_id", "name", "objective"],
+                ["name", "objective"],
             ),
-            ("meta_ads.campaigns.update", ["account_id", "campaign_id"]),
-            ("meta_ads.ad_sets.list", ["account_id"]),
+            ("meta_ads.campaigns.update", ["campaign_id"]),
+            ("meta_ads.ad_sets.list", []),
             (
                 "meta_ads.ad_sets.create",
-                ["account_id", "campaign_id", "name", "daily_budget"],
+                ["campaign_id", "name", "daily_budget"],
             ),
-            ("meta_ads.ad_sets.update", ["account_id", "ad_set_id"]),
-            ("meta_ads.ads.list", ["account_id"]),
+            ("meta_ads.ad_sets.update", ["ad_set_id"]),
+            ("meta_ads.ads.list", []),
             (
                 "meta_ads.ads.create",
-                ["account_id", "ad_set_id", "name", "creative_id"],
+                ["ad_set_id", "name", "creative_id"],
             ),
-            ("meta_ads.ads.update", ["account_id", "ad_id"]),
-            ("meta_ads.insights.report", ["account_id"]),
+            ("meta_ads.ads.update", ["ad_id"]),
+            ("meta_ads.insights.report", []),
             (
                 "meta_ads.insights.breakdown",
-                ["account_id", "campaign_id"],
+                ["campaign_id"],
             ),
-            ("meta_ads.audiences.list", ["account_id"]),
-            ("meta_ads.audiences.create", ["account_id", "name", "subtype"]),
+            ("meta_ads.audiences.list", []),
+            ("meta_ads.audiences.create", ["name", "subtype"]),
         ],
     )
     def test_required_fields(

@@ -19,7 +19,7 @@ TOOLS: list[Tool] = [
                 "file_path": {"type": "string", "description": "Image file path"},
                 "name": {"type": "string", "description": "Asset name (optional)"},
             },
-            "required": ["customer_id", "file_path"],
+            "required": ["file_path"],
         },
     ),
 ]

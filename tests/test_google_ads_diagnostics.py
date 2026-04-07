@@ -68,7 +68,10 @@ class TestExtractBiddingDetails:
         campaign.bidding_strategy_type = 6  # TARGET_CPA enum
         campaign.target_cpa.target_cpa_micros = 5_000_000_000  # 5000円
 
-        with patch("mureo.google_ads._diagnostics.map_bidding_strategy_type", return_value="TARGET_CPA"):
+        with patch(
+            "mureo.google_ads._diagnostics.map_bidding_strategy_type",
+            return_value="TARGET_CPA",
+        ):
             details = _DiagnosticsMixin._extract_bidding_details(campaign)
 
         assert details["strategy"] == "TARGET_CPA"
@@ -79,7 +82,10 @@ class TestExtractBiddingDetails:
         campaign.bidding_strategy_type = 10
         campaign.maximize_conversions.target_cpa_micros = 3_000_000_000
 
-        with patch("mureo.google_ads._diagnostics.map_bidding_strategy_type", return_value="MAXIMIZE_CONVERSIONS"):
+        with patch(
+            "mureo.google_ads._diagnostics.map_bidding_strategy_type",
+            return_value="MAXIMIZE_CONVERSIONS",
+        ):
             details = _DiagnosticsMixin._extract_bidding_details(campaign)
 
         assert details["strategy"] == "MAXIMIZE_CONVERSIONS"
@@ -90,7 +96,10 @@ class TestExtractBiddingDetails:
         campaign.bidding_strategy_type = 2
         campaign.target_spend.cpc_bid_ceiling_micros = 500_000_000
 
-        with patch("mureo.google_ads._diagnostics.map_bidding_strategy_type", return_value="MAXIMIZE_CLICKS"):
+        with patch(
+            "mureo.google_ads._diagnostics.map_bidding_strategy_type",
+            return_value="MAXIMIZE_CLICKS",
+        ):
             details = _DiagnosticsMixin._extract_bidding_details(campaign)
 
         assert details["strategy"] == "MAXIMIZE_CLICKS"
@@ -101,7 +110,10 @@ class TestExtractBiddingDetails:
         campaign.bidding_strategy_type = 7
         campaign.target_roas.target_roas = 4.0
 
-        with patch("mureo.google_ads._diagnostics.map_bidding_strategy_type", return_value="TARGET_ROAS"):
+        with patch(
+            "mureo.google_ads._diagnostics.map_bidding_strategy_type",
+            return_value="TARGET_ROAS",
+        ):
             details = _DiagnosticsMixin._extract_bidding_details(campaign)
 
         assert details["strategy"] == "TARGET_ROAS"
@@ -115,7 +127,10 @@ class TestExtractBiddingDetails:
         tis.location_fraction_micros = 0
         tis.cpc_bid_ceiling_micros = 0
 
-        with patch("mureo.google_ads._diagnostics.map_bidding_strategy_type", return_value="TARGET_IMPRESSION_SHARE"):
+        with patch(
+            "mureo.google_ads._diagnostics.map_bidding_strategy_type",
+            return_value="TARGET_IMPRESSION_SHARE",
+        ):
             details = _DiagnosticsMixin._extract_bidding_details(campaign)
 
         assert details["strategy"] == "TARGET_IMPRESSION_SHARE"
@@ -163,7 +178,10 @@ class TestDiagnoseCampaignDelivery:
         kw_mock.ad_group_criterion.keyword.match_type = "BROAD"
         kw_mock.ad_group_criterion.approval_status = 2  # APPROVED
         kw_mock.ad_group_criterion.system_serving_status = "ELIGIBLE"
-        with patch("mureo.google_ads._diagnostics.map_criterion_approval_status", return_value="APPROVED"):
+        with patch(
+            "mureo.google_ads._diagnostics.map_criterion_approval_status",
+            return_value="APPROVED",
+        ):
             # 広告モック
             ad_mock = MagicMock()
             ad_mock.ad_group_ad.policy_summary.approval_status = 2
@@ -182,24 +200,37 @@ class TestDiagnoseCampaignDelivery:
             ad_mock.ad_group.id = 1
             ad_mock.ad_group.name = "AG1"
 
-            with patch("mureo.google_ads._diagnostics.map_approval_status", return_value="APPROVED"), \
-                 patch("mureo.google_ads._diagnostics.map_review_status", return_value="REVIEWED"), \
-                 patch("mureo.google_ads._diagnostics.map_ad_type", return_value="RESPONSIVE_SEARCH_AD"):
+            with (
+                patch(
+                    "mureo.google_ads._diagnostics.map_approval_status",
+                    return_value="APPROVED",
+                ),
+                patch(
+                    "mureo.google_ads._diagnostics.map_review_status",
+                    return_value="REVIEWED",
+                ),
+                patch(
+                    "mureo.google_ads._diagnostics.map_ad_type",
+                    return_value="RESPONSIVE_SEARCH_AD",
+                ),
+            ):
                 # _search: kw, ads, locations, billing, is
                 client._search = AsyncMock(
                     side_effect=[
-                        [kw_mock],   # keywords
-                        [ad_mock],   # ads
-                        [],          # locations
+                        [kw_mock],  # keywords
+                        [ad_mock],  # ads
+                        [],  # locations
                         [MagicMock()],  # billing (has_billing=True)
-                        [],          # impression share
+                        [],  # impression share
                     ]
                 )
 
                 result = await client.diagnose_campaign_delivery("123")
 
         # 基本的な検証（地域未設定は warnings に入る）
-        assert result["diagnosis"] == "No issues" or "issues found" in result["diagnosis"]
+        assert (
+            result["diagnosis"] == "No issues" or "issues found" in result["diagnosis"]
+        )
         assert "campaign" in result
 
     @pytest.mark.asyncio
@@ -218,7 +249,9 @@ class TestDiagnoseCampaignDelivery:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        assert any("PAUSED" in issue or "ENABLED" in issue for issue in result["issues"])
+        assert any(
+            "PAUSED" in issue or "ENABLED" in issue for issue in result["issues"]
+        )
 
     @pytest.mark.asyncio
     async def test_learning_status_detected(self, client: _MockDiagClient) -> None:
@@ -290,7 +323,9 @@ class TestDiagnosticsConstants:
     def test_reason_is_issue_subset_of_reason_desc(self) -> None:
         """All keys in _REASON_IS_ISSUE exist in _PRIMARY_STATUS_REASON_DESC."""
         for reason in _REASON_IS_ISSUE:
-            assert reason in _PRIMARY_STATUS_REASON_DESC, f"{reason} not in _PRIMARY_STATUS_REASON_DESC"
+            assert (
+                reason in _PRIMARY_STATUS_REASON_DESC
+            ), f"{reason} not in _PRIMARY_STATUS_REASON_DESC"
 
     def test_learning_status_reasons(self) -> None:
         """All learning status reason keys start with LEARNING_."""
@@ -375,7 +410,10 @@ class TestDiagnoseCampaignDeliveryAdditional:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        assert any("start date" in issue.lower() and "future" in issue.lower() for issue in result["issues"])
+        assert any(
+            "start date" in issue.lower() and "future" in issue.lower()
+            for issue in result["issues"]
+        )
 
     @pytest.mark.asyncio
     async def test_past_end_date(self, client: _MockDiagClient) -> None:
@@ -409,13 +447,19 @@ class TestDiagnoseCampaignDeliveryAdditional:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        assert any("budget" in issue.lower() and "PAUSED" in issue for issue in result["issues"])
+        assert any(
+            "budget" in issue.lower() and "PAUSED" in issue
+            for issue in result["issues"]
+        )
 
     @pytest.mark.asyncio
     async def test_bidding_details_issue(self, client: _MockDiagClient) -> None:
         """入札戦略に問題がある場合（行294）"""
         campaign = self._make_base_campaign(
-            bidding_details={"strategy": "TARGET_IMPRESSION_SHARE", "issue": "上限CPC=¥0"}
+            bidding_details={
+                "strategy": "TARGET_IMPRESSION_SHARE",
+                "issue": "上限CPC=¥0",
+            }
         )
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
@@ -456,7 +500,9 @@ class TestDiagnoseCampaignDeliveryAdditional:
         assert any("disapproved" in w.lower() for w in result["warnings"])
 
     @pytest.mark.asyncio
-    async def test_rarely_served_keywords_warning(self, client: _MockDiagClient) -> None:
+    async def test_rarely_served_keywords_warning(
+        self, client: _MockDiagClient
+    ) -> None:
         """RARELY_SERVEDキーワードのwarning（行343）"""
         campaign = self._make_base_campaign()
         client.get_campaign = AsyncMock(return_value=campaign)
@@ -600,9 +646,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         campaign = self._make_base_campaign()
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
-        client.get_performance_report = AsyncMock(
-            side_effect=RuntimeError("API error")
-        )
+        client.get_performance_report = AsyncMock(side_effect=RuntimeError("API error"))
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
@@ -673,7 +717,9 @@ class TestDiagnoseCampaignDeliveryAdditional:
         assert any("ad rank" in w.lower() for w in result["warnings"])
 
     @pytest.mark.asyncio
-    async def test_recommendations_for_primary_reasons(self, client: _MockDiagClient) -> None:
+    async def test_recommendations_for_primary_reasons(
+        self, client: _MockDiagClient
+    ) -> None:
         """primary_status_reasonsに基づく推奨アクション（行634-652）"""
         campaign = self._make_base_campaign(
             primary_status="NOT_ELIGIBLE",
@@ -697,7 +743,9 @@ class TestDiagnoseCampaignDeliveryAdditional:
         assert any("disapproved" in r.lower() for r in recs)
 
     @pytest.mark.asyncio
-    async def test_target_impression_share_recommendations(self, client: _MockDiagClient) -> None:
+    async def test_target_impression_share_recommendations(
+        self, client: _MockDiagClient
+    ) -> None:
         """TARGET_IMPRESSION_SHARE入札戦略の推奨アクション（行612-626）"""
         campaign = self._make_base_campaign(
             bidding_details={

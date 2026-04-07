@@ -438,7 +438,9 @@ class TestStateV2Models:
     def test_action_log_entry_metrics_defaults_to_none(self) -> None:
         """New fields default to None for backwards compatibility."""
         entry = ActionLogEntry(
-            timestamp="t", action="a", platform="p",
+            timestamp="t",
+            action="a",
+            platform="p",
         )
         assert entry.metrics_at_action is None
         assert entry.observation_due is None
@@ -448,7 +450,9 @@ class TestStateV2Models:
         """metrics_at_action dict is defensively copied."""
         original = {"cpa": 5200}
         entry = ActionLogEntry(
-            timestamp="t", action="a", platform="p",
+            timestamp="t",
+            action="a",
+            platform="p",
             metrics_at_action=original,
         )
         original["cpa"] = 9999
@@ -465,9 +469,7 @@ class TestStateV2Models:
     def test_platform_state_campaigns_defensive_copy(self) -> None:
         """PlatformState takes a defensive copy of campaigns tuple."""
         campaigns = [
-            CampaignSnapshot(
-                campaign_id="1", campaign_name="C1", status="ENABLED"
-            ),
+            CampaignSnapshot(campaign_id="1", campaign_name="C1", status="ENABLED"),
         ]
         ps = PlatformState(account_id="123", campaigns=tuple(campaigns))
         assert isinstance(ps.campaigns, tuple)
@@ -643,7 +645,9 @@ class TestParseStateV2:
             version="2",
             action_log=(
                 ActionLogEntry(
-                    timestamp="t", action="a", platform="p",
+                    timestamp="t",
+                    action="a",
+                    platform="p",
                 ),
             ),
         )

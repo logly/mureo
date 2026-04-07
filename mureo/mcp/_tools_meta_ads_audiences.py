@@ -21,7 +21,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 50)",
                 },
             },
-            "required": ["account_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -46,7 +46,7 @@ TOOLS: list[Tool] = [
                 },
                 "pixel_id": {"type": "string", "description": "Meta Pixel ID"},
             },
-            "required": ["account_id", "name", "subtype"],
+            "required": ["name", "subtype"],
         },
     ),
     # === Audience get / delete / lookalike ===
@@ -62,7 +62,7 @@ TOOLS: list[Tool] = [
                 },
                 "audience_id": {"type": "string", "description": "Audience ID"},
             },
-            "required": ["account_id", "audience_id"],
+            "required": ["audience_id"],
         },
     ),
     Tool(
@@ -77,7 +77,7 @@ TOOLS: list[Tool] = [
                 },
                 "audience_id": {"type": "string", "description": "Audience ID"},
             },
-            "required": ["account_id", "audience_id"],
+            "required": ["audience_id"],
         },
     ),
     Tool(
@@ -136,7 +136,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 50)",
                 },
             },
-            "required": ["account_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -151,7 +151,7 @@ TOOLS: list[Tool] = [
                 },
                 "pixel_id": {"type": "string", "description": "Pixel ID"},
             },
-            "required": ["account_id", "pixel_id"],
+            "required": ["pixel_id"],
         },
     ),
     Tool(
@@ -170,7 +170,7 @@ TOOLS: list[Tool] = [
                     "description": "Aggregation period (last_7d, last_14d, last_30d, last_90d)",
                 },
             },
-            "required": ["account_id", "pixel_id"],
+            "required": ["pixel_id"],
         },
     ),
     Tool(
@@ -185,7 +185,7 @@ TOOLS: list[Tool] = [
                 },
                 "pixel_id": {"type": "string", "description": "Pixel ID"},
             },
-            "required": ["account_id", "pixel_id"],
+            "required": ["pixel_id"],
         },
     ),
 ]

@@ -21,7 +21,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 50)",
                 },
             },
-            "required": ["account_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -53,7 +53,7 @@ TOOLS: list[Tool] = [
                     "description": "CTA button type (LEARN_MORE, SIGN_UP etc.)",
                 },
             },
-            "required": ["account_id", "name", "page_id", "link_url"],
+            "required": ["name", "page_id", "link_url"],
         },
     ),
     Tool(
@@ -121,7 +121,7 @@ TOOLS: list[Tool] = [
                     "description": "Source image URL",
                 },
             },
-            "required": ["account_id", "image_url"],
+            "required": ["image_url"],
         },
     ),
     # === Carousel & Collection ===
@@ -161,7 +161,7 @@ TOOLS: list[Tool] = [
                 "link": {"type": "string", "description": "Main link URL"},
                 "name": {"type": "string", "description": "Creative name (optional)"},
             },
-            "required": ["account_id", "page_id", "cards", "link"],
+            "required": ["page_id", "cards", "link"],
         },
     ),
     Tool(
@@ -191,7 +191,7 @@ TOOLS: list[Tool] = [
                 },
                 "name": {"type": "string", "description": "Creative name (optional)"},
             },
-            "required": ["account_id", "page_id", "product_ids", "link"],
+            "required": ["page_id", "product_ids", "link"],
         },
     ),
     # === Image upload ===
@@ -208,7 +208,7 @@ TOOLS: list[Tool] = [
                 "file_path": {"type": "string", "description": "Image file path"},
                 "name": {"type": "string", "description": "Image name (optional)"},
             },
-            "required": ["account_id", "file_path"],
+            "required": ["file_path"],
         },
     ),
     # === Video Upload ===
@@ -225,7 +225,7 @@ TOOLS: list[Tool] = [
                 "video_url": {"type": "string", "description": "Video URL"},
                 "title": {"type": "string", "description": "Video title (optional)"},
             },
-            "required": ["account_id", "video_url"],
+            "required": ["video_url"],
         },
     ),
     Tool(
@@ -241,7 +241,7 @@ TOOLS: list[Tool] = [
                 "file_path": {"type": "string", "description": "Video file path"},
                 "title": {"type": "string", "description": "Video title (optional)"},
             },
-            "required": ["account_id", "file_path"],
+            "required": ["file_path"],
         },
     ),
 ]

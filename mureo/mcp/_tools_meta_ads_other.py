@@ -21,7 +21,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 50)",
                 },
             },
-            "required": ["account_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -36,7 +36,7 @@ TOOLS: list[Tool] = [
                 },
                 "study_id": {"type": "string", "description": "Study ID"},
             },
-            "required": ["account_id", "study_id"],
+            "required": ["study_id"],
         },
     ),
     Tool(
@@ -96,7 +96,7 @@ TOOLS: list[Tool] = [
                 },
                 "study_id": {"type": "string", "description": "Study ID"},
             },
-            "required": ["account_id", "study_id"],
+            "required": ["study_id"],
         },
     ),
     # === Automated Rules (Ad Rules) ===
@@ -115,7 +115,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 50)",
                 },
             },
-            "required": ["account_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -130,7 +130,7 @@ TOOLS: list[Tool] = [
                 },
                 "rule_id": {"type": "string", "description": "Rule ID"},
             },
-            "required": ["account_id", "rule_id"],
+            "required": ["rule_id"],
         },
     ),
     Tool(
@@ -155,7 +155,7 @@ TOOLS: list[Tool] = [
                 "schedule_spec": {"type": "object", "description": "Schedule settings"},
                 "status": {"type": "string", "description": "Initial status"},
             },
-            "required": ["account_id", "name", "evaluation_spec", "execution_spec"],
+            "required": ["name", "evaluation_spec", "execution_spec"],
         },
     ),
     Tool(
@@ -175,7 +175,7 @@ TOOLS: list[Tool] = [
                 "schedule_spec": {"type": "object", "description": "Schedule settings"},
                 "status": {"type": "string", "description": "Status"},
             },
-            "required": ["account_id", "rule_id"],
+            "required": ["rule_id"],
         },
     ),
     Tool(
@@ -190,7 +190,7 @@ TOOLS: list[Tool] = [
                 },
                 "rule_id": {"type": "string", "description": "Rule ID"},
             },
-            "required": ["account_id", "rule_id"],
+            "required": ["rule_id"],
         },
     ),
     # === Page Posts ===
@@ -210,7 +210,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 25)",
                 },
             },
-            "required": ["account_id", "page_id"],
+            "required": ["page_id"],
         },
     ),
     Tool(
@@ -231,7 +231,7 @@ TOOLS: list[Tool] = [
                     "description": "Ad name (auto-generated if omitted)",
                 },
             },
-            "required": ["account_id", "page_id", "post_id", "ad_set_id"],
+            "required": ["page_id", "post_id", "ad_set_id"],
         },
     ),
     # === Instagram ===
@@ -246,7 +246,7 @@ TOOLS: list[Tool] = [
                     "description": "Ad account ID (act_XXXX format)",
                 },
             },
-            "required": ["account_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -265,7 +265,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 25)",
                 },
             },
-            "required": ["account_id", "ig_user_id"],
+            "required": ["ig_user_id"],
         },
     ),
     Tool(
@@ -286,7 +286,7 @@ TOOLS: list[Tool] = [
                     "description": "Ad name (auto-generated if omitted)",
                 },
             },
-            "required": ["account_id", "ig_user_id", "media_id", "ad_set_id"],
+            "required": ["ig_user_id", "media_id", "ad_set_id"],
         },
     ),
 ]

@@ -169,13 +169,15 @@ class TestAddKeywords:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        result = await client.add_keywords({
-            "ad_group_id": "200",
-            "keywords": [
-                {"text": "キーワード1", "match_type": "BROAD"},
-                {"text": "キーワード2", "match_type": "EXACT"},
-            ],
-        })
+        result = await client.add_keywords(
+            {
+                "ad_group_id": "200",
+                "keywords": [
+                    {"text": "キーワード1", "match_type": "BROAD"},
+                    {"text": "キーワード2", "match_type": "EXACT"},
+                ],
+            }
+        )
         assert len(result) == 2
         assert result[0]["resource_name"] == "customers/123/adGroupCriteria/200~1"
 
@@ -183,19 +185,23 @@ class TestAddKeywords:
     async def test_空リスト_エラー(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="At least one keyword"):
-            await client.add_keywords({
-                "ad_group_id": "200",
-                "keywords": [],
-            })
+            await client.add_keywords(
+                {
+                    "ad_group_id": "200",
+                    "keywords": [],
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_80文字超_エラー(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="80 characters"):
-            await client.add_keywords({
-                "ad_group_id": "200",
-                "keywords": [{"text": "a" * 81}],
-            })
+            await client.add_keywords(
+                {
+                    "ad_group_id": "200",
+                    "keywords": [{"text": "a" * 81}],
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_GoogleAdsException(self) -> None:
@@ -208,10 +214,12 @@ class TestAddKeywords:
         client._client.enums = MagicMock()
 
         with pytest.raises(RuntimeError, match="error occurred"):
-            await client.add_keywords({
-                "ad_group_id": "200",
-                "keywords": [{"text": "テスト"}],
-            })
+            await client.add_keywords(
+                {
+                    "ad_group_id": "200",
+                    "keywords": [{"text": "テスト"}],
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -233,29 +241,35 @@ class TestRemoveKeyword:
         client._client.get_service.return_value = mock_service
         client._client.get_type.return_value = MagicMock()
 
-        result = await client.remove_keyword({
-            "ad_group_id": "200",
-            "criterion_id": "1",
-        })
+        result = await client.remove_keyword(
+            {
+                "ad_group_id": "200",
+                "criterion_id": "1",
+            }
+        )
         assert result["resource_name"] == "customers/123/adGroupCriteria/200~1"
 
     @pytest.mark.asyncio
     async def test_不正なad_group_id(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid ad_group_id"):
-            await client.remove_keyword({
-                "ad_group_id": "abc",
-                "criterion_id": "1",
-            })
+            await client.remove_keyword(
+                {
+                    "ad_group_id": "abc",
+                    "criterion_id": "1",
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_不正なcriterion_id(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid criterion_id"):
-            await client.remove_keyword({
-                "ad_group_id": "200",
-                "criterion_id": "abc",
-            })
+            await client.remove_keyword(
+                {
+                    "ad_group_id": "200",
+                    "criterion_id": "abc",
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -278,10 +292,12 @@ class TestPauseKeyword:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        result = await client.pause_keyword({
-            "ad_group_id": "200",
-            "criterion_id": "1",
-        })
+        result = await client.pause_keyword(
+            {
+                "ad_group_id": "200",
+                "criterion_id": "1",
+            }
+        )
         assert result["resource_name"] == "customers/123/adGroupCriteria/200~1"
 
 
@@ -511,10 +527,12 @@ class TestAddNegativeKeywords:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        result = await client.add_negative_keywords({
-            "campaign_id": "100",
-            "keywords": [{"text": "除外KW", "match_type": "EXACT"}],
-        })
+        result = await client.add_negative_keywords(
+            {
+                "campaign_id": "100",
+                "keywords": [{"text": "除外KW", "match_type": "EXACT"}],
+            }
+        )
         assert len(result) == 1
 
     @pytest.mark.asyncio
@@ -528,10 +546,12 @@ class TestAddNegativeKeywords:
         client._client.enums = MagicMock()
 
         with pytest.raises(RuntimeError, match="error occurred"):
-            await client.add_negative_keywords({
-                "campaign_id": "100",
-                "keywords": [{"text": "除外KW"}],
-            })
+            await client.add_negative_keywords(
+                {
+                    "campaign_id": "100",
+                    "keywords": [{"text": "除外KW"}],
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -554,20 +574,24 @@ class TestAddNegativeKeywordsToAdGroup:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        result = await client.add_negative_keywords_to_ad_group({
-            "ad_group_id": "200",
-            "keywords": [{"text": "除外KW", "match_type": "BROAD"}],
-        })
+        result = await client.add_negative_keywords_to_ad_group(
+            {
+                "ad_group_id": "200",
+                "keywords": [{"text": "除外KW", "match_type": "BROAD"}],
+            }
+        )
         assert len(result) == 1
 
     @pytest.mark.asyncio
     async def test_不正なad_group_id(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid ad_group_id"):
-            await client.add_negative_keywords_to_ad_group({
-                "ad_group_id": "abc",
-                "keywords": [{"text": "除外KW"}],
-            })
+            await client.add_negative_keywords_to_ad_group(
+                {
+                    "ad_group_id": "abc",
+                    "keywords": [{"text": "除外KW"}],
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -589,29 +613,35 @@ class TestRemoveNegativeKeyword:
         client._client.get_service.return_value = mock_service
         client._client.get_type.return_value = MagicMock()
 
-        result = await client.remove_negative_keyword({
-            "campaign_id": "100",
-            "criterion_id": "1",
-        })
+        result = await client.remove_negative_keyword(
+            {
+                "campaign_id": "100",
+                "criterion_id": "1",
+            }
+        )
         assert result["resource_name"] == "customers/123/campaignCriteria/100~1"
 
     @pytest.mark.asyncio
     async def test_不正なcampaign_id(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid campaign_id"):
-            await client.remove_negative_keyword({
-                "campaign_id": "abc",
-                "criterion_id": "1",
-            })
+            await client.remove_negative_keyword(
+                {
+                    "campaign_id": "abc",
+                    "criterion_id": "1",
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_不正なcriterion_id(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid criterion_id"):
-            await client.remove_negative_keyword({
-                "campaign_id": "100",
-                "criterion_id": "abc",
-            })
+            await client.remove_negative_keyword(
+                {
+                    "campaign_id": "100",
+                    "criterion_id": "abc",
+                }
+            )
 
 
 # ---------------------------------------------------------------------------

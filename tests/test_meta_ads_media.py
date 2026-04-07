@@ -58,9 +58,7 @@ class TestUploadAdVideo:
     @pytest.mark.asyncio()
     async def test_upload_ad_video(self, meta_client: Any) -> None:
         """URL指定で動画をアップロードし、video_idが返ること"""
-        meta_client._post = AsyncMock(
-            return_value={"id": "video_123"}
-        )
+        meta_client._post = AsyncMock(return_value={"id": "video_123"})
 
         result = await meta_client.upload_ad_video(
             video_url="https://example.com/video.mp4",
@@ -71,16 +69,16 @@ class TestUploadAdVideo:
         meta_client._post.assert_awaited_once()
         call_args = meta_client._post.call_args
         assert "/advideos" in call_args[0][0]
-        data = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data", {})
+        data = (
+            call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data", {})
+        )
         assert data.get("file_url") == "https://example.com/video.mp4"
         assert data.get("title") == "テスト動画"
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_without_title(self, meta_client: Any) -> None:
         """title省略時もアップロードできること"""
-        meta_client._post = AsyncMock(
-            return_value={"id": "video_456"}
-        )
+        meta_client._post = AsyncMock(return_value={"id": "video_456"})
 
         result = await meta_client.upload_ad_video(
             video_url="https://example.com/video.mp4",
@@ -88,7 +86,9 @@ class TestUploadAdVideo:
 
         assert result["id"] == "video_456"
         call_args = meta_client._post.call_args
-        data = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data", {})
+        data = (
+            call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data", {})
+        )
         assert "title" not in data
 
 
@@ -218,9 +218,7 @@ class TestUploadAdVideoFileInvalidFormat:
                 assert "id" in result
 
     @pytest.mark.asyncio()
-    async def test_upload_ad_video_file_not_found(
-        self, meta_client: Any
-    ) -> None:
+    async def test_upload_ad_video_file_not_found(self, meta_client: Any) -> None:
         """ファイルが存在しない場合にFileNotFoundErrorが発生すること"""
         with pytest.raises(FileNotFoundError):
             await meta_client.upload_ad_video_file("/nonexistent/path/video.mp4")
@@ -248,9 +246,7 @@ class TestCreateCarouselCreative:
     @pytest.mark.asyncio()
     async def test_create_carousel_creative(self, meta_client: Any) -> None:
         """3枚のカードでカルーセルが作成できること"""
-        meta_client._post = AsyncMock(
-            return_value={"id": "creative_carousel_1"}
-        )
+        meta_client._post = AsyncMock(return_value={"id": "creative_carousel_1"})
 
         cards = [
             {
@@ -284,7 +280,9 @@ class TestCreateCarouselCreative:
         meta_client._post.assert_awaited_once()
         call_args = meta_client._post.call_args
         assert "/adcreatives" in call_args[0][0]
-        data = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data", {})
+        data = (
+            call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data", {})
+        )
         # object_story_specにchild_attachmentsが含まれること
         oss = json.loads(data["object_story_spec"])
         assert oss["page_id"] == "page_123"
@@ -302,13 +300,9 @@ class TestCreateCarouselCreativeMinCards:
     """カルーセル最小カード数"""
 
     @pytest.mark.asyncio()
-    async def test_create_carousel_creative_min_cards(
-        self, meta_client: Any
-    ) -> None:
+    async def test_create_carousel_creative_min_cards(self, meta_client: Any) -> None:
         """2枚のカードでカルーセルが作成できること"""
-        meta_client._post = AsyncMock(
-            return_value={"id": "creative_carousel_min"}
-        )
+        meta_client._post = AsyncMock(return_value={"id": "creative_carousel_min"})
 
         cards = [
             {
@@ -342,9 +336,7 @@ class TestCreateCarouselCreativeTooFew:
     """カルーセルカード数バリデーション"""
 
     @pytest.mark.asyncio()
-    async def test_create_carousel_creative_too_few(
-        self, meta_client: Any
-    ) -> None:
+    async def test_create_carousel_creative_too_few(self, meta_client: Any) -> None:
         """1枚のカードでValueErrorが発生すること"""
         cards = [
             {
@@ -362,9 +354,7 @@ class TestCreateCarouselCreativeTooFew:
             )
 
     @pytest.mark.asyncio()
-    async def test_create_carousel_creative_too_many(
-        self, meta_client: Any
-    ) -> None:
+    async def test_create_carousel_creative_too_many(self, meta_client: Any) -> None:
         """11枚のカードでValueErrorが発生すること"""
         cards = [
             {
@@ -383,13 +373,9 @@ class TestCreateCarouselCreativeTooFew:
             )
 
     @pytest.mark.asyncio()
-    async def test_create_carousel_creative_max_cards(
-        self, meta_client: Any
-    ) -> None:
+    async def test_create_carousel_creative_max_cards(self, meta_client: Any) -> None:
         """10枚のカードでカルーセルが作成できること"""
-        meta_client._post = AsyncMock(
-            return_value={"id": "creative_carousel_max"}
-        )
+        meta_client._post = AsyncMock(return_value={"id": "creative_carousel_max"})
 
         cards = [
             {
@@ -421,9 +407,7 @@ class TestCreateCollectionCreative:
     @pytest.mark.asyncio()
     async def test_create_collection_creative(self, meta_client: Any) -> None:
         """画像カバーでコレクションが作成できること"""
-        meta_client._post = AsyncMock(
-            return_value={"id": "creative_collection_1"}
-        )
+        meta_client._post = AsyncMock(return_value={"id": "creative_collection_1"})
 
         result = await meta_client.create_collection_creative(
             page_id="page_123",
@@ -437,7 +421,9 @@ class TestCreateCollectionCreative:
         meta_client._post.assert_awaited_once()
         call_args = meta_client._post.call_args
         assert "/adcreatives" in call_args[0][0]
-        data = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data", {})
+        data = (
+            call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data", {})
+        )
         oss = json.loads(data["object_story_spec"])
         assert oss["page_id"] == "page_123"
         td = oss["template_data"]
@@ -459,9 +445,7 @@ class TestCreateCollectionCreativeWithVideo:
         self, meta_client: Any
     ) -> None:
         """動画カバーでコレクションが作成できること"""
-        meta_client._post = AsyncMock(
-            return_value={"id": "creative_collection_video"}
-        )
+        meta_client._post = AsyncMock(return_value={"id": "creative_collection_video"})
 
         result = await meta_client.create_collection_creative(
             page_id="page_123",
@@ -473,15 +457,15 @@ class TestCreateCollectionCreativeWithVideo:
 
         assert result["id"] == "creative_collection_video"
         call_args = meta_client._post.call_args
-        data = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data", {})
+        data = (
+            call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data", {})
+        )
         oss = json.loads(data["object_story_spec"])
         td = oss["template_data"]
         assert td["format_option"] == "collection_video"
 
     @pytest.mark.asyncio()
-    async def test_create_collection_creative_no_cover(
-        self, meta_client: Any
-    ) -> None:
+    async def test_create_collection_creative_no_cover(self, meta_client: Any) -> None:
         """カバーなしでもコレクションが作成できること"""
         meta_client._post = AsyncMock(
             return_value={"id": "creative_collection_nocover"}
@@ -507,6 +491,7 @@ class TestMetaAdsMediaToolDefinitions:
 
     def _get_tools(self) -> list[Any]:
         from mureo.mcp.tools_meta_ads import TOOLS
+
         return TOOLS
 
     def _get_tool(self, name: str) -> Any:
@@ -522,7 +507,7 @@ class TestMetaAdsMediaToolDefinitions:
     def test_videos_upload_required_fields(self) -> None:
         """videos.uploadの必須パラメータが正しいこと"""
         tool = self._get_tool("meta_ads.videos.upload")
-        assert set(tool.inputSchema["required"]) == {"account_id", "video_url"}
+        assert set(tool.inputSchema["required"]) == {"video_url"}
 
     def test_videos_upload_file_tool_exists(self) -> None:
         """meta_ads.videos.upload_file がTOOLSに定義されていること"""
@@ -531,7 +516,7 @@ class TestMetaAdsMediaToolDefinitions:
     def test_videos_upload_file_required_fields(self) -> None:
         """videos.upload_fileの必須パラメータが正しいこと"""
         tool = self._get_tool("meta_ads.videos.upload_file")
-        assert set(tool.inputSchema["required"]) == {"account_id", "file_path"}
+        assert set(tool.inputSchema["required"]) == {"file_path"}
 
     def test_creatives_create_carousel_tool_exists(self) -> None:
         """meta_ads.creatives.create_carousel がTOOLSに定義されていること"""
@@ -541,7 +526,9 @@ class TestMetaAdsMediaToolDefinitions:
         """create_carouselの必須パラメータが正しいこと"""
         tool = self._get_tool("meta_ads.creatives.create_carousel")
         assert set(tool.inputSchema["required"]) == {
-            "account_id", "page_id", "cards", "link",
+            "page_id",
+            "cards",
+            "link",
         }
 
     def test_creatives_create_collection_tool_exists(self) -> None:
@@ -552,7 +539,9 @@ class TestMetaAdsMediaToolDefinitions:
         """create_collectionの必須パラメータが正しいこと"""
         tool = self._get_tool("meta_ads.creatives.create_collection")
         assert set(tool.inputSchema["required"]) == {
-            "account_id", "page_id", "product_ids", "link",
+            "page_id",
+            "product_ids",
+            "link",
         }
 
 
@@ -573,12 +562,15 @@ class TestMetaAdsMediaHandlers:
         mock_client = AsyncMock()
         mock_client.upload_ad_video.return_value = {"id": "video_mcp_1"}
 
-        with patch(
-            "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
-            return_value=MetaAdsCredentials(access_token="tok"),
-        ), patch(
-            "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
+                return_value=MetaAdsCredentials(access_token="tok"),
+            ),
+            patch(
+                "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
+                return_value=mock_client,
+            ),
         ):
             result = await handle_tool(
                 "meta_ads.videos.upload",
@@ -602,12 +594,15 @@ class TestMetaAdsMediaHandlers:
         mock_client = AsyncMock()
         mock_client.upload_ad_video_file.return_value = {"id": "video_file_1"}
 
-        with patch(
-            "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
-            return_value=MetaAdsCredentials(access_token="tok"),
-        ), patch(
-            "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
+                return_value=MetaAdsCredentials(access_token="tok"),
+            ),
+            patch(
+                "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
+                return_value=mock_client,
+            ),
         ):
             result = await handle_tool(
                 "meta_ads.videos.upload_file",
@@ -627,16 +622,17 @@ class TestMetaAdsMediaHandlers:
         from mureo.mcp.tools_meta_ads import handle_tool
 
         mock_client = AsyncMock()
-        mock_client.create_carousel_creative.return_value = {
-            "id": "carousel_mcp_1"
-        }
+        mock_client.create_carousel_creative.return_value = {"id": "carousel_mcp_1"}
 
-        with patch(
-            "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
-            return_value=MetaAdsCredentials(access_token="tok"),
-        ), patch(
-            "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
+                return_value=MetaAdsCredentials(access_token="tok"),
+            ),
+            patch(
+                "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
+                return_value=mock_client,
+            ),
         ):
             result = await handle_tool(
                 "meta_ads.creatives.create_carousel",
@@ -662,16 +658,17 @@ class TestMetaAdsMediaHandlers:
         from mureo.mcp.tools_meta_ads import handle_tool
 
         mock_client = AsyncMock()
-        mock_client.create_collection_creative.return_value = {
-            "id": "collection_mcp_1"
-        }
+        mock_client.create_collection_creative.return_value = {"id": "collection_mcp_1"}
 
-        with patch(
-            "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
-            return_value=MetaAdsCredentials(access_token="tok"),
-        ), patch(
-            "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
+                return_value=MetaAdsCredentials(access_token="tok"),
+            ),
+            patch(
+                "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
+                return_value=mock_client,
+            ),
         ):
             result = await handle_tool(
                 "meta_ads.creatives.create_collection",

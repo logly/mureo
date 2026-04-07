@@ -21,7 +21,7 @@ TOOLS: list[Tool] = [
                     "description": "Status filter (ENABLED/PAUSED)",
                 },
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -36,7 +36,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -56,7 +56,7 @@ TOOLS: list[Tool] = [
                 },
                 "budget_id": {"type": "string", "description": "Budget ID"},
             },
-            "required": ["customer_id", "name"],
+            "required": ["name"],
         },
     ),
     Tool(
@@ -76,7 +76,7 @@ TOOLS: list[Tool] = [
                     "description": "Bidding strategy",
                 },
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -95,7 +95,7 @@ TOOLS: list[Tool] = [
                     "description": "New status (ENABLED/PAUSED/REMOVED)",
                 },
             },
-            "required": ["customer_id", "campaign_id", "status"],
+            "required": ["campaign_id", "status"],
         },
     ),
     Tool(
@@ -110,7 +110,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Ad Groups ===
@@ -133,7 +133,7 @@ TOOLS: list[Tool] = [
                     "description": "Status filter",
                 },
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -153,7 +153,7 @@ TOOLS: list[Tool] = [
                     "description": "CPC bid amount (in micros)",
                 },
             },
-            "required": ["customer_id", "campaign_id", "name"],
+            "required": ["campaign_id", "name"],
         },
     ),
     Tool(
@@ -177,7 +177,7 @@ TOOLS: list[Tool] = [
                     "description": "CPC bid amount (in micros)",
                 },
             },
-            "required": ["customer_id", "ad_group_id"],
+            "required": ["ad_group_id"],
         },
     ),
     # === Ads ===
@@ -200,7 +200,7 @@ TOOLS: list[Tool] = [
                     "description": "Status filter",
                 },
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -228,7 +228,7 @@ TOOLS: list[Tool] = [
                 "path1": {"type": "string", "description": "Display path 1"},
                 "path2": {"type": "string", "description": "Display path 2"},
             },
-            "required": ["customer_id", "ad_group_id", "headlines", "descriptions"],
+            "required": ["ad_group_id", "headlines", "descriptions"],
         },
     ),
     Tool(
@@ -254,7 +254,7 @@ TOOLS: list[Tool] = [
                     "description": "List of descriptions",
                 },
             },
-            "required": ["customer_id", "ad_group_id", "ad_id"],
+            "required": ["ad_group_id", "ad_id"],
         },
     ),
     Tool(
@@ -274,7 +274,7 @@ TOOLS: list[Tool] = [
                     "description": "New status (ENABLED/PAUSED)",
                 },
             },
-            "required": ["customer_id", "ad_group_id", "ad_id", "status"],
+            "required": ["ad_group_id", "ad_id", "status"],
         },
     ),
     # === Ad policy details ===
@@ -291,7 +291,7 @@ TOOLS: list[Tool] = [
                 "ad_group_id": {"type": "string", "description": "Ad group ID"},
                 "ad_id": {"type": "string", "description": "Ad ID"},
             },
-            "required": ["customer_id", "ad_group_id", "ad_id"],
+            "required": ["ad_group_id", "ad_id"],
         },
     ),
     # === Budgets ===
@@ -307,7 +307,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -323,7 +323,7 @@ TOOLS: list[Tool] = [
                 "budget_id": {"type": "string", "description": "Budget ID"},
                 "amount": {"type": "number", "description": "New daily budget amount"},
             },
-            "required": ["customer_id", "budget_id", "amount"],
+            "required": ["budget_id", "amount"],
         },
     ),
     # === Budget creation ===
@@ -340,7 +340,7 @@ TOOLS: list[Tool] = [
                 "name": {"type": "string", "description": "Budget name"},
                 "amount": {"type": "number", "description": "Daily budget amount"},
             },
-            "required": ["customer_id", "name", "amount"],
+            "required": ["name", "amount"],
         },
     ),
     # === Account ===
@@ -355,7 +355,7 @@ TOOLS: list[Tool] = [
                     "description": "Google Ads customer ID",
                 },
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
 ]

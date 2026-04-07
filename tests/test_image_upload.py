@@ -71,7 +71,9 @@ class TestMetaUploadAdImageFile:
         mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
         mock_http_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("mureo.meta_ads._creatives.httpx.AsyncClient", return_value=mock_http_client):
+        with patch(
+            "mureo.meta_ads._creatives.httpx.AsyncClient", return_value=mock_http_client
+        ):
             result = await meta_client.upload_ad_image_file(str(sample_image))
 
         assert result["hash"] == "abc123hash"
@@ -99,7 +101,9 @@ class TestMetaUploadAdImageFile:
         mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
         mock_http_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("mureo.meta_ads._creatives.httpx.AsyncClient", return_value=mock_http_client):
+        with patch(
+            "mureo.meta_ads._creatives.httpx.AsyncClient", return_value=mock_http_client
+        ):
             result = await meta_client.upload_ad_image_file(
                 str(sample_image), name="custom_name.png"
             )
@@ -107,9 +111,7 @@ class TestMetaUploadAdImageFile:
         assert result["hash"] == "abc123hash"
 
     @pytest.mark.asyncio()
-    async def test_upload_ad_image_file_not_found(
-        self, meta_client: Any
-    ) -> None:
+    async def test_upload_ad_image_file_not_found(self, meta_client: Any) -> None:
         """ファイルが存在しない場合にFileNotFoundErrorが発生すること"""
         with pytest.raises(FileNotFoundError):
             await meta_client.upload_ad_image_file("/nonexistent/path/image.png")
@@ -154,9 +156,7 @@ class TestMetaUploadAdImageFile:
         """jpg, jpeg, png, gif, bmp, tiffが許可されること"""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "images": {"img": {"hash": "h", "url": "u"}}
-        }
+        mock_response.json.return_value = {"images": {"img": {"hash": "h", "url": "u"}}}
         mock_response.raise_for_status = MagicMock()
 
         mock_http_client = AsyncMock()
@@ -188,9 +188,7 @@ class TestGoogleAdsUploadImageAsset:
         """テスト用GoogleAdsApiClientをモックで作成する"""
         from mureo.google_ads.client import GoogleAdsApiClient
 
-        with patch(
-            "mureo.google_ads.client.GoogleAdsClient"
-        ) as mock_gads:
+        with patch("mureo.google_ads.client.GoogleAdsClient") as mock_gads:
             mock_instance = MagicMock()
             mock_gads.return_value = mock_instance
             mock_creds = MagicMock()
@@ -238,9 +236,7 @@ class TestGoogleAdsUploadImageAsset:
         assert result["id"] == "789"
 
     @pytest.mark.asyncio()
-    async def test_upload_image_asset_not_found(
-        self, google_client: Any
-    ) -> None:
+    async def test_upload_image_asset_not_found(self, google_client: Any) -> None:
         """ファイルが存在しない場合にFileNotFoundErrorが発生すること"""
         with pytest.raises(FileNotFoundError):
             await google_client.upload_image_asset("/nonexistent/image.png")
@@ -342,18 +338,22 @@ class TestMcpMetaUploadFile:
 
         mock_client = AsyncMock()
         mock_client.upload_ad_image_file.return_value = {
-            "hash": "abc", "url": "https://example.com/img.png"
+            "hash": "abc",
+            "url": "https://example.com/img.png",
         }
 
         from mureo.auth import MetaAdsCredentials
 
         creds = MetaAdsCredentials(access_token="tok")
-        with patch(
-            "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
-            return_value=creds,
-        ), patch(
-            "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
+                return_value=creds,
+            ),
+            patch(
+                "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
+                return_value=mock_client,
+            ),
         ):
             result = await handle_tool(
                 "meta_ads.images.upload_file",
@@ -398,12 +398,15 @@ class TestMcpGoogleUploadImage:
             "name": "test_image.png",
         }
 
-        with patch(
-            "mureo.mcp._handlers_google_ads.load_google_ads_credentials",
-            return_value={"developer_token": "tok"},
-        ), patch(
-            "mureo.mcp._handlers_google_ads.create_google_ads_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "mureo.mcp._handlers_google_ads.load_google_ads_credentials",
+                return_value={"developer_token": "tok"},
+            ),
+            patch(
+                "mureo.mcp._handlers_google_ads.create_google_ads_client",
+                return_value=mock_client,
+            ),
         ):
             result = await handle_tool(
                 "google_ads.assets.upload_image",

@@ -254,7 +254,9 @@ class TestListInstagramMedia:
         assert "/ig_111/media" in call_args[0][0]
 
     @pytest.mark.asyncio
-    async def test_list_instagram_media_with_limit(self, client: InstagramMixin) -> None:
+    async def test_list_instagram_media_with_limit(
+        self, client: InstagramMixin
+    ) -> None:
         """limit指定が渡ること"""
         client._get = AsyncMock(return_value={"data": []})
         await client.list_instagram_media("ig_111", limit=5)
@@ -310,13 +312,9 @@ class TestBoostInstagramPost:
         assert data["name"] == "Instagram広告"
 
     @pytest.mark.asyncio
-    async def test_boost_instagram_post_api_error(
-        self, client: InstagramMixin
-    ) -> None:
+    async def test_boost_instagram_post_api_error(self, client: InstagramMixin) -> None:
         """APIエラー時にRuntimeErrorが発生すること"""
-        client._post = AsyncMock(
-            side_effect=RuntimeError("Meta API request failed")
-        )
+        client._post = AsyncMock(side_effect=RuntimeError("Meta API request failed"))
         with pytest.raises(RuntimeError, match="Meta API"):
             await client.boost_instagram_post(
                 ig_user_id="ig_111",

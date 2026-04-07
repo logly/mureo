@@ -127,9 +127,7 @@ class TestHandlerDispatch:
         handler_mod = _import_handlers()
         mock_creds = MagicMock()
         mock_client = AsyncMock()
-        mock_client.list_sites.return_value = [
-            {"siteUrl": "https://example.com/"}
-        ]
+        mock_client.list_sites.return_value = [{"siteUrl": "https://example.com/"}]
         with (
             patch.object(
                 handler_mod, "load_google_ads_credentials", return_value=mock_creds
@@ -164,9 +162,7 @@ class TestSitesHandlers:
     async def test_sites_list(self) -> None:
         h = _import_handlers()
         mock_creds, mock_client = _setup_handler_mocks(h)
-        mock_client.list_sites.return_value = [
-            {"siteUrl": "https://example.com/"}
-        ]
+        mock_client.list_sites.return_value = [{"siteUrl": "https://example.com/"}]
         with (
             patch.object(h, "load_google_ads_credentials", return_value=mock_creds),
             patch.object(h, "create_search_console_client", return_value=mock_client),
@@ -188,9 +184,7 @@ class TestSitesHandlers:
             patch.object(h, "load_google_ads_credentials", return_value=mock_creds),
             patch.object(h, "create_search_console_client", return_value=mock_client),
         ):
-            result = await h.handle_sites_get(
-                {"site_url": "https://example.com/"}
-            )
+            result = await h.handle_sites_get({"site_url": "https://example.com/"})
 
         parsed = json.loads(result[0].text)
         assert parsed["permissionLevel"] == "siteOwner"
@@ -236,9 +230,7 @@ class TestAnalyticsHandlers:
     async def test_top_queries(self) -> None:
         h = _import_handlers()
         mock_creds, mock_client = _setup_handler_mocks(h)
-        mock_client.query_analytics.return_value = [
-            {"keys": ["query1"], "clicks": 100}
-        ]
+        mock_client.query_analytics.return_value = [{"keys": ["query1"], "clicks": 100}]
         with (
             patch.object(h, "load_google_ads_credentials", return_value=mock_creds),
             patch.object(h, "create_search_console_client", return_value=mock_client),
@@ -260,9 +252,7 @@ class TestAnalyticsHandlers:
     async def test_top_pages(self) -> None:
         h = _import_handlers()
         mock_creds, mock_client = _setup_handler_mocks(h)
-        mock_client.query_analytics.return_value = [
-            {"keys": ["/page1"], "clicks": 200}
-        ]
+        mock_client.query_analytics.return_value = [{"keys": ["/page1"], "clicks": 200}]
         with (
             patch.object(h, "load_google_ads_credentials", return_value=mock_creds),
             patch.object(h, "create_search_console_client", return_value=mock_client),
@@ -281,9 +271,7 @@ class TestAnalyticsHandlers:
     async def test_device_breakdown(self) -> None:
         h = _import_handlers()
         mock_creds, mock_client = _setup_handler_mocks(h)
-        mock_client.query_analytics.return_value = [
-            {"keys": ["MOBILE"], "clicks": 300}
-        ]
+        mock_client.query_analytics.return_value = [{"keys": ["MOBILE"], "clicks": 300}]
         with (
             patch.object(h, "load_google_ads_credentials", return_value=mock_creds),
             patch.object(h, "create_search_console_client", return_value=mock_client),
@@ -343,9 +331,7 @@ class TestSitemapHandlers:
             patch.object(h, "load_google_ads_credentials", return_value=mock_creds),
             patch.object(h, "create_search_console_client", return_value=mock_client),
         ):
-            result = await h.handle_sitemaps_list(
-                {"site_url": "https://example.com/"}
-            )
+            result = await h.handle_sitemaps_list({"site_url": "https://example.com/"})
 
         parsed = json.loads(result[0].text)
         assert len(parsed) == 1
@@ -353,7 +339,10 @@ class TestSitemapHandlers:
     async def test_submit_sitemap(self) -> None:
         h = _import_handlers()
         mock_creds, mock_client = _setup_handler_mocks(h)
-        mock_client.submit_sitemap.return_value = {"status": "submitted", "sitemap": "https://example.com/sitemap.xml"}
+        mock_client.submit_sitemap.return_value = {
+            "status": "submitted",
+            "sitemap": "https://example.com/sitemap.xml",
+        }
         with (
             patch.object(h, "load_google_ads_credentials", return_value=mock_creds),
             patch.object(h, "create_search_console_client", return_value=mock_client),

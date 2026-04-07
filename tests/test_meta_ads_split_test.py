@@ -166,9 +166,7 @@ class TestSplitTestMixin:
     @pytest.mark.asyncio
     async def test_api_error(self, client: SplitTestMixin) -> None:
         """APIエラー時にRuntimeErrorが伝播すること"""
-        client._get = AsyncMock(
-            side_effect=RuntimeError("Meta API request failed")
-        )
+        client._get = AsyncMock(side_effect=RuntimeError("Meta API request failed"))
         with pytest.raises(RuntimeError, match="Meta API"):
             await client.list_split_tests()
 
@@ -199,9 +197,7 @@ class TestSplitTestMixin:
     # 9. test_get_split_test_with_results
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
-    async def test_get_split_test_with_results(
-        self, client: SplitTestMixin
-    ) -> None:
+    async def test_get_split_test_with_results(self, client: SplitTestMixin) -> None:
         """結果付きスプリットテスト詳細を取得できること"""
         client._get = AsyncMock(
             return_value={

@@ -291,7 +291,9 @@ class TestCheckKeywordRelevance:
 
     def test_キーワードなし(self) -> None:
         score, missing = _check_keyword_relevance(
-            ["テスト"], ["説明文"], [],
+            ["テスト"],
+            ["説明文"],
+            [],
         )
         assert score == 0.5
 

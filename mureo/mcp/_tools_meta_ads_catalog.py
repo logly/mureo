@@ -18,7 +18,7 @@ TOOLS: list[Tool] = [
                 },
                 "business_id": {"type": "string", "description": "Business ID"},
             },
-            "required": ["account_id", "business_id"],
+            "required": ["business_id"],
         },
     ),
     Tool(
@@ -34,7 +34,7 @@ TOOLS: list[Tool] = [
                 "business_id": {"type": "string", "description": "Business ID"},
                 "name": {"type": "string", "description": "Catalog name"},
             },
-            "required": ["account_id", "business_id", "name"],
+            "required": ["business_id", "name"],
         },
     ),
     Tool(
@@ -49,7 +49,7 @@ TOOLS: list[Tool] = [
                 },
                 "catalog_id": {"type": "string", "description": "Catalog ID"},
             },
-            "required": ["account_id", "catalog_id"],
+            "required": ["catalog_id"],
         },
     ),
     Tool(
@@ -64,7 +64,7 @@ TOOLS: list[Tool] = [
                 },
                 "catalog_id": {"type": "string", "description": "Catalog ID"},
             },
-            "required": ["account_id", "catalog_id"],
+            "required": ["catalog_id"],
         },
     ),
     # === Products ===
@@ -84,7 +84,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 100)",
                 },
             },
-            "required": ["account_id", "catalog_id"],
+            "required": ["catalog_id"],
         },
     ),
     Tool(
@@ -143,7 +143,7 @@ TOOLS: list[Tool] = [
                 },
                 "product_id": {"type": "string", "description": "Product ID"},
             },
-            "required": ["account_id", "product_id"],
+            "required": ["product_id"],
         },
     ),
     Tool(
@@ -166,7 +166,7 @@ TOOLS: list[Tool] = [
                 "brand": {"type": "string", "description": "Brand name"},
                 "category": {"type": "string", "description": "Category"},
             },
-            "required": ["account_id", "product_id"],
+            "required": ["product_id"],
         },
     ),
     Tool(
@@ -181,7 +181,7 @@ TOOLS: list[Tool] = [
                 },
                 "product_id": {"type": "string", "description": "Product ID"},
             },
-            "required": ["account_id", "product_id"],
+            "required": ["product_id"],
         },
     ),
     # === Feeds ===
@@ -197,7 +197,7 @@ TOOLS: list[Tool] = [
                 },
                 "catalog_id": {"type": "string", "description": "Catalog ID"},
             },
-            "required": ["account_id", "catalog_id"],
+            "required": ["catalog_id"],
         },
     ),
     Tool(
@@ -218,7 +218,7 @@ TOOLS: list[Tool] = [
                     "description": "Import schedule (DAILY, HOURLY, WEEKLY. Default: DAILY)",
                 },
             },
-            "required": ["account_id", "catalog_id", "name", "feed_url"],
+            "required": ["catalog_id", "name", "feed_url"],
         },
     ),
 ]

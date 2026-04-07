@@ -25,7 +25,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 50)",
                 },
             },
-            "required": ["account_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -40,7 +40,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["account_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -71,7 +71,7 @@ TOOLS: list[Tool] = [
                     "description": "Lifetime budget (in cents)",
                 },
             },
-            "required": ["account_id", "name", "objective"],
+            "required": ["name", "objective"],
         },
     ),
     Tool(
@@ -92,7 +92,7 @@ TOOLS: list[Tool] = [
                     "description": "Daily budget (in cents)",
                 },
             },
-            "required": ["account_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Campaign pause / enable ===
@@ -108,7 +108,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["account_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -123,7 +123,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["account_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Ad sets ===
@@ -146,7 +146,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 50)",
                 },
             },
-            "required": ["account_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -179,7 +179,7 @@ TOOLS: list[Tool] = [
                     "description": "Initial status (default: PAUSED)",
                 },
             },
-            "required": ["account_id", "campaign_id", "name", "daily_budget"],
+            "required": ["campaign_id", "name", "daily_budget"],
         },
     ),
     Tool(
@@ -201,7 +201,7 @@ TOOLS: list[Tool] = [
                 },
                 "targeting": {"type": "object", "description": "Targeting settings"},
             },
-            "required": ["account_id", "ad_set_id"],
+            "required": ["ad_set_id"],
         },
     ),
     # === Ad set get / pause / enable ===
@@ -217,7 +217,7 @@ TOOLS: list[Tool] = [
                 },
                 "ad_set_id": {"type": "string", "description": "Ad set ID"},
             },
-            "required": ["account_id", "ad_set_id"],
+            "required": ["ad_set_id"],
         },
     ),
     Tool(
@@ -232,7 +232,7 @@ TOOLS: list[Tool] = [
                 },
                 "ad_set_id": {"type": "string", "description": "Ad set ID"},
             },
-            "required": ["account_id", "ad_set_id"],
+            "required": ["ad_set_id"],
         },
     ),
     Tool(
@@ -247,7 +247,7 @@ TOOLS: list[Tool] = [
                 },
                 "ad_set_id": {"type": "string", "description": "Ad set ID"},
             },
-            "required": ["account_id", "ad_set_id"],
+            "required": ["ad_set_id"],
         },
     ),
     # === Ads ===
@@ -270,7 +270,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 50)",
                 },
             },
-            "required": ["account_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -291,7 +291,7 @@ TOOLS: list[Tool] = [
                     "description": "Initial status (default: PAUSED)",
                 },
             },
-            "required": ["account_id", "ad_set_id", "name", "creative_id"],
+            "required": ["ad_set_id", "name", "creative_id"],
         },
     ),
     Tool(
@@ -308,7 +308,7 @@ TOOLS: list[Tool] = [
                 "name": {"type": "string", "description": "New name"},
                 "status": {"type": "string", "description": "Status"},
             },
-            "required": ["account_id", "ad_id"],
+            "required": ["ad_id"],
         },
     ),
     # === Ad get / pause / enable ===
@@ -324,7 +324,7 @@ TOOLS: list[Tool] = [
                 },
                 "ad_id": {"type": "string", "description": "Ad ID"},
             },
-            "required": ["account_id", "ad_id"],
+            "required": ["ad_id"],
         },
     ),
     Tool(
@@ -339,7 +339,7 @@ TOOLS: list[Tool] = [
                 },
                 "ad_id": {"type": "string", "description": "Ad ID"},
             },
-            "required": ["account_id", "ad_id"],
+            "required": ["ad_id"],
         },
     ),
     Tool(
@@ -354,7 +354,7 @@ TOOLS: list[Tool] = [
                 },
                 "ad_id": {"type": "string", "description": "Ad ID"},
             },
-            "required": ["account_id", "ad_id"],
+            "required": ["ad_id"],
         },
     ),
 ]

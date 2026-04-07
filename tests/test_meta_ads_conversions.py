@@ -3,6 +3,7 @@
 send_event / send_purchase_event / send_lead_event および
 ハッシュ化ユーティリティ（hash_email, hash_phone, normalize_user_data）をテストする。
 """
+
 from __future__ import annotations
 
 import hashlib

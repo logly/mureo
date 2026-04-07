@@ -237,7 +237,9 @@ class TestCatalogMixin:
     async def test_api_error(self, client: CatalogMixin) -> None:
         """APIエラー時にRuntimeErrorが送出されること"""
         client._get = AsyncMock(
-            side_effect=RuntimeError("Meta API リクエストに失敗しました (status=400, path=/biz_001/owned_product_catalogs)")
+            side_effect=RuntimeError(
+                "Meta API リクエストに失敗しました (status=400, path=/biz_001/owned_product_catalogs)"
+            )
         )
         with pytest.raises(RuntimeError, match="Meta API"):
             await client.list_catalogs("biz_001")

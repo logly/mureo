@@ -212,9 +212,7 @@ class TestIntentClassifierParseResponse:
         assert results[0].intent == INTENT_NAVIGATIONAL
 
     def test_不正JSON_デフォルト分類(self) -> None:
-        results = IntentClassifier.parse_response(
-            "invalid json", ["語句1", "語句2"]
-        )
+        results = IntentClassifier.parse_response("invalid json", ["語句1", "語句2"])
 
         assert len(results) == 2
         for r in results:
@@ -277,9 +275,7 @@ class TestIntentClassifierParseResponse:
             ]
         )
 
-        results = IntentClassifier.parse_response(
-            response, ["語句A", "語句B"]
-        )
+        results = IntentClassifier.parse_response(response, ["語句A", "語句B"])
 
         assert results[0].search_term == "語句A"
         assert results[0].intent == INTENT_TRANSACTIONAL

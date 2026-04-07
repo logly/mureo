@@ -99,7 +99,9 @@ class TestListSitelinks:
         return _MockExtensionsClient()
 
     @pytest.mark.asyncio
-    async def test_returns_campaign_and_account_sitelinks(self, client: _MockExtensionsClient) -> None:
+    async def test_returns_campaign_and_account_sitelinks(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """キャンペーンレベルとアカウントレベルのサイトリンクを統合して返す"""
         campaign_row = MagicMock()
         # map_sitelink が呼ばれるので、パッチする
@@ -111,7 +113,7 @@ class TestListSitelinks:
             client._search = AsyncMock(
                 side_effect=[
                     [campaign_row],  # キャンペーンレベル
-                    [MagicMock()],   # アカウントレベル
+                    [MagicMock()],  # アカウントレベル
                 ]
             )
             result = await client.list_sitelinks("123")
@@ -139,7 +141,9 @@ class TestListSitelinks:
         assert len(result) == 1
 
     @pytest.mark.asyncio
-    async def test_account_level_failure_graceful(self, client: _MockExtensionsClient) -> None:
+    async def test_account_level_failure_graceful(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """アカウントレベルの取得に失敗してもキャンペーンレベルは返る"""
         with patch("mureo.google_ads._extensions_sitelinks.map_sitelink") as mock_map:
             mock_map.return_value = {"id": "1", "link_text": "Link1"}
@@ -173,11 +177,13 @@ class TestCreateSitelink:
             mock_ls.return_value = [
                 {"id": str(i), "level": "campaign"} for i in range(20)
             ]
-            result = await client.create_sitelink({
-                "campaign_id": "123",
-                "link_text": "Test",
-                "final_url": "https://example.com",
-            })
+            result = await client.create_sitelink(
+                {
+                    "campaign_id": "123",
+                    "link_text": "Test",
+                    "final_url": "https://example.com",
+                }
+            )
         assert result["error"] is True
         assert "Maximum 20" in result["message"]
 
@@ -220,10 +226,12 @@ class TestCreateCallout:
         """上限超過時はバリデーションエラーを返す"""
         with patch.object(client, "list_callouts", new_callable=AsyncMock) as mock_lc:
             mock_lc.return_value = [{"id": str(i)} for i in range(20)]
-            result = await client.create_callout({
-                "campaign_id": "123",
-                "callout_text": "Test",
-            })
+            result = await client.create_callout(
+                {
+                    "campaign_id": "123",
+                    "callout_text": "Test",
+                }
+            )
         assert result["error"] is True
         assert "Maximum 20" in result["message"]
 
@@ -243,7 +251,9 @@ class TestListConversionActions:
     async def test_returns_mapped_actions(self, client: _MockExtensionsClient) -> None:
         mock_row = MagicMock()
         client._search = AsyncMock(return_value=[mock_row])
-        with patch("mureo.google_ads._extensions_conversions.map_conversion_action") as mock_map:
+        with patch(
+            "mureo.google_ads._extensions_conversions.map_conversion_action"
+        ) as mock_map:
             mock_map.return_value = {"id": "1", "name": "Purchase"}
             result = await client.list_conversion_actions()
 
@@ -280,23 +290,33 @@ class TestCreateConversionActionValidation:
     @pytest.mark.asyncio
     async def test_invalid_category_raises(self, client: _MockExtensionsClient) -> None:
         with pytest.raises(ValueError, match="Invalid category"):
-            await client.create_conversion_action({"name": "Test", "category": "INVALID"})
+            await client.create_conversion_action(
+                {"name": "Test", "category": "INVALID"}
+            )
 
     @pytest.mark.asyncio
-    async def test_lookback_window_out_of_range(self, client: _MockExtensionsClient) -> None:
+    async def test_lookback_window_out_of_range(
+        self, client: _MockExtensionsClient
+    ) -> None:
         with pytest.raises(ValueError, match="1.+90"):
-            await client.create_conversion_action({
-                "name": "Test",
-                "click_through_lookback_window_days": 100,
-            })
+            await client.create_conversion_action(
+                {
+                    "name": "Test",
+                    "click_through_lookback_window_days": 100,
+                }
+            )
 
     @pytest.mark.asyncio
-    async def test_view_through_lookback_out_of_range(self, client: _MockExtensionsClient) -> None:
+    async def test_view_through_lookback_out_of_range(
+        self, client: _MockExtensionsClient
+    ) -> None:
         with pytest.raises(ValueError, match="1.+30"):
-            await client.create_conversion_action({
-                "name": "Test",
-                "view_through_lookback_window_days": 31,
-            })
+            await client.create_conversion_action(
+                {
+                    "name": "Test",
+                    "view_through_lookback_window_days": 31,
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -318,18 +338,22 @@ class TestUpdateConversionActionValidation:
     @pytest.mark.asyncio
     async def test_invalid_status_raises(self, client: _MockExtensionsClient) -> None:
         with pytest.raises(ValueError, match="Invalid status"):
-            await client.update_conversion_action({
-                "conversion_action_id": "123",
-                "status": "INVALID",
-            })
+            await client.update_conversion_action(
+                {
+                    "conversion_action_id": "123",
+                    "status": "INVALID",
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_invalid_category_raises(self, client: _MockExtensionsClient) -> None:
         with pytest.raises(ValueError, match="Invalid category"):
-            await client.update_conversion_action({
-                "conversion_action_id": "123",
-                "category": "BADCAT",
-            })
+            await client.update_conversion_action(
+                {
+                    "conversion_action_id": "123",
+                    "category": "BADCAT",
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +371,9 @@ class TestGetConversionAction:
     async def test_found(self, client: _MockExtensionsClient) -> None:
         mock_row = MagicMock()
         client._search = AsyncMock(return_value=[mock_row])
-        with patch("mureo.google_ads._extensions_conversions.map_conversion_action") as mock_map:
+        with patch(
+            "mureo.google_ads._extensions_conversions.map_conversion_action"
+        ) as mock_map:
             mock_map.return_value = {"id": "1", "name": "Purchase"}
             result = await client.get_conversion_action("1")
         assert result is not None
@@ -377,7 +403,9 @@ class TestGetConversionActionTag:
         mock_row = MagicMock()
         mock_row.conversion_action.tag_snippets = [snippet]
         client._search = AsyncMock(return_value=[mock_row])
-        with patch("mureo.google_ads._extensions_conversions.map_tag_snippet") as mock_map:
+        with patch(
+            "mureo.google_ads._extensions_conversions.map_tag_snippet"
+        ) as mock_map:
             mock_map.return_value = {"type": "EVENT_SNIPPET"}
             result = await client.get_conversion_action_tag("1")
         assert len(result) == 1
@@ -404,7 +432,9 @@ class TestListRecommendations:
     async def test_no_filter(self, client: _MockExtensionsClient) -> None:
         mock_row = MagicMock()
         client._search = AsyncMock(return_value=[mock_row])
-        with patch("mureo.google_ads._extensions_targeting.map_recommendation") as mock_map:
+        with patch(
+            "mureo.google_ads._extensions_targeting.map_recommendation"
+        ) as mock_map:
             mock_map.return_value = {"type": "KEYWORD"}
             result = await client.list_recommendations()
         assert len(result) == 1
@@ -469,18 +499,22 @@ class TestSetDeviceTargetingValidation:
     @pytest.mark.asyncio
     async def test_invalid_device_raises(self, client: _MockExtensionsClient) -> None:
         with pytest.raises(ValueError, match="Invalid device type"):
-            await client.set_device_targeting({
-                "campaign_id": "123",
-                "enabled_devices": ["PHONE"],
-            })
+            await client.set_device_targeting(
+                {
+                    "campaign_id": "123",
+                    "enabled_devices": ["PHONE"],
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_empty_devices_raises(self, client: _MockExtensionsClient) -> None:
         with pytest.raises(ValueError, match="At least one"):
-            await client.set_device_targeting({
-                "campaign_id": "123",
-                "enabled_devices": [],
-            })
+            await client.set_device_targeting(
+                {
+                    "campaign_id": "123",
+                    "enabled_devices": [],
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -529,20 +563,24 @@ class TestUpdateBidAdjustmentValidation:
     @pytest.mark.asyncio
     async def test_bid_modifier_too_low(self, client: _MockExtensionsClient) -> None:
         with pytest.raises(ValueError, match="0\\.1.+10\\.0"):
-            await client.update_bid_adjustment({
-                "campaign_id": "123",
-                "criterion_id": "1",
-                "bid_modifier": 0.05,
-            })
+            await client.update_bid_adjustment(
+                {
+                    "campaign_id": "123",
+                    "criterion_id": "1",
+                    "bid_modifier": 0.05,
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_bid_modifier_too_high(self, client: _MockExtensionsClient) -> None:
         with pytest.raises(ValueError, match="0\\.1.+10\\.0"):
-            await client.update_bid_adjustment({
-                "campaign_id": "123",
-                "criterion_id": "1",
-                "bid_modifier": 10.5,
-            })
+            await client.update_bid_adjustment(
+                {
+                    "campaign_id": "123",
+                    "criterion_id": "1",
+                    "bid_modifier": 10.5,
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -561,7 +599,9 @@ class TestListChangeHistory:
         """日付未指定時はデフォルトの14日間で検索される"""
         mock_row = MagicMock()
         client._search = AsyncMock(return_value=[mock_row])
-        with patch("mureo.google_ads._extensions_targeting.map_change_event") as mock_map:
+        with patch(
+            "mureo.google_ads._extensions_targeting.map_change_event"
+        ) as mock_map:
             mock_map.return_value = {"change_date_time": "2024-01-01"}
             result = await client.list_change_history()
         assert len(result) == 1
@@ -590,7 +630,9 @@ class TestListLocationTargeting:
     async def test_returns_locations(self, client: _MockExtensionsClient) -> None:
         mock_row = MagicMock()
         mock_row.campaign_criterion.criterion_id = "1"
-        mock_row.campaign_criterion.location.geo_target_constant = "geoTargetConstants/2392"
+        mock_row.campaign_criterion.location.geo_target_constant = (
+            "geoTargetConstants/2392"
+        )
         mock_row.campaign_criterion.bid_modifier = 1.0
         client._search = AsyncMock(return_value=[mock_row])
 
@@ -692,7 +734,9 @@ class TestGetConversionPerformance:
         assert result["total_conversions"] == 0
 
     @pytest.mark.asyncio
-    async def test_cost_query_failure_fallback(self, client: _MockExtensionsClient) -> None:
+    async def test_cost_query_failure_fallback(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """コスト取得失敗時にCPAは0で返却される"""
         cv_row = MagicMock()
         cv_row.campaign.id = 1
@@ -704,9 +748,9 @@ class TestGetConversionPerformance:
 
         client._search = AsyncMock(
             side_effect=[
-                [cv_row],               # CV別
-                RuntimeError("fail"),   # コスト取得失敗
-                [],                     # LP
+                [cv_row],  # CV別
+                RuntimeError("fail"),  # コスト取得失敗
+                [],  # LP
             ]
         )
         result = await client.get_conversion_performance()
@@ -714,7 +758,9 @@ class TestGetConversionPerformance:
         assert result["actions"][0]["cost_per_conversion"] == 0
 
     @pytest.mark.asyncio
-    async def test_lp_query_failure_graceful(self, client: _MockExtensionsClient) -> None:
+    async def test_lp_query_failure_graceful(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """LP別CV取得失敗時も正常に返却される"""
         cv_row = MagicMock()
         cv_row.campaign.id = 1
@@ -775,7 +821,9 @@ class TestGetConversionPerformance:
         assert result["landing_pages"][0]["landing_page_url"] == "https://example.com"
 
     @pytest.mark.asyncio
-    async def test_date_range_tracking_in_summary(self, client: _MockExtensionsClient) -> None:
+    async def test_date_range_tracking_in_summary(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """複数日のデータでfirst_date/last_dateが正しく設定される"""
         rows = []
         for d in ["2024-01-02", "2024-01-01", "2024-01-03"]:
@@ -822,7 +870,9 @@ class TestCreateCalloutSuccess:
             # AssetService mock
             asset_service = MagicMock()
             asset_response = MagicMock()
-            asset_response.results = [MagicMock(resource_name="customers/123/assets/456")]
+            asset_response.results = [
+                MagicMock(resource_name="customers/123/assets/456")
+            ]
             asset_service.mutate_assets.return_value = asset_response
 
             # CampaignAssetService mock
@@ -844,10 +894,12 @@ class TestCreateCalloutSuccess:
             )
             client._client.enums.AssetFieldTypeEnum.CALLOUT = "CALLOUT"
 
-            result = await client.create_callout({
-                "campaign_id": "789",
-                "callout_text": "Free Shipping",
-            })
+            result = await client.create_callout(
+                {
+                    "campaign_id": "789",
+                    "callout_text": "Free Shipping",
+                }
+            )
 
         assert result["resource_name"] == "customers/123/assets/456"
 
@@ -876,32 +928,44 @@ class TestRemoveCallout:
         op = MagicMock()
         client._client.get_type.return_value = op
         client._client.get_service.return_value = MagicMock(
-            campaign_asset_path=MagicMock(return_value="customers/123/campaignAssets/456~789~CALLOUT")
+            campaign_asset_path=MagicMock(
+                return_value="customers/123/campaignAssets/456~789~CALLOUT"
+            )
         )
 
-        result = await client.remove_callout({
-            "campaign_id": "123",
-            "asset_id": "456",
-        })
+        result = await client.remove_callout(
+            {
+                "campaign_id": "123",
+                "asset_id": "456",
+            }
+        )
         assert result["resource_name"] == "customers/123/campaignAssets/del"
 
     @pytest.mark.asyncio
-    async def test_remove_callout_invalid_campaign_id(self, client: _MockExtensionsClient) -> None:
+    async def test_remove_callout_invalid_campaign_id(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """無効なcampaign_idでバリデーションエラー"""
         with pytest.raises(ValueError, match="Invalid"):
-            await client.remove_callout({
-                "campaign_id": "abc",
-                "asset_id": "456",
-            })
+            await client.remove_callout(
+                {
+                    "campaign_id": "abc",
+                    "asset_id": "456",
+                }
+            )
 
     @pytest.mark.asyncio
-    async def test_remove_callout_invalid_asset_id(self, client: _MockExtensionsClient) -> None:
+    async def test_remove_callout_invalid_asset_id(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """無効なasset_idでバリデーションエラー"""
         with pytest.raises(ValueError, match="Invalid"):
-            await client.remove_callout({
-                "campaign_id": "123",
-                "asset_id": "abc",
-            })
+            await client.remove_callout(
+                {
+                    "campaign_id": "123",
+                    "asset_id": "abc",
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -925,7 +989,9 @@ class TestCreateSitelinkSuccess:
 
             asset_service = MagicMock()
             asset_response = MagicMock()
-            asset_response.results = [MagicMock(resource_name="customers/123/assets/789")]
+            asset_response.results = [
+                MagicMock(resource_name="customers/123/assets/789")
+            ]
             asset_service.mutate_assets.return_value = asset_response
 
             ca_service = MagicMock()
@@ -946,23 +1012,29 @@ class TestCreateSitelinkSuccess:
             )
             client._client.enums.AssetFieldTypeEnum.SITELINK = "SITELINK"
 
-            result = await client.create_sitelink({
-                "campaign_id": "456",
-                "link_text": "About Us",
-                "final_url": "https://example.com/about",
-            })
+            result = await client.create_sitelink(
+                {
+                    "campaign_id": "456",
+                    "link_text": "About Us",
+                    "final_url": "https://example.com/about",
+                }
+            )
 
         assert result["resource_name"] == "customers/123/assets/789"
 
     @pytest.mark.asyncio
-    async def test_create_sitelink_with_descriptions(self, client: _MockExtensionsClient) -> None:
+    async def test_create_sitelink_with_descriptions(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """description1/description2を含むサイトリンク作成"""
         with patch.object(client, "list_sitelinks", new_callable=AsyncMock) as mock_ls:
             mock_ls.return_value = []
 
             asset_service = MagicMock()
             asset_response = MagicMock()
-            asset_response.results = [MagicMock(resource_name="customers/123/assets/789")]
+            asset_response.results = [
+                MagicMock(resource_name="customers/123/assets/789")
+            ]
             asset_service.mutate_assets.return_value = asset_response
 
             ca_service = MagicMock()
@@ -983,13 +1055,15 @@ class TestCreateSitelinkSuccess:
             )
             client._client.enums.AssetFieldTypeEnum.SITELINK = "SITELINK"
 
-            result = await client.create_sitelink({
-                "campaign_id": "456",
-                "link_text": "About Us",
-                "final_url": "https://example.com/about",
-                "description1": "Learn more",
-                "description2": "About our company",
-            })
+            result = await client.create_sitelink(
+                {
+                    "campaign_id": "456",
+                    "link_text": "About Us",
+                    "final_url": "https://example.com/about",
+                    "description1": "Learn more",
+                    "description2": "About our company",
+                }
+            )
 
         assert result["resource_name"] == "customers/123/assets/789"
         # description1/description2がセットされたことを確認
@@ -997,18 +1071,21 @@ class TestCreateSitelinkSuccess:
         asset_op.create.sitelink_asset.description2 = "About our company"
 
     @pytest.mark.asyncio
-    async def test_create_sitelink_account_level_not_counted(self, client: _MockExtensionsClient) -> None:
+    async def test_create_sitelink_account_level_not_counted(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """アカウントレベルのサイトリンクは上限カウントに含まれない"""
         with patch.object(client, "list_sitelinks", new_callable=AsyncMock) as mock_ls:
             # 19件キャンペーン + 5件アカウント = 24件だが、キャンペーンレベルは19なので作成可能
-            mock_ls.return_value = (
-                [{"id": str(i), "level": "campaign"} for i in range(19)]
-                + [{"id": str(i + 100), "level": "account"} for i in range(5)]
-            )
+            mock_ls.return_value = [
+                {"id": str(i), "level": "campaign"} for i in range(19)
+            ] + [{"id": str(i + 100), "level": "account"} for i in range(5)]
 
             asset_service = MagicMock()
             asset_response = MagicMock()
-            asset_response.results = [MagicMock(resource_name="customers/123/assets/new")]
+            asset_response.results = [
+                MagicMock(resource_name="customers/123/assets/new")
+            ]
             asset_service.mutate_assets.return_value = asset_response
 
             ca_service = MagicMock()
@@ -1029,11 +1106,13 @@ class TestCreateSitelinkSuccess:
             )
             client._client.enums.AssetFieldTypeEnum.SITELINK = "SITELINK"
 
-            result = await client.create_sitelink({
-                "campaign_id": "456",
-                "link_text": "New Link",
-                "final_url": "https://example.com/new",
-            })
+            result = await client.create_sitelink(
+                {
+                    "campaign_id": "456",
+                    "link_text": "New Link",
+                    "final_url": "https://example.com/new",
+                }
+            )
 
         assert "resource_name" in result
 
@@ -1062,23 +1141,31 @@ class TestRemoveSitelink:
         op = MagicMock()
         client._client.get_type.return_value = op
         client._client.get_service.return_value = MagicMock(
-            campaign_asset_path=MagicMock(return_value="customers/123/campaignAssets/456~789~SITELINK")
+            campaign_asset_path=MagicMock(
+                return_value="customers/123/campaignAssets/456~789~SITELINK"
+            )
         )
 
-        result = await client.remove_sitelink({
-            "campaign_id": "123",
-            "asset_id": "456",
-        })
+        result = await client.remove_sitelink(
+            {
+                "campaign_id": "123",
+                "asset_id": "456",
+            }
+        )
         assert result["resource_name"] == "customers/123/campaignAssets/del"
 
     @pytest.mark.asyncio
-    async def test_remove_sitelink_invalid_ids(self, client: _MockExtensionsClient) -> None:
+    async def test_remove_sitelink_invalid_ids(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """無効なIDでバリデーションエラー"""
         with pytest.raises(ValueError, match="Invalid"):
-            await client.remove_sitelink({
-                "campaign_id": "abc",
-                "asset_id": "456",
-            })
+            await client.remove_sitelink(
+                {
+                    "campaign_id": "abc",
+                    "asset_id": "456",
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1097,7 +1184,9 @@ class TestCreateConversionActionSuccess:
         """基本的なコンバージョンアクション作成"""
         ca_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/conversionActions/456")]
+        response.results = [
+            MagicMock(resource_name="customers/123/conversionActions/456")
+        ]
         ca_service.mutate_conversion_actions.return_value = response
 
         client._get_service = lambda name: ca_service
@@ -1111,11 +1200,15 @@ class TestCreateConversionActionSuccess:
         assert result["resource_name"] == "customers/123/conversionActions/456"
 
     @pytest.mark.asyncio
-    async def test_create_with_value_settings(self, client: _MockExtensionsClient) -> None:
+    async def test_create_with_value_settings(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """value_settings付きコンバージョンアクション作成"""
         ca_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/conversionActions/789")]
+        response.results = [
+            MagicMock(resource_name="customers/123/conversionActions/789")
+        ]
         ca_service.mutate_conversion_actions.return_value = response
 
         client._get_service = lambda name: ca_service
@@ -1125,15 +1218,17 @@ class TestCreateConversionActionSuccess:
         client._client.enums.ConversionActionTypeEnum.WEBPAGE = "WEBPAGE"
         client._client.enums.ConversionActionCategoryEnum.PURCHASE = "PURCHASE"
 
-        result = await client.create_conversion_action({
-            "name": "Purchase",
-            "type": "WEBPAGE",
-            "category": "PURCHASE",
-            "default_value": 5000.0,
-            "always_use_default_value": True,
-            "click_through_lookback_window_days": 30,
-            "view_through_lookback_window_days": 7,
-        })
+        result = await client.create_conversion_action(
+            {
+                "name": "Purchase",
+                "type": "WEBPAGE",
+                "category": "PURCHASE",
+                "default_value": 5000.0,
+                "always_use_default_value": True,
+                "click_through_lookback_window_days": 30,
+                "view_through_lookback_window_days": 7,
+            }
+        )
         assert result["resource_name"] == "customers/123/conversionActions/789"
 
 
@@ -1153,7 +1248,9 @@ class TestUpdateConversionActionSuccess:
         """名前の更新"""
         ca_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/conversionActions/456")]
+        response.results = [
+            MagicMock(resource_name="customers/123/conversionActions/456")
+        ]
         ca_service.mutate_conversion_actions.return_value = response
 
         client._get_service = lambda name: ca_service
@@ -1161,13 +1258,17 @@ class TestUpdateConversionActionSuccess:
         op = MagicMock()
         client._client.get_type.return_value = op
         client._client.get_service.return_value = MagicMock(
-            conversion_action_path=MagicMock(return_value="customers/123/conversionActions/456")
+            conversion_action_path=MagicMock(
+                return_value="customers/123/conversionActions/456"
+            )
         )
 
-        result = await client.update_conversion_action({
-            "conversion_action_id": "456",
-            "name": "New Name",
-        })
+        result = await client.update_conversion_action(
+            {
+                "conversion_action_id": "456",
+                "name": "New Name",
+            }
+        )
         assert result["resource_name"] == "customers/123/conversionActions/456"
 
     @pytest.mark.asyncio
@@ -1175,7 +1276,9 @@ class TestUpdateConversionActionSuccess:
         """複数フィールド同時更新"""
         ca_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/conversionActions/456")]
+        response.results = [
+            MagicMock(resource_name="customers/123/conversionActions/456")
+        ]
         ca_service.mutate_conversion_actions.return_value = response
 
         client._get_service = lambda name: ca_service
@@ -1183,49 +1286,63 @@ class TestUpdateConversionActionSuccess:
         op = MagicMock()
         client._client.get_type.return_value = op
         client._client.get_service.return_value = MagicMock(
-            conversion_action_path=MagicMock(return_value="customers/123/conversionActions/456")
+            conversion_action_path=MagicMock(
+                return_value="customers/123/conversionActions/456"
+            )
         )
         client._client.enums.ConversionActionCategoryEnum.PURCHASE = "PURCHASE"
         client._client.enums.ConversionActionStatusEnum.ENABLED = "ENABLED"
 
-        result = await client.update_conversion_action({
-            "conversion_action_id": "456",
-            "name": "Updated",
-            "category": "PURCHASE",
-            "status": "ENABLED",
-            "default_value": 1000.0,
-            "always_use_default_value": False,
-            "click_through_lookback_window_days": 60,
-            "view_through_lookback_window_days": 14,
-        })
+        result = await client.update_conversion_action(
+            {
+                "conversion_action_id": "456",
+                "name": "Updated",
+                "category": "PURCHASE",
+                "status": "ENABLED",
+                "default_value": 1000.0,
+                "always_use_default_value": False,
+                "click_through_lookback_window_days": 60,
+                "view_through_lookback_window_days": 14,
+            }
+        )
         assert result["resource_name"] == "customers/123/conversionActions/456"
 
     @pytest.mark.asyncio
     async def test_update_long_name_raises(self, client: _MockExtensionsClient) -> None:
         """更新時のname長チェック"""
         with pytest.raises(ValueError, match="256 characters"):
-            await client.update_conversion_action({
-                "conversion_action_id": "456",
-                "name": "x" * 257,
-            })
+            await client.update_conversion_action(
+                {
+                    "conversion_action_id": "456",
+                    "name": "x" * 257,
+                }
+            )
 
     @pytest.mark.asyncio
-    async def test_update_lookback_window_out_of_range(self, client: _MockExtensionsClient) -> None:
+    async def test_update_lookback_window_out_of_range(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """更新時のlookback windowバリデーション"""
         with pytest.raises(ValueError, match="1.+90"):
-            await client.update_conversion_action({
-                "conversion_action_id": "456",
-                "click_through_lookback_window_days": 91,
-            })
+            await client.update_conversion_action(
+                {
+                    "conversion_action_id": "456",
+                    "click_through_lookback_window_days": 91,
+                }
+            )
 
     @pytest.mark.asyncio
-    async def test_update_view_through_out_of_range(self, client: _MockExtensionsClient) -> None:
+    async def test_update_view_through_out_of_range(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """更新時のview_through_lookback_window_daysバリデーション"""
         with pytest.raises(ValueError, match="1.+30"):
-            await client.update_conversion_action({
-                "conversion_action_id": "456",
-                "view_through_lookback_window_days": 31,
-            })
+            await client.update_conversion_action(
+                {
+                    "conversion_action_id": "456",
+                    "view_through_lookback_window_days": 31,
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1244,7 +1361,9 @@ class TestRemoveConversionAction:
         """コンバージョンアクション削除が正常に完了する"""
         ca_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/conversionActions/456")]
+        response.results = [
+            MagicMock(resource_name="customers/123/conversionActions/456")
+        ]
         ca_service.mutate_conversion_actions.return_value = response
 
         client._get_service = lambda name: ca_service
@@ -1252,7 +1371,9 @@ class TestRemoveConversionAction:
         op = MagicMock()
         client._client.get_type.return_value = op
         client._client.get_service.return_value = MagicMock(
-            conversion_action_path=MagicMock(return_value="customers/123/conversionActions/456")
+            conversion_action_path=MagicMock(
+                return_value="customers/123/conversionActions/456"
+            )
         )
 
         result = await client.remove_conversion_action({"conversion_action_id": "456"})
@@ -1279,7 +1400,9 @@ class TestSetDeviceTargetingSuccess:
         return c
 
     @pytest.mark.asyncio
-    async def test_set_devices_update_existing(self, client: _MockExtensionsClient) -> None:
+    async def test_set_devices_update_existing(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """既存criterionのbid_modifierを更新"""
         # 既存のDESKTOP criterionがある
         mock_row = MagicMock()
@@ -1292,7 +1415,9 @@ class TestSetDeviceTargetingSuccess:
         resp = MagicMock()
         resp.results = [MagicMock(resource_name="customers/123/campaignCriteria/100")]
         cc_service.mutate_campaign_criteria.return_value = resp
-        cc_service.campaign_criterion_path = MagicMock(return_value="customers/123/campaignCriteria/100")
+        cc_service.campaign_criterion_path = MagicMock(
+            return_value="customers/123/campaignCriteria/100"
+        )
 
         client._get_service = lambda name: cc_service
 
@@ -1305,10 +1430,12 @@ class TestSetDeviceTargetingSuccess:
         client._client.enums.DeviceEnum.MOBILE = "MOBILE"
         client._client.enums.DeviceEnum.TABLET = "TABLET"
 
-        result = await client.set_device_targeting({
-            "campaign_id": "456",
-            "enabled_devices": ["DESKTOP", "MOBILE"],
-        })
+        result = await client.set_device_targeting(
+            {
+                "campaign_id": "456",
+                "enabled_devices": ["DESKTOP", "MOBILE"],
+            }
+        )
         assert "DESKTOP" in result["enabled_devices"]
         assert "MOBILE" in result["enabled_devices"]
         assert "TABLET" in result["disabled_devices"]
@@ -1334,15 +1461,19 @@ class TestSetDeviceTargetingSuccess:
         client._client.enums.DeviceEnum.MOBILE = "MOBILE"
         client._client.enums.DeviceEnum.TABLET = "TABLET"
 
-        result = await client.set_device_targeting({
-            "campaign_id": "456",
-            "enabled_devices": ["MOBILE"],
-        })
+        result = await client.set_device_targeting(
+            {
+                "campaign_id": "456",
+                "enabled_devices": ["MOBILE"],
+            }
+        )
         assert "MOBILE" in result["enabled_devices"]
         assert len(result["updated"]) == 3  # 3デバイス分のmutate
 
     @pytest.mark.asyncio
-    async def test_set_devices_partial_failure(self, client: _MockExtensionsClient) -> None:
+    async def test_set_devices_partial_failure(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """一部デバイスの設定失敗時にerrorsを含むが結果は返す"""
         client._search = AsyncMock(return_value=[])
 
@@ -1371,16 +1502,20 @@ class TestSetDeviceTargetingSuccess:
         client._client.enums.DeviceEnum.MOBILE = "MOBILE"
         client._client.enums.DeviceEnum.TABLET = "TABLET"
 
-        result = await client.set_device_targeting({
-            "campaign_id": "456",
-            "enabled_devices": ["DESKTOP"],
-        })
+        result = await client.set_device_targeting(
+            {
+                "campaign_id": "456",
+                "enabled_devices": ["DESKTOP"],
+            }
+        )
         assert len(result["updated"]) == 2
         assert result["errors"] is not None
         assert len(result["errors"]) == 1
 
     @pytest.mark.asyncio
-    async def test_set_devices_all_fail_raises(self, client: _MockExtensionsClient) -> None:
+    async def test_set_devices_all_fail_raises(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """全デバイスの設定失敗時にValueErrorを送出"""
         client._search = AsyncMock(return_value=[])
 
@@ -1399,10 +1534,12 @@ class TestSetDeviceTargetingSuccess:
         client._client.enums.DeviceEnum.TABLET = "TABLET"
 
         with pytest.raises(ValueError, match="Failed to set all devices"):
-            await client.set_device_targeting({
-                "campaign_id": "456",
-                "enabled_devices": ["DESKTOP"],
-            })
+            await client.set_device_targeting(
+                {
+                    "campaign_id": "456",
+                    "enabled_devices": ["DESKTOP"],
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1421,7 +1558,9 @@ class TestUpdateBidAdjustmentSuccess:
         """入札調整率の更新が正常に完了する"""
         cc_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/campaignCriteria/456")]
+        response.results = [
+            MagicMock(resource_name="customers/123/campaignCriteria/456")
+        ]
         cc_service.mutate_campaign_criteria.return_value = response
 
         client._get_service = lambda name: cc_service
@@ -1429,14 +1568,18 @@ class TestUpdateBidAdjustmentSuccess:
         op = MagicMock()
         client._client.get_type.return_value = op
         client._client.get_service.return_value = MagicMock(
-            campaign_criterion_path=MagicMock(return_value="customers/123/campaignCriteria/456")
+            campaign_criterion_path=MagicMock(
+                return_value="customers/123/campaignCriteria/456"
+            )
         )
 
-        result = await client.update_bid_adjustment({
-            "campaign_id": "123",
-            "criterion_id": "456",
-            "bid_modifier": 1.5,
-        })
+        result = await client.update_bid_adjustment(
+            {
+                "campaign_id": "123",
+                "criterion_id": "456",
+                "bid_modifier": 1.5,
+            }
+        )
         assert result["resource_name"] == "customers/123/campaignCriteria/456"
 
 
@@ -1456,7 +1599,9 @@ class TestUpdateLocationTargeting:
         """地域ターゲティングの追加"""
         cc_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/campaignCriteria/new")]
+        response.results = [
+            MagicMock(resource_name="customers/123/campaignCriteria/new")
+        ]
         cc_service.mutate_campaign_criteria.return_value = response
 
         client._get_service = lambda name: cc_service
@@ -1465,22 +1610,30 @@ class TestUpdateLocationTargeting:
         client._client.get_type.return_value = op
         client._client.get_service.return_value = MagicMock(
             campaign_path=MagicMock(return_value="customers/123/campaigns/456"),
-            campaign_criterion_path=MagicMock(return_value="customers/123/campaignCriteria/old"),
+            campaign_criterion_path=MagicMock(
+                return_value="customers/123/campaignCriteria/old"
+            ),
         )
 
-        result = await client.update_location_targeting({
-            "campaign_id": "456",
-            "add_locations": ["2392"],
-        })
+        result = await client.update_location_targeting(
+            {
+                "campaign_id": "456",
+                "add_locations": ["2392"],
+            }
+        )
         assert len(result) == 1
         assert result[0]["resource_name"] == "customers/123/campaignCriteria/new"
 
     @pytest.mark.asyncio
-    async def test_add_locations_with_full_path(self, client: _MockExtensionsClient) -> None:
+    async def test_add_locations_with_full_path(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """geoTargetConstants/ID形式での追加"""
         cc_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/campaignCriteria/new")]
+        response.results = [
+            MagicMock(resource_name="customers/123/campaignCriteria/new")
+        ]
         cc_service.mutate_campaign_criteria.return_value = response
 
         client._get_service = lambda name: cc_service
@@ -1491,10 +1644,12 @@ class TestUpdateLocationTargeting:
             campaign_path=MagicMock(return_value="customers/123/campaigns/456"),
         )
 
-        result = await client.update_location_targeting({
-            "campaign_id": "456",
-            "add_locations": ["geoTargetConstants/2392"],
-        })
+        result = await client.update_location_targeting(
+            {
+                "campaign_id": "456",
+                "add_locations": ["geoTargetConstants/2392"],
+            }
+        )
         assert len(result) == 1
 
     @pytest.mark.asyncio
@@ -1502,7 +1657,9 @@ class TestUpdateLocationTargeting:
         """地域ターゲティングの削除"""
         cc_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/campaignCriteria/del")]
+        response.results = [
+            MagicMock(resource_name="customers/123/campaignCriteria/del")
+        ]
         cc_service.mutate_campaign_criteria.return_value = response
 
         client._get_service = lambda name: cc_service
@@ -1510,17 +1667,23 @@ class TestUpdateLocationTargeting:
         op = MagicMock()
         client._client.get_type.return_value = op
         client._client.get_service.return_value = MagicMock(
-            campaign_criterion_path=MagicMock(return_value="customers/123/campaignCriteria/del"),
+            campaign_criterion_path=MagicMock(
+                return_value="customers/123/campaignCriteria/del"
+            ),
         )
 
-        result = await client.update_location_targeting({
-            "campaign_id": "456",
-            "remove_criterion_ids": ["789"],
-        })
+        result = await client.update_location_targeting(
+            {
+                "campaign_id": "456",
+                "remove_criterion_ids": ["789"],
+            }
+        )
         assert len(result) == 1
 
     @pytest.mark.asyncio
-    async def test_add_and_remove_locations(self, client: _MockExtensionsClient) -> None:
+    async def test_add_and_remove_locations(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """追加と削除の同時操作"""
         cc_service = MagicMock()
         response = MagicMock()
@@ -1536,14 +1699,18 @@ class TestUpdateLocationTargeting:
         client._client.get_type.return_value = op
         client._client.get_service.return_value = MagicMock(
             campaign_path=MagicMock(return_value="customers/123/campaigns/456"),
-            campaign_criterion_path=MagicMock(return_value="customers/123/campaignCriteria/del"),
+            campaign_criterion_path=MagicMock(
+                return_value="customers/123/campaignCriteria/del"
+            ),
         )
 
-        result = await client.update_location_targeting({
-            "campaign_id": "456",
-            "add_locations": ["2392"],
-            "remove_criterion_ids": ["100"],
-        })
+        result = await client.update_location_targeting(
+            {
+                "campaign_id": "456",
+                "add_locations": ["2392"],
+                "remove_criterion_ids": ["100"],
+            }
+        )
         assert len(result) == 2
 
 
@@ -1563,7 +1730,9 @@ class TestUpdateScheduleTargeting:
         """広告スケジュールの追加"""
         cc_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/campaignCriteria/new")]
+        response.results = [
+            MagicMock(resource_name="customers/123/campaignCriteria/new")
+        ]
         cc_service.mutate_campaign_criteria.return_value = response
 
         client._get_service = lambda name: cc_service
@@ -1576,12 +1745,14 @@ class TestUpdateScheduleTargeting:
         client._client.enums.DayOfWeekEnum.MONDAY = "MONDAY"
         client._client.enums.MinuteOfHourEnum.ZERO = "ZERO"
 
-        result = await client.update_schedule_targeting({
-            "campaign_id": "456",
-            "add_schedules": [
-                {"day": "MONDAY", "start_hour": 9, "end_hour": 18},
-            ],
-        })
+        result = await client.update_schedule_targeting(
+            {
+                "campaign_id": "456",
+                "add_schedules": [
+                    {"day": "MONDAY", "start_hour": 9, "end_hour": 18},
+                ],
+            }
+        )
         assert len(result) == 1
 
     @pytest.mark.asyncio
@@ -1589,7 +1760,9 @@ class TestUpdateScheduleTargeting:
         """広告スケジュールの削除"""
         cc_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/campaignCriteria/del")]
+        response.results = [
+            MagicMock(resource_name="customers/123/campaignCriteria/del")
+        ]
         cc_service.mutate_campaign_criteria.return_value = response
 
         client._get_service = lambda name: cc_service
@@ -1597,21 +1770,29 @@ class TestUpdateScheduleTargeting:
         op = MagicMock()
         client._client.get_type.return_value = op
         client._client.get_service.return_value = MagicMock(
-            campaign_criterion_path=MagicMock(return_value="customers/123/campaignCriteria/del"),
+            campaign_criterion_path=MagicMock(
+                return_value="customers/123/campaignCriteria/del"
+            ),
         )
 
-        result = await client.update_schedule_targeting({
-            "campaign_id": "456",
-            "remove_criterion_ids": ["789"],
-        })
+        result = await client.update_schedule_targeting(
+            {
+                "campaign_id": "456",
+                "remove_criterion_ids": ["789"],
+            }
+        )
         assert len(result) == 1
 
     @pytest.mark.asyncio
-    async def test_add_schedule_default_hours(self, client: _MockExtensionsClient) -> None:
+    async def test_add_schedule_default_hours(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """start_hour/end_hour未指定時のデフォルト値"""
         cc_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/campaignCriteria/new")]
+        response.results = [
+            MagicMock(resource_name="customers/123/campaignCriteria/new")
+        ]
         cc_service.mutate_campaign_criteria.return_value = response
 
         client._get_service = lambda name: cc_service
@@ -1624,12 +1805,14 @@ class TestUpdateScheduleTargeting:
         client._client.enums.DayOfWeekEnum.TUESDAY = "TUESDAY"
         client._client.enums.MinuteOfHourEnum.ZERO = "ZERO"
 
-        result = await client.update_schedule_targeting({
-            "campaign_id": "456",
-            "add_schedules": [
-                {"day": "TUESDAY"},  # start_hour/end_hour省略
-            ],
-        })
+        result = await client.update_schedule_targeting(
+            {
+                "campaign_id": "456",
+                "add_schedules": [
+                    {"day": "TUESDAY"},  # start_hour/end_hour省略
+                ],
+            }
+        )
         assert len(result) == 1
 
 
@@ -1649,7 +1832,9 @@ class TestApplyRecommendation:
         """推奨事項適用が正常に完了する"""
         rec_service = MagicMock()
         response = MagicMock()
-        response.results = [MagicMock(resource_name="customers/123/recommendations/456")]
+        response.results = [
+            MagicMock(resource_name="customers/123/recommendations/456")
+        ]
         rec_service.apply_recommendation.return_value = response
 
         client._get_service = lambda name: rec_service
@@ -1657,9 +1842,11 @@ class TestApplyRecommendation:
         op = MagicMock()
         client._client.get_type.return_value = op
 
-        result = await client.apply_recommendation({
-            "resource_name": "customers/123/recommendations/456",
-        })
+        result = await client.apply_recommendation(
+            {
+                "resource_name": "customers/123/recommendations/456",
+            }
+        )
         assert result["resource_name"] == "customers/123/recommendations/456"
 
 
@@ -1675,7 +1862,9 @@ class TestListRecommendationsFilters:
         return _MockExtensionsClient()
 
     @pytest.mark.asyncio
-    async def test_with_recommendation_type_filter(self, client: _MockExtensionsClient) -> None:
+    async def test_with_recommendation_type_filter(
+        self, client: _MockExtensionsClient
+    ) -> None:
         """recommendation_type指定時のフィルタリング"""
         client._search = AsyncMock(return_value=[])
         result = await client.list_recommendations(recommendation_type="KEYWORD")
@@ -1713,7 +1902,9 @@ class TestListLocationTargetingBidModifier:
         """bid_modifierが未設定の場合はNoneを返す"""
         mock_row = MagicMock()
         mock_row.campaign_criterion.criterion_id = "1"
-        mock_row.campaign_criterion.location.geo_target_constant = "geoTargetConstants/2392"
+        mock_row.campaign_criterion.location.geo_target_constant = (
+            "geoTargetConstants/2392"
+        )
         mock_row.campaign_criterion.bid_modifier = 0  # Falsy
         client._search = AsyncMock(return_value=[mock_row])
 

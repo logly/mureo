@@ -294,9 +294,10 @@ def test_create_google_ads_client() -> None:
         login_customer_id="1234567890",
     )
 
-    with patch("mureo.auth.Credentials") as mock_cred_cls, patch(
-        "mureo.auth.GoogleAdsApiClient"
-    ) as mock_client_cls:
+    with (
+        patch("mureo.auth.Credentials") as mock_cred_cls,
+        patch("mureo.auth.GoogleAdsApiClient") as mock_client_cls,
+    ):
         mock_cred_cls.return_value = MagicMock()
         mock_client_instance = MagicMock()
         mock_client_cls.return_value = mock_client_instance
@@ -329,9 +330,10 @@ def test_create_google_ads_client_without_login_customer_id() -> None:
         refresh_token="rtok",
     )
 
-    with patch("mureo.auth.Credentials") as mock_cred_cls, patch(
-        "mureo.auth.GoogleAdsApiClient"
-    ) as mock_client_cls:
+    with (
+        patch("mureo.auth.Credentials") as mock_cred_cls,
+        patch("mureo.auth.GoogleAdsApiClient") as mock_client_cls,
+    ):
         mock_cred_cls.return_value = MagicMock()
         mock_client_cls.return_value = MagicMock()
 

@@ -107,9 +107,7 @@ async def test_exchange_code_for_short_token_error() -> None:
             "code": 100,
         }
     }
-    mock_response.raise_for_status = MagicMock(
-        side_effect=Exception("400 Bad Request")
-    )
+    mock_response.raise_for_status = MagicMock(side_effect=Exception("400 Bad Request"))
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
@@ -170,9 +168,7 @@ async def test_exchange_short_for_long_token_error() -> None:
     mock_response.json.return_value = {
         "error": {"message": "Invalid token", "type": "OAuthException", "code": 190}
     }
-    mock_response.raise_for_status = MagicMock(
-        side_effect=Exception("400 Bad Request")
-    )
+    mock_response.raise_for_status = MagicMock(side_effect=Exception("400 Bad Request"))
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
@@ -256,7 +252,9 @@ async def test_list_meta_ad_accounts_error() -> None:
     mock_response.json.return_value = {
         "error": {"message": "Invalid access token", "type": "OAuthException"}
     }
-    mock_response.raise_for_status = MagicMock(side_effect=Exception("401 Unauthorized"))
+    mock_response.raise_for_status = MagicMock(
+        side_effect=Exception("401 Unauthorized")
+    )
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
@@ -292,7 +290,9 @@ async def test_setup_meta_ads_flow(tmp_path: Path) -> None:
     ]
 
     with (
-        patch("mureo.auth_setup.input_func", side_effect=["my-app-id", "my-app-secret"]),
+        patch(
+            "mureo.auth_setup.input_func", side_effect=["my-app-id", "my-app-secret"]
+        ),
         patch("mureo.auth_setup._select_account", return_value="act_111"),
         patch("mureo.auth_setup.run_meta_oauth", new_callable=AsyncMock) as mock_oauth,
         patch(
@@ -372,7 +372,9 @@ async def test_save_credentials_meta(tmp_path: Path) -> None:
     ]
 
     with (
-        patch("mureo.auth_setup.input_func", side_effect=["save-app-id", "save-secret"]),
+        patch(
+            "mureo.auth_setup.input_func", side_effect=["save-app-id", "save-secret"]
+        ),
         patch("mureo.auth_setup.run_meta_oauth", new_callable=AsyncMock) as mock_oauth,
         patch(
             "mureo.auth_setup.list_meta_ad_accounts", new_callable=AsyncMock
@@ -419,7 +421,9 @@ async def test_save_credentials_meta_preserves_existing(tmp_path: Path) -> None:
     ]
 
     with (
-        patch("mureo.auth_setup.input_func", side_effect=["meta-app-id", "meta-secret"]),
+        patch(
+            "mureo.auth_setup.input_func", side_effect=["meta-app-id", "meta-secret"]
+        ),
         patch("mureo.auth_setup.run_meta_oauth", new_callable=AsyncMock) as mock_oauth,
         patch(
             "mureo.auth_setup.list_meta_ad_accounts", new_callable=AsyncMock
@@ -805,7 +809,10 @@ async def test_meta_short_token_exchange_uses_timeout() -> None:
         mock_client_cls.return_value = mock_client
 
         await _exchange_code_for_short_token(
-            code="c", app_id="a", app_secret="s", redirect_uri="http://localhost/cb",
+            code="c",
+            app_id="a",
+            app_secret="s",
+            redirect_uri="http://localhost/cb",
         )
 
     call_kwargs = mock_client_cls.call_args[1] if mock_client_cls.call_args[1] else {}
@@ -832,7 +839,9 @@ async def test_meta_long_token_exchange_uses_timeout() -> None:
         mock_client_cls.return_value = mock_client
 
         await _exchange_short_for_long_token(
-            short_token="st", app_id="a", app_secret="s",
+            short_token="st",
+            app_id="a",
+            app_secret="s",
         )
 
     call_kwargs = mock_client_cls.call_args[1] if mock_client_cls.call_args[1] else {}

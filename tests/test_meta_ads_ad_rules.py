@@ -117,9 +117,7 @@ class TestAdRulesMixin:
     async def test_update_ad_rule(self, client: AdRulesMixin) -> None:
         """自動ルールを更新できること"""
         client._post = AsyncMock(return_value={"success": True})
-        result = await client.update_ad_rule(
-            "rule_001", {"name": "更新後ルール名"}
-        )
+        result = await client.update_ad_rule("rule_001", {"name": "更新後ルール名"})
         assert result["success"] is True
         client._post.assert_called_once()
         call_args = client._post.call_args
@@ -156,9 +154,7 @@ class TestAdRulesMixin:
     @pytest.mark.asyncio
     async def test_api_error(self, client: AdRulesMixin) -> None:
         """APIエラー時にRuntimeErrorが伝播すること"""
-        client._get = AsyncMock(
-            side_effect=RuntimeError("Meta API request failed")
-        )
+        client._get = AsyncMock(side_effect=RuntimeError("Meta API request failed"))
         with pytest.raises(RuntimeError, match="Meta API"):
             await client.list_ad_rules()
 
@@ -166,9 +162,7 @@ class TestAdRulesMixin:
     # 8. test_create_ad_rule_notification
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
-    async def test_create_ad_rule_notification(
-        self, client: AdRulesMixin
-    ) -> None:
+    async def test_create_ad_rule_notification(self, client: AdRulesMixin) -> None:
         """通知タイプの自動ルールを作成できること"""
         client._post = AsyncMock(return_value={"id": "rule_notify"})
         evaluation_spec = {

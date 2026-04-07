@@ -161,6 +161,7 @@ class TestValidateAndPrepareRsa:
 class TestBuildAdStrengthResult:
     def test_正常(self) -> None:
         from mureo.google_ads._rsa_validator import RSAValidationResult
+
         rsa_result = RSAValidationResult(
             headlines=("h1", "h2", "h3"),
             descriptions=("d1", "d2"),
@@ -168,8 +169,11 @@ class TestBuildAdStrengthResult:
         )
         result: dict[str, Any] = {"resource_name": "test"}
         result = GoogleAdsApiClient._build_ad_strength_result(
-            result, rsa_result,
-            ["h1", "h2", "h3"], ["d1", "d2"], None,
+            result,
+            rsa_result,
+            ["h1", "h2", "h3"],
+            ["d1", "d2"],
+            None,
         )
         assert "ad_strength" in result
         assert "level" in result["ad_strength"]
@@ -177,6 +181,7 @@ class TestBuildAdStrengthResult:
 
     def test_警告あり(self) -> None:
         from mureo.google_ads._rsa_validator import RSAValidationResult
+
         rsa_result = RSAValidationResult(
             headlines=("h1", "h2", "h3"),
             descriptions=("d1", "d2"),
@@ -184,8 +189,11 @@ class TestBuildAdStrengthResult:
         )
         result: dict[str, Any] = {"resource_name": "test"}
         result = GoogleAdsApiClient._build_ad_strength_result(
-            result, rsa_result,
-            ["h1", "h2", "h3"], ["d1", "d2"], None,
+            result,
+            rsa_result,
+            ["h1", "h2", "h3"],
+            ["d1", "d2"],
+            None,
         )
         assert "warnings" in result
         assert "警告テスト" in result["warnings"]
@@ -323,12 +331,14 @@ class TestCreateAd:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        result = await client.create_ad({
-            "ad_group_id": "100",
-            "headlines": ["見出し1", "見出し2", "見出し3"],
-            "descriptions": ["説明文1", "説明文2"],
-            "final_url": "https://example.com",
-        })
+        result = await client.create_ad(
+            {
+                "ad_group_id": "100",
+                "headlines": ["見出し1", "見出し2", "見出し3"],
+                "descriptions": ["説明文1", "説明文2"],
+                "final_url": "https://example.com",
+            }
+        )
         assert "resource_name" in result
         assert "ad_strength" in result
 
@@ -336,12 +346,14 @@ class TestCreateAd:
     async def test_見出し不足_エラー(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="At least 3 headlines"):
-            await client.create_ad({
-                "ad_group_id": "100",
-                "headlines": ["見出し1"],
-                "descriptions": ["説明文1", "説明文2"],
-                "final_url": "https://example.com",
-            })
+            await client.create_ad(
+                {
+                    "ad_group_id": "100",
+                    "headlines": ["見出し1"],
+                    "descriptions": ["説明文1", "説明文2"],
+                    "final_url": "https://example.com",
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_GoogleAdsException(self) -> None:
@@ -354,12 +366,14 @@ class TestCreateAd:
         client._client.enums = MagicMock()
 
         with pytest.raises(RuntimeError, match="error occurred"):
-            await client.create_ad({
-                "ad_group_id": "100",
-                "headlines": ["見出し1", "見出し2", "見出し3"],
-                "descriptions": ["説明文1", "説明文2"],
-                "final_url": "https://example.com",
-            })
+            await client.create_ad(
+                {
+                    "ad_group_id": "100",
+                    "headlines": ["見出し1", "見出し2", "見出し3"],
+                    "descriptions": ["説明文1", "説明文2"],
+                    "final_url": "https://example.com",
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -381,12 +395,14 @@ class TestUpdateAd:
         client._client.get_service.return_value = mock_service
         client._client.get_type.return_value = MagicMock()
 
-        result = await client.update_ad({
-            "ad_id": "456",
-            "headlines": ["新見出し1", "新見出し2", "新見出し3"],
-            "descriptions": ["新説明文1", "新説明文2"],
-            "final_url": "https://new-example.com",
-        })
+        result = await client.update_ad(
+            {
+                "ad_id": "456",
+                "headlines": ["新見出し1", "新見出し2", "新見出し3"],
+                "descriptions": ["新説明文1", "新説明文2"],
+                "final_url": "https://new-example.com",
+            }
+        )
         assert "resource_name" in result
         assert "ad_strength" in result
 
@@ -402,22 +418,26 @@ class TestUpdateAd:
         client._client.get_service.return_value = mock_service
         client._client.get_type.return_value = MagicMock()
 
-        result = await client.update_ad({
-            "ad_id": "456",
-            "headlines": ["見出し1", "見出し2", "見出し3"],
-            "descriptions": ["説明文1", "説明文2"],
-        })
+        result = await client.update_ad(
+            {
+                "ad_id": "456",
+                "headlines": ["見出し1", "見出し2", "見出し3"],
+                "descriptions": ["説明文1", "説明文2"],
+            }
+        )
         assert "resource_name" in result
 
     @pytest.mark.asyncio
     async def test_不正なad_id(self) -> None:
         client = _make_client()
         with pytest.raises(ValueError, match="Invalid ad_id"):
-            await client.update_ad({
-                "ad_id": "abc",
-                "headlines": ["見出し1", "見出し2", "見出し3"],
-                "descriptions": ["説明文1", "説明文2"],
-            })
+            await client.update_ad(
+                {
+                    "ad_id": "abc",
+                    "headlines": ["見出し1", "見出し2", "見出し3"],
+                    "descriptions": ["説明文1", "説明文2"],
+                }
+            )
 
 
 # ---------------------------------------------------------------------------

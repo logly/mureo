@@ -285,7 +285,10 @@ class TestSubmitSitemap:
         result = await client.submit_sitemap(
             "https://example.com/", "https://example.com/sitemap.xml"
         )
-        assert result == {"status": "submitted", "sitemap": "https://example.com/sitemap.xml"}
+        assert result == {
+            "status": "submitted",
+            "sitemap": "https://example.com/sitemap.xml",
+        }
 
 
 # ---------------------------------------------------------------------------

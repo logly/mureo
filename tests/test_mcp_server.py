@@ -57,17 +57,18 @@ class TestListTools:
         assert "meta_ads.campaigns.get" in names
 
     async def test_list_tools_campaigns_list_schema(self) -> None:
-        """campaigns.list の inputSchema が customer_id を required で持つこと"""
+        """campaigns.list の inputSchema が customer_id を optional で持つこと"""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
         tool = next(t for t in tools if t.name == "google_ads.campaigns.list")
         schema = tool.inputSchema
         assert schema["type"] == "object"
         assert "customer_id" in schema["properties"]
-        assert "customer_id" in schema["required"]
+        # customer_id is optional (falls back to credentials.json)
+        assert "customer_id" not in schema.get("required", [])
 
     async def test_list_tools_campaigns_get_schema(self) -> None:
-        """campaigns.get の inputSchema が customer_id と campaign_id を required で持つこと"""
+        """campaigns.get の inputSchema が campaign_id を required で持つこと"""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
         tool = next(t for t in tools if t.name == "google_ads.campaigns.get")
@@ -75,7 +76,8 @@ class TestListTools:
         assert schema["type"] == "object"
         assert "customer_id" in schema["properties"]
         assert "campaign_id" in schema["properties"]
-        assert set(schema["required"]) == {"customer_id", "campaign_id"}
+        # customer_id is optional, campaign_id is required
+        assert "campaign_id" in schema["required"]
 
 
 # ---------------------------------------------------------------------------

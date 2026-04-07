@@ -183,6 +183,7 @@ class TestAnalysisConstants:
         current, previous = _get_comparison_date_ranges("LAST_7_DAYS")
         # BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' からdateを抽出
         import re
+
         dates = re.findall(r"\d{4}-\d{2}-\d{2}", current + previous)
         cur_start, cur_end, prev_start, prev_end = [
             date.fromisoformat(d) for d in dates
@@ -203,6 +204,7 @@ class TestAnalysisConstants:
     def test_resolve_enum_with_name_attr(self) -> None:
         class FakeEnum:
             name = "PHRASE"
+
         assert _resolve_enum(FakeEnum(), _MATCH_TYPE_MAP) == "PHRASE"
 
     @pytest.mark.unit
@@ -241,9 +243,7 @@ class TestPerformanceAnalysisMixin:
     @pytest.mark.unit
     async def test_resolve_target_cpa_from_bidding(self) -> None:
         client = self._make_client()
-        client.get_campaign.return_value = {
-            "bidding_details": {"target_cpa": 3000}
-        }
+        client.get_campaign.return_value = {"bidding_details": {"target_cpa": 3000}}
         cpa, source = await client._resolve_target_cpa("123")
         assert cpa == 3000.0
         assert source == "bidding_strategy"
@@ -297,7 +297,14 @@ class TestPerformanceAnalysisMixin:
             "status": "ENABLED",
         }
         client.get_performance_report.return_value = [
-            {"metrics": {"impressions": 1000, "clicks": 100, "cost": 5000, "conversions": 10}}
+            {
+                "metrics": {
+                    "impressions": 1000,
+                    "clicks": 100,
+                    "cost": 5000,
+                    "conversions": 10,
+                }
+            }
         ]
         client.get_search_terms_report.return_value = []
         client.list_recommendations.return_value = []
@@ -357,8 +364,12 @@ class TestPerformanceAnalysisMixin:
 
     @pytest.mark.unit
     def test_generate_performance_insights_zero_conversions(self) -> None:
-        changes = {"impressions_change_pct": 0, "clicks_change_pct": 0,
-                   "cost_change_pct": 0, "conversions_change_pct": 0}
+        changes = {
+            "impressions_change_pct": 0,
+            "clicks_change_pct": 0,
+            "cost_change_pct": 0,
+            "conversions_change_pct": 0,
+        }
         current_m = {"cost": 1000, "conversions": 0}
         previous_m = {"cost": 1000, "conversions": 0}
         _, cpa_info = _PerformanceAnalysisMixin._generate_performance_insights(
@@ -392,8 +403,15 @@ class TestPerformanceAnalysisMixin:
     async def test_investigate_cost_increase_basic(self) -> None:
         client = self._make_client()
         client.get_performance_report.return_value = [
-            {"metrics": {"impressions": 1000, "clicks": 100, "cost": 5000,
-                         "conversions": 5, "average_cpc": 50}}
+            {
+                "metrics": {
+                    "impressions": 1000,
+                    "clicks": 100,
+                    "cost": 5000,
+                    "conversions": 5,
+                    "average_cpc": 50,
+                }
+            }
         ]
         client.get_search_terms_report.return_value = []
         client.list_change_history.return_value = []
@@ -407,8 +425,18 @@ class TestPerformanceAnalysisMixin:
     async def test_health_check_all_campaigns(self) -> None:
         client = self._make_client()
         client.list_campaigns.return_value = [
-            {"id": "1", "name": "Camp A", "status": "ENABLED", "primary_status": "ELIGIBLE"},
-            {"id": "2", "name": "Camp B", "status": "ENABLED", "primary_status": "NOT_ELIGIBLE"},
+            {
+                "id": "1",
+                "name": "Camp A",
+                "status": "ENABLED",
+                "primary_status": "ELIGIBLE",
+            },
+            {
+                "id": "2",
+                "name": "Camp B",
+                "status": "ENABLED",
+                "primary_status": "NOT_ELIGIBLE",
+            },
             {"id": "3", "name": "Camp C", "status": "PAUSED"},
         ]
         client.diagnose_campaign_delivery.return_value = {
@@ -429,7 +457,12 @@ class TestPerformanceAnalysisMixin:
     async def test_health_check_all_healthy(self) -> None:
         client = self._make_client()
         client.list_campaigns.return_value = [
-            {"id": "1", "name": "Good", "status": "ENABLED", "primary_status": "ELIGIBLE"},
+            {
+                "id": "1",
+                "name": "Good",
+                "status": "ENABLED",
+                "primary_status": "ELIGIBLE",
+            },
         ]
         result = await client.health_check_all_campaigns()
         assert "normally" in result["summary"]["message"]
@@ -441,12 +474,22 @@ class TestPerformanceAnalysisMixin:
             {
                 "ad_id": "ad1",
                 "status": "ENABLED",
-                "metrics": {"impressions": 500, "clicks": 50, "conversions": 5, "cost": 1000},
+                "metrics": {
+                    "impressions": 500,
+                    "clicks": 50,
+                    "conversions": 5,
+                    "cost": 1000,
+                },
             },
             {
                 "ad_id": "ad2",
                 "status": "ENABLED",
-                "metrics": {"impressions": 500, "clicks": 30, "conversions": 2, "cost": 800},
+                "metrics": {
+                    "impressions": 500,
+                    "clicks": 30,
+                    "conversions": 2,
+                    "cost": 800,
+                },
             },
         ]
         result = await client.compare_ad_performance("ag1")
@@ -461,7 +504,12 @@ class TestPerformanceAnalysisMixin:
             {
                 "ad_id": "ad1",
                 "status": "ENABLED",
-                "metrics": {"impressions": 50, "clicks": 5, "conversions": 0, "cost": 100},
+                "metrics": {
+                    "impressions": 50,
+                    "clicks": 5,
+                    "conversions": 0,
+                    "cost": 100,
+                },
             },
         ]
         result = await client.compare_ad_performance("ag1")
@@ -517,14 +565,18 @@ class TestSearchTermsAnalysisMixin:
 
     @pytest.mark.unit
     def test_build_add_candidate(self) -> None:
-        result = _build_add_candidate("keyword", 2.0, 30, 1000, 0.05, "EXACT", 90, "test")
+        result = _build_add_candidate(
+            "keyword", 2.0, 30, 1000, 0.05, "EXACT", 90, "test"
+        )
         assert result["action"] == "add"
         assert result["match_type"] == "EXACT"
         assert result["score"] == 90
 
     @pytest.mark.unit
     def test_build_exclude_candidate(self) -> None:
-        result = _build_exclude_candidate("keyword", 0.0, 50, 2000, 0.01, "PHRASE", 80, "test")
+        result = _build_exclude_candidate(
+            "keyword", 0.0, 50, 2000, 0.01, "PHRASE", 80, "test"
+        )
         assert result["action"] == "exclude"
         assert result["match_type"] == "PHRASE"
 
@@ -552,21 +604,34 @@ class TestSearchTermsAnalysisMixin:
     @pytest.mark.unit
     async def test_analyze_search_terms_basic(self) -> None:
         client = self._make_client()
-        client.list_keywords.return_value = [
-            {"text": "広告 運用"}
-        ]
+        client.list_keywords.return_value = [{"text": "広告 運用"}]
         client.get_search_terms_report.return_value = [
             {
                 "search_term": "広告 運用",
-                "metrics": {"cost": 500, "conversions": 2, "clicks": 10, "impressions": 100},
+                "metrics": {
+                    "cost": 500,
+                    "conversions": 2,
+                    "clicks": 10,
+                    "impressions": 100,
+                },
             },
             {
                 "search_term": "広告 代理店",
-                "metrics": {"cost": 300, "conversions": 1, "clicks": 5, "impressions": 80},
+                "metrics": {
+                    "cost": 300,
+                    "conversions": 1,
+                    "clicks": 5,
+                    "impressions": 80,
+                },
             },
             {
                 "search_term": "無駄語句",
-                "metrics": {"cost": 200, "conversions": 0, "clicks": 8, "impressions": 50},
+                "metrics": {
+                    "cost": 200,
+                    "conversions": 0,
+                    "clicks": 8,
+                    "impressions": 50,
+                },
             },
         ]
         result = await client.analyze_search_terms("123")
@@ -590,14 +655,39 @@ class TestSearchTermsAnalysisMixin:
     @pytest.mark.unit
     async def test_suggest_negative_keywords_basic(self) -> None:
         client = self._make_client()
-        client.get_campaign.return_value = {
-            "bidding_details": {"target_cpa": 3000}
-        }
+        client.get_campaign.return_value = {"bidding_details": {"target_cpa": 3000}}
         # 当期
         terms_current = [
-            {"search_term": "expensive term", "metrics": {"cost": 5000, "conversions": 0, "clicks": 20, "impressions": 500, "ctr": 0.04}},
-            {"search_term": "cheap term", "metrics": {"cost": 100, "conversions": 0, "clicks": 2, "impressions": 50, "ctr": 0.04}},
-            {"search_term": "good term", "metrics": {"cost": 2000, "conversions": 3, "clicks": 10, "impressions": 200, "ctr": 0.05}},
+            {
+                "search_term": "expensive term",
+                "metrics": {
+                    "cost": 5000,
+                    "conversions": 0,
+                    "clicks": 20,
+                    "impressions": 500,
+                    "ctr": 0.04,
+                },
+            },
+            {
+                "search_term": "cheap term",
+                "metrics": {
+                    "cost": 100,
+                    "conversions": 0,
+                    "clicks": 2,
+                    "impressions": 50,
+                    "ctr": 0.04,
+                },
+            },
+            {
+                "search_term": "good term",
+                "metrics": {
+                    "cost": 2000,
+                    "conversions": 3,
+                    "clicks": 10,
+                    "impressions": 200,
+                    "ctr": 0.05,
+                },
+            },
         ]
         # 前期
         terms_prev = [
@@ -608,7 +698,9 @@ class TestSearchTermsAnalysisMixin:
         client.get_search_terms_report.side_effect = [terms_current, terms_prev]
         client.list_negative_keywords.return_value = []
 
-        result = await client.suggest_negative_keywords("123", use_intent_analysis=False)
+        result = await client.suggest_negative_keywords(
+            "123", use_intent_analysis=False
+        )
         assert result["target_cpa"] == 3000.0
         assert result["target_cpa_source"] == "bidding_strategy"
         # expensive term: cost 5000 > 3000*1.5=4500 → 除外候補
@@ -621,14 +713,25 @@ class TestSearchTermsAnalysisMixin:
         client = self._make_client()
         client.get_campaign.return_value = {"bidding_details": {"target_cpa": 10000}}
         terms = [
-            {"search_term": "SEOとは", "metrics": {"cost": 100, "conversions": 0, "clicks": 5, "impressions": 200, "ctr": 0.025}},
+            {
+                "search_term": "SEOとは",
+                "metrics": {
+                    "cost": 100,
+                    "conversions": 0,
+                    "clicks": 5,
+                    "impressions": 200,
+                    "ctr": 0.025,
+                },
+            },
         ]
         client.get_search_terms_report.side_effect = [
             terms,  # 当期
             terms,  # 前期（同じ→既存語句扱い）
         ]
         client.list_negative_keywords.return_value = []
-        result = await client.suggest_negative_keywords("123", use_intent_analysis=False)
+        result = await client.suggest_negative_keywords(
+            "123", use_intent_analysis=False
+        )
         assert len(result["suggestions"]) >= 1
         assert "PHRASE" == result["suggestions"][0]["recommended_match_type"]
 
@@ -636,16 +739,38 @@ class TestSearchTermsAnalysisMixin:
     async def test_review_search_terms_classification(self) -> None:
         """多段階ルールによる分類テスト。"""
         client = self._make_client()
-        client.get_campaign.return_value = {
-            "bidding_details": {"target_cpa": 3000}
-        }
+        client.get_campaign.return_value = {"bidding_details": {"target_cpa": 3000}}
         terms = [
             # Rule 1: CV>=2 & 未登録 → add
-            {"search_term": "high cv term", "metrics": {"conversions": 3, "clicks": 20, "cost": 2000, "impressions": 500}},
+            {
+                "search_term": "high cv term",
+                "metrics": {
+                    "conversions": 3,
+                    "clicks": 20,
+                    "cost": 2000,
+                    "impressions": 500,
+                },
+            },
             # Rule 4: CV=0 & cost >= CPA*2 → exclude
-            {"search_term": "waste term", "metrics": {"conversions": 0, "clicks": 40, "cost": 7000, "impressions": 1000}},
+            {
+                "search_term": "waste term",
+                "metrics": {
+                    "conversions": 0,
+                    "clicks": 40,
+                    "cost": 7000,
+                    "impressions": 1000,
+                },
+            },
             # Rule 6: 情報収集 & CV=0 → exclude
-            {"search_term": "SEOとは", "metrics": {"conversions": 0, "clicks": 5, "cost": 200, "impressions": 100}},
+            {
+                "search_term": "SEOとは",
+                "metrics": {
+                    "conversions": 0,
+                    "clicks": 5,
+                    "cost": 200,
+                    "impressions": 100,
+                },
+            },
         ]
         client.get_search_terms_report.side_effect = [
             terms,  # 当期
@@ -654,9 +779,7 @@ class TestSearchTermsAnalysisMixin:
         client.list_keywords.return_value = []
         client.list_negative_keywords.return_value = []
 
-        result = await client.review_search_terms(
-            "123", use_intent_analysis=False
-        )
+        result = await client.review_search_terms("123", use_intent_analysis=False)
         assert result["summary"]["add_count"] >= 1
         assert result["summary"]["exclude_count"] >= 1
 
@@ -668,7 +791,15 @@ class TestSearchTermsAnalysisMixin:
         exclude: list[dict[str, Any]] = []
         watch: list[dict[str, Any]] = []
         client._classify_search_term(
-            {"search_term": "good kw", "metrics": {"conversions": 3, "clicks": 20, "cost": 1000, "impressions": 500}},
+            {
+                "search_term": "good kw",
+                "metrics": {
+                    "conversions": 3,
+                    "clicks": 20,
+                    "cost": 1000,
+                    "impressions": 500,
+                },
+            },
             keyword_texts=set(),
             existing_neg_texts=set(),
             prev_term_set=set(),
@@ -687,7 +818,15 @@ class TestSearchTermsAnalysisMixin:
         client = self._make_client()
         add: list[dict[str, Any]] = []
         client._classify_search_term(
-            {"search_term": "decent kw", "metrics": {"conversions": 1, "clicks": 10, "cost": 2000, "impressions": 200}},
+            {
+                "search_term": "decent kw",
+                "metrics": {
+                    "conversions": 1,
+                    "clicks": 10,
+                    "cost": 2000,
+                    "impressions": 200,
+                },
+            },
             keyword_texts=set(),
             existing_neg_texts=set(),
             prev_term_set=set(),
@@ -705,7 +844,15 @@ class TestSearchTermsAnalysisMixin:
         client = self._make_client()
         add: list[dict[str, Any]] = []
         client._classify_search_term(
-            {"search_term": "high ctr", "metrics": {"conversions": 0, "clicks": 25, "cost": 500, "impressions": 500}},
+            {
+                "search_term": "high ctr",
+                "metrics": {
+                    "conversions": 0,
+                    "clicks": 25,
+                    "cost": 500,
+                    "impressions": 500,
+                },
+            },
             keyword_texts=set(),
             existing_neg_texts=set(),
             prev_term_set=set(),
@@ -725,7 +872,15 @@ class TestSearchTermsAnalysisMixin:
         exclude: list[dict[str, Any]] = []
         # clicks=10, impressions=1000 → CTR=1% でRule3にマッチしない
         client._classify_search_term(
-            {"search_term": "waste", "metrics": {"conversions": 0, "clicks": 10, "cost": 7000, "impressions": 1000}},
+            {
+                "search_term": "waste",
+                "metrics": {
+                    "conversions": 0,
+                    "clicks": 10,
+                    "cost": 7000,
+                    "impressions": 1000,
+                },
+            },
             keyword_texts=set(),
             existing_neg_texts=set(),
             prev_term_set={"waste"},  # 既存語句
@@ -743,7 +898,15 @@ class TestSearchTermsAnalysisMixin:
         client = self._make_client()
         exclude: list[dict[str, Any]] = []
         client._classify_search_term(
-            {"search_term": "low ctr", "metrics": {"conversions": 0, "clicks": 40, "cost": 500, "impressions": 5000}},
+            {
+                "search_term": "low ctr",
+                "metrics": {
+                    "conversions": 0,
+                    "clicks": 40,
+                    "cost": 500,
+                    "impressions": 5000,
+                },
+            },
             keyword_texts=set(),
             existing_neg_texts=set(),
             prev_term_set={"low ctr"},
@@ -761,7 +924,15 @@ class TestSearchTermsAnalysisMixin:
         client = self._make_client()
         exclude: list[dict[str, Any]] = []
         client._classify_search_term(
-            {"search_term": "waste", "metrics": {"conversions": 0, "clicks": 30, "cost": 7000, "impressions": 1000}},
+            {
+                "search_term": "waste",
+                "metrics": {
+                    "conversions": 0,
+                    "clicks": 30,
+                    "cost": 7000,
+                    "impressions": 1000,
+                },
+            },
             keyword_texts=set(),
             existing_neg_texts={"waste"},
             prev_term_set={"waste"},
@@ -780,7 +951,15 @@ class TestSearchTermsAnalysisMixin:
         exclude: list[dict[str, Any]] = []
         watch: list[dict[str, Any]] = []
         client._classify_search_term(
-            {"search_term": "neutral", "metrics": {"conversions": 0, "clicks": 5, "cost": 100, "impressions": 200}},
+            {
+                "search_term": "neutral",
+                "metrics": {
+                    "conversions": 0,
+                    "clicks": 5,
+                    "cost": 100,
+                    "impressions": 200,
+                },
+            },
             keyword_texts=set(),
             existing_neg_texts=set(),
             prev_term_set={"neutral"},
@@ -838,7 +1017,13 @@ class TestKeywordsAnalysisMixin:
     async def test_get_keyword_performance(self) -> None:
         client = self._make_client()
         client._search.return_value = [
-            self._make_gaql_row(criterion_id=1, text="kw1", match_type=2, cost_micros=3_000_000, conversions=2.0),
+            self._make_gaql_row(
+                criterion_id=1,
+                text="kw1",
+                match_type=2,
+                cost_micros=3_000_000,
+                conversions=2.0,
+            ),
         ]
         results = await client._get_keyword_performance("123")
         assert len(results) == 1
@@ -857,9 +1042,16 @@ class TestKeywordsAnalysisMixin:
     def test_evaluate_keyword_rule1_broad_no_cv(self) -> None:
         """Rule 1: BROAD & CV=0 & コスト>目標CPA → narrow_to_phrase。"""
         kw = {
-            "text": "broad kw", "criterion_id": "1", "ad_group_id": "100",
+            "text": "broad kw",
+            "criterion_id": "1",
+            "ad_group_id": "100",
             "match_type": "BROAD",
-            "metrics": {"conversions": 0, "clicks": 20, "cost": 5000, "impressions": 300},
+            "metrics": {
+                "conversions": 0,
+                "clicks": 20,
+                "cost": 5000,
+                "impressions": 300,
+            },
         }
         rec = _KeywordsAnalysisMixin._evaluate_keyword(kw, 3000.0, 0.02)
         assert rec is not None
@@ -870,9 +1062,16 @@ class TestKeywordsAnalysisMixin:
     def test_evaluate_keyword_rule2_no_cv_many_clicks(self) -> None:
         """Rule 2: CV=0 & Click>50 → pause。"""
         kw = {
-            "text": "kw", "criterion_id": "1", "ad_group_id": "100",
+            "text": "kw",
+            "criterion_id": "1",
+            "ad_group_id": "100",
             "match_type": "EXACT",
-            "metrics": {"conversions": 0, "clicks": 60, "cost": 3000, "impressions": 1000},
+            "metrics": {
+                "conversions": 0,
+                "clicks": 60,
+                "cost": 3000,
+                "impressions": 1000,
+            },
         }
         rec = _KeywordsAnalysisMixin._evaluate_keyword(kw, 3000.0, 0.02)
         assert rec is not None
@@ -883,9 +1082,16 @@ class TestKeywordsAnalysisMixin:
     def test_evaluate_keyword_rule3_phrase_high_cvr(self) -> None:
         """Rule 3: PHRASE & CVR>avg*1.5 → add_exact。"""
         kw = {
-            "text": "kw", "criterion_id": "1", "ad_group_id": "100",
+            "text": "kw",
+            "criterion_id": "1",
+            "ad_group_id": "100",
             "match_type": "PHRASE",
-            "metrics": {"conversions": 5, "clicks": 20, "cost": 3000, "impressions": 500},
+            "metrics": {
+                "conversions": 5,
+                "clicks": 20,
+                "cost": 3000,
+                "impressions": 500,
+            },
         }
         # CVR = 5/20 = 0.25, avg_cvr = 0.05, avg*1.5 = 0.075
         rec = _KeywordsAnalysisMixin._evaluate_keyword(kw, 3000.0, 0.05)
@@ -897,7 +1103,9 @@ class TestKeywordsAnalysisMixin:
     def test_evaluate_keyword_rule4_exact_low_imp(self) -> None:
         """Rule 4: EXACT & Imp<50 → expand_to_phrase。"""
         kw = {
-            "text": "kw", "criterion_id": "1", "ad_group_id": "100",
+            "text": "kw",
+            "criterion_id": "1",
+            "ad_group_id": "100",
             "match_type": "EXACT",
             "metrics": {"conversions": 1, "clicks": 3, "cost": 500, "impressions": 30},
         }
@@ -910,9 +1118,16 @@ class TestKeywordsAnalysisMixin:
     def test_evaluate_keyword_no_action(self) -> None:
         """どのルールにもマッチしない → None。"""
         kw = {
-            "text": "kw", "criterion_id": "1", "ad_group_id": "100",
+            "text": "kw",
+            "criterion_id": "1",
+            "ad_group_id": "100",
             "match_type": "EXACT",
-            "metrics": {"conversions": 2, "clicks": 20, "cost": 2000, "impressions": 500},
+            "metrics": {
+                "conversions": 2,
+                "clicks": 20,
+                "cost": 2000,
+                "impressions": 500,
+            },
         }
         rec = _KeywordsAnalysisMixin._evaluate_keyword(kw, 3000.0, 0.02)
         assert rec is None
@@ -922,8 +1137,21 @@ class TestKeywordsAnalysisMixin:
         client = self._make_client()
         client.get_campaign.return_value = {"bidding_details": {"target_cpa": 3000}}
         client._search.return_value = [
-            self._make_gaql_row(text="broad kw", match_type=4, cost_micros=5_000_000, conversions=0, clicks=10),
-            self._make_gaql_row(criterion_id=2, text="good kw", match_type=2, cost_micros=2_000_000, conversions=3, clicks=20),
+            self._make_gaql_row(
+                text="broad kw",
+                match_type=4,
+                cost_micros=5_000_000,
+                conversions=0,
+                clicks=10,
+            ),
+            self._make_gaql_row(
+                criterion_id=2,
+                text="good kw",
+                match_type=2,
+                cost_micros=2_000_000,
+                conversions=3,
+                clicks=20,
+            ),
         ]
         result = await client.audit_keywords("123")
         assert result["total_keywords"] == 2
@@ -935,8 +1163,22 @@ class TestKeywordsAnalysisMixin:
         client = self._make_client()
         # 同じキーワード・マッチタイプが2つの広告グループに存在
         client._search.return_value = [
-            self._make_gaql_row(criterion_id=1, text="dup kw", match_type=2, ad_group_id=100, ad_group_name="AG1", conversions=3),
-            self._make_gaql_row(criterion_id=2, text="dup kw", match_type=2, ad_group_id=200, ad_group_name="AG2", conversions=0),
+            self._make_gaql_row(
+                criterion_id=1,
+                text="dup kw",
+                match_type=2,
+                ad_group_id=100,
+                ad_group_name="AG1",
+                conversions=3,
+            ),
+            self._make_gaql_row(
+                criterion_id=2,
+                text="dup kw",
+                match_type=2,
+                ad_group_id=200,
+                ad_group_name="AG2",
+                conversions=0,
+            ),
         ]
         result = await client.find_cross_adgroup_duplicates("123")
         assert result["duplicate_groups_count"] == 1
@@ -949,8 +1191,12 @@ class TestKeywordsAnalysisMixin:
     async def test_find_cross_adgroup_duplicates_no_duplicates(self) -> None:
         client = self._make_client()
         client._search.return_value = [
-            self._make_gaql_row(criterion_id=1, text="kw1", match_type=2, ad_group_id=100),
-            self._make_gaql_row(criterion_id=2, text="kw2", match_type=2, ad_group_id=100),
+            self._make_gaql_row(
+                criterion_id=1, text="kw1", match_type=2, ad_group_id=100
+            ),
+            self._make_gaql_row(
+                criterion_id=2, text="kw2", match_type=2, ad_group_id=100
+            ),
         ]
         result = await client.find_cross_adgroup_duplicates("123")
         assert result["duplicate_groups_count"] == 0
@@ -966,20 +1212,55 @@ class TestKeywordsAnalysisMixin:
     def test_extract_duplicate_groups(self) -> None:
         groups = {
             "kw1|EXACT": [
-                {"ad_group_id": "100", "ad_group_name": "AG1", "criterion_id": "1",
-                 "text": "kw1", "match_type": "EXACT", "status": "ENABLED",
-                 "metrics": {"conversions": 5, "clicks": 30, "impressions": 500, "cost": 3000}},
-                {"ad_group_id": "200", "ad_group_name": "AG2", "criterion_id": "2",
-                 "text": "kw1", "match_type": "EXACT", "status": "ENABLED",
-                 "metrics": {"conversions": 0, "clicks": 5, "impressions": 100, "cost": 500}},
+                {
+                    "ad_group_id": "100",
+                    "ad_group_name": "AG1",
+                    "criterion_id": "1",
+                    "text": "kw1",
+                    "match_type": "EXACT",
+                    "status": "ENABLED",
+                    "metrics": {
+                        "conversions": 5,
+                        "clicks": 30,
+                        "impressions": 500,
+                        "cost": 3000,
+                    },
+                },
+                {
+                    "ad_group_id": "200",
+                    "ad_group_name": "AG2",
+                    "criterion_id": "2",
+                    "text": "kw1",
+                    "match_type": "EXACT",
+                    "status": "ENABLED",
+                    "metrics": {
+                        "conversions": 0,
+                        "clicks": 5,
+                        "impressions": 100,
+                        "cost": 500,
+                    },
+                },
             ],
             "kw2|PHRASE": [
-                {"ad_group_id": "100", "ad_group_name": "AG1", "criterion_id": "3",
-                 "text": "kw2", "match_type": "PHRASE", "status": "ENABLED",
-                 "metrics": {"conversions": 1, "clicks": 10, "impressions": 200, "cost": 1000}},
+                {
+                    "ad_group_id": "100",
+                    "ad_group_name": "AG1",
+                    "criterion_id": "3",
+                    "text": "kw2",
+                    "match_type": "PHRASE",
+                    "status": "ENABLED",
+                    "metrics": {
+                        "conversions": 1,
+                        "clicks": 10,
+                        "impressions": 200,
+                        "cost": 1000,
+                    },
+                },
             ],
         }
-        dups, removable, waste = _KeywordsAnalysisMixin._extract_duplicate_groups(groups)
+        dups, removable, waste = _KeywordsAnalysisMixin._extract_duplicate_groups(
+            groups
+        )
         assert len(dups) == 1
         assert removable == 1
         assert waste == 500  # CV=0のremovableのcost
@@ -1005,7 +1286,7 @@ class TestBudgetAnalysisMixin:
         ]
         client.get_performance_report.side_effect = [
             [{"metrics": {"cost": 3000, "conversions": 10}}],  # Camp 1
-            [{"metrics": {"cost": 7000, "conversions": 2}}],   # Camp 2
+            [{"metrics": {"cost": 7000, "conversions": 2}}],  # Camp 2
         ]
         result = await client.analyze_budget_efficiency()
         assert result["total_cost"] == 10000
@@ -1093,9 +1374,11 @@ class TestRsaAnalysisMixin:
         class _FieldType:
             def __str__(self) -> str:
                 return f"FieldType.{field_type}"
+
         class _PerfLabel:
             def __str__(self) -> str:
                 return f"PerfLabel.{perf_label}"
+
         return SimpleNamespace(
             ad_group_ad_asset_view=SimpleNamespace(
                 ad_group_ad="ad1",
@@ -1229,6 +1512,7 @@ class TestAuctionAnalysisMixin:
         class _Device:
             def __str__(self) -> str:
                 return f"Device.{device}"
+
         return SimpleNamespace(
             segments=SimpleNamespace(device=_Device()),
             metrics=SimpleNamespace(
@@ -1272,7 +1556,13 @@ class TestAuctionAnalysisMixin:
     @pytest.mark.unit
     def test_generate_device_insights_cv0_cost(self) -> None:
         devices = [
-            {"device_type": "TABLET", "conversions": 0, "cost": 1000, "cpa": None, "ctr": 5.0},
+            {
+                "device_type": "TABLET",
+                "conversions": 0,
+                "cost": 1000,
+                "cpa": None,
+                "ctr": 5.0,
+            },
         ]
         insights = _AuctionAnalysisMixin._generate_device_insights(devices)
         assert any("TABLET" in i and "0 conversions" in i for i in insights)
@@ -1280,8 +1570,20 @@ class TestAuctionAnalysisMixin:
     @pytest.mark.unit
     def test_generate_device_insights_cpa_gap(self) -> None:
         devices = [
-            {"device_type": "DESKTOP", "conversions": 5, "cost": 5000, "cpa": 1000, "ctr": 10.0},
-            {"device_type": "MOBILE", "conversions": 2, "cost": 4000, "cpa": 2000, "ctr": 5.0},
+            {
+                "device_type": "DESKTOP",
+                "conversions": 5,
+                "cost": 5000,
+                "cpa": 1000,
+                "ctr": 10.0,
+            },
+            {
+                "device_type": "MOBILE",
+                "conversions": 2,
+                "cost": 4000,
+                "cpa": 2000,
+                "ctr": 5.0,
+            },
         ]
         insights = _AuctionAnalysisMixin._generate_device_insights(devices)
         assert any("x that of" in i for i in insights)
@@ -1289,8 +1591,20 @@ class TestAuctionAnalysisMixin:
     @pytest.mark.unit
     def test_generate_device_insights_mobile_low_ctr(self) -> None:
         devices = [
-            {"device_type": "DESKTOP", "conversions": 5, "cost": 5000, "cpa": 1000, "ctr": 10.0},
-            {"device_type": "MOBILE", "conversions": 2, "cost": 2000, "cpa": 1000, "ctr": 3.0},
+            {
+                "device_type": "DESKTOP",
+                "conversions": 5,
+                "cost": 5000,
+                "cpa": 1000,
+                "ctr": 10.0,
+            },
+            {
+                "device_type": "MOBILE",
+                "conversions": 2,
+                "cost": 2000,
+                "cpa": 1000,
+                "ctr": 3.0,
+            },
         ]
         insights = _AuctionAnalysisMixin._generate_device_insights(devices)
         assert any("Mobile CTR" in i for i in insights)
@@ -1335,7 +1649,11 @@ class TestAuctionAnalysisMixin:
 
     @pytest.mark.unit
     def test_generate_cpc_insights_falling(self) -> None:
-        trend = {"direction": "falling", "change_rate_per_day_pct": -2.5, "avg_cpc": 100}
+        trend = {
+            "direction": "falling",
+            "change_rate_per_day_pct": -2.5,
+            "avg_cpc": 100,
+        }
         insights = _AuctionAnalysisMixin._generate_cpc_insights([100], trend, [])
         assert any("declining trend" in i for i in insights)
 
@@ -1354,7 +1672,9 @@ class TestAuctionAnalysisMixin:
             {"date": "2026-03-02", "average_cpc": 300},  # spike: > 100*2
         ]
         trend = {"direction": "stable", "change_rate_per_day_pct": 0, "avg_cpc": 100}
-        insights = _AuctionAnalysisMixin._generate_cpc_insights([100, 300], trend, daily_data)
+        insights = _AuctionAnalysisMixin._generate_cpc_insights(
+            [100, 300], trend, daily_data
+        )
         assert any("anomal" in i for i in insights)
 
     @pytest.mark.unit
@@ -1379,15 +1699,17 @@ class TestAuctionAnalysisMixin:
         client.get_campaign.return_value = {"name": "Test"}
         rows = []
         for i in range(7):
-            rows.append(SimpleNamespace(
-                segments=SimpleNamespace(date=f"2026-03-{20+i:02d}"),
-                metrics=SimpleNamespace(
-                    average_cpc=(100 + i * 10) * 1_000_000,
-                    clicks=50,
-                    impressions=500,
-                    cost_micros=5000 * 1_000_000,
-                ),
-            ))
+            rows.append(
+                SimpleNamespace(
+                    segments=SimpleNamespace(date=f"2026-03-{20+i:02d}"),
+                    metrics=SimpleNamespace(
+                        average_cpc=(100 + i * 10) * 1_000_000,
+                        clicks=50,
+                        impressions=500,
+                        cost_micros=5000 * 1_000_000,
+                    ),
+                )
+            )
         client._search.return_value = rows
         result = await client.detect_cpc_trend("123")
         assert result["data_points"] == 7
@@ -1545,12 +1867,24 @@ class TestBtoBAnalysisMixin:
     async def test_check_device_mobile_higher_cpa(self) -> None:
         client = self._make_client()
         # analyze_device_performance をモック
-        client.analyze_device_performance = AsyncMock(return_value={
-            "devices": [
-                {"device_type": "DESKTOP", "cpa": 3000, "conversions": 5, "cost": 15000},
-                {"device_type": "MOBILE", "cpa": 5000, "conversions": 2, "cost": 10000},
-            ]
-        })
+        client.analyze_device_performance = AsyncMock(
+            return_value={
+                "devices": [
+                    {
+                        "device_type": "DESKTOP",
+                        "cpa": 3000,
+                        "conversions": 5,
+                        "cost": 15000,
+                    },
+                    {
+                        "device_type": "MOBILE",
+                        "cpa": 5000,
+                        "conversions": 2,
+                        "cost": 10000,
+                    },
+                ]
+            }
+        )
         suggestions: list[dict[str, Any]] = []
         await client._check_device_for_btob("123", "LAST_30_DAYS", suggestions)
         assert len(suggestions) >= 1
@@ -1559,16 +1893,35 @@ class TestBtoBAnalysisMixin:
     @pytest.mark.unit
     async def test_check_device_tablet_cv0(self) -> None:
         client = self._make_client()
-        client.analyze_device_performance = AsyncMock(return_value={
-            "devices": [
-                {"device_type": "DESKTOP", "cpa": 3000, "conversions": 5, "cost": 15000},
-                {"device_type": "MOBILE", "cpa": 3000, "conversions": 3, "cost": 9000},
-                {"device_type": "TABLET", "cpa": None, "conversions": 0, "cost": 2000},
-            ]
-        })
+        client.analyze_device_performance = AsyncMock(
+            return_value={
+                "devices": [
+                    {
+                        "device_type": "DESKTOP",
+                        "cpa": 3000,
+                        "conversions": 5,
+                        "cost": 15000,
+                    },
+                    {
+                        "device_type": "MOBILE",
+                        "cpa": 3000,
+                        "conversions": 3,
+                        "cost": 9000,
+                    },
+                    {
+                        "device_type": "TABLET",
+                        "cpa": None,
+                        "conversions": 0,
+                        "cost": 2000,
+                    },
+                ]
+            }
+        )
         suggestions: list[dict[str, Any]] = []
         await client._check_device_for_btob("123", "LAST_30_DAYS", suggestions)
-        assert any(s["category"] == "device" and "tablet" in s["message"] for s in suggestions)
+        assert any(
+            s["category"] == "device" and "tablet" in s["message"] for s in suggestions
+        )
 
     @pytest.mark.unit
     async def test_check_search_terms_high_info_ratio(self) -> None:
@@ -1628,12 +1981,24 @@ class TestBtoBAnalysisMixin:
         client = self._make_client()
         client.get_campaign.return_value = {"name": "BtoB Campaign"}
         client.list_schedule_targeting.return_value = []
-        client.analyze_device_performance = AsyncMock(return_value={
-            "devices": [
-                {"device_type": "DESKTOP", "cpa": 3000, "conversions": 5, "cost": 15000},
-                {"device_type": "MOBILE", "cpa": 5000, "conversions": 2, "cost": 10000},
-            ]
-        })
+        client.analyze_device_performance = AsyncMock(
+            return_value={
+                "devices": [
+                    {
+                        "device_type": "DESKTOP",
+                        "cpa": 3000,
+                        "conversions": 5,
+                        "cost": 15000,
+                    },
+                    {
+                        "device_type": "MOBILE",
+                        "cpa": 5000,
+                        "conversions": 2,
+                        "cost": 10000,
+                    },
+                ]
+            }
+        )
         client.get_search_terms_report.return_value = [
             {"search_term": "SEOとは"},
             {"search_term": "広告代理店"},

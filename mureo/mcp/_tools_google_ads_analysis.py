@@ -25,7 +25,7 @@ TOOLS: list[Tool] = [
                     "description": "Period (LAST_7_DAYS, LAST_30_DAYS etc.)",
                 },
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -48,7 +48,7 @@ TOOLS: list[Tool] = [
                 },
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -68,7 +68,7 @@ TOOLS: list[Tool] = [
                 },
                 "target_cpa": {"type": "number", "description": "Target CPA"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -84,7 +84,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -100,7 +100,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -116,7 +116,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Network performance report ===
@@ -136,7 +136,7 @@ TOOLS: list[Tool] = [
                 },
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     # === Per-ad report ===
@@ -160,7 +160,7 @@ TOOLS: list[Tool] = [
                 },
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     # === Search Term Analysis ===
@@ -177,7 +177,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Performance analysis ===
@@ -194,7 +194,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -209,7 +209,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -223,7 +223,7 @@ TOOLS: list[Tool] = [
                     "description": "Google Ads customer ID",
                 },
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -239,7 +239,7 @@ TOOLS: list[Tool] = [
                 "ad_group_id": {"type": "string", "description": "Ad group ID"},
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id", "ad_group_id"],
+            "required": ["ad_group_id"],
         },
     ),
     # === Budget analysis ===
@@ -255,7 +255,7 @@ TOOLS: list[Tool] = [
                 },
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -270,7 +270,7 @@ TOOLS: list[Tool] = [
                 },
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     # === Auction insights ===
@@ -287,7 +287,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === RSA analysis ===
@@ -304,7 +304,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -320,7 +320,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === BtoB ===
@@ -337,7 +337,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Creative ===
@@ -353,7 +353,7 @@ TOOLS: list[Tool] = [
                 },
                 "url": {"type": "string", "description": "Landing page URL"},
             },
-            "required": ["customer_id", "url"],
+            "required": ["url"],
         },
     ),
     Tool(
@@ -373,7 +373,7 @@ TOOLS: list[Tool] = [
                     "description": "Filter by ad group ID",
                 },
             },
-            "required": ["customer_id", "campaign_id", "url"],
+            "required": ["campaign_id", "url"],
         },
     ),
     # === Monitoring ===
@@ -389,7 +389,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -405,7 +405,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "target_cpa": {"type": "number", "description": "Target CPA"},
             },
-            "required": ["customer_id", "campaign_id", "target_cpa"],
+            "required": ["campaign_id", "target_cpa"],
         },
     ),
     Tool(
@@ -424,7 +424,7 @@ TOOLS: list[Tool] = [
                     "description": "Daily conversion target",
                 },
             },
-            "required": ["customer_id", "campaign_id", "target_cv_daily"],
+            "required": ["campaign_id", "target_cv_daily"],
         },
     ),
     Tool(
@@ -439,7 +439,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Capture ===

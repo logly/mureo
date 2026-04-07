@@ -18,7 +18,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -37,7 +37,7 @@ TOOLS: list[Tool] = [
                 "description1": {"type": "string", "description": "Description line 1"},
                 "description2": {"type": "string", "description": "Description line 2"},
             },
-            "required": ["customer_id", "campaign_id", "link_text", "final_url"],
+            "required": ["campaign_id", "link_text", "final_url"],
         },
     ),
     Tool(
@@ -53,7 +53,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "asset_id": {"type": "string", "description": "Asset ID"},
             },
-            "required": ["customer_id", "campaign_id", "asset_id"],
+            "required": ["campaign_id", "asset_id"],
         },
     ),
     # === Callouts ===
@@ -69,7 +69,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -88,7 +88,7 @@ TOOLS: list[Tool] = [
                     "description": "Callout text",
                 },
             },
-            "required": ["customer_id", "campaign_id", "callout_text"],
+            "required": ["campaign_id", "callout_text"],
         },
     ),
     Tool(
@@ -104,7 +104,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "asset_id": {"type": "string", "description": "Asset ID"},
             },
-            "required": ["customer_id", "campaign_id", "asset_id"],
+            "required": ["campaign_id", "asset_id"],
         },
     ),
     # === Conversions ===
@@ -119,7 +119,7 @@ TOOLS: list[Tool] = [
                     "description": "Google Ads customer ID",
                 },
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -137,7 +137,7 @@ TOOLS: list[Tool] = [
                     "description": "Conversion action ID",
                 },
             },
-            "required": ["customer_id", "conversion_action_id"],
+            "required": ["conversion_action_id"],
         },
     ),
     Tool(
@@ -156,7 +156,7 @@ TOOLS: list[Tool] = [
                 },
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -198,7 +198,7 @@ TOOLS: list[Tool] = [
                     "description": "View-through lookback window (1-30 days)",
                 },
             },
-            "required": ["customer_id", "name"],
+            "required": ["name"],
         },
     ),
     Tool(
@@ -238,7 +238,7 @@ TOOLS: list[Tool] = [
                     "description": "View-through lookback window (1-30 days)",
                 },
             },
-            "required": ["customer_id", "conversion_action_id"],
+            "required": ["conversion_action_id"],
         },
     ),
     Tool(
@@ -256,7 +256,7 @@ TOOLS: list[Tool] = [
                     "description": "Conversion action ID",
                 },
             },
-            "required": ["customer_id", "conversion_action_id"],
+            "required": ["conversion_action_id"],
         },
     ),
     Tool(
@@ -274,7 +274,7 @@ TOOLS: list[Tool] = [
                     "description": "Conversion action ID",
                 },
             },
-            "required": ["customer_id", "conversion_action_id"],
+            "required": ["conversion_action_id"],
         },
     ),
     # === Recommendations ===
@@ -297,7 +297,7 @@ TOOLS: list[Tool] = [
                     "description": "Filter by recommendation type",
                 },
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -315,7 +315,7 @@ TOOLS: list[Tool] = [
                     "description": "Recommendation resource name",
                 },
             },
-            "required": ["customer_id", "resource_name"],
+            "required": ["resource_name"],
         },
     ),
     # === Device Targeting ===
@@ -331,7 +331,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -351,7 +351,7 @@ TOOLS: list[Tool] = [
                     "description": "List of devices to enable (MOBILE/DESKTOP/TABLET)",
                 },
             },
-            "required": ["customer_id", "campaign_id", "enabled_devices"],
+            "required": ["campaign_id", "enabled_devices"],
         },
     ),
     # === Bid adjustments ===
@@ -367,7 +367,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -390,7 +390,7 @@ TOOLS: list[Tool] = [
                     "description": "Bid modifier (0.1 to 10.0)",
                 },
             },
-            "required": ["customer_id", "campaign_id", "criterion_id", "bid_modifier"],
+            "required": ["campaign_id", "criterion_id", "bid_modifier"],
         },
     ),
     # === Geographic Targeting ===
@@ -406,7 +406,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -431,7 +431,7 @@ TOOLS: list[Tool] = [
                     "description": "List of criterion IDs to remove",
                 },
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Ad schedules ===
@@ -447,7 +447,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -489,7 +489,7 @@ TOOLS: list[Tool] = [
                     "description": "List of criterion IDs to remove",
                 },
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Change History ===
@@ -512,7 +512,7 @@ TOOLS: list[Tool] = [
                     "description": "End date (YYYY-MM-DD)",
                 },
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
 ]

@@ -22,7 +22,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 50)",
                 },
             },
-            "required": ["account_id", "page_id"],
+            "required": ["page_id"],
         },
     ),
     Tool(
@@ -37,7 +37,7 @@ TOOLS: list[Tool] = [
                 },
                 "form_id": {"type": "string", "description": "Lead form ID"},
             },
-            "required": ["account_id", "form_id"],
+            "required": ["form_id"],
         },
     ),
     Tool(
@@ -91,7 +91,6 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [
-                "account_id",
                 "page_id",
                 "name",
                 "questions",
@@ -115,7 +114,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 100)",
                 },
             },
-            "required": ["account_id", "form_id"],
+            "required": ["form_id"],
         },
     ),
     Tool(
@@ -134,7 +133,7 @@ TOOLS: list[Tool] = [
                     "description": "Max results (default: 100)",
                 },
             },
-            "required": ["account_id", "ad_id"],
+            "required": ["ad_id"],
         },
     ),
 ]

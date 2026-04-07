@@ -244,21 +244,21 @@ class TestCommandFilesValid:
         content = filepath.read_text(encoding="utf-8").strip()
         first_line = content.split("\n")[0].strip()
         # First line should be a plain text description (not a heading or empty)
-        assert len(first_line) > 10, (
-            f"Command file {filename} first line too short: '{first_line}'"
-        )
-        assert not first_line.startswith("---"), (
-            f"Command file {filename} should not start with YAML frontmatter"
-        )
+        assert (
+            len(first_line) > 10
+        ), f"Command file {filename} first line too short: '{first_line}'"
+        assert not first_line.startswith(
+            "---"
+        ), f"Command file {filename} should not start with YAML frontmatter"
 
     @pytest.mark.unit
     @pytest.mark.parametrize("filename", EXPECTED_COMMANDS)
     def test_command_file_has_steps_section(self, filename: str) -> None:
         filepath = COMMANDS_DIR / filename
         content = filepath.read_text(encoding="utf-8")
-        assert "## Steps" in content or "## steps" in content, (
-            f"Command file {filename} missing ## Steps section"
-        )
+        assert (
+            "## Steps" in content or "## steps" in content
+        ), f"Command file {filename} missing ## Steps section"
 
 
 class TestCommandToolReferences:
@@ -289,9 +289,9 @@ class TestCommandToolReferences:
             or "platforms" in content
             or "platform" in content
         )
-        assert has_discovery, (
-            f"Command {filename} does not include platform discovery pattern"
-        )
+        assert (
+            has_discovery
+        ), f"Command {filename} does not include platform discovery pattern"
 
 
 class TestWorkflowSkill:
@@ -328,9 +328,7 @@ class TestWorkflowSkill:
             "LTV_QUALITY_FOCUS",
         ]
         for mode in modes:
-            assert mode in content, (
-                f"SKILL.md missing operation mode: {mode}"
-            )
+            assert mode in content, f"SKILL.md missing operation mode: {mode}"
 
     @pytest.mark.unit
     def test_skill_has_kpi_thresholds(self) -> None:
@@ -373,22 +371,20 @@ class TestGoalAndCrossPlatformCommands:
         content = filepath.read_text(encoding="utf-8")
         # Should not have hardcoded tool names
         referenced_tools = _extract_tool_references(content)
-        assert len(referenced_tools) == 0, (
-            f"Command {filename} contains hardcoded tool names: {sorted(referenced_tools)}"
-        )
+        assert (
+            len(referenced_tools) == 0
+        ), f"Command {filename} contains hardcoded tool names: {sorted(referenced_tools)}"
         # Should reference platform discovery
-        assert "platform" in content.lower(), (
-            f"Command {filename} does not reference platform discovery"
-        )
+        assert (
+            "platform" in content.lower()
+        ), f"Command {filename} does not reference platform discovery"
 
     @pytest.mark.unit
     @pytest.mark.parametrize("filename", ["goal-review.md", "weekly-report.md"])
     def test_new_command_has_steps_section(self, filename: str) -> None:
         filepath = COMMANDS_DIR / filename
         content = filepath.read_text(encoding="utf-8")
-        assert "## Steps" in content, (
-            f"Command {filename} missing ## Steps section"
-        )
+        assert "## Steps" in content, f"Command {filename} missing ## Steps section"
 
     @pytest.mark.unit
     def test_all_commands_reference_strategy_or_state(self) -> None:
@@ -398,6 +394,6 @@ class TestGoalAndCrossPlatformCommands:
             content = filepath.read_text(encoding="utf-8")
             has_strategy = "STRATEGY.md" in content
             has_state = "STATE.json" in content
-            assert has_strategy or has_state, (
-                f"Command {filename} does not reference STRATEGY.md or STATE.json"
-            )
+            assert (
+                has_strategy or has_state
+            ), f"Command {filename} does not reference STRATEGY.md or STATE.json"

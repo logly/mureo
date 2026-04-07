@@ -29,12 +29,14 @@ from mureo.meta_ads._analysis import AnalysisMixin, _safe_float, _extract_cv
 
 def _make_mock_class(mixin_cls):
     """Mixinにモック _get/_post/_delete/_ad_account_id を付与したクラスを生成"""
+
     class MockClient(mixin_cls):
         def __init__(self):
             self._ad_account_id = "act_123"
             self._get = AsyncMock(return_value={"data": []})
             self._post = AsyncMock(return_value={"id": "new_id"})
             self._delete = AsyncMock(return_value={"success": True})
+
     return MockClient
 
 
@@ -92,7 +94,9 @@ class TestCampaignsMixin:
 
     @pytest.mark.asyncio
     async def test_create_campaign_special_ad_categories(self, client) -> None:
-        await client.create_campaign("Test", "CONVERSIONS", special_ad_categories=["HOUSING"])
+        await client.create_campaign(
+            "Test", "CONVERSIONS", special_ad_categories=["HOUSING"]
+        )
         data = client._post.call_args[0][1]
         assert json.loads(data["special_ad_categories"]) == ["HOUSING"]
 
@@ -287,7 +291,9 @@ class TestCreativesMixin:
     @pytest.mark.asyncio
     async def test_create_ad_creative_with_image_url(self, client) -> None:
         await client.create_ad_creative(
-            "Creative1", "page1", "https://example.com",
+            "Creative1",
+            "page1",
+            "https://example.com",
             image_url="https://img.example.com/img.jpg",
             headline="見出し",
             message="本文",
@@ -305,7 +311,9 @@ class TestCreativesMixin:
     @pytest.mark.asyncio
     async def test_create_ad_creative_with_image_hash(self, client) -> None:
         await client.create_ad_creative(
-            "Creative2", "page1", "https://example.com",
+            "Creative2",
+            "page1",
+            "https://example.com",
             image_hash="abc123",
         )
         data = client._post.call_args[0][1]
@@ -315,9 +323,11 @@ class TestCreativesMixin:
 
     @pytest.mark.asyncio
     async def test_upload_ad_image_success(self, client) -> None:
-        client._post = AsyncMock(return_value={
-            "images": {"img.jpg": {"hash": "abc", "url": "https://cdn/img.jpg"}}
-        })
+        client._post = AsyncMock(
+            return_value={
+                "images": {"img.jpg": {"hash": "abc", "url": "https://cdn/img.jpg"}}
+            }
+        )
         result = await client.upload_ad_image("https://example.com/img.jpg")
         assert result["hash"] == "abc"
         assert result["url"] == "https://cdn/img.jpg"
@@ -331,7 +341,8 @@ class TestCreativesMixin:
     @pytest.mark.asyncio
     async def test_create_dynamic_creative(self, client) -> None:
         await client.create_dynamic_creative(
-            "DC1", "page1",
+            "DC1",
+            "page1",
             image_hashes=["h1", "h2"],
             bodies=["body1", "body2"],
             titles=["title1", "title2"],
@@ -377,7 +388,8 @@ class TestAudiencesMixin:
     @pytest.mark.asyncio
     async def test_create_custom_audience(self, client) -> None:
         await client.create_custom_audience(
-            "WebVisitors", "WEBSITE",
+            "WebVisitors",
+            "WEBSITE",
             description="サイト訪問者",
             retention_days=30,
             rule={"inclusions": {"operator": "or"}},
@@ -398,9 +410,7 @@ class TestAudiencesMixin:
 
     @pytest.mark.asyncio
     async def test_create_lookalike_audience(self, client) -> None:
-        await client.create_lookalike_audience(
-            "Lookalike1", "source1", "JP", 0.05
-        )
+        await client.create_lookalike_audience("Lookalike1", "source1", "JP", 0.05)
         data = client._post.call_args[0][1]
         assert data["name"] == "Lookalike1"
         assert data["subtype"] == "LOOKALIKE"
@@ -447,7 +457,9 @@ class TestPixelsMixin:
 
     @pytest.mark.asyncio
     async def test_get_pixel_stats(self, client) -> None:
-        client._get = AsyncMock(return_value={"data": [{"event": "PageView", "count": 100}]})
+        client._get = AsyncMock(
+            return_value={"data": [{"event": "PageView", "count": 100}]}
+        )
         result = await client.get_pixel_stats("px1", "last_30d")
         assert len(result) == 1
         # パスの確認
@@ -461,7 +473,9 @@ class TestPixelsMixin:
 
     @pytest.mark.asyncio
     async def test_get_pixel_events(self, client) -> None:
-        client._get = AsyncMock(return_value={"data": [{"event_name": "Purchase", "count": 50}]})
+        client._get = AsyncMock(
+            return_value={"data": [{"event_name": "Purchase", "count": 50}]}
+        )
         result = await client.get_pixel_events("px1")
         assert len(result) == 1
 
@@ -502,12 +516,17 @@ class TestInsightsMixin:
     @pytest.mark.asyncio
     async def test_analyze_performance_with_decline(self, client) -> None:
         """表示回数が20%以上減少した場合のインサイト"""
+
         async def fake_get(path, params):
             period = params.get("date_preset", "")
             if period == "last_7d":
-                return {"data": [{"impressions": "800", "clicks": "40", "spend": "5000"}]}
+                return {
+                    "data": [{"impressions": "800", "clicks": "40", "spend": "5000"}]
+                }
             else:
-                return {"data": [{"impressions": "1200", "clicks": "60", "spend": "3000"}]}
+                return {
+                    "data": [{"impressions": "1200", "clicks": "60", "spend": "3000"}]
+                }
 
         client._get = AsyncMock(side_effect=fake_get)
         result = await client.analyze_performance(period="last_7d")
@@ -521,26 +540,30 @@ class TestInsightsMixin:
 
     @pytest.mark.asyncio
     async def test_analyze_audience_with_segments(self, client) -> None:
-        client._get = AsyncMock(return_value={"data": [
-            {
-                "age": "25-34",
-                "gender": "male",
-                "impressions": "1000",
-                "clicks": "50",
-                "spend": "500",
-                "ctr": "5.0",
-                "actions": [{"action_type": "purchase", "value": "3"}],
-            },
-            {
-                "age": "35-44",
-                "gender": "female",
-                "impressions": "800",
-                "clicks": "20",
-                "spend": "1000",
-                "ctr": "2.5",
-                "actions": [],
-            },
-        ]})
+        client._get = AsyncMock(
+            return_value={
+                "data": [
+                    {
+                        "age": "25-34",
+                        "gender": "male",
+                        "impressions": "1000",
+                        "clicks": "50",
+                        "spend": "500",
+                        "ctr": "5.0",
+                        "actions": [{"action_type": "purchase", "value": "3"}],
+                    },
+                    {
+                        "age": "35-44",
+                        "gender": "female",
+                        "impressions": "800",
+                        "clicks": "20",
+                        "spend": "1000",
+                        "ctr": "2.5",
+                        "actions": [],
+                    },
+                ]
+            }
+        )
         # analyze_audience は get_breakdown_report を呼ぶので実装が必要
         # InsightsMixin.get_breakdown_report は _get を使う
         result = await client.analyze_audience("camp1")
@@ -570,11 +593,13 @@ class TestAnalysisHelpers:
         assert _safe_float(0) == 0.0
 
     def test_extract_cv(self) -> None:
-        row = {"actions": [
-            {"action_type": "purchase", "value": "5"},
-            {"action_type": "lead", "value": "3"},
-            {"action_type": "link_click", "value": "100"},
-        ]}
+        row = {
+            "actions": [
+                {"action_type": "purchase", "value": "5"},
+                {"action_type": "lead", "value": "3"},
+                {"action_type": "link_click", "value": "100"},
+            ]
+        }
         assert _extract_cv(row) == 8.0
 
     def test_extract_cv_no_actions(self) -> None:
@@ -596,6 +621,7 @@ class TestAnalysisMixin:
             def __init__(self):
                 self.get_performance_report = AsyncMock(return_value=[])
                 self.get_breakdown_report = AsyncMock(return_value=[])
+
         return MockAnalysisClient()
 
     @pytest.mark.asyncio
@@ -605,24 +631,26 @@ class TestAnalysisMixin:
 
     @pytest.mark.asyncio
     async def test_analyze_placements_with_data(self, client) -> None:
-        client.get_breakdown_report = AsyncMock(return_value=[
-            {
-                "publisher_platform": "facebook",
-                "impressions": "1000",
-                "clicks": "50",
-                "spend": "500",
-                "ctr": "5.0",
-                "actions": [{"action_type": "purchase", "value": "5"}],
-            },
-            {
-                "publisher_platform": "instagram",
-                "impressions": "500",
-                "clicks": "10",
-                "spend": "300",
-                "ctr": "2.0",
-                "actions": [],
-            },
-        ])
+        client.get_breakdown_report = AsyncMock(
+            return_value=[
+                {
+                    "publisher_platform": "facebook",
+                    "impressions": "1000",
+                    "clicks": "50",
+                    "spend": "500",
+                    "ctr": "5.0",
+                    "actions": [{"action_type": "purchase", "value": "5"}],
+                },
+                {
+                    "publisher_platform": "instagram",
+                    "impressions": "500",
+                    "clicks": "10",
+                    "spend": "300",
+                    "ctr": "2.0",
+                    "actions": [],
+                },
+            ]
+        )
         result = await client.analyze_placements("camp1")
         assert len(result["placements"]) == 2
         # instagramはCV0でコスト発生 → insight
@@ -636,6 +664,7 @@ class TestAnalysisMixin:
     @pytest.mark.asyncio
     async def test_investigate_cost_with_increase(self, client) -> None:
         """広告費増加の検出"""
+
         async def fake_report(**kwargs):
             period = kwargs.get("period", "")
             if period == "last_7d":
@@ -656,20 +685,32 @@ class TestAnalysisMixin:
 
     @pytest.mark.asyncio
     async def test_compare_ads_with_data(self, client) -> None:
-        client.get_performance_report = AsyncMock(return_value=[
-            {
-                "ad_id": "1", "ad_name": "Ad A", "adset_id": "adset1",
-                "impressions": "1000", "clicks": "50", "spend": "500",
-                "ctr": "5.0", "cpc": "10",
-                "actions": [{"action_type": "purchase", "value": "5"}],
-            },
-            {
-                "ad_id": "2", "ad_name": "Ad B", "adset_id": "adset1",
-                "impressions": "1000", "clicks": "20", "spend": "400",
-                "ctr": "2.0", "cpc": "20",
-                "actions": [],
-            },
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {
+                    "ad_id": "1",
+                    "ad_name": "Ad A",
+                    "adset_id": "adset1",
+                    "impressions": "1000",
+                    "clicks": "50",
+                    "spend": "500",
+                    "ctr": "5.0",
+                    "cpc": "10",
+                    "actions": [{"action_type": "purchase", "value": "5"}],
+                },
+                {
+                    "ad_id": "2",
+                    "ad_name": "Ad B",
+                    "adset_id": "adset1",
+                    "impressions": "1000",
+                    "clicks": "20",
+                    "spend": "400",
+                    "ctr": "2.0",
+                    "cpc": "20",
+                    "actions": [],
+                },
+            ]
+        )
         result = await client.compare_ads("adset1")
         assert result["winner"] is not None
         assert len(result["ads"]) == 2
@@ -683,18 +724,24 @@ class TestAnalysisMixin:
     @pytest.mark.asyncio
     async def test_suggest_creative_improvements_low_ctr(self, client) -> None:
         """平均CTRの半分以下の広告を検出"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {
-                "ad_id": "1", "ad_name": "Good Ad",
-                "ctr": "5.0", "spend": "500",
-                "actions": [{"action_type": "purchase", "value": "5"}],
-            },
-            {
-                "ad_id": "2", "ad_name": "Bad Ad",
-                "ctr": "0.5", "spend": "300",
-                "actions": [],
-            },
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {
+                    "ad_id": "1",
+                    "ad_name": "Good Ad",
+                    "ctr": "5.0",
+                    "spend": "500",
+                    "actions": [{"action_type": "purchase", "value": "5"}],
+                },
+                {
+                    "ad_id": "2",
+                    "ad_name": "Bad Ad",
+                    "ctr": "0.5",
+                    "spend": "300",
+                    "actions": [],
+                },
+            ]
+        )
         result = await client.suggest_creative_improvements("camp1")
         low_ctr = [s for s in result["suggestions"] if s["type"] == "low_ctr"]
         assert len(low_ctr) >= 1
@@ -703,13 +750,17 @@ class TestAnalysisMixin:
     @pytest.mark.asyncio
     async def test_suggest_creative_improvements_zero_cv(self, client) -> None:
         """CV0で高コストの広告を検出"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {
-                "ad_id": "1", "ad_name": "CV0 Ad",
-                "ctr": "3.0", "spend": "1000",
-                "actions": [],
-            },
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {
+                    "ad_id": "1",
+                    "ad_name": "CV0 Ad",
+                    "ctr": "3.0",
+                    "spend": "1000",
+                    "actions": [],
+                },
+            ]
+        )
         result = await client.suggest_creative_improvements("camp1")
         zero_cv = [s for s in result["suggestions"] if s["type"] == "zero_cv"]
         assert len(zero_cv) >= 1
@@ -717,18 +768,24 @@ class TestAnalysisMixin:
     @pytest.mark.asyncio
     async def test_suggest_creative_improvements_high_cpa(self, client) -> None:
         """CPA格差の検出"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {
-                "ad_id": "1", "ad_name": "Efficient",
-                "ctr": "5.0", "spend": "1000",
-                "actions": [{"action_type": "purchase", "value": "10"}],
-            },
-            {
-                "ad_id": "2", "ad_name": "Expensive",
-                "ctr": "3.0", "spend": "5000",
-                "actions": [{"action_type": "purchase", "value": "5"}],
-            },
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {
+                    "ad_id": "1",
+                    "ad_name": "Efficient",
+                    "ctr": "5.0",
+                    "spend": "1000",
+                    "actions": [{"action_type": "purchase", "value": "10"}],
+                },
+                {
+                    "ad_id": "2",
+                    "ad_name": "Expensive",
+                    "ctr": "3.0",
+                    "spend": "5000",
+                    "actions": [{"action_type": "purchase", "value": "5"}],
+                },
+            ]
+        )
         result = await client.suggest_creative_improvements("camp1")
         high_cpa = [s for s in result["suggestions"] if s["type"] == "high_cpa"]
         assert len(high_cpa) >= 1

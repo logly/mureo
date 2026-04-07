@@ -73,7 +73,10 @@ class TestAnalyzeLandingPage:
             instance = MockAnalyzer.return_value
             instance.analyze = AsyncMock(return_value=mock_result)
             with patch("mureo.google_ads._creative.asdict") as mock_asdict:
-                mock_asdict.return_value = {"title": "Test Title", "url": "https://example.com"}
+                mock_asdict.return_value = {
+                    "title": "Test Title",
+                    "url": "https://example.com",
+                }
                 result = await client.analyze_landing_page("https://example.com")
 
         assert result["title"] == "Test Title"
@@ -224,12 +227,16 @@ class TestExtractSearchTermInsights:
         return _MockCreativeClient()
 
     @pytest.mark.asyncio
-    async def test_extracts_high_cv_and_high_click(self, client: _MockCreativeClient) -> None:
-        client.get_search_terms_report = AsyncMock(return_value=[
-            {"search_term": "a", "metrics": {"conversions": 5, "clicks": 10}},
-            {"search_term": "b", "metrics": {"conversions": 0, "clicks": 50}},
-            {"search_term": "c", "metrics": {"conversions": 3, "clicks": 5}},
-        ])
+    async def test_extracts_high_cv_and_high_click(
+        self, client: _MockCreativeClient
+    ) -> None:
+        client.get_search_terms_report = AsyncMock(
+            return_value=[
+                {"search_term": "a", "metrics": {"conversions": 5, "clicks": 10}},
+                {"search_term": "b", "metrics": {"conversions": 0, "clicks": 50}},
+                {"search_term": "c", "metrics": {"conversions": 3, "clicks": 5}},
+            ]
+        )
 
         result = await client._extract_search_term_insights("123", None)
         assert result["total_terms"] == 3
@@ -251,12 +258,22 @@ class TestResearchCreative:
     @pytest.mark.asyncio
     async def test_full_flow(self, client: _MockCreativeClient) -> None:
         """全ステップが正常に実行される"""
-        with patch.object(client, "analyze_landing_page", new_callable=AsyncMock) as mock_lp:
+        with patch.object(
+            client, "analyze_landing_page", new_callable=AsyncMock
+        ) as mock_lp:
             mock_lp.return_value = {"title": "Test", "h1_texts": ["H1"]}
-            with patch.object(client, "_fetch_existing_ads", new_callable=AsyncMock) as mock_ads:
+            with patch.object(
+                client, "_fetch_existing_ads", new_callable=AsyncMock
+            ) as mock_ads:
                 mock_ads.return_value = []
-                with patch.object(client, "_extract_search_term_insights", new_callable=AsyncMock) as mock_st:
-                    mock_st.return_value = {"high_cv_terms": [], "high_click_terms": [], "total_terms": 0}
+                with patch.object(
+                    client, "_extract_search_term_insights", new_callable=AsyncMock
+                ) as mock_st:
+                    mock_st.return_value = {
+                        "high_cv_terms": [],
+                        "high_click_terms": [],
+                        "total_terms": 0,
+                    }
 
                     result = await client.research_creative(
                         campaign_id="123",
@@ -271,9 +288,13 @@ class TestResearchCreative:
     @pytest.mark.asyncio
     async def test_partial_failure_handled(self, client: _MockCreativeClient) -> None:
         """一部のステップが失敗しても他は実行される"""
-        with patch.object(client, "analyze_landing_page", new_callable=AsyncMock) as mock_lp:
+        with patch.object(
+            client, "analyze_landing_page", new_callable=AsyncMock
+        ) as mock_lp:
             mock_lp.return_value = {"error": "failed"}
-            with patch.object(client, "_fetch_existing_ads", new_callable=AsyncMock) as mock_ads:
+            with patch.object(
+                client, "_fetch_existing_ads", new_callable=AsyncMock
+            ) as mock_ads:
                 mock_ads.side_effect = RuntimeError("API error")
 
                 result = await client.research_creative(
@@ -287,12 +308,22 @@ class TestResearchCreative:
     @pytest.mark.asyncio
     async def test_with_ad_group_id(self, client: _MockCreativeClient) -> None:
         """ad_group_id指定時にバリデーションされる（行85）"""
-        with patch.object(client, "analyze_landing_page", new_callable=AsyncMock) as mock_lp:
+        with patch.object(
+            client, "analyze_landing_page", new_callable=AsyncMock
+        ) as mock_lp:
             mock_lp.return_value = {"title": "Test"}
-            with patch.object(client, "_fetch_existing_ads", new_callable=AsyncMock) as mock_ads:
+            with patch.object(
+                client, "_fetch_existing_ads", new_callable=AsyncMock
+            ) as mock_ads:
                 mock_ads.return_value = []
-                with patch.object(client, "_extract_search_term_insights", new_callable=AsyncMock) as mock_st:
-                    mock_st.return_value = {"high_cv_terms": [], "high_click_terms": [], "total_terms": 0}
+                with patch.object(
+                    client, "_extract_search_term_insights", new_callable=AsyncMock
+                ) as mock_st:
+                    mock_st.return_value = {
+                        "high_cv_terms": [],
+                        "high_click_terms": [],
+                        "total_terms": 0,
+                    }
 
                     result = await client.research_creative(
                         campaign_id="123",
@@ -303,13 +334,21 @@ class TestResearchCreative:
         assert result["campaign_id"] == "123"
 
     @pytest.mark.asyncio
-    async def test_search_term_insights_failure(self, client: _MockCreativeClient) -> None:
+    async def test_search_term_insights_failure(
+        self, client: _MockCreativeClient
+    ) -> None:
         """検索語句インサイト失敗時のフォールバック（行110-112）"""
-        with patch.object(client, "analyze_landing_page", new_callable=AsyncMock) as mock_lp:
+        with patch.object(
+            client, "analyze_landing_page", new_callable=AsyncMock
+        ) as mock_lp:
             mock_lp.return_value = {"title": "Test"}
-            with patch.object(client, "_fetch_existing_ads", new_callable=AsyncMock) as mock_ads:
+            with patch.object(
+                client, "_fetch_existing_ads", new_callable=AsyncMock
+            ) as mock_ads:
                 mock_ads.return_value = []
-                with patch.object(client, "_extract_search_term_insights", new_callable=AsyncMock) as mock_st:
+                with patch.object(
+                    client, "_extract_search_term_insights", new_callable=AsyncMock
+                ) as mock_st:
                     mock_st.side_effect = RuntimeError("search terms error")
 
                     result = await client.research_creative(
@@ -320,15 +359,29 @@ class TestResearchCreative:
         assert result["search_term_insights"] == "取得失敗"
 
     @pytest.mark.asyncio
-    async def test_keyword_suggestions_failure(self, client: _MockCreativeClient) -> None:
+    async def test_keyword_suggestions_failure(
+        self, client: _MockCreativeClient
+    ) -> None:
         """キーワード提案失敗時のフォールバック（行121-123）"""
-        with patch.object(client, "analyze_landing_page", new_callable=AsyncMock) as mock_lp:
+        with patch.object(
+            client, "analyze_landing_page", new_callable=AsyncMock
+        ) as mock_lp:
             mock_lp.return_value = {"title": "Test", "h1_texts": ["H1"]}
-            with patch.object(client, "_fetch_existing_ads", new_callable=AsyncMock) as mock_ads:
+            with patch.object(
+                client, "_fetch_existing_ads", new_callable=AsyncMock
+            ) as mock_ads:
                 mock_ads.return_value = []
-                with patch.object(client, "_extract_search_term_insights", new_callable=AsyncMock) as mock_st:
-                    mock_st.return_value = {"high_cv_terms": [], "high_click_terms": [], "total_terms": 0}
-                    client.suggest_keywords = AsyncMock(side_effect=RuntimeError("suggest error"))
+                with patch.object(
+                    client, "_extract_search_term_insights", new_callable=AsyncMock
+                ) as mock_st:
+                    mock_st.return_value = {
+                        "high_cv_terms": [],
+                        "high_click_terms": [],
+                        "total_terms": 0,
+                    }
+                    client.suggest_keywords = AsyncMock(
+                        side_effect=RuntimeError("suggest error")
+                    )
 
                     result = await client.research_creative(
                         campaign_id="123",
@@ -340,13 +393,25 @@ class TestResearchCreative:
     @pytest.mark.asyncio
     async def test_existing_keywords_failure(self, client: _MockCreativeClient) -> None:
         """既存キーワード失敗時のフォールバック（行130-132）"""
-        with patch.object(client, "analyze_landing_page", new_callable=AsyncMock) as mock_lp:
+        with patch.object(
+            client, "analyze_landing_page", new_callable=AsyncMock
+        ) as mock_lp:
             mock_lp.return_value = {"title": "Test"}
-            with patch.object(client, "_fetch_existing_ads", new_callable=AsyncMock) as mock_ads:
+            with patch.object(
+                client, "_fetch_existing_ads", new_callable=AsyncMock
+            ) as mock_ads:
                 mock_ads.return_value = []
-                with patch.object(client, "_extract_search_term_insights", new_callable=AsyncMock) as mock_st:
-                    mock_st.return_value = {"high_cv_terms": [], "high_click_terms": [], "total_terms": 0}
-                    client.list_keywords = AsyncMock(side_effect=RuntimeError("kw error"))
+                with patch.object(
+                    client, "_extract_search_term_insights", new_callable=AsyncMock
+                ) as mock_st:
+                    mock_st.return_value = {
+                        "high_cv_terms": [],
+                        "high_click_terms": [],
+                        "total_terms": 0,
+                    }
+                    client.list_keywords = AsyncMock(
+                        side_effect=RuntimeError("kw error")
+                    )
 
                     result = await client.research_creative(
                         campaign_id="123",
@@ -356,14 +421,26 @@ class TestResearchCreative:
         assert result["existing_keywords"] == "取得失敗"
 
     @pytest.mark.asyncio
-    async def test_empty_seeds_no_suggestions(self, client: _MockCreativeClient) -> None:
+    async def test_empty_seeds_no_suggestions(
+        self, client: _MockCreativeClient
+    ) -> None:
         """LP解析でシードが空の場合、キーワード提案は空リスト"""
-        with patch.object(client, "analyze_landing_page", new_callable=AsyncMock) as mock_lp:
+        with patch.object(
+            client, "analyze_landing_page", new_callable=AsyncMock
+        ) as mock_lp:
             mock_lp.return_value = {"error": "no data"}  # title/h1なし
-            with patch.object(client, "_fetch_existing_ads", new_callable=AsyncMock) as mock_ads:
+            with patch.object(
+                client, "_fetch_existing_ads", new_callable=AsyncMock
+            ) as mock_ads:
                 mock_ads.return_value = []
-                with patch.object(client, "_extract_search_term_insights", new_callable=AsyncMock) as mock_st:
-                    mock_st.return_value = {"high_cv_terms": [], "high_click_terms": [], "total_terms": 0}
+                with patch.object(
+                    client, "_extract_search_term_insights", new_callable=AsyncMock
+                ) as mock_st:
+                    mock_st.return_value = {
+                        "high_cv_terms": [],
+                        "high_click_terms": [],
+                        "total_terms": 0,
+                    }
 
                     result = await client.research_creative(
                         campaign_id="123",

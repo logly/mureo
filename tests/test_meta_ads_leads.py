@@ -329,7 +329,9 @@ class TestLeadsApiError:
     async def test_api_error_propagates(self, client: LeadsMixin) -> None:
         """APIエラーが適切に伝播すること"""
         client._get = AsyncMock(
-            side_effect=RuntimeError("Meta API request failed (status=400, path=/page_123/leadgen_forms)")
+            side_effect=RuntimeError(
+                "Meta API request failed (status=400, path=/page_123/leadgen_forms)"
+            )
         )
         with pytest.raises(RuntimeError, match="Meta API request failed"):
             await client.list_lead_forms("page_123")
@@ -338,7 +340,9 @@ class TestLeadsApiError:
     async def test_api_error_on_create(self, client: LeadsMixin) -> None:
         """フォーム作成時のAPIエラーが適切に伝播すること"""
         client._post = AsyncMock(
-            side_effect=RuntimeError("Meta API request failed (status=403, path=/page_123/leadgen_forms)")
+            side_effect=RuntimeError(
+                "Meta API request failed (status=403, path=/page_123/leadgen_forms)"
+            )
         )
         with pytest.raises(RuntimeError, match="Meta API request failed"):
             await client.create_lead_form(
@@ -351,9 +355,7 @@ class TestLeadsApiError:
     @pytest.mark.asyncio
     async def test_api_error_on_get_leads(self, client: LeadsMixin) -> None:
         """リードデータ取得時のAPIエラーが適切に伝播すること"""
-        client._get = AsyncMock(
-            side_effect=RuntimeError("Meta API request failed")
-        )
+        client._get = AsyncMock(side_effect=RuntimeError("Meta API request failed"))
         with pytest.raises(RuntimeError):
             await client.get_leads("form_1")
 
@@ -390,9 +392,7 @@ class TestLeadFormsMcpHandlers:
         mod = _import_meta_ads_tools()
         handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
-        client.list_lead_forms.return_value = [
-            {"id": "form_1", "name": "問い合わせ"}
-        ]
+        client.list_lead_forms.return_value = [{"id": "form_1", "name": "問い合わせ"}]
 
         with (
             patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
@@ -481,9 +481,7 @@ class TestLeadFormsMcpHandlers:
         mod = _import_meta_ads_tools()
         handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
-        client.get_leads.return_value = [
-            {"id": "lead_1", "field_data": []}
-        ]
+        client.get_leads.return_value = [{"id": "lead_1", "field_data": []}]
 
         with (
             patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
@@ -502,9 +500,7 @@ class TestLeadFormsMcpHandlers:
         mod = _import_meta_ads_tools()
         handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
-        client.get_ad_leads.return_value = [
-            {"id": "lead_2", "field_data": []}
-        ]
+        client.get_ad_leads.return_value = [{"id": "lead_2", "field_data": []}]
 
         with (
             patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
@@ -553,14 +549,14 @@ class TestLeadAdsToolDefinitions:
     @pytest.mark.parametrize(
         "tool_name,expected_required",
         [
-            ("meta_ads.lead_forms.list", ["account_id", "page_id"]),
-            ("meta_ads.lead_forms.get", ["account_id", "form_id"]),
+            ("meta_ads.lead_forms.list", ["page_id"]),
+            ("meta_ads.lead_forms.get", ["form_id"]),
             (
                 "meta_ads.lead_forms.create",
-                ["account_id", "page_id", "name", "questions", "privacy_policy_url"],
+                ["page_id", "name", "questions", "privacy_policy_url"],
             ),
-            ("meta_ads.leads.get", ["account_id", "form_id"]),
-            ("meta_ads.leads.get_by_ad", ["account_id", "ad_id"]),
+            ("meta_ads.leads.get", ["form_id"]),
+            ("meta_ads.leads.get_by_ad", ["ad_id"]),
         ],
     )
     def test_required_fields(

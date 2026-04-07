@@ -61,7 +61,7 @@ TOOLS: list[Tool] = [
                     "description": "Test event code (for test mode)",
                 },
             },
-            "required": ["account_id", "pixel_id", "events"],
+            "required": ["pixel_id", "events"],
         },
     ),
     Tool(
@@ -140,7 +140,7 @@ TOOLS: list[Tool] = [
                     "description": "Test event code",
                 },
             },
-            "required": ["account_id", "pixel_id", "event_time", "user_data"],
+            "required": ["pixel_id", "event_time", "user_data"],
         },
     ),
 ]

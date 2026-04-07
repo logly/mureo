@@ -29,7 +29,7 @@ TOOLS: list[Tool] = [
                     "description": "Aggregation level (campaign, adset, ad)",
                 },
             },
-            "required": ["account_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -49,7 +49,7 @@ TOOLS: list[Tool] = [
                 },
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["account_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Performance analysis ===
@@ -72,7 +72,7 @@ TOOLS: list[Tool] = [
                     "description": "Period (today, yesterday, last_7d, last_30d etc.)",
                 },
             },
-            "required": ["account_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -91,7 +91,7 @@ TOOLS: list[Tool] = [
                     "description": "Period (last_7d, last_30d etc.)",
                 },
             },
-            "required": ["account_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -110,7 +110,7 @@ TOOLS: list[Tool] = [
                     "description": "Period (last_7d, last_30d etc.)",
                 },
             },
-            "required": ["account_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -129,7 +129,7 @@ TOOLS: list[Tool] = [
                     "description": "Period (last_7d, last_30d etc.)",
                 },
             },
-            "required": ["account_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -148,7 +148,7 @@ TOOLS: list[Tool] = [
                     "description": "Period (last_7d, last_30d etc.)",
                 },
             },
-            "required": ["account_id", "ad_set_id"],
+            "required": ["ad_set_id"],
         },
     ),
     Tool(
@@ -167,7 +167,7 @@ TOOLS: list[Tool] = [
                     "description": "Period (last_7d, last_30d etc.)",
                 },
             },
-            "required": ["account_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
 ]

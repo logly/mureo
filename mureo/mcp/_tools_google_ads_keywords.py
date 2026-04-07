@@ -29,7 +29,7 @@ TOOLS: list[Tool] = [
                     "description": "Status filter",
                 },
             },
-            "required": ["customer_id"],
+            "required": [],
         },
     ),
     Tool(
@@ -59,7 +59,7 @@ TOOLS: list[Tool] = [
                     "description": "List of keywords to add",
                 },
             },
-            "required": ["customer_id", "ad_group_id", "keywords"],
+            "required": ["ad_group_id", "keywords"],
         },
     ),
     Tool(
@@ -78,7 +78,7 @@ TOOLS: list[Tool] = [
                     "description": "Keyword criterion ID",
                 },
             },
-            "required": ["customer_id", "ad_group_id", "criterion_id"],
+            "required": ["ad_group_id", "criterion_id"],
         },
     ),
     Tool(
@@ -105,7 +105,7 @@ TOOLS: list[Tool] = [
                     "description": "Geo target ID (default: 2392=Japan)",
                 },
             },
-            "required": ["customer_id", "seed_keywords"],
+            "required": ["seed_keywords"],
         },
     ),
     Tool(
@@ -120,7 +120,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Negative Keywords ===
@@ -136,7 +136,7 @@ TOOLS: list[Tool] = [
                 },
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     Tool(
@@ -166,7 +166,7 @@ TOOLS: list[Tool] = [
                     "description": "List of negative keywords to add",
                 },
             },
-            "required": ["customer_id", "campaign_id", "keywords"],
+            "required": ["campaign_id", "keywords"],
         },
     ),
     # === Keyword pause ===
@@ -186,7 +186,7 @@ TOOLS: list[Tool] = [
                     "description": "Keyword criterion ID",
                 },
             },
-            "required": ["customer_id", "ad_group_id", "criterion_id"],
+            "required": ["ad_group_id", "criterion_id"],
         },
     ),
     # === Negative keyword removal ===
@@ -206,7 +206,7 @@ TOOLS: list[Tool] = [
                     "description": "Negative keyword criterion ID",
                 },
             },
-            "required": ["customer_id", "campaign_id", "criterion_id"],
+            "required": ["campaign_id", "criterion_id"],
         },
     ),
     # === Ad group-level negative keyword addition ===
@@ -237,7 +237,7 @@ TOOLS: list[Tool] = [
                     "description": "List of negative keywords to add",
                 },
             },
-            "required": ["customer_id", "ad_group_id", "keywords"],
+            "required": ["ad_group_id", "keywords"],
         },
     ),
     # === Automatic negative keyword suggestions ===
@@ -259,7 +259,7 @@ TOOLS: list[Tool] = [
                     "description": "Filter by ad group ID",
                 },
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Keyword Inventory ===
@@ -277,7 +277,7 @@ TOOLS: list[Tool] = [
                 "period": {"type": "string", "description": "Period"},
                 "target_cpa": {"type": "number", "description": "Target CPA"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
     # === Cross-ad-group keyword duplicate detection ===
@@ -294,7 +294,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {"type": "string", "description": "Campaign ID"},
                 "period": {"type": "string", "description": "Period"},
             },
-            "required": ["customer_id", "campaign_id"],
+            "required": ["campaign_id"],
         },
     ),
 ]

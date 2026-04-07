@@ -199,6 +199,7 @@ class TestValidateRecommendationType:
 class TestValidateResourceName:
     def test_正常(self) -> None:
         import re
+
         pattern = re.compile(r"customers/\d+/campaigns/\d+")
         result = GoogleAdsApiClient._validate_resource_name(
             "customers/123/campaigns/456", pattern, "resource"
@@ -207,6 +208,7 @@ class TestValidateResourceName:
 
     def test_不正(self) -> None:
         import re
+
         pattern = re.compile(r"customers/\d+/campaigns/\d+")
         with pytest.raises(ValueError, match="Invalid resource"):
             GoogleAdsApiClient._validate_resource_name("invalid", pattern, "resource")
@@ -248,13 +250,17 @@ class TestHasErrorCode:
         exc = _make_google_ads_exception(
             attr_name="mutate_error", error_name="RESOURCE_NOT_FOUND"
         )
-        assert GoogleAdsApiClient._has_error_code(exc, "mutate_error", "RESOURCE_NOT_FOUND")
+        assert GoogleAdsApiClient._has_error_code(
+            exc, "mutate_error", "RESOURCE_NOT_FOUND"
+        )
 
     def test_一致しないエラーコード(self) -> None:
         exc = _make_google_ads_exception(
             attr_name="mutate_error", error_name="OTHER_ERROR"
         )
-        assert not GoogleAdsApiClient._has_error_code(exc, "mutate_error", "RESOURCE_NOT_FOUND")
+        assert not GoogleAdsApiClient._has_error_code(
+            exc, "mutate_error", "RESOURCE_NOT_FOUND"
+        )
 
 
 @pytest.mark.unit
@@ -457,7 +463,9 @@ class TestCreateCampaign:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        result = await client.create_campaign({"name": "新規", "bidding_strategy": "MAXIMIZE_CLICKS"})
+        result = await client.create_campaign(
+            {"name": "新規", "bidding_strategy": "MAXIMIZE_CLICKS"}
+        )
         assert result["resource_name"] == "customers/123/campaigns/456"
 
     @pytest.mark.asyncio
@@ -480,8 +488,13 @@ class TestCreateCampaign:
         client._client.enums = MagicMock()
 
         with patch.object(
-            client, "_find_campaign_by_name",
-            return_value={"resource_name": "existing", "campaign_id": "1", "note": "既存"},
+            client,
+            "_find_campaign_by_name",
+            return_value={
+                "resource_name": "existing",
+                "campaign_id": "1",
+                "note": "既存",
+            },
         ):
             result = await client.create_campaign({"name": "既存キャンペーン"})
             assert result["note"] == "既存"
@@ -595,10 +608,12 @@ class TestCreateAdGroup:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        result = await client.create_ad_group({
-            "name": "新規グループ",
-            "campaign_id": "111",
-        })
+        result = await client.create_ad_group(
+            {
+                "name": "新規グループ",
+                "campaign_id": "111",
+            }
+        )
         assert result["resource_name"] == "customers/123/adGroups/789"
 
 
@@ -622,10 +637,12 @@ class TestUpdateAdGroup:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        result = await client.update_ad_group({
-            "ad_group_id": "789",
-            "name": "更新名",
-        })
+        result = await client.update_ad_group(
+            {
+                "ad_group_id": "789",
+                "name": "更新名",
+            }
+        )
         assert result["resource_name"] == "customers/123/adGroups/789"
 
     @pytest.mark.asyncio
@@ -644,10 +661,12 @@ class TestUpdateAdGroup:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        result = await client.update_ad_group({
-            "ad_group_id": "789",
-            "status": "INVALID",
-        })
+        result = await client.update_ad_group(
+            {
+                "ad_group_id": "789",
+                "status": "INVALID",
+            }
+        )
         assert result["error"] is True
         assert "Invalid status" in result["message"]
 
@@ -692,10 +711,12 @@ class TestBudget:
         client._client.get_service.return_value = mock_service
         client._client.get_type.return_value = MagicMock()
 
-        result = await client.update_budget({
-            "budget_id": "100",
-            "amount": 5000,
-        })
+        result = await client.update_budget(
+            {
+                "budget_id": "100",
+                "amount": 5000,
+            }
+        )
         assert result["resource_name"] == "customers/123/budgets/100"
 
     @pytest.mark.asyncio
@@ -711,10 +732,12 @@ class TestBudget:
         client._client.get_type.return_value = MagicMock()
         client._client.enums = MagicMock()
 
-        result = await client.create_budget({
-            "name": "テスト予算",
-            "amount": 3000,
-        })
+        result = await client.create_budget(
+            {
+                "name": "テスト予算",
+                "amount": 3000,
+            }
+        )
         assert result["resource_name"] == "customers/123/budgets/200"
 
     @pytest.mark.asyncio
@@ -743,8 +766,13 @@ class TestBudget:
         client._client.enums = MagicMock()
 
         with patch.object(
-            client, "_find_budget_by_name",
-            return_value={"resource_name": "existing", "budget_id": "100", "note": "既存"},
+            client,
+            "_find_budget_by_name",
+            return_value={
+                "resource_name": "existing",
+                "budget_id": "100",
+                "note": "既存",
+            },
         ):
             result = await client.create_budget({"name": "既存", "amount": 1000})
             assert result["note"] == "既存"
@@ -769,10 +797,12 @@ class TestUpdateCampaign:
         client._client.get_service.return_value = mock_service
         client._client.get_type.return_value = MagicMock()
 
-        result = await client.update_campaign({
-            "campaign_id": "111",
-            "name": "新名前",
-        })
+        result = await client.update_campaign(
+            {
+                "campaign_id": "111",
+                "name": "新名前",
+            }
+        )
         assert result["resource_name"] == "customers/123/campaigns/111"
 
     @pytest.mark.asyncio
@@ -791,11 +821,13 @@ class TestUpdateCampaign:
         client._client.get_type.return_value = MagicMock()
 
         with pytest.raises(ValueError, match="MAXIMIZE_CLICKS"):
-            await client.update_campaign({
-                "campaign_id": "111",
-                "bidding_strategy": "MAXIMIZE_CLICKS",
-                "target_cpa_micros": 1000,
-            })
+            await client.update_campaign(
+                {
+                    "campaign_id": "111",
+                    "bidding_strategy": "MAXIMIZE_CLICKS",
+                    "target_cpa_micros": 1000,
+                }
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1033,7 +1065,9 @@ class TestCheckBudgetBiddingCompatibility:
 
         with patch.object(client, "_search", return_value=[row]):
             with pytest.raises(ValueError, match="not compatible with shared budget"):
-                await client._check_budget_bidding_compatibility("100", "MAXIMIZE_CONVERSIONS")
+                await client._check_budget_bidding_compatibility(
+                    "100", "MAXIMIZE_CONVERSIONS"
+                )
 
     @pytest.mark.asyncio
     async def test_非共有予算_OK(self) -> None:

@@ -68,13 +68,15 @@ class TestEvaluateDeliveryGoal:
     async def test_healthy_campaign(self, client: _MockMonitoringClient) -> None:
         """正常な配信状態 → healthy"""
         client.get_campaign = AsyncMock(return_value={"status": "ENABLED"})
-        client.diagnose_campaign_delivery = AsyncMock(return_value={
-            "issues": [],
-            "warnings": [],
-        })
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 100, "clicks": 10}}
-        ])
+        client.diagnose_campaign_delivery = AsyncMock(
+            return_value={
+                "issues": [],
+                "warnings": [],
+            }
+        )
+        client.get_performance_report = AsyncMock(
+            return_value=[{"metrics": {"impressions": 100, "clicks": 10}}]
+        )
 
         result = await client.evaluate_delivery_goal("123")
         assert result["status"] == "healthy"
@@ -84,13 +86,15 @@ class TestEvaluateDeliveryGoal:
     async def test_critical_no_impressions(self, client: _MockMonitoringClient) -> None:
         """インプレッション0 → critical"""
         client.get_campaign = AsyncMock(return_value={"status": "ENABLED"})
-        client.diagnose_campaign_delivery = AsyncMock(return_value={
-            "issues": [],
-            "warnings": [],
-        })
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 0, "clicks": 0}}
-        ])
+        client.diagnose_campaign_delivery = AsyncMock(
+            return_value={
+                "issues": [],
+                "warnings": [],
+            }
+        )
+        client.get_performance_report = AsyncMock(
+            return_value=[{"metrics": {"impressions": 0, "clicks": 0}}]
+        )
 
         result = await client.evaluate_delivery_goal("123")
         assert result["status"] == "critical"
@@ -100,43 +104,53 @@ class TestEvaluateDeliveryGoal:
     async def test_critical_with_issues(self, client: _MockMonitoringClient) -> None:
         """診断で issues 検出 → critical"""
         client.get_campaign = AsyncMock(return_value={"status": "ENABLED"})
-        client.diagnose_campaign_delivery = AsyncMock(return_value={
-            "issues": ["有効な広告がありません"],
-            "warnings": [],
-        })
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 50, "clicks": 5}}
-        ])
+        client.diagnose_campaign_delivery = AsyncMock(
+            return_value={
+                "issues": ["有効な広告がありません"],
+                "warnings": [],
+            }
+        )
+        client.get_performance_report = AsyncMock(
+            return_value=[{"metrics": {"impressions": 50, "clicks": 5}}]
+        )
 
         result = await client.evaluate_delivery_goal("123")
         assert result["status"] == "critical"
 
     @pytest.mark.asyncio
-    async def test_warning_with_warnings_only(self, client: _MockMonitoringClient) -> None:
+    async def test_warning_with_warnings_only(
+        self, client: _MockMonitoringClient
+    ) -> None:
         """診断で warnings のみ → warning"""
         client.get_campaign = AsyncMock(return_value={"status": "ENABLED"})
-        client.diagnose_campaign_delivery = AsyncMock(return_value={
-            "issues": [],
-            "warnings": ["地域ターゲティングが未設定"],
-        })
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 50, "clicks": 5}}
-        ])
+        client.diagnose_campaign_delivery = AsyncMock(
+            return_value={
+                "issues": [],
+                "warnings": ["地域ターゲティングが未設定"],
+            }
+        )
+        client.get_performance_report = AsyncMock(
+            return_value=[{"metrics": {"impressions": 50, "clicks": 5}}]
+        )
 
         result = await client.evaluate_delivery_goal("123")
         assert result["status"] == "warning"
 
     @pytest.mark.asyncio
-    async def test_paused_campaign_critical(self, client: _MockMonitoringClient) -> None:
+    async def test_paused_campaign_critical(
+        self, client: _MockMonitoringClient
+    ) -> None:
         """一時停止中 → critical"""
         client.get_campaign = AsyncMock(return_value={"status": "PAUSED"})
-        client.diagnose_campaign_delivery = AsyncMock(return_value={
-            "issues": [],
-            "warnings": [],
-        })
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 0, "clicks": 0}}
-        ])
+        client.diagnose_campaign_delivery = AsyncMock(
+            return_value={
+                "issues": [],
+                "warnings": [],
+            }
+        )
+        client.get_performance_report = AsyncMock(
+            return_value=[{"metrics": {"impressions": 0, "clicks": 0}}]
+        )
 
         result = await client.evaluate_delivery_goal("123")
         assert result["status"] == "critical"
@@ -166,9 +180,9 @@ class TestEvaluateCpaGoal:
     @pytest.mark.asyncio
     async def test_healthy_cpa(self, client: _MockMonitoringClient) -> None:
         """CPA目標内 → healthy"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"cost": 10000, "conversions": 10}}
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[{"metrics": {"cost": 10000, "conversions": 10}}]
+        )
         client.investigate_cost_increase = AsyncMock(return_value={})
 
         result = await client.evaluate_cpa_goal("123", 2000.0)
@@ -178,9 +192,9 @@ class TestEvaluateCpaGoal:
     @pytest.mark.asyncio
     async def test_warning_cpa(self, client: _MockMonitoringClient) -> None:
         """CPA目標の1.2倍以内 → warning"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"cost": 11000, "conversions": 10}}  # CPA=1100
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[{"metrics": {"cost": 11000, "conversions": 10}}]  # CPA=1100
+        )
         client.investigate_cost_increase = AsyncMock(return_value={})
 
         result = await client.evaluate_cpa_goal("123", 1000.0)
@@ -190,9 +204,9 @@ class TestEvaluateCpaGoal:
     @pytest.mark.asyncio
     async def test_critical_cpa(self, client: _MockMonitoringClient) -> None:
         """CPA目標の1.2倍超 → critical"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"cost": 15000, "conversions": 10}}  # CPA=1500
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[{"metrics": {"cost": 15000, "conversions": 10}}]  # CPA=1500
+        )
         client.investigate_cost_increase = AsyncMock(return_value={})
 
         result = await client.evaluate_cpa_goal("123", 1000.0)
@@ -202,9 +216,9 @@ class TestEvaluateCpaGoal:
     @pytest.mark.asyncio
     async def test_zero_conversions(self, client: _MockMonitoringClient) -> None:
         """CV0 → warning, current_cpa=None"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"cost": 5000, "conversions": 0}}
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[{"metrics": {"cost": 5000, "conversions": 0}}]
+        )
         client.investigate_cost_increase = AsyncMock(return_value={})
 
         result = await client.evaluate_cpa_goal("123", 1000.0)
@@ -212,14 +226,18 @@ class TestEvaluateCpaGoal:
         assert result["current_cpa"] is None
 
     @pytest.mark.asyncio
-    async def test_wasteful_terms_extraction(self, client: _MockMonitoringClient) -> None:
+    async def test_wasteful_terms_extraction(
+        self, client: _MockMonitoringClient
+    ) -> None:
         """wasteful_search_termsが正しく抽出される"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"cost": 5000, "conversions": 5}}
-        ])
-        client.investigate_cost_increase = AsyncMock(return_value={
-            "wasteful_search_terms": [{"term": f"t{i}"} for i in range(10)]
-        })
+        client.get_performance_report = AsyncMock(
+            return_value=[{"metrics": {"cost": 5000, "conversions": 5}}]
+        )
+        client.investigate_cost_increase = AsyncMock(
+            return_value={
+                "wasteful_search_terms": [{"term": f"t{i}"} for i in range(10)]
+            }
+        )
 
         result = await client.evaluate_cpa_goal("123", 2000.0)
         assert len(result["wasteful_terms"]) == 5  # 上位5件
@@ -239,9 +257,11 @@ class TestEvaluateCvGoal:
     @pytest.mark.asyncio
     async def test_healthy_cv(self, client: _MockMonitoringClient) -> None:
         """CV目標達成 → healthy"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 1000, "clicks": 100, "conversions": 70}}
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {"metrics": {"impressions": 1000, "clicks": 100, "conversions": 70}}
+            ]
+        )
         client.analyze_performance = AsyncMock(return_value={"insights": []})
 
         result = await client.evaluate_cv_goal("123", 10.0)
@@ -251,9 +271,11 @@ class TestEvaluateCvGoal:
     @pytest.mark.asyncio
     async def test_warning_cv(self, client: _MockMonitoringClient) -> None:
         """CV目標の80%以上 → warning"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 1000, "clicks": 100, "conversions": 63}}
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {"metrics": {"impressions": 1000, "clicks": 100, "conversions": 63}}
+            ]
+        )
         client.analyze_performance = AsyncMock(return_value={"insights": []})
 
         result = await client.evaluate_cv_goal("123", 10.0)
@@ -262,9 +284,11 @@ class TestEvaluateCvGoal:
     @pytest.mark.asyncio
     async def test_critical_cv(self, client: _MockMonitoringClient) -> None:
         """CV目標の80%未満 → critical"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 1000, "clicks": 100, "conversions": 35}}
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {"metrics": {"impressions": 1000, "clicks": 100, "conversions": 35}}
+            ]
+        )
         client.analyze_performance = AsyncMock(return_value={"insights": []})
 
         result = await client.evaluate_cv_goal("123", 10.0)
@@ -274,12 +298,14 @@ class TestEvaluateCvGoal:
     @pytest.mark.asyncio
     async def test_bottleneck_impression(self, client: _MockMonitoringClient) -> None:
         """インプレッション系インサイト → impression ボトルネック"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 10, "clicks": 5, "conversions": 0}}
-        ])
-        client.analyze_performance = AsyncMock(return_value={
-            "insights": ["インプレッションが不足しています"]
-        })
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {"metrics": {"impressions": 10, "clicks": 5, "conversions": 0}}
+            ]
+        )
+        client.analyze_performance = AsyncMock(
+            return_value={"insights": ["インプレッションが不足しています"]}
+        )
 
         result = await client.evaluate_cv_goal("123", 10.0)
         assert result["bottleneck"] == "impression"
@@ -287,9 +313,11 @@ class TestEvaluateCvGoal:
     @pytest.mark.asyncio
     async def test_bottleneck_ctr(self, client: _MockMonitoringClient) -> None:
         """低CTR → ctr ボトルネック"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 10000, "clicks": 10, "conversions": 0}}
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {"metrics": {"impressions": 10000, "clicks": 10, "conversions": 0}}
+            ]
+        )
         client.analyze_performance = AsyncMock(return_value={"insights": []})
 
         result = await client.evaluate_cv_goal("123", 10.0)
@@ -298,9 +326,11 @@ class TestEvaluateCvGoal:
     @pytest.mark.asyncio
     async def test_bottleneck_cvr(self, client: _MockMonitoringClient) -> None:
         """低CVR → cvr ボトルネック"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 10000, "clicks": 500, "conversions": 1}}
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {"metrics": {"impressions": 10000, "clicks": 500, "conversions": 1}}
+            ]
+        )
         client.analyze_performance = AsyncMock(return_value={"insights": []})
 
         result = await client.evaluate_cv_goal("123", 10.0)
@@ -309,9 +339,11 @@ class TestEvaluateCvGoal:
     @pytest.mark.asyncio
     async def test_zero_target(self, client: _MockMonitoringClient) -> None:
         """target_cv_daily=0 → deviation_pct=0"""
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 100, "clicks": 10, "conversions": 0}}
-        ])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {"metrics": {"impressions": 100, "clicks": 10, "conversions": 0}}
+            ]
+        )
         client.analyze_performance = AsyncMock(return_value={"insights": []})
 
         result = await client.evaluate_cv_goal("123", 0.0)
@@ -332,16 +364,29 @@ class TestDiagnoseZeroConversions:
     @pytest.mark.asyncio
     async def test_no_cv_tracking_critical(self, client: _MockMonitoringClient) -> None:
         """CV計測未設定 → critical"""
-        client.get_campaign = AsyncMock(return_value={
-            "bidding_strategy": "MAXIMIZE_CONVERSIONS"
-        })
+        client.get_campaign = AsyncMock(
+            return_value={"bidding_strategy": "MAXIMIZE_CONVERSIONS"}
+        )
         client.list_conversion_actions = AsyncMock(return_value=[])
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 100, "clicks": 10, "conversions": 0, "cost": 5000}}
-        ])
-        client.diagnose_campaign_delivery = AsyncMock(return_value={
-            "issues": [], "warnings": [], "recommendations": [],
-        })
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {
+                    "metrics": {
+                        "impressions": 100,
+                        "clicks": 10,
+                        "conversions": 0,
+                        "cost": 5000,
+                    }
+                }
+            ]
+        )
+        client.diagnose_campaign_delivery = AsyncMock(
+            return_value={
+                "issues": [],
+                "warnings": [],
+                "recommendations": [],
+            }
+        )
 
         result = await client.diagnose_zero_conversions("123")
         assert result["status"] == "critical"
@@ -350,16 +395,29 @@ class TestDiagnoseZeroConversions:
     @pytest.mark.asyncio
     async def test_no_delivery_bottleneck(self, client: _MockMonitoringClient) -> None:
         """インプレッション0 → no_delivery ボトルネック"""
-        client.get_campaign = AsyncMock(return_value={"bidding_strategy": "MAXIMIZE_CLICKS"})
-        client.list_conversion_actions = AsyncMock(return_value=[
-            {"status": "ENABLED"}
-        ])
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 0, "clicks": 0, "conversions": 0, "cost": 0}}
-        ])
-        client.diagnose_campaign_delivery = AsyncMock(return_value={
-            "issues": [], "warnings": [], "recommendations": [],
-        })
+        client.get_campaign = AsyncMock(
+            return_value={"bidding_strategy": "MAXIMIZE_CLICKS"}
+        )
+        client.list_conversion_actions = AsyncMock(return_value=[{"status": "ENABLED"}])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {
+                    "metrics": {
+                        "impressions": 0,
+                        "clicks": 0,
+                        "conversions": 0,
+                        "cost": 0,
+                    }
+                }
+            ]
+        )
+        client.diagnose_campaign_delivery = AsyncMock(
+            return_value={
+                "issues": [],
+                "warnings": [],
+                "recommendations": [],
+            }
+        )
 
         result = await client.diagnose_zero_conversions("123")
         assert result["funnel"]["bottleneck"] == "no_delivery"
@@ -367,54 +425,99 @@ class TestDiagnoseZeroConversions:
     @pytest.mark.asyncio
     async def test_no_clicks_bottleneck(self, client: _MockMonitoringClient) -> None:
         """クリック0 → no_clicks ボトルネック"""
-        client.get_campaign = AsyncMock(return_value={"bidding_strategy": "MAXIMIZE_CLICKS"})
-        client.list_conversion_actions = AsyncMock(return_value=[
-            {"status": "ENABLED"}
-        ])
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 100, "clicks": 0, "conversions": 0, "cost": 0}}
-        ])
-        client.diagnose_campaign_delivery = AsyncMock(return_value={
-            "issues": [], "warnings": [], "recommendations": [],
-        })
+        client.get_campaign = AsyncMock(
+            return_value={"bidding_strategy": "MAXIMIZE_CLICKS"}
+        )
+        client.list_conversion_actions = AsyncMock(return_value=[{"status": "ENABLED"}])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {
+                    "metrics": {
+                        "impressions": 100,
+                        "clicks": 0,
+                        "conversions": 0,
+                        "cost": 0,
+                    }
+                }
+            ]
+        )
+        client.diagnose_campaign_delivery = AsyncMock(
+            return_value={
+                "issues": [],
+                "warnings": [],
+                "recommendations": [],
+            }
+        )
 
         result = await client.diagnose_zero_conversions("123")
         assert result["funnel"]["bottleneck"] == "no_clicks"
 
     @pytest.mark.asyncio
-    async def test_healthy_with_conversions(self, client: _MockMonitoringClient) -> None:
+    async def test_healthy_with_conversions(
+        self, client: _MockMonitoringClient
+    ) -> None:
         """CVあり → healthy"""
-        client.get_campaign = AsyncMock(return_value={"bidding_strategy": "MAXIMIZE_CLICKS"})
-        client.list_conversion_actions = AsyncMock(return_value=[
-            {"status": "ENABLED"}
-        ])
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 1000, "clicks": 100, "conversions": 10, "cost": 50000}}
-        ])
-        client.diagnose_campaign_delivery = AsyncMock(return_value={
-            "issues": [], "warnings": [], "recommendations": [],
-        })
+        client.get_campaign = AsyncMock(
+            return_value={"bidding_strategy": "MAXIMIZE_CLICKS"}
+        )
+        client.list_conversion_actions = AsyncMock(return_value=[{"status": "ENABLED"}])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {
+                    "metrics": {
+                        "impressions": 1000,
+                        "clicks": 100,
+                        "conversions": 10,
+                        "cost": 50000,
+                    }
+                }
+            ]
+        )
+        client.diagnose_campaign_delivery = AsyncMock(
+            return_value={
+                "issues": [],
+                "warnings": [],
+                "recommendations": [],
+            }
+        )
 
         result = await client.diagnose_zero_conversions("123")
         assert result["status"] == "healthy"
 
     @pytest.mark.asyncio
-    async def test_search_term_quality_high_waste(self, client: _MockMonitoringClient) -> None:
+    async def test_search_term_quality_high_waste(
+        self, client: _MockMonitoringClient
+    ) -> None:
         """CVなし検索語句のコストが50%超の場合はissueに含まれる"""
-        client.get_campaign = AsyncMock(return_value={"bidding_strategy": "MAXIMIZE_CLICKS"})
-        client.list_conversion_actions = AsyncMock(return_value=[
-            {"status": "ENABLED"}
-        ])
-        client.get_performance_report = AsyncMock(return_value=[
-            {"metrics": {"impressions": 1000, "clicks": 100, "conversions": 0, "cost": 10000}}
-        ])
-        client.diagnose_campaign_delivery = AsyncMock(return_value={
-            "issues": [], "warnings": [], "recommendations": [],
-        })
-        client.get_search_terms_report = AsyncMock(return_value=[
-            {"search_term": "bad1", "metrics": {"conversions": 0, "cost": 6000}},
-            {"search_term": "bad2", "metrics": {"conversions": 0, "cost": 2000}},
-        ])
+        client.get_campaign = AsyncMock(
+            return_value={"bidding_strategy": "MAXIMIZE_CLICKS"}
+        )
+        client.list_conversion_actions = AsyncMock(return_value=[{"status": "ENABLED"}])
+        client.get_performance_report = AsyncMock(
+            return_value=[
+                {
+                    "metrics": {
+                        "impressions": 1000,
+                        "clicks": 100,
+                        "conversions": 0,
+                        "cost": 10000,
+                    }
+                }
+            ]
+        )
+        client.diagnose_campaign_delivery = AsyncMock(
+            return_value={
+                "issues": [],
+                "warnings": [],
+                "recommendations": [],
+            }
+        )
+        client.get_search_terms_report = AsyncMock(
+            return_value=[
+                {"search_term": "bad1", "metrics": {"conversions": 0, "cost": 6000}},
+                {"search_term": "bad2", "metrics": {"conversions": 0, "cost": 2000}},
+            ]
+        )
 
         result = await client.diagnose_zero_conversions("123")
         assert result["search_term_quality"] is not None

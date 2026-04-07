@@ -135,7 +135,6 @@ class TestNoForbiddenImports:
                             f"import {imp}"
                         )
 
-        assert violations == [], (
-            "禁止されたDB/LLM系のimportが検出されました:\n"
-            + "\n".join(violations)
-        )
+        assert (
+            violations == []
+        ), "禁止されたDB/LLM系のimportが検出されました:\n" + "\n".join(violations)

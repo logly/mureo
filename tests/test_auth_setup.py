@@ -208,7 +208,9 @@ async def test_list_accessible_accounts() -> None:
 
     mock_ga_client.get_service.side_effect = _get_service
 
-    with patch("google.ads.googleads.client.GoogleAdsClient", return_value=mock_ga_client):
+    with patch(
+        "google.ads.googleads.client.GoogleAdsClient", return_value=mock_ga_client
+    ):
         accounts = await list_accessible_accounts(creds)
 
     assert len(accounts) == 2
@@ -238,7 +240,9 @@ async def test_list_accessible_accounts_empty() -> None:
     mock_customer_service.list_accessible_customers.return_value = mock_response
     mock_ga_client.get_service.return_value = mock_customer_service
 
-    with patch("google.ads.googleads.client.GoogleAdsClient", return_value=mock_ga_client):
+    with patch(
+        "google.ads.googleads.client.GoogleAdsClient", return_value=mock_ga_client
+    ):
         accounts = await list_accessible_accounts(creds)
 
     assert accounts == []
@@ -642,9 +646,15 @@ def test_install_mcp_config_already_exists(tmp_path: Path) -> None:
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()
     settings_path = claude_dir / "settings.json"
-    settings_path.write_text(json.dumps({
-        "mcpServers": {"mureo": {"command": "python", "args": ["-m", "mureo.mcp"]}}
-    }))
+    settings_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "mureo": {"command": "python", "args": ["-m", "mureo.mcp"]}
+                }
+            }
+        )
+    )
 
     with patch("mureo.auth_setup.Path.home", return_value=tmp_path):
         result = install_mcp_config(scope="global")
@@ -661,9 +671,11 @@ def test_install_mcp_config_merges_existing(tmp_path: Path) -> None:
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()
     settings_path = claude_dir / "settings.json"
-    settings_path.write_text(json.dumps({
-        "mcpServers": {"other-tool": {"command": "node", "args": ["server.js"]}}
-    }))
+    settings_path.write_text(
+        json.dumps(
+            {"mcpServers": {"other-tool": {"command": "node", "args": ["server.js"]}}}
+        )
+    )
 
     with patch("mureo.auth_setup.Path.home", return_value=tmp_path):
         result = install_mcp_config(scope="global")
@@ -711,8 +723,15 @@ def test_install_credential_guard_preserves_existing_hooks(tmp_path: Path) -> No
     settings_path = claude_dir / "settings.json"
     existing = {
         "hooks": {
-            "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "echo done"}]}],
-            "PreToolUse": [{"matcher": "Write", "hooks": [{"type": "command", "command": "echo check"}]}],
+            "Stop": [
+                {"matcher": "", "hooks": [{"type": "command", "command": "echo done"}]}
+            ],
+            "PreToolUse": [
+                {
+                    "matcher": "Write",
+                    "hooks": [{"type": "command", "command": "echo check"}],
+                }
+            ],
         },
         "someOtherSetting": True,
     }
@@ -730,8 +749,8 @@ def test_install_credential_guard_preserves_existing_hooks(tmp_path: Path) -> No
     pre_tool_use = settings["hooks"]["PreToolUse"]
     assert len(pre_tool_use) == 3
     assert pre_tool_use[0]["matcher"] == "Write"  # original
-    assert pre_tool_use[1]["matcher"] == "Read"    # mureo
-    assert pre_tool_use[2]["matcher"] == "Bash"    # mureo
+    assert pre_tool_use[1]["matcher"] == "Read"  # mureo
+    assert pre_tool_use[2]["matcher"] == "Bash"  # mureo
 
 
 @pytest.mark.unit
@@ -861,9 +880,7 @@ def test_select_account_with_custom_label_fn() -> None:
     mock_menu.show.return_value = 0
 
     with patch("simple_term_menu.TerminalMenu", return_value=mock_menu) as MockTM:
-        result = _select_account(
-            accounts, label_fn=lambda a: f"Custom: {a['name']}"
-        )
+        result = _select_account(accounts, label_fn=lambda a: f"Custom: {a['name']}")
 
     assert result == "111"
     # TerminalMenuに渡されたラベルを確認
@@ -884,7 +901,9 @@ def test_setup_mcp_config_fallback_global() -> None:
     with (
         patch("simple_term_menu.TerminalMenu", side_effect=ImportError),
         patch("mureo.auth_setup.input_func", return_value="1"),
-        patch("mureo.auth_setup.install_mcp_config", return_value=Path("/tmp/test")) as mock_install,
+        patch(
+            "mureo.auth_setup.install_mcp_config", return_value=Path("/tmp/test")
+        ) as mock_install,
     ):
         setup_mcp_config()
 
@@ -899,7 +918,9 @@ def test_setup_mcp_config_fallback_project() -> None:
     with (
         patch("simple_term_menu.TerminalMenu", side_effect=ImportError),
         patch("mureo.auth_setup.input_func", return_value="2"),
-        patch("mureo.auth_setup.install_mcp_config", return_value=Path("/tmp/test")) as mock_install,
+        patch(
+            "mureo.auth_setup.install_mcp_config", return_value=Path("/tmp/test")
+        ) as mock_install,
     ):
         setup_mcp_config()
 
@@ -929,7 +950,9 @@ def test_setup_mcp_config_fallback_default() -> None:
     with (
         patch("simple_term_menu.TerminalMenu", side_effect=ImportError),
         patch("mureo.auth_setup.input_func", return_value=""),
-        patch("mureo.auth_setup.install_mcp_config", return_value=Path("/tmp/test")) as mock_install,
+        patch(
+            "mureo.auth_setup.install_mcp_config", return_value=Path("/tmp/test")
+        ) as mock_install,
     ):
         setup_mcp_config()
 

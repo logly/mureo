@@ -64,9 +64,7 @@ class TestCheckRateLimit:
 
     def test_high_usage_warning(self, client: MetaAdsApiClient) -> None:
         """使用率が閾値超の場合は警告ログ"""
-        usage = {
-            "biz1": [{"call_count": 90, "total_cputime": 10, "total_time": 10}]
-        }
+        usage = {"biz1": [{"call_count": 90, "total_cputime": 10, "total_time": 10}]}
         resp = MagicMock()
         resp.headers = {"x-business-use-case-usage": json.dumps(usage)}
 
@@ -76,9 +74,7 @@ class TestCheckRateLimit:
 
     def test_low_usage_no_warning(self, client: MetaAdsApiClient) -> None:
         """使用率が閾値以下の場合は警告なし"""
-        usage = {
-            "biz1": [{"call_count": 10, "total_cputime": 5, "total_time": 5}]
-        }
+        usage = {"biz1": [{"call_count": 10, "total_cputime": 5, "total_time": 5}]}
         resp = MagicMock()
         resp.headers = {"x-business-use-case-usage": json.dumps(usage)}
 
@@ -206,9 +202,7 @@ class TestRequest:
     async def test_http_error_max_retries(self, client: MetaAdsApiClient) -> None:
         """HTTPエラーが最大回数を超えた場合"""
         client._http = MagicMock()
-        client._http.get = AsyncMock(
-            side_effect=httpx.ConnectError("always fail")
-        )
+        client._http.get = AsyncMock(side_effect=httpx.ConnectError("always fail"))
 
         with patch("mureo.meta_ads.client.asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(RuntimeError, match="request failed"):
