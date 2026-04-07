@@ -95,8 +95,8 @@ class AudiencesMixin:
             "name": name,
             "subtype": subtype,
         }
-        # customer_file_source is required for CUSTOM subtype
-        if customer_file_source is None and subtype == "CUSTOM":
+        # customer_file_source is required by Meta API v21+
+        if customer_file_source is None:
             customer_file_source = "USER_PROVIDED_ONLY"
 
         if description:
