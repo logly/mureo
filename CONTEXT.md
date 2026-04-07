@@ -49,6 +49,8 @@ Before executing any workflow, discover which platforms and data sources are ava
 
 **Never hardcode platform assumptions.** Iterate over discovered platforms instead.
 
+**Account IDs are optional in tool calls.** When `customer_id` (Google Ads) or `account_id` (Meta Ads) is omitted, mureo automatically loads it from `~/.mureo/credentials.json`. Run `mureo auth status` to see which accounts are configured.
+
 ## Using mureo via MCP
 
 Add to your MCP client configuration:

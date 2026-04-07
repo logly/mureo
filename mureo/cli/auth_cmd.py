@@ -24,12 +24,14 @@ def auth_status() -> None:
     typer.echo("")
 
     if google_creds is not None:
-        typer.echo("Google Ads: Authenticated")
+        cid = google_creds.login_customer_id or "not set"
+        typer.echo(f"Google Ads: Authenticated (customer_id: {cid})")
     else:
         typer.echo("Google Ads: Not authenticated")
 
     if meta_creds is not None:
-        typer.echo("Meta Ads: Authenticated")
+        aid = meta_creds.account_id or "not set"
+        typer.echo(f"Meta Ads: Authenticated (account_id: {aid})")
     else:
         typer.echo("Meta Ads: Not authenticated")
 

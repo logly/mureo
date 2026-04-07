@@ -4,7 +4,9 @@ Guide me through setting up mureo for a new marketing account.
 
 1. **Check installation**: Verify mureo is installed by running `mureo --help`. If not found, guide the user to run `pip install mureo`.
 
-2. **Check authentication**: Run `mureo auth status` to verify credentials are configured. If no credentials are found, run `mureo auth setup` to walk through Google Ads and/or Meta Ads OAuth authentication. This step is interactive — it requires the user to enter tokens and authenticate in a browser.
+2. **Check authentication**: Run `mureo auth status` to verify credentials are configured and see which accounts are connected (customer_id / account_id are displayed). If no credentials are found, run `mureo auth setup` to walk through Google Ads and/or Meta Ads OAuth authentication. This step is interactive — it requires the user to enter tokens and authenticate in a browser.
+
+   Note: When calling MCP tools, you do NOT need to specify customer_id or account_id — they are automatically loaded from credentials.json. Just omit them.
 
 3. **Create STRATEGY.md**: Ask me about my business to fill in each section:
    - **Persona**: Who is the target customer? (role, age, goals, pain points)
