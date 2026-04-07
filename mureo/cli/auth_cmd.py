@@ -83,7 +83,7 @@ def auth_setup() -> None:
     typer.echo("")
 
     google = typer.confirm("Configure Google Ads?", default=True)
-    meta = typer.confirm("Configure Meta Ads?", default=False)
+    meta = typer.confirm("Configure Meta Ads?", default=True)
 
     if google:
         from mureo.auth_setup import setup_google_ads

@@ -112,7 +112,7 @@ def setup_claude_code(
     # 1. Authentication
     if not skip_auth:
         google = typer.confirm("Configure Google Ads?", default=True)
-        meta = typer.confirm("Configure Meta Ads?", default=False)
+        meta = typer.confirm("Configure Meta Ads?", default=True)
 
         if google:
             from mureo.auth_setup import setup_google_ads
@@ -181,7 +181,7 @@ def setup_cursor() -> None:
     typer.echo("=== mureo Setup for Cursor ===\n")
 
     google = typer.confirm("Configure Google Ads?", default=True)
-    meta = typer.confirm("Configure Meta Ads?", default=False)
+    meta = typer.confirm("Configure Meta Ads?", default=True)
 
     if google:
         from mureo.auth_setup import setup_google_ads
