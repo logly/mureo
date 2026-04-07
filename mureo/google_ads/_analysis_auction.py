@@ -394,31 +394,31 @@ class _AuctionAnalysisMixin:
                 {
                     "campaign_id": str(row.campaign.id),
                     "campaign_name": row.campaign.name,
-                    "search_impression_share": round(
-                        float(m.search_impression_share) * 100, 1
-                    )
-                    if m.search_impression_share
-                    else None,
-                    "search_rank_lost_is": round(
-                        float(m.search_rank_lost_impression_share) * 100, 1
-                    )
-                    if m.search_rank_lost_impression_share
-                    else None,
-                    "search_budget_lost_is": round(
-                        float(m.search_budget_lost_impression_share) * 100, 1
-                    )
-                    if m.search_budget_lost_impression_share
-                    else None,
-                    "search_top_is": round(
-                        float(m.search_top_impression_share) * 100, 1
-                    )
-                    if m.search_top_impression_share
-                    else None,
-                    "search_abs_top_is": round(
-                        float(m.search_absolute_top_impression_share) * 100, 1
-                    )
-                    if m.search_absolute_top_impression_share
-                    else None,
+                    "search_impression_share": (
+                        round(float(m.search_impression_share) * 100, 1)
+                        if m.search_impression_share
+                        else None
+                    ),
+                    "search_rank_lost_is": (
+                        round(float(m.search_rank_lost_impression_share) * 100, 1)
+                        if m.search_rank_lost_impression_share
+                        else None
+                    ),
+                    "search_budget_lost_is": (
+                        round(float(m.search_budget_lost_impression_share) * 100, 1)
+                        if m.search_budget_lost_impression_share
+                        else None
+                    ),
+                    "search_top_is": (
+                        round(float(m.search_top_impression_share) * 100, 1)
+                        if m.search_top_impression_share
+                        else None
+                    ),
+                    "search_abs_top_is": (
+                        round(float(m.search_absolute_top_impression_share) * 100, 1)
+                        if m.search_absolute_top_impression_share
+                        else None
+                    ),
                     "note": "Full competitor-level auction insights (domains, overlap, "
                     "outranking) are only available in the Google Ads UI. "
                     "This shows impression share metrics as a proxy.",
