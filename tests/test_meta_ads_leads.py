@@ -46,7 +46,7 @@ class TestListLeadForms:
     @pytest.mark.asyncio
     async def test_list_lead_forms(self, client: LeadsMixin) -> None:
         """page_id指定でリードフォーム一覧を取得できること"""
-        client._get = AsyncMock(
+        client._get_as_page = AsyncMock(
             return_value={
                 "data": [
                     {"id": "form_1", "name": "問い合わせフォーム", "status": "ACTIVE"},
@@ -58,14 +58,15 @@ class TestListLeadForms:
 
         assert len(result) == 2
         assert result[0]["id"] == "form_1"
-        client._get.assert_called_once()
-        call_args = client._get.call_args
-        assert "/page_123/leadgen_forms" in call_args[0][0]
+        client._get_as_page.assert_called_once()
+        call_args = client._get_as_page.call_args
+        assert call_args[0][0] == "page_123"
+        assert "/page_123/leadgen_forms" in call_args[0][1]
 
     @pytest.mark.asyncio
     async def test_list_lead_forms_empty(self, client: LeadsMixin) -> None:
         """フォームが存在しない場合は空リストを返すこと"""
-        client._get = AsyncMock(return_value={"data": []})
+        client._get_as_page = AsyncMock(return_value={"data": []})
         result = await client.list_lead_forms("page_123")
 
         assert result == []
@@ -328,7 +329,7 @@ class TestLeadsApiError:
     @pytest.mark.asyncio
     async def test_api_error_propagates(self, client: LeadsMixin) -> None:
         """APIエラーが適切に伝播すること"""
-        client._get = AsyncMock(
+        client._get_as_page = AsyncMock(
             side_effect=RuntimeError(
                 "Meta API request failed (status=400, path=/page_123/leadgen_forms)"
             )

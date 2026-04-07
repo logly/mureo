@@ -85,6 +85,7 @@ class MetaAdsApiClient(
         self._ad_account_id = ad_account_id
         self._http = httpx.AsyncClient(timeout=30.0)
         self._throttler = throttler
+        self._page_tokens: dict[str, str] = {}  # Cache: page_id -> page_access_token
 
     async def _get(
         self, path: str, params: dict[str, Any] | None = None
@@ -275,6 +276,72 @@ class MetaAdsApiClient(
                 "Failed to parse x-business-use-case-usage header: %s",
                 usage_header[:200],
             )
+
+    async def get_page_access_token(self, page_id: str) -> str:
+        """Get a Page Access Token for the given page.
+
+        Uses cached token if available, otherwise fetches from /me/accounts.
+
+        Args:
+            page_id: Facebook page ID
+
+        Returns:
+            Page Access Token string
+
+        Raises:
+            RuntimeError: If the page is not accessible or token retrieval fails
+        """
+        if page_id in self._page_tokens:
+            return self._page_tokens[page_id]
+
+        result = await self._get("/me/accounts", {"fields": "id,access_token"})
+        pages = result.get("data", [])
+        for page in pages:
+            self._page_tokens[page["id"]] = page["access_token"]
+
+        if page_id not in self._page_tokens:
+            raise RuntimeError(
+                f"Page {page_id} not accessible with current token. "
+                f"Ensure the user has admin access to this page."
+            )
+        return self._page_tokens[page_id]
+
+    async def _get_as_page(
+        self, page_id: str, path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """GET request using Page Access Token instead of User Access Token.
+
+        Args:
+            page_id: Facebook page ID (used to resolve Page Access Token)
+            path: API path
+            params: Query parameters
+
+        Returns:
+            API response JSON
+        """
+        page_token = await self.get_page_access_token(page_id)
+        url = f"{self.BASE_URL}{path}"
+        if params is None:
+            params = {}
+        headers = {"Authorization": f"Bearer {page_token}"}
+
+        if self._throttler is not None:
+            await self._throttler.acquire()
+
+        resp = await self._http.get(url, params=params, headers=headers)
+        if resp.status_code != 200:
+            detail = ""
+            try:
+                err = resp.json().get("error", {})
+                parts = [v for k in ("message",) if (v := err.get(k))]
+                detail = " | ".join(parts) if parts else resp.text[:500]
+            except Exception:
+                detail = resp.text[:500]
+            raise RuntimeError(
+                f"Meta API request failed "
+                f"(status={resp.status_code}, path={path}): {detail}"
+            )
+        return resp.json()  # type: ignore[no-any-return]
 
     async def close(self) -> None:
         """Close the HTTP client."""

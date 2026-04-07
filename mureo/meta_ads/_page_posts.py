@@ -28,12 +28,18 @@ class PagePostsMixin:
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
+    async def _get_as_page(  # type: ignore[empty-body]
+        self, page_id: str, path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]: ...
+
     _PAGE_POST_FIELDS = "id,message,created_time,permalink_url,full_picture,type"
 
     async def list_page_posts(
         self, page_id: str, limit: int = 25
     ) -> list[dict[str, Any]]:
         """List page posts.
+
+        Uses Page Access Token (required by Meta API for new-design pages).
 
         Args:
             page_id: Facebook page ID
@@ -46,7 +52,7 @@ class PagePostsMixin:
             "fields": self._PAGE_POST_FIELDS,
             "limit": limit,
         }
-        result = await self._get(f"/{page_id}/posts", params)
+        result = await self._get_as_page(page_id, f"/{page_id}/posts", params)
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def boost_post(

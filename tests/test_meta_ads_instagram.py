@@ -58,7 +58,7 @@ class TestListPagePosts:
     @pytest.mark.asyncio
     async def test_list_page_posts(self, client: PagePostsMixin) -> None:
         """ページ投稿一覧を取得できること"""
-        client._get = AsyncMock(
+        client._get_as_page = AsyncMock(
             return_value={
                 "data": [
                     {
@@ -81,14 +81,15 @@ class TestListPagePosts:
         assert len(result) == 2
         assert result[0]["id"] == "111_222"
         assert result[0]["message"] == "テスト投稿"
-        client._get.assert_called_once()
-        call_args = client._get.call_args
-        assert "/111/posts" in call_args[0][0]
+        client._get_as_page.assert_called_once()
+        call_args = client._get_as_page.call_args
+        assert call_args[0][0] == "111"
+        assert "/111/posts" in call_args[0][1]
 
     @pytest.mark.asyncio
     async def test_list_page_posts_empty(self, client: PagePostsMixin) -> None:
         """投稿がない場合は空リストが返ること"""
-        client._get = AsyncMock(return_value={"data": []})
+        client._get_as_page = AsyncMock(return_value={"data": []})
         result = await client.list_page_posts("111")
 
         assert result == []
@@ -96,11 +97,11 @@ class TestListPagePosts:
     @pytest.mark.asyncio
     async def test_list_page_posts_with_limit(self, client: PagePostsMixin) -> None:
         """limit指定が渡ること"""
-        client._get = AsyncMock(return_value={"data": []})
+        client._get_as_page = AsyncMock(return_value={"data": []})
         await client.list_page_posts("111", limit=10)
 
-        call_args = client._get.call_args
-        params = call_args[0][1]
+        call_args = client._get_as_page.call_args
+        params = call_args[0][2]
         assert params["limit"] == 10
 
 

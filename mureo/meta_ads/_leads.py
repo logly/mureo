@@ -41,6 +41,10 @@ class LeadsMixin:
         self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
+    async def _get_as_page(  # type: ignore[empty-body]
+        self, page_id: str, path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]: ...
+
     async def list_lead_forms(
         self,
         page_id: str,
@@ -60,7 +64,7 @@ class LeadsMixin:
             "fields": _LEAD_FORM_FIELDS,
             "limit": limit,
         }
-        result = await self._get(f"/{page_id}/leadgen_forms", params)
+        result = await self._get_as_page(page_id, f"/{page_id}/leadgen_forms", params)
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def get_lead_form(self, form_id: str) -> dict[str, Any]:
