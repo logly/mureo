@@ -235,7 +235,7 @@ async def handle_ads_update_status(args: dict[str, Any]) -> list[TextContent]:
         "ad_id": _require(args, "ad_id"),
         "status": _require(args, "status"),
     }
-    result = await client.update_ad_status(params)
+    result = await client.update_ad_status(**params)
     return _json_result(result)
 
 

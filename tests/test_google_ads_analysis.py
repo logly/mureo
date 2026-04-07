@@ -1401,7 +1401,7 @@ class TestAuctionAnalysisMixin:
         top_imp: float = 0.4, abs_top: float = 0.1, outranking: float = 0.25,
     ) -> SimpleNamespace:
         return SimpleNamespace(
-            auction_insight=SimpleNamespace(display_url=domain),
+            segments=SimpleNamespace(domain=domain),
             metrics=SimpleNamespace(
                 auction_insight_search_impression_share=is_pct,
                 auction_insight_search_overlap_rate=overlap,

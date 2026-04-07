@@ -340,7 +340,7 @@ class _AuctionAnalysisMixin:
 
         query = f"""
             SELECT
-                auction_insight.display_url,
+                segments.domain,
                 metrics.auction_insight_search_impression_share,
                 metrics.auction_insight_search_overlap_rate,
                 metrics.auction_insight_search_position_above_rate,
@@ -377,11 +377,10 @@ class _AuctionAnalysisMixin:
 
         results: list[dict[str, Any]] = []
         for row in rows:
-            ai = row.auction_insight
             m = row.metrics
             results.append(
                 {
-                    "display_url": ai.display_url,
+                    "display_url": row.segments.domain,
                     "impression_share": round(
                         float(m.auction_insight_search_impression_share) * 100, 1
                     ),
