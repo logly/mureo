@@ -220,37 +220,39 @@ mureo's workflow commands can leverage GA4 data (conversion rates, user behavior
 
 Setup using [Google Analytics MCP](https://github.com/googleanalytics/google-analytics-mcp):
 
-```bash
-# Install
-pipx install analytics-mcp
+1. Enable the required APIs in your GCP project:
+   - [Google Analytics Admin API](https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com) -- click "Enable"
+   - [Google Analytics Data API](https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com) -- click "Enable"
 
-# Authenticate (requires gcloud CLI)
-gcloud auth application-default login \
-  --scopes https://www.googleapis.com/auth/analytics.readonly,https://www.googleapis.com/auth/cloud-platform
-```
+2. Install and authenticate:
 
-Add to `~/.claude/settings.json` alongside mureo:
+   ```bash
+   pipx install analytics-mcp
 
-```json
-{
-  "mcpServers": {
-    "mureo": {
-      "command": "python",
-      "args": ["-m", "mureo.mcp"]
-    },
-    "analytics-mcp": {
-      "command": "pipx",
-      "args": ["run", "analytics-mcp"],
-      "env": {
-        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/application_default_credentials.json",
-        "GOOGLE_PROJECT_ID": "your-gcp-project-id"
-      }
-    }
-  }
-}
-```
+   gcloud auth application-default login \
+     --scopes https://www.googleapis.com/auth/analytics.readonly,https://www.googleapis.com/auth/cloud-platform
+   ```
 
-Prerequisites: Enable **Google Analytics Admin API** and **Google Analytics Data API** in your GCP project.
+3. Add to `~/.claude/settings.json` alongside mureo:
+
+   ```json
+   {
+     "mcpServers": {
+       "mureo": {
+         "command": "python",
+         "args": ["-m", "mureo.mcp"]
+       },
+       "analytics-mcp": {
+         "command": "pipx",
+         "args": ["run", "analytics-mcp"],
+         "env": {
+           "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/application_default_credentials.json",
+           "GOOGLE_PROJECT_ID": "your-gcp-project-id"
+         }
+       }
+     }
+   }
+   ```
 
 ### Connecting Other MCP Servers
 
