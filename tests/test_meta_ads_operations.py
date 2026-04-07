@@ -290,6 +290,10 @@ class TestCreativesMixin:
 
     @pytest.mark.asyncio
     async def test_create_ad_creative_with_image_url(self, client) -> None:
+        # image_url is auto-uploaded to get image_hash
+        client.upload_ad_image = AsyncMock(
+            return_value={"hash": "abc123", "url": "https://img.example.com/img.jpg"}
+        )
         await client.create_ad_creative(
             "Creative1",
             "page1",
@@ -300,11 +304,14 @@ class TestCreativesMixin:
             description="説明",
             call_to_action="LEARN_MORE",
         )
+        client.upload_ad_image.assert_awaited_once_with(
+            "https://img.example.com/img.jpg"
+        )
         data = client._post.call_args[0][1]
         assert data["name"] == "Creative1"
         spec = json.loads(data["object_story_spec"])
         assert spec["page_id"] == "page1"
-        assert spec["link_data"]["image_url"] == "https://img.example.com/img.jpg"
+        assert spec["link_data"]["image_hash"] == "abc123"
         assert spec["link_data"]["name"] == "見出し"
         assert spec["link_data"]["call_to_action"] == {"type": "LEARN_MORE"}
 

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Lead form retrieval fields
 _LEAD_FORM_FIELDS = (
-    "id,name,status,locale,questions,privacy_policy,"
+    "id,name,status,locale,questions,"
     "follow_up_action_url,created_time,expired_leads_count,"
     "leads_count,organic_leads_count"
 )

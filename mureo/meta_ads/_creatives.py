@@ -102,9 +102,18 @@ class CreativesMixin:
             "link": link_url,
         }
 
-        if image_url:
-            link_data["image_url"] = image_url
-        elif image_hash:
+        if image_url and not image_hash:
+            # image_url is no longer supported in link_data.
+            # Auto-upload to get image_hash instead.
+            upload_result = await self.upload_ad_image(image_url)
+            if "hash" in upload_result:
+                image_hash = upload_result["hash"]
+            else:
+                logger.warning(
+                    "Auto-upload failed for %s: %s", image_url, upload_result
+                )
+
+        if image_hash:
             link_data["image_hash"] = image_hash
 
         if message:
