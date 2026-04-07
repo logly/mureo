@@ -93,11 +93,9 @@ class AudiencesMixin:
         """
         data: dict[str, Any] = {
             "name": name,
+            "subtype": subtype,
+            "customer_file_source": customer_file_source or "USER_PROVIDED_ONLY",
         }
-        # subtype is not accepted in API v21.0 (accepted in v25.0+).
-        # customer_file_source is always required as a replacement.
-        if customer_file_source is None:
-            customer_file_source = "USER_PROVIDED_ONLY"
 
         if description:
             data["description"] = description
@@ -107,8 +105,6 @@ class AudiencesMixin:
             data["rule"] = json.dumps(rule)
         if pixel_id:
             data["pixel_id"] = pixel_id
-        if customer_file_source:
-            data["customer_file_source"] = customer_file_source
 
         return await self._post(f"/{self._ad_account_id}/customaudiences", data)
 
