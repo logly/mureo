@@ -334,21 +334,34 @@ class _AuctionAnalysisMixin:
         campaign_id: str,
         period: str = "LAST_30_DAYS",
     ) -> list[dict[str, Any]]:
-        """Retrieve campaign auction insights data via GAQL."""
+        """Retrieve campaign auction insights data.
+
+        Note: The campaign_auction_insight GAQL resource was removed in
+        Google Ads API v23. This method now returns impression share and
+        competitive metrics from the campaign resource as a best-effort
+        alternative. Full auction insights (competitor domains, overlap
+        rate, outranking share) are only available in the Google Ads UI.
+        """
         self._validate_id(campaign_id, "campaign_id")
         date_clause = self._period_to_date_clause(period)
 
         query = f"""
             SELECT
-                metrics.auction_insight_search_impression_share,
-                metrics.auction_insight_search_overlap_rate,
-                metrics.auction_insight_search_position_above_rate,
-                metrics.auction_insight_search_top_impression_percentage,
-                metrics.auction_insight_search_absolute_top_impression_percentage,
-                metrics.auction_insight_search_outranking_share
-            FROM campaign_auction_insight
+                campaign.id,
+                campaign.name,
+                metrics.search_impression_share,
+                metrics.search_rank_lost_impression_share,
+                metrics.search_budget_lost_impression_share,
+                metrics.search_top_impression_share,
+                metrics.search_absolute_top_impression_share,
+                metrics.search_rank_lost_top_impression_share,
+                metrics.search_budget_lost_top_impression_share,
+                metrics.search_rank_lost_absolute_top_impression_share,
+                metrics.search_budget_lost_absolute_top_impression_share
+            FROM campaign
             WHERE campaign.id = {campaign_id}
                 AND segments.date {date_clause}
+                AND campaign.status = 'ENABLED'
         """
 
         try:
@@ -379,34 +392,39 @@ class _AuctionAnalysisMixin:
             m = row.metrics
             results.append(
                 {
-                    "display_url": row.segments.auction_insight_domain,
-                    "impression_share": round(
-                        float(m.auction_insight_search_impression_share) * 100, 1
-                    ),
-                    "overlap_rate": round(
-                        float(m.auction_insight_search_overlap_rate) * 100, 1
-                    ),
-                    "position_above_rate": round(
-                        float(m.auction_insight_search_position_above_rate) * 100, 1
-                    ),
-                    "top_impression_pct": round(
-                        float(m.auction_insight_search_top_impression_percentage) * 100,
-                        1,
-                    ),
-                    "abs_top_impression_pct": round(
-                        float(
-                            m.auction_insight_search_absolute_top_impression_percentage
-                        )
-                        * 100,
-                        1,
-                    ),
-                    "outranking_share": round(
-                        float(m.auction_insight_search_outranking_share) * 100, 1
-                    ),
+                    "campaign_id": str(row.campaign.id),
+                    "campaign_name": row.campaign.name,
+                    "search_impression_share": round(
+                        float(m.search_impression_share) * 100, 1
+                    )
+                    if m.search_impression_share
+                    else None,
+                    "search_rank_lost_is": round(
+                        float(m.search_rank_lost_impression_share) * 100, 1
+                    )
+                    if m.search_rank_lost_impression_share
+                    else None,
+                    "search_budget_lost_is": round(
+                        float(m.search_budget_lost_impression_share) * 100, 1
+                    )
+                    if m.search_budget_lost_impression_share
+                    else None,
+                    "search_top_is": round(
+                        float(m.search_top_impression_share) * 100, 1
+                    )
+                    if m.search_top_impression_share
+                    else None,
+                    "search_abs_top_is": round(
+                        float(m.search_absolute_top_impression_share) * 100, 1
+                    )
+                    if m.search_absolute_top_impression_share
+                    else None,
+                    "note": "Full competitor-level auction insights (domains, overlap, "
+                    "outranking) are only available in the Google Ads UI. "
+                    "This shows impression share metrics as a proxy.",
                 }
             )
 
-        results.sort(key=lambda x: x["impression_share"], reverse=True)
         return results
 
     async def analyze_auction_insights(
@@ -414,7 +432,13 @@ class _AuctionAnalysisMixin:
         campaign_id: str,
         period: str = "LAST_30_DAYS",
     ) -> dict[str, Any]:
-        """Run campaign auction analysis and generate competitive insights."""
+        """Analyze competitive position using impression share metrics.
+
+        Note: Full competitor-level auction insights (domains, overlap,
+        outranking) were removed from Google Ads API v23. This method
+        analyzes impression share metrics as a proxy for competitive
+        position.
+        """
         self._validate_id(campaign_id, "campaign_id")
 
         campaign = await self.get_campaign(campaign_id)
@@ -427,65 +451,56 @@ class _AuctionAnalysisMixin:
                 "campaign_id": campaign_id,
                 "campaign_name": campaign.get("name", ""),
                 "period": period,
-                "message": "No auction insights data available (non-search campaign or insufficient data)",
-                "competitors": [],
+                "message": "No auction insights data available "
+                "(non-search campaign or insufficient data)",
                 "insights": [],
             }
 
-        # Extract own data (empty display_url = self)
-        my_data: dict[str, Any] | None = None
-        competitors: list[dict[str, Any]] = []
-        for entry in auction_data:
-            if entry["display_url"] == "":
-                my_data = entry
-            else:
-                competitors.append(entry)
-
+        data = auction_data[0]
         insights: list[str] = []
 
-        if my_data:
-            is_pct = my_data["impression_share"]
+        is_pct = data.get("search_impression_share")
+        if is_pct is not None:
             if is_pct < 50:
                 insights.append(
-                    f"Your impression share is {is_pct}%, missing more than half of display opportunities. "
+                    f"Search impression share is {is_pct}%, missing more than "
+                    "half of display opportunities. "
                     "Consider reviewing budget or keyword bids."
                 )
             elif is_pct < 70:
                 insights.append(
-                    f"Your impression share is {is_pct}%. "
+                    f"Search impression share is {is_pct}%. "
                     "Some display opportunities are being taken by competitors."
                 )
 
-            abs_top = my_data["abs_top_impression_pct"]
-            if abs_top < 20:
-                insights.append(
-                    f"Absolute top impression rate is {abs_top}%, rarely appearing at the very top of search results. "
-                    "Consider increasing bids or improving ad quality."
-                )
-
-        # Competitor analysis
-        strong_competitors = [c for c in competitors if c["impression_share"] > 30]
-        if strong_competitors:
-            top_comp = strong_competitors[0]
+        rank_lost = data.get("search_rank_lost_is")
+        if rank_lost is not None and rank_lost > 20:
             insights.append(
-                f"The top competitor is \"{top_comp['display_url']}\" "
-                f"(IS: {top_comp['impression_share']}%, "
-                f"top impression rate: {top_comp['top_impression_pct']}%)."
+                f"Losing {rank_lost}% impression share due to ad rank. "
+                "Consider improving Quality Score or increasing bids."
             )
 
-        for comp in competitors[:5]:
-            if comp["outranking_share"] > 50 and my_data:
-                insights.append(
-                    f"\"{comp['display_url']}\" is outranking you {comp['outranking_share']}% of the time. "
-                    "Consider reviewing your bidding strategy."
-                )
+        budget_lost = data.get("search_budget_lost_is")
+        if budget_lost is not None and budget_lost > 20:
+            insights.append(
+                f"Losing {budget_lost}% impression share due to budget. "
+                "Consider increasing the daily budget."
+            )
+
+        abs_top = data.get("search_abs_top_is")
+        if abs_top is not None and abs_top < 20:
+            insights.append(
+                f"Absolute top impression share is {abs_top}%, "
+                "rarely appearing at the very top of search results. "
+                "Consider increasing bids or improving ad quality."
+            )
 
         return {
             "campaign_id": campaign_id,
             "campaign_name": campaign.get("name", ""),
             "period": period,
-            "my_impression_share": my_data if my_data else None,
-            "competitors": competitors[:10],
-            "competitor_count": len(competitors),
+            "impression_share_metrics": data,
             "insights": insights,
+            "note": "Full competitor-level data (domains, overlap, outranking) "
+            "is only available in the Google Ads UI.",
         }

@@ -1393,22 +1393,34 @@ class TestAuctionAnalysisMixin:
         assert result["data_points"] == 7
         assert result["trend"]["direction"] in ("rising", "stable", "falling")
 
-    # --- オークション分析 ---
+    # --- オークション分析 (impression share metrics) ---
 
     def _make_auction_row(
-        self, domain: str = "", is_pct: float = 0.5,
-        overlap: float = 0.3, position_above: float = 0.2,
-        top_imp: float = 0.4, abs_top: float = 0.1, outranking: float = 0.25,
+        self,
+        campaign_id: str = "123",
+        campaign_name: str = "Test",
+        is_pct: float = 0.5,
+        rank_lost: float = 0.1,
+        budget_lost: float = 0.1,
+        top_is: float = 0.4,
+        abs_top_is: float = 0.1,
+        rank_lost_top: float = 0.05,
+        budget_lost_top: float = 0.05,
+        rank_lost_abs_top: float = 0.02,
+        budget_lost_abs_top: float = 0.02,
     ) -> SimpleNamespace:
         return SimpleNamespace(
-            segments=SimpleNamespace(auction_insight_domain=domain),
+            campaign=SimpleNamespace(id=int(campaign_id), name=campaign_name),
             metrics=SimpleNamespace(
-                auction_insight_search_impression_share=is_pct,
-                auction_insight_search_overlap_rate=overlap,
-                auction_insight_search_position_above_rate=position_above,
-                auction_insight_search_top_impression_percentage=top_imp,
-                auction_insight_search_absolute_top_impression_percentage=abs_top,
-                auction_insight_search_outranking_share=outranking,
+                search_impression_share=is_pct,
+                search_rank_lost_impression_share=rank_lost,
+                search_budget_lost_impression_share=budget_lost,
+                search_top_impression_share=top_is,
+                search_absolute_top_impression_share=abs_top_is,
+                search_rank_lost_top_impression_share=rank_lost_top,
+                search_budget_lost_top_impression_share=budget_lost_top,
+                search_rank_lost_absolute_top_impression_share=rank_lost_abs_top,
+                search_budget_lost_absolute_top_impression_share=budget_lost_abs_top,
             ),
         )
 
@@ -1416,13 +1428,13 @@ class TestAuctionAnalysisMixin:
     async def test_get_auction_insights_basic(self) -> None:
         client = self._make_client()
         client._search.return_value = [
-            self._make_auction_row("", 0.6),
-            self._make_auction_row("competitor.com", 0.4),
+            self._make_auction_row(is_pct=0.6, abs_top_is=0.25),
         ]
         result = await client.get_auction_insights("123")
-        assert len(result) == 2
-        # IS降順ソート
-        assert result[0]["impression_share"] >= result[1]["impression_share"]
+        assert len(result) == 1
+        assert result[0]["search_impression_share"] == 60.0
+        assert result[0]["search_abs_top_is"] == 25.0
+        assert "note" in result[0]
 
     @pytest.mark.unit
     async def test_get_auction_insights_error(self) -> None:
@@ -1446,7 +1458,6 @@ class TestAuctionAnalysisMixin:
         client.get_campaign.return_value = {"name": "Test"}
         client._search.return_value = []
         result = await client.analyze_auction_insights("123")
-        assert result["competitors"] == []
         assert "No" in result["message"]
 
     @pytest.mark.unit
@@ -1454,19 +1465,17 @@ class TestAuctionAnalysisMixin:
         client = self._make_client()
         client.get_campaign.return_value = {"name": "Test"}
         client._search.return_value = [
-            self._make_auction_row("", 0.3, abs_top=0.1),  # IS 30% < 50%
-            self._make_auction_row("competitor.com", 0.5, outranking=0.6),
+            self._make_auction_row(is_pct=0.3, rank_lost=0.3, abs_top_is=0.1),
         ]
         result = await client.analyze_auction_insights("123")
         assert any("impression share" in i for i in result["insights"])
-        assert any("outranking" in i for i in result["insights"])
 
     @pytest.mark.unit
     async def test_analyze_auction_insights_low_abs_top(self) -> None:
         client = self._make_client()
         client.get_campaign.return_value = {"name": "Test"}
         client._search.return_value = [
-            self._make_auction_row("", 0.6, abs_top=0.1),  # abs_top 10% < 20%
+            self._make_auction_row(is_pct=0.6, abs_top_is=0.1),
         ]
         result = await client.analyze_auction_insights("123")
         assert any("absolute top" in i.lower() for i in result["insights"])
