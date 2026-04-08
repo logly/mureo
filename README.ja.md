@@ -256,7 +256,7 @@ mureo auth setup
 対話型のウィザードが以下をガイドします：
 
 1. **Google広告** — Developer Token + Client ID/Secret を入力 → ブラウザでOAuth → アカウント選択
-2. **Meta広告** — App ID/Secret を入力 → ブラウザでOAuth → 広告アカウント選択
+2. **Meta広告** — App ID/Secret を入力 → ブラウザでOAuth → 広告アカウント選択。Metaアプリは**開発モードのまま**で問題ありません（App Reviewは不要です）。OAuthの際に `business_management` の権限警告が表示されますが、ビジネスポートフォリオ経由のページ管理に必要なため、そのまま承認してください。
 3. **MCP設定** — Claude Code / Cursor用の設定ファイルを自動生成
 
 認証情報は `~/.mureo/credentials.json` に保存されます。Search ConsoleはGoogle広告と同じOAuth認証を利用するため、追加の設定は不要です。

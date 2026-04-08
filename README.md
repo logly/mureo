@@ -269,7 +269,7 @@ mureo auth setup
 The setup wizard walks you through:
 
 1. **Google Ads** -- Enter Developer Token + Client ID/Secret, open browser for OAuth, select a Google Ads customer account
-2. **Meta Ads** -- Enter App ID/Secret, open browser for OAuth, obtain a Long-Lived Token, select an ad account
+2. **Meta Ads** -- Enter App ID/Secret, open browser for OAuth, obtain a Long-Lived Token, select an ad account. Your Meta App can stay in **Development Mode** -- no App Review is needed since mureo operates your own ad account. You may see a permission warning for `business_management` during OAuth; this is safe to accept and required for accessing pages managed through Business Portfolio.
 3. **MCP config** -- Automatically writes `.mcp.json` (project-level) or `~/.claude/settings.json` (global) so Claude Code / Cursor can discover the server
 
 Credentials are saved to `~/.mureo/credentials.json`. Search Console reuses the same Google OAuth2 credentials as Google Ads -- no additional authentication is required.
