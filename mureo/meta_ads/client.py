@@ -280,7 +280,8 @@ class MetaAdsApiClient(
     async def get_page_access_token(self, page_id: str) -> str:
         """Get a Page Access Token for the given page.
 
-        Uses cached token if available, otherwise fetches from /me/accounts.
+        Tries /me/accounts first (personal pages), then falls back to
+        business-owned pages via /me/businesses -> /{business_id}/owned_pages.
 
         Args:
             page_id: Facebook page ID
@@ -294,15 +295,29 @@ class MetaAdsApiClient(
         if page_id in self._page_tokens:
             return self._page_tokens[page_id]
 
+        # Try personal pages first
         result = await self._get("/me/accounts", {"fields": "id,access_token"})
-        pages = result.get("data", [])
-        for page in pages:
+        for page in result.get("data", []):
             self._page_tokens[page["id"]] = page["access_token"]
+
+        if page_id in self._page_tokens:
+            return self._page_tokens[page_id]
+
+        # Fall back to business-owned pages
+        biz_result = await self._get("/me/businesses", {"fields": "id"})
+        for biz in biz_result.get("data", []):
+            pages_result = await self._get(
+                f"/{biz['id']}/owned_pages",
+                {"fields": "id,access_token"},
+            )
+            for page in pages_result.get("data", []):
+                self._page_tokens[page["id"]] = page["access_token"]
 
         if page_id not in self._page_tokens:
             raise RuntimeError(
                 f"Page {page_id} not accessible with current token. "
-                f"Ensure the user has admin access to this page."
+                f"Ensure the user has admin access to this page "
+                f"and the page is owned by a connected business portfolio."
             )
         return self._page_tokens[page_id]
 

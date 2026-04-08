@@ -24,7 +24,11 @@ EXPECTED_COMMANDS = [
     "sync-state.md",
     "goal-review.md",
     "weekly-report.md",
+    "learn-diagnosis.md",
 ]
+
+# Workflow commands (exclude utility commands like learn-diagnosis)
+WORKFLOW_COMMANDS = [c for c in EXPECTED_COMMANDS if c != "learn-diagnosis.md"]
 
 # Known MCP tool names extracted from SKILL.md files
 # Google Ads tools (82 tools from mureo-google-ads/SKILL.md)
@@ -278,9 +282,9 @@ class TestCommandToolReferences:
         )
 
     @pytest.mark.unit
-    @pytest.mark.parametrize("filename", EXPECTED_COMMANDS)
+    @pytest.mark.parametrize("filename", WORKFLOW_COMMANDS)
     def test_command_has_platform_discovery(self, filename: str) -> None:
-        """All commands should discover platforms or reference STATE.json platforms."""
+        """Workflow commands should discover platforms or reference STATE.json platforms."""
         filepath = COMMANDS_DIR / filename
         content = filepath.read_text(encoding="utf-8").lower()
         has_discovery = (
@@ -388,8 +392,8 @@ class TestGoalAndCrossPlatformCommands:
 
     @pytest.mark.unit
     def test_all_commands_reference_strategy_or_state(self) -> None:
-        """Verify all 10 commands reference STRATEGY.md or STATE.json."""
-        for filename in EXPECTED_COMMANDS:
+        """Verify workflow commands reference STRATEGY.md or STATE.json."""
+        for filename in WORKFLOW_COMMANDS:
             filepath = COMMANDS_DIR / filename
             content = filepath.read_text(encoding="utf-8")
             has_strategy = "STRATEGY.md" in content

@@ -81,7 +81,8 @@ def _select_account(
 _META_GRAPH_API_BASE = "https://graph.facebook.com/v21.0"
 _META_AUTH_URL = "https://www.facebook.com/v21.0/dialog/oauth"
 _META_OAUTH_SCOPES = (
-    "ads_management,ads_read," "pages_manage_ads,pages_read_engagement,leads_retrieval"
+    "ads_management,ads_read,business_management,"
+    "pages_show_list,pages_manage_ads,pages_read_engagement,leads_retrieval"
 )
 
 _HTTP_TIMEOUT = 30.0

@@ -1,6 +1,6 @@
 Save a marketing diagnosis insight to the pro-diagnosis skill file.
 
-Use this command when you want to explicitly teach the agent a marketing insight, correction, or diagnostic pattern. The insight will be saved to `skills/mureo-pro-diagnosis/SKILL.md` and applied in future operations.
+Use this command when you want to explicitly teach the agent a marketing insight, correction, or diagnostic pattern. The insight will be saved to `skills/mureo-pro-diagnosis/SKILL.md` and applied in future operations across all platforms.
 
 ## How to use
 
