@@ -4,12 +4,12 @@ Use this command when you want to explicitly teach the agent a marketing insight
 
 ## How to use
 
-Run `/learn-diagnosis` followed by your insight. Examples:
-- `/learn-diagnosis CV少ないサイトではマイクロCVを活用すべき`
-- `/learn-diagnosis 予算5000円/日で広告グループ8個は多すぎる`
-- `/learn-diagnosis Target CPAを下げすぎると逆にCV減る`
+Run `/learn` followed by your insight. Examples:
+- `/learn CV少ないサイトではマイクロCVを活用すべき`
+- `/learn 予算5000円/日で広告グループ8個は多すぎる`
+- `/learn Target CPAを下げすぎると逆にCV減る`
 
-You can also run `/learn-diagnosis` without arguments — the agent will review the current conversation for corrections and insights to save.
+You can also run `/learn` without arguments — the agent will review the current conversation for corrections and insights to save.
 
 ## Steps
 

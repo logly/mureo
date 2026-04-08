@@ -24,11 +24,11 @@ EXPECTED_COMMANDS = [
     "sync-state.md",
     "goal-review.md",
     "weekly-report.md",
-    "learn-diagnosis.md",
+    "learn.md",
 ]
 
-# Workflow commands (exclude utility commands like learn-diagnosis)
-WORKFLOW_COMMANDS = [c for c in EXPECTED_COMMANDS if c != "learn-diagnosis.md"]
+# Workflow commands (exclude utility commands like learn)
+WORKFLOW_COMMANDS = [c for c in EXPECTED_COMMANDS if c != "learn.md"]
 
 # Known MCP tool names extracted from SKILL.md files
 # Google Ads tools (82 tools from mureo-google-ads/SKILL.md)

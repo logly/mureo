@@ -132,14 +132,14 @@ mureo/
 ├── budget-rebalance.md          # Mode-guided budget reallocation
 ├── competitive-scan.md          # Auction analysis with Market Context
 ├── sync-state.md                # Manual STATE.json synchronization
-└── learn-diagnosis.md           # Save diagnostic insights to knowledge base
+└── learn.md           # Save diagnostic insights to knowledge base
 
 skills/mureo-workflows/          # Workflow skill reference
 │   └── SKILL.md                 # Orchestration paradigm + Operation Mode reference
 skills/mureo-learning/           # Evidence-based decision framework
 │   └── SKILL.md                 # Statistical thinking for marketing decisions
 skills/mureo-pro-diagnosis/      # Learnable diagnostic knowledge base
-│   └── SKILL.md                 # Diagnostic insights (grows with /learn-diagnosis)
+│   └── SKILL.md                 # Diagnostic insights (grows with /learn)
 ```
 
 ## Design Principles
@@ -370,6 +370,6 @@ All commands follow the same orchestration pattern: **discover platforms → sel
 | `/goal-review` | Multi-source goal evaluation | Operation Mode, Goals, Data Sources |
 | `/weekly-report` | Cross-platform weekly report | All sections |
 | `/sync-state` | Multi-platform state synchronization | *(writes STATE.json)* |
-| `/learn-diagnosis` | Save diagnostic insights to knowledge base | *(writes SKILL.md)* |
+| `/learn` | Save diagnostic insights to knowledge base | *(writes SKILL.md)* |
 
 The workflow skill reference (`skills/mureo-workflows/SKILL.md`) documents the full set of Operation Modes and their behavioral implications for each command, as well as cross-platform data correlation patterns.

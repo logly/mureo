@@ -40,7 +40,7 @@ mureo provides slash commands that orchestrate marketing operations across all c
 | `/goal-review` | Goal progress evaluation | Weekly | All platforms + all data sources |
 | `/weekly-report` | Weekly operations summary | Weekly | All platforms + all data sources |
 | `/sync-state` | State synchronization | As needed | All platforms |
-| `/learn-diagnosis` | Save diagnostic insights | As needed | All platforms |
+| `/learn` | Save diagnostic insights | As needed | All platforms |
 
 ## PDCA Operational Loop
 

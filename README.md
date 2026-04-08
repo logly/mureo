@@ -10,7 +10,7 @@
 
 **mureo** is a framework that enables AI agents to operate ad accounts. It provides workflow commands that orchestrate across Google Ads, Meta Ads, Search Console, and GA4, along with built-in marketing expertise -- campaign diagnostics, search term analysis, budget evaluation, ad validation, and more. Every operation is grounded in your business strategy (`STRATEGY.md`), so the agent makes decisions based on your persona, USP, goals, and brand voice -- not just raw metrics.
 
-mureo also learns. When you correct the agent's analysis or share an operational insight, `/learn-diagnosis` saves it to a persistent knowledge base. That knowledge is automatically loaded in every future session, so the agent gets increasingly attuned to your account's specific patterns and makes better decisions over time.
+mureo also learns. When you correct the agent's analysis or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is automatically loaded in every future session, so the agent gets increasingly attuned to your account's specific patterns and makes better decisions over time.
 
 ## Features
 
@@ -40,7 +40,7 @@ Campaign diagnostics that pinpoint *why* ads aren't delivering -- budget constra
 
 ### Learnable operational know-how
 
-When you correct the agent or share an operational insight, `/learn-diagnosis` saves it to a persistent knowledge base. That knowledge is loaded at the start of every future session, so the agent doesn't repeat the same mistakes and applies what it learned to similar situations across your account.
+When you correct the agent or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is loaded at the start of every future session, so the agent doesn't repeat the same mistakes and applies what it learned to similar situations across your account.
 
 ```
 You: "That's not a real CPA spike -- this industry always dips in Golden Week."
@@ -80,7 +80,7 @@ Agent: Saved. I'll flag this as seasonal next time.
 | `/goal-review` | Multi-source goal progress evaluation with operation mode recommendations |
 | `/weekly-report` | Cross-platform weekly operations summary |
 | `/sync-state` | Refresh STATE.json from live platform data |
-| `/learn-diagnosis` | Save a diagnostic insight to the knowledge base for future sessions |
+| `/learn` | Save a diagnostic insight to the knowledge base for future sessions |
 
 ### Getting started
 
@@ -184,7 +184,7 @@ This single command handles everything:
 1. Google Ads / Meta Ads authentication (OAuth)
 2. MCP server configuration for Claude Code
 3. Credential guard (blocks AI agents from reading secrets)
-4. Workflow commands (`/daily-check`, `/rescue`, `/learn-diagnosis`, etc.)
+4. Workflow commands (`/daily-check`, `/rescue`, `/learn`, etc.)
 5. Skills (tool references, strategy guide, evidence-based decisions, diagnostic knowledge)
 
 After setup, run `/onboard` in Claude Code to get started.
@@ -226,7 +226,7 @@ mureo auth status
 | `mureo-strategy` | STRATEGY.md / STATE.json format and usage guide |
 | `mureo-workflows` | Orchestration paradigm, Operation Mode matrix, KPI thresholds, command reference |
 | `mureo-learning` | Evidence-based marketing decision framework (observation windows, sample sizes, noise guards) |
-| `mureo-pro-diagnosis` | Learnable diagnostic knowledge base (grows with use via `/learn-diagnosis`) |
+| `mureo-pro-diagnosis` | Learnable diagnostic knowledge base (grows with use via `/learn`) |
 
 ### Connecting GA4 (Google Analytics 4)
 
