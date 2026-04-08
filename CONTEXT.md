@@ -207,7 +207,7 @@ A JSON file tracking campaign state snapshots across platforms:
 }
 ```
 
-The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/mureo-learning/SKILL.md` for the decision framework.
+The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/mureo-learning/SKILL.md` for the decision framework. The `skills/mureo-pro-diagnosis/SKILL.md` file contains learned diagnostic insights that grow with use — the agent saves marketing knowledge here when users provide corrections or new insights during operations.
 
 Use `mureo.context.state` to parse and write STATE.json programmatically.
 

@@ -49,3 +49,5 @@ Generate a weekly marketing operations report.
     - Recommendations for next week
 
 11. **Log to action_log** in STATE.json that a weekly report was generated, including the reporting period.
+
+12. **Diagnosis learning**: If during this workflow the user corrected your analysis or pointed out something you missed, propose saving the insight to `skills/mureo-pro-diagnosis/SKILL.md` under the "Learned Insights" section. Use the format documented in that file. Ask for approval before writing. Do NOT save to memory — save to the skill file.

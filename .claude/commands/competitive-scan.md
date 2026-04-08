@@ -36,3 +36,5 @@ Scan the competitive landscape and suggest strategic responses across all channe
 10. **Update STRATEGY.md** Market Context section if approved.
 
 11. **Update STATE.json** with competitive insights in campaign notes.
+
+12. **Diagnosis learning**: If during this workflow the user corrected your analysis or pointed out something you missed, propose saving the insight to `skills/mureo-pro-diagnosis/SKILL.md` under the "Learned Insights" section. Use the format documented in that file. Ask for approval before writing. Do NOT save to memory — save to the skill file.

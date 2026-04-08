@@ -49,4 +49,6 @@ Review progress toward all marketing goals across all platforms.
    - Log the review to `action_log` with a summary of Goal statuses
    - Update Current values in STRATEGY.md Goal sections if approved
 
+10. **Diagnosis learning**: If during this workflow the user corrected your analysis or pointed out something you missed, propose saving the insight to `skills/mureo-pro-diagnosis/SKILL.md` under the "Learned Insights" section. Use the format documented in that file. Ask for approval before writing. Do NOT save to memory — save to the skill file.
+
 IMPORTANT: When updating Goal "Current" values in STRATEGY.md, ask for approval first.

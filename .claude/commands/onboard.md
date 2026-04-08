@@ -34,6 +34,14 @@ Guide me through setting up mureo for a new marketing account.
 
 7. **Initial diagnosis**: Run health checks on each configured ad platform using the platform's diagnostic tools. If Search Console is available, run a top-queries check to establish an organic baseline. If GA4 is available, check overall site conversion metrics.
 
-8. **Summary**: Show what was set up — platforms discovered, data sources available, goals defined — and recommend next steps.
+8. **Structural and conversion adequacy assessment** (apply learned insights from `mureo-pro-diagnosis` skill if available):
+   - **Structure check**: Is the account structure appropriate for the budget? Calculate budget-per-ad-group ratios. Flag structural dispersion issues.
+   - **Conversion strategy check**: Are there enough conversions for the current bidding strategy? If monthly conversions < 30 per campaign, recommend micro-conversions (pricing page views, contact page views, etc.) or bid strategy adjustment.
+   - **Low-volume account check**: If total account conversions < 50/month, recommend concentrating budget and simplifying structure. Set appropriate expectations for optimization timelines.
+   - Present findings with specific recommendations, not just raw metrics.
+
+9. **Summary**: Show what was set up — platforms discovered, data sources available, goals defined — and recommend next steps.
+
+10. **Diagnosis learning**: If during this workflow the user corrected your analysis or pointed out something you missed, propose saving the insight to `skills/mureo-pro-diagnosis/SKILL.md` under the "Learned Insights" section. Use the format documented in that file. Ask for approval before writing. Do NOT save to memory — save to the skill file.
 
 IMPORTANT: Ask me questions interactively — don't assume answers. Each STRATEGY.md section should reflect MY actual business, not generic examples.

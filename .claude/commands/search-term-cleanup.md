@@ -41,4 +41,6 @@ Review and clean up search terms and keywords across all platforms.
 
 12. **Update STATE.json** with notes about the cleanup.
 
+13. **Diagnosis learning**: If during this workflow the user corrected your analysis or pointed out something you missed, propose saving the insight to `skills/mureo-pro-diagnosis/SKILL.md` under the "Learned Insights" section. Use the format documented in that file. Ask for approval before writing. Do NOT save to memory — save to the skill file.
+
 IMPORTANT: Always explain WHY a term should be excluded/added, referencing the Persona or USP from STRATEGY.md. Consult past action_log entries — if a similar cleanup was previously evaluated, reference whether it was effective.
