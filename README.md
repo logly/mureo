@@ -3,44 +3,18 @@
 </p>
 
 <p align="center">
-  <strong>An ad operations framework that learns your playbook.</strong><br>
-  Give your AI agent strategy context, cross-platform orchestration, and operational know-how<br>
-  that accumulates with every session -- so it operates your ad accounts like an experienced marketer.
-</p>
-
-<p align="center">
   <a href="README.ja.md">日本語</a>
 </p>
 
----
+## What is mureo?
 
-**Day 1** -- The agent checks your Google Ads and Meta Ads, diagnoses delivery issues with 30+ reason codes, and cross-references with organic search data. It's already more thorough than a manual check.
+**mureo** is a framework that enables AI agents to operate ad accounts. It provides workflow commands that orchestrate across Google Ads, Meta Ads, Search Console, and GA4, along with built-in marketing expertise -- campaign diagnostics, search term analysis, budget evaluation, ad validation, and more. Every operation is grounded in your business strategy (`STRATEGY.md`), so the agent makes decisions based on your persona, USP, goals, and brand voice -- not just raw metrics.
 
-**Day 30** -- You've corrected the agent a few times: "that CPA spike is seasonal," "this account always dips on Mondays," "ignore that metric for B2B clients." Every correction was saved to the knowledge base. Now the agent catches seasonal patterns before you do, skips the false alarms, and flags the issues that actually matter for *your* account.
+mureo also learns. When you correct the agent's analysis or share an operational insight, `/learn-diagnosis` saves it to a persistent knowledge base. That knowledge is automatically loaded in every future session, so the agent gets increasingly attuned to your account's specific patterns and makes better decisions over time.
 
-**That's what mureo does.** It gives AI agents the three things they can't get from raw API access: your business strategy, cross-platform awareness, and operational know-how that grows with use.
+## Features
 
----
-
-## How it works
-
-### Operational knowledge that grows with you
-
-Most AI tools start from zero every session. mureo accumulates operational know-how.
-
-When you correct the agent or share an insight, `/learn-diagnosis` saves it to a persistent knowledge base. The agent reads this knowledge base at the start of every session. Your corrections compound -- the agent doesn't make the same mistake twice, and it applies what it learned from one campaign to similar situations across your account.
-
-```
-You: "That's not a real CPA spike -- this industry always dips in Golden Week."
-Agent: Saved. I'll flag this as seasonal next time.
-
-→ Written to the diagnostic knowledge base.
-→ Every future /daily-check and /rescue will factor this in.
-```
-
-This isn't prompt memory that disappears. It's a structured knowledge file that persists across sessions, grows over time, and makes the agent increasingly effective at operating *your specific accounts*.
-
-### Strategy as a first-class input
+### Strategy-driven decisions
 
 Every operation starts from `STRATEGY.md` -- your persona, USP, brand voice, goals, and operation mode. The agent doesn't just optimize metrics; it optimizes toward your business objectives.
 
@@ -50,9 +24,9 @@ Every operation starts from `STRATEGY.md` -- your persona, USP, brand voice, goa
 /rescue cross-references your Goals before recommending what to fix first.
 ```
 
-### Cross-platform orchestration
+### Cross-platform analysis
 
-Most tools automate one platform. mureo orchestrates across Google Ads, Meta Ads, Search Console, and GA4 in a single workflow:
+mureo orchestrates across Google Ads, Meta Ads, Search Console, and GA4 in a single workflow:
 
 - `/daily-check` -- pulls delivery status, ad performance, organic search trends, and site behavior across all platforms, then correlates them into one health report.
 - `/search-term-cleanup` -- compares paid keywords against organic rankings to eliminate wasteful overlap.
@@ -60,16 +34,28 @@ Most tools automate one platform. mureo orchestrates across Google Ads, Meta Ads
 
 The agent auto-discovers your configured platforms. Add Meta Ads later? Every command adapts automatically.
 
-### Built-in marketing intelligence
+### Built-in marketing expertise
 
-Campaign diagnostics with 30+ reason codes. Search term intent classification. Budget efficiency scoring. RSA ad validation and asset auditing. Landing page analysis. Device-level CPA gap detection. This is the kind of knowledge experienced ad operators carry in their heads -- built into every workflow.
+Campaign diagnostics that pinpoint *why* ads aren't delivering -- budget constraints, bidding misconfiguration, policy disapprovals, and more. Search term intent classification. Budget efficiency scoring. RSA ad validation and asset auditing. Landing page analysis. Device-level CPA gap detection. The kind of knowledge experienced ad operators carry in their heads -- built into every workflow.
+
+### Learnable operational know-how
+
+When you correct the agent or share an operational insight, `/learn-diagnosis` saves it to a persistent knowledge base. That knowledge is loaded at the start of every future session, so the agent doesn't repeat the same mistakes and applies what it learned to similar situations across your account.
+
+```
+You: "That's not a real CPA spike -- this industry always dips in Golden Week."
+Agent: Saved. I'll flag this as seasonal next time.
+
+→ Written to the diagnostic knowledge base.
+→ Every future /daily-check and /rescue will factor this in.
+```
 
 <details>
 <summary>Full capability list</summary>
 
 | Area | Capabilities |
 |------|-------------|
-| **Diagnostics** | 30+ delivery reason codes, learning period detection, smart bidding classification, zero-conversion root cause analysis |
+| **Diagnostics** | Automatic root cause identification for delivery issues (budget, bidding, policy, structure), learning period detection, smart bidding classification, zero-conversion analysis |
 | **Performance** | Period-over-period comparison, cost spike investigation, cross-campaign health checks, CPA/CV goal tracking |
 | **Search terms** | N-gram distribution, intent pattern detection, add/exclude candidate scoring, paid vs organic overlap analysis |
 | **Creative** | RSA validation (prohibited expressions, character width, ad strength prediction), asset-level performance audit, LP analysis, message match scoring |
@@ -147,7 +133,7 @@ You approve → Agent updates each platform.
 
 | Capability | Description |
 |------------|-------------|
-| Campaign diagnostics | Delivery status analysis with 30+ reason codes, learning period detection, smart bidding classification |
+| Campaign diagnostics | Automatic root cause identification for delivery issues, learning period detection, smart bidding classification |
 | Performance analysis | Period-over-period comparison, cost increase investigation, cross-campaign health checks |
 | Search term analysis | N-gram distribution, intent pattern detection, automated add/exclude candidate scoring |
 | Budget efficiency | Cross-campaign budget allocation analysis, reallocation recommendations |
