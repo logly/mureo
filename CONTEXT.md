@@ -9,9 +9,9 @@ and workflow commands to manage marketing operations across multiple platforms.
 All outputs are structured JSON — designed for machine consumption.
 
 **Supported platforms (built-in):**
-- Google Ads (82 MCP tools)
-- Meta Ads (77 MCP tools)
-- Google Search Console (10 MCP tools)
+- Google Ads
+- Meta Ads
+- Google Search Console
 
 **Companion data sources (external MCP):**
 - GA4 (via Google's official MCP)
@@ -66,18 +66,18 @@ Add to your MCP client configuration:
 }
 ```
 
-The MCP server exposes 169 tools (82 Google Ads + 77 Meta Ads + 10 Search Console).
+The MCP server exposes tools for Google Ads, Meta Ads, and Search Console.
 
 ### Google Ads Tools (prefix: `google_ads.`)
 
-82 tools covering campaigns, ad groups, ads, keywords, budget, accounts, search terms,
+Tools covering campaigns, ad groups, ads, keywords, budget, accounts, search terms,
 extensions, conversions, targeting, analysis, B2B, creative, monitoring, capture, and assets.
 
 See `skills/mureo-google-ads/SKILL.md` for the full tool reference.
 
 ### Meta Ads Tools (prefix: `meta_ads.`)
 
-77 tools covering campaigns, ad sets, ads, insights, analysis, audiences, pixels,
+Tools covering campaigns, ad sets, ads, insights, analysis, audiences, pixels,
 conversions API, creatives, images, catalogs, lead ads, videos, split tests, ad rules,
 page posts, and Instagram.
 
@@ -85,7 +85,7 @@ See `skills/mureo-meta-ads/SKILL.md` for the full tool reference.
 
 ### Search Console Tools (prefix: `search_console.`)
 
-10 tools covering site management, search analytics, URL inspection, sitemaps, and indexing.
+Tools covering site management, search analytics, URL inspection, sitemaps, and indexing.
 
 See `docs/integrations.md` (Search Console section) for the full tool reference.
 
@@ -110,7 +110,7 @@ mureo auth check-google    # Verify Google Ads credentials
 mureo auth check-meta      # Verify Meta Ads credentials
 ```
 
-Ad platform operations are available through MCP tools (169 tools), not the CLI.
+Ad platform operations are available through MCP tools, not the CLI.
 
 ## Output Format
 

@@ -12,8 +12,8 @@ Thank you for your interest in contributing to mureo. This guide covers the deve
 ### Clone and Install
 
 ```bash
-git clone https://github.com/yourorg/mureo-core.git
-cd mureo-core
+git clone https://github.com/logly/mureo.git
+cd mureo
 
 # Install with dev tools
 pip install -e ".[dev]"
@@ -46,7 +46,7 @@ pytest tests/ -v
 pytest --cov=mureo --cov-report=term-missing
 ```
 
-**Minimum coverage: 80%.** The CI pipeline will fail if coverage drops below this threshold (configured in `pyproject.toml`). The current test suite has 1165 tests with 95% coverage.
+**Minimum coverage: 80%.** The CI pipeline will fail if coverage drops below this threshold (configured in `pyproject.toml`). Coverage must stay at or above 80%.
 
 ### Test Markers
 
@@ -222,7 +222,7 @@ When adding a new MCP tool:
 ## Project Structure
 
 ```
-mureo-core/
+mureo/
 ├── mureo/               # Source package
 │   ├── __init__.py
 │   ├── auth.py

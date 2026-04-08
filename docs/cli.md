@@ -1,6 +1,6 @@
 # CLI Guide
 
-mureo provides a command-line interface for setup, authentication, and environment configuration. Ad platform operations are handled through MCP tools (169 tools) used by AI agents, not through the CLI.
+mureo provides a command-line interface for setup, authentication, and environment configuration. Ad platform operations are handled through MCP tools used by AI agents, not through the CLI.
 
 ## Installation
 
@@ -33,8 +33,8 @@ One-command setup that handles:
 1. Google Ads / Meta Ads authentication (OAuth)
 2. MCP server configuration (`~/.claude/settings.json`)
 3. Credential guard (blocks AI agents from reading secrets)
-4. 10 workflow commands (`~/.claude/commands/`)
-5. 6 skills (`~/.claude/skills/`)
+4. Workflow commands (`~/.claude/commands/`)
+5. Skills (`~/.claude/skills/`)
 
 Use `--skip-auth` to install commands, skills, MCP config, and credential guard without running OAuth:
 
@@ -96,6 +96,6 @@ Secrets are masked, showing only the last 4 characters.
 
 ## Ad Platform Operations
 
-Ad platform operations (listing campaigns, creating ads, analyzing performance, etc.) are available through **169 MCP tools**, not the CLI. AI agents (Claude Code, Cursor) call these tools directly.
+Ad platform operations (listing campaigns, creating ads, analyzing performance, etc.) are available through **MCP tools**, not the CLI. AI agents (Claude Code, Cursor) call these tools directly.
 
 See [mcp-server.md](mcp-server.md) for the full tool reference.

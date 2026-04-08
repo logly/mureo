@@ -73,9 +73,9 @@ Or use `uv` to run it:
 }
 ```
 
-## Tool Reference (169 tools)
+## Tool Reference
 
-### Google Ads (82 tools)
+### Google Ads
 
 #### Campaigns
 
@@ -253,7 +253,7 @@ Or use `uv` to run it:
 |------|-------------|-------------------|
 | `google_ads.assets.upload_image` | Upload a local image file as a Google Ads asset | `customer_id`, `file_path` |
 
-### Meta Ads (77 tools)
+### Meta Ads
 
 #### Campaigns
 
@@ -421,7 +421,7 @@ Or use `uv` to run it:
 | `meta_ads.instagram.media` | List Instagram posts | `account_id`, `ig_user_id` |
 | `meta_ads.instagram.boost` | Boost an Instagram post (create ad from post) | `account_id`, `ig_user_id`, `media_id`, `ad_set_id` |
 
-### Search Console (10 tools)
+### Search Console
 
 Search Console tools reuse the same Google OAuth2 credentials as Google Ads -- no additional authentication is required.
 

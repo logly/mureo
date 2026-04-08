@@ -49,7 +49,7 @@ This is where mureo's workflow commands, domain knowledge (skills), and the AI a
 
 #### PDCA Operational Loop
 
-The 10 workflow commands form a continuous Plan-Do-Check-Act cycle: `/onboard` defines strategy and goals (Plan); `/daily-check` and its downstream commands execute operations (Do); `/goal-review` and `/weekly-report` evaluate progress (Check); and `/goal-review` recommendations feed back into the Do phase by adjusting the Operation Mode, which changes how every command behaves (Act). This loop runs daily (Do) and weekly (Check), with the Act phase closing the loop by updating STRATEGY.md when conditions change. See `skills/mureo-workflows/SKILL.md` for the full PDCA diagram and Operation Mode transition rules.
+The workflow commands form a continuous Plan-Do-Check-Act cycle: `/onboard` defines strategy and goals (Plan); `/daily-check` and its downstream commands execute operations (Do); `/goal-review` and `/weekly-report` evaluate progress (Check); and `/goal-review` recommendations feed back into the Do phase by adjusting the Operation Mode, which changes how every command behaves (Act). This loop runs daily (Do) and weekly (Check), with the Act phase closing the loop by updating STRATEGY.md when conditions change. See `skills/mureo-workflows/SKILL.md` for the full PDCA diagram and Operation Mode transition rules.
 
 ### Tool Connection Layer
 
@@ -106,21 +106,21 @@ mureo/
 │   ├── main.py              # Entry point (mureo command)
 │   ├── setup_cmd.py         # mureo setup claude-code / cursor
 │   └── auth_cmd.py          # mureo auth setup / status / check-*
-└── mcp/                     # MCP server (169 tools)
+└── mcp/                     # MCP server
     ├── __main__.py                        # python -m mureo.mcp entry point
     ├── server.py                          # MCP server setup (stdio transport)
     ├── _helpers.py                        # Shared handler utilities
-    ├── tools_google_ads.py                # 82 Google Ads tool definitions (aggregator)
+    ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
     ├── _tools_google_ads_*.py             # Tool definition sub-modules
     ├── _handlers_google_ads.py            # Google Ads base handlers
     ├── _handlers_google_ads_extensions.py # Extensions handlers
     ├── _handlers_google_ads_analysis.py   # Analysis handlers
-    ├── tools_meta_ads.py                  # 77 Meta Ads tool definitions (aggregator)
+    ├── tools_meta_ads.py                  # Meta Ads tool definitions (aggregator)
     ├── _tools_meta_ads_*.py               # Tool definition sub-modules
     ├── _handlers_meta_ads.py              # Meta Ads base handlers
     ├── _handlers_meta_ads_extended.py     # Extended handlers
     ├── _handlers_meta_ads_other.py        # Other handlers
-    ├── tools_search_console.py            # 10 Search Console tool definitions
+    ├── tools_search_console.py            # Search Console tool definitions
     └── _handlers_search_console.py        # Search Console handlers
 
 .claude/commands/                # Workflow slash commands for Claude Code
@@ -131,12 +131,15 @@ mureo/
 ├── creative-refresh.md          # Persona/USP-driven ad copy refresh
 ├── budget-rebalance.md          # Mode-guided budget reallocation
 ├── competitive-scan.md          # Auction analysis with Market Context
-└── sync-state.md                # Manual STATE.json synchronization
+├── sync-state.md                # Manual STATE.json synchronization
+└── learn-diagnosis.md           # Save diagnostic insights to knowledge base
 
 skills/mureo-workflows/          # Workflow skill reference
 │   └── SKILL.md                 # Orchestration paradigm + Operation Mode reference
 skills/mureo-learning/           # Evidence-based decision framework
 │   └── SKILL.md                 # Statistical thinking for marketing decisions
+skills/mureo-pro-diagnosis/      # Learnable diagnostic knowledge base
+│   └── SKILL.md                 # Diagnostic insights (grows with /learn-diagnosis)
 ```
 
 ## Design Principles
@@ -329,7 +332,7 @@ When loading Meta Ads credentials, `mureo/auth.py` checks the `token_obtained_at
 
 ## Command-Based Workflow System
 
-In addition to the 169 individual MCP tools, mureo provides 10 **workflow commands** as Claude Code slash commands (`.claude/commands/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
+In addition to the 169 individual MCP tools, mureo provides **workflow commands** as Claude Code slash commands (`.claude/commands/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 
@@ -353,7 +356,7 @@ User runs /daily-check in Claude Code
 
 ### Commands
 
-All 10 commands follow the same orchestration pattern: **discover platforms → select tools → correlate data sources → present unified results**. Commands do not hardcode tool names; the AI agent chooses appropriate tools per platform at runtime.
+All commands follow the same orchestration pattern: **discover platforms → select tools → correlate data sources → present unified results**. Commands do not hardcode tool names; the AI agent chooses appropriate tools per platform at runtime.
 
 | Command | Purpose | Strategy Sections Used |
 |---------|---------|-----------------------|
@@ -367,5 +370,6 @@ All 10 commands follow the same orchestration pattern: **discover platforms → 
 | `/goal-review` | Multi-source goal evaluation | Operation Mode, Goals, Data Sources |
 | `/weekly-report` | Cross-platform weekly report | All sections |
 | `/sync-state` | Multi-platform state synchronization | *(writes STATE.json)* |
+| `/learn-diagnosis` | Save diagnostic insights to knowledge base | *(writes SKILL.md)* |
 
 The workflow skill reference (`skills/mureo-workflows/SKILL.md`) documents the full set of Operation Modes and their behavioral implications for each command, as well as cross-platform data correlation patterns.

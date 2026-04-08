@@ -1,6 +1,6 @@
 # External Tool Integration Guide
 
-mureo's core value is orchestration — knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads (82 tools), Meta Ads (77 tools), and Google Search Console (10 tools). For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
+mureo's core value is orchestration — knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads, Meta Ads, and Google Search Console. For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
 
 ## How It Works
 
@@ -69,7 +69,7 @@ GA4 MCP servers typically require Google Cloud service account credentials or OA
 
 ### Status: Built into mureo
 
-Search Console is built into mureo as a first-party integration (10 MCP tools). It reuses the same Google OAuth2 credentials as Google Ads -- no additional authentication or configuration is required.
+Search Console is built into mureo as a first-party integration. It reuses the same Google OAuth2 credentials as Google Ads -- no additional authentication or configuration is required.
 
 ### What It Provides
 

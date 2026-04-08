@@ -247,7 +247,7 @@ If a file doesn't exist when reading, the functions return empty/default values 
 
 ## Workflow Commands: Strategy in Action
 
-The strategy context files are not just passive documentation -- they are actively consumed by mureo's **workflow commands** (`.claude/commands/`). These 10 slash commands bridge the gap between strategy and action by reading `STRATEGY.md` and `STATE.json`, then orchestrating the appropriate MCP tools.
+The strategy context files are not just passive documentation -- they are actively consumed by mureo's **workflow commands** (`.claude/commands/`). These slash commands bridge the gap between strategy and action by reading `STRATEGY.md` and `STATE.json`, then orchestrating the appropriate MCP tools.
 
 ### How Commands Use Strategy Context
 

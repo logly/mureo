@@ -3,127 +3,112 @@
 </p>
 
 <p align="center">
-  Marketing orchestration framework for AI agents.
+  <strong>An ad operations framework that learns your playbook.</strong><br>
+  Give your AI agent strategy context, cross-platform orchestration, and operational know-how<br>
+  that accumulates with every session -- so it operates your ad accounts like an experienced marketer.
 </p>
 
 <p align="center">
   <a href="README.ja.md">日本語</a>
 </p>
 
-## What is mureo?
+---
 
-**mureo** is a marketing orchestration framework that helps AI agents achieve real business goals — awareness, leads, sales, retention — not just execute API calls. It combines strategy context, workflow commands, and built-in domain knowledge to guide agents through marketing operations across multiple platforms.
+**Day 1** -- The agent checks your Google Ads and Meta Ads, diagnoses delivery issues with 30+ reason codes, and cross-references with organic search data. It's already more thorough than a manual check.
 
-If ad platforms release official MCP servers in the future, mureo can work alongside them or switch to them seamlessly. mureo's value is not in wrapping APIs — it is in the **orchestration layer on top**: knowing *what* to do, *when* to do it, and *why* — informed by your business strategy.
+**Day 30** -- You've corrected the agent a few times: "that CPA spike is seasonal," "this account always dips on Mondays," "ignore that metric for B2B clients." Every correction was saved to the knowledge base. Now the agent catches seasonal patterns before you do, skips the false alarms, and flags the issues that actually matter for *your* account.
 
-- **Strategy-driven** -- `STRATEGY.md` defines your persona, USP, brand voice, goals, and operation mode. Every decision the agent makes is grounded in your strategy, not just raw metrics.
-- **Workflow commands** -- 10 slash commands (`/daily-check`, `/rescue`, `/creative-refresh`, etc.) guide agents through complete marketing operations, connecting strategy context with the right tools in the right order.
-- **Cross-platform** -- orchestrates across Google Ads, Meta Ads, Search Console, and GA4 (with more platforms planned), enabling coordinated decisions that no single-platform tool can make.
-- **Built-in domain knowledge** -- analysis, diagnostics, and optimization logic that turns raw API data into actionable insights. Campaign diagnostics with 30+ reason codes, search term intent analysis, budget efficiency scoring, RSA validation, and more.
-- **MCP tools** -- 169 MCP tools for AI agents (Claude Code, Cursor, etc.). CLI is for setup and authentication only — ad operations are handled through MCP.
-- **No DB, no LLM dependency** -- mureo is the "hands" of your agent, not the "brain." All state lives in local files (`STRATEGY.md`, `STATE.json`) or the ad platforms themselves. All reasoning stays on the agent side.
+**That's what mureo does.** It gives AI agents the three things they can't get from raw API access: your business strategy, cross-platform awareness, and operational know-how that grows with use.
 
-### Analysis & Diagnostics
+---
 
-| Capability | Description |
-|------------|-------------|
-| **Campaign diagnostics** | Delivery status analysis with 30+ reason codes, learning period detection, smart bidding strategy classification |
-| **Performance analysis** | Period-over-period comparison, cost increase investigation, cross-campaign health checks |
-| **Search term analysis** | N-gram distribution, intent pattern detection, automated add/exclude candidate scoring |
-| **Budget efficiency** | Cross-campaign budget allocation analysis, reallocation recommendations |
-| **RSA ad validation** | Prohibited expression detection, character width calculation, auto-correction, ad strength prediction |
-| **RSA asset audit** | Asset-level performance analysis, replacement/addition recommendations |
-| **Device analysis** | CPA gap detection, zero-conversion device identification |
-| **Auction insights** | Competitive landscape analysis, impression share trends |
-| **B2B optimization** | Industry-specific campaign checks and recommendations |
+## How it works
 
-### Creative & Landing Page
+### Operational knowledge that grows with you
 
-| Capability | Description |
-|------------|-------------|
-| **Landing page analysis** | HTML parsing with SSRF protection, structured data extraction, industry estimation, CTA/feature/price detection |
-| **Creative research** | Aggregates LP analysis + existing ads + search terms + keyword suggestions into a unified research package |
-| **Message match evaluation** | Framework for scoring ad copy ↔ landing page alignment (screenshot capture via Playwright) |
+Most AI tools start from zero every session. mureo accumulates operational know-how.
 
-### Monitoring & Goal Evaluation
+When you correct the agent or share an insight, `/learn-diagnosis` saves it to a persistent knowledge base. The agent reads this knowledge base at the start of every session. Your corrections compound -- the agent doesn't make the same mistake twice, and it applies what it learned from one campaign to similar situations across your account.
 
-| Capability | Description |
-|------------|-------------|
-| **Delivery goal evaluation** | Integrates campaign status + diagnostics + performance into critical/warning/healthy classification |
-| **CPA goal tracking** | Compares actual CPA against targets with trend analysis |
-| **CV goal tracking** | Daily conversion volume monitoring against targets |
-| **Zero-conversion diagnosis** | Root cause analysis for campaigns with no conversions |
+```
+You: "That's not a real CPA spike -- this industry always dips in Golden Week."
+Agent: Saved. I'll flag this as seasonal next time.
 
-### Meta Ads Analysis
+→ Written to the diagnostic knowledge base.
+→ Every future /daily-check and /rescue will factor this in.
+```
 
-| Capability | Description |
-|------------|-------------|
-| **Placement analysis** | Performance breakdown by publisher platform (Facebook, Instagram, Audience Network) |
-| **Cost investigation** | CPA degradation root cause analysis |
-| **Ad comparison** | A/B performance comparison within ad sets |
-| **Creative suggestions** | Data-driven creative improvement recommendations |
-| **PII hashing** | SHA-256 hashing with field-specific normalization for Conversions API compliance |
+This isn't prompt memory that disappears. It's a structured knowledge file that persists across sessions, grows over time, and makes the agent increasingly effective at operating *your specific accounts*.
 
-### Infrastructure
+### Strategy as a first-class input
 
-| Capability | Description |
-|------------|-------------|
-| **Rate limiting** | Token bucket + hourly cap prevents API bans from high-speed agent requests |
-| **Token auto-refresh** | Meta Ads Long-Lived Tokens automatically refreshed before 60-day expiry |
-| **Strategy context** | Markdown-based strategy persistence (STRATEGY.md) + JSON campaign state (STATE.json) |
-| **Image/video validation** | Path traversal prevention, extension allowlists, size limits on uploads |
+Every operation starts from `STRATEGY.md` -- your persona, USP, brand voice, goals, and operation mode. The agent doesn't just optimize metrics; it optimizes toward your business objectives.
+
+```
+/creative-refresh reads your Persona and USP before drafting a single headline.
+/budget-rebalance checks your Operation Mode before shifting a single dollar.
+/rescue cross-references your Goals before recommending what to fix first.
+```
+
+### Cross-platform orchestration
+
+Most tools automate one platform. mureo orchestrates across Google Ads, Meta Ads, Search Console, and GA4 in a single workflow:
+
+- `/daily-check` -- pulls delivery status, ad performance, organic search trends, and site behavior across all platforms, then correlates them into one health report.
+- `/search-term-cleanup` -- compares paid keywords against organic rankings to eliminate wasteful overlap.
+- `/competitive-scan` -- combines auction insights with organic position data for a complete competitive picture.
+
+The agent auto-discovers your configured platforms. Add Meta Ads later? Every command adapts automatically.
+
+### Built-in marketing intelligence
+
+Campaign diagnostics with 30+ reason codes. Search term intent classification. Budget efficiency scoring. RSA ad validation and asset auditing. Landing page analysis. Device-level CPA gap detection. This is the kind of knowledge experienced ad operators carry in their heads -- built into every workflow.
+
+<details>
+<summary>Full capability list</summary>
+
+| Area | Capabilities |
+|------|-------------|
+| **Diagnostics** | 30+ delivery reason codes, learning period detection, smart bidding classification, zero-conversion root cause analysis |
+| **Performance** | Period-over-period comparison, cost spike investigation, cross-campaign health checks, CPA/CV goal tracking |
+| **Search terms** | N-gram distribution, intent pattern detection, add/exclude candidate scoring, paid vs organic overlap analysis |
+| **Creative** | RSA validation (prohibited expressions, character width, ad strength prediction), asset-level performance audit, LP analysis, message match scoring |
+| **Budget** | Cross-campaign allocation analysis, reallocation recommendations, efficiency scoring |
+| **Competitive** | Auction insights, impression share trends, organic position correlation |
+| **Meta Ads** | Placement analysis (Facebook/Instagram/Audience Network), cost investigation, A/B comparison, creative suggestions |
+| **Monitoring** | Delivery goal evaluation, CPA/CV goal tracking, device analysis, B2B-specific checks |
+
+</details>
 
 ## Workflow Commands
 
-Beyond individual MCP tools, mureo provides **10 slash commands** for Claude Code that connect your strategy (`STRATEGY.md`) with the 169 MCP tools to enable strategy-driven ad operations.
-
-### How it works
-
-Commands are **platform-agnostic orchestration instructions**. They do not hardcode which tools to call. Instead, each command tells the AI agent:
-
-1. **Discover platforms** — check STATE.json to see which platforms are configured
-2. **Choose tools** — select appropriate MCP tools for each discovered platform
-3. **Correlate data sources** — combine ad platform data with Search Console (organic search) and GA4 (on-site behavior) when available
-4. **Synthesize insights** — produce unified cross-platform recommendations
-5. **Ask before acting** — get user approval for any write operation
-
-This means adding a new platform (e.g., TikTok Ads) requires no command changes. The agent automatically adapts based on what is configured.
-
-Three layers work together:
-
-| Layer | Role | Example (`/creative-refresh`) |
-|-------|------|-------------------------------|
-| **mureo (MCP tools)** | Data retrieval, analysis, validation | Creative audit, LP analysis, text validation across all platforms |
-| **AI agent (LLM)** | Platform discovery, tool selection, creative generation | Detects configured platforms, drafts platform-appropriate creatives from Persona + USP |
-| **You (human)** | Final approval | Review and approve before any changes are made |
-
-### Commands
-
-| Command | Purpose | Data sources |
-|---------|---------|--------------|
-| `/onboard` | Discover platforms, generate STRATEGY.md, initialize STATE.json | All configured |
-| `/daily-check` | Cross-platform health monitoring with organic pulse and on-site correlation | Ad platforms + Search Console + GA4 |
-| `/rescue` | Emergency performance fix with site-side vs platform-side diagnosis | Ad platforms + GA4 |
-| `/search-term-cleanup` | Keyword hygiene with paid/organic overlap analysis | Ad platforms + Search Console + GA4 |
-| `/creative-refresh` | Multi-platform creative refresh with organic keyword insights | Ad platforms + Search Console + GA4 |
-| `/budget-rebalance` | Cross-platform budget optimization with organic coverage awareness | Ad platforms + Search Console + GA4 |
-| `/competitive-scan` | Paid + organic competitive landscape analysis | Ad platforms + Search Console + GA4 |
-| `/goal-review` | Multi-source goal progress evaluation | All platforms + all data sources |
-| `/weekly-report` | Cross-platform weekly operations report | All platforms + all data sources |
-| `/sync-state` | Multi-platform STATE.json synchronization | All configured |
+| Command | What it does |
+|---------|-------------|
+| `/onboard` | Discover your platforms, generate STRATEGY.md, initialize STATE.json |
+| `/daily-check` | Cross-platform health monitoring + organic pulse + site behavior correlation |
+| `/rescue` | Emergency performance fix: platform-side vs site-side root cause diagnosis |
+| `/search-term-cleanup` | Keyword hygiene with paid/organic overlap elimination |
+| `/creative-refresh` | Multi-platform ad copy refresh using your Persona, USP, and organic keyword data |
+| `/budget-rebalance` | Cross-platform budget optimization informed by organic coverage |
+| `/competitive-scan` | Paid + organic competitive landscape analysis |
+| `/goal-review` | Multi-source goal progress evaluation with operation mode recommendations |
+| `/weekly-report` | Cross-platform weekly operations summary |
+| `/sync-state` | Refresh STATE.json from live platform data |
+| `/learn-diagnosis` | Save a diagnostic insight to the knowledge base for future sessions |
 
 ### Getting started
 
-Run `/onboard` first to set up your account and generate STRATEGY.md. Then use `/daily-check` for routine monitoring:
-
 ```
-# In Claude Code
+pip install mureo
+mureo setup claude-code
+
+# Then in Claude Code:
 /onboard          # First time: set up strategy + state
-/daily-check      # Routine: check all campaigns
+/daily-check      # Daily: check all campaigns
 /rescue           # When performance drops
 ```
 
-### Example: `/creative-refresh` flow
+### Example: `/creative-refresh` in action
 
 ```
 You: /creative-refresh
@@ -132,31 +117,73 @@ Agent reads STRATEGY.md:
   Persona: "Budget-constrained SaaS marketer"
   USP: "AI reduces ad ops workload by 10h/week"
   Brand Voice: "Data-driven, no hype"
-  Data Sources: Google Ads, Meta Ads, Search Console, GA4
 
-Agent discovers configured platforms from STATE.json:
-  → Google Ads + Meta Ads
+Agent discovers platforms from STATE.json:
+  → Google Ads + Meta Ads configured
 
-Agent calls tools across platforms and data sources:
-  → Creative audit on each ad platform → 3 underperforming assets
-  → Landing page analysis → LP highlights: free trial, ROI improvement
-  → Search Console top queries → "ad automation" has strong organic clicks
-  → GA4 LP engagement → high bounce rate on pricing page
+Agent pulls data across platforms and data sources:
+  → Creative audit         → 3 underperforming Google Ads assets
+  → Landing page analysis  → LP highlights: free trial, ROI improvement
+  → Search Console         → "ad automation" has strong organic clicks
+  → GA4                    → high bounce rate on pricing page
 
-Agent (LLM) generates platform-appropriate copy:
-  Google Ads (search): "Cut Ad Ops Time by 60% with AI"  ← Persona pain point
-  Google Ads (search): "Free Trial | Ad Automation"       ← LP + organic keyword
-  Meta Ads (social):   "Stop drowning in ad reports..."   ← Brand Voice + social format
+Agent generates platform-appropriate copy from your strategy:
+  Google Ads: "Cut Ad Ops Time by 60% with AI"  ← Persona pain point
+  Google Ads: "Free Trial | Ad Automation"       ← LP + organic keyword
+  Meta Ads:   "Stop drowning in ad reports..."   ← Brand Voice + social format
 
-Agent calls validation tools for each platform.
-
-Agent presents recommendations grouped by platform for approval:
+Agent validates, then asks for approval:
   "I suggest replacing 3 Google Ads headlines and 2 Meta ads. Here's why..."
 
-You approve → Agent calls each platform's update tools.
+You approve → Agent updates each platform.
 ```
 
-Commands use the strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) to tailor their behavior. See [skills/mureo-workflows/SKILL.md](skills/mureo-workflows/SKILL.md) for the full Operation Mode reference.
+### Analysis & domain knowledge (built-in)
+
+<details>
+<summary>Click to expand full capability list</summary>
+
+**Campaign Diagnostics & Performance**
+
+| Capability | Description |
+|------------|-------------|
+| Campaign diagnostics | Delivery status analysis with 30+ reason codes, learning period detection, smart bidding classification |
+| Performance analysis | Period-over-period comparison, cost increase investigation, cross-campaign health checks |
+| Search term analysis | N-gram distribution, intent pattern detection, automated add/exclude candidate scoring |
+| Budget efficiency | Cross-campaign budget allocation analysis, reallocation recommendations |
+| Device analysis | CPA gap detection, zero-conversion device identification |
+| Auction insights | Competitive landscape analysis, impression share trends |
+| B2B optimization | Industry-specific campaign checks and recommendations |
+
+**Creative & Landing Page**
+
+| Capability | Description |
+|------------|-------------|
+| RSA ad validation | Prohibited expression detection, character width calculation, auto-correction, ad strength prediction |
+| RSA asset audit | Asset-level performance analysis, replacement/addition recommendations |
+| Landing page analysis | HTML parsing with SSRF protection, CTA/feature/price detection, industry estimation |
+| Creative research | Aggregates LP + existing ads + search terms + keyword suggestions into a unified research package |
+| Message match evaluation | Ad copy <-> landing page alignment scoring (screenshot capture via Playwright) |
+
+**Monitoring & Goals**
+
+| Capability | Description |
+|------------|-------------|
+| Delivery goal evaluation | Campaign status + diagnostics + performance -> critical/warning/healthy classification |
+| CPA goal tracking | Actual vs target CPA with trend analysis |
+| CV goal tracking | Daily conversion volume monitoring against targets |
+| Zero-conversion diagnosis | Root cause analysis for campaigns with no conversions |
+
+**Meta Ads Analysis**
+
+| Capability | Description |
+|------------|-------------|
+| Placement analysis | Performance breakdown by Facebook, Instagram, Audience Network |
+| Cost investigation | CPA degradation root cause analysis |
+| Ad comparison | A/B performance comparison within ad sets |
+| Creative suggestions | Data-driven creative improvement recommendations |
+
+</details>
 
 ## Quick Start
 
@@ -171,8 +198,8 @@ This single command handles everything:
 1. Google Ads / Meta Ads authentication (OAuth)
 2. MCP server configuration for Claude Code
 3. Credential guard (blocks AI agents from reading secrets)
-4. 10 workflow commands (`/daily-check`, `/rescue`, etc.)
-5. 6 skills (tool references, strategy guide, evidence-based decisions)
+4. Workflow commands (`/daily-check`, `/rescue`, `/learn-diagnosis`, etc.)
+5. Skills (tool references, strategy guide, evidence-based decisions, diagnostic knowledge)
 
 After setup, run `/onboard` in Claude Code to get started.
 
@@ -183,7 +210,7 @@ pip install mureo
 mureo setup cursor
 ```
 
-Cursor supports MCP tools (169 tools) but does not support workflow commands or skills.
+Cursor supports MCP tools but does not support workflow commands or skills.
 
 ### CLI only (authentication management)
 
@@ -200,19 +227,20 @@ mureo auth status
 | Authentication (~/.mureo/credentials.json) | Yes | Yes | Yes |
 | MCP configuration | Yes | Yes | Yes |
 | Credential guard (PreToolUse hook) | Yes | N/A | Yes |
-| 10 workflow commands (~/.claude/commands/) | Yes | N/A | No |
-| 6 skills (~/.claude/skills/) | Yes | N/A | No |
+| Workflow commands (~/.claude/commands/) | Yes | N/A | No |
+| Skills (~/.claude/skills/) | Yes | N/A | No |
 
 ### Skills reference
 
 | Skill | Purpose |
 |-------|---------|
-| `mureo-google-ads` | Google Ads tool reference (82 tools, parameters, examples) |
-| `mureo-meta-ads` | Meta Ads tool reference (77 tools, parameters, examples) |
+| `mureo-google-ads` | Google Ads tool reference (parameters, examples) |
+| `mureo-meta-ads` | Meta Ads tool reference (parameters, examples) |
 | `mureo-shared` | Authentication, security rules, output formatting |
 | `mureo-strategy` | STRATEGY.md / STATE.json format and usage guide |
 | `mureo-workflows` | Orchestration paradigm, Operation Mode matrix, KPI thresholds, command reference |
 | `mureo-learning` | Evidence-based marketing decision framework (observation windows, sample sizes, noise guards) |
+| `mureo-pro-diagnosis` | Learnable diagnostic knowledge base (grows with use via `/learn-diagnosis`) |
 
 ### Connecting GA4 (Google Analytics 4)
 
@@ -361,9 +389,9 @@ Add to `.cursor/mcp.json`:
 }
 ```
 
-### Tool list (169 tools)
+### Tool list
 
-#### Google Ads (82 tools)
+#### Google Ads
 
 <details>
 <summary>Click to expand Google Ads tools</summary>
@@ -551,7 +579,7 @@ Add to `.cursor/mcp.json`:
 
 </details>
 
-#### Meta Ads (77 tools)
+#### Meta Ads
 
 <details>
 <summary>Click to expand Meta Ads tools</summary>
@@ -720,7 +748,7 @@ Add to `.cursor/mcp.json`:
 
 </details>
 
-#### Search Console (10 tools)
+#### Search Console
 
 <details>
 <summary>Click to expand Search Console tools</summary>
@@ -807,21 +835,21 @@ mureo/
 │   ├── main.py              # Entry point (mureo command)
 │   ├── setup_cmd.py         # mureo setup claude-code / cursor
 │   └── auth_cmd.py          # mureo auth setup / status / check-*
-└── mcp/                     # MCP server (169 tools)
+└── mcp/                     # MCP server
     ├── __main__.py                        # python -m mureo.mcp entry point
     ├── server.py                          # MCP server setup (stdio transport)
     ├── _helpers.py                        # Shared handler utilities
-    ├── tools_google_ads.py                # 82 Google Ads tool definitions (aggregator)
+    ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
     ├── _tools_google_ads_*.py             # Tool definition sub-modules
     ├── _handlers_google_ads.py            # Google Ads base handlers
     ├── _handlers_google_ads_extensions.py # Extensions handlers
     ├── _handlers_google_ads_analysis.py   # Analysis handlers
-    ├── tools_meta_ads.py                  # 77 Meta Ads tool definitions (aggregator)
+    ├── tools_meta_ads.py                  # Meta Ads tool definitions (aggregator)
     ├── _tools_meta_ads_*.py               # Tool definition sub-modules
     ├── _handlers_meta_ads.py              # Meta Ads base handlers
     ├── _handlers_meta_ads_extended.py     # Extended handlers
     ├── _handlers_meta_ads_other.py        # Other handlers
-    ├── tools_search_console.py            # 10 Search Console tool definitions
+    ├── tools_search_console.py            # Search Console tool definitions
     └── _handlers_search_console.py        # Search Console handlers
 ```
 

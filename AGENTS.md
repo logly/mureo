@@ -7,8 +7,8 @@ Guidelines for AI agents contributing to the mureo codebase.
 mureo is a marketing orchestration framework for AI agents. It combines strategy
 context, workflow commands, and domain knowledge to help agents achieve marketing
 goals across platforms. Currently supports Google Ads, Meta Ads, and Google Search Console, with more
-platforms planned. Provides 169 MCP tools for direct platform operations and
-10 workflow commands for strategy-driven ad operations via Claude Code slash commands.
+platforms planned. Provides MCP tools for direct platform operations and
+workflow commands for strategy-driven ad operations via Claude Code slash commands.
 Designed for AI agents — no database, no LLM SDK, no web framework.
 
 ## Build & Test
@@ -59,20 +59,20 @@ mureo/
 │   └── _ad_rules.py     # AdRulesMixin (automated rules)
 ├── search_console/      # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py        # SearchConsoleApiClient
-├── mcp/                 # MCP server (169 tools: 82 Google Ads + 77 Meta Ads + 10 Search Console)
+├── mcp/                 # MCP server (Google Ads + Meta Ads + Search Console)
 │   ├── server.py                          # MCP Server entry point (stdio-based)
 │   ├── _helpers.py                        # Shared handler utilities
-│   ├── tools_google_ads.py                # 82 Google Ads tool definitions (aggregator)
+│   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
 │   ├── _tools_google_ads_*.py             # Tool definition sub-modules
 │   ├── _handlers_google_ads.py            # Google Ads base handlers
 │   ├── _handlers_google_ads_extensions.py # Extensions handlers
 │   ├── _handlers_google_ads_analysis.py   # Analysis handlers
-│   ├── tools_meta_ads.py                  # 77 Meta Ads tool definitions (aggregator)
+│   ├── tools_meta_ads.py                  # Meta Ads tool definitions (aggregator)
 │   ├── _tools_meta_ads_*.py               # Tool definition sub-modules
 │   ├── _handlers_meta_ads.py              # Meta Ads base handlers
 │   ├── _handlers_meta_ads_extended.py     # Extended handlers
 │   ├── _handlers_meta_ads_other.py        # Other handlers
-│   ├── tools_search_console.py            # 10 Search Console tool definitions
+│   ├── tools_search_console.py            # Search Console tool definitions
 │   └── _handlers_search_console.py        # Search Console handlers
 ├── cli/                 # Typer CLI (setup + auth only; ad operations are via MCP)
 │   ├── main.py          # CLI entry point (`mureo` command)
@@ -85,7 +85,7 @@ mureo/
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   └── lp_analyzer.py   # Landing page analyzer
-.claude/commands/            # Workflow slash commands (10 orchestration commands)
+.claude/commands/            # Workflow slash commands (11 orchestration commands)
 │   ├── onboard.md           # Platform discovery + strategy setup
 │   ├── daily-check.md       # Cross-platform health monitoring (ad platforms + SC + GA4)
 │   ├── rescue.md            # Multi-platform emergency rescue (with GA4 site-side diagnosis)
@@ -95,20 +95,23 @@ mureo/
 │   ├── competitive-scan.md  # Paid + organic competitive landscape analysis
 │   ├── goal-review.md       # Multi-source goal evaluation
 │   ├── weekly-report.md     # Cross-platform weekly operations report
-│   └── sync-state.md        # Multi-platform STATE.json synchronization
+│   ├── sync-state.md        # Multi-platform STATE.json synchronization
+│   └── learn-diagnosis.md   # Save diagnostic insights to knowledge base
 skills/mureo-workflows/      # Workflow skill reference
 │   └── SKILL.md             # Orchestration paradigm + Operation Mode reference
 skills/mureo-learning/       # Evidence-based decision framework
 │   └── SKILL.md             # Statistical thinking for marketing decisions
+skills/mureo-pro-diagnosis/  # Learnable diagnostic knowledge base
+│   └── SKILL.md             # Diagnostic insights (grows with /learn-diagnosis)
 docs/integrations.md         # Platform discovery + external MCP integration guide
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
 ├── auth_setup.py        # Interactive setup wizard (browser OAuth flow)
 └── throttle.py          # Rate limiting (token bucket + rolling hourly cap)
 ```
 
-## MCP Tools (169 total)
+## MCP Tools
 
-### Google Ads (82 tools)
+### Google Ads
 
 | Category | Tools |
 |----------|-------|
@@ -133,7 +136,7 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 | CPC (1) | `cpc.detect_trend` |
 | Assets (1) | `assets.upload_image` |
 
-### Meta Ads (77 tools)
+### Meta Ads
 
 | Category | Tools |
 |----------|-------|
@@ -155,7 +158,7 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 | Page Posts (2) | `page_posts.list`, `page_posts.boost` |
 | Instagram (3) | `instagram.accounts`, `instagram.media`, `instagram.boost` |
 
-### Search Console (10 tools)
+### Search Console
 
 | Category | Tools |
 |----------|-------|
@@ -192,7 +195,7 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 
 ## Test Coverage
 
-- 40+ test files, 95% coverage, 1412 tests
+- 95% coverage
 - Target: 80% minimum (enforced by `tool.coverage.report.fail_under`)
 - Framework: pytest + pytest-asyncio
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests

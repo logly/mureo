@@ -14,7 +14,7 @@ metadata:
 # Google Ads (v18)
 > PREREQUISITE: Read `../mureo-shared/SKILL.md` for auth, global flags, and security rules.
 
-## Tool Summary (82 tools)
+## Tool Summary
 
 | # | Tool Name | Category | Type | Description |
 |---|-----------|----------|------|-------------|

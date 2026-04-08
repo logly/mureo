@@ -16,7 +16,7 @@ Operational workflow reference for strategy-driven marketing orchestration using
 
 ## Overview
 
-mureo provides 10 slash commands that orchestrate marketing operations across all configured platforms (Google Ads, Meta Ads, Search Console, GA4, and future platforms). Every command reads strategy context before taking action, discovers available platforms at runtime, and adapts its behavior to what is configured — no hardcoded platform assumptions.
+mureo provides slash commands that orchestrate marketing operations across all configured platforms (Google Ads, Meta Ads, Search Console, GA4, and future platforms). Every command reads strategy context before taking action, discovers available platforms at runtime, and adapts its behavior to what is configured — no hardcoded platform assumptions.
 
 ### Core Principles
 
@@ -40,10 +40,11 @@ mureo provides 10 slash commands that orchestrate marketing operations across al
 | `/goal-review` | Goal progress evaluation | Weekly | All platforms + all data sources |
 | `/weekly-report` | Weekly operations summary | Weekly | All platforms + all data sources |
 | `/sync-state` | State synchronization | As needed | All platforms |
+| `/learn-diagnosis` | Save diagnostic insights | As needed | All platforms |
 
 ## PDCA Operational Loop
 
-The 10 commands form a continuous **Plan-Do-Check-Act** cycle that drives all mureo operations:
+The commands form a continuous **Plan-Do-Check-Act** cycle that drives all mureo operations:
 
 ```
 Plan:  /onboard → Discover platforms, define strategy, set goals
@@ -260,9 +261,9 @@ mureo commands leverage data from all available sources. Built-in platforms (Goo
 
 | Type | Platform | Access | Required? |
 |------|----------|--------|-----------|
-| Built-in | Google Ads | mureo MCP (82 tools) | At least one ad platform |
-| Built-in | Meta Ads | mureo MCP (77 tools) | At least one ad platform |
-| Built-in | Search Console | mureo MCP (10 tools) | No — additive |
+| Built-in | Google Ads | mureo MCP | At least one ad platform |
+| Built-in | Meta Ads | mureo MCP | At least one ad platform |
+| Built-in | Search Console | mureo MCP | No — additive |
 | Companion | GA4 | Google's official MCP | No — additive |
 | Companion | CRM | Third-party MCP | No — additive |
 

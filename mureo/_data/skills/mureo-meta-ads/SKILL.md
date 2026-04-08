@@ -14,7 +14,7 @@ metadata:
 # Meta Ads (Marketing API v21.0)
 > PREREQUISITE: Read `../mureo-shared/SKILL.md` for auth, global flags, and security rules.
 
-## Tool Summary (77 tools)
+## Tool Summary
 
 | # | Tool Name | Category | Type | Description |
 |---|-----------|----------|------|-------------|
