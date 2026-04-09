@@ -8,9 +8,10 @@
 
 ## mureoとは
 
-**mureo** は、AIエージェントに広告アカウントを運用させるためのフレームワークです。Google広告、Meta広告、Search Console、GA4を横断するワークフローコマンドと、配信診断・検索語分析・予算評価・入稿チェックなどの広告運用の専門知識を備えており、あなたのビジネス戦略（`STRATEGY.md`）に基づいてエージェントが判断・実行します。
+mureoは、AIエージェントが広告アカウントを自動運用するためのフレームワークです。インストールすると、AIエージェント（Claude Code、Cursorなど）がGoogle広告・Meta広告・Search Console・GA4を横断して、配信診断・検索語分析・予算評価・入稿チェックなどを実行できるようになります。すべての操作はあなたのビジネス戦略（`STRATEGY.md`）に基づいて行われます。
 
-さらにmureoには学習の仕組みがあります。エージェントの分析を修正したり運用上の気づきを共有すると、`/learn` でナレッジベースに保存できます。保存した知識は次回以降のセッションで自動的に読み込まれるため、使い続けるほどエージェントがあなたのアカウントの特性を理解し、より的確な判断ができるようになります。
+mureoには学習の仕組みもあります。エージェントの分析を修正したり運用上の気づきを共有すると、`/learn` でナレッジベースに保存できます。保存した知識は次回以降のセッションで自動的に読み込まれるため、使い続けるほどエージェントがあなたのアカウントの特性を理解し、より的確な判断ができるようになります。
+
 
 ## 特徴
 
@@ -120,6 +121,13 @@ STATE.jsonから接続媒体を検出:
 ```
 
 ## クイックスタート
+
+### 事前に必要なもの
+
+- **Google広告** — [Google Ads API の Developer Token](https://developers.google.com/google-ads/api/docs/get-started/dev-token) と、OAuth用の Client ID / Client Secret
+- **Meta広告** — [Meta for Developers](https://developers.facebook.com/) でアプリを作成し、App ID / App Secret を取得（開発モードのままで構いません）
+
+いずれも `mureo auth setup` の対話型ウィザードが手順を案内します。
 
 ### Claude Code（推奨）
 

@@ -8,9 +8,10 @@
 
 ## What is mureo?
 
-**mureo** is a framework that enables AI agents to operate ad accounts. It provides workflow commands that orchestrate across Google Ads, Meta Ads, Search Console, and GA4, along with built-in marketing expertise -- campaign diagnostics, search term analysis, budget evaluation, ad validation, and more. Every operation is grounded in your business strategy (`STRATEGY.md`), so the agent makes decisions based on your persona, USP, goals, and brand voice -- not just raw metrics.
+AI agents (Claude Code, Cursor, etc.) can operate your ad accounts with mureo installed. mureo gives agents the ability to work across Google Ads, Meta Ads, Search Console, and GA4 -- running campaign diagnostics, search term analysis, budget evaluation, ad validation, and more. Every operation is grounded in your business strategy (`STRATEGY.md`), so the agent makes decisions based on your persona, USP, goals, and brand voice -- not just raw metrics.
 
 mureo also learns. When you correct the agent's analysis or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is automatically loaded in every future session, so the agent gets increasingly attuned to your account's specific patterns and makes better decisions over time.
+
 
 ## Features
 
@@ -172,6 +173,13 @@ You approve → Agent updates each platform.
 </details>
 
 ## Quick Start
+
+### Prerequisites
+
+- **Google Ads** -- [Developer Token](https://developers.google.com/google-ads/api/docs/get-started/dev-token) and OAuth Client ID / Client Secret
+- **Meta Ads** -- Create an app on [Meta for Developers](https://developers.facebook.com/) to obtain an App ID / App Secret (development mode is fine)
+
+The `mureo auth setup` wizard walks you through both.
 
 ### Claude Code (recommended)
 
