@@ -8,7 +8,7 @@
 
 ## What is mureo?
 
-AI agents (Claude Code, Cursor, etc.) can operate your ad accounts with mureo installed. mureo gives agents the ability to work across Google Ads, Meta Ads, Search Console, and GA4 -- running campaign diagnostics, search term analysis, budget evaluation, ad validation, and more. Every operation is grounded in your business strategy (`STRATEGY.md`), so the agent makes decisions based on your persona, USP, goals, and brand voice -- not just raw metrics.
+mureo is a framework for AI agents to autonomously operate ad accounts. Once installed, AI agents (Claude Code, Cursor, etc.) can work across Google Ads, Meta Ads, Search Console, and GA4 -- running campaign diagnostics, search term analysis, budget evaluation, ad validation, and more. Every operation is grounded in your business strategy (`STRATEGY.md`), so the agent makes decisions based on your persona, USP, goals, and brand voice -- not just raw metrics.
 
 mureo also learns. When you correct the agent's analysis or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is automatically loaded in every future session, so the agent gets increasingly attuned to your account's specific patterns and makes better decisions over time.
 
