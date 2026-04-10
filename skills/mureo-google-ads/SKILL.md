@@ -106,22 +106,25 @@ metadata:
 
 ### campaigns
 
-- `list` -- List all campaigns in the account.
+- `list` -- List all campaigns in the account. Response includes `channel_type` ("SEARCH" | "DISPLAY" | ...) so you can tell search and display campaigns apart at a glance.
   ```
   Required: customer_id (string)
   Optional: status_filter (string: "ENABLED" | "PAUSED")
   ```
 
-- `get` -- Get detailed information about a specific campaign.
+- `get` -- Get detailed information about a specific campaign. Response includes `channel_type`.
   ```
   Required: customer_id, campaign_id (string)
   ```
 
-- `create` -- Create a new search campaign. **Requires user confirmation.**
+- `create` -- Create a search or display campaign. **Requires user confirmation.**
   ```
   Required: customer_id, name (string)
-  Optional: bidding_strategy (string: "MAXIMIZE_CLICKS" | "MAXIMIZE_CONVERSIONS" | "TARGET_CPA" | ...), budget_id (string)
+  Optional: bidding_strategy (string: "MAXIMIZE_CLICKS" | "MAXIMIZE_CONVERSIONS" | "TARGET_CPA" | ...),
+            budget_id (string),
+            channel_type (string: "SEARCH" | "DISPLAY"; defaults to "SEARCH")
   ```
+  Note: For display campaigns, create the campaign with `channel_type="DISPLAY"`, then create an ad group, then create the display ad via `ads.create_display`.
 
 - `update` -- Update campaign settings (name, bidding strategy). **Requires user confirmation.**
   ```
@@ -158,10 +161,11 @@ metadata:
   Required: customer_id, ad_group_id (string)
   Optional: name (string), status (string: "ENABLED" | "PAUSED"), cpc_bid_micros (integer)
   ```
+  Note: `cpc_bid_micros` is only accepted when the parent campaign uses a manual bidding strategy (`MANUAL_CPC`, `MANUAL_CPM`, `MANUAL_CPV`, `ENHANCED_CPC`). If the campaign uses an automated strategy (MAXIMIZE_CLICKS, MAXIMIZE_CONVERSIONS, TARGET_CPA, TARGET_ROAS, etc.), the tool returns a clear validation error — manual bids at the ad group level are not supported under automated bidding.
 
 ### ads
 
-- `list` -- List ads, optionally filtered by ad group.
+- `list` -- List ads, optionally filtered by ad group. Returns `headlines` and `descriptions` for both RSA and RDA. For RDAs, the response also includes `long_headline`, `business_name`, `marketing_images`, `square_marketing_images`, and `logo_images` (lists of asset resource names).
   ```
   Required: customer_id (string)
   Optional: ad_group_id (string), status_filter (string)
@@ -174,12 +178,14 @@ metadata:
             descriptions (array of strings, 2-4 items)
   Optional: final_url (string), path1 (string), path2 (string)
   ```
+  Note: For Responsive Display Ads, use `ads.create_display` instead.
 
 - `update` -- Update RSA ad content. **Requires user confirmation.**
   ```
   Required: customer_id, ad_group_id, ad_id (string)
   Optional: headlines (array of strings), descriptions (array of strings)
   ```
+  Note: This tool supports Responsive Search Ads (RSA) only. Calling it on a Responsive Display Ad (RDA) fails fast with a clear error — RDA text updates are not implemented; recreate the ad via `ads.create_display` instead.
 
 - `update_status` -- Change ad status. **Requires user confirmation.**
   ```
