@@ -23,10 +23,11 @@ pytest tests/ --cov=mureo --cov-report=term-missing
 
 ```
 mureo/
-├── google_ads/          # Google Ads API client (8 Mixin composition)
+├── google_ads/          # Google Ads API client (Mixin composition)
 │   ├── client.py        # GoogleAdsApiClient (main entry)
 │   ├── mappers.py       # Response mapping to structured dicts
-│   ├── _ads.py          # AdsMixin (create/update/status/list)
+│   ├── _ads.py          # AdsMixin (RSA create/update/status/list)
+│   ├── _ads_display.py  # DisplayAdsMixin (RDA create + RDAUploadError)
 │   ├── _keywords.py     # KeywordsMixin (add/remove/suggest/diagnose)
 │   ├── _analysis.py     # AnalysisMixin (auction/CPC/device/BtoB/RSA)
 │   ├── _diagnostics.py  # DiagnosticsMixin (campaign diagnosis)
@@ -34,7 +35,8 @@ mureo/
 │   ├── _monitoring.py   # MonitoringMixin (anomaly detection/reporting)
 │   ├── _creative.py     # CreativeMixin (LP analysis/message match)
 │   ├── _media.py        # MediaMixin (image asset upload)
-│   ├── _rsa_validator.py     # RSA ad validator
+│   ├── _rsa_validator.py     # RSA ad text validator
+│   ├── _rda_validator.py     # RDA input validator (display ads)
 │   ├── _rsa_insights.py      # RSA asset performance insights
 │   ├── _intent_classifier.py # Search term intent classification
 │   └── _message_match.py     # Message match evaluator

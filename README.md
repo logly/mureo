@@ -390,18 +390,18 @@ Add to `.cursor/mcp.json`:
 <details>
 <summary>Click to expand Google Ads tools</summary>
 
-**Campaigns (6)**
+**Campaigns**
 
 | Tool | Description |
 |------|-------------|
 | `google_ads.campaigns.list` | List campaigns |
 | `google_ads.campaigns.get` | Get campaign details |
-| `google_ads.campaigns.create` | Create a campaign |
+| `google_ads.campaigns.create` | Create a campaign (search or display, via `channel_type`) |
 | `google_ads.campaigns.update` | Update campaign settings |
 | `google_ads.campaigns.update_status` | Change campaign status (ENABLED/PAUSED/REMOVED) |
 | `google_ads.campaigns.diagnose` | Diagnose campaign delivery status |
 
-**Ad Groups (3)**
+**Ad Groups**
 
 | Tool | Description |
 |------|-------------|
@@ -409,12 +409,13 @@ Add to `.cursor/mcp.json`:
 | `google_ads.ad_groups.create` | Create an ad group |
 | `google_ads.ad_groups.update` | Update an ad group |
 
-**Ads (5)**
+**Ads**
 
 | Tool | Description |
 |------|-------------|
 | `google_ads.ads.list` | List ads |
 | `google_ads.ads.create` | Create a responsive search ad (RSA) |
+| `google_ads.ads.create_display` | Create a responsive display ad (RDA); image files are uploaded automatically |
 | `google_ads.ads.update` | Update an ad |
 | `google_ads.ads.update_status` | Change ad status |
 | `google_ads.ads.policy_details` | Get ad policy approval details |

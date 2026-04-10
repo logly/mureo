@@ -83,7 +83,7 @@ Or use `uv` to run it:
 |------|-------------|-------------------|
 | `google_ads.campaigns.list` | List campaigns | `customer_id` |
 | `google_ads.campaigns.get` | Get campaign details | `customer_id`, `campaign_id` |
-| `google_ads.campaigns.create` | Create a campaign | `customer_id`, `name` |
+| `google_ads.campaigns.create` | Create a campaign (search or display, via `channel_type`) | `customer_id`, `name` |
 | `google_ads.campaigns.update` | Update campaign settings | `customer_id`, `campaign_id` |
 | `google_ads.campaigns.update_status` | Change status (ENABLED/PAUSED/REMOVED) | `customer_id`, `campaign_id`, `status` |
 | `google_ads.campaigns.diagnose` | Diagnose campaign delivery | `customer_id`, `campaign_id` |
@@ -102,6 +102,7 @@ Or use `uv` to run it:
 |------|-------------|-------------------|
 | `google_ads.ads.list` | List ads | `customer_id` |
 | `google_ads.ads.create` | Create a responsive search ad (RSA) | `customer_id`, `ad_group_id`, `headlines`, `descriptions` |
+| `google_ads.ads.create_display` | Create a responsive display ad (RDA); image files are uploaded automatically | `customer_id`, `ad_group_id`, `headlines`, `long_headline`, `descriptions`, `business_name`, `marketing_image_paths`, `square_marketing_image_paths`, `final_url` |
 | `google_ads.ads.update` | Update an ad | `customer_id`, `ad_group_id`, `ad_id` |
 | `google_ads.ads.update_status` | Change ad status | `customer_id`, `ad_group_id`, `ad_id`, `status` |
 | `google_ads.ads.policy_details` | Get ad policy approval details | `customer_id`, `ad_group_id`, `ad_id` |
@@ -529,6 +530,49 @@ The `google_ads.ads.create` tool accepts headlines and descriptions arrays:
 ```
 
 Headlines: 3-15 items. Descriptions: 2-4 items.
+
+### Display Campaign and RDA Creation
+
+To create a display campaign, pass `channel_type: "DISPLAY"` to `google_ads.campaigns.create`:
+
+```json
+{
+  "customer_id": "1234567890",
+  "name": "Brand Display Campaign",
+  "channel_type": "DISPLAY",
+  "bidding_strategy": "MAXIMIZE_CONVERSIONS",
+  "budget_id": "555666777"
+}
+```
+
+Then create an RDA via `google_ads.ads.create_display`. Local image file paths are uploaded automatically before the ad is created:
+
+```json
+{
+  "customer_id": "1234567890",
+  "ad_group_id": "111222333",
+  "headlines": ["Run Faster", "Train Smarter"],
+  "long_headline": "The shoes that changed how athletes train",
+  "descriptions": ["Cushioning tested by Olympic runners.", "Free 30-day returns."],
+  "business_name": "Acme Athletics",
+  "marketing_image_paths": ["/path/to/marketing-1200x628.jpg"],
+  "square_marketing_image_paths": ["/path/to/square-1200x1200.jpg"],
+  "logo_image_paths": ["/path/to/logo.png"],
+  "final_url": "https://example.com/shoes"
+}
+```
+
+Constraints (per the Google Ads API):
+- Headlines: 1-5 items, each ≤30 display width
+- Long headline: required, ≤90 display width
+- Descriptions: 1-5 items, each ≤90 display width
+- Business name: required, ≤25 display width
+- Marketing images (1.91:1): 1-15 files, 3+ recommended for delivery quality
+- Square marketing images (1:1): 1-15 files, 3+ recommended
+- Logo images: optional, up to 5
+- The target ad group must belong to a DISPLAY campaign (mureo verifies this before any upload)
+
+If image upload fails partway through or the ad creation fails after all uploads succeed, an `RDAUploadError` is raised that includes the resource names of any orphaned uploaded assets so they can be cleaned up.
 
 ## Output Format
 

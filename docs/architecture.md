@@ -64,16 +64,19 @@ mureo/
 ├── auth_setup.py            # Interactive setup wizard (OAuth + MCP config + credential guard)
 ├── throttle.py              # Rate limiting (token bucket + rolling hourly cap)
 ├── google_ads/              # Google Ads API client
-│   ├── client.py            # GoogleAdsApiClient (8 Mixins)
+│   ├── client.py            # GoogleAdsApiClient (Mixins)
 │   ├── mappers.py           # Response mapping to structured dicts
 │   ├── _ads.py              # _AdsMixin (create/update/list RSAs)
+│   ├── _ads_display.py      # _DisplayAdsMixin (create RDAs + RDAUploadError)
 │   ├── _keywords.py         # _KeywordsMixin (add/remove/suggest)
 │   ├── _extensions.py       # _ExtensionsMixin (sitelinks, callouts, conversions, targeting)
 │   ├── _monitoring.py       # _MonitoringMixin (anomaly detection, reports)
 │   ├── _diagnostics.py      # _DiagnosticsMixin (campaign diagnosis)
 │   ├── _analysis.py         # _AnalysisMixin (auction insights, CPC trends, device analysis)
 │   ├── _creative.py         # _CreativeMixin (LP analysis, RSA insights)
-│   └── _media.py            # _MediaMixin (image asset upload)
+│   ├── _media.py            # _MediaMixin (image asset upload)
+│   ├── _rsa_validator.py    # RSA ad text validator
+│   └── _rda_validator.py    # RDA input validator (display ads)
 ├── meta_ads/                # Meta Ads API client
 │   ├── client.py            # MetaAdsApiClient (15 Mixins)
 │   ├── mappers.py           # Response mapping
@@ -178,11 +181,12 @@ Credentials are loaded from `~/.mureo/credentials.json` or environment variables
 
 Both API clients use multiple inheritance with Mixins to organize functionality by domain. This keeps each file focused on a single concern while providing a unified client interface.
 
-### Google Ads Client -- 8 Mixins
+### Google Ads Client -- Mixins
 
 ```python
 class GoogleAdsApiClient(
-    _AdsMixin,           # Ad CRUD (RSA create/update/list/status)
+    _AdsMixin,           # RSA CRUD (create/update/list/status)
+    _DisplayAdsMixin,    # RDA creation with auto image upload
     _KeywordsMixin,      # Keyword add/remove/suggest/diagnose
     _MonitoringMixin,    # Anomaly detection, reports, goals
     _ExtensionsMixin,    # Sitelinks, callouts, conversions, targeting

@@ -20,7 +20,7 @@ metadata:
 |---|-----------|----------|------|-------------|
 | 1 | `google_ads.campaigns.list` | Campaign | Read | List campaigns |
 | 2 | `google_ads.campaigns.get` | Campaign | Read | Get campaign details |
-| 3 | `google_ads.campaigns.create` | Campaign | Write | Create a campaign |
+| 3 | `google_ads.campaigns.create` | Campaign | Write | Create a campaign (search or display, via `channel_type`) |
 | 4 | `google_ads.campaigns.update` | Campaign | Write | Update campaign settings |
 | 5 | `google_ads.campaigns.update_status` | Campaign | Write | Change campaign status |
 | 6 | `google_ads.campaigns.diagnose` | Campaign | Read | Diagnose delivery issues |
@@ -100,6 +100,7 @@ metadata:
 | 80 | `google_ads.monitoring.zero_conversions` | Monitoring | Read | Detect campaigns with zero conversions |
 | 81 | `google_ads.capture.screenshot` | Capture | Read | Capture a screenshot of a URL |
 | 82 | `google_ads.assets.upload_image` | Asset | Write | Upload image as Google Ads asset |
+| 83 | `google_ads.ads.create_display` | Ad | Write | Create an RDA (responsive display ad); image files are uploaded automatically |
 
 ## API Resources
 
@@ -635,7 +636,7 @@ Full campaign setup from scratch:
 Step 1: Create a budget
   -> google_ads.budget.create {customer_id, name, amount}
 
-Step 2: Create the campaign
+Step 2: Create the campaign (omit channel_type or set "SEARCH" for a search campaign)
   -> google_ads.campaigns.create {customer_id, name, bidding_strategy, budget_id}
 
 Step 3: Create ad groups
@@ -662,6 +663,50 @@ Step 9: Set up conversion tracking
 Step 10: Enable the campaign
   -> google_ads.campaigns.update_status {customer_id, campaign_id, status: "ENABLED"}
 ```
+
+### 3b. New Display Campaign + Responsive Display Ad
+
+Display campaigns use a different `channel_type` and require image assets.
+mureo uploads the local image files automatically before creating the ad.
+
+```
+Step 1: Create a budget
+  -> google_ads.budget.create {customer_id, name, amount}
+
+Step 2: Create a DISPLAY campaign
+  -> google_ads.campaigns.create {
+       customer_id, name, channel_type: "DISPLAY",
+       bidding_strategy: "MAXIMIZE_CONVERSIONS", budget_id
+     }
+
+Step 3: Create an ad group inside the display campaign
+  -> google_ads.ad_groups.create {customer_id, campaign_id, name}
+
+Step 4: Create the responsive display ad
+  -> google_ads.ads.create_display {
+       customer_id, ad_group_id,
+       headlines: [...], long_headline, descriptions: [...],
+       business_name,
+       marketing_image_paths: ["/path/to/marketing-1200x628.jpg"],
+       square_marketing_image_paths: ["/path/to/square-1200x1200.jpg"],
+       logo_image_paths: ["/path/to/logo.png"],   # optional
+       final_url
+     }
+
+Step 5: Enable the campaign
+  -> google_ads.campaigns.update_status {customer_id, campaign_id, status: "ENABLED"}
+```
+
+Constraints (RDA):
+- Headlines: 1-5, each ≤30 display width
+- Long headline: required, ≤90 display width
+- Descriptions: 1-5, each ≤90 display width
+- Business name: required, ≤25 display width
+- Marketing images (1.91:1): 1-15, 3+ recommended for delivery quality
+- Square marketing images (1:1): 1-15, 3+ recommended
+- Logo images: optional, up to 5
+- The target ad group must belong to a DISPLAY campaign — mureo verifies this before any upload happens to avoid orphaned assets.
+- If image upload or ad creation fails partway through, an `RDAUploadError` is raised that includes the resource names of any orphaned uploaded assets so the agent can clean them up.
 
 ### 4. Budget Adjustment
 
