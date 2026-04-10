@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-04-11
+
+### Fixed
+- `google_ads.campaigns.create` silently ignored the `channel_type` parameter introduced in 0.4.0. The MCP handler forwarded only `name`, `bidding_strategy`, and `budget_id` to the client, so a request asking for a DISPLAY campaign produced a SEARCH campaign. `channel_type` is now passed through correctly, and `google_ads.ads.create_display` works end-to-end against live accounts.
+- `google_ads.campaigns.list` / `google_ads.campaigns.get` now include the campaign's `channel_type` (SEARCH/DISPLAY/etc.) in the response, so agents can verify the channel type of an existing campaign without inferring it from other fields. `list_campaigns` and `get_campaign` GAQL queries were extended to select `campaign.advertising_channel_type`, and `map_campaign` surfaces it as `channel_type`.
+
 ## [0.4.0] - 2026-04-10
 
 ### Added

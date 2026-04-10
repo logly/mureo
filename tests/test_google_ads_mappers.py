@@ -186,6 +186,32 @@ class TestMapCampaign:
         assert result["start_date"] == "2024-01-01"
         assert result["end_date"] == "2024-12-31"
 
+    def test_advertising_channel_type_SEARCH(self) -> None:
+        """advertising_channel_type が "SEARCH" として返ること。"""
+        campaign = MagicMock()
+        campaign.id = 100
+        campaign.name = "Search Campaign"
+        campaign.status = 2
+        campaign.campaign_budget = 0
+        campaign.bidding_strategy_type = 0
+        campaign.advertising_channel_type = 2  # SEARCH
+
+        result = map_campaign(campaign)
+        assert result["channel_type"] == "SEARCH"
+
+    def test_advertising_channel_type_DISPLAY(self) -> None:
+        """advertising_channel_type が "DISPLAY" として返ること。"""
+        campaign = MagicMock()
+        campaign.id = 200
+        campaign.name = "Display Campaign"
+        campaign.status = 2
+        campaign.campaign_budget = 0
+        campaign.bidding_strategy_type = 0
+        campaign.advertising_channel_type = 3  # DISPLAY
+
+        result = map_campaign(campaign)
+        assert result["channel_type"] == "DISPLAY"
+
 
 @pytest.mark.unit
 class TestMapAdGroup:

@@ -7,6 +7,9 @@ from google.ads.googleads.v23.enums.types.ad_group_criterion_approval_status imp
 )
 from google.ads.googleads.v23.enums.types.ad_strength import AdStrengthEnum
 from google.ads.googleads.v23.enums.types.ad_type import AdTypeEnum
+from google.ads.googleads.v23.enums.types.advertising_channel_type import (
+    AdvertisingChannelTypeEnum,
+)
 from google.ads.googleads.v23.enums.types.bidding_strategy_system_status import (
     BiddingStrategySystemStatusEnum,
 )
@@ -49,6 +52,12 @@ _BIDDING_STRATEGY_MAP[9] = "MAXIMIZE_CLICKS"
 # Auto-generated from protobuf enum
 _AD_TYPE_MAP: dict[int, str] = {
     member.value: member.name for member in AdTypeEnum.AdType  # type: ignore[attr-defined]
+}
+
+# Auto-generated from protobuf enum
+_ADVERTISING_CHANNEL_TYPE_MAP: dict[int, str] = {
+    member.value: member.name
+    for member in AdvertisingChannelTypeEnum.AdvertisingChannelType  # type: ignore[attr-defined]
 }
 
 # Auto-generated from protobuf enum
@@ -157,6 +166,11 @@ def map_bidding_strategy_type(strategy: Any) -> str:
     return _map_enum(strategy, _BIDDING_STRATEGY_MAP)
 
 
+def map_advertising_channel_type(channel_type: Any) -> str:
+    """Convert AdvertisingChannelTypeEnum to string (SEARCH, DISPLAY, etc.)."""
+    return _map_enum(channel_type, _ADVERTISING_CHANNEL_TYPE_MAP)
+
+
 def map_serving_status(status: Any) -> str:
     """Convert CampaignServingStatusEnum to string."""
     return _map_enum(status, _SERVING_STATUS_MAP)
@@ -217,6 +231,10 @@ def map_campaign(campaign: Any) -> dict[str, Any]:
             else None
         ),
     }
+    if hasattr(campaign, "advertising_channel_type"):
+        result["channel_type"] = map_advertising_channel_type(
+            campaign.advertising_channel_type
+        )
     if hasattr(campaign, "serving_status"):
         result["serving_status"] = map_serving_status(campaign.serving_status)
     if hasattr(campaign, "primary_status"):

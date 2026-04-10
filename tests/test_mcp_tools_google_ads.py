@@ -216,6 +216,37 @@ class TestGoogleAdsCampaignHandlers:
         parsed = json.loads(result[0].text)
         assert "resource_name" in parsed
 
+    async def test_campaigns_create_forwards_channel_type(self) -> None:
+        """handle_campaigns_create が channel_type を client.create_campaign に転送すること。"""
+        mod = _import_google_ads_tools()
+        creds, client = _mock_google_ads_context()
+        client.create_campaign.return_value = {
+            "resource_name": "customers/123/campaigns/999"
+        }
+
+        h = _import_handlers()
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=creds),
+            patch.object(h, "create_google_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "google_ads.campaigns.create",
+                {
+                    "customer_id": "123",
+                    "name": "Display Campaign",
+                    "channel_type": "DISPLAY",
+                    "budget_id": "555",
+                    "bidding_strategy": "MAXIMIZE_CLICKS",
+                },
+            )
+
+        client.create_campaign.assert_awaited_once()
+        call_params = client.create_campaign.call_args[0][0]
+        assert call_params["name"] == "Display Campaign"
+        assert call_params["channel_type"] == "DISPLAY"
+        assert call_params["budget_id"] == "555"
+        assert call_params["bidding_strategy"] == "MAXIMIZE_CLICKS"
+
     async def test_campaigns_update(self) -> None:
         mod = _import_google_ads_tools()
         creds, client = _mock_google_ads_context()

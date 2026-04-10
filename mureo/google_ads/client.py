@@ -279,6 +279,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         query = """
             SELECT
                 campaign.id, campaign.name, campaign.status,
+                campaign.advertising_channel_type,
                 campaign.serving_status,
                 campaign.bidding_strategy_type,
                 campaign.campaign_budget,
@@ -309,6 +310,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         query = f"""
             SELECT
                 campaign.id, campaign.name, campaign.status,
+                campaign.advertising_channel_type,
                 campaign.serving_status,
                 campaign.bidding_strategy_type,
                 campaign.campaign_budget,

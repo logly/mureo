@@ -101,7 +101,7 @@ async def handle_campaigns_create(args: dict[str, Any]) -> list[TextContent]:
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {"name": _require(args, "name")}
-    for key in ("bidding_strategy", "budget_id"):
+    for key in ("bidding_strategy", "budget_id", "channel_type"):
         val = _opt(args, key)
         if val is not None:
             params[key] = val
