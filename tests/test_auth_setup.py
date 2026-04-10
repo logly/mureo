@@ -394,8 +394,8 @@ async def test_run_google_oauth() -> None:
         "https://www.googleapis.com/auth/webmasters",
     ]
 
-    # run_local_serverがport=8085, prompt="consent"で呼ばれること
-    mock_flow.run_local_server.assert_called_once_with(port=8085, prompt="consent")
+    # run_local_serverがport=0（自動選択）, prompt="consent"で呼ばれること
+    mock_flow.run_local_server.assert_called_once_with(port=0, prompt="consent")
 
 
 @pytest.mark.unit

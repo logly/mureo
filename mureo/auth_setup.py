@@ -238,7 +238,10 @@ async def run_google_oauth(
     )
 
     # Browser OAuth (local server auto-starts and auto-stops)
-    credentials = flow.run_local_server(port=8085, prompt="consent")
+    # port=0 lets the OS pick an available port automatically, avoiding
+    # conflicts with other processes. Google OAuth "installed app" clients
+    # accept http://localhost on any port.
+    credentials = flow.run_local_server(port=0, prompt="consent")
 
     if credentials.refresh_token is None:
         raise RuntimeError("Failed to obtain refresh_token")
