@@ -40,7 +40,7 @@ mureo/
 │   ├── _rsa_insights.py      # RSA asset performance insights
 │   ├── _intent_classifier.py # Search term intent classification
 │   └── _message_match.py     # Message match evaluator
-├── meta_ads/            # Meta Ads API client (15 Mixin composition)
+├── meta_ads/            # Meta Ads API client (Mixin composition)
 │   ├── client.py        # MetaAdsApiClient (main entry)
 │   ├── mappers.py       # Response mapping
 │   ├── _campaigns.py    # CampaignsMixin
@@ -117,57 +117,57 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 
 | Category | Tools |
 |----------|-------|
-| Campaigns (6) | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update`, `campaigns.update_status`, `campaigns.diagnose` |
-| Ad Groups (3) | `ad_groups.list`, `ad_groups.create`, `ad_groups.update` |
-| Ads (5) | `ads.list`, `ads.create`, `ads.update`, `ads.update_status`, `ads.policy_details` |
-| Keywords (8) | `keywords.list`, `keywords.add`, `keywords.remove`, `keywords.suggest`, `keywords.diagnose`, `keywords.pause`, `keywords.audit`, `keywords.cross_adgroup_duplicates` |
-| Negative Keywords (5) | `negative_keywords.list`, `negative_keywords.add`, `negative_keywords.remove`, `negative_keywords.add_to_ad_group`, `negative_keywords.suggest` |
-| Budget (3) | `budget.get`, `budget.update`, `budget.create` |
-| Accounts (1) | `accounts.list` |
-| Search Terms (2) | `search_terms.report`, `search_terms.analyze` |
-| Sitelinks (3) | `sitelinks.list`, `sitelinks.create`, `sitelinks.remove` |
-| Callouts (3) | `callouts.list`, `callouts.create`, `callouts.remove` |
-| Conversions (7) | `conversions.list`, `conversions.get`, `conversions.performance`, `conversions.create`, `conversions.update`, `conversions.remove`, `conversions.tag` |
-| Targeting (11) | `recommendations.list`, `recommendations.apply`, `device_targeting.get`, `device_targeting.set`, `bid_adjustments.get`, `bid_adjustments.update`, `location_targeting.list`, `location_targeting.update`, `schedule_targeting.list`, `schedule_targeting.update`, `change_history.list` |
-| Analysis (13) | `performance.report`, `performance.analyze`, `cost_increase.investigate`, `health_check.all`, `ad_performance.compare`, `ad_performance.report`, `network_performance.report`, `budget.efficiency`, `budget.reallocation`, `auction_insights.get`, `rsa_assets.analyze`, `rsa_assets.audit`, `search_terms.review` |
-| B2B (1) | `btob.optimizations` |
-| Creative (2) | `landing_page.analyze`, `creative.research` |
-| Monitoring (4) | `monitoring.delivery_goal`, `monitoring.cpa_goal`, `monitoring.cv_goal`, `monitoring.zero_conversions` |
-| Capture (1) | `capture.screenshot` |
-| Device (1) | `device.analyze` |
-| CPC (1) | `cpc.detect_trend` |
-| Assets (1) | `assets.upload_image` |
+| Campaigns | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update`, `campaigns.update_status`, `campaigns.diagnose` |
+| Ad Groups | `ad_groups.list`, `ad_groups.create`, `ad_groups.update` |
+| Ads | `ads.list`, `ads.create`, `ads.create_display`, `ads.update`, `ads.update_status`, `ads.policy_details` |
+| Keywords | `keywords.list`, `keywords.add`, `keywords.remove`, `keywords.suggest`, `keywords.diagnose`, `keywords.pause`, `keywords.audit`, `keywords.cross_adgroup_duplicates` |
+| Negative Keywords | `negative_keywords.list`, `negative_keywords.add`, `negative_keywords.remove`, `negative_keywords.add_to_ad_group`, `negative_keywords.suggest` |
+| Budget | `budget.get`, `budget.update`, `budget.create` |
+| Accounts | `accounts.list` |
+| Search Terms | `search_terms.report`, `search_terms.analyze` |
+| Sitelinks | `sitelinks.list`, `sitelinks.create`, `sitelinks.remove` |
+| Callouts | `callouts.list`, `callouts.create`, `callouts.remove` |
+| Conversions | `conversions.list`, `conversions.get`, `conversions.performance`, `conversions.create`, `conversions.update`, `conversions.remove`, `conversions.tag` |
+| Targeting | `recommendations.list`, `recommendations.apply`, `device_targeting.get`, `device_targeting.set`, `bid_adjustments.get`, `bid_adjustments.update`, `location_targeting.list`, `location_targeting.update`, `schedule_targeting.list`, `schedule_targeting.update`, `change_history.list` |
+| Analysis | `performance.report`, `performance.analyze`, `cost_increase.investigate`, `health_check.all`, `ad_performance.compare`, `ad_performance.report`, `network_performance.report`, `budget.efficiency`, `budget.reallocation`, `auction_insights.get`, `rsa_assets.analyze`, `rsa_assets.audit`, `search_terms.review` |
+| B2B | `btob.optimizations` |
+| Creative | `landing_page.analyze`, `creative.research` |
+| Monitoring | `monitoring.delivery_goal`, `monitoring.cpa_goal`, `monitoring.cv_goal`, `monitoring.zero_conversions` |
+| Capture | `capture.screenshot` |
+| Device | `device.analyze` |
+| CPC | `cpc.detect_trend` |
+| Assets | `assets.upload_image` |
 
 ### Meta Ads
 
 | Category | Tools |
 |----------|-------|
-| Campaigns (6) | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update`, `campaigns.pause`, `campaigns.enable` |
-| Ad Sets (6) | `ad_sets.list`, `ad_sets.create`, `ad_sets.update`, `ad_sets.get`, `ad_sets.pause`, `ad_sets.enable` |
-| Ads (6) | `ads.list`, `ads.create`, `ads.update`, `ads.get`, `ads.pause`, `ads.enable` |
-| Creatives (6) | `creatives.create_carousel`, `creatives.create_collection`, `creatives.list`, `creatives.create`, `creatives.create_dynamic`, `creatives.upload_image` |
-| Images (1) | `images.upload_file` |
-| Insights (2) | `insights.report`, `insights.breakdown` |
-| Audiences (5) | `audiences.list`, `audiences.create`, `audiences.get`, `audiences.delete`, `audiences.create_lookalike` |
-| Conversions API (3) | `conversions.send`, `conversions.send_purchase`, `conversions.send_lead` |
-| Pixels (4) | `pixels.list`, `pixels.get`, `pixels.stats`, `pixels.events` |
-| Analysis (6) | `analysis.performance`, `analysis.audience`, `analysis.placements`, `analysis.cost`, `analysis.compare_ads`, `analysis.suggest_creative` |
-| Product Catalog (11) | `catalogs.list`, `catalogs.create`, `catalogs.get`, `catalogs.delete`, `products.list`, `products.add`, `products.get`, `products.update`, `products.delete`, `feeds.list`, `feeds.create` |
-| Lead Ads (5) | `lead_forms.list`, `lead_forms.get`, `lead_forms.create`, `leads.get`, `leads.get_by_ad` |
-| Videos (2) | `videos.upload`, `videos.upload_file` |
-| Split Tests (4) | `split_tests.list`, `split_tests.get`, `split_tests.create`, `split_tests.end` |
-| Ad Rules (5) | `ad_rules.list`, `ad_rules.get`, `ad_rules.create`, `ad_rules.update`, `ad_rules.delete` |
-| Page Posts (2) | `page_posts.list`, `page_posts.boost` |
-| Instagram (3) | `instagram.accounts`, `instagram.media`, `instagram.boost` |
+| Campaigns | `campaigns.list`, `campaigns.get`, `campaigns.create`, `campaigns.update`, `campaigns.pause`, `campaigns.enable` |
+| Ad Sets | `ad_sets.list`, `ad_sets.create`, `ad_sets.update`, `ad_sets.get`, `ad_sets.pause`, `ad_sets.enable` |
+| Ads | `ads.list`, `ads.create`, `ads.update`, `ads.get`, `ads.pause`, `ads.enable` |
+| Creatives | `creatives.create_carousel`, `creatives.create_collection`, `creatives.list`, `creatives.create`, `creatives.create_dynamic`, `creatives.upload_image` |
+| Images | `images.upload_file` |
+| Insights | `insights.report`, `insights.breakdown` |
+| Audiences | `audiences.list`, `audiences.create`, `audiences.get`, `audiences.delete`, `audiences.create_lookalike` |
+| Conversions API | `conversions.send`, `conversions.send_purchase`, `conversions.send_lead` |
+| Pixels | `pixels.list`, `pixels.get`, `pixels.stats`, `pixels.events` |
+| Analysis | `analysis.performance`, `analysis.audience`, `analysis.placements`, `analysis.cost`, `analysis.compare_ads`, `analysis.suggest_creative` |
+| Product Catalog | `catalogs.list`, `catalogs.create`, `catalogs.get`, `catalogs.delete`, `products.list`, `products.add`, `products.get`, `products.update`, `products.delete`, `feeds.list`, `feeds.create` |
+| Lead Ads | `lead_forms.list`, `lead_forms.get`, `lead_forms.create`, `leads.get`, `leads.get_by_ad` |
+| Videos | `videos.upload`, `videos.upload_file` |
+| Split Tests | `split_tests.list`, `split_tests.get`, `split_tests.create`, `split_tests.end` |
+| Ad Rules | `ad_rules.list`, `ad_rules.get`, `ad_rules.create`, `ad_rules.update`, `ad_rules.delete` |
+| Page Posts | `page_posts.list`, `page_posts.boost` |
+| Instagram | `instagram.accounts`, `instagram.media`, `instagram.boost` |
 
 ### Search Console
 
 | Category | Tools |
 |----------|-------|
-| Sites (2) | `sites.list`, `sites.get` |
-| Analytics (5) | `analytics.query`, `analytics.top_queries`, `analytics.top_pages`, `analytics.device_breakdown`, `analytics.compare_periods` |
-| Sitemaps (2) | `sitemaps.list`, `sitemaps.submit` |
-| URL Inspection (1) | `url_inspection.inspect` |
+| Sites | `sites.list`, `sites.get` |
+| Analytics | `analytics.query`, `analytics.top_queries`, `analytics.top_pages`, `analytics.device_breakdown`, `analytics.compare_periods` |
+| Sitemaps | `sitemaps.list`, `sitemaps.submit` |
+| URL Inspection | `url_inspection.inspect` |
 
 ## Design Constraints
 
@@ -197,7 +197,6 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 
 ## Test Coverage
 
-- 95% coverage
 - Target: 80% minimum (enforced by `tool.coverage.report.fail_under`)
 - Framework: pytest + pytest-asyncio
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests
