@@ -194,11 +194,14 @@ async def test_list_accessible_accounts() -> None:
     mock_customer_service.list_accessible_customers.return_value = mock_response
 
     # GoogleAdsService（アカウント名取得用）
+    # どちらも非マネージャーアカウント
     mock_ga_service = MagicMock()
     mock_row_1 = MagicMock()
     mock_row_1.customer.descriptive_name = "テストアカウント1"
+    mock_row_1.customer.manager = False
     mock_row_2 = MagicMock()
     mock_row_2.customer.descriptive_name = "テストアカウント2"
+    mock_row_2.customer.manager = False
     mock_ga_service.search.side_effect = [[mock_row_1], [mock_row_2]]
 
     def _get_service(name: str) -> MagicMock:
@@ -216,8 +219,84 @@ async def test_list_accessible_accounts() -> None:
     assert len(accounts) == 2
     assert accounts[0]["id"] == "1234567890"
     assert accounts[0]["name"] == "テストアカウント1"
+    assert accounts[0]["is_manager"] is False
+    assert accounts[0]["parent_id"] is None
     assert accounts[1]["id"] == "9876543210"
     assert accounts[1]["name"] == "テストアカウント2"
+    assert accounts[1]["is_manager"] is False
+    assert accounts[1]["parent_id"] is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_accessible_accounts_traverses_mcc_children() -> None:
+    """MCCアカウントの配下の子アカウントも列挙できること"""
+    from mureo.auth_setup import list_accessible_accounts
+
+    creds = GoogleAdsCredentials(
+        developer_token="dev-tok",
+        client_id="cid",
+        client_secret="csec",
+        refresh_token="rtok",
+    )
+
+    mock_ga_client = MagicMock()
+
+    # listAccessibleCustomersはMCC 1件だけを返す
+    mock_customer_service = MagicMock()
+    mock_response = MagicMock()
+    mock_response.resource_names = ["customers/1111111111"]
+    mock_customer_service.list_accessible_customers.return_value = mock_response
+
+    # 1回目のsearch: MCCの情報
+    mcc_row = MagicMock()
+    mcc_row.customer.descriptive_name = "親MCC"
+    mcc_row.customer.manager = True
+
+    # 2回目のsearch: MCC配下の子アカウント2件
+    child_row_1 = MagicMock()
+    child_row_1.customer_client.id = 2222222222
+    child_row_1.customer_client.descriptive_name = "子アカウントA"
+    child_row_1.customer_client.manager = False
+    child_row_2 = MagicMock()
+    child_row_2.customer_client.id = 3333333333
+    child_row_2.customer_client.descriptive_name = "子アカウントB"
+    child_row_2.customer_client.manager = False
+
+    mock_ga_service = MagicMock()
+    mock_ga_service.search.side_effect = [
+        [mcc_row],
+        [child_row_1, child_row_2],
+    ]
+
+    def _get_service(name: str) -> MagicMock:
+        if name == "CustomerService":
+            return mock_customer_service
+        return mock_ga_service
+
+    mock_ga_client.get_service.side_effect = _get_service
+
+    with patch(
+        "google.ads.googleads.client.GoogleAdsClient", return_value=mock_ga_client
+    ):
+        accounts = await list_accessible_accounts(creds)
+
+    assert len(accounts) == 3
+    # 親MCC
+    assert accounts[0]["id"] == "1111111111"
+    assert accounts[0]["name"] == "親MCC"
+    assert accounts[0]["is_manager"] is True
+    assert accounts[0]["parent_id"] is None
+    # 子アカウントA（parent_id = MCC）
+    assert accounts[1]["id"] == "2222222222"
+    assert accounts[1]["name"] == "子アカウントA"
+    assert accounts[1]["is_manager"] is False
+    assert accounts[1]["parent_id"] == "1111111111"
+    # 子アカウントB
+    assert accounts[2]["id"] == "3333333333"
+    assert accounts[2]["name"] == "子アカウントB"
+    assert accounts[2]["is_manager"] is False
+    assert accounts[2]["parent_id"] == "1111111111"
 
 
 @pytest.mark.unit
@@ -271,8 +350,18 @@ async def test_setup_google_ads_flow(tmp_path: Path) -> None:
     )
 
     mock_accounts = [
-        {"id": "1234567890", "name": "Account 1234567890"},
-        {"id": "9876543210", "name": "Account 9876543210"},
+        {
+            "id": "1234567890",
+            "name": "Account 1234567890",
+            "is_manager": False,
+            "parent_id": None,
+        },
+        {
+            "id": "9876543210",
+            "name": "Account 9876543210",
+            "is_manager": False,
+            "parent_id": None,
+        },
     ]
 
     mock_oauth_result = OAuthResult(
@@ -350,6 +439,71 @@ async def test_setup_google_ads_flow_no_accounts(tmp_path: Path) -> None:
 
     data = json.loads(cred_path.read_text(encoding="utf-8"))
     assert data["google_ads"]["developer_token"] == "test-developer-token"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_setup_google_ads_flow_selects_mcc_child(tmp_path: Path) -> None:
+    """MCC配下の子アカウントを選択した場合、login_customer_idは親MCCになること"""
+    from mureo.auth_setup import OAuthResult, setup_google_ads
+
+    cred_path = tmp_path / "credentials.json"
+
+    user_inputs = iter(
+        [
+            "test-developer-token",
+            "test-client-id",
+            "test-client-secret",
+        ]
+    )
+
+    # MCC + 2つの子アカウント（子はparent_id付き）
+    mock_accounts = [
+        {
+            "id": "1111111111",
+            "name": "親MCC",
+            "is_manager": True,
+            "parent_id": None,
+        },
+        {
+            "id": "2222222222",
+            "name": "子アカウントA",
+            "is_manager": False,
+            "parent_id": "1111111111",
+        },
+    ]
+
+    mock_oauth_result = OAuthResult(
+        refresh_token="1//test-refresh-token",
+        access_token="ya29.test-access-token",
+    )
+
+    with (
+        patch("mureo.auth_setup.input_func", side_effect=user_inputs),
+        # 子アカウントAを選択
+        patch("mureo.auth_setup._select_account", return_value="2222222222"),
+        patch(
+            "mureo.auth_setup.run_google_oauth",
+            new_callable=AsyncMock,
+            return_value=mock_oauth_result,
+        ),
+        patch(
+            "mureo.auth_setup.list_accessible_accounts",
+            new_callable=AsyncMock,
+            return_value=mock_accounts,
+        ),
+    ):
+        result = await setup_google_ads(credentials_path=cred_path)
+
+    # login_customer_idは親MCCに設定されること
+    assert result.login_customer_id == "1111111111"
+    # customer_idは選択された子アカウントに設定されること
+    assert result.customer_id == "2222222222"
+
+    # credentials.jsonにも両方保存されていること
+    data = json.loads(cred_path.read_text(encoding="utf-8"))
+    assert data["google_ads"]["login_customer_id"] == "1111111111"
+    assert data["google_ads"]["customer_id"] == "2222222222"
 
 
 # ---------------------------------------------------------------------------

@@ -39,13 +39,20 @@ _TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 @dataclass(frozen=True)
 class GoogleAdsCredentials:
-    """Google Ads credentials (immutable)."""
+    """Google Ads credentials (immutable).
+
+    For accounts reached via an MCC (manager account), `login_customer_id`
+    holds the MCC ID (used as the login header for API calls) and
+    `customer_id` holds the actual target account ID. For directly
+    accessible accounts, both typically hold the same value.
+    """
 
     developer_token: str
     client_id: str
     client_secret: str
     refresh_token: str
     login_customer_id: str | None = None
+    customer_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -114,6 +121,10 @@ def load_google_ads_credentials(
         client_secret = google_section.get("client_secret", "")
         refresh_token = google_section.get("refresh_token", "")
         login_customer_id = google_section.get("login_customer_id")
+        # Fall back to login_customer_id when customer_id is not present
+        # (preserves behavior for credentials.json files created by
+        # earlier mureo versions).
+        customer_id = google_section.get("customer_id") or login_customer_id
 
         if developer_token and client_id and client_secret and refresh_token:
             return GoogleAdsCredentials(
@@ -122,6 +133,7 @@ def load_google_ads_credentials(
                 client_secret=client_secret,
                 refresh_token=refresh_token,
                 login_customer_id=login_customer_id,
+                customer_id=customer_id,
             )
 
     # Environment variable fallback
@@ -420,6 +432,9 @@ def _load_google_ads_from_env() -> GoogleAdsCredentials | None:
     client_secret = os.environ.get("GOOGLE_ADS_CLIENT_SECRET", "")
     refresh_token = os.environ.get("GOOGLE_ADS_REFRESH_TOKEN", "")
     login_customer_id = os.environ.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
+    customer_id = (
+        os.environ.get("GOOGLE_ADS_CUSTOMER_ID") or login_customer_id
+    )
 
     if not (developer_token and client_id and client_secret and refresh_token):
         return None
@@ -430,6 +445,7 @@ def _load_google_ads_from_env() -> GoogleAdsCredentials | None:
         client_secret=client_secret,
         refresh_token=refresh_token,
         login_customer_id=login_customer_id,
+        customer_id=customer_id,
     )
 
 

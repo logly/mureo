@@ -24,8 +24,15 @@ def auth_status() -> None:
     typer.echo("")
 
     if google_creds is not None:
-        cid = google_creds.login_customer_id or "not set"
-        typer.echo(f"Google Ads: Authenticated (customer_id: {cid})")
+        cid = google_creds.customer_id or google_creds.login_customer_id or "not set"
+        login_cid = google_creds.login_customer_id or cid
+        if login_cid != cid:
+            typer.echo(
+                f"Google Ads: Authenticated (customer_id: {cid}, "
+                f"login_customer_id: {login_cid})"
+            )
+        else:
+            typer.echo(f"Google Ads: Authenticated (customer_id: {cid})")
     else:
         typer.echo("Google Ads: Not authenticated")
 
@@ -51,6 +58,7 @@ def check_google() -> None:
         "client_secret": _mask(creds.client_secret),
         "refresh_token": _mask(creds.refresh_token),
         "login_customer_id": creds.login_customer_id,
+        "customer_id": creds.customer_id,
     }
     typer.echo(json.dumps(info, indent=2, ensure_ascii=False))
 
@@ -164,9 +172,10 @@ def auth_upgrade_google() -> None:
         client_secret=creds.client_secret,
         refresh_token=oauth_result.refresh_token,
         login_customer_id=creds.login_customer_id,
+        customer_id=creds.customer_id,
     )
 
-    save_credentials(google=updated_creds, customer_id=creds.login_customer_id)
+    save_credentials(google=updated_creds)
 
     typer.echo("\nGoogle OAuth scopes upgraded successfully.")
     typer.echo("Search Console access is now available.")

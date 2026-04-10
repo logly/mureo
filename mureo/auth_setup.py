@@ -262,15 +262,25 @@ async def list_accessible_accounts(
 ) -> list[dict[str, Any]]:
     """Retrieve the list of accessible accounts via Google Ads API.
 
-    Uses the Google Ads SDK directly to enumerate accessible accounts.
-    Since GoogleAdsApiClient in mureo-core requires a customer_id,
-    direct SDK calls are needed for account discovery during setup.
+    Enumerates all accounts the user can operate on:
+    1. Directly accessible accounts (from listAccessibleCustomers).
+    2. Child accounts under any accessible Manager (MCC) account,
+       traversed via the customer_client table.
+
+    This handles the common case where a user has been granted access
+    only to an MCC, but needs to operate on its child client accounts.
 
     Args:
         credentials: Google Ads credentials
 
     Returns:
-        List of account info dicts (id, name).
+        List of account info dicts. Each dict contains:
+        - id: Customer ID (10-digit string)
+        - name: Descriptive name
+        - is_manager: True if this is an MCC account
+        - parent_id: Parent MCC ID for child accounts reached via
+          MCC traversal. None for directly accessible accounts.
+          Used as login_customer_id when operating on the account.
     """
     from google.ads.googleads.client import GoogleAdsClient
     from google.oauth2.credentials import Credentials as OAuthCredentials
@@ -283,34 +293,106 @@ async def list_accessible_accounts(
         token_uri="https://oauth2.googleapis.com/token",
     )
 
-    ga_client = GoogleAdsClient(
-        credentials=oauth_creds,
-        developer_token=credentials.developer_token,
-        login_customer_id=credentials.login_customer_id,
-    )
+    def _make_client(login_cid: str | None = None) -> Any:
+        return GoogleAdsClient(
+            credentials=oauth_creds,
+            developer_token=credentials.developer_token,
+            login_customer_id=login_cid,
+        )
 
+    # Step 1: Get directly accessible accounts
+    base_client = _make_client(login_cid=credentials.login_customer_id)
     try:
-        customer_service = ga_client.get_service("CustomerService")
+        customer_service = base_client.get_service("CustomerService")
         response = customer_service.list_accessible_customers()
     except Exception:
         logger.warning("Failed to retrieve account list", exc_info=True)
         return []
 
-    # Retrieve descriptive_name for each account
-    ga_service = ga_client.get_service("GoogleAdsService")
     accounts: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    def _add(
+        customer_id: str,
+        name: str,
+        is_manager: bool = False,
+        parent_id: str | None = None,
+    ) -> None:
+        if customer_id in seen_ids:
+            return
+        accounts.append(
+            {
+                "id": customer_id,
+                "name": name,
+                "is_manager": is_manager,
+                "parent_id": parent_id,
+            }
+        )
+        seen_ids.add(customer_id)
+
+    # Step 2: For each directly accessible account, get info and traverse
+    # children if it's an MCC
+    base_ga_service = base_client.get_service("GoogleAdsService")
     for resource_name in response.resource_names:
         customer_id = resource_name.split("/")[-1]
-        name = customer_id  # fallback
+
+        name = customer_id
+        is_manager = False
         try:
-            query = "SELECT customer.descriptive_name FROM customer LIMIT 1"
-            rows = ga_service.search(customer_id=customer_id, query=query)
+            query = (
+                "SELECT customer.descriptive_name, customer.manager "
+                "FROM customer LIMIT 1"
+            )
+            rows = base_ga_service.search(customer_id=customer_id, query=query)
             for row in rows:
                 name = row.customer.descriptive_name or customer_id
+                is_manager = bool(row.customer.manager)
                 break
         except Exception:
-            logger.debug("Failed to retrieve account name: %s", customer_id)
-        accounts.append({"id": customer_id, "name": name})
+            logger.debug(
+                "Failed to retrieve account info: %s", customer_id, exc_info=True
+            )
+
+        _add(customer_id, name, is_manager=is_manager, parent_id=None)
+
+        if not is_manager:
+            continue
+
+        # Step 3: Traverse child accounts under this MCC.
+        # Requires login_customer_id set to the MCC.
+        try:
+            mcc_client = _make_client(login_cid=customer_id)
+            mcc_ga_service = mcc_client.get_service("GoogleAdsService")
+            child_query = (
+                "SELECT "
+                "  customer_client.id, "
+                "  customer_client.descriptive_name, "
+                "  customer_client.manager, "
+                "  customer_client.level, "
+                "  customer_client.status "
+                "FROM customer_client "
+                "WHERE customer_client.status = 'ENABLED' "
+                "AND customer_client.level > 0"
+            )
+            child_rows = mcc_ga_service.search(
+                customer_id=customer_id, query=child_query
+            )
+            for child_row in child_rows:
+                child = child_row.customer_client
+                child_id = str(child.id)
+                child_name = child.descriptive_name or child_id
+                _add(
+                    child_id,
+                    child_name,
+                    is_manager=bool(child.manager),
+                    parent_id=customer_id,
+                )
+        except Exception:
+            logger.warning(
+                "Failed to retrieve child accounts for MCC %s",
+                customer_id,
+                exc_info=True,
+            )
 
     return accounts
 
@@ -557,11 +639,13 @@ def save_credentials(
             "client_secret": google.client_secret,
             "refresh_token": google.refresh_token,
         }
-        login_cid = customer_id or google.login_customer_id
-        if login_cid is not None:
-            google_data["login_customer_id"] = login_cid
-        else:
-            google_data["login_customer_id"] = None
+        # login_customer_id: authentication context (MCC for child accounts,
+        # otherwise the account itself)
+        google_data["login_customer_id"] = google.login_customer_id
+        # customer_id: the account that operations target. Falls back to
+        # login_customer_id when not explicitly specified.
+        target_cid = customer_id or google.customer_id or google.login_customer_id
+        google_data["customer_id"] = target_cid
         existing["google_ads"] = google_data
 
     # Merge Meta Ads credentials
@@ -650,29 +734,42 @@ async def setup_google_ads(
 
     accounts = await list_accessible_accounts(temp_creds)
 
+    selected_id: str | None = None
     login_customer_id: str | None = None
 
     if accounts:
         print("Accessible accounts:\n")
-        login_customer_id = _select_account(accounts)
+        selected_id = _select_account(accounts)
+        if selected_id is not None:
+            # If the selected account was reached via an MCC, use the MCC as
+            # login_customer_id. Otherwise use the account itself.
+            selected_account = next(
+                (a for a in accounts if a["id"] == selected_id), None
+            )
+            if selected_account and selected_account.get("parent_id"):
+                login_customer_id = selected_account["parent_id"]
+            else:
+                login_customer_id = selected_id
     else:
         print("No accessible accounts found.")
         print("You can manually add the Customer ID to credentials.json later.")
 
-    # Generate final credentials
+    # Generate final credentials. customer_id is the target account;
+    # login_customer_id is the MCC for accounts reached via an MCC, or
+    # the account itself for directly accessible accounts.
     final_creds = GoogleAdsCredentials(
         developer_token=developer_token,
         client_id=client_id,
         client_secret=client_secret,
         refresh_token=oauth_result.refresh_token,
         login_customer_id=login_customer_id,
+        customer_id=selected_id,
     )
 
     # Save
     save_credentials(
         path=credentials_path,
         google=final_creds,
-        customer_id=login_customer_id,
     )
 
     print(f"\nCredentials saved: {credentials_path or _resolve_default_path()}")

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-04-10
+
+### Added
+- `customer_id` field in `GoogleAdsCredentials` (separate from `login_customer_id`) to support MCC-child account scenarios where the authentication context (MCC) and operation target (child account) differ.
+- `GOOGLE_ADS_CUSTOMER_ID` environment variable support.
+
+### Changed
+- `mureo auth setup` now traverses the Manager (MCC) hierarchy to list child accounts. Previously it only showed accounts with direct login access, so users granted access only via an MCC would see only the MCC itself.
+- When a child account reached via an MCC is selected, `login_customer_id` is set to the parent MCC while `customer_id` is set to the selected child.
+- `mureo auth status` now shows both `customer_id` and `login_customer_id` when they differ.
+
 ## [0.3.1] - 2026-04-10
 
 ### Fixed

@@ -40,8 +40,11 @@ _throttler = Throttler(GOOGLE_ADS_THROTTLE)
 def _get_client(arguments: dict[str, Any]) -> Any:
     """Load credentials and create a client.
 
-    Falls back to login_customer_id from credentials.json if customer_id
-    is not provided in the tool arguments.
+    Resolution order for customer_id:
+    1. Explicit customer_id in tool arguments
+    2. creds.customer_id from credentials.json
+    3. creds.login_customer_id as fallback (legacy credentials without
+       a separate customer_id field)
 
     Returns None on auth error.
     """
@@ -49,7 +52,11 @@ def _get_client(arguments: dict[str, Any]) -> Any:
     if creds is None:
         return None
 
-    customer_id = _opt(arguments, "customer_id") or creds.login_customer_id
+    customer_id = (
+        _opt(arguments, "customer_id")
+        or creds.customer_id
+        or creds.login_customer_id
+    )
     if not customer_id:
         raise ValueError(
             "customer_id is required. Provide it as a parameter or configure it "
