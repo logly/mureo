@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-04-11
+
+### Changed
+- Google Ads mutate errors now include the specific API error detail in the raised `RuntimeError` message instead of the generic "An error occurred while processing X." Previously, when Google Ads rejected a mutation (e.g. a `cpc_bid_micros` value below the account's minimum bid, an invalid asset format, a policy rejection, etc.), the detail was only written to logs, so agents saw an opaque failure with no actionable information. The detail is now appended to the message for every tool decorated with `@_wrap_mutate_error` (campaigns.create/update/update_status/diagnose, ad_groups.create/update, ads.create/update/update_status, keywords, negative_keywords, budgets, conversions, extensions, and display ads). The existing RESOURCE_NOT_FOUND hint is preserved and now also carries the API detail.
+
 ## [0.4.2] - 2026-04-11
 
 ### Added

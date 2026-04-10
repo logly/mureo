@@ -74,9 +74,12 @@ _F = TypeVar("_F", bound=Callable[..., Any])
 
 
 def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
-    """Decorator that logs GoogleAdsException details and re-raises with a generic message.
+    """Decorator that logs GoogleAdsException details and re-raises a
+    RuntimeError whose message includes the specific API error detail.
 
-    Technical API error details are only logged; a generic message is returned to the LLM.
+    Including the API detail (e.g. "bid below minimum", "invalid asset
+    format", etc.) lets agents see the actual reason their request was
+    rejected rather than a generic "An error occurred..." message.
     """
 
     def decorator(fn: _F) -> _F:
@@ -92,15 +95,18 @@ def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
                     detail,
                     args[0] if args else kwargs,
                 )
-                # Return a specific hint for RESOURCE_NOT_FOUND
+                # Return a specific hint for RESOURCE_NOT_FOUND, but
+                # still append the API detail so the resource name or
+                # other context surfaces in the error message.
                 if self._has_error_code(exc, "mutate_error", "RESOURCE_NOT_FOUND"):
                     raise RuntimeError(
                         f"{label} failed: The specified resource was not found. "
                         "Please verify the ID is correct. "
-                        "Retrieve the latest ID using a list tool (e.g., ads.list) and try again."
+                        "Retrieve the latest ID using a list tool "
+                        f"(e.g., ads.list) and try again. Details: {detail}"
                     ) from exc
                 raise RuntimeError(
-                    f"An error occurred while processing {label}."
+                    f"An error occurred while processing {label}: {detail}"
                 ) from exc
 
         return wrapper  # type: ignore[return-value]

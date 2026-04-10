@@ -1191,6 +1191,72 @@ class TestWrapMutateError:
         with pytest.raises(RuntimeError, match="error occurred"):
             await client.do_something()
 
+    @pytest.mark.asyncio
+    async def test_APIエラー詳細が返却メッセージに含まれる(self) -> None:
+        """Google Ads API が返した詳細メッセージが RuntimeError に含まれること。
+
+        これにより「bidが最低値を下回っている」等の具体的な拒否理由が
+        エージェントに伝わる。
+        """
+        exc = _make_google_ads_exception("bid too low")
+
+        detail_text = "The cpc_bid_micros is below the minimum bid of 1000000 micros"
+
+        class FakeClient:
+            _customer_id = "123"
+
+            @staticmethod
+            def _extract_error_detail(e: Any) -> str:
+                return detail_text
+
+            @staticmethod
+            def _has_error_code(e: Any, attr: str, name: str) -> bool:
+                return False
+
+            @_wrap_mutate_error("ad group update")
+            async def do_something(self) -> dict[str, str]:
+                raise exc
+
+        client = FakeClient()
+        with pytest.raises(RuntimeError) as exc_info:
+            await client.do_something()
+        # 詳細メッセージが含まれていること
+        assert "minimum bid" in str(exc_info.value)
+        assert "ad group update" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_RESOURCE_NOT_FOUND_詳細も含める(self) -> None:
+        """RESOURCE_NOT_FOUND ヒントに加えて API 詳細も含まれること。"""
+        exc = _make_google_ads_exception(
+            attr_name="mutate_error",
+            error_name="RESOURCE_NOT_FOUND",
+        )
+
+        class FakeClient:
+            _customer_id = "123"
+
+            @staticmethod
+            def _extract_error_detail(e: Any) -> str:
+                return "Resource customer/123/ads/999 not found"
+
+            @staticmethod
+            def _has_error_code(e: Any, attr: str, name: str) -> bool:
+                return attr == "mutate_error" and name == "RESOURCE_NOT_FOUND"
+
+            @_wrap_mutate_error("ads update")
+            async def do_something(self) -> dict[str, str]:
+                raise exc
+
+        client = FakeClient()
+        with pytest.raises(RuntimeError) as exc_info:
+            await client.do_something()
+        msg = str(exc_info.value)
+        # 既存のヒントが含まれること
+        assert "not found" in msg
+        assert "list tool" in msg
+        # API詳細も含まれること
+        assert "customer/123/ads/999" in msg
+
 
 # ---------------------------------------------------------------------------
 # _check_budget_bidding_compatibility
