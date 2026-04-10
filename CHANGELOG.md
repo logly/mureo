@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-04-11
+
+### Added
+- `google_ads.ads.list` now returns Responsive Display Ad (RDA) text fields when the ad is a RDA: `headlines`, `descriptions`, `long_headline`, `business_name`, `marketing_images`, `square_marketing_images`, `logo_images`. Previously the response only populated these fields for Responsive Search Ads (RSA), so RDAs appeared with empty `headlines`/`descriptions` arrays.
+
+### Fixed
+- `google_ads.ad_groups.update` now rejects `cpc_bid_micros` with a clear error when the parent campaign uses an automated bidding strategy (MAXIMIZE_CLICKS / MAXIMIZE_CONVERSIONS / TARGET_CPA / TARGET_ROAS / etc.). Previously the Google Ads API returned the unhelpful "An error occurred while processing ad group update." message, and it was unclear that the root cause was a bidding-strategy mismatch. Manual ad-group-level bids are only supported under MANUAL_CPC, MANUAL_CPM, and MANUAL_CPV.
+- `google_ads.ads.update` now fails fast with a clear message when the target ad is a Responsive Display Ad (RDA). The existing implementation only supports Responsive Search Ads (RSA), and attempting to update a RDA previously produced the cryptic "An error occurred while processing ad text update." error. RDA updates are still not implemented; recreate the ad via `create_display_ad` for text changes.
+
 ## [0.4.1] - 2026-04-11
 
 ### Fixed

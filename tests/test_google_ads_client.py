@@ -766,6 +766,52 @@ class TestUpdateAdGroup:
         assert result["error"] is True
         assert "Invalid status" in result["message"]
 
+    @pytest.mark.asyncio
+    async def test_cpc_bid_micros_自動入札戦略下で拒否(self) -> None:
+        """親キャンペーンが MAXIMIZE_CLICKS 等の自動入札戦略のとき、
+        cpc_bid_micros の更新は事前に明確なエラーで拒否される。
+        """
+        client = _make_client()
+        # 親キャンペーンが MAXIMIZE_CLICKS (enum 9, TARGET_SPEND) だと返す
+        row = MagicMock()
+        row.campaign.bidding_strategy_type = 9  # MAXIMIZE_CLICKS
+        with patch.object(client, "_search", return_value=[row]):
+            result = await client.update_ad_group(
+                {
+                    "ad_group_id": "789",
+                    "cpc_bid_micros": 200_000,
+                }
+            )
+        assert result["error"] is True
+        assert "cpc_bid_micros" in result["message"]
+        assert "MAXIMIZE_CLICKS" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_cpc_bid_micros_手動入札ならOK(self) -> None:
+        """MANUAL_CPC のキャンペーンでは cpc_bid_micros が通常通り更新される。"""
+        client = _make_client()
+        row = MagicMock()
+        row.campaign.bidding_strategy_type = 3  # MANUAL_CPC
+
+        mock_result = MagicMock()
+        mock_result.resource_name = "customers/123/adGroups/789"
+        mock_response = MagicMock()
+        mock_response.results = [mock_result]
+        mock_service = MagicMock()
+        mock_service.mutate_ad_groups.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+        client._client.get_type.return_value = MagicMock()
+        client._client.enums = MagicMock()
+
+        with patch.object(client, "_search", return_value=[row]):
+            result = await client.update_ad_group(
+                {
+                    "ad_group_id": "789",
+                    "cpc_bid_micros": 200_000,
+                }
+            )
+        assert result["resource_name"] == "customers/123/adGroups/789"
+
 
 # ---------------------------------------------------------------------------
 # get_budget / update_budget / create_budget

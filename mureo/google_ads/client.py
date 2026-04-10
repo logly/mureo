@@ -24,6 +24,7 @@ from mureo.google_ads._monitoring import _MonitoringMixin
 from mureo.google_ads.mappers import (
     map_ad_group,
     map_ad_performance_report,
+    map_bidding_strategy_type,
     map_campaign,
     map_entity_status,
     map_performance_report,
@@ -690,9 +691,61 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         )
         return {"resource_name": response.results[0].resource_name}
 
+    # Bidding strategies that SUPPORT manual ad-group-level cpc_bid_micros.
+    # Any strategy outside this set is an automated strategy where Google
+    # Ads ignores or rejects manual bids at the ad group level.
+    #
+    # Note: ENHANCED_CPC is deprecated but still accepts manual bids on
+    # legacy campaigns. PERCENT_CPC (hotels) and COMMISSION use
+    # percent/commission semantics rather than cpc_bid_micros and are
+    # therefore intentionally excluded.
+    _MANUAL_BID_STRATEGIES: frozenset[str] = frozenset(
+        {"MANUAL_CPC", "MANUAL_CPM", "MANUAL_CPV", "ENHANCED_CPC"}
+    )
+
+    async def _check_ad_group_supports_manual_bid(
+        self, ad_group_id: str
+    ) -> tuple[bool, str]:
+        """Check whether the parent campaign uses a manual bidding strategy.
+
+        Returns (supported, strategy_name). ``supported`` is True only
+        when the parent campaign allows manual ad-group-level bids.
+        """
+        query = (
+            "SELECT campaign.bidding_strategy_type FROM ad_group "
+            f"WHERE ad_group.id = {ad_group_id}"
+        )
+        response = await self._search(query)
+        for row in response:
+            strategy = map_bidding_strategy_type(row.campaign.bidding_strategy_type)
+            return strategy in self._MANUAL_BID_STRATEGIES, strategy
+        return False, "UNKNOWN"
+
     @_wrap_mutate_error("ad group update")
     async def update_ad_group(self, params: dict[str, Any]) -> dict[str, Any]:
         """Update ad group."""
+        # Pre-check: cpc_bid_micros only works under manual bidding
+        # strategies. Bail out with a clear error before hitting the
+        # Google Ads API, which would otherwise return the unhelpful
+        # "An error occurred while processing ad group update." message.
+        if "cpc_bid_micros" in params:
+            supported, strategy = await self._check_ad_group_supports_manual_bid(
+                params["ad_group_id"]
+            )
+            if not supported:
+                return {
+                    "error": True,
+                    "error_type": "validation_error",
+                    "message": (
+                        f"cpc_bid_micros cannot be set: parent campaign uses "
+                        f"{strategy}, an automated bidding strategy. Manual "
+                        f"bids at the ad group level are only supported under "
+                        f"MANUAL_CPC, MANUAL_CPM, or MANUAL_CPV. Change the "
+                        f"campaign bidding strategy first, or omit "
+                        f"cpc_bid_micros from this update."
+                    ),
+                }
+
         ad_group_service = self._get_service("AdGroupService")
         ad_group_op = self._client.get_type("AdGroupOperation")
         ad_group = ad_group_op.update

@@ -247,6 +247,73 @@ class TestListAds:
         # (map_ad_typeが"RESPONSIVE_SEARCH_AD"を返さないため)
         assert isinstance(result[0]["headlines"], list)
 
+    @pytest.mark.asyncio
+    async def test_RDAのheadlines_long_headline_descriptions_business_nameを返す(
+        self,
+    ) -> None:
+        """list_ads が RESPONSIVE_DISPLAY_AD のテキストフィールドを返すこと。"""
+        client = _make_client()
+
+        row = MagicMock()
+        row.ad_group_ad.ad.id = 999
+        row.ad_group_ad.ad.name = "Display Ad"
+        row.ad_group_ad.ad.type_ = 19  # RESPONSIVE_DISPLAY_AD
+        row.ad_group_ad.status = 2
+        row.ad_group_ad.ad_strength = 0
+        row.ad_group.id = 100
+        row.ad_group.name = "ag"
+        row.campaign.id = 200
+        row.campaign.name = "camp"
+        row.campaign.status = 2
+
+        # Short headlines (repeated)
+        h1, h2 = MagicMock(), MagicMock()
+        h1.text = "Display見出し1"
+        h2.text = "Display見出し2"
+        row.ad_group_ad.ad.responsive_display_ad.headlines = [h1, h2]
+
+        # Long headline (singular composite)
+        row.ad_group_ad.ad.responsive_display_ad.long_headline.text = (
+            "長い見出しサンプル"
+        )
+
+        # Descriptions (repeated)
+        d1 = MagicMock()
+        d1.text = "Display説明1"
+        row.ad_group_ad.ad.responsive_display_ad.descriptions = [d1]
+
+        row.ad_group_ad.ad.responsive_display_ad.business_name = "Acme"
+
+        # Marketing images (repeated)
+        img = MagicMock()
+        img.asset = "customers/1/assets/777"
+        row.ad_group_ad.ad.responsive_display_ad.marketing_images = [img]
+        row.ad_group_ad.ad.responsive_display_ad.square_marketing_images = []
+        row.ad_group_ad.ad.responsive_display_ad.logo_images = []
+
+        row.ad_group_ad.ad.final_urls = ["https://example.com/landing"]
+
+        ps = MagicMock()
+        ps.review_status = 3
+        ps.approval_status = 4
+        ps.policy_topic_entries = []
+        row.ad_group_ad.policy_summary = ps
+
+        with patch.object(client, "_search", return_value=[row]):
+            result = await client.list_ads()
+
+        assert len(result) == 1
+        ad = result[0]
+        assert ad["type"] == "RESPONSIVE_DISPLAY_AD"
+        assert ad["headlines"] == ["Display見出し1", "Display見出し2"]
+        assert ad["descriptions"] == ["Display説明1"]
+        assert ad["long_headline"] == "長い見出しサンプル"
+        assert ad["business_name"] == "Acme"
+        assert ad["marketing_images"] == ["customers/1/assets/777"]
+        # 空の画像リストが正しく空配列として返ること
+        assert ad["square_marketing_images"] == []
+        assert ad["logo_images"] == []
+
 
 # ---------------------------------------------------------------------------
 # get_ad_policy_details
@@ -751,6 +818,10 @@ class TestVerifyAdGroupIsDisplay:
 
 @pytest.mark.unit
 class TestUpdateAd:
+    @staticmethod
+    async def _noop_assert_rsa(self, ad_id: str) -> None:  # noqa: ARG004
+        return None
+
     @pytest.mark.asyncio
     async def test_正常_final_url付き(self) -> None:
         client = _make_client()
@@ -763,14 +834,15 @@ class TestUpdateAd:
         client._client.get_service.return_value = mock_service
         client._client.get_type.return_value = MagicMock()
 
-        result = await client.update_ad(
-            {
-                "ad_id": "456",
-                "headlines": ["新見出し1", "新見出し2", "新見出し3"],
-                "descriptions": ["新説明文1", "新説明文2"],
-                "final_url": "https://new-example.com",
-            }
-        )
+        with patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa):
+            result = await client.update_ad(
+                {
+                    "ad_id": "456",
+                    "headlines": ["新見出し1", "新見出し2", "新見出し3"],
+                    "descriptions": ["新説明文1", "新説明文2"],
+                    "final_url": "https://new-example.com",
+                }
+            )
         assert "resource_name" in result
         assert "ad_strength" in result
 
@@ -786,13 +858,14 @@ class TestUpdateAd:
         client._client.get_service.return_value = mock_service
         client._client.get_type.return_value = MagicMock()
 
-        result = await client.update_ad(
-            {
-                "ad_id": "456",
-                "headlines": ["見出し1", "見出し2", "見出し3"],
-                "descriptions": ["説明文1", "説明文2"],
-            }
-        )
+        with patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa):
+            result = await client.update_ad(
+                {
+                    "ad_id": "456",
+                    "headlines": ["見出し1", "見出し2", "見出し3"],
+                    "descriptions": ["説明文1", "説明文2"],
+                }
+            )
         assert "resource_name" in result
 
     @pytest.mark.asyncio
@@ -806,6 +879,41 @@ class TestUpdateAd:
                     "descriptions": ["説明文1", "説明文2"],
                 }
             )
+
+    @pytest.mark.asyncio
+    async def test_RDAに対して明確なエラーを返す(self) -> None:
+        """update_ad は RSA のみ対応。RDA を渡したら明確にエラーを返す。"""
+        client = _make_client()
+
+        # GAQL pre-check でこの広告は RDA だと返す
+        rda_row = MagicMock()
+        rda_row.ad_group_ad.ad.type_ = 19  # RESPONSIVE_DISPLAY_AD
+
+        with patch.object(client, "_search", return_value=[rda_row]):
+            with pytest.raises(ValueError, match="update_ad supports.*RSA"):
+                await client.update_ad(
+                    {
+                        "ad_id": "456",
+                        "headlines": ["H1", "H2", "H3"],
+                        "descriptions": ["D1", "D2"],
+                        "final_url": "https://example.com",
+                    }
+                )
+
+    @pytest.mark.asyncio
+    async def test_存在しないad_idでエラー(self) -> None:
+        """pre-check で該当の広告が見つからない場合は明確なエラーを返す。"""
+        client = _make_client()
+
+        with patch.object(client, "_search", return_value=[]):
+            with pytest.raises(ValueError, match="not found"):
+                await client.update_ad(
+                    {
+                        "ad_id": "999",
+                        "headlines": ["H1", "H2", "H3"],
+                        "descriptions": ["D1", "D2"],
+                    }
+                )
 
 
 # ---------------------------------------------------------------------------

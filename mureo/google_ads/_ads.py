@@ -42,8 +42,35 @@ class _AdsMixin:
     @staticmethod
     def _validate_status(status: str) -> str: ...  # type: ignore[empty-body]
     def _get_service(self, service_name: str) -> Any: ...
+    async def _search(self, query: str) -> Any: ...
     @staticmethod
     def _extract_evidences(entry: Any) -> list[str]: ...  # type: ignore[empty-body]
+
+    async def _assert_ad_is_rsa(self, ad_id: str) -> None:
+        """Raise ValueError if the target ad is not a Responsive Search Ad.
+
+        ``update_ad`` only supports RSAs today. RDAs (display ads) and
+        other ad types cannot be text-updated through this code path.
+        """
+        query = (
+            "SELECT ad_group_ad.ad.type FROM ad_group_ad "
+            f"WHERE ad_group_ad.ad.id = {ad_id}"
+        )
+        response = await self._search(query)
+        for row in response:
+            ad_type_str = map_ad_type(row.ad_group_ad.ad.type_)
+            if ad_type_str != "RESPONSIVE_SEARCH_AD":
+                raise ValueError(
+                    f"update_ad supports RSA (Responsive Search Ad) only. "
+                    f"Ad {ad_id} is type {ad_type_str}. "
+                    f"For display ads, recreate via create_display_ad."
+                )
+            return
+        raise ValueError(
+            f"Ad {ad_id} not found in customer {self._customer_id}. "
+            f"Verify the ad_id and that the credentials (login_customer_id) "
+            f"have access to this account."
+        )
 
     # === Ads ===
 
@@ -114,7 +141,7 @@ class _AdsMixin:
         ad_group_id: str | None = None,
         status_filter: str | None = None,
     ) -> list[dict[str, Any]]:
-        """List ads."""
+        """List ads. Returns RSA and RDA text fields when applicable."""
         query = """
             SELECT
                 ad_group_ad.ad.id, ad_group_ad.ad.name,
@@ -123,6 +150,13 @@ class _AdsMixin:
                 ad_group_ad.ad.final_urls,
                 ad_group_ad.ad.responsive_search_ad.headlines,
                 ad_group_ad.ad.responsive_search_ad.descriptions,
+                ad_group_ad.ad.responsive_display_ad.headlines,
+                ad_group_ad.ad.responsive_display_ad.long_headline,
+                ad_group_ad.ad.responsive_display_ad.descriptions,
+                ad_group_ad.ad.responsive_display_ad.business_name,
+                ad_group_ad.ad.responsive_display_ad.marketing_images,
+                ad_group_ad.ad.responsive_display_ad.square_marketing_images,
+                ad_group_ad.ad.responsive_display_ad.logo_images,
                 ad_group_ad.policy_summary.review_status,
                 ad_group_ad.policy_summary.approval_status,
                 ad_group.id, ad_group.name,
@@ -147,6 +181,26 @@ class _AdsMixin:
             ad_type = map_ad_type(row.ad_group_ad.ad.type_)
             headlines: list[str] = []
             descriptions: list[str] = []
+            entry: dict[str, Any] = {
+                "id": str(row.ad_group_ad.ad.id),
+                "ad_group_id": str(row.ad_group.id),
+                "ad_group_name": row.ad_group.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "campaign_status": map_entity_status(row.campaign.status),
+                "status": map_entity_status(row.ad_group_ad.status),
+                "type": ad_type,
+                "ad_strength": map_ad_strength(row.ad_group_ad.ad_strength),
+                "final_urls": list(row.ad_group_ad.ad.final_urls),
+                "review_status": map_review_status(ps.review_status) if ps else "",
+                "approval_status": (
+                    map_approval_status(ps.approval_status) if ps else ""
+                ),
+            }
+            # Populate headlines/descriptions for RSA and RDA. Other ad
+            # types (image, video, call, app, etc.) fall through with the
+            # empty lists initialized above — no RSA/RDA-specific keys
+            # leak into those entries.
             if ad_type == "RESPONSIVE_SEARCH_AD":
                 rsa = row.ad_group_ad.ad.responsive_search_ad
                 headlines = (
@@ -157,26 +211,37 @@ class _AdsMixin:
                     if rsa.descriptions
                     else []
                 )
-            results.append(
-                {
-                    "id": str(row.ad_group_ad.ad.id),
-                    "ad_group_id": str(row.ad_group.id),
-                    "ad_group_name": row.ad_group.name,
-                    "campaign_id": str(row.campaign.id),
-                    "campaign_name": row.campaign.name,
-                    "campaign_status": map_entity_status(row.campaign.status),
-                    "status": map_entity_status(row.ad_group_ad.status),
-                    "type": ad_type,
-                    "ad_strength": map_ad_strength(row.ad_group_ad.ad_strength),
-                    "final_urls": list(row.ad_group_ad.ad.final_urls),
-                    "headlines": headlines,
-                    "descriptions": descriptions,
-                    "review_status": map_review_status(ps.review_status) if ps else "",
-                    "approval_status": (
-                        map_approval_status(ps.approval_status) if ps else ""
-                    ),
-                }
-            )
+            elif ad_type == "RESPONSIVE_DISPLAY_AD":
+                rda = row.ad_group_ad.ad.responsive_display_ad
+                headlines = (
+                    [asset.text for asset in rda.headlines] if rda.headlines else []
+                )
+                descriptions = (
+                    [asset.text for asset in rda.descriptions]
+                    if rda.descriptions
+                    else []
+                )
+                # long_headline is a singular AdTextAsset on the proto,
+                # so .text is always present — we use `or ""` to guard
+                # against the empty string case without a None check.
+                entry["long_headline"] = rda.long_headline.text or ""
+                entry["business_name"] = rda.business_name or ""
+                entry["marketing_images"] = (
+                    [img.asset for img in rda.marketing_images]
+                    if rda.marketing_images
+                    else []
+                )
+                entry["square_marketing_images"] = (
+                    [img.asset for img in rda.square_marketing_images]
+                    if rda.square_marketing_images
+                    else []
+                )
+                entry["logo_images"] = (
+                    [img.asset for img in rda.logo_images] if rda.logo_images else []
+                )
+            entry["headlines"] = headlines
+            entry["descriptions"] = descriptions
+            results.append(entry)
         return results
 
     async def get_ad_policy_details(
@@ -268,10 +333,20 @@ class _AdsMixin:
 
         Uses AdService.mutate_ads (not AdGroupAdService).
         Headlines and descriptions are fully replaced, not patched.
+
+        This method currently supports RSA (Responsive Search Ad) only.
+        If the target ad is a RDA (Responsive Display Ad), it raises
+        ValueError with a clear message. RDA updates are not yet
+        implemented; recreate the ad via ``create_display_ad``.
         """
         ad_id = params.get("ad_id", "")
         self._validate_id(ad_id, "ad_id")
         final_url = params.get("final_url")
+
+        # Pre-check the target ad type. Only RSAs are supported; bailing
+        # out early avoids the API returning a cryptic "An error occurred
+        # while processing ad text update." message for display ads.
+        await self._assert_ad_is_rsa(ad_id)
 
         # Use dummy URL for validation when final_url is not specified (URL itself is not updated)
         validation_url = final_url if final_url else "https://placeholder.example.com"
