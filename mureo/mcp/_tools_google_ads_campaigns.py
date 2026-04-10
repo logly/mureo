@@ -41,7 +41,7 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="google_ads.campaigns.create",
-        description="Create a Google Ads campaign",
+        description="Create a Google Ads campaign (search or display)",
         inputSchema={
             "type": "object",
             "properties": {
@@ -55,6 +55,11 @@ TOOLS: list[Tool] = [
                     "description": "Bidding strategy (MAXIMIZE_CLICKS etc.)",
                 },
                 "budget_id": {"type": "string", "description": "Budget ID"},
+                "channel_type": {
+                    "type": "string",
+                    "enum": ["SEARCH", "DISPLAY"],
+                    "description": "Campaign channel type. SEARCH (default) or DISPLAY.",
+                },
             },
             "required": ["name"],
         },
@@ -229,6 +234,84 @@ TOOLS: list[Tool] = [
                 "path2": {"type": "string", "description": "Display path 2"},
             },
             "required": ["ad_group_id", "headlines", "descriptions"],
+        },
+    ),
+    Tool(
+        name="google_ads.ads.create_display",
+        description=(
+            "Create a Google Ads responsive display ad (RDA). "
+            "Marketing/square/logo image paths are uploaded automatically "
+            "before the ad is created."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "customer_id": {
+                    "type": "string",
+                    "description": "Google Ads customer ID",
+                },
+                "ad_group_id": {
+                    "type": "string",
+                    "description": "Ad group ID (must belong to a DISPLAY campaign)",
+                },
+                "headlines": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Short headlines (1 to 5, each max 30 display width)",
+                },
+                "long_headline": {
+                    "type": "string",
+                    "description": "Long headline (max 90 display width, required)",
+                },
+                "descriptions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Descriptions (1 to 5, each max 90 display width)",
+                },
+                "business_name": {
+                    "type": "string",
+                    "description": "Business name (max 25 display width, required)",
+                },
+                "marketing_image_paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Local file paths for marketing images (1.91:1 ratio, "
+                        "1 to 15 images). At least 1 is required; 3+ is "
+                        "strongly recommended for delivery quality. Files "
+                        "are uploaded automatically before ad creation."
+                    ),
+                },
+                "square_marketing_image_paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Local file paths for square marketing images "
+                        "(1:1 ratio, 1 to 15 images). At least 1 is required; "
+                        "3+ is strongly recommended for delivery quality. "
+                        "Files are uploaded automatically before ad creation."
+                    ),
+                },
+                "logo_image_paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Optional local file paths for logo images "
+                        "(up to 5). Uploaded automatically."
+                    ),
+                },
+                "final_url": {"type": "string", "description": "Landing page URL"},
+            },
+            "required": [
+                "ad_group_id",
+                "headlines",
+                "long_headline",
+                "descriptions",
+                "business_name",
+                "marketing_image_paths",
+                "square_marketing_image_paths",
+                "final_url",
+            ],
         },
     ),
     Tool(

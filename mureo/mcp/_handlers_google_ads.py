@@ -226,6 +226,31 @@ async def handle_ads_create(args: dict[str, Any]) -> list[TextContent]:
 
 
 @api_error_handler
+async def handle_ads_create_display(args: dict[str, Any]) -> list[TextContent]:
+    """Create a Responsive Display Ad. Image file paths are uploaded
+    by the client before the ad is created.
+    """
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    params: dict[str, Any] = {
+        "ad_group_id": _require(args, "ad_group_id"),
+        "headlines": _require(args, "headlines"),
+        "long_headline": _require(args, "long_headline"),
+        "descriptions": _require(args, "descriptions"),
+        "business_name": _require(args, "business_name"),
+        "marketing_image_paths": _require(args, "marketing_image_paths"),
+        "square_marketing_image_paths": _require(args, "square_marketing_image_paths"),
+        "final_url": _require(args, "final_url"),
+    }
+    logos = _opt(args, "logo_image_paths")
+    if logos is not None:
+        params["logo_image_paths"] = logos
+    result = await client.create_display_ad(params)
+    return _json_result(result)
+
+
+@api_error_handler
 async def handle_ads_update(args: dict[str, Any]) -> list[TextContent]:
     client = _get_client(args)
     if client is None:
@@ -492,6 +517,7 @@ _HANDLERS_BASE: dict[str, Any] = {
     "google_ads.ad_groups.update": handle_ad_groups_update,
     "google_ads.ads.list": handle_ads_list,
     "google_ads.ads.create": handle_ads_create,
+    "google_ads.ads.create_display": handle_ads_create_display,
     "google_ads.ads.update": handle_ads_update,
     "google_ads.ads.update_status": handle_ads_update_status,
     "google_ads.keywords.list": handle_keywords_list,

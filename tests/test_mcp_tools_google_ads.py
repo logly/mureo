@@ -34,9 +34,9 @@ class TestGoogleAdsToolDefinitions:
     """Google Adsツール一覧が正しく定義されていることを検証する"""
 
     def test_tool_count(self) -> None:
-        """全82ツールが定義されていること"""
+        """全83ツールが定義されていること"""
         mod = _import_google_ads_tools()
-        assert len(mod.TOOLS) == 82
+        assert len(mod.TOOLS) == 83
 
     def test_all_tool_names(self) -> None:
         """全ツール名がgoogle_ads.で始まること"""
@@ -73,6 +73,19 @@ class TestGoogleAdsToolDefinitions:
             (
                 "google_ads.ads.create",
                 ["ad_group_id", "headlines", "descriptions"],
+            ),
+            (
+                "google_ads.ads.create_display",
+                [
+                    "ad_group_id",
+                    "headlines",
+                    "long_headline",
+                    "descriptions",
+                    "business_name",
+                    "marketing_image_paths",
+                    "square_marketing_image_paths",
+                    "final_url",
+                ],
             ),
             ("google_ads.ads.update", ["ad_group_id", "ad_id"]),
             (
@@ -381,6 +394,46 @@ class TestGoogleAdsAdHandlers:
             )
 
         client.update_ad_status.assert_awaited_once()
+
+    async def test_ads_create_display(self) -> None:
+        mod = _import_google_ads_tools()
+        creds, client = _mock_google_ads_context()
+        client.create_display_ad.return_value = {
+            "resource_name": "customers/123/adGroupAds/10~99",
+            "uploaded_assets": {
+                "marketing": ["customers/123/assets/1"],
+                "square_marketing": ["customers/123/assets/2"],
+                "logo": [],
+            },
+        }
+
+        h = _import_handlers()
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=creds),
+            patch.object(h, "create_google_ads_client", return_value=client),
+        ):
+            result = await mod.handle_tool(
+                "google_ads.ads.create_display",
+                {
+                    "customer_id": "123",
+                    "ad_group_id": "10",
+                    "headlines": ["H1", "H2"],
+                    "long_headline": "Long Headline Sample",
+                    "descriptions": ["D1"],
+                    "business_name": "Acme",
+                    "marketing_image_paths": ["/tmp/m.jpg"],
+                    "square_marketing_image_paths": ["/tmp/s.jpg"],
+                    "final_url": "https://example.com",
+                },
+            )
+
+        client.create_display_ad.assert_awaited_once()
+        call_args = client.create_display_ad.call_args[0][0]
+        assert call_args["ad_group_id"] == "10"
+        assert call_args["long_headline"] == "Long Headline Sample"
+        assert call_args["business_name"] == "Acme"
+        parsed = json.loads(result[0].text)
+        assert "uploaded_assets" in parsed
 
 
 # ---------------------------------------------------------------------------

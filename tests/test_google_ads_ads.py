@@ -377,6 +377,374 @@ class TestCreateAd:
 
 
 # ---------------------------------------------------------------------------
+# create_display_ad
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCreateDisplayAd:
+    """Responsive Display Ad (RDA) 作成のテスト。
+
+    `_verify_ad_group_is_display` はネットワーク呼び出しを伴うため
+    多くのテストで no-op に差し替える。事前チェック自体のテストは
+    `TestVerifyAdGroupIsDisplay` クラスで個別に行う。
+    """
+
+    @staticmethod
+    def _setup_mocks(client) -> tuple[MagicMock, MagicMock]:
+        """テスト用に AdGroupAdService と op を組み立てる。"""
+        mock_result = MagicMock()
+        mock_result.resource_name = "customers/123/adGroupAds/100~999"
+        mock_response = MagicMock()
+        mock_response.results = [mock_result]
+        mock_service = MagicMock()
+        mock_service.mutate_ad_group_ads.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+        # get_type が呼ばれるたびに新しい MagicMock を返す
+        client._client.get_type.side_effect = lambda *_args, **_kwargs: MagicMock()
+        client._client.enums = MagicMock()
+        return mock_service, mock_result
+
+    @staticmethod
+    async def _noop_verify(self, ad_group_id: str) -> None:  # noqa: ARG004
+        return None
+
+    @pytest.mark.asyncio
+    async def test_正常_ファイルパスから画像をアップロードして作成(self) -> None:
+        """マーケティング画像・正方形画像のファイルパスから RDA を作成する。"""
+        client = _make_client()
+        self._setup_mocks(client)
+
+        async def mock_upload(file_path: str, name: str | None = None) -> dict:
+            return {
+                "resource_name": f"customers/123/assets/asset-{file_path}",
+                "id": f"asset-{file_path}",
+                "name": name or file_path,
+            }
+
+        with (
+            patch.object(client, "upload_image_asset", side_effect=mock_upload),
+            patch.object(
+                type(client),
+                "_verify_ad_group_is_display",
+                self._noop_verify,
+            ),
+        ):
+            result = await client.create_display_ad(
+                {
+                    "ad_group_id": "100",
+                    "headlines": ["見出し1", "見出し2"],
+                    "long_headline": "長い見出しのサンプルテキスト",
+                    "descriptions": ["説明文サンプル"],
+                    "business_name": "Acme Inc",
+                    "marketing_image_paths": ["/tmp/marketing1.jpg"],
+                    "square_marketing_image_paths": ["/tmp/square1.jpg"],
+                    "final_url": "https://example.com",
+                }
+            )
+        assert result["resource_name"] == "customers/123/adGroupAds/100~999"
+        assert "uploaded_assets" in result
+        assert result["uploaded_assets"]["marketing"] == [
+            "customers/123/assets/asset-/tmp/marketing1.jpg"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_logo画像も含めて全画像が順番にアップロードされる(self) -> None:
+        client = _make_client()
+        self._setup_mocks(client)
+
+        upload_calls: list[str] = []
+
+        async def mock_upload(file_path: str, name: str | None = None) -> dict:
+            upload_calls.append(file_path)
+            return {
+                "resource_name": f"customers/123/assets/{file_path}",
+                "id": file_path,
+                "name": name or file_path,
+            }
+
+        with (
+            patch.object(client, "upload_image_asset", side_effect=mock_upload),
+            patch.object(
+                type(client), "_verify_ad_group_is_display", self._noop_verify
+            ),
+        ):
+            result = await client.create_display_ad(
+                {
+                    "ad_group_id": "100",
+                    "headlines": ["見出し1"],
+                    "long_headline": "長い見出し",
+                    "descriptions": ["説明文"],
+                    "business_name": "Acme",
+                    "marketing_image_paths": ["/tmp/m1.jpg", "/tmp/m2.jpg"],
+                    "square_marketing_image_paths": ["/tmp/s1.jpg"],
+                    "logo_image_paths": ["/tmp/logo1.png"],
+                    "final_url": "https://example.com",
+                }
+            )
+        assert "resource_name" in result
+        # 4枚すべて、この順序でアップロードされること
+        assert upload_calls == [
+            "/tmp/m1.jpg",
+            "/tmp/m2.jpg",
+            "/tmp/s1.jpg",
+            "/tmp/logo1.png",
+        ]
+        # uploaded_assets でカテゴリ別に振り分けられていること
+        assert len(result["uploaded_assets"]["marketing"]) == 2
+        assert len(result["uploaded_assets"]["square_marketing"]) == 1
+        assert len(result["uploaded_assets"]["logo"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_見出し空でエラー_アップロード前に失敗(self) -> None:
+        """テキストバリデーション失敗時はアップロードが起きないこと。"""
+        client = _make_client()
+
+        upload_calls: list[str] = []
+
+        async def mock_upload(file_path: str, name: str | None = None) -> dict:
+            upload_calls.append(file_path)
+            return {"resource_name": "x", "id": "x", "name": "x"}
+
+        with (
+            patch.object(client, "upload_image_asset", side_effect=mock_upload),
+            patch.object(
+                type(client), "_verify_ad_group_is_display", self._noop_verify
+            ),
+        ):
+            with pytest.raises(ValueError, match="At least 1 headline"):
+                await client.create_display_ad(
+                    {
+                        "ad_group_id": "100",
+                        "headlines": [],
+                        "long_headline": "Long",
+                        "descriptions": ["D"],
+                        "business_name": "Biz",
+                        "marketing_image_paths": ["/tmp/m.jpg"],
+                        "square_marketing_image_paths": ["/tmp/s.jpg"],
+                        "final_url": "https://example.com",
+                    }
+                )
+        assert upload_calls == []
+
+    @pytest.mark.asyncio
+    async def test_marketing画像なしでエラー(self) -> None:
+        client = _make_client()
+        with patch.object(
+            type(client), "_verify_ad_group_is_display", self._noop_verify
+        ):
+            with pytest.raises(ValueError, match="At least 1 marketing image"):
+                await client.create_display_ad(
+                    {
+                        "ad_group_id": "100",
+                        "headlines": ["H"],
+                        "long_headline": "Long",
+                        "descriptions": ["D"],
+                        "business_name": "Biz",
+                        "marketing_image_paths": [],
+                        "square_marketing_image_paths": ["/tmp/s.jpg"],
+                        "final_url": "https://example.com",
+                    }
+                )
+
+    @pytest.mark.asyncio
+    async def test_GoogleAdsException時はオーファンアセットを報告(self) -> None:
+        from mureo.google_ads._ads_display import RDAUploadError
+
+        client = _make_client()
+        # mutate で例外発生
+        exc = _make_google_ads_exception("作成失敗")
+        mock_service = MagicMock()
+        mock_service.mutate_ad_group_ads.side_effect = exc
+        client._client.get_service.return_value = mock_service
+        client._client.get_type.side_effect = lambda *_a, **_k: MagicMock()
+        client._client.enums = MagicMock()
+
+        async def mock_upload(file_path: str, name: str | None = None) -> dict:
+            return {
+                "resource_name": f"customers/123/assets/{file_path}",
+                "id": file_path,
+                "name": name or file_path,
+            }
+
+        with (
+            patch.object(client, "upload_image_asset", side_effect=mock_upload),
+            patch.object(
+                type(client), "_verify_ad_group_is_display", self._noop_verify
+            ),
+        ):
+            with pytest.raises(RDAUploadError) as exc_info:
+                await client.create_display_ad(
+                    {
+                        "ad_group_id": "100",
+                        "headlines": ["H"],
+                        "long_headline": "Long",
+                        "descriptions": ["D"],
+                        "business_name": "Biz",
+                        "marketing_image_paths": ["/tmp/m.jpg"],
+                        "square_marketing_image_paths": ["/tmp/s.jpg"],
+                        "final_url": "https://example.com",
+                    }
+                )
+        # アップロード済みアセットが orphaned_assets に含まれること
+        orphans = exc_info.value.orphaned_assets
+        assert "customers/123/assets/tmp/m.jpg" in " ".join(orphans) or any(
+            "/tmp/m.jpg" in o for o in orphans
+        )
+        assert len(orphans) == 2  # marketing + square
+
+    @pytest.mark.asyncio
+    async def test_部分アップロード失敗時もオーファンアセットを報告(self) -> None:
+        """1枚目のアップロード後、2枚目で失敗した場合に1枚目が報告されること。"""
+        from mureo.google_ads._ads_display import RDAUploadError
+
+        client = _make_client()
+        client._client.enums = MagicMock()
+
+        upload_count = {"n": 0}
+
+        async def mock_upload(file_path: str, name: str | None = None) -> dict:
+            upload_count["n"] += 1
+            if upload_count["n"] == 2:
+                raise RuntimeError("upload failed")
+            return {
+                "resource_name": f"customers/123/assets/{file_path}",
+                "id": file_path,
+                "name": name or file_path,
+            }
+
+        with (
+            patch.object(client, "upload_image_asset", side_effect=mock_upload),
+            patch.object(
+                type(client), "_verify_ad_group_is_display", self._noop_verify
+            ),
+        ):
+            with pytest.raises(RDAUploadError) as exc_info:
+                await client.create_display_ad(
+                    {
+                        "ad_group_id": "100",
+                        "headlines": ["H"],
+                        "long_headline": "Long",
+                        "descriptions": ["D"],
+                        "business_name": "Biz",
+                        "marketing_image_paths": ["/tmp/m1.jpg", "/tmp/m2.jpg"],
+                        "square_marketing_image_paths": ["/tmp/s.jpg"],
+                        "final_url": "https://example.com",
+                    }
+                )
+        # 1枚目だけアップロードされた状態でエラーになっていること
+        assert len(exc_info.value.orphaned_assets) == 1
+        assert "/tmp/m1.jpg" in exc_info.value.orphaned_assets[0]
+
+    @pytest.mark.asyncio
+    async def test_long_headlineが正しくprotoに設定される(self) -> None:
+        """long_headline は composite proto field なので .text に直接設定すること。"""
+        client = _make_client()
+        captured_long_headline_text = {}
+
+        # ad オブジェクトの参照を保持する仕組み
+        ad_capture = MagicMock()
+
+        def get_type_side_effect(name: str) -> Any:
+            if name == "AdGroupAdOperation":
+                op = MagicMock()
+                op.create.ad = ad_capture
+                return op
+            return MagicMock()
+
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/x")]
+        mock_service = MagicMock()
+        mock_service.mutate_ad_group_ads.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+        client._client.get_type.side_effect = get_type_side_effect
+        client._client.enums = MagicMock()
+
+        async def mock_upload(file_path: str, name: str | None = None) -> dict:
+            return {"resource_name": f"customers/123/assets/{file_path}", "id": "x"}
+
+        # long_headline.text への代入を検知
+        original_set = ad_capture.responsive_display_ad
+
+        def capture_long_headline(value: str) -> None:
+            captured_long_headline_text["text"] = value
+
+        type(original_set).long_headline = property(
+            lambda self: type(
+                "LH",
+                (),
+                {
+                    "text": property(
+                        lambda s: captured_long_headline_text.get("text", ""),
+                        lambda s, v: captured_long_headline_text.__setitem__("text", v),
+                    )
+                },
+            )()
+        )
+
+        with (
+            patch.object(client, "upload_image_asset", side_effect=mock_upload),
+            patch.object(
+                type(client), "_verify_ad_group_is_display", self._noop_verify
+            ),
+        ):
+            await client.create_display_ad(
+                {
+                    "ad_group_id": "100",
+                    "headlines": ["H1"],
+                    "long_headline": "This is the long headline",
+                    "descriptions": ["D1"],
+                    "business_name": "Biz",
+                    "marketing_image_paths": ["/tmp/m.jpg"],
+                    "square_marketing_image_paths": ["/tmp/s.jpg"],
+                    "final_url": "https://example.com",
+                }
+            )
+        assert captured_long_headline_text.get("text") == "This is the long headline"
+
+
+# ---------------------------------------------------------------------------
+# create_display_ad の事前チェック (M5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestVerifyAdGroupIsDisplay:
+    """`_verify_ad_group_is_display` 自体のテスト。"""
+
+    @pytest.mark.asyncio
+    async def test_DISPLAYアカウントなら成功(self) -> None:
+        client = _make_client()
+        display_enum = "DISPLAY_VAL"
+        client._client.enums.AdvertisingChannelTypeEnum.DISPLAY = display_enum
+
+        row = MagicMock()
+        row.campaign.advertising_channel_type = display_enum
+        with patch.object(client, "_search", return_value=[row]):
+            await client._verify_ad_group_is_display("100")
+
+    @pytest.mark.asyncio
+    async def test_SEARCHアカウントならエラー(self) -> None:
+        client = _make_client()
+        display_enum = "DISPLAY_VAL"
+        search_enum = "SEARCH_VAL"
+        client._client.enums.AdvertisingChannelTypeEnum.DISPLAY = display_enum
+
+        row = MagicMock()
+        row.campaign.advertising_channel_type = search_enum
+        with patch.object(client, "_search", return_value=[row]):
+            with pytest.raises(ValueError, match="does not belong to a DISPLAY"):
+                await client._verify_ad_group_is_display("100")
+
+    @pytest.mark.asyncio
+    async def test_アカウントが存在しない場合はエラー(self) -> None:
+        client = _make_client()
+        with patch.object(client, "_search", return_value=[]):
+            with pytest.raises(ValueError, match="not found"):
+                await client._verify_ad_group_is_display("100")
+
+
+# ---------------------------------------------------------------------------
 # update_ad
 # ---------------------------------------------------------------------------
 
@@ -524,3 +892,35 @@ class TestUpdateAdStatus:
 
         with pytest.raises(RuntimeError, match="error occurred"):
             await client.update_ad_status("100", "1", "PAUSED")
+
+    @pytest.mark.asyncio
+    async def test_DISPLAY広告のenableはRSA上限チェックを無視する(self) -> None:
+        """RSA上限の判定はRESPONSIVE_SEARCH_AD型のみ対象。
+
+        RDAばかりが3件以上ある広告グループでDISPLAY広告をenableに
+        変更しても上限エラーにならない。
+        """
+        client = _make_client()
+        # RDA だけ4件存在する状態
+        existing_ads = {
+            "ads": [
+                {"id": "10", "status": "ENABLED", "type": "RESPONSIVE_DISPLAY_AD"},
+                {"id": "11", "status": "ENABLED", "type": "RESPONSIVE_DISPLAY_AD"},
+                {"id": "12", "status": "ENABLED", "type": "RESPONSIVE_DISPLAY_AD"},
+                {"id": "13", "status": "ENABLED", "type": "RESPONSIVE_DISPLAY_AD"},
+            ]
+        }
+        mock_result = MagicMock()
+        mock_result.resource_name = "customers/123/adGroupAds/100~14"
+        mock_response = MagicMock()
+        mock_response.results = [mock_result]
+        mock_service = MagicMock()
+        mock_service.mutate_ad_group_ads.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+        client._client.get_type.return_value = MagicMock()
+        client._client.enums = MagicMock()
+
+        with patch.object(client, "list_ads", return_value=existing_ads):
+            result = await client.update_ad_status("100", "14", "ENABLED")
+        # RSA上限エラーで弾かれず、正常にmutateが実行されること
+        assert result["resource_name"] == "customers/123/adGroupAds/100~14"

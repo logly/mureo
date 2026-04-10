@@ -41,10 +41,10 @@ class TestListTools:
     """list_tools が正しいツール定義を返すことを検証する"""
 
     async def test_list_tools_returns_all_tools(self) -> None:
-        """list_tools は全ツール（Google Ads 82 + Meta Ads 77 + Search Console 10 = 169）を返す"""
+        """list_tools は全ツール（Google Ads 83 + Meta Ads 77 + Search Console 10 = 170）を返す"""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
-        assert len(tools) == 169
+        assert len(tools) == 170
 
     async def test_list_tools_contains_google_and_meta(self) -> None:
         """Google Ads と Meta Ads のツールが含まれること"""

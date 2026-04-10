@@ -499,6 +499,102 @@ class TestCreateCampaign:
             result = await client.create_campaign({"name": "既存キャンペーン"})
             assert result["note"] == "既存"
 
+    @pytest.mark.asyncio
+    async def test_channel_type_DISPLAY_でディスプレイキャンペーン作成(self) -> None:
+        """channel_type=DISPLAYでディスプレイキャンペーンが作成される。
+
+        ネットワーク設定はディスプレイ向け（content_network=True）。
+        """
+        client = _make_client()
+        mock_result = MagicMock()
+        mock_result.resource_name = "customers/123/campaigns/789"
+        mock_response = MagicMock()
+        mock_response.results = [mock_result]
+        mock_service = MagicMock()
+        mock_service.mutate_campaigns.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+
+        # campaign_op.create に設定された値を後から検証するため、
+        # MagicMock のデフォルト挙動（属性を設定したら保持される）を活用する
+        captured_op = MagicMock()
+        client._client.get_type.return_value = captured_op
+        client._client.enums = MagicMock()
+
+        result = await client.create_campaign(
+            {
+                "name": "ディスプレイ新規",
+                "bidding_strategy": "MAXIMIZE_CLICKS",
+                "channel_type": "DISPLAY",
+            }
+        )
+        assert result["resource_name"] == "customers/123/campaigns/789"
+
+        # ネットワーク設定がディスプレイ向けに設定されていること
+        campaign = captured_op.create
+        assert campaign.network_settings.target_google_search is False
+        assert campaign.network_settings.target_search_network is False
+        assert campaign.network_settings.target_content_network is True
+
+    @pytest.mark.asyncio
+    async def test_channel_type_未指定でSEARCHキャンペーン作成(self) -> None:
+        """channel_type 未指定時は従来通りSEARCHキャンペーンが作成される。"""
+        client = _make_client()
+        mock_result = MagicMock()
+        mock_result.resource_name = "customers/123/campaigns/100"
+        mock_response = MagicMock()
+        mock_response.results = [mock_result]
+        mock_service = MagicMock()
+        mock_service.mutate_campaigns.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+
+        captured_op = MagicMock()
+        client._client.get_type.return_value = captured_op
+        client._client.enums = MagicMock()
+
+        await client.create_campaign(
+            {"name": "検索キャンペーン", "bidding_strategy": "MAXIMIZE_CLICKS"}
+        )
+
+        # 検索向けのネットワーク設定が維持されていること
+        campaign = captured_op.create
+        assert campaign.network_settings.target_google_search is True
+        assert campaign.network_settings.target_search_network is True
+        assert campaign.network_settings.target_content_network is False
+
+    @pytest.mark.asyncio
+    async def test_channel_type_SEARCHでSEARCHキャンペーン作成(self) -> None:
+        """channel_type=SEARCHは未指定時と同じ動作。"""
+        client = _make_client()
+        mock_result = MagicMock()
+        mock_result.resource_name = "customers/123/campaigns/200"
+        mock_response = MagicMock()
+        mock_response.results = [mock_result]
+        mock_service = MagicMock()
+        mock_service.mutate_campaigns.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+
+        captured_op = MagicMock()
+        client._client.get_type.return_value = captured_op
+        client._client.enums = MagicMock()
+
+        await client.create_campaign(
+            {
+                "name": "検索キャンペーン",
+                "bidding_strategy": "MAXIMIZE_CLICKS",
+                "channel_type": "SEARCH",
+            }
+        )
+
+        campaign = captured_op.create
+        assert campaign.network_settings.target_google_search is True
+        assert campaign.network_settings.target_content_network is False
+
+    @pytest.mark.asyncio
+    async def test_channel_type_不正値はエラー(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="channel_type"):
+            await client.create_campaign({"name": "新規", "channel_type": "VIDEO"})
+
 
 # ---------------------------------------------------------------------------
 # update_campaign_status

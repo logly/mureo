@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-10
+
+### Added
+- Display Ads support: `google_ads.campaigns.create` now accepts a `channel_type` parameter (`"SEARCH"` or `"DISPLAY"`, defaults to `"SEARCH"`).
+- New tool `google_ads.ads.create_display` for creating Responsive Display Ads (RDA). Marketing, square marketing, and (optional) logo image files are uploaded automatically from local paths before the ad is created.
+- New module `mureo/google_ads/_rda_validator.py` with text and asset count validation for RDAs (headlines/long headline/descriptions/business name/image counts/URL).
+- New `_DisplayAdsMixin` (`mureo/google_ads/_ads_display.py`) added to `GoogleAdsApiClient`.
+- New exception type `RDAUploadError` that surfaces orphaned uploaded asset resource names when an RDA creation fails partway through, so callers can clean them up.
+- Pre-check that the target ad group belongs to a DISPLAY campaign before any image upload happens, avoiding orphaned assets when the wrong ad group is selected.
+
+### Changed
+- `_AdsMixin` no longer contains display ad code; RSA-related operations remain in `_ads.py`, RDA operations live in `_ads_display.py`.
+
 ## [0.3.2] - 2026-04-10
 
 ### Added

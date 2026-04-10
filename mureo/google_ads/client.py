@@ -109,6 +109,7 @@ def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
 
 # Import after _wrap_mutate_error definition (avoid circular import)
 from mureo.google_ads._ads import _AdsMixin  # noqa: E402
+from mureo.google_ads._ads_display import _DisplayAdsMixin  # noqa: E402
 from mureo.google_ads._extensions import _ExtensionsMixin  # noqa: E402
 from mureo.google_ads._keywords import _KeywordsMixin  # noqa: E402
 
@@ -118,6 +119,7 @@ PARTNER_CPA_WARNING_RATIO: float = 2.0
 
 class GoogleAdsApiClient(  # type: ignore[misc]
     _AdsMixin,
+    _DisplayAdsMixin,
     _KeywordsMixin,
     _MonitoringMixin,
     _ExtensionsMixin,
@@ -359,11 +361,24 @@ class GoogleAdsApiClient(  # type: ignore[misc]
                 )
 
     async def create_campaign(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Create campaign."""
+        """Create campaign.
+
+        Args:
+            params: Campaign parameters.
+                name: Campaign name (required, max 256 chars)
+                bidding_strategy: Bidding strategy (default: MAXIMIZE_CLICKS)
+                budget_id: Optional budget ID
+                channel_type: "SEARCH" (default) or "DISPLAY"
+        """
         name = params["name"]
         if len(name) > 256:
             raise ValueError(
                 f"Campaign name must be 256 characters or less (currently {len(name)} chars)"
+            )
+        channel_type = params.get("channel_type", "SEARCH").upper()
+        if channel_type not in ("SEARCH", "DISPLAY"):
+            raise ValueError(
+                f"channel_type must be 'SEARCH' or 'DISPLAY' (got '{channel_type}')"
             )
         bidding_strategy = params.get("bidding_strategy", "MAXIMIZE_CLICKS")
         if "budget_id" in params:
@@ -375,17 +390,35 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         campaign_op = self._client.get_type("CampaignOperation")
         campaign = campaign_op.create
         campaign.name = name
-        campaign.advertising_channel_type = (
-            self._client.enums.AdvertisingChannelTypeEnum.SEARCH
-        )
+        # Channel type and network settings. Use explicit branches so a
+        # future third channel type cannot silently fall through to the
+        # SEARCH branch — every value must be handled explicitly.
+        if channel_type == "SEARCH":
+            campaign.advertising_channel_type = (
+                self._client.enums.AdvertisingChannelTypeEnum.SEARCH
+            )
+        elif channel_type == "DISPLAY":
+            campaign.advertising_channel_type = (
+                self._client.enums.AdvertisingChannelTypeEnum.DISPLAY
+            )
+        else:  # pragma: no cover - validated above
+            raise ValueError(f"Unsupported channel_type: {channel_type}")
         campaign.status = self._client.enums.CampaignStatusEnum.PAUSED
         campaign.contains_eu_political_advertising = (
             self._client.enums.EuPoliticalAdvertisingStatusEnum.DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING
         )
-        campaign.network_settings.target_google_search = True
-        campaign.network_settings.target_search_network = True
-        campaign.network_settings.target_content_network = False
-        campaign.network_settings.target_partner_search_network = False
+        if channel_type == "SEARCH":
+            campaign.network_settings.target_google_search = True
+            campaign.network_settings.target_search_network = True
+            campaign.network_settings.target_content_network = False
+            campaign.network_settings.target_partner_search_network = False
+        elif channel_type == "DISPLAY":
+            campaign.network_settings.target_google_search = False
+            campaign.network_settings.target_search_network = False
+            campaign.network_settings.target_content_network = True
+            campaign.network_settings.target_partner_search_network = False
+        else:  # pragma: no cover - validated above
+            raise ValueError(f"Unsupported channel_type: {channel_type}")
         self._set_bidding_strategy(campaign, bidding_strategy, params)
         if "budget_id" in params:
             campaign.campaign_budget = self._client.get_service(
