@@ -53,9 +53,7 @@ def _get_client(arguments: dict[str, Any]) -> Any:
         return None
 
     customer_id = (
-        _opt(arguments, "customer_id")
-        or creds.customer_id
-        or creds.login_customer_id
+        _opt(arguments, "customer_id") or creds.customer_id or creds.login_customer_id
     )
     if not customer_id:
         raise ValueError(

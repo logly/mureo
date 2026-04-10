@@ -432,9 +432,7 @@ def _load_google_ads_from_env() -> GoogleAdsCredentials | None:
     client_secret = os.environ.get("GOOGLE_ADS_CLIENT_SECRET", "")
     refresh_token = os.environ.get("GOOGLE_ADS_REFRESH_TOKEN", "")
     login_customer_id = os.environ.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
-    customer_id = (
-        os.environ.get("GOOGLE_ADS_CUSTOMER_ID") or login_customer_id
-    )
+    customer_id = os.environ.get("GOOGLE_ADS_CUSTOMER_ID") or login_customer_id
 
     if not (developer_token and client_id and client_secret and refresh_token):
         return None
