@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/img/logo.png" alt="mureo" width="300">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/logo-dark.png">
+    <img src="docs/img/logo.png" alt="mureo" width="300">
+  </picture>
 </p>
 
 <p align="center">
