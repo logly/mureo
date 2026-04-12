@@ -174,7 +174,7 @@ class _AdsMixin:
             conditions.append(f"ad_group_ad.status = '{validated}'")
         if conditions:
             query += "\n            WHERE " + " AND ".join(conditions)
-        response = await self._search(query)  # type: ignore[attr-defined]
+        response = await self._search(query)
         results = []
         for row in response:
             ps = row.ad_group_ad.policy_summary
@@ -261,7 +261,7 @@ class _AdsMixin:
             WHERE ad_group.id = {ad_group_id}
                 AND ad_group_ad.ad.id = {ad_id}
         """
-        response = await self._search(query)  # type: ignore[attr-defined]
+        response = await self._search(query)
         for row in response:
             ps = row.ad_group_ad.policy_summary
             policy_issues: list[dict[str, Any]] = []
