@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & Ideas
+    url: https://github.com/logly/mureo/discussions
+    about: Ask questions, share ideas, or start a discussion. Please use Issues only for bug reports and feature requests.
+  - name: 🔒 Security Vulnerabilities
+    url: https://github.com/logly/mureo/security/advisories/new
+    about: Report security vulnerabilities privately. Do NOT open a public Issue.

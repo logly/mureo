@@ -1,0 +1,10 @@
+# Default owner for everything in the repository.
+# Override per-path below as contributors are added.
+*                                   @hyoshi
+
+# Critical areas — require explicit review even for small changes
+/mureo/auth.py                      @hyoshi
+/mureo/auth_setup.py                @hyoshi
+/pyproject.toml                     @hyoshi
+/.github/workflows/                 @hyoshi
+/SECURITY.md                        @hyoshi
