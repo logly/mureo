@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # Python dependencies declared in pyproject.toml.
+  # open-pull-requests-limit: 0 disables routine version-bump PRs while
+  # still allowing Dependabot to raise security advisories when a CVE
+  # affects one of our dependencies. Raise this number if we start to
+  # need regular version updates too.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    labels:
+      - "area: mcp"
+      - "needs-triage"
+
+  # GitHub Actions used in .github/workflows. Keeping these up to date
+  # is low-risk and protects the CI supply chain, so we allow a small
+  # number of routine version-bump PRs in addition to security updates.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "needs-triage"
