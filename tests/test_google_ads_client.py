@@ -328,8 +328,25 @@ class TestPeriodToDateClause:
 
     def test_不正なperiod(self) -> None:
         client = _make_client()
-        with pytest.raises(ValueError, match="Invalid period"):
+        with pytest.raises(ValueError):
             client._period_to_date_clause("INVALID")
+
+    def test_BETWEEN_injection_rejected(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError):
+            client._period_to_date_clause(
+                "BETWEEN '2024-01-01' AND '2024-01-31' OR 1=1"
+            )
+
+    def test_BETWEEN_malformed_rejected(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError):
+            client._period_to_date_clause("BETWEEN '2024/01/01' AND '2024/01/31'")
+
+    def test_ALL_TIME_rejected(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError):
+            client._period_to_date_clause("ALL_TIME")
 
 
 # ---------------------------------------------------------------------------

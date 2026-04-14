@@ -19,6 +19,18 @@ if TYPE_CHECKING:
 from mureo.google_ads._analysis import _AnalysisMixin
 from mureo.google_ads._creative import _CreativeMixin
 from mureo.google_ads._diagnostics import _DiagnosticsMixin
+from mureo.google_ads._gaql_validator import (
+    escape_string_literal as _gaql_escape_string_literal,
+)
+from mureo.google_ads._gaql_validator import (
+    validate_date as _gaql_validate_date,
+)
+from mureo.google_ads._gaql_validator import (
+    validate_date_range_constant as _gaql_validate_date_range_constant,
+)
+from mureo.google_ads._gaql_validator import (
+    validate_id as _gaql_validate_id,
+)
 from mureo.google_ads._media import _MediaMixin
 from mureo.google_ads._monitoring import _MonitoringMixin
 from mureo.google_ads.mappers import (
@@ -66,9 +78,10 @@ _VALID_RECOMMENDATION_TYPES = frozenset(
         "CALL_ASSET",
     }
 )
-_ID_PATTERN = re.compile(r"\d+")
-_DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
-
+_BETWEEN_PATTERN = re.compile(
+    r"BETWEEN\s+'(\d{4}-\d{2}-\d{2})'\s+AND\s+'(\d{4}-\d{2}-\d{2})'",
+    re.IGNORECASE,
+)
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 
@@ -140,9 +153,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str:
         """Validate that ID contains only digits."""
-        if not _ID_PATTERN.fullmatch(value):
-            raise ValueError(f"Invalid {field_name}: {value}")
-        return value
+        return _gaql_validate_id(value, field_name)
 
     @staticmethod
     def _validate_status(status: str) -> str:
@@ -173,11 +184,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     @staticmethod
     def _validate_date(value: str, field_name: str) -> str:
         """Validate YYYY-MM-DD date format."""
-        if not _DATE_PATTERN.fullmatch(value):
-            raise ValueError(
-                f"Invalid {field_name}: {value} (please specify in YYYY-MM-DD format)"
-            )
-        return value
+        return _gaql_validate_date(value, field_name)
 
     @staticmethod
     def _validate_resource_name(
@@ -256,7 +263,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     @staticmethod
     def _escape_gaql_string(value: str) -> str:
         """Escape for GAQL string literals."""
-        return value.replace("\\", "\\\\").replace("'", "\\'")
+        return _gaql_escape_string_literal(value)
 
     @staticmethod
     def _extract_evidences(entry: Any) -> list[str]:
@@ -1035,19 +1042,22 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         Custom range -> ``BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`` format
 
         The return value can be used directly as ``WHERE segments.date {return_value}``.
+        Every branch validates its components against the GAQL whitelist so
+        untrusted input (e.g. MCP handler parameters) cannot inject SQL.
         """
+        if not isinstance(period, str):
+            raise ValueError(f"Invalid period: {period!r}")
+
         if period.upper().startswith("BETWEEN"):
-            return period
-        period_map = {
-            "TODAY": "TODAY",
-            "YESTERDAY": "YESTERDAY",
-            "LAST_7_DAYS": "LAST_7_DAYS",
-            "LAST_14_DAYS": "LAST_14_DAYS",
-            "LAST_30_DAYS": "LAST_30_DAYS",
-            "LAST_MONTH": "LAST_MONTH",
-            "THIS_MONTH": "THIS_MONTH",
-        }
-        result = period_map.get(period.upper())
-        if result is None:
-            raise ValueError(f"Invalid period: {period}")
-        return f"DURING {result}"
+            match = _BETWEEN_PATTERN.fullmatch(period.strip())
+            if match is None:
+                raise ValueError(
+                    f"Invalid BETWEEN clause: {period!r} "
+                    "(expected: BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD')"
+                )
+            start, end = match.group(1), match.group(2)
+            _gaql_validate_date(start, "period.start")
+            _gaql_validate_date(end, "period.end")
+            return f"BETWEEN '{start}' AND '{end}'"
+
+        return f"DURING {_gaql_validate_date_range_constant(period)}"
