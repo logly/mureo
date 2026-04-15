@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- Added `mureo/google_ads/_gaql_validator.py`, a centralized whitelist-based validator for Google Ads Query Language (GAQL) string construction. Every ID, date, date-range constant, and string literal that enters a GAQL query now flows through one surface (`validate_id`, `validate_id_list`, `validate_date`, `validate_date_range_constant`, `escape_string_literal`, `validate_period_days`, `build_in_clause`). Hardened `_period_to_date_clause` so the `BETWEEN` branch pattern-matches and validates both dates instead of passing the raw caller string straight into GAQL, closing a trailing-injection path. Removed the unbounded `ALL_TIME` constant from the accepted date-range whitelist and added a 20-character length cap on numeric IDs to prevent absurd payloads reaching the upstream API.
+
+### Added
+- Added `mureo/analysis/anomaly_detector.py`, a pure I/O-free module that compares a `CampaignMetrics` snapshot against a median-based baseline built from historical `action_log` entries and returns a prioritized list of `Anomaly` records with recommended actions. Detects zero spend on a previously-spending campaign (CRITICAL), CPA spike ≥ 1.5× baseline (critical at 2×, gated by 30+ conversions), and CTR drop ≤ 0.5× baseline (critical at 0.3×, gated by 1000+ impressions). Sample-size gates follow the `mureo-learning` skill's statistical-thinking rules to suppress single-day noise. Baselines tolerate malformed `metrics_at_action` rows (string numerics, `"N/A"`, missing keys) so one bad entry cannot silently disable detection; CPA/CTR are medianed per-entry (never `median(cost) / median(conversions)`) so baseline values reflect a real historical day. CLI and MCP wiring ship in a follow-up.
+
 ## [0.4.3] - 2026-04-11
 
 ### Changed

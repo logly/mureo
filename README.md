@@ -54,6 +54,18 @@ Agent: Saved. I'll flag this as seasonal next time.
 → Every future /daily-check and /rescue will factor this in.
 ```
 
+### Security by design
+
+Marketing accounts are a high-value target. mureo is built with defense-in-depth for AI-driven operations:
+
+- **Credential guard** — `mureo setup claude-code` installs a PreToolUse hook that blocks AI agents from reading `~/.mureo/credentials.json`, `.env`, and similar secrets, so a prompt-injection payload cannot exfiltrate tokens via the file-system tools.
+- **GAQL input validation** — every ID, date, date-range constant, and string literal that enters a Google Ads query flows through one whitelist-based surface (`mureo/google_ads/_gaql_validator.py`), and `BETWEEN` clauses pattern-match and revalidate their dates instead of passing raw caller input into GAQL.
+- **Anomaly detection** — `mureo/analysis/anomaly_detector.py` compares current campaign metrics against a median-based baseline from the action log and emits prioritized alerts for zero spend, CPA spikes, and CTR drops, with sample-size gates that suppress single-day noise.
+- **Immutable data models** — every state object (`StateDocument`, `ActionLogEntry`, `CampaignSnapshot`, `Anomaly`) is a `frozen=True` dataclass; an agent cannot silently mutate its own record of what happened.
+- **Local-only credentials** — tokens are loaded from `~/.mureo/credentials.json` or environment variables and transmitted only to the official ad-platform APIs. mureo itself has no telemetry.
+
+See [SECURITY.md](SECURITY.md) for the full threat model and vulnerability reporting process.
+
 <details>
 <summary>Full capability list</summary>
 

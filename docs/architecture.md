@@ -76,7 +76,8 @@ mureo/
 │   ├── _creative.py         # _CreativeMixin (LP analysis, RSA insights)
 │   ├── _media.py            # _MediaMixin (image asset upload)
 │   ├── _rsa_validator.py    # RSA ad text validator
-│   └── _rda_validator.py    # RDA input validator (display ads)
+│   ├── _rda_validator.py    # RDA input validator (display ads)
+│   └── _gaql_validator.py   # GAQL input validators (IDs, dates, date ranges, IN clauses)
 ├── meta_ads/                # Meta Ads API client
 │   ├── client.py            # MetaAdsApiClient (15 Mixins)
 │   ├── mappers.py           # Response mapping
@@ -99,7 +100,8 @@ mureo/
 ├── search_console/          # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py            # SearchConsoleApiClient
 ├── analysis/                # Cross-platform analysis utilities
-│   └── lp_analyzer.py       # Landing page analysis
+│   ├── lp_analyzer.py       # Landing page analysis
+│   └── anomaly_detector.py  # CPA spike / CTR drop / zero-spend detection with sample-size gates
 ├── context/                 # File-based context (STRATEGY.md, STATE.json)
 │   ├── models.py            # Immutable dataclasses
 │   ├── strategy.py          # STRATEGY.md parser / renderer
@@ -176,6 +178,16 @@ Every tool and CLI command returns plain Python dicts (serializable to JSON). No
 ### Credentials Stay Local
 
 Credentials are loaded from `~/.mureo/credentials.json` or environment variables. They are never sent anywhere except the official advertising platform APIs.
+
+### Defense-in-Depth for AI Agents
+
+mureo assumes the caller is an AI agent susceptible to prompt injection, not a trusted human. Three layered controls address that threat model:
+
+1. **Credential guard** — `mureo setup claude-code` writes a PreToolUse hook to `~/.claude/settings.json` that blocks reads of `~/.mureo/credentials.json`, `.env`, and similar secret files, so a prompt-injection payload cannot exfiltrate tokens via the file-system tools.
+2. **GAQL input validation** — every ID, date, date-range constant, and string literal entering a Google Ads query flows through a single whitelist-based surface in `mureo/google_ads/_gaql_validator.py`. `_period_to_date_clause`'s `BETWEEN` branch pattern-matches and revalidates its dates instead of passing the raw caller string into GAQL.
+3. **Anomaly detection** — `mureo/analysis/anomaly_detector.py` compares current campaign metrics against a median-based baseline built from historical `action_log` entries and emits prioritized alerts for zero spend (CRITICAL), CPA spikes (≥1.5×, critical at 2×), and CTR drops (≤0.5×, critical at 0.3×). Sample-size gates (30+ conversions, 1000+ impressions) follow the `mureo-learning` skill's statistical-thinking rules to suppress single-day noise. Baselines tolerate malformed `metrics_at_action` rows; CPA/CTR are medianed per-entry so baseline values reflect a real historical day.
+
+See [SECURITY.md](../SECURITY.md) for the full threat model.
 
 ## Mixin Architecture
 
