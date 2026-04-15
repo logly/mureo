@@ -95,6 +95,31 @@ Sample-size gates (30+ conversions for CPA, 1000+ impressions for
 CTR) follow the `mureo-learning` skill's statistical-thinking rules
 to suppress single-day noise.
 
+### Rollback with allow-list gating
+
+`mureo/rollback/` turns agent-authored `reversible_params` hints in
+the action log into concrete `RollbackPlan` records. Because the
+agent writes those hints, they are untrusted input for the rollback
+executor; without hardening, a prompt-injected agent could log a
+"reversal" that points to a destructive tool.
+
+The planner enforces:
+
+- An explicit allow-list of operations (budget update + status
+  toggles across Google / Meta Ads). Anything outside it is refused.
+- Destructive verbs (`.delete`, `.remove`, `.destroy`, `.purge`,
+  `.transfer`) are refused even if they lexically match.
+- `params` keys must be a subset of the per-operation allowed key
+  set, so a budget-update reversal cannot smuggle keys like
+  `login_customer_id`.
+
+`mureo rollback list` / `mureo rollback show` let operators preview
+plans before any execution. The CLI is read-only — executing a
+plan stays with the MCP dispatcher so it re-enters the same policy
+gate as forward actions. Control characters from STATE.json are
+stripped before terminal output to prevent ANSI-escape spoofing by
+a compromised agent.
+
 ### Immutable data models
 
 All dataclasses that represent campaign state, action log entries,
