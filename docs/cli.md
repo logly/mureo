@@ -18,6 +18,7 @@ mureo <subcommand-group> <command> [options]
 |-------|-------------|
 | `setup` | Environment setup (Claude Code, Cursor) |
 | `auth` | Authentication management |
+| `rollback` | Inspect reversible actions recorded in STATE.json |
 
 Run `mureo --help` to see all available groups.
 
@@ -73,6 +74,54 @@ mureo auth setup
 3. MCP configuration placement.
 
 See [authentication.md](authentication.md) for details on credentials.
+
+## Rollback Commands
+
+`mureo rollback` lets an operator inspect reversible actions recorded in `STATE.json`. The commands are read-only — executing a rollback still goes through the MCP dispatcher so it re-enters the same policy gate as forward actions.
+
+```bash
+# List every state-changing action log entry with the planner's verdict.
+mureo rollback list
+
+# Limit to one platform.
+mureo rollback list --platform google_ads
+
+# Inspect a specific entry (index as shown by `list`).
+mureo rollback show 3
+
+# Point at a non-default STATE.json location.
+mureo rollback list --state-file /path/to/STATE.json
+```
+
+`list` output:
+
+```
+  #  timestamp            platform    status           action
+------------------------------------------------------------------------
+  0  2026-04-15T10:00:00  google_ads  supported        update_budget
+  2  2026-04-13T12:00:00  meta_ads    partial       *  update_status
+  3  2026-04-12T08:00:00  google_ads  not_supported    update_budget
+```
+
+`*` marks entries with caveats (e.g. "spend during pause is not refundable"); run `mureo rollback show <#>` for the full detail.
+
+`show` emits JSON for scripting:
+
+```json
+{
+  "index": 0,
+  "source_timestamp": "2026-04-15T10:00:00",
+  "source_action": "update_budget",
+  "platform": "google_ads",
+  "status": "supported",
+  "operation": "google_ads.budgets.update",
+  "params": {"budget_id": "222", "amount_micros": 10000000000},
+  "caveats": [],
+  "notes": ""
+}
+```
+
+A rollback entry only appears when the agent wrote a `reversible_params` hint at the time of the original action. Operations outside the planner's allow-list, or hints that smuggle unexpected parameter keys, are rejected at plan time — see [architecture.md](architecture.md#defense-in-depth-for-ai-agents) for the threat model.
 
 ## Output Format
 
