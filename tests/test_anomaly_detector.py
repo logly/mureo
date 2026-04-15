@@ -235,6 +235,33 @@ class TestBaselineFromHistory:
         log = (self._log("2026-04-01", 1000),)
         assert baseline_from_history("123", log, min_entries=3) is None
 
+    def test_default_min_entries_is_week(self) -> None:
+        # Six days of history is not enough for the default; caller must opt
+        # into a tighter window explicitly.
+        log = tuple(self._log(f"2026-04-0{i}", 1000) for i in range(1, 7))
+        assert baseline_from_history("123", log) is None
+        log_week = tuple(self._log(f"2026-04-0{i}", 1000) for i in range(1, 8))
+        assert baseline_from_history("123", log_week) is not None
+
+    def test_cpa_medianed_per_entry_not_from_mixed_medians(self) -> None:
+        # Entries are constructed so that median(cost)/median(conv) differs
+        # from median of per-entry CPAs. Per-entry is the honest answer.
+        def _e(cost: float, conv: float) -> ActionLogEntry:
+            return ActionLogEntry(
+                timestamp="2026-04-01",
+                action="update",
+                platform="google_ads",
+                campaign_id="123",
+                metrics_at_action={"cost": cost, "conversions": conv},
+            )
+
+        # per-entry CPAs: 10, 50, 1 → median = 10
+        # independently: median(cost)=100, median(conv)=20 → 100/20 = 5
+        log = (_e(100, 10), _e(1000, 20), _e(20, 20))
+        baseline = baseline_from_history("123", log, min_entries=3)
+        assert baseline is not None
+        assert baseline.cpa == 10
+
     def test_tolerates_string_values_from_json(self) -> None:
         # action_log round-tripped through JSON may arrive with string numerics
         # ("1000") or sentinels ("N/A"). One bad row must not take out the
@@ -309,6 +336,8 @@ class TestAnomalyFields:
             a.severity = Severity.CRITICAL  # type: ignore[misc]
 
     def test_severity_values_stable(self) -> None:
+        # Only CRITICAL and HIGH are emitted today. MEDIUM was removed from
+        # the enum to avoid dead API surface.
         assert Severity.CRITICAL.value == "critical"
         assert Severity.HIGH.value == "high"
-        assert Severity.MEDIUM.value == "medium"
+        assert not hasattr(Severity, "MEDIUM")

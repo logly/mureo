@@ -25,7 +25,7 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -42,17 +42,21 @@ CTR_MIN_IMPRESSIONS = 1000
 
 
 class Severity(str, Enum):
-    """Ordered severity levels. ``str`` mixin makes JSON serialization trivial."""
+    """Ordered severity levels. ``str`` mixin makes JSON serialization trivial.
+
+    Only CRITICAL and HIGH are emitted today. A lower tier (e.g. MEDIUM
+    for mild deviations) can be added if a real use case appears —
+    adding it prematurely invites the sample-size noise this module is
+    designed to suppress.
+    """
 
     CRITICAL = "critical"
     HIGH = "high"
-    MEDIUM = "medium"
 
 
 _SEVERITY_ORDER: dict[Severity, int] = {
     Severity.CRITICAL: 0,
     Severity.HIGH: 1,
-    Severity.MEDIUM: 2,
 }
 
 
@@ -237,7 +241,7 @@ def baseline_from_history(
     campaign_id: str,
     action_log: Iterable[ActionLogEntry],
     *,
-    min_entries: int = 3,
+    min_entries: int = 7,
 ) -> CampaignMetrics | None:
     """Build a baseline by taking the median of historical ``metrics_at_action``.
 
@@ -245,8 +249,15 @@ def baseline_from_history(
     action during a CPA spike) would otherwise pull the baseline
     toward the bad state and suppress future alerts.
 
+    Ratio metrics (CPA, CTR) are computed **per entry first** and then
+    medianed, so the returned baseline CPA is a real median daily CPA
+    rather than ``median(cost) / median(conversions)`` — those two can
+    diverge on noisy days and mismatch the real historical reality.
+
     Returns ``None`` if fewer than ``min_entries`` usable entries
-    exist for the given campaign.
+    exist. Default is 7 (one week) — enough that median resists one
+    or two outlier days. Callers that deliberately want a tighter
+    window can pass a smaller ``min_entries``.
     """
     relevant = [
         entry.metrics_at_action
@@ -256,28 +267,54 @@ def baseline_from_history(
     if len(relevant) < min_entries:
         return None
 
-    def _median(key: str) -> float | None:
+    def _numeric(m: dict[str, Any], key: str) -> float | None:
         # Tolerate malformed entries (string-typed values, "N/A", empty strings)
         # that can appear when action_log is loaded from JSON written by a
         # platform with inconsistent typing. One bad row must not take out the
         # whole baseline.
-        values: list[float] = []
-        for m in relevant:
-            raw = m.get(key)
-            if raw is None:
-                continue
-            try:
-                values.append(float(raw))
-            except (TypeError, ValueError):
-                continue
+        raw = m.get(key)
+        if raw is None:
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def _median_of(values: list[float]) -> float | None:
         return statistics.median(values) if values else None
+
+    per_entry_cpas: list[float] = []
+    per_entry_ctrs: list[float] = []
+    for m in relevant:
+        cpa = _numeric(m, "cpa")
+        if cpa is None:
+            cost = _numeric(m, "cost")
+            conv = _numeric(m, "conversions")
+            if cost is not None and conv is not None and conv > 0:
+                cpa = cost / conv
+        if cpa is not None:
+            per_entry_cpas.append(cpa)
+
+        ctr = _numeric(m, "ctr")
+        if ctr is None:
+            clicks = _numeric(m, "clicks")
+            impressions = _numeric(m, "impressions")
+            if clicks is not None and impressions is not None and impressions > 0:
+                ctr = clicks / impressions
+        if ctr is not None:
+            per_entry_ctrs.append(ctr)
+
+    costs = [v for v in (_numeric(m, "cost") for m in relevant) if v is not None]
+    imps = [v for v in (_numeric(m, "impressions") for m in relevant) if v is not None]
+    clks = [v for v in (_numeric(m, "clicks") for m in relevant) if v is not None]
+    convs = [v for v in (_numeric(m, "conversions") for m in relevant) if v is not None]
 
     return CampaignMetrics(
         campaign_id=campaign_id,
-        cost=_median("cost") or 0.0,
-        impressions=int(_median("impressions") or 0),
-        clicks=int(_median("clicks") or 0),
-        conversions=_median("conversions") or 0.0,
-        cpa=_median("cpa"),
-        ctr=_median("ctr"),
+        cost=_median_of(costs) or 0.0,
+        impressions=int(_median_of(imps) or 0),
+        clicks=int(_median_of(clks) or 0),
+        conversions=_median_of(convs) or 0.0,
+        cpa=_median_of(per_entry_cpas),
+        ctr=_median_of(per_entry_ctrs),
     )
