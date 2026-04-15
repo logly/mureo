@@ -54,6 +54,16 @@ class ActionLogEntry:
         Used by the agent to evaluate the outcome of the action after the observation window.
     observation_due: ISO 8601 date when the agent should evaluate the outcome (e.g., "2026-04-15").
         Typical windows: budget changes 7 days, keyword/creative changes 14 days.
+    reversible_params: Structured hint describing how to reverse this action. Shape:
+        ``{"operation": "<tool_name>", "params": {...}, "caveats": [...]}``.
+        Agents set this when making reversible changes (budget update, status toggle,
+        etc.) so ``mureo.rollback.plan_rollback()`` can build a concrete reversal plan.
+        ``None`` means the action was not marked reversible (read-only query, create,
+        delete, or simply not annotated). The ``operation`` value must be in the
+        rollback planner's allow-list (see ``mureo.rollback.planner._ALLOWED_OPERATIONS``);
+        values outside it — including destructive verbs like ``.delete`` — are refused
+        so a prompt-injected or buggy agent cannot smuggle a privileged call through
+        the rollback path.
     """
 
     timestamp: str
@@ -64,12 +74,17 @@ class ActionLogEntry:
     command: str | None = None
     metrics_at_action: dict[str, Any] | None = None
     observation_due: str | None = None
+    reversible_params: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
-        """Take defensive copy of mutable metrics_at_action dict."""
+        """Take defensive copies of mutable dict fields."""
         if self.metrics_at_action is not None:
             object.__setattr__(
                 self, "metrics_at_action", copy.deepcopy(self.metrics_at_action)
+            )
+        if self.reversible_params is not None:
+            object.__setattr__(
+                self, "reversible_params", copy.deepcopy(self.reversible_params)
             )
 
 

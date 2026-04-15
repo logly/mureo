@@ -639,6 +639,45 @@ class TestParseStateV2:
         assert reparsed.action_log[0].observation_due == "2026-04-08"
 
     @pytest.mark.unit
+    def test_render_action_log_with_reversible_params_roundtrip(self) -> None:
+        """Render and re-parse action_log carrying reversible_params."""
+        hint = {
+            "operation": "google_ads.budgets.update",
+            "params": {"budget_id": "456", "amount_micros": 10_000_000_000},
+            "caveats": ["does not refund already-spent budget"],
+        }
+        doc = StateDocument(
+            version="2",
+            action_log=(
+                ActionLogEntry(
+                    timestamp="2026-04-15T10:00:00",
+                    action="update_budget",
+                    platform="google_ads",
+                    reversible_params=hint,
+                ),
+            ),
+        )
+        rendered = render_state(doc)
+        reparsed = parse_state(rendered)
+        assert reparsed.action_log[0].reversible_params == hint
+
+    @pytest.mark.unit
+    def test_render_action_log_omits_none_reversible_params(self) -> None:
+        """reversible_params is omitted from JSON when None."""
+        doc = StateDocument(
+            version="2",
+            action_log=(
+                ActionLogEntry(
+                    timestamp="t",
+                    action="update_budget",
+                    platform="google_ads",
+                ),
+            ),
+        )
+        rendered = render_state(doc)
+        assert "reversible_params" not in rendered
+
+    @pytest.mark.unit
     def test_render_action_log_omits_none_metrics(self) -> None:
         """Render omits metrics_at_action and observation_due when None."""
         doc = StateDocument(
