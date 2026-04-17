@@ -103,8 +103,7 @@ async def execute_rollback(
     plan = plan_rollback(entry)
     if plan is None:
         raise RollbackExecutionError(
-            f"Entry #{index} ({entry.action}) is read-only — "
-            "nothing to roll back."
+            f"Entry #{index} ({entry.action}) is read-only — " "nothing to roll back."
         )
     if plan.status is RollbackStatus.NOT_SUPPORTED:
         raise RollbackExecutionError(
@@ -124,8 +123,7 @@ async def execute_rollback(
     # executor from recursing into itself.
     if plan.operation.startswith("rollback."):
         raise RollbackExecutionError(
-            f"Refusing to dispatch rollback into rollback surface: "
-            f"{plan.operation}"
+            f"Refusing to dispatch rollback into rollback surface: " f"{plan.operation}"
         )
 
     for later in doc.action_log[index + 1 :]:
