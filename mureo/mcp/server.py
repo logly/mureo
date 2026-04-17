@@ -18,6 +18,8 @@ from mcp.server.stdio import stdio_server
 if TYPE_CHECKING:
     from mcp.types import Tool
 
+from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
+from mureo.mcp.tools_analysis import handle_tool as handle_analysis_tool
 from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
 from mureo.mcp.tools_google_ads import handle_tool as handle_google_ads_tool
 from mureo.mcp.tools_meta_ads import TOOLS as META_ADS_TOOLS
@@ -39,11 +41,13 @@ _ALL_TOOLS: list[Tool] = [
     *META_ADS_TOOLS,
     *SEARCH_CONSOLE_TOOLS,
     *ROLLBACK_TOOLS,
+    *ANALYSIS_TOOLS,
 ]
 _GOOGLE_ADS_NAMES: frozenset[str] = frozenset(t.name for t in GOOGLE_ADS_TOOLS)
 _META_ADS_NAMES: frozenset[str] = frozenset(t.name for t in META_ADS_TOOLS)
 _SEARCH_CONSOLE_NAMES: frozenset[str] = frozenset(t.name for t in SEARCH_CONSOLE_TOOLS)
 _ROLLBACK_NAMES: frozenset[str] = frozenset(t.name for t in ROLLBACK_TOOLS)
+_ANALYSIS_NAMES: frozenset[str] = frozenset(t.name for t in ANALYSIS_TOOLS)
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +74,8 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         return await handle_search_console_tool(name, arguments)
     if name in _ROLLBACK_NAMES:
         return await handle_rollback_tool(name, arguments)
+    if name in _ANALYSIS_NAMES:
+        return await handle_analysis_tool(name, arguments)
     raise ValueError(f"Unknown tool: {name}")
 
 
