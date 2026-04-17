@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 169 advertising and SEO operation tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP). Any MCP-compatible client can connect and call these tools over stdio.
+mureo exposes 173 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 170 advertising and SEO operation tools across Google Ads, Meta Ads, and Search Console, plus 2 rollback tools and 1 cross-platform anomaly-detection tool. Any MCP-compatible client can connect and call these tools over stdio.
 
 ## Starting the Server
 
@@ -455,6 +455,27 @@ Search Console tools reuse the same Google OAuth2 credentials as Google Ads -- n
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `search_console.url_inspection.inspect` | Inspect a URL for indexing status | `site_url`, `inspection_url` |
+
+### Rollback
+
+Cross-platform tools for inspecting and applying the reversal of a previously-recorded `action_log` entry. `rollback.apply` re-dispatches through the same MCP handler used for forward actions, so the reversal re-enters the full policy gate (auth, rate-limit, GAQL validation, planner allow-list).
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `rollback.plan.get` | Inspect the reversal plan for an `action_log` entry (`supported` / `partial` / `not_supported`), its `operation` + `params`, and any caveats. Read-only. | `index` |
+| `rollback.apply` | Execute the reversal plan for `action_log[index]`. Requires `confirm=true` as a literal boolean. Appends a new log entry tagged `rollback_of=<index>`. | `index`, `confirm` |
+
+Both tools accept an optional `state_file` argument (default `STATE.json`), which is resolved strictly inside the MCP server's current working directory. Path traversal, symlink escape, and `rollback.*` self-recursion are all refused. A second apply of the same index is refused (idempotency is enforced by scanning later log entries for a matching `rollback_of` marker). Downstream SDK exceptions are logged server-side only; the MCP response returns a generic message so tokens and account identifiers cannot leak into model context.
+
+### Analysis
+
+Cross-platform anomaly detection that operates on STATE.json's `action_log` history rather than a platform API directly.
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `analysis.anomalies.check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). | `current` (`current.campaign_id` and `current.cost` required) |
+
+`had_prior_spend` (default `true`) suppresses the zero-spend alert for fresh campaigns. `min_baseline_entries` (default `7`) controls how many history entries are required before a baseline is built; below this, `baseline` is `null` and only zero-spend is evaluated. Numeric fields accept int / float / numeric-string and reject `"N/A"` or booleans. `state_file` is sandboxed the same way as for the rollback tools. A parseable-but-corrupt `STATE.json` produces a `baseline_warning` in the response without silencing live zero-spend detection.
 
 ## Workflow Commands
 

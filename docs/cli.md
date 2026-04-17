@@ -123,6 +123,18 @@ mureo rollback list --state-file /path/to/STATE.json
 
 A rollback entry only appears when the agent wrote a `reversible_params` hint at the time of the original action. Operations outside the planner's allow-list, or hints that smuggle unexpected parameter keys, are rejected at plan time — see [architecture.md](architecture.md#defense-in-depth-for-ai-agents) for the threat model.
 
+### Applying a rollback
+
+Execution is not a CLI command — it is the `rollback.apply` MCP tool. The CLI is intentionally read-only; applying a rollback from the CLI would bypass the authentication, rate-limiting, and input-validation gate that every forward action passes through. To apply a rollback, ask the agent to call `rollback.apply` with the index shown by `mureo rollback list`:
+
+```
+You: "Roll back action #0."
+Agent: rollback.plan.get → previews the reversal.
+Agent: rollback.apply({index: 0, confirm: true}) → dispatches.
+```
+
+`confirm` must be the literal boolean `true` (truthy non-booleans are refused). On success the executor appends a new log entry tagged `rollback_of=<index>`; a second apply of the same index is refused. `state_file` resolves strictly inside the MCP server's current working directory — `..`-traversal and symlink escape are refused so an attacker-crafted `STATE.json` elsewhere on disk cannot be used as the reversal source.
+
 ## Output Format
 
 Authentication check commands output JSON to stdout:
