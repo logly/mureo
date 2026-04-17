@@ -102,11 +102,12 @@ mureo/
 ├── analysis/                # Cross-platform analysis utilities
 │   ├── lp_analyzer.py       # Landing page analysis
 │   └── anomaly_detector.py  # CPA spike / CTR drop / zero-spend detection with sample-size gates
-├── rollback/                # Rollback planner (allow-list gated)
+├── rollback/                # Rollback feature (allow-list gated, append-only)
 │   ├── models.py            # RollbackStatus enum + RollbackPlan dataclass
-│   └── planner.py           # plan_rollback(ActionLogEntry) -> RollbackPlan | None
+│   ├── planner.py           # plan_rollback(ActionLogEntry) -> RollbackPlan | None
+│   └── executor.py          # execute_rollback(...) -> appends ActionLogEntry(rollback_of=index)
 ├── context/                 # File-based context (STRATEGY.md, STATE.json)
-│   ├── models.py            # Immutable dataclasses
+│   ├── models.py            # Immutable dataclasses (ActionLogEntry.rollback_of for audit trail)
 │   ├── strategy.py          # STRATEGY.md parser / renderer
 │   ├── state.py             # STATE.json parser / renderer
 │   └── errors.py            # Context-specific exceptions
@@ -114,7 +115,7 @@ mureo/
 │   ├── main.py              # Entry point (mureo command)
 │   ├── setup_cmd.py         # mureo setup claude-code / cursor
 │   ├── auth_cmd.py          # mureo auth setup / status / check-*
-│   └── rollback_cmd.py      # mureo rollback list / show (inspection only)
+│   └── rollback_cmd.py      # mureo rollback list / show (inspection only; apply routes through MCP)
 └── mcp/                     # MCP server
     ├── __main__.py                        # python -m mureo.mcp entry point
     ├── server.py                          # MCP server setup (stdio transport)
@@ -130,7 +131,11 @@ mureo/
     ├── _handlers_meta_ads_extended.py     # Extended handlers
     ├── _handlers_meta_ads_other.py        # Other handlers
     ├── tools_search_console.py            # Search Console tool definitions
-    └── _handlers_search_console.py        # Search Console handlers
+    ├── _handlers_search_console.py        # Search Console handlers
+    ├── tools_rollback.py                  # rollback.plan.get / rollback.apply
+    ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
+    ├── tools_analysis.py                  # analysis.anomalies.check
+    └── _handlers_analysis.py              # Anomaly detector composition handler
 
 .claude/commands/                # Workflow slash commands for Claude Code
 ├── onboard.md                   # Account setup + STRATEGY.md generation

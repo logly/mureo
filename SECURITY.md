@@ -95,6 +95,26 @@ Sample-size gates (30+ conversions for CPA, 1000+ impressions for
 CTR) follow the `mureo-learning` skill's statistical-thinking rules
 to suppress single-day noise.
 
+Agents invoke the detector via the `analysis.anomalies.check` MCP
+tool, which composes `baseline_from_history` with `detect_anomalies`
+behind a single call. Safety properties of the MCP surface:
+
+- `current.campaign_id` and `current.cost` are required, so a
+  zero-spend alert is always an intentional zero rather than the
+  product of an omitted field.
+- Numeric fields accept int / float / numeric-string and reject
+  non-numeric strings (`"N/A"`) and booleans, so a malformed
+  current-snapshot fails loudly instead of silently disabling
+  detection.
+- `state_file` resolves strictly inside the MCP server's current
+  working directory. Absolute paths that escape, `..`-traversal, and
+  symlinks that cross CWD boundaries are all refused, so a
+  prompt-injected agent cannot redirect the tool at an
+  attacker-crafted history.
+- A parse-error on STATE.json does not silence live zero-spend
+  detection; the response carries a `baseline_warning` so the agent
+  can flag the unreliable baseline to the operator.
+
 ### Rollback with allow-list gating
 
 `mureo/rollback/` turns agent-authored `reversible_params` hints in
@@ -119,6 +139,42 @@ plan stays with the MCP dispatcher so it re-enters the same policy
 gate as forward actions. Control characters from STATE.json are
 stripped before terminal output to prevent ANSI-escape spoofing by
 a compromised agent.
+
+Execution is exposed to agents via two MCP tools:
+
+- `rollback.plan.get` returns the planner's verdict (`supported` /
+  `partial` / `not_supported`), the operation that would be
+  dispatched, its parameters, and any caveats. Read-only.
+- `rollback.apply` executes the plan by re-dispatching
+  `plan.operation` with `plan.params` through the same
+  `handle_call_tool` used for forward actions, so the reversal call
+  re-enters the full policy gate (auth, rate limit, GAQL validation,
+  planner allow-list).
+
+Additional hardening on the executor:
+
+- `confirm` must be the literal boolean `True`. Truthy non-booleans
+  (`1`, `"true"`, non-empty lists) are refused, so an agent that
+  bypasses the MCP schema validator still cannot smuggle an apply
+  call with a coerced affirmative.
+- The planner is re-invoked at execution time rather than cached, so
+  a stale allow-list decision can never be smuggled in via the log.
+- `plan.operation` starting with `rollback.` is refused as
+  defense-in-depth, preventing recursion into the rollback surface
+  even if a future allow-list entry accidentally names a rollback
+  tool.
+- A successful apply is recorded as an append-only `ActionLogEntry`
+  tagged with `rollback_of=<index>`. The appended entry carries
+  `reversible_params=None` so rollbacks of rollbacks do not chain by
+  default; a second apply of the same index is refused.
+- `state_file` resolves strictly inside the MCP server's current
+  working directory (same sandbox as `analysis.anomalies.check`) so
+  an attacker-controlled `STATE.json` outside the project cannot be
+  used as the reversal source.
+- Dispatch-time API failures never mutate `action_log`; the
+  downstream exception is logged server-side only, and the MCP
+  response returns a generic message (only `type(exc).__name__`) so
+  tokens and account identifiers cannot leak into model context.
 
 ### Immutable data models
 

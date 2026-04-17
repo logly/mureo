@@ -61,7 +61,7 @@ mureo/
 │   └── _ad_rules.py     # AdRulesMixin (automated rules)
 ├── search_console/      # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py        # SearchConsoleApiClient
-├── mcp/                 # MCP server (Google Ads + Meta Ads + Search Console)
+├── mcp/                 # MCP server (Google Ads + Meta Ads + Search Console + Rollback + Analysis)
 │   ├── server.py                          # MCP Server entry point (stdio-based)
 │   ├── _helpers.py                        # Shared handler utilities
 │   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
@@ -75,18 +75,28 @@ mureo/
 │   ├── _handlers_meta_ads_extended.py     # Extended handlers
 │   ├── _handlers_meta_ads_other.py        # Other handlers
 │   ├── tools_search_console.py            # Search Console tool definitions
-│   └── _handlers_search_console.py        # Search Console handlers
-├── cli/                 # Typer CLI (setup + auth only; ad operations are via MCP)
+│   ├── _handlers_search_console.py        # Search Console handlers
+│   ├── tools_rollback.py                  # rollback.plan.get / rollback.apply
+│   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
+│   ├── tools_analysis.py                  # analysis.anomalies.check
+│   └── _handlers_analysis.py              # Anomaly detector composition handler
+├── cli/                 # Typer CLI (setup + auth + rollback inspection; ad operations are via MCP)
 │   ├── main.py          # CLI entry point (`mureo` command)
 │   ├── setup_cmd.py     # `mureo setup claude-code` / `mureo setup cursor`
-│   └── auth_cmd.py      # `mureo auth setup` / `status` / `check-*`
+│   ├── auth_cmd.py      # `mureo auth setup` / `status` / `check-*`
+│   └── rollback_cmd.py  # `mureo rollback list` / `show` (inspection only; apply routes through MCP)
 ├── context/             # File-based strategy context (no DB)
 │   ├── strategy.py      # STRATEGY.md parser/writer
 │   ├── state.py         # STATE.json parser/writer
-│   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot
+│   ├── models.py        # StrategyEntry, StateDocument, CampaignSnapshot, ActionLogEntry (rollback_of)
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
-│   └── lp_analyzer.py   # Landing page analyzer
+│   ├── lp_analyzer.py   # Landing page analyzer
+│   └── anomaly_detector.py  # Zero-spend / CPA-spike / CTR-drop detection (pure, sample-size-gated)
+├── rollback/            # Rollback feature (allow-list gated, append-only audit trail)
+│   ├── models.py        # RollbackStatus enum + RollbackPlan dataclass
+│   ├── planner.py       # plan_rollback(ActionLogEntry) -> RollbackPlan | None
+│   └── executor.py      # execute_rollback(...) -> appends ActionLogEntry(rollback_of=index)
 .claude/commands/            # Workflow slash commands (11 orchestration commands)
 │   ├── onboard.md           # Platform discovery + strategy setup
 │   ├── daily-check.md       # Cross-platform health monitoring (ad platforms + SC + GA4)
