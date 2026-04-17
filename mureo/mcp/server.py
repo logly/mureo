@@ -22,6 +22,8 @@ from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
 from mureo.mcp.tools_google_ads import handle_tool as handle_google_ads_tool
 from mureo.mcp.tools_meta_ads import TOOLS as META_ADS_TOOLS
 from mureo.mcp.tools_meta_ads import handle_tool as handle_meta_ads_tool
+from mureo.mcp.tools_rollback import TOOLS as ROLLBACK_TOOLS
+from mureo.mcp.tools_rollback import handle_tool as handle_rollback_tool
 from mureo.mcp.tools_search_console import TOOLS as SEARCH_CONSOLE_TOOLS
 from mureo.mcp.tools_search_console import handle_tool as handle_search_console_tool
 
@@ -36,10 +38,12 @@ _ALL_TOOLS: list[Tool] = [
     *GOOGLE_ADS_TOOLS,
     *META_ADS_TOOLS,
     *SEARCH_CONSOLE_TOOLS,
+    *ROLLBACK_TOOLS,
 ]
 _GOOGLE_ADS_NAMES: frozenset[str] = frozenset(t.name for t in GOOGLE_ADS_TOOLS)
 _META_ADS_NAMES: frozenset[str] = frozenset(t.name for t in META_ADS_TOOLS)
 _SEARCH_CONSOLE_NAMES: frozenset[str] = frozenset(t.name for t in SEARCH_CONSOLE_TOOLS)
+_ROLLBACK_NAMES: frozenset[str] = frozenset(t.name for t in ROLLBACK_TOOLS)
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +68,8 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         return await handle_meta_ads_tool(name, arguments)
     if name in _SEARCH_CONSOLE_NAMES:
         return await handle_search_console_tool(name, arguments)
+    if name in _ROLLBACK_NAMES:
+        return await handle_rollback_tool(name, arguments)
     raise ValueError(f"Unknown tool: {name}")
 
 

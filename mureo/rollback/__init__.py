@@ -12,7 +12,14 @@ is a separate concern that lives with the MCP dispatcher.
 
 from __future__ import annotations
 
+from mureo.rollback.executor import RollbackExecutionError, execute_rollback
 from mureo.rollback.models import RollbackPlan, RollbackStatus
 from mureo.rollback.planner import plan_rollback
 
-__all__ = ["RollbackPlan", "RollbackStatus", "plan_rollback"]
+__all__ = [
+    "RollbackExecutionError",
+    "RollbackPlan",
+    "RollbackStatus",
+    "execute_rollback",
+    "plan_rollback",
+]
