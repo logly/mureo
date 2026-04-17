@@ -74,6 +74,7 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         metrics_at_action=e.get("metrics_at_action"),
         observation_due=e.get("observation_due"),
         reversible_params=e.get("reversible_params"),
+        rollback_of=e.get("rollback_of"),
     )
 
 
@@ -149,6 +150,8 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["observation_due"] = e.observation_due
     if e.reversible_params is not None:
         result["reversible_params"] = copy.deepcopy(e.reversible_params)
+    if e.rollback_of is not None:
+        result["rollback_of"] = e.rollback_of
     return result
 
 

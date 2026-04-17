@@ -75,6 +75,7 @@ class ActionLogEntry:
     metrics_at_action: dict[str, Any] | None = None
     observation_due: str | None = None
     reversible_params: dict[str, Any] | None = None
+    rollback_of: int | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""

@@ -678,6 +678,58 @@ class TestParseStateV2:
         assert "reversible_params" not in rendered
 
     @pytest.mark.unit
+    def test_render_action_log_with_rollback_of_roundtrip(self) -> None:
+        """Render and re-parse action_log carrying rollback_of."""
+        doc = StateDocument(
+            version="2",
+            action_log=(
+                ActionLogEntry(
+                    timestamp="2026-04-16T10:00:00",
+                    action="google_ads.budgets.update",
+                    platform="google_ads",
+                    summary="Rolled back #3",
+                    rollback_of=3,
+                ),
+            ),
+        )
+        rendered = render_state(doc)
+        assert '"rollback_of": 3' in rendered
+        reparsed = parse_state(rendered)
+        assert reparsed.action_log[0].rollback_of == 3
+
+    @pytest.mark.unit
+    def test_render_action_log_omits_none_rollback_of(self) -> None:
+        """rollback_of is omitted from JSON when None."""
+        doc = StateDocument(
+            version="2",
+            action_log=(
+                ActionLogEntry(
+                    timestamp="t",
+                    action="update_budget",
+                    platform="google_ads",
+                ),
+            ),
+        )
+        rendered = render_state(doc)
+        assert "rollback_of" not in rendered
+
+    @pytest.mark.unit
+    def test_parse_state_without_rollback_of_defaults_none(self) -> None:
+        """Legacy STATE.json without rollback_of parses cleanly."""
+        data = {
+            "version": "2",
+            "action_log": [
+                {
+                    "timestamp": "t",
+                    "action": "update_budget",
+                    "platform": "google_ads",
+                }
+            ],
+        }
+        result = parse_state(json.dumps(data))
+        assert result.action_log[0].rollback_of is None
+
+    @pytest.mark.unit
     def test_render_action_log_omits_none_metrics(self) -> None:
         """Render omits metrics_at_action and observation_due when None."""
         doc = StateDocument(
