@@ -211,3 +211,118 @@ def setup_cursor() -> None:
         "Note: Cursor does not support workflow commands (/daily-check, etc.) "
         "or skills. Use MCP tools directly."
     )
+
+
+@setup_app.command("codex")  # type: ignore[untyped-decorator, unused-ignore]
+def setup_codex(
+    skip_auth: bool = typer.Option(
+        False,
+        "--skip-auth",
+        help="Skip authentication (install MCP config, guard, prompts, skills only)",
+    ),
+) -> None:
+    """One-command setup for OpenAI Codex CLI users.
+
+    Runs the full setup flow (MCP + credential guard + prompts + skills)
+    in ``~/.codex/``. Mirrors the Claude Code setup layer-for-layer since
+    Codex CLI supports all four surfaces.
+    """
+    import asyncio
+
+    from mureo.cli.setup_codex import (
+        install_codex_credential_guard,
+        install_codex_mcp_config,
+        install_codex_prompts,
+        install_codex_skills,
+    )
+
+    typer.echo("=== mureo Setup for Codex CLI ===\n")
+
+    if not skip_auth:
+        google = typer.confirm("Configure Google Ads?", default=True)
+        meta = typer.confirm("Configure Meta Ads?", default=True)
+
+        if google:
+            from mureo.auth_setup import setup_google_ads
+
+            asyncio.run(setup_google_ads())
+
+        if meta:
+            from mureo.auth_setup import setup_meta_ads
+
+            asyncio.run(setup_meta_ads())
+    else:
+        typer.echo("Skipping authentication (--skip-auth).")
+        typer.echo("Run /onboard in Codex later to configure credentials.\n")
+
+    mcp_result = install_codex_mcp_config()
+    if mcp_result is not None:
+        typer.echo(f"MCP configuration added: {mcp_result}")
+    else:
+        typer.echo("MCP configuration already exists.")
+
+    guard_result = install_codex_credential_guard()
+    if guard_result is not None:
+        typer.echo(f"Credential guard installed: {guard_result}")
+    else:
+        typer.echo("Credential guard already installed.")
+
+    typer.echo("\n--- Installing prompts (slash commands) ---")
+    try:
+        prompt_count, prompt_path = install_codex_prompts()
+        typer.echo(f"  {prompt_count} prompts installed to {prompt_path}")
+    except FileNotFoundError as e:
+        typer.echo(f"  Warning: {e}", err=True)
+
+    typer.echo("\n--- Installing skills ---")
+    try:
+        skill_count, skill_path = install_codex_skills()
+        typer.echo(f"  {skill_count} skills installed to {skill_path}")
+    except FileNotFoundError as e:
+        typer.echo(f"  Warning: {e}", err=True)
+
+    typer.echo("\n=== Setup complete ===")
+    if skip_auth:
+        typer.echo("Next: Open Codex and run /onboard to configure credentials.")
+    else:
+        typer.echo("Next: Open Codex and run /onboard to get started.")
+
+
+@setup_app.command("gemini")  # type: ignore[untyped-decorator, unused-ignore]
+def setup_gemini() -> None:
+    """Setup for Gemini CLI users (extension manifest only).
+
+    Registers mureo as a Gemini CLI extension at
+    ``~/.gemini/extensions/mureo/`` with MCP server config and
+    ``contextFileName: CONTEXT.md``. Gemini CLI does not support the
+    PreToolUse hook surface or the ``.md`` command format mureo bundles,
+    so neither is installed here.
+    """
+    import asyncio
+
+    from mureo.cli.setup_gemini import install_gemini_extension
+
+    typer.echo("=== mureo Setup for Gemini CLI ===\n")
+
+    google = typer.confirm("Configure Google Ads?", default=True)
+    meta = typer.confirm("Configure Meta Ads?", default=True)
+
+    if google:
+        from mureo.auth_setup import setup_google_ads
+
+        asyncio.run(setup_google_ads())
+
+    if meta:
+        from mureo.auth_setup import setup_meta_ads
+
+        asyncio.run(setup_meta_ads())
+
+    manifest = install_gemini_extension()
+    typer.echo(f"\nGemini extension manifest written to {manifest}")
+
+    typer.echo("\nSetup complete. Restart Gemini CLI to activate mureo.")
+    typer.echo(
+        "Note: Gemini CLI does not support PreToolUse hooks or the .md "
+        "command format mureo bundles. Only MCP tools and the CONTEXT.md "
+        "context file are enabled."
+    )
