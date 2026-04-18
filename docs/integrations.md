@@ -4,7 +4,7 @@ mureo's core value is orchestration — knowing *what* to do, *when*, and *why* 
 
 ## How It Works
 
-MCP clients (Claude Code, Cursor, Claude Desktop) can connect to multiple MCP servers simultaneously. Each server exposes its own set of tools. When mureo's workflow commands run, the AI agent **discovers all configured platforms at runtime** and adapts its behavior accordingly — calling tools from any connected MCP server in the same session.
+MCP clients (Claude Code, Cursor, Codex, Gemini, Claude Desktop) can connect to multiple MCP servers simultaneously. Each server exposes its own set of tools. When mureo's workflow commands run, the AI agent **discovers all configured platforms at runtime** and adapts its behavior accordingly — calling tools from any connected MCP server in the same session.
 
 ### Platform Discovery
 

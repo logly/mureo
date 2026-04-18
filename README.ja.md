@@ -11,7 +11,7 @@
 
 ## mureoとは
 
-mureoは、AIエージェントが広告アカウントを自動運用するためのフレームワークです。インストールすると、AIエージェント（Claude Code、Cursorなど）がGoogle広告・Meta広告・Search Console・GA4を横断して、配信診断・検索語分析・予算評価・入稿チェックなどを実行できるようになります。すべての操作はあなたのビジネス戦略（`STRATEGY.md`）に基づいて行われます。
+mureoは、AIエージェントが広告アカウントを自動運用するためのフレームワークです。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）がGoogle広告・Meta広告・Search Console・GA4を横断して、配信診断・検索語分析・予算評価・入稿チェックなどを実行できるようになります。すべての操作はあなたのビジネス戦略（`STRATEGY.md`）に基づいて行われます。
 
 mureoには学習の仕組みもあります。エージェントの分析を修正したり運用上の気づきを共有すると、`/learn` でナレッジベースに保存できます。保存した知識は次回以降のセッションで自動的に読み込まれるため、使い続けるほどエージェントがあなたのアカウントの特性を理解し、より的確な判断ができるようになります。
 
@@ -170,6 +170,24 @@ mureo setup cursor
 
 CursorはMCPツールを利用できますが、ワークフローコマンドとスキルには対応していません。
 
+### Codex CLI
+
+```bash
+pip install mureo
+mureo setup codex
+```
+
+Claude Codeと同じく4層すべて（MCPサーバー、認証情報ガード（PreToolUseフック）、ワークフロープロンプト、スキル）を `~/.codex/` 配下にインストールします。
+
+### Gemini CLI
+
+```bash
+pip install mureo
+mureo setup gemini
+```
+
+mureoをGemini CLIのextensionとして `~/.gemini/extensions/mureo/` に登録し、MCPサーバー設定と `CONTEXT.md` をコンテキストファイルとして指定します。Gemini CLIはPreToolUseフックと`.md`形式のコマンドに対応していないため、これらのレイヤーはインストールされません。
+
 ### CLIのみ（認証管理）
 
 ```bash
@@ -180,13 +198,14 @@ mureo auth status
 
 ### インストール内容
 
-| 構成要素 | `mureo setup claude-code` | `mureo setup cursor` | `mureo auth setup` |
-|---------|:---:|:---:|:---:|
-| 認証（~/.mureo/credentials.json） | Yes | Yes | Yes |
-| MCP設定 | Yes | Yes | Yes |
-| 認証情報ガード | Yes | N/A | Yes |
-| ワークフローコマンド | Yes | N/A | No |
-| スキル | Yes | N/A | No |
+| 構成要素 | `mureo setup claude-code` | `mureo setup cursor` | `mureo setup codex` | `mureo setup gemini` | `mureo auth setup` |
+|---------|:---:|:---:|:---:|:---:|:---:|
+| 認証（~/.mureo/credentials.json） | Yes | Yes | Yes | Yes | Yes |
+| MCP設定 | Yes | Yes | Yes | Yes | Yes |
+| 認証情報ガード（PreToolUseフック） | Yes | N/A | Yes | N/A | Yes |
+| ワークフローコマンド/プロンプト | Yes（~/.claude/commands/） | N/A | Yes（~/.codex/prompts/） | N/A | No |
+| スキル | Yes（~/.claude/skills/） | N/A | Yes（~/.codex/skills/） | N/A | No |
+| Extensionマニフェスト（contextFileName） | N/A | N/A | N/A | Yes（~/.gemini/extensions/mureo/） | No |
 
 ### スキル一覧
 
@@ -256,7 +275,7 @@ mureo auth setup
 
 1. **Google広告** — Developer Token + Client ID/Secret を入力 → ブラウザでOAuth → アカウント選択
 2. **Meta広告** — App ID/Secret を入力 → ブラウザでOAuth → 広告アカウント選択。Metaアプリは**開発モードのまま**で問題ありません（App Reviewは不要です）。OAuthの際に `business_management` の権限警告が表示されますが、ビジネスポートフォリオ経由のページ管理に必要なため、そのまま承認してください。
-3. **MCP設定** — Claude Code / Cursor用の設定ファイルを自動生成
+3. **MCP設定** — Claude Code / Cursor / Codex / Gemini用の設定ファイルを自動生成
 
 認証情報は `~/.mureo/credentials.json` に保存されます。Search ConsoleはGoogle広告と同じOAuth認証を使うため、追加の設定は不要です。
 

@@ -16,7 +16,7 @@ mureo <subcommand-group> <command> [options]
 
 | Group | Description |
 |-------|-------------|
-| `setup` | Environment setup (Claude Code, Cursor) |
+| `setup` | Environment setup (Claude Code, Cursor, Codex, Gemini) |
 | `auth` | Authentication management |
 | `rollback` | Inspect reversible actions recorded in STATE.json |
 
@@ -157,6 +157,6 @@ Secrets are masked, showing only the last 4 characters.
 
 ## Ad Platform Operations
 
-Ad platform operations (listing campaigns, creating ads, analyzing performance, etc.) are available through **MCP tools**, not the CLI. AI agents (Claude Code, Cursor) call these tools directly.
+Ad platform operations (listing campaigns, creating ads, analyzing performance, etc.) are available through **MCP tools**, not the CLI. AI agents (Claude Code, Cursor, Codex, Gemini) call these tools directly.
 
 See [mcp-server.md](mcp-server.md) for the full tool reference.
