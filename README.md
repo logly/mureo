@@ -222,6 +222,24 @@ mureo setup cursor
 
 Cursor supports MCP tools but does not support workflow commands or skills.
 
+### Codex CLI
+
+```bash
+pip install mureo
+mureo setup codex
+```
+
+Full parity with Claude Code: MCP server, credential guard (PreToolUse hook), workflow prompts, and skills are all installed under `~/.codex/`.
+
+### Gemini CLI
+
+```bash
+pip install mureo
+mureo setup gemini
+```
+
+Registers mureo as a Gemini CLI extension at `~/.gemini/extensions/mureo/` with MCP server config and `CONTEXT.md` as the context file. Gemini CLI does not support PreToolUse hooks or the `.md` command format mureo bundles, so those layers are not installed.
+
 ### CLI only (authentication management)
 
 ```bash
@@ -232,13 +250,14 @@ mureo auth status
 
 ### What gets installed
 
-| Component | `mureo setup claude-code` | `mureo setup cursor` | `mureo auth setup` |
-|-----------|:---:|:---:|:---:|
-| Authentication (~/.mureo/credentials.json) | Yes | Yes | Yes |
-| MCP configuration | Yes | Yes | Yes |
-| Credential guard (PreToolUse hook) | Yes | N/A | Yes |
-| Workflow commands (~/.claude/commands/) | Yes | N/A | No |
-| Skills (~/.claude/skills/) | Yes | N/A | No |
+| Component | `mureo setup claude-code` | `mureo setup cursor` | `mureo setup codex` | `mureo setup gemini` | `mureo auth setup` |
+|-----------|:---:|:---:|:---:|:---:|:---:|
+| Authentication (~/.mureo/credentials.json) | Yes | Yes | Yes | Yes | Yes |
+| MCP configuration | Yes | Yes | Yes | Yes | Yes |
+| Credential guard (PreToolUse hook) | Yes | N/A | Yes | N/A | Yes |
+| Workflow commands / prompts | Yes (~/.claude/commands/) | N/A | Yes (~/.codex/prompts/) | N/A | No |
+| Skills | Yes (~/.claude/skills/) | N/A | Yes (~/.codex/skills/) | N/A | No |
+| Extension manifest (contextFileName) | N/A | N/A | N/A | Yes (~/.gemini/extensions/mureo/) | No |
 
 ### Skills reference
 
