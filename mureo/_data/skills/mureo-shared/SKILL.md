@@ -20,7 +20,7 @@ metadata:
 
 **mureo** is a marketing orchestration framework for AI agents. It provides:
 - **CLI** (`mureo`) for direct command-line usage
-- **MCP Server** for integration with AI agent hosts (Claude Code, Cursor, etc.)
+- **MCP Server** for integration with AI agent hosts (Claude Code, Cursor, Codex, Gemini, etc.)
 - **Python library** for programmatic access
 
 All three interfaces share the same authentication, security rules, and output format.
