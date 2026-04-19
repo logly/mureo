@@ -34,6 +34,7 @@ Meta Ads support ships in a follow-up PR (P2-3).
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import html
 import http.server
@@ -45,18 +46,21 @@ import time
 import urllib.parse
 import webbrowser
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
-from mureo.auth import GoogleAdsCredentials
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 from mureo.auth_setup import (
     build_google_flow,
+    build_meta_auth_url,
     exchange_google_code,
+    exchange_meta_code,
     google_auth_url,
     save_credentials,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,24 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Session state
 # ---------------------------------------------------------------------------
+
+
+_T = TypeVar("_T")
+
+
+def _run_async(coro: Coroutine[Any, Any, _T]) -> _T:
+    """Run an async coroutine from inside a sync HTTP handler.
+
+    ``BaseHTTPRequestHandler`` is sync-only, but Meta's token-exchange
+    helpers are ``async`` (they use ``httpx.AsyncClient``). Each
+    request-handling thread has no running loop, so we spin a fresh
+    one and drop it when done.
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 def _fresh_csrf_token() -> str:
@@ -85,6 +107,9 @@ class WizardSession:
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_oauth_state: str | None = None
+    meta_app_id: str | None = None
+    meta_app_secret: str | None = None
+    meta_oauth_state: str | None = None
 
     def rotate_csrf(self) -> None:
         """Regenerate the CSRF token after a successful mutating POST.
@@ -106,6 +131,9 @@ class WizardSession:
         self.google_client_secret = None
         self.google_flow = None
         self.google_oauth_state = None
+        self.meta_app_id = None
+        self.meta_app_secret = None
+        self.meta_oauth_state = None
 
 
 # ---------------------------------------------------------------------------
@@ -134,11 +162,40 @@ def render_home(session: WizardSession) -> str:  # noqa: ARG001
 <head><meta charset="utf-8"><title>mureo setup</title>{_BASE_STYLE}</head>
 <body>
 <h1>mureo setup</h1>
-<p>Pick the ad platform you want to configure.</p>
-<form method="get" action="/google-ads">
+<p>Pick the ad platform you want to configure. You can run both in sequence from this wizard.</p>
+<form method="get" action="/google-ads" style="display:inline-block; margin-right:12px">
   <button type="submit">Configure Google Ads</button>
 </form>
-<p class="notice">Meta Ads support is coming soon — it will appear here as a second button once the related release ships.</p>
+<form method="get" action="/meta-ads" style="display:inline-block">
+  <button type="submit">Configure Meta Ads</button>
+</form>
+</body></html>
+"""
+
+
+def render_meta_secrets_form(session: WizardSession) -> str:
+    """Form for Meta App ID / Secret."""
+    csrf = html.escape(session.csrf_token, quote=True)
+    return f"""<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Meta Ads — mureo setup</title>{_BASE_STYLE}</head>
+<body>
+<h1>Meta Ads credentials</h1>
+<p>Paste the App ID and App Secret from your Meta for Developers app.</p>
+<form method="post" action="/meta-ads/submit">
+  <input type="hidden" name="csrf_token" value="{csrf}">
+
+  <label for="meta_app_id">App ID</label>
+  <input id="meta_app_id" name="app_id" type="text" required autocomplete="off">
+  <div class="hint">Find or create your app on <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers → My Apps</a>. The App ID appears on the app's dashboard.</div>
+
+  <label for="meta_app_secret">App Secret</label>
+  <input id="meta_app_secret" name="app_secret" type="password" required autocomplete="off">
+  <div class="hint">On the app dashboard, open <em>Settings → Basic</em> and click <em>Show</em> next to App Secret. Development Mode is fine — App Review is not required when operating your own ad account.</div>
+
+  <button type="submit">Continue to Facebook sign-in</button>
+</form>
+<p class="notice">During sign-in you may see a permission warning for <code>business_management</code>. This is required for ad accounts reached through a Business Portfolio and is safe to accept.</p>
 </body></html>
 """
 
@@ -229,6 +286,10 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             self._send_html(render_google_secrets_form(self.server.wizard.session))
         elif path == "/google-ads/callback":
             self._handle_google_callback(parsed.query)
+        elif path == "/meta-ads":
+            self._send_html(render_meta_secrets_form(self.server.wizard.session))
+        elif path == "/meta-ads/callback":
+            self._handle_meta_callback(parsed.query)
         elif path == "/done":
             self._send_html(render_done())
             self.server.wizard.mark_completed()
@@ -239,6 +300,8 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/google-ads/submit":
             self._handle_google_submit()
+        elif parsed.path == "/meta-ads/submit":
+            self._handle_meta_submit()
         else:
             self.send_error(404, "Not found")
 
@@ -246,6 +309,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
 
     _MAX_FORM_BYTES = 16 * 1024  # 16 KiB cap; secrets are short.
     _GOOGLE_AUTH_ORIGIN = "https://accounts.google.com/"
+    _META_AUTH_ORIGIN = "https://www.facebook.com/"
 
     def _handle_google_submit(self) -> None:
         if not self._host_header_ok():
@@ -374,6 +438,143 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         )
         save_credentials(path=self.server.wizard.credentials_path, google=creds)
         sess.clear_secrets()  # Zero session state now that it's persisted.
+
+        self.send_response(302)
+        self.send_header("Location", "/done")
+        self.end_headers()
+
+    # --- Meta flow ------------------------------------------------------
+
+    def _handle_meta_submit(self) -> None:
+        if not self._host_header_ok():
+            self.send_error(403, "Host header not allowed (DNS rebinding guard)")
+            return
+
+        form = self._read_form()
+        if form is None:
+            self.send_error(413, "Payload too large")
+            return
+        if not self._csrf_ok(form.get("csrf_token", "")):
+            self.send_error(403, "CSRF token invalid")
+            return
+
+        app_id = form.get("app_id", "").strip()
+        app_secret = form.get("app_secret", "").strip()
+        if not (app_id and app_secret):
+            self._send_html(
+                render_error("App ID and App Secret are required."), status=400
+            )
+            return
+
+        redirect_uri = (
+            f"http://127.0.0.1:{self.server.server_address[1]}/meta-ads/callback"
+        )
+        state = _secrets.token_urlsafe(32)
+        try:
+            auth_url = build_meta_auth_url(
+                app_id=app_id, redirect_uri=redirect_uri, state=state
+            )
+        except Exception:
+            logger.exception("Failed to build Meta OAuth URL")
+            self._send_html(
+                render_error(
+                    "Could not start Meta OAuth. "
+                    "Verify the App ID / Secret and retry."
+                ),
+                status=500,
+            )
+            return
+
+        if not auth_url.startswith(self._META_AUTH_ORIGIN):
+            logger.error("Refusing 302 to non-Meta URL: %s", auth_url)
+            self._send_html(
+                render_error("Unexpected OAuth destination; aborting."),
+                status=500,
+            )
+            return
+
+        sess = self.server.wizard.session
+        sess.meta_app_id = app_id
+        sess.meta_app_secret = app_secret
+        sess.meta_oauth_state = state
+        sess.rotate_csrf()
+
+        self.send_response(302)
+        self.send_header("Location", auth_url)
+        self.end_headers()
+
+    def _handle_meta_callback(self, query: str) -> None:
+        if not self._host_header_ok():
+            self.send_error(403, "Host header not allowed (DNS rebinding guard)")
+            return
+
+        params = urllib.parse.parse_qs(query)
+        code = params.get("code", [""])[0]
+        returned_state = params.get("state", [""])[0]
+        # Meta uses ``error_reason`` / ``error`` on user denial.
+        oauth_error = (
+            params.get("error", [""])[0] or params.get("error_reason", [""])[0]
+        )
+        sess = self.server.wizard.session
+
+        if oauth_error:
+            self._send_html(
+                render_error(
+                    f"Facebook sign-in was cancelled or refused "
+                    f"(error: {oauth_error}). Return to / and retry."
+                ),
+                status=400,
+            )
+            return
+
+        if not code or sess.meta_app_id is None:
+            self.send_error(
+                400,
+                "Missing authorization code or no in-progress Meta flow",
+            )
+            return
+
+        expected_state = sess.meta_oauth_state or ""
+        if not expected_state or not _secrets.compare_digest(
+            returned_state, expected_state
+        ):
+            logger.warning("Meta OAuth state mismatch on callback")
+            self.send_error(
+                403,
+                "OAuth state mismatch -- possible CSRF or link reuse",
+            )
+            return
+
+        redirect_uri = (
+            f"http://127.0.0.1:{self.server.server_address[1]}/meta-ads/callback"
+        )
+        try:
+            result = _run_async(
+                exchange_meta_code(
+                    code=code,
+                    app_id=sess.meta_app_id,
+                    app_secret=sess.meta_app_secret or "",
+                    redirect_uri=redirect_uri,
+                )
+            )
+        except Exception:
+            logger.exception("Meta token exchange failed")
+            self._send_html(
+                render_error(
+                    "Facebook rejected the authorization. "
+                    "Re-open the wizard at / and retry."
+                ),
+                status=400,
+            )
+            return
+
+        creds = MetaAdsCredentials(
+            access_token=result.access_token,
+            app_id=sess.meta_app_id,
+            app_secret=sess.meta_app_secret or "",
+        )
+        save_credentials(path=self.server.wizard.credentials_path, meta=creds)
+        sess.clear_secrets()
 
         self.send_response(302)
         self.send_header("Location", "/done")

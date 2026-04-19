@@ -890,6 +890,68 @@ async def setup_google_ads(
 # ---------------------------------------------------------------------------
 
 
+def build_meta_auth_url(
+    *,
+    app_id: str,
+    redirect_uri: str,
+    state: str,
+) -> str:
+    """Build a Facebook OAuth authorization URL.
+
+    Public helper shared between the interactive CLI (which passes
+    ``http://localhost:<port>/callback``) and the web wizard (which
+    passes ``http://127.0.0.1:<port>/meta-ads/callback``). The
+    localhost-only guard rejects any ``redirect_uri`` outside
+    ``http://127.0.0.1`` / ``http://localhost`` so a prompt-injected
+    caller cannot redirect Facebook's grant to a remote host.
+
+    ``state`` is required (CSRF protection for the callback) — callers
+    must generate a ``secrets.token_urlsafe`` value and compare it on
+    callback with ``secrets.compare_digest``.
+    """
+    _validate_local_redirect_uri(redirect_uri)
+    params: dict[str, str] = {
+        "client_id": app_id,
+        "redirect_uri": redirect_uri,
+        "scope": _META_OAUTH_SCOPES,
+        "response_type": "code",
+        "state": state,
+    }
+    return f"{_META_AUTH_URL}?{urllib.parse.urlencode(params)}"
+
+
+async def exchange_meta_code(
+    *,
+    code: str,
+    app_id: str,
+    app_secret: str,
+    redirect_uri: str,
+) -> MetaOAuthResult:
+    """Exchange a Meta authorization ``code`` for a Long-Lived Token.
+
+    Composes two upstream API calls:
+
+    1. ``code`` + ``redirect_uri`` + app secret -> short-lived token.
+    2. Short-lived token + app secret -> long-lived token (60 days).
+
+    Both steps already live as private helpers in this module; this
+    wrapper is the public entry point for callers that have received
+    an authorization code on their own OAuth callback handler (web
+    wizard).
+    """
+    short_token = await _exchange_code_for_short_token(
+        code=code,
+        app_id=app_id,
+        app_secret=app_secret,
+        redirect_uri=redirect_uri,
+    )
+    return await _exchange_short_for_long_token(
+        short_token=short_token,
+        app_id=app_id,
+        app_secret=app_secret,
+    )
+
+
 def _generate_meta_auth_url(
     app_id: str,
     port: int,
@@ -897,13 +959,11 @@ def _generate_meta_auth_url(
 ) -> str:
     """Generate a Facebook OAuth authorization URL.
 
-    Args:
-        app_id: Meta (Facebook) app ID
-        port: Local callback server port number
-        state: State parameter for CSRF protection
-
-    Returns:
-        Authorization URL string.
+    Legacy helper used by the interactive CLI path. Shape preserved
+    because existing tests assert that ``state`` is omitted from the
+    URL when ``None`` is passed. New code should call
+    :func:`build_meta_auth_url` instead, which requires a non-empty
+    ``state`` for CSRF protection.
     """
     params: dict[str, str] = {
         "client_id": app_id,

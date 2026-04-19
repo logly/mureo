@@ -29,6 +29,7 @@ from mureo.cli.web_auth import (  # noqa: I001
     WizardSession,
     render_google_secrets_form,
     render_home,
+    render_meta_secrets_form,
 )
 
 
@@ -44,6 +45,35 @@ class TestRenderHome:
         assert "<!doctype html>" in html.lower()
         assert "Google" in html and "Ads" in html
         assert "/google-ads" in html
+
+    def test_shows_meta_ads_button(self) -> None:
+        session = WizardSession()
+        html = render_home(session)
+        assert "Meta" in html and "Ads" in html
+        assert "/meta-ads" in html
+
+
+class TestRenderMetaSecretsForm:
+    def test_contains_csrf_hidden_input(self) -> None:
+        session = WizardSession(csrf_token="META_TOKEN")
+        html = render_meta_secrets_form(session)
+        assert 'name="csrf_token"' in html
+        assert "META_TOKEN" in html
+
+    def test_has_app_id_and_secret_fields(self) -> None:
+        html = render_meta_secrets_form(WizardSession())
+        assert 'name="app_id"' in html
+        assert 'name="app_secret"' in html
+        assert 'type="password"' in html  # app_secret masked
+
+    def test_posts_to_meta_submit(self) -> None:
+        html = render_meta_secrets_form(WizardSession())
+        assert 'action="/meta-ads/submit"' in html
+        assert 'method="post"' in html.lower()
+
+    def test_has_deep_link_to_meta_developers(self) -> None:
+        html = render_meta_secrets_form(WizardSession())
+        assert "developers.facebook.com" in html
 
 
 class TestRenderGoogleSecretsForm:
@@ -304,6 +334,212 @@ class TestGoogleAdsCallbackRoute:
         with pytest.raises(urllib.error.HTTPError) as exc_info:
             _fetch(wizard, "/google-ads/callback?code=abc&state=attacker-state")
         assert exc_info.value.code == 403
+
+
+class TestMetaAdsFormRoute:
+    def test_serves_form_with_csrf_token(self, wizard: Any) -> None:
+        resp = _fetch(wizard, "/meta-ads")
+        assert resp.status == 200
+        body = resp.read().decode("utf-8")
+        assert wizard.session.csrf_token in body
+        assert 'name="app_id"' in body
+
+
+class TestMetaAdsSubmitRoute:
+    def test_rejects_missing_csrf(self, wizard: Any) -> None:
+        data = urllib.parse.urlencode(
+            {"app_id": "A", "app_secret": "S"}
+        ).encode()
+        req = urllib.request.Request(
+            _url(wizard, "/meta-ads/submit"), data=data, method="POST"
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc_info.value.code == 403
+
+    def test_rejects_wrong_csrf(self, wizard: Any) -> None:
+        data = urllib.parse.urlencode(
+            {"csrf_token": "no", "app_id": "A", "app_secret": "S"}
+        ).encode()
+        req = urllib.request.Request(
+            _url(wizard, "/meta-ads/submit"), data=data, method="POST"
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc_info.value.code == 403
+
+    def test_rejects_bad_host_header(self, wizard: Any) -> None:
+        data = urllib.parse.urlencode(
+            {
+                "csrf_token": wizard.session.csrf_token,
+                "app_id": "A",
+                "app_secret": "S",
+            }
+        ).encode()
+        req = urllib.request.Request(
+            _url(wizard, "/meta-ads/submit"),
+            data=data,
+            method="POST",
+            headers={"Host": "attacker.example.com"},
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc_info.value.code == 403
+
+    def test_rejects_oversize_body(self, wizard: Any) -> None:
+        huge = b"a" * (20 * 1024)
+        req = urllib.request.Request(
+            _url(wizard, "/meta-ads/submit"),
+            data=huge,
+            method="POST",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc_info.value.code == 413
+
+    def test_refuses_non_facebook_redirect_origin(self, wizard: Any) -> None:
+        """Even if build_meta_auth_url is somehow subverted to return a
+        non-Facebook URL, the handler refuses to emit a 302 to it."""
+        with patch(
+            "mureo.cli.web_auth.build_meta_auth_url",
+            return_value="https://evil.example.com/oauth",
+        ):
+            data = urllib.parse.urlencode(
+                {
+                    "csrf_token": wizard.session.csrf_token,
+                    "app_id": "A",
+                    "app_secret": "S",
+                }
+            ).encode()
+            req = urllib.request.Request(
+                _url(wizard, "/meta-ads/submit"), data=data, method="POST"
+            )
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(req, timeout=2.0)
+            assert exc_info.value.code == 500
+
+    def test_valid_submit_redirects_to_facebook(self, wizard: Any) -> None:
+        fake_url = "https://www.facebook.com/v21.0/dialog/oauth?client_id=A"
+
+        with patch(
+            "mureo.cli.web_auth.build_meta_auth_url", return_value=fake_url
+        ) as mock_build:
+            data = urllib.parse.urlencode(
+                {
+                    "csrf_token": wizard.session.csrf_token,
+                    "app_id": "APP-123",
+                    "app_secret": "SECRET-abc",
+                }
+            ).encode()
+            req = urllib.request.Request(
+                _url(wizard, "/meta-ads/submit"), data=data, method="POST"
+            )
+            opener = urllib.request.build_opener(_NoRedirect())
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                opener.open(req, timeout=2.0)
+
+            assert exc_info.value.code == 302
+            loc = exc_info.value.headers.get("Location", "")
+            assert loc.startswith("https://www.facebook.com/")
+
+        assert wizard.session.meta_app_id == "APP-123"
+        assert wizard.session.meta_app_secret == "SECRET-abc"
+        assert wizard.session.meta_oauth_state is not None
+        mock_build.assert_called_once()
+        kwargs = mock_build.call_args.kwargs
+        assert kwargs["app_id"] == "APP-123"
+        assert kwargs["redirect_uri"] == (
+            f"http://127.0.0.1:{wizard.port}/meta-ads/callback"
+        )
+
+
+class TestMetaAdsCallbackRoute:
+    def test_rejects_bad_host_header(self, wizard: Any) -> None:
+        wizard.session.meta_app_id = "A"
+        wizard.session.meta_oauth_state = "s"
+        req = urllib.request.Request(
+            _url(wizard, "/meta-ads/callback?code=abc&state=s"),
+            headers={"Host": "attacker.example.com"},
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc_info.value.code == 403
+
+    def test_state_mismatch_returns_403(self, wizard: Any) -> None:
+        wizard.session.meta_app_id = "A"
+        wizard.session.meta_app_secret = "S"
+        wizard.session.meta_oauth_state = "legit"
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            _fetch(wizard, "/meta-ads/callback?code=abc&state=attacker")
+        assert exc_info.value.code == 403
+
+    def test_user_decline_shows_friendly_error(self, wizard: Any) -> None:
+        wizard.session.meta_app_id = "A"
+        wizard.session.meta_oauth_state = "s"
+        opener = urllib.request.build_opener(_NoRedirect())
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            opener.open(
+                _url(
+                    wizard,
+                    "/meta-ads/callback?error=access_denied&state=s",
+                ),
+                timeout=2.0,
+            )
+        assert exc_info.value.code == 400
+        body = exc_info.value.read().decode("utf-8")
+        assert "cancelled" in body.lower() or "refused" in body.lower()
+
+    def test_valid_code_exchanges_and_saves_credentials(
+        self, wizard: Any, tmp_path: Path
+    ) -> None:
+        wizard.session.meta_app_id = "APP-123"
+        wizard.session.meta_app_secret = "SECRET-abc"
+        wizard.session.meta_oauth_state = "state-xyz"
+
+        from mureo.auth_setup import MetaOAuthResult
+
+        async def _fake_exchange(**_kwargs: Any) -> MetaOAuthResult:
+            return MetaOAuthResult(
+                access_token="LONG_LIVED_TOKEN", expires_in=5184000
+            )
+
+        with patch(
+            "mureo.cli.web_auth.exchange_meta_code", side_effect=_fake_exchange
+        ) as mock_exchange:
+            opener = urllib.request.build_opener(_NoRedirect())
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                opener.open(
+                    _url(
+                        wizard,
+                        "/meta-ads/callback?code=AUTH_CODE&state=state-xyz",
+                    ),
+                    timeout=2.0,
+                )
+            assert exc_info.value.code == 302
+            loc = exc_info.value.headers.get("Location", "")
+            assert loc == "/done"
+
+        mock_exchange.assert_called_once()
+        call_kwargs = mock_exchange.call_args.kwargs
+        assert call_kwargs["code"] == "AUTH_CODE"
+        assert call_kwargs["app_id"] == "APP-123"
+        assert call_kwargs["app_secret"] == "SECRET-abc"
+
+        import json
+
+        creds_file = tmp_path / ".mureo" / "credentials.json"
+        assert creds_file.exists()
+        data = json.loads(creds_file.read_text(encoding="utf-8"))
+        m = data["meta_ads"]
+        assert m["access_token"] == "LONG_LIVED_TOKEN"
+        assert m["app_id"] == "APP-123"
+        assert m["app_secret"] == "SECRET-abc"
+
+        # Session secrets zeroed.
+        assert wizard.session.meta_app_id is None
+        assert wizard.session.meta_app_secret is None
+        assert wizard.session.meta_oauth_state is None
 
 
 class TestSecurityHardening:
