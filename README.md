@@ -197,15 +197,22 @@ You approve → Agent updates each platform.
 
 The `mureo auth setup` wizard walks you through both.
 
-### From inside Claude Code Desktop (no terminal needed to install)
+### From inside Claude Code Desktop (no terminal needed)
 
 If you're not comfortable opening a terminal, ask Claude inside the Code tab:
 
-> "Install mureo from `https://github.com/logly/mureo`. Run `pip install git+https://github.com/logly/mureo`, then `mureo setup claude-code`. After that tell me to run `mureo auth setup` in Terminal.app once to finish authentication."
+> "Install mureo from `https://github.com/logly/mureo`. Run `pip install git+https://github.com/logly/mureo`, then `mureo setup claude-code`, then `mureo auth setup --web`."
 
 mureo's setup auto-detects when it's running under an AI agent (no TTY) and skips the interactive OAuth step so Claude doesn't hang. The MCP config, credential guard, workflow commands, and skills are all installed non-interactively.
 
-**One-time** you do need to open **macOS Terminal.app** (or Windows Terminal) and run `mureo auth setup` — OAuth requires pasting a Developer Token from Google Cloud and an App ID/Secret from Meta, which is safer to do in a local terminal than in chat. Restart Claude Desktop afterwards and mureo tools appear in the Code tab.
+`mureo auth setup --web` launches a **browser-based wizard** on `http://127.0.0.1:<random-port>/`. You paste the Developer Token / App ID / App Secret into a local form (deep links next to each field point at Google Cloud Console / Google Ads API Center / Meta for Developers), complete OAuth in the same browser window, and the wizard writes `~/.mureo/credentials.json` for you. Restart Claude Desktop afterwards and mureo tools appear in the Code tab — no terminal required at any step.
+
+<details>
+<summary>Why the wizard is safe to run locally</summary>
+
+The wizard binds only to `127.0.0.1` on a random OS-assigned port. The form is CSRF-protected (token rotates after every successful submit); the OAuth `state` parameter is validated with `secrets.compare_digest` on callback; a `Host`-header allow-list blocks DNS-rebinding attacks; redirect URLs are pinned to `https://accounts.google.com/` and `https://www.facebook.com/` so the wizard cannot be tricked into an open-redirect; session secrets are zeroed in memory after credentials are persisted. POST bodies are capped at 16 KiB and the process shuts the server down once the `/done` page is served. All dependencies are stdlib — no external web framework to supply-chain-compromise.
+
+</details>
 
 ### Claude Code (recommended)
 
