@@ -51,6 +51,39 @@ mureo setup cursor
 
 Sets up authentication and MCP configuration for Cursor. Cursor does not support workflow commands or skills.
 
+### OpenAI Codex CLI
+
+```bash
+mureo setup codex
+```
+
+Full parity with Claude Code. Installs:
+
+1. MCP server configuration as a tagged `[mcp_servers.mureo]` block in `~/.codex/config.toml` (append-only; refuses to overwrite an untagged pre-existing `[mcp_servers.mureo]`).
+2. Credential guard — PreToolUse hooks in `~/.codex/hooks.json` (Read + Bash) that block any tool call that would touch `~/.mureo/credentials*`.
+3. Workflow commands as **Codex skills** at `~/.codex/skills/<command>/SKILL.md` with YAML frontmatter. Users invoke them with `$daily-check`, `$onboard`, … or via the `/skills` picker. (Codex CLI 0.117.0+ no longer surfaces `~/.codex/prompts/`, per [openai/codex#15941](https://github.com/openai/codex/issues/15941); re-running `mureo setup codex` also deletes stale prompt files that mureo owns, while leaving user-authored prompts alone.)
+4. Shared mureo skills at `~/.codex/skills/mureo-*/`.
+
+`--skip-auth` is supported and is auto-implied under a non-TTY subprocess (e.g. an AI agent's Bash tool) so the command can never hang on a confirm prompt.
+
+### Gemini CLI
+
+```bash
+mureo setup gemini
+```
+
+Registers mureo as a Gemini CLI extension at `~/.gemini/extensions/mureo/gemini-extension.json` with `mcpServers.mureo` and `contextFileName: CONTEXT.md`. Operator-added top-level keys (`excludeTools`, renamed `contextFileName`) and extra `mcpServers` entries are preserved across reinstall. Gemini CLI does not support PreToolUse hooks or the `.md` command format, so those layers are not installed.
+
+### Per-platform flags (all `setup …` subcommands)
+
+Every setup subcommand accepts:
+
+- `--skip-auth` — install MCP config (+ guard / commands / skills, where supported) without running OAuth. Auto-implied under a non-TTY invocation.
+- `--google-ads` / `--no-google-ads` — override the "configure Google Ads?" prompt.
+- `--meta-ads` / `--no-meta-ads` — override the "configure Meta Ads?" prompt.
+
+Passing the platform flags alongside `--skip-auth` (or under a non-TTY) emits a warning and is ignored.
+
 ## Authentication Commands
 
 ```bash

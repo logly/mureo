@@ -11,11 +11,30 @@ mureo setup claude-code
 # Cursor users (authentication + MCP only)
 mureo setup cursor
 
-# CLI-only users (authentication only)
+# OpenAI Codex CLI users (MCP + credential guard + workflow skills + shared skills)
+mureo setup codex
+
+# Gemini CLI users (extension manifest + MCP)
+mureo setup gemini
+
+# CLI-only users (authentication only, terminal prompts)
 mureo auth setup
+
+# Browser-based auth wizard — localhost HTML form, no terminal input needed
+mureo auth setup --web
 ```
 
-`mureo setup claude-code --skip-auth` installs commands, skills, MCP config, and credential guard without running OAuth. Useful for the double-click installer flow where authentication is handled later via `/onboard` in Claude Code.
+### `--skip-auth` and non-interactive invocation
+
+Every `mureo setup …` subcommand accepts `--skip-auth`, which installs the MCP config, credential guard, and (where supported) command/skill files without running OAuth. Useful for the double-click installer flow where authentication is handled later via `/onboard` in Claude Code, `$onboard` in Codex, or `mureo auth setup` in a real terminal.
+
+When `mureo setup …` is invoked from an AI agent's subprocess (Claude Code's Bash tool, Codex, etc.) that has no controlling TTY, `--skip-auth` is implied automatically so the command cannot hang on a `typer.confirm` prompt. A banner in stdout tells the operator to finish authentication in `Terminal.app` afterwards.
+
+Each subcommand also exposes explicit `--google-ads/--no-google-ads` and `--meta-ads/--no-meta-ads` flags, so you can specify exactly which platforms to configure without any prompt. Passing them alongside `--skip-auth` (or under a non-TTY) emits a warning and is ignored.
+
+### `mureo auth setup --web` — browser-based wizard
+
+Prefer the `--web` flavour when you were pointed to mureo by an AI agent that cannot safely receive terminal input. It starts a short-lived HTTP server on a random localhost port, opens your browser at it, and walks you through Google Ads / Meta Ads credential entry via HTML forms and standard OAuth redirects. Every field in the form has a deep link next to it so you know where to fetch each secret. Security hardening (CSRF rotation, OAuth `state` re-validation, DNS-rebinding guard, localhost-pinned redirect verification, generic error surface, POST size cap, CSP) is described in `SECURITY.md` → "Browser-based auth wizard".
 
 ## How Credentials Work
 

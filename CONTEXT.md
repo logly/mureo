@@ -95,11 +95,20 @@ See `docs/integrations.md` (Search Console section) for the full tool reference.
 # Claude Code users (recommended — does everything in one command)
 mureo setup claude-code
 
-# Cursor users
+# Cursor users (MCP only)
 mureo setup cursor
 
-# Authentication only
+# OpenAI Codex CLI users (MCP + credential guard + workflow/shared skills)
+mureo setup codex
+
+# Gemini CLI users (extension manifest + MCP)
+mureo setup gemini
+
+# Authentication only (terminal prompts)
 mureo auth setup
+
+# Browser-based auth wizard (no terminal input — for users directed here by an AI agent)
+mureo auth setup --web
 ```
 
 ## Using mureo via CLI
