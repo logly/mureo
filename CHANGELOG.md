@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- `mureo setup codex` command-skill generation now escapes all control characters and unicode line separators (U+2028 / U+2029) in the skill `description:` frontmatter field, so a future bundled command whose first line contains a tab, CR, LF, NEL, or other byte that YAML treats as a line break cannot silently truncate the description or corrupt the frontmatter block. Today's bundled commands don't trigger the old behavior — this is a defense-in-depth guard against a future maintainer adding a command with an unusual first line.
+- The legacy `~/.codex/prompts/<bundled>.md` cleanup in `install_codex_command_skills` now skips symlinks. Previously a user who had symlinked a bundled filename at their own file (e.g. via a dotfiles repo) would see the symlink silently removed on every `mureo setup codex` re-run, even though the target stayed intact. The symlink now survives so the operator's intentional link-over-bundled-name is preserved.
+
 ### Fixed
 - `mureo setup codex` now installs bundled workflow commands as Codex **skills** at `~/.codex/skills/<command>/SKILL.md` (with YAML frontmatter — `name:` / `description:`) instead of as custom prompts at `~/.codex/prompts/*.md`. Codex CLI 0.117.0 (2026-03) [stopped rendering the custom-prompts directory](https://github.com/openai/codex/issues/15941) in its slash-command menu, so `mureo setup codex` was silently installing ten files that Codex no longer picked up. Users invoke the workflows with `$daily-check` (explicit) or the `/skills` picker. Re-running `mureo setup codex` also removes the stale `~/.codex/prompts/<bundled>.md` files left behind by prior installs; user-authored prompts with names outside mureo's bundled set are preserved.
 

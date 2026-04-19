@@ -221,8 +221,30 @@ def _first_nonblank_line(text: str) -> str:
 
 
 def _yaml_escape(value: str) -> str:
-    """Escape a string for a YAML double-quoted scalar."""
-    return value.replace("\\", "\\\\").replace('"', '\\"')
+    """Escape a string for a YAML double-quoted scalar.
+
+    YAML's double-quoted scalar interprets backslash escapes, so in
+    addition to escaping ``\\`` and ``"`` we also need to guard against
+    characters that would either (a) terminate the scalar prematurely —
+    LF / CR / NEL / U+2028 / U+2029 are all treated as line breaks by
+    YAML parsers — or (b) survive into the rendered description as raw
+    control bytes. Any character outside printable ASCII/Unicode is
+    emitted as ``\\xNN`` (for bytes < 0x100) or ``\\uNNNN`` so the
+    frontmatter round-trips through any conformant YAML parser.
+    """
+    value = value.replace("\\", "\\\\").replace('"', '\\"')
+    out: list[str] = []
+    for ch in value:
+        code = ord(ch)
+        # Safe: printable ASCII OR non-ASCII printable Unicode (minus the
+        # line-separator set that YAML treats as a newline).
+        if (0x20 <= code < 0x7F) or (code >= 0xA0 and code not in (0x2028, 0x2029)):
+            out.append(ch)
+        elif code <= 0xFF:
+            out.append(f"\\x{code:02x}")
+        else:
+            out.append(f"\\u{code:04x}")
+    return "".join(out)
 
 
 def _build_command_skill(name: str, body: str) -> str:
@@ -275,11 +297,18 @@ def install_codex_command_skills(
         count += 1
 
     # Legacy cleanup: remove stale ~/.codex/prompts/<bundled>.md from prior
-    # installs so the user sees a clean Codex state.
+    # installs so the user sees a clean Codex state. Skip symlinks — they
+    # imply the operator intentionally pointed a bundled name at their own
+    # file (e.g. a dotfiles repo), and silently unlinking loses the link
+    # even though the target stays intact.
     legacy_prompts = Path.home() / ".codex" / "prompts"
     if legacy_prompts.is_dir():
         for legacy_file in legacy_prompts.iterdir():
-            if legacy_file.is_file() and legacy_file.name in bundled_names:
+            if (
+                legacy_file.is_file()
+                and not legacy_file.is_symlink()
+                and legacy_file.name in bundled_names
+            ):
                 try:
                     legacy_file.unlink()
                 except OSError:
