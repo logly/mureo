@@ -203,6 +203,79 @@ class OAuthCallbackServer:
 # ---------------------------------------------------------------------------
 
 
+def build_google_client_config(client_id: str, client_secret: str) -> dict[str, Any]:
+    """Return the ``client_config`` dict consumed by google-auth-oauthlib.
+
+    Shared between the interactive CLI path (which uses
+    :class:`InstalledAppFlow`) and the web wizard path (which uses
+    plain :class:`Flow`) so the two agree on OAuth endpoints and
+    redirect-URI shape.
+    """
+    return {
+        "installed": {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": ["http://localhost"],
+        }
+    }
+
+
+def build_google_flow(
+    *,
+    client_id: str,
+    client_secret: str,
+    redirect_uri: str | None = None,
+) -> Any:
+    """Build the OAuth Flow object appropriate for the caller's transport.
+
+    - ``redirect_uri=None`` -> :class:`InstalledAppFlow` (the existing
+      CLI path; spins up its own local HTTP server on ``run_local_server``).
+    - otherwise -> plain :class:`Flow` whose callback the caller handles
+      on their own HTTP server (the web wizard path).
+
+    Both variants receive the same scopes so a single refresh_token
+    drives both Google Ads and Search Console.
+    """
+    from google_auth_oauthlib.flow import Flow
+
+    config = build_google_client_config(client_id, client_secret)
+    if redirect_uri is None:
+        return InstalledAppFlow.from_client_config(config, scopes=_GOOGLE_SCOPES)
+    flow = Flow.from_client_config(config, scopes=_GOOGLE_SCOPES)
+    flow.redirect_uri = redirect_uri
+    return flow
+
+
+def google_auth_url(flow: Any) -> tuple[str, str]:
+    """Return ``(authorization_url, state)`` for a web-wizard Flow.
+
+    ``access_type=offline`` + ``prompt=consent`` guarantee a
+    refresh_token on every authorization, even for users who have
+    already granted the app before — otherwise Google silently drops
+    the refresh_token and the exchange fails.
+    """
+    url, state = flow.authorization_url(access_type="offline", prompt="consent")
+    return str(url), str(state)
+
+
+def exchange_google_code(flow: Any, code: str) -> OAuthResult:
+    """Exchange an authorization ``code`` for refresh/access tokens.
+
+    The ``flow`` argument must be the same instance that produced the
+    authorization URL, since it carries PKCE / state.
+    """
+    flow.fetch_token(code=code)
+    credentials = flow.credentials
+    if credentials.refresh_token is None:
+        raise RuntimeError("Failed to obtain refresh_token")
+    return OAuthResult(
+        refresh_token=credentials.refresh_token,
+        access_token=credentials.token,
+    )
+
+
 async def run_google_oauth(
     client_id: str,
     client_secret: str,
@@ -222,19 +295,8 @@ async def run_google_oauth(
     Raises:
         RuntimeError: If OAuth authentication fails.
     """
-    client_config = {
-        "installed": {
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": ["http://localhost"],
-        }
-    }
-
-    flow = InstalledAppFlow.from_client_config(
-        client_config,
-        scopes=_GOOGLE_SCOPES,
+    flow = build_google_flow(
+        client_id=client_id, client_secret=client_secret, redirect_uri=None
     )
 
     # Browser OAuth (local server auto-starts and auto-stops)
