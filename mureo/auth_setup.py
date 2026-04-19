@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow, InstalledAppFlow
 
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 
@@ -222,54 +222,94 @@ def build_google_client_config(client_id: str, client_secret: str) -> dict[str, 
     }
 
 
+def _validate_local_redirect_uri(redirect_uri: str) -> None:
+    """Refuse any redirect_uri that isn't a localhost HTTP callback.
+
+    The web wizard binds its callback server to 127.0.0.1, so any other
+    scheme/host is either a misconfiguration (reaches a remote OAuth
+    relay) or a prompt-injection attempt to redirect tokens elsewhere.
+    """
+    parsed = urllib.parse.urlparse(redirect_uri)
+    if parsed.scheme != "http":
+        raise ValueError(
+            f"redirect_uri must use http://; got {parsed.scheme!r} in "
+            f"{redirect_uri!r}"
+        )
+    if parsed.hostname not in {"127.0.0.1", "localhost"}:
+        raise ValueError(
+            f"redirect_uri host must be 127.0.0.1 or localhost; got "
+            f"{parsed.hostname!r} in {redirect_uri!r}"
+        )
+
+
 def build_google_flow(
     *,
     client_id: str,
     client_secret: str,
     redirect_uri: str | None = None,
-) -> Any:
+) -> Flow:
     """Build the OAuth Flow object appropriate for the caller's transport.
 
     - ``redirect_uri=None`` -> :class:`InstalledAppFlow` (the existing
       CLI path; spins up its own local HTTP server on ``run_local_server``).
     - otherwise -> plain :class:`Flow` whose callback the caller handles
-      on their own HTTP server (the web wizard path).
+      on their own HTTP server (the web wizard path). The URI is
+      validated against a localhost-only allow-list so a malicious or
+      buggy caller cannot redirect the OAuth grant to a remote host.
 
     Both variants receive the same scopes so a single refresh_token
     drives both Google Ads and Search Console.
     """
-    from google_auth_oauthlib.flow import Flow
-
     config = build_google_client_config(client_id, client_secret)
     if redirect_uri is None:
         return InstalledAppFlow.from_client_config(config, scopes=_GOOGLE_SCOPES)
+    _validate_local_redirect_uri(redirect_uri)
     flow = Flow.from_client_config(config, scopes=_GOOGLE_SCOPES)
     flow.redirect_uri = redirect_uri
     return flow
 
 
-def google_auth_url(flow: Any) -> tuple[str, str]:
+def google_auth_url(flow: Flow) -> tuple[str, str]:
     """Return ``(authorization_url, state)`` for a web-wizard Flow.
 
     ``access_type=offline`` + ``prompt=consent`` guarantee a
     refresh_token on every authorization, even for users who have
     already granted the app before — otherwise Google silently drops
     the refresh_token and the exchange fails.
+
+    The CLI path (``run_google_oauth``) achieves the same effect by
+    passing ``prompt="consent"`` to ``flow.run_local_server``; keep
+    the two paths in sync whenever either is touched.
     """
     url, state = flow.authorization_url(access_type="offline", prompt="consent")
-    return str(url), str(state)
+    return url, state
 
 
-def exchange_google_code(flow: Any, code: str) -> OAuthResult:
+def exchange_google_code(flow: Flow, code: str) -> OAuthResult:
     """Exchange an authorization ``code`` for refresh/access tokens.
 
     The ``flow`` argument must be the same instance that produced the
     authorization URL, since it carries PKCE / state.
+
+    Raises:
+        RuntimeError: If Google returns no ``refresh_token``. This
+            happens when the authorization URL was built without
+            ``access_type=offline`` + ``prompt=consent`` or when the
+            user has already granted the app and a cached grant is
+            being replayed. Re-run the flow via
+            :func:`google_auth_url` (which forces both settings), or
+            revoke prior consent at
+            https://myaccount.google.com/permissions and retry.
     """
     flow.fetch_token(code=code)
     credentials = flow.credentials
     if credentials.refresh_token is None:
-        raise RuntimeError("Failed to obtain refresh_token")
+        raise RuntimeError(
+            "Google returned no refresh_token. Re-run the OAuth flow "
+            "ensuring access_type=offline + prompt=consent, or revoke "
+            "prior consent at https://myaccount.google.com/permissions "
+            "and retry."
+        )
     return OAuthResult(
         refresh_token=credentials.refresh_token,
         access_token=credentials.token,
