@@ -194,7 +194,7 @@ pip install mureo
 mureo setup codex
 ```
 
-Claude Codeと同じく4層すべて（MCPサーバー、認証情報ガード（PreToolUseフック）、ワークフロープロンプト、スキル）を `~/.codex/` 配下にインストールします。
+Claude Codeと同じく4層すべて（MCPサーバー、認証情報ガード（PreToolUseフック）、ワークフローコマンド、スキル）を `~/.codex/` 配下にインストールします。ワークフローコマンドは Codex スキル形式（`~/.codex/skills/<command>/SKILL.md`）としてインストールされ、`$daily-check` または `/skills` ピッカーから呼び出せます（Codex CLI 0.117.0 以降は `~/.codex/prompts/` を読み込まなくなりました。[openai/codex#15941](https://github.com/openai/codex/issues/15941)）。
 
 ### Gemini CLI
 
@@ -220,7 +220,7 @@ mureo auth status
 | 認証（~/.mureo/credentials.json） | Yes | Yes | Yes | Yes | Yes |
 | MCP設定 | Yes | Yes | Yes | Yes | Yes |
 | 認証情報ガード（PreToolUseフック） | Yes | N/A | Yes | N/A | Yes |
-| ワークフローコマンド/プロンプト | Yes（~/.claude/commands/） | N/A | Yes（~/.codex/prompts/） | N/A | No |
+| ワークフローコマンド | Yes（~/.claude/commands/） | N/A | Yes（~/.codex/skills/ — `$cmd`または`/skills`で起動） | N/A | No |
 | スキル | Yes（~/.claude/skills/） | N/A | Yes（~/.codex/skills/） | N/A | No |
 | Extensionマニフェスト（contextFileName） | N/A | N/A | N/A | Yes（~/.gemini/extensions/mureo/） | No |
 

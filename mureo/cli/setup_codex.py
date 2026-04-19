@@ -4,8 +4,11 @@ Layers installed, mirroring the Claude Code setup:
 
 1. MCP server config in ``~/.codex/config.toml`` (append-only tagged block)
 2. Credential guard PreToolUse hooks in ``~/.codex/hooks.json``
-3. Workflow commands as ``~/.codex/prompts/*.md``
-4. Skills as ``~/.codex/skills/mureo-*/``
+3. Workflow commands as Codex skills at ``~/.codex/skills/<command>/SKILL.md``
+   (previously written to ``~/.codex/prompts/*.md`` — deprecated in
+   codex-cli 0.117.0, see openai/codex#15941). Invoked via
+   ``$<command>`` or the ``/skills`` picker.
+4. Shared mureo skills as ``~/.codex/skills/mureo-*/``
 
 Idempotency is enforced via tag markers (``[mureo-mcp-config]`` /
 ``[mureo-credential-guard]``) so re-running ``mureo setup codex`` is
@@ -204,20 +207,86 @@ def install_codex_credential_guard() -> Path | None:
 
 
 # ---------------------------------------------------------------------------
-# 3. Prompts (slash commands)
+# 3. Workflow commands (as Codex skills)
 # ---------------------------------------------------------------------------
 
 
-def install_codex_prompts(target_dir: Path | None = None) -> tuple[int, Path]:
-    """Copy bundled command markdown files to ``~/.codex/prompts/``."""
-    dest = target_dir or (Path.home() / ".codex" / "prompts")
+def _first_nonblank_line(text: str) -> str:
+    """Return the first non-empty line of ``text``, stripped of whitespace."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return ""
+
+
+def _yaml_escape(value: str) -> str:
+    """Escape a string for a YAML double-quoted scalar."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _build_command_skill(name: str, body: str) -> str:
+    """Wrap a bundled command ``.md`` in Codex skill frontmatter.
+
+    ``description`` is the first non-empty line of the source file so
+    Codex's ``/skills`` picker can show a meaningful one-liner. The
+    body is copied verbatim after the frontmatter terminator.
+    """
+    description = _yaml_escape(_first_nonblank_line(body)) or name
+    return f'---\nname: {name}\ndescription: "{description}"\n---\n\n{body}'
+
+
+def install_codex_command_skills(
+    target_dir: Path | None = None,
+) -> tuple[int, Path]:
+    """Install bundled workflow commands as Codex skills.
+
+    Codex CLI 0.117.0 (2026-03) stopped surfacing files placed in
+    ``~/.codex/prompts/`` in the slash-command menu (Issue
+    `openai/codex#15941 <https://github.com/openai/codex/issues/15941>`_).
+    Custom prompts were deprecated in favor of skills, so mureo now
+    wraps each bundled command into
+    ``~/.codex/skills/<command>/SKILL.md`` with YAML frontmatter.
+    Users invoke them with ``$daily-check`` or via the ``/skills``
+    picker in Codex.
+
+    Re-running also removes the matching legacy files from
+    ``~/.codex/prompts/`` so stale copies don't show up as duplicates;
+    user-authored prompts with names outside mureo's bundled set are
+    left alone.
+    """
+    dest = target_dir or (Path.home() / ".codex" / "skills")
     dest.mkdir(parents=True, exist_ok=True)
 
     src = _get_data_path("commands")
+    bundled_names: set[str] = set()
     count = 0
     for md_file in sorted(src.glob("*.md")):
-        shutil.copy2(md_file, dest / md_file.name)
+        name = md_file.stem
+        bundled_names.add(md_file.name)
+        skill_dir = dest / name
+        if skill_dir.exists():
+            shutil.rmtree(skill_dir)
+        skill_dir.mkdir(parents=True)
+        body = md_file.read_text(encoding="utf-8")
+        (skill_dir / "SKILL.md").write_text(
+            _build_command_skill(name, body), encoding="utf-8"
+        )
         count += 1
+
+    # Legacy cleanup: remove stale ~/.codex/prompts/<bundled>.md from prior
+    # installs so the user sees a clean Codex state.
+    legacy_prompts = Path.home() / ".codex" / "prompts"
+    if legacy_prompts.is_dir():
+        for legacy_file in legacy_prompts.iterdir():
+            if legacy_file.is_file() and legacy_file.name in bundled_names:
+                try:
+                    legacy_file.unlink()
+                except OSError:
+                    logger.warning(
+                        "Could not remove stale legacy prompt: %s", legacy_file
+                    )
+
     return count, dest
 
 
