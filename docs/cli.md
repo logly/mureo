@@ -63,15 +63,19 @@ mureo auth check-google
 # Check Meta Ads credentials (masked output)
 mureo auth check-meta
 
-# Interactive authentication wizard (OAuth flow)
+# Interactive authentication wizard (terminal prompts)
 mureo auth setup
+
+# Browser-based authentication wizard (no terminal input needed)
+mureo auth setup --web
 ```
 
-`mureo auth setup` is also called as part of `mureo setup claude-code`. It walks you through:
+`mureo auth setup` has two flavours:
 
-1. Google Ads OAuth setup (optional) -- opens a browser for OAuth consent and saves the refresh token.
-2. Meta Ads token setup (optional) -- prompts for access token, app ID, and app secret.
-3. MCP configuration placement.
+- **Terminal mode (default)** — walks you through Google Ads / Meta Ads setup via stdin prompts. Best when you're comfortable with pasting secrets into a terminal.
+- **`--web` mode** — starts a local HTTP wizard on `http://127.0.0.1:<random-port>/`, opens it in your browser, and asks for the same secrets via an HTML form. Recommended when you were pointed here by an AI agent (Claude Code, etc.) that cannot itself receive terminal input safely. Every field has a deep link next to it so you know where to fetch the Developer Token / App ID / Secret from Google's or Meta's console.
+
+Both modes end at the same destination: `~/.mureo/credentials.json` is populated and Claude Desktop (or any other MCP client) picks up mureo after a restart.
 
 See [authentication.md](authentication.md) for details on credentials.
 

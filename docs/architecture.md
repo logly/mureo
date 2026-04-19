@@ -115,7 +115,9 @@ mureo/
 │   ├── main.py              # Entry point (mureo command)
 │   ├── setup_cmd.py         # mureo setup claude-code / cursor
 │   ├── auth_cmd.py          # mureo auth setup / status / check-*
-│   └── rollback_cmd.py      # mureo rollback list / show (inspection only; apply routes through MCP)
+│   ├── rollback_cmd.py      # mureo rollback list / show (inspection only; apply routes through MCP)
+│   ├── _tty.py              # TTY-safe helpers (confirm_or_default, is_tty) for non-interactive setup
+│   └── web_auth.py          # `mureo auth setup --web` — browser-based OAuth wizard (Google + Meta)
 └── mcp/                     # MCP server
     ├── __main__.py                        # python -m mureo.mcp entry point
     ├── server.py                          # MCP server setup (stdio transport)

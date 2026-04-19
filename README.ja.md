@@ -145,15 +145,22 @@ STATE.jsonから接続媒体を検出:
 
 いずれも `mureo auth setup` の対話型ウィザードが手順を案内します。
 
-### Claude Code Desktop から導入する（ターミナル操作ほぼ不要）
+### Claude Code Desktop から導入する（ターミナル不要）
 
 ターミナル操作に慣れていない場合は、Claude Desktop の **Code タブ** で Claude に次のように頼んでください:
 
-> 「mureo を `https://github.com/logly/mureo` からインストールして。`pip install git+https://github.com/logly/mureo` を実行したあと、`mureo setup claude-code` を実行してください。その後、Terminal.app で `mureo auth setup` を一度だけ実行するよう私に指示してください。」
+> 「mureo を `https://github.com/logly/mureo` からインストールして。`pip install git+https://github.com/logly/mureo` を実行したあと、`mureo setup claude-code` を実行、続けて `mureo auth setup --web` を実行してください。」
 
 mureo の setup コマンドは AI エージェント経由（TTY 無し）で実行されたことを自動検出し、対話型の OAuth 手続きをスキップします（Claude がハングしません）。MCP設定・認証ガード・ワークフローコマンド・スキルは全部自動でインストールされます。
 
-**初回だけ** macOS の **Terminal.app**（または Windows Terminal）を開いて `mureo auth setup` を実行してください — OAuth には Google Cloud の Developer Token や Meta の App ID / Secret の貼り付けが必要で、チャットよりローカルなターミナルに貼り付ける方が安全なためです。完了したら Claude Desktop を再起動すると、Code タブで mureo のツールが利用可能になります。
+`mureo auth setup --web` は **ブラウザベースのセットアップウィザード** を `http://127.0.0.1:<ランダムポート>/` で起動します。Developer Token・App ID・App Secret はローカル画面のフォームに貼り付け（各欄のリンクから Google Cloud Console / Google Ads API Center / Meta for Developers の該当ページに飛べます）、そのままブラウザ上で OAuth を完了すると `~/.mureo/credentials.json` に書き込まれます。完了後に Claude Desktop を再起動すれば、Code タブで mureo のツールが使えるようになります。**ターミナルを一度も開く必要がありません。**
+
+<details>
+<summary>ウィザードをローカル実行しても安全な理由</summary>
+
+サーバは `127.0.0.1` のランダムポートにのみバインドします。フォームは CSRF トークンで保護（submit成功後に自動ローテーション）、OAuth の `state` パラメータはコールバック時に `secrets.compare_digest` で検証、`Host` ヘッダのアローリストでDNSリバインディング攻撃をブロック、リダイレクト先は `https://accounts.google.com/` と `https://www.facebook.com/` にピン留めしてあるためオープンリダイレクトは成立せず、認証情報の保存後は session 上の秘密情報をゼロクリアします。POST ボディは 16 KiB で打ち切り、`/done` 画面が配信されたらサーバを停止します。依存は標準ライブラリのみで、外部 Web フレームワークのサプライチェーン侵害を受ける面はありません。
+
+</details>
 
 ### Claude Code（推奨）
 

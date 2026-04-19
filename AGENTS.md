@@ -84,7 +84,9 @@ mureo/
 │   ├── main.py          # CLI entry point (`mureo` command)
 │   ├── setup_cmd.py     # `mureo setup claude-code` / `mureo setup cursor`
 │   ├── auth_cmd.py      # `mureo auth setup` / `status` / `check-*`
-│   └── rollback_cmd.py  # `mureo rollback list` / `show` (inspection only; apply routes through MCP)
+│   ├── rollback_cmd.py  # `mureo rollback list` / `show` (inspection only; apply routes through MCP)
+│   ├── _tty.py          # TTY-safe helpers for non-interactive setup
+│   └── web_auth.py      # `mureo auth setup --web` — browser-based OAuth wizard
 ├── context/             # File-based strategy context (no DB)
 │   ├── strategy.py      # STRATEGY.md parser/writer
 │   ├── state.py         # STATE.json parser/writer

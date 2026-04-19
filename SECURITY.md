@@ -176,6 +176,57 @@ Additional hardening on the executor:
   response returns a generic message (only `type(exc).__name__`) so
   tokens and account identifiers cannot leak into model context.
 
+### Browser-based auth wizard (`mureo auth setup --web`)
+
+Non-technical operators completing OAuth setup use the browser
+wizard, which runs its own short-lived HTTP server on the machine.
+Because the server accepts the operator's raw secrets (Developer
+Token, OAuth Client Secret, App Secret) before forwarding the OAuth
+leg, the wizard is hardened layer-by-layer:
+
+- **Localhost-only bind.** The listening socket is always
+  `127.0.0.1` on a random OS-assigned port. The `redirect_uri` fed
+  to `google_auth_oauthlib` and `build_meta_auth_url` is validated
+  against an allow-list (`127.0.0.1` / `localhost`), so a compromised
+  call site cannot redirect OAuth grants to a remote host.
+- **DNS-rebinding guard.** Every POST / callback handler inspects
+  the `Host:` header and rejects anything that isn't
+  `127.0.0.1:<port>` or `localhost:<port>`, defeating browsers that
+  resolve `attacker.com` to `127.0.0.1`.
+- **CSRF protection.** Each form POST carries a hidden `csrf_token`
+  compared with `secrets.compare_digest`. The token rotates after
+  every successful submit so the same value cannot be replayed from
+  another tab or a Back-button resubmission.
+- **OAuth `state` verification.** `state` is generated at submit
+  time, stashed in the in-memory session, and compared with
+  `secrets.compare_digest` when Google / Meta redirects back. A
+  third-party link trick that sends a victim's browser to
+  `/<provider>/callback?code=ATTACKER_CODE` is refused.
+- **Redirect-origin pinning.** The wizard refuses to emit a 302
+  unless the destination starts with `https://accounts.google.com/`
+  (Google flow) or `https://www.facebook.com/` (Meta flow), so the
+  wizard can never become an open redirect.
+- **Generic error surface.** `except Exception` paths log the full
+  traceback via `logger.exception` server-side and render a
+  templated error page in the browser. Raw SDK error text never
+  reaches the operator's browser.
+- **Session zero-out.** After `save_credentials` succeeds, the
+  wizard clears `developer_token` / `client_id` / `client_secret`
+  / `app_id` / `app_secret` / OAuth state from its in-memory
+  session dataclass so the values don't linger through the rest of
+  the process lifetime.
+- **POST size cap.** Request bodies over 16 KiB are refused with
+  413 to prevent a local attacker from OOM-ing the process.
+- **Defensive HTTP headers.** Responses carry
+  `Content-Security-Policy: default-src 'none'; style-src
+  'unsafe-inline'; base-uri 'none'; frame-ancestors 'none';
+  object-src 'none'; form-action 'self' https://accounts.google.com`,
+  plus `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
+  and `X-Content-Type-Options: nosniff`.
+- **Stdlib only.** The wizard uses `http.server` + `urllib` — no
+  external web framework — eliminating supply-chain exposure for
+  the install path.
+
 ### Immutable data models
 
 All dataclasses that represent campaign state, action log entries,
