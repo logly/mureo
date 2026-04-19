@@ -246,7 +246,7 @@ pip install mureo
 mureo setup codex
 ```
 
-Full parity with Claude Code: MCP server, credential guard (PreToolUse hook), workflow prompts, and skills are all installed under `~/.codex/`.
+Full parity with Claude Code: MCP server, credential guard (PreToolUse hook), workflow commands, and skills are all installed under `~/.codex/`. Workflow commands are installed as Codex skills at `~/.codex/skills/<command>/SKILL.md` (Codex CLI 0.117.0+ no longer surfaces `~/.codex/prompts/`, see [openai/codex#15941](https://github.com/openai/codex/issues/15941)); invoke them with `$daily-check` or the `/skills` picker.
 
 ### Gemini CLI
 
@@ -272,7 +272,7 @@ mureo auth status
 | Authentication (~/.mureo/credentials.json) | Yes | Yes | Yes | Yes | Yes |
 | MCP configuration | Yes | Yes | Yes | Yes | Yes |
 | Credential guard (PreToolUse hook) | Yes | N/A | Yes | N/A | Yes |
-| Workflow commands / prompts | Yes (~/.claude/commands/) | N/A | Yes (~/.codex/prompts/) | N/A | No |
+| Workflow commands | Yes (~/.claude/commands/) | N/A | Yes (~/.codex/skills/ — invoke with `$cmd` or `/skills`) | N/A | No |
 | Skills | Yes (~/.claude/skills/) | N/A | Yes (~/.codex/skills/) | N/A | No |
 | Extension manifest (contextFileName) | N/A | N/A | N/A | Yes (~/.gemini/extensions/mureo/) | No |
 

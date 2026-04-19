@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `mureo setup codex` now installs bundled workflow commands as Codex **skills** at `~/.codex/skills/<command>/SKILL.md` (with YAML frontmatter — `name:` / `description:`) instead of as custom prompts at `~/.codex/prompts/*.md`. Codex CLI 0.117.0 (2026-03) [stopped rendering the custom-prompts directory](https://github.com/openai/codex/issues/15941) in its slash-command menu, so `mureo setup codex` was silently installing ten files that Codex no longer picked up. Users invoke the workflows with `$daily-check` (explicit) or the `/skills` picker. Re-running `mureo setup codex` also removes the stale `~/.codex/prompts/<bundled>.md` files left behind by prior installs; user-authored prompts with names outside mureo's bundled set are preserved.
+
 ### Changed
 - Docs refreshed for the browser-based wizard: `README.md` / `README.ja.md` "Claude Code Desktop" section now points at `mureo auth setup --web` and no longer instructs operators to open `Terminal.app`. `docs/cli.md` documents both terminal and `--web` modes of `mureo auth setup`. `SECURITY.md` gains a "Browser-based auth wizard" section enumerating every hardening layer (localhost bind, DNS-rebinding guard, CSRF rotation, OAuth `state` validation, redirect-origin pinning, generic error surface, session zero-out, POST size cap, CSP/X-Frame-Options/Referrer-Policy headers, stdlib-only implementation).
 

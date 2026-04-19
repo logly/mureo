@@ -299,7 +299,7 @@ def setup_codex(
     skip_auth: bool = typer.Option(
         False,
         "--skip-auth",
-        help="Skip authentication (install MCP config, guard, prompts, skills only)",
+        help="Skip authentication (install MCP config, guard, command skills, and shared skills only)",
     ),
     google_ads: bool | None = typer.Option(
         None,
@@ -314,16 +314,18 @@ def setup_codex(
 ) -> None:
     """One-command setup for OpenAI Codex CLI users.
 
-    Runs the full setup flow (MCP + credential guard + prompts + skills)
-    in ``~/.codex/``. Mirrors the Claude Code setup layer-for-layer since
-    Codex CLI supports all four surfaces.
+    Runs the full setup flow (MCP + credential guard + workflow command
+    skills + shared skills) in ``~/.codex/``. Mirrors the Claude Code
+    setup layer-for-layer, except that workflow commands are installed
+    as Codex skills (invoked with ``$<command>`` or via ``/skills``)
+    because Codex CLI 0.117.0+ no longer surfaces ``~/.codex/prompts/``.
     """
     import asyncio
 
     from mureo.cli.setup_codex import (
+        install_codex_command_skills,
         install_codex_credential_guard,
         install_codex_mcp_config,
-        install_codex_prompts,
         install_codex_skills,
     )
 
@@ -334,7 +336,7 @@ def setup_codex(
     if should_skip:
         if banner is not None:
             typer.echo(banner)
-        typer.echo("Run /onboard in Codex later to configure credentials.\n")
+        typer.echo("Run `$onboard` in Codex later to configure credentials.\n")
     else:
         google = confirm_or_default(
             "Configure Google Ads?", default=True, override=google_ads
@@ -365,10 +367,13 @@ def setup_codex(
     else:
         typer.echo("Credential guard already installed.")
 
-    typer.echo("\n--- Installing prompts (slash commands) ---")
+    typer.echo("\n--- Installing workflow commands as Codex skills ---")
     try:
-        prompt_count, prompt_path = install_codex_prompts()
-        typer.echo(f"  {prompt_count} prompts installed to {prompt_path}")
+        cmd_count, cmd_path = install_codex_command_skills()
+        typer.echo(
+            f"  {cmd_count} workflow skills installed to {cmd_path}. "
+            "Invoke with $<command-name> or via Codex's /skills picker."
+        )
     except FileNotFoundError as e:
         typer.echo(f"  Warning: {e}", err=True)
 
@@ -381,9 +386,15 @@ def setup_codex(
 
     typer.echo("\n=== Setup complete ===")
     if skip_auth:
-        typer.echo("Next: Open Codex and run /onboard to configure credentials.")
+        typer.echo(
+            "Next: Open Codex and run `$onboard` (or pick it from /skills) "
+            "to configure credentials."
+        )
     else:
-        typer.echo("Next: Open Codex and run /onboard to get started.")
+        typer.echo(
+            "Next: Open Codex and run `$onboard` (or pick it from /skills) "
+            "to get started."
+        )
 
 
 @setup_app.command("gemini")  # type: ignore[untyped-decorator, unused-ignore]

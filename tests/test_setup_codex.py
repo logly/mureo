@@ -15,9 +15,9 @@ import pytest
 
 from mureo.cli.setup_codex import (  # noqa: I001
     CodexMcpConflictError,
+    install_codex_command_skills,
     install_codex_credential_guard,
     install_codex_mcp_config,
-    install_codex_prompts,
     install_codex_skills,
 )
 
@@ -109,9 +109,7 @@ class TestInstallCodexCredentialGuard:
             "PreToolUse": [
                 {
                     "matcher": "Bash",
-                    "hooks": [
-                        {"type": "command", "command": "echo 'existing guard'"}
-                    ],
+                    "hooks": [{"type": "command", "command": "echo 'existing guard'"}],
                 }
             ]
         }
@@ -128,16 +126,12 @@ class TestInstallCodexCredentialGuard:
         install_codex_credential_guard()
         result = install_codex_credential_guard()
         assert result is None
-        data = json.loads(
-            (home / ".codex" / "hooks.json").read_text(encoding="utf-8")
-        )
+        data = json.loads((home / ".codex" / "hooks.json").read_text(encoding="utf-8"))
         flat = json.dumps(data)
         # Two mureo entries (Read + Bash) persist; no duplicates are added.
         assert flat.count("[mureo-credential-guard]") == 2
 
-    def test_corrupt_hooks_json_returns_none_without_clobber(
-        self, home: Path
-    ) -> None:
+    def test_corrupt_hooks_json_returns_none_without_clobber(self, home: Path) -> None:
         """A corrupt hooks.json is not silently overwritten."""
         hooks_file = home / ".codex" / "hooks.json"
         hooks_file.parent.mkdir(parents=True)
@@ -161,28 +155,73 @@ class TestInstallCodexCredentialGuard:
         assert result is None
 
 
-class TestInstallCodexPrompts:
-    """Workflow commands are copied as .md files into ~/.codex/prompts/."""
+class TestInstallCodexCommandSkills:
+    """Workflow commands are installed as Codex skills at
+    ``~/.codex/skills/<command>/SKILL.md``. The older ``~/.codex/prompts/``
+    layout stopped being picked up in codex-cli 0.117.0+ (Issue #15941),
+    so every bundled command now ships as a skill invokable via ``$cmd``
+    or the ``/skills`` picker.
+    """
 
-    def test_copies_markdown_files(self, home: Path) -> None:
-        count, dest = install_codex_prompts()
-        assert dest == home / ".codex" / "prompts"
+    def test_installs_each_command_as_its_own_skill(self, home: Path) -> None:
+        count, dest = install_codex_command_skills()
+        assert dest == home / ".codex" / "skills"
         assert dest.exists()
         assert count >= 1
-        md_files = list(dest.glob("*.md"))
-        assert len(md_files) == count
-        # onboard.md is a known bundled command
-        assert (dest / "onboard.md").exists()
+        # Known bundled command landed as a skill directory with SKILL.md
+        onboard_skill = dest / "onboard" / "SKILL.md"
+        assert onboard_skill.exists()
+        daily_check_skill = dest / "daily-check" / "SKILL.md"
+        assert daily_check_skill.exists()
 
-    def test_overwrites_existing(self, home: Path) -> None:
-        dest = home / ".codex" / "prompts"
-        dest.mkdir(parents=True)
-        (dest / "onboard.md").write_text("stale content", encoding="utf-8")
+    def test_skill_has_yaml_frontmatter(self, home: Path) -> None:
+        """Each generated SKILL.md starts with ``---\\nname: ...\\ndescription:
+        ...\\n---`` so Codex's skill loader can index it and surface the
+        description in the ``/skills`` picker."""
+        install_codex_command_skills()
+        content = (home / ".codex" / "skills" / "daily-check" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        assert content.startswith("---\n")
+        # Frontmatter block terminates before the command body.
+        _, frontmatter, body = content.split("---\n", 2)
+        assert "name: daily-check" in frontmatter
+        assert "description:" in frontmatter
+        # Body preserves the source command's first line.
+        assert "daily health check" in body.lower()
 
-        install_codex_prompts()
+    def test_replaces_existing_command_skill(self, home: Path) -> None:
+        """Re-running setup clobbers a stale SKILL.md even if the
+        directory is already there."""
+        target = home / ".codex" / "skills" / "onboard"
+        target.mkdir(parents=True)
+        (target / "SKILL.md").write_text("stale content", encoding="utf-8")
 
-        updated = (dest / "onboard.md").read_text(encoding="utf-8")
+        install_codex_command_skills()
+
+        updated = (target / "SKILL.md").read_text(encoding="utf-8")
         assert "stale content" not in updated
+        assert updated.startswith("---\n")
+
+    def test_cleans_up_legacy_prompts_dir(self, home: Path) -> None:
+        """Prior installs placed the same commands in ``~/.codex/prompts/``.
+        Those files are dead on codex-cli 0.117.0+ and must be removed so
+        ``/skills`` doesn't show ghost duplicates when the user looks at
+        their Codex state."""
+        legacy = home / ".codex" / "prompts"
+        legacy.mkdir(parents=True)
+        (legacy / "onboard.md").write_text("legacy prompt", encoding="utf-8")
+        (legacy / "daily-check.md").write_text("legacy prompt", encoding="utf-8")
+        # A user-authored prompt that mureo shouldn't delete.
+        (legacy / "my-custom.md").write_text("mine", encoding="utf-8")
+
+        install_codex_command_skills()
+
+        assert not (legacy / "onboard.md").exists()
+        assert not (legacy / "daily-check.md").exists()
+        # User's own prompt untouched.
+        assert (legacy / "my-custom.md").exists()
+        assert (legacy / "my-custom.md").read_text(encoding="utf-8") == "mine"
 
 
 class TestInstallCodexSkills:
