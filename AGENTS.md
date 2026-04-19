@@ -82,8 +82,10 @@ mureo/
 │   └── _handlers_analysis.py              # Anomaly detector composition handler
 ├── cli/                 # Typer CLI (setup + auth + rollback inspection; ad operations are via MCP)
 │   ├── main.py          # CLI entry point (`mureo` command)
-│   ├── setup_cmd.py     # `mureo setup claude-code` / `mureo setup cursor`
-│   ├── auth_cmd.py      # `mureo auth setup` / `status` / `check-*`
+│   ├── setup_cmd.py     # `mureo setup claude-code` / `cursor` / `codex` / `gemini`
+│   ├── setup_codex.py   # Codex install-kit: MCP, credential guard, workflow command skills, shared skills
+│   ├── setup_gemini.py  # Gemini extension manifest at ~/.gemini/extensions/mureo/
+│   ├── auth_cmd.py      # `mureo auth setup` (+ `--web`) / `status` / `check-*`
 │   ├── rollback_cmd.py  # `mureo rollback list` / `show` (inspection only; apply routes through MCP)
 │   ├── _tty.py          # TTY-safe helpers for non-interactive setup
 │   └── web_auth.py      # `mureo auth setup --web` — browser-based OAuth wizard

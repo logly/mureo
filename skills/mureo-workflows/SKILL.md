@@ -12,11 +12,13 @@ metadata:
 
 # mureo Workflows
 
-Operational workflow reference for strategy-driven marketing orchestration using mureo slash commands.
+Operational workflow reference for strategy-driven marketing orchestration using mureo commands.
 
 ## Overview
 
-mureo provides slash commands that orchestrate marketing operations across all configured platforms (Google Ads, Meta Ads, Search Console, GA4, and future platforms). Every command reads strategy context before taking action, discovers available platforms at runtime, and adapts its behavior to what is configured — no hardcoded platform assumptions.
+mureo provides a set of workflow commands that orchestrate marketing operations across all configured platforms (Google Ads, Meta Ads, Search Console, GA4, and future platforms). Every command reads strategy context before taking action, discovers available platforms at runtime, and adapts its behavior to what is configured — no hardcoded platform assumptions.
+
+> **Invocation syntax by host:** this document uses the `/command` form throughout for readability, which matches the Claude Code slash-command surface. On **OpenAI Codex CLI** the same commands are installed as Codex skills at `~/.codex/skills/<command>/SKILL.md` and are invoked with `$command` (or via the `/skills` picker) — e.g. read `$daily-check` wherever you see `/daily-check`. Codex CLI 0.117.0+ stopped rendering `~/.codex/prompts/`, so skills are the only supported surface.
 
 ### Core Principles
 
