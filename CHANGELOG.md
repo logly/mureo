@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `mureo auth setup --web` — browser-based OAuth wizard for non-technical users. Starts a short-lived localhost HTTP server on a random port, opens the browser to a simple HTML form for Developer Token / OAuth Client ID / Client Secret, redirects to Google's own sign-in, receives the callback on the same wizard server, and writes `~/.mureo/credentials.json` — all without the operator opening a terminal. Inline deep links point at Google Cloud Console / Google Ads API Center so users know where to fetch each secret.
+- Security hardening for the wizard: CSRF token rotates after every successful submit (replay guard); OAuth `state` parameter is stored at submit time and re-validated with `secrets.compare_digest` on callback; `Host` header must match `127.0.0.1:<port>` or `localhost:<port>` (DNS-rebinding guard); redirect URL is verified to start with `https://accounts.google.com/` before emitting 302 (open-redirect guard); session secret fields are zeroed after `save_credentials` succeeds; CSP includes `default-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`, `object-src 'none'`, and `form-action 'self' https://accounts.google.com`; responses also set `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`; POST bodies over 16 KiB are refused with 413; exception messages from OAuth failures are logged server-side only — the browser sees a generic retry hint.
+
 ### Changed
 - `mureo setup claude-code` / `cursor` / `codex` / `gemini` are now TTY-safe. When run from an AI agent's subprocess (Claude Code's Bash tool, Codex, etc.) without a controlling TTY, they auto-imply `--skip-auth` and print a banner instructing the operator to finish authentication in Terminal.app. Previously they hung forever on the first `typer.confirm` prompt.
 - Each setup subcommand gained explicit `--google-ads/--no-google-ads` and `--meta-ads/--no-meta-ads` flags so choices can be specified without any prompt. Passing them together with `--skip-auth` (or under a non-TTY) emits a warning explaining they were ignored.
@@ -15,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - README + README.ja: "From inside Claude Code Desktop" section with a natural-language install phrase that non-technical users can paste into the Code tab. Notes that OAuth (Developer Token, App ID/Secret input) still requires a one-time Terminal.app session for safety.
 
-## [0.5.0] - 2026-04-18
+## [0.5.0] - 2026-04-19
 
 ### Added
 - `mureo setup codex` — new subcommand that installs the full mureo kit for OpenAI Codex CLI: tagged `[mcp_servers.mureo]` block in `~/.codex/config.toml` (append-only, idempotent, refuses to proceed if an untagged `[mcp_servers.mureo]` already exists), Read + Bash PreToolUse credential guard in `~/.codex/hooks.json`, workflow prompts in `~/.codex/prompts/*.md`, and skills in `~/.codex/skills/mureo-*/`. Config and hooks are written atomically via temp-file + rename so a mid-install crash cannot defeat the tag-based idempotency check. Corrupt `hooks.json` and non-list `PreToolUse` values are refused rather than silently clobbered.
