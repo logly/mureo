@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `mureo setup claude-code` / `cursor` / `codex` / `gemini` are now TTY-safe. When run from an AI agent's subprocess (Claude Code's Bash tool, Codex, etc.) without a controlling TTY, they auto-imply `--skip-auth` and print a banner instructing the operator to finish authentication in Terminal.app. Previously they hung forever on the first `typer.confirm` prompt.
+- Each setup subcommand gained explicit `--google-ads/--no-google-ads` and `--meta-ads/--no-meta-ads` flags so choices can be specified without any prompt. Passing them together with `--skip-auth` (or under a non-TTY) emits a warning explaining they were ignored.
+- New helper `mureo/cli/_tty.py` (`is_tty`, `confirm_or_default`) centralizes the TTY + fallback logic. Both stdin and stdout must be terminals for `is_tty()` to return true. `confirm_or_default` catches `EOFError` / `click.Abort` if the TTY disappears mid-prompt and falls back to the caller-supplied default.
+
+### Added
+- README + README.ja: "From inside Claude Code Desktop" section with a natural-language install phrase that non-technical users can paste into the Code tab. Notes that OAuth (Developer Token, App ID/Secret input) still requires a one-time Terminal.app session for safety.
+
 ## [0.5.0] - 2026-04-18
 
 ### Added

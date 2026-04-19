@@ -145,6 +145,16 @@ STATE.jsonから接続媒体を検出:
 
 いずれも `mureo auth setup` の対話型ウィザードが手順を案内します。
 
+### Claude Code Desktop から導入する（ターミナル操作ほぼ不要）
+
+ターミナル操作に慣れていない場合は、Claude Desktop の **Code タブ** で Claude に次のように頼んでください:
+
+> 「mureo を `https://github.com/logly/mureo` からインストールして。`pip install git+https://github.com/logly/mureo` を実行したあと、`mureo setup claude-code` を実行してください。その後、Terminal.app で `mureo auth setup` を一度だけ実行するよう私に指示してください。」
+
+mureo の setup コマンドは AI エージェント経由（TTY 無し）で実行されたことを自動検出し、対話型の OAuth 手続きをスキップします（Claude がハングしません）。MCP設定・認証ガード・ワークフローコマンド・スキルは全部自動でインストールされます。
+
+**初回だけ** macOS の **Terminal.app**（または Windows Terminal）を開いて `mureo auth setup` を実行してください — OAuth には Google Cloud の Developer Token や Meta の App ID / Secret の貼り付けが必要で、チャットよりローカルなターミナルに貼り付ける方が安全なためです。完了したら Claude Desktop を再起動すると、Code タブで mureo のツールが利用可能になります。
+
 ### Claude Code（推奨）
 
 ```bash
