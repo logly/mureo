@@ -12,7 +12,45 @@ from pathlib import Path
 
 import typer
 
+from mureo.cli._tty import confirm_or_default, is_tty
+
 setup_app = typer.Typer(name="setup", help="Set up mureo for AI agent environments")
+
+
+def _should_skip_auth(skip_auth_flag: bool) -> tuple[bool, str | None]:
+    """Decide whether to skip OAuth, accounting for missing TTYs.
+
+    When an AI agent (Claude Code Bash tool, Codex, etc.) runs this
+    command there is no TTY, so the interactive ``input()`` calls in
+    ``setup_google_ads`` / ``setup_meta_ads`` would hang. We auto-skip
+    in that case and return a banner message for the caller to echo so
+    the operator understands what happened.
+    """
+    if skip_auth_flag:
+        return True, "Skipping authentication (--skip-auth)."
+    if not is_tty():
+        return True, (
+            "No TTY detected (running under an AI agent or subprocess). "
+            "Skipping OAuth setup.\n"
+            "Run `mureo auth setup` in a real terminal to complete "
+            "authentication."
+        )
+    return False, None
+
+
+def _warn_unused_ads_flags(
+    should_skip: bool, google_ads: bool | None, meta_ads: bool | None
+) -> None:
+    """If the user passed --google-ads / --meta-ads but we're skipping
+    auth, they expected something to run. Be explicit rather than silent.
+    """
+    if should_skip and (google_ads is not None or meta_ads is not None):
+        typer.echo(
+            "Note: --google-ads / --meta-ads ignored because "
+            "authentication is skipped. Run `mureo auth setup` in a "
+            "terminal to apply them.",
+            err=True,
+        )
 
 
 def _get_data_path(subdir: str) -> Path:
@@ -95,11 +133,22 @@ def setup_claude_code(
         "--skip-auth",
         help="Skip authentication (install commands, skills, MCP config, and guard only)",
     ),
+    google_ads: bool | None = typer.Option(
+        None,
+        "--google-ads/--no-google-ads",
+        help="Configure Google Ads auth (default: prompt in TTY, yes in non-TTY).",
+    ),
+    meta_ads: bool | None = typer.Option(
+        None,
+        "--meta-ads/--no-meta-ads",
+        help="Configure Meta Ads auth (default: prompt in TTY, yes in non-TTY).",
+    ),
 ) -> None:
     """One-command setup for Claude Code users.
 
     Runs the full setup flow:
     1. Authentication (Google Ads / Meta Ads) — skipped with --skip-auth
+       or auto-skipped when no TTY is attached (e.g. run from an AI agent)
     2. MCP configuration
     3. Credential guard hook
     4. Workflow commands installation
@@ -110,9 +159,19 @@ def setup_claude_code(
     typer.echo("=== mureo Setup for Claude Code ===\n")
 
     # 1. Authentication
-    if not skip_auth:
-        google = typer.confirm("Configure Google Ads?", default=True)
-        meta = typer.confirm("Configure Meta Ads?", default=True)
+    should_skip, banner = _should_skip_auth(skip_auth)
+    _warn_unused_ads_flags(should_skip, google_ads, meta_ads)
+    if should_skip:
+        if banner is not None:
+            typer.echo(banner)
+        typer.echo("Run /onboard in Claude Code later to configure credentials.\n")
+    else:
+        google = confirm_or_default(
+            "Configure Google Ads?", default=True, override=google_ads
+        )
+        meta = confirm_or_default(
+            "Configure Meta Ads?", default=True, override=meta_ads
+        )
 
         if google:
             from mureo.auth_setup import setup_google_ads
@@ -123,9 +182,6 @@ def setup_claude_code(
             from mureo.auth_setup import setup_meta_ads
 
             asyncio.run(setup_meta_ads())
-    else:
-        typer.echo("Skipping authentication (--skip-auth).")
-        typer.echo("Run /onboard in Claude Code later to configure credentials.\n")
 
     # 2. MCP configuration
     from mureo.auth_setup import install_mcp_config
@@ -170,7 +226,21 @@ def setup_claude_code(
 
 
 @setup_app.command("cursor")  # type: ignore[untyped-decorator, unused-ignore]
-def setup_cursor() -> None:
+def setup_cursor(
+    skip_auth: bool = typer.Option(
+        False, "--skip-auth", help="Skip authentication (MCP config only)."
+    ),
+    google_ads: bool | None = typer.Option(
+        None,
+        "--google-ads/--no-google-ads",
+        help="Configure Google Ads auth (default: prompt in TTY, yes in non-TTY).",
+    ),
+    meta_ads: bool | None = typer.Option(
+        None,
+        "--meta-ads/--no-meta-ads",
+        help="Configure Meta Ads auth (default: prompt in TTY, yes in non-TTY).",
+    ),
+) -> None:
     """Setup for Cursor users (MCP configuration only).
 
     Cursor supports MCP but does not support slash commands,
@@ -180,20 +250,31 @@ def setup_cursor() -> None:
 
     typer.echo("=== mureo Setup for Cursor ===\n")
 
-    google = typer.confirm("Configure Google Ads?", default=True)
-    meta = typer.confirm("Configure Meta Ads?", default=True)
+    should_skip, banner = _should_skip_auth(skip_auth)
+    _warn_unused_ads_flags(should_skip, google_ads, meta_ads)
+    if should_skip:
+        if banner is not None:
+            typer.echo(banner)
+        google = meta = False
+    else:
+        google = confirm_or_default(
+            "Configure Google Ads?", default=True, override=google_ads
+        )
+        meta = confirm_or_default(
+            "Configure Meta Ads?", default=True, override=meta_ads
+        )
 
-    if google:
-        from mureo.auth_setup import setup_google_ads
+        if google:
+            from mureo.auth_setup import setup_google_ads
 
-        asyncio.run(setup_google_ads())
+            asyncio.run(setup_google_ads())
 
-    if meta:
-        from mureo.auth_setup import setup_meta_ads
+        if meta:
+            from mureo.auth_setup import setup_meta_ads
 
-        asyncio.run(setup_meta_ads())
+            asyncio.run(setup_meta_ads())
 
-    if not google and not meta:
+    if not google and not meta and not should_skip:
         typer.echo("Setup skipped.")
         return
 
@@ -220,6 +301,16 @@ def setup_codex(
         "--skip-auth",
         help="Skip authentication (install MCP config, guard, prompts, skills only)",
     ),
+    google_ads: bool | None = typer.Option(
+        None,
+        "--google-ads/--no-google-ads",
+        help="Configure Google Ads auth (default: prompt in TTY, yes in non-TTY).",
+    ),
+    meta_ads: bool | None = typer.Option(
+        None,
+        "--meta-ads/--no-meta-ads",
+        help="Configure Meta Ads auth (default: prompt in TTY, yes in non-TTY).",
+    ),
 ) -> None:
     """One-command setup for OpenAI Codex CLI users.
 
@@ -238,9 +329,19 @@ def setup_codex(
 
     typer.echo("=== mureo Setup for Codex CLI ===\n")
 
-    if not skip_auth:
-        google = typer.confirm("Configure Google Ads?", default=True)
-        meta = typer.confirm("Configure Meta Ads?", default=True)
+    should_skip, banner = _should_skip_auth(skip_auth)
+    _warn_unused_ads_flags(should_skip, google_ads, meta_ads)
+    if should_skip:
+        if banner is not None:
+            typer.echo(banner)
+        typer.echo("Run /onboard in Codex later to configure credentials.\n")
+    else:
+        google = confirm_or_default(
+            "Configure Google Ads?", default=True, override=google_ads
+        )
+        meta = confirm_or_default(
+            "Configure Meta Ads?", default=True, override=meta_ads
+        )
 
         if google:
             from mureo.auth_setup import setup_google_ads
@@ -251,9 +352,6 @@ def setup_codex(
             from mureo.auth_setup import setup_meta_ads
 
             asyncio.run(setup_meta_ads())
-    else:
-        typer.echo("Skipping authentication (--skip-auth).")
-        typer.echo("Run /onboard in Codex later to configure credentials.\n")
 
     mcp_result = install_codex_mcp_config()
     if mcp_result is not None:
@@ -289,7 +387,21 @@ def setup_codex(
 
 
 @setup_app.command("gemini")  # type: ignore[untyped-decorator, unused-ignore]
-def setup_gemini() -> None:
+def setup_gemini(
+    skip_auth: bool = typer.Option(
+        False, "--skip-auth", help="Skip authentication (extension manifest only)."
+    ),
+    google_ads: bool | None = typer.Option(
+        None,
+        "--google-ads/--no-google-ads",
+        help="Configure Google Ads auth (default: prompt in TTY, yes in non-TTY).",
+    ),
+    meta_ads: bool | None = typer.Option(
+        None,
+        "--meta-ads/--no-meta-ads",
+        help="Configure Meta Ads auth (default: prompt in TTY, yes in non-TTY).",
+    ),
+) -> None:
     """Setup for Gemini CLI users (extension manifest only).
 
     Registers mureo as a Gemini CLI extension at
@@ -304,18 +416,28 @@ def setup_gemini() -> None:
 
     typer.echo("=== mureo Setup for Gemini CLI ===\n")
 
-    google = typer.confirm("Configure Google Ads?", default=True)
-    meta = typer.confirm("Configure Meta Ads?", default=True)
+    should_skip, banner = _should_skip_auth(skip_auth)
+    _warn_unused_ads_flags(should_skip, google_ads, meta_ads)
+    if should_skip:
+        if banner is not None:
+            typer.echo(banner)
+    else:
+        google = confirm_or_default(
+            "Configure Google Ads?", default=True, override=google_ads
+        )
+        meta = confirm_or_default(
+            "Configure Meta Ads?", default=True, override=meta_ads
+        )
 
-    if google:
-        from mureo.auth_setup import setup_google_ads
+        if google:
+            from mureo.auth_setup import setup_google_ads
 
-        asyncio.run(setup_google_ads())
+            asyncio.run(setup_google_ads())
 
-    if meta:
-        from mureo.auth_setup import setup_meta_ads
+        if meta:
+            from mureo.auth_setup import setup_meta_ads
 
-        asyncio.run(setup_meta_ads())
+            asyncio.run(setup_meta_ads())
 
     manifest = install_gemini_extension()
     typer.echo(f"\nGemini extension manifest written to {manifest}")

@@ -151,3 +151,102 @@ def test_install_skills_default_path(tmp_path: Path) -> None:
 
     assert dest == tmp_path / ".claude" / "skills"
     assert count == 6
+
+
+# ---------------------------------------------------------------------------
+# Non-interactive behavior — regression tests for TTY-safe setup commands
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_should_skip_auth_when_flag_true() -> None:
+    """--skip-auth always wins regardless of TTY state."""
+    from mureo.cli.setup_cmd import _should_skip_auth
+
+    skip, banner = _should_skip_auth(skip_auth_flag=True)
+    assert skip is True
+    assert banner is not None
+    assert "--skip-auth" in banner
+
+
+@pytest.mark.unit
+def test_should_skip_auth_when_no_tty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing TTY (AI-agent subprocess, CI) auto-implies skip-auth."""
+    from mureo.cli.setup_cmd import _should_skip_auth
+
+    monkeypatch.setattr("mureo.cli.setup_cmd.is_tty", lambda: False)
+    skip, banner = _should_skip_auth(skip_auth_flag=False)
+    assert skip is True
+    assert banner is not None
+    assert "No TTY" in banner
+    assert "mureo auth setup" in banner
+
+
+@pytest.mark.unit
+def test_should_not_skip_auth_when_tty_and_no_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Interactive TTY preserves the existing prompting flow."""
+    from mureo.cli.setup_cmd import _should_skip_auth
+
+    monkeypatch.setattr("mureo.cli.setup_cmd.is_tty", lambda: True)
+    skip, banner = _should_skip_auth(skip_auth_flag=False)
+    assert skip is False
+    assert banner is None
+
+
+@pytest.mark.unit
+def test_setup_claude_code_runs_without_tty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`mureo setup claude-code` must complete non-interactively under
+    an AI agent (no TTY) AND still perform every non-auth install step.
+
+    Regression lock: a future refactor that silently no-ops everything
+    in non-TTY mode would still print "Setup complete" — so we also
+    assert the MCP config file, the credential guard hook, the workflow
+    commands directory, and the skills directory were all actually
+    created on disk.
+    """
+    import json
+
+    import typer.testing
+
+    from mureo.cli.main import app
+
+    monkeypatch.setattr("mureo.cli.setup_cmd.is_tty", lambda: False)
+    monkeypatch.setattr("mureo.cli.setup_cmd.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("mureo.auth_setup.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("mureo.cli.setup_codex.Path.home", lambda: tmp_path)
+    # Guard: if any code path tries to reach OAuth, fail loudly.
+    from mureo import auth_setup
+
+    def _boom(*_: object, **__: object) -> None:
+        raise AssertionError("OAuth must not be invoked in non-TTY mode")
+
+    monkeypatch.setattr(auth_setup, "setup_google_ads", _boom)
+    monkeypatch.setattr(auth_setup, "setup_meta_ads", _boom)
+
+    runner = typer.testing.CliRunner()
+    result = runner.invoke(app, ["setup", "claude-code"])
+    assert result.exit_code == 0, result.output
+    assert "No TTY detected" in result.output
+    assert "Setup complete" in result.output
+
+    # MCP config must exist with mureo registered.
+    settings_path = tmp_path / ".claude" / "settings.json"
+    assert settings_path.exists()
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert "mureo" in settings.get("mcpServers", {})
+    # Credential guard hook installed (same settings.json).
+    hooks = settings.get("hooks", {}).get("PreToolUse", [])
+    assert any(
+        "[mureo-credential-guard]" in h.get("command", "")
+        for entry in hooks
+        for h in entry.get("hooks", [])
+    )
+    # Workflow commands + skills were copied.
+    assert (tmp_path / ".claude" / "commands" / "onboard.md").exists()
+    assert (tmp_path / ".claude" / "skills" / "mureo-workflows").exists()

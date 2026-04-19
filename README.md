@@ -197,6 +197,16 @@ You approve → Agent updates each platform.
 
 The `mureo auth setup` wizard walks you through both.
 
+### From inside Claude Code Desktop (no terminal needed to install)
+
+If you're not comfortable opening a terminal, ask Claude inside the Code tab:
+
+> "Install mureo from `https://github.com/logly/mureo`. Run `pip install git+https://github.com/logly/mureo`, then `mureo setup claude-code`. After that tell me to run `mureo auth setup` in Terminal.app once to finish authentication."
+
+mureo's setup auto-detects when it's running under an AI agent (no TTY) and skips the interactive OAuth step so Claude doesn't hang. The MCP config, credential guard, workflow commands, and skills are all installed non-interactively.
+
+**One-time** you do need to open **macOS Terminal.app** (or Windows Terminal) and run `mureo auth setup` — OAuth requires pasting a Developer Token from Google Cloud and an App ID/Secret from Meta, which is safer to do in a local terminal than in chat. Restart Claude Desktop afterwards and mureo tools appear in the Code tab.
+
 ### Claude Code (recommended)
 
 ```bash
