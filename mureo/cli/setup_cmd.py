@@ -95,7 +95,17 @@ def install_commands(target_dir: Path | None = None) -> tuple[int, Path]:
     src = _get_data_path("commands")
     count = 0
     for md_file in sorted(src.glob("*.md")):
-        shutil.copy2(md_file, dest / md_file.name)
+        dest_file = dest / md_file.name
+        # shutil.copy2 follows destination symlinks and writes to the
+        # symlink's target. That's exactly wrong for sandboxed clients
+        # like Claude Desktop: following a symlink into ~/Documents
+        # hits TCC and the READ silently fails, so the slash command
+        # stops working. Unlink the symlink itself first and lay down
+        # a real file so the client can read it without following a
+        # link outside its sandbox.
+        if dest_file.is_symlink():
+            dest_file.unlink()
+        shutil.copy2(md_file, dest_file)
         count += 1
 
     return count, dest
