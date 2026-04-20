@@ -130,6 +130,43 @@ def test_install_skills_preserves_extra_skills(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_install_skills_replaces_symlink_without_touching_target(
+    tmp_path: Path,
+) -> None:
+    """A symlink in the destination must be replaced with a real copy.
+
+    Developers often symlink `~/.claude/skills/<bundled>/` at their repo's
+    dev copy. Re-running `mureo setup claude-code` used to crash with
+    ``OSError: Cannot call rmtree on a symbolic link`` because
+    ``shutil.rmtree`` refuses symlinks by design (to avoid blowing away
+    the link's target). This regression pins the corrected behavior:
+    the symlink itself is removed, then a real copy of the bundled skill
+    lands in its place. The external target the symlink used to point
+    at is left untouched.
+    """
+    from mureo.cli.setup_cmd import install_skills
+
+    external_target = tmp_path / "external" / "mureo-workflows"
+    external_target.mkdir(parents=True)
+    (external_target / "SKILL.md").write_text("dev-link content")
+    (external_target / "precious.txt").write_text("do not delete")
+
+    target = tmp_path / "skills"
+    target.mkdir()
+    link_path = target / "mureo-workflows"
+    link_path.symlink_to(external_target, target_is_directory=True)
+
+    install_skills(target_dir=target)
+
+    assert not link_path.is_symlink()
+    assert link_path.is_dir()
+    assert (link_path / "SKILL.md").exists()
+    assert external_target.exists()
+    assert (external_target / "SKILL.md").read_text() == "dev-link content"
+    assert (external_target / "precious.txt").read_text() == "do not delete"
+
+
+@pytest.mark.unit
 def test_install_commands_default_path(tmp_path: Path) -> None:
     """install_commands uses ~/.claude/commands as default."""
     from mureo.cli.setup_cmd import install_commands

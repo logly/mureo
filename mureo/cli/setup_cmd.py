@@ -118,12 +118,26 @@ def install_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     for skill_dir in sorted(src.iterdir()):
         if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists():
             dest_skill = dest / skill_dir.name
-            if dest_skill.exists():
-                shutil.rmtree(dest_skill)
+            _replace_dest(dest_skill)
             shutil.copytree(skill_dir, dest_skill)
             count += 1
 
     return count, dest
+
+
+def _replace_dest(path: Path) -> None:
+    """Remove ``path`` in preparation for ``shutil.copytree``.
+
+    ``shutil.rmtree`` refuses symlinks by design (to avoid nuking the
+    link's target). A developer who has symlinked a bundled skill dir
+    at their own dev copy would otherwise crash re-running setup with
+    ``OSError: Cannot call rmtree on a symbolic link``. Unlink the
+    symlink itself and leave the target intact.
+    """
+    if path.is_symlink():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
 
 
 @setup_app.command("claude-code")  # type: ignore[untyped-decorator, unused-ignore]

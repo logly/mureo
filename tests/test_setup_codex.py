@@ -321,3 +321,59 @@ class TestInstallCodexSkills:
 
         updated = (dest / "SKILL.md").read_text(encoding="utf-8")
         assert updated != "stale"
+
+    def test_replaces_symlink_without_touching_target(
+        self, home: Path, tmp_path: Path
+    ) -> None:
+        """A symlink at the destination path is replaced with a real copy.
+
+        A developer running `mureo setup codex` in their working clone
+        may have symlinked ``~/.codex/skills/mureo-workflows`` at their
+        repo's dev copy. ``shutil.rmtree`` refuses symlinks by design,
+        so re-installing crashed with ``OSError``. The fix swaps the
+        symlink for an ``unlink()`` and the external target stays safe.
+        """
+        external_target = tmp_path / "external_dev_skill"
+        external_target.mkdir()
+        (external_target / "SKILL.md").write_text("dev-link")
+        (external_target / "keep.txt").write_text("keep")
+
+        dest_parent = home / ".codex" / "skills"
+        dest_parent.mkdir(parents=True)
+        link = dest_parent / "mureo-workflows"
+        link.symlink_to(external_target, target_is_directory=True)
+
+        install_codex_skills()
+
+        assert not link.is_symlink()
+        assert link.is_dir()
+        assert (link / "SKILL.md").exists()
+        assert external_target.exists()
+        assert (external_target / "keep.txt").read_text() == "keep"
+
+
+class TestInstallCodexCommandSkillsSymlink:
+    """Regression: install_codex_command_skills must tolerate a symlink
+    at the destination for a bundled command skill (e.g. the operator
+    symlinked their own dev copy into ``~/.codex/skills/onboard``).
+    """
+
+    def test_replaces_symlink_command_skill_without_touching_target(
+        self, home: Path, tmp_path: Path
+    ) -> None:
+        external = tmp_path / "external_onboard_skill"
+        external.mkdir()
+        (external / "SKILL.md").write_text("dev onboard body")
+
+        dest_parent = home / ".codex" / "skills"
+        dest_parent.mkdir(parents=True)
+        link = dest_parent / "onboard"
+        link.symlink_to(external, target_is_directory=True)
+
+        install_codex_command_skills()
+
+        assert not link.is_symlink()
+        assert link.is_dir()
+        assert (link / "SKILL.md").exists()
+        assert external.exists()
+        assert (external / "SKILL.md").read_text() == "dev onboard body"
