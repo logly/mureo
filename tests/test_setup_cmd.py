@@ -68,6 +68,69 @@ def test_install_commands_preserves_extra_files(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_install_commands_replaces_symlink_without_touching_target(
+    tmp_path: Path,
+) -> None:
+    """A symlink in the destination must be replaced with a real copy.
+
+    ``shutil.copy2`` follows destination symlinks by default — opening
+    ``dst`` for writing transparently writes to the symlink's target,
+    leaving the symlink itself in place. That matters for sandboxed
+    clients (Claude Desktop on macOS) that try to READ the command
+    file: following a symlink into ``~/Documents`` hits TCC and the
+    read silently fails, so the slash command appears to do nothing.
+
+    This regression locks in the fix: detect the symlink, unlink it,
+    then lay down a real file in its place. The external target file
+    the symlink used to point at is not touched.
+    """
+    from mureo.cli.setup_cmd import install_commands
+
+    external_target = tmp_path / "external" / "daily-check.md"
+    external_target.parent.mkdir(parents=True)
+    external_target.write_text("dev-link content — must survive")
+
+    target = tmp_path / "commands"
+    target.mkdir()
+    link_path = target / "daily-check.md"
+    link_path.symlink_to(external_target)
+
+    install_commands(target_dir=target)
+
+    # The dev symlink was replaced with a real file.
+    assert not link_path.is_symlink()
+    assert link_path.is_file()
+    # Body is now the bundled command, not the dev copy.
+    assert link_path.read_text() != "dev-link content — must survive"
+    # The external target the symlink used to point at is intact.
+    assert external_target.exists()
+    assert external_target.read_text() == "dev-link content — must survive"
+
+
+@pytest.mark.unit
+def test_install_commands_replaces_broken_symlink(tmp_path: Path) -> None:
+    """A dangling symlink at the destination must still be replaced
+    with a real file. ``Path.is_symlink()`` returns True for a broken
+    link, and ``Path.unlink()`` removes the link without caring that
+    the target is missing, so the subsequent ``shutil.copy2`` writes
+    a clean real file. Locks in the "don't care about the target"
+    contract.
+    """
+    from mureo.cli.setup_cmd import install_commands
+
+    target = tmp_path / "commands"
+    target.mkdir()
+    broken = target / "daily-check.md"
+    broken.symlink_to(tmp_path / "does-not-exist.md")
+
+    install_commands(target_dir=target)
+
+    assert not broken.is_symlink()
+    assert broken.is_file()
+    assert broken.read_text()  # Non-empty real bundled content.
+
+
+@pytest.mark.unit
 def test_install_skills(tmp_path: Path) -> None:
     """install_skills copies all skill directories to target."""
     from mureo.cli.setup_cmd import install_skills
@@ -127,6 +190,43 @@ def test_install_skills_preserves_extra_skills(tmp_path: Path) -> None:
     install_skills(target_dir=target)
 
     assert (target / "my-custom-skill" / "SKILL.md").read_text() == "custom"
+
+
+@pytest.mark.unit
+def test_install_skills_replaces_symlink_without_touching_target(
+    tmp_path: Path,
+) -> None:
+    """A symlink in the destination must be replaced with a real copy.
+
+    Developers often symlink `~/.claude/skills/<bundled>/` at their repo's
+    dev copy. Re-running `mureo setup claude-code` used to crash with
+    ``OSError: Cannot call rmtree on a symbolic link`` because
+    ``shutil.rmtree`` refuses symlinks by design (to avoid blowing away
+    the link's target). This regression pins the corrected behavior:
+    the symlink itself is removed, then a real copy of the bundled skill
+    lands in its place. The external target the symlink used to point
+    at is left untouched.
+    """
+    from mureo.cli.setup_cmd import install_skills
+
+    external_target = tmp_path / "external" / "mureo-workflows"
+    external_target.mkdir(parents=True)
+    (external_target / "SKILL.md").write_text("dev-link content")
+    (external_target / "precious.txt").write_text("do not delete")
+
+    target = tmp_path / "skills"
+    target.mkdir()
+    link_path = target / "mureo-workflows"
+    link_path.symlink_to(external_target, target_is_directory=True)
+
+    install_skills(target_dir=target)
+
+    assert not link_path.is_symlink()
+    assert link_path.is_dir()
+    assert (link_path / "SKILL.md").exists()
+    assert external_target.exists()
+    assert (external_target / "SKILL.md").read_text() == "dev-link content"
+    assert (external_target / "precious.txt").read_text() == "do not delete"
 
 
 @pytest.mark.unit

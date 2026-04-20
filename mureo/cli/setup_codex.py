@@ -287,8 +287,7 @@ def install_codex_command_skills(
         name = md_file.stem
         bundled_names.add(md_file.name)
         skill_dir = dest / name
-        if skill_dir.exists():
-            shutil.rmtree(skill_dir)
+        _replace_dest(skill_dir)
         skill_dir.mkdir(parents=True)
         body = md_file.read_text(encoding="utf-8")
         (skill_dir / "SKILL.md").write_text(
@@ -334,8 +333,22 @@ def install_codex_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     for skill_dir in sorted(src.iterdir()):
         if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists():
             target = dest / skill_dir.name
-            if target.exists():
-                shutil.rmtree(target)
+            _replace_dest(target)
             shutil.copytree(skill_dir, target)
             count += 1
     return count, dest
+
+
+def _replace_dest(path: Path) -> None:
+    """Remove ``path`` in preparation for a fresh copytree/mkdir.
+
+    ``shutil.rmtree`` refuses symlinks by design (to avoid nuking the
+    link's target). Operators who have symlinked a bundled skill name
+    at their own dev copy would otherwise see ``mureo setup codex``
+    crash on re-run with ``OSError: Cannot call rmtree on a symbolic
+    link``. Unlink the symlink and leave the target intact.
+    """
+    if path.is_symlink():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)

@@ -95,7 +95,17 @@ def install_commands(target_dir: Path | None = None) -> tuple[int, Path]:
     src = _get_data_path("commands")
     count = 0
     for md_file in sorted(src.glob("*.md")):
-        shutil.copy2(md_file, dest / md_file.name)
+        dest_file = dest / md_file.name
+        # shutil.copy2 follows destination symlinks and writes to the
+        # symlink's target. That's exactly wrong for sandboxed clients
+        # like Claude Desktop: following a symlink into ~/Documents
+        # hits TCC and the READ silently fails, so the slash command
+        # stops working. Unlink the symlink itself first and lay down
+        # a real file so the client can read it without following a
+        # link outside its sandbox.
+        if dest_file.is_symlink():
+            dest_file.unlink()
+        shutil.copy2(md_file, dest_file)
         count += 1
 
     return count, dest
@@ -118,12 +128,26 @@ def install_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     for skill_dir in sorted(src.iterdir()):
         if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists():
             dest_skill = dest / skill_dir.name
-            if dest_skill.exists():
-                shutil.rmtree(dest_skill)
+            _replace_dest(dest_skill)
             shutil.copytree(skill_dir, dest_skill)
             count += 1
 
     return count, dest
+
+
+def _replace_dest(path: Path) -> None:
+    """Remove ``path`` in preparation for ``shutil.copytree``.
+
+    ``shutil.rmtree`` refuses symlinks by design (to avoid nuking the
+    link's target). A developer who has symlinked a bundled skill dir
+    at their own dev copy would otherwise crash re-running setup with
+    ``OSError: Cannot call rmtree on a symbolic link``. Unlink the
+    symlink itself and leave the target intact.
+    """
+    if path.is_symlink():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
 
 
 @setup_app.command("claude-code")  # type: ignore[untyped-decorator, unused-ignore]
