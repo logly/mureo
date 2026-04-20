@@ -61,9 +61,14 @@ Changelog = "https://github.com/logly/mureo/blob/main/CHANGELOG.md"
 [tool.hatch.build.targets.wheel]
 packages = ["mureo"]
 
-[tool.hatch.build.targets.wheel.force-include]
-".claude/commands" = "mureo/_data/commands"
-"skills" = "mureo/_data/skills"
+# NB: the previous ``[tool.hatch.build.targets.wheel.force-include]``
+# block that copied top-level ``.claude/commands/`` and ``skills/`` into
+# ``mureo/_data/`` was removed because it duplicated files already
+# included via ``packages = ["mureo"]``. The duplicate ZIP entries
+# produced a wheel that PyPI rejects with
+# ``400 Invalid distribution file. ZIP archive not accepted:
+# Mis-matched data size.`` The bundled runtime data lives under
+# ``mureo/_data/`` in the package tree and is sufficient on its own.
 
 [tool.black]
 line-length = 88
