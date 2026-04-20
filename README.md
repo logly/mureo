@@ -197,24 +197,28 @@ You approve → Agent updates each platform.
 
 The `mureo auth setup` wizard walks you through both.
 
-### From inside Claude Code Desktop (no terminal needed)
+### From inside Claude Code Desktop
 
-Paste the following into Claude Desktop's **Code tab**. The browser will open for OAuth, and a Terminal window will briefly appear for the file-install step — on first run, macOS shows a one-time "Claude wants to control Terminal" permission popup. Click **OK**.
+Paste the following into Claude Desktop's **Code tab**. Python is handled by Claude itself if missing — the fixed script only covers mureo-specific steps. Along the way, macOS may show a "Claude wants to control Terminal" permission popup — click **OK**.
 
-> Run these four steps in order:
+> First, please make sure Python 3.10 or newer is available on my Mac, set up so that `pip3 install mureo` runs without issues. Use whichever method is appropriate — Homebrew, the python.org installer, or something else — and handle PEP 668 `externally-managed-environment` workarounds if they come up. If any step needs to run outside the sandbox, delegate it to Terminal.app via `osascript`.
+>
+> Once Python is ready, run the following mureo setup script as-is:
 >
 > ```python
 > import subprocess, shutil
+> from pathlib import Path
 >
 > # 1. Install mureo (skip if already present)
 > if not shutil.which("mureo"):
->     subprocess.run(["pip3", "install", "mureo"], check=True)
+>     subprocess.run([
+>         "pip3", "install", "--break-system-packages", "mureo"
+>     ], check=True)
 >
 > # 2. Browser-based OAuth wizard for Google Ads / Meta Ads
 > subprocess.run(["mureo", "auth", "setup", "--web"], check=True)
 >
 > # 3. Verify credentials were saved
-> from pathlib import Path
 > assert (Path.home() / ".mureo" / "credentials.json").exists(), \
 >     "Credentials not saved — retry step 2."
 >
@@ -226,10 +230,21 @@ Paste the following into Claude Desktop's **Code tab**. The browser will open fo
 >     '"mureo setup claude-code --skip-auth; echo DONE; sleep 5"'
 > ])
 > ```
+>
+> Let me know if macOS asks for my Mac password or shows a "Claude wants to control Terminal" popup along the way. When a browser opens for Google Ads / Meta Ads OAuth, I'll complete it. Once done, remind me to restart Claude Desktop.
 
-**Why split the flow?** Claude Desktop is sandboxed on macOS. Steps 1–3 run inside the sandbox (writing `~/.mureo/credentials.json` is allowed). Step 4 hands off to a real Terminal window via AppleScript because `~/.claude/commands/` writes require the normal user context — the sandbox's TCC policy denies them otherwise.
+### What happens while it runs
 
-Restart Claude Desktop afterwards to load the MCP config. Slash commands (`/daily-check`, `/onboard`, etc.) will appear in the Code tab.
+| Event | Action |
+|---|---|
+| "Claude wants to control Terminal" popup | Click **OK** |
+| macOS login password prompt (Homebrew or python.org install) | Enter your password |
+| Browser opens for Google Ads / Meta Ads OAuth | Authorize |
+| Terminal briefly flashes open at the end | Automatic; nothing to do |
+
+Restart Claude Desktop (⌘Q, then launch again) to pick up the MCP config. Slash commands (`/daily-check`, `/onboard`, etc.) will appear in the Code tab.
+
+**Why this structure**: Python setup is environment-dependent so we let Claude figure out the best path (Homebrew, python.org installer, etc.), while mureo's specific operations stay in a fixed, reproducible script. The final step delegates fully to Terminal because macOS TCC denies the sandboxed process write access to `~/.claude/`.
 
 `mureo auth setup --web` launches a **browser-based wizard** on `http://127.0.0.1:<random-port>/`. You paste the Developer Token / App ID / App Secret into a local form (deep links next to each field point at Google Cloud Console / Google Ads API Center / Meta for Developers), complete OAuth in the same browser window, and the wizard writes `~/.mureo/credentials.json` for you. Restart Claude Desktop afterwards and mureo tools appear in the Code tab — no terminal required at any step.
 
