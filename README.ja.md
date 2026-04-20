@@ -147,11 +147,36 @@ STATE.jsonから接続媒体を検出:
 
 ### Claude Code Desktop から導入する（ターミナル不要）
 
-ターミナル操作に慣れていない場合は、Claude Desktop の **Code タブ** で Claude に次のように頼んでください:
+Claude Desktop の **Code タブ** に以下を貼り付けてください。途中でブラウザでOAuth画面が開き、最後にターミナルが一瞬だけ開いて閉じます。初回のみ macOS が「Claudeがターミナルを操作する」許可ダイアログを出すので **OK** を押してください。
 
-> 「mureo を `https://github.com/logly/mureo` からインストールして。`pip install git+https://github.com/logly/mureo` を実行したあと、`mureo setup claude-code` を実行、続けて `mureo auth setup --web` を実行してください。」
+> 以下の4ステップを順番に実行してください:
+>
+> ```python
+> import subprocess, shutil
+>
+> # 1. mureo をインストール (既に入っていればスキップ)
+> if not shutil.which("mureo"):
+>     subprocess.run(["pip3", "install", "mureo"], check=True)
+>
+> # 2. ブラウザで Google広告 / Meta広告 の OAuth を完了
+> subprocess.run(["mureo", "auth", "setup", "--web"], check=True)
+>
+> # 3. 認証情報が保存されたか確認
+> from pathlib import Path
+> assert (Path.home() / ".mureo" / "credentials.json").exists(), \
+>     "認証情報が保存されませんでした — ステップ2をやり直してください"
+>
+> # 4. Claude Code 用の設定ファイルを配置 (権限の都合でTerminalに委譲)
+> subprocess.run([
+>     "osascript", "-e",
+>     'tell application "Terminal" to do script '
+>     '"mureo setup claude-code --skip-auth; echo DONE; sleep 5"'
+> ])
+> ```
 
-mureo の setup コマンドは AI エージェント経由（TTY 無し）で実行されたことを自動検出し、対話型の OAuth 手続きをスキップします（Claude がハングしません）。MCP設定・認証ガード・ワークフローコマンド・スキルは全部自動でインストールされます。
+**なぜ4ステップに分かれているか**: Claude Desktop は macOS のサンドボックス内で動作するため、`~/.claude/commands/` への書き込みが TCC ポリシーで拒否されます。ステップ1〜3 はサンドボックス内で完結し（`~/.mureo/credentials.json` への書き込みは許可されている）、ステップ4のみ AppleScript 経由で通常のユーザー権限で動く Terminal に処理を委譲することで `~/.claude/` 配下にファイルを書き込めるようにしています。
+
+完了後は Claude Desktop を再起動すると MCP 設定が読み込まれ、Code タブで `/daily-check` や `/onboard` などのスラッシュコマンドが利用可能になります。
 
 `mureo auth setup --web` は **ブラウザベースのセットアップウィザード** を `http://127.0.0.1:<ランダムポート>/` で起動します。Developer Token・App ID・App Secret はローカル画面のフォームに貼り付け（各欄のリンクから Google Cloud Console / Google Ads API Center / Meta for Developers の該当ページに飛べます）、そのままブラウザ上で OAuth を完了すると `~/.mureo/credentials.json` に書き込まれます。完了後に Claude Desktop を再起動すれば、Code タブで mureo のツールが使えるようになります。**ターミナルを一度も開く必要がありません。**
 
