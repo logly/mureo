@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mureo"
-version = "0.6.0.dev1"
+version = "0.6.0"
 description = "Marketing orchestration framework for AI agents"
 requires-python = ">=3.10"
 license = "Apache-2.0"

@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.6.0.dev1] - 2026-04-20
+## [0.6.0] - 2026-04-20
 
-Pre-release uploaded to TestPyPI for colleague beta testing. No functional differences from the entries below as of this tag; when the final 0.6.0 is cut, the `[0.6.0.dev1]` section below is promoted to `## [0.6.0] - <release date>` and the `.dev1` tag is dropped.
+First production PyPI release (`pip install mureo`). Supersedes the internal `0.6.0.dev1` preview that was published to TestPyPI during colleague beta testing.
 
 ### Security
 - `mureo setup codex` command-skill generation now escapes all control characters and unicode line separators (U+2028 / U+2029) in the skill `description:` frontmatter field, so a future bundled command whose first line contains a tab, CR, LF, NEL, or other byte that YAML treats as a line break cannot silently truncate the description or corrupt the frontmatter block. Today's bundled commands don't trigger the old behavior — this is a defense-in-depth guard against a future maintainer adding a command with an unusual first line.
