@@ -199,11 +199,37 @@ The `mureo auth setup` wizard walks you through both.
 
 ### From inside Claude Code Desktop (no terminal needed)
 
-If you're not comfortable opening a terminal, ask Claude inside the Code tab:
+Paste the following into Claude Desktop's **Code tab**. The browser will open for OAuth, and a Terminal window will briefly appear for the file-install step — on first run, macOS shows a one-time "Claude wants to control Terminal" permission popup. Click **OK**.
 
-> "Install mureo from `https://github.com/logly/mureo`. Run `pip install git+https://github.com/logly/mureo`, then `mureo setup claude-code`, then `mureo auth setup --web`."
+> Run these four steps in order:
+>
+> ```python
+> import subprocess, shutil
+>
+> # 1. Install mureo (skip if already present)
+> if not shutil.which("mureo"):
+>     subprocess.run(["pip3", "install", "mureo"], check=True)
+>
+> # 2. Browser-based OAuth wizard for Google Ads / Meta Ads
+> subprocess.run(["mureo", "auth", "setup", "--web"], check=True)
+>
+> # 3. Verify credentials were saved
+> from pathlib import Path
+> assert (Path.home() / ".mureo" / "credentials.json").exists(), \
+>     "Credentials not saved — retry step 2."
+>
+> # 4. Install Claude Code config files by handing off to Terminal
+> #    (required because ~/.claude/ is outside Claude Desktop's sandbox)
+> subprocess.run([
+>     "osascript", "-e",
+>     'tell application "Terminal" to do script '
+>     '"mureo setup claude-code --skip-auth; echo DONE; sleep 5"'
+> ])
+> ```
 
-mureo's setup auto-detects when it's running under an AI agent (no TTY) and skips the interactive OAuth step so Claude doesn't hang. The MCP config, credential guard, workflow commands, and skills are all installed non-interactively.
+**Why split the flow?** Claude Desktop is sandboxed on macOS. Steps 1–3 run inside the sandbox (writing `~/.mureo/credentials.json` is allowed). Step 4 hands off to a real Terminal window via AppleScript because `~/.claude/commands/` writes require the normal user context — the sandbox's TCC policy denies them otherwise.
+
+Restart Claude Desktop afterwards to load the MCP config. Slash commands (`/daily-check`, `/onboard`, etc.) will appear in the Code tab.
 
 `mureo auth setup --web` launches a **browser-based wizard** on `http://127.0.0.1:<random-port>/`. You paste the Developer Token / App ID / App Secret into a local form (deep links next to each field point at Google Cloud Console / Google Ads API Center / Meta for Developers), complete OAuth in the same browser window, and the wizard writes `~/.mureo/credentials.json` for you. Restart Claude Desktop afterwards and mureo tools appear in the Code tab — no terminal required at any step.
 
