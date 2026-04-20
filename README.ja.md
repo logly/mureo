@@ -145,55 +145,9 @@ STATE.jsonから接続媒体を検出:
 
 いずれも `mureo auth setup` の対話型ウィザードが手順を案内します。
 
-### Claude Code Desktop から導入する
+### ブラウザベースの認証ウィザード (`mureo auth setup --web`)
 
-Claude Desktop の **Code タブ** に以下を貼り付けてください。Python が無ければ Claude に任せて入れさせる構成になっています。途中で macOS が「Claude が Terminal を操作する」許可ダイアログを出すので **OK** を押してください。
-
-> まず最初に、Python 3.10 以上を私の Mac に用意してください。`pip3 install mureo` がそのまま通る状態にしてほしいので、Homebrew 経由でも python.org 公式インストーラー経由でも、適切な方法を選んでください (PEP 668 の `externally-managed-environment` エラーを回避する必要があれば、それも含めて対処してください)。サンドボックス外での実行が必要なら `osascript` で Terminal.app に頼んでください。
->
-> Python が揃ったら、以下の mureo セットアップスクリプトをそのまま実行してください:
->
-> ```python
-> import subprocess, shutil
-> from pathlib import Path
->
-> # 1. mureo をインストール (既に入っていればスキップ)
-> if not shutil.which("mureo"):
->     subprocess.run([
->         "pip3", "install", "--break-system-packages", "mureo"
->     ], check=True)
->
-> # 2. ブラウザで Google広告 / Meta広告 の OAuth を完了
-> subprocess.run(["mureo", "auth", "setup", "--web"], check=True)
->
-> # 3. 認証情報が保存されたか確認
-> assert (Path.home() / ".mureo" / "credentials.json").exists(), \
->     "認証情報が保存されませんでした — ステップ2をやり直してください"
->
-> # 4. Claude Code 用の設定ファイルを配置 (権限の都合でTerminalに委譲)
-> subprocess.run([
->     "osascript", "-e",
->     'tell application "Terminal" to do script '
->     '"mureo setup claude-code --skip-auth; echo DONE; sleep 5"'
-> ])
-> ```
->
-> 途中で「Terminal を操作する許可」や Mac のパスワード入力を求められたら、その都度私に知らせてください。ブラウザで Google 広告 / Meta 広告の OAuth 画面が開いたら、私が承認します。完了したら Claude Desktop を再起動するよう伝えてください。
-
-### 何が起きるか
-
-| 起こること | 対応 |
-|---|---|
-| 「Claude が Terminal を操作する」許可ポップアップ | **OK** を押す |
-| Mac のログインパスワードを要求される (Homebrewやpython.orgインストール時) | 入力 |
-| ブラウザで Google広告 / Meta広告 の OAuth 画面 | 承認 |
-| Terminal が一瞬開いて閉じる (最終ステップ) | 自動、放置でOK |
-
-完了後は Claude Desktop を **完全終了 (⌘Q) → 再起動** してください。Code タブで `/daily-check` や `/onboard` などのスラッシュコマンドが利用可能になります。
-
-**なぜこの構成か**: Python の用意は環境ごとに最適解が違うので Claude に判断を任せ、mureo 固有の処理 (インストール・認証・Claude Code設定) は再現性が必要なので固定スクリプトに。最後のステップは `~/.claude/` への書き込みが TCC で拒否されるため Terminal に完全委譲しています。
-
-`mureo auth setup --web` は **ブラウザベースのセットアップウィザード** を `http://127.0.0.1:<ランダムポート>/` で起動します。Developer Token・App ID・App Secret はローカル画面のフォームに貼り付け（各欄のリンクから Google Cloud Console / Google Ads API Center / Meta for Developers の該当ページに飛べます）、そのままブラウザ上で OAuth を完了すると `~/.mureo/credentials.json` に書き込まれます。完了後に Claude Desktop を再起動すれば、Code タブで mureo のツールが使えるようになります。**ターミナルを一度も開く必要がありません。**
+ターミナルに長い秘密情報を貼り付けるのはミスしやすいので、インストール後は `mureo auth setup --web` を実行してください。短命のローカルウィザードが `http://127.0.0.1:<ランダムポート>/` で起動し、ブラウザが自動で開いて Developer Token・App ID・App Secret を貼り付けるフォームが表示されます（各欄のリンクから Google Cloud Console / Google Ads API Center / Meta for Developers の該当ページに飛べます）。同じブラウザウィンドウで OAuth を完了すると `~/.mureo/credentials.json` に書き込まれます。
 
 <details>
 <summary>ウィザードをローカル実行しても安全な理由</summary>
