@@ -197,56 +197,9 @@ You approve → Agent updates each platform.
 
 The `mureo auth setup` wizard walks you through both.
 
-### From inside Claude Code Desktop
+### Browser-based auth wizard (`mureo auth setup --web`)
 
-Paste the following into Claude Desktop's **Code tab**. Python is handled by Claude itself if missing — the fixed script only covers mureo-specific steps. Along the way, macOS may show a "Claude wants to control Terminal" permission popup — click **OK**.
-
-> First, please make sure Python 3.10 or newer is available on my Mac, set up so that `pip3 install mureo` runs without issues. Use whichever method is appropriate — Homebrew, the python.org installer, or something else — and handle PEP 668 `externally-managed-environment` workarounds if they come up. If any step needs to run outside the sandbox, delegate it to Terminal.app via `osascript`.
->
-> Once Python is ready, run the following mureo setup script as-is:
->
-> ```python
-> import subprocess, shutil
-> from pathlib import Path
->
-> # 1. Install mureo (skip if already present)
-> if not shutil.which("mureo"):
->     subprocess.run([
->         "pip3", "install", "--break-system-packages", "mureo"
->     ], check=True)
->
-> # 2. Browser-based OAuth wizard for Google Ads / Meta Ads
-> subprocess.run(["mureo", "auth", "setup", "--web"], check=True)
->
-> # 3. Verify credentials were saved
-> assert (Path.home() / ".mureo" / "credentials.json").exists(), \
->     "Credentials not saved — retry step 2."
->
-> # 4. Install Claude Code config files by handing off to Terminal
-> #    (required because ~/.claude/ is outside Claude Desktop's sandbox)
-> subprocess.run([
->     "osascript", "-e",
->     'tell application "Terminal" to do script '
->     '"mureo setup claude-code --skip-auth; echo DONE; sleep 5"'
-> ])
-> ```
->
-> Let me know if macOS asks for my Mac password or shows a "Claude wants to control Terminal" popup along the way. When a browser opens for Google Ads / Meta Ads OAuth, I'll complete it. Once done, remind me to restart Claude Desktop.
-
-### What happens while it runs
-
-| Event | Action |
-|---|---|
-| "Claude wants to control Terminal" popup | Click **OK** |
-| macOS login password prompt (Homebrew or python.org install) | Enter your password |
-| Browser opens for Google Ads / Meta Ads OAuth | Authorize |
-| Terminal briefly flashes open at the end | Automatic; nothing to do |
-
-Restart Claude Desktop (⌘Q, then launch again) to pick up the MCP config. Slash commands (`/daily-check`, `/onboard`, etc.) will appear in the Code tab.
-
-**Why this structure**: Python setup is environment-dependent so we let Claude figure out the best path (Homebrew, python.org installer, etc.), while mureo's specific operations stay in a fixed, reproducible script. The final step delegates fully to Terminal because macOS TCC denies the sandboxed process write access to `~/.claude/`.
-
-`mureo auth setup --web` launches a **browser-based wizard** on `http://127.0.0.1:<random-port>/`. You paste the Developer Token / App ID / App Secret into a local form (deep links next to each field point at Google Cloud Console / Google Ads API Center / Meta for Developers), complete OAuth in the same browser window, and the wizard writes `~/.mureo/credentials.json` for you. Restart Claude Desktop afterwards and mureo tools appear in the Code tab — no terminal required at any step.
+Pasting long secrets into a terminal prompt is error-prone. After installation, `mureo auth setup --web` starts a short-lived local wizard on `http://127.0.0.1:<random-port>/` and opens your browser to a local form where you paste the Developer Token / App ID / App Secret (each field has a deep link to Google Cloud Console / Google Ads API Center / Meta for Developers). The OAuth flow completes in the same browser window and the wizard writes `~/.mureo/credentials.json` for you.
 
 <details>
 <summary>Why the wizard is safe to run locally</summary>
