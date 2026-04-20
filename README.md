@@ -9,6 +9,13 @@
   <a href="README.ja.md">日本語</a>
 </p>
 
+<p align="center">
+  <a href="https://pypi.org/project/mureo/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mureo.svg"></a>
+  <a href="https://pypi.org/project/mureo/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/mureo.svg"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg"></a>
+  <a href="https://github.com/logly/mureo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/logly/mureo/actions/workflows/ci.yml/badge.svg"></a>
+</p>
+
 ## What is mureo?
 
 mureo is a framework for AI agents to autonomously operate ad accounts. Once installed, AI agents (Claude Code, Cursor, Codex, Gemini, etc.) can work across Google Ads, Meta Ads, Search Console, and GA4 -- running campaign diagnostics, search term analysis, budget evaluation, ad validation, and more. Every operation is grounded in your business strategy (`STRATEGY.md`), so the agent makes decisions based on your persona, USP, goals, and brand voice -- not just raw metrics.
