@@ -267,6 +267,17 @@ mureo auth setup
 mureo auth status
 ```
 
+### Docker
+
+A `Dockerfile` is provided for users who want to run the MCP server in an isolated container, and for registry health checks (e.g. Glama).
+
+```bash
+docker build -t mureo .
+docker run --rm -v ~/.mureo:/root/.mureo mureo
+```
+
+The image installs mureo from source and starts the MCP server over stdio (`python -m mureo.mcp`). Credentials are expected at `/root/.mureo/credentials.json` inside the container — mount your host `~/.mureo` directory, or supply env vars via `--env-file`.
+
 ### What gets installed
 
 | Component | `mureo setup claude-code` | `mureo setup cursor` | `mureo setup codex` | `mureo setup gemini` | `mureo auth setup` |
