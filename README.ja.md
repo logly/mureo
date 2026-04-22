@@ -215,6 +215,17 @@ mureo auth setup
 mureo auth status
 ```
 
+### Docker
+
+MCPサーバーを隔離されたコンテナで動かしたい場合や、外部のMCPレジストリ（Glama など）の健全性チェックのために `Dockerfile` を同梱しています。
+
+```bash
+docker build -t mureo .
+docker run --rm -v ~/.mureo:/home/mureo/.mureo mureo
+```
+
+イメージはソースからmureoをインストールし、stdio上でMCPサーバー（`python -m mureo.mcp`）を起動します。認証情報はコンテナ内の `/home/mureo/.mureo/credentials.json` に置かれることを想定しています。ホストの `~/.mureo` をマウントするか、`--env-file` で環境変数として渡してください。
+
 ### インストール内容
 
 | 構成要素 | `mureo setup claude-code` | `mureo setup cursor` | `mureo setup codex` | `mureo setup gemini` | `mureo auth setup` |

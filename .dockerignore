@@ -1,0 +1,43 @@
+# Python artifacts
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Build outputs
+dist/
+build/
+
+# Git
+.git
+.github
+.gitignore
+.gitattributes
+
+# Tests (not shipped in image)
+tests/
+
+# Docs (not needed inside the image)
+docs/
+
+# Editors / OS
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Environment
+.env
+.env.*
+.venv
+venv
+
+# Docker itself
+.dockerignore
+Dockerfile
