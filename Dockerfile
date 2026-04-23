@@ -40,13 +40,12 @@ RUN pip install --no-cache-dir --no-deps .
 RUN chown -R mureo:mureo /app
 USER mureo
 
-# Introspection-only defaults for server registries. Replace at runtime
-# via `-v ~/.mureo:/home/mureo/.mureo` or `--env-file`.
-ENV GOOGLE_ADS_DEVELOPER_TOKEN=introspection-only \
-    GOOGLE_ADS_CLIENT_ID=introspection-only \
-    GOOGLE_ADS_CLIENT_SECRET=introspection-only \
-    GOOGLE_ADS_REFRESH_TOKEN=introspection-only \
-    META_ADS_ACCESS_TOKEN=introspection-only
+# Credentials are loaded at runtime from ~/.mureo/credentials.json.
+# Mount the host directory when running:
+#   docker run --rm -v ~/.mureo:/home/mureo/.mureo mureo
+# Credential checks are lazy (per-tool), so the server starts without
+# credentials — MCP introspection on registries like Glama works
+# without dummy env vars.
 
 # MCP server over stdio (Claude Code / Cursor / Codex CLI / Gemini CLI)
 CMD ["python", "-m", "mureo.mcp"]
