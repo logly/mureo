@@ -215,6 +215,77 @@ mureo auth setup
 mureo auth status
 ```
 
+### Docker
+
+mureoのMCPサーバーを隔離されたコンテナで動かせます。想定ユースケース:
+
+- **Claude Code以外のMCPクライアント**: Cursor, Codex CLI, Gemini CLI, Continue, Cline, Zed など
+- **CI/CDパイプライン**: 異常検知、ロールバック dry-run、週次レポートの自動実行
+- **マルチテナント / 代理店運用**: クライアントごとにコンテナ・認証情報を分離
+- **MCPレジストリの健全性チェック**（Glama 等）
+
+> スラッシュコマンド（`/daily-check`, `/rescue` など）と credential-guard フックは Claude Code 固有のUXです。これらを使う場合は `pip install mureo` + `mureo setup claude-code` を使ってください。
+
+#### ビルドと起動
+
+```bash
+docker build -t mureo .
+docker run --rm -v ~/.mureo:/home/mureo/.mureo mureo
+```
+
+MCPクライアント側の設定で上記 `docker run` をコマンドとして指定してください。
+
+#### 認証
+
+認証情報は `/home/mureo/.mureo/credentials.json`（コンテナ内、bind mount 経由）または環境変数から読み込まれます。3つの方式から選べます:
+
+**1. マウントした認証ファイル** — ホストに `~/.mureo/credentials.json` が既にある場合（`mureo auth setup` 実行済、チーム共有、手書き等）、上記の bind mount だけで十分です。
+
+手書き用スキーマ:
+
+```json
+{
+  "google_ads": {
+    "developer_token": "...",
+    "client_id": "...apps.googleusercontent.com",
+    "client_secret": "...",
+    "refresh_token": "...",
+    "login_customer_id": "1234567890"
+  },
+  "meta_ads": { "access_token": "..." }
+}
+```
+
+必須フィールド: Google は `developer_token` / `client_id` / `client_secret` / `refresh_token`、Meta は `access_token`。Search Console は Google の OAuth 認証情報を共用（OAuth アプリに `https://www.googleapis.com/auth/webmasters` スコープが必要）。
+
+**2. 環境変数** — CI/CDで secret manager から渡す場合に便利:
+
+```bash
+docker run --rm \
+  -e GOOGLE_ADS_DEVELOPER_TOKEN=... \
+  -e GOOGLE_ADS_CLIENT_ID=... \
+  -e GOOGLE_ADS_CLIENT_SECRET=... \
+  -e GOOGLE_ADS_REFRESH_TOKEN=... \
+  -e GOOGLE_ADS_LOGIN_CUSTOMER_ID=... \
+  -e META_ADS_ACCESS_TOKEN=... \
+  mureo
+```
+
+対応環境変数: `GOOGLE_ADS_{DEVELOPER_TOKEN, CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, LOGIN_CUSTOMER_ID, CUSTOMER_ID}`, `META_ADS_{ACCESS_TOKEN, APP_ID, APP_SECRET, TOKEN_OBTAINED_AT, ACCOUNT_ID}`。
+
+**3. Docker内で対話型ウィザード実行** — OAuthトークンをまだ持っておらず、ホストにmureoをインストールしたくない場合:
+
+```bash
+docker run -it --rm -v ~/.mureo:/home/mureo/.mureo mureo mureo auth setup
+```
+
+ターミナル上でOAuthフローを案内します。`credentials.json` はマウントボリュームに書き出されるので、次回以降は方式1で起動できます。
+
+mureo以外でOAuthトークンを取得する方法:
+
+- Google Ads OAuth 2.0: https://developers.google.com/google-ads/api/docs/oauth/overview
+- Meta 長期アクセストークン: https://developers.facebook.com/docs/facebook-login/guides/access-tokens/get-long-lived
+
 ### インストール内容
 
 | 構成要素 | `mureo setup claude-code` | `mureo setup cursor` | `mureo setup codex` | `mureo setup gemini` | `mureo auth setup` |
