@@ -1,24 +1,70 @@
-"""Meta Ads tool definitions — Creatives, images, videos"""
+"""Meta Ads tool definitions — Creatives, images, videos.
+
+Tool descriptions follow ``docs/tdqs-style-guide.md``. Creatives are the
+visual+copy payload attached to Meta ads; images and videos are the
+underlying media assets. Flow: upload media → obtain image_hash /
+video_id → create creative → attach creative to an ad via
+meta_ads.ads.create.
+"""
 
 from __future__ import annotations
 
 from mcp.types import Tool
 
+# Reusable parameter fragments.
+_ACCOUNT_ID_PARAM = {
+    "type": "string",
+    "description": (
+        "Meta Ads account ID in the format 'act_XXXXXXXXXX' (e.g. "
+        "'act_1234567890'). Optional — falls back to META_ADS_ACCOUNT_ID "
+        "from the configured credentials. The leading 'act_' prefix is "
+        "required."
+    ),
+}
+
+_PAGE_ID_PARAM = {
+    "type": "string",
+    "description": (
+        "Facebook Page ID that the ad will be published as. Must be a "
+        "page the authenticated user has permission to post from. "
+        "Required by Meta for every creative — ads cannot run without a "
+        "page identity."
+    ),
+}
+
+_CTA_DESCRIPTION = (
+    "Call-to-action button label. Valid values include LEARN_MORE, "
+    "SIGN_UP, SHOP_NOW, DOWNLOAD, CONTACT_US, SUBSCRIBE, GET_QUOTE, "
+    "BOOK_TRAVEL, APPLY_NOW. Omit to render no button (link tap still "
+    "works). The valid set depends on the parent campaign's objective."
+)
+
 TOOLS: list[Tool] = [
     # === Creative list / create / dynamic / upload_image ===
     Tool(
         name="meta_ads.creatives.list",
-        description="List Meta Ads AdCreatives",
+        description=(
+            "Lists AdCreative resources in a Meta Ads account. Returns id, "
+            "name, status, object_story_id, call_to_action_type, and "
+            "thumbnail_url per creative. Read-only — does not modify the "
+            "account. Default limit is 50 creatives per call (max 1000); "
+            "for larger inventories use smaller limits and filter client-"
+            "side. Use this to audit creative inventory or to find a "
+            "creative_id for reuse in meta_ads.ads.create. To list the ads "
+            "that consume these creatives, use meta_ads.ads.list."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {
-                    "type": "string",
-                    "description": "Ad account ID (act_XXXX format)",
-                },
+                "account_id": _ACCOUNT_ID_PARAM,
                 "limit": {
                     "type": "integer",
-                    "description": "Max results (default: 50)",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": (
+                        "Max creatives returned in a single call. Default "
+                        "50, maximum 1000 per Meta Graph API."
+                    ),
                 },
             },
             "required": [],
@@ -26,31 +72,90 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.creatives.create",
-        description="Create a Meta Ads AdCreative (specify image URL or image_hash)",
+        description=(
+            "Creates a single-image Meta Ads AdCreative. Returns the new "
+            "creative's id and object_story_id. Mutating, reversible via "
+            "rollback.apply (rollback soft-deletes the creative). Supply "
+            "exactly one of image_url or image_hash — image_url triggers "
+            "Meta to fetch and host the image; image_hash references an "
+            "image already uploaded via meta_ads.creatives.upload_image or "
+            "meta_ads.images.upload_file. For multi-image carousels use "
+            "meta_ads.creatives.create_carousel; for dynamic / automatic "
+            "optimization use meta_ads.creatives.create_dynamic."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "name": {
                     "type": "string",
-                    "description": "Ad account ID (act_XXXX format)",
+                    "description": (
+                        "Creative name shown in Ads Manager. Internal "
+                        "label — not visible to end users."
+                    ),
                 },
-                "name": {"type": "string", "description": "Creative name"},
-                "page_id": {"type": "string", "description": "Facebook page ID"},
-                "link_url": {"type": "string", "description": "Destination URL"},
+                "page_id": _PAGE_ID_PARAM,
+                "link_url": {
+                    "type": "string",
+                    "description": (
+                        "Destination URL the ad links to when tapped. "
+                        "Must be HTTPS and domain-verified on the ad "
+                        "account."
+                    ),
+                },
                 "image_url": {
                     "type": "string",
-                    "description": "Image URL (mutually exclusive with image_hash)",
+                    "description": (
+                        "Public HTTPS image URL. Meta fetches and hosts "
+                        "the asset. Mutually exclusive with image_hash — "
+                        "supply exactly one of them."
+                    ),
                 },
                 "image_hash": {
                     "type": "string",
-                    "description": "Uploaded image hash (mutually exclusive with image_url)",
+                    "description": (
+                        "Image hash returned from "
+                        "meta_ads.creatives.upload_image / "
+                        "meta_ads.images.upload_file. Mutually exclusive "
+                        "with image_url."
+                    ),
                 },
-                "message": {"type": "string", "description": "Ad body text"},
-                "headline": {"type": "string", "description": "Headline"},
-                "description": {"type": "string", "description": "Description"},
+                "message": {
+                    "type": "string",
+                    "description": (
+                        "Primary ad body text shown above the image. "
+                        "Plain text, emoji allowed. Meta recommends ≤125 "
+                        "characters to avoid truncation on mobile."
+                    ),
+                },
+                "headline": {
+                    "type": "string",
+                    "description": (
+                        "Headline shown below the image. ~40 characters "
+                        "fits most placements without truncation."
+                    ),
+                },
+                "description": {
+                    "type": "string",
+                    "description": (
+                        "Description / link-caption text shown below the "
+                        "headline. Optional; not all placements render it."
+                    ),
+                },
                 "call_to_action": {
                     "type": "string",
-                    "description": "CTA button type (LEARN_MORE, SIGN_UP etc.)",
+                    "enum": [
+                        "LEARN_MORE",
+                        "SIGN_UP",
+                        "SHOP_NOW",
+                        "DOWNLOAD",
+                        "CONTACT_US",
+                        "SUBSCRIBE",
+                        "GET_QUOTE",
+                        "BOOK_TRAVEL",
+                        "APPLY_NOW",
+                    ],
+                    "description": _CTA_DESCRIPTION,
                 },
             },
             "required": ["name", "page_id", "link_url"],
@@ -58,41 +163,85 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.creatives.create_dynamic",
-        description="Create a Meta Ads dynamic creative AdCreative (Meta auto-optimization)",
+        description=(
+            "Creates a Dynamic Creative — Meta auto-generates and "
+            "optimises combinations from multiple images, headlines, "
+            "bodies, and CTAs. Returns the new creative id. Mutating, "
+            "reversible via rollback.apply. Use when you want Meta to "
+            "learn the best-performing asset mix rather than testing "
+            "manually. For static single-image ads use "
+            "meta_ads.creatives.create; for explicitly-controlled multi-"
+            "card layouts use meta_ads.creatives.create_carousel. Supply "
+            "2–10 images, 1–5 of each text field; Meta combines them at "
+            "serve time."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "name": {
                     "type": "string",
-                    "description": "Ad account ID (act_XXXX format)",
+                    "description": "Creative name shown in Ads Manager.",
                 },
-                "name": {"type": "string", "description": "Creative name"},
-                "page_id": {"type": "string", "description": "Facebook page ID"},
+                "page_id": _PAGE_ID_PARAM,
                 "image_hashes": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of image hashes (2 to 10 recommended)",
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "description": (
+                        "Image hashes to include in the rotation. 2–10 "
+                        "recommended for meaningful optimization; Meta "
+                        "accepts up to 10. Upload via "
+                        "meta_ads.creatives.upload_image / "
+                        "meta_ads.images.upload_file first."
+                    ),
                 },
                 "bodies": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of ad body texts",
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "description": (
+                        "Primary body text variants. 1–5 accepted. Meta "
+                        "recommends ≤125 characters per body."
+                    ),
                 },
                 "titles": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of headlines",
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "description": (
+                        "Headline variants. 1–5 accepted. ~40 characters "
+                        "fits most placements."
+                    ),
                 },
-                "link_url": {"type": "string", "description": "Destination URL"},
+                "link_url": {
+                    "type": "string",
+                    "description": (
+                        "Destination URL shared across all combinations. "
+                        "Must be HTTPS and domain-verified."
+                    ),
+                },
                 "descriptions": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of descriptions (optional)",
+                    "maxItems": 5,
+                    "description": (
+                        "Optional link-caption variants (0–5). Not all "
+                        "placements render these."
+                    ),
                 },
                 "call_to_actions": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of CTA types (optional)",
+                    "maxItems": 5,
+                    "description": (
+                        "Optional CTA variants (0–5). Values drawn from "
+                        "the same set as meta_ads.creatives.create "
+                        "(LEARN_MORE / SIGN_UP / SHOP_NOW / etc.)."
+                    ),
                 },
             },
             "required": [
@@ -108,17 +257,25 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="meta_ads.creatives.upload_image",
-        description="Upload an image to Meta Ads by URL (to get image_hash)",
+        description=(
+            "Uploads an image to the Meta Ads account by fetching it from "
+            "a public HTTPS URL. Returns the image_hash that can be "
+            "referenced in meta_ads.creatives.create / create_dynamic / "
+            "create_carousel. Mutating — the image is persisted in the "
+            "account library. For uploads from local files (not URLs) use "
+            "meta_ads.images.upload_file instead."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {
-                    "type": "string",
-                    "description": "Ad account ID (act_XXXX format)",
-                },
+                "account_id": _ACCOUNT_ID_PARAM,
                 "image_url": {
                     "type": "string",
-                    "description": "Source image URL",
+                    "description": (
+                        "Public HTTPS URL of the image. Meta fetches it "
+                        "once at upload time — subsequent changes to the "
+                        "source URL do not affect the stored asset."
+                    ),
                 },
             },
             "required": ["image_url"],
@@ -127,69 +284,140 @@ TOOLS: list[Tool] = [
     # === Carousel & Collection ===
     Tool(
         name="meta_ads.creatives.create_carousel",
-        description="Create a Meta Ads carousel creative (2 to 10 cards)",
+        description=(
+            "Creates a Carousel AdCreative with 2–10 swipeable cards. "
+            "Returns the new creative id. Mutating, reversible via "
+            "rollback.apply. Each card carries its own image (or video), "
+            "name, description, and link — useful for product catalogs or "
+            "multi-step narratives. For auto-optimized asset rotation use "
+            "meta_ads.creatives.create_dynamic; for product-feed-driven "
+            "carousels use meta_ads.creatives.create_collection."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {
-                    "type": "string",
-                    "description": "Ad account ID (act_XXXX format)",
-                },
-                "page_id": {"type": "string", "description": "Facebook page ID"},
+                "account_id": _ACCOUNT_ID_PARAM,
+                "page_id": _PAGE_ID_PARAM,
                 "cards": {
                     "type": "array",
-                    "description": "List of cards (each containing link, name, image_hash etc.)",
+                    "minItems": 2,
+                    "maxItems": 10,
+                    "description": (
+                        "Carousel cards (2–10). Each card must have a "
+                        "link; image_hash, image_url, or video_id is "
+                        "required for the media."
+                    ),
                     "items": {
                         "type": "object",
                         "properties": {
-                            "link": {"type": "string", "description": "Link URL"},
-                            "name": {"type": "string", "description": "Card name"},
+                            "link": {
+                                "type": "string",
+                                "description": (
+                                    "Destination URL for this card. HTTPS " "required."
+                                ),
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": ("Card headline shown under the media."),
+                            },
                             "description": {
                                 "type": "string",
-                                "description": "Description",
+                                "description": ("Card subtitle / link caption."),
                             },
                             "image_hash": {
                                 "type": "string",
-                                "description": "Image hash",
+                                "description": (
+                                    "Uploaded image hash for this card. "
+                                    "Mutually exclusive with image_url "
+                                    "and video_id."
+                                ),
                             },
-                            "image_url": {"type": "string", "description": "Image URL"},
-                            "video_id": {"type": "string", "description": "Video ID"},
+                            "image_url": {
+                                "type": "string",
+                                "description": (
+                                    "Public HTTPS image URL. Mutually "
+                                    "exclusive with image_hash and "
+                                    "video_id."
+                                ),
+                            },
+                            "video_id": {
+                                "type": "string",
+                                "description": (
+                                    "Uploaded video ID for this card. "
+                                    "Mutually exclusive with image_hash "
+                                    "and image_url."
+                                ),
+                            },
                         },
                         "required": ["link"],
                     },
                 },
-                "link": {"type": "string", "description": "Main link URL"},
-                "name": {"type": "string", "description": "Creative name (optional)"},
+                "link": {
+                    "type": "string",
+                    "description": (
+                        "Main destination URL — used for the See More "
+                        "card and as fallback when a card has no "
+                        "explicit link."
+                    ),
+                },
+                "name": {
+                    "type": "string",
+                    "description": ("Creative name shown in Ads Manager. Optional."),
+                },
             },
             "required": ["page_id", "cards", "link"],
         },
     ),
     Tool(
         name="meta_ads.creatives.create_collection",
-        description="Create a Meta Ads collection creative",
+        description=(
+            "Creates a Collection AdCreative that pulls products from a "
+            "catalog into a mobile-optimized storefront layout. Returns "
+            "the new creative id. Mutating, reversible via rollback.apply. "
+            "Requires a Meta product catalog with the referenced "
+            "product_ids — set up the catalog via meta_ads.catalogs.* "
+            "tools first. For static card decks (non-catalog) use "
+            "meta_ads.creatives.create_carousel instead."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {
-                    "type": "string",
-                    "description": "Ad account ID (act_XXXX format)",
-                },
-                "page_id": {"type": "string", "description": "Facebook page ID"},
+                "account_id": _ACCOUNT_ID_PARAM,
+                "page_id": _PAGE_ID_PARAM,
                 "product_ids": {
                     "type": "array",
-                    "description": "List of product IDs",
                     "items": {"type": "string"},
+                    "minItems": 1,
+                    "description": (
+                        "Product IDs drawn from the linked Meta catalog. "
+                        "List via meta_ads.products.list."
+                    ),
                 },
-                "link": {"type": "string", "description": "Main link URL"},
+                "link": {
+                    "type": "string",
+                    "description": (
+                        "Main destination URL for the collection. HTTPS " "required."
+                    ),
+                },
                 "cover_image_hash": {
                     "type": "string",
-                    "description": "Cover image hash (optional)",
+                    "description": (
+                        "Cover image hash shown above the product grid. "
+                        "Mutually exclusive with cover_video_id — supply "
+                        "one or neither."
+                    ),
                 },
                 "cover_video_id": {
                     "type": "string",
-                    "description": "Cover video ID (optional)",
+                    "description": (
+                        "Cover video ID shown above the product grid. "
+                        "Mutually exclusive with cover_image_hash."
+                    ),
                 },
-                "name": {"type": "string", "description": "Creative name (optional)"},
+                "name": {
+                    "type": "string",
+                    "description": ("Creative name shown in Ads Manager. Optional."),
+                },
             },
             "required": ["page_id", "product_ids", "link"],
         },
@@ -197,16 +425,32 @@ TOOLS: list[Tool] = [
     # === Image upload ===
     Tool(
         name="meta_ads.images.upload_file",
-        description="Upload an image to Meta Ads from a local file",
+        description=(
+            "Uploads an image from a local file path to the Meta Ads "
+            "account library. Returns the image_hash to reference in "
+            "creative-construction tools. Mutating — the asset is "
+            "persisted. Use this when the image lives on the agent's "
+            "local disk; for public-URL uploads use "
+            "meta_ads.creatives.upload_image instead."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "file_path": {
                     "type": "string",
-                    "description": "Ad account ID (act_XXXX format)",
+                    "description": (
+                        "Path to the image file on the agent's filesystem. "
+                        "Meta accepts JPG, PNG, and GIF up to 30 MB."
+                    ),
                 },
-                "file_path": {"type": "string", "description": "Image file path"},
-                "name": {"type": "string", "description": "Image name (optional)"},
+                "name": {
+                    "type": "string",
+                    "description": (
+                        "Optional label stored with the uploaded asset. "
+                        "Used only for library organization."
+                    ),
+                },
             },
             "required": ["file_path"],
         },
@@ -214,32 +458,66 @@ TOOLS: list[Tool] = [
     # === Video Upload ===
     Tool(
         name="meta_ads.videos.upload",
-        description="Upload a video to Meta Ads by URL",
+        description=(
+            "Uploads a video to the Meta Ads account by fetching it from "
+            "a public HTTPS URL. Returns the video_id to reference in "
+            "creative-construction tools. Mutating — the asset is "
+            "persisted. Meta performs asynchronous processing after "
+            "upload; newly-uploaded videos may take a few minutes before "
+            "they can be attached to ads. For uploads from local files "
+            "use meta_ads.videos.upload_file."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "video_url": {
                     "type": "string",
-                    "description": "Ad account ID (act_XXXX format)",
+                    "description": (
+                        "Public HTTPS URL of the video. Meta fetches it "
+                        "once at upload time. Supported formats: MP4, "
+                        "MOV. Recommended max 4 GB."
+                    ),
                 },
-                "video_url": {"type": "string", "description": "Video URL"},
-                "title": {"type": "string", "description": "Video title (optional)"},
+                "title": {
+                    "type": "string",
+                    "description": (
+                        "Optional title stored with the uploaded video. "
+                        "Used for library organization; not shown in ads."
+                    ),
+                },
             },
             "required": ["video_url"],
         },
     ),
     Tool(
         name="meta_ads.videos.upload_file",
-        description="Upload a video to Meta Ads from a local file",
+        description=(
+            "Uploads a video from a local file path to the Meta Ads "
+            "account library. Returns the video_id to reference in "
+            "creative-construction tools. Mutating. Meta processes the "
+            "video asynchronously after upload — allow a few minutes "
+            "before attaching the video to ads. For uploads from public "
+            "URLs use meta_ads.videos.upload."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "account_id": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "file_path": {
                     "type": "string",
-                    "description": "Ad account ID (act_XXXX format)",
+                    "description": (
+                        "Path to the video file on the agent's filesystem. "
+                        "Supported formats: MP4, MOV. Recommended max 4 GB."
+                    ),
                 },
-                "file_path": {"type": "string", "description": "Video file path"},
-                "title": {"type": "string", "description": "Video title (optional)"},
+                "title": {
+                    "type": "string",
+                    "description": (
+                        "Optional title stored with the uploaded video. "
+                        "Used for library organization; not shown in ads."
+                    ),
+                },
             },
             "required": ["file_path"],
         },
