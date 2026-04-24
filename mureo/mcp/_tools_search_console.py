@@ -223,17 +223,46 @@ TOOLS: list[Tool] = [
     ),
     Tool(
         name="search_console.sitemaps.submit",
-        description="Submit a sitemap to Google Search Console",
+        description=(
+            "Submit a sitemap URL to Google Search Console for the given "
+            "verified site. Mutates Search Console state — registers or "
+            "refreshes the sitemap entry so Google will re-crawl it. Safe "
+            "to call repeatedly: re-submitting the same feedpath re-queues "
+            "a crawl without creating a duplicate entry (Search Console "
+            "PUTs the sitemap URL, not POST). Returns "
+            "{status: 'submitted', sitemap: <feedpath>} on success; the "
+            "API gives no synchronous processing status. Does not fetch "
+            "or validate the sitemap contents — that happens asynchronously "
+            "on Google's side and the parsed results surface in "
+            "search_console.sitemaps.list afterwards. Requires the "
+            "authenticated user to be a verified owner or full user of "
+            "site_url. For read-only inspection of already-submitted "
+            "sitemaps use search_console.sitemaps.list; for per-URL "
+            "indexing diagnostics use search_console.url_inspection.inspect."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
                 "site_url": {
                     "type": "string",
-                    "description": "Site URL",
+                    "description": (
+                        "Property identifier as registered in Search "
+                        "Console. For URL-prefix properties use the full "
+                        "URL including trailing slash "
+                        "(e.g. 'https://example.com/'). For Domain "
+                        "properties use the 'sc-domain:' prefix "
+                        "(e.g. 'sc-domain:example.com')."
+                    ),
                 },
                 "feedpath": {
                     "type": "string",
-                    "description": "Sitemap URL to submit",
+                    "format": "uri",
+                    "description": (
+                        "Absolute URL of the sitemap to submit "
+                        "(e.g. 'https://example.com/sitemap.xml'). Must be "
+                        "on the same host as site_url and reachable to "
+                        "Googlebot over HTTPS."
+                    ),
                 },
             },
             "required": ["site_url", "feedpath"],

@@ -437,15 +437,46 @@ TOOLS: list[Tool] = [
     # === Ad schedules ===
     Tool(
         name="google_ads.schedule_targeting.list",
-        description="List Google Ads campaign ad schedules",
+        description=(
+            "List the ad-schedule (day-of-week + hour-of-day) targeting "
+            "criteria attached to a Google Ads campaign. Returns one row "
+            "per schedule criterion with criterion_id (string), "
+            "day_of_week (string form of the DayOfWeek enum, e.g. "
+            "'MONDAY'..'SUNDAY'), start_hour (integer 0-23), end_hour "
+            "(integer 0-24; 24 denotes end-of-day), start_minute and "
+            "end_minute (string form of the MinuteOfHour enum: 'ZERO', "
+            "'FIFTEEN', 'THIRTY', or 'FORTY_FIVE'), and bid_modifier "
+            "(float, or null when unset). Read-only; returns an empty "
+            "list when the campaign has no schedule targeting (meaning: "
+            "24/7 delivery). Use this to audit schedule coverage or "
+            "collect criterion_ids before calling "
+            "google_ads.schedule_targeting.update (which is what you use "
+            "to add or remove entries). For device-level modifiers use "
+            "google_ads.device_targeting.get; for geo targeting use "
+            "google_ads.location_targeting.list."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
                 "customer_id": {
                     "type": "string",
-                    "description": "Google Ads customer ID",
+                    "description": (
+                        "Google Ads customer ID as a 10-digit string "
+                        "without dashes (e.g. '1234567890'). Optional — "
+                        "falls back to GOOGLE_ADS_CUSTOMER_ID / "
+                        "GOOGLE_ADS_LOGIN_CUSTOMER_ID from the configured "
+                        "credentials when omitted."
+                    ),
                 },
-                "campaign_id": {"type": "string", "description": "Campaign ID"},
+                "campaign_id": {
+                    "type": "string",
+                    "description": (
+                        "Campaign ID as a numeric string (e.g. "
+                        "'23743184133'). Required — schedule targeting is "
+                        "always scoped to a single campaign. Obtain via "
+                        "google_ads.campaigns.list."
+                    ),
+                },
             },
             "required": ["campaign_id"],
         },
