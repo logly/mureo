@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- MCP tool descriptions rewritten for 49 tools across Google Ads and Meta Ads — `google_ads.campaigns.*`, `google_ads.ad_groups.*`, `google_ads.ads.*`, `google_ads.budget.*`, `google_ads.accounts.*`, `google_ads.keywords.*`, `google_ads.negative_keywords.*`, `meta_ads.campaigns.*`, `meta_ads.ad_sets.*`, `meta_ads.ads.*`. Each description now covers verb + resource + returned fields + side effects (read-only / mutating / reversible via `rollback.apply`) + sibling tool differentiation, following the new `docs/tdqs-style-guide.md`. Targets improving Glama's Tool Definition Quality Score from C (3.1 avg) toward B+. No behavioral changes — descriptions and parameter hints only.
+
 ## [0.6.0] - 2026-04-20
 
 First production PyPI release (`pip install mureo`). Supersedes the internal `0.6.0.dev1` preview that was published to TestPyPI during colleague beta testing.
