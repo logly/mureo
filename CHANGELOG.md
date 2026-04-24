@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - MCP tool descriptions rewritten for 49 tools across Google Ads and Meta Ads — `google_ads.campaigns.*`, `google_ads.ad_groups.*`, `google_ads.ads.*`, `google_ads.budget.*`, `google_ads.accounts.*`, `google_ads.keywords.*`, `google_ads.negative_keywords.*`, `meta_ads.campaigns.*`, `meta_ads.ad_sets.*`, `meta_ads.ads.*`. Each description now covers verb + resource + returned fields + side effects (read-only / mutating / reversible via `rollback.apply`) + sibling tool differentiation, following the new `docs/tdqs-style-guide.md`. Targets improving Glama's Tool Definition Quality Score from C (3.1 avg) toward B+. No behavioral changes — descriptions and parameter hints only.
+- MCP tool descriptions rewritten for the remaining ~51 Meta Ads tools — `meta_ads.creatives.*` (including the TDQS lowest-scoring `meta_ads.creatives.list`), `meta_ads.images.*`, `meta_ads.videos.*`, `meta_ads.audiences.*`, `meta_ads.pixels.*`, `meta_ads.insights.*`, `meta_ads.analysis.*`, `meta_ads.catalogs.*`, `meta_ads.products.*`, `meta_ads.feeds.*`, `meta_ads.conversions.*`, `meta_ads.lead_forms.*`, `meta_ads.leads.*`, `meta_ads.split_tests.*`, `meta_ads.ad_rules.*`, `meta_ads.page_posts.*`, `meta_ads.instagram.*`. Same TDQS template as PR #43. No behavioral changes.
 
 ## [0.6.0] - 2026-04-20
 
