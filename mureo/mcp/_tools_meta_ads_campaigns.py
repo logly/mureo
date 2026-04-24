@@ -304,8 +304,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": {
                     "type": "string",
                     "description": (
-                        "Parent campaign ID. Must exist and not be "
-                        "DELETED."
+                        "Parent campaign ID. Must exist and not be " "DELETED."
                     ),
                 },
                 "name": {
@@ -544,9 +543,7 @@ TOOLS: list[Tool] = [
                 "account_id": _ACCOUNT_ID_PARAM,
                 "ad_set_id": {
                     "type": "string",
-                    "description": (
-                        "Parent ad set ID. Must exist and not be DELETED."
-                    ),
+                    "description": ("Parent ad set ID. Must exist and not be DELETED."),
                 },
                 "name": {
                     "type": "string",

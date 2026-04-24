@@ -80,9 +80,7 @@ TOOLS: list[Tool] = [
                 "status_filter": {
                     "type": "string",
                     "enum": ["ENABLED", "PAUSED", "REMOVED"],
-                    "description": (
-                        "Restrict by status. Omit for all statuses."
-                    ),
+                    "description": ("Restrict by status. Omit for all statuses."),
                 },
             },
             "required": [],
@@ -334,9 +332,7 @@ TOOLS: list[Tool] = [
                 "customer_id": _CUSTOMER_ID_PARAM,
                 "campaign_id": {
                     "type": "string",
-                    "description": (
-                        "Campaign ID the negative belongs to."
-                    ),
+                    "description": ("Campaign ID the negative belongs to."),
                 },
                 "criterion_id": {
                     "type": "string",
@@ -403,9 +399,7 @@ TOOLS: list[Tool] = [
                 "customer_id": _CUSTOMER_ID_PARAM,
                 "campaign_id": {
                     "type": "string",
-                    "description": (
-                        "Campaign whose search terms are analysed."
-                    ),
+                    "description": ("Campaign whose search terms are analysed."),
                 },
                 "period": {
                     "type": "string",

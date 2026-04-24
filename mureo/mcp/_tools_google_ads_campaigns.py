@@ -385,9 +385,7 @@ TOOLS: list[Tool] = [
                 "status_filter": {
                     "type": "string",
                     "enum": ["ENABLED", "PAUSED", "REMOVED"],
-                    "description": (
-                        "Restrict by status. Omit for all statuses."
-                    ),
+                    "description": ("Restrict by status. Omit for all statuses."),
                 },
             },
             "required": [],
@@ -479,9 +477,7 @@ TOOLS: list[Tool] = [
                 "customer_id": _CUSTOMER_ID_PARAM,
                 "ad_group_id": {
                     "type": "string",
-                    "description": (
-                        "Ad group ID. Must belong to a DISPLAY campaign."
-                    ),
+                    "description": ("Ad group ID. Must belong to a DISPLAY campaign."),
                 },
                 "headlines": {
                     "type": "array",
@@ -726,9 +722,7 @@ TOOLS: list[Tool] = [
                 "customer_id": _CUSTOMER_ID_PARAM,
                 "budget_id": {
                     "type": "string",
-                    "description": (
-                        "Budget ID as returned by google_ads.budget.get."
-                    ),
+                    "description": ("Budget ID as returned by google_ads.budget.get."),
                 },
                 "amount": {
                     "type": "number",
