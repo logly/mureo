@@ -4,12 +4,11 @@ Guidelines for AI agents contributing to the mureo codebase.
 
 ## Project Overview
 
-mureo is a marketing orchestration framework for AI agents. It combines strategy
-context, workflow commands, and domain knowledge to help agents achieve marketing
-goals across platforms. Currently supports Google Ads, Meta Ads, and Google Search Console, with more
-platforms planned. Provides MCP tools for direct platform operations and
-workflow commands for strategy-driven ad operations via Claude Code slash commands.
-Designed for AI agents — no database, no LLM SDK, no web framework.
+**mureo** — Local-first, safety-gated AI ad-ops framework for Claude Code, Codex, Cursor & Gemini.
+
+Strategy-aware agents that autonomously analyze and operate Google Ads, Meta Ads, Search Console & GA4 — credentials never leave your machine.
+
+mureo combines strategy context, workflow commands, and domain knowledge to help AI agents achieve marketing goals across platforms. Provides MCP tools for direct platform operations and workflow commands for strategy-driven ad operations via Claude Code slash commands. Designed for AI agents — no database, no LLM SDK, no web framework.
 
 ## Build & Test
 

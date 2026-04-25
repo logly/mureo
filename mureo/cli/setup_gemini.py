@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 _EXTENSION_NAME = "mureo"
-_DESCRIPTION = "Marketing orchestration framework for AI agents"
+_DESCRIPTION = "Local-first, safety-gated AI ad-ops framework for Claude Code, Codex, Cursor & Gemini"
 
 
 def _mureo_version() -> str:

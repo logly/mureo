@@ -17,6 +17,10 @@
   <a href="https://github.com/logly/mureo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/logly/mureo/actions/workflows/ci.yml/badge.svg"></a>
 </p>
 
+**mureo** — ローカル完結・安全設計のAI広告運用フレームワーク。Claude Code、Codex、Cursor、Gemini に対応。
+
+戦略を理解するエージェントが Google Ads、Meta Ads、Search Console、GA4 を自律的に分析・運用します。**認証情報は端末の外に出ません。**
+
 ## mureoとは
 
 mureoは、AIエージェントが広告アカウントを自動運用するためのフレームワークです。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）がGoogle広告・Meta広告・Search Console・GA4を横断して、配信診断・検索語分析・予算評価・入稿チェックなどを実行できるようになります。すべての操作はあなたのビジネス戦略（`STRATEGY.md`）に基づいて行われます。
