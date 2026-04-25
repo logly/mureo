@@ -14,7 +14,7 @@ from mureo.cli.setup_cmd import setup_app
 
 app = typer.Typer(
     name="mureo",
-    help="Marketing orchestration framework for AI agents",
+    help="Local-first, safety-gated AI ad-ops framework for Claude Code, Codex, Cursor & Gemini",
     no_args_is_help=True,
 )
 
