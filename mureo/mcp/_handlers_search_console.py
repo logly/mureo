@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from mcp.types import TextContent
 
 from mureo.auth import create_search_console_client, load_google_ads_credentials
+from mureo.byod.runtime import byod_has
+from mureo.mcp._client_factory import get_search_console_client
 from mureo.mcp._helpers import (
     _json_result,
     _no_creds_result,
@@ -36,8 +38,12 @@ _throttler = Throttler(SEARCH_CONSOLE_THROTTLE)
 async def _get_client(arguments: dict[str, Any]) -> Any:
     """Load credentials and create a Search Console client.
 
-    Returns None on auth error.
+    In BYOD mode, returns a CSV-backed client without any credentials.
+
+    Returns None on auth error (real mode only).
     """
+    if byod_has("search_console"):
+        return get_search_console_client(creds=None, throttler=_throttler)
     creds = load_google_ads_credentials()
     if creds is None:
         return None
