@@ -9,6 +9,7 @@ from __future__ import annotations
 import typer
 
 from mureo.cli.auth_cmd import auth_app
+from mureo.cli.demo_cmd import demo_app
 from mureo.cli.rollback_cmd import rollback_app
 from mureo.cli.setup_cmd import setup_app
 
@@ -21,6 +22,7 @@ app = typer.Typer(
 app.add_typer(auth_app)
 app.add_typer(setup_app)
 app.add_typer(rollback_app)
+app.add_typer(demo_app)
 
 if __name__ == "__main__":
     app()

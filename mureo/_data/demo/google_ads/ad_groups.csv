@@ -1,0 +1,6 @@
+ad_group_id,campaign_id,name,status
+67890001,12345001,[DEMO] Brand - Exact,ENABLED
+67890002,12345001,[DEMO] Brand - Phrase,ENABLED
+67890003,12345002,[DEMO] Generic - Demo Software,ENABLED
+67890004,12345002,[DEMO] Generic - SaaS Trial,ENABLED
+67890005,12345003,[DEMO] Retargeting - 30d,ENABLED

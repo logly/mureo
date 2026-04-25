@@ -1,0 +1,13 @@
+ad_id,ad_group_id,headline_1,headline_2,description,final_url,status
+99000000,67890001,[DEMO] Headline 0-0,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED
+99000001,67890001,[DEMO] Headline 0-1,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED
+99000010,67890002,[DEMO] Headline 1-0,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED
+99000011,67890002,[DEMO] Headline 1-1,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED
+99000020,67890003,[DEMO] Headline 2-0,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED
+99000021,67890003,[DEMO] Headline 2-1,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED
+99000030,67890004,[DEMO] Headline 3-0,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED
+99000031,67890004,[DEMO] Headline 3-1,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED
+99000040,67890005,[DEMO] Headline 4-0,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED
+99000041,67890005,[DEMO] Headline 4-1,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED
+99000042,67890005,[DEMO] Headline 4-2,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED
+99000043,67890005,[DEMO] Headline 4-3,[DEMO] B2B SaaS for Growth Teams,[DEMO] Start your free trial today.,https://example.com/demo,ENABLED

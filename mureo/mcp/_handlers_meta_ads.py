@@ -18,6 +18,7 @@ from mureo.auth import (
     load_meta_ads_credentials,
     refresh_meta_token_if_needed,
 )
+from mureo.mcp._client_factory import get_meta_ads_client, is_demo_mode
 from mureo.mcp._helpers import (
     _json_result,
     _no_creds_result,
@@ -44,8 +45,17 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
     Falls back to account_id from credentials.json if not provided
     in the tool arguments.
 
-    Returns None on auth error.
+    In demo mode, returns a CSV-backed client without any credentials
+    or network access.
+
+    Returns None on auth error (real mode only).
     """
+    if is_demo_mode():
+        account_id = _opt(arguments, "account_id") or "act_demo"
+        return get_meta_ads_client(
+            creds=None, account_id=account_id, throttler=_throttler
+        )
+
     creds = load_meta_ads_credentials()
     if creds is None:
         return None

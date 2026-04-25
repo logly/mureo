@@ -1,0 +1,4 @@
+campaign_id,name,status,objective,daily_budget_jpy,start_offset
+120330001,[DEMO] Awareness - Lookalike,ACTIVE,OUTCOME_AWARENESS,4000,-30
+120330002,[DEMO] Conversion - Demo Request,ACTIVE,OUTCOME_LEADS,6000,-45
+120330003,[DEMO] Retargeting - 7d,ACTIVE,OUTCOME_LEADS,2500,-20

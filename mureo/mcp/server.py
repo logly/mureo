@@ -100,7 +100,20 @@ def _create_server() -> Server:
 
 
 async def main() -> None:
-    """Start the MCP server over stdio."""
+    """Start the MCP server over stdio.
+
+    ``python -m mureo.mcp --demo`` enables demo mode, in which all
+    ad-platform clients are replaced with CSV-backed
+    ``mureo.demo.clients`` instances. No network calls are made and no
+    real credentials are read.
+    """
+    import sys
+
+    from mureo.mcp._client_factory import set_demo_mode
+
+    if "--demo" in sys.argv[1:]:
+        set_demo_mode(True)
+
     server = _create_server()
     async with stdio_server() as (read_stream, write_stream):
         await server.run(

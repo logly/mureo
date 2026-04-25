@@ -1,0 +1,701 @@
+day_offset,query,impressions,clicks,ctr,position
+-13,[DEMO] mureo,1519,444,0.32,1.1
+-13,[DEMO] mureo demo,1580,455,0.32,1.12
+-13,[DEMO] mureo ad ops,1574,445,0.32,1.06
+-13,[DEMO] mureo software,1639,462,0.32,1.19
+-13,[DEMO] mureo pricing,1443,486,0.32,0.72
+-13,[DEMO] ad ops automation,188,5,0.0304,24.29
+-13,[DEMO] ai marketing ops,291,8,0.0282,9.29
+-13,[DEMO] saas marketing tool,320,10,0.0338,9.73
+-13,[DEMO] google ads automation,92,3,0.0371,18.21
+-13,[DEMO] meta ads ai,171,3,0.0232,21.3
+-13,[DEMO] campaign optimization tool,227,4,0.021,14.3
+-13,[DEMO] marketing ops platform,337,5,0.0151,22.44
+-13,[DEMO] ad agency software,272,9,0.0332,24.33
+-13,[DEMO] long tail keyword 8,202,6,0.0308,20.02
+-13,[DEMO] long tail keyword 9,144,4,0.0327,24.41
+-13,[DEMO] long tail keyword 10,219,5,0.0234,17.15
+-13,[DEMO] long tail keyword 11,143,4,0.0338,20.43
+-13,[DEMO] long tail keyword 12,80,2,0.0345,22.12
+-13,[DEMO] long tail keyword 13,212,5,0.0278,12.15
+-13,[DEMO] long tail keyword 14,60,2,0.0338,14.44
+-13,[DEMO] long tail keyword 15,124,4,0.0324,11.09
+-13,[DEMO] long tail keyword 16,358,10,0.03,13.79
+-13,[DEMO] long tail keyword 17,53,1,0.0362,12.7
+-13,[DEMO] long tail keyword 18,302,7,0.0247,9.46
+-13,[DEMO] long tail keyword 19,291,8,0.0286,20.89
+-13,[DEMO] long tail keyword 20,327,4,0.0148,16.34
+-13,[DEMO] long tail keyword 21,292,5,0.0202,11.77
+-13,[DEMO] long tail keyword 22,215,5,0.0258,17.89
+-13,[DEMO] long tail keyword 23,311,6,0.0208,15.23
+-13,[DEMO] long tail keyword 24,144,2,0.0188,19.95
+-13,[DEMO] long tail keyword 25,117,1,0.0155,10.05
+-13,[DEMO] long tail keyword 26,316,5,0.0171,17.11
+-13,[DEMO] long tail keyword 27,219,6,0.0306,11.68
+-13,[DEMO] long tail keyword 28,233,4,0.0196,24.6
+-13,[DEMO] long tail keyword 29,117,2,0.0182,9.71
+-13,[DEMO] long tail keyword 30,54,1,0.0259,11.05
+-13,[DEMO] long tail keyword 31,391,10,0.0263,12.66
+-13,[DEMO] long tail keyword 32,94,3,0.0342,19.86
+-13,[DEMO] long tail keyword 33,355,9,0.0269,16.34
+-13,[DEMO] long tail keyword 34,204,3,0.0171,15.98
+-13,[DEMO] long tail keyword 35,379,9,0.0244,8.87
+-13,[DEMO] long tail keyword 36,190,2,0.0144,21.98
+-13,[DEMO] long tail keyword 37,68,1,0.0162,18.7
+-13,[DEMO] long tail keyword 38,156,5,0.0373,17.57
+-13,[DEMO] long tail keyword 39,317,8,0.0277,10.01
+-13,[DEMO] long tail keyword 40,128,3,0.0256,21.44
+-13,[DEMO] long tail keyword 41,204,6,0.034,15.66
+-13,[DEMO] long tail keyword 42,156,4,0.028,24.83
+-13,[DEMO] long tail keyword 43,309,11,0.0362,18.36
+-13,[DEMO] long tail keyword 44,123,3,0.029,11.53
+-12,[DEMO] mureo,1402,391,0.32,0.79
+-12,[DEMO] mureo demo,1485,488,0.32,0.7
+-12,[DEMO] mureo ad ops,1419,482,0.32,0.87
+-12,[DEMO] mureo software,1486,502,0.32,1.12
+-12,[DEMO] mureo pricing,1586,526,0.32,1.25
+-12,[DEMO] ad ops automation,376,8,0.0231,19.24
+-12,[DEMO] ai marketing ops,276,9,0.0352,17.26
+-12,[DEMO] saas marketing tool,74,1,0.0166,22.05
+-12,[DEMO] google ads automation,312,8,0.0267,13.23
+-12,[DEMO] meta ads ai,93,2,0.0297,12.91
+-12,[DEMO] campaign optimization tool,379,9,0.025,19.9
+-12,[DEMO] marketing ops platform,78,1,0.0135,16.39
+-12,[DEMO] ad agency software,162,3,0.0188,15.34
+-12,[DEMO] long tail keyword 8,386,12,0.0334,9.55
+-12,[DEMO] long tail keyword 9,382,14,0.0375,17.78
+-12,[DEMO] long tail keyword 10,144,1,0.0135,19.43
+-12,[DEMO] long tail keyword 11,214,6,0.0288,20.86
+-12,[DEMO] long tail keyword 12,113,3,0.0271,23.57
+-12,[DEMO] long tail keyword 13,222,3,0.0148,18.79
+-12,[DEMO] long tail keyword 14,166,4,0.0293,13.92
+-12,[DEMO] long tail keyword 15,165,4,0.0298,22.58
+-12,[DEMO] long tail keyword 16,380,12,0.0328,12.9
+-12,[DEMO] long tail keyword 17,209,4,0.0204,17.35
+-12,[DEMO] long tail keyword 18,389,8,0.0226,13.5
+-12,[DEMO] long tail keyword 19,395,11,0.0289,16.75
+-12,[DEMO] long tail keyword 20,194,3,0.0172,17.22
+-12,[DEMO] long tail keyword 21,314,8,0.0281,14.15
+-12,[DEMO] long tail keyword 22,121,3,0.0262,20.92
+-12,[DEMO] long tail keyword 23,203,6,0.03,23.77
+-12,[DEMO] long tail keyword 24,390,10,0.0277,10.06
+-12,[DEMO] long tail keyword 25,105,2,0.0263,12.07
+-12,[DEMO] long tail keyword 26,82,3,0.0373,17.39
+-12,[DEMO] long tail keyword 27,211,3,0.0154,23.52
+-12,[DEMO] long tail keyword 28,224,6,0.0304,22.15
+-12,[DEMO] long tail keyword 29,145,4,0.0334,16.65
+-12,[DEMO] long tail keyword 30,135,3,0.0263,24.66
+-12,[DEMO] long tail keyword 31,372,9,0.0252,14.52
+-12,[DEMO] long tail keyword 32,352,6,0.0194,22.95
+-12,[DEMO] long tail keyword 33,195,6,0.0359,21.43
+-12,[DEMO] long tail keyword 34,337,6,0.0196,16.63
+-12,[DEMO] long tail keyword 35,255,9,0.0375,13.08
+-12,[DEMO] long tail keyword 36,102,2,0.026,16.32
+-12,[DEMO] long tail keyword 37,243,6,0.0261,13.87
+-12,[DEMO] long tail keyword 38,162,2,0.0172,15.74
+-12,[DEMO] long tail keyword 39,250,4,0.0183,19.86
+-12,[DEMO] long tail keyword 40,65,2,0.0311,21.18
+-12,[DEMO] long tail keyword 41,333,7,0.0222,19.99
+-12,[DEMO] long tail keyword 42,337,12,0.037,19.28
+-12,[DEMO] long tail keyword 43,62,1,0.0251,16.42
+-12,[DEMO] long tail keyword 44,354,12,0.0344,18.03
+-11,[DEMO] mureo,1507,476,0.32,0.96
+-11,[DEMO] mureo demo,1472,492,0.32,1.13
+-11,[DEMO] mureo ad ops,1490,543,0.32,0.79
+-11,[DEMO] mureo software,1557,520,0.32,0.9
+-11,[DEMO] mureo pricing,1605,568,0.32,1.21
+-11,[DEMO] ad ops automation,160,4,0.0305,14.46
+-11,[DEMO] ai marketing ops,355,4,0.0134,20.91
+-11,[DEMO] saas marketing tool,270,9,0.0355,9.16
+-11,[DEMO] google ads automation,311,7,0.0233,24.96
+-11,[DEMO] meta ads ai,271,9,0.0343,9.67
+-11,[DEMO] campaign optimization tool,292,10,0.0351,15.54
+-11,[DEMO] marketing ops platform,328,6,0.0198,8.78
+-11,[DEMO] ad agency software,100,2,0.0258,14.37
+-11,[DEMO] long tail keyword 8,327,5,0.0167,17.62
+-11,[DEMO] long tail keyword 9,354,9,0.028,9.34
+-11,[DEMO] long tail keyword 10,369,5,0.0161,12.09
+-11,[DEMO] long tail keyword 11,138,2,0.0189,15.84
+-11,[DEMO] long tail keyword 12,331,11,0.035,8.16
+-11,[DEMO] long tail keyword 13,105,2,0.0235,19.52
+-11,[DEMO] long tail keyword 14,255,7,0.0285,13.87
+-11,[DEMO] long tail keyword 15,137,4,0.0336,15.21
+-11,[DEMO] long tail keyword 16,184,4,0.0246,11.39
+-11,[DEMO] long tail keyword 17,250,6,0.0269,12.03
+-11,[DEMO] long tail keyword 18,153,5,0.0369,24.88
+-11,[DEMO] long tail keyword 19,146,3,0.0266,19.19
+-11,[DEMO] long tail keyword 20,310,4,0.0137,19.66
+-11,[DEMO] long tail keyword 21,223,7,0.0351,18.31
+-11,[DEMO] long tail keyword 22,329,9,0.0277,12.87
+-11,[DEMO] long tail keyword 23,272,7,0.028,13.99
+-11,[DEMO] long tail keyword 24,302,8,0.029,19.52
+-11,[DEMO] long tail keyword 25,269,9,0.0351,22.25
+-11,[DEMO] long tail keyword 26,158,3,0.0235,18.99
+-11,[DEMO] long tail keyword 27,306,4,0.0148,17.85
+-11,[DEMO] long tail keyword 28,311,5,0.0169,13.02
+-11,[DEMO] long tail keyword 29,238,8,0.0368,10.25
+-11,[DEMO] long tail keyword 30,369,12,0.0333,17.02
+-11,[DEMO] long tail keyword 31,338,8,0.0245,12.37
+-11,[DEMO] long tail keyword 32,311,6,0.021,21.71
+-11,[DEMO] long tail keyword 33,387,6,0.016,9.96
+-11,[DEMO] long tail keyword 34,351,10,0.0306,24.43
+-11,[DEMO] long tail keyword 35,388,12,0.0326,24.66
+-11,[DEMO] long tail keyword 36,326,4,0.0128,14.22
+-11,[DEMO] long tail keyword 37,209,6,0.0293,17.12
+-11,[DEMO] long tail keyword 38,254,8,0.0331,19.43
+-11,[DEMO] long tail keyword 39,87,1,0.0183,23.98
+-11,[DEMO] long tail keyword 40,359,9,0.0265,8.43
+-11,[DEMO] long tail keyword 41,127,1,0.0141,23.56
+-11,[DEMO] long tail keyword 42,368,7,0.0201,22.01
+-11,[DEMO] long tail keyword 43,98,3,0.0362,14.94
+-11,[DEMO] long tail keyword 44,222,3,0.0149,13.17
+-10,[DEMO] mureo,1390,438,0.32,1.23
+-10,[DEMO] mureo demo,1572,570,0.32,1.1
+-10,[DEMO] mureo ad ops,1572,450,0.32,0.95
+-10,[DEMO] mureo software,1379,439,0.32,0.95
+-10,[DEMO] mureo pricing,1635,449,0.32,0.94
+-10,[DEMO] ad ops automation,205,7,0.0363,14.3
+-10,[DEMO] ai marketing ops,84,2,0.0296,22.54
+-10,[DEMO] saas marketing tool,392,8,0.0215,17.26
+-10,[DEMO] google ads automation,116,1,0.0156,14.77
+-10,[DEMO] meta ads ai,209,6,0.0291,22.42
+-10,[DEMO] campaign optimization tool,259,3,0.013,18.91
+-10,[DEMO] marketing ops platform,135,2,0.0156,21.38
+-10,[DEMO] ad agency software,74,2,0.0316,17.6
+-10,[DEMO] long tail keyword 8,125,4,0.0342,11.52
+-10,[DEMO] long tail keyword 9,101,3,0.035,13.59
+-10,[DEMO] long tail keyword 10,350,5,0.0161,8.05
+-10,[DEMO] long tail keyword 11,137,2,0.0169,10.21
+-10,[DEMO] long tail keyword 12,59,0,0.0129,19.24
+-10,[DEMO] long tail keyword 13,133,2,0.0206,21.43
+-10,[DEMO] long tail keyword 14,68,2,0.031,10.96
+-10,[DEMO] long tail keyword 15,310,7,0.0244,16.94
+-10,[DEMO] long tail keyword 16,229,3,0.0152,21.23
+-10,[DEMO] long tail keyword 17,380,5,0.0136,16.57
+-10,[DEMO] long tail keyword 18,353,9,0.0255,21.31
+-10,[DEMO] long tail keyword 19,387,5,0.014,15.79
+-10,[DEMO] long tail keyword 20,190,5,0.0297,16.14
+-10,[DEMO] long tail keyword 21,368,5,0.0143,16.33
+-10,[DEMO] long tail keyword 22,262,3,0.0141,9.37
+-10,[DEMO] long tail keyword 23,271,7,0.0262,12.68
+-10,[DEMO] long tail keyword 24,398,10,0.0258,13.53
+-10,[DEMO] long tail keyword 25,261,3,0.015,15.71
+-10,[DEMO] long tail keyword 26,348,10,0.0288,19.93
+-10,[DEMO] long tail keyword 27,302,5,0.0179,21.07
+-10,[DEMO] long tail keyword 28,129,2,0.021,15.68
+-10,[DEMO] long tail keyword 29,195,2,0.0149,15.71
+-10,[DEMO] long tail keyword 30,282,6,0.0219,15.25
+-10,[DEMO] long tail keyword 31,373,5,0.0142,10.59
+-10,[DEMO] long tail keyword 32,82,1,0.0149,22.14
+-10,[DEMO] long tail keyword 33,334,8,0.0264,20.56
+-10,[DEMO] long tail keyword 34,246,5,0.0207,17.97
+-10,[DEMO] long tail keyword 35,173,5,0.0291,10.08
+-10,[DEMO] long tail keyword 36,353,10,0.0305,20.75
+-10,[DEMO] long tail keyword 37,260,5,0.0213,24.46
+-10,[DEMO] long tail keyword 38,124,3,0.0289,17.82
+-10,[DEMO] long tail keyword 39,87,2,0.0336,11.81
+-10,[DEMO] long tail keyword 40,316,8,0.0269,14.25
+-10,[DEMO] long tail keyword 41,345,12,0.0369,21.72
+-10,[DEMO] long tail keyword 42,264,7,0.0286,21.91
+-10,[DEMO] long tail keyword 43,375,12,0.0332,8.45
+-10,[DEMO] long tail keyword 44,113,3,0.0301,12.55
+-9,[DEMO] mureo,1451,395,0.32,0.89
+-9,[DEMO] mureo demo,1519,471,0.32,1.22
+-9,[DEMO] mureo ad ops,1539,423,0.32,0.79
+-9,[DEMO] mureo software,1414,441,0.32,1.15
+-9,[DEMO] mureo pricing,1461,498,0.32,0.9
+-9,[DEMO] ad ops automation,248,3,0.0146,21.21
+-9,[DEMO] ai marketing ops,105,2,0.0279,8.89
+-9,[DEMO] saas marketing tool,145,4,0.029,19.46
+-9,[DEMO] google ads automation,204,3,0.0193,16.26
+-9,[DEMO] meta ads ai,89,2,0.0232,20.83
+-9,[DEMO] campaign optimization tool,287,7,0.0247,12.82
+-9,[DEMO] marketing ops platform,65,1,0.0224,19.34
+-9,[DEMO] ad agency software,52,1,0.02,18.19
+-9,[DEMO] long tail keyword 8,98,1,0.0189,11.59
+-9,[DEMO] long tail keyword 9,52,1,0.0312,13.58
+-9,[DEMO] long tail keyword 10,183,5,0.0301,10.99
+-9,[DEMO] long tail keyword 11,341,11,0.0327,16.5
+-9,[DEMO] long tail keyword 12,351,4,0.0136,9.23
+-9,[DEMO] long tail keyword 13,372,12,0.0341,8.32
+-9,[DEMO] long tail keyword 14,250,7,0.0302,17.79
+-9,[DEMO] long tail keyword 15,90,1,0.013,15.1
+-9,[DEMO] long tail keyword 16,330,9,0.028,13.52
+-9,[DEMO] long tail keyword 17,371,5,0.0147,22.14
+-9,[DEMO] long tail keyword 18,135,3,0.0272,22.36
+-9,[DEMO] long tail keyword 19,188,3,0.0203,16.91
+-9,[DEMO] long tail keyword 20,166,2,0.0167,13.77
+-9,[DEMO] long tail keyword 21,89,2,0.0252,16.68
+-9,[DEMO] long tail keyword 22,172,5,0.0307,23.4
+-9,[DEMO] long tail keyword 23,335,6,0.0184,21.92
+-9,[DEMO] long tail keyword 24,119,3,0.0276,10.49
+-9,[DEMO] long tail keyword 25,279,4,0.0169,20.92
+-9,[DEMO] long tail keyword 26,222,6,0.0314,21.14
+-9,[DEMO] long tail keyword 27,207,7,0.0356,20.92
+-9,[DEMO] long tail keyword 28,272,7,0.0281,17.6
+-9,[DEMO] long tail keyword 29,269,4,0.0163,22.69
+-9,[DEMO] long tail keyword 30,204,4,0.0201,9.16
+-9,[DEMO] long tail keyword 31,69,1,0.0252,12.67
+-9,[DEMO] long tail keyword 32,208,2,0.0139,13.28
+-9,[DEMO] long tail keyword 33,76,2,0.0341,22.14
+-9,[DEMO] long tail keyword 34,265,6,0.0252,22.54
+-9,[DEMO] long tail keyword 35,244,7,0.0323,15.87
+-9,[DEMO] long tail keyword 36,207,6,0.0327,23.23
+-9,[DEMO] long tail keyword 37,162,3,0.0244,19.08
+-9,[DEMO] long tail keyword 38,71,1,0.0151,10.56
+-9,[DEMO] long tail keyword 39,170,5,0.0304,23.29
+-9,[DEMO] long tail keyword 40,110,2,0.0187,16.58
+-9,[DEMO] long tail keyword 41,203,5,0.0256,15.44
+-9,[DEMO] long tail keyword 42,180,3,0.0196,10.7
+-9,[DEMO] long tail keyword 43,168,4,0.0274,14.95
+-9,[DEMO] long tail keyword 44,276,3,0.0141,21.42
+-8,[DEMO] mureo,1553,464,0.32,0.76
+-8,[DEMO] mureo demo,1546,555,0.32,1.13
+-8,[DEMO] mureo ad ops,1450,475,0.32,1.22
+-8,[DEMO] mureo software,1454,530,0.32,0.78
+-8,[DEMO] mureo pricing,1467,482,0.32,1.12
+-8,[DEMO] ad ops automation,158,3,0.0219,23.95
+-8,[DEMO] ai marketing ops,334,9,0.0293,21.46
+-8,[DEMO] saas marketing tool,308,9,0.0296,22.09
+-8,[DEMO] google ads automation,276,6,0.0231,16.95
+-8,[DEMO] meta ads ai,176,2,0.017,14.15
+-8,[DEMO] campaign optimization tool,381,9,0.0247,11.64
+-8,[DEMO] marketing ops platform,98,1,0.0144,11.85
+-8,[DEMO] ad agency software,85,2,0.0318,22.36
+-8,[DEMO] long tail keyword 8,359,4,0.0134,22.2
+-8,[DEMO] long tail keyword 9,318,5,0.0158,13.72
+-8,[DEMO] long tail keyword 10,106,3,0.0333,14.4
+-8,[DEMO] long tail keyword 11,333,5,0.0166,21.11
+-8,[DEMO] long tail keyword 12,193,5,0.0294,15.44
+-8,[DEMO] long tail keyword 13,205,4,0.0196,12.04
+-8,[DEMO] long tail keyword 14,207,5,0.0259,20.73
+-8,[DEMO] long tail keyword 15,333,8,0.0242,13.26
+-8,[DEMO] long tail keyword 16,178,6,0.0362,22.2
+-8,[DEMO] long tail keyword 17,211,4,0.0195,24.74
+-8,[DEMO] long tail keyword 18,234,8,0.0367,14.49
+-8,[DEMO] long tail keyword 19,330,5,0.016,21.89
+-8,[DEMO] long tail keyword 20,274,9,0.0344,12.25
+-8,[DEMO] long tail keyword 21,85,2,0.0336,17.43
+-8,[DEMO] long tail keyword 22,149,4,0.0316,22.47
+-8,[DEMO] long tail keyword 23,366,5,0.0162,12.64
+-8,[DEMO] long tail keyword 24,381,6,0.0181,15.44
+-8,[DEMO] long tail keyword 25,172,2,0.0132,15.67
+-8,[DEMO] long tail keyword 26,225,4,0.0184,8.91
+-8,[DEMO] long tail keyword 27,181,2,0.0132,24.91
+-8,[DEMO] long tail keyword 28,343,9,0.0287,23.82
+-8,[DEMO] long tail keyword 29,98,1,0.0197,21.45
+-8,[DEMO] long tail keyword 30,293,4,0.016,22.11
+-8,[DEMO] long tail keyword 31,207,2,0.0126,19.99
+-8,[DEMO] long tail keyword 32,139,4,0.0334,9.35
+-8,[DEMO] long tail keyword 33,304,7,0.0257,17.33
+-8,[DEMO] long tail keyword 34,150,3,0.02,9.89
+-8,[DEMO] long tail keyword 35,196,6,0.0323,8.81
+-8,[DEMO] long tail keyword 36,88,3,0.0351,15.77
+-8,[DEMO] long tail keyword 37,55,1,0.0254,18.14
+-8,[DEMO] long tail keyword 38,100,2,0.0232,12.11
+-8,[DEMO] long tail keyword 39,134,3,0.0229,18.45
+-8,[DEMO] long tail keyword 40,79,2,0.0369,19.29
+-8,[DEMO] long tail keyword 41,234,5,0.0252,9.15
+-8,[DEMO] long tail keyword 42,243,5,0.0223,24.8
+-8,[DEMO] long tail keyword 43,272,10,0.037,15.99
+-8,[DEMO] long tail keyword 44,55,1,0.0322,12.31
+-7,[DEMO] mureo,837,43,0.05,4.91
+-7,[DEMO] mureo demo,837,39,0.05,5.16
+-7,[DEMO] mureo ad ops,807,44,0.05,4.73
+-7,[DEMO] mureo software,844,41,0.05,4.81
+-7,[DEMO] mureo pricing,821,44,0.05,5.12
+-7,[DEMO] ad ops automation,321,7,0.0239,9.07
+-7,[DEMO] ai marketing ops,65,1,0.0175,12.99
+-7,[DEMO] saas marketing tool,376,9,0.0254,8.71
+-7,[DEMO] google ads automation,240,4,0.0188,24.82
+-7,[DEMO] meta ads ai,116,2,0.0214,20.81
+-7,[DEMO] campaign optimization tool,353,7,0.0208,21.27
+-7,[DEMO] marketing ops platform,178,6,0.0347,10.12
+-7,[DEMO] ad agency software,363,8,0.0222,20.64
+-7,[DEMO] long tail keyword 8,223,5,0.0249,24.55
+-7,[DEMO] long tail keyword 9,231,7,0.0325,23.71
+-7,[DEMO] long tail keyword 10,77,2,0.0276,20.36
+-7,[DEMO] long tail keyword 11,240,4,0.0205,21.98
+-7,[DEMO] long tail keyword 12,281,5,0.0202,9.36
+-7,[DEMO] long tail keyword 13,199,5,0.0297,18.24
+-7,[DEMO] long tail keyword 14,64,2,0.0343,13.98
+-7,[DEMO] long tail keyword 15,399,7,0.0194,13.99
+-7,[DEMO] long tail keyword 16,381,5,0.0144,24.66
+-7,[DEMO] long tail keyword 17,177,5,0.0325,18.84
+-7,[DEMO] long tail keyword 18,383,6,0.0161,19.55
+-7,[DEMO] long tail keyword 19,323,4,0.0134,18.33
+-7,[DEMO] long tail keyword 20,322,6,0.0217,9.14
+-7,[DEMO] long tail keyword 21,248,6,0.0276,14.51
+-7,[DEMO] long tail keyword 22,382,8,0.0218,19.54
+-7,[DEMO] long tail keyword 23,250,6,0.0257,20.97
+-7,[DEMO] long tail keyword 24,277,5,0.0187,14.77
+-7,[DEMO] long tail keyword 25,307,7,0.025,9.93
+-7,[DEMO] long tail keyword 26,246,4,0.019,14.58
+-7,[DEMO] long tail keyword 27,206,7,0.0374,12.42
+-7,[DEMO] long tail keyword 28,370,9,0.0248,12.85
+-7,[DEMO] long tail keyword 29,348,8,0.0238,10.08
+-7,[DEMO] long tail keyword 30,205,3,0.0147,23.28
+-7,[DEMO] long tail keyword 31,345,7,0.0205,19.59
+-7,[DEMO] long tail keyword 32,72,1,0.0261,13.91
+-7,[DEMO] long tail keyword 33,347,10,0.0303,23.15
+-7,[DEMO] long tail keyword 34,273,8,0.0323,23.76
+-7,[DEMO] long tail keyword 35,92,1,0.0175,16.65
+-7,[DEMO] long tail keyword 36,326,4,0.0132,10.36
+-7,[DEMO] long tail keyword 37,179,5,0.0326,17.42
+-7,[DEMO] long tail keyword 38,264,3,0.0147,17.38
+-7,[DEMO] long tail keyword 39,399,12,0.0305,13.26
+-7,[DEMO] long tail keyword 40,319,10,0.0331,16.94
+-7,[DEMO] long tail keyword 41,390,11,0.0286,9.25
+-7,[DEMO] long tail keyword 42,288,6,0.0211,15.65
+-7,[DEMO] long tail keyword 43,323,9,0.0285,22.93
+-7,[DEMO] long tail keyword 44,388,9,0.0233,11.09
+-6,[DEMO] mureo,728,32,0.05,5.25
+-6,[DEMO] mureo demo,746,35,0.05,4.79
+-6,[DEMO] mureo ad ops,775,43,0.05,5.13
+-6,[DEMO] mureo software,855,39,0.05,5.24
+-6,[DEMO] mureo pricing,808,35,0.05,5.08
+-6,[DEMO] ad ops automation,236,5,0.0251,13.15
+-6,[DEMO] ai marketing ops,379,6,0.0164,10.87
+-6,[DEMO] saas marketing tool,302,8,0.0276,19.2
+-6,[DEMO] google ads automation,247,8,0.0331,22.32
+-6,[DEMO] meta ads ai,65,1,0.0285,8.48
+-6,[DEMO] campaign optimization tool,277,8,0.0317,17.81
+-6,[DEMO] marketing ops platform,273,6,0.025,15.08
+-6,[DEMO] ad agency software,151,5,0.0364,18.66
+-6,[DEMO] long tail keyword 8,331,9,0.0296,16.21
+-6,[DEMO] long tail keyword 9,75,1,0.014,13.06
+-6,[DEMO] long tail keyword 10,219,3,0.0176,15.47
+-6,[DEMO] long tail keyword 11,159,4,0.0305,18.31
+-6,[DEMO] long tail keyword 12,351,12,0.0369,20.48
+-6,[DEMO] long tail keyword 13,179,4,0.0265,10.22
+-6,[DEMO] long tail keyword 14,213,4,0.0192,13.42
+-6,[DEMO] long tail keyword 15,83,1,0.0198,12.21
+-6,[DEMO] long tail keyword 16,265,4,0.0187,14.53
+-6,[DEMO] long tail keyword 17,105,2,0.0207,22.71
+-6,[DEMO] long tail keyword 18,159,5,0.0316,17.82
+-6,[DEMO] long tail keyword 19,230,5,0.025,16.47
+-6,[DEMO] long tail keyword 20,58,2,0.0361,13.25
+-6,[DEMO] long tail keyword 21,388,6,0.0179,16.59
+-6,[DEMO] long tail keyword 22,67,1,0.0249,14.0
+-6,[DEMO] long tail keyword 23,278,6,0.0243,23.0
+-6,[DEMO] long tail keyword 24,346,8,0.0233,17.12
+-6,[DEMO] long tail keyword 25,304,9,0.0316,23.0
+-6,[DEMO] long tail keyword 26,190,5,0.0268,14.22
+-6,[DEMO] long tail keyword 27,243,3,0.0143,11.31
+-6,[DEMO] long tail keyword 28,317,6,0.0195,16.57
+-6,[DEMO] long tail keyword 29,288,4,0.0155,24.81
+-6,[DEMO] long tail keyword 30,187,6,0.0324,24.58
+-6,[DEMO] long tail keyword 31,378,11,0.0314,13.76
+-6,[DEMO] long tail keyword 32,228,5,0.025,11.38
+-6,[DEMO] long tail keyword 33,97,2,0.0208,8.77
+-6,[DEMO] long tail keyword 34,209,5,0.0277,16.05
+-6,[DEMO] long tail keyword 35,164,4,0.0278,16.76
+-6,[DEMO] long tail keyword 36,396,12,0.031,10.76
+-6,[DEMO] long tail keyword 37,167,5,0.0332,13.09
+-6,[DEMO] long tail keyword 38,298,5,0.02,17.05
+-6,[DEMO] long tail keyword 39,178,5,0.0293,21.87
+-6,[DEMO] long tail keyword 40,254,8,0.0324,24.66
+-6,[DEMO] long tail keyword 41,290,3,0.0132,20.33
+-6,[DEMO] long tail keyword 42,388,12,0.0321,16.07
+-6,[DEMO] long tail keyword 43,252,7,0.0305,21.19
+-6,[DEMO] long tail keyword 44,109,3,0.0282,17.92
+-5,[DEMO] mureo,854,38,0.05,5.07
+-5,[DEMO] mureo demo,725,41,0.05,5.11
+-5,[DEMO] mureo ad ops,723,34,0.05,4.77
+-5,[DEMO] mureo software,830,40,0.05,4.79
+-5,[DEMO] mureo pricing,867,48,0.05,5.16
+-5,[DEMO] ad ops automation,71,1,0.016,20.51
+-5,[DEMO] ai marketing ops,163,4,0.0291,11.52
+-5,[DEMO] saas marketing tool,159,2,0.0168,16.93
+-5,[DEMO] google ads automation,169,3,0.0214,23.51
+-5,[DEMO] meta ads ai,302,8,0.0286,21.12
+-5,[DEMO] campaign optimization tool,263,4,0.0173,19.79
+-5,[DEMO] marketing ops platform,245,4,0.0181,12.19
+-5,[DEMO] ad agency software,154,3,0.0197,24.54
+-5,[DEMO] long tail keyword 8,296,6,0.0204,11.52
+-5,[DEMO] long tail keyword 9,376,12,0.0324,13.93
+-5,[DEMO] long tail keyword 10,92,2,0.0294,12.65
+-5,[DEMO] long tail keyword 11,393,12,0.033,14.45
+-5,[DEMO] long tail keyword 12,331,6,0.0198,24.23
+-5,[DEMO] long tail keyword 13,299,6,0.0212,12.89
+-5,[DEMO] long tail keyword 14,139,3,0.0245,15.52
+-5,[DEMO] long tail keyword 15,238,8,0.0358,11.44
+-5,[DEMO] long tail keyword 16,98,2,0.0279,19.83
+-5,[DEMO] long tail keyword 17,134,3,0.0292,17.98
+-5,[DEMO] long tail keyword 18,273,3,0.0138,17.03
+-5,[DEMO] long tail keyword 19,301,4,0.015,15.03
+-5,[DEMO] long tail keyword 20,51,1,0.0263,21.1
+-5,[DEMO] long tail keyword 21,192,6,0.0359,23.79
+-5,[DEMO] long tail keyword 22,217,3,0.0175,22.93
+-5,[DEMO] long tail keyword 23,162,4,0.0286,24.39
+-5,[DEMO] long tail keyword 24,81,2,0.0269,23.43
+-5,[DEMO] long tail keyword 25,303,10,0.0359,17.1
+-5,[DEMO] long tail keyword 26,111,3,0.0346,23.52
+-5,[DEMO] long tail keyword 27,371,13,0.0374,10.99
+-5,[DEMO] long tail keyword 28,223,8,0.0359,14.75
+-5,[DEMO] long tail keyword 29,374,12,0.0344,24.36
+-5,[DEMO] long tail keyword 30,248,3,0.0152,8.16
+-5,[DEMO] long tail keyword 31,149,5,0.0372,24.71
+-5,[DEMO] long tail keyword 32,222,7,0.036,17.24
+-5,[DEMO] long tail keyword 33,213,3,0.0173,22.47
+-5,[DEMO] long tail keyword 34,106,2,0.024,9.91
+-5,[DEMO] long tail keyword 35,115,3,0.0309,12.37
+-5,[DEMO] long tail keyword 36,248,7,0.0314,21.44
+-5,[DEMO] long tail keyword 37,349,12,0.0349,10.98
+-5,[DEMO] long tail keyword 38,230,3,0.0147,22.06
+-5,[DEMO] long tail keyword 39,114,1,0.016,19.38
+-5,[DEMO] long tail keyword 40,136,2,0.019,13.5
+-5,[DEMO] long tail keyword 41,313,11,0.0364,12.0
+-5,[DEMO] long tail keyword 42,303,3,0.0128,13.13
+-5,[DEMO] long tail keyword 43,292,4,0.0141,19.11
+-5,[DEMO] long tail keyword 44,157,3,0.0226,10.01
+-4,[DEMO] mureo,863,45,0.05,5.0
+-4,[DEMO] mureo demo,738,41,0.05,4.89
+-4,[DEMO] mureo ad ops,818,37,0.05,4.88
+-4,[DEMO] mureo software,744,39,0.05,4.78
+-4,[DEMO] mureo pricing,786,39,0.05,5.06
+-4,[DEMO] ad ops automation,238,6,0.0291,16.0
+-4,[DEMO] ai marketing ops,136,4,0.0314,11.71
+-4,[DEMO] saas marketing tool,78,1,0.0237,22.84
+-4,[DEMO] google ads automation,77,2,0.0266,19.96
+-4,[DEMO] meta ads ai,241,6,0.0251,9.05
+-4,[DEMO] campaign optimization tool,102,2,0.0207,17.74
+-4,[DEMO] marketing ops platform,90,1,0.0176,16.85
+-4,[DEMO] ad agency software,81,2,0.0253,17.91
+-4,[DEMO] long tail keyword 8,208,5,0.0253,21.75
+-4,[DEMO] long tail keyword 9,70,1,0.0241,15.77
+-4,[DEMO] long tail keyword 10,303,6,0.0224,21.72
+-4,[DEMO] long tail keyword 11,311,8,0.027,21.88
+-4,[DEMO] long tail keyword 12,170,2,0.0141,8.77
+-4,[DEMO] long tail keyword 13,377,5,0.0142,24.9
+-4,[DEMO] long tail keyword 14,61,1,0.0227,23.87
+-4,[DEMO] long tail keyword 15,318,11,0.037,21.07
+-4,[DEMO] long tail keyword 16,197,7,0.0373,18.98
+-4,[DEMO] long tail keyword 17,354,12,0.0352,14.5
+-4,[DEMO] long tail keyword 18,288,8,0.029,14.39
+-4,[DEMO] long tail keyword 19,278,5,0.0212,17.17
+-4,[DEMO] long tail keyword 20,238,6,0.0257,11.03
+-4,[DEMO] long tail keyword 21,127,1,0.0126,20.37
+-4,[DEMO] long tail keyword 22,154,4,0.0293,8.39
+-4,[DEMO] long tail keyword 23,236,7,0.0331,17.26
+-4,[DEMO] long tail keyword 24,171,3,0.0194,12.21
+-4,[DEMO] long tail keyword 25,303,4,0.0153,23.94
+-4,[DEMO] long tail keyword 26,196,6,0.0317,21.76
+-4,[DEMO] long tail keyword 27,55,0,0.0177,23.02
+-4,[DEMO] long tail keyword 28,61,1,0.0274,9.72
+-4,[DEMO] long tail keyword 29,67,2,0.031,19.96
+-4,[DEMO] long tail keyword 30,132,2,0.0179,14.84
+-4,[DEMO] long tail keyword 31,69,1,0.0251,22.68
+-4,[DEMO] long tail keyword 32,335,10,0.0308,12.92
+-4,[DEMO] long tail keyword 33,259,7,0.0293,13.42
+-4,[DEMO] long tail keyword 34,155,2,0.0161,13.45
+-4,[DEMO] long tail keyword 35,127,2,0.02,19.22
+-4,[DEMO] long tail keyword 36,381,13,0.0345,9.04
+-4,[DEMO] long tail keyword 37,269,6,0.0232,23.5
+-4,[DEMO] long tail keyword 38,390,14,0.036,16.43
+-4,[DEMO] long tail keyword 39,325,6,0.0205,19.41
+-4,[DEMO] long tail keyword 40,102,2,0.0219,15.08
+-4,[DEMO] long tail keyword 41,215,7,0.0337,20.83
+-4,[DEMO] long tail keyword 42,297,9,0.0326,13.11
+-4,[DEMO] long tail keyword 43,246,9,0.0367,23.55
+-4,[DEMO] long tail keyword 44,96,1,0.0186,17.47
+-3,[DEMO] mureo,823,46,0.05,4.82
+-3,[DEMO] mureo demo,734,39,0.05,5.21
+-3,[DEMO] mureo ad ops,762,40,0.05,4.81
+-3,[DEMO] mureo software,859,38,0.05,5.06
+-3,[DEMO] mureo pricing,835,42,0.05,5.16
+-3,[DEMO] ad ops automation,354,7,0.0208,16.15
+-3,[DEMO] ai marketing ops,55,1,0.0359,24.27
+-3,[DEMO] saas marketing tool,91,3,0.0375,24.36
+-3,[DEMO] google ads automation,134,3,0.0276,16.14
+-3,[DEMO] meta ads ai,370,9,0.0263,11.48
+-3,[DEMO] campaign optimization tool,183,4,0.0258,21.18
+-3,[DEMO] marketing ops platform,141,3,0.0253,14.11
+-3,[DEMO] ad agency software,84,3,0.037,16.45
+-3,[DEMO] long tail keyword 8,343,12,0.0354,15.98
+-3,[DEMO] long tail keyword 9,194,5,0.0266,14.3
+-3,[DEMO] long tail keyword 10,101,1,0.019,11.76
+-3,[DEMO] long tail keyword 11,252,5,0.0229,23.89
+-3,[DEMO] long tail keyword 12,165,3,0.022,10.59
+-3,[DEMO] long tail keyword 13,224,6,0.0289,22.17
+-3,[DEMO] long tail keyword 14,140,4,0.033,19.64
+-3,[DEMO] long tail keyword 15,274,6,0.0248,24.43
+-3,[DEMO] long tail keyword 16,328,5,0.0167,10.86
+-3,[DEMO] long tail keyword 17,220,7,0.0354,20.25
+-3,[DEMO] long tail keyword 18,274,3,0.014,17.22
+-3,[DEMO] long tail keyword 19,346,12,0.0361,8.58
+-3,[DEMO] long tail keyword 20,317,7,0.0228,19.36
+-3,[DEMO] long tail keyword 21,131,3,0.0302,22.32
+-3,[DEMO] long tail keyword 22,227,4,0.0218,8.16
+-3,[DEMO] long tail keyword 23,283,7,0.0279,18.5
+-3,[DEMO] long tail keyword 24,220,2,0.0127,16.21
+-3,[DEMO] long tail keyword 25,54,1,0.0257,17.38
+-3,[DEMO] long tail keyword 26,392,5,0.0129,12.67
+-3,[DEMO] long tail keyword 27,285,9,0.0327,21.82
+-3,[DEMO] long tail keyword 28,87,1,0.0149,23.47
+-3,[DEMO] long tail keyword 29,117,3,0.0257,10.53
+-3,[DEMO] long tail keyword 30,143,3,0.0224,21.86
+-3,[DEMO] long tail keyword 31,192,5,0.0266,14.34
+-3,[DEMO] long tail keyword 32,129,3,0.0296,24.83
+-3,[DEMO] long tail keyword 33,278,9,0.034,22.41
+-3,[DEMO] long tail keyword 34,82,1,0.022,20.91
+-3,[DEMO] long tail keyword 35,69,0,0.0127,17.4
+-3,[DEMO] long tail keyword 36,224,5,0.0233,10.91
+-3,[DEMO] long tail keyword 37,248,8,0.0339,21.33
+-3,[DEMO] long tail keyword 38,234,3,0.0136,9.62
+-3,[DEMO] long tail keyword 39,353,12,0.0347,11.59
+-3,[DEMO] long tail keyword 40,66,0,0.0144,16.08
+-3,[DEMO] long tail keyword 41,364,9,0.0266,23.73
+-3,[DEMO] long tail keyword 42,375,7,0.0204,8.56
+-3,[DEMO] long tail keyword 43,255,7,0.0313,24.34
+-3,[DEMO] long tail keyword 44,189,2,0.0144,20.12
+-2,[DEMO] mureo,758,41,0.05,4.8
+-2,[DEMO] mureo demo,863,40,0.05,4.93
+-2,[DEMO] mureo ad ops,742,42,0.05,5.15
+-2,[DEMO] mureo software,800,45,0.05,5.13
+-2,[DEMO] mureo pricing,789,43,0.05,4.73
+-2,[DEMO] ad ops automation,319,11,0.0364,13.79
+-2,[DEMO] ai marketing ops,320,4,0.0132,14.74
+-2,[DEMO] saas marketing tool,397,9,0.0248,12.65
+-2,[DEMO] google ads automation,379,8,0.0233,14.05
+-2,[DEMO] meta ads ai,281,4,0.0146,19.55
+-2,[DEMO] campaign optimization tool,329,9,0.0303,18.52
+-2,[DEMO] marketing ops platform,103,3,0.0303,9.39
+-2,[DEMO] ad agency software,308,6,0.0204,18.78
+-2,[DEMO] long tail keyword 8,51,1,0.0202,9.81
+-2,[DEMO] long tail keyword 9,144,2,0.0158,14.12
+-2,[DEMO] long tail keyword 10,207,5,0.0264,11.19
+-2,[DEMO] long tail keyword 11,59,1,0.0213,14.94
+-2,[DEMO] long tail keyword 12,259,5,0.0206,9.58
+-2,[DEMO] long tail keyword 13,152,3,0.0222,14.55
+-2,[DEMO] long tail keyword 14,365,12,0.0351,9.44
+-2,[DEMO] long tail keyword 15,250,4,0.0167,24.63
+-2,[DEMO] long tail keyword 16,98,1,0.02,14.47
+-2,[DEMO] long tail keyword 17,72,1,0.0234,16.38
+-2,[DEMO] long tail keyword 18,219,3,0.0144,15.16
+-2,[DEMO] long tail keyword 19,136,3,0.0281,12.28
+-2,[DEMO] long tail keyword 20,118,1,0.0152,18.09
+-2,[DEMO] long tail keyword 21,382,7,0.0208,13.18
+-2,[DEMO] long tail keyword 22,331,6,0.0207,18.54
+-2,[DEMO] long tail keyword 23,335,11,0.034,13.69
+-2,[DEMO] long tail keyword 24,97,1,0.0205,24.56
+-2,[DEMO] long tail keyword 25,120,2,0.0204,24.1
+-2,[DEMO] long tail keyword 26,389,7,0.0198,24.4
+-2,[DEMO] long tail keyword 27,221,5,0.0269,19.81
+-2,[DEMO] long tail keyword 28,181,5,0.0329,12.12
+-2,[DEMO] long tail keyword 29,89,2,0.0266,14.68
+-2,[DEMO] long tail keyword 30,240,7,0.0295,18.07
+-2,[DEMO] long tail keyword 31,383,9,0.024,17.35
+-2,[DEMO] long tail keyword 32,203,4,0.0198,20.04
+-2,[DEMO] long tail keyword 33,336,10,0.0324,19.78
+-2,[DEMO] long tail keyword 34,224,6,0.0283,14.96
+-2,[DEMO] long tail keyword 35,280,8,0.0304,12.11
+-2,[DEMO] long tail keyword 36,75,2,0.0373,21.41
+-2,[DEMO] long tail keyword 37,190,4,0.0252,16.15
+-2,[DEMO] long tail keyword 38,292,7,0.0261,23.65
+-2,[DEMO] long tail keyword 39,175,6,0.0349,21.44
+-2,[DEMO] long tail keyword 40,273,3,0.0146,17.13
+-2,[DEMO] long tail keyword 41,280,5,0.0214,21.07
+-2,[DEMO] long tail keyword 42,65,2,0.0371,19.0
+-2,[DEMO] long tail keyword 43,189,5,0.0313,19.52
+-2,[DEMO] long tail keyword 44,200,2,0.0128,24.42
+-1,[DEMO] mureo,801,40,0.05,4.86
+-1,[DEMO] mureo demo,812,39,0.05,5.05
+-1,[DEMO] mureo ad ops,843,43,0.05,4.93
+-1,[DEMO] mureo software,775,33,0.05,5.0
+-1,[DEMO] mureo pricing,786,44,0.05,4.76
+-1,[DEMO] ad ops automation,379,6,0.016,9.97
+-1,[DEMO] ai marketing ops,209,3,0.0177,13.3
+-1,[DEMO] saas marketing tool,216,5,0.0235,16.21
+-1,[DEMO] google ads automation,161,3,0.02,19.84
+-1,[DEMO] meta ads ai,90,3,0.0337,21.77
+-1,[DEMO] campaign optimization tool,286,4,0.0166,19.02
+-1,[DEMO] marketing ops platform,135,2,0.0169,24.73
+-1,[DEMO] ad agency software,245,8,0.0365,10.72
+-1,[DEMO] long tail keyword 8,191,3,0.0171,11.94
+-1,[DEMO] long tail keyword 9,201,2,0.0132,18.89
+-1,[DEMO] long tail keyword 10,119,3,0.0273,18.44
+-1,[DEMO] long tail keyword 11,296,5,0.0176,14.61
+-1,[DEMO] long tail keyword 12,333,4,0.0141,20.79
+-1,[DEMO] long tail keyword 13,355,6,0.0172,9.73
+-1,[DEMO] long tail keyword 14,210,4,0.0191,13.54
+-1,[DEMO] long tail keyword 15,234,6,0.0285,22.66
+-1,[DEMO] long tail keyword 16,263,7,0.0272,18.15
+-1,[DEMO] long tail keyword 17,345,9,0.0279,13.91
+-1,[DEMO] long tail keyword 18,297,5,0.0199,21.83
+-1,[DEMO] long tail keyword 19,79,1,0.0158,18.45
+-1,[DEMO] long tail keyword 20,156,2,0.0171,10.0
+-1,[DEMO] long tail keyword 21,228,5,0.023,19.79
+-1,[DEMO] long tail keyword 22,184,3,0.0171,10.34
+-1,[DEMO] long tail keyword 23,292,8,0.0286,18.8
+-1,[DEMO] long tail keyword 24,244,6,0.0247,25.0
+-1,[DEMO] long tail keyword 25,160,3,0.0238,10.39
+-1,[DEMO] long tail keyword 26,175,2,0.0127,8.91
+-1,[DEMO] long tail keyword 27,335,12,0.0366,10.32
+-1,[DEMO] long tail keyword 28,223,6,0.0296,16.59
+-1,[DEMO] long tail keyword 29,343,8,0.0247,15.07
+-1,[DEMO] long tail keyword 30,60,1,0.0315,9.41
+-1,[DEMO] long tail keyword 31,146,3,0.0259,12.97
+-1,[DEMO] long tail keyword 32,210,6,0.0311,10.86
+-1,[DEMO] long tail keyword 33,242,3,0.0153,21.02
+-1,[DEMO] long tail keyword 34,321,10,0.0331,9.94
+-1,[DEMO] long tail keyword 35,337,4,0.0135,14.24
+-1,[DEMO] long tail keyword 36,241,8,0.0372,20.22
+-1,[DEMO] long tail keyword 37,340,10,0.0313,9.74
+-1,[DEMO] long tail keyword 38,399,9,0.0237,13.06
+-1,[DEMO] long tail keyword 39,335,7,0.0235,13.93
+-1,[DEMO] long tail keyword 40,321,5,0.0184,24.9
+-1,[DEMO] long tail keyword 41,255,5,0.0213,21.78
+-1,[DEMO] long tail keyword 42,271,4,0.0166,20.08
+-1,[DEMO] long tail keyword 43,122,2,0.0177,10.37
+-1,[DEMO] long tail keyword 44,172,3,0.0195,9.01
+0,[DEMO] mureo,771,40,0.05,5.02
+0,[DEMO] mureo demo,762,42,0.05,4.87
+0,[DEMO] mureo ad ops,828,36,0.05,5.29
+0,[DEMO] mureo software,845,47,0.05,5.28
+0,[DEMO] mureo pricing,858,38,0.05,5.3
+0,[DEMO] ad ops automation,137,4,0.0303,22.72
+0,[DEMO] ai marketing ops,316,9,0.0294,22.08
+0,[DEMO] saas marketing tool,252,4,0.0192,16.32
+0,[DEMO] google ads automation,208,5,0.0283,15.04
+0,[DEMO] meta ads ai,82,2,0.0254,22.96
+0,[DEMO] campaign optimization tool,377,8,0.0217,12.73
+0,[DEMO] marketing ops platform,164,2,0.0126,24.15
+0,[DEMO] ad agency software,306,9,0.0308,21.16
+0,[DEMO] long tail keyword 8,282,6,0.0215,15.79
+0,[DEMO] long tail keyword 9,237,4,0.0179,9.08
+0,[DEMO] long tail keyword 10,124,2,0.0192,15.3
+0,[DEMO] long tail keyword 11,168,4,0.0269,22.08
+0,[DEMO] long tail keyword 12,219,4,0.0211,17.62
+0,[DEMO] long tail keyword 13,66,0,0.015,19.6
+0,[DEMO] long tail keyword 14,210,3,0.0156,21.33
+0,[DEMO] long tail keyword 15,204,2,0.0125,22.58
+0,[DEMO] long tail keyword 16,120,3,0.0297,24.29
+0,[DEMO] long tail keyword 17,277,4,0.0165,10.24
+0,[DEMO] long tail keyword 18,145,4,0.0289,23.86
+0,[DEMO] long tail keyword 19,180,6,0.0351,12.26
+0,[DEMO] long tail keyword 20,188,3,0.0201,10.81
+0,[DEMO] long tail keyword 21,131,3,0.0289,19.89
+0,[DEMO] long tail keyword 22,50,1,0.0244,19.96
+0,[DEMO] long tail keyword 23,129,3,0.0295,10.26
+0,[DEMO] long tail keyword 24,293,9,0.0329,8.16
+0,[DEMO] long tail keyword 25,197,3,0.0158,24.8
+0,[DEMO] long tail keyword 26,184,5,0.0308,9.2
+0,[DEMO] long tail keyword 27,159,5,0.0345,9.74
+0,[DEMO] long tail keyword 28,320,10,0.0313,10.33
+0,[DEMO] long tail keyword 29,397,6,0.0161,10.26
+0,[DEMO] long tail keyword 30,52,1,0.0288,17.02
+0,[DEMO] long tail keyword 31,302,8,0.0282,15.48
+0,[DEMO] long tail keyword 32,194,5,0.0297,10.57
+0,[DEMO] long tail keyword 33,80,1,0.015,22.62
+0,[DEMO] long tail keyword 34,256,5,0.0221,20.79
+0,[DEMO] long tail keyword 35,160,2,0.016,24.38
+0,[DEMO] long tail keyword 36,79,2,0.0263,12.71
+0,[DEMO] long tail keyword 37,262,8,0.032,18.2
+0,[DEMO] long tail keyword 38,346,10,0.029,19.74
+0,[DEMO] long tail keyword 39,231,5,0.0252,13.13
+0,[DEMO] long tail keyword 40,153,2,0.0139,20.71
+0,[DEMO] long tail keyword 41,384,9,0.0249,23.26
+0,[DEMO] long tail keyword 42,224,6,0.0273,9.92
+0,[DEMO] long tail keyword 43,392,14,0.0372,16.98
+0,[DEMO] long tail keyword 44,96,3,0.034,23.88

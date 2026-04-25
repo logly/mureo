@@ -1,0 +1,4 @@
+campaign_id,name,status,channel_type,bidding_strategy_type,daily_budget_jpy,start_offset,end_offset
+12345001,[DEMO] Brand Search,ENABLED,SEARCH,MAXIMIZE_CONVERSIONS,5000,-30,
+12345002,[DEMO] Generic Search,ENABLED,SEARCH,TARGET_CPA,8000,-60,
+12345003,[DEMO] Display Retargeting,ENABLED,DISPLAY,MAXIMIZE_CONVERSIONS,3000,-45,

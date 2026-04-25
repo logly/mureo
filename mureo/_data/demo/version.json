@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "platforms": [
+    "google_ads",
+    "meta_ads",
+    "search_console"
+  ]
+}
