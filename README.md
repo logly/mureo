@@ -27,6 +27,21 @@ mureo is a framework for AI agents to autonomously operate ad accounts. Once ins
 
 mureo also learns. When you correct the agent's analysis or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is automatically loaded in every future session, so the agent gets increasingly attuned to your account's specific patterns and makes better decisions over time.
 
+## Try it with your own CSV (no OAuth)
+
+**Drop a Google Ads CSV export into mureo and get a strategy-grounded diagnosis in 5 minutes.** No OAuth, no developer token, no SaaS sign-up.
+
+```bash
+pip install mureo
+mureo setup claude-code --skip-auth
+mureo byod import --google-ads ~/Downloads/your-report.csv
+# Open Claude Code and ask: "Run /daily-check"
+```
+
+mureo's MCP server detects the imported CSV automatically and feeds it to the agent. **Read-only by construction** -- every mutation tool returns `{"status": "skipped_in_byod_readonly"}`, so the agent never accidentally writes to your real account.
+
+Works platform-by-platform: import Google Ads as CSV, keep Meta Ads on the live API, mix as you like. See [docs/byod.md](docs/byod.md) for the full walkthrough and CSV export instructions.
+
 
 ## Features
 

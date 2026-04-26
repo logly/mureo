@@ -224,6 +224,17 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 - Meta Ads: `META_ADS_ACCESS_TOKEN`, `META_ADS_APP_ID`, `META_ADS_APP_SECRET`
 - The `auth_setup.py` wizard writes credentials to `~/.mureo/credentials.json`
 
+## BYOD Mode (Bring Your Own Data)
+
+`mureo byod import <file.csv>` lets a user analyze their real ad-account export locally without OAuth. When `~/.mureo/byod/manifest.json` registers a platform, `mureo/mcp/_client_factory.py` routes that platform's MCP tool calls to a CSV-backed client (`mureo/byod/clients.py`) instead of the live API. Per-platform: imported platforms = BYOD; un-imported = real API (or `_no_creds` error if no credentials).
+
+When working on mureo:
+- New ad-platform handlers MUST call `mureo/mcp/_client_factory.get_*_client(...)` for the BYOD path; real-mode dispatch can call `create_*_client` directly to keep test mocks at `mureo.mcp._handlers_*.create_*_client` working.
+- BYOD clients are read-only. Mutation method name prefixes (`create_`, `update_`, `delete_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, `patch_`, `add_`, `remove_`, `send_`, `upload_`) return `{"status": "skipped_in_byod_readonly"}`.
+- New CSV format adapters live in `mureo/byod/adapters/<platform>.py` and must implement `detect(header)` and `normalize(src, dst_dir)`. Each adapter is responsible for skipping vendor preambles, rejecting PII columns (`email`/`phone`/`user_id`/`ip_address`/`customer_email`), and writing to the mureo internal schema documented in `docs/byod.md`.
+- CSV imports MUST never escape `~/.mureo/byod/` — the installer's path-traversal assertion (`installer.py`) enforces this.
+- See `docs/byod.md` for the user-facing walkthrough.
+
 ## GAQL Injection Prevention
 
 Google Ads queries use GAQL (Google Ads Query Language). When constructing queries:
