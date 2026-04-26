@@ -68,6 +68,26 @@ def _parse_day(v: str) -> str:
     return s
 
 
+def _find_header_row(src: Path, max_lines: int = 5) -> int | None:
+    """Scan up to ``max_lines`` lines and return the 0-indexed row whose
+    cells satisfy ``_REQUIRED_COLS``. Used to skip Report Editor preamble.
+    """
+    with src.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.reader(f)
+        for i, row in enumerate(reader):
+            if i >= max_lines:
+                break
+            if not row:
+                continue
+            norm = {_norm_col(c) for c in row}
+            if _REQUIRED_COLS.issubset(norm):
+                return i
+    return None
+
+
+_TOTALS_NEEDLES = ("total", "grand total", "合計")
+
+
 class GoogleAdsAdapter:
     """Adapter for Google Ads Report Editor CSV exports."""
 
@@ -81,18 +101,24 @@ class GoogleAdsAdapter:
     def normalize(self, src: Path, dst_dir: Path) -> ImportResult:
         dst_dir.mkdir(parents=True, exist_ok=True)
 
+        # Google Ads Report Editor often prepends a 1-3 line preamble
+        # (account name, report name, date range) before the column
+        # header. Find the header row by sniffing for required columns.
+        header_idx = _find_header_row(src)
+        if header_idx is None:
+            raise UnsupportedFormatError(
+                f"{src.name}: not a Google Ads Report Editor export. "
+                f"Required columns (case-insensitive): {sorted(_REQUIRED_COLS)}"
+            )
+
         with src.open("r", encoding="utf-8-sig", newline="") as f:
+            for _ in range(header_idx):
+                f.readline()
             reader = csv.DictReader(f)
             if reader.fieldnames is None:
                 raise UnsupportedFormatError(f"{src.name}: CSV has no header row")
             header = list(reader.fieldnames)
             rows = list(reader)
-
-        if not self.detect(header):
-            raise UnsupportedFormatError(
-                f"{src.name}: not a Google Ads Report Editor export. "
-                f"Required columns (case-insensitive): {sorted(_REQUIRED_COLS)}"
-            )
 
         for col_name in header:
             low = col_name.lower()
@@ -122,6 +148,9 @@ class GoogleAdsAdapter:
         for row in rows:
             camp_name = col(row, "campaign")
             if not camp_name:
+                continue
+            # Skip "Total" / "Grand total" / "合計" rows.
+            if any(needle in camp_name.lower() for needle in _TOTALS_NEEDLES):
                 continue
             cid = _synthetic_id("gads", camp_name)
             campaigns.setdefault(

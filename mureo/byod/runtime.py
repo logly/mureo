@@ -83,13 +83,31 @@ def write_manifest(data: dict[str, Any]) -> None:
 
 
 def byod_has(platform: str) -> bool:
-    """True if BYOD data is registered for ``platform``."""
+    """True if BYOD data is registered AND its files exist on disk.
+
+    Detects "stale manifest" cases where the user removed the platform's
+    directory out of band (e.g. ``rm -rf ~/.mureo/byod/google_ads/``)
+    while leaving ``manifest.json`` untouched.
+    """
     if platform not in SUPPORTED_PLATFORMS:
         return False
     manifest = read_manifest()
     if manifest is None:
         return False
-    return platform in manifest["platforms"]
+    if platform not in manifest["platforms"]:
+        return False
+    platform_dir = byod_data_dir() / platform
+    if not platform_dir.is_dir():
+        logger.warning(
+            "BYOD manifest references %s but %s is missing on disk; "
+            "treating as inactive. Re-run `mureo byod import` or "
+            "`mureo byod remove --%s`.",
+            platform,
+            platform_dir,
+            platform.replace("_", "-"),
+        )
+        return False
+    return True
 
 
 def byod_active_platforms() -> list[str]:

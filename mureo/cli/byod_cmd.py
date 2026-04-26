@@ -58,13 +58,25 @@ def _resolve_platform_flag(
     return explicit[0] if explicit else None
 
 
+def _credentials_present() -> bool:
+    return (Path.home() / ".mureo" / "credentials.json").exists()
+
+
 def _print_status_block() -> None:
     manifest = read_manifest()
+    creds_ok = _credentials_present()
     typer.echo("Mode summary:")
     if not manifest:
-        typer.echo(
-            "  No BYOD data installed. mureo will use real API for all platforms."
-        )
+        if creds_ok:
+            typer.echo(
+                "  No BYOD data installed. mureo will use real API "
+                "(credentials present at ~/.mureo/credentials.json)."
+            )
+        else:
+            typer.echo(
+                "  No BYOD data installed and no credentials.json. "
+                "Run `mureo byod import <file.csv>` or `mureo auth setup`."
+            )
         return
     active = manifest["platforms"]
     for p in SUPPORTED_PLATFORMS:
@@ -75,10 +87,12 @@ def _print_status_block() -> None:
                 f"{info['date_range']['start']}..{info['date_range']['end']})"
             )
         else:
-            typer.echo(
-                f"  {p:15s} not imported -> real API "
-                "(requires ~/.mureo/credentials.json)"
-            )
+            if creds_ok:
+                typer.echo(f"  {p:15s} real API (credentials present)")
+            else:
+                typer.echo(
+                    f"  {p:15s} not configured " "(no BYOD data, no credentials.json)"
+                )
 
 
 @byod_app.command("import")  # type: ignore[untyped-decorator, unused-ignore]

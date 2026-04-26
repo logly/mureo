@@ -74,6 +74,35 @@ def _period_to_range(period: str) -> tuple[date, date]:
     return today - timedelta(days=7), today - timedelta(days=1)
 
 
+# Verb prefixes that should never silently no-op in BYOD mode.
+# Anything matching one of these returns ``skipped_in_byod_readonly``
+# instead of an empty list, so a curious agent never mistakes a mutation
+# for a successful call.
+_MUTATION_PREFIXES = (
+    "create_",
+    "update_",
+    "delete_",
+    "remove_",
+    "add_",
+    "send_",
+    "upload_",
+    "pause_",
+    "resume_",
+    "enable_",
+    "disable_",
+    "apply_",
+    "publish_",
+    "submit_",
+    "attach_",
+    "detach_",
+    "approve_",
+    "reject_",
+    "cancel_",
+    "set_",
+    "patch_",
+)
+
+
 def _async_empty_list() -> Callable[..., Any]:
     async def _stub(*_: Any, **__: Any) -> list[Any]:
         return []
@@ -364,10 +393,7 @@ class ByodGoogleAdsClient:
     def __getattr__(self, name: str) -> Callable[..., Any]:
         if name.startswith("_"):
             raise AttributeError(name)
-        if any(
-            name.startswith(verb)
-            for verb in ("create_", "update_", "remove_", "add_", "upload_")
-        ):
+        if any(name.startswith(verb) for verb in _MUTATION_PREFIXES):
             return _async_byod_blocked(name)
         return _async_empty_list()
 
@@ -530,17 +556,7 @@ class ByodMetaAdsClient:
     def __getattr__(self, name: str) -> Callable[..., Any]:
         if name.startswith("_"):
             raise AttributeError(name)
-        if any(
-            name.startswith(verb)
-            for verb in (
-                "create_",
-                "update_",
-                "delete_",
-                "send_",
-                "upload_",
-                "add_",
-            )
-        ):
+        if any(name.startswith(verb) for verb in _MUTATION_PREFIXES):
             return _async_byod_blocked(name)
         return _async_empty_list()
 
@@ -658,3 +674,10 @@ class ByodSearchConsoleClient:
 
     async def __aexit__(self, *_: object) -> None:
         return None
+
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        if any(name.startswith(verb) for verb in _MUTATION_PREFIXES):
+            return _async_byod_blocked(name)
+        return _async_empty_list()

@@ -119,7 +119,13 @@ def import_csv(
         return existing
 
     adapter = _ADAPTERS[platform]()
-    dst_dir = byod_data_dir() / platform
+    byod_root = byod_data_dir().resolve()
+    byod_root.mkdir(parents=True, exist_ok=True)
+    dst_dir = (byod_data_dir() / platform).resolve()
+
+    # Defense-in-depth: refuse to write outside ~/.mureo/byod/.
+    if byod_root != dst_dir and byod_root not in dst_dir.parents:
+        raise BYODImportError(f"Refusing to write outside BYOD root: {dst_dir}")
 
     if dst_dir.exists():
         shutil.rmtree(dst_dir)
