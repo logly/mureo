@@ -170,6 +170,42 @@ have written to a real account.
 
 ---
 
+## Switching back to the real API
+
+When you want to leave BYOD and use your live OAuth credentials again:
+
+```bash
+mureo byod remove --google-ads     # remove just one platform
+# or
+mureo byod clear                    # remove everything
+```
+
+After that, restart Claude Code. The MCP server detects the missing
+manifest at startup and falls back to `~/.mureo/credentials.json`
+automatically. Verify with:
+
+```bash
+mureo byod status
+```
+
+If you see `real API (credentials present)` for the platform you removed,
+you're back on live data. If you see `not configured`, run
+`mureo auth setup` (or `mureo auth setup --web`) to populate
+`~/.mureo/credentials.json`.
+
+You can also mix freely — e.g. keep meta_ads in BYOD while switching
+google_ads back to real API:
+
+```bash
+mureo byod remove --google-ads
+# meta_ads stays in BYOD, google_ads now uses real API
+```
+
+`mureo byod clear` does **not** touch `~/.mureo/credentials.json`,
+so your real-API OAuth tokens survive a BYOD reset.
+
+---
+
 ## Privacy guarantees
 
 - **Local only.** mureo never uploads imported CSVs anywhere. The

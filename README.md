@@ -40,7 +40,7 @@ mureo byod import --google-ads ~/Downloads/your-report.csv
 
 mureo's MCP server detects the imported CSV automatically and feeds it to the agent. **Read-only by construction** -- every mutation tool returns `{"status": "skipped_in_byod_readonly"}`, so the agent never accidentally writes to your real account.
 
-Works platform-by-platform: import Google Ads as CSV, keep Meta Ads on the live API, mix as you like. See [docs/byod.md](docs/byod.md) for the full walkthrough and CSV export instructions.
+Works platform-by-platform: import Google Ads as CSV, keep Meta Ads on the live API, mix as you like. To switch back to the real API later, run `mureo byod remove --google-ads` (one platform) or `mureo byod clear` (all). See [docs/byod.md](docs/byod.md) for the full walkthrough, CSV export instructions, and how to switch between BYOD and real API.
 
 
 ## Features

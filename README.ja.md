@@ -40,7 +40,7 @@ mureo byod import --google-ads ~/Downloads/your-report.csv
 
 mureoのMCPサーバが import 済CSVを自動検出してエージェントに渡します。**設計上 read-only** で、すべての mutation ツールは `{"status": "skipped_in_byod_readonly"}` を返すため、エージェントが実アカウントに誤って書き込むことはありません。
 
-プラットフォーム単位で混在可能: Google Ads は CSV、Meta Ads はライブAPIといった構成も可能です。詳細は [docs/byod.md](docs/byod.md)（CSVエクスポート手順込み）を参照してください。
+プラットフォーム単位で混在可能: Google Ads は CSV、Meta Ads はライブAPIといった構成も可能です。real API に戻したい場合は `mureo byod remove --google-ads`（platform単位）または `mureo byod clear`（全削除）。詳細は [docs/byod.md](docs/byod.md)（CSVエクスポート手順、BYOD↔real 切替方法込み）を参照してください。
 
 
 ## 特徴
