@@ -102,6 +102,52 @@ def test_adapter_rejects_unknown_format(tmp_path):
         GoogleAdsAdapter().normalize(bad, tmp_path / "out")
 
 
+def test_adapter_detects_japanese_header():
+    """Google Ads 日本語UIのCSVが認識されること。"""
+    from mureo.byod.adapters.google_ads import GoogleAdsAdapter
+
+    assert GoogleAdsAdapter.detect(
+        ["キャンペーン", "日", "表示回数", "クリック数", "費用"]
+    )
+
+
+def test_adapter_normalizes_japanese_csv(tmp_path):
+    """日本語 Google Ads CSV を取り込み、内部 schema に正規化できること。"""
+    from mureo.byod.adapters.google_ads import GoogleAdsAdapter
+
+    src = tmp_path / "campaign-jp.csv"
+    src.write_text(
+        "キャンペーン,日,表示回数,クリック数,費用,コンバージョン,広告グループ\n"
+        "ブランド検索,2026-04-20,4500,360,90000,28.0,ブランド-完全一致\n"
+        "汎用検索,2026-04-21,8200,250,45000,9.0,SaaS関連\n"
+    )
+    result = GoogleAdsAdapter().normalize(src, tmp_path / "out")
+    assert result.rows == 2
+    assert result.campaigns == 2
+    assert result.ad_groups == 2
+
+
+def test_adapter_detects_multiple_languages():
+    """主要15言語のヘッダ列名がすべて検出されること。"""
+    from mureo.byod.adapters.google_ads import GoogleAdsAdapter
+
+    cases = {
+        "en": ["Campaign", "Day", "Impressions", "Clicks", "Cost"],
+        "ja": ["キャンペーン", "日", "表示回数", "クリック数", "費用"],
+        "zh": ["广告系列", "日期", "展示次数", "点击次数", "费用"],
+        "ko": ["캠페인", "일", "노출수", "클릭수", "비용"],
+        "es": ["Campaña", "Día", "Impresiones", "Clics", "Costo"],
+        "pt": ["Campanha", "Dia", "Impressões", "Cliques", "Custo"],
+        "fr": ["Campagne", "Jour", "Impressions", "Clics", "Coût"],
+        "de": ["Kampagne", "Tag", "Impressionen", "Klicks", "Kosten"],
+        "it": ["Campagna", "Giorno", "Impressioni", "Clic", "Costo"],
+        "ru": ["Кампания", "День", "Показы", "Клики", "Стоимость"],
+        "id": ["Kampanye", "Hari", "Tayangan", "Klik", "Biaya"],
+    }
+    for lang, header in cases.items():
+        assert GoogleAdsAdapter.detect(header), f"failed for {lang}: {header}"
+
+
 def test_adapter_handles_slash_dates(tmp_path):
     from mureo.byod.adapters.google_ads import GoogleAdsAdapter
 

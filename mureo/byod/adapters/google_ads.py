@@ -23,6 +23,208 @@ SOURCE_FORMAT = "google_ads_report_editor_v1"
 _PII_NEEDLES = ("email", "phone", "user_id", "ip_address", "customer_email")
 _REQUIRED_COLS = {"campaign", "day", "impressions", "clicks", "cost"}
 
+# Per-canonical Google Ads Report Editor column aliases (lowercase, with
+# whitespace replaced by `_` to match _norm_col output). Covers the 15
+# most common Google Ads UI languages (en, ja, zh, ko, es, pt, fr, de,
+# it, ru, ar, vi, th, id, plus regional variants). Add more as users
+# report missing locales.
+_COLUMN_ALIASES: dict[str, set[str]] = {
+    # Required
+    "campaign": {
+        "campaign",
+        "キャンペーン",
+        "广告系列",
+        "廣告活動",
+        "캠페인",
+        "campaña",
+        "campanha",
+        "campagne",
+        "kampagne",
+        "campagna",
+        "кампания",
+        "حملة",
+        "chiến_dịch",
+        "แคมเปญ",
+        "kampanye",
+    },
+    "day": {
+        "day",
+        "date",
+        "日",
+        "日付",
+        "日期",
+        "일",
+        "날짜",
+        "día",
+        "fecha",
+        "dia",
+        "data",
+        "jour",
+        "tag",
+        "datum",
+        "giorno",
+        "день",
+        "اليوم",
+        "تاريخ",
+        "ngày",
+        "วัน",
+        "hari",
+        "tanggal",
+    },
+    "impressions": {
+        "impressions",
+        "impr.",
+        "impr",
+        "表示回数",
+        "インプレッション数",
+        "展示次数",
+        "曝光次數",
+        "노출수",
+        "노출_수",
+        "impresiones",
+        "impressões",
+        "impressionen",
+        "impressioni",
+        "показы",
+        "مرات_الظهور",
+        "số_lần_hiển_thị",
+        "การแสดงผล",
+        "tayangan",
+    },
+    "clicks": {
+        "clicks",
+        "クリック数",
+        "点击次数",
+        "點擊次數",
+        "클릭수",
+        "클릭_수",
+        "clics",
+        "cliques",
+        "klicks",
+        "clic",
+        "клики",
+        "النقرات",
+        "số_lần_nhấp",
+        "คลิก",
+        "klik",
+    },
+    "cost": {
+        "cost",
+        "spend",
+        "費用",
+        "费用",
+        "비용",
+        "costo",
+        "coste",
+        "custo",
+        "coût",
+        "kosten",
+        "ausgaben",
+        "стоимость",
+        "затраты",
+        "التكلفة",
+        "chi_phí",
+        "ค่าใช้จ่าย",
+        "biaya",
+    },
+    # Optional
+    "ad_group": {
+        "ad_group",
+        "広告グループ",
+        "广告组",
+        "廣告群組",
+        "광고그룹",
+        "광고_그룹",
+        "grupo_de_anuncios",
+        "anzeigengruppe",
+        "groupe_d'annonces",
+        "gruppo_di_annunci",
+        "группа_объявлений",
+        "مجموعة_الإعلانات",
+        "nhóm_quảng_cáo",
+        "กลุ่มโฆษณา",
+        "grup_iklan",
+    },
+    "conversions": {
+        "conversions",
+        "コンバージョン",
+        "コンバージョン数",
+        "转化",
+        "转化次数",
+        "轉換",
+        "전환수",
+        "전환_수",
+        "conversiones",
+        "conversões",
+        "konversionen",
+        "conversioni",
+        "конверсии",
+        "تحويلات",
+        "chuyển_đổi",
+        "การแปลง",
+        "konversi",
+    },
+    "campaign_state": {
+        "campaign_state",
+        "campaign_status",
+        "キャンペーンの状態",
+        "キャンペーンのステータス",
+        "广告系列状态",
+        "캠페인_상태",
+        "estado_de_la_campaña",
+        "kampagnenstatus",
+        "état_de_la_campagne",
+        "stato_della_campagna",
+        "статус_кампании",
+        "trạng_thái_chiến_dịch",
+    },
+    "advertising_channel_type": {
+        "advertising_channel_type",
+        "channel_type",
+        "広告タイプ",
+        "广告渠道类型",
+        "광고_채널_유형",
+        "tipo_de_canal",
+        "kanaltyp",
+        "type_de_canal_publicitaire",
+    },
+    "bid_strategy_type": {
+        "bid_strategy_type",
+        "bidding_strategy",
+        "入札戦略",
+        "出价策略",
+        "입찰_전략",
+        "estrategia_de_oferta",
+        "gebotsstrategie",
+        "stratégie_d'enchères",
+    },
+    "budget": {
+        "budget",
+        "予算",
+        "1日の予算",
+        "预算",
+        "예산",
+        "presupuesto",
+        "orçamento",
+        "tagesbudget",
+        "budget_quotidien",
+    },
+    "ad_group_state": {
+        "ad_group_state",
+        "ad_group_status",
+        "広告グループの状態",
+        "广告组状态",
+        "광고그룹_상태",
+    },
+}
+
+# Reverse map: alias -> canonical key.
+_ALIAS_TO_CANONICAL: dict[str, str] = {
+    alias: canonical
+    for canonical, aliases in _COLUMN_ALIASES.items()
+    for alias in aliases
+}
+
 
 @dataclass
 class ImportResult:
@@ -68,9 +270,19 @@ def _parse_day(v: str) -> str:
     return s
 
 
+def _row_canonicals(row: list[str]) -> set[str]:
+    """Return the set of canonical column keys present in a header row."""
+    return {
+        canonical
+        for cell in row
+        if (canonical := _ALIAS_TO_CANONICAL.get(_norm_col(cell))) is not None
+    }
+
+
 def _find_header_row(src: Path, max_lines: int = 5) -> int | None:
     """Scan up to ``max_lines`` lines and return the 0-indexed row whose
-    cells satisfy ``_REQUIRED_COLS``. Used to skip Report Editor preamble.
+    cells satisfy ``_REQUIRED_COLS`` (after alias resolution). Used to
+    skip Report Editor preamble across multiple UI languages.
     """
     with src.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.reader(f)
@@ -79,8 +291,7 @@ def _find_header_row(src: Path, max_lines: int = 5) -> int | None:
                 break
             if not row:
                 continue
-            norm = {_norm_col(c) for c in row}
-            if _REQUIRED_COLS.issubset(norm):
+            if _REQUIRED_COLS.issubset(_row_canonicals(row)):
                 return i
     return None
 
@@ -95,8 +306,7 @@ class GoogleAdsAdapter:
 
     @classmethod
     def detect(cls, header: list[str]) -> bool:
-        norm = {_norm_col(h) for h in header}
-        return _REQUIRED_COLS.issubset(norm)
+        return _REQUIRED_COLS.issubset(_row_canonicals(header))
 
     def normalize(self, src: Path, dst_dir: Path) -> ImportResult:
         dst_dir.mkdir(parents=True, exist_ok=True)
@@ -129,7 +339,12 @@ class GoogleAdsAdapter:
                     f"export and try again."
                 )
 
-        col_map = {_norm_col(c): c for c in header}
+        # Build canonical-key -> original-header-cell map via alias resolution.
+        col_map: dict[str, str] = {}
+        for h in header:
+            canonical = _ALIAS_TO_CANONICAL.get(_norm_col(h))
+            if canonical is not None:
+                col_map.setdefault(canonical, h)
 
         def col(row: dict[str, Any], key: str, default: str = "") -> str:
             actual = col_map.get(key)
