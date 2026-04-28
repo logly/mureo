@@ -370,12 +370,10 @@ class ByodGoogleAdsClient:
         # against the campaign/ad_group name columns the Apps Script
         # writes (it does not export numeric IDs).
         camp_name_by_id = {
-            r.get("campaign_id"): r.get("name", "")
-            for r in self._campaigns()
+            r.get("campaign_id"): r.get("name", "") for r in self._campaigns()
         }
         ag_name_by_id = {
-            r.get("ad_group_id"): r.get("name", "")
-            for r in self._ad_groups()
+            r.get("ad_group_id"): r.get("name", "") for r in self._ad_groups()
         }
         out: list[dict[str, Any]] = []
         for r in rows:
@@ -383,9 +381,7 @@ class ByodGoogleAdsClient:
                 str(campaign_id)
             ):
                 continue
-            if ad_group_id and r.get("ad_group") != ag_name_by_id.get(
-                str(ad_group_id)
-            ):
+            if ad_group_id and r.get("ad_group") != ag_name_by_id.get(str(ad_group_id)):
                 continue
             impressions = _to_int(r.get("impressions"))
             clicks = _to_int(r.get("clicks"))
@@ -436,8 +432,7 @@ class ByodGoogleAdsClient:
         if not rows:
             return []
         camp_name_by_id = {
-            r.get("campaign_id"): r.get("name", "")
-            for r in self._campaigns()
+            r.get("campaign_id"): r.get("name", "") for r in self._campaigns()
         }
         target_name = camp_name_by_id.get(str(campaign_id))
         if target_name is None:
@@ -451,12 +446,8 @@ class ByodGoogleAdsClient:
                     "campaign_id": campaign_id,
                     "campaign_name": target_name,
                     "competitor_domain": r.get("competitor_domain", ""),
-                    "impression_share": _to_float(
-                        r.get("impression_share")
-                    ),
-                    "outranking_share": _to_float(
-                        r.get("outranking_share")
-                    ),
+                    "impression_share": _to_float(r.get("impression_share")),
+                    "outranking_share": _to_float(r.get("outranking_share")),
                 }
             )
         return out
@@ -475,9 +466,7 @@ class ByodGoogleAdsClient:
         ``analyze_auction_insights`` shape closely enough that the
         BYOD path can fill in for `/daily-check`.
         """
-        rows = await self.get_auction_insights(
-            campaign_id=campaign_id, period=period
-        )
+        rows = await self.get_auction_insights(campaign_id=campaign_id, period=period)
         if not rows:
             return {
                 "campaign_id": campaign_id,
@@ -487,9 +476,7 @@ class ByodGoogleAdsClient:
                     "the imported bundle."
                 ),
             }
-        rows_sorted = sorted(
-            rows, key=lambda r: r["impression_share"], reverse=True
-        )
+        rows_sorted = sorted(rows, key=lambda r: r["impression_share"], reverse=True)
         return {
             "campaign_id": campaign_id,
             "campaign_name": rows[0]["campaign_name"],
@@ -711,4 +698,3 @@ class ByodMetaAdsClient:
         if any(name.startswith(verb) for verb in _MUTATION_PREFIXES):
             return _async_byod_blocked(name)
         return _async_empty_list()
-

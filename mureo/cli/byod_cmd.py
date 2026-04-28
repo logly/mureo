@@ -56,12 +56,9 @@ def _print_status_block() -> None:
             info = active[p]
             start = info.get("date_range", {}).get("start") or ""
             end = info.get("date_range", {}).get("end") or ""
-            range_str = (
-                f"{start}..{end}" if (start or end) else "no per-day breakdown"
-            )
+            range_str = f"{start}..{end}" if (start or end) else "no per-day breakdown"
             typer.echo(
-                f"  {p:15s} BYOD ({info.get('rows', '?')} rows, "
-                f"{range_str})"
+                f"  {p:15s} BYOD ({info.get('rows', '?')} rows, " f"{range_str})"
             )
         else:
             if creds_ok:
@@ -93,8 +90,7 @@ def import_(
     replace: bool = typer.Option(
         False,
         "--replace",
-        help="Overwrite existing BYOD data for any platform present "
-        "in the bundle.",
+        help="Overwrite existing BYOD data for any platform present " "in the bundle.",
     ),
 ) -> None:
     """Import a Sheet bundle XLSX into ~/.mureo/byod/.

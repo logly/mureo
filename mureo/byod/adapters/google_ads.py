@@ -117,9 +117,7 @@ def _iter_data_rows(sheet: object) -> Any:
         if first:
             first = False
             continue
-        if row is None or all(
-            c is None or str(c).strip() == "" for c in row
-        ):
+        if row is None or all(c is None or str(c).strip() == "" for c in row):
             continue
         yield row
 
@@ -182,14 +180,16 @@ class GoogleAdsAdapter:
             # Output column name is cost_jpy (not cost) so the existing
             # ByodGoogleAdsClient — which reads r.get("cost_jpy") in
             # mureo/byod/clients.py — sees real spend instead of 0.
-            metrics_rows.append({
-                "date": day,
-                "campaign_id": cid,
-                "impressions": _cell(raw, camp_idx, "impressions"),
-                "clicks": _cell(raw, camp_idx, "clicks"),
-                "cost_jpy": _cell(raw, camp_idx, "cost"),
-                "conversions": _cell(raw, camp_idx, "conversions"),
-            })
+            metrics_rows.append(
+                {
+                    "date": day,
+                    "campaign_id": cid,
+                    "impressions": _cell(raw, camp_idx, "impressions"),
+                    "clicks": _cell(raw, camp_idx, "clicks"),
+                    "cost_jpy": _cell(raw, camp_idx, "cost"),
+                    "conversions": _cell(raw, camp_idx, "conversions"),
+                }
+            )
             all_dates.append(day)
 
         if not metrics_rows:
@@ -214,15 +214,17 @@ class GoogleAdsAdapter:
             )
             writer.writeheader()
             for name, cid in campaign_ids.items():
-                writer.writerow({
-                    "campaign_id": cid,
-                    "name": name,
-                    # The Apps Script tab does not export state / budget.
-                    # Empty strings keep the CSV column-stable; the
-                    # client's _to_float / _to_int helpers tolerate them.
-                    "status": "",
-                    "daily_budget_jpy": "",
-                })
+                writer.writerow(
+                    {
+                        "campaign_id": cid,
+                        "name": name,
+                        # The Apps Script tab does not export state / budget.
+                        # Empty strings keep the CSV column-stable; the
+                        # client's _to_float / _to_int helpers tolerate them.
+                        "status": "",
+                        "daily_budget_jpy": "",
+                    }
+                )
         files_written.append("campaigns.csv")
 
         # metrics_daily.csv — day × campaign metrics. Column name
@@ -263,14 +265,10 @@ class GoogleAdsAdapter:
                     continue
                 key = (camp_name, ag_name)
                 if key not in ad_group_ids:
-                    ad_group_ids[key] = _synthetic_id(
-                        "ag", f"{camp_name}::{ag_name}"
-                    )
+                    ad_group_ids[key] = _synthetic_id("ag", f"{camp_name}::{ag_name}")
                     # Ensure parent campaign exists in the campaign map
                     # even if it had no row in the campaigns tab (rare).
-                    campaign_ids.setdefault(
-                        camp_name, _synthetic_id("camp", camp_name)
-                    )
+                    campaign_ids.setdefault(camp_name, _synthetic_id("camp", camp_name))
 
             ad_groups_path = dst_dir / "ad_groups.csv"
             with ad_groups_path.open("w", encoding="utf-8", newline="") as f:
@@ -280,11 +278,13 @@ class GoogleAdsAdapter:
                 )
                 writer.writeheader()
                 for (camp_name, ag_name), agid in ad_group_ids.items():
-                    writer.writerow({
-                        "ad_group_id": agid,
-                        "campaign_id": campaign_ids[camp_name],
-                        "name": ag_name,
-                    })
+                    writer.writerow(
+                        {
+                            "ad_group_id": agid,
+                            "campaign_id": campaign_ids[camp_name],
+                            "name": ag_name,
+                        }
+                    )
             files_written.append("ad_groups.csv")
             ad_groups_count = len(ad_group_ids)
 

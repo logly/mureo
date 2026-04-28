@@ -216,24 +216,18 @@ def import_bundle(
                         f"Refusing to write outside BYOD root: {dst_dir}"
                     )
                 if dst_dir.exists():
-                    backup = dst_dir.with_suffix(
-                        f".backup-{_short_token()}"
-                    )
+                    backup = dst_dir.with_suffix(f".backup-{_short_token()}")
                     dst_dir.rename(backup)
                     backups[platform] = backup
                 new_dirs.append(dst_dir)
 
                 try:
-                    result = adapter_cls().normalize_from_workbook(
-                        workbook, dst_dir
-                    )
+                    result = adapter_cls().normalize_from_workbook(workbook, dst_dir)
                 except UnsupportedFormatError as exc:
                     # Wrap adapter validation errors so callers only need
                     # to handle BundleImportError. Rollback below cleans
                     # any partial CSVs from this and earlier adapters.
-                    raise BundleImportError(
-                        f"{platform}: {exc}"
-                    ) from exc
+                    raise BundleImportError(f"{platform}: {exc}") from exc
                 entry = {
                     "files": list(result.files_written),
                     "date_range": {
