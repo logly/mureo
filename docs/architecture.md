@@ -192,6 +192,18 @@ Every tool and CLI command returns plain Python dicts (serializable to JSON). No
 
 Credentials are loaded from `~/.mureo/credentials.json` or environment variables. They are never sent anywhere except the official advertising platform APIs.
 
+### BYOD Mode (Bring Your Own Data)
+
+When `~/.mureo/byod/manifest.json` registers a platform, the MCP server's per-tool `_client_factory.py` dispatches the BYOD CSV-backed client (`mureo/byod/clients.py`) instead of the live API client — **per platform, decided at every call**. Real credentials are never read for that platform; mutations are blocked at the client level (every method whose name starts with `create_`, `update_`, `delete_`, `pause_`, `resume_`, etc. returns `{"status": "skipped_in_byod_readonly"}`). The activation signal is purely the manifest's existence — there is no `--byod` flag, and `mureo setup claude-code` does not need to be re-run when a user starts or stops importing CSVs. See `docs/byod.md` for the user-facing walkthrough.
+
+```
+Claude Code ─MCP──▶ mureo MCP server
+                       │
+                       ▼ _client_factory.py per-platform routing
+              byod_has(p)?  yes──▶ Byod*Client (CSV) ──▶ ~/.mureo/byod/<platform>/*.csv
+                            no ──▶ create_*_client (real API) ──▶ Google Ads / Meta / SC API
+```
+
 ### Defense-in-Depth for AI Agents
 
 mureo assumes the caller is an AI agent susceptible to prompt injection, not a trusted human. Three layered controls address that threat model:
