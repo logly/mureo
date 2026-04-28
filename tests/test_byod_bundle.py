@@ -72,6 +72,68 @@ def _google_ads_tabs() -> dict[str, list[list]]:
     }
 
 
+def _meta_ads_tabs() -> dict[str, list[list]]:
+    """Synthetic Meta Ads Manager Export Excel with Day breakdown.
+
+    Mirrors a typical user export configuration:
+    Reports → Customize → Breakdown: By Day, Level: Ad → Export → Excel.
+    """
+    return {
+        "Sheet1": [
+            [
+                "Day",
+                "Campaign name",
+                "Ad set name",
+                "Ad name",
+                "Impressions",
+                "Clicks (all)",
+                "Amount spent (JPY)",
+                "Results",
+            ],
+            [
+                "2026-04-01",
+                "Brand Awareness",
+                "Tokyo 25-34",
+                "Video A",
+                5000,
+                120,
+                "1,500",
+                3,
+            ],
+            [
+                "2026-04-01",
+                "Brand Awareness",
+                "Tokyo 25-34",
+                "Video B",
+                3000,
+                80,
+                "1,200",
+                2,
+            ],
+            [
+                "2026-04-02",
+                "Brand Awareness",
+                "Tokyo 25-34",
+                "Video A",
+                5500,
+                130,
+                "1,650",
+                4,
+            ],
+            [
+                "2026-04-01",
+                "Conversion",
+                "Lookalike 1%",
+                "Carousel A",
+                2000,
+                40,
+                "800",
+                5,
+            ],
+        ],
+    }
+
+
 # ---------------------------------------------------------------------------
 # tmp_path BYOD root
 # ---------------------------------------------------------------------------
@@ -107,6 +169,247 @@ def test_import_bundle_writes_google_ads(tmp_path, byod_root):
     assert results["google_ads"]["date_range"]["start"] == "2026-04-01"
 
 
+def test_import_bundle_writes_meta_ads(tmp_path, byod_root):
+    """Happy path for the Meta Ads adapter: a single-sheet Ads
+    Manager export with Day breakdown round-trips into the 4 CSVs the
+    ByodMetaAdsClient consumes."""
+    from mureo.byod.bundle import import_bundle
+
+    src = _make_workbook(tmp_path, tabs=_meta_ads_tabs())
+
+    results = import_bundle(src)
+    assert set(results.keys()) == {"meta_ads"}
+
+    meta_root = byod_root / "meta_ads"
+    assert (meta_root / "campaigns.csv").exists()
+    assert (meta_root / "ad_sets.csv").exists()
+    assert (meta_root / "ads.csv").exists()
+    assert (meta_root / "metrics_daily.csv").exists()
+
+    # 3 unique (day, campaign) pairs in the fixture:
+    # (2026-04-01, Brand) + (2026-04-02, Brand) + (2026-04-01, Conversion)
+    assert results["meta_ads"]["rows"] == 3
+    assert results["meta_ads"]["campaigns"] == 2
+    assert results["meta_ads"]["date_range"]["start"] == "2026-04-01"
+    assert results["meta_ads"]["date_range"]["end"] == "2026-04-02"
+    assert results["meta_ads"]["source_format"] == "mureo_meta_ads_export_v1"
+
+    # Ad set / Ad rows are present (Day breakdown export with Level: Ad).
+    ad_sets_text = (meta_root / "ad_sets.csv").read_text(encoding="utf-8")
+    assert "Tokyo 25-34" in ad_sets_text
+    assert "Lookalike 1%" in ad_sets_text
+
+    ads_text = (meta_root / "ads.csv").read_text(encoding="utf-8")
+    assert "Video A" in ads_text
+    assert "Carousel A" in ads_text
+
+    # Metrics are summed when multiple ad-level rows share a (day, campaign).
+    # (2026-04-01, Brand Awareness): 5000 + 3000 = 8000 impressions.
+    metrics_text = (meta_root / "metrics_daily.csv").read_text(encoding="utf-8")
+    assert "8000" in metrics_text
+    # cost was given as "1,500" + "1,200" = 2700.00
+    assert "2700.00" in metrics_text
+
+
+def test_import_bundle_writes_both_google_and_meta(tmp_path, byod_root):
+    """A workbook carrying both Google Ads tabs and a Meta Ads
+    Manager export sheet must dispatch both adapters and produce two
+    manifest entries — guarding the disjoint-detection contract."""
+    from mureo.byod.bundle import import_bundle
+
+    combined = {**_google_ads_tabs(), **_meta_ads_tabs()}
+    src = _make_workbook(tmp_path, tabs=combined)
+
+    results = import_bundle(src)
+    assert set(results.keys()) == {"google_ads", "meta_ads"}
+    assert (byod_root / "google_ads" / "campaigns.csv").exists()
+    assert (byod_root / "meta_ads" / "campaigns.csv").exists()
+
+
+@pytest.mark.parametrize(
+    "date_alias,raw_value,expected",
+    [
+        ("Day", "2026-04-01", "2026-04-01"),
+        ("Reporting starts", "2026-04-01", "2026-04-01"),
+        ("Date", "2026/04/01", "2026-04-01"),
+        # US-locale Ads Manager export
+        ("Day", "4/1/2026", "2026-04-01"),
+    ],
+)
+def test_meta_adapter_recognizes_date_aliases_and_locales(
+    tmp_path, byod_root, date_alias, raw_value, expected
+):
+    """Each of Day / Reporting starts / Date headers + ISO + US
+    locale dates round-trip into the YYYY-MM-DD output column."""
+    from mureo.byod.bundle import import_bundle
+
+    src = _make_workbook(
+        tmp_path,
+        tabs={
+            "Sheet1": [
+                [
+                    date_alias,
+                    "Campaign name",
+                    "Impressions",
+                    "Clicks (all)",
+                    "Amount spent (JPY)",
+                ],
+                [raw_value, "Solo", 100, 5, "200"],
+            ],
+        },
+    )
+    import_bundle(src)
+    metrics = (byod_root / "meta_ads" / "metrics_daily.csv").read_text(encoding="utf-8")
+    assert expected in metrics
+
+
+def test_meta_adapter_rejects_non_jpy_spend(tmp_path, byod_root):
+    """A non-JPY currency in the Spend column must abort the import
+    rather than silently coerce dollars/euros into the JPY column."""
+    from mureo.byod.bundle import BundleImportError, import_bundle
+
+    src = _make_workbook(
+        tmp_path,
+        tabs={
+            "Sheet1": [
+                [
+                    "Day",
+                    "Campaign name",
+                    "Impressions",
+                    "Amount spent",
+                ],
+                ["2026-04-01", "Solo", 100, "$12.34"],
+            ],
+        },
+    )
+    with pytest.raises(BundleImportError, match="non-JPY|JPY"):
+        import_bundle(src)
+
+
+def test_meta_adapter_csv_injection_sanitized(tmp_path, byod_root):
+    """A campaign / ad-set / ad name beginning with a CSV-injection
+    formula trigger (``=``, ``+``, ``-``, ``@``) must be defanged
+    with a leading apostrophe so Excel/Sheets do not execute the
+    formula on re-open.
+
+    Note on the test fixture: openpyxl interprets a cell whose value
+    starts with ``=`` as a formula and would write it as such. Since
+    Meta's actual export emits literal strings (not formulas), we
+    simulate that by setting the cell ``data_type = 's'`` so the
+    workbook round-trip preserves the leading ``=``.
+    """
+    from openpyxl import Workbook
+
+    from mureo.byod.bundle import import_bundle
+
+    wb = Workbook()
+    default = wb.active
+    wb.remove(default)
+    sheet = wb.create_sheet("Sheet1")
+    sheet.append(
+        [
+            "Day",
+            "Campaign name",
+            "Ad set name",
+            "Ad name",
+            "Impressions",
+            "Amount spent (JPY)",
+        ]
+    )
+    # Append with placeholder, then overwrite the suspicious cells as
+    # explicit strings to bypass openpyxl's formula auto-detection.
+    sheet.append(["2026-04-01", "PLACEHOLDER", "+evil_set", "@danger_ad", 100, "200"])
+    formula_like = "=cmd|' /C calc'!A0"
+    cell = sheet.cell(row=2, column=2)
+    cell.value = formula_like
+    cell.data_type = "s"
+    src = tmp_path / "test.xlsx"
+    wb.save(src)
+
+    import_bundle(src)
+    campaigns = (byod_root / "meta_ads" / "campaigns.csv").read_text(encoding="utf-8")
+    assert "'=cmd" in campaigns  # leading apostrophe defangs formula
+
+    ad_sets = (byod_root / "meta_ads" / "ad_sets.csv").read_text(encoding="utf-8")
+    assert "'+evil_set" in ad_sets
+
+    ads = (byod_root / "meta_ads" / "ads.csv").read_text(encoding="utf-8")
+    assert "'@danger_ad" in ads
+
+
+def test_meta_adapter_ad_set_name_reused_across_campaigns(tmp_path, byod_root):
+    """Two campaigns reusing the same ad-set name (e.g. "Default",
+    "Lookalike 1%") must produce distinct `ad_set_id` rows in
+    ad_sets.csv, and ads must be linked to the correct ad_set_id of
+    the same campaign."""
+    from mureo.byod.bundle import import_bundle
+
+    src = _make_workbook(
+        tmp_path,
+        tabs={
+            "Sheet1": [
+                [
+                    "Day",
+                    "Campaign name",
+                    "Ad set name",
+                    "Ad name",
+                    "Impressions",
+                    "Amount spent (JPY)",
+                ],
+                ["2026-04-01", "Camp A", "Default", "Ad A", 100, "200"],
+                ["2026-04-01", "Camp B", "Default", "Ad B", 50, "100"],
+            ],
+        },
+    )
+    import_bundle(src)
+    ad_sets = (byod_root / "meta_ads" / "ad_sets.csv").read_text(encoding="utf-8")
+    # Two distinct ad_set_id rows even though both ad-sets are named "Default".
+    rows = [r for r in ad_sets.splitlines() if "Default" in r]
+    assert len(rows) == 2
+    ad_set_ids = {r.split(",")[0] for r in rows}
+    assert len(ad_set_ids) == 2
+
+    ads = (byod_root / "meta_ads" / "ads.csv").read_text(encoding="utf-8")
+    # Ad A and Ad B should each reference exactly one ad_set_id, and
+    # the two should be different.
+    ad_a_line = next(r for r in ads.splitlines() if "Ad A" in r)
+    ad_b_line = next(r for r in ads.splitlines() if "Ad B" in r)
+    ad_a_set_id = ad_a_line.split(",")[1]
+    ad_b_set_id = ad_b_line.split(",")[1]
+    assert ad_a_set_id != ad_b_set_id
+
+
+def test_import_bundle_meta_ads_round_trip_through_client(tmp_path, byod_root):
+    """The Meta CSVs the adapter writes must be readable by the
+    existing ByodMetaAdsClient — list_campaigns + get_performance_report
+    return the synthesized data, with cost_jpy reflecting summed
+    spend (regression guard for the cost vs cost_jpy bug PR #50 fixed
+    on the Google Ads side)."""
+    import asyncio
+
+    from mureo.byod.bundle import import_bundle
+    from mureo.byod.clients import ByodMetaAdsClient
+
+    src = _make_workbook(tmp_path, tabs=_meta_ads_tabs())
+    import_bundle(src)
+
+    client = ByodMetaAdsClient(data_dir=byod_root / "meta_ads")
+    campaigns = asyncio.run(client.list_campaigns())
+    assert {c["name"] for c in campaigns} == {"Brand Awareness", "Conversion"}
+
+    # Force the period range to include the 2026-04-01..2026-04-02 fixture.
+    # The client's default LAST_30_DAYS won't intersect a fixture far in
+    # the past, so we patch the fixture dates by checking that any rows
+    # come back when we widen the period helper indirectly. Simplest:
+    # confirm the metrics CSV was read and aggregated by the client by
+    # poking the underlying _metrics().
+    metric_rows = client._metrics()
+    assert len(metric_rows) == 3
+    # Sum of cost_jpy across all rows: 2700 + 1650 + 800 = 5150
+    total_cost = sum(float(r["cost_jpy"]) for r in metric_rows)
+    assert total_cost == 5150.0
+
+
 # ---------------------------------------------------------------------------
 # Error paths
 # ---------------------------------------------------------------------------
@@ -124,9 +427,7 @@ def test_import_bundle_no_recognized_tabs(tmp_path, byod_root):
         import_bundle(src)
 
 
-def test_import_bundle_missing_required_column_rolls_back(
-    tmp_path, byod_root
-):
+def test_import_bundle_missing_required_column_rolls_back(tmp_path, byod_root):
     """Adapter rejects a workbook whose ``campaigns`` tab lacks
     required columns; the bundle importer must roll back any partial
     on-disk artifact."""
@@ -198,9 +499,9 @@ def test_import_bundle_replace_overwrites(tmp_path, byod_root):
     src2 = _make_workbook(src2_dir, tabs=new_tabs)
 
     import_bundle(src2, replace=True)
-    csv_text = (
-        byod_root / "google_ads" / "metrics_daily.csv"
-    ).read_text(encoding="utf-8")
+    csv_text = (byod_root / "google_ads" / "metrics_daily.csv").read_text(
+        encoding="utf-8"
+    )
     assert "2026-04-01" not in csv_text
     assert "2026-05-10" in csv_text
 
@@ -216,9 +517,7 @@ def test_import_bundle_manifest_entry_shape(tmp_path, byod_root):
     src = _make_workbook(tmp_path, tabs=_google_ads_tabs())
     import_bundle(src)
 
-    manifest = json.loads(
-        (byod_root / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((byod_root / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["schema_version"] == 1
     assert set(manifest["platforms"].keys()) == {"google_ads"}
     entry = manifest["platforms"]["google_ads"]

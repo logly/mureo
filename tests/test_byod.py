@@ -54,25 +54,46 @@ def _google_ads_tabs() -> dict[str, list[list]]:
             ["2026-04-01", "Generic Search", 2000, 80, 60.0, 5.0],
         ],
         "ad_groups": [
-            ["day", "campaign", "ad_group", "impressions", "clicks", "cost",
-             "conversions"],
+            [
+                "day",
+                "campaign",
+                "ad_group",
+                "impressions",
+                "clicks",
+                "cost",
+                "conversions",
+            ],
             ["2026-04-01", "Brand Search", "Exact match", 800, 40, 20.0, 2.0],
         ],
         "keywords": [
-            ["keyword", "match_type", "quality_score", "campaign", "ad_group",
-             "impressions", "clicks", "cost", "conversions"],
-            ["mureo", "EXACT", 8, "Brand Search", "Exact match",
-             800, 40, 20.0, 2.0],
+            [
+                "keyword",
+                "match_type",
+                "quality_score",
+                "campaign",
+                "ad_group",
+                "impressions",
+                "clicks",
+                "cost",
+                "conversions",
+            ],
+            ["mureo", "EXACT", 8, "Brand Search", "Exact match", 800, 40, 20.0, 2.0],
         ],
         "search_terms": [
-            ["search_term", "campaign", "ad_group",
-             "impressions", "clicks", "cost", "conversions"],
+            [
+                "search_term",
+                "campaign",
+                "ad_group",
+                "impressions",
+                "clicks",
+                "cost",
+                "conversions",
+            ],
             ["mureo byod", "Brand Search", "Exact match", 100, 12, 5.5, 1.0],
             ["best ads tool", "Generic Search", "SaaS", 200, 5, 3.0, 0.0],
         ],
         "auction_insights": [
-            ["campaign", "competitor_domain",
-             "impression_share", "outranking_share"],
+            ["campaign", "competitor_domain", "impression_share", "outranking_share"],
             ["Brand Search", "competitor-a.com", 0.45, 0.30],
             ["Brand Search", "competitor-b.com", 0.20, 0.10],
         ],
@@ -281,14 +302,12 @@ def test_byod_google_ads_client_round_trips_cost(google_ads_xlsx, fake_home):
         # CSV directly to assert the column was written correctly.
         import csv as _csv
 
-        metrics_csv = (
-            byod_data_dir() / "google_ads" / "metrics_daily.csv"
-        )
+        metrics_csv = byod_data_dir() / "google_ads" / "metrics_daily.csv"
         with metrics_csv.open(encoding="utf-8") as f:
             reader = _csv.DictReader(f)
-            assert "cost_jpy" in reader.fieldnames, (
-                f"adapter wrote wrong column name; got {reader.fieldnames}"
-            )
+            assert (
+                "cost_jpy" in reader.fieldnames
+            ), f"adapter wrote wrong column name; got {reader.fieldnames}"
             costs = [float(row["cost_jpy"] or 0) for row in reader]
         assert sum(costs) > 0, "metrics_daily.csv lost cost values"
 
@@ -350,18 +369,14 @@ def test_byod_client_auction_insights(google_ads_xlsx, fake_home):
     assert domains == ["competitor-a.com", "competitor-b.com"]
 
     # Aggregator returns the top competitor first.
-    summary = asyncio.run(
-        client.analyze_auction_insights(campaign_id=cid)
-    )
+    summary = asyncio.run(client.analyze_auction_insights(campaign_id=cid))
     assert summary["competitor_count"] == 2
     assert summary["competitors"][0]["competitor_domain"] == "competitor-a.com"
 
     # Empty-bundle path: a campaign_id that does not exist in the
     # synthetic ID map yields the "no data" sentinel rather than
     # raising or returning misleading aggregates.
-    empty = asyncio.run(
-        client.analyze_auction_insights(campaign_id="camp_unknown")
-    )
+    empty = asyncio.run(client.analyze_auction_insights(campaign_id="camp_unknown"))
     assert empty["competitors"] == []
     assert "BYOD" in empty["note"]
 
@@ -385,9 +400,7 @@ def test_byod_client_blocks_mutations(google_ads_xlsx, fake_home):
     assert result.get("status") == "skipped_in_byod_readonly"
 
 
-def test_byod_clients_make_no_network_calls(
-    google_ads_xlsx, fake_home, monkeypatch
-):
+def test_byod_clients_make_no_network_calls(google_ads_xlsx, fake_home, monkeypatch):
     """Patches HTTP libraries and asserts zero outbound calls during a
     representative BYOD client operation."""
     import asyncio
@@ -449,9 +462,7 @@ def test_factory_falls_back_to_real_when_not_imported(fake_home, monkeypatch):
         "mureo.auth.create_google_ads_client", _fake_real, raising=False
     )
 
-    result = _client_factory.get_google_ads_client(
-        creds=None, customer_id="byod"
-    )
+    result = _client_factory.get_google_ads_client(creds=None, customer_id="byod")
     if result == "REAL_CLIENT_SENTINEL":
         assert real_called.get("yes") is True
     else:
@@ -533,9 +544,7 @@ def test_cli_byod_remove_requires_exactly_one_flag(fake_home):
     runner = CliRunner()
     res = runner.invoke(app, ["byod", "remove"])
     assert res.exit_code != 0
-    res = runner.invoke(
-        app, ["byod", "remove", "--google-ads", "--meta-ads"]
-    )
+    res = runner.invoke(app, ["byod", "remove", "--google-ads", "--meta-ads"])
     assert res.exit_code != 0
 
 
@@ -544,9 +553,7 @@ def test_cli_byod_remove_requires_exactly_one_flag(fake_home):
 # ---------------------------------------------------------------------------
 
 
-def test_bundle_import_makes_no_network_calls(
-    google_ads_xlsx, fake_home, monkeypatch
-):
+def test_bundle_import_makes_no_network_calls(google_ads_xlsx, fake_home, monkeypatch):
     import urllib.request
 
     import httpx

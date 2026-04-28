@@ -35,6 +35,10 @@ from mureo.byod.adapters.google_ads import (
     GoogleAdsAdapter,
     UnsupportedFormatError,
 )
+from mureo.byod.adapters.meta_ads import (
+    MetaAdsAdapter,
+    UnsupportedFormatError as _MetaUnsupportedFormatError,
+)
 from mureo.byod.runtime import (
     SCHEMA_VERSION,
     byod_data_dir,
@@ -59,6 +63,7 @@ class BundleImportError(RuntimeError):
 # is present.
 _BUNDLE_ADAPTERS: list[tuple[str, type[Any]]] = [
     ("google_ads", GoogleAdsAdapter),
+    ("meta_ads", MetaAdsAdapter),
 ]
 
 
@@ -173,10 +178,10 @@ def import_bundle(
             raise BundleImportError(
                 f"{src.name}: no recognized tabs found. "
                 f"Workbook has: {tabs}. "
-                f"Expected a 'campaigns' tab (plus optionally "
-                f"ad_groups / search_terms / keywords / "
-                f"auction_insights) produced by the mureo "
-                f"Google Ads Script."
+                f"Expected either a 'campaigns' tab (from the mureo "
+                f"Google Ads Script) or a Meta Ads Manager export "
+                f"with columns 'Campaign name' + 'Impressions' + a "
+                f"date column."
             )
 
         manifest = read_manifest() or _empty_manifest()
@@ -223,7 +228,7 @@ def import_bundle(
 
                 try:
                     result = adapter_cls().normalize_from_workbook(workbook, dst_dir)
-                except UnsupportedFormatError as exc:
+                except (UnsupportedFormatError, _MetaUnsupportedFormatError) as exc:
                     # Wrap adapter validation errors so callers only need
                     # to handle BundleImportError. Rollback below cleans
                     # any partial CSVs from this and earlier adapters.
