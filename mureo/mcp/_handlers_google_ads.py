@@ -16,6 +16,8 @@ from mureo.auth import (
     create_google_ads_client,
     load_google_ads_credentials,
 )
+from mureo.byod.runtime import byod_has
+from mureo.mcp._client_factory import get_google_ads_client
 from mureo.mcp._helpers import (
     _json_result,
     _no_creds_result,
@@ -46,8 +48,17 @@ def _get_client(arguments: dict[str, Any]) -> Any:
     3. creds.login_customer_id as fallback (legacy credentials without
        a separate customer_id field)
 
-    Returns None on auth error.
+    In BYOD mode (``~/.mureo/byod/manifest.json`` registers google_ads),
+    no credentials are required and a CSV-backed client is returned.
+
+    Returns None on auth error (real mode only).
     """
+    if byod_has("google_ads"):
+        customer_id = _opt(arguments, "customer_id") or "byod"
+        return get_google_ads_client(
+            creds=None, customer_id=customer_id, throttler=_throttler
+        )
+
     creds = load_google_ads_credentials()
     if creds is None:
         return None

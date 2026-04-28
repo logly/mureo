@@ -172,6 +172,40 @@ Agent: rollback.apply({index: 0, confirm: true}) → dispatches.
 
 `confirm` must be the literal boolean `true` (truthy non-booleans are refused). On success the executor appends a new log entry tagged `rollback_of=<index>`; a second apply of the same index is refused. `state_file` resolves strictly inside the MCP server's current working directory — `..`-traversal and symlink escape are refused so an attacker-crafted `STATE.json` elsewhere on disk cannot be used as the reversal source.
 
+## BYOD Commands (Bring Your Own Data)
+
+Analyse your ad-account CSV exports locally, without OAuth or a developer token. Activated automatically when `~/.mureo/byod/manifest.json` registers a platform — no `--byod` flag exists. See [`docs/byod.md`](byod.md) for the full walkthrough.
+
+| Command | Description |
+|---|---|
+| `mureo byod import <file.csv>` | Auto-detect format and import (refuses if a platform is already imported) |
+| `mureo byod import <file.csv> --google-ads` | Force the Google Ads adapter |
+| `mureo byod import <file.csv> --meta-ads` | Force the Meta Ads adapter (Phase 1b) |
+| `mureo byod import <file.csv> --search-console` | Force the Search Console adapter (Phase 1b) |
+| `mureo byod import <file.csv> --replace` | Overwrite an existing import |
+| `mureo byod status` | Show per-platform mode (BYOD / real API / not configured) |
+| `mureo byod remove --google-ads` | Remove BYOD data for one platform |
+| `mureo byod clear` | Wipe `~/.mureo/byod/` (prompts for confirmation) |
+| `mureo byod clear --yes` | Skip the confirmation prompt |
+
+### Per-platform routing
+
+The MCP server checks each platform independently at every tool dispatch. With `google_ads` imported but `meta_ads` not, a single `/daily-check` call uses the BYOD CSV for Google Ads and the live API for Meta Ads. `mureo byod status` shows the active mix.
+
+### Read-only guarantee
+
+BYOD mode rejects every mutation tool. Methods whose name starts with `create_`, `update_`, `delete_`, `remove_`, `add_`, `send_`, `upload_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, or `patch_` return:
+
+```json
+{
+  "status": "skipped_in_byod_readonly",
+  "operation": "<name>",
+  "note": "BYOD mode is analysis-only. This call would have written to a real ad account."
+}
+```
+
+The agent can analyse and recommend, but never writes.
+
 ## Output Format
 
 Authentication check commands output JSON to stdout:

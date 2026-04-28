@@ -4,9 +4,29 @@ Guide me through setting up mureo for a new marketing account.
 
 1. **Check installation**: Verify mureo is installed by running `mureo --help`. If not found, guide the user to run `pip install mureo`.
 
-2. **Check authentication**: Run `mureo auth status` to verify credentials are configured and see which accounts are connected (customer_id / account_id are displayed). If no credentials are found, run `mureo auth setup` to walk through Google Ads and/or Meta Ads OAuth authentication. This step is interactive — it requires the user to enter tokens and authenticate in a browser.
+2. **Check data mode (BYOD first, then auth)**:
 
-   Note: When calling MCP tools, you do NOT need to specify customer_id or account_id — they are automatically loaded from credentials.json. Just omit them.
+   **Always run `mureo byod status` first.** If any platform shows
+   `BYOD (N rows, ...)`, that platform is in **BYOD mode** — do NOT prompt
+   the user to run `mureo auth setup` for it, do NOT call `mureo auth
+   status` to "verify" it (that command reads `credentials.json` directly
+   and ignores BYOD), and do NOT report it as "未認証". For BYOD platforms,
+   announce: "Using BYOD CSV data (N rows, <date range>)."
+
+   For the **remaining** platforms (those showing `not configured` or `real
+   API`), then run `mureo auth status` to see which have OAuth credentials.
+   If a platform is `not configured` for BYOD AND has no credentials, offer
+   `mureo auth setup` (interactive — user runs it themselves) **or** offer
+   the BYOD path: "Export a CSV from <platform> and run `mureo byod import
+   <file>` instead."
+
+   Never claim a platform is unauthenticated when `mureo byod status` shows
+   it in BYOD mode. BYOD takes priority over OAuth and is sufficient on its
+   own for analysis.
+
+   Note: When calling MCP tools, you do NOT need to specify customer_id or
+   account_id — they are automatically loaded from credentials.json (real
+   API mode) or routed to the BYOD client (BYOD mode). Just omit them.
 
 3. **Create STRATEGY.md**: Ask me about my business to fill in each section:
    - **Persona**: Who is the target customer? (role, age, goals, pain points)
@@ -15,6 +35,23 @@ Guide me through setting up mureo for a new marketing account.
    - **Brand Voice**: Tone and style guidelines for ad copy
    - **Market Context**: Competitors, market trends, competitive advantages
    - **Operation Mode**: Start with `ONBOARDING_LEARNING` for new accounts
+
+   If I don't know the answers to any of the above sections (Persona, USP,
+   Target Audience, Brand Voice, Market Context — Operation Mode always
+   defaults to `ONBOARDING_LEARNING`), offer an alternative: ask me for the
+   **product / landing-page URL** (or corporate site / competitor URLs).
+   Then fetch the URL with WebFetch, read the page content, and draft a
+   first-pass for **every** unknown section — Persona, USP, Target Audience,
+   Brand Voice, and Market Context — from what's on the site. Show me the
+   draft for each section and ask me to confirm or correct it before writing
+   STRATEGY.md. If multiple URLs are relevant (LP + corporate + competitor),
+   fetch each and consolidate; competitor URLs are especially useful for
+   Market Context. If the site is behind login or returns no useful content,
+   fall back to interactive Q&A. Apply this URL-fallback per-section: the
+   user may know some sections (e.g., Brand Voice) but need help drafting
+   others (e.g., Persona, USP) — only fetch and draft the ones I'm unsure
+   about.
+
    Write the completed STRATEGY.md to the current directory.
 
 4. **Discover platforms and data sources**:

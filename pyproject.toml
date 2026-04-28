@@ -35,6 +35,10 @@ dependencies = [
     "rich>=13.0,<14",
     "simple-term-menu>=1.6,<2",
     "mcp>=1.0,<2",
+    # openpyxl is used by the BYOD bundle importer (mureo byod import
+    # --bundle <xlsx>) to read multi-tab Sheets exported from the
+    # mureo Sheet template (Apps Script + Google Ads Script).
+    "openpyxl>=3.1,<4",
 ]
 
 [project.optional-dependencies]
