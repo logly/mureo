@@ -122,7 +122,7 @@ def _iter_data_rows(sheet: object) -> Any:
         yield row
 
 
-def _cell(row: tuple, idx: dict[str, int], col: str) -> str:
+def _cell(row: tuple[Any, ...], idx: dict[str, int], col: str) -> str:
     if col not in idx:
         return ""
     pos = idx[col]
