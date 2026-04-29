@@ -652,6 +652,14 @@ class ByodMetaAdsClient:
                 "conversions": 0.0,
             }
         )
+        # First non-empty result_indicator seen per campaign. Lets the
+        # agent tell what the "results" / "conversions" column actually
+        # counts (e.g. ``actions:link_click`` vs
+        # ``actions:offsite_conversion.fb_pixel_lead``) — critical for
+        # detecting CV-definition mismatches across campaigns where a
+        # link_click-optimized campaign would otherwise look like a
+        # high-CV-rate winner against a true lead-optimized one.
+        indicators: dict[str, str] = {}
         for r in rows:
             d = _parse_date(r.get("date", ""))
             if d is None or d < start or d > end:
@@ -661,6 +669,9 @@ class ByodMetaAdsClient:
             agg[key]["clicks"] += _to_int(r.get("clicks"))
             agg[key]["cost"] += _to_float(r.get("cost_jpy"))
             agg[key]["conversions"] += _to_float(r.get("conversions"))
+            ri = (r.get("result_indicator") or "").strip()
+            if ri and key not in indicators:
+                indicators[key] = ri
 
         names = {r.get("campaign_id"): r.get("name", "") for r in self._campaigns()}
         out = []
@@ -679,6 +690,7 @@ class ByodMetaAdsClient:
                     "ctr": round(ctr, 4),
                     "cpc": round(cpc, 2),
                     "cpa": round(cpa, 2),
+                    "result_indicator": indicators.get(cid, ""),
                 }
             )
         return out
