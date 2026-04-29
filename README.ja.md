@@ -22,7 +22,7 @@
 戦略を理解するエージェントが Google Ads、Meta Ads、Search Console、GA4 を自律的に分析・運用します。**認証情報は端末の外に出ません。**
 
 <p align="center">
-  <img src="docs/img/sample-search-term-cleanup.ja.svg" alt="mureo /search-term-cleanup の出力: ブランド自己カニバリゼーションを自動検出 — 同じブランド検索語が片方で CPA ¥172、もう片方で ¥1,226 が無駄、約 ¥12,000/30日 を再配分可能">
+  <img src="docs/img/sample-search-term-cleanup.ja.svg" alt="mureo /search-term-cleanup の出力: ブランド自己カニバリゼーションを自動検出 — 同じブランド検索語が片方で CPA ¥4,550、もう片方で ¥31,800 が無駄、約 ¥250,000/30日 を再配分可能">
 </p>
 
 <p align="center"><em>実出力: 30日分の BYOD バンドルでブランドカニバリゼーションを自動検出 (B2B SaaS アカウント、匿名化済)。<a href="#実際のアウトプット例b2b-saas-アカウント匿名化済">他のサンプルを見る ↓</a></em></p>
@@ -216,7 +216,7 @@ STATE.jsonから接続媒体を検出:
 
 **`/search-term-cleanup` — ブランドカニバリゼーションを自動検出**
 
-<img src="docs/img/sample-search-term-cleanup.ja.svg" alt="/search-term-cleanup の出力: ブランド自己カニバリゼーションを検出 — 同じブランド検索語が片方のキャンペーンで CPA ¥172、もう片方で ¥1,226 が無駄、約 ¥12,000/30日 を再配分可能">
+<img src="docs/img/sample-search-term-cleanup.ja.svg" alt="/search-term-cleanup の出力: ブランド自己カニバリゼーションを検出 — 同じブランド検索語が片方のキャンペーンで CPA ¥4,550、もう片方で ¥31,800 が無駄、約 ¥250,000/30日 を再配分可能">
 
 なぜ意味があるのか: 数値しか見ないツールは「同じ検索語」を重複扱いして単純に直近を残します。mureo は STRATEGY.md を読み、「2つのキャンペーンは異なる意図 (ブランド指名 vs 汎用リード獲得) で運用されている」と認識して、コンバージョンする側に流すべきだと判断します — **CPA 7倍** の差を放置しなくなる。
 
