@@ -1,20 +1,21 @@
 # BYOD: Bring Your Own Data
 
-Run mureo against your **real Google Ads account** in 5 minutes — no
-OAuth Client ID to register, no Google Ads developer token to apply
-for, no SaaS connection of any kind. You run a Google Ads Script,
-download the resulting Sheet as XLSX, drop it into mureo, and ask
-Claude Code to run `/daily-check`.
+Run mureo against your **real Google Ads / Meta Ads account** in 5
+minutes — no OAuth Client ID to register, no Google Ads developer
+token to apply for, no SaaS connection of any kind. You run a Google
+Ads Script (or export from Meta Ads Manager), download the resulting
+Sheet/Excel as XLSX, drop it into mureo, and ask Claude Code to run
+`/daily-check`.
 
 **No network calls reach Google or Meta from mureo. No mureo-managed
 credentials are involved. The Sheet lives in your own Drive; mureo
 only ever reads the local XLSX file.**
 
-> **Status (Phase 1):** Google Ads is supported through the Sheet
-> bundle pipeline. Meta Ads ships in a follow-up. GA4 and Search
-> Console remain on the existing real-API OAuth path (see
-> `docs/authentication.md`) — they are **not** part of the BYOD
-> bundle.
+> **Status (Phase 2):** Google Ads (via the mureo Google Ads Script)
+> and Meta Ads (via the Ads Manager Excel export) are both supported
+> through the Sheet bundle pipeline. GA4 and Search Console remain on
+> the existing real-API OAuth path (see `docs/authentication.md`) —
+> they are **not** part of the BYOD bundle.
 
 ---
 
@@ -46,7 +47,7 @@ pip install mureo
 mureo setup claude-code --skip-auth   # registers MCP only; no OAuth
 ```
 
-### Step 2 — Run the Google Ads Script
+### Step 2a — Run the Google Ads Script (optional)
 
 Open Google Ads → **Tools → Bulk actions → Scripts → +**.
 
@@ -55,15 +56,39 @@ At the top, set `TARGET_SHEET_URL` to the URL of any Google Sheet you
 own (create a fresh one if you don't have one yet). Click
 **Authorize** and **Run**.
 
-Five tabs populate in the Sheet: `campaigns`, `ad_groups`,
-`search_terms`, `keywords`, `auction_insights`.
+Four tabs populate in the Sheet: `campaigns`, `ad_groups`,
+`search_terms`, `keywords`. Auction insights are intentionally
+excluded — Google Ads Scripts cannot reach them. Use
+`mureo auth setup` if you need `/competitive-scan` data.
+
+### Step 2b — Export from Meta Ads Manager (optional)
+
+In Ads Manager: **Reports → Customize → Export**.
+
+Configure the report once with these columns (one row per
+day × ad-set × ad):
+
+- **Breakdowns:** *By Time → Day*
+- **Level:** *Ad* (gives the full Campaign / Ad set / Ad hierarchy)
+- **Metrics:** Day, Campaign name, Ad set name, Ad name,
+  Impressions, Clicks (all), Amount spent (JPY), Results
+- **Account language:** English (other locales aren't recognized in
+  v1 — switch under *Reports → Account language*)
+
+Click **Export → Excel (.xlsx)**. Save the file alongside the Google
+Ads Sheet's XLSX export.
 
 ### Step 3 — Download as XLSX, import to mureo
 
-In the Sheet, **File → Download → Microsoft Excel (.xlsx)**. Then:
+In the Google Sheet, **File → Download → Microsoft Excel (.xlsx)**.
+Then run mureo byod import once per file:
 
 ```bash
-mureo byod import ~/Downloads/<file>.xlsx
+# Google Ads bundle
+mureo byod import ~/Downloads/<google-ads-bundle>.xlsx
+
+# Meta Ads export (separate file from Ads Manager → Reports → Export)
+mureo byod import ~/Downloads/<meta-ads-export>.xlsx
 ```
 
 Sample output:
@@ -79,7 +104,6 @@ Sample output:
       - ad_groups.csv
       - keywords.csv
       - search_terms.csv
-      - auction_insights.csv
 
 Mode summary:
   google_ads        BYOD (421 rows, 2026-04-01..2026-04-30)
@@ -98,7 +122,7 @@ type:
 
 mureo's MCP server detects your imported bundle automatically — no
 flag required — and the agent reasons over your real Google Ads data:
-search-term gaps, keyword quality scores, auction insights, etc.
+search-term gaps, keyword quality scores, etc.
 
 ---
 
@@ -158,6 +182,8 @@ that platform.
 | Setup | Result |
 |---|---|
 | Bundle imported for Google Ads; meta_ads not configured | Google Ads = bundle, Meta = real API |
+| Bundle imported for Meta Ads; google_ads not configured | Meta = bundle, Google Ads = real API |
+| Bundles imported for both | Both = bundle |
 | Nothing imported | All platforms = real API |
 | `mureo byod clear` | All platforms = real API |
 
@@ -215,28 +241,35 @@ run `mureo auth setup` (or `mureo auth setup --web`) to populate
 
 ## Tabs the bundle importer recognizes
 
-| Source script | Tab | → mureo CSV |
+| Source | Tab signal | → mureo CSV(s) |
 |---|---|---|
-| Google Ads Script | `campaigns` | `campaigns.csv` + `metrics_daily.csv` |
+| Google Ads Script | `campaigns` (required) | `campaigns.csv` + `metrics_daily.csv` |
 | Google Ads Script | `ad_groups` | `ad_groups.csv` |
 | Google Ads Script | `keywords` | `keywords.csv` |
 | Google Ads Script | `search_terms` | `search_terms.csv` |
-| Google Ads Script | `auction_insights` | `auction_insights.csv` |
+| Meta Ads Export | Any sheet whose header contains a Day column + `Campaign name` + `Impressions` | `meta_ads/{campaigns,ad_sets,ads,metrics_daily}.csv` |
 
 The bundle importer dispatches the Google Ads adapter when at least
-one of these tabs is present.
+one of those tabs is present, and the Meta Ads adapter when it
+detects a Meta Ads Manager export-style header. The two adapters are
+disjoint — Google Ads tabs use `campaign` (short form) while Meta
+uses `Campaign name` (long form), so a workbook can carry only one
+adapter's data.
 
 ---
 
 ## What's *not* in BYOD
 
-- **Meta Ads.** Ships in a follow-up. Until then, configure Meta
-  with `mureo auth setup`.
 - **GA4 / Search Console.** Use the real-API OAuth path
   (`mureo auth setup`); they are not part of the bundle pipeline.
 - **`/rescue` budget operations.** The agent can recommend rescues
   but cannot execute them — BYOD is read-only.
 - **Live token refresh.** BYOD doesn't read or refresh OAuth tokens.
+
+The Meta export adapter recognizes column headers in English /
+日本語 / Español / Português / 한국어 / 繁體中文 / 简体中文 /
+Français / Deutsch — exporting from Ads Manager in any of these
+languages works without changing Account language.
 
 For the full live-account experience, run `mureo auth setup` (or
 `mureo auth setup --web`) and `mureo byod clear` to switch back to
@@ -246,13 +279,17 @@ real-API mode.
 
 ## Google Ads richer BYOD tools
 
-The Sheet bundle's `search_terms` / `auction_insights` tabs are
-exposed through the existing Google Ads MCP surface:
+The Sheet bundle's `search_terms` tab is exposed through the existing
+Google Ads MCP surface:
 
 | Tool | Returns |
 |---|---|
 | `google_ads.search_terms.report` | One row per search term: campaign_name, ad_group_name, impressions, clicks, cost, conversions, ctr, average_cpc |
-| `google_ads.auction_insights.get` / `analyze` | Per-competitor impression_share / outranking_share, plus a top-5 summary |
+
+`google_ads.auction_insights.get` / `analyze` return empty under BYOD
+(the data isn't available from Google Ads Scripts). Use
+`mureo auth setup` for the real-API path if competitor share data is
+required.
 
 ---
 
