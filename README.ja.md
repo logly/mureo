@@ -21,6 +21,12 @@
 
 戦略を理解するエージェントが Google Ads、Meta Ads、Search Console、GA4 を自律的に分析・運用します。**認証情報は端末の外に出ません。**
 
+<p align="center">
+  <img src="docs/img/sample-search-term-cleanup.ja.svg" alt="mureo /search-term-cleanup の出力: ブランド自己カニバリゼーションを自動検出 — 同じブランド検索語が片方で CPA ¥172、もう片方で ¥1,226 が無駄、約 ¥12,000/30日 を再配分可能">
+</p>
+
+<p align="center"><em>実出力: 30日分の BYOD バンドルでブランドカニバリゼーションを自動検出 (B2B SaaS アカウント、匿名化済)。<a href="#実際のアウトプット例b2b-saas-アカウント匿名化済">他のサンプルを見る ↓</a></em></p>
+
 ## mureoとは
 
 mureoは、AIエージェントが広告アカウントを自動運用するためのフレームワークです。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）がGoogle広告・Meta広告・Search Console・GA4を横断して、配信診断・検索語分析・予算評価・入稿チェックなどを実行できるようになります。すべての操作はあなたのビジネス戦略（`STRATEGY.md`）に基づいて行われます。
