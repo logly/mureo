@@ -29,10 +29,16 @@ column, so a workbook exported with Ads Manager in Japanese
 (キャンペーン名, インプレッション, …) imports the same way as an English
 export.
 
-Currency: only JPY is accepted. A non-JPY symbol prefix in the spend
-column (``$``, ``€``, ``£``, ``₩``, ``₹``, ``¢``) raises
-``UnsupportedFormatError`` so the user fixes Account currency before
-the BYOD pipeline silently mis-reports cost.
+Currency: any account currency is accepted. The spend column's
+header may carry an ISO currency suffix (``Amount spent (JPY)`` /
+``(USD)`` / ``(EUR)`` / etc.) — the suffix is stripped before alias
+matching so a USD account imports the same way a JPY one does.
+Cell values may also carry a leading currency symbol (``¥`` / ``$``
+/ ``€`` / ``£`` / ``₩`` / ``₹`` / ``¢`` / etc.); the symbol is
+stripped by ``_to_float``. Values are stored raw in the account's
+own currency — cross-account currency conversion is out of scope,
+so all of mureo's analysis (CTR, CPC, CPA per-campaign) treats the
+cost column as a single coherent unit.
 
 Pivot tables: Reports section pivot exports include subtotal rows
 where the date column reads ``All`` (or is blank) — these are
@@ -217,7 +223,12 @@ _CLICKS_ALIASES = (
 )
 
 _SPEND_ALIASES = (
-    # English (verified) + non-JPY suffix variants for safety
+    # The ISO currency suffix on each header (`(JPY)` / `(USD)` /
+    # `(EUR)` / etc.) is stripped before lookup by `_resolve_spend_idx`,
+    # so the no-suffix forms below match any account currency. The
+    # `(jpy)` variants remain as a fast-path for JPY accounts where
+    # the literal header is what mureo's tests pin.
+    # English (verified)
     "amount spent (jpy)",
     "amount spent",
     "spend",
@@ -557,7 +568,7 @@ class MetaAdsAdapter:
         camp_idx = _resolve_alias(header, _CAMPAIGN_ALIASES)
         impr_idx = _resolve_alias(header, _IMPRESSIONS_ALIASES)
         clicks_idx = _resolve_alias(header, _CLICKS_ALIASES)
-        spend_idx = _resolve_alias(header, _SPEND_ALIASES)
+        spend_idx = _resolve_spend_idx(header)
         conv_idx = _resolve_alias(header, _CONVERSIONS_ALIASES)
         ad_set_idx = _resolve_alias(header, _AD_SET_ALIASES)
         ad_idx = _resolve_alias(header, _AD_ALIASES)
@@ -735,13 +746,11 @@ class MetaAdsAdapter:
                     ad_records.append((camp_name, ad_set_name, ad_name, aid))
 
             spend_raw = _cell_at(raw, spend_idx)
-            if spend_raw and spend_raw[0] in _NON_JPY_CURRENCY_PREFIXES:
-                raise UnsupportedFormatError(
-                    f"{sheet_name}: spend column contains non-JPY value "
-                    f"{spend_raw!r}. The BYOD pipeline assumes JPY; "
-                    f"switch Ads Manager → Account currency to JPY "
-                    f"before export."
-                )
+            # mureo is currency-agnostic: any leading currency symbol
+            # (¥ / $ / € / £ / ₩ / ₹ / ¢ / etc.) is stripped by
+            # `_to_float`. Cost values are stored raw in the account's
+            # own currency; cross-account currency conversion is out
+            # of scope.
 
             impressions = _to_float(_cell_at(raw, impr_idx))
             clicks = _to_float(_cell_at(raw, clicks_idx))
@@ -1219,20 +1228,34 @@ class MetaAdsAdapter:
         )
 
 
+_CURRENCY_SYMBOLS = "¥$€£₩₹¢₽₺₪₫฿元"
+
+
 def _to_float(value: str) -> float:
     """Parse a numeric cell that may include a currency symbol or
-    thousands separators (Ads Manager export sometimes wraps ``Amount
-    spent`` as ``¥1,234.56`` or ``"1,234"``). Returns 0.0 on failure.
+    thousands separators (Ads Manager export sometimes wraps spend
+    as ``¥1,234.56`` / ``$1,234.56`` / ``€1,234.56`` / ``"1,234"``).
+    Strips a leading currency symbol from a known set
+    (:data:`_CURRENCY_SYMBOLS`) and any embedded comma. Returns 0.0
+    on failure — including when the cell starts with non-currency
+    junk like ``"abc123"`` (deliberately preserved so corrupted
+    cells do not silently coerce to a partial value).
 
-    Only ¥ (JPY) and bare numerics are tolerated. Non-JPY currency
-    symbols (``$``, ``€``, ``£``) leak through as 0.0 and are caught
-    upstream by :func:`_scan_non_jpy_currency` before this function
-    is reached on a real spend cell.
+    mureo is currency-agnostic at the data layer — values are stored
+    raw in the account's own currency (e.g. JPY for a JPY account,
+    USD for a USD account). Cross-account currency conversion is
+    out of scope; the user is expected to interpret cost numbers in
+    the account's own currency.
     """
     s = (value or "").strip()
     if not s:
         return 0.0
-    s = s.replace(",", "").replace("¥", "")
+    s = s.replace(",", "")
+    # Strip a leading currency symbol from the known set. We do not
+    # strip arbitrary non-numeric leads because that would silently
+    # accept corrupted cells like "abc123" as 123.
+    if s and s[0] in _CURRENCY_SYMBOLS:
+        s = s[1:]
     try:
         return float(s)
     except ValueError:
@@ -1243,7 +1266,34 @@ def _round2(value: float) -> str:
     return f"{value:.2f}"
 
 
-_NON_JPY_CURRENCY_PREFIXES = ("$", "€", "£", "₩", "₹", "¢")
+# Regex stripping a trailing ISO currency code wrapped in parentheses
+# from a column header — e.g. "Amount spent (USD)" → "Amount spent",
+# "消化金額 (JPY)" → "消化金額", "지출 금액 (KRW)" → "지출 금액".
+# Both ASCII (...) and full-width （...） parens are accepted because
+# Japanese exports occasionally use the latter.
+_CURRENCY_SUFFIX_RE = re.compile(r"\s*[\(（][a-z]{3}[\)）]\s*$")
+
+
+def _strip_currency_suffix(text: str) -> str:
+    """Return ``text`` with any trailing ``(XXX)`` currency code removed."""
+    return _CURRENCY_SUFFIX_RE.sub("", text)
+
+
+def _resolve_spend_idx(header: list[str]) -> int | None:
+    """Resolve the spend column index in a currency-agnostic way.
+
+    First tries an exact match against the alias tuple (handles
+    accounts whose header literally matches a known suffix such as
+    ``"amount spent (jpy)"``). On miss, retries against headers with
+    the ``(XXX)`` ISO currency suffix stripped, so a USD account's
+    ``"Amount spent (USD)"`` matches the no-suffix alias
+    ``"amount spent"``, and the same for EUR / GBP / KRW / INR / etc.
+    """
+    idx = _resolve_alias(header, _SPEND_ALIASES)
+    if idx is not None:
+        return idx
+    stripped = [_strip_currency_suffix(h) for h in header]
+    return _resolve_alias(stripped, _SPEND_ALIASES)
 
 
 # Cells starting with one of these characters are treated as formulas
