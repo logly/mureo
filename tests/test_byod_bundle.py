@@ -263,10 +263,14 @@ def test_meta_adapter_recognizes_date_aliases_and_locales(
     assert expected in metrics
 
 
-def test_meta_adapter_rejects_non_jpy_spend(tmp_path, byod_root):
-    """A non-JPY currency in the Spend column must abort the import
-    rather than silently coerce dollars/euros into the JPY column."""
-    from mureo.byod.bundle import BundleImportError, import_bundle
+def test_meta_adapter_currency_agnostic_spend(tmp_path, byod_root):
+    """A USD account's ``Amount spent (USD)`` header — and ``$``
+    leading currency symbol on the cell value — must import the
+    same way as a JPY account's ``Amount spent (JPY)`` / ``¥``
+    cells. mureo stores cost values raw in the account's own
+    currency (cross-account currency conversion is out of scope).
+    """
+    from mureo.byod.bundle import import_bundle
 
     src = _make_workbook(
         tmp_path,
@@ -276,14 +280,55 @@ def test_meta_adapter_rejects_non_jpy_spend(tmp_path, byod_root):
                     "Day",
                     "Campaign name",
                     "Impressions",
-                    "Amount spent",
+                    "Amount spent (USD)",
                 ],
                 ["2026-04-01", "Solo", 100, "$12.34"],
             ],
         },
     )
-    with pytest.raises(BundleImportError, match="non-JPY|JPY"):
-        import_bundle(src)
+    import_bundle(src)
+    metrics = (byod_root / "meta_ads" / "metrics_daily.csv").read_text(encoding="utf-8")
+    # The leading ``$`` is stripped by ``_to_float`` and the row is
+    # written with the bare numeric value.
+    assert "12.34" in metrics
+
+
+@pytest.mark.parametrize(
+    ("header_suffix", "cell_prefix"),
+    [
+        ("EUR", "€"),
+        ("GBP", "£"),
+        ("KRW", "₩"),
+        ("INR", "₹"),
+    ],
+)
+def test_meta_adapter_currency_suffix_locales(
+    tmp_path, byod_root, header_suffix, cell_prefix
+):
+    """Meta Ads Manager emits the spend header as
+    ``Amount spent (XXX)`` where XXX is the account's ISO currency
+    code. mureo strips the ``(XXX)`` suffix before alias matching
+    and strips any leading currency symbol on the cell value, so
+    every supported currency imports identically."""
+    from mureo.byod.bundle import import_bundle
+
+    src = _make_workbook(
+        tmp_path,
+        tabs={
+            "Sheet1": [
+                [
+                    "Day",
+                    "Campaign name",
+                    "Impressions",
+                    f"Amount spent ({header_suffix})",
+                ],
+                ["2026-04-01", "Solo", 100, f"{cell_prefix}45.67"],
+            ],
+        },
+    )
+    import_bundle(src)
+    metrics = (byod_root / "meta_ads" / "metrics_daily.csv").read_text(encoding="utf-8")
+    assert "45.67" in metrics
 
 
 def test_meta_adapter_csv_injection_sanitized(tmp_path, byod_root):

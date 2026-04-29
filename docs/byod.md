@@ -73,9 +73,12 @@ day × ad-set × ad):
 - **Breakdowns:** *By Time → Day*
 - **Level:** *Ad* (gives the full Campaign / Ad set / Ad hierarchy)
 - **Metrics:** Day, Campaign name, Ad set name, Ad name,
-  Impressions, Clicks (all), Amount spent (JPY), Results
-- **Account language:** English (other locales aren't recognized in
-  v1 — switch under *Reports → Account language*)
+  Impressions, Clicks (all), Amount spent, Results
+- **Account language:** any of the 9 supported locales (see the
+  multilingual section below) — Ads Manager always emits the spend
+  header as `Amount spent (XXX)` where `XXX` is the account's ISO
+  currency code (`JPY` / `USD` / `EUR` / …); mureo strips the
+  currency suffix automatically
 
 Click **Export → Excel (.xlsx)**. Save the file alongside the Google
 Ads Sheet's XLSX export.
@@ -272,6 +275,16 @@ The Meta export adapter recognizes column headers in English /
 日本語 / Español / Português / 한국어 / 繁體中文 / 简体中文 /
 Français / Deutsch — exporting from Ads Manager in any of these
 languages works without changing Account language.
+
+The spend column is **currency-agnostic**: Meta exports the header
+as `Amount spent (XXX)` where `XXX` is the account's ISO currency
+code (`JPY` / `USD` / `EUR` / `GBP` / `KRW` / `INR` / etc.) and
+mureo strips the suffix before alias matching. Cell values may also
+carry a leading currency symbol (`¥` / `$` / `€` / `£` / `₩` / `₹`
+/ etc.) which is stripped automatically. Cost values are stored
+raw in the account's own currency — mureo does not convert
+between currencies, so all per-account analysis (CTR / CPC / CPA)
+treats the cost column as a single coherent unit.
 
 For the full live-account experience, run `mureo auth setup` (or
 `mureo auth setup --web`) and `mureo byod clear` to switch back to
