@@ -623,6 +623,63 @@ def test_bundle_import_makes_no_network_calls(google_ads_xlsx, fake_home, monkey
 # ---------------------------------------------------------------------------
 
 
+def test_byod_meta_get_performance_report_exposes_result_indicator(
+    tmp_path, fake_home
+):
+    """ByodMetaAdsClient.get_performance_report must surface the Meta
+    ``result_indicator`` value in its output dict so downstream skills
+    (``/daily-check``) can detect CV-definition mismatches across
+    campaigns — e.g. one campaign optimized for ``actions:link_click``
+    looks like a high-CV-rate winner against a true lead-optimized
+    sibling at ``actions:offsite_conversion.fb_pixel_lead``, which
+    matters for budget-rebalance and goal-evaluation decisions.
+
+    Previously the indicator was written to ``metrics_daily.csv`` but
+    dropped on the way out of ``get_performance_report``, so the agent
+    saw "Campaign A: 42 results, Campaign B: 3 results" with no signal
+    that the units were incomparable.
+    """
+    import asyncio
+    from datetime import date, timedelta
+
+    from mureo.byod.clients import ByodMetaAdsClient
+
+    data_dir = tmp_path / "meta_byod"
+    data_dir.mkdir()
+    (data_dir / "campaigns.csv").write_text(
+        "campaign_id,name,status,objective,daily_budget_jpy\n"
+        "camp_link,LinkClick CP,,,\n"
+        "camp_lead,Lead CP,,,\n"
+        "camp_none,No-Indicator CP,,,\n",
+        encoding="utf-8",
+    )
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    (data_dir / "metrics_daily.csv").write_text(
+        "date,campaign_id,impressions,clicks,cost_jpy,conversions,reach,frequency,"
+        "result_indicator\n"
+        f"{yesterday},camp_link,3500,42,2592,42,3000,1.17,actions:link_click\n"
+        f"{yesterday},camp_lead,1900,3,2641,3,1700,1.12,"
+        "actions:offsite_conversion.fb_pixel_lead\n"
+        f"{yesterday},camp_none,11200,78,33848,0,9500,1.18,\n",
+        encoding="utf-8",
+    )
+
+    client = ByodMetaAdsClient(data_dir=data_dir)
+    rep = asyncio.run(client.get_performance_report(period="LAST_30_DAYS"))
+
+    by_id = {r["campaign_id"]: r for r in rep}
+    assert (
+        by_id["camp_link"]["result_indicator"] == "actions:link_click"
+    ), by_id["camp_link"]
+    assert (
+        by_id["camp_lead"]["result_indicator"]
+        == "actions:offsite_conversion.fb_pixel_lead"
+    ), by_id["camp_lead"]
+    # Campaign with empty indicator on every row → empty string in output
+    # (not missing key — agents rely on the field always being present).
+    assert by_id["camp_none"]["result_indicator"] == "", by_id["camp_none"]
+
+
 def test_byod_meta_client_phase3_readers(tmp_path, fake_home):
     """ByodMetaAdsClient exposes the Phase 3 CSVs through async
     readers that mirror the real-API method shapes daily-check expects:
