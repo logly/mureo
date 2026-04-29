@@ -21,6 +21,12 @@
 
 Strategy-aware agents that autonomously analyze and operate Google Ads, Meta Ads, Search Console & GA4 — **credentials never leave your machine**.
 
+<p align="center">
+  <img src="docs/img/sample-search-term-cleanup.svg" alt="mureo /search-term-cleanup output: brand self-cannibalization detected — same brand term converts at ¥172 CPA in one campaign vs ¥1,226 wasted in another, ~¥12,000/30d redirectable">
+</p>
+
+<p align="center"><em>Real output: brand cannibalization auto-detected on a 30-day BYOD bundle (anonymized B2B SaaS account). <a href="#what-the-output-actually-looks-like-anonymized-b2b-saas-account">More samples ↓</a></em></p>
+
 ## What is mureo?
 
 mureo is a framework for AI agents to autonomously operate ad accounts. Once installed, AI agents (Claude Code, Cursor, Codex, Gemini, etc.) can work across Google Ads, Meta Ads, Search Console, and GA4 -- running campaign diagnostics, search term analysis, budget evaluation, ad validation, and more. Every operation is grounded in your business strategy (`STRATEGY.md`), so the agent makes decisions based on your persona, USP, goals, and brand voice -- not just raw metrics.
