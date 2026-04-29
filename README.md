@@ -27,34 +27,34 @@ mureo is a framework for AI agents to autonomously operate ad accounts. Once ins
 
 mureo also learns. When you correct the agent's analysis or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is automatically loaded in every future session, so the agent gets increasingly attuned to your account's specific patterns and makes better decisions over time.
 
-## Two ways to use mureo
+## Two paths in: BYOD (5 min, no auth) or Real-API (full automation)
 
-mureo offers two access modes. Pick whichever fits your situation -- you can also **mix them per platform** (Google Ads on BYOD while Meta Ads is on real API, or vice versa).
+> Google Ads requires a Developer Token approval that can take 1–3 weeks and is often rejected on the first attempt — especially on Google Workspace **organization** accounts where Apps Script is blocked from auto-creating a personal GCP project. Meta needs a Business app registered. **BYOD lets you get value from mureo before you invest in any of that auth setup.**
 
-### Mode A: BYOD (Bring Your Own Data) -- no OAuth, no developer token
+You can also **mix modes per platform** (Google Ads on BYOD while Meta Ads is on real API, or vice versa). The agent auto-discovers each platform's mode at every tool call — no flags, no global toggle.
 
-Drop a Sheet-bundle XLSX into mureo and ask Claude Code to analyze. **No OAuth flow, no developer-token approval, no SaaS sign-up.** Works on Google Workspace **organization** accounts where Apps Script is blocked from auto-creating a personal GCP project.
+### Mode A: BYOD — 5 minutes to first diagnosis, no OAuth
+
+**Drop a Sheet-bundle XLSX into mureo and get a strategy-grounded multi-platform diagnosis.** No OAuth flow, no developer-token approval, no SaaS sign-up.
 
 ```bash
 pip install mureo
 mureo setup claude-code --skip-auth
-mureo byod import ~/Downloads/your-google-ads-bundle.xlsx
-mureo byod import ~/Downloads/your-meta-ads-export.xlsx     # add Meta any time
+mureo byod import ~/Downloads/mureo-google-ads.xlsx
+mureo byod import ~/Downloads/mureo-meta-ads.xlsx     # add Meta later — they're independent
 # Open Claude Code and ask: "Run /daily-check"
 ```
 
-How the XLSX is produced (one-time setup per platform):
+Producing the XLSX is a one-time setup per platform:
 
-- **Google Ads** -- paste `scripts/sheet-template/google-ads-script.js` into *Google Ads → Tools → Bulk actions → Scripts*, set `TARGET_SHEET_URL`, click *Run*. The script populates `campaigns / ad_groups / search_terms / keywords` tabs in your own Google Sheet. Download the Sheet as XLSX and import.
-- **Meta Ads** -- in *Ads Manager → Reports* configure a Saved Report ("mureo BYOD") once with the columns + breakdowns mureo expects. From then on it's a 2-click *Saved Reports → Export → mureo byod import*. Recognized in **9 languages** (English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français), so you do not need to switch Ads Manager UI to English.
+- **Google Ads** — Apps Script template populates a Google Sheet you own; download as XLSX (~5 min). [See guide →](docs/byod.md#google-ads-setup)
+- **Meta Ads** — Saved Report in Ads Manager → 2-click export. **Recognized in 9 languages** (English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français), so you do not need to switch Ads Manager UI to English. [See guide →](docs/byod.md#meta-ads-setup)
 
-**Read-only by construction.** Every mutation tool (`/rescue`, `/budget-rebalance`, `/creative-refresh`) returns `{"status": "skipped_in_byod_readonly"}` -- the agent can analyze and recommend but never writes to your real account. To switch a platform to the real API later: `mureo byod remove --google-ads` (one platform) or `mureo byod clear` (all).
+**Read-only by construction.** Every mutation tool (`/rescue`, `/budget-rebalance`, `/creative-refresh`) returns `{"status": "skipped_in_byod_readonly"}` — the agent analyzes and recommends but never writes to your real account. Upgrade a platform to the real API later with `mureo byod remove --google-ads` (one platform) or `mureo byod clear` (all).
 
-See [docs/byod.md](docs/byod.md) for the full walkthrough, recommended Saved Report config, and per-platform export instructions.
+### Mode B: Real-API OAuth — full functionality
 
-### Mode B: Real-API OAuth -- full functionality
-
-Connect mureo directly to Google Ads / Meta Ads APIs. **Required if you want the agent to actually execute changes** (`/rescue`, `/budget-rebalance`, `/creative-refresh`, `mureo rollback apply`), or if you want GA4 / Search Console support.
+Connect mureo directly to Google Ads / Meta Ads APIs. **Required to actually execute changes** (`/rescue`, `/budget-rebalance`, `/creative-refresh`, `mureo rollback apply`) and for GA4 / Search Console support.
 
 ```bash
 pip install mureo
@@ -63,24 +63,27 @@ mureo setup claude-code    # MCP + workflow commands
 # Open Claude Code and ask: "Run /daily-check"
 ```
 
-Prerequisites: Google Ads Developer Token + OAuth Client; Meta App ID + Secret. The wizard walks you through both -- see [Authentication](#authentication) below.
+Prerequisites: Google Ads Developer Token + OAuth Client; Meta App ID + Secret. The wizard walks you through both — see [Authentication](#authentication) below.
 
-### Mode comparison
+### Which mode fits?
 
-| Capability                         | BYOD                                  | Real API |
-|------------------------------------|---------------------------------------|----------|
-| `/daily-check`, `/weekly-report`   | ✅ (campaign + ad-set + ad drill-down + placement / platform / device breakdown) | ✅ |
-| `/goal-review`, `/sync-state`      | ✅                                    | ✅ |
-| `/competitive-scan`                | ⚠️  Google Ads BYOD has no auction insights (Ads Scripts limitation) | ✅ |
-| `/search-term-cleanup` (analysis)  | ✅ Google Ads only                    | ✅ |
-| `/search-term-cleanup` (execute)   | ❌ read-only                          | ✅ |
-| `/rescue` / `/budget-rebalance` (proposals) | ✅                            | ✅ |
-| `/rescue` / `/budget-rebalance` (execute)   | ❌ read-only                  | ✅ |
-| `/creative-refresh` (execute)      | ❌ read-only                          | ✅ |
-| GA4 / Search Console               | ❌ (not in BYOD bundle)               | ✅ |
-| First-time setup time              | 5–10 min per platform (no approvals)  | 30–60 min (Developer Token + Meta App + OAuth) |
+| Capability                                         | Mode A: BYOD                            | Mode B: Real API |
+|----------------------------------------------------|-----------------------------------------|------------------|
+| **First-time setup time**                          | **5–10 min per platform**               | 30–60 min |
+| **Approval / waiting risk**                        | **None**                                | 1–3 weeks Google review, sometimes rejected |
+| `/daily-check`, `/weekly-report`                   | ✅ (campaign / ad-set / ad drill-down + placement / platform / device breakdown) | ✅ |
+| `/goal-review`, `/sync-state`                      | ✅                                      | ✅ |
+| `/rescue` / `/budget-rebalance` (proposals)        | ✅                                      | ✅ |
+| `/search-term-cleanup` (analysis)                  | ✅ Google Ads only                      | ✅ |
+| `/search-term-cleanup` (execute)                   | 🛡️ Preview only                         | ✅ Live |
+| `/rescue` / `/budget-rebalance` (execute)          | 🛡️ Preview only                         | ✅ Live |
+| `/creative-refresh` (execute)                      | 🛡️ Preview only                         | ✅ Live |
+| `/competitive-scan`                                | ⚠️ Google Ads BYOD has no auction insights (Ads Scripts limitation) | ✅ |
+| GA4 / Search Console                               | ❌ (not in BYOD bundle)                 | ✅ |
 
-The agent auto-discovers each platform's mode at every tool call -- no `--byod` flag, no global toggle. The presence of `~/.mureo/byod/manifest.json` is the switch.
+**Recommended starting path:** Try Mode A on one platform first → run `/daily-check` → decide whether to add the second platform via BYOD or graduate to Mode B. The presence of `~/.mureo/byod/manifest.json` is the switch — no config flags, no global toggle.
+
+See [docs/byod.md](docs/byod.md) for the full walkthrough, Saved Report config, and per-platform export instructions.
 
 
 ## Features
