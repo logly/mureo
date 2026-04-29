@@ -174,23 +174,22 @@ Agent: rollback.apply({index: 0, confirm: true}) → dispatches.
 
 ## BYOD Commands (Bring Your Own Data)
 
-Analyse your ad-account CSV exports locally, without OAuth or a developer token. Activated automatically when `~/.mureo/byod/manifest.json` registers a platform — no `--byod` flag exists. See [`docs/byod.md`](byod.md) for the full walkthrough.
+Analyse your ad-account data locally without OAuth or a developer token. The importer accepts a single XLSX produced by either the mureo Google Ads Script (`scripts/sheet-template/google-ads-script.js`) or a Meta Ads Manager Saved Report. Activated automatically when `~/.mureo/byod/manifest.json` registers a platform — no `--byod` flag exists. Adapter dispatch is by workbook header signature, so no `--google-ads / --meta-ads` flags on `import` are needed. See [`docs/byod.md`](byod.md) for the full walkthrough.
 
 | Command | Description |
 |---|---|
-| `mureo byod import <file.csv>` | Auto-detect format and import (refuses if a platform is already imported) |
-| `mureo byod import <file.csv> --google-ads` | Force the Google Ads adapter |
-| `mureo byod import <file.csv> --meta-ads` | Force the Meta Ads adapter (Phase 1b) |
-| `mureo byod import <file.csv> --search-console` | Force the Search Console adapter (Phase 1b) |
-| `mureo byod import <file.csv> --replace` | Overwrite an existing import |
-| `mureo byod status` | Show per-platform mode (BYOD / real API / not configured) |
-| `mureo byod remove --google-ads` | Remove BYOD data for one platform |
-| `mureo byod clear` | Wipe `~/.mureo/byod/` (prompts for confirmation) |
-| `mureo byod clear --yes` | Skip the confirmation prompt |
+| `mureo byod import <file>.xlsx` | Import a Sheet bundle. Aborts if any platform present in the workbook is already imported. |
+| `mureo byod import <file>.xlsx --replace` | Overwrite existing BYOD data for any platform present in the bundle. |
+| `mureo byod status` | Show per-platform mode (BYOD / real API / not configured); warns about stale entries from older mureo versions. |
+| `mureo byod remove --google-ads` / `--meta-ads` | Remove BYOD data for one platform. |
+| `mureo byod clear` | Wipe `~/.mureo/byod/` (prompts for confirmation). |
+| `mureo byod clear --yes` | Skip the confirmation prompt. |
 
 ### Per-platform routing
 
-The MCP server checks each platform independently at every tool dispatch. With `google_ads` imported but `meta_ads` not, a single `/daily-check` call uses the BYOD CSV for Google Ads and the live API for Meta Ads. `mureo byod status` shows the active mix.
+The MCP server checks each platform independently at every tool dispatch. With `google_ads` imported but `meta_ads` not, a single `/daily-check` call uses the BYOD CSVs for Google Ads and the live API for Meta Ads. `mureo byod status` shows the active mix.
+
+GA4 and Search Console are **not** part of the BYOD bundle pipeline — they remain on the real-API OAuth path.
 
 ### Read-only guarantee
 

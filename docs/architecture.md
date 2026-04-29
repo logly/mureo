@@ -194,14 +194,16 @@ Credentials are loaded from `~/.mureo/credentials.json` or environment variables
 
 ### BYOD Mode (Bring Your Own Data)
 
-When `~/.mureo/byod/manifest.json` registers a platform, the MCP server's per-tool `_client_factory.py` dispatches the BYOD CSV-backed client (`mureo/byod/clients.py`) instead of the live API client — **per platform, decided at every call**. Real credentials are never read for that platform; mutations are blocked at the client level (every method whose name starts with `create_`, `update_`, `delete_`, `pause_`, `resume_`, etc. returns `{"status": "skipped_in_byod_readonly"}`). The activation signal is purely the manifest's existence — there is no `--byod` flag, and `mureo setup claude-code` does not need to be re-run when a user starts or stops importing CSVs. See `docs/byod.md` for the user-facing walkthrough.
+When `~/.mureo/byod/manifest.json` registers a platform, the MCP server's per-tool `_client_factory.py` dispatches the BYOD CSV-backed client (`mureo/byod/clients.py`) instead of the live API client — **per platform, decided at every call**. Real credentials are never read for that platform; mutations are blocked at the client level (every method whose name starts with `create_`, `update_`, `delete_`, `pause_`, `resume_`, etc. returns `{"status": "skipped_in_byod_readonly"}`). The activation signal is purely the manifest's existence — there is no `--byod` flag, and `mureo setup claude-code` does not need to be re-run when a user starts or stops importing data.
+
+The user-facing input is a single XLSX bundle: either the mureo Google Ads Script's Sheet output (`scripts/sheet-template/google-ads-script.js`) or a Meta Ads Manager Saved Report export. The bundle importer (`mureo/byod/bundle.py`) opens the workbook with openpyxl, dispatches each adapter (`mureo/byod/adapters/<platform>.py`) by header signature, and writes per-platform CSVs to `~/.mureo/byod/<platform>/`. Manifest update is atomic with rollback on partial failure. GA4 and Search Console are **not** part of the BYOD bundle pipeline — they remain on the real-API OAuth path. See `docs/byod.md` for the user-facing walkthrough.
 
 ```
 Claude Code ─MCP──▶ mureo MCP server
                        │
                        ▼ _client_factory.py per-platform routing
               byod_has(p)?  yes──▶ Byod*Client (CSV) ──▶ ~/.mureo/byod/<platform>/*.csv
-                            no ──▶ create_*_client (real API) ──▶ Google Ads / Meta / SC API
+                            no ──▶ create_*_client (real API) ──▶ Google Ads / Meta / SC / GA4 API
 ```
 
 ### Defense-in-Depth for AI Agents

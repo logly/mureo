@@ -226,14 +226,14 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 
 ## BYOD Mode (Bring Your Own Data)
 
-`mureo byod import <file.csv>` lets a user analyze their real ad-account export locally without OAuth. When `~/.mureo/byod/manifest.json` registers a platform, `mureo/mcp/_client_factory.py` routes that platform's MCP tool calls to a CSV-backed client (`mureo/byod/clients.py`) instead of the live API. Per-platform: imported platforms = BYOD; un-imported = real API (or `_no_creds` error if no credentials).
+`mureo byod import <file>.xlsx` lets a user analyze their real ad-account data locally without OAuth. The bundle importer (`mureo/byod/bundle.py`) opens the workbook with openpyxl, dispatches recognized adapters by header signature, and writes per-platform CSVs under `~/.mureo/byod/<platform>/`. When `~/.mureo/byod/manifest.json` registers a platform, `mureo/mcp/_client_factory.py` routes that platform's MCP tool calls to a CSV-backed client (`mureo/byod/clients.py`) instead of the live API. Per-platform: imported platforms = BYOD; un-imported = real API (or `_no_creds` error if no credentials). Supported BYOD platforms: `google_ads`, `meta_ads`. GA4 and Search Console remain on the real-API OAuth path.
 
 When working on mureo:
 - New ad-platform handlers MUST call `mureo/mcp/_client_factory.get_*_client(...)` for the BYOD path; real-mode dispatch can call `create_*_client` directly to keep test mocks at `mureo.mcp._handlers_*.create_*_client` working.
 - BYOD clients are read-only. Mutation method name prefixes (`create_`, `update_`, `delete_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, `patch_`, `add_`, `remove_`, `send_`, `upload_`) return `{"status": "skipped_in_byod_readonly"}`.
-- New CSV format adapters live in `mureo/byod/adapters/<platform>.py` and must implement `detect(header)` and `normalize(src, dst_dir)`. Each adapter is responsible for skipping vendor preambles, rejecting PII columns (`email`/`phone`/`user_id`/`ip_address`/`customer_email`), and writing to the mureo internal schema documented in `docs/byod.md`.
-- CSV imports MUST never escape `~/.mureo/byod/` — the installer's path-traversal assertion (`installer.py`) enforces this.
-- See `docs/byod.md` for the user-facing walkthrough.
+- New bundle adapters live in `mureo/byod/adapters/<platform>.py` and must implement `has_tab(workbook)` (returns True when the workbook contains the adapter's required sheet/header signature) and `normalize_from_workbook(workbook, dst_dir)` (writes CSVs to `dst_dir`, returns an `ImportResult`). Each adapter sanitizes user-controlled cells against CSV injection (`_sanitize_cell` prefixes formula triggers `=`, `+`, `-`, `@`, tab, CR with a single quote) and writes to the mureo internal schema documented in `docs/byod.md`.
+- Bundle imports MUST never escape `~/.mureo/byod/` — `bundle.py` and `installer.remove_platform` both enforce path-traversal guards.
+- See `docs/byod.md` for the user-facing walkthrough and the recommended Saved Report configuration for Meta Ads (multilingual: 9 locales).
 
 ## GAQL Injection Prevention
 
