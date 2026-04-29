@@ -546,16 +546,16 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         wizard with half-populated auth material.
 
         Stripping CR/LF defends the eventual ``Location`` header from
-        HTTP response-splitting injection. Logs only the URL's
-        scheme+netloc on rejection — the full URL may carry the OAuth
-        ``state`` token which has no business in error logs.
+        HTTP response-splitting injection. The rejection log line uses
+        only the static ``label`` argument and never echoes any value
+        derived from ``url`` — the URL carries the OAuth ``state``
+        token and (per CodeQL's taint analysis) any string transitively
+        derived from it is treated as sensitive.
         """
         sanitized = url.replace("\r", "").replace("\n", "")
         if sanitized.startswith(allowed_origin):
             return sanitized
-        parsed = urllib.parse.urlsplit(sanitized)
-        origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else "<empty>"
-        logger.error("Refusing 302 to non-%s URL (origin=%s)", label, origin)
+        logger.error("Refusing 302 for %s OAuth — URL origin mismatch", label)
         self._send_html(
             render_error("Unexpected OAuth destination; aborting."),
             status=500,
