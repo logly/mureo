@@ -952,6 +952,22 @@ async def exchange_meta_code(
     )
 
 
+def _redact_oauth_url(url: str) -> str:
+    """Return ``url`` with its query string masked as ``?<redacted>``.
+
+    OAuth authorization URLs carry the ``state`` token (replay guard for
+    the callback round-trip) and the ``client_id`` — printing them to a
+    terminal where they could be captured by a screenshot or shoulder
+    surfer adds no value once the browser has already opened the URL.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    if not parsed.query:
+        return url
+    return urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, "<redacted>", parsed.fragment)
+    )
+
+
 def _generate_meta_auth_url(
     app_id: str,
     port: int,
@@ -1150,9 +1166,13 @@ async def run_meta_oauth(
     )
     server_thread.start()
 
-    # Open auth URL in browser
+    # Open auth URL in browser. Print a redacted form (origin + path,
+    # query string masked) so a screenshot or shoulder-surfer cannot
+    # capture the OAuth ``state`` token — it is not a long-lived secret
+    # but it is the replay guard for the callback round-trip and has no
+    # business in terminal output.
     print("\nOpening authentication page in browser...")
-    print(f"URL: {auth_url}")
+    print(f"URL: {_redact_oauth_url(auth_url)}")
     webbrowser.open(auth_url)
 
     # Wait for callback

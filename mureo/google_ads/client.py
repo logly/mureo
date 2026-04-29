@@ -86,6 +86,18 @@ _BETWEEN_PATTERN = re.compile(
 _F = TypeVar("_F", bound=Callable[..., Any])
 
 
+_GAQL_FROM_RE = re.compile(r"\bFROM\s+([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE)
+
+
+def _gaql_from_table(query: str) -> str:
+    """Return the table name following ``FROM`` in a GAQL query, or
+    ``"<unknown>"`` when the query does not parse. Used for logging so
+    log lines do not echo the full GAQL text.
+    """
+    m = _GAQL_FROM_RE.search(query)
+    return m.group(1) if m else "<unknown>"
+
+
 def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
     """Decorator that logs GoogleAdsException details and re-raises a
     RuntimeError whose message includes the specific API error detail.
@@ -227,9 +239,12 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         if self._throttler is not None:
             await self._throttler.acquire()
         ga_service = self._get_service("GoogleAdsService")
-        # Log the beginning of the query for debugging
-        query_hint = query.strip().split("\n")[0][:60]
-        logger.info("_search start: %s", query_hint)
+        # Log only the FROM-clause table name (not the WHERE / SELECT
+        # body) so logs stay grep-friendly without mirroring full GAQL
+        # text — CodeQL flags any "log of a query string" as a sensitive
+        # data leak even though GAQL itself contains no credentials.
+        query_table = _gaql_from_table(query)
+        logger.info("_search start: from=%s", query_table)
 
         def _do_search() -> list[Any]:
             response = ga_service.search(customer_id=self._customer_id, query=query)
@@ -237,7 +252,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
 
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, _do_search)
-        logger.info("_search done: %s (%d rows)", query_hint, len(result))
+        logger.info("_search done: from=%s (%d rows)", query_table, len(result))
         return result
 
     @staticmethod
