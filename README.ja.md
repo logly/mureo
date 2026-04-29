@@ -29,9 +29,7 @@ mureoには学習の仕組みもあります。エージェントの分析を修
 
 ## mureoの始め方は2通り — BYOD（5分・OAuth不要）か Real-API（完全自動化）
 
-> Google Ads の Developer Token は審査に1〜3週間かかり、初回申請が却下されることもよくあります（特に Apps Script による個人 GCP プロジェクトの自動作成がブロックされる Google Workspace **組織アカウント** の場合）。Meta も Business app の登録が必要です。**BYOD なら、これらのセットアップに時間を割く前に mureo の価値を体験できます。**
-
-**プラットフォームごとにモードを使い分ける**こともできます（Google Ads は BYOD で Meta Ads は real API、あるいはその逆）。エージェントはツール呼び出しごとにプラットフォーム別のモードを自動判別します — 設定フラグもグローバルなスイッチもありません。
+> **Google Cloud Console や Meta for Developers に慣れていない方へ。** OAuth フロー / Developer Token の発行 / Business app 登録は、これらのコンソールを使ったことがない方には難しく感じるかもしれません。**まずは BYOD から始めてください** — 数分で mureo がどう動くかが分かります。それから real-API のセットアップに踏み込むかどうか判断すれば OK です。
 
 ### モード A: BYOD — 5分で最初の診断、OAuth 不要
 

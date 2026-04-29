@@ -29,9 +29,7 @@ mureo also learns. When you correct the agent's analysis or share an operational
 
 ## Two paths in: BYOD (5 min, no auth) or Real-API (full automation)
 
-> Google Ads requires a Developer Token approval that can take 1–3 weeks and is often rejected on the first attempt — especially on Google Workspace **organization** accounts where Apps Script is blocked from auto-creating a personal GCP project. Meta needs a Business app registered. **BYOD lets you get value from mureo before you invest in any of that auth setup.**
-
-You can also **mix modes per platform** (Google Ads on BYOD while Meta Ads is on real API, or vice versa). The agent auto-discovers each platform's mode at every tool call — no flags, no global toggle.
+> **Not familiar with Google Cloud Console or Meta for Developers?** OAuth flows, developer-token registration, and Business-app sign-ups can feel intimidating if you have never used those consoles before. **Start with BYOD** — you will see what mureo can do for your account in a few minutes, then decide whether the real-API path is worth setting up.
 
 ### Mode A: BYOD — 5 minutes to first diagnosis, no OAuth
 
