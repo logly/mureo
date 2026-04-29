@@ -9,7 +9,10 @@ Synchronize STATE.json with the current state of all marketing platforms.
 
 2. **Discover platforms**: Identify all platforms registered in STATE.json `platforms`.
 
-3. **Fetch platform data**: For each registered platform, fetch current campaign data using the platform's campaign listing tools.
+3. **Fetch platform data**: For each registered platform:
+   - **Google Ads**: Call `google_ads.campaigns.list`, then `google_ads.performance.report` for the current period (last 30 days). Both work in BYOD and real-API modes.
+   - **Meta Ads**: Call `meta_ads.campaigns.list`, then `meta_ads.insights.report` for the current period — capture `result_indicator` per campaign so STATE.json reflects whether each campaign's "results" are clicks or real leads.
+   - mureo BYOD data is centralized under `~/.mureo/byod/` and is only accessible through MCP tools — do **not** look for raw CSVs in the project directory.
 
 4. **Check data sources**: If Search Console is configured, verify site access is still valid. If GA4 is available, verify connectivity.
 

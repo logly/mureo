@@ -69,7 +69,11 @@ Guide me through setting up mureo for a new marketing account.
    - For goals involving organic search, note Search Console as the data source
    - Create `## Goal: <title>` sections in STRATEGY.md with Target, Deadline, Current (TBD), Platform, and Priority fields
 
-7. **Initial diagnosis**: Run health checks on each configured ad platform using the platform's diagnostic tools. If Search Console is available, run a top-queries check to establish an organic baseline. If GA4 is available, check overall site conversion metrics.
+7. **Initial diagnosis**: Run health checks on each configured ad platform:
+   - **Google Ads**: `google_ads.performance.report` (LAST_30_DAYS), `google_ads.campaigns.list`, `google_ads.health_check.all`. Iterate the campaigns and call `google_ads.zero_conversions.diagnose` per campaign_id for any with conv = 0.
+   - **Meta Ads**: `meta_ads.insights.report` (LAST_30_DAYS) — surface `result_indicator` per campaign so the operator sees up front whether any campaigns are optimizing for `link_click` instead of true leads.
+   - mureo BYOD data is centralized under `~/.mureo/byod/` and is only accessible through MCP tools — do **not** look for raw CSVs in the project directory.
+   - If Search Console is available, run a top-queries check to establish an organic baseline. If GA4 is available, check overall site conversion metrics.
 
 8. **Summary**: Show what was set up — platforms discovered, data sources available, goals defined — and recommend next steps.
 
