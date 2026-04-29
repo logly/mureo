@@ -556,7 +556,10 @@ class MetaAdsAdapter:
         # column, in which case the corresponding metric defaults to 0
         # and the corresponding output CSV is suppressed when empty.
         reach_idx = _resolve_alias(header, _REACH_ALIASES)
-        freq_idx = _resolve_alias(header, _FREQUENCY_ALIASES)
+        # Frequency column is recognized but its values are not consumed
+        # — frequency is always derived from impressions/reach under
+        # aggregation to keep the math correct.
+        _resolve_alias(header, _FREQUENCY_ALIASES)
         ri_idx = _resolve_alias(header, _RESULT_INDICATOR_ALIASES)
         age_idx = _resolve_alias(header, _AGE_ALIASES)
         gender_idx = _resolve_alias(header, _GENDER_ALIASES)
