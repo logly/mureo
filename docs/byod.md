@@ -56,8 +56,10 @@ At the top, set `TARGET_SHEET_URL` to the URL of any Google Sheet you
 own (create a fresh one if you don't have one yet). Click
 **Authorize** and **Run**.
 
-Five tabs populate in the Sheet: `campaigns`, `ad_groups`,
-`search_terms`, `keywords`, `auction_insights`.
+Four tabs populate in the Sheet: `campaigns`, `ad_groups`,
+`search_terms`, `keywords`. Auction insights are intentionally
+excluded — Google Ads Scripts cannot reach them. Use
+`mureo auth setup` if you need `/competitive-scan` data.
 
 ### Step 2b — Export from Meta Ads Manager (optional)
 
@@ -102,7 +104,6 @@ Sample output:
       - ad_groups.csv
       - keywords.csv
       - search_terms.csv
-      - auction_insights.csv
 
 Mode summary:
   google_ads        BYOD (421 rows, 2026-04-01..2026-04-30)
@@ -121,7 +122,7 @@ type:
 
 mureo's MCP server detects your imported bundle automatically — no
 flag required — and the agent reasons over your real Google Ads data:
-search-term gaps, keyword quality scores, auction insights, etc.
+search-term gaps, keyword quality scores, etc.
 
 ---
 
@@ -246,7 +247,6 @@ run `mureo auth setup` (or `mureo auth setup --web`) to populate
 | Google Ads Script | `ad_groups` | `ad_groups.csv` |
 | Google Ads Script | `keywords` | `keywords.csv` |
 | Google Ads Script | `search_terms` | `search_terms.csv` |
-| Google Ads Script | `auction_insights` | `auction_insights.csv` |
 | Meta Ads Export | Any sheet whose header contains a Day column + `Campaign name` + `Impressions` | `meta_ads/{campaigns,ad_sets,ads,metrics_daily}.csv` |
 
 The bundle importer dispatches the Google Ads adapter when at least
@@ -265,9 +265,11 @@ adapter's data.
 - **`/rescue` budget operations.** The agent can recommend rescues
   but cannot execute them — BYOD is read-only.
 - **Live token refresh.** BYOD doesn't read or refresh OAuth tokens.
-- **Meta Ads non-English Ads Manager UI.** The Meta export adapter
-  recognizes English column headers only in v1; switch *Reports →
-  Account language* to English before exporting.
+
+The Meta export adapter recognizes column headers in English /
+日本語 / Español / Português / 한국어 / 繁體中文 / 简体中文 /
+Français / Deutsch — exporting from Ads Manager in any of these
+languages works without changing Account language.
 
 For the full live-account experience, run `mureo auth setup` (or
 `mureo auth setup --web`) and `mureo byod clear` to switch back to
@@ -277,13 +279,17 @@ real-API mode.
 
 ## Google Ads richer BYOD tools
 
-The Sheet bundle's `search_terms` / `auction_insights` tabs are
-exposed through the existing Google Ads MCP surface:
+The Sheet bundle's `search_terms` tab is exposed through the existing
+Google Ads MCP surface:
 
 | Tool | Returns |
 |---|---|
 | `google_ads.search_terms.report` | One row per search term: campaign_name, ad_group_name, impressions, clicks, cost, conversions, ctr, average_cpc |
-| `google_ads.auction_insights.get` / `analyze` | Per-competitor impression_share / outranking_share, plus a top-5 summary |
+
+`google_ads.auction_insights.get` / `analyze` return empty under BYOD
+(the data isn't available from Google Ads Scripts). Use
+`mureo auth setup` for the real-API path if competitor share data is
+required.
 
 ---
 

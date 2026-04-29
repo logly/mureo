@@ -337,6 +337,307 @@ def test_meta_adapter_csv_injection_sanitized(tmp_path, byod_root):
     assert "'@danger_ad" in ads
 
 
+def test_meta_adapter_phase3_skips_rollup_when_detail_present(tmp_path, byod_root):
+    """A pivot export carrying both a campaign rollup row (Ad set
+    name='All', Ad name='All') AND ad-level detail rows for the
+    same (day, campaign) must NOT double-count metrics. The deepest
+    grain present per (day, campaign) wins; shallower-grain rows
+    are filtered out of metrics_agg."""
+    from mureo.byod.bundle import import_bundle
+
+    src = _make_workbook(
+        tmp_path,
+        tabs={
+            "Sheet1": [
+                [
+                    "Day",
+                    "Campaign name",
+                    "Ad set name",
+                    "Ad name",
+                    "Impressions",
+                    "Amount spent (JPY)",
+                ],
+                # Campaign rollup — would contribute 9999 if not skipped.
+                ["2026-04-01", "Brand", "All", "All", 9999, "9999"],
+                # Detail rows that should be the actual sum.
+                ["2026-04-01", "Brand", "Tokyo", "Video A", 5000, "1500"],
+                ["2026-04-01", "Brand", "Tokyo", "Video B", 3000, "900"],
+            ],
+        },
+    )
+    import_bundle(src)
+    metrics = (byod_root / "meta_ads" / "metrics_daily.csv").read_text(encoding="utf-8")
+    rows = [r for r in metrics.splitlines()[1:] if r.strip()]
+    assert len(rows) == 1
+    # Detail-only sum: 5000 + 3000 = 8000 (NOT 9999 + 5000 + 3000 = 17999).
+    assert ",8000," in rows[0]
+    assert "9999" not in rows[0]
+
+
+def test_meta_adapter_phase3_extended_schema(tmp_path, byod_root):
+    """Phase 3-1 schema extension: metrics_daily.csv carries reach,
+    frequency, and result_indicator columns. Frequency falls back to
+    impressions/reach when the export does not include a Frequency
+    column directly."""
+    from mureo.byod.bundle import import_bundle
+
+    src = _make_workbook(
+        tmp_path,
+        tabs={
+            "Sheet1": [
+                [
+                    "Day",
+                    "Campaign name",
+                    "Impressions",
+                    "Reach",
+                    "Amount spent (JPY)",
+                    "Results",
+                    "Result indicator",
+                ],
+                [
+                    "2026-04-01",
+                    "Brand",
+                    1000,
+                    400,
+                    "1500",
+                    5,
+                    "actions:offsite_conversion.fb_pixel_lead",
+                ],
+            ],
+        },
+    )
+    import_bundle(src)
+    metrics = (byod_root / "meta_ads" / "metrics_daily.csv").read_text(encoding="utf-8")
+    header = metrics.splitlines()[0].split(",")
+    assert "reach" in header
+    assert "frequency" in header
+    assert "result_indicator" in header
+    row = metrics.splitlines()[1]
+    assert ",400," in row  # reach
+    assert ",2.5," in row  # frequency = 1000/400 = 2.5
+    assert "fb_pixel_lead" in row
+
+
+def test_meta_adapter_phase3_ad_set_and_ad_csvs(tmp_path, byod_root):
+    """Phase 3-2 finer grain: when the export has Ad set name and Ad
+    name columns, ad_set_metrics_daily.csv and ad_metrics_daily.csv
+    are written with per-ad-set / per-ad daily metrics."""
+    from mureo.byod.bundle import import_bundle
+
+    src = _make_workbook(
+        tmp_path,
+        tabs={
+            "Sheet1": [
+                [
+                    "Day",
+                    "Campaign name",
+                    "Ad set name",
+                    "Ad name",
+                    "Impressions",
+                    "Clicks (all)",
+                    "Amount spent (JPY)",
+                    "Results",
+                ],
+                ["2026-04-01", "Brand", "Tokyo", "Video A", 5000, 100, "1500", 3],
+                ["2026-04-01", "Brand", "Tokyo", "Video B", 3000, 60, "900", 2],
+                ["2026-04-02", "Brand", "Tokyo", "Video A", 5500, 110, "1650", 4],
+            ],
+        },
+    )
+    import_bundle(src)
+    meta_root = byod_root / "meta_ads"
+    assert (meta_root / "ad_set_metrics_daily.csv").exists()
+    assert (meta_root / "ad_metrics_daily.csv").exists()
+
+    as_metrics = (meta_root / "ad_set_metrics_daily.csv").read_text(encoding="utf-8")
+    rows = [r for r in as_metrics.splitlines()[1:] if r.strip()]
+    assert len(rows) == 2
+    apr1_row = next(r for r in rows if r.startswith("2026-04-01"))
+    assert ",8000," in apr1_row
+
+    ad_metrics = (meta_root / "ad_metrics_daily.csv").read_text(encoding="utf-8")
+    rows = [r for r in ad_metrics.splitlines()[1:] if r.strip()]
+    assert len(rows) == 3
+
+
+def test_meta_adapter_phase3_demographics_csv(tmp_path, byod_root):
+    """Phase 3-3 demographics: rows with non-'All' values in age/
+    gender/region/placement go to demographics_daily.csv only and are
+    excluded from the campaign-level metrics_daily aggregation
+    (otherwise the totals would be doubled)."""
+    from mureo.byod.bundle import import_bundle
+
+    src = _make_workbook(
+        tmp_path,
+        tabs={
+            "Sheet1": [
+                [
+                    "Day",
+                    "Campaign name",
+                    "Age",
+                    "Gender",
+                    "Impressions",
+                    "Amount spent (JPY)",
+                ],
+                ["2026-04-01", "Brand", "18-24", "All", 2000, "500"],
+                ["2026-04-01", "Brand", "25-34", "All", 3000, "750"],
+                ["2026-04-01", "Brand", "All", "male", 4000, "1000"],
+                ["2026-04-01", "Brand", "All", "female", 1000, "250"],
+                ["2026-04-01", "Brand", "All", "All", 5000, "1250"],
+            ],
+        },
+    )
+    import_bundle(src)
+    meta_root = byod_root / "meta_ads"
+    assert (meta_root / "demographics_daily.csv").exists()
+
+    demo = (meta_root / "demographics_daily.csv").read_text(encoding="utf-8")
+    rows = [r for r in demo.splitlines()[1:] if r.strip()]
+    assert len(rows) == 4
+    assert any(",age,18-24," in r for r in rows)
+    assert any(",gender,male," in r for r in rows)
+
+    metrics = (meta_root / "metrics_daily.csv").read_text(encoding="utf-8")
+    metrics_rows = [r for r in metrics.splitlines()[1:] if r.strip()]
+    assert len(metrics_rows) == 1
+    assert ",5000," in metrics_rows[0]
+
+
+def test_meta_adapter_phase3_creatives_csv(tmp_path, byod_root):
+    """Phase 3-4 creatives: when the export carries image URL /
+    headline / body / cta columns, creatives.csv is produced."""
+    from mureo.byod.bundle import import_bundle
+
+    src = _make_workbook(
+        tmp_path,
+        tabs={
+            "Sheet1": [
+                [
+                    "Day",
+                    "Campaign name",
+                    "Ad set name",
+                    "Ad name",
+                    "Impressions",
+                    "Amount spent (JPY)",
+                    "Image URL",
+                    "Headline",
+                    "Body",
+                    "Call to action",
+                ],
+                [
+                    "2026-04-01",
+                    "Brand",
+                    "Tokyo",
+                    "Video A",
+                    1000,
+                    "500",
+                    "https://example.com/img.jpg",
+                    "Try mureo today",
+                    "Local-first ad ops",
+                    "Learn more",
+                ],
+            ],
+        },
+    )
+    import_bundle(src)
+    meta_root = byod_root / "meta_ads"
+    assert (meta_root / "creatives.csv").exists()
+    creatives = (meta_root / "creatives.csv").read_text(encoding="utf-8")
+    assert "https://example.com/img.jpg" in creatives
+    assert "Try mureo today" in creatives
+    assert "Learn more" in creatives
+
+
+def test_meta_adapter_recognizes_japanese_headers(tmp_path, byod_root):
+    """Japanese Ads Manager export: localized column headers
+    (キャンペーン名 / インプレッション / 消化金額 / 結果) round-trip
+    through the adapter exactly like English headers do."""
+    from mureo.byod.bundle import import_bundle
+
+    src = _make_workbook(
+        tmp_path,
+        tabs={
+            "ワークシート": [
+                [
+                    "日",
+                    "キャンペーン名",
+                    "広告セット名",
+                    "広告名",
+                    "インプレッション",
+                    "リンクのクリック",
+                    "消化金額 (JPY)",
+                    "結果",
+                ],
+                [
+                    "2026-04-01",
+                    "ブランド認知",
+                    "東京 25-34",
+                    "動画A",
+                    5000,
+                    120,
+                    "1,500",
+                    3,
+                ],
+                [
+                    "2026-04-02",
+                    "ブランド認知",
+                    "東京 25-34",
+                    "動画A",
+                    5500,
+                    130,
+                    "1,650",
+                    4,
+                ],
+            ],
+        },
+    )
+    import_bundle(src)
+
+    campaigns = (byod_root / "meta_ads" / "campaigns.csv").read_text(encoding="utf-8")
+    assert "ブランド認知" in campaigns
+
+    metrics = (byod_root / "meta_ads" / "metrics_daily.csv").read_text(encoding="utf-8")
+    assert "2026-04-01" in metrics
+    assert "5000" in metrics
+
+
+def test_meta_adapter_pivot_subtotal_rows_skipped(tmp_path, byod_root):
+    """Reports → ピボット exports include subtotal rows where the date
+    cell reads ``All`` (or is blank). These must be skipped so summed
+    metrics aren't double-counted by the campaign-rollup grain."""
+    from mureo.byod.bundle import import_bundle
+
+    src = _make_workbook(
+        tmp_path,
+        tabs={
+            "Pivot": [
+                [
+                    "日",
+                    "キャンペーン名",
+                    "インプレッション",
+                    "消化金額 (JPY)",
+                ],
+                # Account / campaign subtotal — should be SKIPPED
+                ["All", "ブランド認知", 99999, "999999"],
+                # Detail rows — kept and summed
+                ["2026-04-01", "ブランド認知", 5000, "1500"],
+                ["2026-04-02", "ブランド認知", 5500, "1650"],
+                # Another subtotal — SKIPPED
+                ["All", "コンバージョン", 88888, "888888"],
+                ["2026-04-01", "コンバージョン", 2000, "800"],
+            ],
+        },
+    )
+    import_bundle(src)
+    metrics = (byod_root / "meta_ads" / "metrics_daily.csv").read_text(encoding="utf-8")
+    # Subtotal cost values must NOT appear in the output
+    assert "999999" not in metrics
+    assert "888888" not in metrics
+    # Detail rows must appear
+    assert "1500.00" in metrics
+    assert "1650.00" in metrics
+
+
 def test_meta_adapter_ad_set_name_reused_across_campaigns(tmp_path, byod_root):
     """Two campaigns reusing the same ad-set name (e.g. "Default",
     "Lookalike 1%") must produce distinct `ad_set_id` rows in

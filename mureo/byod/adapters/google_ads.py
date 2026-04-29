@@ -2,7 +2,7 @@
 
 The Google Ads side of the mureo Sheet template is populated by
 ``scripts/sheet-template/google-ads-script.js`` running inside the
-user's Google Ads UI (Tools → Bulk actions → Scripts). It writes five
+user's Google Ads UI (Tools → Bulk actions → Scripts). It writes four
 fixed-schema tabs to the bound Sheet:
 
   campaigns         day, campaign, impressions, clicks, cost, conversions
@@ -10,7 +10,6 @@ fixed-schema tabs to the bound Sheet:
   search_terms      search_term, campaign, ad_group, impressions, clicks, cost, conversions
   keywords          keyword, match_type, quality_score, campaign, ad_group,
                     impressions, clicks, cost, conversions
-  auction_insights  campaign, competitor_domain, impression_share, outranking_share
 
 The adapter normalizes those tabs to the CSV layout the existing BYOD
 Google Ads client (``mureo/byod/clients.py``) reads under
@@ -21,7 +20,13 @@ Google Ads client (``mureo/byod/clients.py``) reads under
   metrics_daily.csv    — day × campaign rollup
   keywords.csv         — keyword-level (Apps Script tab passthrough)
   search_terms.csv     — search-term-level (passthrough)
-  auction_insights.csv — competitor share (passthrough)
+
+Auction insights are intentionally **not** part of this BYOD pipeline.
+Google Ads Scripts does not expose the GAQL ``auction_insight_domain``
+resource, and the legacy AWQL ``AUCTION_INSIGHT_PERFORMANCE_REPORT``
+returns "Report not mapped" — neither surface works from inside Ads
+Scripts. Use the existing real-API path (``mureo auth setup``) for
+``/competitive-scan`` if competitor share data is needed.
 
 Campaign / ad-group identity is synthesized from name (deterministic
 hash) because the Apps Script does not export numeric IDs. The hash is
@@ -49,7 +54,6 @@ CAMPAIGNS_TAB = "campaigns"
 AD_GROUPS_TAB = "ad_groups"
 SEARCH_TERMS_TAB = "search_terms"
 KEYWORDS_TAB = "keywords"
-AUCTION_INSIGHTS_TAB = "auction_insights"
 
 
 @dataclass
@@ -73,8 +77,17 @@ _DATE_RE_SLASH = re.compile(r"^(\d{4})/(\d{2})/(\d{2})$")
 
 
 def _parse_day(value: str) -> str:
-    """Normalize a date cell to YYYY-MM-DD; return '' on failure."""
+    """Normalize a date cell to YYYY-MM-DD; return '' on failure.
+
+    Google Sheets stores date-typed cells as serial numbers; openpyxl
+    converts those back to ``datetime.datetime`` instances on read, so
+    ``str(cell)`` yields ``"2026-03-29 00:00:00"`` rather than the bare
+    ``"2026-03-29"`` we want. The leading-space split below handles
+    that without an explicit datetime-typed branch.
+    """
     s = (value or "").strip()
+    if " " in s:
+        s = s.split(" ", 1)[0]
     m = _DATE_RE_DASH.match(s)
     if m:
         return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
@@ -322,16 +335,13 @@ class GoogleAdsAdapter:
             )
             files_written.append("search_terms.csv")
 
-        # ---- auction_insights tab → auction_insights.csv -----------
-        if AUCTION_INSIGHTS_TAB in workbook.sheetnames:
-            _passthrough_tab(
-                workbook[AUCTION_INSIGHTS_TAB],
-                dst_dir / "auction_insights.csv",
-                tab_label=AUCTION_INSIGHTS_TAB,
-                required=("campaign", "competitor_domain"),
-                optional=("impression_share", "outranking_share"),
-            )
-            files_written.append("auction_insights.csv")
+        # auction_insights are intentionally not part of the Sheet
+        # bundle path. Google Ads Scripts cannot reach the
+        # auction_insight_domain GAQL resource (returns "Could not
+        # identify resource") and the legacy AWQL report
+        # AUCTION_INSIGHT_PERFORMANCE_REPORT returns "Report not
+        # mapped". `/competitive-scan` falls back to the real-API
+        # path or returns an empty result for BYOD users.
 
         all_dates.sort()
         return ImportResult(

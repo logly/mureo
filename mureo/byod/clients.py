@@ -674,8 +674,188 @@ class ByodMetaAdsClient:
             )
         return out
 
-    async def get_breakdown_report(self, **_: Any) -> list[dict[str, Any]]:
-        return []
+    # ------------------------------------------------------------------
+    # Phase 3 readers — daily time-series + finer grain + breakdowns
+    # ------------------------------------------------------------------
+
+    def _ad_set_metrics(self) -> list[dict[str, Any]]:
+        return _read_csv(self._dir / "ad_set_metrics_daily.csv")
+
+    def _ad_metrics(self) -> list[dict[str, Any]]:
+        return _read_csv(self._dir / "ad_metrics_daily.csv")
+
+    def _demographics(self) -> list[dict[str, Any]]:
+        return _read_csv(self._dir / "demographics_daily.csv")
+
+    def _creatives(self) -> list[dict[str, Any]]:
+        return _read_csv(self._dir / "creatives.csv")
+
+    async def get_metrics_daily(
+        self,
+        campaign_id: str | None = None,
+        period: str = "LAST_30_DAYS",
+        **_: Any,
+    ) -> list[dict[str, Any]]:
+        """Per-day campaign metrics — the time-series view that
+        ``get_performance_report`` aggregates away. Each row covers
+        impressions / clicks / spend / conversions / reach / frequency
+        / result_indicator for a single (date, campaign).
+        """
+        start, end = _period_to_range(period)
+        rows = self._metrics()
+        if campaign_id:
+            rows = [r for r in rows if r.get("campaign_id") == str(campaign_id)]
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = _parse_date(r.get("date", ""))
+            if d is None or d < start or d > end:
+                continue
+            out.append(
+                {
+                    "date": r.get("date", ""),
+                    "campaign_id": r.get("campaign_id", ""),
+                    "impressions": _to_int(r.get("impressions")),
+                    "clicks": _to_int(r.get("clicks")),
+                    "spend": _to_float(r.get("cost_jpy")),
+                    "conversions": _to_float(r.get("conversions")),
+                    "reach": _to_int(r.get("reach")),
+                    "frequency": _to_float(r.get("frequency")),
+                    "result_indicator": r.get("result_indicator", ""),
+                }
+            )
+        return out
+
+    async def get_ad_set_insights_daily(
+        self,
+        campaign_id: str | None = None,
+        ad_set_id: str | None = None,
+        period: str = "LAST_30_DAYS",
+        **_: Any,
+    ) -> list[dict[str, Any]]:
+        """Per-day ad-set metrics — populated when the source export
+        has Ad set name + Day breakdown. Empty list when absent."""
+        start, end = _period_to_range(period)
+        rows = self._ad_set_metrics()
+        if campaign_id:
+            rows = [r for r in rows if r.get("campaign_id") == str(campaign_id)]
+        if ad_set_id:
+            rows = [r for r in rows if r.get("ad_set_id") == str(ad_set_id)]
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = _parse_date(r.get("date", ""))
+            if d is None or d < start or d > end:
+                continue
+            out.append(
+                {
+                    "date": r.get("date", ""),
+                    "campaign_id": r.get("campaign_id", ""),
+                    "ad_set_id": r.get("ad_set_id", ""),
+                    "impressions": _to_int(r.get("impressions")),
+                    "clicks": _to_int(r.get("clicks")),
+                    "spend": _to_float(r.get("cost_jpy")),
+                    "conversions": _to_float(r.get("conversions")),
+                    "reach": _to_int(r.get("reach")),
+                }
+            )
+        return out
+
+    async def get_ad_insights_daily(
+        self,
+        ad_set_id: str | None = None,
+        ad_id: str | None = None,
+        period: str = "LAST_30_DAYS",
+        **_: Any,
+    ) -> list[dict[str, Any]]:
+        """Per-day per-ad metrics — populated when the source export
+        has Ad name + Day breakdown. Empty list when absent."""
+        start, end = _period_to_range(period)
+        rows = self._ad_metrics()
+        if ad_set_id:
+            rows = [r for r in rows if r.get("ad_set_id") == str(ad_set_id)]
+        if ad_id:
+            rows = [r for r in rows if r.get("ad_id") == str(ad_id)]
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = _parse_date(r.get("date", ""))
+            if d is None or d < start or d > end:
+                continue
+            out.append(
+                {
+                    "date": r.get("date", ""),
+                    "campaign_id": r.get("campaign_id", ""),
+                    "ad_set_id": r.get("ad_set_id", ""),
+                    "ad_id": r.get("ad_id", ""),
+                    "impressions": _to_int(r.get("impressions")),
+                    "clicks": _to_int(r.get("clicks")),
+                    "spend": _to_float(r.get("cost_jpy")),
+                    "conversions": _to_float(r.get("conversions")),
+                    "reach": _to_int(r.get("reach")),
+                }
+            )
+        return out
+
+    async def get_breakdown_report(
+        self,
+        campaign_id: str | None = None,
+        dimension: str | None = None,
+        period: str = "LAST_30_DAYS",
+        **_: Any,
+    ) -> list[dict[str, Any]]:
+        """Demographics breakdown (age / gender / region / placement).
+
+        Returns one row per (date, campaign, dimension, value).
+        ``dimension`` filters to a single breakdown axis when set.
+        Empty list when the source export carried no breakdown columns.
+        """
+        start, end = _period_to_range(period)
+        rows = self._demographics()
+        if campaign_id:
+            rows = [r for r in rows if r.get("campaign_id") == str(campaign_id)]
+        if dimension:
+            rows = [r for r in rows if r.get("dimension") == dimension]
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = _parse_date(r.get("date", ""))
+            if d is None or d < start or d > end:
+                continue
+            out.append(
+                {
+                    "date": r.get("date", ""),
+                    "campaign_id": r.get("campaign_id", ""),
+                    "dimension": r.get("dimension", ""),
+                    "value": r.get("value", ""),
+                    "impressions": _to_int(r.get("impressions")),
+                    "clicks": _to_int(r.get("clicks")),
+                    "spend": _to_float(r.get("cost_jpy")),
+                    "conversions": _to_float(r.get("conversions")),
+                    "reach": _to_int(r.get("reach")),
+                }
+            )
+        return out
+
+    async def get_creatives(
+        self,
+        ad_id: str | None = None,
+        **_: Any,
+    ) -> list[dict[str, Any]]:
+        """Creative info per ad. Best-effort — populated only when the
+        source export carried image / video / headline / body / cta
+        columns. Empty list otherwise."""
+        rows = self._creatives()
+        if ad_id:
+            rows = [r for r in rows if r.get("ad_id") == str(ad_id)]
+        return [
+            {
+                "ad_id": r.get("ad_id", ""),
+                "name": r.get("name", ""),
+                "image_url": r.get("image_url", ""),
+                "video_url": r.get("video_url", ""),
+                "headline": r.get("headline", ""),
+                "body": r.get("body", ""),
+                "cta": r.get("cta", ""),
+            }
+            for r in rows
+        ]
 
     async def get_leads(self, **_: Any) -> list[dict[str, Any]]:
         return []

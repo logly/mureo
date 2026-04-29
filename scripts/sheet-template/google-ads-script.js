@@ -11,12 +11,18 @@
  *   5. (Optional) Schedule daily/hourly runs from the same UI to keep
  *      the Sheet fresh.
  *
- * The script writes to five tabs in the target Sheet:
+ * The script writes to four tabs in the target Sheet:
  *   - campaigns
  *   - ad_groups
  *   - search_terms
  *   - keywords
- *   - auction_insights
+ *
+ * Auction insights are intentionally excluded from this BYOD path:
+ * Google Ads Scripts does not expose `auction_insight_domain` (GAQL)
+ * and the legacy AWQL `AUCTION_INSIGHT_PERFORMANCE_REPORT` returns
+ * "Report not mapped" — neither surface works from inside Ads Scripts.
+ * Use the existing real-API path (mureo auth setup) for `/competitive-scan`
+ * if you need competitor share data.
  *
  * The user then exports the Sheet as XLSX and feeds it to mureo via:
  *   mureo byod import --bundle <file>.xlsx
@@ -47,7 +53,6 @@ const TAB_CAMPAIGNS = 'campaigns';
 const TAB_AD_GROUPS = 'ad_groups';
 const TAB_SEARCH_TERMS = 'search_terms';
 const TAB_KEYWORDS = 'keywords';
-const TAB_AUCTION_INSIGHTS = 'auction_insights';
 
 const COST_DIVISOR = 1000000; // Google Ads returns cost in micros.
 
@@ -72,10 +77,9 @@ function main() {
   writeAdGroups_(ss, dateRange);
   writeSearchTerms_(ss, dateRange);
   writeKeywords_(ss, dateRange);
-  writeAuctionInsights_(ss, dateRange);
 
   Logger.log(
-    'mureo: wrote 5 tabs to ' + TARGET_SHEET_URL +
+    'mureo: wrote 4 tabs to ' + TARGET_SHEET_URL +
       ' (date range ' + dateRange.start + ' .. ' + dateRange.end + ')'
   );
 }
@@ -239,42 +243,6 @@ function writeKeywords_(ss, dateRange) {
   }
   writeTab_(ss, TAB_KEYWORDS, header, rows);
 }
-
-function writeAuctionInsights_(ss, dateRange) {
-  // Auction insights are queryable via GAQL on the
-  // auction_insight_domain view. Not all campaign types support this
-  // (e.g., Performance Max), so we wrap the query in try/catch.
-  const query =
-    "SELECT campaign.name, " +
-    "auction_insight_domain.domain, " +
-    "metrics.search_impression_share, " +
-    "metrics.search_outranking_share " +
-    "FROM auction_insight_domain " +
-    "WHERE segments.date BETWEEN '" + dateRange.gaqlStart + "' AND '" +
-    dateRange.gaqlEnd + "'";
-
-  const header = [
-    'campaign', 'competitor_domain',
-    'impression_share', 'outranking_share',
-  ];
-  const rows = [];
-  try {
-    const it = AdsApp.search(query);
-    while (it.hasNext()) {
-      const r = it.next();
-      rows.push([
-        r.campaign.name,
-        r.auctionInsightDomain.domain,
-        Number(r.metrics.searchImpressionShare || 0),
-        Number(r.metrics.searchOutrankingShare || 0),
-      ]);
-    }
-  } catch (err) {
-    Logger.log('Auction insights unavailable: ' + err);
-  }
-  writeTab_(ss, TAB_AUCTION_INSIGHTS, header, rows);
-}
-
 
 // ===========================================================================
 // Sheet writer

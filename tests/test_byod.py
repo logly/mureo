@@ -92,11 +92,6 @@ def _google_ads_tabs() -> dict[str, list[list]]:
             ["mureo byod", "Brand Search", "Exact match", 100, 12, 5.5, 1.0],
             ["best ads tool", "Generic Search", "SaaS", 200, 5, 3.0, 0.0],
         ],
-        "auction_insights": [
-            ["campaign", "competitor_domain", "impression_share", "outranking_share"],
-            ["Brand Search", "competitor-a.com", 0.45, 0.30],
-            ["Brand Search", "competitor-b.com", 0.20, 0.10],
-        ],
     }
 
 
@@ -345,8 +340,13 @@ def test_byod_client_search_terms_report(google_ads_xlsx, fake_home):
     assert mureo_row["average_cpc"] > 0
 
 
-def test_byod_client_auction_insights(google_ads_xlsx, fake_home):
-    """auction_insights.csv → get_auction_insights / analyze_auction_insights."""
+def test_byod_client_auction_insights_empty_when_not_exported(
+    google_ads_xlsx, fake_home
+):
+    """auction_insights are not part of the BYOD Sheet bundle (Google
+    Ads Scripts cannot reach them). The Byod client must therefore
+    return an empty / no-data response — not crash — when the CSV is
+    absent from ~/.mureo/byod/google_ads/."""
     import asyncio
 
     from mureo.byod.bundle import import_bundle
@@ -358,27 +358,16 @@ def test_byod_client_auction_insights(google_ads_xlsx, fake_home):
         data_dir=byod_data_dir() / "google_ads",
         customer_id="byod",
     )
-    # Look up Brand Search's synthetic campaign_id from the campaigns tab.
     campaigns = asyncio.run(client.list_campaigns())
     brand = next(c for c in campaigns if c.get("name") == "Brand Search")
     cid = brand["id"]
 
     insights = asyncio.run(client.get_auction_insights(campaign_id=cid))
-    assert len(insights) == 2
-    domains = sorted(r["competitor_domain"] for r in insights)
-    assert domains == ["competitor-a.com", "competitor-b.com"]
+    assert insights == []
 
-    # Aggregator returns the top competitor first.
     summary = asyncio.run(client.analyze_auction_insights(campaign_id=cid))
-    assert summary["competitor_count"] == 2
-    assert summary["competitors"][0]["competitor_domain"] == "competitor-a.com"
-
-    # Empty-bundle path: a campaign_id that does not exist in the
-    # synthetic ID map yields the "no data" sentinel rather than
-    # raising or returning misleading aggregates.
-    empty = asyncio.run(client.analyze_auction_insights(campaign_id="camp_unknown"))
-    assert empty["competitors"] == []
-    assert "BYOD" in empty["note"]
+    assert summary["competitors"] == []
+    assert "BYOD" in summary.get("note", "")
 
 
 def test_byod_client_blocks_mutations(google_ads_xlsx, fake_home):
@@ -571,6 +560,97 @@ def test_bundle_import_makes_no_network_calls(google_ads_xlsx, fake_home, monkey
 
     import_bundle(google_ads_xlsx)
     assert seen == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — ByodMetaAdsClient readers for new CSVs
+# ---------------------------------------------------------------------------
+
+
+def test_byod_meta_client_phase3_readers(tmp_path, fake_home):
+    """ByodMetaAdsClient exposes the Phase 3 CSVs through async
+    readers that mirror the real-API method shapes daily-check expects:
+    get_metrics_daily / get_ad_set_insights_daily / get_ad_insights_daily
+    / get_breakdown_report (demographics) / get_creatives.
+    """
+    import asyncio
+    from datetime import date, timedelta
+
+    from openpyxl import Workbook
+
+    from mureo.byod.bundle import import_bundle
+    from mureo.byod.clients import ByodMetaAdsClient
+    from mureo.byod.runtime import byod_data_dir
+
+    # _period_to_range("LAST_30_DAYS") excludes today (advertising data
+    # is not complete intra-day); use yesterday + day-before so the
+    # period filter actually intersects the fixture rows.
+    today = date.today()
+    d1 = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+    d2 = (today - timedelta(days=2)).strftime("%Y-%m-%d")
+
+    wb = Workbook()
+    default = wb.active
+    wb.remove(default)
+    sheet = wb.create_sheet("Sheet1")
+    sheet.append(
+        [
+            "Day",
+            "Campaign name",
+            "Ad set name",
+            "Ad name",
+            "Age",
+            "Impressions",
+            "Reach",
+            "Clicks (all)",
+            "Amount spent (JPY)",
+            "Results",
+            "Image URL",
+            "Headline",
+        ]
+    )
+    sheet.append(
+        [
+            d1,
+            "Brand",
+            "Tokyo",
+            "Video A",
+            "All",
+            1000,
+            400,
+            50,
+            "1500",
+            5,
+            "https://ex.com/a.jpg",
+            "Try us",
+        ]
+    )
+    sheet.append(
+        [d2, "Brand", "Tokyo", "Video A", "All", 800, 320, 40, "1200", 3, "", ""]
+    )
+    sheet.append([d1, "Brand", "All", "All", "18-24", 600, 200, 30, "900", 2, "", ""])
+    src = tmp_path / "test.xlsx"
+    wb.save(src)
+    import_bundle(src)
+
+    client = ByodMetaAdsClient(byod_data_dir() / "meta_ads")
+
+    metrics = asyncio.run(client.get_metrics_daily())
+    assert any(r["impressions"] == 1000 and r["reach"] == 400 for r in metrics)
+
+    as_metrics = asyncio.run(client.get_ad_set_insights_daily())
+    assert as_metrics
+    assert all("ad_set_id" in r for r in as_metrics)
+
+    ad_metrics = asyncio.run(client.get_ad_insights_daily())
+    assert ad_metrics
+    assert all("ad_id" in r for r in ad_metrics)
+
+    demo = asyncio.run(client.get_breakdown_report())
+    assert any(r.get("dimension") == "age" and r.get("value") == "18-24" for r in demo)
+
+    creatives = asyncio.run(client.get_creatives())
+    assert any(c["image_url"] == "https://ex.com/a.jpg" for c in creatives)
 
 
 # ---------------------------------------------------------------------------

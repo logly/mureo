@@ -102,7 +102,7 @@ def import_(
 
     Recognized tabs:
       - ``campaigns`` / ``ad_groups`` / ``search_terms`` / ``keywords``
-        / ``auction_insights`` → google_ads
+        → google_ads
     """
     if file.suffix.lower() not in {".xlsx", ".xlsm"}:
         typer.echo(

@@ -9,7 +9,7 @@ that the user then exports as XLSX and feeds to mureo via
 │ Google Ads (Tools → Scripts)      │    │ Google Sheet (user)       │
 │ google-ads-script.js              │───▶│ tabs: campaigns,          │
 │ paste & Run (one click)           │    │   ad_groups, search_terms,│
-└───────────────────────────────────┘    │   keywords, auction_insights│
+└───────────────────────────────────┘    │   keywords                │
                                           │                          │
                                           │ File → Download → .xlsx  │
                                           └────────────┬─────────────┘
@@ -44,7 +44,9 @@ PR.
 4. Set `TARGET_SHEET_URL` at the top of the script to the Sheet URL.
 5. Click **Authorize** (Google Ads grants Sheets write).
 6. Click **Run**. Data populates `campaigns`, `ad_groups`,
-   `search_terms`, `keywords`, `auction_insights` tabs.
+   `search_terms`, `keywords` tabs. (Auction insights are not part
+   of the BYOD path — Google Ads Scripts cannot reach them; use
+   `mureo auth setup` for `/competitive-scan` if needed.)
 7. **Export**: File → Download → Microsoft Excel (.xlsx).
 8. **Import into mureo**:
 
