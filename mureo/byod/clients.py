@@ -37,10 +37,19 @@ def _read_csv(path: Path) -> list[dict[str, Any]]:
 
 
 def _to_int(v: Any, default: int = 0) -> int:
+    # Tolerate float-formatted strings like "98.0" emitted by the Google
+    # Ads Apps Script bundle (and by Sheets exports in general). The
+    # strict ``int()`` parser raises on the dot, which used to silently
+    # zero out impressions/clicks for Google Ads BYOD — breaking CTR,
+    # CPC, and search-term diagnostics downstream even though the CSV
+    # itself was complete.
     try:
         return int(v)
     except (TypeError, ValueError):
-        return default
+        try:
+            return int(float(v))
+        except (TypeError, ValueError):
+            return default
 
 
 def _to_float(v: Any, default: float = 0.0) -> float:

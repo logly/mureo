@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **BYOD Google Ads zero-impressions/zero-clicks regression** — `_to_int` in `mureo/byod/clients.py` rejected float-formatted strings like `"98.0"`, which is exactly what the bundled Apps Script (`scripts/sheet-template/google-ads-script.js`) writes for impressions / clicks per day. The strict `int("98.0")` raised `ValueError` and the helper silently returned the default `0`, so every Google Ads BYOD `get_performance_report` row reported `impressions=0 / clicks=0 / ctr=0 / average_cpc=0` even when the underlying CSV was complete. `/daily-check` and `/search-term-cleanup` then mis-reported "BYOD CSV lacks impressions/clicks columns" and "search_terms_review: empty" downstream. `_to_int` now falls back to `int(float(v))` before returning the default, so `"98.0"` parses to `98` while truly invalid values still hit the default. Regression tests added in `tests/test_byod.py` (`test_to_int_accepts_float_formatted_strings`, `test_byod_google_ads_client_aggregates_float_metrics`).
+
 ## [0.7.0] - 2026-04-29
 
 ### Added
