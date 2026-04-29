@@ -215,50 +215,13 @@ Real diagnostic excerpts from a 30-day BYOD bundle on a Japanese B2B SaaS accoun
 
 **`/search-term-cleanup` — brand cannibalization detected automatically**
 
-```
-🔴 CRITICAL: Brand self-cannibalization
-
-Same term <brand> behaves opposite in two campaigns:
-  - Search_Brand-Performance / Brand ad group : 6 conv at ¥1,031  (CPA ¥172) ✅
-  - Search_Lead-Gen           / Generic group : 0 conv at ¥1,226  (wasted)    ❌
-  - Same for <brand-en> in Search_Lead-Gen    : 0 conv at ¥551    (wasted)    ❌
-
-→ Brand traffic should consolidate into the Brand ad group of
-  Search_Brand-Performance. Add <brand> / <brand-en> as
-  campaign-level negatives on Search_Lead-Gen.
-
-Estimated savings: ~¥12,000 / 30d redirectable from low-intent terms.
-
-⚠️  BYOD mode = no write API. Negatives must be added in the Google Ads UI;
-    mureo logs the plan to STATE.json with observation_due for /daily-check
-    to evaluate later.
-```
+<img src="docs/img/sample-search-term-cleanup.svg" alt="/search-term-cleanup output: brand self-cannibalization detected — same brand term converts at ¥172 CPA in one campaign vs ¥1,226 wasted in another, ~¥12,000/30d redirectable">
 
 Why this matters: numbers-only tools dedupe by recency. mureo reads STRATEGY.md, notices the two campaigns have *different intents* (brand vs generic lead-gen), and routes the term to where it converts — a **7× CPA gap** that nobody was acting on.
 
 **`/daily-check` — Meta CV-definition mismatch caught at the source**
 
-```
-🔴 P0  Meta CV definition mismatch
-
-Three campaigns, three different "result" units:
-
-  Campaign                    Spend     Results   result_indicator
-  ─────────────────────────────────────────────────────────────────────
-  Meta_LP-Traffic (active)   ¥33,848    0       (none — CV not configured)
-  Meta_Whitepaper-Lead        ¥2,641    3       actions:offsite_conversion.fb_pixel_lead  ← real leads
-  Meta_Whitepaper-LinkClick   ¥2,592   42       actions:link_click                        ← clicks, not leads
-
-→ The Ads Manager dashboard sums these as "45 results", but only 3 are real
-   leads. A budget-rebalance driven by the raw "results" column would
-   over-fund the link_click campaign by 14×.
-
-→ Fixes:
-   1. Switch Meta_Whitepaper-LinkClick from link_click → Lead (pixel_lead),
-      or split into its own campaign.
-   2. Verify Meta Pixel Lead is firing on the LP for Meta_LP-Traffic
-      (¥33,848 spent, 0 attributed — likely a tracking gap, not creative).
-```
+<img src="docs/img/sample-daily-check.svg" alt="/daily-check output: Meta CV definition mismatch — dashboard shows 45 results but only 3 are real leads (pixel_lead); other 42 are link_click, would over-fund by 14×">
 
 Why this matters: `link_click` vs `pixel_lead` optimization is a tracking distinction that doesn't show on a numbers-only dashboard. mureo surfaces `result_indicator` per campaign so the agent compares apples to apples *before* recommending a budget move.
 

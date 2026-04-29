@@ -210,49 +210,13 @@ STATE.jsonから接続媒体を検出:
 
 **`/search-term-cleanup` — ブランドカニバリゼーションを自動検出**
 
-```
-🔴 CRITICAL: ブランド自己カニバリゼーション
-
-同じ検索語 <brand> が、2つのキャンペーンで真逆の挙動:
-  - Search_Brand-Performance / Brand 広告グループ : 6 conv / ¥1,031  (CPA ¥172) ✅
-  - Search_Lead-Gen           / Generic 広告グループ : 0 conv / ¥1,226  (無駄)    ❌
-  - 同じく <brand-en> も Search_Lead-Gen 側          : 0 conv / ¥551    (無駄)    ❌
-
-→ ブランド流入は Search_Brand-Performance の Brand 広告グループに集約すべき。
-   Search_Lead-Gen に <brand> / <brand-en> をキャンペーン単位の除外語として追加。
-
-推定削減効果: 約 ¥12,000 / 30日 が低意図トラフィックから再配分可能。
-
-⚠️  BYOD モードは書き込み API 非対応。除外語の追加は Google Ads UI で手動実施。
-    mureo は STATE.json に observation_due 付きで実行計画を記録 →
-    次回 /daily-check が結果を評価。
-```
+<img src="docs/img/sample-search-term-cleanup.ja.svg" alt="/search-term-cleanup の出力: ブランド自己カニバリゼーションを検出 — 同じブランド検索語が片方のキャンペーンで CPA ¥172、もう片方で ¥1,226 が無駄、約 ¥12,000/30日 を再配分可能">
 
 なぜ意味があるのか: 数値しか見ないツールは「同じ検索語」を重複扱いして単純に直近を残します。mureo は STRATEGY.md を読み、「2つのキャンペーンは異なる意図 (ブランド指名 vs 汎用リード獲得) で運用されている」と認識して、コンバージョンする側に流すべきだと判断します — **CPA 7倍** の差を放置しなくなる。
 
 **`/daily-check` — Meta の CV 定義不整合を自動検出**
 
-```
-🔴 P0  Meta CV 定義不整合
-
-同一アカウントの 3 キャンペーン、3 種類の「結果」単位:
-
-  キャンペーン                    Spend     Results   result_indicator
-  ─────────────────────────────────────────────────────────────────────
-  Meta_LP-Traffic (active)       ¥33,848    0       (なし — CV計測未設定)
-  Meta_Whitepaper-Lead            ¥2,641    3       actions:offsite_conversion.fb_pixel_lead  ← 実リード
-  Meta_Whitepaper-LinkClick       ¥2,592   42       actions:link_click                        ← クリック、リードではない
-
-→ 広告マネージャのダッシュボード上は「45 results」と表示されるが、
-   実リードは 3 件のみ。「results」列の数値ベースで予算最適化判断をすると、
-   link_click キャンペーンを 14倍 過剰予算配分するリスク。
-
-→ 推奨修正:
-   1. Meta_Whitepaper-LinkClick の最適化イベントを link_click → Lead (pixel_lead) に切り替え、
-      もしくは別キャンペーンに分離。
-   2. Meta_LP-Traffic の LP に Meta Pixel Lead が発火しているか確認
-      (¥33,848 消化／0 リード — クリエイティブの問題ではなく計測欠落の可能性)。
-```
+<img src="docs/img/sample-daily-check.ja.svg" alt="/daily-check の出力: Meta CV 定義不整合 — ダッシュボードは45 results と表示するが実リードは 3 件のみ (pixel_lead)、残り42件は link_click、14倍 過剰予算配分するリスク">
 
 なぜ意味があるのか: `link_click` 最適化と `pixel_lead` 最適化の違いは、ダッシュボード上の数値だけ見ても気づけません。mureo は `result_indicator` をキャンペーン単位で取得するため、エージェントは「結果」列を比較する**前**に単位の違いを認識し、予算判断の前にトラッキング設定の問題として正しく分類できます。
 
