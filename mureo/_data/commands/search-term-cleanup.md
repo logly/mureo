@@ -9,7 +9,10 @@ Review and clean up search terms and keywords across all platforms.
 
 2. **Discover platforms**: Identify all configured platforms that support search term data from STATE.json `platforms`.
 
-3. **Review search terms**: For each ad platform that supports search term data, review search terms using the platform's search term analysis tools. Analyze N-gram patterns and user intent.
+3. **Review search terms**: For each ad platform that supports search term data:
+   - **Google Ads**: Call `google_ads.search_terms.report` for the raw query rows, then `google_ads.search_terms.review` (rule-based scoring) and `google_ads.search_terms.analyze` (intent classification) per campaign. **These tools work in both real-API and BYOD mode.** In BYOD they read from `~/.mureo/byod/google_ads/search_terms.csv` (the Apps Script bundle output) — do **not** look for raw CSVs in the project directory; mureo BYOD data is centralized under `~/.mureo/byod/` and is only accessible through MCP tools.
+   - **Meta Ads**: Skip — Meta is interest/audience-targeted and has no search-query data.
+   - Analyze N-gram patterns and user intent across the returned rows.
 
 4. **Paid/organic cross-reference** (if Search Console is available):
    - Pull top organic queries for the site

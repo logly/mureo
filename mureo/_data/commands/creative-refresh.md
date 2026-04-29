@@ -9,7 +9,11 @@ Refresh ad creatives based on strategy context and performance data across all p
 
 2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`.
 
-3. **Audit current creatives**: For each ad platform, audit current ad creative performance using the platform's creative analysis tools. Identify underperforming assets (LOW/POOR ratings for search ads, low CTR/engagement for social ads).
+3. **Audit current creatives**: For each ad platform:
+   - **Google Ads**: Call `google_ads.ad_performance.report` per campaign, plus `google_ads.rsa_assets.audit` (per-asset CTR/CVR ratings) and `google_ads.rsa_assets.analyze` (LOW/POOR detection). In BYOD mode, the Apps Script bundle does not include per-asset ratings — these tools return `[]`; fall back to `google_ads.ads.list` for headline/description text and use `ad_performance.report` for ad-level CTR/conv only.
+   - **Meta Ads**: Call `meta_ads.creatives.list`, `meta_ads.analysis.compare_ads`, and `meta_ads.analysis.suggest_creative`. In BYOD mode, creative URLs / headlines / body / CTA may be present in `~/.mureo/byod/meta_ads/creatives.csv` (best-effort, populated only when those columns were in the export).
+   - mureo BYOD data is centralized under `~/.mureo/byod/` and is only accessible through MCP tools — do **not** look for raw CSVs in the project directory.
+   - Identify underperforming assets (LOW/POOR ratings for search ads, low CTR/engagement for social ads).
 
 4. **Analyze landing pages**: For each campaign's final URL, analyze the landing page to extract key selling points, CTAs, and features. If GA4 is available, pull engagement metrics (time on page, scroll depth, bounce rate) to inform creative direction.
 
