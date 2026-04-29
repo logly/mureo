@@ -536,6 +536,40 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
     _GOOGLE_AUTH_ORIGIN = "https://accounts.google.com/"
     _META_AUTH_ORIGIN = "https://www.facebook.com/"
 
+    def _validate_oauth_url(
+        self, url: str, allowed_origin: str, label: str
+    ) -> str | None:
+        """Return ``url`` with CR/LF stripped if it is rooted at
+        ``allowed_origin``. Otherwise render an error page and return
+        ``None`` so the caller can short-circuit *before* mutating any
+        session state — keeping a rejected redirect from leaving the
+        wizard with half-populated auth material.
+
+        Stripping CR/LF defends the eventual ``Location`` header from
+        HTTP response-splitting injection. The rejection log line uses
+        only the static ``label`` argument and never echoes any value
+        derived from ``url`` — the URL carries the OAuth ``state``
+        token and (per CodeQL's taint analysis) any string transitively
+        derived from it is treated as sensitive.
+        """
+        sanitized = url.replace("\r", "").replace("\n", "")
+        if sanitized.startswith(allowed_origin):
+            return sanitized
+        logger.error("Refusing 302 for %s OAuth — URL origin mismatch", label)
+        self._send_html(
+            render_error("Unexpected OAuth destination; aborting."),
+            status=500,
+        )
+        return None
+
+    def _send_oauth_redirect(self, sanitized_url: str) -> None:
+        """Send a 302 to ``sanitized_url``. Caller MUST have run the URL
+        through :meth:`_validate_oauth_url` first; this method does not
+        re-validate."""
+        self.send_response(302)
+        self.send_header("Location", sanitized_url)
+        self.end_headers()
+
     def _handle_google_submit(self) -> None:
         if not self._host_header_ok():
             self.send_error(403, "Host header not allowed (DNS rebinding guard)")
@@ -586,15 +620,16 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             )
             return
 
-        if not auth_url.startswith(self._GOOGLE_AUTH_ORIGIN):
-            # Defensive: build_google_flow should always yield a
-            # Google-owned URL, but enforce explicitly so the wizard
-            # cannot become an open redirect.
-            logger.error("Refusing 302 to non-Google URL: %s", auth_url)
-            self._send_html(
-                render_error("Unexpected OAuth destination; aborting."),
-                status=500,
-            )
+        # Defensive: google_auth_url should always yield a Google-owned
+        # URL, but enforce explicitly so the wizard cannot become an
+        # open redirect, and strip any CR/LF that would enable HTTP
+        # response-splitting via the Location header. Validate BEFORE
+        # mutating the session so a rejection cannot leave half-written
+        # auth material behind.
+        sanitized_url = self._validate_oauth_url(
+            auth_url, self._GOOGLE_AUTH_ORIGIN, "Google"
+        )
+        if sanitized_url is None:
             return
 
         sess = self.server.wizard.session
@@ -611,9 +646,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         # the callback round-trip. Rotation happens at the commit point
         # (`/google-ads/select-account/submit`) instead.
 
-        self.send_response(302)
-        self.send_header("Location", auth_url)
-        self.end_headers()
+        self._send_oauth_redirect(sanitized_url)
 
     def _handle_google_callback(self, query: str) -> None:
         if not self._host_header_ok():
@@ -829,12 +862,12 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             )
             return
 
-        if not auth_url.startswith(self._META_AUTH_ORIGIN):
-            logger.error("Refusing 302 to non-Meta URL: %s", auth_url)
-            self._send_html(
-                render_error("Unexpected OAuth destination; aborting."),
-                status=500,
-            )
+        # Validate BEFORE mutating session — a rejected redirect must
+        # not leave half-populated auth material behind.
+        sanitized_url = self._validate_oauth_url(
+            auth_url, self._META_AUTH_ORIGIN, "Meta"
+        )
+        if sanitized_url is None:
             return
 
         sess = self.server.wizard.session
@@ -846,9 +879,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         # doesn't wedge the wizard. The Meta `state` parameter is the
         # replay guard for the callback round-trip.
 
-        self.send_response(302)
-        self.send_header("Location", auth_url)
-        self.end_headers()
+        self._send_oauth_redirect(sanitized_url)
 
     def _handle_meta_callback(self, query: str) -> None:
         if not self._host_header_ok():

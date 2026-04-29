@@ -76,7 +76,11 @@ class TestRenderMetaSecretsForm:
 
     def test_has_deep_link_to_meta_developers(self) -> None:
         html = render_meta_secrets_form(WizardSession())
-        assert "developers.facebook.com" in html
+        # Assert the full deep-link path (not just the host) so the
+        # check is precise and CodeQL's `py/incomplete-url-substring-
+        # sanitization` rule does not warn about a host-only substring
+        # match that could be satisfied by a phishing host.
+        assert "https://developers.facebook.com/apps/" in html
 
 
 class TestRenderGoogleSecretsForm:
@@ -103,8 +107,9 @@ class TestRenderGoogleSecretsForm:
         """Inline help tells the user WHERE to get each secret, so
         they don't have to search Google docs from scratch."""
         html = render_google_secrets_form(WizardSession())
-        assert "console.cloud.google.com" in html
-        assert "ads.google.com" in html
+        # Full path (not host-only substring) — precise + CodeQL-clean.
+        assert "https://console.cloud.google.com/apis/credentials" in html
+        assert "https://ads.google.com/aw/apicenter" in html
 
 
 # ---------------------------------------------------------------------------

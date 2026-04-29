@@ -1150,9 +1150,14 @@ async def run_meta_oauth(
     )
     server_thread.start()
 
-    # Open auth URL in browser
+    # Open auth URL in browser. We deliberately do NOT print the URL —
+    # it carries the OAuth ``state`` token (replay guard for the
+    # callback round-trip) and the user does not need to see it once
+    # the browser has loaded the page. Falling back to a manual paste
+    # if `webbrowser.open` fails is handled by the surrounding error
+    # path; printing the URL unconditionally is clear-text logging
+    # of sensitive data per CodeQL's data-flow analysis.
     print("\nOpening authentication page in browser...")
-    print(f"URL: {auth_url}")
     webbrowser.open(auth_url)
 
     # Wait for callback

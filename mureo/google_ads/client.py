@@ -227,17 +227,19 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         if self._throttler is not None:
             await self._throttler.acquire()
         ga_service = self._get_service("GoogleAdsService")
-        # Log the beginning of the query for debugging
-        query_hint = query.strip().split("\n")[0][:60]
-        logger.info("_search start: %s", query_hint)
+        # No query content reaches the log line — CodeQL's data-flow
+        # analysis treats any value derived from the GAQL string as
+        # sensitive (even though GAQL itself carries no credentials),
+        # so we keep the logs to static labels only.
 
         def _do_search() -> list[Any]:
             response = ga_service.search(customer_id=self._customer_id, query=query)
             return list(response)
 
+        logger.info("_search start")
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, _do_search)
-        logger.info("_search done: %s (%d rows)", query_hint, len(result))
+        logger.info("_search done (%d rows)", len(result))
         return result
 
     @staticmethod
