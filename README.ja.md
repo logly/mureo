@@ -33,7 +33,7 @@ mureoには学習の仕組みもあります。エージェントの分析を修
 
 ### モード A: BYOD — 5分で最初の診断、OAuth 不要
 
-**Sheet バンドル形式の XLSX を mureo に渡すだけで、複数プラットフォームをまたいだ戦略レベルの診断が手に入ります。** OAuth・Developer Token・SaaSサインアップ一切不要。
+**Google Ads / Meta Ads から書き出した XLSX を mureo に取り込むだけで、媒体をまたいだ戦略レベルの診断が手に入ります。** OAuth・Developer Token・SaaSサインアップは一切不要です。
 
 ```bash
 pip install mureo
