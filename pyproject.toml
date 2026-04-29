@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mureo"
-version = "0.7.0"
+version = "0.7.1"
 description = "Local-first, safety-gated AI ad-ops framework for Claude Code, Codex, Cursor & Gemini"
 requires-python = ">=3.10"
 license = "Apache-2.0"
