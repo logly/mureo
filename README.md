@@ -22,7 +22,7 @@
 Strategy-aware agents that autonomously analyze and operate Google Ads, Meta Ads, Search Console & GA4 — **credentials never leave your machine**.
 
 <p align="center">
-  <img src="docs/img/sample-search-term-cleanup.svg" alt="mureo /search-term-cleanup output: brand self-cannibalization detected — same brand term converts at ¥172 CPA in one campaign vs ¥1,226 wasted in another, ~¥12,000/30d redirectable">
+  <img src="docs/img/sample-search-term-cleanup.svg" alt="mureo /search-term-cleanup output: brand self-cannibalization detected — same brand term converts at ¥4,550 CPA in one campaign vs ¥31,800 wasted in another, ~¥250,000/30d redirectable">
 </p>
 
 <p align="center"><em>Real output: brand cannibalization auto-detected on a 30-day BYOD bundle (anonymized B2B SaaS account). <a href="#what-the-output-actually-looks-like-anonymized-b2b-saas-account">More samples ↓</a></em></p>
@@ -221,7 +221,7 @@ Real diagnostic excerpts from a 30-day BYOD bundle on a Japanese B2B SaaS accoun
 
 **`/search-term-cleanup` — brand cannibalization detected automatically**
 
-<img src="docs/img/sample-search-term-cleanup.svg" alt="/search-term-cleanup output: brand self-cannibalization detected — same brand term converts at ¥172 CPA in one campaign vs ¥1,226 wasted in another, ~¥12,000/30d redirectable">
+<img src="docs/img/sample-search-term-cleanup.svg" alt="/search-term-cleanup output: brand self-cannibalization detected — same brand term converts at ¥4,550 CPA in one campaign vs ¥31,800 wasted in another, ~¥250,000/30d redirectable">
 
 Why this matters: numbers-only tools dedupe by recency. mureo reads STRATEGY.md, notices the two campaigns have *different intents* (brand vs generic lead-gen), and routes the term to where it converts — a **7× CPA gap** that nobody was acting on.
 
