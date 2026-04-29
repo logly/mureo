@@ -136,25 +136,32 @@ _CAMPAIGN_ALIASES = (
 _AD_SET_ALIASES = (
     "ad set name",  # English (verified)
     "広告セット名",  # Japanese (verified)
-    "广告组名称",  # Simplified Chinese (best-effort)
-    "廣告組合名稱",  # Traditional Chinese (best-effort)
-    "광고 세트 이름",  # Korean (best-effort)
-    "nombre del conjunto de anuncios",  # Spanish (best-effort)
-    "nome do conjunto de anúncios",  # Portuguese BR (best-effort)
-    "anzeigengruppenname",  # German (best-effort)
-    "nom de l'ensemble de publicités",  # French (best-effort)
+    "广告组名称",  # Simplified Chinese (verified)
+    "廣告組合名稱",  # Traditional Chinese (verified)
+    "광고 세트 이름",  # Korean (verified)
+    "nombre del conjunto de anuncios",  # Spanish (verified)
+    "nome do conjunto de anúncios",  # Portuguese BR (verified)
+    # German: Meta export uses "Name der Anzeigengruppe", not the
+    # compound "Anzeigengruppenname".
+    "name der anzeigengruppe",
+    # French: Meta export uses U+2019 right single quotation mark
+    # ("l’ensemble"), not the ASCII apostrophe ("l'ensemble"). The
+    # exact-match alias must use the curly form.
+    "nom de l’ensemble de publicités",
 )
 
 _AD_ALIASES = (
     "ad name",  # English (verified)
     "広告名",  # Japanese (verified)
-    "广告名称",  # Simplified Chinese (best-effort)
-    "廣告名稱",  # Traditional Chinese (best-effort)
-    "광고 이름",  # Korean (best-effort)
-    "nombre del anuncio",  # Spanish (best-effort)
-    "nome do anúncio",  # Portuguese BR (best-effort)
-    "anzeigenname",  # German (best-effort)
-    "nom de la publicité",  # French (best-effort)
+    "广告名称",  # Simplified Chinese (verified)
+    "廣告名稱",  # Traditional Chinese (verified)
+    "광고 이름",  # Korean (verified)
+    "nombre del anuncio",  # Spanish (verified)
+    "nome do anúncio",  # Portuguese BR (verified)
+    # German: Meta export uses "Name der Anzeige", not the compound
+    # "Anzeigenname".
+    "name der anzeige",
+    "nom de la publicité",  # French (verified)
 )
 
 _IMPRESSIONS_ALIASES = (
@@ -197,7 +204,7 @@ _CLICKS_ALIASES = (
     "링크 클릭",
     "클릭",
     "clic (todos)",
-    "clic en el enlace",
+    "clics en el enlace",  # Spanish (verified — plural "clics", not "clic")
     "clics",
     "cliques (todos)",
     "cliques no link",
@@ -206,7 +213,7 @@ _CLICKS_ALIASES = (
     "link-klicks",
     "klicks",
     "clics (tous)",
-    "clics sur le lien",
+    "clics sur un lien",  # French (verified — "un lien", not "le lien")
 )
 
 _SPEND_ALIASES = (
@@ -273,13 +280,14 @@ _REACH_ALIASES = (
 _FREQUENCY_ALIASES = (
     "frequency",  # English (verified)
     "フリークエンシー",  # Japanese (verified)
-    "频次",  # Simplified Chinese (best-effort)
-    "頻率",  # Traditional Chinese (best-effort)
-    "빈도",  # Korean (best-effort)
-    "frecuencia",  # Spanish (best-effort)
-    "frequência",  # Portuguese BR (best-effort)
-    "fréquence",  # French (best-effort)
-    "frequenz",  # German (best-effort)
+    "频次",  # Simplified Chinese (verified)
+    "頻率",  # Traditional Chinese (verified)
+    "빈도",  # Korean (verified)
+    "frecuencia",  # Spanish (verified)
+    "frequência",  # Portuguese BR (verified)
+    # French: Meta export uses "Répétition", not "Fréquence".
+    "répétition",
+    "frequenz",  # German (verified)
 )
 
 _RESULT_INDICATOR_ALIASES = (
@@ -360,10 +368,12 @@ _DEVICE_ALIASES = (
     "设备平台",  # Simplified Chinese (best-effort)
     "裝置平台",  # Traditional Chinese (best-effort)
     "기기 플랫폼",  # Korean (best-effort)
-    "plataforma del dispositivo",  # Spanish (best-effort)
-    "plataforma do dispositivo",  # Portuguese BR (best-effort)
-    "plateforme de l'appareil",  # French (best-effort)
-    "geräteplattform",  # German (best-effort)
+    "plataforma del dispositivo",  # Spanish (verified)
+    "plataforma do dispositivo",  # Portuguese BR (verified)
+    # French: Meta export uses U+2019 right single quotation mark
+    # ("l’appareil"), not the ASCII apostrophe ("l'appareil").
+    "plateforme de l’appareil",
+    "geräteplattform",  # German (verified)
 )
 
 # Creative-info columns — best-effort, present only in custom reports.
