@@ -1,5 +1,7 @@
 # BYOD: Bring Your Own Data
 
+> [日本語版](byod.ja.md)
+
 Run mureo against your **real Google Ads / Meta Ads account** in 5
 minutes — no OAuth Client ID to register, no Google Ads developer
 token to apply for, no SaaS connection of any kind. You run a Google
