@@ -307,6 +307,62 @@ def test_byod_google_ads_client_round_trips_cost(google_ads_xlsx, fake_home):
         assert sum(costs) > 0, "metrics_daily.csv lost cost values"
 
 
+def test_to_int_accepts_float_formatted_strings():
+    """Regression: Google Ads Apps Script writes impressions / clicks as
+    floats (e.g. ``"98.0"``). The strict ``int()`` parser raises on the
+    dot, which used to make ``_to_int`` return the default 0 for every
+    such row — silently zeroing CTR / CPC across the BYOD pipeline."""
+    from mureo.byod.clients import _to_int
+
+    assert _to_int("98.0") == 98
+    assert _to_int("0.0") == 0
+    assert _to_int("1.5") == 1  # Truncates toward zero like int(float()).
+    # Pre-existing behaviour preserved.
+    assert _to_int("98") == 98
+    assert _to_int(98) == 98
+    assert _to_int(98.0) == 98
+    assert _to_int(None) == 0
+    assert _to_int("abc") == 0
+    assert _to_int("abc", default=42) == 42
+
+
+def test_byod_google_ads_client_aggregates_float_metrics(tmp_path, fake_home):
+    """End-to-end regression: a metrics_daily.csv whose impressions /
+    clicks columns are float-formatted (as the Apps Script bundle
+    emits — ``"98.0"`` / ``"4.0"``) must aggregate to non-zero
+    impressions and clicks, and the report must surface a meaningful
+    CTR / CPC. Previously every value collapsed to 0."""
+    import asyncio
+    from datetime import date, timedelta
+
+    from mureo.byod.clients import ByodGoogleAdsClient
+
+    data_dir = tmp_path / "ga_byod"
+    data_dir.mkdir()
+    (data_dir / "campaigns.csv").write_text(
+        "campaign_id,name,status,daily_budget_jpy\ncamp_a,Brand Search,,\n",
+        encoding="utf-8",
+    )
+    # LAST_30_DAYS is [today - 30, today - 1] (excludes today). Use
+    # yesterday so the row falls inside the window regardless of
+    # when the test runs.
+    yesterday_iso = (date.today() - timedelta(days=1)).isoformat()
+    (data_dir / "metrics_daily.csv").write_text(
+        "date,campaign_id,impressions,clicks,cost_jpy,conversions\n"
+        f"{yesterday_iso},camp_a,98.0,4.0,8905.30,0.0\n",
+        encoding="utf-8",
+    )
+
+    client = ByodGoogleAdsClient(data_dir=data_dir, customer_id="byod")
+    report = asyncio.run(client.get_performance_report(period="LAST_30_DAYS"))
+    assert len(report) == 1
+    row = report[0]
+    assert row["impressions"] == 98, f"impressions zeroed: {row}"
+    assert row["clicks"] == 4, f"clicks zeroed: {row}"
+    assert row["ctr"] > 0, f"CTR collapsed to 0: {row}"
+    assert row["average_cpc"] > 0, f"avg CPC collapsed to 0: {row}"
+
+
 def test_byod_client_search_terms_report(google_ads_xlsx, fake_home):
     """search_terms.csv → ByodGoogleAdsClient.get_search_terms_report.
 
