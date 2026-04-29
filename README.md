@@ -209,6 +209,22 @@ Agent validates, then asks for approval:
 You approve → Agent updates each platform.
 ```
 
+### What the output actually looks like (anonymized B2B SaaS account)
+
+Real diagnostic excerpts from a 30-day BYOD bundle on a Japanese B2B SaaS account. Campaign / ad-group names are anonymized and brand search terms replaced with `<brand>`. Numbers are unchanged so the math holds.
+
+**`/search-term-cleanup` — brand cannibalization detected automatically**
+
+<img src="docs/img/sample-search-term-cleanup.svg" alt="/search-term-cleanup output: brand self-cannibalization detected — same brand term converts at ¥172 CPA in one campaign vs ¥1,226 wasted in another, ~¥12,000/30d redirectable">
+
+Why this matters: numbers-only tools dedupe by recency. mureo reads STRATEGY.md, notices the two campaigns have *different intents* (brand vs generic lead-gen), and routes the term to where it converts — a **7× CPA gap** that nobody was acting on.
+
+**`/daily-check` — Meta CV-definition mismatch caught at the source**
+
+<img src="docs/img/sample-daily-check.svg" alt="/daily-check output: Meta CV definition mismatch — dashboard shows 45 results but only 3 are real leads (pixel_lead); other 42 are link_click, would over-fund by 14×">
+
+Why this matters: `link_click` vs `pixel_lead` optimization is a tracking distinction that doesn't show on a numbers-only dashboard. mureo surfaces `result_indicator` per campaign so the agent compares apples to apples *before* recommending a budget move.
+
 ### Analysis & domain knowledge (built-in)
 
 <details>
