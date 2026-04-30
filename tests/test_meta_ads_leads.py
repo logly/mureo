@@ -400,7 +400,7 @@ class TestLeadFormsMcpHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.lead_forms.list",
+                "meta_ads_lead_forms_list",
                 {"account_id": "act_123", "page_id": "page_456"},
             )
 
@@ -422,7 +422,7 @@ class TestLeadFormsMcpHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.lead_forms.get",
+                "meta_ads_lead_forms_get",
                 {"account_id": "act_123", "form_id": "form_1"},
             )
 
@@ -439,7 +439,7 @@ class TestLeadFormsMcpHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.lead_forms.create",
+                "meta_ads_lead_forms_create",
                 {
                     "account_id": "act_123",
                     "page_id": "page_456",
@@ -464,7 +464,7 @@ class TestLeadFormsMcpHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.lead_forms.create",
+                "meta_ads_lead_forms_create",
                 {
                     "account_id": "act_123",
                     "page_id": "page_456",
@@ -489,7 +489,7 @@ class TestLeadFormsMcpHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.leads.get",
+                "meta_ads_leads_get",
                 {"account_id": "act_123", "form_id": "form_1"},
             )
 
@@ -508,7 +508,7 @@ class TestLeadFormsMcpHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.leads.get_by_ad",
+                "meta_ads_leads_get_by_ad",
                 {"account_id": "act_123", "ad_id": "ad_789"},
             )
 
@@ -527,7 +527,7 @@ class TestLeadFormsMcpHandlers:
         ):
             with pytest.raises(ValueError, match="page_id"):
                 await mod.handle_tool(
-                    "meta_ads.lead_forms.list", {"account_id": "act_123"}
+                    "meta_ads_lead_forms_list", {"account_id": "act_123"}
                 )
 
     async def test_leads_no_credentials(self) -> None:
@@ -536,7 +536,7 @@ class TestLeadFormsMcpHandlers:
         handlers = _import_handlers()
         with patch.object(handlers, "load_meta_ads_credentials", return_value=None):
             result = await mod.handle_tool(
-                "meta_ads.leads.get",
+                "meta_ads_leads_get",
                 {"account_id": "act_123", "form_id": "form_1"},
             )
         assert len(result) == 1
@@ -550,14 +550,14 @@ class TestLeadAdsToolDefinitions:
     @pytest.mark.parametrize(
         "tool_name,expected_required",
         [
-            ("meta_ads.lead_forms.list", ["page_id"]),
-            ("meta_ads.lead_forms.get", ["form_id"]),
+            ("meta_ads_lead_forms_list", ["page_id"]),
+            ("meta_ads_lead_forms_get", ["form_id"]),
             (
-                "meta_ads.lead_forms.create",
+                "meta_ads_lead_forms_create",
                 ["page_id", "name", "questions", "privacy_policy_url"],
             ),
-            ("meta_ads.leads.get", ["form_id"]),
-            ("meta_ads.leads.get_by_ad", ["ad_id"]),
+            ("meta_ads_leads_get", ["form_id"]),
+            ("meta_ads_leads_get_by_ad", ["ad_id"]),
         ],
     )
     def test_required_fields(
@@ -574,10 +574,10 @@ class TestLeadAdsToolDefinitions:
         mod = _import_meta_ads_tools()
         tool_names = {t.name for t in mod.TOOLS}
         expected = {
-            "meta_ads.lead_forms.list",
-            "meta_ads.lead_forms.get",
-            "meta_ads.lead_forms.create",
-            "meta_ads.leads.get",
-            "meta_ads.leads.get_by_ad",
+            "meta_ads_lead_forms_list",
+            "meta_ads_lead_forms_get",
+            "meta_ads_lead_forms_create",
+            "meta_ads_leads_get",
+            "meta_ads_leads_get_by_ad",
         }
         assert expected.issubset(tool_names)

@@ -56,7 +56,7 @@ class TestCampaignPauseEnableHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.campaigns.pause",
+                "meta_ads_campaigns_pause",
                 {"account_id": "act_123", "campaign_id": "456"},
             )
 
@@ -75,7 +75,7 @@ class TestCampaignPauseEnableHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.campaigns.enable",
+                "meta_ads_campaigns_enable",
                 {"account_id": "act_123", "campaign_id": "456"},
             )
 
@@ -104,7 +104,7 @@ class TestAdSetExtendedHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ad_sets.get",
+                "meta_ads_ad_sets_get",
                 {"account_id": "act_123", "ad_set_id": "20"},
             )
 
@@ -123,7 +123,7 @@ class TestAdSetExtendedHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ad_sets.pause",
+                "meta_ads_ad_sets_pause",
                 {"account_id": "act_123", "ad_set_id": "20"},
             )
 
@@ -142,7 +142,7 @@ class TestAdSetExtendedHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ad_sets.enable",
+                "meta_ads_ad_sets_enable",
                 {"account_id": "act_123", "ad_set_id": "20"},
             )
 
@@ -171,7 +171,7 @@ class TestAdExtendedHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ads.get",
+                "meta_ads_ads_get",
                 {"account_id": "act_123", "ad_id": "40"},
             )
 
@@ -190,7 +190,7 @@ class TestAdExtendedHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ads.pause",
+                "meta_ads_ads_pause",
                 {"account_id": "act_123", "ad_id": "40"},
             )
 
@@ -209,7 +209,7 @@ class TestAdExtendedHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ads.enable",
+                "meta_ads_ads_enable",
                 {"account_id": "act_123", "ad_id": "40"},
             )
 
@@ -238,7 +238,7 @@ class TestAudienceExtendedHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.audiences.get",
+                "meta_ads_audiences_get",
                 {"account_id": "act_123", "audience_id": "50"},
             )
 
@@ -257,7 +257,7 @@ class TestAudienceExtendedHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.audiences.delete",
+                "meta_ads_audiences_delete",
                 {"account_id": "act_123", "audience_id": "50"},
             )
 
@@ -276,7 +276,7 @@ class TestAudienceExtendedHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.audiences.create_lookalike",
+                "meta_ads_audiences_create_lookalike",
                 {
                     "account_id": "act_123",
                     "name": "Lookalike",
@@ -311,7 +311,7 @@ class TestCreativeHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.creatives.list",
+                "meta_ads_creatives_list",
                 {"account_id": "act_123"},
             )
 
@@ -330,7 +330,7 @@ class TestCreativeHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.creatives.create",
+                "meta_ads_creatives_create",
                 {
                     "account_id": "act_123",
                     "name": "Creative1",
@@ -354,7 +354,7 @@ class TestCreativeHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.creatives.create_dynamic",
+                "meta_ads_creatives_create_dynamic",
                 {
                     "account_id": "act_123",
                     "name": "Dynamic1",
@@ -381,7 +381,7 @@ class TestCreativeHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.creatives.upload_image",
+                "meta_ads_creatives_upload_image",
                 {
                     "account_id": "act_123",
                     "image_url": "https://example.com/img.png",
@@ -413,7 +413,7 @@ class TestPixelHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.pixels.list",
+                "meta_ads_pixels_list",
                 {"account_id": "act_123"},
             )
 
@@ -432,7 +432,7 @@ class TestPixelHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.pixels.get",
+                "meta_ads_pixels_get",
                 {"account_id": "act_123", "pixel_id": "px_1"},
             )
 
@@ -451,7 +451,7 @@ class TestPixelHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.pixels.stats",
+                "meta_ads_pixels_stats",
                 {"account_id": "act_123", "pixel_id": "px_1"},
             )
 
@@ -470,7 +470,7 @@ class TestPixelHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.pixels.events",
+                "meta_ads_pixels_events",
                 {"account_id": "act_123", "pixel_id": "px_1"},
             )
 

@@ -1,6 +1,6 @@
 """Cross-platform analysis MCP tool definitions and dispatcher.
 
-Exposes one tool: ``analysis.anomalies.check``. Given a current
+Exposes one tool: ``analysis_anomalies_check``. Given a current
 metrics snapshot for a campaign and (optionally) STATE.json's action
 log, returns a severity-ordered list of anomalies (zero-spend, CPA
 spike, CTR drop) the agent should surface to the operator.
@@ -45,7 +45,7 @@ _CURRENT_PROPERTIES: dict[str, Any] = {
 
 TOOLS: list[Tool] = [
     Tool(
-        name="analysis.anomalies.check",
+        name="analysis_anomalies_check",
         description=(
             "Detect anomalies for one campaign by comparing its current "
             "metrics against a median-based baseline built from STATE.json's "
@@ -99,7 +99,7 @@ TOOLS: list[Tool] = [
 _TOOL_NAMES: frozenset[str] = frozenset(t.name for t in TOOLS)
 
 _HANDLERS: dict[str, Any] = {
-    "analysis.anomalies.check": handle_anomalies_check,
+    "analysis_anomalies_check": handle_anomalies_check,
 }
 
 

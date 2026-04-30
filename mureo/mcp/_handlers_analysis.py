@@ -1,4 +1,4 @@
-"""MCP handler for ``analysis.anomalies.check``.
+"""MCP handler for ``analysis_anomalies_check``.
 
 Thin composition layer over the pure ``detect_anomalies`` +
 ``baseline_from_history`` functions in ``mureo.analysis.anomaly_detector``.

@@ -24,7 +24,7 @@ Safety contract:
 
 Concurrency: STATE.json is assumed to be written by a single mureo
 process at a time. The read-check-append sequence here is not
-protected by a file lock; concurrent ``rollback.apply`` invocations
+protected by a file lock; concurrent ``rollback_apply`` invocations
 against the same file can race each other.
 """
 

@@ -58,14 +58,14 @@ _EVENT_SOURCE_URL_DESCRIPTION = (
 TOOLS: list[Tool] = [
     # === Conversions (CAPI) ===
     Tool(
-        name="meta_ads.conversions.send",
+        name="meta_ads_conversions_send",
         description=(
             "Sends a batch of arbitrary conversion events to the Meta "
             "Conversions API. Returns Meta's response including "
             "events_received and messages (warnings for missing fields). "
             "Mutating on Meta's side — events become part of the pixel's "
             "attribution stream. For common event types prefer the "
-            "dedicated meta_ads.conversions.send_purchase or "
+            "dedicated meta_ads_conversions_send_purchase or "
             "send_lead helpers, which enforce required fields and fewer "
             "mistakes. For other event names (AddToCart, InitiateCheckout, "
             "CompleteRegistration, custom events) use this generic tool."
@@ -158,15 +158,15 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.conversions.send_purchase",
+        name="meta_ads_conversions_send_purchase",
         description=(
             "Sends a single Purchase event via the Meta Conversions API — "
             "the most common CAPI use case. Returns Meta's "
             "events_received acknowledgement. Mutating on Meta's side. "
             "Required fields model a typical purchase: amount, currency, "
             "and hashed user identifiers. For other event types use "
-            "meta_ads.conversions.send_lead (leads) or the generic "
-            "meta_ads.conversions.send (AddToCart / custom events / "
+            "meta_ads_conversions_send_lead (leads) or the generic "
+            "meta_ads_conversions_send (AddToCart / custom events / "
             "batching multiple events)."
         ),
         inputSchema={
@@ -232,7 +232,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.conversions.send_lead",
+        name="meta_ads_conversions_send_lead",
         description=(
             "Sends a single Lead event via the Meta Conversions API. "
             "Returns Meta's events_received acknowledgement. Mutating on "

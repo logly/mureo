@@ -10,8 +10,8 @@ Analyze budget allocation and suggest rebalancing across all campaigns.
 2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`.
 
 3. **Analyze budget efficiency**: For each ad platform:
-   - **Google Ads**: Call `google_ads.budget.efficiency` (campaign × budget × spend × conv ratio) and `google_ads.performance.report` for the period. In BYOD mode, `budget.efficiency` may return `[]` because daily budgets aren't carried in the Apps Script bundle — fall back to `performance.report` cost / conv numbers and rank by CPA.
-   - **Meta Ads**: Call `meta_ads.insights.report` and `meta_ads.analysis.cost`. In BYOD mode, daily budgets aren't surfaced — rank by spend × `result_indicator`-aware conversions instead.
+   - **Google Ads**: Call `google_ads_budget_efficiency` (campaign × budget × spend × conv ratio) and `google_ads_performance_report` for the period. In BYOD mode, `budget.efficiency` may return `[]` because daily budgets aren't carried in the Apps Script bundle — fall back to `performance.report` cost / conv numbers and rank by CPA.
+   - **Meta Ads**: Call `meta_ads_insights_report` and `meta_ads_analysis_cost`. In BYOD mode, daily budgets aren't surfaced — rank by spend × `result_indicator`-aware conversions instead.
    - mureo BYOD data is centralized under `~/.mureo/byod/` and is only accessible through MCP tools — do **not** look for raw CSVs in the project directory.
 
 4. **Rank campaigns** by efficiency (CPA, ROAS, or CVR depending on campaign goals) across all platforms to enable cross-platform comparison.

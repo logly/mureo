@@ -94,7 +94,7 @@ Sample-size gates (30+ conversions for CPA, 1000+ impressions for
 CTR) follow the `mureo-learning` skill's statistical-thinking rules
 to suppress single-day noise.
 
-Agents invoke the detector via the `analysis.anomalies.check` MCP
+Agents invoke the detector via the `analysis_anomalies_check` MCP
 tool, which composes `baseline_from_history` with `detect_anomalies`
 behind a single call. Safety properties of the MCP surface:
 
@@ -141,10 +141,10 @@ a compromised agent.
 
 Execution is exposed to agents via two MCP tools:
 
-- `rollback.plan.get` returns the planner's verdict (`supported` /
+- `rollback_plan_get` returns the planner's verdict (`supported` /
   `partial` / `not_supported`), the operation that would be
   dispatched, its parameters, and any caveats. Read-only.
-- `rollback.apply` executes the plan by re-dispatching
+- `rollback_apply` executes the plan by re-dispatching
   `plan.operation` with `plan.params` through the same
   `handle_call_tool` used for forward actions, so the reversal call
   re-enters the full policy gate (auth, rate limit, GAQL validation,
@@ -167,7 +167,7 @@ Additional hardening on the executor:
   `reversible_params=None` so rollbacks of rollbacks do not chain by
   default; a second apply of the same index is refused.
 - `state_file` resolves strictly inside the MCP server's current
-  working directory (same sandbox as `analysis.anomalies.check`) so
+  working directory (same sandbox as `analysis_anomalies_check`) so
   an attacker-controlled `STATE.json` outside the project cannot be
   used as the reversal source.
 - Dispatch-time API failures never mutate `action_log`; the

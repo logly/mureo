@@ -1,4 +1,4 @@
-"""MCP tool tests for rollback.apply and rollback.plan.get.
+"""MCP tool tests for rollback_apply and rollback.plan.get.
 
 Locks in that the tools are registered in the aggregate MCP server
 tool list, and that the handlers wire through to the executor /
@@ -52,15 +52,15 @@ class TestToolRegistration:
     async def test_tools_registered_in_server(self) -> None:
         all_tools = await handle_list_tools()
         names = {t.name for t in all_tools}
-        assert "rollback.apply" in names
-        assert "rollback.plan.get" in names
+        assert "rollback_apply" in names
+        assert "rollback_plan_get" in names
 
     def test_tool_names_in_module_list(self) -> None:
         names = {t.name for t in TOOLS}
-        assert names == {"rollback.apply", "rollback.plan.get"}
+        assert names == {"rollback_apply", "rollback_plan_get"}
 
     def test_apply_requires_confirm_in_schema(self) -> None:
-        apply_tool = next(t for t in TOOLS if t.name == "rollback.apply")
+        apply_tool = next(t for t in TOOLS if t.name == "rollback_apply")
         schema = apply_tool.inputSchema
         assert "confirm" in schema.get("required", [])
         assert "index" in schema.get("required", [])
@@ -73,7 +73,7 @@ class TestPlanGetHandler:
         _write_state(sandboxed_cwd / "STATE.json", [_budget_entry()])
 
         result = await handle_tool(
-            "rollback.plan.get",
+            "rollback_plan_get",
             {"state_file": "STATE.json", "index": 0},
         )
         payload = json.loads(result[0].text)
@@ -99,7 +99,7 @@ class TestPlanGetHandler:
             ],
         )
         result = await handle_tool(
-            "rollback.plan.get",
+            "rollback_plan_get",
             {"state_file": "STATE.json", "index": 0},
         )
         payload = json.loads(result[0].text)
@@ -116,7 +116,7 @@ class TestApplyHandler:
         _write_state(sandboxed_cwd / "STATE.json", [_budget_entry()])
 
         result = await handle_tool(
-            "rollback.apply",
+            "rollback_apply",
             {"state_file": "STATE.json", "index": 0, "confirm": False},
         )
         payload = json.loads(result[0].text)
@@ -148,7 +148,7 @@ class TestApplyHandler:
         )
 
         result = await handle_tool(
-            "rollback.apply",
+            "rollback_apply",
             {"state_file": "STATE.json", "index": 0, "confirm": True},
         )
         payload = json.loads(result[0].text)
@@ -172,7 +172,7 @@ class TestApplyHandler:
         _write_state(outside, [_budget_entry()])
 
         result = await handle_tool(
-            "rollback.apply",
+            "rollback_apply",
             {
                 "state_file": str(outside),
                 "index": 0,
@@ -195,7 +195,7 @@ class TestApplyHandler:
         _write_state(sandboxed_cwd / "STATE.json", [_budget_entry()])
 
         result = await handle_tool(
-            "rollback.apply",
+            "rollback_apply",
             {"state_file": "STATE.json", "index": 0, "confirm": 1},
         )
         payload = json.loads(result[0].text)

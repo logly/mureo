@@ -10,8 +10,8 @@ Scan the competitive landscape and suggest strategic responses across all channe
 2. **Discover platforms**: Identify all configured platforms from STATE.json `platforms`.
 
 3. **Paid competitive analysis**: For each ad platform that provides competitive/auction data:
-   - **Google Ads**: Call `google_ads.auction_insights.get` (raw impression-share / overlap rows) and `google_ads.auction_insights.analyze` (rule-based summary), then `google_ads.cpc.detect_trend` (CPC drift) and `google_ads.device.analyze` (device-level breakdown). **BYOD limitation**: Apps Script does not expose `auction_insight_domain` (GAQL) — auction insight tools return `[]` in BYOD mode. The remaining tools (CPC trend, device breakdown) work in BYOD against the bundle.
-   - **Meta Ads**: No direct competitor-share API; surface `meta_ads.analysis.placements` and `meta_ads.analysis.cost` to detect placement-level cost shifts that indicate competitive pressure.
+   - **Google Ads**: Call `google_ads_auction_insights_get` (raw impression-share / overlap rows) and `google_ads_auction_insights_analyze` (rule-based summary), then `google_ads_cpc_detect_trend` (CPC drift) and `google_ads_device_analyze` (device-level breakdown). **BYOD limitation**: Apps Script does not expose `auction_insight_domain` (GAQL) — auction insight tools return `[]` in BYOD mode. The remaining tools (CPC trend, device breakdown) work in BYOD against the bundle.
+   - **Meta Ads**: No direct competitor-share API; surface `meta_ads_analysis_placements` and `meta_ads_analysis_cost` to detect placement-level cost shifts that indicate competitive pressure.
    - mureo BYOD data is centralized under `~/.mureo/byod/` and is only accessible through MCP tools — do **not** look for raw CSVs in the project directory.
    - Compare impression share, overlap rate, CPC trends, and device landscape across the returned data.
 

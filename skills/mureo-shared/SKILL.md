@@ -117,7 +117,7 @@ The MCP server exposes tools for Google Ads, Meta Ads, and Search Console over s
 
 ### Verify MCP Connection
 
-Once configured, the AI agent can call `google_ads.campaigns.list` or `meta_ads.campaigns.list` to verify the connection is working.
+Once configured, the AI agent can call `google_ads_campaigns_list` or `meta_ads_campaigns_list` to verify the connection is working.
 
 ## Security Rules
 
@@ -142,7 +142,7 @@ Agent: "I'll pause campaign 123456 (Brand Search - Tokyo).
 ### 2. Budget Changes Require Current Value Display
 
 Before updating any budget, **always retrieve and display the current budget** first:
-1. Call `google_ads.budget.get` or read campaign details
+1. Call `google_ads_budget_get` or read campaign details
 2. Show the user: current amount, new amount, and percentage change
 3. Warn if the change exceeds 20% (significant impact on delivery)
 

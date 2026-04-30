@@ -485,45 +485,45 @@ async def handle_capture(args: dict[str, Any]) -> list[TextContent]:
 
 HANDLERS_ANALYSIS: dict[str, Any] = {
     # Campaigns & budget (additional)
-    "google_ads.budget.create": handle_budget_create,
-    "google_ads.accounts.list": handle_accounts_list,
-    "google_ads.network_performance.report": handle_network_performance_report,
-    "google_ads.ad_performance.report": handle_ad_performance_report,
+    "google_ads_budget_create": handle_budget_create,
+    "google_ads_accounts_list": handle_accounts_list,
+    "google_ads_network_performance_report": handle_network_performance_report,
+    "google_ads_ad_performance_report": handle_ad_performance_report,
     # Keywords (additional)
-    "google_ads.keywords.pause": handle_keywords_pause,
-    "google_ads.negative_keywords.remove": handle_negative_keywords_remove,
-    "google_ads.negative_keywords.add_to_ad_group": handle_negative_keywords_add_to_ad_group,
+    "google_ads_keywords_pause": handle_keywords_pause,
+    "google_ads_negative_keywords_remove": handle_negative_keywords_remove,
+    "google_ads_negative_keywords_add_to_ad_group": handle_negative_keywords_add_to_ad_group,
     # Ads (additional)
-    "google_ads.ads.policy_details": handle_ads_policy_details,
+    "google_ads_ads_policy_details": handle_ads_policy_details,
     # Search term analysis
-    "google_ads.search_terms.analyze": handle_search_terms_analyze,
-    "google_ads.negative_keywords.suggest": handle_negative_keywords_suggest,
+    "google_ads_search_terms_analyze": handle_search_terms_analyze,
+    "google_ads_negative_keywords_suggest": handle_negative_keywords_suggest,
     # Keyword analysis
-    "google_ads.keywords.audit": handle_keywords_audit,
-    "google_ads.keywords.cross_adgroup_duplicates": handle_keywords_cross_adgroup_duplicates,
+    "google_ads_keywords_audit": handle_keywords_audit,
+    "google_ads_keywords_cross_adgroup_duplicates": handle_keywords_cross_adgroup_duplicates,
     # Performance analysis
-    "google_ads.performance.analyze": handle_performance_analyze,
-    "google_ads.cost_increase.investigate": handle_cost_increase_investigate,
-    "google_ads.health_check.all": handle_health_check,
-    "google_ads.ad_performance.compare": handle_ad_performance_compare,
+    "google_ads_performance_analyze": handle_performance_analyze,
+    "google_ads_cost_increase_investigate": handle_cost_increase_investigate,
+    "google_ads_health_check_all": handle_health_check,
+    "google_ads_ad_performance_compare": handle_ad_performance_compare,
     # Budget analysis
-    "google_ads.budget.efficiency": handle_budget_efficiency,
-    "google_ads.budget.reallocation": handle_budget_reallocation,
+    "google_ads_budget_efficiency": handle_budget_efficiency,
+    "google_ads_budget_reallocation": handle_budget_reallocation,
     # Auction insights
-    "google_ads.auction_insights.get": handle_auction_insights_get,
+    "google_ads_auction_insights_get": handle_auction_insights_get,
     # RSA analysis
-    "google_ads.rsa_assets.analyze": handle_rsa_assets_analyze,
-    "google_ads.rsa_assets.audit": handle_rsa_assets_audit,
+    "google_ads_rsa_assets_analyze": handle_rsa_assets_analyze,
+    "google_ads_rsa_assets_audit": handle_rsa_assets_audit,
     # B2B
-    "google_ads.btob.optimizations": handle_btob_optimizations,
+    "google_ads_btob_optimizations": handle_btob_optimizations,
     # Creative
-    "google_ads.landing_page.analyze": handle_landing_page_analyze,
-    "google_ads.creative.research": handle_creative_research,
+    "google_ads_landing_page_analyze": handle_landing_page_analyze,
+    "google_ads_creative_research": handle_creative_research,
     # Monitoring
-    "google_ads.monitoring.delivery_goal": handle_delivery_goal_evaluate,
-    "google_ads.monitoring.cpa_goal": handle_cpa_goal_evaluate,
-    "google_ads.monitoring.cv_goal": handle_cv_goal_evaluate,
-    "google_ads.monitoring.zero_conversions": handle_zero_conversions_diagnose,
+    "google_ads_monitoring_delivery_goal": handle_delivery_goal_evaluate,
+    "google_ads_monitoring_cpa_goal": handle_cpa_goal_evaluate,
+    "google_ads_monitoring_cv_goal": handle_cv_goal_evaluate,
+    "google_ads_monitoring_zero_conversions": handle_zero_conversions_diagnose,
     # Capture
-    "google_ads.capture.screenshot": handle_capture,
+    "google_ads_capture_screenshot": handle_capture,
 }

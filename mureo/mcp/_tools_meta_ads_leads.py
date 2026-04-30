@@ -24,7 +24,7 @@ _ACCOUNT_ID_PARAM = {
 TOOLS: list[Tool] = [
     # === Lead Ads ===
     Tool(
-        name="meta_ads.lead_forms.list",
+        name="meta_ads_lead_forms_list",
         description=(
             "Lists lead forms configured for a Facebook Page. Returns id, "
             "name, status, leads_count, locale, and created_time per "
@@ -55,7 +55,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.lead_forms.get",
+        name="meta_ads_lead_forms_get",
         description=(
             "Fetches the full detail record for a single lead form, "
             "including its question definitions and legal pages. "
@@ -80,10 +80,10 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.lead_forms.create",
+        name="meta_ads_lead_forms_create",
         description=(
             "Creates a new lead form on a Facebook Page. Returns the new "
-            "form_id. Mutating, reversible via rollback.apply (rollback "
+            "form_id. Mutating, reversible via rollback_apply (rollback "
             "archives the form rather than deleting submitted leads). "
             "Questions is an ordered list of standard Meta types "
             "(FULL_NAME, EMAIL, PHONE_NUMBER, COMPANY_NAME, JOB_TITLE, "
@@ -185,7 +185,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.leads.get",
+        name="meta_ads_leads_get",
         description=(
             "Retrieves submitted leads for a single form. Returns per "
             "lead: id, created_time, ad_id, campaign_id, form_id, and "
@@ -217,7 +217,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.leads.get_by_ad",
+        name="meta_ads_leads_get_by_ad",
         description=(
             "Retrieves leads attributed to a specific ad, regardless of "
             "which form they used. Returns the same lead record shape as "

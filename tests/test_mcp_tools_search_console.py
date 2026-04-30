@@ -40,11 +40,11 @@ class TestSearchConsoleToolDefinitions:
         assert len(mod.TOOLS) == 10
 
     def test_all_tool_names_prefixed(self) -> None:
-        """All tool names start with search_console."""
+        """All tool names start with the search_console namespace prefix."""
         mod = _import_tools()
         for tool in mod.TOOLS:
             assert tool.name.startswith(
-                "search_console."
+                "search_console_"
             ), f"Invalid tool name: {tool.name}"
 
     def test_all_tools_have_input_schema(self) -> None:
@@ -57,26 +57,26 @@ class TestSearchConsoleToolDefinitions:
     @pytest.mark.parametrize(
         "tool_name,expected_required",
         [
-            ("search_console.sites.list", []),
-            ("search_console.sites.get", ["site_url"]),
+            ("search_console_sites_list", []),
+            ("search_console_sites_get", ["site_url"]),
             (
-                "search_console.analytics.query",
+                "search_console_analytics_query",
                 ["site_url", "start_date", "end_date"],
             ),
             (
-                "search_console.analytics.top_queries",
+                "search_console_analytics_top_queries",
                 ["site_url", "start_date", "end_date"],
             ),
             (
-                "search_console.analytics.top_pages",
+                "search_console_analytics_top_pages",
                 ["site_url", "start_date", "end_date"],
             ),
             (
-                "search_console.analytics.device_breakdown",
+                "search_console_analytics_device_breakdown",
                 ["site_url", "start_date", "end_date"],
             ),
             (
-                "search_console.analytics.compare_periods",
+                "search_console_analytics_compare_periods",
                 [
                     "site_url",
                     "start_date_1",
@@ -85,10 +85,10 @@ class TestSearchConsoleToolDefinitions:
                     "end_date_2",
                 ],
             ),
-            ("search_console.sitemaps.list", ["site_url"]),
-            ("search_console.sitemaps.submit", ["site_url", "feedpath"]),
+            ("search_console_sitemaps_list", ["site_url"]),
+            ("search_console_sitemaps_submit", ["site_url", "feedpath"]),
             (
-                "search_console.url_inspection.inspect",
+                "search_console_url_inspection_inspect",
                 ["site_url", "inspection_url"],
             ),
         ],
@@ -138,7 +138,7 @@ class TestHandlerDispatch:
                 return_value=mock_client,
             ),
         ):
-            result = await mod.handle_tool("search_console.sites.list", {})
+            result = await mod.handle_tool("search_console_sites_list", {})
 
         assert len(result) == 1
         parsed = json.loads(result[0].text)

@@ -42,7 +42,7 @@ _CTA_DESCRIPTION = (
 TOOLS: list[Tool] = [
     # === Creative list / create / dynamic / upload_image ===
     Tool(
-        name="meta_ads.creatives.list",
+        name="meta_ads_creatives_list",
         description=(
             "Lists AdCreative resources in a Meta Ads account. Returns id, "
             "name, status, object_story_id, call_to_action_type, and "
@@ -71,16 +71,16 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.creatives.create",
+        name="meta_ads_creatives_create",
         description=(
             "Creates a single-image Meta Ads AdCreative. Returns the new "
             "creative's id and object_story_id. Mutating, reversible via "
-            "rollback.apply (rollback soft-deletes the creative). Supply "
+            "rollback_apply (rollback soft-deletes the creative). Supply "
             "exactly one of image_url or image_hash — image_url triggers "
             "Meta to fetch and host the image; image_hash references an "
-            "image already uploaded via meta_ads.creatives.upload_image or "
+            "image already uploaded via meta_ads_creatives_upload_image or "
             "meta_ads.images.upload_file. For multi-image carousels use "
-            "meta_ads.creatives.create_carousel; for dynamic / automatic "
+            "meta_ads_creatives_create_carousel; for dynamic / automatic "
             "optimization use meta_ads.creatives.create_dynamic."
         ),
         inputSchema={
@@ -115,7 +115,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Image hash returned from "
-                        "meta_ads.creatives.upload_image / "
+                        "meta_ads_creatives_upload_image / "
                         "meta_ads.images.upload_file. Mutually exclusive "
                         "with image_url."
                     ),
@@ -162,7 +162,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.creatives.create_dynamic",
+        name="meta_ads_creatives_create_dynamic",
         description=(
             "Creates a Dynamic Creative — Meta auto-generates and "
             "optimises combinations from multiple images, headlines, "
@@ -170,7 +170,7 @@ TOOLS: list[Tool] = [
             "reversible via rollback.apply. Use when you want Meta to "
             "learn the best-performing asset mix rather than testing "
             "manually. For static single-image ads use "
-            "meta_ads.creatives.create; for explicitly-controlled multi-"
+            "meta_ads_creatives_create; for explicitly-controlled multi-"
             "card layouts use meta_ads.creatives.create_carousel. Supply "
             "2–10 images, 1–5 of each text field; Meta combines them at "
             "serve time."
@@ -193,8 +193,8 @@ TOOLS: list[Tool] = [
                         "Image hashes to include in the rotation. 2–10 "
                         "recommended for meaningful optimization; Meta "
                         "accepts up to 10. Upload via "
-                        "meta_ads.creatives.upload_image / "
-                        "meta_ads.images.upload_file first."
+                        "meta_ads_creatives_upload_image / "
+                        "meta_ads_images_upload_file first."
                     ),
                 },
                 "bodies": {
@@ -239,7 +239,7 @@ TOOLS: list[Tool] = [
                     "maxItems": 5,
                     "description": (
                         "Optional CTA variants (0–5). Values drawn from "
-                        "the same set as meta_ads.creatives.create "
+                        "the same set as meta_ads_creatives_create "
                         "(LEARN_MORE / SIGN_UP / SHOP_NOW / etc.)."
                     ),
                 },
@@ -256,14 +256,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.creatives.upload_image",
+        name="meta_ads_creatives_upload_image",
         description=(
             "Uploads an image to the Meta Ads account by fetching it from "
             "a public HTTPS URL. Returns the image_hash that can be "
-            "referenced in meta_ads.creatives.create / create_dynamic / "
+            "referenced in meta_ads_creatives_create / create_dynamic / "
             "create_carousel. Mutating — the image is persisted in the "
             "account library. For uploads from local files (not URLs) use "
-            "meta_ads.images.upload_file instead."
+            "meta_ads_images_upload_file instead."
         ),
         inputSchema={
             "type": "object",
@@ -283,14 +283,14 @@ TOOLS: list[Tool] = [
     ),
     # === Carousel & Collection ===
     Tool(
-        name="meta_ads.creatives.create_carousel",
+        name="meta_ads_creatives_create_carousel",
         description=(
             "Creates a Carousel AdCreative with 2–10 swipeable cards. "
             "Returns the new creative id. Mutating, reversible via "
             "rollback.apply. Each card carries its own image (or video), "
             "name, description, and link — useful for product catalogs or "
             "multi-step narratives. For auto-optimized asset rotation use "
-            "meta_ads.creatives.create_dynamic; for product-feed-driven "
+            "meta_ads_creatives_create_dynamic; for product-feed-driven "
             "carousels use meta_ads.creatives.create_collection."
         ),
         inputSchema={
@@ -369,7 +369,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.creatives.create_collection",
+        name="meta_ads_creatives_create_collection",
         description=(
             "Creates a Collection AdCreative that pulls products from a "
             "catalog into a mobile-optimized storefront layout. Returns "
@@ -377,7 +377,7 @@ TOOLS: list[Tool] = [
             "Requires a Meta product catalog with the referenced "
             "product_ids — set up the catalog via meta_ads.catalogs.* "
             "tools first. For static card decks (non-catalog) use "
-            "meta_ads.creatives.create_carousel instead."
+            "meta_ads_creatives_create_carousel instead."
         ),
         inputSchema={
             "type": "object",
@@ -424,14 +424,14 @@ TOOLS: list[Tool] = [
     ),
     # === Image upload ===
     Tool(
-        name="meta_ads.images.upload_file",
+        name="meta_ads_images_upload_file",
         description=(
             "Uploads an image from a local file path to the Meta Ads "
             "account library. Returns the image_hash to reference in "
             "creative-construction tools. Mutating — the asset is "
             "persisted. Use this when the image lives on the agent's "
             "local disk; for public-URL uploads use "
-            "meta_ads.creatives.upload_image instead."
+            "meta_ads_creatives_upload_image instead."
         ),
         inputSchema={
             "type": "object",
@@ -457,7 +457,7 @@ TOOLS: list[Tool] = [
     ),
     # === Video Upload ===
     Tool(
-        name="meta_ads.videos.upload",
+        name="meta_ads_videos_upload",
         description=(
             "Uploads a video to the Meta Ads account by fetching it from "
             "a public HTTPS URL. Returns the video_id to reference in "
@@ -491,7 +491,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.videos.upload_file",
+        name="meta_ads_videos_upload_file",
         description=(
             "Uploads a video from a local file path to the Meta Ads "
             "account library. Returns the video_id to reference in "

@@ -12,8 +12,8 @@ Run an emergency performance rescue workflow for underperforming campaigns.
 3. **Diagnose: platform-side or site-side?** (if GA4 is available): Before making ad changes, check if the performance problem is platform-side or site-side. If LP conversion rates dropped in GA4 too, the issue may be the landing page, not the ads. Recommend LP investigation before ad changes.
 
 4. **Identify problem campaigns across all platforms**: For each configured ad platform:
-   - **Google Ads**: Call `google_ads.health_check.all` (eligibility / serving issues — meaningful only with real-API; returns `[]` in BYOD), then iterate campaigns from `google_ads.campaigns.list` and call `google_ads.zero_conversions.diagnose` and `google_ads.cost_increase.investigate` per campaign_id, plus `google_ads.campaigns.diagnose` for structural issues.
-   - **Meta Ads**: Call `meta_ads.insights.report` and inspect each campaign's `result_indicator` (PR #61): a `link_click`-optimized campaign with high "results" but zero `pixel_lead` is a tracking issue, not a creative one — flag for measurement fix before any rescue action.
+   - **Google Ads**: Call `google_ads_health_check_all` (eligibility / serving issues — meaningful only with real-API; returns `[]` in BYOD), then iterate campaigns from `google_ads_campaigns_list` and call `google_ads.zero_conversions.diagnose` and `google_ads_cost_increase_investigate` per campaign_id, plus `google_ads_campaigns_diagnose` for structural issues.
+   - **Meta Ads**: Call `meta_ads_insights_report` and inspect each campaign's `result_indicator` (PR #61): a `link_click`-optimized campaign with high "results" but zero `pixel_lead` is a tracking issue, not a creative one — flag for measurement fix before any rescue action.
    - mureo BYOD data is centralized under `~/.mureo/byod/` and is only accessible through MCP tools — do **not** look for raw CSVs in the project directory.
 
 5. **Evaluate severity against Goals**: For each problem campaign, reference Goal targets from STRATEGY.md:

@@ -39,9 +39,9 @@ if TYPE_CHECKING:
 # campaign, keyword, or asset. Add entries as new reversible flows land.
 _ALLOWED_OPERATIONS: dict[str, frozenset[str]] = {
     "google_ads.budgets.update": frozenset({"budget_id", "amount_micros"}),
-    "google_ads.campaigns.update_status": frozenset({"campaign_id", "status"}),
+    "google_ads_campaigns_update_status": frozenset({"campaign_id", "status"}),
     "google_ads.ad_groups.update_status": frozenset({"ad_group_id", "status"}),
-    "google_ads.ads.update_status": frozenset({"ad_group_id", "ad_id", "status"}),
+    "google_ads_ads_update_status": frozenset({"ad_group_id", "ad_id", "status"}),
     "meta_ads.campaigns.update_status": frozenset({"campaign_id", "status"}),
     "meta_ads.ad_sets.update_status": frozenset({"ad_set_id", "status"}),
     "meta_ads.ads.update_status": frozenset({"ad_id", "status"}),

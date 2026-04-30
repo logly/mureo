@@ -35,7 +35,7 @@ _PERIOD_PARAM = {
 TOOLS: list[Tool] = [
     # === Insights ===
     Tool(
-        name="meta_ads.insights.report",
+        name="meta_ads_insights_report",
         description=(
             "Pulls raw delivery metrics from Meta Graph API Insights for "
             "one campaign or the whole account. Returns rows with "
@@ -44,7 +44,7 @@ TOOLS: list[Tool] = [
             "aggregated at the requested level (campaign / adset / ad). "
             "Read-only. Use this when you need raw metrics; for "
             "interpreted findings (period comparison, outlier callouts) "
-            "use meta_ads.analysis.performance instead."
+            "use meta_ads_analysis_performance instead."
         ),
         inputSchema={
             "type": "object",
@@ -72,7 +72,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.insights.breakdown",
+        name="meta_ads_insights_breakdown",
         description=(
             "Pulls delivery metrics for a campaign broken down along one "
             "dimension (age, gender, device_platform, placement, country, "
@@ -80,8 +80,8 @@ TOOLS: list[Tool] = [
             "impressions, clicks, spend, cpc, ctr, conversions, and "
             "cost_per_conversion. Read-only. Use this for ad-hoc slicing; "
             "for pre-packaged splits use the dedicated "
-            "meta_ads.analysis.audience (age/gender) or "
-            "meta_ads.analysis.placements tools, which add "
+            "meta_ads_analysis_audience (age/gender) or "
+            "meta_ads_analysis_placements tools, which add "
             "interpretation."
         ),
         inputSchema={
@@ -120,7 +120,7 @@ TOOLS: list[Tool] = [
     ),
     # === Performance analysis ===
     Tool(
-        name="meta_ads.analysis.performance",
+        name="meta_ads_analysis_performance",
         description=(
             "Produces an operator-ready performance review for a Meta Ads "
             "campaign (or the whole account) with period-over-period "
@@ -148,7 +148,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.analysis.audience",
+        name="meta_ads_analysis_audience",
         description=(
             "Scores delivery efficiency across age × gender segments and "
             "flags the best and worst performing buckets. Returns rows "
@@ -156,7 +156,7 @@ TOOLS: list[Tool] = [
             "relative_score vs the campaign average, plus a "
             "recommendations array (e.g. 'Pause 55-64 male — 3x CPA, 1 "
             "conversion'). Read-only. Use before adjusting targeting; "
-            "for raw breakdown numbers use meta_ads.insights.breakdown "
+            "for raw breakdown numbers use meta_ads_insights_breakdown "
             "with breakdown='age,gender'."
         ),
         inputSchema={
@@ -173,7 +173,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.analysis.placements",
+        name="meta_ads_analysis_placements",
         description=(
             "Scores delivery efficiency across Meta placements (Facebook "
             "Feed, Instagram Feed, Stories, Reels, Audience Network, "
@@ -182,7 +182,7 @@ TOOLS: list[Tool] = [
             "recommendation (exclude / keep / scale). Read-only. Call "
             "this when CPA drifts on a campaign to find whether a single "
             "placement is dragging the average. For raw numbers use "
-            "meta_ads.insights.breakdown with breakdown='placement'."
+            "meta_ads_insights_breakdown with breakdown='placement'."
         ),
         inputSchema={
             "type": "object",
@@ -198,7 +198,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.analysis.cost",
+        name="meta_ads_analysis_cost",
         description=(
             "Diagnoses root causes of rising spend or degrading CPA on a "
             "Meta Ads campaign. Returns a decomposition that attributes "
@@ -223,7 +223,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.analysis.compare_ads",
+        name="meta_ads_analysis_compare_ads",
         description=(
             "Runs an A/B-style comparison of ads inside a single ad set, "
             "ranking them by efficiency and flagging statistically "
@@ -231,7 +231,7 @@ TOOLS: list[Tool] = [
             "spend, conversions, CPA, CTR, and a relative-score vs the "
             "ad set average, plus a verdict (winner / laggard / "
             "insufficient-data). Read-only. Use this to decide which "
-            "creatives to pause; pair with meta_ads.ads.pause for "
+            "creatives to pause; pair with meta_ads_ads_pause for "
             "action."
         ),
         inputSchema={
@@ -253,7 +253,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.analysis.suggest_creative",
+        name="meta_ads_analysis_suggest_creative",
         description=(
             "Generates concrete creative-improvement suggestions for a "
             "Meta Ads campaign based on recent ad performance. Returns a "
@@ -261,7 +261,7 @@ TOOLS: list[Tool] = [
             "carousel CTR is 2x static image', 'rotate headlines — "
             "top-3 CTR ads all use question-form headlines'). Read-only "
             "— does not create creatives. Follow up with "
-            "meta_ads.creatives.create* to materialize the suggestions "
+            "meta_ads_creatives_create* to materialize the suggestions "
             "after operator review."
         ),
         inputSchema={

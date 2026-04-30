@@ -53,7 +53,7 @@ _ROW_LIMIT_PARAM = {
 TOOLS: list[Tool] = [
     # === Sites ===
     Tool(
-        name="search_console.sites.list",
+        name="search_console_sites_list",
         description=(
             "List every Search Console property the authenticated "
             "Google account can access, regardless of permission "
@@ -71,7 +71,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="search_console.sites.get",
+        name="search_console_sites_get",
         description=(
             "Fetch metadata and the current user's permission level for "
             "a single Search Console property. Returns the raw "
@@ -81,7 +81,7 @@ TOOLS: list[Tool] = [
             "to verify whether the authenticated account has write "
             "access before calling mutating tools like "
             "search_console.sitemaps.submit. For a full list of "
-            "accessible properties use search_console.sites.list; for "
+            "accessible properties use search_console_sites_list; for "
             "per-URL indexing data use "
             "search_console.url_inspection.inspect."
         ),
@@ -95,7 +95,7 @@ TOOLS: list[Tool] = [
     ),
     # === Search Analytics ===
     Tool(
-        name="search_console.analytics.query",
+        name="search_console_analytics_query",
         description=(
             "Query the Search Console Search Analytics API for organic "
             "Google Search performance data. Returns the raw 'rows' "
@@ -106,7 +106,7 @@ TOOLS: list[Tool] = [
             "Read-only. Use dimensions=['query'] for keywords, ['page'] "
             "for URLs, ['device'] for device split, ['date'] for a "
             "daily trend. For convenience shortcuts use "
-            "search_console.analytics.top_queries / top_pages / "
+            "search_console_analytics_top_queries / top_pages / "
             "device_breakdown; for before/after comparisons use "
             "search_console.analytics.compare_periods."
         ),
@@ -158,7 +158,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="search_console.analytics.top_queries",
+        name="search_console_analytics_top_queries",
         description=(
             "Get top search queries for a site. "
             "Shortcut for analytics.query with dimensions=['query']."
@@ -187,7 +187,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="search_console.analytics.top_pages",
+        name="search_console_analytics_top_pages",
         description=(
             "Get top pages for a site. "
             "Shortcut for analytics.query with dimensions=['page']."
@@ -216,7 +216,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="search_console.analytics.device_breakdown",
+        name="search_console_analytics_device_breakdown",
         description=(
             "Get device breakdown for a site. "
             "Shortcut for analytics.query with dimensions=['device']."
@@ -245,12 +245,12 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="search_console.analytics.compare_periods",
+        name="search_console_analytics_compare_periods",
         description=(
             "Query Search Console search analytics twice and return "
             "both periods side-by-side. Returns {period_1: [rows], "
             "period_2: [rows]} where each rows list has the same shape "
-            "as search_console.analytics.query (keys, clicks, "
+            "as search_console_analytics_query (keys, clicks, "
             "impressions, ctr, position). The tool does NOT diff or "
             "merge the periods — the agent must align by the first key "
             "in each row. Read-only. Two REST calls are issued per "
@@ -334,7 +334,7 @@ TOOLS: list[Tool] = [
     ),
     # === Sitemaps ===
     Tool(
-        name="search_console.sitemaps.list",
+        name="search_console_sitemaps_list",
         description=(
             "List every sitemap registered against a Search Console "
             "property, with their most recent crawl status. Returns "
@@ -356,7 +356,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="search_console.sitemaps.submit",
+        name="search_console_sitemaps_submit",
         description=(
             "Submit a sitemap URL to Google Search Console for the given "
             "verified site. Mutates Search Console state — registers or "
@@ -368,10 +368,10 @@ TOOLS: list[Tool] = [
             "API gives no synchronous processing status. Does not fetch "
             "or validate the sitemap contents — that happens asynchronously "
             "on Google's side and the parsed results surface in "
-            "search_console.sitemaps.list afterwards. Requires the "
+            "search_console_sitemaps_list afterwards. Requires the "
             "authenticated user to be a verified owner or full user of "
             "site_url. For read-only inspection of already-submitted "
-            "sitemaps use search_console.sitemaps.list; for per-URL "
+            "sitemaps use search_console_sitemaps_list; for per-URL "
             "indexing diagnostics use search_console.url_inspection.inspect."
         ),
         inputSchema={
@@ -404,7 +404,7 @@ TOOLS: list[Tool] = [
     ),
     # === URL Inspection ===
     Tool(
-        name="search_console.url_inspection.inspect",
+        name="search_console_url_inspection_inspect",
         description=(
             "Inspect a single URL's indexing state via the Search "
             "Console URL Inspection API. Returns the raw "
@@ -422,7 +422,7 @@ TOOLS: list[Tool] = [
             "caps inspection at ~2000 URLs per property per day. Use "
             "this to debug why a specific page isn't ranking. For "
             "site-wide coverage numbers use "
-            "search_console.sitemaps.list; for organic-performance "
+            "search_console_sitemaps_list; for organic-performance "
             "metrics use search_console.analytics.query."
         ),
         inputSchema={

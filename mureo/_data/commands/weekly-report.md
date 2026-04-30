@@ -13,8 +13,8 @@ Generate a weekly marketing operations report.
 3. **Period**: Determine the reporting period (last 7 days from today).
 
 4. **Goal progress**: For each Goal, pull performance data from the relevant platforms:
-   - **Google Ads**: Call `google_ads.performance.report` (with `period: "LAST_7_DAYS"` then `period: "LAST_14_DAYS"` and subtract the first 7 from the next 7 for previous-week comparison).
-   - **Meta Ads**: Call `meta_ads.insights.report` similarly. When summing Meta "results" across campaigns, group by `result_indicator` — never aggregate `link_click` totals together with `pixel_lead` totals (PR #61).
+   - **Google Ads**: Call `google_ads_performance_report` (with `period: "LAST_7_DAYS"` then `period: "LAST_14_DAYS"` and subtract the first 7 from the next 7 for previous-week comparison).
+   - **Meta Ads**: Call `meta_ads_insights_report` similarly. When summing Meta "results" across campaigns, group by `result_indicator` — never aggregate `link_click` totals together with `pixel_lead` totals (PR #61).
    - mureo BYOD data is centralized under `~/.mureo/byod/` and is only accessible through MCP tools — do **not** look for raw CSVs in the project directory.
    - Show week-over-week change for each Goal metric. If GA4 is available, include website-level metrics (sessions, conversion rate, revenue) for a holistic view.
 

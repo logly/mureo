@@ -41,14 +41,14 @@ _LIMIT_25 = {
 TOOLS: list[Tool] = [
     # === Split Test (A/B Test) ===
     Tool(
-        name="meta_ads.split_tests.list",
+        name="meta_ads_split_tests_list",
         description=(
             "Lists Split Tests (A/B Tests, internally called Studies in "
             "Meta API) configured in the ad account. Returns id "
             "(study_id), name, status, start_time, end_time, and a "
             "summary of cells per study. Read-only. Use this to find a "
             "study_id before pulling detailed results via "
-            "meta_ads.split_tests.get or ending via "
+            "meta_ads_split_tests_get or ending via "
             "meta_ads.split_tests.end."
         ),
         inputSchema={
@@ -61,7 +61,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.split_tests.get",
+        name="meta_ads_split_tests_get",
         description=(
             "Fetches the full detail record for a single Split Test "
             "including per-cell results when the test has concluded. "
@@ -86,10 +86,10 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.split_tests.create",
+        name="meta_ads_split_tests_create",
         description=(
             "Creates a new Split Test. Returns the new study_id. "
-            "Mutating, reversible via rollback.apply (rollback ends the "
+            "Mutating, reversible via rollback_apply (rollback ends the "
             "test immediately without declaring a winner). Meta runs the "
             "test for the configured duration, then compares cells on "
             "the chosen objective (COST_PER_RESULT / CONVERSIONS / "
@@ -174,13 +174,13 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.split_tests.end",
+        name="meta_ads_split_tests_end",
         description=(
             "Ends a running Split Test immediately, before its scheduled "
             "end_time. Returns the final study record with whatever "
             "confidence Meta has accumulated so far. Destructive — no "
             "further data accrues; if significance was not yet reached, "
-            "winner_cell_id may be null. Reversible via rollback.apply "
+            "winner_cell_id may be null. Reversible via rollback_apply "
             "only if the underlying ad sets have not been independently "
             "modified since the early termination."
         ),
@@ -198,7 +198,7 @@ TOOLS: list[Tool] = [
     ),
     # === Automated Rules (Ad Rules) ===
     Tool(
-        name="meta_ads.ad_rules.list",
+        name="meta_ads_ad_rules_list",
         description=(
             "Lists Meta Automated Rules configured in the ad account. "
             "Returns id, name, status (ENABLED / DISABLED / DELETED), "
@@ -218,7 +218,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.ad_rules.get",
+        name="meta_ads_ad_rules_get",
         description=(
             "Fetches the full detail record for a single Automated Rule "
             "including the full evaluation_spec and execution_spec. "
@@ -226,7 +226,7 @@ TOOLS: list[Tool] = [
             "filters), execution_spec (action + parameters), "
             "schedule_spec (when rule runs), created_by, created_time, "
             "and last_evaluated_time. Read-only. Call this before "
-            "meta_ads.ad_rules.update so you can merge incremental "
+            "meta_ads_ad_rules_update so you can merge incremental "
             "changes rather than overwrite the whole spec."
         ),
         inputSchema={
@@ -244,12 +244,12 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.ad_rules.create",
+        name="meta_ads_ad_rules_create",
         description=(
             "Creates a new Automated Rule that Meta evaluates on the "
             "configured schedule and fires actions when the trigger "
             "matches. Returns the new rule_id. Mutating, reversible via "
-            "rollback.apply (rollback disables the rule; actions the "
+            "rollback_apply (rollback disables the rule; actions the "
             "rule already took stand). Common patterns: CPA-spike alert "
             "(execution NOTIFICATION), auto-pause ads with low ROAS "
             "(execution PAUSE), scale winners (execution CHANGE_BUDGET). "
@@ -311,7 +311,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.ad_rules.update",
+        name="meta_ads_ad_rules_update",
         description=(
             "Updates fields on an existing Automated Rule. Partial "
             "update — only supplied fields are changed. Returns the "
@@ -337,7 +337,7 @@ TOOLS: list[Tool] = [
                     "description": (
                         "New trigger definition. Replaces the entire "
                         "spec — fetch current via "
-                        "meta_ads.ad_rules.get first if merging."
+                        "meta_ads_ad_rules_get first if merging."
                     ),
                 },
                 "execution_spec": {
@@ -363,14 +363,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.ad_rules.delete",
+        name="meta_ads_ad_rules_delete",
         description=(
             "Deletes an Automated Rule. Returns a success flag. "
             "Destructive — the rule stops firing immediately and its "
-            "evaluation history is purged. Reversible via rollback.apply "
+            "evaluation history is purged. Reversible via rollback_apply "
             "(re-creates the rule), but the rule_id changes on re-create "
             "which can break downstream references. For temporary "
-            "suspension prefer meta_ads.ad_rules.update with "
+            "suspension prefer meta_ads_ad_rules_update with "
             "status=DISABLED."
         ),
         inputSchema={
@@ -387,14 +387,14 @@ TOOLS: list[Tool] = [
     ),
     # === Page Posts ===
     Tool(
-        name="meta_ads.page_posts.list",
+        name="meta_ads_page_posts_list",
         description=(
             "Lists published posts on a Facebook Page. Returns id "
             "(post_id), message, created_time, type (photo / video / "
             "link / status), permalink_url, and insights summary "
             "(reach, engagement, reactions) per post. Read-only. Use "
             "this to find organic posts to boost via "
-            "meta_ads.page_posts.boost — boosting an organic high-"
+            "meta_ads_page_posts_boost — boosting an organic high-"
             "performer is often cheaper per engagement than running a "
             "new ad."
         ),
@@ -416,16 +416,16 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.page_posts.boost",
+        name="meta_ads_page_posts_boost",
         description=(
             "Boosts an existing Facebook Page post by creating a paid "
             "ad that uses the post as its creative. Returns the new "
-            "ad_id. Mutating, reversible via rollback.apply (rollback "
+            "ad_id. Mutating, reversible via rollback_apply (rollback "
             "pauses the boosting ad; the original post stays live). The "
             "parent ad_set_id must already exist with budget and "
             "targeting configured — this tool only attaches the post as "
             "creative. For new-creative paid ads use "
-            "meta_ads.ads.create with a creative_id instead."
+            "meta_ads_ads_create with a creative_id instead."
         ),
         inputSchema={
             "type": "object",
@@ -463,13 +463,13 @@ TOOLS: list[Tool] = [
     ),
     # === Instagram ===
     Tool(
-        name="meta_ads.instagram.accounts",
+        name="meta_ads_instagram_accounts",
         description=(
             "Lists Instagram Business / Creator accounts linked to the "
             "ad account via Meta Business. Returns ig_user_id, username, "
             "name, profile_picture_url, followers_count, and media_count "
             "per account. Read-only. Use this to find an ig_user_id "
-            "before calling meta_ads.instagram.media or .boost."
+            "before calling meta_ads_instagram_media or .boost."
         ),
         inputSchema={
             "type": "object",
@@ -480,7 +480,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.instagram.media",
+        name="meta_ads_instagram_media",
         description=(
             "Lists recent media (posts, reels, carousels) for a linked "
             "Instagram account. Returns id (media_id), caption, "
@@ -506,15 +506,15 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.instagram.boost",
+        name="meta_ads_instagram_boost",
         description=(
             "Boosts an organic Instagram post by creating a paid ad "
             "that uses it as creative. Returns the new ad_id. Mutating, "
-            "reversible via rollback.apply (rollback pauses the boosting "
+            "reversible via rollback_apply (rollback pauses the boosting "
             "ad; the organic post stays live). The parent ad_set_id "
             "must already exist with budget and targeting. For a "
             "freshly-composed ad (non-organic source) use "
-            "meta_ads.ads.create with a creative_id instead."
+            "meta_ads_ads_create with a creative_id instead."
         ),
         inputSchema={
             "type": "object",

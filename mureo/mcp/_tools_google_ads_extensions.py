@@ -52,7 +52,7 @@ _CONVERSION_ACTION_ID_PARAM = {
 TOOLS: list[Tool] = [
     # === Sitelinks ===
     Tool(
-        name="google_ads.sitelinks.list",
+        name="google_ads_sitelinks_list",
         description=(
             "List sitelink assets attached to a Google Ads campaign, "
             "merging campaign-level and account-level entries. Returns "
@@ -61,7 +61,7 @@ TOOLS: list[Tool] = [
             "('campaign'|'account')}]. Account-level sitelinks apply "
             "to the whole customer and are deduplicated by id. "
             "Read-only. Use this to audit extensions before calling "
-            "google_ads.sitelinks.create (20 per-campaign limit) or "
+            "google_ads_sitelinks_create (20 per-campaign limit) or "
             "google_ads.sitelinks.remove. For callouts use "
             "google_ads.callouts.list."
         ),
@@ -75,7 +75,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.sitelinks.create",
+        name="google_ads_sitelinks_create",
         description=(
             "Create a sitelink Asset and link it to a Google Ads "
             "campaign in a two-step mutate (AssetService then "
@@ -84,7 +84,7 @@ TOOLS: list[Tool] = [
             "error_type:'validation_error', message} when the "
             "campaign already has 20 campaign-level sitelinks "
             "(hardcoded _MAX_SITELINKS_PER_CAMPAIGN limit). Mutating "
-            "— reversible only by google_ads.sitelinks.remove using "
+            "— reversible only by google_ads_sitelinks_remove using "
             "the returned asset_id. The asset is newly minted per "
             "call; identical text produces duplicate assets unless "
             "deduplicated upstream."
@@ -134,14 +134,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.sitelinks.remove",
+        name="google_ads_sitelinks_remove",
         description=(
             "Detach a sitelink asset from a Google Ads campaign by "
             "removing the CampaignAsset link. Returns {resource_name} "
             "of the removed campaign-asset association. Destructive — "
             "unlinks the asset from the campaign so it stops serving, "
             "but does not delete the underlying Asset row. Re-linking "
-            "requires google_ads.sitelinks.create with the same "
+            "requires google_ads_sitelinks_create with the same "
             "text/URL. To list current sitelinks use "
             "google_ads.sitelinks.list."
         ),
@@ -155,7 +155,7 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Asset ID as a numeric string (e.g. "
                         "'123456789'). Obtain from the 'id' field of "
-                        "google_ads.sitelinks.list rows where "
+                        "google_ads_sitelinks_list rows where "
                         "level=='campaign'."
                     ),
                 },
@@ -165,14 +165,14 @@ TOOLS: list[Tool] = [
     ),
     # === Callouts ===
     Tool(
-        name="google_ads.callouts.list",
+        name="google_ads_callouts_list",
         description=(
             "List callout extension assets linked to a Google Ads "
             "campaign. Returns [{id, resource_name, callout_text}]. "
-            "Unlike google_ads.sitelinks.list, this only scans "
+            "Unlike google_ads_sitelinks_list, this only scans "
             "campaign_asset rows (no account-level merge). Read-only. "
             "Use this to audit coverage before calling "
-            "google_ads.callouts.create (hardcoded limit: 20 callouts "
+            "google_ads_callouts_create (hardcoded limit: 20 callouts "
             "per campaign) or google_ads.callouts.remove."
         ),
         inputSchema={
@@ -185,7 +185,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.callouts.create",
+        name="google_ads_callouts_create",
         description=(
             "Create a callout Asset and link it to a Google Ads "
             "campaign in a two-step mutate (AssetService then "
@@ -218,14 +218,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.callouts.remove",
+        name="google_ads_callouts_remove",
         description=(
             "Detach a callout asset from a Google Ads campaign by "
             "removing the CampaignAsset link. Returns {resource_name} "
             "of the removed campaign-asset association. Destructive — "
             "the callout stops serving on the campaign but the Asset "
             "row itself is not deleted. Re-enabling requires "
-            "google_ads.callouts.create with the same text. For the "
+            "google_ads_callouts_create with the same text. For the "
             "sibling list operation use google_ads.callouts.list."
         ),
         inputSchema={
@@ -247,7 +247,7 @@ TOOLS: list[Tool] = [
     ),
     # === Conversions ===
     Tool(
-        name="google_ads.conversions.list",
+        name="google_ads_conversions_list",
         description=(
             "List every conversion action configured on the Google "
             "Ads customer, ordered by numeric id. Returns [{id "
@@ -268,7 +268,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.conversions.get",
+        name="google_ads_conversions_get",
         description=(
             "Fetch one conversion action's configuration from Google "
             "Ads by numeric ID. Returns {id, name, type "
@@ -278,7 +278,7 @@ TOOLS: list[Tool] = [
             "'SIGNUP')} or null when no row matches. Read-only; does "
             "NOT return value settings or lookback-window values — use "
             "the Google Ads UI for those. For the HTML/JS tag snippet "
-            "to embed on a site use google_ads.conversions.tag; for "
+            "to embed on a site use google_ads_conversions_tag; for "
             "full listings use google_ads.conversions.list."
         ),
         inputSchema={
@@ -291,7 +291,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.conversions.performance",
+        name="google_ads_conversions_performance",
         description=(
             "Report Google Ads conversions broken down by "
             "conversion_action and date, with optional campaign "
@@ -328,13 +328,13 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.conversions.create",
+        name="google_ads_conversions_create",
         description=(
             "Create a new Google Ads conversion action. Returns "
             "{resource_name:'customers/<cid>/conversionActions/<caid>'} "
             "of the newly created row. Mutating — the conversion "
             "action is persisted with status ENABLED by default. "
-            "Reversible via google_ads.conversions.update with "
+            "Reversible via google_ads_conversions_update with "
             "status='REMOVED' or google_ads.conversions.remove. Name "
             "must be <= 256 characters. Category defaults to "
             "'DEFAULT'. For updating an existing action use "
@@ -443,7 +443,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.conversions.update",
+        name="google_ads_conversions_update",
         description=(
             "Update fields on an existing Google Ads conversion "
             "action via FieldMask mutate. Returns {resource_name} of "
@@ -542,15 +542,15 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.conversions.remove",
+        name="google_ads_conversions_remove",
         description=(
             "Archive (status=REMOVED) a Google Ads conversion action. "
             "Returns {resource_name} of the removed row. Destructive — "
             "historical data remains but the action stops counting "
             "toward 'Conversions'. Re-enabling requires "
-            "google_ads.conversions.update with status='ENABLED'. For "
+            "google_ads_conversions_update with status='ENABLED'. For "
             "soft-hide that keeps the row visible use "
-            "google_ads.conversions.update with status='HIDDEN'."
+            "google_ads_conversions_update with status='HIDDEN'."
         ),
         inputSchema={
             "type": "object",
@@ -562,7 +562,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.conversions.tag",
+        name="google_ads_conversions_tag",
         description=(
             "Fetch the HTML/JavaScript tag snippets for a Google Ads "
             "conversion action so you can install them on the "
@@ -585,7 +585,7 @@ TOOLS: list[Tool] = [
     ),
     # === Recommendations ===
     Tool(
-        name="google_ads.recommendations.list",
+        name="google_ads_recommendations_list",
         description=(
             "List Google's current automated recommendations for the "
             "account. Returns [{resource_name, type "
@@ -596,7 +596,7 @@ TOOLS: list[Tool] = [
             "(resource path when scoped to a campaign)}]. Read-only. "
             "Filter by campaign_id to scope to one campaign, or by "
             "recommendation_type to scope to one kind. To apply a "
-            "recommendation use google_ads.recommendations.apply with "
+            "recommendation use google_ads_recommendations_apply with "
             "resource_name from this list."
         ),
         inputSchema={
@@ -624,7 +624,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.recommendations.apply",
+        name="google_ads_recommendations_apply",
         description=(
             "Apply one Google Ads recommendation by resource name. "
             "Returns {resource_name} of the applied recommendation. "
@@ -634,7 +634,7 @@ TOOLS: list[Tool] = [
             "tool. The resource_name format "
             "'customers/<cid>/recommendations/<rid>' is re-validated "
             "server-side to prevent injection. To list candidates "
-            "use google_ads.recommendations.list; some recommendation "
+            "use google_ads_recommendations_list; some recommendation "
             "types also change budget, device, or schedule settings."
         ),
         inputSchema={
@@ -646,7 +646,7 @@ TOOLS: list[Tool] = [
                     "pattern": r"^customers/\d+/recommendations/\d+$",
                     "description": (
                         "Recommendation resource name exactly as "
-                        "returned by google_ads.recommendations.list "
+                        "returned by google_ads_recommendations_list "
                         "(format: 'customers/<cid>/recommendations/"
                         "<rid>'). Re-validated against a strict regex "
                         "before submission."
@@ -658,7 +658,7 @@ TOOLS: list[Tool] = [
     ),
     # === Device Targeting ===
     Tool(
-        name="google_ads.device_targeting.get",
+        name="google_ads_device_targeting_get",
         description=(
             "Get the device targeting state for a Google Ads "
             "campaign. Always returns three entries (DESKTOP, MOBILE, "
@@ -671,7 +671,7 @@ TOOLS: list[Tool] = [
             "The 'enabled=False' semantics are mureo's convention: "
             "Google represents 'don't serve' as bid_modifier=0.0 "
             "(i.e. -100%). For modifying, use "
-            "google_ads.device_targeting.set or "
+            "google_ads_device_targeting_set or "
             "google_ads.bid_adjustments.update."
         ),
         inputSchema={
@@ -684,7 +684,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.device_targeting.set",
+        name="google_ads_device_targeting_set",
         description=(
             "Toggle device delivery on a Google Ads campaign by "
             "setting bid_modifier=1.0 on enabled devices and 0.0 on "
@@ -728,7 +728,7 @@ TOOLS: list[Tool] = [
     ),
     # === Bid adjustments ===
     Tool(
-        name="google_ads.bid_adjustments.get",
+        name="google_ads_bid_adjustments_get",
         description=(
             "List every campaign_criterion row that has a non-null "
             "bid_modifier on a Google Ads campaign. Returns [{"
@@ -752,7 +752,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.bid_adjustments.update",
+        name="google_ads_bid_adjustments_update",
         description=(
             "Update the bid_modifier of a single campaign_criterion. "
             "Returns {resource_name} of the updated criterion. "
@@ -762,7 +762,7 @@ TOOLS: list[Tool] = [
             "bid_modifier must be 0.1-10.0 (0.1 = -90%, 1.0 = "
             "neutral, 10.0 = +900%); values outside this range "
             "raise ValueError. To toggle a device on/off with "
-            "bid_modifier 0.0 use google_ads.device_targeting.set "
+            "bid_modifier 0.0 use google_ads_device_targeting_set "
             "instead (this tool rejects 0.0)."
         ),
         inputSchema={
@@ -775,7 +775,7 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Criterion ID as a numeric string (e.g. "
                         "'30001'). Obtain via "
-                        "google_ads.bid_adjustments.get or "
+                        "google_ads_bid_adjustments_get or "
                         "google_ads.device_targeting.get."
                     ),
                 },
@@ -795,7 +795,7 @@ TOOLS: list[Tool] = [
     ),
     # === Geographic Targeting ===
     Tool(
-        name="google_ads.location_targeting.list",
+        name="google_ads_location_targeting_list",
         description=(
             "List every LOCATION campaign_criterion on a Google Ads "
             "campaign. Returns [{criterion_id, geo_target_constant "
@@ -804,7 +804,7 @@ TOOLS: list[Tool] = [
             "target constant IDs map to countries/regions/cities — "
             "look up via Google's GeoTargetConstantService. For "
             "adding or removing locations use "
-            "google_ads.location_targeting.update; for "
+            "google_ads_location_targeting_update; for "
             "schedule-based targeting use "
             "google_ads.schedule_targeting.list."
         ),
@@ -818,7 +818,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.location_targeting.update",
+        name="google_ads_location_targeting_update",
         description=(
             "Add and/or remove location criteria on a Google Ads "
             "campaign in a single mutate. Returns [{resource_name}] "
@@ -862,7 +862,7 @@ TOOLS: list[Tool] = [
     ),
     # === Ad schedules ===
     Tool(
-        name="google_ads.schedule_targeting.list",
+        name="google_ads_schedule_targeting_list",
         description=(
             "List the ad-schedule (day-of-week + hour-of-day) targeting "
             "criteria attached to a Google Ads campaign. Returns one row "
@@ -876,9 +876,9 @@ TOOLS: list[Tool] = [
             "list when the campaign has no schedule targeting (meaning: "
             "24/7 delivery). Use this to audit schedule coverage or "
             "collect criterion_ids before calling "
-            "google_ads.schedule_targeting.update (which is what you use "
+            "google_ads_schedule_targeting_update (which is what you use "
             "to add or remove entries). For device-level modifiers use "
-            "google_ads.device_targeting.get; for geo targeting use "
+            "google_ads_device_targeting_get; for geo targeting use "
             "google_ads.location_targeting.list."
         ),
         inputSchema={
@@ -908,7 +908,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.schedule_targeting.update",
+        name="google_ads_schedule_targeting_update",
         description=(
             "Add and/or remove ad-schedule criteria on a Google Ads "
             "campaign in a single mutate. Returns [{resource_name}] "
@@ -989,7 +989,7 @@ TOOLS: list[Tool] = [
     ),
     # === Change History ===
     Tool(
-        name="google_ads.change_history.list",
+        name="google_ads_change_history_list",
         description=(
             "List the most recent change_event rows on a Google Ads "
             "account, sorted newest-first and capped at 100. Returns "

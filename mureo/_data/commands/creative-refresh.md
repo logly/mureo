@@ -10,8 +10,8 @@ Refresh ad creatives based on strategy context and performance data across all p
 2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`.
 
 3. **Audit current creatives**: For each ad platform:
-   - **Google Ads**: Call `google_ads.ad_performance.report` per campaign, plus `google_ads.rsa_assets.audit` (per-asset CTR/CVR ratings) and `google_ads.rsa_assets.analyze` (LOW/POOR detection). In BYOD mode, the Apps Script bundle does not include per-asset ratings — these tools return `[]`; fall back to `google_ads.ads.list` for headline/description text and use `ad_performance.report` for ad-level CTR/conv only.
-   - **Meta Ads**: Call `meta_ads.creatives.list`, `meta_ads.analysis.compare_ads`, and `meta_ads.analysis.suggest_creative`. In BYOD mode, creative URLs / headlines / body / CTA may be present in `~/.mureo/byod/meta_ads/creatives.csv` (best-effort, populated only when those columns were in the export).
+   - **Google Ads**: Call `google_ads_ad_performance_report` per campaign, plus `google_ads_rsa_assets_audit` (per-asset CTR/CVR ratings) and `google_ads_rsa_assets_analyze` (LOW/POOR detection). In BYOD mode, the Apps Script bundle does not include per-asset ratings — these tools return `[]`; fall back to `google_ads_ads_list` for headline/description text and use `ad_performance.report` for ad-level CTR/conv only.
+   - **Meta Ads**: Call `meta_ads_creatives_list`, `meta_ads_analysis_compare_ads`, and `meta_ads_analysis_suggest_creative`. In BYOD mode, creative URLs / headlines / body / CTA may be present in `~/.mureo/byod/meta_ads/creatives.csv` (best-effort, populated only when those columns were in the export).
    - mureo BYOD data is centralized under `~/.mureo/byod/` and is only accessible through MCP tools — do **not** look for raw CSVs in the project directory.
    - Identify underperforming assets (LOW/POOR ratings for search ads, low CTR/engagement for social ads).
 

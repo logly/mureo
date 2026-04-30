@@ -17,7 +17,7 @@ _CUSTOMER_ID_PARAM = {
 TOOLS: list[Tool] = [
     # === Image Assets ===
     Tool(
-        name="google_ads.assets.upload_image",
+        name="google_ads_assets_upload_image",
         description=(
             "Upload a local image file to Google Ads as an image Asset "
             "for use in Responsive Display Ads or image extensions. "
