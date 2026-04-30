@@ -23,6 +23,7 @@ def _all_registered_tools():
         tools_analysis,
         tools_google_ads,
         tools_meta_ads,
+        tools_mureo_context,
         tools_rollback,
         tools_search_console,
     )
@@ -32,6 +33,7 @@ def _all_registered_tools():
         tools_analysis,
         tools_google_ads,
         tools_meta_ads,
+        tools_mureo_context,
         tools_rollback,
         tools_search_console,
     ):

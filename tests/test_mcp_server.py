@@ -42,10 +42,10 @@ class TestListTools:
 
     async def test_list_tools_returns_all_tools(self) -> None:
         """list_tools は全ツール（Google Ads 83 + Meta Ads 77 + Search Console 10
-        + Rollback 2 + Analysis 1 = 173）を返す"""
+        + Rollback 2 + Analysis 1 + Mureo Context 5 = 178）を返す"""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
-        assert len(tools) == 173
+        assert len(tools) == 178
 
     async def test_list_tools_contains_google_and_meta(self) -> None:
         """Google Ads と Meta Ads のツールが含まれること"""
