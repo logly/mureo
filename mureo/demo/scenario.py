@@ -24,6 +24,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+# Imported for ID parity with what ``mureo byod import`` will write to
+# ``~/.mureo/byod/<platform>/campaigns.csv``. Reaching into the
+# adapter's underscore-prefixed helper is a deliberate coupling — if
+# the formula ever changes the demo's STATE.json must move in lockstep
+# (otherwise STATE.json campaign_ids and BYOD CSV campaign_ids diverge
+# and skills can't join them). Importing rather than duplicating means
+# any rename surfaces as an ImportError instead of silent ID drift.
+from mureo.byod.adapters.google_ads import _synthetic_id as _byod_synthetic_id
+
 # ---------------------------------------------------------------------------
 # Scenario constants
 # ---------------------------------------------------------------------------
@@ -403,6 +412,91 @@ def google_keywords_rows() -> list[list[object]]:
             ]
         )
     return rows
+
+
+# ---------------------------------------------------------------------------
+# STATE.json campaign snapshots
+# ---------------------------------------------------------------------------
+#
+# These are consumed by ``mureo.demo.installer`` to produce a v2
+# STATE.json so that ``/daily-check`` and friends can resolve campaign
+# metadata (budget, goal, status) from STATE while joining BYOD
+# performance data on ``campaign_id``.
+
+
+def _campaign_id(name: str) -> str:
+    """Synthesize the campaign_id the BYOD pipeline will assign to ``name``.
+
+    Delegates to ``mureo.byod.adapters.google_ads._synthetic_id`` so the
+    demo's STATE.json IDs always match the BYOD-imported CSV IDs. Both
+    Google and Meta adapters use the same formula today; if they ever
+    diverge we'd need per-platform branches here.
+    """
+    return _byod_synthetic_id("camp", name)
+
+
+_GADS_DAILY_BUDGETS_JPY: dict[str, int] = {
+    "Brand - Exact": 30000,
+    "Brand - Phrase": 15000,
+    "Generic - High Intent": 80000,
+    "Generic - Low Intent": 60000,
+}
+
+_GADS_GOALS: dict[str, str] = {
+    "Brand - Exact": "Capture branded demand at high efficiency (target CPA <= JPY 1,500).",
+    "Brand - Phrase": "Catch brand long-tail; tighten match types if cannibalization detected.",
+    "Generic - High Intent": "Acquire net-new trial signups at <= JPY 12,000 CPA.",
+    "Generic - Low Intent": "Top-of-funnel awareness; demote if CVR stays below 0.5%.",
+}
+
+_META_DAILY_BUDGETS_JPY: dict[str, int] = {
+    "Awareness - Video": 15000,
+    "Conversion - Lead Form": 50000,
+}
+
+_META_GOALS: dict[str, str] = {
+    "Awareness - Video": "Build top-of-funnel awareness in JP-25-44 ICP segment.",
+    "Conversion - Lead Form": "Generate sales-qualified leads at <= JPY 8,000 cost-per-lead.",
+}
+
+
+def google_ads_state_campaigns() -> list[dict[str, object]]:
+    """Campaign records for STATE.json ``platforms.google_ads.campaigns``.
+
+    The synthesized ``campaign_id`` matches what
+    :mod:`mureo.byod.adapters.google_ads` writes to ``campaigns.csv``,
+    so STATE.json and BYOD data join cleanly on the same key.
+    """
+    return [
+        {
+            "campaign_id": _campaign_id(c.name),
+            "campaign_name": c.name,
+            "status": "ENABLED",
+            "daily_budget": _GADS_DAILY_BUDGETS_JPY[c.name],
+            "campaign_goal": _GADS_GOALS[c.name],
+        }
+        for c in _GADS_CAMPAIGNS
+    ]
+
+
+def meta_ads_state_campaigns() -> list[dict[str, object]]:
+    """Campaign records for STATE.json ``platforms.meta_ads.campaigns``."""
+    seen: set[str] = set()
+    out: list[dict[str, object]] = []
+    for ad in _META_ADS:
+        if ad.campaign in seen:
+            continue
+        seen.add(ad.campaign)
+        out.append(
+            {
+                "campaign_id": _campaign_id(ad.campaign),
+                "campaign_name": ad.campaign,
+                "status": "ENABLED",
+                "daily_budget": _META_DAILY_BUDGETS_JPY[ad.campaign],
+                "campaign_goal": _META_GOALS[ad.campaign],
+            }
+        )
+    return out
 
 
 def meta_ads_rows() -> list[list[object]]:

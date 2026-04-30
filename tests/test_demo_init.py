@@ -40,12 +40,14 @@ runner = CliRunner()
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def byod_root(tmp_path, monkeypatch):
     """Redirect ``Path.home()`` so BYOD writes land in a sandbox.
 
-    Mirrors the pattern used by ``tests/test_byod_bundle.py`` so the
-    demo-bundle round-trip test does not touch the real ``~/.mureo``.
+    Autouse because ``materialize()`` now auto-imports the bundle into
+    ``~/.mureo/byod/`` by default — every test in this module needs a
+    sandboxed home or it would clobber the developer's real BYOD data.
+    Mirrors the pattern in ``tests/test_byod_bundle.py``.
     """
     fake_home = tmp_path / "home"
     fake_home.mkdir()
@@ -168,30 +170,210 @@ def test_strategy_md_is_seeded_markdown(tmp_path: Path) -> None:
 
 
 def test_readme_contains_quickstart_steps(tmp_path: Path) -> None:
+    """Default README describes the 1-step quickstart (no manual import)."""
     target = tmp_path / "mureo-demo"
     materialize(target)
+    text = (target / "README.md").read_text(encoding="utf-8")
+    assert "/daily-check" in text
+    assert "Claude Code" in text
+    # The default flow auto-imports, so the manual import command must
+    # NOT appear in the default README — that copy is reserved for the
+    # --skip-import variant only.
+    assert "mureo byod import" not in text
+
+
+def test_readme_skip_import_variant_documents_manual_import(tmp_path: Path) -> None:
+    """``--skip-import`` README still documents the manual import step."""
+    target = tmp_path / "mureo-demo"
+    materialize(target, skip_import=True)
     text = (target / "README.md").read_text(encoding="utf-8")
     assert "mureo byod import" in text
     assert "bundle.xlsx" in text
 
 
-def test_bundle_imports_via_byod_pipeline(tmp_path: Path, byod_root) -> None:
-    """End-to-end: the demo bundle is consumable by ``import_bundle``.
+def test_materialize_writes_state_json(tmp_path: Path) -> None:
+    """STATE.json (v2 platforms shape) is written alongside the bundle.
 
-    Contract: the bundle must round-trip through the same pipeline real
-    BYOD users go through, so any divergence between the demo data
-    shape and production schemas is caught here.
+    /daily-check and the other workflow skills require STATE.json — if
+    the demo only shipped bundle.xlsx the user would have to run
+    /onboard manually before any skill could read campaign metadata.
     """
-    from mureo.byod.bundle import import_bundle
-
-    target = tmp_path / "mureo-demo"
+    target = tmp_path / "demo"
     materialize(target)
 
-    results = import_bundle(target / "bundle.xlsx")
-    assert "google_ads" in results
-    assert "meta_ads" in results
-    assert results["google_ads"]["rows"] > 0
-    assert results["meta_ads"]["rows"] > 0
+    state_path = target / "STATE.json"
+    assert state_path.is_file()
+
+    doc = json.loads(state_path.read_text(encoding="utf-8"))
+    assert doc["version"] == "2"
+    assert "platforms" in doc
+    assert "google_ads" in doc["platforms"]
+    assert "meta_ads" in doc["platforms"]
+
+    gads = doc["platforms"]["google_ads"]["campaigns"]
+    meta = doc["platforms"]["meta_ads"]["campaigns"]
+    assert gads, "google_ads campaigns must not be empty"
+    assert meta, "meta_ads campaigns must not be empty"
+    for camp in list(gads) + list(meta):
+        assert camp["campaign_id"].startswith("camp_")
+        assert camp["campaign_name"]
+        assert camp["status"]
+
+
+def test_materialize_auto_imports_bundle(tmp_path: Path) -> None:
+    """``materialize`` populates ``~/.mureo/byod/`` so /daily-check works.
+
+    Replaces the v1 round-trip test — the round-trip is now exercised
+    by materialize itself rather than by a separate import_bundle call.
+    """
+    from mureo.byod.runtime import byod_active_platforms
+
+    target = tmp_path / "demo"
+    materialize(target)
+
+    active = byod_active_platforms()
+    assert "google_ads" in active
+    assert "meta_ads" in active
+
+
+def test_materialize_skip_import_leaves_byod_untouched(tmp_path: Path) -> None:
+    """``--skip-import`` writes the demo files but does NOT touch BYOD.
+
+    STATE.json is intentionally NOT written because its campaign_ids
+    would refer to BYOD CSV rows that don't exist yet — shipping it
+    would mislead any skill the user runs before doing the manual
+    ``mureo byod import``.
+    """
+    from mureo.byod.runtime import byod_active_platforms
+
+    target = tmp_path / "demo"
+    materialize(target, skip_import=True)
+
+    assert (target / "bundle.xlsx").is_file()
+    assert not (
+        target / "STATE.json"
+    ).exists(), "skip_import must not ship STATE.json — see installer.py docstring"
+    assert byod_active_platforms() == []
+
+
+def test_materialize_idempotent_re_run(tmp_path: Path) -> None:
+    """Re-running ``mureo demo init`` against an existing demo is a no-op-ish.
+
+    Pins the contract that prior-demo BYOD data is not treated as a
+    conflict — the user shouldn't need ``--force`` just to refresh
+    the demo. Real (non-demo) BYOD data still requires --force; that
+    is covered by ``test_materialize_refuses_existing_byod_without_force``.
+    """
+    from mureo.byod.runtime import byod_active_platforms
+
+    target = tmp_path / "demo"
+    materialize(target)
+    materialize(target)  # must succeed without --force
+
+    active = byod_active_platforms()
+    assert "google_ads" in active
+    assert "meta_ads" in active
+
+
+def test_materialize_refuses_existing_byod_without_force(tmp_path: Path) -> None:
+    """Real (non-demo) BYOD data conflicts → refuse without ``--force``.
+
+    Pins the safety contract: when the user already has BYOD data
+    from a real ``mureo byod import <their-bundle>.xlsx``, a demo
+    init without ``--force`` must refuse rather than silently
+    replace their data. (Prior-demo conflicts are intentionally
+    benign — covered by ``test_materialize_idempotent_re_run``.)
+    """
+    from mureo.byod.runtime import write_manifest
+
+    # Fake a manifest entry that looks like a real (non-demo) import
+    # — ``source_filename`` is the discriminator that distinguishes
+    # demo bundles from user-supplied ones.
+    write_manifest(
+        {
+            "schema_version": 1,
+            "imported_on": "2026-04-29T00:00:00+09:00",
+            "platforms": {
+                "google_ads": {
+                    "files": ["campaigns.csv"],
+                    "date_range": {"start": "", "end": ""},
+                    "rows": 0,
+                    "campaigns": 0,
+                    "ad_groups": 0,
+                    "source_format": "real_user_bundle_v1",
+                    "imported_at": "2026-04-29T00:00:00+09:00",
+                    "source_file_sha256": "deadbeef",
+                    "source_filename": "real-account-export.xlsx",
+                }
+            },
+        }
+    )
+
+    with pytest.raises(DemoInitError) as excinfo:
+        materialize(tmp_path / "demo")
+    msg = str(excinfo.value).lower()
+    assert "byod" in msg or "already" in msg
+
+
+def test_materialize_force_replaces_existing_byod(tmp_path: Path) -> None:
+    """``--force`` clears the BYOD conflict and re-imports cleanly."""
+    from mureo.byod.runtime import byod_active_platforms
+
+    materialize(tmp_path / "first")
+    materialize(tmp_path / "second", force=True)
+
+    active = byod_active_platforms()
+    assert "google_ads" in active
+    assert "meta_ads" in active
+
+
+def test_state_campaign_ids_match_byod_csv(tmp_path: Path) -> None:
+    """STATE.json campaign_ids must equal the BYOD adapter's synthesized ids.
+
+    /daily-check, /search-term-cleanup, /budget-rebalance all join
+    STATE.json campaign metadata with BYOD performance data on
+    ``campaign_id``. If the IDs diverge by even one character the
+    skills can't correlate the two — which is exactly the bug the
+    demo flow needs to avoid.
+    """
+    import csv as _csv
+    from pathlib import Path as _Path
+
+    target = tmp_path / "demo"
+    materialize(target)
+
+    state = json.loads((target / "STATE.json").read_text(encoding="utf-8"))
+    byod_root = _Path.home() / ".mureo" / "byod"
+
+    # The Google Ads adapter writes the CSV column as ``name`` (not
+    # ``campaign_name``); see ``mureo/byod/adapters/google_ads.py:221``.
+    # The Meta Ads adapter mirrors that convention.
+    for platform in ("google_ads", "meta_ads"):
+        state_ids = {
+            c["campaign_name"]: c["campaign_id"]
+            for c in state["platforms"][platform]["campaigns"]
+        }
+        csv_path = byod_root / platform / "campaigns.csv"
+        with csv_path.open(encoding="utf-8") as f:
+            rows = list(_csv.DictReader(f))
+        csv_ids = {row["name"]: row["campaign_id"] for row in rows}
+
+        for name, sid in state_ids.items():
+            assert csv_ids.get(name) == sid, (
+                f"{platform}: campaign_id mismatch for {name!r}: "
+                f"STATE.json={sid!r} vs BYOD csv={csv_ids.get(name)!r}"
+            )
+
+
+def test_cli_demo_init_skip_import_flag(tmp_path: Path) -> None:
+    """``mureo demo init --skip-import`` works end-to-end via Typer."""
+    from mureo.byod.runtime import byod_active_platforms
+
+    target = tmp_path / "demo"
+    result = runner.invoke(app, ["demo", "init", str(target), "--skip-import"])
+    assert result.exit_code == 0, result.stdout
+    assert (target / "bundle.xlsx").is_file()
+    assert byod_active_platforms() == []
 
 
 # ---------------------------------------------------------------------------
