@@ -1,18 +1,19 @@
 """Materialize the ``mureo demo init`` artifacts on disk.
 
-The installer is intentionally narrow: it writes four files into a
-target directory and otherwise stays out of the user's way. It does
-**not** import the bundle into ``~/.mureo/byod/`` — that step remains
-the user's explicit ``mureo byod import`` invocation, so the demo
-flow cannot silently overwrite real BYOD data the user already has.
+The installer writes the demo files for a chosen :class:`Scenario`
+into a target directory and (by default) imports the bundle into
+``~/.mureo/byod/`` so the workflow skills are immediately usable.
 
 Artifacts written:
 
-  bundle.xlsx     — synthetic Google Ads + Meta Ads bundle
-                    (see :mod:`mureo.demo.scenario` /
-                    :mod:`mureo.demo.builder`)
-  STRATEGY.md     — minimal seed strategy for the FlowDesk B2B SaaS
-                    scenario, suitable for ``mureo-strategy`` skills
+  bundle.xlsx     — synthetic Google Ads + Meta Ads bundle, content
+                    sourced from the resolved scenario
+                    (see :mod:`mureo.demo.scenarios`)
+  STRATEGY.md     — scenario-specific STRATEGY.md text
+  STATE.json      — v2 STATE.json with per-platform campaigns and a
+                    seeded ``action_log``; omitted under
+                    ``--skip-import`` (its IDs would point at empty
+                    BYOD storage)
   .mcp.json       — Claude Code MCP server registration for the
                     ``mureo`` stdio server
   README.md       — quickstart instructions
@@ -21,13 +22,12 @@ Artifacts written:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 
 from mureo.byod.bundle import BundleImportError, import_bundle
 from mureo.byod.runtime import byod_platform_info
-from mureo.demo import scenario
 from mureo.demo.builder import build_bundle
+from mureo.demo.scenarios import Scenario, get_scenario
 
 # Marker used to recognize a prior ``mureo demo init`` run. The
 # ``import_bundle`` flow records ``source_filename`` in the manifest
@@ -59,6 +59,7 @@ def materialize(
     *,
     force: bool = False,
     skip_import: bool = False,
+    scenario_name: str | None = None,
 ) -> dict[str, Path | None]:
     """Write the demo artifacts into ``target_dir``.
 
@@ -81,9 +82,15 @@ def materialize(
             bundle.xlsx`` themselves later. Useful when the user wants
             to inspect the bundle first or already has BYOD data they
             don't want to disturb.
+        scenario_name: Optional registered scenario key (see
+            :mod:`mureo.demo.scenarios`). ``None`` selects the default
+            scenario. Resolved via :func:`get_scenario`, which raises
+            :class:`ValueError` for unknown names — let the CLI wrap
+            that into a user-friendly error.
 
     Returns:
         Mapping of artifact name → absolute path of the written file.
+        ``state`` is ``None`` when ``skip_import=True``.
 
     Raises:
         DemoInitError: if ``target_dir`` exists as a non-directory; or
@@ -91,7 +98,9 @@ def materialize(
             ``force`` is False; or BYOD already has demo-conflicting
             platforms and ``force`` is False; or any filesystem /
             adapter error surfaces during the write.
+        ValueError: when ``scenario_name`` is not a registered key.
     """
+    scenario = get_scenario(scenario_name)
     target = Path(target_dir).expanduser().resolve()
 
     if target.exists() and not target.is_dir():
@@ -135,10 +144,10 @@ def materialize(
         target.mkdir(parents=True, exist_ok=True)
 
         bundle_path = target / "bundle.xlsx"
-        build_bundle(bundle_path)
+        build_bundle(bundle_path, scenario)
 
         strategy_path = target / "STRATEGY.md"
-        strategy_path.write_text(_strategy_md(), encoding="utf-8")
+        strategy_path.write_text(scenario.strategy_md, encoding="utf-8")
 
         # STATE.json is paired with imported BYOD data. When the user
         # opts out of the import, shipping STATE.json would lie — its
@@ -146,13 +155,15 @@ def materialize(
         # The skip_import README documents the manual flow instead.
         if not skip_import:
             state_path = target / "STATE.json"
-            state_path.write_text(_state_json(), encoding="utf-8")
+            state_path.write_text(_state_json(scenario), encoding="utf-8")
 
         mcp_path = target / ".mcp.json"
         mcp_path.write_text(_mcp_json(), encoding="utf-8")
 
         readme_path = target / "README.md"
-        readme_path.write_text(_readme_md(skip_import=skip_import), encoding="utf-8")
+        readme_path.write_text(
+            _readme_md(scenario=scenario, skip_import=skip_import), encoding="utf-8"
+        )
     except OSError as exc:
         # Surface filesystem failures (broken symlinks, permission errors,
         # ENOSPC, symlink loops resolving to non-existent paths) as a
@@ -188,33 +199,14 @@ def materialize(
 # ---------------------------------------------------------------------------
 
 
-def _state_json() -> str:
-    """Initial v2 STATE.json for the demo scenario.
+def _state_json(scenario: Scenario) -> str:
+    """Render the scenario's ``state_doc`` as STATE.json text.
 
-    Schema follows ``docs/strategy-context.md`` — version "2",
-    per-platform campaigns, empty action_log. ``last_synced_at`` uses
-    a fixed ISO 8601 timestamp tied to the demo period so re-runs of
-    ``mureo demo init`` produce identical STATE.json bytes.
+    The scenario module is the single source of truth for STATE.json
+    content so that adding a new scenario is purely additive — no
+    branches in the installer.
     """
-    last_synced = datetime.combine(
-        scenario.DEMO_END_DATE, datetime.min.time(), tzinfo=timezone.utc
-    ).isoformat(timespec="seconds")
-    doc = {
-        "version": "2",
-        "last_synced_at": last_synced,
-        "platforms": {
-            "google_ads": {
-                "account_id": "demo-flowdesk-google-ads",
-                "campaigns": scenario.google_ads_state_campaigns(),
-            },
-            "meta_ads": {
-                "account_id": "demo-flowdesk-meta-ads",
-                "campaigns": scenario.meta_ads_state_campaigns(),
-            },
-        },
-        "action_log": [],
-    }
-    return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
+    return json.dumps(scenario.state_doc, indent=2, ensure_ascii=False) + "\n"
 
 
 def _mcp_json() -> str:
@@ -236,40 +228,24 @@ def _mcp_json() -> str:
     return json.dumps(config, indent=2) + "\n"
 
 
-def _strategy_md() -> str:
-    return """# STRATEGY — FlowDesk (demo)
+def _readme_md(*, scenario: Scenario, skip_import: bool) -> str:
+    """Render the demo README, scenario-aware.
 
-> Synthetic mid-market B2B SaaS scenario shipped with `mureo demo init`.
-> Replace with your real strategy when you switch to a live account.
+    The active scenario's title appears in the header so the user
+    knows which story they're playing through. The two body branches
+    (skip_import vs default) preserve the prior installer's UX:
+    skip_import documents the manual ``mureo byod import`` step,
+    default celebrates the one-shot flow.
+    """
+    period = f"{scenario.days} days ending {scenario.end_date.isoformat()}"
 
-## Business
-- **Brand:** FlowDesk
-- **Product:** Project management & team collaboration SaaS
-- **ICP:** 50–500 person companies, ops / PM leaders
-- **Plan range:** ~JPY 1,200 / seat / month
-
-## Marketing goals (this quarter)
-- Hit 320 paid signups / month at <= JPY 12,000 CPA
-- Keep brand-search CTR >= 15%
-- Hold blended Google + Meta ROAS >= 2.5x
-
-## Channel mix
-- **Google Ads:** Brand (Exact + Phrase), Generic (High intent + Low intent)
-- **Meta Ads:** Awareness video at the top of funnel, Lead-form conversion at the bottom
-
-## Constraints
-- No competitor-name bidding
-- Brand terms should not appear in Phrase or Broad campaigns
-- Demo bundle covers the 30 days ending 2026-04-29
-"""
-
-
-def _readme_md(*, skip_import: bool) -> str:
     if skip_import:
-        return """# mureo demo
+        return f"""# mureo demo — {scenario.title}
 
-This directory was generated by `mureo demo init --skip-import`. The
-synthetic data has NOT been imported into mureo's BYOD store yet.
+This directory was generated by `mureo demo init --scenario {scenario.name} --skip-import`.
+The synthetic data has NOT been imported into mureo's BYOD store yet.
+
+> {scenario.blurb}
 
 ## Quickstart (Claude Code)
 
@@ -287,18 +263,25 @@ synthetic data has NOT been imported into mureo's BYOD store yet.
        /budget-rebalance
        /weekly-report
 
-The bundle deliberately contains realistic problems (brand
-cannibalization in the Phrase campaign, an over-funded low-intent
-generic campaign, a fatiguing Meta video creative) so the skills
-surface actionable findings instead of "everything is fine."
+The bundle is deliberately seeded so the workflow skills surface
+actionable findings tied to the scenario's story arc.
 
 ## Files
 
-- `bundle.xlsx`  — Google Ads + Meta Ads synthetic data, 30 days
-- `STRATEGY.md`  — seed strategy used by `mureo-strategy` skills
-- `STATE.json`   — campaign snapshots used by `/daily-check` etc.
+- `bundle.xlsx`  — Google Ads + Meta Ads synthetic data, {period}
+- `STRATEGY.md`  — scenario-specific strategy used by `mureo-strategy` skills
 - `.mcp.json`    — Claude Code MCP server registration
 - `README.md`    — this file
+
+(STATE.json is intentionally not shipped under `--skip-import` because
+its campaign_ids would point at BYOD CSVs that don't exist yet. Run
+`mureo byod import bundle.xlsx` first, then re-run `mureo demo init`
+without the flag to get STATE.json.)
+
+## Other scenarios
+
+Run `mureo demo list` to see available scenarios; pick a different
+story with `mureo demo init --scenario <name>`.
 
 ## Cleaning up
 
@@ -306,12 +289,14 @@ To remove the imported demo data afterwards:
 
     mureo byod clear
 """
-    return """# mureo demo
+    return f"""# mureo demo — {scenario.title}
 
-This directory was generated by `mureo demo init`. The synthetic
-bundle has already been imported into mureo's BYOD store and a
-matching `STATE.json` has been written, so the workflow skills are
-ready to run with no extra setup.
+This directory was generated by `mureo demo init --scenario {scenario.name}`.
+The synthetic bundle has already been imported into mureo's BYOD
+store and a matching `STATE.json` has been written, so the workflow
+skills are ready to run with no extra setup.
+
+> {scenario.blurb}
 
 ## Quickstart (Claude Code)
 
@@ -325,16 +310,14 @@ ready to run with no extra setup.
        /budget-rebalance
        /weekly-report
 
-The bundle deliberately contains realistic problems (brand
-cannibalization in the Phrase campaign, an over-funded low-intent
-generic campaign, a fatiguing Meta video creative) so the skills
-surface actionable findings instead of "everything is fine."
+The bundle is deliberately seeded so the workflow skills surface
+actionable findings tied to the scenario's story arc.
 
 ## Files
 
-- `bundle.xlsx`  — Google Ads + Meta Ads synthetic data, 30 days
-- `STRATEGY.md`  — seed strategy used by `mureo-strategy` skills
-- `STATE.json`   — campaign snapshots used by `/daily-check` etc.
+- `bundle.xlsx`  — Google Ads + Meta Ads synthetic data, {period}
+- `STRATEGY.md`  — scenario-specific strategy used by `mureo-strategy` skills
+- `STATE.json`   — campaign snapshots + action_log used by `/daily-check` etc.
 - `.mcp.json`    — Claude Code MCP server registration
 - `README.md`    — this file
 

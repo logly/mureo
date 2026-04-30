@@ -1,32 +1,31 @@
-"""Build the demo XLSX bundle from the scenario row tables.
-
-The output file is a single XLSX workbook with five sheets:
-
-  campaigns / ad_groups / search_terms / keywords  (Google Ads)
-  meta_ads                                         (Meta Ads export)
+"""Build the demo XLSX bundle from a :class:`Scenario` row table.
 
 The Google Ads tabs match the schema produced by
 ``scripts/sheet-template/google-ads-script.js`` (the same shape
 ``mureo/byod/adapters/google_ads.py`` consumes). The Meta sheet
 matches the verified English-locale Ads Manager export header
-``mureo/byod/adapters/meta_ads.py`` recognizes.
+``mureo/byod/adapters/meta_ads.py`` recognizes. Sheet content comes
+from the scenario, so swapping scenarios swaps what the bundle says.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from mureo.demo import scenario
-
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from mureo.demo.scenarios._base import Scenario
 
-def build_bundle(out_path: Path) -> None:
+
+def build_bundle(out_path: Path, scenario: Scenario) -> None:
     """Write the demo XLSX bundle to ``out_path``.
 
-    Overwrites any existing file at the target. Caller is responsible
-    for ensuring the parent directory exists.
+    Args:
+        out_path: Destination path. Overwrites if it exists. Parent
+            directory must already exist.
+        scenario: The :class:`Scenario` whose ``sheet_rows`` populate
+            the workbook.
 
     Raises:
         ImportError: if ``openpyxl`` is not installed. mureo declares
@@ -47,16 +46,9 @@ def build_bundle(out_path: Path) -> None:
     if default is not None:
         wb.remove(default)
 
-    sheets: list[tuple[str, list[list[object]]]] = [
-        ("campaigns", scenario.google_campaigns_rows()),
-        ("ad_groups", scenario.google_ad_groups_rows()),
-        ("search_terms", scenario.google_search_terms_rows()),
-        ("keywords", scenario.google_keywords_rows()),
-        ("meta_ads", scenario.meta_ads_rows()),
-    ]
-    for name, rows in sheets:
+    for name, rows in scenario.sheet_rows.items():
         sheet = wb.create_sheet(name)
         for row in rows:
-            sheet.append(row)
+            sheet.append(list(row))
 
     wb.save(out_path)

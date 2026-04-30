@@ -1,10 +1,13 @@
-"""``mureo demo`` CLI subcommands: init.
+"""``mureo demo`` CLI subcommands: init, list.
 
 Materializes a self-contained demo directory so users can try mureo
 against a realistic synthetic dataset without exporting their own ad
 data first. The bundle round-trips through the same ``mureo byod
 import`` pipeline that real BYOD users go through, so the demo and
 real flows share a single code path downstream.
+
+Multiple demo scenarios are registered in :mod:`mureo.demo.scenarios`;
+``--scenario <name>`` switches between them.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from pathlib import Path  # noqa: TCH003 (used at runtime by typer)
 import typer
 
 from mureo.demo.installer import DemoInitError, materialize
+from mureo.demo.scenarios import DEFAULT_SCENARIO, SCENARIOS
 
 demo_app = typer.Typer(
     name="demo",
@@ -49,6 +53,14 @@ def init(
             "first or already have BYOD data you do not want to disturb."
         ),
     ),
+    scenario_name: str = typer.Option(
+        DEFAULT_SCENARIO,
+        "--scenario",
+        help=(
+            "Scenario to use. Run `mureo demo list` to see available "
+            f"scenarios. Default: {DEFAULT_SCENARIO}."
+        ),
+    ),
 ) -> None:
     """Materialize a demo directory at TARGET (default ``./mureo-demo``).
 
@@ -57,7 +69,17 @@ def init(
     runnable in Claude Code with no extra steps.
     """
     try:
-        results = materialize(target, force=force, skip_import=skip_import)
+        results = materialize(
+            target,
+            force=force,
+            skip_import=skip_import,
+            scenario_name=scenario_name,
+        )
+    except ValueError as exc:
+        # Unknown scenario name. The registry produces a message that
+        # already lists valid keys, so just forward it.
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from None
     except DemoInitError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from None
@@ -69,7 +91,9 @@ def init(
     assert bundle is not None
     target_dir = bundle.parent
 
+    scenario = SCENARIOS[scenario_name]
     typer.echo("=== mureo demo init ===\n")
+    typer.echo(f"  Scenario: {scenario.title}")
     typer.echo(f"  Wrote demo to: {target_dir}")
     for label in ("bundle", "strategy", "state", "mcp", "readme"):
         path = results[label]
@@ -88,3 +112,20 @@ def init(
         typer.echo(f"  1. cd {target_dir}")
         typer.echo("  2. Open this directory in Claude Code")
         typer.echo("  3. Ask: /daily-check  (or /search-term-cleanup)")
+
+
+@demo_app.command("list")  # type: ignore[untyped-decorator, unused-ignore]
+def list_scenarios() -> None:
+    """List the registered demo scenarios.
+
+    Use ``mureo demo init --scenario <name>`` to pick a non-default
+    scenario.
+    """
+    typer.echo("Available demo scenarios:\n")
+    for name in sorted(SCENARIOS):
+        sc = SCENARIOS[name]
+        marker = " (default)" if name == DEFAULT_SCENARIO else ""
+        typer.echo(f"  {name}{marker}")
+        typer.echo(f"    {sc.title}")
+        typer.echo(f"    {sc.blurb}")
+        typer.echo("")

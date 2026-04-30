@@ -139,7 +139,7 @@ def test_materialize_wraps_filesystem_errors(
     """
     target = tmp_path / "demo"
 
-    def _boom(path):  # pragma: no cover - injected failure
+    def _boom(path, scenario):  # pragma: no cover - injected failure
         raise OSError("simulated disk failure")
 
     monkeypatch.setattr("mureo.demo.installer.build_bundle", _boom)
