@@ -35,27 +35,56 @@ def init(
     force: bool = typer.Option(
         False,
         "--force",
-        help="Overwrite the target even if it already contains unrelated files.",
+        help=(
+            "Overwrite the target even if it contains unrelated files, "
+            "and replace any conflicting BYOD data in ~/.mureo/byod/."
+        ),
+    ),
+    skip_import: bool = typer.Option(
+        False,
+        "--skip-import",
+        help=(
+            "Write the demo files but do NOT import the bundle into "
+            "~/.mureo/byod/. Useful if you want to inspect the bundle "
+            "first or already have BYOD data you do not want to disturb."
+        ),
     ),
 ) -> None:
     """Materialize a demo directory at TARGET (default ``./mureo-demo``).
 
-    After this completes, follow the printed next steps to import the
-    bundle and open the directory in Claude Code.
+    By default this also imports the demo bundle into ``~/.mureo/byod/``
+    so the workflow skills (``/daily-check`` etc.) are immediately
+    runnable in Claude Code with no extra steps.
     """
     try:
-        results = materialize(target, force=force)
+        results = materialize(target, force=force, skip_import=skip_import)
     except DemoInitError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from None
 
+    # ``bundle`` is always written by materialize(); only ``state`` can
+    # be None (under --skip-import). Pull bundle out so the rest of the
+    # block doesn't have to relitigate the union.
+    bundle = results["bundle"]
+    assert bundle is not None
+    target_dir = bundle.parent
+
     typer.echo("=== mureo demo init ===\n")
-    typer.echo(f"  Wrote demo to: {results['bundle'].parent}")
-    for label in ("bundle", "strategy", "mcp", "readme"):
-        typer.echo(f"    - {results[label].name}")
+    typer.echo(f"  Wrote demo to: {target_dir}")
+    for label in ("bundle", "strategy", "state", "mcp", "readme"):
+        path = results[label]
+        if path is None:
+            continue  # ``state`` is None when --skip-import is set
+        typer.echo(f"    - {path.name}")
     typer.echo("")
     typer.echo("Next steps:")
-    typer.echo(f"  1. cd {results['bundle'].parent}")
-    typer.echo("  2. mureo byod import bundle.xlsx")
-    typer.echo("  3. Open this directory in Claude Code")
-    typer.echo("  4. Ask: /daily-check  (or /search-term-cleanup)")
+    if skip_import:
+        typer.echo(f"  1. cd {target_dir}")
+        typer.echo("  2. mureo byod import bundle.xlsx")
+        typer.echo("  3. Open this directory in Claude Code")
+        typer.echo("  4. Ask: /daily-check  (or /search-term-cleanup)")
+    else:
+        typer.echo("  Bundle imported into ~/.mureo/byod/.")
+        typer.echo(f"  1. cd {target_dir}")
+        typer.echo("  2. Open this directory in Claude Code")
+        typer.echo("  3. Ask: /daily-check  (or /search-term-cleanup)")
