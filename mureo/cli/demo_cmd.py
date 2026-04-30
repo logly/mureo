@@ -62,8 +62,15 @@ def init(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from None
 
+    # ``bundle`` is always written by materialize(); only ``state`` can
+    # be None (under --skip-import). Pull bundle out so the rest of the
+    # block doesn't have to relitigate the union.
+    bundle = results["bundle"]
+    assert bundle is not None
+    target_dir = bundle.parent
+
     typer.echo("=== mureo demo init ===\n")
-    typer.echo(f"  Wrote demo to: {results['bundle'].parent}")
+    typer.echo(f"  Wrote demo to: {target_dir}")
     for label in ("bundle", "strategy", "state", "mcp", "readme"):
         path = results[label]
         if path is None:
@@ -72,12 +79,12 @@ def init(
     typer.echo("")
     typer.echo("Next steps:")
     if skip_import:
-        typer.echo(f"  1. cd {results['bundle'].parent}")
+        typer.echo(f"  1. cd {target_dir}")
         typer.echo("  2. mureo byod import bundle.xlsx")
         typer.echo("  3. Open this directory in Claude Code")
         typer.echo("  4. Ask: /daily-check  (or /search-term-cleanup)")
     else:
         typer.echo("  Bundle imported into ~/.mureo/byod/.")
-        typer.echo(f"  1. cd {results['bundle'].parent}")
+        typer.echo(f"  1. cd {target_dir}")
         typer.echo("  2. Open this directory in Claude Code")
         typer.echo("  3. Ask: /daily-check  (or /search-term-cleanup)")
