@@ -1,10 +1,10 @@
 """MCP handlers for the ``rollback.*`` tool family.
 
-``rollback.plan.get`` — inspect the reversal plan for one action_log entry.
-``rollback.apply``    — execute that plan, re-entering the same MCP
+``rollback_plan_get`` — inspect the reversal plan for one action_log entry.
+``rollback_apply``    — execute that plan, re-entering the same MCP
 dispatch path used for forward actions.
 
-The dispatcher used by ``rollback.apply`` is resolved lazily via
+The dispatcher used by ``rollback_apply`` is resolved lazily via
 :func:`_get_dispatcher` so that ``mureo.mcp.server`` and this module
 do not form an import cycle — ``server.handle_call_tool`` imports
 this module transitively through ``tools_rollback`` at module load
@@ -161,7 +161,7 @@ async def handle_apply(arguments: dict[str, Any]) -> list[TextContent]:
         # only; the MCP response deliberately returns a generic message so
         # raw SDK errors cannot leak tokens or account identifiers to the
         # model context.
-        logger.exception("rollback.apply dispatch failed")
+        logger.exception("rollback_apply dispatch failed")
         return _json_result(
             {
                 "status": "error",

@@ -18,83 +18,83 @@ metadata:
 
 | # | Tool Name | Category | Type | Description |
 |---|-----------|----------|------|-------------|
-| 1 | `meta_ads.campaigns.list` | Campaign | Read | List campaigns |
-| 2 | `meta_ads.campaigns.get` | Campaign | Read | Get campaign details |
-| 3 | `meta_ads.campaigns.create` | Campaign | Write | Create a campaign |
-| 4 | `meta_ads.campaigns.update` | Campaign | Write | Update campaign settings |
-| 5 | `meta_ads.campaigns.pause` | Campaign | Write | Pause a campaign |
-| 6 | `meta_ads.campaigns.enable` | Campaign | Write | Enable a paused campaign |
-| 7 | `meta_ads.ad_sets.list` | Ad Set | Read | List ad sets |
-| 8 | `meta_ads.ad_sets.get` | Ad Set | Read | Get ad set details |
-| 9 | `meta_ads.ad_sets.create` | Ad Set | Write | Create an ad set |
-| 10 | `meta_ads.ad_sets.update` | Ad Set | Write | Update ad set settings |
-| 11 | `meta_ads.ad_sets.pause` | Ad Set | Write | Pause an ad set |
-| 12 | `meta_ads.ad_sets.enable` | Ad Set | Write | Enable a paused ad set |
-| 13 | `meta_ads.ads.list` | Ad | Read | List ads |
-| 14 | `meta_ads.ads.get` | Ad | Read | Get ad details |
-| 15 | `meta_ads.ads.create` | Ad | Write | Create an ad |
-| 16 | `meta_ads.ads.update` | Ad | Write | Update an ad |
-| 17 | `meta_ads.ads.pause` | Ad | Write | Pause an ad |
-| 18 | `meta_ads.ads.enable` | Ad | Write | Enable a paused ad |
-| 19 | `meta_ads.insights.report` | Insights | Read | Performance report |
-| 20 | `meta_ads.insights.breakdown` | Insights | Read | Breakdown report (age, gender, etc.) |
-| 21 | `meta_ads.analysis.performance` | Analysis | Read | Analyze overall performance trends |
-| 22 | `meta_ads.analysis.audience` | Analysis | Read | Analyze audience performance and overlap |
-| 23 | `meta_ads.analysis.placements` | Analysis | Read | Analyze placement performance breakdown |
-| 24 | `meta_ads.analysis.cost` | Analysis | Read | Analyze cost trends and efficiency |
-| 25 | `meta_ads.analysis.compare_ads` | Analysis | Read | Compare performance across ads |
-| 26 | `meta_ads.analysis.suggest_creative` | Analysis | Read | Suggest creative improvements based on data |
-| 27 | `meta_ads.audiences.list` | Audience | Read | List custom audiences |
-| 28 | `meta_ads.audiences.get` | Audience | Read | Get audience details |
-| 29 | `meta_ads.audiences.create` | Audience | Write | Create a custom audience |
-| 30 | `meta_ads.audiences.delete` | Audience | Write | Delete a custom audience |
-| 31 | `meta_ads.audiences.create_lookalike` | Audience | Write | Create a lookalike audience |
-| 32 | `meta_ads.pixels.list` | Pixel | Read | List pixels |
-| 33 | `meta_ads.pixels.get` | Pixel | Read | Get pixel details |
-| 34 | `meta_ads.pixels.stats` | Pixel | Read | Get pixel firing statistics |
-| 35 | `meta_ads.pixels.events` | Pixel | Read | List pixel events |
-| 36 | `meta_ads.conversions.send` | CAPI | Write | Send conversion events (generic) |
-| 37 | `meta_ads.conversions.send_purchase` | CAPI | Write | Send a purchase event |
-| 38 | `meta_ads.conversions.send_lead` | CAPI | Write | Send a lead event |
-| 39 | `meta_ads.creatives.list` | Creative | Read | List ad creatives |
-| 40 | `meta_ads.creatives.create` | Creative | Write | Create a standard ad creative |
-| 41 | `meta_ads.creatives.create_dynamic` | Creative | Write | Create a dynamic product ad creative |
-| 42 | `meta_ads.creatives.upload_image` | Creative | Write | Upload an image for use in creatives |
-| 43 | `meta_ads.creatives.create_carousel` | Creative | Write | Create a carousel creative (2-10 cards) |
-| 44 | `meta_ads.creatives.create_collection` | Creative | Write | Create a collection creative |
-| 45 | `meta_ads.images.upload_file` | Image | Write | Upload an image from local file |
-| 46 | `meta_ads.catalogs.list` | Catalog | Read | List product catalogs |
-| 47 | `meta_ads.catalogs.get` | Catalog | Read | Get catalog details |
-| 48 | `meta_ads.catalogs.create` | Catalog | Write | Create a product catalog |
-| 49 | `meta_ads.catalogs.delete` | Catalog | Write | Delete a product catalog |
-| 50 | `meta_ads.products.list` | Catalog | Read | List products in a catalog |
-| 51 | `meta_ads.products.get` | Catalog | Read | Get product details |
-| 52 | `meta_ads.products.add` | Catalog | Write | Add a product to a catalog |
-| 53 | `meta_ads.products.update` | Catalog | Write | Update a product |
-| 54 | `meta_ads.products.delete` | Catalog | Write | Delete a product |
-| 55 | `meta_ads.feeds.list` | Catalog | Read | List feeds for a catalog |
-| 56 | `meta_ads.feeds.create` | Catalog | Write | Create a feed (URL-based, scheduled import) |
-| 57 | `meta_ads.lead_forms.list` | Lead | Read | List lead forms (per page) |
-| 58 | `meta_ads.lead_forms.get` | Lead | Read | Get lead form details |
-| 59 | `meta_ads.lead_forms.create` | Lead | Write | Create a lead form |
-| 60 | `meta_ads.leads.get` | Lead | Read | Get lead data (per form) |
-| 61 | `meta_ads.leads.get_by_ad` | Lead | Read | Get lead data (per ad) |
-| 62 | `meta_ads.videos.upload` | Video | Write | Upload a video from URL |
-| 63 | `meta_ads.videos.upload_file` | Video | Write | Upload a video from local file |
-| 64 | `meta_ads.split_tests.list` | Split Test | Read | List split tests |
-| 65 | `meta_ads.split_tests.get` | Split Test | Read | Get split test details and results |
-| 66 | `meta_ads.split_tests.create` | Split Test | Write | Create a split test |
-| 67 | `meta_ads.split_tests.end` | Split Test | Write | End a split test |
-| 68 | `meta_ads.ad_rules.list` | Ad Rule | Read | List automated rules |
-| 69 | `meta_ads.ad_rules.get` | Ad Rule | Read | Get rule details |
-| 70 | `meta_ads.ad_rules.create` | Ad Rule | Write | Create an automated rule |
-| 71 | `meta_ads.ad_rules.update` | Ad Rule | Write | Update an automated rule |
-| 72 | `meta_ads.ad_rules.delete` | Ad Rule | Write | Delete an automated rule |
-| 73 | `meta_ads.page_posts.list` | Page Post | Read | List Facebook page posts |
-| 74 | `meta_ads.page_posts.boost` | Page Post | Write | Boost a page post (create ad from post) |
-| 75 | `meta_ads.instagram.accounts` | Instagram | Read | List connected Instagram accounts |
-| 76 | `meta_ads.instagram.media` | Instagram | Read | List Instagram posts |
-| 77 | `meta_ads.instagram.boost` | Instagram | Write | Boost an Instagram post |
+| 1 | `meta_ads_campaigns_list` | Campaign | Read | List campaigns |
+| 2 | `meta_ads_campaigns_get` | Campaign | Read | Get campaign details |
+| 3 | `meta_ads_campaigns_create` | Campaign | Write | Create a campaign |
+| 4 | `meta_ads_campaigns_update` | Campaign | Write | Update campaign settings |
+| 5 | `meta_ads_campaigns_pause` | Campaign | Write | Pause a campaign |
+| 6 | `meta_ads_campaigns_enable` | Campaign | Write | Enable a paused campaign |
+| 7 | `meta_ads_ad_sets_list` | Ad Set | Read | List ad sets |
+| 8 | `meta_ads_ad_sets_get` | Ad Set | Read | Get ad set details |
+| 9 | `meta_ads_ad_sets_create` | Ad Set | Write | Create an ad set |
+| 10 | `meta_ads_ad_sets_update` | Ad Set | Write | Update ad set settings |
+| 11 | `meta_ads_ad_sets_pause` | Ad Set | Write | Pause an ad set |
+| 12 | `meta_ads_ad_sets_enable` | Ad Set | Write | Enable a paused ad set |
+| 13 | `meta_ads_ads_list` | Ad | Read | List ads |
+| 14 | `meta_ads_ads_get` | Ad | Read | Get ad details |
+| 15 | `meta_ads_ads_create` | Ad | Write | Create an ad |
+| 16 | `meta_ads_ads_update` | Ad | Write | Update an ad |
+| 17 | `meta_ads_ads_pause` | Ad | Write | Pause an ad |
+| 18 | `meta_ads_ads_enable` | Ad | Write | Enable a paused ad |
+| 19 | `meta_ads_insights_report` | Insights | Read | Performance report |
+| 20 | `meta_ads_insights_breakdown` | Insights | Read | Breakdown report (age, gender, etc.) |
+| 21 | `meta_ads_analysis_performance` | Analysis | Read | Analyze overall performance trends |
+| 22 | `meta_ads_analysis_audience` | Analysis | Read | Analyze audience performance and overlap |
+| 23 | `meta_ads_analysis_placements` | Analysis | Read | Analyze placement performance breakdown |
+| 24 | `meta_ads_analysis_cost` | Analysis | Read | Analyze cost trends and efficiency |
+| 25 | `meta_ads_analysis_compare_ads` | Analysis | Read | Compare performance across ads |
+| 26 | `meta_ads_analysis_suggest_creative` | Analysis | Read | Suggest creative improvements based on data |
+| 27 | `meta_ads_audiences_list` | Audience | Read | List custom audiences |
+| 28 | `meta_ads_audiences_get` | Audience | Read | Get audience details |
+| 29 | `meta_ads_audiences_create` | Audience | Write | Create a custom audience |
+| 30 | `meta_ads_audiences_delete` | Audience | Write | Delete a custom audience |
+| 31 | `meta_ads_audiences_create_lookalike` | Audience | Write | Create a lookalike audience |
+| 32 | `meta_ads_pixels_list` | Pixel | Read | List pixels |
+| 33 | `meta_ads_pixels_get` | Pixel | Read | Get pixel details |
+| 34 | `meta_ads_pixels_stats` | Pixel | Read | Get pixel firing statistics |
+| 35 | `meta_ads_pixels_events` | Pixel | Read | List pixel events |
+| 36 | `meta_ads_conversions_send` | CAPI | Write | Send conversion events (generic) |
+| 37 | `meta_ads_conversions_send_purchase` | CAPI | Write | Send a purchase event |
+| 38 | `meta_ads_conversions_send_lead` | CAPI | Write | Send a lead event |
+| 39 | `meta_ads_creatives_list` | Creative | Read | List ad creatives |
+| 40 | `meta_ads_creatives_create` | Creative | Write | Create a standard ad creative |
+| 41 | `meta_ads_creatives_create_dynamic` | Creative | Write | Create a dynamic product ad creative |
+| 42 | `meta_ads_creatives_upload_image` | Creative | Write | Upload an image for use in creatives |
+| 43 | `meta_ads_creatives_create_carousel` | Creative | Write | Create a carousel creative (2-10 cards) |
+| 44 | `meta_ads_creatives_create_collection` | Creative | Write | Create a collection creative |
+| 45 | `meta_ads_images_upload_file` | Image | Write | Upload an image from local file |
+| 46 | `meta_ads_catalogs_list` | Catalog | Read | List product catalogs |
+| 47 | `meta_ads_catalogs_get` | Catalog | Read | Get catalog details |
+| 48 | `meta_ads_catalogs_create` | Catalog | Write | Create a product catalog |
+| 49 | `meta_ads_catalogs_delete` | Catalog | Write | Delete a product catalog |
+| 50 | `meta_ads_products_list` | Catalog | Read | List products in a catalog |
+| 51 | `meta_ads_products_get` | Catalog | Read | Get product details |
+| 52 | `meta_ads_products_add` | Catalog | Write | Add a product to a catalog |
+| 53 | `meta_ads_products_update` | Catalog | Write | Update a product |
+| 54 | `meta_ads_products_delete` | Catalog | Write | Delete a product |
+| 55 | `meta_ads_feeds_list` | Catalog | Read | List feeds for a catalog |
+| 56 | `meta_ads_feeds_create` | Catalog | Write | Create a feed (URL-based, scheduled import) |
+| 57 | `meta_ads_lead_forms_list` | Lead | Read | List lead forms (per page) |
+| 58 | `meta_ads_lead_forms_get` | Lead | Read | Get lead form details |
+| 59 | `meta_ads_lead_forms_create` | Lead | Write | Create a lead form |
+| 60 | `meta_ads_leads_get` | Lead | Read | Get lead data (per form) |
+| 61 | `meta_ads_leads_get_by_ad` | Lead | Read | Get lead data (per ad) |
+| 62 | `meta_ads_videos_upload` | Video | Write | Upload a video from URL |
+| 63 | `meta_ads_videos_upload_file` | Video | Write | Upload a video from local file |
+| 64 | `meta_ads_split_tests_list` | Split Test | Read | List split tests |
+| 65 | `meta_ads_split_tests_get` | Split Test | Read | Get split test details and results |
+| 66 | `meta_ads_split_tests_create` | Split Test | Write | Create a split test |
+| 67 | `meta_ads_split_tests_end` | Split Test | Write | End a split test |
+| 68 | `meta_ads_ad_rules_list` | Ad Rule | Read | List automated rules |
+| 69 | `meta_ads_ad_rules_get` | Ad Rule | Read | Get rule details |
+| 70 | `meta_ads_ad_rules_create` | Ad Rule | Write | Create an automated rule |
+| 71 | `meta_ads_ad_rules_update` | Ad Rule | Write | Update an automated rule |
+| 72 | `meta_ads_ad_rules_delete` | Ad Rule | Write | Delete an automated rule |
+| 73 | `meta_ads_page_posts_list` | Page Post | Read | List Facebook page posts |
+| 74 | `meta_ads_page_posts_boost` | Page Post | Write | Boost a page post (create ad from post) |
+| 75 | `meta_ads_instagram_accounts` | Instagram | Read | List connected Instagram accounts |
+| 76 | `meta_ads_instagram_media` | Instagram | Read | List Instagram posts |
+| 77 | `meta_ads_instagram_boost` | Instagram | Write | Boost an Instagram post |
 
 ## Key Differences from Google Ads
 
@@ -581,99 +581,99 @@ metadata:
 
 ```
 Step 1: List active campaigns
-  -> meta_ads.campaigns.list {account_id, status_filter: "ACTIVE"}
+  -> meta_ads_campaigns_list {account_id, status_filter: "ACTIVE"}
 
 Step 2: Get performance report
-  -> meta_ads.insights.report {account_id, period: "last_7d", level: "campaign"}
+  -> meta_ads_insights_report {account_id, period: "last_7d", level: "campaign"}
 
 Step 3: Analyze performance trends
-  -> meta_ads.analysis.performance {account_id}
+  -> meta_ads_analysis_performance {account_id}
 
 Step 4: Break down by demographics
-  -> meta_ads.insights.breakdown {account_id, campaign_id, breakdown: "age,gender"}
+  -> meta_ads_insights_breakdown {account_id, campaign_id, breakdown: "age,gender"}
 
 Step 5: Check placement performance
-  -> meta_ads.analysis.placements {account_id}
+  -> meta_ads_analysis_placements {account_id}
 ```
 
 ### 2. Full Campaign Setup
 
 ```
 Step 1: Create campaign (CONFIRM WITH USER)
-  -> meta_ads.campaigns.create {account_id, name, objective, daily_budget}
+  -> meta_ads_campaigns_create {account_id, name, objective, daily_budget}
 
 Step 2: Create ad set with targeting (CONFIRM WITH USER)
-  -> meta_ads.ad_sets.create {account_id, campaign_id, name, daily_budget, targeting}
+  -> meta_ads_ad_sets_create {account_id, campaign_id, name, daily_budget, targeting}
 
 Step 3: Upload image and create creative
-  -> meta_ads.creatives.upload_image {account_id, file_path}
-  -> meta_ads.creatives.create {account_id, name, image_hash, link_url, page_id}
+  -> meta_ads_creatives_upload_image {account_id, file_path}
+  -> meta_ads_creatives_create {account_id, name, image_hash, link_url, page_id}
 
 Step 4: Create ad linking to creative (CONFIRM WITH USER)
-  -> meta_ads.ads.create {account_id, ad_set_id, name, creative_id}
+  -> meta_ads_ads_create {account_id, ad_set_id, name, creative_id}
 ```
 
 ### 3. Audience & Lookalike Setup
 
 ```
 Step 1: List existing audiences
-  -> meta_ads.audiences.list {account_id}
+  -> meta_ads_audiences_list {account_id}
 
 Step 2: Create a website visitor audience (CONFIRM WITH USER)
-  -> meta_ads.audiences.create {account_id, name, subtype: "WEBSITE", retention_days, pixel_id}
+  -> meta_ads_audiences_create {account_id, name, subtype: "WEBSITE", retention_days, pixel_id}
 
 Step 3: Create a lookalike based on it (CONFIRM WITH USER)
-  -> meta_ads.audiences.create_lookalike {account_id, source_audience_id, country: "JP"}
+  -> meta_ads_audiences_create_lookalike {account_id, source_audience_id, country: "JP"}
 ```
 
 ### 4. A/B Testing with Split Tests
 
 ```
 Step 1: Create a split test (CONFIRM WITH USER)
-  -> meta_ads.split_tests.create {account_id, name, cells, objectives, start_time, end_time}
+  -> meta_ads_split_tests_create {account_id, name, cells, objectives, start_time, end_time}
 
 Step 2: Monitor results
-  -> meta_ads.split_tests.get {account_id, study_id}
+  -> meta_ads_split_tests_get {account_id, study_id}
 
 Step 3: End the test when ready (CONFIRM WITH USER)
-  -> meta_ads.split_tests.end {account_id, study_id}
+  -> meta_ads_split_tests_end {account_id, study_id}
 ```
 
 ### 5. Product Catalog & DPA
 
 ```
 Step 1: Create a catalog (CONFIRM WITH USER)
-  -> meta_ads.catalogs.create {account_id, business_id, name}
+  -> meta_ads_catalogs_create {account_id, business_id, name}
 
 Step 2: Add products or create a feed
-  -> meta_ads.products.add {account_id, catalog_id, retailer_id, name, ...}
-  -> meta_ads.feeds.create {account_id, catalog_id, name, feed_url}
+  -> meta_ads_products_add {account_id, catalog_id, retailer_id, name, ...}
+  -> meta_ads_feeds_create {account_id, catalog_id, name, feed_url}
 
 Step 3: Create a dynamic product ad creative (CONFIRM WITH USER)
-  -> meta_ads.creatives.create_dynamic {account_id, catalog_id}
+  -> meta_ads_creatives_create_dynamic {account_id, catalog_id}
 ```
 
 ### 6. Lead Generation
 
 ```
 Step 1: Create a lead form (CONFIRM WITH USER)
-  -> meta_ads.lead_forms.create {account_id, page_id, name, questions, privacy_policy_url}
+  -> meta_ads_lead_forms_create {account_id, page_id, name, questions, privacy_policy_url}
 
 Step 2: Set up campaign with LEAD_GENERATION objective
-  -> meta_ads.campaigns.create {account_id, name, objective: "LEAD_GENERATION"}
+  -> meta_ads_campaigns_create {account_id, name, objective: "LEAD_GENERATION"}
 
 Step 3: Download leads
-  -> meta_ads.leads.get {account_id, form_id}
+  -> meta_ads_leads_get {account_id, form_id}
 ```
 
 ### 7. Pause / Enable Entities
 
 ```
 Pause a campaign:
-  -> meta_ads.campaigns.pause {account_id, campaign_id}
+  -> meta_ads_campaigns_pause {account_id, campaign_id}
 
 Re-enable it:
-  -> meta_ads.campaigns.enable {account_id, campaign_id}
+  -> meta_ads_campaigns_enable {account_id, campaign_id}
 
 Same pattern for ad_sets.pause/enable and ads.pause/enable.
 ```
@@ -682,11 +682,11 @@ Same pattern for ad_sets.pause/enable and ads.pause/enable.
 
 ```
 Step 1: List pixels and check events
-  -> meta_ads.pixels.list {account_id}
-  -> meta_ads.pixels.events {account_id, pixel_id}
+  -> meta_ads_pixels_list {account_id}
+  -> meta_ads_pixels_events {account_id, pixel_id}
 
 Step 2: Send a purchase event (CONFIRM WITH USER)
-  -> meta_ads.conversions.send_purchase {account_id, pixel_id, event_time, user_data, currency, value}
+  -> meta_ads_conversions_send_purchase {account_id, pixel_id, event_time, user_data, currency, value}
 ```
 
 ## Important Notes

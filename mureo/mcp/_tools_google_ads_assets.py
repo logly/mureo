@@ -17,7 +17,7 @@ _CUSTOMER_ID_PARAM = {
 TOOLS: list[Tool] = [
     # === Image Assets ===
     Tool(
-        name="google_ads.assets.upload_image",
+        name="google_ads_assets_upload_image",
         description=(
             "Upload a local image file to Google Ads as an image Asset "
             "for use in Responsive Display Ads or image extensions. "
@@ -30,7 +30,7 @@ TOOLS: list[Tool] = [
             "jpg/jpeg/png/gif. Side effect: reads file_path from the "
             "local filesystem of the MCP server host and POSTs the raw "
             "bytes to Google. For creating the ad that references this "
-            "asset afterwards use google_ads.ads.create_display."
+            "asset afterwards use google_ads_ads_create_display."
         ),
         inputSchema={
             "type": "object",

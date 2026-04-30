@@ -24,14 +24,14 @@ _ACCOUNT_ID_PARAM = {
 TOOLS: list[Tool] = [
     # === Lead Ads ===
     Tool(
-        name="meta_ads.lead_forms.list",
+        name="meta_ads_lead_forms_list",
         description=(
             "Lists lead forms configured for a Facebook Page. Returns id, "
             "name, status, leads_count, locale, and created_time per "
             "form. Read-only. Lead forms belong to Pages, not ad "
             "accounts — use this to find a form_id before attaching it "
             "to a Lead Ads creative or before pulling submitted lead "
-            "data via meta_ads.leads.get."
+            "data via meta_ads_leads_get."
         ),
         inputSchema={
             "type": "object",
@@ -55,7 +55,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.lead_forms.get",
+        name="meta_ads_lead_forms_get",
         description=(
             "Fetches the full detail record for a single lead form, "
             "including its question definitions and legal pages. "
@@ -72,7 +72,7 @@ TOOLS: list[Tool] = [
                 "form_id": {
                     "type": "string",
                     "description": (
-                        "Lead form ID as returned by " "meta_ads.lead_forms.list."
+                        "Lead form ID as returned by " "meta_ads_lead_forms_list."
                     ),
                 },
             },
@@ -80,10 +80,10 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.lead_forms.create",
+        name="meta_ads_lead_forms_create",
         description=(
             "Creates a new lead form on a Facebook Page. Returns the new "
-            "form_id. Mutating, reversible via rollback.apply (rollback "
+            "form_id. Mutating, reversible via rollback_apply (rollback "
             "archives the form rather than deleting submitted leads). "
             "Questions is an ordered list of standard Meta types "
             "(FULL_NAME, EMAIL, PHONE_NUMBER, COMPANY_NAME, JOB_TITLE, "
@@ -185,14 +185,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.leads.get",
+        name="meta_ads_leads_get",
         description=(
             "Retrieves submitted leads for a single form. Returns per "
             "lead: id, created_time, ad_id, campaign_id, form_id, and "
             "field_data (array of {name, values} matching the form "
             "questions). Read-only. Use this for batch CRM sync or "
             "retrospective analysis. For leads attributed to a specific "
-            "ad across forms use meta_ads.leads.get_by_ad. Meta retains "
+            "ad across forms use meta_ads_leads_get_by_ad. Meta retains "
             "lead data for 90 days — pull regularly to avoid loss."
         ),
         inputSchema={
@@ -217,14 +217,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.leads.get_by_ad",
+        name="meta_ads_leads_get_by_ad",
         description=(
             "Retrieves leads attributed to a specific ad, regardless of "
             "which form they used. Returns the same lead record shape as "
-            "meta_ads.leads.get. Read-only. Use this to measure lead "
+            "meta_ads_leads_get. Read-only. Use this to measure lead "
             "volume of a particular creative / ad ID when ranking "
             "winners. For full form-based lead pulls (cross-ad) use "
-            "meta_ads.leads.get."
+            "meta_ads_leads_get."
         ),
         inputSchema={
             "type": "object",

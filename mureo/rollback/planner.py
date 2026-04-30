@@ -37,22 +37,36 @@ if TYPE_CHECKING:
 # idempotent reversals are listed. Deletion/removal operations are
 # deliberately absent so an agent cannot log a "reversal" that drops a
 # campaign, keyword, or asset. Add entries as new reversible flows land.
+# All keys use the underscore form that the MCP tool registry exposes
+# post the spec-compliance rename. Some entries (e.g.
+# ``meta_ads_campaigns_update_status``) do not correspond to a
+# registered tool today — that's a pre-existing rollback-allowlist
+# gap inherited from before the rename. Kept here so action_log
+# entries that previously serialized this operation name continue to
+# be recognized by the planner; the actual dispatch will fail with
+# "tool not found", same as on main before this PR. Reconciling the
+# allowlist with the actual registered tool set is a separate concern.
 _ALLOWED_OPERATIONS: dict[str, frozenset[str]] = {
-    "google_ads.budgets.update": frozenset({"budget_id", "amount_micros"}),
-    "google_ads.campaigns.update_status": frozenset({"campaign_id", "status"}),
-    "google_ads.ad_groups.update_status": frozenset({"ad_group_id", "status"}),
-    "google_ads.ads.update_status": frozenset({"ad_group_id", "ad_id", "status"}),
-    "meta_ads.campaigns.update_status": frozenset({"campaign_id", "status"}),
-    "meta_ads.ad_sets.update_status": frozenset({"ad_set_id", "status"}),
-    "meta_ads.ads.update_status": frozenset({"ad_id", "status"}),
+    "google_ads_budget_update": frozenset({"budget_id", "amount_micros"}),
+    "google_ads_campaigns_update_status": frozenset({"campaign_id", "status"}),
+    "google_ads_ad_groups_update_status": frozenset({"ad_group_id", "status"}),
+    "google_ads_ads_update_status": frozenset({"ad_group_id", "ad_id", "status"}),
+    "meta_ads_campaigns_update_status": frozenset({"campaign_id", "status"}),
+    "meta_ads_ad_sets_update_status": frozenset({"ad_set_id", "status"}),
+    "meta_ads_ads_update_status": frozenset({"ad_id", "status"}),
 }
 
+# Underscore-prefixed verbs match the spec-compliant tool naming
+# (e.g. ``google_ads_campaigns_delete``). The pre-rename forms with
+# leading dot (".delete" etc.) no longer match anything in the new
+# tool registry — leaving them dotted would silently disable the
+# destructive-verb safety net.
 _DESTRUCTIVE_VERBS: tuple[str, ...] = (
-    ".delete",
-    ".remove",
-    ".destroy",
-    ".purge",
-    ".transfer",
+    "_delete",
+    "_remove",
+    "_destroy",
+    "_purge",
+    "_transfer",
 )
 
 _READ_ONLY_PREFIXES: tuple[str, ...] = (

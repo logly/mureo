@@ -65,17 +65,17 @@ async def handle_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]
 
 _HANDLERS: dict[str, Any] = {
     # Sites
-    "search_console.sites.list": handle_sites_list,
-    "search_console.sites.get": handle_sites_get,
+    "search_console_sites_list": handle_sites_list,
+    "search_console_sites_get": handle_sites_get,
     # Analytics
-    "search_console.analytics.query": handle_analytics_query,
-    "search_console.analytics.top_queries": handle_analytics_top_queries,
-    "search_console.analytics.top_pages": handle_analytics_top_pages,
-    "search_console.analytics.device_breakdown": handle_analytics_device_breakdown,
-    "search_console.analytics.compare_periods": handle_analytics_compare_periods,
+    "search_console_analytics_query": handle_analytics_query,
+    "search_console_analytics_top_queries": handle_analytics_top_queries,
+    "search_console_analytics_top_pages": handle_analytics_top_pages,
+    "search_console_analytics_device_breakdown": handle_analytics_device_breakdown,
+    "search_console_analytics_compare_periods": handle_analytics_compare_periods,
     # Sitemaps
-    "search_console.sitemaps.list": handle_sitemaps_list,
-    "search_console.sitemaps.submit": handle_sitemaps_submit,
+    "search_console_sitemaps_list": handle_sitemaps_list,
+    "search_console_sitemaps_submit": handle_sitemaps_submit,
     # URL Inspection
-    "search_console.url_inspection.inspect": handle_url_inspection_inspect,
+    "search_console_url_inspection_inspect": handle_url_inspection_inspect,
 }

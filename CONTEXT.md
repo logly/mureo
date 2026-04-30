@@ -218,13 +218,13 @@ A JSON file tracking campaign state snapshots across platforms:
       "platform": "google_ads",
       "campaign_id": "12345",
       "reversible_params": {
-        "operation": "google_ads.budgets.update",
+        "operation": "google_ads_budget_update",
         "params": {"budget_id": "B1", "amount_micros": 5000000000}
       }
     },
     {
       "timestamp": "2026-04-02T15:00:00+09:00",
-      "action": "google_ads.budgets.update",
+      "action": "google_ads_budget_update",
       "platform": "google_ads",
       "campaign_id": "12345",
       "summary": "Rolled back #1: Raised daily budget",
@@ -236,7 +236,7 @@ A JSON file tracking campaign state snapshots across platforms:
 
 The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/mureo-learning/SKILL.md` for the decision framework. The `skills/mureo-pro-diagnosis/SKILL.md` file contains learned diagnostic insights that grow with use — the agent saves marketing knowledge here when users provide corrections or new insights during operations.
 
-`reversible_params` is an optional, agent-authored hint describing how to reverse the action. Its `operation` must be in the rollback planner's allow-list (`mureo/rollback/planner.py`); destructive verbs (`.delete`, `.remove`, etc.) and unexpected parameter keys are refused. `rollback_of` is set by the rollback executor and points at the index of the entry that was reversed — a later entry with this field constitutes an append-only audit trail and causes a second apply against the same index to be refused. See `docs/mcp-server.md` for the `rollback.plan.get` / `rollback.apply` MCP tools.
+`reversible_params` is an optional, agent-authored hint describing how to reverse the action. Its `operation` must be in the rollback planner's allow-list (`mureo/rollback/planner.py`); destructive verbs (`.delete`, `.remove`, etc.) and unexpected parameter keys are refused. `rollback_of` is set by the rollback executor and points at the index of the entry that was reversed — a later entry with this field constitutes an append-only audit trail and causes a second apply against the same index to be refused. See `docs/mcp-server.md` for the `rollback_plan_get` / `rollback_apply` MCP tools.
 
 Use `mureo.context.state` to parse and write STATE.json programmatically.
 

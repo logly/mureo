@@ -83,16 +83,16 @@ Search Console is built into mureo as a first-party integration. It reuses the s
 
 | Tool | Description |
 |------|-------------|
-| `search_console.sites.list` | List verified sites |
-| `search_console.sites.get` | Get site details |
-| `search_console.analytics.query` | Query search analytics data |
-| `search_console.analytics.top_queries` | Get top search queries |
-| `search_console.analytics.top_pages` | Get top pages by clicks/impressions |
-| `search_console.analytics.device_breakdown` | Get performance breakdown by device |
-| `search_console.analytics.compare_periods` | Compare search performance across time periods |
-| `search_console.sitemaps.list` | List sitemaps for a site |
-| `search_console.sitemaps.submit` | Submit a sitemap |
-| `search_console.url_inspection.inspect` | Inspect a URL for indexing status |
+| `search_console_sites_list` | List verified sites |
+| `search_console_sites_get` | Get site details |
+| `search_console_analytics_query` | Query search analytics data |
+| `search_console_analytics_top_queries` | Get top search queries |
+| `search_console_analytics_top_pages` | Get top pages by clicks/impressions |
+| `search_console_analytics_device_breakdown` | Get performance breakdown by device |
+| `search_console_analytics_compare_periods` | Compare search performance across time periods |
+| `search_console_sitemaps_list` | List sitemaps for a site |
+| `search_console_sitemaps_submit` | Submit a sitemap |
+| `search_console_url_inspection_inspect` | Inspect a URL for indexing status |
 
 ### Workflow Integration
 

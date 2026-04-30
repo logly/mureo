@@ -50,7 +50,7 @@ class TestGoogleAdsSitelinkHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.sitelinks.list",
+                "google_ads_sitelinks_list",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -69,7 +69,7 @@ class TestGoogleAdsSitelinkHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.sitelinks.create",
+                "google_ads_sitelinks_create",
                 {
                     "customer_id": "123",
                     "campaign_id": "456",
@@ -93,7 +93,7 @@ class TestGoogleAdsSitelinkHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.sitelinks.remove",
+                "google_ads_sitelinks_remove",
                 {"customer_id": "123", "campaign_id": "456", "asset_id": "789"},
             )
 
@@ -122,7 +122,7 @@ class TestGoogleAdsCalloutHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.callouts.list",
+                "google_ads_callouts_list",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -141,7 +141,7 @@ class TestGoogleAdsCalloutHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.callouts.create",
+                "google_ads_callouts_create",
                 {
                     "customer_id": "123",
                     "campaign_id": "456",
@@ -164,7 +164,7 @@ class TestGoogleAdsCalloutHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.callouts.remove",
+                "google_ads_callouts_remove",
                 {"customer_id": "123", "campaign_id": "456", "asset_id": "789"},
             )
 
@@ -193,7 +193,7 @@ class TestGoogleAdsConversionHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.conversions.list",
+                "google_ads_conversions_list",
                 {"customer_id": "123"},
             )
 
@@ -212,7 +212,7 @@ class TestGoogleAdsConversionHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.conversions.get",
+                "google_ads_conversions_get",
                 {"customer_id": "123", "conversion_action_id": "10"},
             )
 
@@ -231,7 +231,7 @@ class TestGoogleAdsConversionHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.conversions.performance",
+                "google_ads_conversions_performance",
                 {"customer_id": "123"},
             )
 
@@ -250,7 +250,7 @@ class TestGoogleAdsConversionHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.conversions.create",
+                "google_ads_conversions_create",
                 {"customer_id": "123", "name": "New Conversion"},
             )
 
@@ -269,7 +269,7 @@ class TestGoogleAdsConversionHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.conversions.update",
+                "google_ads_conversions_update",
                 {
                     "customer_id": "123",
                     "conversion_action_id": "10",
@@ -292,7 +292,7 @@ class TestGoogleAdsConversionHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.conversions.remove",
+                "google_ads_conversions_remove",
                 {"customer_id": "123", "conversion_action_id": "10"},
             )
 
@@ -311,7 +311,7 @@ class TestGoogleAdsConversionHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.conversions.tag",
+                "google_ads_conversions_tag",
                 {"customer_id": "123", "conversion_action_id": "10"},
             )
 
@@ -340,7 +340,7 @@ class TestGoogleAdsTargetingHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.recommendations.list",
+                "google_ads_recommendations_list",
                 {"customer_id": "123"},
             )
 
@@ -359,7 +359,7 @@ class TestGoogleAdsTargetingHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.recommendations.apply",
+                "google_ads_recommendations_apply",
                 {
                     "customer_id": "123",
                     "resource_name": "customers/123/recommendations/456",
@@ -381,7 +381,7 @@ class TestGoogleAdsTargetingHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.device_targeting.get",
+                "google_ads_device_targeting_get",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -400,7 +400,7 @@ class TestGoogleAdsTargetingHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.device_targeting.set",
+                "google_ads_device_targeting_set",
                 {
                     "customer_id": "123",
                     "campaign_id": "456",
@@ -423,7 +423,7 @@ class TestGoogleAdsTargetingHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.bid_adjustments.get",
+                "google_ads_bid_adjustments_get",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -442,7 +442,7 @@ class TestGoogleAdsTargetingHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.bid_adjustments.update",
+                "google_ads_bid_adjustments_update",
                 {
                     "customer_id": "123",
                     "campaign_id": "456",
@@ -466,7 +466,7 @@ class TestGoogleAdsTargetingHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.location_targeting.list",
+                "google_ads_location_targeting_list",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -485,7 +485,7 @@ class TestGoogleAdsTargetingHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.location_targeting.update",
+                "google_ads_location_targeting_update",
                 {
                     "customer_id": "123",
                     "campaign_id": "456",
@@ -508,7 +508,7 @@ class TestGoogleAdsTargetingHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.schedule_targeting.list",
+                "google_ads_schedule_targeting_list",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -527,7 +527,7 @@ class TestGoogleAdsTargetingHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.schedule_targeting.update",
+                "google_ads_schedule_targeting_update",
                 {
                     "customer_id": "123",
                     "campaign_id": "456",
@@ -552,7 +552,7 @@ class TestGoogleAdsTargetingHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.change_history.list",
+                "google_ads_change_history_list",
                 {"customer_id": "123"},
             )
 

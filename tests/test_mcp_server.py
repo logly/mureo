@@ -52,16 +52,16 @@ class TestListTools:
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
         names = {t.name for t in tools}
-        assert "google_ads.campaigns.list" in names
-        assert "google_ads.campaigns.get" in names
-        assert "meta_ads.campaigns.list" in names
-        assert "meta_ads.campaigns.get" in names
+        assert "google_ads_campaigns_list" in names
+        assert "google_ads_campaigns_get" in names
+        assert "meta_ads_campaigns_list" in names
+        assert "meta_ads_campaigns_get" in names
 
     async def test_list_tools_campaigns_list_schema(self) -> None:
         """campaigns.list の inputSchema が customer_id を optional で持つこと"""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
-        tool = next(t for t in tools if t.name == "google_ads.campaigns.list")
+        tool = next(t for t in tools if t.name == "google_ads_campaigns_list")
         schema = tool.inputSchema
         assert schema["type"] == "object"
         assert "customer_id" in schema["properties"]
@@ -72,7 +72,7 @@ class TestListTools:
         """campaigns.get の inputSchema が campaign_id を required で持つこと"""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
-        tool = next(t for t in tools if t.name == "google_ads.campaigns.get")
+        tool = next(t for t in tools if t.name == "google_ads_campaigns_get")
         schema = tool.inputSchema
         assert schema["type"] == "object"
         assert "customer_id" in schema["properties"]
@@ -88,7 +88,7 @@ class TestListTools:
 
 @pytest.mark.unit
 class TestCallToolCampaignsList:
-    """call_tool で google_ads.campaigns.list を呼ぶテスト"""
+    """call_tool で google_ads_campaigns_list を呼ぶテスト"""
 
     async def test_campaigns_list_calls_client(self) -> None:
         """campaigns.list が GoogleAdsApiClient.list_campaigns を呼ぶこと"""
@@ -108,7 +108,7 @@ class TestCallToolCampaignsList:
             patch.object(ga_mod, "create_google_ads_client", return_value=mock_client),
         ):
             result = await mod.handle_call_tool(
-                "google_ads.campaigns.list",
+                "google_ads_campaigns_list",
                 {"customer_id": "1234567890"},
             )
 
@@ -122,7 +122,7 @@ class TestCallToolCampaignsList:
 
 @pytest.mark.unit
 class TestCallToolCampaignsGet:
-    """call_tool で google_ads.campaigns.get を呼ぶテスト"""
+    """call_tool で google_ads_campaigns_get を呼ぶテスト"""
 
     async def test_campaigns_get_calls_client(self) -> None:
         """campaigns.get が GoogleAdsApiClient.get_campaign を呼ぶこと"""
@@ -145,7 +145,7 @@ class TestCallToolCampaignsGet:
             patch.object(ga_mod, "create_google_ads_client", return_value=mock_client),
         ):
             result = await mod.handle_call_tool(
-                "google_ads.campaigns.get",
+                "google_ads_campaigns_get",
                 {"customer_id": "1234567890", "campaign_id": "456"},
             )
 
@@ -175,7 +175,7 @@ class TestCallToolErrors:
             "mureo.mcp._handlers_google_ads.load_google_ads_credentials",
             return_value=None,
         ):
-            result = await mod.handle_call_tool("google_ads.campaigns.list", {})
+            result = await mod.handle_call_tool("google_ads_campaigns_list", {})
             assert any("Credentials not found" in r.text for r in result)
 
     async def test_missing_required_param_campaign_id(self) -> None:
@@ -189,7 +189,7 @@ class TestCallToolErrors:
         ):
             with pytest.raises(ValueError, match="campaign_id"):
                 await mod.handle_call_tool(
-                    "google_ads.campaigns.get",
+                    "google_ads_campaigns_get",
                     {"customer_id": "1234567890"},
                 )
 
@@ -204,7 +204,7 @@ class TestCallToolErrors:
             return_value=None,
         ):
             result = await mod.handle_call_tool(
-                "google_ads.campaigns.list",
+                "google_ads_campaigns_list",
                 {"customer_id": "1234567890"},
             )
 

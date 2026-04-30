@@ -24,7 +24,7 @@ Safety contract:
 
 Concurrency: STATE.json is assumed to be written by a single mureo
 process at a time. The read-check-append sequence here is not
-protected by a file lock; concurrent ``rollback.apply`` invocations
+protected by a file lock; concurrent ``rollback_apply`` invocations
 against the same file can race each other.
 """
 
@@ -119,9 +119,9 @@ async def execute_rollback(
 
     # Defense-in-depth: refuse to dispatch back into the rollback surface
     # itself. If a future entry in ``_ALLOWED_OPERATIONS`` (or a badly-wired
-    # test scaffold) ever names a ``rollback.*`` tool, this prevents the
+    # test scaffold) ever names a ``rollback_*`` tool, this prevents the
     # executor from recursing into itself.
-    if plan.operation.startswith("rollback."):
+    if plan.operation.startswith("rollback_"):
         raise RollbackExecutionError(
             f"Refusing to dispatch rollback into rollback surface: " f"{plan.operation}"
         )

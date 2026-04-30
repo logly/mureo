@@ -136,9 +136,9 @@ mureo/
     ├── _handlers_meta_ads_other.py        # Other handlers
     ├── tools_search_console.py            # Search Console tool definitions
     ├── _handlers_search_console.py        # Search Console handlers
-    ├── tools_rollback.py                  # rollback.plan.get / rollback.apply
+    ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
     ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
-    ├── tools_analysis.py                  # analysis.anomalies.check
+    ├── tools_analysis.py                  # analysis_anomalies_check
     └── _handlers_analysis.py              # Anomaly detector composition handler
 
 .claude/commands/                # Workflow slash commands for Claude Code

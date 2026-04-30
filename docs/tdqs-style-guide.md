@@ -22,13 +22,13 @@ when <other scenario>.
 
 Target length: **50–100 words**.
 
-### Good (score ~4.4 — `rollback.plan.get`)
+### Good (score ~4.4 — `rollback_plan_get`)
 
 > Inspect the reversal plan for a recorded `action_log` entry in `STATE.json`. Returns the planner's status (`supported` / `partial` / `not_supported`), the operation that would be dispatched, its parameters, and any caveats. Does not execute anything.
 
 Covers: verb (Inspect), resource (reversal plan), returns (named fields), side effect ("Does not execute").
 
-### Bad (score ~2.3 — original `google_ads.campaigns.diagnose`)
+### Bad (score ~2.3 — original `google_ads_campaigns_diagnose`)
 
 > Diagnose Google Ads campaign delivery status
 
@@ -49,13 +49,13 @@ For anything that mutates or deletes, the description MUST:
 
 1. Lead with the mutation verb: `"Updates..."`, `"Deletes..."`, `"Pauses..."`
 2. Disclose partial-vs-full update semantics: `"Partial update — only the fields provided are changed; omitted fields are preserved."`
-3. State reversibility: `"Reversible via rollback.apply."` or `"Irreversible — removed ads cannot be restored."`
+3. State reversibility: `"Reversible via rollback_apply."` or `"Irreversible — removed ads cannot be restored."`
 
 ## Sibling differentiation
 
 When two tools operate on the same resource (e.g. `campaigns.update` and `campaigns.update_status`), each description must end with a differentiation clause:
 
-- `"For status-only changes use google_ads.campaigns.update_status instead; this tool rewrites the full settings."`
+- `"For status-only changes use google_ads_campaigns_update_status instead; this tool rewrites the full settings."`
 
 ## Anti-patterns
 

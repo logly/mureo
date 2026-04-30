@@ -134,8 +134,8 @@ Marketing accounts are a high-value target. mureo is built with defense-in-depth
 
 - **Credential guard** — `mureo setup claude-code` installs a PreToolUse hook that blocks AI agents from reading `~/.mureo/credentials.json`, `.env`, and similar secrets, so a prompt-injection payload cannot exfiltrate tokens via the file-system tools.
 - **GAQL input validation** — every ID, date, date-range constant, and string literal that enters a Google Ads query flows through one whitelist-based surface (`mureo/google_ads/_gaql_validator.py`), and `BETWEEN` clauses pattern-match and revalidate their dates instead of passing raw caller input into GAQL.
-- **Anomaly detection** — `mureo/analysis/anomaly_detector.py` compares current campaign metrics against a median-based baseline from the action log and emits prioritized alerts for zero spend, CPA spikes, and CTR drops, with sample-size gates that suppress single-day noise. Exposed to agents via the `analysis.anomalies.check` MCP tool; `state_file` is sandboxed inside the MCP server's CWD so a prompt-injected agent cannot redirect it at an attacker-crafted `STATE.json`.
-- **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. Only operations on an explicit allow-list are planned; destructive verbs (`.delete`, `.remove`, `.transfer`) and unexpected parameter keys are refused, so a compromised agent cannot smuggle a privileged call through the rollback path. `mureo rollback list` / `show` let operators preview plans, and the `rollback.apply` MCP tool executes them by re-dispatching through the same handler used for forward actions so the reversal re-enters the full policy gate (auth, rate limit, validation). Apply requires `confirm=true` (literal boolean), refuses `rollback.*` self-recursion, records the reversal as an append-only `action_log` entry tagged with `rollback_of=<index>`, and refuses a second apply of the same index.
+- **Anomaly detection** — `mureo/analysis/anomaly_detector.py` compares current campaign metrics against a median-based baseline from the action log and emits prioritized alerts for zero spend, CPA spikes, and CTR drops, with sample-size gates that suppress single-day noise. Exposed to agents via the `analysis_anomalies_check` MCP tool; `state_file` is sandboxed inside the MCP server's CWD so a prompt-injected agent cannot redirect it at an attacker-crafted `STATE.json`.
+- **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. Only operations on an explicit allow-list are planned; destructive verbs (`.delete`, `.remove`, `.transfer`) and unexpected parameter keys are refused, so a compromised agent cannot smuggle a privileged call through the rollback path. `mureo rollback list` / `show` let operators preview plans, and the `rollback_apply` MCP tool executes them by re-dispatching through the same handler used for forward actions so the reversal re-enters the full policy gate (auth, rate limit, validation). Apply requires `confirm=true` (literal boolean), refuses `rollback.*` self-recursion, records the reversal as an append-only `action_log` entry tagged with `rollback_of=<index>`, and refuses a second apply of the same index.
 - **Immutable data models** — every state object (`StateDocument`, `ActionLogEntry`, `CampaignSnapshot`, `Anomaly`, `RollbackPlan`) is a `frozen=True` dataclass; an agent cannot silently mutate its own record of what happened.
 - **Local-only credentials** — tokens are loaded from `~/.mureo/credentials.json` or environment variables and transmitted only to the official ad-platform APIs. mureo itself has no telemetry.
 
@@ -601,183 +601,183 @@ Add to `.cursor/mcp.json`:
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.campaigns.list` | List campaigns |
-| `google_ads.campaigns.get` | Get campaign details |
-| `google_ads.campaigns.create` | Create a campaign (search or display, via `channel_type`) |
-| `google_ads.campaigns.update` | Update campaign settings |
-| `google_ads.campaigns.update_status` | Change campaign status (ENABLED/PAUSED/REMOVED) |
-| `google_ads.campaigns.diagnose` | Diagnose campaign delivery status |
+| `google_ads_campaigns_list` | List campaigns |
+| `google_ads_campaigns_get` | Get campaign details |
+| `google_ads_campaigns_create` | Create a campaign (search or display, via `channel_type`) |
+| `google_ads_campaigns_update` | Update campaign settings |
+| `google_ads_campaigns_update_status` | Change campaign status (ENABLED/PAUSED/REMOVED) |
+| `google_ads_campaigns_diagnose` | Diagnose campaign delivery status |
 
 **Ad Groups**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.ad_groups.list` | List ad groups |
-| `google_ads.ad_groups.create` | Create an ad group |
-| `google_ads.ad_groups.update` | Update an ad group |
+| `google_ads_ad_groups_list` | List ad groups |
+| `google_ads_ad_groups_create` | Create an ad group |
+| `google_ads_ad_groups_update` | Update an ad group |
 
 **Ads**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.ads.list` | List ads |
-| `google_ads.ads.create` | Create a responsive search ad (RSA) |
-| `google_ads.ads.create_display` | Create a responsive display ad (RDA); image files are uploaded automatically |
-| `google_ads.ads.update` | Update an ad |
-| `google_ads.ads.update_status` | Change ad status |
-| `google_ads.ads.policy_details` | Get ad policy approval details |
+| `google_ads_ads_list` | List ads |
+| `google_ads_ads_create` | Create a responsive search ad (RSA) |
+| `google_ads_ads_create_display` | Create a responsive display ad (RDA); image files are uploaded automatically |
+| `google_ads_ads_update` | Update an ad |
+| `google_ads_ads_update_status` | Change ad status |
+| `google_ads_ads_policy_details` | Get ad policy approval details |
 
 **Keywords (8)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.keywords.list` | List keywords |
-| `google_ads.keywords.add` | Add keywords |
-| `google_ads.keywords.remove` | Remove a keyword |
-| `google_ads.keywords.suggest` | Get keyword suggestions (Keyword Planner) |
-| `google_ads.keywords.diagnose` | Diagnose keyword quality scores |
-| `google_ads.keywords.pause` | Pause a keyword |
-| `google_ads.keywords.audit` | Audit keyword performance and quality |
-| `google_ads.keywords.cross_adgroup_duplicates` | Find duplicate keywords across ad groups |
+| `google_ads_keywords_list` | List keywords |
+| `google_ads_keywords_add` | Add keywords |
+| `google_ads_keywords_remove` | Remove a keyword |
+| `google_ads_keywords_suggest` | Get keyword suggestions (Keyword Planner) |
+| `google_ads_keywords_diagnose` | Diagnose keyword quality scores |
+| `google_ads_keywords_pause` | Pause a keyword |
+| `google_ads_keywords_audit` | Audit keyword performance and quality |
+| `google_ads_keywords_cross_adgroup_duplicates` | Find duplicate keywords across ad groups |
 
 **Negative Keywords (5)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.negative_keywords.list` | List negative keywords |
-| `google_ads.negative_keywords.add` | Add negative keywords to a campaign |
-| `google_ads.negative_keywords.remove` | Remove a negative keyword |
-| `google_ads.negative_keywords.add_to_ad_group` | Add negative keywords to an ad group |
-| `google_ads.negative_keywords.suggest` | Suggest negative keywords based on search terms |
+| `google_ads_negative_keywords_list` | List negative keywords |
+| `google_ads_negative_keywords_add` | Add negative keywords to a campaign |
+| `google_ads_negative_keywords_remove` | Remove a negative keyword |
+| `google_ads_negative_keywords_add_to_ad_group` | Add negative keywords to an ad group |
+| `google_ads_negative_keywords_suggest` | Suggest negative keywords based on search terms |
 
 **Budget (3)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.budget.get` | Get campaign budget |
-| `google_ads.budget.update` | Update budget |
-| `google_ads.budget.create` | Create a new campaign budget |
+| `google_ads_budget_get` | Get campaign budget |
+| `google_ads_budget_update` | Update budget |
+| `google_ads_budget_create` | Create a new campaign budget |
 
 **Accounts (1)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.accounts.list` | List accessible Google Ads accounts |
+| `google_ads_accounts_list` | List accessible Google Ads accounts |
 
 **Search Terms (2)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.search_terms.report` | Get search terms report |
-| `google_ads.search_terms.analyze` | Analyze search terms with intent classification |
+| `google_ads_search_terms_report` | Get search terms report |
+| `google_ads_search_terms_analyze` | Analyze search terms with intent classification |
 
 **Sitelinks (3)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.sitelinks.list` | List sitelink extensions |
-| `google_ads.sitelinks.create` | Create a sitelink extension |
-| `google_ads.sitelinks.remove` | Remove a sitelink extension |
+| `google_ads_sitelinks_list` | List sitelink extensions |
+| `google_ads_sitelinks_create` | Create a sitelink extension |
+| `google_ads_sitelinks_remove` | Remove a sitelink extension |
 
 **Callouts (3)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.callouts.list` | List callout extensions |
-| `google_ads.callouts.create` | Create a callout extension |
-| `google_ads.callouts.remove` | Remove a callout extension |
+| `google_ads_callouts_list` | List callout extensions |
+| `google_ads_callouts_create` | Create a callout extension |
+| `google_ads_callouts_remove` | Remove a callout extension |
 
 **Conversions (7)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.conversions.list` | List conversion actions |
-| `google_ads.conversions.get` | Get conversion action details |
-| `google_ads.conversions.performance` | Get conversion performance metrics |
-| `google_ads.conversions.create` | Create a conversion action |
-| `google_ads.conversions.update` | Update a conversion action |
-| `google_ads.conversions.remove` | Remove a conversion action |
-| `google_ads.conversions.tag` | Get conversion tracking tag snippet |
+| `google_ads_conversions_list` | List conversion actions |
+| `google_ads_conversions_get` | Get conversion action details |
+| `google_ads_conversions_performance` | Get conversion performance metrics |
+| `google_ads_conversions_create` | Create a conversion action |
+| `google_ads_conversions_update` | Update a conversion action |
+| `google_ads_conversions_remove` | Remove a conversion action |
+| `google_ads_conversions_tag` | Get conversion tracking tag snippet |
 
 **Targeting (11)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.recommendations.list` | List optimization recommendations |
-| `google_ads.recommendations.apply` | Apply an optimization recommendation |
-| `google_ads.device_targeting.get` | Get device targeting settings |
-| `google_ads.device_targeting.set` | Set device targeting bid adjustments |
-| `google_ads.bid_adjustments.get` | Get bid adjustment settings |
-| `google_ads.bid_adjustments.update` | Update bid adjustments |
-| `google_ads.location_targeting.list` | List location targeting criteria |
-| `google_ads.location_targeting.update` | Update location targeting |
-| `google_ads.schedule_targeting.list` | List ad schedule targeting |
-| `google_ads.schedule_targeting.update` | Update ad schedule targeting |
-| `google_ads.change_history.list` | List account change history |
+| `google_ads_recommendations_list` | List optimization recommendations |
+| `google_ads_recommendations_apply` | Apply an optimization recommendation |
+| `google_ads_device_targeting_get` | Get device targeting settings |
+| `google_ads_device_targeting_set` | Set device targeting bid adjustments |
+| `google_ads_bid_adjustments_get` | Get bid adjustment settings |
+| `google_ads_bid_adjustments_update` | Update bid adjustments |
+| `google_ads_location_targeting_list` | List location targeting criteria |
+| `google_ads_location_targeting_update` | Update location targeting |
+| `google_ads_schedule_targeting_list` | List ad schedule targeting |
+| `google_ads_schedule_targeting_update` | Update ad schedule targeting |
+| `google_ads_change_history_list` | List account change history |
 
 **Analysis (13)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.performance.report` | Get performance report |
-| `google_ads.performance.analyze` | Analyze performance trends and anomalies |
-| `google_ads.cost_increase.investigate` | Investigate sudden cost increases |
-| `google_ads.health_check.all` | Run a comprehensive account health check |
-| `google_ads.ad_performance.compare` | Compare ad performance across variants |
-| `google_ads.ad_performance.report` | Get detailed ad-level performance report |
-| `google_ads.network_performance.report` | Get network-level performance breakdown |
-| `google_ads.budget.efficiency` | Analyze budget utilization efficiency |
-| `google_ads.budget.reallocation` | Suggest budget reallocation across campaigns |
-| `google_ads.auction_insights.get` | Get auction insights (competitor analysis) |
-| `google_ads.rsa_assets.analyze` | Analyze RSA asset performance |
-| `google_ads.rsa_assets.audit` | Audit RSA assets for best practices |
-| `google_ads.search_terms.review` | Review search terms and suggest additions/exclusions |
+| `google_ads_performance_report` | Get performance report |
+| `google_ads_performance_analyze` | Analyze performance trends and anomalies |
+| `google_ads_cost_increase_investigate` | Investigate sudden cost increases |
+| `google_ads_health_check_all` | Run a comprehensive account health check |
+| `google_ads_ad_performance_compare` | Compare ad performance across variants |
+| `google_ads_ad_performance_report` | Get detailed ad-level performance report |
+| `google_ads_network_performance_report` | Get network-level performance breakdown |
+| `google_ads_budget_efficiency` | Analyze budget utilization efficiency |
+| `google_ads_budget_reallocation` | Suggest budget reallocation across campaigns |
+| `google_ads_auction_insights_get` | Get auction insights (competitor analysis) |
+| `google_ads_rsa_assets_analyze` | Analyze RSA asset performance |
+| `google_ads_rsa_assets_audit` | Audit RSA assets for best practices |
+| `google_ads_search_terms_review` | Review search terms and suggest additions/exclusions |
 
 **B2B (1)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.btob.optimizations` | Get B2B-specific optimization suggestions |
+| `google_ads_btob_optimizations` | Get B2B-specific optimization suggestions |
 
 **Creative (2)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.landing_page.analyze` | Analyze landing page relevance and quality |
-| `google_ads.creative.research` | Research competitive creative strategies |
+| `google_ads_landing_page_analyze` | Analyze landing page relevance and quality |
+| `google_ads_creative_research` | Research competitive creative strategies |
 
 **Monitoring (4)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.monitoring.delivery_goal` | Monitor campaign delivery against goals |
-| `google_ads.monitoring.cpa_goal` | Monitor CPA against target goals |
-| `google_ads.monitoring.cv_goal` | Monitor conversion volume against goals |
-| `google_ads.monitoring.zero_conversions` | Detect campaigns with zero conversions |
+| `google_ads_monitoring_delivery_goal` | Monitor campaign delivery against goals |
+| `google_ads_monitoring_cpa_goal` | Monitor CPA against target goals |
+| `google_ads_monitoring_cv_goal` | Monitor conversion volume against goals |
+| `google_ads_monitoring_zero_conversions` | Detect campaigns with zero conversions |
 
 **Capture (1)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.capture.screenshot` | Capture a screenshot of a URL |
+| `google_ads_capture_screenshot` | Capture a screenshot of a URL |
 
 **Device (1)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.device.analyze` | Analyze device-level performance |
+| `google_ads_device_analyze` | Analyze device-level performance |
 
 **CPC (1)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.cpc.detect_trend` | Detect CPC trend (rising/stable/falling) |
+| `google_ads_cpc_detect_trend` | Detect CPC trend (rising/stable/falling) |
 
 **Assets (1)**
 
 | Tool | Description |
 |------|-------------|
-| `google_ads.assets.upload_image` | Upload an image asset |
+| `google_ads_assets_upload_image` | Upload an image asset |
 
 </details>
 
@@ -790,163 +790,163 @@ Add to `.cursor/mcp.json`:
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.campaigns.list` | List campaigns |
-| `meta_ads.campaigns.get` | Get campaign details |
-| `meta_ads.campaigns.create` | Create a campaign |
-| `meta_ads.campaigns.update` | Update a campaign |
-| `meta_ads.campaigns.pause` | Pause a campaign |
-| `meta_ads.campaigns.enable` | Enable a paused campaign |
+| `meta_ads_campaigns_list` | List campaigns |
+| `meta_ads_campaigns_get` | Get campaign details |
+| `meta_ads_campaigns_create` | Create a campaign |
+| `meta_ads_campaigns_update` | Update a campaign |
+| `meta_ads_campaigns_pause` | Pause a campaign |
+| `meta_ads_campaigns_enable` | Enable a paused campaign |
 
 **Ad Sets (6)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.ad_sets.list` | List ad sets |
-| `meta_ads.ad_sets.create` | Create an ad set |
-| `meta_ads.ad_sets.update` | Update an ad set |
-| `meta_ads.ad_sets.get` | Get ad set details |
-| `meta_ads.ad_sets.pause` | Pause an ad set |
-| `meta_ads.ad_sets.enable` | Enable a paused ad set |
+| `meta_ads_ad_sets_list` | List ad sets |
+| `meta_ads_ad_sets_create` | Create an ad set |
+| `meta_ads_ad_sets_update` | Update an ad set |
+| `meta_ads_ad_sets_get` | Get ad set details |
+| `meta_ads_ad_sets_pause` | Pause an ad set |
+| `meta_ads_ad_sets_enable` | Enable a paused ad set |
 
 **Ads (6)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.ads.list` | List ads |
-| `meta_ads.ads.create` | Create an ad |
-| `meta_ads.ads.update` | Update an ad |
-| `meta_ads.ads.get` | Get ad details |
-| `meta_ads.ads.pause` | Pause an ad |
-| `meta_ads.ads.enable` | Enable a paused ad |
+| `meta_ads_ads_list` | List ads |
+| `meta_ads_ads_create` | Create an ad |
+| `meta_ads_ads_update` | Update an ad |
+| `meta_ads_ads_get` | Get ad details |
+| `meta_ads_ads_pause` | Pause an ad |
+| `meta_ads_ads_enable` | Enable a paused ad |
 
 **Creatives (6)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.creatives.create_carousel` | Create a carousel creative (2-10 cards) |
-| `meta_ads.creatives.create_collection` | Create a collection creative |
-| `meta_ads.creatives.list` | List ad creatives |
-| `meta_ads.creatives.create` | Create a standard ad creative |
-| `meta_ads.creatives.create_dynamic` | Create a dynamic product ad creative |
-| `meta_ads.creatives.upload_image` | Upload an image for use in creatives |
+| `meta_ads_creatives_create_carousel` | Create a carousel creative (2-10 cards) |
+| `meta_ads_creatives_create_collection` | Create a collection creative |
+| `meta_ads_creatives_list` | List ad creatives |
+| `meta_ads_creatives_create` | Create a standard ad creative |
+| `meta_ads_creatives_create_dynamic` | Create a dynamic product ad creative |
+| `meta_ads_creatives_upload_image` | Upload an image for use in creatives |
 
 **Images (1)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.images.upload_file` | Upload an image from local file |
+| `meta_ads_images_upload_file` | Upload an image from local file |
 
 **Insights (2)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.insights.report` | Get performance report |
-| `meta_ads.insights.breakdown` | Get breakdown report (age, gender, placement, etc.) |
+| `meta_ads_insights_report` | Get performance report |
+| `meta_ads_insights_breakdown` | Get breakdown report (age, gender, placement, etc.) |
 
 **Audiences (5)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.audiences.list` | List custom audiences |
-| `meta_ads.audiences.create` | Create a custom audience |
-| `meta_ads.audiences.get` | Get audience details |
-| `meta_ads.audiences.delete` | Delete a custom audience |
-| `meta_ads.audiences.create_lookalike` | Create a lookalike audience |
+| `meta_ads_audiences_list` | List custom audiences |
+| `meta_ads_audiences_create` | Create a custom audience |
+| `meta_ads_audiences_get` | Get audience details |
+| `meta_ads_audiences_delete` | Delete a custom audience |
+| `meta_ads_audiences_create_lookalike` | Create a lookalike audience |
 
 **Conversions API (3)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.conversions.send` | Send a conversion event (generic) |
-| `meta_ads.conversions.send_purchase` | Send a purchase event |
-| `meta_ads.conversions.send_lead` | Send a lead event |
+| `meta_ads_conversions_send` | Send a conversion event (generic) |
+| `meta_ads_conversions_send_purchase` | Send a purchase event |
+| `meta_ads_conversions_send_lead` | Send a lead event |
 
 **Pixels (4)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.pixels.list` | List pixels |
-| `meta_ads.pixels.get` | Get pixel details |
-| `meta_ads.pixels.stats` | Get pixel firing statistics |
-| `meta_ads.pixels.events` | List pixel events |
+| `meta_ads_pixels_list` | List pixels |
+| `meta_ads_pixels_get` | Get pixel details |
+| `meta_ads_pixels_stats` | Get pixel firing statistics |
+| `meta_ads_pixels_events` | List pixel events |
 
 **Analysis (6)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.analysis.performance` | Analyze overall performance trends |
-| `meta_ads.analysis.audience` | Analyze audience performance and overlap |
-| `meta_ads.analysis.placements` | Analyze placement performance breakdown |
-| `meta_ads.analysis.cost` | Analyze cost trends and efficiency |
-| `meta_ads.analysis.compare_ads` | Compare performance across ads |
-| `meta_ads.analysis.suggest_creative` | Suggest creative improvements based on data |
+| `meta_ads_analysis_performance` | Analyze overall performance trends |
+| `meta_ads_analysis_audience` | Analyze audience performance and overlap |
+| `meta_ads_analysis_placements` | Analyze placement performance breakdown |
+| `meta_ads_analysis_cost` | Analyze cost trends and efficiency |
+| `meta_ads_analysis_compare_ads` | Compare performance across ads |
+| `meta_ads_analysis_suggest_creative` | Suggest creative improvements based on data |
 
 **Product Catalog (11)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.catalogs.list` | List product catalogs |
-| `meta_ads.catalogs.create` | Create a product catalog |
-| `meta_ads.catalogs.get` | Get catalog details |
-| `meta_ads.catalogs.delete` | Delete a catalog |
-| `meta_ads.products.list` | List products in a catalog |
-| `meta_ads.products.add` | Add a product to a catalog |
-| `meta_ads.products.get` | Get product details |
-| `meta_ads.products.update` | Update a product |
-| `meta_ads.products.delete` | Delete a product |
-| `meta_ads.feeds.list` | List catalog feeds |
-| `meta_ads.feeds.create` | Create a catalog feed (URL + scheduled import) |
+| `meta_ads_catalogs_list` | List product catalogs |
+| `meta_ads_catalogs_create` | Create a product catalog |
+| `meta_ads_catalogs_get` | Get catalog details |
+| `meta_ads_catalogs_delete` | Delete a catalog |
+| `meta_ads_products_list` | List products in a catalog |
+| `meta_ads_products_add` | Add a product to a catalog |
+| `meta_ads_products_get` | Get product details |
+| `meta_ads_products_update` | Update a product |
+| `meta_ads_products_delete` | Delete a product |
+| `meta_ads_feeds_list` | List catalog feeds |
+| `meta_ads_feeds_create` | Create a catalog feed (URL + scheduled import) |
 
 **Lead Ads (5)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.lead_forms.list` | List lead forms (per Page) |
-| `meta_ads.lead_forms.get` | Get lead form details |
-| `meta_ads.lead_forms.create` | Create a lead form |
-| `meta_ads.leads.get` | Get leads (per form) |
-| `meta_ads.leads.get_by_ad` | Get leads (per ad) |
+| `meta_ads_lead_forms_list` | List lead forms (per Page) |
+| `meta_ads_lead_forms_get` | Get lead form details |
+| `meta_ads_lead_forms_create` | Create a lead form |
+| `meta_ads_leads_get` | Get leads (per form) |
+| `meta_ads_leads_get_by_ad` | Get leads (per ad) |
 
 **Videos (2)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.videos.upload` | Upload a video from URL |
-| `meta_ads.videos.upload_file` | Upload a video from local file |
+| `meta_ads_videos_upload` | Upload a video from URL |
+| `meta_ads_videos_upload_file` | Upload a video from local file |
 
 **Split Tests (4)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.split_tests.list` | List A/B tests |
-| `meta_ads.split_tests.get` | Get A/B test details and results |
-| `meta_ads.split_tests.create` | Create an A/B test |
-| `meta_ads.split_tests.end` | End an A/B test |
+| `meta_ads_split_tests_list` | List A/B tests |
+| `meta_ads_split_tests_get` | Get A/B test details and results |
+| `meta_ads_split_tests_create` | Create an A/B test |
+| `meta_ads_split_tests_end` | End an A/B test |
 
 **Ad Rules (5)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.ad_rules.list` | List automated rules |
-| `meta_ads.ad_rules.get` | Get automated rule details |
-| `meta_ads.ad_rules.create` | Create an automated rule (CPA alerts, auto-pause, etc.) |
-| `meta_ads.ad_rules.update` | Update an automated rule |
-| `meta_ads.ad_rules.delete` | Delete an automated rule |
+| `meta_ads_ad_rules_list` | List automated rules |
+| `meta_ads_ad_rules_get` | Get automated rule details |
+| `meta_ads_ad_rules_create` | Create an automated rule (CPA alerts, auto-pause, etc.) |
+| `meta_ads_ad_rules_update` | Update an automated rule |
+| `meta_ads_ad_rules_delete` | Delete an automated rule |
 
 **Page Posts (2)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.page_posts.list` | List Facebook Page posts |
-| `meta_ads.page_posts.boost` | Boost a Page post |
+| `meta_ads_page_posts_list` | List Facebook Page posts |
+| `meta_ads_page_posts_boost` | Boost a Page post |
 
 **Instagram (3)**
 
 | Tool | Description |
 |------|-------------|
-| `meta_ads.instagram.accounts` | List connected Instagram accounts |
-| `meta_ads.instagram.media` | List Instagram posts |
-| `meta_ads.instagram.boost` | Boost an Instagram post |
+| `meta_ads_instagram_accounts` | List connected Instagram accounts |
+| `meta_ads_instagram_media` | List Instagram posts |
+| `meta_ads_instagram_boost` | Boost an Instagram post |
 
 </details>
 
@@ -959,31 +959,31 @@ Add to `.cursor/mcp.json`:
 
 | Tool | Description |
 |------|-------------|
-| `search_console.sites.list` | List verified sites |
-| `search_console.sites.get` | Get site details |
+| `search_console_sites_list` | List verified sites |
+| `search_console_sites_get` | Get site details |
 
 **Analytics (4)**
 
 | Tool | Description |
 |------|-------------|
-| `search_console.analytics.query` | Query search analytics data |
-| `search_console.analytics.top_queries` | Get top search queries |
-| `search_console.analytics.top_pages` | Get top pages by clicks/impressions |
-| `search_console.analytics.device_breakdown` | Get performance breakdown by device |
-| `search_console.analytics.compare_periods` | Compare search performance across time periods |
+| `search_console_analytics_query` | Query search analytics data |
+| `search_console_analytics_top_queries` | Get top search queries |
+| `search_console_analytics_top_pages` | Get top pages by clicks/impressions |
+| `search_console_analytics_device_breakdown` | Get performance breakdown by device |
+| `search_console_analytics_compare_periods` | Compare search performance across time periods |
 
 **Sitemaps (2)**
 
 | Tool | Description |
 |------|-------------|
-| `search_console.sitemaps.list` | List sitemaps for a site |
-| `search_console.sitemaps.submit` | Submit a sitemap |
+| `search_console_sitemaps_list` | List sitemaps for a site |
+| `search_console_sitemaps_submit` | Submit a sitemap |
 
 **URL Inspection (1)**
 
 | Tool | Description |
 |------|-------------|
-| `search_console.url_inspection.inspect` | Inspect a URL for indexing status |
+| `search_console_url_inspection_inspect` | Inspect a URL for indexing status |
 
 </details>
 
@@ -996,8 +996,8 @@ Cross-platform tools that inspect and apply the reversal plan for a previously-r
 
 | Tool | Description |
 |------|-------------|
-| `rollback.plan.get` | Inspect the reversal plan for an `action_log` entry (`supported` / `partial` / `not_supported`), its `operation` + `params`, and any caveats. Read-only; does not execute. |
-| `rollback.apply` | Execute the reversal plan for `action_log[index]`. Requires `confirm=true` as a literal boolean. Appends a new log entry tagged `rollback_of=<index>`; a second apply of the same index is refused. `state_file` is resolved strictly inside the MCP server's CWD — path traversal, symlink escape, and `rollback.*` self-recursion are all refused. |
+| `rollback_plan_get` | Inspect the reversal plan for an `action_log` entry (`supported` / `partial` / `not_supported`), its `operation` + `params`, and any caveats. Read-only; does not execute. |
+| `rollback_apply` | Execute the reversal plan for `action_log[index]`. Requires `confirm=true` as a literal boolean. Appends a new log entry tagged `rollback_of=<index>`; a second apply of the same index is refused. `state_file` is resolved strictly inside the MCP server's CWD — path traversal, symlink escape, and `rollback.*` self-recursion are all refused. |
 
 </details>
 
@@ -1010,7 +1010,7 @@ Cross-platform detection tools that operate on STATE.json's `action_log` history
 
 | Tool | Description |
 |------|-------------|
-| `analysis.anomalies.check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). Sample-size gates follow the `mureo-learning` skill's statistical-thinking rules. Returns `baseline=null` when history is shorter than `min_baseline_entries` (default 7); `baseline_warning` surfaces a parseable-but-corrupt `STATE.json` without silencing live zero-spend detection. |
+| `analysis_anomalies_check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). Sample-size gates follow the `mureo-learning` skill's statistical-thinking rules. Returns `baseline=null` when history is shorter than `min_baseline_entries` (default 7); `baseline_warning` surfaces a parseable-but-corrupt `STATE.json` without silencing live zero-spend detection. |
 
 </details>
 

@@ -299,9 +299,9 @@ Google Ads MCP surface:
 
 | Tool | Returns |
 |---|---|
-| `google_ads.search_terms.report` | One row per search term: campaign_name, ad_group_name, impressions, clicks, cost, conversions, ctr, average_cpc |
+| `google_ads_search_terms_report` | One row per search term: campaign_name, ad_group_name, impressions, clicks, cost, conversions, ctr, average_cpc |
 
-`google_ads.auction_insights.get` / `analyze` return empty under BYOD
+`google_ads_auction_insights_get` / `analyze` return empty under BYOD
 (the data isn't available from Google Ads Scripts). Use
 `mureo auth setup` for the real-API path if competitor share data is
 required.

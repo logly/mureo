@@ -39,10 +39,10 @@ class TestGoogleAdsToolDefinitions:
         assert len(mod.TOOLS) == 83
 
     def test_all_tool_names(self) -> None:
-        """全ツール名がgoogle_ads.で始まること"""
+        """全ツール名が google_ads_ で始まること（MCP仕様準拠の underscore 区切り）"""
         mod = _import_google_ads_tools()
         for tool in mod.TOOLS:
-            assert tool.name.startswith("google_ads."), f"不正なツール名: {tool.name}"
+            assert tool.name.startswith("google_ads_"), f"不正なツール名: {tool.name}"
 
     def test_all_tools_have_input_schema(self) -> None:
         """全ツールにinputSchemaが定義されていること"""
@@ -55,27 +55,27 @@ class TestGoogleAdsToolDefinitions:
     @pytest.mark.parametrize(
         "tool_name,expected_required",
         [
-            ("google_ads.campaigns.list", []),
-            ("google_ads.campaigns.get", ["campaign_id"]),
-            ("google_ads.campaigns.create", ["name"]),
-            ("google_ads.campaigns.update", ["campaign_id"]),
+            ("google_ads_campaigns_list", []),
+            ("google_ads_campaigns_get", ["campaign_id"]),
+            ("google_ads_campaigns_create", ["name"]),
+            ("google_ads_campaigns_update", ["campaign_id"]),
             (
-                "google_ads.campaigns.update_status",
+                "google_ads_campaigns_update_status",
                 ["campaign_id", "status"],
             ),
-            ("google_ads.ad_groups.list", []),
+            ("google_ads_ad_groups_list", []),
             (
-                "google_ads.ad_groups.create",
+                "google_ads_ad_groups_create",
                 ["campaign_id", "name"],
             ),
-            ("google_ads.ad_groups.update", ["ad_group_id"]),
-            ("google_ads.ads.list", []),
+            ("google_ads_ad_groups_update", ["ad_group_id"]),
+            ("google_ads_ads_list", []),
             (
-                "google_ads.ads.create",
+                "google_ads_ads_create",
                 ["ad_group_id", "headlines", "descriptions"],
             ),
             (
-                "google_ads.ads.create_display",
+                "google_ads_ads_create_display",
                 [
                     "ad_group_id",
                     "headlines",
@@ -87,44 +87,44 @@ class TestGoogleAdsToolDefinitions:
                     "final_url",
                 ],
             ),
-            ("google_ads.ads.update", ["ad_group_id", "ad_id"]),
+            ("google_ads_ads_update", ["ad_group_id", "ad_id"]),
             (
-                "google_ads.ads.update_status",
+                "google_ads_ads_update_status",
                 ["ad_group_id", "ad_id", "status"],
             ),
-            ("google_ads.keywords.list", []),
+            ("google_ads_keywords_list", []),
             (
-                "google_ads.keywords.add",
+                "google_ads_keywords_add",
                 ["ad_group_id", "keywords"],
             ),
             (
-                "google_ads.keywords.remove",
+                "google_ads_keywords_remove",
                 ["ad_group_id", "criterion_id"],
             ),
-            ("google_ads.keywords.suggest", ["seed_keywords"]),
-            ("google_ads.keywords.diagnose", ["campaign_id"]),
-            ("google_ads.negative_keywords.list", ["campaign_id"]),
+            ("google_ads_keywords_suggest", ["seed_keywords"]),
+            ("google_ads_keywords_diagnose", ["campaign_id"]),
+            ("google_ads_negative_keywords_list", ["campaign_id"]),
             (
-                "google_ads.negative_keywords.add",
+                "google_ads_negative_keywords_add",
                 ["campaign_id", "keywords"],
             ),
-            ("google_ads.budget.get", ["campaign_id"]),
+            ("google_ads_budget_get", ["campaign_id"]),
             (
-                "google_ads.budget.update",
+                "google_ads_budget_update",
                 ["budget_id", "amount"],
             ),
-            ("google_ads.performance.report", []),
-            ("google_ads.search_terms.report", []),
+            ("google_ads_performance_report", []),
+            ("google_ads_search_terms_report", []),
             (
-                "google_ads.search_terms.review",
+                "google_ads_search_terms_review",
                 ["campaign_id"],
             ),
             (
-                "google_ads.auction_insights.analyze",
+                "google_ads_auction_insights_analyze",
                 ["campaign_id"],
             ),
-            ("google_ads.cpc.detect_trend", ["campaign_id"]),
-            ("google_ads.device.analyze", ["campaign_id"]),
+            ("google_ads_cpc_detect_trend", ["campaign_id"]),
+            ("google_ads_device_analyze", ["campaign_id"]),
         ],
     )
     def test_required_fields(
@@ -169,7 +169,7 @@ class TestGoogleAdsCampaignHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.campaigns.list", {"customer_id": "123"}
+                "google_ads_campaigns_list", {"customer_id": "123"}
             )
 
         client.list_campaigns.assert_awaited_once()
@@ -187,7 +187,7 @@ class TestGoogleAdsCampaignHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.campaigns.get",
+                "google_ads_campaigns_get",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -208,7 +208,7 @@ class TestGoogleAdsCampaignHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.campaigns.create",
+                "google_ads_campaigns_create",
                 {"customer_id": "123", "name": "New Campaign"},
             )
 
@@ -230,7 +230,7 @@ class TestGoogleAdsCampaignHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             await mod.handle_tool(
-                "google_ads.campaigns.create",
+                "google_ads_campaigns_create",
                 {
                     "customer_id": "123",
                     "name": "Display Campaign",
@@ -260,7 +260,7 @@ class TestGoogleAdsCampaignHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.campaigns.update",
+                "google_ads_campaigns_update",
                 {"customer_id": "123", "campaign_id": "456", "name": "Updated"},
             )
 
@@ -281,7 +281,7 @@ class TestGoogleAdsCampaignHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.campaigns.update_status",
+                "google_ads_campaigns_update_status",
                 {"customer_id": "123", "campaign_id": "456", "status": "PAUSED"},
             )
 
@@ -308,7 +308,7 @@ class TestGoogleAdsAdGroupHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.ad_groups.list",
+                "google_ads_ad_groups_list",
                 {"customer_id": "123"},
             )
 
@@ -329,7 +329,7 @@ class TestGoogleAdsAdGroupHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.ad_groups.create",
+                "google_ads_ad_groups_create",
                 {"customer_id": "123", "campaign_id": "456", "name": "New AG"},
             )
 
@@ -348,7 +348,7 @@ class TestGoogleAdsAdGroupHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.ad_groups.update",
+                "google_ads_ad_groups_update",
                 {"customer_id": "123", "ad_group_id": "99", "name": "Updated AG"},
             )
 
@@ -375,7 +375,7 @@ class TestGoogleAdsAdHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.ads.list", {"customer_id": "123"}
+                "google_ads_ads_list", {"customer_id": "123"}
             )
 
         client.list_ads.assert_awaited_once()
@@ -393,7 +393,7 @@ class TestGoogleAdsAdHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.ads.create",
+                "google_ads_ads_create",
                 {
                     "customer_id": "123",
                     "ad_group_id": "10",
@@ -415,7 +415,7 @@ class TestGoogleAdsAdHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.ads.update_status",
+                "google_ads_ads_update_status",
                 {
                     "customer_id": "123",
                     "ad_group_id": "10",
@@ -444,7 +444,7 @@ class TestGoogleAdsAdHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.ads.create_display",
+                "google_ads_ads_create_display",
                 {
                     "customer_id": "123",
                     "ad_group_id": "10",
@@ -487,7 +487,7 @@ class TestGoogleAdsKeywordHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.keywords.list", {"customer_id": "123"}
+                "google_ads_keywords_list", {"customer_id": "123"}
             )
 
         client.list_keywords.assert_awaited_once()
@@ -503,7 +503,7 @@ class TestGoogleAdsKeywordHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.keywords.add",
+                "google_ads_keywords_add",
                 {
                     "customer_id": "123",
                     "ad_group_id": "10",
@@ -524,7 +524,7 @@ class TestGoogleAdsKeywordHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.keywords.remove",
+                "google_ads_keywords_remove",
                 {
                     "customer_id": "123",
                     "ad_group_id": "10",
@@ -545,7 +545,7 @@ class TestGoogleAdsKeywordHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.keywords.suggest",
+                "google_ads_keywords_suggest",
                 {"customer_id": "123", "seed_keywords": ["test"]},
             )
 
@@ -562,7 +562,7 @@ class TestGoogleAdsKeywordHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.keywords.diagnose",
+                "google_ads_keywords_diagnose",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -579,7 +579,7 @@ class TestGoogleAdsKeywordHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.negative_keywords.list",
+                "google_ads_negative_keywords_list",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -596,7 +596,7 @@ class TestGoogleAdsKeywordHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.negative_keywords.add",
+                "google_ads_negative_keywords_add",
                 {
                     "customer_id": "123",
                     "campaign_id": "456",
@@ -627,7 +627,7 @@ class TestGoogleAdsBudgetHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.budget.get",
+                "google_ads_budget_get",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -644,7 +644,7 @@ class TestGoogleAdsBudgetHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.budget.update",
+                "google_ads_budget_update",
                 {"customer_id": "123", "budget_id": "789", "amount": 10000},
             )
 
@@ -671,7 +671,7 @@ class TestGoogleAdsAnalysisHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.performance.report",
+                "google_ads_performance_report",
                 {"customer_id": "123"},
             )
 
@@ -688,7 +688,7 @@ class TestGoogleAdsAnalysisHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.search_terms.report",
+                "google_ads_search_terms_report",
                 {"customer_id": "123"},
             )
 
@@ -705,7 +705,7 @@ class TestGoogleAdsAnalysisHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.search_terms.review",
+                "google_ads_search_terms_review",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -722,7 +722,7 @@ class TestGoogleAdsAnalysisHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.auction_insights.analyze",
+                "google_ads_auction_insights_analyze",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -739,7 +739,7 @@ class TestGoogleAdsAnalysisHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.cpc.detect_trend",
+                "google_ads_cpc_detect_trend",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -756,7 +756,7 @@ class TestGoogleAdsAnalysisHandlers:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.device.analyze",
+                "google_ads_device_analyze",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -779,14 +779,14 @@ class TestGoogleAdsErrorHandling:
             "mureo.mcp._handlers_google_ads.load_google_ads_credentials",
             return_value=None,
         ):
-            result = await mod.handle_tool("google_ads.campaigns.list", {})
+            result = await mod.handle_tool("google_ads_campaigns_list", {})
             assert any("Credentials not found" in r.text for r in result)
 
     async def test_unknown_tool_raises_error(self) -> None:
         """未知のツール名でValueErrorが発生"""
         mod = _import_google_ads_tools()
         with pytest.raises(ValueError, match="Unknown"):
-            await mod.handle_tool("google_ads.unknown.tool", {"customer_id": "123"})
+            await mod.handle_tool("google_ads_unknown_tool", {"customer_id": "123"})
 
     async def test_no_credentials_returns_error_text(self) -> None:
         """認証情報なしでエラーテキストを返す"""
@@ -794,7 +794,7 @@ class TestGoogleAdsErrorHandling:
         h = _import_handlers()
         with patch.object(h, "load_google_ads_credentials", return_value=None):
             result = await mod.handle_tool(
-                "google_ads.campaigns.list", {"customer_id": "123"}
+                "google_ads_campaigns_list", {"customer_id": "123"}
             )
         assert len(result) == 1
         assert "Credentials not found" in result[0].text
@@ -811,7 +811,7 @@ class TestGoogleAdsErrorHandling:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.campaigns.diagnose",
+                "google_ads_campaigns_diagnose",
                 {"customer_id": "123", "campaign_id": "456"},
             )
 
@@ -829,7 +829,7 @@ class TestGoogleAdsErrorHandling:
             patch.object(h, "create_google_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "google_ads.campaigns.list", {"customer_id": "123"}
+                "google_ads_campaigns_list", {"customer_id": "123"}
             )
 
         assert len(result) == 1

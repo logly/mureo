@@ -151,7 +151,7 @@ mureo rollback list --state-file /path/to/STATE.json
   "source_action": "update_budget",
   "platform": "google_ads",
   "status": "supported",
-  "operation": "google_ads.budgets.update",
+  "operation": "google_ads_budget_update",
   "params": {"budget_id": "222", "amount_micros": 10000000000},
   "caveats": [],
   "notes": ""
@@ -162,12 +162,12 @@ A rollback entry only appears when the agent wrote a `reversible_params` hint at
 
 ### Applying a rollback
 
-Execution is not a CLI command — it is the `rollback.apply` MCP tool. The CLI is intentionally read-only; applying a rollback from the CLI would bypass the authentication, rate-limiting, and input-validation gate that every forward action passes through. To apply a rollback, ask the agent to call `rollback.apply` with the index shown by `mureo rollback list`:
+Execution is not a CLI command — it is the `rollback_apply` MCP tool. The CLI is intentionally read-only; applying a rollback from the CLI would bypass the authentication, rate-limiting, and input-validation gate that every forward action passes through. To apply a rollback, ask the agent to call `rollback_apply` with the index shown by `mureo rollback list`:
 
 ```
 You: "Roll back action #0."
-Agent: rollback.plan.get → previews the reversal.
-Agent: rollback.apply({index: 0, confirm: true}) → dispatches.
+Agent: rollback_plan_get → previews the reversal.
+Agent: rollback_apply({index: 0, confirm: true}) → dispatches.
 ```
 
 `confirm` must be the literal boolean `true` (truthy non-booleans are refused). On success the executor appends a new log entry tagged `rollback_of=<index>`; a second apply of the same index is refused. `state_file` resolves strictly inside the MCP server's current working directory — `..`-traversal and symlink escape are refused so an attacker-crafted `STATE.json` elsewhere on disk cannot be used as the reversal source.

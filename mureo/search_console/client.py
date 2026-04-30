@@ -62,7 +62,11 @@ class SearchConsoleApiClient:
     def _ensure_token(self) -> None:
         """Refresh the OAuth2 token if not valid (expired or first use)."""
         if not self._credentials.valid:
-            self._credentials.refresh(Request())
+            # google-auth's Credentials.refresh has type hints in some
+            # versions but is unannotated in others; CI's resolver
+            # picked an unannotated variant. Suppress here rather than
+            # pin the whole package version.
+            self._credentials.refresh(Request())  # type: ignore[no-untyped-call]
 
     def _auth_headers(self) -> dict[str, str]:
         """Return authorization headers."""

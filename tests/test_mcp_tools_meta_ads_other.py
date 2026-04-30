@@ -55,7 +55,7 @@ class TestPagePostsHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.page_posts.list",
+                "meta_ads_page_posts_list",
                 {"account_id": "act_123", "page_id": "pg_1"},
             )
 
@@ -74,7 +74,7 @@ class TestPagePostsHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.page_posts.boost",
+                "meta_ads_page_posts_boost",
                 {
                     "account_id": "act_123",
                     "page_id": "pg_1",
@@ -108,7 +108,7 @@ class TestInstagramHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.instagram.accounts",
+                "meta_ads_instagram_accounts",
                 {"account_id": "act_123"},
             )
 
@@ -127,7 +127,7 @@ class TestInstagramHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.instagram.media",
+                "meta_ads_instagram_media",
                 {"account_id": "act_123", "ig_user_id": "ig_1"},
             )
 
@@ -146,7 +146,7 @@ class TestInstagramHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.instagram.boost",
+                "meta_ads_instagram_boost",
                 {
                     "account_id": "act_123",
                     "ig_user_id": "ig_1",
@@ -180,7 +180,7 @@ class TestSplitTestHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.split_tests.list",
+                "meta_ads_split_tests_list",
                 {"account_id": "act_123"},
             )
 
@@ -199,7 +199,7 @@ class TestSplitTestHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.split_tests.get",
+                "meta_ads_split_tests_get",
                 {"account_id": "act_123", "study_id": "st_1"},
             )
 
@@ -218,7 +218,7 @@ class TestSplitTestHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.split_tests.create",
+                "meta_ads_split_tests_create",
                 {
                     "account_id": "act_123",
                     "name": "ABTest",
@@ -244,7 +244,7 @@ class TestSplitTestHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.split_tests.end",
+                "meta_ads_split_tests_end",
                 {"account_id": "act_123", "study_id": "st_1"},
             )
 
@@ -273,7 +273,7 @@ class TestAdRulesHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ad_rules.list",
+                "meta_ads_ad_rules_list",
                 {"account_id": "act_123"},
             )
 
@@ -292,7 +292,7 @@ class TestAdRulesHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ad_rules.get",
+                "meta_ads_ad_rules_get",
                 {"account_id": "act_123", "rule_id": "rule_1"},
             )
 
@@ -311,7 +311,7 @@ class TestAdRulesHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ad_rules.create",
+                "meta_ads_ad_rules_create",
                 {
                     "account_id": "act_123",
                     "name": "AutoRule",
@@ -335,7 +335,7 @@ class TestAdRulesHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ad_rules.update",
+                "meta_ads_ad_rules_update",
                 {
                     "account_id": "act_123",
                     "rule_id": "rule_1",
@@ -358,7 +358,7 @@ class TestAdRulesHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ad_rules.delete",
+                "meta_ads_ad_rules_delete",
                 {"account_id": "act_123", "rule_id": "rule_1"},
             )
 

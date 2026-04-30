@@ -65,7 +65,7 @@ class TestInstallGeminiExtension:
                     "name": "mureo",
                     "version": "0.0.0-stale",
                     "contextFileName": "CUSTOM.md",
-                    "excludeTools": ["google_ads.budgets.update"],
+                    "excludeTools": ["google_ads_budget_update"],
                     "mcpServers": {
                         "mureo": {"command": "old"},
                         "other": {"command": "other-server"},
@@ -81,7 +81,7 @@ class TestInstallGeminiExtension:
         # Operator's rename of the context file is kept.
         assert data["contextFileName"] == "CUSTOM.md"
         # Operator's allow/deny list is untouched.
-        assert data["excludeTools"] == ["google_ads.budgets.update"]
+        assert data["excludeTools"] == ["google_ads_budget_update"]
         # mureo's mcpServers.mureo is refreshed, but extra servers survive.
         assert data["mcpServers"]["mureo"]["command"] == "python"
         assert data["mcpServers"]["other"] == {"command": "other-server"}

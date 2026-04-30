@@ -39,10 +39,10 @@ class TestMetaAdsToolDefinitions:
         assert len(mod.TOOLS) == 77
 
     def test_all_tool_names(self) -> None:
-        """全ツール名がmeta_ads.で始まること"""
+        """全ツール名が meta_ads_ で始まること（MCP仕様準拠の underscore 区切り）"""
         mod = _import_meta_ads_tools()
         for tool in mod.TOOLS:
-            assert tool.name.startswith("meta_ads."), f"不正なツール名: {tool.name}"
+            assert tool.name.startswith("meta_ads_"), f"不正なツール名: {tool.name}"
 
     def test_all_tools_have_input_schema(self) -> None:
         """全ツールにinputSchemaが定義されていること"""
@@ -55,32 +55,32 @@ class TestMetaAdsToolDefinitions:
     @pytest.mark.parametrize(
         "tool_name,expected_required",
         [
-            ("meta_ads.campaigns.list", []),
-            ("meta_ads.campaigns.get", ["campaign_id"]),
+            ("meta_ads_campaigns_list", []),
+            ("meta_ads_campaigns_get", ["campaign_id"]),
             (
-                "meta_ads.campaigns.create",
+                "meta_ads_campaigns_create",
                 ["name", "objective"],
             ),
-            ("meta_ads.campaigns.update", ["campaign_id"]),
-            ("meta_ads.ad_sets.list", []),
+            ("meta_ads_campaigns_update", ["campaign_id"]),
+            ("meta_ads_ad_sets_list", []),
             (
-                "meta_ads.ad_sets.create",
+                "meta_ads_ad_sets_create",
                 ["campaign_id", "name"],
             ),
-            ("meta_ads.ad_sets.update", ["ad_set_id"]),
-            ("meta_ads.ads.list", []),
+            ("meta_ads_ad_sets_update", ["ad_set_id"]),
+            ("meta_ads_ads_list", []),
             (
-                "meta_ads.ads.create",
+                "meta_ads_ads_create",
                 ["ad_set_id", "name", "creative_id"],
             ),
-            ("meta_ads.ads.update", ["ad_id"]),
-            ("meta_ads.insights.report", []),
+            ("meta_ads_ads_update", ["ad_id"]),
+            ("meta_ads_insights_report", []),
             (
-                "meta_ads.insights.breakdown",
+                "meta_ads_insights_breakdown",
                 ["campaign_id"],
             ),
-            ("meta_ads.audiences.list", []),
-            ("meta_ads.audiences.create", ["name"]),
+            ("meta_ads_audiences_list", []),
+            ("meta_ads_audiences_create", ["name"]),
         ],
     )
     def test_required_fields(
@@ -125,7 +125,7 @@ class TestMetaAdsCampaignHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.campaigns.list", {"account_id": "act_123"}
+                "meta_ads_campaigns_list", {"account_id": "act_123"}
             )
 
         client.list_campaigns.assert_awaited_once()
@@ -143,7 +143,7 @@ class TestMetaAdsCampaignHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.campaigns.get",
+                "meta_ads_campaigns_get",
                 {"account_id": "act_123", "campaign_id": "456"},
             )
 
@@ -160,7 +160,7 @@ class TestMetaAdsCampaignHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.campaigns.create",
+                "meta_ads_campaigns_create",
                 {
                     "account_id": "act_123",
                     "name": "New Camp",
@@ -181,7 +181,7 @@ class TestMetaAdsCampaignHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.campaigns.update",
+                "meta_ads_campaigns_update",
                 {"account_id": "act_123", "campaign_id": "456", "name": "Updated"},
             )
 
@@ -208,7 +208,7 @@ class TestMetaAdsAdSetHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ad_sets.list", {"account_id": "act_123"}
+                "meta_ads_ad_sets_list", {"account_id": "act_123"}
             )
 
         client.list_ad_sets.assert_awaited_once()
@@ -224,7 +224,7 @@ class TestMetaAdsAdSetHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ad_sets.create",
+                "meta_ads_ad_sets_create",
                 {
                     "account_id": "act_123",
                     "campaign_id": "456",
@@ -246,7 +246,7 @@ class TestMetaAdsAdSetHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ad_sets.update",
+                "meta_ads_ad_sets_update",
                 {"account_id": "act_123", "ad_set_id": "20", "name": "Updated"},
             )
 
@@ -273,7 +273,7 @@ class TestMetaAdsAdHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ads.list", {"account_id": "act_123"}
+                "meta_ads_ads_list", {"account_id": "act_123"}
             )
 
         client.list_ads.assert_awaited_once()
@@ -289,7 +289,7 @@ class TestMetaAdsAdHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ads.create",
+                "meta_ads_ads_create",
                 {
                     "account_id": "act_123",
                     "ad_set_id": "20",
@@ -311,7 +311,7 @@ class TestMetaAdsAdHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.ads.update",
+                "meta_ads_ads_update",
                 {"account_id": "act_123", "ad_id": "40", "name": "Updated Ad"},
             )
 
@@ -338,7 +338,7 @@ class TestMetaAdsInsightsHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.insights.report", {"account_id": "act_123"}
+                "meta_ads_insights_report", {"account_id": "act_123"}
             )
 
         client.get_performance_report.assert_awaited_once()
@@ -354,7 +354,7 @@ class TestMetaAdsInsightsHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.insights.breakdown",
+                "meta_ads_insights_breakdown",
                 {"account_id": "act_123", "campaign_id": "456"},
             )
 
@@ -381,7 +381,7 @@ class TestMetaAdsAudienceHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.audiences.list", {"account_id": "act_123"}
+                "meta_ads_audiences_list", {"account_id": "act_123"}
             )
 
         client.list_custom_audiences.assert_awaited_once()
@@ -397,7 +397,7 @@ class TestMetaAdsAudienceHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.audiences.create",
+                "meta_ads_audiences_create",
                 {
                     "account_id": "act_123",
                     "name": "New Audience",
@@ -424,14 +424,14 @@ class TestMetaAdsErrorHandling:
             "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
             return_value=None,
         ):
-            result = await mod.handle_tool("meta_ads.campaigns.list", {})
+            result = await mod.handle_tool("meta_ads_campaigns_list", {})
             assert any("Credentials not found" in r.text for r in result)
 
     async def test_unknown_tool_raises_error(self) -> None:
         """未知のツール名でValueErrorが発生"""
         mod = _import_meta_ads_tools()
         with pytest.raises(ValueError, match="Unknown"):
-            await mod.handle_tool("meta_ads.unknown.tool", {"account_id": "act_123"})
+            await mod.handle_tool("meta_ads_unknown_tool", {"account_id": "act_123"})
 
     async def test_no_credentials_returns_error_text(self) -> None:
         """認証情報なしでエラーテキストを返す"""
@@ -439,7 +439,7 @@ class TestMetaAdsErrorHandling:
         mod = _import_meta_ads_tools()
         with patch.object(handlers, "load_meta_ads_credentials", return_value=None):
             result = await mod.handle_tool(
-                "meta_ads.campaigns.list", {"account_id": "act_123"}
+                "meta_ads_campaigns_list", {"account_id": "act_123"}
             )
         assert len(result) == 1
         assert "Credentials not found" in result[0].text
@@ -456,7 +456,7 @@ class TestMetaAdsErrorHandling:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.campaigns.list", {"account_id": "act_123"}
+                "meta_ads_campaigns_list", {"account_id": "act_123"}
             )
 
         assert len(result) == 1

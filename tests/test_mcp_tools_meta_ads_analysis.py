@@ -55,7 +55,7 @@ class TestAnalysisHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.analysis.performance",
+                "meta_ads_analysis_performance",
                 {"account_id": "act_123"},
             )
 
@@ -74,7 +74,7 @@ class TestAnalysisHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.analysis.audience",
+                "meta_ads_analysis_audience",
                 {"account_id": "act_123", "campaign_id": "456"},
             )
 
@@ -93,7 +93,7 @@ class TestAnalysisHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.analysis.placements",
+                "meta_ads_analysis_placements",
                 {"account_id": "act_123", "campaign_id": "456"},
             )
 
@@ -112,7 +112,7 @@ class TestAnalysisHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.analysis.cost",
+                "meta_ads_analysis_cost",
                 {"account_id": "act_123", "campaign_id": "456"},
             )
 
@@ -131,7 +131,7 @@ class TestAnalysisHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.analysis.compare_ads",
+                "meta_ads_analysis_compare_ads",
                 {"account_id": "act_123", "ad_set_id": "20"},
             )
 
@@ -150,7 +150,7 @@ class TestAnalysisHandlers:
             patch.object(handlers, "create_meta_ads_client", return_value=client),
         ):
             result = await mod.handle_tool(
-                "meta_ads.analysis.suggest_creative",
+                "meta_ads_analysis_suggest_creative",
                 {"account_id": "act_123", "campaign_id": "456"},
             )
 

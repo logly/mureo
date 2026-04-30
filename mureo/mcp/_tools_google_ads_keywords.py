@@ -46,7 +46,7 @@ _KEYWORD_ITEM_SCHEMA = {
 TOOLS: list[Tool] = [
     # === Keywords ===
     Tool(
-        name="google_ads.keywords.list",
+        name="google_ads_keywords_list",
         description=(
             "Lists keyword criteria in a Google Ads account, optionally "
             "scoped to a campaign and/or ad group and filtered by status. "
@@ -55,7 +55,7 @@ TOOLS: list[Tool] = [
             "approval_status per keyword. Read-only. Use this to locate "
             "a criterion_id before calling keywords.pause / remove, or to "
             "audit keyword coverage. For quality-score diagnostics use "
-            "google_ads.keywords.diagnose."
+            "google_ads_keywords_diagnose."
         ),
         inputSchema={
             "type": "object",
@@ -87,14 +87,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.keywords.add",
+        name="google_ads_keywords_add",
         description=(
             "Adds one or more keyword criteria to a single ad group. "
             "Returns the created criterion_ids keyed by their input "
-            "position. Mutating, reversible via rollback.apply (rollback "
+            "position. Mutating, reversible via rollback_apply (rollback "
             "pauses the keywords rather than removing them). Duplicate "
             "text+match_type pairs inside the same ad group are rejected "
-            "by Google Ads — call google_ads.keywords.cross_adgroup_duplicates "
+            "by Google Ads — call google_ads_keywords_cross_adgroup_duplicates "
             "first if you are adding at scale."
         ),
         inputSchema={
@@ -123,14 +123,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.keywords.remove",
+        name="google_ads_keywords_remove",
         description=(
             "Removes (soft-deletes) a single keyword criterion from an ad "
             "group. Returns the removed criterion_id. Destructive and "
-            "reversible via rollback.apply, but rollback re-adds the "
+            "reversible via rollback_apply, but rollback re-adds the "
             "keyword as a fresh criterion — the original quality score and "
             "learning are lost. For temporary suspension prefer "
-            "google_ads.keywords.pause, which preserves all signals."
+            "google_ads_keywords_pause, which preserves all signals."
         ),
         inputSchema={
             "type": "object",
@@ -144,7 +144,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Keyword criterion ID as returned by "
-                        "google_ads.keywords.list."
+                        "google_ads_keywords_list."
                     ),
                 },
             },
@@ -152,14 +152,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.keywords.suggest",
+        name="google_ads_keywords_suggest",
         description=(
             "Generates new keyword ideas from seed terms using the Google "
             "Ads Keyword Planner API. Returns suggested keyword text, "
             "avg_monthly_searches, competition (LOW / MEDIUM / HIGH), "
             "top_of_page_bid_low_micros, and top_of_page_bid_high_micros. "
             "Read-only — produces ideas but does not add anything to the "
-            "account. Use google_ads.keywords.add to materialize the ones "
+            "account. Use google_ads_keywords_add to materialize the ones "
             "you want."
         ),
         inputSchema={
@@ -199,7 +199,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.keywords.diagnose",
+        name="google_ads_keywords_diagnose",
         description=(
             "Reports quality-score and delivery-status issues across every "
             "keyword in a campaign. Returns keywords grouped by severity — "
@@ -226,13 +226,13 @@ TOOLS: list[Tool] = [
     ),
     # === Negative Keywords ===
     Tool(
-        name="google_ads.negative_keywords.list",
+        name="google_ads_negative_keywords_list",
         description=(
             "Lists campaign-level negative keyword criteria for a single "
             "campaign. Returns criterion_id, text, and match_type per "
             "entry. Read-only. Ad group-level negatives are not included "
             "here — they live on the ad group and are managed through "
-            "google_ads.negative_keywords.add_to_ad_group."
+            "google_ads_negative_keywords_add_to_ad_group."
         ),
         inputSchema={
             "type": "object",
@@ -247,13 +247,13 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="google_ads.negative_keywords.add",
+        name="google_ads_negative_keywords_add",
         description=(
             "Adds one or more campaign-level negative keywords. These "
             "apply to every ad group in the campaign. Returns created "
-            "criterion_ids. Mutating, reversible via rollback.apply. For "
+            "criterion_ids. Mutating, reversible via rollback_apply. For "
             "negatives scoped to a single ad group use "
-            "google_ads.negative_keywords.add_to_ad_group instead — "
+            "google_ads_negative_keywords_add_to_ad_group instead — "
             "campaign-level negatives can over-block if applied too broadly."
         ),
         inputSchema={
@@ -284,15 +284,15 @@ TOOLS: list[Tool] = [
     ),
     # === Keyword pause ===
     Tool(
-        name="google_ads.keywords.pause",
+        name="google_ads_keywords_pause",
         description=(
             "Sets the status of a single keyword criterion to PAUSED. "
             "Lightweight and non-destructive — quality score and historical "
             "stats are preserved, and the keyword can be resumed by "
-            "calling google_ads.keywords.add with the same text+match_type "
+            "calling google_ads_keywords_add with the same text+match_type "
             "(or re-enabled via the Google Ads UI). Returns the criterion "
-            "ID and new status. Reversible via rollback.apply. Use this "
-            "instead of google_ads.keywords.remove whenever the suspension "
+            "ID and new status. Reversible via rollback_apply. Use this "
+            "instead of google_ads_keywords_remove whenever the suspension "
             "might be temporary."
         ),
         inputSchema={
@@ -307,7 +307,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Keyword criterion ID as returned by "
-                        "google_ads.keywords.list."
+                        "google_ads_keywords_list."
                     ),
                 },
             },
@@ -316,12 +316,12 @@ TOOLS: list[Tool] = [
     ),
     # === Negative keyword removal ===
     Tool(
-        name="google_ads.negative_keywords.remove",
+        name="google_ads_negative_keywords_remove",
         description=(
             "Removes a single campaign-level negative keyword. Returns the "
             "removed criterion_id. Destructive — the exclusion is lifted "
             "immediately on the next serving cycle, which can increase "
-            "unwanted traffic. Reversible via rollback.apply (re-adds the "
+            "unwanted traffic. Reversible via rollback_apply (re-adds the "
             "negative). For ad group-level negatives there is currently no "
             "explicit remove tool — use the Google Ads UI or raise an "
             "issue if needed."
@@ -338,7 +338,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Negative-keyword criterion ID as returned by "
-                        "google_ads.negative_keywords.list."
+                        "google_ads_negative_keywords_list."
                     ),
                 },
             },
@@ -347,13 +347,13 @@ TOOLS: list[Tool] = [
     ),
     # === Ad group-level negative keyword addition ===
     Tool(
-        name="google_ads.negative_keywords.add_to_ad_group",
+        name="google_ads_negative_keywords_add_to_ad_group",
         description=(
             "Adds one or more ad group-level negative keywords. Scope is "
             "narrower than campaign-level negatives — exclusions apply only "
             "to the specified ad group. Returns created criterion_ids. "
-            "Mutating, reversible via rollback.apply. Prefer this over "
-            "google_ads.negative_keywords.add when the exclusion is only "
+            "Mutating, reversible via rollback_apply. Prefer this over "
+            "google_ads_negative_keywords_add when the exclusion is only "
             "wrong in one ad group's context."
         ),
         inputSchema={
@@ -383,14 +383,14 @@ TOOLS: list[Tool] = [
     ),
     # === Automatic negative keyword suggestions ===
     Tool(
-        name="google_ads.negative_keywords.suggest",
+        name="google_ads_negative_keywords_suggest",
         description=(
             "Analyses recent search-term performance and returns suggested "
             "negative keywords that waste spend relative to a target CPA. "
             "Returns candidates with text, suggested match_type, spend, "
             "conversions, and rationale (e.g. 'spend > 3x target CPA, 0 "
             "conversions'). Read-only — suggestions are not applied. Use "
-            "google_ads.negative_keywords.add / add_to_ad_group to "
+            "google_ads_negative_keywords_add / add_to_ad_group to "
             "materialize the ones you want after operator review."
         ),
         inputSchema={
@@ -433,7 +433,7 @@ TOOLS: list[Tool] = [
     ),
     # === Keyword Inventory ===
     Tool(
-        name="google_ads.keywords.audit",
+        name="google_ads_keywords_audit",
         description=(
             "Runs a holistic keyword-portfolio audit for a campaign and "
             "returns grouped recommendations: pause candidates (zero-spend "
@@ -442,7 +442,7 @@ TOOLS: list[Tool] = [
             "and unused keyword-planner ideas. Each item includes "
             "criterion_id, text, spend, conversions, and a reason string. "
             "Read-only — recommendations are not applied. Materialize "
-            "accepted ones via google_ads.keywords.pause / add / "
+            "accepted ones via google_ads_keywords_pause / add / "
             "negative_keywords.add."
         ),
         inputSchema={
@@ -476,7 +476,7 @@ TOOLS: list[Tool] = [
     ),
     # === Cross-ad-group keyword duplicate detection ===
     Tool(
-        name="google_ads.keywords.cross_adgroup_duplicates",
+        name="google_ads_keywords_cross_adgroup_duplicates",
         description=(
             "Finds the same text+match_type keyword appearing across "
             "multiple ad groups in a campaign. Returns groups of duplicate "

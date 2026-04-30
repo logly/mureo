@@ -24,13 +24,13 @@ _ACCOUNT_ID_PARAM = {
 TOOLS: list[Tool] = [
     # === Catalog (Product Catalog & DPA) ===
     Tool(
-        name="meta_ads.catalogs.list",
+        name="meta_ads_catalogs_list",
         description=(
             "Lists Meta Commerce Catalogs owned by a Business. Returns "
             "id, name, product_count, vertical (commerce / hotels / "
             "flights / home_listings / destinations), and "
             "feed_count per catalog. Read-only. Use this to find a "
-            "catalog_id before calling meta_ads.catalogs.get / delete or "
+            "catalog_id before calling meta_ads_catalogs_get / delete or "
             "managing products / feeds underneath."
         ),
         inputSchema={
@@ -51,14 +51,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.catalogs.create",
+        name="meta_ads_catalogs_create",
         description=(
             "Creates a new Product Catalog under a Meta Business. Returns "
-            "the new catalog_id. Mutating, reversible via rollback.apply "
+            "the new catalog_id. Mutating, reversible via rollback_apply "
             "(rollback deletes the catalog if it has no ads consuming "
             "it). Catalogs are the container — add products individually "
-            "via meta_ads.products.add, or schedule bulk imports via "
-            "meta_ads.feeds.create."
+            "via meta_ads_products_add, or schedule bulk imports via "
+            "meta_ads_feeds_create."
         ),
         inputSchema={
             "type": "object",
@@ -80,13 +80,13 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.catalogs.get",
+        name="meta_ads_catalogs_get",
         description=(
             "Fetches the full detail record for a single Product Catalog. "
             "Returns id, name, product_count, vertical, feed_count, "
             "owner_business_id, and the linked ad_accounts. Read-only. "
-            "Call this before meta_ads.catalogs.delete or before building "
-            "a Collection creative (meta_ads.creatives.create_collection) "
+            "Call this before meta_ads_catalogs_delete or before building "
+            "a Collection creative (meta_ads_creatives_create_collection) "
             "to verify product_count > 0."
         ),
         inputSchema={
@@ -96,7 +96,7 @@ TOOLS: list[Tool] = [
                 "catalog_id": {
                     "type": "string",
                     "description": (
-                        "Catalog ID as returned by meta_ads.catalogs.list."
+                        "Catalog ID as returned by meta_ads_catalogs_list."
                     ),
                 },
             },
@@ -104,14 +104,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.catalogs.delete",
+        name="meta_ads_catalogs_delete",
         description=(
             "Deletes a Product Catalog. Returns a success flag. "
             "Destructive and cascades — all products inside and any DPA "
             "campaigns consuming the catalog lose their product source "
-            "and stop serving dynamic ads. Reversible via rollback.apply "
+            "and stop serving dynamic ads. Reversible via rollback_apply "
             "only if no ad consuming the catalog has served since "
-            "deletion. Always call meta_ads.catalogs.get first to check "
+            "deletion. Always call meta_ads_catalogs_get first to check "
             "product_count and operator-confirm before calling this."
         ),
         inputSchema={
@@ -128,13 +128,13 @@ TOOLS: list[Tool] = [
     ),
     # === Products ===
     Tool(
-        name="meta_ads.products.list",
+        name="meta_ads_products_list",
         description=(
             "Lists products in a Product Catalog. Returns id, "
             "retailer_id (advertiser's SKU), name, availability, price, "
             "image_url, brand, and category per product. Read-only. "
             "Default limit 100 (max 1000). Use this to locate product_ids "
-            "for use in meta_ads.creatives.create_collection or to audit "
+            "for use in meta_ads_creatives_create_collection or to audit "
             "feed health (missing price / broken image_url)."
         ),
         inputSchema={
@@ -159,12 +159,12 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.products.add",
+        name="meta_ads_products_add",
         description=(
             "Adds a single product to a Meta Product Catalog. Returns the "
-            "new product_id. Mutating, reversible via rollback.apply. "
+            "new product_id. Mutating, reversible via rollback_apply. "
             "For bulk ingestion prefer a scheduled feed "
-            "(meta_ads.feeds.create) — Meta rate-limits single-product "
+            "(meta_ads_feeds_create) — Meta rate-limits single-product "
             "adds aggressively. Meta requires a stable retailer_id per "
             "product; adding a second product with the same retailer_id "
             "updates the existing record rather than creating a "
@@ -277,7 +277,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.products.get",
+        name="meta_ads_products_get",
         description=(
             "Fetches the full detail record for a single catalog product. "
             "Returns id, retailer_id, name, description, availability, "
@@ -295,7 +295,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Meta-assigned product_id as returned by "
-                        "meta_ads.products.list (not the retailer_id)."
+                        "meta_ads_products_list (not the retailer_id)."
                     ),
                 },
             },
@@ -303,11 +303,11 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.products.update",
+        name="meta_ads_products_update",
         description=(
             "Updates one or more fields on an existing catalog product. "
             "Partial update — only supplied fields are changed. Returns "
-            "the updated product. Mutating, reversible via rollback.apply "
+            "the updated product. Mutating, reversible via rollback_apply "
             "(rollback restores prior field values). For availability "
             "toggles (in stock ↔ out of stock) this is the correct entry "
             "point; for full record replacement call meta_ads.products."
@@ -374,15 +374,15 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.products.delete",
+        name="meta_ads_products_delete",
         description=(
             "Deletes a single catalog product. Returns a success flag. "
             "Destructive — DPA / Collection ads that referenced this "
             "product_id will skip it on the next serve cycle. Reversible "
-            "via rollback.apply (re-adds with the same retailer_id), but "
+            "via rollback_apply (re-adds with the same retailer_id), but "
             "the Meta-assigned product_id changes on re-add, which can "
             "break hard-coded downstream references. For temporary "
-            "suppression use meta_ads.products.update with "
+            "suppression use meta_ads_products_update with "
             "availability='out of stock' instead."
         ),
         inputSchema={
@@ -399,7 +399,7 @@ TOOLS: list[Tool] = [
     ),
     # === Feeds ===
     Tool(
-        name="meta_ads.feeds.list",
+        name="meta_ads_feeds_list",
         description=(
             "Lists product feeds configured for a Product Catalog. "
             "Returns id, name, schedule (HOURLY / DAILY / WEEKLY), "
@@ -422,14 +422,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.feeds.create",
+        name="meta_ads_feeds_create",
         description=(
             "Creates a scheduled product feed that imports products into "
             "a catalog from a URL. Returns the new feed_id. Mutating, "
-            "reversible via rollback.apply. Feeds run automatically on "
+            "reversible via rollback_apply. Feeds run automatically on "
             "the chosen schedule; the first run triggers shortly after "
             "creation. For one-off product adds use "
-            "meta_ads.products.add — feeds are for ongoing bulk sync. "
+            "meta_ads_products_add — feeds are for ongoing bulk sync. "
             "Supported feed formats: CSV, TSV, RSS 2.0, Atom 1.0, JSON."
         ),
         inputSchema={

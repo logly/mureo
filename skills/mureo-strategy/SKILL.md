@@ -246,7 +246,7 @@ Step 2: Based on persona pain points, craft headlines that address them directly
   -> Headlines: "Reduce Wasted Ad Spend by 40%", "Get Better Leads, Not More Leads"
 
 Step 3: Create the RSA ad (with Google Ads tools)
-  -> google_ads.ads.create {
+  -> google_ads_ads_create {
        headlines addressing persona pain points,
        descriptions highlighting USP
      }
@@ -261,13 +261,13 @@ Step 1: Read STRATEGY.md USP section
   Key differentiators: "Slack integration", "AI automation", "budget safety"
 
 Step 2: Generate seed keywords from USP
-  -> google_ads.keywords.suggest {seed_keywords: ["slack ad management", "ai ad optimization", "ad budget automation"]}
+  -> google_ads_keywords_suggest {seed_keywords: ["slack ad management", "ai ad optimization", "ad budget automation"]}
 
 Step 3: Review suggestions against target audience
   Filter by relevance to the target audience segment
 
 Step 4: Add selected keywords
-  -> google_ads.keywords.add {keywords: [...]}
+  -> google_ads_keywords_add {keywords: [...]}
 ```
 
 ### 3. Brand Voice Compliance Check
@@ -279,14 +279,14 @@ Step 1: Read STRATEGY.md Brand Voice section
   Rules: "Professional but approachable", "data-backed claims", "no hype"
 
 Step 2: List current ads
-  -> google_ads.ads.list {customer_id, ad_group_id}
+  -> google_ads_ads_list {customer_id, ad_group_id}
 
 Step 3: Review each ad against brand voice rules
   Flag: "Best Ad Platform Ever!" -> violates "no hype" rule
   OK: "Reduce CPA by 30% with AI-Powered Optimization" -> data-backed, professional
 
 Step 4: Update non-compliant ads (CONFIRM WITH USER)
-  -> google_ads.ads.update {headlines: [improved versions]}
+  -> google_ads_ads_update {headlines: [improved versions]}
 ```
 
 ### 4. Operation Mode-Guided Actions
@@ -297,7 +297,7 @@ Different modes guide different agent behaviors:
 ```
 Priority: Stop the bleeding
 1. Check search terms for wasted spend
-   -> google_ads.search_terms.review {campaign_id, target_cpa}
+   -> google_ads_search_terms_review {campaign_id, target_cpa}
 2. Add negative keywords aggressively
 3. Pause underperforming ad groups
 4. Review budget allocation
@@ -307,7 +307,7 @@ Priority: Stop the bleeding
 ```
 Priority: Grow while maintaining efficiency
 1. Find new keyword opportunities
-   -> google_ads.keywords.suggest {seed_keywords}
+   -> google_ads_keywords_suggest {seed_keywords}
 2. Test new ad copy variations
 3. Increase budgets on high-performing campaigns (confirm with user)
 4. Expand targeting (new geographies, demographics)
@@ -319,7 +319,7 @@ Priority: Let the algorithm learn, minimal changes
 1. Monitor performance but avoid making changes
 2. Warn before any budget or bid changes
 3. Check campaign diagnose for learning status
-   -> google_ads.campaigns.diagnose {customer_id, campaign_id}
+   -> google_ads_campaigns_diagnose {customer_id, campaign_id}
 4. Wait until learning period completes before optimizing
 ```
 
@@ -332,13 +332,13 @@ Step 1: Read STRATEGY.md Market Context section
   Known: Competitor A is Google-only, Competitor B has no Slack
 
 Step 2: Check auction insights for competitor activity
-  -> google_ads.auction_insights.analyze {customer_id, campaign_id}
+  -> google_ads_auction_insights_analyze {customer_id, campaign_id}
 
 Step 3: If a new competitor appears or impression share drops:
   - Check CPC trends for bidding pressure
-    -> google_ads.cpc.detect_trend {customer_id, campaign_id}
+    -> google_ads_cpc_detect_trend {customer_id, campaign_id}
   - Review device performance for competitor dominance patterns
-    -> google_ads.device.analyze {customer_id, campaign_id}
+    -> google_ads_device_analyze {customer_id, campaign_id}
 
 Step 4: Recommend strategic response based on market context
   e.g., "Competitor A gained 5% impression share. Since they don't support

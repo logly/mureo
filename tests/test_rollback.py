@@ -39,14 +39,14 @@ class TestReversibleHintPresent:
     def test_supported_budget_update(self) -> None:
         entry = _entry(
             reversible_params={
-                "operation": "google_ads.budgets.update",
+                "operation": "google_ads_budget_update",
                 "params": {"budget_id": "456", "amount_micros": 10_000_000_000},
             }
         )
         plan = plan_rollback(entry)
         assert plan is not None
         assert plan.status == RollbackStatus.SUPPORTED
-        assert plan.operation == "google_ads.budgets.update"
+        assert plan.operation == "google_ads_budget_update"
         assert plan.params == {"budget_id": "456", "amount_micros": 10_000_000_000}
         assert plan.source_timestamp == "2026-04-15T10:00:00"
         assert plan.platform == "google_ads"
@@ -54,7 +54,7 @@ class TestReversibleHintPresent:
     def test_caveats_promote_status_to_partial(self) -> None:
         entry = _entry(
             reversible_params={
-                "operation": "meta_ads.campaigns.update_status",
+                "operation": "meta_ads_campaigns_update_status",
                 "params": {"campaign_id": "abc", "status": "ACTIVE"},
                 "caveats": ["Paused spend is not refundable."],
             }
@@ -68,7 +68,7 @@ class TestReversibleHintPresent:
         entry = _entry(
             action="update_budget",
             reversible_params={
-                "operation": "google_ads.budgets.update",
+                "operation": "google_ads_budget_update",
                 "params": {"budget_id": "456", "amount_micros": 10_000_000_000},
             },
         )
@@ -101,7 +101,7 @@ class TestNotReversible:
         assert "operation" in plan.notes.lower()
 
     def test_hint_missing_params_key_is_rejected(self) -> None:
-        entry = _entry(reversible_params={"operation": "google_ads.budgets.update"})
+        entry = _entry(reversible_params={"operation": "google_ads_budget_update"})
         plan = plan_rollback(entry)
         assert plan is not None
         assert plan.status == RollbackStatus.NOT_SUPPORTED
@@ -109,7 +109,7 @@ class TestNotReversible:
     def test_operation_not_in_allowlist_rejected(self) -> None:
         entry = _entry(
             reversible_params={
-                "operation": "google_ads.something.exotic",
+                "operation": "google_ads_something_exotic",
                 "params": {"id": "1"},
             }
         )
@@ -123,7 +123,7 @@ class TestNotReversible:
         # the destructive-verb guard is a second line of defense.
         entry = _entry(
             reversible_params={
-                "operation": "google_ads.campaigns.delete",
+                "operation": "google_ads_campaigns_delete",
                 "params": {"campaign_id": "1"},
             }
         )
@@ -135,7 +135,7 @@ class TestNotReversible:
     def test_params_with_extra_keys_rejected(self) -> None:
         entry = _entry(
             reversible_params={
-                "operation": "google_ads.budgets.update",
+                "operation": "google_ads_budget_update",
                 # login_customer_id would let an agent pivot to another account.
                 "params": {
                     "budget_id": "456",
@@ -152,7 +152,7 @@ class TestNotReversible:
     def test_caveats_not_a_list_rejected(self) -> None:
         entry = _entry(
             reversible_params={
-                "operation": "google_ads.budgets.update",
+                "operation": "google_ads_budget_update",
                 "params": {"budget_id": "456", "amount_micros": 1},
                 "caveats": "just a string",
             }
@@ -166,7 +166,7 @@ class TestNotReversible:
         entry = _entry(
             action="list_campaigns",
             reversible_params={
-                "operation": "google_ads.budgets.update",
+                "operation": "google_ads_budget_update",
                 "params": {"budget_id": "456", "amount_micros": 1},
             },
         )
@@ -184,7 +184,7 @@ class TestRollbackPlanImmutability:
             source_action="update_budget",
             platform="google_ads",
             status=RollbackStatus.SUPPORTED,
-            operation="google_ads.budgets.update",
+            operation="google_ads_budget_update",
             params={"budget_id": "456"},
             description="Reverse update_budget",
             caveats=(),
@@ -197,7 +197,7 @@ class TestRollbackPlanImmutability:
         src = {"budget_id": "456", "amount_micros": 10_000_000_000}
         entry = _entry(
             reversible_params={
-                "operation": "google_ads.budgets.update",
+                "operation": "google_ads_budget_update",
                 "params": src,
             }
         )
@@ -215,7 +215,7 @@ class TestRollbackPlanImmutability:
             source_action="update_budget",
             platform="google_ads",
             status=RollbackStatus.SUPPORTED,
-            operation="google_ads.budgets.update",
+            operation="google_ads_budget_update",
             params=params,
             description="x",
         )

@@ -501,30 +501,30 @@ class TestMetaAdsMediaToolDefinitions:
         return tool
 
     def test_videos_upload_tool_exists(self) -> None:
-        """meta_ads.videos.upload がTOOLSに定義されていること"""
-        self._get_tool("meta_ads.videos.upload")
+        """meta_ads_videos_upload がTOOLSに定義されていること"""
+        self._get_tool("meta_ads_videos_upload")
 
     def test_videos_upload_required_fields(self) -> None:
         """videos.uploadの必須パラメータが正しいこと"""
-        tool = self._get_tool("meta_ads.videos.upload")
+        tool = self._get_tool("meta_ads_videos_upload")
         assert set(tool.inputSchema["required"]) == {"video_url"}
 
     def test_videos_upload_file_tool_exists(self) -> None:
-        """meta_ads.videos.upload_file がTOOLSに定義されていること"""
-        self._get_tool("meta_ads.videos.upload_file")
+        """meta_ads_videos_upload_file がTOOLSに定義されていること"""
+        self._get_tool("meta_ads_videos_upload_file")
 
     def test_videos_upload_file_required_fields(self) -> None:
         """videos.upload_fileの必須パラメータが正しいこと"""
-        tool = self._get_tool("meta_ads.videos.upload_file")
+        tool = self._get_tool("meta_ads_videos_upload_file")
         assert set(tool.inputSchema["required"]) == {"file_path"}
 
     def test_creatives_create_carousel_tool_exists(self) -> None:
-        """meta_ads.creatives.create_carousel がTOOLSに定義されていること"""
-        self._get_tool("meta_ads.creatives.create_carousel")
+        """meta_ads_creatives_create_carousel がTOOLSに定義されていること"""
+        self._get_tool("meta_ads_creatives_create_carousel")
 
     def test_creatives_create_carousel_required_fields(self) -> None:
         """create_carouselの必須パラメータが正しいこと"""
-        tool = self._get_tool("meta_ads.creatives.create_carousel")
+        tool = self._get_tool("meta_ads_creatives_create_carousel")
         assert set(tool.inputSchema["required"]) == {
             "page_id",
             "cards",
@@ -532,12 +532,12 @@ class TestMetaAdsMediaToolDefinitions:
         }
 
     def test_creatives_create_collection_tool_exists(self) -> None:
-        """meta_ads.creatives.create_collection がTOOLSに定義されていること"""
-        self._get_tool("meta_ads.creatives.create_collection")
+        """meta_ads_creatives_create_collection がTOOLSに定義されていること"""
+        self._get_tool("meta_ads_creatives_create_collection")
 
     def test_creatives_create_collection_required_fields(self) -> None:
         """create_collectionの必須パラメータが正しいこと"""
-        tool = self._get_tool("meta_ads.creatives.create_collection")
+        tool = self._get_tool("meta_ads_creatives_create_collection")
         assert set(tool.inputSchema["required"]) == {
             "page_id",
             "product_ids",
@@ -573,7 +573,7 @@ class TestMetaAdsMediaHandlers:
             ),
         ):
             result = await handle_tool(
-                "meta_ads.videos.upload",
+                "meta_ads_videos_upload",
                 {
                     "account_id": "act_123",
                     "video_url": "https://example.com/video.mp4",
@@ -605,7 +605,7 @@ class TestMetaAdsMediaHandlers:
             ),
         ):
             result = await handle_tool(
-                "meta_ads.videos.upload_file",
+                "meta_ads_videos_upload_file",
                 {
                     "account_id": "act_123",
                     "file_path": str(sample_video),
@@ -635,7 +635,7 @@ class TestMetaAdsMediaHandlers:
             ),
         ):
             result = await handle_tool(
-                "meta_ads.creatives.create_carousel",
+                "meta_ads_creatives_create_carousel",
                 {
                     "account_id": "act_123",
                     "page_id": "page_1",
@@ -671,7 +671,7 @@ class TestMetaAdsMediaHandlers:
             ),
         ):
             result = await handle_tool(
-                "meta_ads.creatives.create_collection",
+                "meta_ads_creatives_create_collection",
                 {
                     "account_id": "act_123",
                     "page_id": "page_1",

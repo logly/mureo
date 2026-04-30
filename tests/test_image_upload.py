@@ -2,7 +2,7 @@
 
 Meta Ads: upload_ad_image_file
 Google Ads: upload_image_asset
-MCPツール: meta_ads.images.upload_file, google_ads.assets.upload_image
+MCPツール: meta_ads_images_upload_file, google_ads_assets_upload_image
 """
 
 from __future__ import annotations
@@ -314,20 +314,20 @@ class TestGoogleAdsUploadImageAsset:
 
 
 class TestMcpMetaUploadFile:
-    """MCP meta_ads.images.upload_file ツールのテスト"""
+    """MCP meta_ads_images_upload_file ツールのテスト"""
 
     def test_tool_definition_exists(self) -> None:
-        """meta_ads.images.upload_file がTOOLSに定義されていること"""
+        """meta_ads_images_upload_file がTOOLSに定義されていること"""
         from mureo.mcp.tools_meta_ads import TOOLS
 
         names = [t.name for t in TOOLS]
-        assert "meta_ads.images.upload_file" in names
+        assert "meta_ads_images_upload_file" in names
 
     def test_tool_schema(self) -> None:
         """ツールスキーマにfile_pathが必須パラメータとして含まれること"""
         from mureo.mcp.tools_meta_ads import TOOLS
 
-        tool = next(t for t in TOOLS if t.name == "meta_ads.images.upload_file")
+        tool = next(t for t in TOOLS if t.name == "meta_ads_images_upload_file")
         assert "file_path" in tool.inputSchema["properties"]
         assert "file_path" in tool.inputSchema["required"]
 
@@ -356,7 +356,7 @@ class TestMcpMetaUploadFile:
             ),
         ):
             result = await handle_tool(
-                "meta_ads.images.upload_file",
+                "meta_ads_images_upload_file",
                 {
                     "account_id": "act_123",
                     "file_path": str(sample_image),
@@ -369,20 +369,20 @@ class TestMcpMetaUploadFile:
 
 
 class TestMcpGoogleUploadImage:
-    """MCP google_ads.assets.upload_image ツールのテスト"""
+    """MCP google_ads_assets_upload_image ツールのテスト"""
 
     def test_tool_definition_exists(self) -> None:
-        """google_ads.assets.upload_image がTOOLSに定義されていること"""
+        """google_ads_assets_upload_image がTOOLSに定義されていること"""
         from mureo.mcp.tools_google_ads import TOOLS
 
         names = [t.name for t in TOOLS]
-        assert "google_ads.assets.upload_image" in names
+        assert "google_ads_assets_upload_image" in names
 
     def test_tool_schema(self) -> None:
         """ツールスキーマにfile_pathが必須パラメータとして含まれること"""
         from mureo.mcp.tools_google_ads import TOOLS
 
-        tool = next(t for t in TOOLS if t.name == "google_ads.assets.upload_image")
+        tool = next(t for t in TOOLS if t.name == "google_ads_assets_upload_image")
         assert "file_path" in tool.inputSchema["properties"]
         assert "file_path" in tool.inputSchema["required"]
 
@@ -409,7 +409,7 @@ class TestMcpGoogleUploadImage:
             ),
         ):
             result = await handle_tool(
-                "google_ads.assets.upload_image",
+                "google_ads_assets_upload_image",
                 {
                     "customer_id": "1234567890",
                     "file_path": str(sample_image),

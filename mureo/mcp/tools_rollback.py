@@ -2,9 +2,9 @@
 
 Exposes two tools to MCP clients:
 
-- ``rollback.plan.get`` — inspect the reversal plan for one
+- ``rollback_plan_get`` — inspect the reversal plan for one
   ``action_log`` entry. Read-only; returns JSON.
-- ``rollback.apply``    — execute the plan, re-entering the MCP
+- ``rollback_apply``    — execute the plan, re-entering the MCP
   dispatcher so the rollback call hits the same policy gate used
   for forward actions. Requires ``confirm=true`` as a second-factor.
 """
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 TOOLS: list[Tool] = [
     Tool(
-        name="rollback.plan.get",
+        name="rollback_plan_get",
         description=(
             "Inspect the reversal plan for a recorded action_log entry in "
             "STATE.json. Returns the planner's status (supported / partial / "
@@ -50,7 +50,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="rollback.apply",
+        name="rollback_apply",
         description=(
             "Execute the rollback plan for action_log[index]. The reversal "
             "call is re-dispatched through the same MCP handler used for "
@@ -87,8 +87,8 @@ TOOLS: list[Tool] = [
 _TOOL_NAMES: frozenset[str] = frozenset(t.name for t in TOOLS)
 
 _HANDLERS: dict[str, Any] = {
-    "rollback.plan.get": handle_plan_get,
-    "rollback.apply": handle_apply,
+    "rollback_plan_get": handle_plan_get,
+    "rollback_apply": handle_apply,
 }
 
 

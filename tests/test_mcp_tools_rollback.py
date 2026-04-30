@@ -1,4 +1,4 @@
-"""MCP tool tests for rollback.apply and rollback.plan.get.
+"""MCP tool tests for rollback_apply and rollback_plan_get.
 
 Locks in that the tools are registered in the aggregate MCP server
 tool list, and that the handlers wire through to the executor /
@@ -36,11 +36,11 @@ def sandboxed_cwd(
 def _budget_entry() -> ActionLogEntry:
     return ActionLogEntry(
         timestamp="2026-04-15T10:00:00",
-        action="google_ads.budgets.update",
+        action="google_ads_budget_update",
         platform="google_ads",
         campaign_id="100",
         reversible_params={
-            "operation": "google_ads.budgets.update",
+            "operation": "google_ads_budget_update",
             "params": {"budget_id": "B1", "amount_micros": 5_000_000_000},
         },
     )
@@ -52,15 +52,15 @@ class TestToolRegistration:
     async def test_tools_registered_in_server(self) -> None:
         all_tools = await handle_list_tools()
         names = {t.name for t in all_tools}
-        assert "rollback.apply" in names
-        assert "rollback.plan.get" in names
+        assert "rollback_apply" in names
+        assert "rollback_plan_get" in names
 
     def test_tool_names_in_module_list(self) -> None:
         names = {t.name for t in TOOLS}
-        assert names == {"rollback.apply", "rollback.plan.get"}
+        assert names == {"rollback_apply", "rollback_plan_get"}
 
     def test_apply_requires_confirm_in_schema(self) -> None:
-        apply_tool = next(t for t in TOOLS if t.name == "rollback.apply")
+        apply_tool = next(t for t in TOOLS if t.name == "rollback_apply")
         schema = apply_tool.inputSchema
         assert "confirm" in schema.get("required", [])
         assert "index" in schema.get("required", [])
@@ -73,12 +73,12 @@ class TestPlanGetHandler:
         _write_state(sandboxed_cwd / "STATE.json", [_budget_entry()])
 
         result = await handle_tool(
-            "rollback.plan.get",
+            "rollback_plan_get",
             {"state_file": "STATE.json", "index": 0},
         )
         payload = json.loads(result[0].text)
         assert payload["status"] == "supported"
-        assert payload["operation"] == "google_ads.budgets.update"
+        assert payload["operation"] == "google_ads_budget_update"
         assert payload["params"] == {
             "budget_id": "B1",
             "amount_micros": 5_000_000_000,
@@ -99,7 +99,7 @@ class TestPlanGetHandler:
             ],
         )
         result = await handle_tool(
-            "rollback.plan.get",
+            "rollback_plan_get",
             {"state_file": "STATE.json", "index": 0},
         )
         payload = json.loads(result[0].text)
@@ -116,7 +116,7 @@ class TestApplyHandler:
         _write_state(sandboxed_cwd / "STATE.json", [_budget_entry()])
 
         result = await handle_tool(
-            "rollback.apply",
+            "rollback_apply",
             {"state_file": "STATE.json", "index": 0, "confirm": False},
         )
         payload = json.loads(result[0].text)
@@ -148,15 +148,15 @@ class TestApplyHandler:
         )
 
         result = await handle_tool(
-            "rollback.apply",
+            "rollback_apply",
             {"state_file": "STATE.json", "index": 0, "confirm": True},
         )
         payload = json.loads(result[0].text)
         assert payload["status"] == "applied"
-        assert payload["dispatched_tool"] == "google_ads.budgets.update"
+        assert payload["dispatched_tool"] == "google_ads_budget_update"
         assert calls == [
             (
-                "google_ads.budgets.update",
+                "google_ads_budget_update",
                 {"budget_id": "B1", "amount_micros": 5_000_000_000},
             )
         ]
@@ -172,7 +172,7 @@ class TestApplyHandler:
         _write_state(outside, [_budget_entry()])
 
         result = await handle_tool(
-            "rollback.apply",
+            "rollback_apply",
             {
                 "state_file": str(outside),
                 "index": 0,
@@ -195,7 +195,7 @@ class TestApplyHandler:
         _write_state(sandboxed_cwd / "STATE.json", [_budget_entry()])
 
         result = await handle_tool(
-            "rollback.apply",
+            "rollback_apply",
             {"state_file": "STATE.json", "index": 0, "confirm": 1},
         )
         payload = json.loads(result[0].text)

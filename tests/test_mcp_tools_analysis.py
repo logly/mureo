@@ -1,9 +1,9 @@
-"""MCP tool tests for analysis.anomalies.check.
+"""MCP tool tests for analysis_anomalies_check.
 
 Locks in that the tool is registered on the aggregate MCP server, its
 schema rejects malformed input, and the handler correctly composes
 ``baseline_from_history`` with ``detect_anomalies`` over STATE.json.
-Path sandboxing mirrors rollback.apply — ``state_file`` must resolve
+Path sandboxing mirrors rollback_apply — ``state_file`` must resolve
 inside CWD.
 """
 
@@ -66,10 +66,10 @@ class TestToolRegistration:
     async def test_registered_in_server(self) -> None:
         tools = await handle_list_tools()
         names = {t.name for t in tools}
-        assert "analysis.anomalies.check" in names
+        assert "analysis_anomalies_check" in names
 
     def test_schema_requires_current(self) -> None:
-        tool = next(t for t in TOOLS if t.name == "analysis.anomalies.check")
+        tool = next(t for t in TOOLS if t.name == "analysis_anomalies_check")
         schema = tool.inputSchema
         assert "current" in schema["required"]
         current_props = schema["properties"]["current"]["properties"]
@@ -84,7 +84,7 @@ class TestAnomalyHandler:
     ) -> None:
         """With no STATE.json, zero-spend still fires as CRITICAL."""
         result = await handle_tool(
-            "analysis.anomalies.check",
+            "analysis_anomalies_check",
             {
                 "current": {
                     "campaign_id": "C1",
@@ -113,7 +113,7 @@ class TestAnomalyHandler:
         _write_state(sandboxed_cwd / "STATE.json", entries)
 
         result = await handle_tool(
-            "analysis.anomalies.check",
+            "analysis_anomalies_check",
             {
                 "current": {
                     "campaign_id": "C1",
@@ -143,7 +143,7 @@ class TestAnomalyHandler:
             [_history_entry(cost=10_000, conversions=50, cpa=5000)],
         )
         result = await handle_tool(
-            "analysis.anomalies.check",
+            "analysis_anomalies_check",
             {
                 "current": {
                     "campaign_id": "C1",
@@ -164,21 +164,21 @@ class TestAnomalyHandler:
     async def test_missing_campaign_id_raises(self, sandboxed_cwd: Path) -> None:
         with pytest.raises(ValueError, match="campaign_id"):
             await handle_tool(
-                "analysis.anomalies.check",
+                "analysis_anomalies_check",
                 {"current": {"cost": 0}},
             )
 
     @pytest.mark.asyncio
     async def test_missing_current_raises(self, sandboxed_cwd: Path) -> None:
         with pytest.raises(ValueError, match="current"):
-            await handle_tool("analysis.anomalies.check", {})
+            await handle_tool("analysis_anomalies_check", {})
 
     @pytest.mark.asyncio
     async def test_path_traversal_refused(self, sandboxed_cwd: Path) -> None:
         outside = sandboxed_cwd.parent / "rogue_STATE.json"
         _write_state(outside, [])
         result = await handle_tool(
-            "analysis.anomalies.check",
+            "analysis_anomalies_check",
             {
                 "current": {"campaign_id": "C1", "cost": 0},
                 "state_file": str(outside),
@@ -206,7 +206,7 @@ class TestAnomalyHandler:
         _write_state(sandboxed_cwd / "STATE.json", entries)
 
         result = await handle_tool(
-            "analysis.anomalies.check",
+            "analysis_anomalies_check",
             {
                 "current": {
                     "campaign_id": "C1",
@@ -229,7 +229,7 @@ class TestAnomalyHandler:
     ) -> None:
         """Fresh campaigns never trigger zero-spend alerts."""
         result = await handle_tool(
-            "analysis.anomalies.check",
+            "analysis_anomalies_check",
             {
                 "current": {"campaign_id": "C_NEW", "cost": 0},
                 "had_prior_spend": False,
@@ -249,7 +249,7 @@ class TestAnomalyHandler:
         link.symlink_to(outside)
 
         result = await handle_tool(
-            "analysis.anomalies.check",
+            "analysis_anomalies_check",
             {"current": {"campaign_id": "C1", "cost": 0}, "state_file": "STATE.json"},
         )
         payload = json.loads(result[0].text)
@@ -261,7 +261,7 @@ class TestAnomalyHandler:
     ) -> None:
         with pytest.raises(ValueError, match="min_baseline_entries"):
             await handle_tool(
-                "analysis.anomalies.check",
+                "analysis_anomalies_check",
                 {
                     "current": {"campaign_id": "C1", "cost": 0},
                     "min_baseline_entries": 0,
@@ -293,7 +293,7 @@ class TestAnomalyHandler:
         _write_state(sandboxed_cwd / "STATE.json", entries)
 
         result = await handle_tool(
-            "analysis.anomalies.check",
+            "analysis_anomalies_check",
             {
                 "current": {
                     "campaign_id": "C1",

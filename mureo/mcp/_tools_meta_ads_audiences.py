@@ -32,13 +32,13 @@ _LIMIT_PARAM = {
 TOOLS: list[Tool] = [
     # === Audiences ===
     Tool(
-        name="meta_ads.audiences.list",
+        name="meta_ads_audiences_list",
         description=(
             "Lists Custom Audiences in a Meta Ads account. Returns id, "
             "name, subtype (WEBSITE / CUSTOM / LOOKALIKE / APP / etc.), "
             "approximate_count, retention_days, and data_source per "
             "audience. Read-only. Use this to find an audience_id before "
-            "targeting an ad set (meta_ads.ad_sets.create / update) or "
+            "targeting an ad set (meta_ads_ad_sets_create / update) or "
             "before creating a lookalike (audiences.create_lookalike). "
             "Approximate counts from Meta may lag actual size by 24–48h."
         ),
@@ -52,16 +52,16 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.audiences.create",
+        name="meta_ads_audiences_create",
         description=(
             "Creates a Custom Audience in a Meta Ads account. Returns the "
-            "new audience_id. Mutating, reversible via rollback.apply "
+            "new audience_id. Mutating, reversible via rollback_apply "
             "(rollback deletes the audience). Subtype controls the data "
             "source: WEBSITE audiences require a pixel_id and an event "
             "rule; CUSTOM audiences accept a manually supplied rule or a "
             "customer list upload (the upload path is handled out-of-band "
             "by Meta). For similarity-expanded reach use "
-            "meta_ads.audiences.create_lookalike on top of this audience."
+            "meta_ads_audiences_create_lookalike on top of this audience."
         ),
         inputSchema={
             "type": "object",
@@ -143,14 +143,14 @@ TOOLS: list[Tool] = [
     ),
     # === Audience get / delete / lookalike ===
     Tool(
-        name="meta_ads.audiences.get",
+        name="meta_ads_audiences_get",
         description=(
             "Fetches the full detail record for a single Custom Audience, "
             "including the rule definition and approximate_count. "
             "Returns id, name, subtype, description, retention_days, "
             "approximate_count, data_source, rule (for rule-based "
             "audiences), and pixel_id (for WEBSITE audiences). "
-            "Read-only. Call this before meta_ads.audiences.delete or "
+            "Read-only. Call this before meta_ads_audiences_delete or "
             "before create_lookalike to verify you have the right audience."
         ),
         inputSchema={
@@ -160,7 +160,7 @@ TOOLS: list[Tool] = [
                 "audience_id": {
                     "type": "string",
                     "description": (
-                        "Audience ID as returned by " "meta_ads.audiences.list."
+                        "Audience ID as returned by " "meta_ads_audiences_list."
                     ),
                 },
             },
@@ -168,14 +168,14 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.audiences.delete",
+        name="meta_ads_audiences_delete",
         description=(
             "Deletes a Custom Audience. Returns a success flag. "
             "Destructive — any ad sets currently targeting this audience "
             "lose the targeting source and may stop delivering. Reversible "
-            "via rollback.apply within Meta's standard retention window, "
+            "via rollback_apply within Meta's standard retention window, "
             "but re-creation does not restore the original "
-            "approximate_count. Call meta_ads.audiences.get first to "
+            "approximate_count. Call meta_ads_audiences_get first to "
             "confirm which ad sets use it (search ad_sets.list targeting "
             "specs client-side), and consider pausing those ad sets first."
         ),
@@ -192,17 +192,17 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.audiences.create_lookalike",
+        name="meta_ads_audiences_create_lookalike",
         description=(
             "Creates a Lookalike Audience from an existing source "
             "audience. Returns the new audience_id. Mutating, reversible "
-            "via rollback.apply. Lookalikes typically populate within "
+            "via rollback_apply. Lookalikes typically populate within "
             "24–72h; the approximate_count remains 0 until Meta finishes "
             "the similarity build. ratio=0.01 gives the top 1% most "
             "similar users in the target country (smallest, highest "
             "match); ratio=0.10 gives top 10% (larger reach, looser "
             "match). For the base audience list use "
-            "meta_ads.audiences.list."
+            "meta_ads_audiences_list."
         ),
         inputSchema={
             "type": "object",
@@ -270,14 +270,14 @@ TOOLS: list[Tool] = [
     ),
     # === Pixels ===
     Tool(
-        name="meta_ads.pixels.list",
+        name="meta_ads_pixels_list",
         description=(
             "Lists Meta Pixels available in the ad account. Returns id, "
             "name, code (the base pixel snippet), last_fired_time, and "
             "is_created_by_business per pixel. Read-only. Use this to "
             "find a pixel_id before creating a WEBSITE audience "
-            "(meta_ads.audiences.create) or fetching event statistics "
-            "(meta_ads.pixels.stats / events)."
+            "(meta_ads_audiences_create) or fetching event statistics "
+            "(meta_ads_pixels_stats / events)."
         ),
         inputSchema={
             "type": "object",
@@ -289,7 +289,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.pixels.get",
+        name="meta_ads_pixels_get",
         description=(
             "Fetches the full detail record for a single Meta Pixel. "
             "Returns id, name, code, creation_time, last_fired_time, "
@@ -305,21 +305,21 @@ TOOLS: list[Tool] = [
                 "account_id": _ACCOUNT_ID_PARAM,
                 "pixel_id": {
                     "type": "string",
-                    "description": ("Pixel ID as returned by meta_ads.pixels.list."),
+                    "description": ("Pixel ID as returned by meta_ads_pixels_list."),
                 },
             },
             "required": ["pixel_id"],
         },
     ),
     Tool(
-        name="meta_ads.pixels.stats",
+        name="meta_ads_pixels_stats",
         description=(
             "Returns aggregated pixel-event counts over a rolling time "
             "window. Returns an array of {date, event_name, count} rows. "
             "Read-only. Use this to spot unusual drops in PageView / "
             "Purchase / Lead volume that indicate a pixel break. For "
             "per-event metadata (parameter names, sample payloads) use "
-            "meta_ads.pixels.events instead."
+            "meta_ads_pixels_events instead."
         ),
         inputSchema={
             "type": "object",
@@ -343,7 +343,7 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
-        name="meta_ads.pixels.events",
+        name="meta_ads_pixels_events",
         description=(
             "Lists distinct event types the pixel has received recently, "
             "with sample payloads. Returns event_name, sample_count, "
@@ -353,7 +353,7 @@ TOOLS: list[Tool] = [
             "firing, and to inspect parameter names before building "
             "conversion rules or audience definitions that reference "
             "them. For aggregate volume over time use "
-            "meta_ads.pixels.stats."
+            "meta_ads_pixels_stats."
         ),
         inputSchema={
             "type": "object",

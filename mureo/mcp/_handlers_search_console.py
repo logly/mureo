@@ -56,7 +56,7 @@ def _no_sc_creds() -> list[TextContent]:
 
 @api_error_handler
 async def handle_sites_list(args: dict[str, Any]) -> list[TextContent]:
-    """Handle search_console.sites.list."""
+    """Handle search_console_sites_list."""
     client = await _get_client(args)
     if client is None:
         return _no_sc_creds()
@@ -66,7 +66,7 @@ async def handle_sites_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_sites_get(args: dict[str, Any]) -> list[TextContent]:
-    """Handle search_console.sites.get."""
+    """Handle search_console_sites_get."""
     client = await _get_client(args)
     if client is None:
         return _no_sc_creds()
@@ -82,7 +82,7 @@ async def handle_sites_get(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_analytics_query(args: dict[str, Any]) -> list[TextContent]:
-    """Handle search_console.analytics.query."""
+    """Handle search_console_analytics_query."""
     client = await _get_client(args)
     if client is None:
         return _no_sc_creds()
@@ -101,7 +101,7 @@ async def handle_analytics_query(args: dict[str, Any]) -> list[TextContent]:
 async def handle_analytics_top_queries(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    """Handle search_console.analytics.top_queries."""
+    """Handle search_console_analytics_top_queries."""
     client = await _get_client(args)
     if client is None:
         return _no_sc_creds()
@@ -119,7 +119,7 @@ async def handle_analytics_top_queries(
 async def handle_analytics_top_pages(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    """Handle search_console.analytics.top_pages."""
+    """Handle search_console_analytics_top_pages."""
     client = await _get_client(args)
     if client is None:
         return _no_sc_creds()
@@ -137,7 +137,7 @@ async def handle_analytics_top_pages(
 async def handle_analytics_device_breakdown(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    """Handle search_console.analytics.device_breakdown."""
+    """Handle search_console_analytics_device_breakdown."""
     client = await _get_client(args)
     if client is None:
         return _no_sc_creds()
@@ -155,7 +155,7 @@ async def handle_analytics_device_breakdown(
 async def handle_analytics_compare_periods(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    """Handle search_console.analytics.compare_periods."""
+    """Handle search_console_analytics_compare_periods."""
     client = await _get_client(args)
     if client is None:
         return _no_sc_creds()
@@ -189,7 +189,7 @@ async def handle_analytics_compare_periods(
 
 @api_error_handler
 async def handle_sitemaps_list(args: dict[str, Any]) -> list[TextContent]:
-    """Handle search_console.sitemaps.list."""
+    """Handle search_console_sitemaps_list."""
     client = await _get_client(args)
     if client is None:
         return _no_sc_creds()
@@ -200,7 +200,7 @@ async def handle_sitemaps_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_sitemaps_submit(args: dict[str, Any]) -> list[TextContent]:
-    """Handle search_console.sitemaps.submit."""
+    """Handle search_console_sitemaps_submit."""
     client = await _get_client(args)
     if client is None:
         return _no_sc_creds()
@@ -219,7 +219,7 @@ async def handle_sitemaps_submit(args: dict[str, Any]) -> list[TextContent]:
 async def handle_url_inspection_inspect(
     args: dict[str, Any],
 ) -> list[TextContent]:
-    """Handle search_console.url_inspection.inspect."""
+    """Handle search_console_url_inspection_inspect."""
     client = await _get_client(args)
     if client is None:
         return _no_sc_creds()
