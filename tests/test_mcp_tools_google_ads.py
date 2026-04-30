@@ -39,10 +39,10 @@ class TestGoogleAdsToolDefinitions:
         assert len(mod.TOOLS) == 83
 
     def test_all_tool_names(self) -> None:
-        """全ツール名がgoogle_ads.で始まること"""
+        """全ツール名が google_ads_ で始まること（MCP仕様準拠の underscore 区切り）"""
         mod = _import_google_ads_tools()
         for tool in mod.TOOLS:
-            assert tool.name.startswith("google_ads."), f"不正なツール名: {tool.name}"
+            assert tool.name.startswith("google_ads_"), f"不正なツール名: {tool.name}"
 
     def test_all_tools_have_input_schema(self) -> None:
         """全ツールにinputSchemaが定義されていること"""
