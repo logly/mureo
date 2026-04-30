@@ -197,7 +197,7 @@ _GADS_SEARCH_TERMS = (
         14000,
         630,
         598500,
-        25,
+        12,
     ),
     (
         "prometheus alternative",
@@ -206,7 +206,7 @@ _GADS_SEARCH_TERMS = (
         22000,
         990,
         940500,
-        40,
+        20,
     ),
     # Generic - Observability Discovery — Logs and Metrics ad group (healthy 4-5%)
     (
@@ -312,7 +312,7 @@ _GADS_KEYWORDS = (
         41400,
         2052,
         1948500,
-        143,
+        110,
     ),
     (
         "log management",
