@@ -59,7 +59,7 @@ def materialize(
     *,
     force: bool = False,
     skip_import: bool = False,
-) -> dict[str, Path]:
+) -> dict[str, Path | None]:
     """Write the demo artifacts into ``target_dir``.
 
     Default behavior is the full one-step demo: write the five demo
