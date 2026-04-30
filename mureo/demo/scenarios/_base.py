@@ -50,6 +50,12 @@ class Scenario:
     sheet_rows: Mapping[str, Sequence[Sequence[object]]]
     state_doc: Mapping[str, object]
     strategy_md: str
+    # When False, the scenario's diagnostic story relies on a sparse
+    # or absent action_log (e.g. strategy-drift demos undocumented
+    # changes by a manager — empty action_log around active changes
+    # is itself the diagnostic signal). Contract tests skip the >=3
+    # entries floor only for these scenarios.
+    requires_action_log: bool = True
 
 
 def campaign_id(name: str) -> str:

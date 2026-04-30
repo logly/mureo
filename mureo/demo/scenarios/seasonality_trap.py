@@ -111,6 +111,7 @@ _GADS_SEARCH_TERMS = (
     ("flavorbox", "Brand - Exact", "Brand - Exact", 32000, 7040, 422400, 985),
     ("flavorbox 敏感肌", "Brand - Exact", "Brand - Exact", 8400, 2100, 126000, 273),
     ("flavorbox クーポン", "Brand - Exact", "Brand - Exact", 4200, 1050, 63000, 105),
+    ("flavorbox 評判", "Brand - Exact", "Brand - Exact", 3600, 900, 54000, 81),
     # HIDDEN WINNER — high CVR vs ad-group average.
     (
         "敏感肌 化粧水 おすすめ",
@@ -281,6 +282,28 @@ _GADS_KEYWORDS = (
         1320,
         297000,
         177,
+    ),
+    (
+        "flavorbox レビュー",
+        "PHRASE",
+        9,
+        "Retargeting - Search",
+        "Cart Abandoners",
+        13500,
+        1080,
+        243000,
+        151,
+    ),
+    (
+        "化粧品 比較",
+        "PHRASE",
+        6,
+        "Generic - Discovery",
+        "Cosmetic Reviews",
+        140000,
+        3500,
+        612500,
+        88,
     ),
 )
 
