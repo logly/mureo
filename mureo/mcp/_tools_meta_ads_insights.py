@@ -129,7 +129,7 @@ TOOLS: list[Tool] = [
             "and a ranked list of callouts (e.g. 'CPA up 32% week-over-"
             "week', 'impressions down 45%'). Read-only. Use this at the "
             "start of an audit — it narrows attention before pulling raw "
-            "insights via meta_ads.insights.report."
+            "insights via meta_ads_insights_report."
         ),
         inputSchema={
             "type": "object",

@@ -119,9 +119,9 @@ async def execute_rollback(
 
     # Defense-in-depth: refuse to dispatch back into the rollback surface
     # itself. If a future entry in ``_ALLOWED_OPERATIONS`` (or a badly-wired
-    # test scaffold) ever names a ``rollback.*`` tool, this prevents the
+    # test scaffold) ever names a ``rollback_*`` tool, this prevents the
     # executor from recursing into itself.
-    if plan.operation.startswith("rollback."):
+    if plan.operation.startswith("rollback_"):
         raise RollbackExecutionError(
             f"Refusing to dispatch rollback into rollback surface: " f"{plan.operation}"
         )

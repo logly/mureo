@@ -43,7 +43,7 @@ _CAMPAIGN_ID_PARAM = {
     "type": "string",
     "description": (
         "Campaign ID as a numeric string without dashes "
-        "(e.g. '23743184133'). Obtain via google_ads.campaigns.list."
+        "(e.g. '23743184133'). Obtain via google_ads_campaigns_list."
     ),
 }
 
@@ -102,7 +102,7 @@ TOOLS: list[Tool] = [
             "Search Partners splits use "
             "google_ads_network_performance_report; for query-level detail "
             "use google_ads_search_terms_report; for conversion-action "
-            "slicing use google_ads.conversions.performance."
+            "slicing use google_ads_conversions_performance."
         ),
         inputSchema={
             "type": "object",
@@ -136,7 +136,7 @@ TOOLS: list[Tool] = [
             "candidates use google_ads_search_terms_review; for "
             "intent-class distribution use google_ads_search_terms_analyze; "
             "for campaign-level aggregates without query breakdown use "
-            "google_ads.performance.report."
+            "google_ads_performance_report."
         ),
         inputSchema={
             "type": "object",
@@ -183,7 +183,7 @@ TOOLS: list[Tool] = [
             "Read-only — emits candidates but does not add or exclude "
             "anything. Default period is LAST_7_DAYS. For keyword/N-gram "
             "overlap stats use google_ads_search_terms_analyze; for the "
-            "raw query log use google_ads.search_terms.report."
+            "raw query log use google_ads_search_terms_report."
         ),
         inputSchema={
             "type": "object",
@@ -254,7 +254,7 @@ TOOLS: list[Tool] = [
             "week-over-week surges >15% and days exceeding 2x average "
             "CPC. Read-only. For device or auction-share investigation "
             "use google_ads_device_analyze or "
-            "google_ads.auction_insights.analyze."
+            "google_ads_auction_insights_analyze."
         ),
         inputSchema={
             "type": "object",
@@ -284,7 +284,7 @@ TOOLS: list[Tool] = [
             "google_ads_device_targeting_set; for the raw "
             "ad-schedule criteria (hour-of-day targeting config, "
             "NOT performance segmentation by hour) use "
-            "google_ads.schedule_targeting.list."
+            "google_ads_schedule_targeting_list."
         ),
         inputSchema={
             "type": "object",
@@ -311,7 +311,7 @@ TOOLS: list[Tool] = [
             "are rounded to whole-unit currency. Read-only. Use this to "
             "decide whether to toggle Search Partners. For overall "
             "campaign totals use google_ads_performance_report; for "
-            "per-ad breakdowns use google_ads.ad_performance.report."
+            "per-ad breakdowns use google_ads_ad_performance_report."
         ),
         inputSchema={
             "type": "object",
@@ -339,7 +339,7 @@ TOOLS: list[Tool] = [
             "mutation. For ENABLED-only A/B comparison within a single "
             "ad group with WINNER/LOSER verdicts use "
             "google_ads_ad_performance_compare; for campaign-level "
-            "aggregates use google_ads.performance.report."
+            "aggregates use google_ads_performance_report."
         ),
         inputSchema={
             "type": "object",
@@ -368,7 +368,7 @@ TOOLS: list[Tool] = [
             "conversions=0), insights:[strings]}. Read-only. For "
             "rule-scored add/exclude/watch buckets use "
             "google_ads_search_terms_review; for the raw unscored term "
-            "log use google_ads.search_terms.report."
+            "log use google_ads_search_terms_report."
         ),
         inputSchema={
             "type": "object",
@@ -402,7 +402,7 @@ TOOLS: list[Tool] = [
             "aborting the call. Read-only. Default period is "
             "LAST_7_DAYS. For cost-spike root-cause analysis use "
             "google_ads_cost_increase_investigate; for account-wide "
-            "health use google_ads.health_check.all."
+            "health use google_ads_health_check_all."
         ),
         inputSchema={
             "type": "object",
@@ -433,7 +433,7 @@ TOOLS: list[Tool] = [
             "hardcoded to LAST_7_DAYS. Read-only. For a broader "
             "diagnostic composite use google_ads_performance_analyze; "
             "for CPA-vs-target monitoring use "
-            "google_ads.monitoring.cpa_goal."
+            "google_ads_monitoring_cpa_goal."
         ),
         inputSchema={
             "type": "object",
@@ -460,7 +460,7 @@ TOOLS: list[Tool] = [
             "{total_enabled, healthy, warning, problem, message}}. "
             "Read-only. For single-campaign delivery diagnosis use "
             "google_ads_campaigns_diagnose; for CPA-goal monitoring use "
-            "google_ads.monitoring.cpa_goal."
+            "google_ads_monitoring_cpa_goal."
         ),
         inputSchema={
             "type": "object",
@@ -484,7 +484,7 @@ TOOLS: list[Tool] = [
             "WINNER, the rest LOSER. Read-only — does not pause or "
             "rotate ads. For cross-ad-group per-ad reporting use "
             "google_ads_ad_performance_report; for RSA asset-level "
-            "splits use google_ads.rsa_assets.analyze."
+            "splits use google_ads_rsa_assets_analyze."
         ),
         inputSchema={
             "type": "object",
@@ -497,7 +497,7 @@ TOOLS: list[Tool] = [
                         "(e.g. '145680123456'). Required — comparison "
                         "is always scoped to one ad group so the ads "
                         "share targeting. Obtain via "
-                        "google_ads.ad_groups.list."
+                        "google_ads_ad_groups_list."
                     ),
                 },
                 "period": _PERIOD_PARAM,
@@ -521,7 +521,7 @@ TOOLS: list[Tool] = [
             "silently treated as zero. Read-only. For a concrete "
             "DECREASE/INCREASE reallocation plan use "
             "google_ads_budget_reallocation; to change a single budget "
-            "use google_ads.budget.update."
+            "use google_ads_budget_update."
         ),
         inputSchema={
             "type": "object",
@@ -552,7 +552,7 @@ TOOLS: list[Tool] = [
             "to 0. Read-only — emits a "
             "plan only, does not apply any budget changes. To actually "
             "apply a change use google_ads_budget_update; for the "
-            "efficiency scoring alone use google_ads.budget.efficiency."
+            "efficiency scoring alone use google_ads_budget_efficiency."
         ),
         inputSchema={
             "type": "object",
@@ -579,7 +579,7 @@ TOOLS: list[Tool] = [
             "competitor-level auction_insight (domain, overlap, "
             "outranking); only impression-share proxies are returned. "
             "For a version with human-readable insights layered on top "
-            "use google_ads.auction_insights.analyze."
+            "use google_ads_auction_insights_analyze."
         ),
         inputSchema={
             "type": "object",
@@ -607,7 +607,7 @@ TOOLS: list[Tool] = [
             "impressions descending. Read-only. For an audit version "
             "with replacement recommendations use "
             "google_ads_rsa_assets_audit; for ad-level A/B use "
-            "google_ads.ad_performance.compare."
+            "google_ads_ad_performance_compare."
         ),
         inputSchema={
             "type": "object",
@@ -636,7 +636,7 @@ TOOLS: list[Tool] = [
             "LOW 'wait_for_data' fires when LEARNING+UNKNOWN > 50% of "
             "assets. Read-only; does not modify any assets. For the "
             "raw per-asset performance breakdown use "
-            "google_ads.rsa_assets.analyze."
+            "google_ads_rsa_assets_analyze."
         ),
         inputSchema={
             "type": "object",
@@ -664,7 +664,7 @@ TOOLS: list[Tool] = [
             "MEDIUM when informational patterns exceed 20% of queries. "
             "Read-only. Use this when the advertiser self-identifies as "
             "B2B. For general campaign diagnosis use "
-            "google_ads.performance.analyze."
+            "google_ads_performance_analyze."
         ),
         inputSchema={
             "type": "object",
@@ -700,7 +700,7 @@ TOOLS: list[Tool] = [
             "view of the same URL use search_console_url_inspection_inspect; "
             "for a batched workflow that combines LP analysis with "
             "existing ads, search terms, and keyword suggestions use "
-            "google_ads.creative.research."
+            "google_ads_creative_research."
         ),
         inputSchema={
             "type": "object",
@@ -740,7 +740,7 @@ TOOLS: list[Tool] = [
             "(same SSRF policy as google_ads_landing_page_analyze) plus "
             "several GAQL queries. For just the LP use "
             "google_ads_landing_page_analyze; for just RSA asset "
-            "diagnostics use google_ads.rsa_assets.analyze."
+            "diagnostics use google_ads_rsa_assets_analyze."
         ),
         inputSchema={
             "type": "object",
@@ -780,7 +780,7 @@ TOOLS: list[Tool] = [
             "suggested_workflow is set to 'delivery_fix' when status != "
             "'healthy'. Read-only. For the raw diagnostics without the "
             "yesterday composite use google_ads_campaigns_diagnose; for "
-            "CPA-target evaluation use google_ads.monitoring.cpa_goal."
+            "CPA-target evaluation use google_ads_monitoring_cpa_goal."
         ),
         inputSchema={
             "type": "object",
@@ -806,7 +806,7 @@ TOOLS: list[Tool] = [
             "summary, suggested_workflow?}. The CPA window is hardcoded "
             "to LAST_7_DAYS. Read-only; does not change bids. For "
             "account-wide rollup use google_ads_health_check_all; for "
-            "daily CV-count vs target use google_ads.monitoring.cv_goal."
+            "daily CV-count vs target use google_ads_monitoring_cv_goal."
         ),
         inputSchema={
             "type": "object",
@@ -845,7 +845,7 @@ TOOLS: list[Tool] = [
             "The evaluation window is hardcoded to LAST_7_DAYS. "
             "Read-only. For CPA-target evaluation use "
             "google_ads_monitoring_cpa_goal; for the underlying "
-            "composite use google_ads.performance.analyze."
+            "composite use google_ads_performance_analyze."
         ),
         inputSchema={
             "type": "object",
@@ -888,7 +888,7 @@ TOOLS: list[Tool] = [
             "is hardcoded to LAST_7_DAYS. Read-only; generates an "
             "action plan but does not execute anything. For CPA "
             "monitoring use google_ads_monitoring_cpa_goal; for "
-            "CV-count monitoring use google_ads.monitoring.cv_goal."
+            "CV-count monitoring use google_ads_monitoring_cv_goal."
         ),
         inputSchema={
             "type": "object",

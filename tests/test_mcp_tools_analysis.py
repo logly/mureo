@@ -1,4 +1,4 @@
-"""MCP tool tests for analysis.anomalies.check.
+"""MCP tool tests for analysis_anomalies_check.
 
 Locks in that the tool is registered on the aggregate MCP server, its
 schema rejects malformed input, and the handler correctly composes

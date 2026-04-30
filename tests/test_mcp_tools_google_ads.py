@@ -786,7 +786,7 @@ class TestGoogleAdsErrorHandling:
         """未知のツール名でValueErrorが発生"""
         mod = _import_google_ads_tools()
         with pytest.raises(ValueError, match="Unknown"):
-            await mod.handle_tool("google_ads.unknown.tool", {"customer_id": "123"})
+            await mod.handle_tool("google_ads_unknown_tool", {"customer_id": "123"})
 
     async def test_no_credentials_returns_error_text(self) -> None:
         """認証情報なしでエラーテキストを返す"""

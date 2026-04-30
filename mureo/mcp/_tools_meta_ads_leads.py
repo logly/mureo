@@ -31,7 +31,7 @@ TOOLS: list[Tool] = [
             "form. Read-only. Lead forms belong to Pages, not ad "
             "accounts — use this to find a form_id before attaching it "
             "to a Lead Ads creative or before pulling submitted lead "
-            "data via meta_ads.leads.get."
+            "data via meta_ads_leads_get."
         ),
         inputSchema={
             "type": "object",
@@ -72,7 +72,7 @@ TOOLS: list[Tool] = [
                 "form_id": {
                     "type": "string",
                     "description": (
-                        "Lead form ID as returned by " "meta_ads.lead_forms.list."
+                        "Lead form ID as returned by " "meta_ads_lead_forms_list."
                     ),
                 },
             },
@@ -192,7 +192,7 @@ TOOLS: list[Tool] = [
             "field_data (array of {name, values} matching the form "
             "questions). Read-only. Use this for batch CRM sync or "
             "retrospective analysis. For leads attributed to a specific "
-            "ad across forms use meta_ads.leads.get_by_ad. Meta retains "
+            "ad across forms use meta_ads_leads_get_by_ad. Meta retains "
             "lead data for 90 days — pull regularly to avoid loss."
         ),
         inputSchema={
@@ -221,10 +221,10 @@ TOOLS: list[Tool] = [
         description=(
             "Retrieves leads attributed to a specific ad, regardless of "
             "which form they used. Returns the same lead record shape as "
-            "meta_ads.leads.get. Read-only. Use this to measure lead "
+            "meta_ads_leads_get. Read-only. Use this to measure lead "
             "volume of a particular creative / ad ID when ranking "
             "winners. For full form-based lead pulls (cross-ad) use "
-            "meta_ads.leads.get."
+            "meta_ads_leads_get."
         ),
         inputSchema={
             "type": "object",

@@ -218,13 +218,13 @@ A JSON file tracking campaign state snapshots across platforms:
       "platform": "google_ads",
       "campaign_id": "12345",
       "reversible_params": {
-        "operation": "google_ads.budgets.update",
+        "operation": "google_ads_budget_update",
         "params": {"budget_id": "B1", "amount_micros": 5000000000}
       }
     },
     {
       "timestamp": "2026-04-02T15:00:00+09:00",
-      "action": "google_ads.budgets.update",
+      "action": "google_ads_budget_update",
       "platform": "google_ads",
       "campaign_id": "12345",
       "summary": "Rolled back #1: Raised daily budget",

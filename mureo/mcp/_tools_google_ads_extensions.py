@@ -18,7 +18,7 @@ _CAMPAIGN_ID_PARAM = {
     "type": "string",
     "description": (
         "Campaign ID as a numeric string without dashes "
-        "(e.g. '23743184133'). Obtain via google_ads.campaigns.list."
+        "(e.g. '23743184133'). Obtain via google_ads_campaigns_list."
     ),
 }
 
@@ -44,7 +44,7 @@ _CONVERSION_ACTION_ID_PARAM = {
     "type": "string",
     "description": (
         "Conversion action ID as a numeric string (e.g. "
-        "'987654321'). Obtain via google_ads.conversions.list."
+        "'987654321'). Obtain via google_ads_conversions_list."
     ),
 }
 
@@ -62,8 +62,8 @@ TOOLS: list[Tool] = [
             "to the whole customer and are deduplicated by id. "
             "Read-only. Use this to audit extensions before calling "
             "google_ads_sitelinks_create (20 per-campaign limit) or "
-            "google_ads.sitelinks.remove. For callouts use "
-            "google_ads.callouts.list."
+            "google_ads_sitelinks_remove. For callouts use "
+            "google_ads_callouts_list."
         ),
         inputSchema={
             "type": "object",
@@ -143,7 +143,7 @@ TOOLS: list[Tool] = [
             "but does not delete the underlying Asset row. Re-linking "
             "requires google_ads_sitelinks_create with the same "
             "text/URL. To list current sitelinks use "
-            "google_ads.sitelinks.list."
+            "google_ads_sitelinks_list."
         ),
         inputSchema={
             "type": "object",
@@ -173,7 +173,7 @@ TOOLS: list[Tool] = [
             "campaign_asset rows (no account-level merge). Read-only. "
             "Use this to audit coverage before calling "
             "google_ads_callouts_create (hardcoded limit: 20 callouts "
-            "per campaign) or google_ads.callouts.remove."
+            "per campaign) or google_ads_callouts_remove."
         ),
         inputSchema={
             "type": "object",
@@ -194,10 +194,10 @@ TOOLS: list[Tool] = [
             "error_type:'validation_error', message} when the "
             "campaign already has 20 callouts "
             "(_MAX_CALLOUTS_PER_CAMPAIGN limit). Mutating — "
-            "reversible only by google_ads.callouts.remove. The asset "
+            "reversible only by google_ads_callouts_remove. The asset "
             "is minted per call, so identical text creates duplicate "
             "asset rows. For sitelink variants use "
-            "google_ads.sitelinks.create."
+            "google_ads_sitelinks_create."
         ),
         inputSchema={
             "type": "object",
@@ -226,7 +226,7 @@ TOOLS: list[Tool] = [
             "the callout stops serving on the campaign but the Asset "
             "row itself is not deleted. Re-enabling requires "
             "google_ads_callouts_create with the same text. For the "
-            "sibling list operation use google_ads.callouts.list."
+            "sibling list operation use google_ads_callouts_list."
         ),
         inputSchema={
             "type": "object",
@@ -238,7 +238,7 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Asset ID as a numeric string (e.g. "
                         "'123456789'). Obtain from the 'id' field of "
-                        "google_ads.callouts.list."
+                        "google_ads_callouts_list."
                     ),
                 },
             },
@@ -257,7 +257,7 @@ TOOLS: list[Tool] = [
             "'PURCHASE', 'SIGNUP')}]. Read-only. Use this to discover "
             "conversion_action_id values before calling .get, .update, "
             ".remove, or .tag. For CV performance metrics use "
-            "google_ads.conversions.performance."
+            "google_ads_conversions_performance."
         ),
         inputSchema={
             "type": "object",
@@ -279,7 +279,7 @@ TOOLS: list[Tool] = [
             "NOT return value settings or lookback-window values — use "
             "the Google Ads UI for those. For the HTML/JS tag snippet "
             "to embed on a site use google_ads_conversions_tag; for "
-            "full listings use google_ads.conversions.list."
+            "full listings use google_ads_conversions_list."
         ),
         inputSchema={
             "type": "object",
@@ -308,7 +308,7 @@ TOOLS: list[Tool] = [
             "computed via a separate GAQL because GAQL cannot SELECT "
             "cost_per_conversion alongside segments.conversion_action_name. "
             "Read-only. For campaign-level metrics use "
-            "google_ads.performance.report."
+            "google_ads_performance_report."
         ),
         inputSchema={
             "type": "object",
@@ -335,10 +335,10 @@ TOOLS: list[Tool] = [
             "of the newly created row. Mutating — the conversion "
             "action is persisted with status ENABLED by default. "
             "Reversible via google_ads_conversions_update with "
-            "status='REMOVED' or google_ads.conversions.remove. Name "
+            "status='REMOVED' or google_ads_conversions_remove. Name "
             "must be <= 256 characters. Category defaults to "
             "'DEFAULT'. For updating an existing action use "
-            "google_ads.conversions.update."
+            "google_ads_conversions_update."
         ),
         inputSchema={
             "type": "object",
@@ -455,7 +455,7 @@ TOOLS: list[Tool] = [
             "click_through_lookback_window_days, "
             "view_through_lookback_window_days) or the call raises "
             "ValueError. To delete/archive an action use status "
-            "'REMOVED' here or call google_ads.conversions.remove."
+            "'REMOVED' here or call google_ads_conversions_remove."
         ),
         inputSchema={
             "type": "object",
@@ -572,7 +572,7 @@ TOOLS: list[Tool] = [
             "(the goal event snippet)}]. Empty list when no snippets "
             "are configured (e.g. UPLOAD_CLICKS actions have no web "
             "tag). Read-only. For configuration metadata use "
-            "google_ads.conversions.get."
+            "google_ads_conversions_get."
         ),
         inputSchema={
             "type": "object",
@@ -672,7 +672,7 @@ TOOLS: list[Tool] = [
             "Google represents 'don't serve' as bid_modifier=0.0 "
             "(i.e. -100%). For modifying, use "
             "google_ads_device_targeting_set or "
-            "google_ads.bid_adjustments.update."
+            "google_ads_bid_adjustments_update."
         ),
         inputSchema={
             "type": "object",
@@ -699,7 +699,7 @@ TOOLS: list[Tool] = [
             "again with a different enabled_devices. enabled_devices "
             "must be non-empty (passing an empty array raises "
             "ValueError). For fine-grained non-zero bid modifiers "
-            "use google_ads.bid_adjustments.update."
+            "use google_ads_bid_adjustments_update."
         ),
         inputSchema={
             "type": "object",
@@ -739,8 +739,8 @@ TOOLS: list[Tool] = [
             "such as LOCATION or AD_SCHEDULE, where n is the raw "
             "device-type enum ordinal — never null)}]. Read-only. "
             "For the device-summary view (all three devices, even "
-            "implicit ones) use google_ads.device_targeting.get. For "
-            "location-only use google_ads.location_targeting.list."
+            "implicit ones) use google_ads_device_targeting_get. For "
+            "location-only use google_ads_location_targeting_list."
         ),
         inputSchema={
             "type": "object",
@@ -776,7 +776,7 @@ TOOLS: list[Tool] = [
                         "Criterion ID as a numeric string (e.g. "
                         "'30001'). Obtain via "
                         "google_ads_bid_adjustments_get or "
-                        "google_ads.device_targeting.get."
+                        "google_ads_device_targeting_get."
                     ),
                 },
                 "bid_modifier": {
@@ -806,7 +806,7 @@ TOOLS: list[Tool] = [
             "adding or removing locations use "
             "google_ads_location_targeting_update; for "
             "schedule-based targeting use "
-            "google_ads.schedule_targeting.list."
+            "google_ads_schedule_targeting_list."
         ),
         inputSchema={
             "type": "object",
@@ -853,7 +853,7 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Existing criterion_ids to remove (numeric "
                         "strings, e.g. '30002'). Obtain via "
-                        "google_ads.location_targeting.list."
+                        "google_ads_location_targeting_list."
                     ),
                 },
             },
@@ -879,7 +879,7 @@ TOOLS: list[Tool] = [
             "google_ads_schedule_targeting_update (which is what you use "
             "to add or remove entries). For device-level modifiers use "
             "google_ads_device_targeting_get; for geo targeting use "
-            "google_ads.location_targeting.list."
+            "google_ads_location_targeting_list."
         ),
         inputSchema={
             "type": "object",
@@ -900,7 +900,7 @@ TOOLS: list[Tool] = [
                         "Campaign ID as a numeric string (e.g. "
                         "'23743184133'). Required — schedule targeting is "
                         "always scoped to a single campaign. Obtain via "
-                        "google_ads.campaigns.list."
+                        "google_ads_campaigns_list."
                     ),
                 },
             },
@@ -918,7 +918,7 @@ TOOLS: list[Tool] = [
             "only by calling this tool again with inverse "
             "operations. At least one of add_schedules / "
             "remove_criterion_ids must be provided. For the "
-            "read-only listing use google_ads.schedule_targeting.list."
+            "read-only listing use google_ads_schedule_targeting_list."
         ),
         inputSchema={
             "type": "object",
@@ -980,7 +980,7 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Existing criterion_ids to remove (numeric "
                         "strings). Obtain via "
-                        "google_ads.schedule_targeting.list."
+                        "google_ads_schedule_targeting_list."
                     ),
                 },
             },
@@ -1006,7 +1006,7 @@ TOOLS: list[Tool] = [
             "when dates are omitted; the API rejects an open-ended "
             "range so mureo always fills one. Use this for audit-"
             "trail diagnosis. For narrower bid/budget-only filtering "
-            "use google_ads.cost_increase.investigate."
+            "use google_ads_cost_increase_investigate."
         ),
         inputSchema={
             "type": "object",

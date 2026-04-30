@@ -431,7 +431,7 @@ class TestMetaAdsErrorHandling:
         """未知のツール名でValueErrorが発生"""
         mod = _import_meta_ads_tools()
         with pytest.raises(ValueError, match="Unknown"):
-            await mod.handle_tool("meta_ads.unknown.tool", {"account_id": "act_123"})
+            await mod.handle_tool("meta_ads_unknown_tool", {"account_id": "act_123"})
 
     async def test_no_credentials_returns_error_text(self) -> None:
         """認証情報なしでエラーテキストを返す"""

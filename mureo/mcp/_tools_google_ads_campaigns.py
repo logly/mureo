@@ -58,7 +58,7 @@ TOOLS: list[Tool] = [
             "end_date, network_settings, geo_target_type, and "
             "bidding_strategy_system_status. Read-only. Use this when you "
             "already have a campaign_id; for discovery use "
-            "google_ads.campaigns.list."
+            "google_ads_campaigns_list."
         ),
         inputSchema={
             "type": "object",
@@ -83,9 +83,9 @@ TOOLS: list[Tool] = [
             "and id. Mutating — counts against daily write quota. "
             "Reversible via rollback_apply (reversal pauses the campaign "
             "rather than deleting it). Requires a pre-existing budget_id; "
-            "to create a budget first, call google_ads.budget.create. For "
+            "to create a budget first, call google_ads_budget_create. For "
             "later edits use google_ads_campaigns_update or "
-            "google_ads.campaigns.update_status."
+            "google_ads_campaigns_update_status."
         ),
         inputSchema={
             "type": "object",
@@ -282,7 +282,7 @@ TOOLS: list[Tool] = [
             "deleting it). The parent campaign must be ENABLED or PAUSED; "
             "creating under a REMOVED campaign fails. After creation, add "
             "ads with google_ads_ads_create and keywords with "
-            "google_ads.keywords.add."
+            "google_ads_keywords_add."
         ),
         inputSchema={
             "type": "object",
@@ -320,7 +320,7 @@ TOOLS: list[Tool] = [
         description=(
             "Updates one or more settings on an existing ad group. Partial "
             "update — only provided fields are changed. Returns the updated "
-            "ad group. Mutating, reversible via rollback.apply. Does not "
+            "ad group. Mutating, reversible via rollback_apply. Does not "
             "cascade to ads or keywords under this ad group; use "
             "google_ads_ads_update / update_status and "
             "google_ads.keywords.* for those."
@@ -369,7 +369,7 @@ TOOLS: list[Tool] = [
             "(headlines / descriptions for RSAs). Read-only. Use this to "
             "find an ad_id before calling ads.update / update_status or to "
             "audit creative inventory. For disapproval details, follow up "
-            "with google_ads.ads.policy_details."
+            "with google_ads_ads_policy_details."
         ),
         inputSchema={
             "type": "object",
@@ -467,7 +467,7 @@ TOOLS: list[Tool] = [
             "files; mureo uploads each file to Google Ads as an ImageAsset "
             "before composing the ad. Returns the new ad's resource_name, "
             "id, and the generated asset IDs. Mutating, reversible via "
-            "rollback.apply. For Search campaigns use "
+            "rollback_apply. For Search campaigns use "
             "google_ads_ads_create; the ad_group must belong to a DISPLAY "
             "campaign or this call fails with a channel-mismatch error."
         ),
@@ -575,7 +575,7 @@ TOOLS: list[Tool] = [
             "updated ad. Google Ads does not support in-place edit of RSA "
             "creative assets — this call typically replaces the ad with a "
             "new one under the same ID, which resets learning and triggers "
-            "re-review. Mutating, reversible via rollback.apply. For "
+            "re-review. Mutating, reversible via rollback_apply. For "
             "status-only changes (pause/resume) use "
             "google_ads_ads_update_status, which is lighter-weight and "
             "does not reset learning."
@@ -622,7 +622,7 @@ TOOLS: list[Tool] = [
             "Sets the delivery status of a single ad to ENABLED, PAUSED, "
             "or REMOVED. Lightweight — writes only the status field and "
             "does not reset learning signals. Returns the ad ID and new "
-            "status. Reversible via rollback.apply. Use this for "
+            "status. Reversible via rollback_apply. Use this for "
             "pause/resume; use google_ads_ads_update to change the "
             "creative copy itself."
         ),
@@ -722,7 +722,7 @@ TOOLS: list[Tool] = [
                 "customer_id": _CUSTOMER_ID_PARAM,
                 "budget_id": {
                     "type": "string",
-                    "description": ("Budget ID as returned by google_ads.budget.get."),
+                    "description": ("Budget ID as returned by google_ads_budget_get."),
                 },
                 "amount": {
                     "type": "number",
@@ -743,7 +743,7 @@ TOOLS: list[Tool] = [
         description=(
             "Creates a new campaign budget that can be attached to one or "
             "more campaigns. Returns the new budget's id and resource_name. "
-            "Mutating, reversible via rollback.apply. Typical flow: "
+            "Mutating, reversible via rollback_apply. Typical flow: "
             "budget.create → campaigns.create with the returned budget_id. "
             "To edit an existing budget's amount use "
             "google_ads_budget_update instead of creating a second budget."

@@ -63,7 +63,7 @@ TOOLS: list[Tool] = [
             "'siteFullUser'|'siteRestrictedUser'|"
             "'siteUnverifiedUser')}]. Read-only; takes no input. For "
             "permission and metadata on a single property use "
-            "search_console.sites.get."
+            "search_console_sites_get."
         ),
         inputSchema={
             "type": "object",
@@ -80,10 +80,10 @@ TOOLS: list[Tool] = [
             "'siteUnverifiedUser')}. Read-only; no mutation. Use this "
             "to verify whether the authenticated account has write "
             "access before calling mutating tools like "
-            "search_console.sitemaps.submit. For a full list of "
+            "search_console_sitemaps_submit. For a full list of "
             "accessible properties use search_console_sites_list; for "
             "per-URL indexing data use "
-            "search_console.url_inspection.inspect."
+            "search_console_url_inspection_inspect."
         ),
         inputSchema={
             "type": "object",
@@ -108,7 +108,7 @@ TOOLS: list[Tool] = [
             "daily trend. For convenience shortcuts use "
             "search_console_analytics_top_queries / top_pages / "
             "device_breakdown; for before/after comparisons use "
-            "search_console.analytics.compare_periods."
+            "search_console_analytics_compare_periods."
         ),
         inputSchema={
             "type": "object",
@@ -256,7 +256,7 @@ TOOLS: list[Tool] = [
             "in each row. Read-only. Two REST calls are issued per "
             "invocation. Defaults: dimensions=['query'], row_limit=100 "
             "per period. For a single-period query use "
-            "search_console.analytics.query."
+            "search_console_analytics_query."
         ),
         inputSchema={
             "type": "object",
@@ -345,7 +345,7 @@ TOOLS: list[Tool] = [
             "lastDownloaded (ISO 8601), warnings (int), errors (int), "
             "contents: [{type, submitted (int), indexed (int)}]}]. "
             "Read-only. For submitting or resubmitting a sitemap use "
-            "search_console.sitemaps.submit."
+            "search_console_sitemaps_submit."
         ),
         inputSchema={
             "type": "object",
@@ -372,7 +372,7 @@ TOOLS: list[Tool] = [
             "authenticated user to be a verified owner or full user of "
             "site_url. For read-only inspection of already-submitted "
             "sitemaps use search_console_sitemaps_list; for per-URL "
-            "indexing diagnostics use search_console.url_inspection.inspect."
+            "indexing diagnostics use search_console_url_inspection_inspect."
         ),
         inputSchema={
             "type": "object",
@@ -423,7 +423,7 @@ TOOLS: list[Tool] = [
             "this to debug why a specific page isn't ranking. For "
             "site-wide coverage numbers use "
             "search_console_sitemaps_list; for organic-performance "
-            "metrics use search_console.analytics.query."
+            "metrics use search_console_analytics_query."
         ),
         inputSchema={
             "type": "object",

@@ -49,7 +49,7 @@ For anything that mutates or deletes, the description MUST:
 
 1. Lead with the mutation verb: `"Updates..."`, `"Deletes..."`, `"Pauses..."`
 2. Disclose partial-vs-full update semantics: `"Partial update — only the fields provided are changed; omitted fields are preserved."`
-3. State reversibility: `"Reversible via rollback.apply."` or `"Irreversible — removed ads cannot be restored."`
+3. State reversibility: `"Reversible via rollback_apply."` or `"Irreversible — removed ads cannot be restored."`
 
 ## Sibling differentiation
 

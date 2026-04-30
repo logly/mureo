@@ -642,7 +642,7 @@ class TestParseStateV2:
     def test_render_action_log_with_reversible_params_roundtrip(self) -> None:
         """Render and re-parse action_log carrying reversible_params."""
         hint = {
-            "operation": "google_ads.budgets.update",
+            "operation": "google_ads_budget_update",
             "params": {"budget_id": "456", "amount_micros": 10_000_000_000},
             "caveats": ["does not refund already-spent budget"],
         }
@@ -685,7 +685,7 @@ class TestParseStateV2:
             action_log=(
                 ActionLogEntry(
                     timestamp="2026-04-16T10:00:00",
-                    action="google_ads.budgets.update",
+                    action="google_ads_budget_update",
                     platform="google_ads",
                     summary="Rolled back #3",
                     rollback_of=3,

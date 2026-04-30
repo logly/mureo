@@ -160,7 +160,7 @@ TOOLS: list[Tool] = [
                 "audience_id": {
                     "type": "string",
                     "description": (
-                        "Audience ID as returned by " "meta_ads.audiences.list."
+                        "Audience ID as returned by " "meta_ads_audiences_list."
                     ),
                 },
             },
@@ -196,13 +196,13 @@ TOOLS: list[Tool] = [
         description=(
             "Creates a Lookalike Audience from an existing source "
             "audience. Returns the new audience_id. Mutating, reversible "
-            "via rollback.apply. Lookalikes typically populate within "
+            "via rollback_apply. Lookalikes typically populate within "
             "24–72h; the approximate_count remains 0 until Meta finishes "
             "the similarity build. ratio=0.01 gives the top 1% most "
             "similar users in the target country (smallest, highest "
             "match); ratio=0.10 gives top 10% (larger reach, looser "
             "match). For the base audience list use "
-            "meta_ads.audiences.list."
+            "meta_ads_audiences_list."
         ),
         inputSchema={
             "type": "object",
@@ -305,7 +305,7 @@ TOOLS: list[Tool] = [
                 "account_id": _ACCOUNT_ID_PARAM,
                 "pixel_id": {
                     "type": "string",
-                    "description": ("Pixel ID as returned by meta_ads.pixels.list."),
+                    "description": ("Pixel ID as returned by meta_ads_pixels_list."),
                 },
             },
             "required": ["pixel_id"],
@@ -353,7 +353,7 @@ TOOLS: list[Tool] = [
             "firing, and to inspect parameter names before building "
             "conversion rules or audience definitions that reference "
             "them. For aggregate volume over time use "
-            "meta_ads.pixels.stats."
+            "meta_ads_pixels_stats."
         ),
         inputSchema={
             "type": "object",

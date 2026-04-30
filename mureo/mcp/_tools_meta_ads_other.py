@@ -49,7 +49,7 @@ TOOLS: list[Tool] = [
             "summary of cells per study. Read-only. Use this to find a "
             "study_id before pulling detailed results via "
             "meta_ads_split_tests_get or ending via "
-            "meta_ads.split_tests.end."
+            "meta_ads_split_tests_end."
         ),
         inputSchema={
             "type": "object",
@@ -69,7 +69,7 @@ TOOLS: list[Tool] = [
             "metric_value, confidence_interval), winner_cell_id (when "
             "determined), confidence_level, start_time, and end_time. "
             "Read-only. Call this after a test ends to read the winner; "
-            "for the raw list use meta_ads.split_tests.list."
+            "for the raw list use meta_ads_split_tests_list."
         ),
         inputSchema={
             "type": "object",
@@ -78,7 +78,7 @@ TOOLS: list[Tool] = [
                 "study_id": {
                     "type": "string",
                     "description": (
-                        "Study ID as returned by " "meta_ads.split_tests.list."
+                        "Study ID as returned by " "meta_ads_split_tests_list."
                     ),
                 },
             },
@@ -95,7 +95,7 @@ TOOLS: list[Tool] = [
             "the chosen objective (COST_PER_RESULT / CONVERSIONS / "
             "REACH / CPC / CPM). Cells must reference pre-existing ad "
             "sets; this tool does not create ad sets. For test analysis "
-            "post-conclusion use meta_ads.split_tests.get."
+            "post-conclusion use meta_ads_split_tests_get."
         ),
         inputSchema={
             "type": "object",
@@ -236,7 +236,7 @@ TOOLS: list[Tool] = [
                 "rule_id": {
                     "type": "string",
                     "description": (
-                        "Rule ID as returned by " "meta_ads.ad_rules.list."
+                        "Rule ID as returned by " "meta_ads_ad_rules_list."
                     ),
                 },
             },
@@ -315,7 +315,7 @@ TOOLS: list[Tool] = [
         description=(
             "Updates fields on an existing Automated Rule. Partial "
             "update — only supplied fields are changed. Returns the "
-            "updated rule. Mutating, reversible via rollback.apply. "
+            "updated rule. Mutating, reversible via rollback_apply. "
             "Changes take effect on the next scheduled evaluation. To "
             "temporarily suspend a rule, set status=DISABLED rather than "
             "deleting it so history is preserved."
@@ -439,7 +439,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Post ID as returned by "
-                        "meta_ads.page_posts.list. Post must be public "
+                        "meta_ads_page_posts_list. Post must be public "
                         "and compatible with Ads eligibility policies."
                     ),
                 },
@@ -487,7 +487,7 @@ TOOLS: list[Tool] = [
             "media_type (IMAGE / VIDEO / CAROUSEL_ALBUM), media_url, "
             "permalink, timestamp, like_count, and comments_count per "
             "item. Read-only. Use this to find a media_id before "
-            "boosting via meta_ads.instagram.boost."
+            "boosting via meta_ads_instagram_boost."
         ),
         inputSchema={
             "type": "object",
@@ -497,7 +497,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Instagram user_id as returned by "
-                        "meta_ads.instagram.accounts."
+                        "meta_ads_instagram_accounts."
                     ),
                 },
                 "limit": _LIMIT_25,
@@ -527,7 +527,7 @@ TOOLS: list[Tool] = [
                 "media_id": {
                     "type": "string",
                     "description": (
-                        "Media ID as returned by " "meta_ads.instagram.media."
+                        "Media ID as returned by " "meta_ads_instagram_media."
                     ),
                 },
                 "ad_set_id": {

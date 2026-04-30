@@ -46,12 +46,12 @@ def _budget_update_entry(
 ) -> ActionLogEntry:
     return ActionLogEntry(
         timestamp=timestamp,
-        action="google_ads.budgets.update",
+        action="google_ads_budget_update",
         platform="google_ads",
         campaign_id=campaign_id,
         summary="Increased budget for traffic test",
         reversible_params={
-            "operation": "google_ads.budgets.update",
+            "operation": "google_ads_budget_update",
             "params": {"budget_id": budget_id, "amount_micros": amount_micros},
         },
     )
@@ -100,10 +100,10 @@ class TestExecuteRollback:
         )
 
         assert result["status"] == "applied"
-        assert result["dispatched_tool"] == "google_ads.budgets.update"
+        assert result["dispatched_tool"] == "google_ads_budget_update"
         assert dispatcher.calls == [
             (
-                "google_ads.budgets.update",
+                "google_ads_budget_update",
                 {"budget_id": "B1", "amount_micros": 5_000_000_000},
             )
         ]
@@ -111,7 +111,7 @@ class TestExecuteRollback:
         doc = read_state_file(state_file)
         assert len(doc.action_log) == 2
         new_entry = doc.action_log[1]
-        assert new_entry.action == "google_ads.budgets.update"
+        assert new_entry.action == "google_ads_budget_update"
         assert new_entry.platform == "google_ads"
         assert new_entry.rollback_of == 0
         # Rollback of a rollback must not be chained by default.
@@ -179,10 +179,10 @@ class TestExecuteRollback:
         state_file = tmp_path / "STATE.json"
         entry = ActionLogEntry(
             timestamp="t",
-            action="google_ads.campaigns.delete",
+            action="google_ads_campaigns_delete",
             platform="google_ads",
             reversible_params={
-                "operation": "google_ads.campaigns.delete",
+                "operation": "google_ads_campaigns_delete",
                 "params": {"campaign_id": "100"},
             },
         )
@@ -264,10 +264,10 @@ class TestExecuteRollback:
         state_file = tmp_path / "STATE.json"
         entry = ActionLogEntry(
             timestamp="t",
-            action="google_ads.budgets.update",
+            action="google_ads_budget_update",
             platform="google_ads",
             reversible_params={
-                "operation": "google_ads.budgets.update",
+                "operation": "google_ads_budget_update",
                 "params": {"budget_id": "B1", "amount_micros": 1_000_000_000},
                 "caveats": ["Spend already incurred cannot be refunded."],
             },

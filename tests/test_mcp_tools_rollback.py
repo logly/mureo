@@ -1,4 +1,4 @@
-"""MCP tool tests for rollback_apply and rollback.plan.get.
+"""MCP tool tests for rollback_apply and rollback_plan_get.
 
 Locks in that the tools are registered in the aggregate MCP server
 tool list, and that the handlers wire through to the executor /
@@ -36,11 +36,11 @@ def sandboxed_cwd(
 def _budget_entry() -> ActionLogEntry:
     return ActionLogEntry(
         timestamp="2026-04-15T10:00:00",
-        action="google_ads.budgets.update",
+        action="google_ads_budget_update",
         platform="google_ads",
         campaign_id="100",
         reversible_params={
-            "operation": "google_ads.budgets.update",
+            "operation": "google_ads_budget_update",
             "params": {"budget_id": "B1", "amount_micros": 5_000_000_000},
         },
     )
@@ -78,7 +78,7 @@ class TestPlanGetHandler:
         )
         payload = json.loads(result[0].text)
         assert payload["status"] == "supported"
-        assert payload["operation"] == "google_ads.budgets.update"
+        assert payload["operation"] == "google_ads_budget_update"
         assert payload["params"] == {
             "budget_id": "B1",
             "amount_micros": 5_000_000_000,
@@ -153,10 +153,10 @@ class TestApplyHandler:
         )
         payload = json.loads(result[0].text)
         assert payload["status"] == "applied"
-        assert payload["dispatched_tool"] == "google_ads.budgets.update"
+        assert payload["dispatched_tool"] == "google_ads_budget_update"
         assert calls == [
             (
-                "google_ads.budgets.update",
+                "google_ads_budget_update",
                 {"budget_id": "B1", "amount_micros": 5_000_000_000},
             )
         ]

@@ -55,7 +55,7 @@ TOOLS: list[Tool] = [
             "approval_status per keyword. Read-only. Use this to locate "
             "a criterion_id before calling keywords.pause / remove, or to "
             "audit keyword coverage. For quality-score diagnostics use "
-            "google_ads.keywords.diagnose."
+            "google_ads_keywords_diagnose."
         ),
         inputSchema={
             "type": "object",
@@ -144,7 +144,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Keyword criterion ID as returned by "
-                        "google_ads.keywords.list."
+                        "google_ads_keywords_list."
                     ),
                 },
             },
@@ -232,7 +232,7 @@ TOOLS: list[Tool] = [
             "campaign. Returns criterion_id, text, and match_type per "
             "entry. Read-only. Ad group-level negatives are not included "
             "here — they live on the ad group and are managed through "
-            "google_ads.negative_keywords.add_to_ad_group."
+            "google_ads_negative_keywords_add_to_ad_group."
         ),
         inputSchema={
             "type": "object",
@@ -251,7 +251,7 @@ TOOLS: list[Tool] = [
         description=(
             "Adds one or more campaign-level negative keywords. These "
             "apply to every ad group in the campaign. Returns created "
-            "criterion_ids. Mutating, reversible via rollback.apply. For "
+            "criterion_ids. Mutating, reversible via rollback_apply. For "
             "negatives scoped to a single ad group use "
             "google_ads_negative_keywords_add_to_ad_group instead — "
             "campaign-level negatives can over-block if applied too broadly."
@@ -291,7 +291,7 @@ TOOLS: list[Tool] = [
             "stats are preserved, and the keyword can be resumed by "
             "calling google_ads_keywords_add with the same text+match_type "
             "(or re-enabled via the Google Ads UI). Returns the criterion "
-            "ID and new status. Reversible via rollback.apply. Use this "
+            "ID and new status. Reversible via rollback_apply. Use this "
             "instead of google_ads_keywords_remove whenever the suspension "
             "might be temporary."
         ),
@@ -307,7 +307,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Keyword criterion ID as returned by "
-                        "google_ads.keywords.list."
+                        "google_ads_keywords_list."
                     ),
                 },
             },
@@ -338,7 +338,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Negative-keyword criterion ID as returned by "
-                        "google_ads.negative_keywords.list."
+                        "google_ads_negative_keywords_list."
                     ),
                 },
             },
@@ -352,7 +352,7 @@ TOOLS: list[Tool] = [
             "Adds one or more ad group-level negative keywords. Scope is "
             "narrower than campaign-level negatives — exclusions apply only "
             "to the specified ad group. Returns created criterion_ids. "
-            "Mutating, reversible via rollback.apply. Prefer this over "
+            "Mutating, reversible via rollback_apply. Prefer this over "
             "google_ads_negative_keywords_add when the exclusion is only "
             "wrong in one ad group's context."
         ),

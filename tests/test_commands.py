@@ -200,7 +200,7 @@ META_ADS_TOOLS: set[str] = {
 
 ALL_KNOWN_TOOLS: set[str] = GOOGLE_ADS_TOOLS | META_ADS_TOOLS
 
-# Regex to extract tool names like `google_ads.xxx.yyy` and `meta_ads.xxx.yyy`
+# Regex to extract tool names like `google_ads_xxx_yyy` and `meta_ads_xxx_yyy`
 TOOL_NAME_PATTERN = re.compile(r"`((?:google_ads|meta_ads)\.\w+\.\w+)`")
 
 

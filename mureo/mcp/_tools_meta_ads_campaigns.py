@@ -45,7 +45,7 @@ TOOLS: list[Tool] = [
             "daily_budget, and lifetime_budget per campaign. Read-only. "
             "Use this to find a campaign_id before calling campaigns.get "
             "or the pause/enable helpers. For a single campaign's full "
-            "detail record use meta_ads.campaigns.get."
+            "detail record use meta_ads_campaigns_get."
         ),
         inputSchema={
             "type": "object",
@@ -79,7 +79,7 @@ TOOLS: list[Tool] = [
             "special_ad_categories, spend_cap, start_time, stop_time, and "
             "issues_info (non-empty when status is WITH_ISSUES). "
             "Read-only. Use this when a campaign_id is already known; for "
-            "discovery use meta_ads.campaigns.list."
+            "discovery use meta_ads_campaigns_list."
         ),
         inputSchema={
             "type": "object",
@@ -89,7 +89,7 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Campaign ID (numeric string) as returned by "
-                        "meta_ads.campaigns.list."
+                        "meta_ads_campaigns_list."
                     ),
                 },
             },
@@ -106,7 +106,7 @@ TOOLS: list[Tool] = [
             "pass status='ACTIVE' only if the operator has confirmed "
             "immediate spend. A campaign acts as a container; ad sets "
             "(where budgets and targeting live) and ads must be created "
-            "separately via meta_ads_ad_sets_create and meta_ads.ads.create."
+            "separately via meta_ads_ad_sets_create and meta_ads_ads_create."
         ),
         inputSchema={
             "type": "object",
@@ -172,7 +172,7 @@ TOOLS: list[Tool] = [
         description=(
             "Updates fields on an existing campaign. Partial update — only "
             "the supplied fields are changed. Returns the updated campaign. "
-            "Mutating, reversible via rollback.apply. For status-only "
+            "Mutating, reversible via rollback_apply. For status-only "
             "transitions prefer meta_ads_campaigns_pause / "
             "meta_ads_campaigns_enable, which are safer and map to a "
             "single explicit operator intent."
@@ -205,7 +205,7 @@ TOOLS: list[Tool] = [
                         "New daily budget in account currency minor units "
                         "(cents for USD, yen for JPY). Only settable when "
                         "the campaign is configured for CBO; ad-set-level "
-                        "budgets must be edited via meta_ads.ad_sets.update."
+                        "budgets must be edited via meta_ads_ad_sets_update."
                     ),
                 },
             },
@@ -219,7 +219,7 @@ TOOLS: list[Tool] = [
             "Pauses a single campaign by setting its status to PAUSED. "
             "Cascades to active ad sets and ads — nothing underneath the "
             "campaign will serve while it is PAUSED. Lightweight and "
-            "reversible via rollback_apply or meta_ads.campaigns.enable. "
+            "reversible via rollback_apply or meta_ads_campaigns_enable. "
             "Returns the campaign id and new status. Use for immediate "
             "stop-spend situations; use meta_ads_campaigns_update with "
             "status='DELETED' to soft-delete instead."
@@ -244,7 +244,7 @@ TOOLS: list[Tool] = [
             "are still PAUSED they do NOT auto-resume; call "
             "meta_ads_ad_sets_enable / meta_ads_ads_enable for those too. "
             "Returns the campaign id and new status. Reversible via "
-            "rollback_apply or meta_ads.campaigns.pause."
+            "rollback_apply or meta_ads_campaigns_pause."
         ),
         inputSchema={
             "type": "object",
@@ -295,7 +295,7 @@ TOOLS: list[Tool] = [
             "Meta targeting spec object; at minimum supply "
             "geo_locations and age bounds. Default initial status is "
             "PAUSED — only ACTIVE when the operator has confirmed spend. "
-            "After creation, attach ads with meta_ads.ads.create."
+            "After creation, attach ads with meta_ads_ads_create."
         ),
         inputSchema={
             "type": "object",
@@ -383,9 +383,9 @@ TOOLS: list[Tool] = [
         description=(
             "Updates one or more settings on an existing ad set. Partial "
             "update — only provided fields are changed. Returns the updated "
-            "ad set. Mutating, reversible via rollback.apply. For "
+            "ad set. Mutating, reversible via rollback_apply. For "
             "status-only transitions prefer meta_ads_ad_sets_pause / "
-            "meta_ads.ad_sets.enable. Changing `targeting` replaces the "
+            "meta_ads_ad_sets_enable. Changing `targeting` replaces the "
             "entire targeting spec — fetch the current spec via "
             "meta_ads_ad_sets_get and merge client-side to avoid data loss."
         ),
@@ -461,7 +461,7 @@ TOOLS: list[Tool] = [
             "Pauses a single ad set by setting its status to PAUSED. "
             "Ads under this ad set stop serving while it is PAUSED, even "
             "if their own status is ACTIVE. Lightweight, reversible via "
-            "rollback_apply or meta_ads.ad_sets.enable. Returns the "
+            "rollback_apply or meta_ads_ad_sets_enable. Returns the "
             "ad_set_id and new status. Does not affect sibling ad sets."
         ),
         inputSchema={
@@ -484,7 +484,7 @@ TOOLS: list[Tool] = [
             "actually serve. Ads underneath retain their own status — "
             "PAUSED ads do not auto-resume. Returns the ad_set_id and "
             "new status. Reversible via rollback_apply or "
-            "meta_ads.ad_sets.pause."
+            "meta_ads_ad_sets_pause."
         ),
         inputSchema={
             "type": "object",
@@ -508,7 +508,7 @@ TOOLS: list[Tool] = [
             "Read-only. Use this to find an ad_id before calling "
             "ads.update / pause / enable, or to audit which creatives are "
             "in flight. For the creative itself (image URL, copy), follow "
-            "up with meta_ads.creatives.get."
+            "up with meta_ads_creatives_list."
         ),
         inputSchema={
             "type": "object",
@@ -531,7 +531,7 @@ TOOLS: list[Tool] = [
         description=(
             "Creates a new ad inside an existing ad set, binding it to a "
             "pre-existing creative. Returns the new ad id. Mutating, "
-            "reversible via rollback.apply. Default initial status is "
+            "reversible via rollback_apply. Default initial status is "
             "PAUSED. The creative must already exist — use "
             "meta_ads_creatives_create (or sibling constructors like "
             "meta_ads_creatives_create_carousel) to produce a creative_id "
@@ -572,11 +572,11 @@ TOOLS: list[Tool] = [
         name="meta_ads_ads_update",
         description=(
             "Updates fields on an existing ad. Partial update. Returns the "
-            "updated ad. Mutating, reversible via rollback.apply. The ad's "
+            "updated ad. Mutating, reversible via rollback_apply. The ad's "
             "creative cannot be swapped via this call — creative changes "
             "require creating a replacement ad with a new creative_id and "
             "pausing the old one. For status-only transitions use "
-            "meta_ads_ads_pause / meta_ads.ads.enable."
+            "meta_ads_ads_pause / meta_ads_ads_enable."
         ),
         inputSchema={
             "type": "object",
@@ -631,7 +631,7 @@ TOOLS: list[Tool] = [
         description=(
             "Pauses a single ad by setting its status to PAUSED. "
             "Lightweight; the ad stops serving immediately. Reversible "
-            "via rollback_apply or meta_ads.ads.enable. Returns the ad_id "
+            "via rollback_apply or meta_ads_ads_enable. Returns the ad_id "
             "and new status. Does not affect the parent ad set or sibling "
             "ads. Use for creative-level pause; use "
             "meta_ads_ad_sets_pause to stop a whole ad set."
@@ -654,7 +654,7 @@ TOOLS: list[Tool] = [
             "Resumes a paused ad by setting its status to ACTIVE. The "
             "parent ad set and campaign must also be ACTIVE for the ad "
             "to actually serve. Returns the ad_id and new status. "
-            "Reversible via rollback_apply or meta_ads.ads.pause."
+            "Reversible via rollback_apply or meta_ads_ads_pause."
         ),
         inputSchema={
             "type": "object",

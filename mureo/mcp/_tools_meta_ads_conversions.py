@@ -27,7 +27,7 @@ _PIXEL_ID_PARAM = {
     "type": "string",
     "description": (
         "Meta Pixel ID the event is attributed to. Find via "
-        "meta_ads.pixels.list. CAPI events flow into the same pixel as "
+        "meta_ads_pixels_list. CAPI events flow into the same pixel as "
         "browser events; dedupe happens on event_id if one is supplied "
         "in user_data / custom_data."
     ),
@@ -239,8 +239,8 @@ TOOLS: list[Tool] = [
             "Meta's side. Use for form submissions, trial signups, "
             "demo requests — anything where a prospect identifies "
             "themselves but no money changes hands. For money-moving "
-            "events use meta_ads.conversions.send_purchase. For "
-            "non-standard event names use meta_ads.conversions.send."
+            "events use meta_ads_conversions_send_purchase. For "
+            "non-standard event names use meta_ads_conversions_send."
         ),
         inputSchema={
             "type": "object",

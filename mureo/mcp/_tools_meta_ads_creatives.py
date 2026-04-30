@@ -4,7 +4,7 @@ Tool descriptions follow ``docs/tdqs-style-guide.md``. Creatives are the
 visual+copy payload attached to Meta ads; images and videos are the
 underlying media assets. Flow: upload media → obtain image_hash /
 video_id → create creative → attach creative to an ad via
-meta_ads.ads.create.
+meta_ads_ads_create.
 """
 
 from __future__ import annotations
@@ -50,8 +50,8 @@ TOOLS: list[Tool] = [
             "account. Default limit is 50 creatives per call (max 1000); "
             "for larger inventories use smaller limits and filter client-"
             "side. Use this to audit creative inventory or to find a "
-            "creative_id for reuse in meta_ads.ads.create. To list the ads "
-            "that consume these creatives, use meta_ads.ads.list."
+            "creative_id for reuse in meta_ads_ads_create. To list the ads "
+            "that consume these creatives, use meta_ads_ads_list."
         ),
         inputSchema={
             "type": "object",
@@ -79,9 +79,9 @@ TOOLS: list[Tool] = [
             "exactly one of image_url or image_hash — image_url triggers "
             "Meta to fetch and host the image; image_hash references an "
             "image already uploaded via meta_ads_creatives_upload_image or "
-            "meta_ads.images.upload_file. For multi-image carousels use "
+            "meta_ads_images_upload_file. For multi-image carousels use "
             "meta_ads_creatives_create_carousel; for dynamic / automatic "
-            "optimization use meta_ads.creatives.create_dynamic."
+            "optimization use meta_ads_creatives_create_dynamic."
         ),
         inputSchema={
             "type": "object",
@@ -116,7 +116,7 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Image hash returned from "
                         "meta_ads_creatives_upload_image / "
-                        "meta_ads.images.upload_file. Mutually exclusive "
+                        "meta_ads_images_upload_file. Mutually exclusive "
                         "with image_url."
                     ),
                 },
@@ -167,11 +167,11 @@ TOOLS: list[Tool] = [
             "Creates a Dynamic Creative — Meta auto-generates and "
             "optimises combinations from multiple images, headlines, "
             "bodies, and CTAs. Returns the new creative id. Mutating, "
-            "reversible via rollback.apply. Use when you want Meta to "
+            "reversible via rollback_apply. Use when you want Meta to "
             "learn the best-performing asset mix rather than testing "
             "manually. For static single-image ads use "
             "meta_ads_creatives_create; for explicitly-controlled multi-"
-            "card layouts use meta_ads.creatives.create_carousel. Supply "
+            "card layouts use meta_ads_creatives_create_carousel. Supply "
             "2–10 images, 1–5 of each text field; Meta combines them at "
             "serve time."
         ),
@@ -287,11 +287,11 @@ TOOLS: list[Tool] = [
         description=(
             "Creates a Carousel AdCreative with 2–10 swipeable cards. "
             "Returns the new creative id. Mutating, reversible via "
-            "rollback.apply. Each card carries its own image (or video), "
+            "rollback_apply. Each card carries its own image (or video), "
             "name, description, and link — useful for product catalogs or "
             "multi-step narratives. For auto-optimized asset rotation use "
             "meta_ads_creatives_create_dynamic; for product-feed-driven "
-            "carousels use meta_ads.creatives.create_collection."
+            "carousels use meta_ads_creatives_create_collection."
         ),
         inputSchema={
             "type": "object",
@@ -373,7 +373,7 @@ TOOLS: list[Tool] = [
         description=(
             "Creates a Collection AdCreative that pulls products from a "
             "catalog into a mobile-optimized storefront layout. Returns "
-            "the new creative id. Mutating, reversible via rollback.apply. "
+            "the new creative id. Mutating, reversible via rollback_apply. "
             "Requires a Meta product catalog with the referenced "
             "product_ids — set up the catalog via meta_ads.catalogs.* "
             "tools first. For static card decks (non-catalog) use "
@@ -390,7 +390,7 @@ TOOLS: list[Tool] = [
                     "minItems": 1,
                     "description": (
                         "Product IDs drawn from the linked Meta catalog. "
-                        "List via meta_ads.products.list."
+                        "List via meta_ads_products_list."
                     ),
                 },
                 "link": {
@@ -465,7 +465,7 @@ TOOLS: list[Tool] = [
             "persisted. Meta performs asynchronous processing after "
             "upload; newly-uploaded videos may take a few minutes before "
             "they can be attached to ads. For uploads from local files "
-            "use meta_ads.videos.upload_file."
+            "use meta_ads_videos_upload_file."
         ),
         inputSchema={
             "type": "object",
@@ -498,7 +498,7 @@ TOOLS: list[Tool] = [
             "creative-construction tools. Mutating. Meta processes the "
             "video asynchronously after upload — allow a few minutes "
             "before attaching the video to ads. For uploads from public "
-            "URLs use meta_ads.videos.upload."
+            "URLs use meta_ads_videos_upload."
         ),
         inputSchema={
             "type": "object",

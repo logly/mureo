@@ -12,7 +12,7 @@ Run a daily health check on all marketing accounts using the strategy context.
 3. **Sync state**: For each platform in STATE.json `platforms`, fetch current campaign data via `google_ads_campaigns_list` / `meta_ads_campaigns_list` and update STATE.json. Both tools work in BYOD mode — do **not** look for raw CSVs in the project directory; mureo BYOD data is centralized under `~/.mureo/byod/` and is only accessible through MCP tools.
 
 4. **Platform health checks**: Run health diagnostics on each configured ad platform:
-   - **Google Ads**: `google_ads_performance_report` (campaign-level metrics — works in BYOD), `google_ads_health_check_all` (returns `[]` in BYOD; only meaningful with real-API), `google_ads_cost_increase_investigate` (per-campaign anomaly check), `google_ads.zero_conversions.diagnose` (per-campaign).
+   - **Google Ads**: `google_ads_performance_report` (campaign-level metrics — works in BYOD), `google_ads_health_check_all` (returns `[]` in BYOD; only meaningful with real-API), `google_ads_cost_increase_investigate` (per-campaign anomaly check), `google_ads_monitoring_zero_conversions` (per-campaign).
    - **Meta Ads**: `meta_ads_insights_report` — surfaces a `result_indicator` field per campaign (`actions:link_click` vs `actions:offsite_conversion.fb_pixel_lead`); use this to detect CV-definition mismatches across campaigns where one campaign's "results" are clicks while another's are real leads.
    - In BYOD some tools return `[]` for unsupported features (auction insights, ad performance) — that's by design, not missing data; carry on with the rest of the diagnostics.
    - Present a unified health summary across all platforms.

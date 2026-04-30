@@ -38,7 +38,7 @@ def state_file(tmp_path: Path) -> Path:
                 "campaign_id": "111",
                 "summary": "Reduced daily budget",
                 "reversible_params": {
-                    "operation": "google_ads.budgets.update",
+                    "operation": "google_ads_budget_update",
                     "params": {"budget_id": "222", "amount_micros": 10_000_000_000},
                 },
             },
@@ -53,7 +53,7 @@ def state_file(tmp_path: Path) -> Path:
                 "platform": "meta_ads",
                 "campaign_id": "abc",
                 "reversible_params": {
-                    "operation": "meta_ads.campaigns.update_status",
+                    "operation": "meta_ads_campaigns_update_status",
                     "params": {"campaign_id": "abc", "status": "ACTIVE"},
                     "caveats": ["Spend during pause is not refundable."],
                 },
@@ -132,7 +132,7 @@ class TestRollbackShow:
             ["rollback", "show", "--state-file", str(state_file), "0"],
         )
         assert result.exit_code == 0
-        assert "google_ads.budgets.update" in result.output
+        assert "google_ads_budget_update" in result.output
         assert "supported" in result.output.lower()
 
     def test_show_out_of_range_exits_nonzero(self, state_file: Path) -> None:
@@ -172,7 +172,7 @@ class TestSafeOutput:
                     "action": "update_budget\x1b[2Jspoof",
                     "platform": "google_ads",
                     "reversible_params": {
-                        "operation": "google_ads.budgets.update",
+                        "operation": "google_ads_budget_update",
                         "params": {"budget_id": "1", "amount_micros": 1},
                     },
                 },

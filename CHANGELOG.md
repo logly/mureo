@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING for some operators)
+- **MCP tool names switched from dot to underscore separators** to comply with the MCP spec regex `^[a-zA-Z0-9_-]{1,64}$`. Without this, Claude Desktop's chat (and any other spec-strict MCP host) rejected the entire mureo MCP server at registration time with errors like `tools.42.FrontendRemoteMcpToolDefinition.name: String should match pattern '^[a-zA-Z0-9_-]{1,64}$'`. Claude Code accepted dotted names through lenient validation, which is why the bug went undetected. **Migration impact**:
+  - **Claude Code users**: no action required. Slash commands (`/daily-check`, etc.) and natural-language tool calls are unaffected.
+  - **Claude Desktop / claude.ai web users**: this fix unblocks registration; the server now appears in the tool surface as expected.
+  - **Operators with custom `excludeTools` lists** (e.g. Gemini CLI extension config at `~/.gemini/extensions/mureo/gemini-extension.json`): rename entries in your `excludeTools` array to the new underscore form. Example: `"google_ads.budget.update"` -> `"google_ads_budget_update"`. Otherwise your previous exclusion list silently stops blocking those tools after upgrade.
+  - **Anyone with code or scripts referencing tool names directly**: rename `prefix.X.Y` -> `prefix_X_Y` (173 tools across `google_ads`, `meta_ads`, `search_console`, `rollback`, `analysis` prefixes).
+- New regression test `tests/test_mcp_tool_name_spec.py::test_all_registered_tools_match_mcp_spec` enforces the spec regex in CI for every future tool addition.
+
 ## [0.7.1] - 2026-04-29
 
 PyPI re-publish of v0.7.0 with the post-#54 fixes folded in. The original `0.7.0` is on PyPI but predates these patches; PyPI does not allow re-uploading the same version, so the same change set ships as `0.7.1`.

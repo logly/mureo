@@ -151,7 +151,7 @@ mureo rollback list --state-file /path/to/STATE.json
   "source_action": "update_budget",
   "platform": "google_ads",
   "status": "supported",
-  "operation": "google_ads.budgets.update",
+  "operation": "google_ads_budget_update",
   "params": {"budget_id": "222", "amount_micros": 10000000000},
   "caveats": [],
   "notes": ""

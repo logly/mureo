@@ -58,7 +58,7 @@ TOOLS: list[Tool] = [
             "(rollback deletes the catalog if it has no ads consuming "
             "it). Catalogs are the container — add products individually "
             "via meta_ads_products_add, or schedule bulk imports via "
-            "meta_ads.feeds.create."
+            "meta_ads_feeds_create."
         ),
         inputSchema={
             "type": "object",
@@ -96,7 +96,7 @@ TOOLS: list[Tool] = [
                 "catalog_id": {
                     "type": "string",
                     "description": (
-                        "Catalog ID as returned by meta_ads.catalogs.list."
+                        "Catalog ID as returned by meta_ads_catalogs_list."
                     ),
                 },
             },
@@ -162,7 +162,7 @@ TOOLS: list[Tool] = [
         name="meta_ads_products_add",
         description=(
             "Adds a single product to a Meta Product Catalog. Returns the "
-            "new product_id. Mutating, reversible via rollback.apply. "
+            "new product_id. Mutating, reversible via rollback_apply. "
             "For bulk ingestion prefer a scheduled feed "
             "(meta_ads_feeds_create) — Meta rate-limits single-product "
             "adds aggressively. Meta requires a stable retailer_id per "
@@ -426,7 +426,7 @@ TOOLS: list[Tool] = [
         description=(
             "Creates a scheduled product feed that imports products into "
             "a catalog from a URL. Returns the new feed_id. Mutating, "
-            "reversible via rollback.apply. Feeds run automatically on "
+            "reversible via rollback_apply. Feeds run automatically on "
             "the chosen schedule; the first run triggers shortly after "
             "creation. For one-off product adds use "
             "meta_ads_products_add — feeds are for ongoing bulk sync. "
