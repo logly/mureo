@@ -11,11 +11,19 @@ To add a new scenario:
 
 from __future__ import annotations
 
-from mureo.demo.scenarios import seasonality_trap
+from mureo.demo.scenarios import (
+    halo_effect,
+    hidden_champion,
+    seasonality_trap,
+    strategy_drift,
+)
 from mureo.demo.scenarios._base import Scenario, campaign_id
 
 SCENARIOS: dict[str, Scenario] = {
     seasonality_trap.SCENARIO.name: seasonality_trap.SCENARIO,
+    halo_effect.SCENARIO.name: halo_effect.SCENARIO,
+    hidden_champion.SCENARIO.name: hidden_champion.SCENARIO,
+    strategy_drift.SCENARIO.name: strategy_drift.SCENARIO,
 }
 
 DEFAULT_SCENARIO: str = seasonality_trap.SCENARIO.name

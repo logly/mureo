@@ -162,6 +162,73 @@ def test_scenario_state_campaign_names_appear_in_bundle(scenario) -> None:
         )
 
 
+def test_scenario_has_minimum_data_breadth(scenario) -> None:
+    """Each scenario must carry enough data for every workflow skill.
+
+    Without these floors, ``/search-term-cleanup`` could legitimately
+    say "nothing to clean up", ``/budget-rebalance`` could see one
+    campaign and decline to act, etc. The numbers are picked so that
+    every skill in mureo's catalog sees enough data to reach a
+    non-trivial conclusion.
+    """
+    rows = scenario.sheet_rows
+
+    # Header is always row 0; subtract it.
+    n_campaigns_unique = len({row[1] for row in rows["campaigns"][1:]})
+    n_ad_groups_unique = len({(row[1], row[2]) for row in rows["ad_groups"][1:]})
+    n_search_terms = len(rows["search_terms"]) - 1
+    n_keywords = len(rows["keywords"]) - 1
+    n_meta_ads_unique = len({row[3] for row in rows["meta_ads"][1:]})
+
+    assert n_campaigns_unique >= 4, (
+        f"{scenario.name}: needs >=4 Google campaigns "
+        f"for /budget-rebalance to have signal (have {n_campaigns_unique})"
+    )
+    assert (
+        n_ad_groups_unique >= 6
+    ), f"{scenario.name}: needs >=6 ad groups (have {n_ad_groups_unique})"
+    assert n_search_terms >= 15, (
+        f"{scenario.name}: needs >=15 search terms for "
+        f"/search-term-cleanup outlier detection (have {n_search_terms})"
+    )
+    assert n_keywords >= 8, f"{scenario.name}: needs >=8 keywords (have {n_keywords})"
+    assert n_meta_ads_unique >= 4, (
+        f"{scenario.name}: needs >=4 unique Meta ads for "
+        f"/creative-refresh to have signal (have {n_meta_ads_unique})"
+    )
+
+    n_action_log = len(scenario.state_doc.get("action_log", []))
+    # Scenarios that opt out via ``requires_action_log=False`` do so
+    # because a sparse / absent action_log is itself part of their
+    # diagnostic signal (see ``Scenario.requires_action_log`` docs).
+    if scenario.requires_action_log:
+        assert n_action_log >= 3, (
+            f"{scenario.name}: needs >=3 action_log entries so "
+            f"/learn and /sync-state have history to evaluate "
+            f"(have {n_action_log})"
+        )
+
+
+def test_scenario_strategy_md_has_required_sections(scenario) -> None:
+    """STRATEGY.md must include the load-bearing sections workflow skills read.
+
+    ``/goal-review`` reads numeric goals; ``/competitive-scan`` and
+    ``/daily-check`` read constraints; multiple commands branch on
+    Operation Mode. A scenario missing any of these silently
+    underperforms in the matching skill.
+    """
+    text = scenario.strategy_md.lower()
+    assert (
+        "goal" in text or "目標" in text
+    ), f"{scenario.name}: STRATEGY.md missing Goals section"
+    assert (
+        "constraint" in text or "制約" in text
+    ), f"{scenario.name}: STRATEGY.md missing Constraints section"
+    assert (
+        "operation mode" in text or "運用モード" in text
+    ), f"{scenario.name}: STRATEGY.md missing Operation Mode"
+
+
 def test_byod_synthetic_id_helpers_consistent() -> None:
     """The Google and Meta adapters' ``_synthetic_id`` must agree.
 
