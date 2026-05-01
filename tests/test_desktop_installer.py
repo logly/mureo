@@ -290,7 +290,7 @@ def test_install_with_demo_sets_byod_env_during_seed(fake_home: Path) -> None:
             workspace=fake_home / "mureo", with_demo="seasonality-trap"
         )
 
-    assert seen_env["value"] == str((fake_home / "mureo" / "byod").resolve())
+    assert seen_env["value"] == str((fake_home / "mureo").resolve() / "byod")
 
 
 def test_install_restores_byod_env_after_seed(
@@ -485,3 +485,60 @@ def test_install_idempotent_does_not_duplicate_mureo_entry(fake_home: Path) -> N
     cfg = _read_config(fake_home)
     server_keys = list(cfg["mcpServers"].keys())
     assert server_keys.count("mureo") == 1
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: real materialize + workspace isolation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_install_with_demo_lands_byod_in_workspace_not_global(
+    fake_home: Path,
+) -> None:
+    """End-to-end: ``--with-demo`` must produce a manifest under
+    ``<workspace>/byod/`` and **not** under ``~/.mureo/byod/``.
+
+    All earlier tests mock ``_run_demo_init``, so this is the only
+    test that proves the env-var dance actually flows through to the
+    real ``materialize`` call. Without this guard a future refactor
+    that drops the env-var around the seed would silently regress to
+    writing the demo bundle into the global directory.
+    """
+    from mureo.desktop_installer import install_desktop
+
+    workspace = fake_home / "mureo"
+    install_desktop(workspace=workspace, with_demo="seasonality-trap")
+
+    workspace_manifest = workspace / "byod" / "manifest.json"
+    global_manifest = fake_home / ".mureo" / "byod" / "manifest.json"
+    assert (
+        workspace_manifest.exists()
+    ), f"Expected demo BYOD manifest at {workspace_manifest}; got nothing"
+    assert (
+        not global_manifest.exists()
+    ), f"Demo bundle leaked into global {global_manifest}"
+
+
+@pytest.mark.integration
+def test_two_workspaces_keep_byod_isolated(fake_home: Path) -> None:
+    """The headline guarantee: a demo workspace and a real workspace
+    can coexist with independent BYOD directories. Switching between
+    them is just ``install-desktop --workspace ... --force``."""
+    from mureo.desktop_installer import install_desktop
+
+    demo_ws = fake_home / "mureo-demo"
+    real_ws = fake_home / "mureo-real"
+
+    install_desktop(workspace=demo_ws, with_demo="seasonality-trap")
+    install_desktop(workspace=real_ws, force=True)
+
+    assert (demo_ws / "byod" / "manifest.json").exists()
+    # The real workspace was installed without --with-demo, so its
+    # byod/ should be empty (or absent). The wrapper, however, must
+    # point at it so future imports land there.
+    real_wrapper = (fake_home / ".local" / "bin" / "mureo-mcp-wrapper.sh").read_text()
+    assert f"export MUREO_BYOD_DIR={real_ws.resolve() / 'byod'}" in real_wrapper
+    # And the demo workspace's byod/ must still be intact after the
+    # second install — switching workspaces does not touch siblings.
+    assert (demo_ws / "byod" / "manifest.json").exists()

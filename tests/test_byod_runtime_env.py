@@ -10,6 +10,7 @@ behaviour change.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,10 @@ def test_env_var_overrides_home(
     assert byod_data_dir() == target
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows uses USERPROFILE/HOMEDRIVE, not HOME, for ~ expansion",
+)
 def test_env_var_expanduser(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """``~`` in the env var is expanded so users can point at
     ``~/mureo/byod/`` without resolving manually in their shell rc."""
@@ -71,6 +76,20 @@ def test_empty_env_var_falls_back_to_default(
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setenv("MUREO_BYOD_DIR", "")
+
+    assert byod_data_dir() == tmp_path / ".mureo" / "byod"
+
+
+def test_whitespace_only_env_var_falls_back_to_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A whitespace-only env var (`` ``, ``\\t``) must also fall back —
+    otherwise the BYOD directory ends up as a literal ``" "`` path,
+    which is even harder to debug than the empty-string case."""
+    from mureo.byod.runtime import byod_data_dir
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("MUREO_BYOD_DIR", "   \t  ")
 
     assert byod_data_dir() == tmp_path / ".mureo" / "byod"
 

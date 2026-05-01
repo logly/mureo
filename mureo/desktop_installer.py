@@ -307,8 +307,19 @@ def install_desktop(
     # this process for the duration of the seed, then restore the
     # original value (or unset if it was unset) so we don't leak
     # state into anything that imported install_desktop as a library.
+    #
+    # Not thread-safe: ``os.environ`` is process-global, so two
+    # concurrent ``install_desktop`` calls would race the env mutation.
+    # Acceptable today because the CLI invokes this once per process;
+    # if a future GUI installer parallelises across workspaces we
+    # should refactor ``materialize`` to take an explicit ``byod_dir``
+    # parameter and drop the env-var dance.
+    #
+    # ``str(workspace / "byod")`` matches what the wrapper will export
+    # (``str(workspace / "byod")`` quoted, no extra ``.resolve()``).
+    # ``workspace`` is already resolved above, so the two paths agree.
     if with_demo is not None:
-        byod_target = str((workspace / "byod").resolve())
+        byod_target = str(workspace / "byod")
         previous_byod = os.environ.get("MUREO_BYOD_DIR")
         os.environ["MUREO_BYOD_DIR"] = byod_target
         try:

@@ -37,20 +37,23 @@ def byod_data_dir() -> Path:
     """Return the BYOD data directory (does not create it).
 
     Resolution precedence:
-      1. ``MUREO_BYOD_DIR`` environment variable (set by the
-         install-desktop wrapper to ``<workspace>/byod`` so each
-         Claude Desktop workspace sees its own BYOD store and demo
-         data does not leak across workspaces).
+      1. ``MUREO_BYOD_DIR`` environment variable. Set by the
+         install-desktop wrapper to ``<workspace>/byod`` for the MCP
+         runtime, and also temporarily set by ``install_desktop()``
+         itself during ``--with-demo`` seeding. Each Claude Desktop
+         workspace sees its own BYOD store and demo data does not
+         leak across workspaces.
       2. Legacy ``~/.mureo/byod/`` for existing CLI / Claude Code
          users — preserves backward compatibility.
 
-    An empty env var is treated as 'unset' so a stray
-    ``MUREO_BYOD_DIR=`` from a malformed shell rc cannot silently
-    redirect BYOD into the cwd. ``~`` in the value is expanded.
+    An empty or whitespace-only env var is treated as 'unset' so a
+    stray ``MUREO_BYOD_DIR=`` (or `` `` from a malformed shell rc)
+    cannot silently redirect BYOD into the cwd or a path named
+    ``" "``. ``~`` in the value is expanded.
     """
     override = os.environ.get(_BYOD_DIR_ENV)
-    if override:
-        return Path(override).expanduser()
+    if override and override.strip():
+        return Path(override.strip()).expanduser()
     return Path.home() / _USER_DIR_NAME / _BYOD_SUBDIR
 
 
