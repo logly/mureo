@@ -208,6 +208,30 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 - Linter: **ruff** (select: E, F, I, N, W, UP, B, A, SIM, TCH)
 - Type checker: **mypy** (strict mode)
 
+## Commit Workflow
+
+**Before EVERY code commit, run a code-review agent — no exceptions, including fixup and review-response commits.**
+
+1. After `git add`, before `git commit`, invoke `python-reviewer` (or the language-appropriate `code-reviewer`) via the `Agent` tool.
+2. For changes touching security boundaries (auth, OAuth, input validation, FS I/O of external input), also run `security-reviewer` in parallel.
+3. If the reviewer reports HIGH or CRITICAL findings, fix them and **re-run the review** before committing — fixes can introduce new issues.
+4. Only commit after the review is clean.
+
+**A previous review on the same branch does NOT exempt a follow-up commit.** Each commit needs its own review pass — fixup commits, lint cleanups, and review-response commits all qualify.
+
+**Exceptions (visual review is sufficient):**
+- `docs/`, `README*`, or `CHANGELOG.md` only
+- `pyproject.toml` version bump only
+- Dependabot GitHub-Actions version bumps
+- Pure typo fixes in comments / docstrings (no logic change)
+
+**Not exceptions:**
+- Any line of production code logic, even one line
+- Any test file change (test correctness is reviewed too)
+- Pure import-ordering edits
+
+This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6 issues including 2 HIGH found post-hoc) and PR #75 (2026-05-01, fixup commit pushed without re-review). "Tests green" and "lint clean" are NOT substitutes for code review.
+
 ## Test Coverage
 
 - Target: 80% minimum (enforced by `tool.coverage.report.fail_under`)
