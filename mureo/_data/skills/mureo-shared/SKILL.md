@@ -96,6 +96,22 @@ mureo auth check-google
 mureo auth check-meta
 ```
 
+## Tool Selection (host-portable patterns)
+
+Skills and commands describe "Read STRATEGY.md", "Update STATE.json", and "Append to action_log" in prose. These map to **different tools depending on the host**, but the intent is identical:
+
+| Action | Claude Code | Claude Desktop chat / Cowork / claude.ai web |
+|--------|-------------|-----------------------------------------------|
+| Read STRATEGY.md | `Read` tool | `mureo_strategy_get` MCP tool |
+| Replace STRATEGY.md | `Write` / `Edit` tool | `mureo_strategy_set` MCP tool |
+| Read STATE.json | `Read` tool | `mureo_state_get` MCP tool |
+| Append action_log entry | `Edit` tool (modify JSON) | `mureo_state_action_log_append` MCP tool |
+| Upsert campaign snapshot | `Edit` tool (modify JSON) | `mureo_state_upsert_campaign` MCP tool |
+
+When you don't have direct filesystem tools (Desktop / Cowork / web), always reach for the corresponding `mureo_*` MCP tool — they encode the same atomic-write semantics so you can't corrupt the file mid-edit.
+
+The platform tools (`google_ads_*`, `meta_ads_*`, `search_console_*`) are the same across all hosts because they only exist as MCP tools.
+
 ## MCP Server Configuration
 
 ### Claude Code / Cursor

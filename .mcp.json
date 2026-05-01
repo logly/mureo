@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mureo": {
+      "type": "stdio",
+      "command": "sh",
+      "args": [
+        "-c",
+        "if [ -x \"${HOME}/.local/bin/mureo-mcp-wrapper.sh\" ]; then exec \"${HOME}/.local/bin/mureo-mcp-wrapper.sh\"; else echo \"mureo MCP wrapper not found at ${HOME}/.local/bin/mureo-mcp-wrapper.sh — run 'mureo install-desktop' first.\" >&2; exit 0; fi"
+      ]
+    }
+  }
+}
