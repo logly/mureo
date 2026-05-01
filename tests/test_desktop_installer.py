@@ -85,6 +85,19 @@ def test_install_generates_executable_wrapper(fake_home: Path) -> None:
     assert "-m mureo.mcp" in body
 
 
+def test_wrapper_exports_workspace_local_byod_dir(fake_home: Path) -> None:
+    """The wrapper must ``export MUREO_BYOD_DIR=<workspace>/byod`` so
+    the MCP process reads/writes BYOD data inside the workspace.
+    Without this, demo and real workspaces silently share the global
+    ``~/.mureo/byod/`` directory."""
+    from mureo.desktop_installer import install_desktop
+
+    result = install_desktop(workspace=fake_home / "mureo")
+    body = result.wrapper_path.read_text(encoding="utf-8")
+    expected = f"export MUREO_BYOD_DIR={fake_home / 'mureo' / 'byod'}"
+    assert expected in body
+
+
 def test_install_writes_config_with_mureo_entry(fake_home: Path) -> None:
     from mureo.desktop_installer import install_desktop
 
@@ -255,6 +268,69 @@ def test_install_with_demo_seeds_workspace(fake_home: Path) -> None:
     mock_demo.assert_called_once_with(
         workspace=(fake_home / "mureo").resolve(), scenario="seasonality-trap"
     )
+
+
+def test_install_with_demo_sets_byod_env_during_seed(fake_home: Path) -> None:
+    """During ``_run_demo_init`` the install process must temporarily
+    set ``MUREO_BYOD_DIR=<workspace>/byod`` so the demo's BYOD bundle
+    lands inside the workspace — not in the global ``~/.mureo/byod/``.
+    Without this, the wrapper points at the workspace but the demo
+    seed wrote elsewhere, and the user sees an empty BYOD."""
+    import os
+
+    from mureo import desktop_installer
+
+    seen_env: dict[str, str | None] = {"value": "<not-set>"}
+
+    def capture_env(workspace: Path, scenario: str) -> None:
+        seen_env["value"] = os.environ.get("MUREO_BYOD_DIR")
+
+    with patch.object(desktop_installer, "_run_demo_init", side_effect=capture_env):
+        desktop_installer.install_desktop(
+            workspace=fake_home / "mureo", with_demo="seasonality-trap"
+        )
+
+    assert seen_env["value"] == str((fake_home / "mureo" / "byod").resolve())
+
+
+def test_install_restores_byod_env_after_seed(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The temporary ``MUREO_BYOD_DIR`` must be reverted after demo
+    seed completes — leaking it into the calling process would change
+    the install-desktop caller's environment in unexpected ways."""
+    from mureo import desktop_installer
+
+    monkeypatch.setenv("MUREO_BYOD_DIR", "/preexisting/path")
+
+    with patch.object(desktop_installer, "_run_demo_init"):
+        desktop_installer.install_desktop(
+            workspace=fake_home / "mureo", with_demo="seasonality-trap"
+        )
+
+    import os
+
+    assert os.environ.get("MUREO_BYOD_DIR") == "/preexisting/path"
+
+
+def test_install_unsets_byod_env_after_seed_when_unset_initially(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If ``MUREO_BYOD_DIR`` was unset before install, it must be unset
+    after install — not left as the workspace path that we used for
+    the demo seed."""
+    import os
+
+    from mureo import desktop_installer
+
+    monkeypatch.delenv("MUREO_BYOD_DIR", raising=False)
+
+    with patch.object(desktop_installer, "_run_demo_init"):
+        desktop_installer.install_desktop(
+            workspace=fake_home / "mureo", with_demo="seasonality-trap"
+        )
+
+    assert "MUREO_BYOD_DIR" not in os.environ
 
 
 def test_install_rejects_unknown_demo_scenario(fake_home: Path) -> None:

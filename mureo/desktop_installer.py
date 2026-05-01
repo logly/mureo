@@ -87,8 +87,14 @@ def _wrapper_body(workspace: Path, python_executable: str) -> str:
     through ``shlex.quote`` so paths containing spaces, ``$``, ``;``,
     or other shell metacharacters cannot break out of the command —
     a non-engineer's HOME may well include any of those.
+
+    ``MUREO_BYOD_DIR`` is exported so each workspace's MCP server
+    reads/writes BYOD data inside that workspace (``<workspace>/byod/``)
+    rather than the global ``~/.mureo/byod/``. This lets demo and real
+    workspaces coexist without ``rm -rf`` between them.
     """
     quoted_workspace = shlex.quote(str(workspace))
+    quoted_byod_dir = shlex.quote(str(workspace / "byod"))
     quoted_python = shlex.quote(python_executable)
     return (
         "#!/bin/bash\n"
@@ -99,6 +105,8 @@ def _wrapper_body(workspace: Path, python_executable: str) -> str:
         "# this, the MCP process inherits cwd=/ which is read-only on\n"
         "# macOS and breaks atomic writes inside `mureo_strategy_set`.\n"
         f"cd {quoted_workspace}\n"
+        "# Workspace-local BYOD so demo and real setups can coexist.\n"
+        f"export MUREO_BYOD_DIR={quoted_byod_dir}\n"
         f'exec {quoted_python} -m mureo.mcp "$@"\n'
     )
 
@@ -291,8 +299,25 @@ def install_desktop(
     # Seed the demo BEFORE rewriting the config so a demo-side failure
     # cannot leave the user with a wired-up MCP pointing at an empty
     # workspace. ``_validate_demo_scenario`` already caught typos.
+    #
+    # The wrapper exports ``MUREO_BYOD_DIR=<workspace>/byod`` for the
+    # MCP runtime, but the install-desktop *process itself* is what
+    # calls ``materialize`` here — and that lookup also goes through
+    # ``byod_data_dir()``. So we temporarily set the same env var in
+    # this process for the duration of the seed, then restore the
+    # original value (or unset if it was unset) so we don't leak
+    # state into anything that imported install_desktop as a library.
     if with_demo is not None:
-        _run_demo_init(workspace=workspace, scenario=with_demo)
+        byod_target = str((workspace / "byod").resolve())
+        previous_byod = os.environ.get("MUREO_BYOD_DIR")
+        os.environ["MUREO_BYOD_DIR"] = byod_target
+        try:
+            _run_demo_init(workspace=workspace, scenario=with_demo)
+        finally:
+            if previous_byod is None:
+                os.environ.pop("MUREO_BYOD_DIR", None)
+            else:
+                os.environ["MUREO_BYOD_DIR"] = previous_byod
 
     backup_path: Path | None = None
     if config_path.exists():

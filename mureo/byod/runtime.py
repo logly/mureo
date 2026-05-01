@@ -30,10 +30,27 @@ SUPPORTED_PLATFORMS = (
 _USER_DIR_NAME = ".mureo"
 _BYOD_SUBDIR = "byod"
 _MANIFEST_NAME = "manifest.json"
+_BYOD_DIR_ENV = "MUREO_BYOD_DIR"
 
 
 def byod_data_dir() -> Path:
-    """Return ``~/.mureo/byod/`` (does not create it)."""
+    """Return the BYOD data directory (does not create it).
+
+    Resolution precedence:
+      1. ``MUREO_BYOD_DIR`` environment variable (set by the
+         install-desktop wrapper to ``<workspace>/byod`` so each
+         Claude Desktop workspace sees its own BYOD store and demo
+         data does not leak across workspaces).
+      2. Legacy ``~/.mureo/byod/`` for existing CLI / Claude Code
+         users — preserves backward compatibility.
+
+    An empty env var is treated as 'unset' so a stray
+    ``MUREO_BYOD_DIR=`` from a malformed shell rc cannot silently
+    redirect BYOD into the cwd. ``~`` in the value is expanded.
+    """
+    override = os.environ.get(_BYOD_DIR_ENV)
+    if override:
+        return Path(override).expanduser()
     return Path.home() / _USER_DIR_NAME / _BYOD_SUBDIR
 
 
