@@ -91,7 +91,7 @@ for three high-signal failure modes:
   rotation failures and audience drift.
 
 Sample-size gates (30+ conversions for CPA, 1000+ impressions for
-CTR) follow the `mureo-learning` skill's statistical-thinking rules
+CTR) follow the `_mureo-learning` skill's statistical-thinking rules
 to suppress single-day noise.
 
 Agents invoke the detector via the `analysis_anomalies_check` MCP

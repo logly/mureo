@@ -194,7 +194,7 @@ Each entry in `action_log` records an action taken by a workflow command, with o
 | `metrics_at_action` | `object` | No | Key metrics at the time of action (e.g., `{"cpa": 5200, "conversions": 45}`) |
 | `observation_due` | `string` | No | ISO 8601 date when the outcome should be evaluated (e.g., `"2026-04-15"`) |
 
-The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. When an action's observation window has passed, the agent compares current metrics against `metrics_at_action` to assess the action's impact. See `skills/mureo-learning/SKILL.md` for the evidence-based decision framework.
+The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. When an action's observation window has passed, the agent compares current metrics against `metrics_at_action` to assess the action's impact. See `skills/_mureo-learning/SKILL.md` for the evidence-based decision framework.
 
 ### Python API
 
@@ -267,7 +267,7 @@ The strategy context files are not just passive documentation -- they are active
 4. Periodic maintenance commands (`/search-term-cleanup`, `/creative-refresh`, `/budget-rebalance`, `/competitive-scan`) each read the relevant strategy sections to make context-aware decisions.
 5. Run `/sync-state` to manually refresh `STATE.json` when campaign settings change outside of mureo.
 
-See `skills/mureo-workflows/SKILL.md` for the complete Operation Mode reference and detailed command behavior.
+See the operational skills (`skills/daily-check/`, `skills/budget-rebalance/`, etc.) for Operation Mode behavior.
 
 ### PDCA Loop: How Strategy Evolves
 

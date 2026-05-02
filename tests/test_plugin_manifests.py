@@ -155,10 +155,10 @@ def test_packaged_skills_match_canonical_byte_for_byte() -> None:
 
 def test_canonical_skills_not_unexpectedly_richer() -> None:
     """Every skill in ``skills/`` must also be packaged unless it's an
-    explicit opt-out (currently: ``mureo-pro-diagnosis``). Forgetting to
+    explicit opt-out (currently: ``_mureo-pro-diagnosis``). Forgetting to
     sync a new skill into ``mureo/_data/skills/`` would silently break
     the PyPI install."""
-    intentional_canonical_only = {"mureo-pro-diagnosis"}
+    intentional_canonical_only = {"_mureo-pro-diagnosis"}
     canonical = {
         p.name for p in _CANONICAL_SKILLS.iterdir() if p.is_dir()
     } - intentional_canonical_only
@@ -169,3 +169,40 @@ def test_canonical_skills_not_unexpectedly_richer() -> None:
         "Either add them to the packaged copy or extend "
         "intentional_canonical_only in this test."
     )
+
+
+def test_foundation_skill_naming_invariant() -> None:
+    """Foundation skills (referenced via PREREQUISITE) MUST start with ``_``
+    and operational skills (user-invoked) MUST NOT.
+
+    Phase 3 introduced this convention: Claude Code's slash-command picker
+    surfaces every skill, and prefixing foundation skills with ``_`` keeps
+    them out of the user-facing list. Drift in either direction would
+    confuse end users — a foundation skill showing in the menu, or an
+    operational skill renamed away from the menu.
+    """
+    canonical_dirs = sorted(p.name for p in _CANONICAL_SKILLS.iterdir() if p.is_dir())
+    foundation = [n for n in canonical_dirs if n.startswith("_")]
+    operational = [n for n in canonical_dirs if not n.startswith("_")]
+
+    # Each foundation directory's frontmatter `name:` must match the dir name
+    # (which already starts with `_`).
+    for name in foundation:
+        skill_md = (_CANONICAL_SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
+        assert (
+            f"name: {name}" in skill_md
+        ), f"Frontmatter name does not match dir for foundation skill {name}"
+
+    # Operational SKILL.md frontmatter `name:` must NOT start with `_`.
+    for name in operational:
+        skill_md = (_CANONICAL_SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
+        assert (
+            f"name: {name}" in skill_md
+        ), f"Frontmatter name does not match dir for operational skill {name}"
+        for line in skill_md.splitlines():
+            if line.startswith("name: "):
+                value = line[len("name: ") :].strip()
+                assert not value.startswith(
+                    "_"
+                ), f"Operational skill {name} has _-prefixed frontmatter name"
+                break

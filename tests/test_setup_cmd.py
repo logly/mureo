@@ -1,4 +1,12 @@
-"""Tests for mureo setup commands (install_commands, install_skills)."""
+"""Tests for mureo setup commands (install_skills).
+
+Phase 3 (PR #77) merged slash commands into skills, so ``install_commands``
+no longer exists. The 10 former commands (daily-check, budget-rebalance,
+search-term-cleanup, creative-refresh, rescue, goal-review, weekly-report,
+competitive-scan, onboard, sync-state) now ship as their own SKILL.md
+directories alongside the foundation skills (_mureo-shared, _mureo-strategy,
+_mureo-google-ads, _mureo-meta-ads, _mureo-learning). Total packaged: 15.
+"""
 
 from __future__ import annotations
 
@@ -11,140 +19,35 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-@pytest.mark.unit
-def test_install_commands(tmp_path: Path) -> None:
-    """install_commands copies all .md files to target directory."""
-    from mureo.cli.setup_cmd import install_commands
-
-    count, dest = install_commands(target_dir=tmp_path / "commands")
-
-    assert count == 10
-    assert dest == tmp_path / "commands"
-    assert (dest / "daily-check.md").exists()
-    assert (dest / "onboard.md").exists()
-    assert (dest / "rescue.md").exists()
-
-
-@pytest.mark.unit
-def test_install_commands_creates_directory(tmp_path: Path) -> None:
-    """install_commands creates target directory if it doesn't exist."""
-    from mureo.cli.setup_cmd import install_commands
-
-    target = tmp_path / "deep" / "nested" / "commands"
-    count, dest = install_commands(target_dir=target)
-
-    assert count == 10
-    assert dest.exists()
-
-
-@pytest.mark.unit
-def test_install_commands_overwrites_existing(tmp_path: Path) -> None:
-    """install_commands overwrites existing files (idempotent)."""
-    from mureo.cli.setup_cmd import install_commands
-
-    target = tmp_path / "commands"
-    target.mkdir()
-    (target / "daily-check.md").write_text("old content")
-
-    count, _ = install_commands(target_dir=target)
-
-    assert count == 10
-    content = (target / "daily-check.md").read_text()
-    assert content != "old content"
-
-
-@pytest.mark.unit
-def test_install_commands_preserves_extra_files(tmp_path: Path) -> None:
-    """install_commands does not delete extra files in target directory."""
-    from mureo.cli.setup_cmd import install_commands
-
-    target = tmp_path / "commands"
-    target.mkdir()
-    (target / "my-custom-command.md").write_text("custom")
-
-    install_commands(target_dir=target)
-
-    assert (target / "my-custom-command.md").read_text() == "custom"
-
-
-@pytest.mark.unit
-def test_install_commands_replaces_symlink_without_touching_target(
-    tmp_path: Path,
-) -> None:
-    """A symlink in the destination must be replaced with a real copy.
-
-    ``shutil.copy2`` follows destination symlinks by default — opening
-    ``dst`` for writing transparently writes to the symlink's target,
-    leaving the symlink itself in place. That matters for sandboxed
-    clients (Claude Desktop on macOS) that try to READ the command
-    file: following a symlink into ``~/Documents`` hits TCC and the
-    read silently fails, so the slash command appears to do nothing.
-
-    This regression locks in the fix: detect the symlink, unlink it,
-    then lay down a real file in its place. The external target file
-    the symlink used to point at is not touched.
-    """
-    from mureo.cli.setup_cmd import install_commands
-
-    external_target = tmp_path / "external" / "daily-check.md"
-    external_target.parent.mkdir(parents=True)
-    external_target.write_text("dev-link content — must survive")
-
-    target = tmp_path / "commands"
-    target.mkdir()
-    link_path = target / "daily-check.md"
-    link_path.symlink_to(external_target)
-
-    install_commands(target_dir=target)
-
-    # The dev symlink was replaced with a real file.
-    assert not link_path.is_symlink()
-    assert link_path.is_file()
-    # Body is now the bundled command, not the dev copy.
-    assert link_path.read_text() != "dev-link content — must survive"
-    # The external target the symlink used to point at is intact.
-    assert external_target.exists()
-    assert external_target.read_text() == "dev-link content — must survive"
-
-
-@pytest.mark.unit
-def test_install_commands_replaces_broken_symlink(tmp_path: Path) -> None:
-    """A dangling symlink at the destination must still be replaced
-    with a real file. ``Path.is_symlink()`` returns True for a broken
-    link, and ``Path.unlink()`` removes the link without caring that
-    the target is missing, so the subsequent ``shutil.copy2`` writes
-    a clean real file. Locks in the "don't care about the target"
-    contract.
-    """
-    from mureo.cli.setup_cmd import install_commands
-
-    target = tmp_path / "commands"
-    target.mkdir()
-    broken = target / "daily-check.md"
-    broken.symlink_to(tmp_path / "does-not-exist.md")
-
-    install_commands(target_dir=target)
-
-    assert not broken.is_symlink()
-    assert broken.is_file()
-    assert broken.read_text()  # Non-empty real bundled content.
+# Number of skills shipped in mureo/_data/skills/. Update this constant
+# whenever a skill is added or removed from the packaged set.
+EXPECTED_PACKAGED_SKILLS = 15
 
 
 @pytest.mark.unit
 def test_install_skills(tmp_path: Path) -> None:
-    """install_skills copies all skill directories to target."""
+    """install_skills copies all skill directories to target.
+
+    Includes both the operational skills migrated from commands
+    (daily-check, onboard, rescue, etc.) and the foundation skills
+    (_mureo-shared, _mureo-strategy, etc.).
+    """
     from mureo.cli.setup_cmd import install_skills
 
     count, dest = install_skills(target_dir=tmp_path / "skills")
 
-    assert count == 6
+    assert count == EXPECTED_PACKAGED_SKILLS
     assert dest == tmp_path / "skills"
-    assert (dest / "mureo-google-ads" / "SKILL.md").exists()
-    assert (dest / "mureo-meta-ads" / "SKILL.md").exists()
-    assert (dest / "mureo-shared" / "SKILL.md").exists()
-    assert (dest / "mureo-strategy" / "SKILL.md").exists()
-    assert (dest / "mureo-workflows" / "SKILL.md").exists()
-    assert (dest / "mureo-learning" / "SKILL.md").exists()
+    # Operational skills (formerly slash commands)
+    assert (dest / "daily-check" / "SKILL.md").exists()
+    assert (dest / "onboard" / "SKILL.md").exists()
+    assert (dest / "rescue" / "SKILL.md").exists()
+    # Foundation skills (referenced as PREREQUISITE by the operational ones)
+    assert (dest / "_mureo-shared" / "SKILL.md").exists()
+    assert (dest / "_mureo-strategy" / "SKILL.md").exists()
+    assert (dest / "_mureo-google-ads" / "SKILL.md").exists()
+    assert (dest / "_mureo-meta-ads" / "SKILL.md").exists()
+    assert (dest / "_mureo-learning" / "SKILL.md").exists()
 
 
 @pytest.mark.unit
@@ -155,7 +58,7 @@ def test_install_skills_creates_directory(tmp_path: Path) -> None:
     target = tmp_path / "deep" / "nested" / "skills"
     count, dest = install_skills(target_dir=target)
 
-    assert count == 6
+    assert count == EXPECTED_PACKAGED_SKILLS
     assert dest.exists()
 
 
@@ -166,13 +69,13 @@ def test_install_skills_overwrites_existing(tmp_path: Path) -> None:
 
     target = tmp_path / "skills"
     target.mkdir()
-    old_skill = target / "mureo-shared"
+    old_skill = target / "_mureo-shared"
     old_skill.mkdir()
     (old_skill / "SKILL.md").write_text("old content")
 
     install_skills(target_dir=target)
 
-    content = (target / "mureo-shared" / "SKILL.md").read_text()
+    content = (target / "_mureo-shared" / "SKILL.md").read_text()
     assert content != "old content"
 
 
@@ -209,14 +112,14 @@ def test_install_skills_replaces_symlink_without_touching_target(
     """
     from mureo.cli.setup_cmd import install_skills
 
-    external_target = tmp_path / "external" / "mureo-workflows"
+    external_target = tmp_path / "external" / "_mureo-shared"
     external_target.mkdir(parents=True)
     (external_target / "SKILL.md").write_text("dev-link content")
     (external_target / "precious.txt").write_text("do not delete")
 
     target = tmp_path / "skills"
     target.mkdir()
-    link_path = target / "mureo-workflows"
+    link_path = target / "_mureo-shared"
     link_path.symlink_to(external_target, target_is_directory=True)
 
     install_skills(target_dir=target)
@@ -230,18 +133,6 @@ def test_install_skills_replaces_symlink_without_touching_target(
 
 
 @pytest.mark.unit
-def test_install_commands_default_path(tmp_path: Path) -> None:
-    """install_commands uses ~/.claude/commands as default."""
-    from mureo.cli.setup_cmd import install_commands
-
-    with patch("mureo.cli.setup_cmd.Path.home", return_value=tmp_path):
-        count, dest = install_commands()
-
-    assert dest == tmp_path / ".claude" / "commands"
-    assert count == 10
-
-
-@pytest.mark.unit
 def test_install_skills_default_path(tmp_path: Path) -> None:
     """install_skills uses ~/.claude/skills as default."""
     from mureo.cli.setup_cmd import install_skills
@@ -250,7 +141,7 @@ def test_install_skills_default_path(tmp_path: Path) -> None:
         count, dest = install_skills()
 
     assert dest == tmp_path / ".claude" / "skills"
-    assert count == 6
+    assert count == EXPECTED_PACKAGED_SKILLS
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +238,9 @@ def test_setup_claude_code_runs_without_tty(
         for entry in hooks
         for h in entry.get("hooks", [])
     )
-    # Workflow commands + skills were copied.
-    assert (tmp_path / ".claude" / "commands" / "onboard.md").exists()
-    assert (tmp_path / ".claude" / "skills" / "mureo-workflows").exists()
+    # Skills were copied — both operational (onboard, daily-check) and
+    # foundation (_mureo-shared). Phase 3 retired the separate commands
+    # directory; commands now live as skills.
+    assert (tmp_path / ".claude" / "skills" / "onboard" / "SKILL.md").exists()
+    assert (tmp_path / ".claude" / "skills" / "daily-check" / "SKILL.md").exists()
+    assert (tmp_path / ".claude" / "skills" / "_mureo-shared" / "SKILL.md").exists()

@@ -80,37 +80,6 @@ def _get_data_path(subdir: str) -> Path:
     )
 
 
-def install_commands(target_dir: Path | None = None) -> tuple[int, Path]:
-    """Copy workflow command .md files to the target directory.
-
-    Args:
-        target_dir: Destination directory. Defaults to ~/.claude/commands.
-
-    Returns:
-        Tuple of (number of files copied, target directory path).
-    """
-    dest = target_dir or (Path.home() / ".claude" / "commands")
-    dest.mkdir(parents=True, exist_ok=True)
-
-    src = _get_data_path("commands")
-    count = 0
-    for md_file in sorted(src.glob("*.md")):
-        dest_file = dest / md_file.name
-        # shutil.copy2 follows destination symlinks and writes to the
-        # symlink's target. That's exactly wrong for sandboxed clients
-        # like Claude Desktop: following a symlink into ~/Documents
-        # hits TCC and the READ silently fails, so the slash command
-        # stops working. Unlink the symlink itself first and lay down
-        # a real file so the client can read it without following a
-        # link outside its sandbox.
-        if dest_file.is_symlink():
-            dest_file.unlink()
-        shutil.copy2(md_file, dest_file)
-        count += 1
-
-    return count, dest
-
-
 def install_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     """Copy skill directories to the target directory.
 
@@ -225,15 +194,9 @@ def setup_claude_code(
     else:
         typer.echo("Credential guard already installed.")
 
-    # 4. Workflow commands
-    typer.echo("\n--- Installing workflow commands ---")
-    try:
-        cmd_count, cmd_path = install_commands()
-        typer.echo(f"  {cmd_count} commands installed to {cmd_path}")
-    except FileNotFoundError as e:
-        typer.echo(f"  Warning: {e}", err=True)
-
-    # 5. Skills
+    # 4. Skills (workflow operations — daily-check, budget-rebalance, ...
+    # are now skills rather than slash commands; both invocation paths
+    # work in Claude Code via /<name>).
     typer.echo("\n--- Installing skills ---")
     try:
         skill_count, skill_path = install_skills()
@@ -347,7 +310,6 @@ def setup_codex(
     import asyncio
 
     from mureo.cli.setup_codex import (
-        install_codex_command_skills,
         install_codex_credential_guard,
         install_codex_mcp_config,
         install_codex_skills,
@@ -390,16 +352,6 @@ def setup_codex(
         typer.echo(f"Credential guard installed: {guard_result}")
     else:
         typer.echo("Credential guard already installed.")
-
-    typer.echo("\n--- Installing workflow commands as Codex skills ---")
-    try:
-        cmd_count, cmd_path = install_codex_command_skills()
-        typer.echo(
-            f"  {cmd_count} workflow skills installed to {cmd_path}. "
-            "Invoke with $<command-name> or via Codex's /skills picker."
-        )
-    except FileNotFoundError as e:
-        typer.echo(f"  Warning: {e}", err=True)
 
     typer.echo("\n--- Installing skills ---")
     try:

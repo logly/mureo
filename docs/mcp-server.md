@@ -494,7 +494,7 @@ Beyond individual MCP tools, mureo provides higher-level operational workflows v
 
 Each command reads strategy context (Operation Mode, Persona, USP, Brand Voice, Market Context) from `STRATEGY.md` and campaign state from `STATE.json`, then selects and invokes the appropriate MCP tools. For example, `/daily-check` adapts its monitoring focus based on the current Operation Mode -- an `EFFICIENCY_STABILIZE` mode prioritizes CPA and budget efficiency, while a `GROWTH_SCALE` mode focuses on impression share and conversion volume.
 
-Command definitions live in `.claude/commands/`. See [strategy-context.md](strategy-context.md) for details on the strategy files, and `skills/mureo-workflows/SKILL.md` for the full Operation Mode reference.
+Operational skill definitions live under `skills/` (daily-check, budget-rebalance, etc.). See [strategy-context.md](strategy-context.md) for the strategy file format and Operation Mode reference.
 
 ## Working with External MCP Servers
 

@@ -207,120 +207,14 @@ def install_codex_credential_guard() -> Path | None:
 
 
 # ---------------------------------------------------------------------------
-# 3. Workflow commands (as Codex skills)
+# 3. Skills (operational + foundation)
 # ---------------------------------------------------------------------------
-
-
-def _first_nonblank_line(text: str) -> str:
-    """Return the first non-empty line of ``text``, stripped of whitespace."""
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped:
-            return stripped
-    return ""
-
-
-def _yaml_escape(value: str) -> str:
-    """Escape a string for a YAML double-quoted scalar.
-
-    YAML's double-quoted scalar interprets backslash escapes, so in
-    addition to escaping ``\\`` and ``"`` we also need to guard against
-    characters that would either (a) terminate the scalar prematurely —
-    LF / CR / NEL / U+2028 / U+2029 are all treated as line breaks by
-    YAML parsers — or (b) survive into the rendered description as raw
-    control bytes. Any character outside printable ASCII/Unicode is
-    emitted as ``\\xNN`` (for bytes < 0x100) or ``\\uNNNN`` so the
-    frontmatter round-trips through any conformant YAML parser.
-    """
-    value = value.replace("\\", "\\\\").replace('"', '\\"')
-    out: list[str] = []
-    for ch in value:
-        code = ord(ch)
-        # Safe: printable ASCII OR non-ASCII printable Unicode (minus the
-        # line-separator set that YAML treats as a newline).
-        if (0x20 <= code < 0x7F) or (code >= 0xA0 and code not in (0x2028, 0x2029)):
-            out.append(ch)
-        elif code <= 0xFF:
-            out.append(f"\\x{code:02x}")
-        else:
-            out.append(f"\\u{code:04x}")
-    return "".join(out)
-
-
-def _build_command_skill(name: str, body: str) -> str:
-    """Wrap a bundled command ``.md`` in Codex skill frontmatter.
-
-    ``description`` is the first non-empty line of the source file so
-    Codex's ``/skills`` picker can show a meaningful one-liner. The
-    body is copied verbatim after the frontmatter terminator.
-    """
-    description = _yaml_escape(_first_nonblank_line(body)) or name
-    return f'---\nname: {name}\ndescription: "{description}"\n---\n\n{body}'
-
-
-def install_codex_command_skills(
-    target_dir: Path | None = None,
-) -> tuple[int, Path]:
-    """Install bundled workflow commands as Codex skills.
-
-    Codex CLI 0.117.0 (2026-03) stopped surfacing files placed in
-    ``~/.codex/prompts/`` in the slash-command menu (Issue
-    `openai/codex#15941 <https://github.com/openai/codex/issues/15941>`_).
-    Custom prompts were deprecated in favor of skills, so mureo now
-    wraps each bundled command into
-    ``~/.codex/skills/<command>/SKILL.md`` with YAML frontmatter.
-    Users invoke them with ``$daily-check`` or via the ``/skills``
-    picker in Codex.
-
-    Re-running also removes the matching legacy files from
-    ``~/.codex/prompts/`` so stale copies don't show up as duplicates;
-    user-authored prompts with names outside mureo's bundled set are
-    left alone.
-    """
-    dest = target_dir or (Path.home() / ".codex" / "skills")
-    dest.mkdir(parents=True, exist_ok=True)
-
-    src = _get_data_path("commands")
-    bundled_names: set[str] = set()
-    count = 0
-    for md_file in sorted(src.glob("*.md")):
-        name = md_file.stem
-        bundled_names.add(md_file.name)
-        skill_dir = dest / name
-        _replace_dest(skill_dir)
-        skill_dir.mkdir(parents=True)
-        body = md_file.read_text(encoding="utf-8")
-        (skill_dir / "SKILL.md").write_text(
-            _build_command_skill(name, body), encoding="utf-8"
-        )
-        count += 1
-
-    # Legacy cleanup: remove stale ~/.codex/prompts/<bundled>.md from prior
-    # installs so the user sees a clean Codex state. Skip symlinks — they
-    # imply the operator intentionally pointed a bundled name at their own
-    # file (e.g. a dotfiles repo), and silently unlinking loses the link
-    # even though the target stays intact.
-    legacy_prompts = Path.home() / ".codex" / "prompts"
-    if legacy_prompts.is_dir():
-        for legacy_file in legacy_prompts.iterdir():
-            if (
-                legacy_file.is_file()
-                and not legacy_file.is_symlink()
-                and legacy_file.name in bundled_names
-            ):
-                try:
-                    legacy_file.unlink()
-                except OSError:
-                    logger.warning(
-                        "Could not remove stale legacy prompt: %s", legacy_file
-                    )
-
-    return count, dest
-
-
-# ---------------------------------------------------------------------------
-# 4. Skills
-# ---------------------------------------------------------------------------
+#
+# Phase 3 (PR #77) merged slash commands into skills, so the legacy
+# `install_codex_command_skills` helper that wrapped commands as Codex
+# skills is no longer needed — `install_codex_skills` below copies the
+# unified skill set (10 operational + foundation) directly from
+# `mureo/_data/skills/` into `~/.codex/skills/`.
 
 
 def install_codex_skills(target_dir: Path | None = None) -> tuple[int, Path]:
