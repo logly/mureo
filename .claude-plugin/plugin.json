@@ -1,6 +1,6 @@
 {
   "name": "mureo",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Local-first, safety-gated AI ad-ops for Google Ads, Meta Ads, Search Console & GA4. Strategy-aware agents that analyze campaigns, surface anomalies, and propose actions — credentials never leave your machine.",
   "author": {
     "name": "Logly Inc.",

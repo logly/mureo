@@ -7,13 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed (BREAKING for some operators)
+## [0.8.0] - 2026-05-02
+
+Non-engineer onboarding release. mureo is now usable from Claude Desktop chat / Cowork directly, with one-command setup, workspace-local BYOD, and a unified skill model that replaces the old slash-commands directory.
+
+### Added — Desktop / Cowork host support
+- **`mureo install-desktop`** (PR #75) — one-command setup that creates a workspace, generates a wrapper script (`~/.local/bin/mureo-mcp-wrapper.sh`), and merges a `mureo` MCP entry into `~/Library/Application Support/Claude/claude_desktop_config.json`. Flags: `--workspace`, `--with-demo`, `--force`, `--dry-run`. Idempotent; takes timestamped backups of the existing config; refuses to follow symlinked configs (Dropbox / iCloud sync setups). Workspace path goes through `shlex.quote` so HOMEs containing spaces or shell metacharacters work.
+- **5 new MCP tools** for the strategic-context layer (PR #74): `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`. Lets Desktop chat / Cowork / web hosts (which have no `Read` / `Write` tools) read and update STRATEGY.md and STATE.json without filesystem access. All writes go through pre-existing atomic helpers (`mureo.context.state._atomic_write`); cwd-traversal refuse symmetric with the rollback surface.
+- **`MUREO_BYOD_DIR` environment variable** (PR #75) — points BYOD at a workspace-local `byod/` directory instead of the legacy global `~/.mureo/byod/`. The install-desktop wrapper exports it automatically so each Claude Desktop workspace has its own BYOD store. Demo and Live-API setups can now coexist without `rm -rf ~/.mureo/byod/` between them.
+- **Cowork plugin packaging** (PR #77) — `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.mcp.json` at the repo root let Cowork register `logly/mureo` as a plugin marketplace and surface the skill bundle. The `.mcp.json` shell-gates the wrapper invocation so a fresh contributor without `install-desktop` does not see repeated launch errors in Claude Code.
+- **`docs/getting-started.md`** + **`docs/getting-started.ja.md`** (PR #78) — full 3 modes × 3 hosts walkthrough guide (Demo / BYOD / Live API on Claude Code / Desktop chat / Cowork) including how to obtain BYOD XLSX bundles, where to put them, and how to import per host.
+
+### Changed (BREAKING) — skill / command consolidation (PR #77)
+- **Slash commands are now skills.** The 10 files under `mureo/_data/commands/*.md` (daily-check, budget-rebalance, search-term-cleanup, creative-refresh, rescue, goal-review, weekly-report, competitive-scan, onboard, sync-state) have been promoted to first-class skills under `skills/<name>/SKILL.md` with proper YAML frontmatter and a `PREREQUISITE: Read ../_mureo-shared/SKILL.md` link. Skills work as `/<name>` in Claude Code (same as before) AND via natural language in Desktop / Cowork — single source of truth across hosts. **Migration impact**: most users see no difference (`/daily-check` etc. still work in Code). Operators who imported `install_commands` from `mureo.cli.setup_cmd` or `install_codex_command_skills` from `mureo.cli.setup_codex` must remove those calls — both functions were deleted; `install_skills` / `install_codex_skills` now cover the unified bundle.
+- **Foundation skills renamed with `_` prefix.** The 6 reference skills consumed via PREREQUISITE were renamed: `mureo-shared` → `_mureo-shared`, `mureo-strategy` → `_mureo-strategy`, `mureo-google-ads` → `_mureo-google-ads`, `mureo-meta-ads` → `_mureo-meta-ads`, `mureo-learning` → `_mureo-learning`, `mureo-pro-diagnosis` → `_mureo-pro-diagnosis`. The `_` prefix follows the standard "private / hidden" shell convention so they stay out of Claude Code's user-facing slash menu while remaining readable as PREREQUISITE links. **Migration impact**: anyone with custom skills that hard-code `../mureo-shared/SKILL.md` etc. must rewrite to `../_mureo-shared/SKILL.md`. Bundled mureo skills are already updated.
+- **`skills/mureo-workflows/`** — deleted. It was the index of the 10 commands; now superseded by per-skill files. Anyone deep-linking to `skills/mureo-workflows/SKILL.md` will hit a 404.
+- **`mureo/_data/commands/`** directory deleted. The Code's `~/.claude/commands/` install path is gone; `mureo setup claude-code` no longer copies command files (skills cover the same surface via `~/.claude/skills/`).
+
+### Changed (BREAKING from 0.7.x) — MCP tool name spec (PR #73)
 - **MCP tool names switched from dot to underscore separators** to comply with the MCP spec regex `^[a-zA-Z0-9_-]{1,64}$`. Without this, Claude Desktop's chat (and any other spec-strict MCP host) rejected the entire mureo MCP server at registration time with errors like `tools.42.FrontendRemoteMcpToolDefinition.name: String should match pattern '^[a-zA-Z0-9_-]{1,64}$'`. Claude Code accepted dotted names through lenient validation, which is why the bug went undetected. **Migration impact**:
   - **Claude Code users**: no action required. Slash commands (`/daily-check`, etc.) and natural-language tool calls are unaffected.
   - **Claude Desktop / claude.ai web users**: this fix unblocks registration; the server now appears in the tool surface as expected.
   - **Operators with custom `excludeTools` lists** (e.g. Gemini CLI extension config at `~/.gemini/extensions/mureo/gemini-extension.json`): rename entries in your `excludeTools` array to the new underscore form. Example: `"google_ads.budget.update"` -> `"google_ads_budget_update"`. Otherwise your previous exclusion list silently stops blocking those tools after upgrade.
   - **Anyone with code or scripts referencing tool names directly**: rename `prefix.X.Y` -> `prefix_X_Y` (173 tools across `google_ads`, `meta_ads`, `search_console`, `rollback`, `analysis` prefixes).
 - New regression test `tests/test_mcp_tool_name_spec.py::test_all_registered_tools_match_mcp_spec` enforces the spec regex in CI for every future tool addition.
+
+### Documentation
+- README.md and README.ja.md gain a **"Choose your setup"** 3 modes × 3 hosts matrix above the quick-start with a link into `docs/getting-started.md(.ja.md)`.
+- AGENTS.md gains a **"Commit Workflow"** section codifying the rule that every code commit (including fixup / review-response commits) requires a `code-reviewer` pass before commit. Rule reinforced after PR #20 (OAuth helper) and PR #75 (install-desktop fixup).
+- Terminology unified (PR #79): all references to "Real-API" / "real-api" / "real API" rewritten as **"Live API"** for consistency.
+
+### Tests
+- 22 new tests for `desktop_installer` covering fresh install, force overwrite, dry-run, demo seeding, idempotence, corrupt-config refusal, symlinked-config refusal, shell quoting of workspace paths with spaces, version drift between `pyproject.toml` and `.claude-plugin/plugin.json`.
+- 5 new tests for `MUREO_BYOD_DIR` env var override, including `~`-expansion and whitespace-only fallback.
+- 7 new sanity tests for plugin manifests (`tests/test_plugin_manifests.py`): JSON validity of all 3 plugin metadata files, version-drift guard, `.mcp.json` shell-gate semantics, byte-for-byte sync between `skills/` and `mureo/_data/skills/`, foundation/operational skill naming invariants.
 
 ## [0.7.1] - 2026-04-29
 
