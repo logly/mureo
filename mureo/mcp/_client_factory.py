@@ -51,7 +51,7 @@ def get_meta_ads_client(
 
 
 def get_search_console_client(creds: Any, throttler: Any | None = None) -> Any:
-    """Return a Search Console client (real-API only).
+    """Return a Search Console client (Live API only).
 
     BYOD path was removed in Phase 1 of the BYOD redesign; SC is reached
     only via the existing OAuth credentials.

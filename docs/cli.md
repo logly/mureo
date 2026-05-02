@@ -180,7 +180,7 @@ Analyse your ad-account data locally without OAuth or a developer token. The imp
 |---|---|
 | `mureo byod import <file>.xlsx` | Import a Sheet bundle. Aborts if any platform present in the workbook is already imported. |
 | `mureo byod import <file>.xlsx --replace` | Overwrite existing BYOD data for any platform present in the bundle. |
-| `mureo byod status` | Show per-platform mode (BYOD / real API / not configured); warns about stale entries from older mureo versions. |
+| `mureo byod status` | Show per-platform mode (BYOD / Live API / not configured); warns about stale entries from older mureo versions. |
 | `mureo byod remove --google-ads` / `--meta-ads` | Remove BYOD data for one platform. |
 | `mureo byod clear` | Wipe `~/.mureo/byod/` (prompts for confirmation). |
 | `mureo byod clear --yes` | Skip the confirmation prompt. |
@@ -189,7 +189,7 @@ Analyse your ad-account data locally without OAuth or a developer token. The imp
 
 The MCP server checks each platform independently at every tool dispatch. With `google_ads` imported but `meta_ads` not, a single `/daily-check` call uses the BYOD CSVs for Google Ads and the live API for Meta Ads. `mureo byod status` shows the active mix.
 
-GA4 and Search Console are **not** part of the BYOD bundle pipeline — they remain on the real-API OAuth path.
+GA4 and Search Console are **not** part of the BYOD bundle pipeline — they remain on the Live API OAuth path.
 
 ### Read-only guarantee
 

@@ -365,7 +365,7 @@ class ByodGoogleAdsClient:
         ``search_terms.csv``. The Apps Script does not stamp the rows
         with a date (it aggregates over its own DAYS_LOOKBACK), so the
         ``period`` kwarg is accepted for signature parity with the
-        real-API client but does not actually filter rows.
+        Live API client but does not actually filter rows.
 
         ``campaign_id`` / ``ad_group_id`` filter against the synthetic
         IDs (``camp_<sha10>`` / ``ag_<sha10>``) the adapter assigns.
@@ -398,7 +398,7 @@ class ByodGoogleAdsClient:
             conversions = _to_float(r.get("conversions"))
             ctr = (clicks / impressions) if impressions else 0
             avg_cpc = (cost / clicks) if clicks else 0
-            # Schema parity: the real-API client's map_search_term in
+            # Schema parity: the Live API client's map_search_term in
             # mureo/google_ads/mappers.py returns metrics as a nested
             # dict so downstream consumers (_analysis_search_terms,
             # _analysis_performance) can read `t["metrics"]["cost"]`.

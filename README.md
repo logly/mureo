@@ -45,9 +45,9 @@ mureo has **3 modes** (where the data comes from) and runs across **3 hosts** (w
 
 Full per-row walkthroughs (including how to obtain your XLSX, where to put it, and how to import it): **[Getting Started →](docs/getting-started.md)**.
 
-> **Not familiar with Google Cloud Console or Meta for Developers?** OAuth flows, developer-token registration, and Business-app sign-ups can feel intimidating if you have never used those consoles before. **Start with BYOD** — you will see what mureo can do for your account in a few minutes, then decide whether the real-API path is worth setting up.
+> **Not familiar with Google Cloud Console or Meta for Developers?** OAuth flows, developer-token registration, and Business-app sign-ups can feel intimidating if you have never used those consoles before. **Start with BYOD** — you will see what mureo can do for your account in a few minutes, then decide whether the Live API path is worth setting up.
 
-## BYOD vs Real-API at a glance
+## BYOD vs Live API at a glance
 
 ### Mode A: BYOD — 5 minutes to first diagnosis, no OAuth
 
@@ -66,9 +66,9 @@ Producing the XLSX is a one-time setup per platform:
 - **Google Ads** — Apps Script template populates a Google Sheet you own; download as XLSX (~5 min). [See guide →](docs/byod.md#google-ads-setup)
 - **Meta Ads** — Saved Report in Ads Manager → 2-click export. **Recognized in 9 languages** (English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français), so you do not need to switch Ads Manager UI to English. [See guide →](docs/byod.md#meta-ads-setup)
 
-**Read-only by construction.** Every mutation tool (`/rescue`, `/budget-rebalance`, `/creative-refresh`) returns `{"status": "skipped_in_byod_readonly"}` — the agent analyzes and recommends but never writes to your real account. Upgrade a platform to the real API later with `mureo byod remove --google-ads` (one platform) or `mureo byod clear` (all).
+**Read-only by construction.** Every mutation tool (`/rescue`, `/budget-rebalance`, `/creative-refresh`) returns `{"status": "skipped_in_byod_readonly"}` — the agent analyzes and recommends but never writes to your real account. Upgrade a platform to the Live API later with `mureo byod remove --google-ads` (one platform) or `mureo byod clear` (all).
 
-### Mode B: Real-API OAuth — full functionality
+### Mode B: Live API OAuth — full functionality
 
 Connect mureo directly to Google Ads / Meta Ads APIs. **Required to actually execute changes** (`/rescue`, `/budget-rebalance`, `/creative-refresh`, `mureo rollback apply`) and for GA4 / Search Console support.
 
@@ -83,7 +83,7 @@ Prerequisites: Google Ads Developer Token + OAuth Client; Meta App ID + Secret. 
 
 ### Which mode fits?
 
-| Capability                                         | Mode A: BYOD                            | Mode B: Real API |
+| Capability                                         | Mode A: BYOD                            | Mode B: Live API |
 |----------------------------------------------------|-----------------------------------------|------------------|
 | **First-time setup time**                          | **5–10 min per platform**               | 30–60 min |
 | **Approval / waiting risk**                        | **None**                                | 1–3 weeks Google review, sometimes rejected |

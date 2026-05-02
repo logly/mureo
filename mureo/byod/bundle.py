@@ -16,7 +16,7 @@ Pipeline:
 
 GA4 and Search Console BYOD paths were removed in Phase 1 of the
 BYOD redesign — those platforms remain accessible via the existing
-real-API OAuth path. Meta Ads BYOD will land in a follow-up.
+Live API OAuth path. Meta Ads BYOD will land in a follow-up.
 
 Manifest update is atomic. Either the dispatched platform's section is
 written to ``manifest.json`` together with on-disk files, or nothing

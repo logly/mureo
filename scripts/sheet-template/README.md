@@ -25,7 +25,7 @@ account on Google's infrastructure.
 ## Scope
 
 This BYOD path covers **Google Ads only**. GA4 and Search Console are
-reached via the existing real-API OAuth credentials (see
+reached via the existing Live API OAuth credentials (see
 `docs/authentication.md`); attempting to feed those datasets through
 the Sheet bundle is not supported. Meta Ads BYOD ships in a follow-up
 PR.
