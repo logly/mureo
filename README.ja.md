@@ -383,13 +383,12 @@ mureo以外でOAuthトークンを取得する方法:
 
 | スキル | 内容 |
 |-------|------|
-| `mureo-google-ads` | Google広告ツールのリファレンス |
-| `mureo-meta-ads` | Meta広告ツールのリファレンス |
-| `mureo-shared` | 認証、セキュリティルール、出力フォーマット |
-| `mureo-strategy` | STRATEGY.md / STATE.json の仕様と使い方 |
-| `mureo-workflows` | 運用モード、KPI閾値、コマンドリファレンス |
-| `mureo-learning` | データに基づく判断の仕組み（観察期間、サンプルサイズ、ノイズの排除） |
-| `mureo-pro-diagnosis` | 運用で蓄積するナレッジベース（`/learn` で記録） |
+| `_mureo-google-ads` | Google広告ツールのリファレンス |
+| `_mureo-meta-ads` | Meta広告ツールのリファレンス |
+| `_mureo-shared` | 認証、セキュリティルール、出力フォーマット |
+| `_mureo-strategy` | STRATEGY.md / STATE.json の仕様と使い方 |
+| `_mureo-learning` | データに基づく判断の仕組み（観察期間、サンプルサイズ、ノイズの排除） |
+| `_mureo-pro-diagnosis` | 運用で蓄積するナレッジベース（`/learn` で記録） |
 
 ### GA4（Google Analytics 4）の接続
 

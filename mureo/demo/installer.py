@@ -269,7 +269,7 @@ actionable findings tied to the scenario's story arc.
 ## Files
 
 - `bundle.xlsx`  — Google Ads + Meta Ads synthetic data, {period}
-- `STRATEGY.md`  — scenario-specific strategy used by `mureo-strategy` skills
+- `STRATEGY.md`  — scenario-specific strategy used by `_mureo-strategy` skills
 - `.mcp.json`    — Claude Code MCP server registration
 - `README.md`    — this file
 
@@ -316,7 +316,7 @@ actionable findings tied to the scenario's story arc.
 ## Files
 
 - `bundle.xlsx`  — Google Ads + Meta Ads synthetic data, {period}
-- `STRATEGY.md`  — scenario-specific strategy used by `mureo-strategy` skills
+- `STRATEGY.md`  — scenario-specific strategy used by `_mureo-strategy` skills
 - `STATE.json`   — campaign snapshots + action_log used by `/daily-check` etc.
 - `.mcp.json`    — Claude Code MCP server registration
 - `README.md`    — this file

@@ -112,11 +112,10 @@ mureo/
 │   ├── weekly-report.md     # Cross-platform weekly operations report
 │   ├── sync-state.md        # Multi-platform STATE.json synchronization
 │   └── learn.md   # Save diagnostic insights to knowledge base
-skills/mureo-workflows/      # Workflow skill reference
 │   └── SKILL.md             # Orchestration paradigm + Operation Mode reference
-skills/mureo-learning/       # Evidence-based decision framework
+skills/_mureo-learning/       # Evidence-based decision framework
 │   └── SKILL.md             # Statistical thinking for marketing decisions
-skills/mureo-pro-diagnosis/  # Learnable diagnostic knowledge base
+skills/_mureo-pro-diagnosis/  # Learnable diagnostic knowledge base
 │   └── SKILL.md             # Diagnostic insights (grows with /learn)
 docs/integrations.md         # Platform discovery + external MCP integration guide
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)

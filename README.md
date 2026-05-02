@@ -435,13 +435,12 @@ To obtain OAuth tokens outside mureo:
 
 | Skill | Purpose |
 |-------|---------|
-| `mureo-google-ads` | Google Ads tool reference (parameters, examples) |
-| `mureo-meta-ads` | Meta Ads tool reference (parameters, examples) |
-| `mureo-shared` | Authentication, security rules, output formatting |
-| `mureo-strategy` | STRATEGY.md / STATE.json format and usage guide |
-| `mureo-workflows` | Orchestration paradigm, Operation Mode matrix, KPI thresholds, command reference |
-| `mureo-learning` | Evidence-based marketing decision framework (observation windows, sample sizes, noise guards) |
-| `mureo-pro-diagnosis` | Learnable diagnostic knowledge base (grows with use via `/learn`) |
+| `_mureo-google-ads` | Google Ads tool reference (parameters, examples) |
+| `_mureo-meta-ads` | Meta Ads tool reference (parameters, examples) |
+| `_mureo-shared` | Authentication, security rules, output formatting |
+| `_mureo-strategy` | STRATEGY.md / STATE.json format and usage guide |
+| `_mureo-learning` | Evidence-based marketing decision framework (observation windows, sample sizes, noise guards) |
+| `_mureo-pro-diagnosis` | Learnable diagnostic knowledge base (grows with use via `/learn`) |
 
 ### Connecting GA4 (Google Analytics 4)
 
@@ -1010,7 +1009,7 @@ Cross-platform detection tools that operate on STATE.json's `action_log` history
 
 | Tool | Description |
 |------|-------------|
-| `analysis_anomalies_check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). Sample-size gates follow the `mureo-learning` skill's statistical-thinking rules. Returns `baseline=null` when history is shorter than `min_baseline_entries` (default 7); `baseline_warning` surfaces a parseable-but-corrupt `STATE.json` without silencing live zero-spend detection. |
+| `analysis_anomalies_check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). Sample-size gates follow the `_mureo-learning` skill's statistical-thinking rules. Returns `baseline=null` when history is shorter than `min_baseline_entries` (default 7); `baseline_warning` surfaces a parseable-but-corrupt `STATE.json` without silencing live zero-spend detection. |
 
 </details>
 

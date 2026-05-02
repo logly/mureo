@@ -49,7 +49,7 @@ This is where mureo's workflow commands, domain knowledge (skills), and the AI a
 
 #### PDCA Operational Loop
 
-The workflow commands form a continuous Plan-Do-Check-Act cycle: `/onboard` defines strategy and goals (Plan); `/daily-check` and its downstream commands execute operations (Do); `/goal-review` and `/weekly-report` evaluate progress (Check); and `/goal-review` recommendations feed back into the Do phase by adjusting the Operation Mode, which changes how every command behaves (Act). This loop runs daily (Do) and weekly (Check), with the Act phase closing the loop by updating STRATEGY.md when conditions change. See `skills/mureo-workflows/SKILL.md` for the full PDCA diagram and Operation Mode transition rules.
+The workflow commands form a continuous Plan-Do-Check-Act cycle: `/onboard` defines strategy and goals (Plan); `/daily-check` and its downstream commands execute operations (Do); `/goal-review` and `/weekly-report` evaluate progress (Check); and `/goal-review` recommendations feed back into the Do phase by adjusting the Operation Mode, which changes how every command behaves (Act). This loop runs daily (Do) and weekly (Check), with the Act phase closing the loop by updating STRATEGY.md when conditions change. See the operational skills under `skills/` (daily-check, budget-rebalance, etc.) for the full PDCA cycle.
 
 ### Tool Connection Layer
 
@@ -152,11 +152,10 @@ mureo/
 ├── sync-state.md                # Manual STATE.json synchronization
 └── learn.md           # Save diagnostic insights to knowledge base
 
-skills/mureo-workflows/          # Workflow skill reference
 │   └── SKILL.md                 # Orchestration paradigm + Operation Mode reference
-skills/mureo-learning/           # Evidence-based decision framework
+skills/_mureo-learning/           # Evidence-based decision framework
 │   └── SKILL.md                 # Statistical thinking for marketing decisions
-skills/mureo-pro-diagnosis/      # Learnable diagnostic knowledge base
+skills/_mureo-pro-diagnosis/      # Learnable diagnostic knowledge base
 │   └── SKILL.md                 # Diagnostic insights (grows with /learn)
 ```
 
@@ -212,7 +211,7 @@ mureo assumes the caller is an AI agent susceptible to prompt injection, not a t
 
 1. **Credential guard** — `mureo setup claude-code` writes a PreToolUse hook to `~/.claude/settings.json` that blocks reads of `~/.mureo/credentials.json`, `.env`, and similar secret files, so a prompt-injection payload cannot exfiltrate tokens via the file-system tools.
 2. **GAQL input validation** — every ID, date, date-range constant, and string literal entering a Google Ads query flows through a single whitelist-based surface in `mureo/google_ads/_gaql_validator.py`. `_period_to_date_clause`'s `BETWEEN` branch pattern-matches and revalidates its dates instead of passing the raw caller string into GAQL.
-3. **Anomaly detection** — `mureo/analysis/anomaly_detector.py` compares current campaign metrics against a median-based baseline built from historical `action_log` entries and emits prioritized alerts for zero spend (CRITICAL), CPA spikes (≥1.5×, critical at 2×), and CTR drops (≤0.5×, critical at 0.3×). Sample-size gates (30+ conversions, 1000+ impressions) follow the `mureo-learning` skill's statistical-thinking rules to suppress single-day noise. Baselines tolerate malformed `metrics_at_action` rows; CPA/CTR are medianed per-entry so baseline values reflect a real historical day.
+3. **Anomaly detection** — `mureo/analysis/anomaly_detector.py` compares current campaign metrics against a median-based baseline built from historical `action_log` entries and emits prioritized alerts for zero spend (CRITICAL), CPA spikes (≥1.5×, critical at 2×), and CTR drops (≤0.5×, critical at 0.3×). Sample-size gates (30+ conversions, 1000+ impressions) follow the `_mureo-learning` skill's statistical-thinking rules to suppress single-day noise. Baselines tolerate malformed `metrics_at_action` rows; CPA/CTR are medianed per-entry so baseline values reflect a real historical day.
 4. **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. `reversible_params` is untrusted input for the rollback executor, so the planner enforces an explicit allow-list of operations (budget update + status toggles across Google/Meta Ads), refuses destructive verbs (`.delete` / `.remove` / `.destroy` / `.purge` / `.transfer`), and rejects unexpected parameter keys — a compromised agent cannot smuggle a privileged call through the rollback path. The `mureo rollback list` / `show` CLI commands are inspection-only; execution stays with the MCP dispatcher so it re-enters the same policy gate as forward actions, and control characters from STATE.json are stripped before terminal output to prevent ANSI-escape spoofing.
 
 See [SECURITY.md](../SECURITY.md) for the full threat model.
@@ -416,4 +415,4 @@ All commands follow the same orchestration pattern: **discover platforms → sel
 | `/sync-state` | Multi-platform state synchronization | *(writes STATE.json)* |
 | `/learn` | Save diagnostic insights to knowledge base | *(writes SKILL.md)* |
 
-The workflow skill reference (`skills/mureo-workflows/SKILL.md`) documents the full set of Operation Modes and their behavioral implications for each command, as well as cross-platform data correlation patterns.
+The operational skills (`skills/daily-check/`, `skills/budget-rebalance/`, ...) documents the full set of Operation Modes and their behavioral implications for each command, as well as cross-platform data correlation patterns.

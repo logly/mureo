@@ -15,8 +15,6 @@ import pytest
 
 from mureo.cli.setup_codex import (  # noqa: I001
     CodexMcpConflictError,
-    _yaml_escape,
-    install_codex_command_skills,
     install_codex_credential_guard,
     install_codex_mcp_config,
     install_codex_skills,
@@ -156,164 +154,27 @@ class TestInstallCodexCredentialGuard:
         assert result is None
 
 
-class TestInstallCodexCommandSkills:
-    """Workflow commands are installed as Codex skills at
-    ``~/.codex/skills/<command>/SKILL.md``. The older ``~/.codex/prompts/``
-    layout stopped being picked up in codex-cli 0.117.0+ (Issue #15941),
-    so every bundled command now ships as a skill invokable via ``$cmd``
-    or the ``/skills`` picker.
-    """
-
-    def test_installs_each_command_as_its_own_skill(self, home: Path) -> None:
-        count, dest = install_codex_command_skills()
-        assert dest == home / ".codex" / "skills"
-        assert dest.exists()
-        assert count >= 1
-        # Known bundled command landed as a skill directory with SKILL.md
-        onboard_skill = dest / "onboard" / "SKILL.md"
-        assert onboard_skill.exists()
-        daily_check_skill = dest / "daily-check" / "SKILL.md"
-        assert daily_check_skill.exists()
-
-    def test_skill_has_yaml_frontmatter(self, home: Path) -> None:
-        """Each generated SKILL.md starts with ``---\\nname: ...\\ndescription:
-        ...\\n---`` so Codex's skill loader can index it and surface the
-        description in the ``/skills`` picker."""
-        install_codex_command_skills()
-        content = (home / ".codex" / "skills" / "daily-check" / "SKILL.md").read_text(
-            encoding="utf-8"
-        )
-        assert content.startswith("---\n")
-        # Frontmatter block terminates before the command body.
-        _, frontmatter, body = content.split("---\n", 2)
-        assert "name: daily-check" in frontmatter
-        assert "description:" in frontmatter
-        # Body preserves the source command's first line.
-        assert "daily health check" in body.lower()
-
-    def test_replaces_existing_command_skill(self, home: Path) -> None:
-        """Re-running setup clobbers a stale SKILL.md even if the
-        directory is already there."""
-        target = home / ".codex" / "skills" / "onboard"
-        target.mkdir(parents=True)
-        (target / "SKILL.md").write_text("stale content", encoding="utf-8")
-
-        install_codex_command_skills()
-
-        updated = (target / "SKILL.md").read_text(encoding="utf-8")
-        assert "stale content" not in updated
-        assert updated.startswith("---\n")
-
-    def test_cleans_up_legacy_prompts_dir(self, home: Path) -> None:
-        """Prior installs placed the same commands in ``~/.codex/prompts/``.
-        Those files are dead on codex-cli 0.117.0+ and must be removed so
-        ``/skills`` doesn't show ghost duplicates when the user looks at
-        their Codex state."""
-        legacy = home / ".codex" / "prompts"
-        legacy.mkdir(parents=True)
-        (legacy / "onboard.md").write_text("legacy prompt", encoding="utf-8")
-        (legacy / "daily-check.md").write_text("legacy prompt", encoding="utf-8")
-        # A user-authored prompt that mureo shouldn't delete.
-        (legacy / "my-custom.md").write_text("mine", encoding="utf-8")
-
-        install_codex_command_skills()
-
-        assert not (legacy / "onboard.md").exists()
-        assert not (legacy / "daily-check.md").exists()
-        # User's own prompt untouched.
-        assert (legacy / "my-custom.md").exists()
-        assert (legacy / "my-custom.md").read_text(encoding="utf-8") == "mine"
-
-    def test_skips_symlinked_legacy_prompts(self, home: Path, tmp_path: Path) -> None:
-        """A symlink at ~/.codex/prompts/<bundled>.md must NOT be removed.
-
-        A user may have symlinked a bundled-name file to their own copy
-        kept outside `~/.codex/` (e.g. a dotfiles repo). Silently
-        unlinking the symlink surprises the operator and loses the link
-        even though the target remains intact. The cleanup should skip
-        symlinks and leave the operator's link alone.
-        """
-        legacy = home / ".codex" / "prompts"
-        legacy.mkdir(parents=True)
-        # Real target lives outside the legacy dir.
-        external = tmp_path / "external_onboard.md"
-        external.write_text("user's own onboard", encoding="utf-8")
-        symlink_path = legacy / "onboard.md"
-        symlink_path.symlink_to(external)
-
-        install_codex_command_skills()
-
-        # Symlink survived — we did not silently unlink it.
-        assert symlink_path.is_symlink()
-        # External target untouched.
-        assert external.exists()
-        assert external.read_text(encoding="utf-8") == "user's own onboard"
-
-    def test_skips_broken_symlink_legacy_prompt(
-        self, home: Path, tmp_path: Path
-    ) -> None:
-        """A broken symlink (target missing) at a bundled path must also
-        survive. ``Path.is_file()`` returns False for a dangling symlink,
-        so it's already skipped by the primary guard — but a regression
-        test pins that behavior in case the guard is ever restructured."""
-        legacy = home / ".codex" / "prompts"
-        legacy.mkdir(parents=True)
-        broken_link = legacy / "onboard.md"
-        broken_link.symlink_to(tmp_path / "does-not-exist.md")
-
-        install_codex_command_skills()
-
-        # Broken symlink untouched: the operator can still see and repair it.
-        assert broken_link.is_symlink()
-
-
-class TestYamlEscape:
-    """``_yaml_escape`` must produce a string safe for a YAML double-quoted
-    scalar so the skill description survives Codex's frontmatter parser.
-
-    A double-quoted YAML scalar interprets backslash escapes, so a raw
-    tab, CR, or unicode line separator in the description would either
-    mangle the value or break the frontmatter block entirely.
-    """
-
-    def test_escapes_backslash_and_quote(self) -> None:
-        assert _yaml_escape(r"a\b") == r"a\\b"
-        assert _yaml_escape('say "hi"') == r"say \"hi\""
-
-    def test_escapes_control_characters(self) -> None:
-        """Tabs, CR, LF, and other C0 control chars must be escaped so
-        they can't silently inject a newline into the frontmatter and
-        truncate the description at an unexpected boundary."""
-        assert "\\x09" in _yaml_escape("line\tafter-tab")
-        assert "\\x0d" in _yaml_escape("carriage\rreturn")
-        assert "\\x0a" in _yaml_escape("with\nnewline")
-
-    def test_escapes_unicode_line_separators(self) -> None:
-        """U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR) are
-        treated as line terminators by some YAML parsers and would break
-        a single-line description, so they must be escaped too."""
-        assert "\u2028" not in _yaml_escape("a\u2028b")
-        assert "\u2029" not in _yaml_escape("a\u2029b")
-
-    def test_leaves_normal_text_unchanged(self) -> None:
-        """Regression guard: escaping should be a no-op on ASCII text
-        without quotes or backslashes."""
-        assert _yaml_escape("run a daily health check") == "run a daily health check"
-
-
 class TestInstallCodexSkills:
-    """Skill directories are copied into ~/.codex/skills/."""
+    """Skill directories are copied into ~/.codex/skills/.
+
+    Phase 3 (PR #77) merged slash commands into skills, so the 10
+    operational skills (daily-check, budget-rebalance, ...) and the
+    foundation skills (_mureo-shared, _mureo-strategy, ...) are all
+    installed by this single function.
+    """
 
     def test_copies_skill_directories(self, home: Path) -> None:
         count, dest = install_codex_skills()
         assert dest == home / ".codex" / "skills"
         assert dest.exists()
         assert count >= 1
-        # mureo-workflows is a known bundled skill
-        assert (dest / "mureo-workflows" / "SKILL.md").exists()
+        # Operational skill (formerly a slash command)
+        assert (dest / "daily-check" / "SKILL.md").exists()
+        # Foundation skill (referenced as PREREQUISITE by operational ones)
+        assert (dest / "_mureo-shared" / "SKILL.md").exists()
 
     def test_replaces_existing_skill(self, home: Path) -> None:
-        dest = home / ".codex" / "skills" / "mureo-workflows"
+        dest = home / ".codex" / "skills" / "_mureo-shared"
         dest.mkdir(parents=True)
         (dest / "SKILL.md").write_text("stale", encoding="utf-8")
 
@@ -328,7 +189,7 @@ class TestInstallCodexSkills:
         """A symlink at the destination path is replaced with a real copy.
 
         A developer running `mureo setup codex` in their working clone
-        may have symlinked ``~/.codex/skills/mureo-workflows`` at their
+        may have symlinked ``~/.codex/skills/_mureo-shared`` at their
         repo's dev copy. ``shutil.rmtree`` refuses symlinks by design,
         so re-installing crashed with ``OSError``. The fix swaps the
         symlink for an ``unlink()`` and the external target stays safe.
@@ -340,7 +201,7 @@ class TestInstallCodexSkills:
 
         dest_parent = home / ".codex" / "skills"
         dest_parent.mkdir(parents=True)
-        link = dest_parent / "mureo-workflows"
+        link = dest_parent / "_mureo-shared"
         link.symlink_to(external_target, target_is_directory=True)
 
         install_codex_skills()
@@ -351,16 +212,12 @@ class TestInstallCodexSkills:
         assert external_target.exists()
         assert (external_target / "keep.txt").read_text() == "keep"
 
-
-class TestInstallCodexCommandSkillsSymlink:
-    """Regression: install_codex_command_skills must tolerate a symlink
-    at the destination for a bundled command skill (e.g. the operator
-    symlinked their own dev copy into ``~/.codex/skills/onboard``).
-    """
-
-    def test_replaces_symlink_command_skill_without_touching_target(
+    def test_replaces_symlinked_operational_skill(
         self, home: Path, tmp_path: Path
     ) -> None:
+        """Symlink replacement works for the operational skills too \u2014
+        ``onboard``, ``daily-check`` etc. behave the same as foundation
+        skills under ``install_codex_skills``."""
         external = tmp_path / "external_onboard_skill"
         external.mkdir()
         (external / "SKILL.md").write_text("dev onboard body")
@@ -370,7 +227,7 @@ class TestInstallCodexCommandSkillsSymlink:
         link = dest_parent / "onboard"
         link.symlink_to(external, target_is_directory=True)
 
-        install_codex_command_skills()
+        install_codex_skills()
 
         assert not link.is_symlink()
         assert link.is_dir()

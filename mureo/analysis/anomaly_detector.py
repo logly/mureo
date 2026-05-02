@@ -11,7 +11,7 @@ Scope (2026-04 X research):
 - CPA spike ≥ 1.5× baseline, gated by 30+ conversions
 - CTR drop ≤ 0.5× baseline, gated by 1000+ impressions
 
-Gates come from the mureo-learning skill's sample-size rules: below
+Gates come from the _mureo-learning skill's sample-size rules: below
 these thresholds, a single bad day is noise and must not trigger an
 alert.
 

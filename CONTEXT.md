@@ -73,7 +73,7 @@ The MCP server exposes tools for Google Ads, Meta Ads, and Search Console.
 Tools covering campaigns, ad groups, ads, keywords, budget, accounts, search terms,
 extensions, conversions, targeting, analysis, B2B, creative, monitoring, capture, and assets.
 
-See `skills/mureo-google-ads/SKILL.md` for the full tool reference.
+See `skills/_mureo-google-ads/SKILL.md` for the full tool reference.
 
 ### Meta Ads Tools (prefix: `meta_ads.`)
 
@@ -81,7 +81,7 @@ Tools covering campaigns, ad sets, ads, insights, analysis, audiences, pixels,
 conversions API, creatives, images, catalogs, lead ads, videos, split tests, ad rules,
 page posts, and Instagram.
 
-See `skills/mureo-meta-ads/SKILL.md` for the full tool reference.
+See `skills/_mureo-meta-ads/SKILL.md` for the full tool reference.
 
 ### Search Console Tools (prefix: `search_console.`)
 
@@ -234,7 +234,7 @@ A JSON file tracking campaign state snapshots across platforms:
 }
 ```
 
-The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/mureo-learning/SKILL.md` for the decision framework. The `skills/mureo-pro-diagnosis/SKILL.md` file contains learned diagnostic insights that grow with use — the agent saves marketing knowledge here when users provide corrections or new insights during operations.
+The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/_mureo-learning/SKILL.md` for the decision framework. The `skills/_mureo-pro-diagnosis/SKILL.md` file contains learned diagnostic insights that grow with use — the agent saves marketing knowledge here when users provide corrections or new insights during operations.
 
 `reversible_params` is an optional, agent-authored hint describing how to reverse the action. Its `operation` must be in the rollback planner's allow-list (`mureo/rollback/planner.py`); destructive verbs (`.delete`, `.remove`, etc.) and unexpected parameter keys are refused. `rollback_of` is set by the rollback executor and points at the index of the entry that was reversed — a later entry with this field constitutes an append-only audit trail and causes a second apply against the same index to be refused. See `docs/mcp-server.md` for the `rollback_plan_get` / `rollback_apply` MCP tools.
 
