@@ -33,9 +33,21 @@ mureo is a framework for AI agents to autonomously operate ad accounts. Once ins
 
 mureo also learns. When you correct the agent's analysis or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is automatically loaded in every future session, so the agent gets increasingly attuned to your account's specific patterns and makes better decisions over time.
 
-## Two paths in: BYOD (5 min, no auth) or Real-API (full automation)
+## Choose your setup
+
+mureo has **3 modes** (where the data comes from) and runs across **3 hosts** (where the agent operates). Pick the cell, run the command:
+
+| | Claude Code | Claude Desktop chat | Cowork (Desktop) |
+|---|---|---|---|
+| **Demo** (synthetic) | `mureo setup claude-code --skip-auth` + `mureo demo init --scenario seasonality-trap` | `mureo install-desktop --with-demo seasonality-trap` | Same as chat + connect the workspace folder |
+| **BYOD** (your XLSX) | `mureo setup claude-code --skip-auth` + `mureo byod import bundle.xlsx` | `mureo install-desktop` + `mureo byod import bundle.xlsx` | Same as chat + connect the workspace folder |
+| **Auth** (Live API) | `mureo setup claude-code` (interactive OAuth) | `mureo install-desktop` + `mureo auth setup --web` | Same as chat + connect the workspace folder |
+
+Full per-row walkthroughs (including how to obtain your XLSX, where to put it, and how to import it): **[Getting Started →](docs/getting-started.md)**.
 
 > **Not familiar with Google Cloud Console or Meta for Developers?** OAuth flows, developer-token registration, and Business-app sign-ups can feel intimidating if you have never used those consoles before. **Start with BYOD** — you will see what mureo can do for your account in a few minutes, then decide whether the real-API path is worth setting up.
+
+## BYOD vs Real-API at a glance
 
 ### Mode A: BYOD — 5 minutes to first diagnosis, no OAuth
 
