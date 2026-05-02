@@ -7,7 +7,7 @@ contracts:
   - manifest read/write resilience (missing / corrupt / wrong schema)
   - BYOD clients reading the CSVs produced by the bundle importer
   - Mutation guards on every BYOD client class
-  - MCP factory routing (BYOD active → BYOD client; otherwise real API)
+  - MCP factory routing (BYOD active → BYOD client; otherwise Live API)
   - CLI surface (``mureo byod import / status / remove / clear``)
   - No-outbound-network guarantee under BYOD-mode tool dispatch
 """
@@ -682,7 +682,7 @@ def test_byod_meta_get_performance_report_exposes_result_indicator(
 
 def test_byod_meta_client_phase3_readers(tmp_path, fake_home):
     """ByodMetaAdsClient exposes the Phase 3 CSVs through async
-    readers that mirror the real-API method shapes daily-check expects:
+    readers that mirror the Live API method shapes daily-check expects:
     get_metrics_daily / get_ad_set_insights_daily / get_ad_insights_daily
     / get_breakdown_report (demographics) / get_creatives.
     """

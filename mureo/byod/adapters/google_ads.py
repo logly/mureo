@@ -25,7 +25,7 @@ Auction insights are intentionally **not** part of this BYOD pipeline.
 Google Ads Scripts does not expose the GAQL ``auction_insight_domain``
 resource, and the legacy AWQL ``AUCTION_INSIGHT_PERFORMANCE_REPORT``
 returns "Report not mapped" — neither surface works from inside Ads
-Scripts. Use the existing real-API path (``mureo auth setup``) for
+Scripts. Use the existing Live API path (``mureo auth setup``) for
 ``/competitive-scan`` if competitor share data is needed.
 
 Campaign / ad-group identity is synthesized from name (deterministic
@@ -340,7 +340,7 @@ class GoogleAdsAdapter:
         # auction_insight_domain GAQL resource (returns "Could not
         # identify resource") and the legacy AWQL report
         # AUCTION_INSIGHT_PERFORMANCE_REPORT returns "Report not
-        # mapped". `/competitive-scan` falls back to the real-API
+        # mapped". `/competitive-scan` falls back to the Live API
         # path or returns an empty result for BYOD users.
 
         all_dates.sort()

@@ -16,7 +16,7 @@ only ever reads the local XLSX file.**
 > **Status (Phase 2):** Google Ads (via the mureo Google Ads Script)
 > and Meta Ads (via the Ads Manager Excel export) are both supported
 > through the Sheet bundle pipeline. GA4 and Search Console remain on
-> the existing real-API OAuth path (see `docs/authentication.md`) —
+> the existing Live API OAuth path (see `docs/authentication.md`) —
 > they are **not** part of the BYOD bundle.
 
 ---
@@ -137,13 +137,13 @@ search-term gaps, keyword quality scores, etc.
 |---|---|
 | `mureo byod import <file.xlsx>` | Import a Sheet bundle. Aborts if the target platform already has BYOD data. |
 | `mureo byod import <file.xlsx> --replace` | Overwrite existing BYOD data for the platform present in the bundle. |
-| `mureo byod status` | Show per-platform mode (BYOD / real API / not configured). |
+| `mureo byod status` | Show per-platform mode (BYOD / Live API / not configured). |
 | `mureo byod remove --<platform>` | Remove BYOD data for one platform (`--google-ads` / `--meta-ads`). |
 | `mureo byod clear` | Wipe `~/.mureo/byod/` entirely. |
 | `mureo byod clear --yes` | Skip the confirmation prompt. |
 
 There is **no `--byod` flag** anywhere. mureo decides per-platform at
-each tool call by checking `~/.mureo/byod/manifest.json`. Real-API
+each tool call by checking `~/.mureo/byod/manifest.json`. Live API
 credentials and BYOD imports coexist freely — see the next section.
 
 ---
@@ -177,22 +177,22 @@ credentials and BYOD imports coexist freely — see the next section.
 4. `~/.mureo/byod/<platform>/` actually exists on disk
 
 If you remove `~/.mureo/byod/google_ads/` out of band but leave the
-manifest, mureo logs a warning and falls back to real-API mode for
+manifest, mureo logs a warning and falls back to Live API mode for
 that platform.
 
 ---
 
-## Mixing BYOD and real API
+## Mixing BYOD and Live API
 
 | Setup | Result |
 |---|---|
-| Bundle imported for Google Ads; meta_ads not configured | Google Ads = bundle, Meta = real API |
-| Bundle imported for Meta Ads; google_ads not configured | Meta = bundle, Google Ads = real API |
+| Bundle imported for Google Ads; meta_ads not configured | Google Ads = bundle, Meta = Live API |
+| Bundle imported for Meta Ads; google_ads not configured | Meta = bundle, Google Ads = Live API |
 | Bundles imported for both | Both = bundle |
-| Nothing imported | All platforms = real API |
-| `mureo byod clear` | All platforms = real API |
+| Nothing imported | All platforms = Live API |
+| `mureo byod clear` | All platforms = Live API |
 
-GA4 and Search Console always go through the real-API OAuth path —
+GA4 and Search Console always go through the Live API OAuth path —
 the bundle pipeline does not cover them.
 
 ---
@@ -211,7 +211,7 @@ name prefixes returns `{"status": "skipped_in_byod_readonly", ...}`:
 
 ---
 
-## Switching back to the real API
+## Switching back to the Live API
 
 ```bash
 mureo byod remove --google-ads          # remove just one platform
@@ -220,7 +220,7 @@ mureo byod clear                         # remove all BYOD data
 ```
 
 `mureo byod clear` does **not** touch `~/.mureo/credentials.json`,
-so your real-API OAuth tokens survive a BYOD reset. After removal,
+so your Live API OAuth tokens survive a BYOD reset. After removal,
 restart Claude Code; the MCP server detects the missing manifest at
 startup and falls back to credentials.json automatically.
 
@@ -265,7 +265,7 @@ adapter's data.
 
 ## What's *not* in BYOD
 
-- **GA4 / Search Console.** Use the real-API OAuth path
+- **GA4 / Search Console.** Use the Live API OAuth path
   (`mureo auth setup`); they are not part of the bundle pipeline.
 - **`/rescue` budget operations.** The agent can recommend rescues
   but cannot execute them — BYOD is read-only.
@@ -288,7 +288,7 @@ treats the cost column as a single coherent unit.
 
 For the full live-account experience, run `mureo auth setup` (or
 `mureo auth setup --web`) and `mureo byod clear` to switch back to
-real-API mode.
+Live API mode.
 
 ---
 
@@ -303,7 +303,7 @@ Google Ads MCP surface:
 
 `google_ads_auction_insights_get` / `analyze` return empty under BYOD
 (the data isn't available from Google Ads Scripts). Use
-`mureo auth setup` for the real-API path if competitor share data is
+`mureo auth setup` for the Live API path if competitor share data is
 required.
 
 ---
@@ -341,4 +341,4 @@ directory was deleted out of band, run
 - Sheet template scripts: `scripts/sheet-template/README.md`
 - CLI reference: `docs/cli.md`
 - Architecture: `docs/architecture.md`
-- Real-API auth: `docs/authentication.md`
+- Live API auth: `docs/authentication.md`

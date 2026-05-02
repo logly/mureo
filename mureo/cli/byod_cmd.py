@@ -41,7 +41,7 @@ def _print_status_block() -> None:
     if not manifest:
         if creds_ok:
             typer.echo(
-                "  No BYOD data installed. mureo will use real API "
+                "  No BYOD data installed. mureo will use Live API "
                 "(credentials present at ~/.mureo/credentials.json)."
             )
         else:
@@ -62,7 +62,7 @@ def _print_status_block() -> None:
             )
         else:
             if creds_ok:
-                typer.echo(f"  {p:15s} real API (credentials present)")
+                typer.echo(f"  {p:15s} Live API (credentials present)")
             else:
                 typer.echo(
                     f"  {p:15s} not configured " "(no BYOD data, no credentials.json)"
@@ -141,7 +141,7 @@ def import_(
 
 @byod_app.command("status")  # type: ignore[untyped-decorator, unused-ignore]
 def status() -> None:
-    """Show which platforms are in BYOD mode vs real-API mode."""
+    """Show which platforms are in BYOD mode vs Live API mode."""
     typer.echo("=== mureo byod status ===\n")
     _print_status_block()
 
