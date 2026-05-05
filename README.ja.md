@@ -17,9 +17,9 @@
   <a href="https://github.com/logly/mureo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/logly/mureo/actions/workflows/ci.yml/badge.svg"></a>
 </p>
 
-**mureo** — ローカル完結・安全設計のAI広告運用フレームワーク。Claude Code、Codex、Cursor、Gemini に対応。
+**mureo** — ローカルで動く、AI広告運用チーム。無駄を見つけ、変更を監査し、安全に運用する。
 
-戦略を理解するエージェントが Google Ads、Meta Ads、Search Console、GA4 を自律的に分析・運用します。**認証情報は端末の外に出ません。**
+Claude Code、Cursor、Codex、Gemini に対応。mureo は各広告プラットフォームの公式 MCP の上に乗り、AI に守るべき戦略・測るべき成果・誰にでも見せられる監査証跡を与えます。**認証情報は端末の外に出ません。**
 
 <p align="center">
   <img src="docs/img/sample-search-term-cleanup.ja.svg" alt="mureo /search-term-cleanup の出力: ブランド自己カニバリゼーションを自動検出 — 同じブランド検索語が片方で CPA ¥4,550、もう片方で ¥31,800 が無駄、約 ¥250,000/30日 を再配分可能">
@@ -29,9 +29,17 @@
 
 ## mureoとは
 
-mureoは、AIエージェントが広告アカウントを自動運用するためのフレームワークです。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）がGoogle広告・Meta広告・Search Console・GA4を横断して、配信診断・検索語分析・予算評価・入稿チェックなどを実行できるようになります。すべての操作はあなたのビジネス戦略（`STRATEGY.md`）に基づいて行われます。
+mureoは、**AI 広告運用のためのローカル制御平面（control plane）** です。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）が Google 広告・Meta 広告・Search Console・GA4 を *mureo を経由して* 操作できるようになります。すべての判断はあなたの事業戦略に基づき、実際の成果に紐づき、後から再生可能な監査ログに残ります。
 
-mureoには学習の仕組みもあります。エージェントの分析を修正したり運用上の気づきを共有すると、`/learn` でナレッジベースに保存できます。保存した知識は次回以降のセッションで自動的に読み込まれるため、使い続けるほどエージェントがあなたのアカウントの特性を理解し、より的確な判断ができるようになります。
+各広告プラットフォームの公式 MCP（Meta Ads MCP / Google Ads MCP など）が出揃うと、mureo はそれらをドライバとして利用します。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
+
+| Pillar | mureo がやること | 公式MCPには作れない理由 |
+|---|---|---|
+| **Strategy Enforcer** | `STRATEGY.md` と `policy.yaml` を読み、ペルソナ・USP・ブランドボイス・予算ルール・運用モードに照らして全変更をゲートする | 公式 MCP はあなたのビジネスを知らない |
+| **Outcome Ledger** | プラットフォーム指標と CRM / 売上 / LTV をローカルで相関付ける | 公式 MCP はプラットフォーム側の数字しか見ない |
+| **Audit & Provenance** | 「いつ・誰が・なぜ・どんな根拠で」を追記専用の署名付きログに残す（diff / replay / rollback 可能） | 公式 MCP は戦略的意図を残さない |
+
+mureo は**学習**もします。エージェントの分析を修正したり運用上の気づきを共有すると、`/learn` でナレッジベースに保存され、次回以降のセッションで自動的に読み込まれます。使い続けるほどあなたのアカウントの特性を理解し、より的確な判断ができるようになります。
 
 ## セットアップを選ぶ
 

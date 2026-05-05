@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide walks you through running mureo end-to-end. Pick a **mode** (what data to use) and a **host** (where the agent runs), then follow the matching walkthrough.
+This guide walks you through running mureo end-to-end. mureo is your local-first AI ad ops crew — pick a **mode** (what data to use) and a **host** (where the agent runs), then follow the matching walkthrough.
 
 For a 30-second overview of which combination to pick, jump to [Choosing the right combination](#choosing-the-right-combination) at the bottom.
 

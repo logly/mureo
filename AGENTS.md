@@ -4,9 +4,9 @@ Guidelines for AI agents contributing to the mureo codebase.
 
 ## Project Overview
 
-**mureo** — Local-first, safety-gated AI ad-ops framework for Claude Code, Codex, Cursor & Gemini.
+**mureo** — your local-first AI ad ops crew. Find waste, audit changes, run ad accounts safely.
 
-Strategy-aware agents that autonomously analyze and operate Google Ads, Meta Ads, Search Console & GA4 — credentials never leave your machine.
+Works with Claude Code, Cursor, Codex & Gemini. mureo sits on top of the official ad-platform MCPs and gives your AI a strategy to follow, an outcome to be measured against, and an audit trail you can show to anyone — credentials never leave your machine.
 
 mureo combines strategy context, workflow commands, and domain knowledge to help AI agents achieve marketing goals across platforms. Provides MCP tools for direct platform operations and workflow commands for strategy-driven ad operations via Claude Code slash commands. Designed for AI agents — no database, no LLM SDK, no web framework.
 
