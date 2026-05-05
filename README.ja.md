@@ -33,7 +33,7 @@ mureoは、**AI 広告運用のためのローカル制御平面（control plane
 
 各広告プラットフォームの公式 MCP（Meta Ads MCP / Google Ads MCP など）が出揃うと、mureo はそれらをドライバとして利用します。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
 
-| Pillar | mureo がやること | 公式MCPには作れない理由 |
+| 役割 | mureo がやること | 公式MCPには作れない理由 |
 |---|---|---|
 | **Strategy Enforcer** | `STRATEGY.md` と `policy.yaml` を読み、ペルソナ・USP・ブランドボイス・予算ルール・運用モードに照らして全変更をゲートする | 公式 MCP はあなたのビジネスを知らない |
 | **Outcome Ledger** | プラットフォーム指標と CRM / 売上 / LTV をローカルで相関付ける | 公式 MCP はプラットフォーム側の数字しか見ない |
