@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 _EXTENSION_NAME = "mureo"
-_DESCRIPTION = "Your local-first AI ad ops crew. Works with Claude Code, Cursor, Codex & Gemini."
+_DESCRIPTION = (
+    "Your local-first AI ad ops crew. Works with Claude Code, Cursor, Codex & Gemini."
+)
 
 
 def _mureo_version() -> str:
