@@ -18,7 +18,7 @@ metadata:
 
 ## Overview
 
-**mureo** is a marketing orchestration framework for AI agents. It provides:
+**mureo** is a local-first control plane for AI ad ops. It sits on top of the official ad-platform MCPs (Meta Ads MCP, Google Ads MCP, etc.) and provides the layer they cannot — strategy enforcement, outcome correlation, and an auditable decision log. It provides:
 - **CLI** (`mureo`) for direct command-line usage
 - **MCP Server** for integration with AI agent hosts (Claude Code, Cursor, Codex, Gemini, etc.)
 - **Python library** for programmatic access

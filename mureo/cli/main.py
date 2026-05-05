@@ -17,7 +17,7 @@ from mureo.cli.setup_cmd import setup_app
 
 app = typer.Typer(
     name="mureo",
-    help="Local-first, safety-gated AI ad-ops framework for Claude Code, Codex, Cursor & Gemini",
+    help="Your local-first AI ad ops crew. Works with Claude Code, Cursor, Codex & Gemini.",
     no_args_is_help=True,
 )
 

@@ -1,6 +1,6 @@
 # Architecture
 
-mureo is a **marketing orchestration framework** that bridges the gap between marketing strategy and advertising platform execution. Rather than a simple API wrapper, mureo provides a layered system where human-defined goals flow through strategy context, get orchestrated by AI-powered workflows, and execute via pluggable platform connections.
+mureo is a **local-first control plane** for AI-driven ad ops. It does not compete with the official ad-platform MCPs (Meta Ads MCP, Google Ads MCP, etc.) — it consumes them as drivers and provides the layer they structurally cannot: strategic intent, outcome correlation, and audit trail. Where the official MCPs answer *how to call the API*, mureo answers *should this change happen, what does it mean for the business, and how do we prove it later*.
 
 ## System Architecture
 
@@ -53,7 +53,25 @@ The workflow commands form a continuous Plan-Do-Check-Act cycle: `/onboard` defi
 
 ### Tool Connection Layer
 
-The bottom layer provides concrete connections to advertising platforms and analytics services. mureo ships its own MCP tools for Google Ads, Meta Ads, and Google Search Console. Third-party MCP servers (e.g., GA4) can be composed alongside mureo's tools. This layer is intentionally replaceable -- as platforms release official MCP servers, mureo's built-in connectors can be swapped out without affecting the orchestration layer above.
+The bottom layer connects to advertising platforms and analytics services. mureo currently ships its own MCP tools for Google Ads, Meta Ads, and Google Search Console; third-party MCP servers (e.g., GA4) can be composed alongside them. **This layer is intentionally replaceable.** As platforms release official MCP servers (Meta Ads MCP shipped 2026-04-29; Google Ads MCP available), mureo's built-in connectors are swapped for official ones with no change to the orchestration layer above. Official MCPs are drivers; mureo is the control plane that drives them.
+
+## The 3 Pillars (what an official MCP cannot replace)
+
+mureo's durable value is not platform connectivity — that commoditizes as official MCPs ship. The value is in three control-plane responsibilities that platforms structurally will not provide:
+
+### Strategy Enforcer
+
+Every proposed change passes through a runtime gate that reads `STRATEGY.md` and `policy.yaml` and decides: allow / deny / require approval. Persona, USP, brand voice, budget rules, allowed mutation scope, and operation mode all become enforcement signals — not just context. An official MCP has no view of your strategy and cannot enforce one.
+
+### Outcome Ledger
+
+Platform metrics (ROAS, CPA, CPM) describe what happened inside the walled garden. mureo correlates them with your business outcomes — CRM lead quality, sales, LTV, P&L — kept locally. Decisions are graded on outcomes, not platform reports. An official MCP cannot see outside its platform.
+
+### Audit & Provenance
+
+Every decision is recorded in an append-only, signed ledger: who proposed, when, with what reasoning, on what evidence, with what predicted impact, with what rollback plan. Decisions are diffable, replayable, and reversible. An official MCP records API calls, not strategic intent. This is the layer that makes AI ad ops survivable in regulated industries (GDPR, CCPA) and through procurement / SOC2 review.
+
+These three pillars are why mureo's value increases — not decreases — as official MCPs ship.
 
 ## Package Structure
 

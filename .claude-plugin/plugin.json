@@ -1,7 +1,7 @@
 {
   "name": "mureo",
   "version": "0.8.0",
-  "description": "Local-first, safety-gated AI ad-ops for Google Ads, Meta Ads, Search Console & GA4. Strategy-aware agents that analyze campaigns, surface anomalies, and propose actions — credentials never leave your machine.",
+  "description": "Your local-first AI ad ops crew for Google Ads, Meta Ads, Search Console & GA4. mureo sits on top of the official ad-platform MCPs, gates every change against your strategy, correlates outcomes locally, and keeps an auditable decision log — credentials never leave your machine.",
   "author": {
     "name": "Logly Inc.",
     "url": "https://github.com/logly/mureo"
