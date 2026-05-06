@@ -55,19 +55,27 @@ The workflow commands form a continuous Plan-Do-Check-Act cycle: `/onboard` defi
 
 The bottom layer connects to advertising platforms and analytics services. mureo currently ships its own MCP tools for Google Ads, Meta Ads, and Google Search Console; third-party MCP servers (e.g., GA4) can be composed alongside them. **This layer is intentionally replaceable.** As platforms release official MCP servers (Meta Ads MCP shipped 2026-04-29; Google Ads MCP available), mureo's built-in connectors are swapped for official ones with no change to the orchestration layer above. Official MCPs are drivers; mureo is the control plane that drives them.
 
-## The Pillars (what an official MCP cannot replace)
+## What mureo provides (that an official MCP cannot)
 
 mureo's durable value is not platform connectivity — that commoditizes as official MCPs ship. The value is in control-plane responsibilities that platforms structurally will not provide:
 
-### Strategy Enforcer
+### Strategy
 
 Every proposed change passes through a runtime gate that reads `STRATEGY.md` and decides: allow / deny / require approval. Persona, USP, brand voice, budget rules, allowed mutation scope, and operation mode all become enforcement signals — not just context. An official MCP has no view of your strategy and cannot enforce one.
 
-### Audit & Provenance
+### Safety
+
+Mutations are bounded by a rollback allow-list, GAQL injection guards, BYOD read-only-by-default, per-platform throttle (token bucket + rolling hourly cap), and credential-guard hooks. Incorrect agent behavior degrades to "no-op" rather than "live damage." An official MCP exposes raw API surface; this constraint logic lives in mureo.
+
+### Audit
 
 Every decision is recorded in an append-only ledger: who proposed, when, with what reasoning, on what evidence, with what predicted impact, with what rollback plan. Decisions are reversible. An official MCP records API calls, not strategic intent. This is the layer that makes AI ad ops survivable in regulated industries (GDPR, CCPA) and through procurement / SOC2 review.
 
-These pillars are why mureo's value increases — not decreases — as official MCPs ship.
+### Outcome (🚧 Coming v0.9, Q3 2026)
+
+Platform metrics describe what happened inside the walled garden. mureo will correlate them with your business outcomes — CRM lead quality, sales, LTV, P&L — kept locally. Decisions will be graded on outcomes, not platform reports. Implementation tracks for v0.9 (target 2026-08).
+
+mureo's value increases — not decreases — as official MCPs ship.
 
 ## Package Structure
 
