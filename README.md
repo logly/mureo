@@ -19,6 +19,8 @@
 
 **mureo** — your local-first AI ad ops crew. Find waste, audit changes, run ad accounts safely.
 
+_Local-first. Strategy-grounded. Safety-gated._
+
 Works with Claude Code, Cursor, Codex & Gemini. mureo sits on top of the official ad-platform MCPs and gives your AI a strategy to follow, an outcome to be measured against, and an audit trail you can show to anyone — **credentials never leave your machine**.
 
 <p align="center">
@@ -33,12 +35,14 @@ mureo is a **local-first control plane for AI ad ops**. Once installed, AI agent
 
 When official ad-platform MCPs ship (Meta Ads MCP, Google Ads MCP, etc.), mureo uses them as drivers. mureo's value is not the API connection — it is **what happens around it**:
 
-| Pillar | What mureo does | Why an official MCP can't |
-|---|---|---|
-| **Strategy Enforcer** | Reads `STRATEGY.md`; gates every change against your persona, USP, brand voice, budget rules, and operation mode. | Official MCPs don't know your business. |
-| **Audit & Provenance** | Append-only log of every decision (who, when, why, with what evidence) — with rollback. | Official MCPs don't track strategic intent. |
+- **Strategy-grounded** — every decision reads `STRATEGY.md` (persona, USP, brand voice, goals)
+- **Safety-gated** — rollback allow-list, GAQL guards, BYOD read-only by default, credential guard, per-platform throttle
+- **Cross-platform** — Google Ads / Meta Ads / Search Console / GA4 in one workflow
+- **Auditable** — append-only action log with rollback
+- **Local-first** — credentials never leave your machine
+- **Learnable** — `/learn` builds account-specific knowledge over time
 
-mureo also **learns**. When you correct an analysis or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is loaded at the start of every future session, so mureo gets increasingly attuned to your account's specific patterns and makes better decisions over time.
+> 🚧 **Coming v0.9 (Q3 2026)**: Outcome correlation — link platform metrics with your CRM / sales / LTV data, locally.
 
 ## Choose your setup
 
