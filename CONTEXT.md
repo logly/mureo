@@ -6,10 +6,9 @@ Instructions for AI agents that **use** mureo as a tool to operate marketing acc
 
 mureo is a local-first control plane for AI ad ops. It sits on top of the official
 ad-platform MCPs (Meta Ads MCP, Google Ads MCP, etc.), and gives the AI a strategy
-to enforce, an outcome ledger to measure against, and an auditable decision log to
-replay later. It provides MCP tools, CLI commands, and workflow commands to manage
-marketing operations across multiple platforms. All outputs are structured JSON —
-designed for machine consumption.
+to enforce and an auditable decision log to review later. It provides MCP tools,
+CLI commands, and workflow commands to manage marketing operations across multiple
+platforms. All outputs are structured JSON — designed for machine consumption.
 
 **Supported platforms (built-in):**
 - Google Ads

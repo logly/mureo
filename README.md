@@ -35,9 +35,8 @@ When official ad-platform MCPs ship (Meta Ads MCP, Google Ads MCP, etc.), mureo 
 
 | Pillar | What mureo does | Why an official MCP can't |
 |---|---|---|
-| **Strategy Enforcer** | Reads `STRATEGY.md` + `policy.yaml`; gates every change against your persona, USP, brand voice, budget rules, and operation mode. | Official MCPs don't know your business. |
-| **Outcome Ledger** | Correlates platform metrics with your CRM / sales / LTV data, locally. | Official MCPs only see platform-side numbers. |
-| **Audit & Provenance** | Append-only signed log of every decision (who, when, why, with what evidence) — diff, replay, rollback. | Official MCPs don't track strategic intent. |
+| **Strategy Enforcer** | Reads `STRATEGY.md`; gates every change against your persona, USP, brand voice, budget rules, and operation mode. | Official MCPs don't know your business. |
+| **Audit & Provenance** | Append-only log of every decision (who, when, why, with what evidence) — with rollback. | Official MCPs don't track strategic intent. |
 
 mureo also **learns**. When you correct an analysis or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is loaded at the start of every future session, so mureo gets increasingly attuned to your account's specific patterns and makes better decisions over time.
 

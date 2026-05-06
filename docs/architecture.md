@@ -55,23 +55,19 @@ The workflow commands form a continuous Plan-Do-Check-Act cycle: `/onboard` defi
 
 The bottom layer connects to advertising platforms and analytics services. mureo currently ships its own MCP tools for Google Ads, Meta Ads, and Google Search Console; third-party MCP servers (e.g., GA4) can be composed alongside them. **This layer is intentionally replaceable.** As platforms release official MCP servers (Meta Ads MCP shipped 2026-04-29; Google Ads MCP available), mureo's built-in connectors are swapped for official ones with no change to the orchestration layer above. Official MCPs are drivers; mureo is the control plane that drives them.
 
-## The 3 Pillars (what an official MCP cannot replace)
+## The Pillars (what an official MCP cannot replace)
 
-mureo's durable value is not platform connectivity — that commoditizes as official MCPs ship. The value is in three control-plane responsibilities that platforms structurally will not provide:
+mureo's durable value is not platform connectivity — that commoditizes as official MCPs ship. The value is in control-plane responsibilities that platforms structurally will not provide:
 
 ### Strategy Enforcer
 
-Every proposed change passes through a runtime gate that reads `STRATEGY.md` and `policy.yaml` and decides: allow / deny / require approval. Persona, USP, brand voice, budget rules, allowed mutation scope, and operation mode all become enforcement signals — not just context. An official MCP has no view of your strategy and cannot enforce one.
-
-### Outcome Ledger
-
-Platform metrics (ROAS, CPA, CPM) describe what happened inside the walled garden. mureo correlates them with your business outcomes — CRM lead quality, sales, LTV, P&L — kept locally. Decisions are graded on outcomes, not platform reports. An official MCP cannot see outside its platform.
+Every proposed change passes through a runtime gate that reads `STRATEGY.md` and decides: allow / deny / require approval. Persona, USP, brand voice, budget rules, allowed mutation scope, and operation mode all become enforcement signals — not just context. An official MCP has no view of your strategy and cannot enforce one.
 
 ### Audit & Provenance
 
-Every decision is recorded in an append-only, signed ledger: who proposed, when, with what reasoning, on what evidence, with what predicted impact, with what rollback plan. Decisions are diffable, replayable, and reversible. An official MCP records API calls, not strategic intent. This is the layer that makes AI ad ops survivable in regulated industries (GDPR, CCPA) and through procurement / SOC2 review.
+Every decision is recorded in an append-only ledger: who proposed, when, with what reasoning, on what evidence, with what predicted impact, with what rollback plan. Decisions are reversible. An official MCP records API calls, not strategic intent. This is the layer that makes AI ad ops survivable in regulated industries (GDPR, CCPA) and through procurement / SOC2 review.
 
-These three pillars are why mureo's value increases — not decreases — as official MCPs ship.
+These pillars are why mureo's value increases — not decreases — as official MCPs ship.
 
 ## Package Structure
 
