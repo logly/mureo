@@ -21,9 +21,9 @@ Synchronize STATE.json with the current state of all marketing platforms.
 2. **Discover platforms**: Identify all platforms registered in STATE.json `platforms`.
 
 3. **Fetch platform data**: For each registered platform:
-   - **Google Ads**: Call `google_ads_campaigns_list`, then `google_ads_performance_report` for the current period (last 30 days). Both work in BYOD and Live API modes.
-   - **Meta Ads**: Call `meta_ads_campaigns_list`, then `meta_ads_insights_report` for the current period — capture `result_indicator` per campaign so STATE.json reflects whether each campaign's "results" are clicks or real leads.
-   - mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through MCP tools — do **not** look for raw CSVs in the project directory.
+   - **Google Ads**: prefer mureo native — call `google_ads_campaigns_list`, then `google_ads_performance_report` for the current period (last 30 days). Both work in BYOD and Live API modes. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's equivalent campaign-list and performance-report tools for the same period.
+   - **Meta Ads**: prefer mureo native — call `meta_ads_campaigns_list`, then `meta_ads_insights_report` for the current period — capture `result_indicator` per campaign so STATE.json reflects whether each campaign's "results" are clicks or real leads. If mureo's Meta Ads tools are unavailable, fall back to the official `meta-ads-official` hosted MCP for the campaign list and insights; the `result_indicator` field is mureo-specific and will not be present — record the raw optimization goal / actions list per campaign in STATE.json instead and note that CV-definition disambiguation requires mureo's native MCP.
+   - mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through mureo MCP tools — do **not** look for raw CSVs in the project directory.
 
 4. **Check data sources**: If Search Console is configured, verify site access is still valid. If GA4 is available, verify connectivity.
 
