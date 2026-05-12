@@ -5,11 +5,31 @@ Invoked over stdio by MCP clients such as Claude Code or Cursor.
 
 Tool definitions and handlers are separated into per-service modules
 (tools_google_ads.py, tools_meta_ads.py, tools_search_console.py).
+
+Per-platform tool families can be disabled at server-startup time by
+setting one of the following process env vars to the exact string ``"1"``
+before launching the server (typically written by ``mureo providers add
+<official-id>`` into ``mcpServers.mureo.env``):
+
+- ``MUREO_DISABLE_GOOGLE_ADS`` — skip the ``google_ads_*`` tool family.
+- ``MUREO_DISABLE_META_ADS`` — skip the ``meta_ads_*`` tool family.
+- ``MUREO_DISABLE_GA4`` — wired in for forward-compat (no-op today; mureo
+  ships no native GA4 tools yet).
+
+The env vars are read **once at module import time**; the server starts
+once per process and the gate is a startup decision. Search Console is
+*always* registered regardless of env-var combinations — mureo is
+canonical for SC because no official MCP exists.
+
+The comparison is exact-string ``== "1"`` — any other value (``"0"``,
+``""``, ``"true"``, ``"  1  "``) leaves tools enabled. Do not loosen this
+comparison; multiple tests pin the contract.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 from mcp.server import Server
@@ -35,19 +55,49 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Combined tool list
+# Env-var gating (read once at module import time — see module docstring)
+# ---------------------------------------------------------------------------
+
+
+def _is_disabled(env_var: str) -> bool:
+    """Return True iff the env var equals the exact string ``"1"``.
+
+    Exact-string comparison is intentional — see module docstring. Do NOT
+    loosen this to ``bool(...)`` or ``strip().lower() == "1"``; the
+    contract is locked in by ``test_truthy_coercion_does_not_disable``.
+    """
+    return os.environ.get(env_var) == "1"
+
+
+_GOOGLE_ADS_ENABLED = not _is_disabled("MUREO_DISABLE_GOOGLE_ADS")
+_META_ADS_ENABLED = not _is_disabled("MUREO_DISABLE_META_ADS")
+# GA4 flag is wired in for forward-compat symmetry; mureo ships no native
+# GA4 tools today, so the flag does not currently gate anything. Once GA4
+# tools land in mureo, add a ``GA4_TOOLS`` import + ``_GA4_NAMES`` block
+# below and the gate becomes operational automatically.
+_GA4_ENABLED = not _is_disabled("MUREO_DISABLE_GA4")  # noqa: F841
+
+
+# ---------------------------------------------------------------------------
+# Combined tool list — built conditionally based on env-var gates above.
+# ``MUREO_DISABLE_SEARCH_CONSOLE`` is deliberately NOT honored — mureo is
+# canonical for Search Console (no official MCP equivalent exists).
 # ---------------------------------------------------------------------------
 
 _ALL_TOOLS: list[Tool] = [
-    *GOOGLE_ADS_TOOLS,
-    *META_ADS_TOOLS,
+    *(GOOGLE_ADS_TOOLS if _GOOGLE_ADS_ENABLED else []),
+    *(META_ADS_TOOLS if _META_ADS_ENABLED else []),
     *SEARCH_CONSOLE_TOOLS,
     *ROLLBACK_TOOLS,
     *ANALYSIS_TOOLS,
     *MUREO_CONTEXT_TOOLS,
 ]
-_GOOGLE_ADS_NAMES: frozenset[str] = frozenset(t.name for t in GOOGLE_ADS_TOOLS)
-_META_ADS_NAMES: frozenset[str] = frozenset(t.name for t in META_ADS_TOOLS)
+_GOOGLE_ADS_NAMES: frozenset[str] = (
+    frozenset(t.name for t in GOOGLE_ADS_TOOLS) if _GOOGLE_ADS_ENABLED else frozenset()
+)
+_META_ADS_NAMES: frozenset[str] = (
+    frozenset(t.name for t in META_ADS_TOOLS) if _META_ADS_ENABLED else frozenset()
+)
 _SEARCH_CONSOLE_NAMES: frozenset[str] = frozenset(t.name for t in SEARCH_CONSOLE_TOOLS)
 _ROLLBACK_NAMES: frozenset[str] = frozenset(t.name for t in ROLLBACK_TOOLS)
 _ANALYSIS_NAMES: frozenset[str] = frozenset(t.name for t in ANALYSIS_TOOLS)
