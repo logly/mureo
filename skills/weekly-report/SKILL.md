@@ -24,9 +24,9 @@ Generate a weekly marketing operations report.
 3. **Period**: Determine the reporting period (last 7 days from today).
 
 4. **Goal progress**: For each Goal, pull performance data from the relevant platforms:
-   - **Google Ads**: Call `google_ads_performance_report` (with `period: "LAST_7_DAYS"` then `period: "LAST_14_DAYS"` and subtract the first 7 from the next 7 for previous-week comparison).
-   - **Meta Ads**: Call `meta_ads_insights_report` similarly. When summing Meta "results" across campaigns, group by `result_indicator` — never aggregate `link_click` totals together with `pixel_lead` totals (PR #61).
-   - mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through MCP tools — do **not** look for raw CSVs in the project directory.
+   - **Google Ads**: prefer mureo native `google_ads_performance_report` (with `period: "LAST_7_DAYS"` then `period: "LAST_14_DAYS"` and subtract the first 7 from the next 7 for previous-week comparison). If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's equivalent performance-report tool over the same two windows and perform the WoW subtraction the same way.
+   - **Meta Ads**: prefer mureo native `meta_ads_insights_report` similarly. When summing Meta "results" across campaigns, group by `result_indicator` — never aggregate `link_click` totals together with `pixel_lead` totals (PR #61). If mureo's Meta Ads tools are unavailable, fall back to the official `meta-ads-official` hosted MCP for the raw insights over the same two windows; the official MCP does not surface a `result_indicator` field, so you must inspect each campaign's optimization goal / actions list yourself and avoid aggregating `link_click`-optimized totals with `offsite_conversion.fb_pixel_lead`-optimized totals — note this caveat in the report.
+   - mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through mureo MCP tools — do **not** look for raw CSVs in the project directory.
    - Show week-over-week change for each Goal metric. If GA4 is available, include website-level metrics (sessions, conversion rate, revenue) for a holistic view.
 
 5. **Actions taken**: Read `action_log` from STATE.json, filter to the reporting period.
