@@ -39,6 +39,12 @@ dependencies = [
     # --bundle <xlsx>) to read multi-tab Sheets exported from the
     # mureo Sheet template (Apps Script + Google Ads Script).
     "openpyxl>=3.1,<4",
+    # PyYAML is used by mureo.core.skills.parser to parse SKILL.md
+    # frontmatter via yaml.safe_load (P1-08). Pinned <7 to avoid
+    # unannounced API breaks. The hand-rolled alternative was rejected
+    # — re-implementing YAML escapes is a worse security surface than
+    # the audited safe_load path.
+    "pyyaml>=6.0,<7",
 ]
 
 [project.optional-dependencies]
@@ -103,6 +109,15 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = "google.ads.googleads.*"
+ignore_missing_imports = true
+
+# PyYAML ships no type stubs by default; ``types-PyYAML`` is a separate
+# package on PyPI. Adding it to ``[project.optional-dependencies].dev``
+# would force every contributor to reinstall. The two values we actually
+# touch (``yaml.safe_load`` and ``yaml.YAMLError``) are well-known and
+# narrow — accept the missing-imports override instead.
+[[tool.mypy.overrides]]
+module = "yaml"
 ignore_missing_imports = true
 
 [tool.coverage.run]
