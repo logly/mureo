@@ -110,6 +110,22 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     wizard: ConfigureWizard
 
     # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+    def setup(self) -> None:
+        """Alias ``server.wizard`` onto the handler before request dispatch.
+
+        ``ConfigureWizard.serve()`` assigns the wizard to the underlying
+        ``HTTPServer`` (``server.wizard = self``) but the handler code
+        below references ``self.wizard`` directly. Hoisting the alias
+        in ``setup()`` — which BaseHTTPRequestHandler invokes before
+        ``handle()`` — ensures ``self.wizard`` is bound for the full
+        request lifecycle.
+        """
+        self.wizard = self.server.wizard  # type: ignore[attr-defined]
+        super().setup()
+
+    # ------------------------------------------------------------------
     # Logging
     # ------------------------------------------------------------------
     def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
