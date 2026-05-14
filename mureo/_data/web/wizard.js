@@ -1,0 +1,445 @@
+// wizard.js — main configure-UI wizard state machine.
+// Implements the design doc 2026-05-14 step flow with dynamic step
+// counter + auto-skip based on platform / provider selection.
+
+(function () {
+  "use strict";
+
+  const PLATFORMS = ["google_ads", "meta_ads", "search_console", "ga4"];
+
+  const STATE = {
+    host: "claude-code",
+    basicInstallCompleted: false,
+    basicInstallSkippedByAdvanced: false,
+    platforms: {
+      google_ads: false,
+      meta_ads: false,
+      search_console: false,
+      ga4: false,
+    },
+    providerChoice: {
+      google_ads: null, // "official" | "native"
+      meta_ads: null,
+    },
+    providerInstalled: {
+      "google-ads-official": false,
+      "meta-ads-official": false,
+      "ga4-official": false,
+    },
+    stepIndex: 0,
+  };
+
+  const ALL_STEPS = [
+    "host",
+    "basic",
+    "platforms",
+    "provider_choice",
+    "providers_install",
+    "auth",
+    "completed",
+  ];
+
+  const STEPS_WITHOUT_SKIP = new Set([
+    "host",
+    "basic",
+    "platforms",
+    "completed",
+  ]);
+
+  function hasGoogleOrMetaPlatform() {
+    return STATE.platforms.google_ads || STATE.platforms.meta_ads;
+  }
+
+  function hasOfficialProviderQueued() {
+    return (
+      (STATE.platforms.google_ads &&
+        STATE.providerChoice.google_ads === "official") ||
+      (STATE.platforms.meta_ads &&
+        STATE.providerChoice.meta_ads === "official") ||
+      STATE.platforms.ga4
+    );
+  }
+
+  function hasMureoNativeAuthQueued() {
+    return (
+      (STATE.platforms.google_ads &&
+        STATE.providerChoice.google_ads === "native") ||
+      (STATE.platforms.meta_ads &&
+        STATE.providerChoice.meta_ads === "native") ||
+      STATE.platforms.search_console ||
+      STATE.platforms.ga4
+    );
+  }
+
+  function isStepRelevant(step) {
+    if (step === "provider_choice") return hasGoogleOrMetaPlatform();
+    if (step === "providers_install") return hasOfficialProviderQueued();
+    if (step === "auth") return hasMureoNativeAuthQueued();
+    return true;
+  }
+
+  function effectiveSteps() {
+    return ALL_STEPS.filter(isStepRelevant);
+  }
+
+  function currentStep() {
+    const steps = effectiveSteps();
+    if (STATE.stepIndex >= steps.length) {
+      STATE.stepIndex = steps.length - 1;
+    }
+    return steps[STATE.stepIndex];
+  }
+
+  function gotoNext() {
+    const steps = effectiveSteps();
+    if (STATE.stepIndex < steps.length - 1) {
+      STATE.stepIndex += 1;
+      render();
+    }
+  }
+
+  function gotoPrev() {
+    if (STATE.stepIndex > 0) {
+      STATE.stepIndex -= 1;
+      render();
+    }
+  }
+
+  function isNextEnabled() {
+    const step = currentStep();
+    if (step === "host") return Boolean(STATE.host);
+    if (step === "basic")
+      return STATE.basicInstallCompleted || STATE.basicInstallSkippedByAdvanced;
+    if (step === "platforms")
+      return PLATFORMS.some(function (p) {
+        return STATE.platforms[p];
+      });
+    if (step === "provider_choice") {
+      if (STATE.platforms.google_ads && !STATE.providerChoice.google_ads)
+        return false;
+      if (STATE.platforms.meta_ads && !STATE.providerChoice.meta_ads)
+        return false;
+      return true;
+    }
+    return true;
+  }
+
+  function updateProgress() {
+    const node = document.querySelector("[data-wizard-progress]");
+    if (!node) return;
+    const steps = effectiveSteps();
+    const current = STATE.stepIndex + 1;
+    const total = steps.length;
+    node.textContent = MUREO.t("wizard.step_progress", {
+      current: current,
+      total: total,
+    });
+  }
+
+  function deriveCompletion(status) {
+    if (!status) return false;
+    const parts = status.setup_parts || {};
+    return Boolean(parts.mureo_mcp && parts.auth_hook && parts.skills);
+  }
+
+  function hydrateStateFromStatus(status) {
+    if (!status) return;
+    if (status.host) STATE.host = status.host;
+    if (deriveCompletion(status)) {
+      STATE.basicInstallCompleted = true;
+    }
+    const installed = status.providers_installed || {};
+    Object.keys(STATE.providerInstalled).forEach(function (key) {
+      STATE.providerInstalled[key] = Boolean(installed[key]);
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // Step body builders
+  // ------------------------------------------------------------------
+  function buildStepBody_host() {
+    const wrap = document.createElement("div");
+    wrap.innerHTML =
+      '<h2>' + MUREO.t("wizard.host.title") + "</h2>" +
+      '<div class="wizard-host-options">' +
+      '<label><input type="radio" name="host" value="claude-code">' +
+      MUREO.t("wizard.host.claude_code") + "</label><br>" +
+      '<label><input type="radio" name="host" value="claude-desktop">' +
+      MUREO.t("wizard.host.claude_desktop") + "</label>" +
+      "</div>";
+    wrap.querySelectorAll('input[name="host"]').forEach(function (input) {
+      input.checked = input.value === STATE.host;
+      input.addEventListener("change", function () {
+        STATE.host = input.value;
+        MUREO.postJson("/api/host", { host: input.value }).catch(function () {});
+        updateNextEnabled();
+      });
+    });
+    return wrap;
+  }
+
+  function buildStepBody_basic() {
+    const wrap = document.createElement("div");
+    const status = MUREO.state.status || {};
+    const parts = status.setup_parts || {};
+    function pill(installed, label) {
+      const cls = installed ? "done" : "not-done";
+      const mark = installed ? "✓" : "✗";
+      return '<span class="wizard-step-pill ' + cls + '">' + mark + " " + label + "</span>";
+    }
+    wrap.innerHTML =
+      '<h2>' + MUREO.t("wizard.basic.title") + "</h2>" +
+      '<p>' + MUREO.t("wizard.basic.desc") + "</p>" +
+      '<ul class="wizard-basic-parts">' +
+      '<li>' + pill(parts.mureo_mcp, MUREO.t("wizard.basic.mureo_mcp")) + "</li>" +
+      '<li>' + pill(parts.auth_hook, MUREO.t("wizard.basic.auth_hook")) + "</li>" +
+      '<li>' + pill(parts.skills, MUREO.t("wizard.basic.skills")) + "</li>" +
+      "</ul>" +
+      '<button type="button" data-basic-install>' +
+      MUREO.t("wizard.basic.install_button") + "</button>" +
+      '<div class="wizard-advanced-skip">' +
+      MUREO.t("wizard.basic.advanced_skip") +
+      ' <a data-advanced-skip>' + MUREO.t("wizard.skip") + "</a></div>";
+
+    wrap.querySelector("[data-basic-install]").addEventListener("click", async function () {
+      const res = await MUREO.postJson("/api/setup/basic", {});
+      if (res.ok) {
+        STATE.basicInstallCompleted = true;
+        await MUREO.loadStatus();
+        render();
+      } else {
+        MUREO.toast("Setup failed");
+      }
+    });
+    wrap.querySelector("[data-advanced-skip]").addEventListener("click", function () {
+      STATE.basicInstallSkippedByAdvanced = true;
+      MUREO.toast(MUREO.t("wizard.basic.advanced_skip_note"));
+      updateNextEnabled();
+    });
+    return wrap;
+  }
+
+  function buildStepBody_platforms() {
+    const wrap = document.createElement("div");
+    wrap.innerHTML =
+      '<h2>' + MUREO.t("wizard.platforms.title") + "</h2>" +
+      '<p>' + MUREO.t("wizard.platforms.desc") + "</p>";
+    PLATFORMS.forEach(function (p) {
+      const label = document.createElement("label");
+      label.style.display = "block";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = STATE.platforms[p];
+      checkbox.addEventListener("change", function () {
+        STATE.platforms[p] = checkbox.checked;
+        updateNextEnabled();
+      });
+      label.appendChild(checkbox);
+      label.appendChild(
+        document.createTextNode(" " + MUREO.t("wizard.platforms." + p))
+      );
+      wrap.appendChild(label);
+    });
+    return wrap;
+  }
+
+  function buildChoiceCard(platform) {
+    const wrap = document.createElement("fieldset");
+    wrap.style.marginTop = "16px";
+    const legend = document.createElement("legend");
+    legend.textContent = MUREO.t("wizard.provider_banner." + platform);
+    wrap.appendChild(legend);
+
+    const officialKey = platform === "google_ads"
+      ? "wizard.provider_choice.google_ads_official"
+      : "wizard.provider_choice.meta_ads_official";
+    const nativeKey = platform === "google_ads"
+      ? "wizard.provider_choice.google_ads_native"
+      : "wizard.provider_choice.meta_ads_native";
+
+    // Official first, mureo native second (design doc §1.4).
+    [
+      { value: "official", label: MUREO.t(officialKey) },
+      { value: "native", label: MUREO.t(nativeKey) },
+    ].forEach(function (opt) {
+      const label = document.createElement("label");
+      label.style.display = "block";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "provider-" + platform;
+      radio.value = opt.value;
+      radio.checked = STATE.providerChoice[platform] === opt.value;
+      radio.addEventListener("change", function () {
+        STATE.providerChoice[platform] = radio.value;
+        updateNextEnabled();
+      });
+      label.appendChild(radio);
+      label.appendChild(document.createTextNode(" " + opt.label));
+      // "Already configured" badge.
+      const installedKey = platform + "-official";
+      if (
+        opt.value === "official" &&
+        STATE.providerInstalled[installedKey]
+      ) {
+        const badge = document.createElement("span");
+        badge.className = "wizard-choice-already-done";
+        badge.textContent = "(" + MUREO.t("wizard.step_already_done") + ")";
+        label.appendChild(badge);
+      }
+      wrap.appendChild(label);
+    });
+    return wrap;
+  }
+
+  function buildStepBody_provider_choice() {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = '<h2>' + MUREO.t("wizard.provider_choice.title") + "</h2>";
+    if (STATE.platforms.google_ads) wrap.appendChild(buildChoiceCard("google_ads"));
+    if (STATE.platforms.meta_ads) wrap.appendChild(buildChoiceCard("meta_ads"));
+    return wrap;
+  }
+
+  function buildStepBody_providers_install() {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = '<h2>' + MUREO.t("wizard.providers_install.title") + "</h2>";
+    // Delegated to auth_wizards.js to render the per-provider queue.
+    if (window.MUREO_AUTH && typeof window.MUREO_AUTH.renderProvidersInstall === "function") {
+      window.MUREO_AUTH.renderProvidersInstall(wrap, STATE, render);
+    }
+    return wrap;
+  }
+
+  function buildStepBody_auth() {
+    const wrap = document.createElement("div");
+    if (window.MUREO_AUTH && typeof window.MUREO_AUTH.renderSequentialQueue === "function") {
+      window.MUREO_AUTH.renderSequentialQueue(wrap, STATE, render);
+    } else {
+      wrap.innerHTML = "<p>Auth flow…</p>";
+    }
+    return wrap;
+  }
+
+  function buildStepBody_completed() {
+    const wrap = document.createElement("div");
+    wrap.innerHTML =
+      '<h2>' + MUREO.t("wizard.completed.title") + "</h2>" +
+      '<p>' + MUREO.t("wizard.completed.desc") + "</p>";
+    const summary = document.createElement("ul");
+    summary.className = "wizard-completed-summary";
+    PLATFORMS.forEach(function (p) {
+      if (STATE.platforms[p]) {
+        const li = document.createElement("li");
+        li.textContent = MUREO.t("wizard.platforms." + p);
+        summary.appendChild(li);
+      }
+    });
+    if (summary.children.length > 0) wrap.appendChild(summary);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = MUREO.t("wizard.completed.dashboard_button");
+    btn.addEventListener("click", function () {
+      MUREO.navigateToDashboard();
+    });
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
+  // ------------------------------------------------------------------
+  // Renderer
+  // ------------------------------------------------------------------
+  const BUILDERS = {
+    host: buildStepBody_host,
+    basic: buildStepBody_basic,
+    platforms: buildStepBody_platforms,
+    provider_choice: buildStepBody_provider_choice,
+    providers_install: buildStepBody_providers_install,
+    auth: buildStepBody_auth,
+    completed: buildStepBody_completed,
+  };
+
+  function showWizardSection() {
+    const wizardEl = document.querySelector("[data-wizard]");
+    if (wizardEl) wizardEl.hidden = false;
+    const dashboardEl = document.querySelector("[data-dashboard]");
+    if (dashboardEl) dashboardEl.hidden = true;
+  }
+
+  function render() {
+    showWizardSection();
+    const stepEl = document.querySelector("[data-wizard-step]");
+    if (!stepEl) return;
+    while (stepEl.firstChild) stepEl.removeChild(stepEl.firstChild);
+    const step = currentStep();
+    const builder = BUILDERS[step];
+    if (builder) stepEl.appendChild(builder());
+    updateNavVisibility();
+    updateNextEnabled();
+    updateProgress();
+  }
+
+  function updateNavVisibility() {
+    const actions = document.querySelector("[data-wizard-actions]");
+    if (!actions) return;
+    const step = currentStep();
+    const prevBtn = actions.querySelector('[data-wizard-action="prev"]');
+    const nextBtn = actions.querySelector('[data-wizard-action="next"]');
+    const skipBtn = actions.querySelector('[data-wizard-action="skip"]');
+    if (prevBtn) prevBtn.hidden = STATE.stepIndex === 0;
+    if (skipBtn) skipBtn.hidden = STEPS_WITHOUT_SKIP.has(step);
+    if (nextBtn) nextBtn.hidden = step === "completed";
+  }
+
+  function updateNextEnabled() {
+    const nextBtn = document.querySelector('[data-wizard-action="next"]');
+    if (!nextBtn) return;
+    nextBtn.disabled = !isNextEnabled();
+  }
+
+  function wireNav() {
+    const actions = document.querySelector("[data-wizard-actions]");
+    if (!actions) return;
+    const prevBtn = actions.querySelector('[data-wizard-action="prev"]');
+    const nextBtn = actions.querySelector('[data-wizard-action="next"]');
+    const skipBtn = actions.querySelector('[data-wizard-action="skip"]');
+    if (prevBtn) prevBtn.addEventListener("click", gotoPrev);
+    if (nextBtn) nextBtn.addEventListener("click", gotoNext);
+    if (skipBtn) skipBtn.addEventListener("click", gotoNext);
+  }
+
+  function onReady(evt) {
+    const status = evt.detail && evt.detail.state ? evt.detail.state.status : null;
+    hydrateStateFromStatus(status);
+    wireNav();
+    if (MUREO.isDashboardRoute()) {
+      document.querySelector("[data-wizard]").hidden = true;
+      return;
+    }
+  }
+
+  document.addEventListener("mureo:ready", onReady);
+  document.addEventListener("mureo:wizard_start", function () {
+    STATE.stepIndex = 0;
+    render();
+  });
+  document.addEventListener("mureo:locale_changed", function () {
+    if (!document.querySelector("[data-wizard]").hidden) {
+      render();
+    }
+  });
+  document.addEventListener("mureo:route_changed", function (evt) {
+    if (evt.detail && evt.detail.route === "wizard") {
+      const wiz = document.querySelector("[data-wizard]");
+      if (wiz && !wiz.hidden) render();
+    }
+  });
+
+  window.MUREO_WIZARD = {
+    state: STATE,
+    effectiveSteps: effectiveSteps,
+    isNextEnabled: isNextEnabled,
+    render: render,
+    gotoNext: gotoNext,
+    gotoPrev: gotoPrev,
+    hydrateStateFromStatus: hydrateStateFromStatus,
+  };
+})();

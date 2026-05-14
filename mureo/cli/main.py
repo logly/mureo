@@ -10,6 +10,7 @@ import typer
 
 from mureo.cli.auth_cmd import auth_app
 from mureo.cli.byod_cmd import byod_app
+from mureo.cli.configure_cmd import configure_app
 from mureo.cli.demo_cmd import demo_app
 from mureo.cli.install_desktop_cmd import install_desktop_app
 from mureo.cli.providers_cmd import providers_app
@@ -29,6 +30,7 @@ app.add_typer(rollback_app)
 app.add_typer(byod_app)
 app.add_typer(demo_app)
 app.add_typer(providers_app)
+app.add_typer(configure_app)
 
 if __name__ == "__main__":
     app()
