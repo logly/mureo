@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -22,6 +23,12 @@ _INSIGHTS_FIELDS = (
     "actions,cost_per_action_type,"
     "reach,frequency"
 )
+
+# Day-grain insights fields used by ``insights_time_range`` (the Protocol
+# adapter surface). Smaller than ``_INSIGHTS_FIELDS`` because the
+# Protocol's ``DailyReportRow`` only needs date, volume, cost, and
+# action counts.
+_TIME_RANGE_INSIGHTS_FIELDS = "impressions,clicks,spend,actions,date_start,date_stop"
 
 
 class InsightsMixin:
@@ -68,6 +75,44 @@ class InsightsMixin:
             path = f"/{account_id}/insights"
 
         result = await self._get(path, params)
+        return result.get("data", [])  # type: ignore[no-any-return]
+
+    async def insights_time_range(
+        self,
+        node_id: str,
+        *,
+        since: str,
+        until: str,
+        time_increment: int = 1,
+        level: str = "campaign",
+    ) -> list[dict[str, Any]]:
+        """Get insights for an explicit date range with day-level granularity.
+
+        The Protocol-layer ``CampaignProvider.daily_report`` requires
+        arbitrary ``start_date`` / ``end_date`` plus one row per day —
+        ``get_performance_report`` only supports named ``date_preset``
+        values, so this companion method fills the gap.
+
+        Args:
+            node_id: Meta node id (campaign / ad-set / ad). Interpolated
+                directly into the URL path; callers (notably the
+                ``MetaAdsAdapter``) are responsible for digit-validating
+                user-controlled values before passing them here.
+            since: Start date, ``YYYY-MM-DD``.
+            until: End date, ``YYYY-MM-DD``.
+            time_increment: Bucket size in days (default: 1 = day-grain).
+            level: Aggregation level (``campaign``, ``adset``, ``ad``).
+
+        Returns:
+            List of insight rows, one per day in the range.
+        """
+        params: dict[str, Any] = {
+            "fields": _TIME_RANGE_INSIGHTS_FIELDS,
+            "time_range": json.dumps({"since": since, "until": until}),
+            "time_increment": time_increment,
+            "level": level,
+        }
+        result = await self._get(f"/{node_id}/insights", params)
         return result.get("data", [])  # type: ignore[no-any-return]
 
     async def analyze_performance(
