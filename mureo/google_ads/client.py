@@ -242,6 +242,19 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         logger.info("_search done (%d rows)", len(result))
         return result
 
+    async def search_gaql(self, query: str) -> list[Any]:
+        """Public GAQL search surface for adapters.
+
+        Thin pass-through to :meth:`_search`. Adapters
+        (``mureo.adapters.google_ads``) must NOT touch the private
+        ``_search`` directly — they use this method so the public
+        wrapper boundary stays auditable. Callers are responsible for
+        validating any user-controlled tokens before composing ``query``
+        (use :meth:`_validate_id`, :meth:`_validate_date`,
+        :meth:`_escape_gaql_string`).
+        """
+        return await self._search(query)
+
     @staticmethod
     def _extract_error_detail(exc: GoogleAdsException) -> str:
         """Extract the first error message from GoogleAdsException."""
@@ -976,23 +989,61 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     # === Budget Creation ===
 
     async def create_budget(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Create a new campaign budget."""
+        """Create a new campaign budget.
+
+        Supported ``params`` keys:
+            name: Budget name (required, max 256 chars).
+            amount: Daily budget as a float currency amount (e.g. ``5.0`` for
+                $5 / ¥5). Converted internally to micros via
+                ``int(amount * 1_000_000)``; subject to float precision loss
+                for non-integer-currency values.
+            amount_micros: Daily budget in micros (integer). When provided,
+                takes precedence over ``amount`` and avoids the float
+                round-trip — callers passing exact micros (e.g. from
+                ``CreateCampaignRequest.daily_budget_micros``) should use
+                this key to preserve precision.
+
+        At least one of ``amount`` or ``amount_micros`` must be supplied.
+        Supplying both at the same time is a ``ValueError`` (ambiguous
+        intent).
+        """
         name = params["name"]
         if len(name) > 256:
             raise ValueError(
                 f"Budget name must be 256 characters or less (currently {len(name)} chars)"
             )
-        amount = params["amount"]
-        if amount <= 0:
+        has_amount = "amount" in params
+        has_amount_micros = "amount_micros" in params
+        if has_amount and has_amount_micros:
             raise ValueError(
-                f"Daily budget must be a positive number (specified: {amount})"
+                "create_budget: specify either 'amount' or 'amount_micros', not both"
             )
+        if not has_amount and not has_amount_micros:
+            raise ValueError(
+                "create_budget: one of 'amount' or 'amount_micros' is required"
+            )
+
+        if has_amount_micros:
+            amount_micros = int(params["amount_micros"])
+            if amount_micros <= 0:
+                raise ValueError(
+                    f"Daily budget must be a positive number (specified: "
+                    f"{amount_micros} micros)"
+                )
+        else:
+            amount = params["amount"]
+            if amount <= 0:
+                raise ValueError(
+                    f"Daily budget must be a positive number (specified: {amount})"
+                )
+            amount_micros = int(amount * 1_000_000)
+
         # Note: BudgetGuard absolute ceiling check is performed on the Managed side.
         budget_service = self._get_service("CampaignBudgetService")
         budget_op = self._client.get_type("CampaignBudgetOperation")
         budget = budget_op.create
         budget.name = name
-        budget.amount_micros = int(amount * 1_000_000)
+        budget.amount_micros = amount_micros
         budget.explicitly_shared = False
         budget.delivery_method = self._client.enums.BudgetDeliveryMethodEnum.STANDARD
         try:
