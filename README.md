@@ -509,6 +509,13 @@ Setup using [Google Analytics MCP](https://github.com/googleanalytics/google-ana
 
 mureo works alongside any MCP server in the same client session. Add them to your settings and workflow commands will incorporate their data when available. See [docs/integrations.md](docs/integrations.md) for details.
 
+### Writing your own provider plugin
+
+mureo's provider abstraction lets any pip-installable package add a new ad-platform provider (Microsoft/Bing Ads, Apple Search Ads, TikTok, LinkedIn, X, in-house platforms, ...) without touching mureo's source tree. A plugin is a Python package that implements one or more of the Phase 1 Protocols (`CampaignProvider`, `KeywordProvider`, `AudienceProvider`, `ExtensionProvider`), declares which `Capability` members it supports, and registers its class under the `mureo.providers` entry-points group in `pyproject.toml`. Plugins can also ship their own `SKILL.md` files via the `mureo.skills` group.
+
+- [docs/plugin-authoring.md](docs/plugin-authoring.md) — full plugin authoring guide (quick start, Protocols, capabilities, models, skill matching, distribution patterns, security)
+- [docs/ABI-stability.md](docs/ABI-stability.md) — ABI stability promise (what is breaking, what is not, deprecation policy)
+
 ## Authentication
 
 ### Interactive Setup (Recommended)
