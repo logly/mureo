@@ -11,12 +11,14 @@ Security boundary: credentials.json is only inspected for the
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mureo.web._helpers import read_json_safe
 from mureo.web.host_paths import HostPaths, get_host_paths
 from mureo.web.setup_state import SetupParts, read_setup_state
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 OFFICIAL_PROVIDER_IDS: tuple[str, ...] = (
     "google-ads-official",

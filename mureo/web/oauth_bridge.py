@@ -57,9 +57,7 @@ class _ActiveHandoff:
     started_at: float = field(default_factory=time.monotonic)
 
 
-def _credentials_present_for(
-    provider: str, credentials_path: Path | None
-) -> bool:
+def _credentials_present_for(provider: str, credentials_path: Path | None) -> bool:
     """Inspect credentials.json for the OAuth-success marker fields."""
     if credentials_path is None or not credentials_path.exists():
         return False
@@ -124,9 +122,7 @@ class OAuthBridge:
                 wizard=wizard, thread=thread, watcher=watcher
             )
         watcher.start()
-        return OAuthHandoffResult(
-            url=consent_url, state="pending", provider=provider
-        )
+        return OAuthHandoffResult(url=consent_url, state="pending", provider=provider)
 
     def cancel(self, provider: str) -> None:
         """Tear down any in-flight wizard for ``provider``."""

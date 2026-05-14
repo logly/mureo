@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 import re
 from http.server import BaseHTTPRequestHandler
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from mureo.web._helpers import (
     compare_csrf,
@@ -49,6 +49,8 @@ from mureo.web.setup_actions import (
 from mureo.web.status_collector import collect_status
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mureo.web.server import ConfigureWizard
 
 logger = logging.getLogger(__name__)
@@ -77,7 +79,9 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
 )
 
 # Regex on path: /api/oauth/<provider>/status or /start
-_OAUTH_PROVIDER_RE = re.compile(r"^/api/oauth/(?P<provider>[a-z_]+)/(?P<verb>status|start)$")
+_OAUTH_PROVIDER_RE = re.compile(
+    r"^/api/oauth/(?P<provider>[a-z_]+)/(?P<verb>status|start)$"
+)
 
 
 def _resolve_static_body(wizard: ConfigureWizard, filename: str) -> bytes | None:
@@ -191,7 +195,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         send_bytes(self, body, content_type=_static_content_type(filename))
 
     def _serve_status(self) -> None:
-        snapshot = collect_status(self.wizard.session.host, paths=self.wizard.host_paths)
+        snapshot = collect_status(
+            self.wizard.session.host, paths=self.wizard.host_paths
+        )
         send_json(self, snapshot.as_dict())
 
     def _serve_csrf(self) -> None:
@@ -269,7 +275,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         removed = remove_legacy_commands(self.wizard.host_paths.commands_dir)
         send_json(self, {"removed": removed})
 
-    def _post_oauth_start(self, provider: str, payload: dict[str, Any]) -> None:  # noqa: ARG002
+    def _post_oauth_start(
+        self, provider: str, payload: dict[str, Any]
+    ) -> None:  # noqa: ARG002
         if provider not in OAUTH_PROVIDERS:
             send_error_json(self, 404, "unknown_provider")
             return
@@ -288,9 +296,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
     # Route table
     # ------------------------------------------------------------------
-    _POST_ROUTES: dict[
-        str, Callable[[ConfigureHandler, dict[str, Any]], None]
-    ] = {
+    _POST_ROUTES: dict[str, Callable[[ConfigureHandler, dict[str, Any]], None]] = {
         "/api/locale": _post_locale,
         "/api/host": _post_host,
         "/api/setup/basic": _post_setup_basic,

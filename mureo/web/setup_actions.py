@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mureo.web.setup_state import (
     PART_HOOK,
@@ -20,6 +19,9 @@ from mureo.web.setup_state import (
     PART_SKILLS,
     mark_part_installed,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

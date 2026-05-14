@@ -65,7 +65,9 @@ class ConfigureWizard:
     ) -> None:
         self._bind_host = bind_host
         self.home = home
-        self.static_dir = static_dir if static_dir is not None else _resolve_static_dir()
+        self.static_dir = (
+            static_dir if static_dir is not None else _resolve_static_dir()
+        )
         self.session = ConfigureSession()
         self._host_paths: HostPaths = get_host_paths(self.session.host, home=home)
         self._commands_path_override = commands_path

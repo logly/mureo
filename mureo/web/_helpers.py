@@ -14,11 +14,11 @@ import os
 import secrets as _secrets
 import tempfile
 import urllib.parse
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -161,9 +161,7 @@ def send_bytes(
         handler.wfile.write(body)
 
 
-def send_error_json(
-    handler: BaseHTTPRequestHandler, status: int, message: str
-) -> None:
+def send_error_json(handler: BaseHTTPRequestHandler, status: int, message: str) -> None:
     """Emit a JSON error envelope rather than the default text body."""
     send_json(handler, {"error": message}, status=status)
 
