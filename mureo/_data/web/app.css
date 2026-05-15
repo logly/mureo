@@ -425,6 +425,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-size: 14px;
   cursor: pointer;
   font-family: inherit;
+  white-space: nowrap;
 }
 
 .btn:hover {
