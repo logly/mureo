@@ -299,7 +299,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if not provider_id:
             send_error_json(self, 400, "provider_id_required")
             return
-        result = install_provider(provider_id)
+        result = install_provider(
+            provider_id, home=self.wizard.home, host=self.wizard.session.host
+        )
         send_json(self, result.as_dict())
 
     def _post_providers_remove(self, payload: dict[str, Any]) -> None:
@@ -307,7 +309,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if not provider_id:
             send_error_json(self, 400, "provider_id_required")
             return
-        result = remove_provider(provider_id)
+        result = remove_provider(
+            provider_id, home=self.wizard.home, host=self.wizard.session.host
+        )
         send_json(self, result.as_dict())
 
     def _post_env_var(self, payload: dict[str, Any]) -> None:

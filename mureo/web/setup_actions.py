@@ -23,7 +23,9 @@ from mureo.cli.settings_remove import (
 from mureo.cli.setup_cmd import remove_skills
 from mureo.web.desktop_mcp import (
     install_desktop_mcp_block,
+    install_desktop_server_block,
     remove_desktop_mcp_block,
+    remove_desktop_server_block,
     resolve_desktop_config_path,
 )
 from mureo.web.legacy_commands import remove_legacy_commands
@@ -170,8 +172,8 @@ def install_basic_setup(
     }
 
 
-def install_provider(provider_id: str) -> ActionResult:
-    """Install one official MCP provider by catalog id."""
+def _install_provider_code(provider_id: str) -> ActionResult:
+    """Claude Code path — byte-for-byte the pre-host-param behaviour."""
     try:
         from mureo.providers.catalog import get_provider
         from mureo.providers.config_writer import (
@@ -213,8 +215,109 @@ def install_provider(provider_id: str) -> ActionResult:
     return ActionResult(status="ok", detail=spec.id)
 
 
-def remove_provider(provider_id: str) -> ActionResult:
-    """Drop a provider entry from ~/.claude/settings.json."""
+def _install_provider_desktop(provider_id: str, home: Path | None) -> ActionResult:
+    """Desktop path — write the provider block to claude_desktop_config.json.
+
+    pipx/npm: the local ``run_install`` subprocess STILL runs (the
+    install is host-agnostic); on non-zero returncode NO config is
+    written. hosted_http: the subprocess is skipped (empty
+    ``install_argv``). Only the catalog ``mcp_server_config`` block is
+    written — the Code-only ``MUREO_DISABLE_*`` env auto-disable is
+    intentionally NOT ported (Phase-2 follow-up, planner Q2).
+    ``credentials.json`` is never touched.
+    """
+    try:
+        from mureo.providers.catalog import get_provider
+        from mureo.providers.installer import run_install
+
+        spec = get_provider(provider_id)
+    except KeyError:
+        return ActionResult(status="error", detail="unknown_provider")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("install_provider (desktop) import/resolve failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    if spec.install_argv:
+        try:
+            result = run_install(spec, dry_run=False)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("install_provider (desktop) subprocess failed")
+            return ActionResult(status="error", detail=type(exc).__name__)
+        if result.returncode != 0:
+            return ActionResult(
+                status="error",
+                detail=f"install_returncode_{result.returncode}",
+            )
+
+    try:
+        config_path = resolve_desktop_config_path(home)
+        wrote = install_desktop_server_block(
+            config_path, spec.id, spec.mcp_server_config
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("install_provider (desktop) config write failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    if not wrote:
+        return ActionResult(status="noop", detail="already_configured")
+    return ActionResult(status="ok", detail=spec.id)
+
+
+def install_provider(
+    provider_id: str, home: Path | None = None, host: str = _HOST_CODE
+) -> ActionResult:
+    """Install one official MCP provider by catalog id.
+
+    ``host="claude-code"`` (default) is byte-for-byte the prior
+    behaviour. ``host="claude-desktop"`` writes the provider's
+    ``mcp_server_config`` block into ``claude_desktop_config.json``.
+    """
+    if host == _HOST_DESKTOP:
+        return _install_provider_desktop(provider_id, home)
+    return _install_provider_code(provider_id)
+
+
+def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResult:
+    """Desktop path — pop only ``mcpServers[provider_id]``.
+
+    Idempotent (``noop not_registered``) when the entry is absent or the
+    config file is missing. ``credentials.json`` is never touched.
+    """
+    try:
+        from mureo.providers.catalog import get_provider
+
+        get_provider(provider_id)
+    except KeyError:
+        return ActionResult(status="error", detail="unknown_provider")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("remove_provider (desktop) import/resolve failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    try:
+        config_path = resolve_desktop_config_path(home)
+        removed = remove_desktop_server_block(config_path, provider_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("remove_provider (desktop) failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    if not removed:
+        return ActionResult(status="noop", detail="not_registered")
+    return ActionResult(status="ok", detail=provider_id)
+
+
+def remove_provider(
+    provider_id: str, home: Path | None = None, host: str = _HOST_CODE
+) -> ActionResult:
+    """Drop a provider entry from the host's config file.
+
+    ``host="claude-code"`` (default) drops it from
+    ``~/.claude/settings.json`` (unchanged). ``host="claude-desktop"``
+    pops only ``mcpServers[provider_id]`` from
+    ``claude_desktop_config.json``.
+    """
+    if host == _HOST_DESKTOP:
+        return _remove_provider_desktop(provider_id, home)
+
     try:
         from mureo.providers.catalog import get_provider
         from mureo.providers.config_writer import (
@@ -328,17 +431,25 @@ def remove_workflow_skills(
     return ActionResult(status="ok", detail=f"removed {count} skills from {dest}")
 
 
-def _installed_official_providers(home: Path | None) -> list[str]:
+def _installed_official_providers(
+    home: Path | None, host: str = _HOST_CODE
+) -> list[str]:
     """Return the subset of ``_OFFICIAL_PROVIDER_IDS`` present in settings.
 
-    Reads ``settings.json`` directly because ``clear_all_setup`` needs to
-    know which providers were installed without depending on the
-    ``setup_state.json`` flags (those only track the basic-setup parts).
-    A missing or malformed settings file is treated as "no installed
-    providers" — the bulk action degrades gracefully.
+    Reads the host-correct settings file directly because
+    ``clear_all_setup`` needs to know which providers were installed
+    without depending on the ``setup_state.json`` flags (those only
+    track the basic-setup parts). For ``host="claude-desktop"`` this
+    resolves ``claude_desktop_config.json`` so Desktop bulk-uninstall
+    actually finds the entries. A missing or malformed settings file is
+    treated as "no installed providers" — the bulk action degrades
+    gracefully.
     """
-    base = home or Path.home()
-    settings_path = base / ".claude" / "settings.json"
+    if host == _HOST_DESKTOP:
+        settings_path = resolve_desktop_config_path(home)
+    else:
+        base = home or Path.home()
+        settings_path = base / ".claude" / "settings.json"
     if not settings_path.exists():
         return []
     try:
@@ -397,8 +508,10 @@ def clear_all_setup(home: Path | None = None, host: str = _HOST_CODE) -> dict[st
         envelope["legacy_commands"] = legacy_removed
 
     providers_envelope: dict[str, Any] = {}
-    for provider_id in _installed_official_providers(home):
-        providers_envelope[provider_id] = _safe_step(remove_provider, provider_id)
+    for provider_id in _installed_official_providers(home, host):
+        providers_envelope[provider_id] = _safe_step(
+            remove_provider, provider_id, home=home, host=host
+        )
     envelope["providers"] = providers_envelope
 
     return envelope

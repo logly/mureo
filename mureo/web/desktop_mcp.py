@@ -21,6 +21,7 @@ read, written, or deleted.
 from __future__ import annotations
 
 import copy
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from mureo.desktop_installer import (
@@ -36,7 +37,9 @@ if TYPE_CHECKING:
 
 __all__ = [
     "install_desktop_mcp_block",
+    "install_desktop_server_block",
     "remove_desktop_mcp_block",
+    "remove_desktop_server_block",
     "resolve_desktop_config_path",
 ]
 
@@ -70,6 +73,86 @@ def _read_servers(config_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     return config, servers
 
 
+def _normalize_block(server_config: Mapping[str, Any]) -> dict[str, Any]:
+    """Deep-copy a (possibly ``MappingProxyType``) block to plain JSON.
+
+    Catalog blocks are frozen ``MappingProxyType`` with tuple-ified
+    nested lists; ``copy.deepcopy`` round-trips them to mutable
+    dicts/lists so the on-disk JSON matches the dict shape callers and
+    tests assert (and the idempotency check compares like for like).
+    """
+    return copy.deepcopy(_unfreeze(server_config))
+
+
+def _unfreeze(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {k: _unfreeze(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_unfreeze(v) for v in value]
+    return value
+
+
+def install_desktop_server_block(
+    config_path: Path,
+    server_id: str,
+    server_config: Mapping[str, Any],
+    *,
+    backup: bool = True,
+) -> bool:
+    """Surgically register ``mcpServers[server_id]`` in the Desktop config.
+
+    Handles arbitrary block shapes verbatim — both the hosted_http
+    ``{"type": "http", "url": ...}`` shape (no command/args) and the
+    pipx/npm ``{"command": ..., "args": [...]}`` shape. The loaded
+    config is deep-copied and only ``mcpServers[server_id]`` is set; all
+    other ``mcpServers`` entries and unrelated top-level keys are
+    preserved. The write is atomic (tempfile + ``os.replace``).
+
+    Returns ``True`` when the block was written, ``False`` (no rewrite,
+    file byte-identical) when ``server_id`` is already present with an
+    EQUAL block (idempotent). Raises ``DesktopConfigCorruptError`` on a
+    corrupt config, a non-dict ``mcpServers``, or a symlinked file,
+    never overwriting the original.
+    """
+    block = _normalize_block(server_config)
+    config, servers = _read_servers(config_path)
+    if servers.get(server_id) == block:
+        return False
+
+    if backup and config_path.exists():
+        _backup_config(config_path)
+
+    merged = copy.deepcopy(config)
+    merged_servers = dict(servers)
+    merged_servers[server_id] = block
+    merged["mcpServers"] = merged_servers
+    _atomic_write_config(config_path, merged)
+    return True
+
+
+def remove_desktop_server_block(config_path: Path, server_id: str) -> bool:
+    """Pop only ``mcpServers[server_id]`` from the Desktop config.
+
+    Returns ``True`` when the entry was removed, ``False`` when it was
+    absent or the config file is missing (idempotent). Raises
+    ``DesktopConfigCorruptError`` on a corrupt config without
+    overwriting it.
+    """
+    if not config_path.exists():
+        return False
+
+    config, servers = _read_servers(config_path)
+    if server_id not in servers:
+        return False
+
+    merged = copy.deepcopy(config)
+    merged_servers = dict(servers)
+    del merged_servers[server_id]
+    merged["mcpServers"] = merged_servers
+    _atomic_write_config(config_path, merged)
+    return True
+
+
 def install_desktop_mcp_block(
     config_path: Path,
     command: str,
@@ -79,51 +162,37 @@ def install_desktop_mcp_block(
 ) -> bool:
     """Register the ``mcpServers.mureo`` block in the Desktop config.
 
-    Writes the MCP launcher's required ``{"command": <exe>, "args":
-    [...]}`` shape — ``command`` is the bare executable and ``args`` is
-    a separate list, matching the proven Claude Code
-    ``auth_setup._MCP_SERVER_CONFIG`` schema. ``command`` must NOT be a
-    pre-joined ``"<exe> -m mureo.mcp"`` string (Claude Desktop would try
-    to spawn an executable literally named that and fail).
+    Thin ``server_id="mureo"`` delegation to
+    :func:`install_desktop_server_block`. Writes the MCP launcher's
+    required ``{"command": <exe>, "args": [...]}`` shape — ``command``
+    is the bare executable and ``args`` is a separate list, matching the
+    proven Claude Code ``auth_setup._MCP_SERVER_CONFIG`` schema.
+    ``command`` must NOT be a pre-joined ``"<exe> -m mureo.mcp"`` string
+    (Claude Desktop would try to spawn an executable literally named
+    that and fail). The produced ``mcpServers.mureo`` bytes are
+    byte-for-byte identical to the prior direct implementation.
 
-    Returns ``True`` when the block was written, ``False`` when a
-    ``mureo`` entry was already present (caller emits ``noop
-    already_configured``). Raises ``DesktopConfigCorruptError`` on a
-    corrupt config or a symlinked file, never overwriting the original.
+    Back-compat contract (unchanged): returns ``False`` when ANY
+    ``mureo`` entry is already present (presence-based, not
+    block-equality) so a stale/legacy block is never silently
+    overwritten — the caller emits ``noop already_configured``.
     """
-    config, servers = _read_servers(config_path)
-    if "mureo" in servers:
-        return False
-
-    if backup and config_path.exists():
-        _backup_config(config_path)
-
-    merged = copy.deepcopy(config)
-    merged_servers = dict(servers)
-    merged_servers["mureo"] = {"command": command, "args": list(args)}
-    merged["mcpServers"] = merged_servers
-    _atomic_write_config(config_path, merged)
-    return True
+    if config_path.exists():
+        _, servers = _read_servers(config_path)
+        if "mureo" in servers:
+            return False
+    return install_desktop_server_block(
+        config_path,
+        "mureo",
+        {"command": command, "args": list(args)},
+        backup=backup,
+    )
 
 
 def remove_desktop_mcp_block(config_path: Path) -> bool:
     """Pop only the ``mcpServers.mureo`` key from the Desktop config.
 
-    Returns ``True`` when the entry was removed, ``False`` when it was
-    absent or the config file is missing (idempotent → caller emits
-    ``noop not_installed``). Raises ``DesktopConfigCorruptError`` on a
-    corrupt config without overwriting it.
+    Thin ``server_id="mureo"`` delegation to
+    :func:`remove_desktop_server_block`.
     """
-    if not config_path.exists():
-        return False
-
-    config, servers = _read_servers(config_path)
-    if "mureo" not in servers:
-        return False
-
-    merged = copy.deepcopy(config)
-    merged_servers = dict(servers)
-    del merged_servers["mureo"]
-    merged["mcpServers"] = merged_servers
-    _atomic_write_config(config_path, merged)
-    return True
+    return remove_desktop_server_block(config_path, "mureo")

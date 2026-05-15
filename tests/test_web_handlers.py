@@ -444,7 +444,10 @@ class TestPostProviders:
             resp = _post(wizard, "/api/providers/install", {"provider_id": "p1"})
         body = json.loads(resp.read().decode("utf-8"))
         assert body == {"status": "ok", "detail": "p1"}
-        mock_install.assert_called_once_with("p1")
+        # ``home``/``host`` are now forwarded (provider-host change); the
+        # provider_id stays the first positional arg.
+        mock_install.assert_called_once()
+        assert mock_install.call_args.args[0] == "p1"
 
     def test_remove_provider_requires_provider_id(
         self, wizard: ConfigureWizard
@@ -462,7 +465,126 @@ class TestPostProviders:
             resp = _post(wizard, "/api/providers/remove", {"provider_id": "p1"})
         body = json.loads(resp.read().decode("utf-8"))
         assert body == {"status": "ok", "detail": "p1"}
-        mock_remove.assert_called_once_with("p1")
+        # ``home``/``host`` are now forwarded (provider-host change); the
+        # provider_id stays the first positional arg.
+        mock_remove.assert_called_once()
+        assert mock_remove.call_args.args[0] == "p1"
+
+
+# ---------------------------------------------------------------------------
+# Provider install/remove must forward the SESSION HOST (planner HANDOFF
+# feat-web-config-ui-phase1-provider-host.md L25): ``_post_providers_install``
+# / ``_post_providers_remove`` read ``self.wizard.session.host`` and pass it
+# as the new ``host=`` kwarg into ``install_provider`` / ``remove_provider``
+# (with ``home=self.wizard.home``). ``host`` defaults to "claude-code" so a
+# session with no explicit host keeps today's behaviour. RED until the
+# handler forwards these kwargs.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestPostProvidersHostPropagation:
+    def test_install_default_session_uses_claude_code(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """No explicit host → ``install_provider`` gets
+        ``host="claude-code"``."""
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.install_provider", return_value=fake
+        ) as mock_install:
+            _post(wizard, "/api/providers/install", {"provider_id": "p1"})
+
+        assert _host_kwarg(mock_install) == "claude-code"
+
+    def test_install_desktop_session_propagates_desktop_host(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        _set_host(wizard, "claude-desktop")
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.install_provider", return_value=fake
+        ) as mock_install:
+            _post(wizard, "/api/providers/install", {"provider_id": "p1"})
+
+        assert _host_kwarg(mock_install) == "claude-desktop"
+
+    def test_install_propagates_home_alongside_host(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """Adding ``host`` must not drop ``home=self.wizard.home``."""
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.install_provider", return_value=fake
+        ) as mock_install:
+            _post(wizard, "/api/providers/install", {"provider_id": "p1"})
+
+        assert mock_install.call_args.kwargs.get("home") == wizard.home
+
+    def test_install_still_passes_provider_id(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """The provider_id remains the first positional arg."""
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.install_provider", return_value=fake
+        ) as mock_install:
+            _post(wizard, "/api/providers/install", {"provider_id": "p1"})
+
+        assert mock_install.call_args.args[0] == "p1"
+
+    def test_remove_default_session_uses_claude_code(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.remove_provider", return_value=fake
+        ) as mock_remove:
+            _post(wizard, "/api/providers/remove", {"provider_id": "p1"})
+
+        assert _host_kwarg(mock_remove) == "claude-code"
+
+    def test_remove_desktop_session_propagates_desktop_host(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        _set_host(wizard, "claude-desktop")
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.remove_provider", return_value=fake
+        ) as mock_remove:
+            _post(wizard, "/api/providers/remove", {"provider_id": "p1"})
+
+        assert _host_kwarg(mock_remove) == "claude-desktop"
+
+    def test_remove_propagates_home_alongside_host(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.remove_provider", return_value=fake
+        ) as mock_remove:
+            _post(wizard, "/api/providers/remove", {"provider_id": "p1"})
+
+        assert mock_remove.call_args.kwargs.get("home") == wizard.home
+
+    def test_remove_still_passes_provider_id(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.remove_provider", return_value=fake
+        ) as mock_remove:
+            _post(wizard, "/api/providers/remove", {"provider_id": "p1"})
+
+        assert mock_remove.call_args.args[0] == "p1"
 
 
 @pytest.mark.unit

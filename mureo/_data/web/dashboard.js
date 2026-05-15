@@ -16,6 +16,12 @@
 (function () {
   "use strict";
 
+  // Official provider ids whose catalog entry is a hosted_http server
+  // (auth is client-side browser OAuth on first use in Claude). Source
+  // of truth: catalog.py install_kind === "hosted_http". Phase 1: only
+  // meta-ads-official. Extend when a new hosted provider is added.
+  const HOSTED_PROVIDER_IDS = ["meta-ads-official"];
+
   // Basic-setup row definitions. Keyed entries map a status part to its
   // label, per-row remove endpoint, confirmation key, and button label.
   // Kept as a module-local constant so renderBasicSection stays small.
@@ -186,6 +192,21 @@
         li.appendChild(removeBtn);
       }
       list.appendChild(li);
+
+      // hosted_http OAuth note — rendered ONCE per hosted provider,
+      // immediately after its row. Guarded so a missing translation
+      // never echoes the key.
+      if (HOSTED_PROVIDER_IDS.indexOf(pid) !== -1) {
+        const noteKey = "dashboard.provider_hosted_oauth_note";
+        const noteText = MUREO.t(noteKey);
+        if (noteText && noteText !== noteKey) {
+          const hostedNote = document.createElement("li");
+          hostedNote.className = "dashboard-provider-hosted-note";
+          hostedNote.textContent = noteText;
+          hostedNote.setAttribute("data-i18n", noteKey);
+          list.appendChild(hostedNote);
+        }
+      }
     });
     if (anyNotInstalled) {
       const note = document.createElement("li");

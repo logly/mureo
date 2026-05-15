@@ -454,3 +454,357 @@ class TestPathResolutionViaHostPaths:
             resolved = desktop_mcp.resolve_desktop_config_path(home=tmp_path)
 
         assert resolved == tmp_path / ".claude" / "settings.json"
+
+
+# ---------------------------------------------------------------------------
+# GENERIC API — install_desktop_server_block / remove_desktop_server_block
+#
+# Planner HANDOFF feat-web-config-ui-phase1-provider-host.md Q3:
+# generalize the proven surgical writer/remover to an arbitrary
+# ``(server_id, server_config)``. The existing mureo functions become
+# thin ``server_id="mureo"`` wrappers so the proven path stays
+# byte-for-byte identical. RED until the generic helpers exist.
+# ---------------------------------------------------------------------------
+
+
+_HTTP_BLOCK: dict[str, str] = {
+    "type": "http",
+    "url": "https://mcp.facebook.com/ads",
+}
+_CMD_BLOCK: dict[str, object] = {
+    "command": "pipx",
+    "args": ["run", "--spec", "git+https://x.git", "google-ads-mcp"],
+}
+
+
+@pytest.mark.unit
+class TestGenericModuleSurface:
+    def test_module_exports_generic_helpers(self) -> None:
+        """RED: the generic helpers do not exist yet → AttributeError."""
+        from mureo.web import desktop_mcp
+
+        assert hasattr(desktop_mcp, "install_desktop_server_block")
+        assert hasattr(desktop_mcp, "remove_desktop_server_block")
+
+
+@pytest.mark.unit
+class TestInstallDesktopServerBlockGeneric:
+    def test_writes_http_shape_block_under_given_id(
+        self, tmp_path: Path
+    ) -> None:
+        """The arbitrary ``server_id`` keys the block; an http-type
+        ``{"type","url"}`` payload (no command/args) is written verbatim."""
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        changed = desktop_mcp.install_desktop_server_block(
+            cfg, "meta-ads-official", _HTTP_BLOCK
+        )
+
+        assert changed is True
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
+        assert payload["mcpServers"]["meta-ads-official"] == _HTTP_BLOCK
+
+    def test_writes_command_args_shape_block(self, tmp_path: Path) -> None:
+        """The generic writer handles the pipx/npm
+        ``{"command","args":[...]}`` shape too (arbitrary block shape)."""
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        desktop_mcp.install_desktop_server_block(
+            cfg, "google-ads-official", _CMD_BLOCK
+        )
+
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
+        assert payload["mcpServers"]["google-ads-official"] == _CMD_BLOCK
+
+    def test_preserves_other_servers_and_top_level_keys(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        _write_json(
+            cfg,
+            {
+                "mcpServers": {
+                    "mureo": {"command": "python", "args": ["-m", "mureo.mcp"]},
+                    "other": {"command": "node"},
+                },
+                "globalShortcut": "Cmd+Shift+Space",
+            },
+        )
+
+        desktop_mcp.install_desktop_server_block(
+            cfg, "meta-ads-official", _HTTP_BLOCK
+        )
+
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
+        assert payload["mcpServers"]["mureo"] == {
+            "command": "python",
+            "args": ["-m", "mureo.mcp"],
+        }
+        assert payload["mcpServers"]["other"] == {"command": "node"}
+        assert payload["mcpServers"]["meta-ads-official"] == _HTTP_BLOCK
+        assert payload["globalShortcut"] == "Cmd+Shift+Space"
+
+    def test_idempotent_when_identical_block_present(
+        self, tmp_path: Path
+    ) -> None:
+        """Re-adding the identical block → ``False`` (→ noop); file bytes
+        unchanged (no rewrite)."""
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        _write_json(cfg, {"mcpServers": {"meta-ads-official": _HTTP_BLOCK}})
+        before = cfg.read_bytes()
+
+        changed = desktop_mcp.install_desktop_server_block(
+            cfg, "meta-ads-official", _HTTP_BLOCK
+        )
+
+        assert changed is False
+        assert cfg.read_bytes() == before
+
+    def test_write_is_atomic_no_tmp_debris(self, tmp_path: Path) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        _write_json(cfg, {"mcpServers": {}})
+
+        desktop_mcp.install_desktop_server_block(
+            cfg, "meta-ads-official", _HTTP_BLOCK
+        )
+
+        assert _tmp_debris(cfg) == []
+
+    def test_corrupt_json_refused_not_overwritten(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text("{ not json", encoding="utf-8")
+        before = cfg.read_bytes()
+
+        with pytest.raises(DesktopConfigCorruptError):
+            desktop_mcp.install_desktop_server_block(
+                cfg, "meta-ads-official", _HTTP_BLOCK
+            )
+
+        assert cfg.read_bytes() == before
+
+    def test_non_dict_mcp_servers_refused(self, tmp_path: Path) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        _write_json(cfg, {"mcpServers": ["x"]})
+        before = cfg.read_bytes()
+
+        with pytest.raises(DesktopConfigCorruptError):
+            desktop_mcp.install_desktop_server_block(
+                cfg, "meta-ads-official", _HTTP_BLOCK
+            )
+
+        assert cfg.read_bytes() == before
+
+    def test_symlinked_config_refused(self, tmp_path: Path) -> None:
+        from mureo.web import desktop_mcp
+
+        real = tmp_path / "real.json"
+        _write_json(real, {"mcpServers": {}})
+        cfg = _desktop_config_path(tmp_path)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.symlink_to(real)
+
+        with pytest.raises(DesktopConfigCorruptError):
+            desktop_mcp.install_desktop_server_block(
+                cfg, "meta-ads-official", _HTTP_BLOCK
+            )
+
+    def test_never_touches_credentials_json(self, tmp_path: Path) -> None:
+        from mureo.web import desktop_mcp
+
+        creds = tmp_path / ".mureo" / "credentials.json"
+        creds.parent.mkdir(parents=True, exist_ok=True)
+        creds.write_text('{"meta_ads": {"token": "X"}}', "utf-8")
+        before = creds.read_bytes()
+
+        cfg = _desktop_config_path(tmp_path)
+        desktop_mcp.install_desktop_server_block(
+            cfg, "meta-ads-official", _HTTP_BLOCK
+        )
+
+        assert creds.read_bytes() == before
+
+
+@pytest.mark.unit
+class TestRemoveDesktopServerBlockGeneric:
+    def test_removes_only_given_id_preserving_others(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        _write_json(
+            cfg,
+            {
+                "mcpServers": {
+                    "meta-ads-official": _HTTP_BLOCK,
+                    "mureo": {"command": "python"},
+                },
+                "theme": "dark",
+            },
+        )
+
+        changed = desktop_mcp.remove_desktop_server_block(
+            cfg, "meta-ads-official"
+        )
+
+        assert changed is True
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
+        assert "meta-ads-official" not in payload["mcpServers"]
+        assert payload["mcpServers"]["mureo"] == {"command": "python"}
+        assert payload["theme"] == "dark"
+
+    def test_returns_false_when_id_absent(self, tmp_path: Path) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        _write_json(cfg, {"mcpServers": {"mureo": {"command": "x"}}})
+        before = cfg.read_bytes()
+
+        changed = desktop_mcp.remove_desktop_server_block(
+            cfg, "meta-ads-official"
+        )
+
+        assert changed is False
+        assert cfg.read_bytes() == before
+
+    def test_returns_false_when_config_missing(self, tmp_path: Path) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        changed = desktop_mcp.remove_desktop_server_block(
+            cfg, "meta-ads-official"
+        )
+
+        assert changed is False
+        assert not cfg.exists()
+
+    def test_idempotent_second_call(self, tmp_path: Path) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        _write_json(cfg, {"mcpServers": {"meta-ads-official": _HTTP_BLOCK}})
+
+        first = desktop_mcp.remove_desktop_server_block(
+            cfg, "meta-ads-official"
+        )
+        second = desktop_mcp.remove_desktop_server_block(
+            cfg, "meta-ads-official"
+        )
+
+        assert first is True
+        assert second is False
+
+    def test_corrupt_config_refused_not_overwritten(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text("}} bad", encoding="utf-8")
+        before = cfg.read_bytes()
+
+        with pytest.raises(DesktopConfigCorruptError):
+            desktop_mcp.remove_desktop_server_block(cfg, "meta-ads-official")
+
+        assert cfg.read_bytes() == before
+
+
+@pytest.mark.unit
+class TestMureoWrappersRouteThroughGeneric:
+    """Back-compat: the mureo functions still work and now route through
+    the generic helpers with ``server_id="mureo"``; the written block is
+    byte-for-byte the proven split-launcher shape."""
+
+    def test_install_wrapper_block_identical_to_before(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        changed = desktop_mcp.install_desktop_mcp_block(
+            cfg, "python", ["-m", "mureo.mcp"]
+        )
+
+        assert changed is True
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
+        # Exact proven shape — must NOT regress when re-expressed as a
+        # ``server_id="mureo"`` delegation to the generic writer.
+        assert payload["mcpServers"]["mureo"] == {
+            "command": "python",
+            "args": ["-m", "mureo.mcp"],
+        }
+
+    def test_install_wrapper_delegates_to_generic(
+        self, tmp_path: Path
+    ) -> None:
+        """The mureo install wrapper must call the generic writer with
+        ``server_id="mureo"`` and the split-launcher block."""
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        with patch.object(
+            desktop_mcp, "install_desktop_server_block", return_value=True
+        ) as mock_generic:
+            desktop_mcp.install_desktop_mcp_block(
+                cfg, "python", ["-m", "mureo.mcp"]
+            )
+
+        assert mock_generic.call_count == 1
+        args = mock_generic.call_args.args
+        assert args[0] == cfg
+        assert args[1] == "mureo"
+        assert args[2] == {"command": "python", "args": ["-m", "mureo.mcp"]}
+
+    def test_remove_wrapper_delegates_to_generic(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        _write_json(cfg, {"mcpServers": {"mureo": {"command": "x"}}})
+        with patch.object(
+            desktop_mcp, "remove_desktop_server_block", return_value=True
+        ) as mock_generic:
+            desktop_mcp.remove_desktop_mcp_block(cfg)
+
+        assert mock_generic.call_count == 1
+        args = mock_generic.call_args.args
+        assert args[0] == cfg
+        assert args[1] == "mureo"
+
+    def test_remove_wrapper_drops_only_mureo(self, tmp_path: Path) -> None:
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        _write_json(
+            cfg,
+            {
+                "mcpServers": {
+                    "mureo": {"command": "x"},
+                    "meta-ads-official": _HTTP_BLOCK,
+                }
+            },
+        )
+
+        changed = desktop_mcp.remove_desktop_mcp_block(cfg)
+
+        assert changed is True
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
+        assert "mureo" not in payload["mcpServers"]
+        assert payload["mcpServers"]["meta-ads-official"] == _HTTP_BLOCK

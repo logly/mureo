@@ -7,6 +7,13 @@
 
   const PLATFORMS = ["google_ads", "meta_ads", "search_console", "ga4"];
 
+  // Platforms whose official provider is a hosted_http catalog entry
+  // (auth is client-side browser OAuth on first use in Claude). Source
+  // of truth: catalog.py install_kind === "hosted_http". Phase 1: only
+  // meta-ads-official (the meta_ads platform). Extend this list when a
+  // new hosted provider is added to the catalog.
+  const HOSTED_PLATFORMS = ["meta_ads"];
+
   const STATE = {
     host: "claude-code",
     basicInstallCompleted: false,
@@ -321,6 +328,21 @@
         }
       }
     });
+
+    // hosted_http OAuth note — rendered ONCE per hosted provider card.
+    // Reuses the wizard-choice-desc styling and the "render only if
+    // MUREO.t resolves" guard so a missing translation never echoes
+    // the key.
+    if (HOSTED_PLATFORMS.indexOf(platform) !== -1) {
+      const noteKey = "wizard.provider_choice.hosted_oauth_note";
+      const noteText = MUREO.t(noteKey);
+      if (noteText && noteText !== noteKey) {
+        const note = document.createElement("div");
+        note.className = "wizard-choice-desc";
+        note.textContent = noteText;
+        wrap.appendChild(note);
+      }
+    }
     return wrap;
   }
 
