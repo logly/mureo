@@ -1,5 +1,6 @@
 {
   "en": {
+    "nav.dashboard": "Dashboard",
     "common.cancel": "Cancel",
     "common.ok": "OK",
     "common.back": "Back",
@@ -88,6 +89,7 @@
     "dashboard.confirm_remove_hook": "Remove credential guard hook?",
     "dashboard.confirm_remove_skills": "Remove all mureo workflow skills?",
     "dashboard.clear_all": "Clear All",
+    "dashboard.clear_all_desc": "Deletes all mureo configuration (MCP entry, auth hook, skills, installed official providers, legacy commands). Credentials in ~/.mureo/credentials.json are not touched.",
     "dashboard.confirm_clear_all_1": "Clear ALL mureo setup? This will remove MCP entries, hooks, skills, and installed providers.",
     "dashboard.confirm_clear_all_2": "OAuth tokens and env vars in ~/.mureo/credentials.json will NOT be touched. Continue?",
     "dashboard.clear_all_success": "Cleanup complete.",
@@ -137,6 +139,7 @@
     "auth_wizard.google.already_authenticated": "Already authenticated for Google (Search Console / Google Ads shared scope)."
   },
   "ja": {
+    "nav.dashboard": "ダッシュボード",
     "common.cancel": "キャンセル",
     "common.ok": "OK",
     "common.back": "戻る",
@@ -225,6 +228,7 @@
     "dashboard.confirm_remove_hook": "認証保護フックを削除しますか?",
     "dashboard.confirm_remove_skills": "全 mureo ワークフロースキルを削除しますか?",
     "dashboard.clear_all": "全削除",
+    "dashboard.clear_all_desc": "mureo の全ての設定を削除します（MCP 登録・認証保護フック・スキル・導入済み公式プロバイダ・レガシーコマンド）。~/.mureo/credentials.json の認証情報は削除されません。",
     "dashboard.confirm_clear_all_1": "mureo のセットアップを全削除しますか? MCP、フック、スキル、公式プロバイダが削除されます。",
     "dashboard.confirm_clear_all_2": "OAuth トークンや環境変数 (~/.mureo/credentials.json) は削除されません。続行?",
     "dashboard.clear_all_success": "削除完了",

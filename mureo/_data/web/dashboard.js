@@ -60,6 +60,8 @@
         item.removeAttribute("aria-current");
       }
     });
+    const rerun = document.querySelector("[data-dashboard-rerun-wizard]");
+    if (rerun) rerun.hidden = name !== "setup";
   }
 
   function wireDashboardNav() {

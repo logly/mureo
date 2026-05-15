@@ -10,6 +10,7 @@
   <header class="app-header">
     <div class="app-header-title">mureo</div>
     <nav class="app-header-nav">
+      <button type="button" class="btn btn-secondary" data-nav-dashboard data-i18n="nav.dashboard">Dashboard</button>
       <button type="button" class="lang-toggle" data-lang-toggle="en">English</button>
       <button type="button" class="lang-toggle" data-lang-toggle="ja">日本語</button>
     </nav>
@@ -182,6 +183,7 @@
 
           <div class="dashboard-group" data-dashboard-group="danger" hidden>
             <div class="dashboard-section dashboard-danger" data-dashboard-danger>
+              <p data-i18n="dashboard.clear_all_desc">Deletes all mureo configuration.</p>
               <button type="button" class="btn btn-danger" data-dashboard-clear-all
                       data-i18n="dashboard.clear_all">Clear All</button>
             </div>

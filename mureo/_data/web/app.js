@@ -163,6 +163,15 @@
       });
   }
 
+  function wireDashboardLink() {
+    const link = document.querySelector("[data-nav-dashboard]");
+    if (link) {
+      link.addEventListener("click", function () {
+        navigateToDashboard();
+      });
+    }
+  }
+
   function navigateToDashboard() {
     location.hash = "#dashboard";
   }
@@ -187,6 +196,7 @@
     await Promise.all([loadI18n(), loadCsrf()]);
     await loadStatus();
     wireLangToggles();
+    wireDashboardLink();
     setLocale("en");
     applyTranslations(document);
     document.dispatchEvent(
