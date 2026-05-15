@@ -14,7 +14,12 @@ import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from mureo.providers.catalog import ProviderSpec
 
 from mureo.cli.settings_remove import (
     remove_credential_guard,
@@ -215,6 +220,27 @@ def _install_provider_code(provider_id: str) -> ActionResult:
     return ActionResult(status="ok", detail=spec.id)
 
 
+def _desktop_block_for(spec: ProviderSpec) -> Mapping[str, Any]:
+    """Translate a catalog spec to the block Claude Desktop accepts.
+
+    ``claude_desktop_config.json`` only accepts stdio servers
+    (``command``/``args``). A ``hosted_http`` provider's catalog block is
+    the Claude Code native remote shape ``{"type":"http","url":...}``,
+    which Desktop rejects. Wrap it with the standard mcp-remote stdio
+    bridge: the ``url`` (read from ``mcp_server_config["url"]``, never
+    sniffed from the block shape) is placed as a DISCRETE argv element —
+    no shell, no string join, no f-string concat into a command string.
+
+    Every other ``install_kind`` (pipx/npm) is returned verbatim so the
+    pre-change Desktop behaviour for local-install providers is exactly
+    preserved.
+    """
+    if spec.install_kind == "hosted_http":
+        url = spec.mcp_server_config["url"]
+        return {"command": "npx", "args": ["-y", "mcp-remote", url]}
+    return spec.mcp_server_config
+
+
 def _install_provider_desktop(provider_id: str, home: Path | None) -> ActionResult:
     """Desktop path — write the provider block to claude_desktop_config.json.
 
@@ -252,7 +278,7 @@ def _install_provider_desktop(provider_id: str, home: Path | None) -> ActionResu
     try:
         config_path = resolve_desktop_config_path(home)
         wrote = install_desktop_server_block(
-            config_path, spec.id, spec.mcp_server_config
+            config_path, spec.id, _desktop_block_for(spec)
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider (desktop) config write failed")

@@ -206,6 +206,20 @@
           hostedNote.setAttribute("data-i18n", noteKey);
           list.appendChild(hostedNote);
         }
+        // On Claude Desktop the hosted MCP is bridged via the
+        // mcp-remote stdio shim, which needs Node.js (npx) on this
+        // machine. Surface that prerequisite once, only for Desktop.
+        if (status && status.host === "claude-desktop") {
+          const nodeKey = "dashboard.provider_desktop_node_note";
+          const nodeText = MUREO.t(nodeKey);
+          if (nodeText && nodeText !== nodeKey) {
+            const nodeNote = document.createElement("li");
+            nodeNote.className = "dashboard-provider-hosted-note";
+            nodeNote.textContent = nodeText;
+            nodeNote.setAttribute("data-i18n", nodeKey);
+            list.appendChild(nodeNote);
+          }
+        }
       }
     });
     if (anyNotInstalled) {

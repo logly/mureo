@@ -808,3 +808,67 @@ class TestMureoWrappersRouteThroughGeneric:
         payload = json.loads(cfg.read_text(encoding="utf-8"))
         assert "mureo" not in payload["mcpServers"]
         assert payload["mcpServers"]["meta-ads-official"] == _HTTP_BLOCK
+
+
+# ---------------------------------------------------------------------------
+# Layer guard: mcp-remote translation lives in setup_actions, NOT here
+#
+# planner HANDOFF feat-web-config-ui-phase1-mcp-remote.md (Decision L67-L73)
+# + dispatch B: ``install_desktop_server_block`` MUST stay generic — it
+# writes whatever block it is handed VERBATIM. The hosted_http →
+# ``{"command":"npx","args":["-y","mcp-remote",<url>]}`` translation is
+# provider-policy and happens BEFORE this writer is called. These tests
+# prove no http→npx rewrite leaks into this layer (a regression here
+# would double-translate or break the generic contract). These are NOT
+# RED — they lock the existing verbatim behaviour against the change.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestDesktopServerBlockWriterStaysGeneric:
+    def test_http_block_written_verbatim_no_mcp_remote_translation(
+        self, tmp_path: Path
+    ) -> None:
+        """Passing the catalog ``{"type":"http","url":...}`` shape writes
+        it byte-for-byte — the writer does NOT wrap it in npx/mcp-remote
+        (translation is a setup_actions concern, not this layer's)."""
+        from mureo.web import desktop_mcp
+
+        cfg = _desktop_config_path(tmp_path)
+        desktop_mcp.install_desktop_server_block(
+            cfg, "meta-ads-official", _HTTP_BLOCK
+        )
+
+        block = json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"][
+            "meta-ads-official"
+        ]
+        assert block == _HTTP_BLOCK
+        assert block == {
+            "type": "http",
+            "url": "https://mcp.facebook.com/ads",
+        }
+        # Proves NO translation in this layer.
+        assert "command" not in block
+        assert "mcp-remote" not in json.dumps(block)
+
+    def test_npx_block_also_written_verbatim(
+        self, tmp_path: Path
+    ) -> None:
+        """If a caller (setup_actions, post-translation) hands the writer
+        an already-translated npx block, it is stored verbatim — the
+        writer never inspects or re-shapes block contents."""
+        from mureo.web import desktop_mcp
+
+        npx_block = {
+            "command": "npx",
+            "args": ["-y", "mcp-remote", "https://mcp.facebook.com/ads"],
+        }
+        cfg = _desktop_config_path(tmp_path)
+        desktop_mcp.install_desktop_server_block(
+            cfg, "meta-ads-official", npx_block
+        )
+
+        block = json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"][
+            "meta-ads-official"
+        ]
+        assert block == npx_block
