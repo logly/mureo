@@ -22,6 +22,7 @@
     if (!installed) {
       const btn = document.createElement("button");
       btn.type = "button";
+      btn.className = "btn btn-primary";
       btn.textContent = MUREO.t("dashboard.action_install");
       btn.addEventListener("click", async function () {
         btn.disabled = true;
@@ -59,6 +60,16 @@
   // ------------------------------------------------------------------
   // Auth queue (Step: auth)
   // ------------------------------------------------------------------
+  function googleHasOauthOnDisk(state) {
+    // True iff /api/status reported credentials_oauth.google. The
+    // adwords + webmasters scopes share a single refresh token (see
+    // mureo.auth_setup._GOOGLE_SCOPES), so any prior Google OAuth
+    // satisfies both Google Ads and Search Console requirements.
+    return Boolean(
+      state.existing && state.existing.google && state.existing.google.has_oauth
+    );
+  }
+
   function buildAuthQueue(state) {
     const queue = [];
     if (state.platforms.google_ads && state.providerChoice.google_ads === "native") {
@@ -66,7 +77,8 @@
     }
     if (
       state.platforms.search_console &&
-      !state.platforms.google_ads
+      !state.platforms.google_ads &&
+      !googleHasOauthOnDisk(state)
     ) {
       // SC standalone — own Google OAuth slot.
       queue.push({ key: "search_console", oauthProvider: "google" });
@@ -92,13 +104,47 @@
   }
 
   function renderSequentialQueue(host, state, render) {
+    // Inline note: Search Console alone + Google already authenticated
+    // means we silently skipped the SC OAuth slot. Tell the user so the
+    // wizard's "no auth step shown" isn't mysterious.
+    const scSkippedByGoogle =
+      state.platforms.search_console &&
+      !state.platforms.google_ads &&
+      googleHasOauthOnDisk(state);
+    if (scSkippedByGoogle) {
+      const note = document.createElement("div");
+      note.className = "wizard-shared-with-sc-note";
+      note.textContent = MUREO.t("auth_wizard.google.already_authenticated");
+      host.appendChild(note);
+    }
+
     const queue = buildAuthQueue(state);
     if (queue.length === 0) {
-      // Defensive — should not be reached because isStepRelevant("auth")
-      // is False when the queue is empty.
-      const note = document.createElement("p");
-      note.textContent = MUREO.t("wizard.auth.oauth_success");
-      host.appendChild(note);
+      // Empty queue can happen when the only selected platform is
+      // Search Console AND Google OAuth is already on disk (Issue #7).
+      // Outer Back/Next are hidden while the auth step is active, so
+      // we render a Continue button that hands control back to the
+      // outer wizard's gotoNext.
+      if (!scSkippedByGoogle) {
+        const note = document.createElement("p");
+        note.textContent = MUREO.t("wizard.auth.oauth_success");
+        host.appendChild(note);
+      }
+      const continueBtn = document.createElement("button");
+      continueBtn.type = "button";
+      continueBtn.className = "btn btn-primary";
+      continueBtn.textContent = MUREO.t("wizard.next");
+      continueBtn.addEventListener("click", function () {
+        if (
+          window.MUREO_WIZARD &&
+          typeof window.MUREO_WIZARD.gotoNext === "function"
+        ) {
+          window.MUREO_WIZARD.gotoNext();
+        } else {
+          render();
+        }
+      });
+      host.appendChild(continueBtn);
       return;
     }
 
@@ -109,8 +155,17 @@
       if (!slot) return;
       const wrap = renderStepWizard(slot, state, function onSlotDone() {
         cursor.index += 1;
-        if (cursor.index < queue.length) renderCurrent();
-        else render();
+        if (cursor.index < queue.length) {
+          renderCurrent();
+        } else if (
+          window.MUREO_WIZARD &&
+          typeof window.MUREO_WIZARD.gotoNext === "function"
+        ) {
+          // Hand control back to outer wizard once the queue empties.
+          window.MUREO_WIZARD.gotoNext();
+        } else {
+          render();
+        }
       }, state);
       host.appendChild(wrap);
     }
@@ -135,7 +190,19 @@
       wrap.appendChild(desc);
     }
 
+    // Input-based slots (e.g. GA4) need an explicit "完了 / Done" button
+    // gated by the inputs being filled. OAuth-only slots auto-advance
+    // on pollOAuth success — no inner Next button.
+    let doneBtn = null;
     if (slot.inputs) {
+      doneBtn = document.createElement("button");
+      doneBtn.type = "button";
+      doneBtn.className = "btn btn-primary";
+      doneBtn.textContent = MUREO.t("wizard.auth.done_button");
+      doneBtn.setAttribute("data-i18n", "wizard.auth.done_button");
+      doneBtn.disabled = true;
+      doneBtn.addEventListener("click", function () { onAllDone(); });
+
       const completionFlags = {};
       slot.inputs.forEach(function (field) {
         const label = document.createElement("label");
@@ -145,11 +212,10 @@
         input.type = "text";
         input.addEventListener("input", function () {
           completionFlags[field] = Boolean(input.value);
-          if (slot.inputs.every(function (f) { return completionFlags[f]; })) {
-            nextBtn.disabled = false;
-          } else {
-            nextBtn.disabled = true;
-          }
+          const allFilled = slot.inputs.every(function (f) {
+            return completionFlags[f];
+          });
+          doneBtn.disabled = !allFilled;
         });
         label.appendChild(input);
         wrap.appendChild(label);
@@ -159,6 +225,7 @@
     if (slot.oauthProvider) {
       const btn = document.createElement("button");
       btn.type = "button";
+      btn.className = "btn btn-primary";
       btn.textContent = slot.oauthProvider === "meta"
         ? MUREO.t("wizard.auth.meta_oauth_button")
         : MUREO.t("wizard.auth.oauth_button");
@@ -172,8 +239,9 @@
         if (res.ok && res.body && res.body.url) {
           window.open(res.body.url, "_blank", "noopener");
           pollOAuth(slot.oauthProvider, status, function () {
-            btn.disabled = false;
-            nextBtn.disabled = false;
+            // Auto-advance: intermediate slots roll to the next slot;
+            // the final slot hands control back to the outer wizard.
+            onAllDone();
           });
         } else {
           status.textContent = MUREO.t("wizard.auth.oauth_failed");
@@ -184,14 +252,7 @@
       wrap.appendChild(status);
     }
 
-    const nextBtn = document.createElement("button");
-    nextBtn.type = "button";
-    nextBtn.textContent = MUREO.t("wizard.next");
-    nextBtn.disabled = Boolean(slot.oauthProvider || slot.inputs);
-    nextBtn.addEventListener("click", function () {
-      onAllDone();
-    });
-    wrap.appendChild(nextBtn);
+    if (doneBtn) wrap.appendChild(doneBtn);
 
     return wrap;
   }

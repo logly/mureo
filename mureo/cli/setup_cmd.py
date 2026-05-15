@@ -119,6 +119,59 @@ def _replace_dest(path: Path) -> None:
         shutil.rmtree(path)
 
 
+def remove_skills(target_dir: Path | None = None) -> tuple[int, Path]:
+    """Remove bundle-driven skill directories from ``target_dir``.
+
+    The allow-list is derived from ``_get_data_path("skills")`` — only
+    bundle children that contain a ``SKILL.md`` are eligible for removal.
+    User-installed skills outside that allow-list (including ones that
+    coincidentally share the ``_mureo-`` prefix) are NEVER touched.
+
+    Idempotent: a second call on an already-cleaned directory returns
+    ``(0, target_dir)``. A missing destination directory is a graceful
+    no-op. A missing bundle source (rare — broken install) is also a
+    graceful no-op (planner HANDOFF L172 — "bundle dir absent at import
+    resolution → graceful skip").
+
+    Symlinks in ``target_dir`` are ``unlink``-ed rather than ``rmtree``-ed
+    so the dev copy at the link's target is preserved (mirrors
+    ``_replace_dest``).
+
+    Args:
+        target_dir: Destination directory. Defaults to ``~/.claude/skills``.
+
+    Returns:
+        Tuple of ``(number of skill dirs removed, target directory path)``.
+    """
+    dest = target_dir or (Path.home() / ".claude" / "skills")
+
+    try:
+        src = _get_data_path("skills")
+    except FileNotFoundError:
+        return 0, dest
+
+    if not dest.exists():
+        return 0, dest
+
+    allow_listed = {
+        skill_dir.name
+        for skill_dir in src.iterdir()
+        if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists()
+    }
+
+    count = 0
+    for name in allow_listed:
+        candidate = dest / name
+        if candidate.is_symlink():
+            candidate.unlink()
+            count += 1
+        elif candidate.exists():
+            shutil.rmtree(candidate)
+            count += 1
+
+    return count, dest
+
+
 @setup_app.command("claude-code")  # type: ignore[untyped-decorator, unused-ignore]
 def setup_claude_code(
     skip_auth: bool = typer.Option(

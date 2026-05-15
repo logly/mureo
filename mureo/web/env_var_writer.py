@@ -60,6 +60,17 @@ def is_allowed_env_var(name: str) -> bool:
     return name in _ENV_VAR_TO_FIELD
 
 
+def get_env_var_target(name: str) -> EnvVarTarget | None:
+    """Return the credentials.json ``(section, field)`` for ``name``.
+
+    Returns ``None`` if ``name`` is not in the allow-list. Exposed as a
+    read-only accessor so the status collector can resolve env-var
+    names back to their stored location without touching the private
+    mapping table.
+    """
+    return _ENV_VAR_TO_FIELD.get(name)
+
+
 def _resolve_credentials_path(credentials_path: Path | None) -> Path:
     if credentials_path is not None:
         return credentials_path

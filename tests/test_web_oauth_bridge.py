@@ -136,7 +136,10 @@ class TestOAuthBridgeStart:
         )
         assert isinstance(result, OAuthHandoffResult)
         assert result.url is not None
-        assert result.url.endswith("/google-ads")
+        # The URL now carries an explicit ?locale=en query string so the
+        # legacy wizard can switch HTML to JA when the configure UI's
+        # operator picked Japanese. Default locale is English.
+        assert "/google-ads?locale=en" in result.url
         assert result.url.startswith("http://127.0.0.1:")
         assert result.state == "pending"
         assert result.provider == "google"
@@ -150,7 +153,37 @@ class TestOAuthBridgeStart:
         bridge = OAuthBridge()
         result = bridge.start(provider="meta", configure_wizard=fake_configure_wizard)
         assert result.url is not None
-        assert result.url.endswith("/meta-ads")
+        assert "/meta-ads?locale=en" in result.url
+        bridge.cancel_all()
+
+    def test_japanese_locale_appears_in_consent_url(
+        self,
+        patched_wizard_class: Any,
+        fake_configure_wizard: MagicMock,
+    ) -> None:
+        bridge = OAuthBridge()
+        result = bridge.start(
+            provider="google",
+            configure_wizard=fake_configure_wizard,
+            locale="ja",
+        )
+        assert result.url is not None
+        assert "?locale=ja" in result.url
+        bridge.cancel_all()
+
+    def test_unknown_locale_falls_back_to_english(
+        self,
+        patched_wizard_class: Any,
+        fake_configure_wizard: MagicMock,
+    ) -> None:
+        bridge = OAuthBridge()
+        result = bridge.start(
+            provider="google",
+            configure_wizard=fake_configure_wizard,
+            locale="fr",
+        )
+        assert result.url is not None
+        assert "?locale=en" in result.url
         bridge.cancel_all()
 
     def test_start_again_cancels_prior_handoff(

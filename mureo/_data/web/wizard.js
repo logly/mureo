@@ -26,6 +26,13 @@
       "meta-ads-official": false,
       "ga4-official": false,
     },
+    // Existing on-disk credentials state, hydrated from /api/status. The
+    // auth queue uses these flags to skip OAuth slots whose tokens are
+    // already saved (e.g. Search Console reuses Google Ads OAuth).
+    existing: {
+      google: { has_oauth: false },
+      meta: { has_oauth: false },
+    },
     stepIndex: 0,
   };
 
@@ -152,6 +159,9 @@
     Object.keys(STATE.providerInstalled).forEach(function (key) {
       STATE.providerInstalled[key] = Boolean(installed[key]);
     });
+    const oauth = status.credentials_oauth || {};
+    STATE.existing.google.has_oauth = Boolean(oauth.google);
+    STATE.existing.meta.has_oauth = Boolean(oauth.meta);
   }
 
   // ------------------------------------------------------------------
@@ -195,7 +205,7 @@
       '<li>' + pill(parts.auth_hook, MUREO.t("wizard.basic.auth_hook")) + "</li>" +
       '<li>' + pill(parts.skills, MUREO.t("wizard.basic.skills")) + "</li>" +
       "</ul>" +
-      '<button type="button" data-basic-install>' +
+      '<button type="button" class="btn btn-primary" data-basic-install>' +
       MUREO.t("wizard.basic.install_button") + "</button>" +
       '<div class="wizard-advanced-skip">' +
       MUREO.t("wizard.basic.advanced_skip") +
@@ -256,11 +266,21 @@
     const nativeKey = platform === "google_ads"
       ? "wizard.provider_choice.google_ads_native"
       : "wizard.provider_choice.meta_ads_native";
+    // Optional benefit/desc lines — currently only Google Ads ships
+    // them (per design doc §3 Step 4). MUREO.t falls back to the key
+    // itself when missing, so we render only when the lookup actually
+    // resolves to a different string.
+    const officialDescKey = platform === "google_ads"
+      ? "wizard.provider_choice.google_ads.official_desc"
+      : null;
+    const nativeBenefitKey = platform === "google_ads"
+      ? "wizard.provider_choice.google_ads.mureo_benefit"
+      : null;
 
     // Official first, mureo native second (design doc §1.4).
     [
-      { value: "official", label: MUREO.t(officialKey) },
-      { value: "native", label: MUREO.t(nativeKey) },
+      { value: "official", label: MUREO.t(officialKey), descKey: officialDescKey },
+      { value: "native", label: MUREO.t(nativeKey), descKey: nativeBenefitKey },
     ].forEach(function (opt) {
       const label = document.createElement("label");
       label.style.display = "block";
@@ -287,6 +307,19 @@
         label.appendChild(badge);
       }
       wrap.appendChild(label);
+
+      // Benefit/desc line — small muted text under the radio. Rendered
+      // only when an i18n key was declared AND resolves to a string
+      // different from the key (MUREO.t echoes the key on miss).
+      if (opt.descKey) {
+        const translated = MUREO.t(opt.descKey);
+        if (translated && translated !== opt.descKey) {
+          const desc = document.createElement("div");
+          desc.className = "wizard-choice-desc";
+          desc.textContent = translated;
+          wrap.appendChild(desc);
+        }
+      }
     });
     return wrap;
   }
@@ -336,6 +369,7 @@
     if (summary.children.length > 0) wrap.appendChild(summary);
     const btn = document.createElement("button");
     btn.type = "button";
+    btn.className = "btn btn-primary";
     btn.textContent = MUREO.t("wizard.completed.dashboard_button");
     btn.addEventListener("click", function () {
       MUREO.navigateToDashboard();
@@ -384,9 +418,14 @@
     const prevBtn = actions.querySelector('[data-wizard-action="prev"]');
     const nextBtn = actions.querySelector('[data-wizard-action="next"]');
     const skipBtn = actions.querySelector('[data-wizard-action="skip"]');
-    if (prevBtn) prevBtn.hidden = STATE.stepIndex === 0;
-    if (skipBtn) skipBtn.hidden = STEPS_WITHOUT_SKIP.has(step);
-    if (nextBtn) nextBtn.hidden = step === "completed";
+    // While the sub-wizard is active (`auth` step) it manages its own
+    // controls and hands control back to the outer wizard on completion,
+    // so the outer Back/Next/Skip must stay hidden to avoid duplicate
+    // affordances. See design doc §1.3.
+    const subWizardActive = step === "auth";
+    if (prevBtn) prevBtn.hidden = STATE.stepIndex === 0 || subWizardActive;
+    if (skipBtn) skipBtn.hidden = STEPS_WITHOUT_SKIP.has(step) || subWizardActive;
+    if (nextBtn) nextBtn.hidden = step === "completed" || subWizardActive;
   }
 
   function updateNextEnabled() {

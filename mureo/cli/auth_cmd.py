@@ -85,27 +85,9 @@ def check_meta() -> None:
 
 
 @auth_app.command("setup")  # type: ignore[untyped-decorator, unused-ignore]
-def auth_setup(
-    web: bool = typer.Option(
-        False,
-        "--web",
-        help=(
-            "Run the browser-based wizard instead of the terminal "
-            "prompts. Recommended for non-technical users."
-        ),
-    ),
-) -> None:
-    """Interactive setup wizard (terminal or browser)."""
+def auth_setup() -> None:
+    """Interactive setup wizard (terminal)."""
     import asyncio
-
-    if web:
-        from mureo.cli.web_auth import run_web_wizard
-
-        typer.echo("=== mureo Web Setup Wizard ===")
-        typer.echo("A browser tab will open for secret entry and OAuth.")
-        typer.echo("")
-        run_web_wizard()
-        return
 
     typer.echo("=== mureo Setup Wizard ===")
     typer.echo("")

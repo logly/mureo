@@ -88,8 +88,15 @@ class OAuthBridge:
         provider: str,
         configure_wizard: Any,
         credentials_path: Path | None = None,
+        locale: str = "en",
     ) -> OAuthHandoffResult:
-        """Spawn a wizard for ``provider`` and return the consent URL."""
+        """Spawn a wizard for ``provider`` and return the consent URL.
+
+        ``locale`` is passed through to the spawned ``WebAuthWizard``'s
+        per-platform form via a ``?locale=`` query string so the legacy
+        wizard (English-only HTML) can switch its inline strings to
+        Japanese when the operator picked JA in the configure UI.
+        """
         if provider not in _PROVIDER_TO_PATH:
             raise ValueError(f"unknown provider: {provider!r}")
 
@@ -109,7 +116,9 @@ class OAuthBridge:
             return OAuthHandoffResult(url=None, state="pending", provider=provider)
 
         path = _PROVIDER_TO_PATH[provider]
-        consent_url = wizard.home_url() + path
+        # Allow-list locales to keep the spawned URL injection-free.
+        safe_locale = locale if locale in {"en", "ja"} else "en"
+        consent_url = wizard.home_url() + path + f"?locale={safe_locale}"
 
         watcher = threading.Thread(
             target=self._watch_handoff,

@@ -42,9 +42,13 @@ from mureo.web.env_var_writer import is_allowed_env_var, write_credential_env_va
 from mureo.web.legacy_commands import remove_legacy_commands
 from mureo.web.session import OAUTH_PROVIDERS, SUPPORTED_HOSTS
 from mureo.web.setup_actions import (
+    clear_all_setup,
     install_basic_setup,
     install_provider,
+    remove_auth_hook,
+    remove_mureo_mcp,
     remove_provider,
+    remove_workflow_skills,
 )
 from mureo.web.status_collector import collect_status
 
@@ -248,6 +252,24 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         result = install_basic_setup(home=self.wizard.home)
         send_json(self, result)
 
+    def _post_setup_mcp_remove(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
+        result = remove_mureo_mcp(home=self.wizard.home)
+        send_json(self, result.as_dict())
+
+    def _post_setup_hook_remove(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
+        result = remove_auth_hook(home=self.wizard.home)
+        send_json(self, result.as_dict())
+
+    def _post_setup_skills_remove(
+        self, payload: dict[str, Any]
+    ) -> None:  # noqa: ARG002
+        result = remove_workflow_skills(home=self.wizard.home)
+        send_json(self, result.as_dict())
+
+    def _post_setup_basic_clear(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
+        envelope = clear_all_setup(home=self.wizard.home)
+        send_json(self, envelope)
+
     def _post_providers_install(self, payload: dict[str, Any]) -> None:
         provider_id = str(payload.get("provider_id", "")).strip()
         if not provider_id:
@@ -303,6 +325,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 provider=provider,
                 configure_wizard=self.wizard,
                 credentials_path=self.wizard.host_paths.credentials_path,
+                locale=self.wizard.session.locale,
             )
         except ValueError:
             send_error_json(self, 400, "unknown_provider")
@@ -316,6 +339,10 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/locale": _post_locale,
         "/api/host": _post_host,
         "/api/setup/basic": _post_setup_basic,
+        "/api/setup/basic/clear": _post_setup_basic_clear,
+        "/api/setup/mcp/remove": _post_setup_mcp_remove,
+        "/api/setup/hook/remove": _post_setup_hook_remove,
+        "/api/setup/skills/remove": _post_setup_skills_remove,
         "/api/providers/install": _post_providers_install,
         "/api/providers/remove": _post_providers_remove,
         "/api/credentials/env-var": _post_env_var,

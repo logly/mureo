@@ -429,3 +429,235 @@ class TestPostOauthStart:
             with pytest.raises(urllib.error.HTTPError) as exc:
                 _post(wizard, "/api/oauth/google/start", {})
             assert exc.value.code == 400
+
+
+# ---------------------------------------------------------------------------
+# Dashboard uninstall routes (planner HANDOFF
+# feat-web-config-ui-phase1-uninstall.md). Four new CSRF + Host gated
+# POST endpoints. The remove wrappers themselves are tested in
+# test_web_setup_actions_remove.py; here we pin only the route layer.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestPostSetupMcpRemove:
+    """``POST /api/setup/mcp/remove`` — uninstall the mureo MCP block."""
+
+    ROUTE = "/api/setup/mcp/remove"
+
+    def test_ok_dispatches_to_remove_mureo_mcp(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok", "detail": "/tmp/settings.json"}
+        with patch(
+            "mureo.web.handlers.remove_mureo_mcp", return_value=fake
+        ) as mock_remove:
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok", "detail": "/tmp/settings.json"}
+        mock_remove.assert_called_once()
+
+    def test_noop_envelope_when_already_removed(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "noop"}
+        with patch("mureo.web.handlers.remove_mureo_mcp", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "noop"}
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        """Acceptance criteria L150-L153."""
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403
+
+    def test_rejects_wrong_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf="not-the-real-token")
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        """Acceptance criteria L148-L150 — Host header gate."""
+        body = json.dumps({}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestPostSetupHookRemove:
+    """``POST /api/setup/hook/remove`` — uninstall the credential-guard hook."""
+
+    ROUTE = "/api/setup/hook/remove"
+
+    def test_ok_dispatches_to_remove_auth_hook(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.remove_auth_hook", return_value=fake
+        ) as mock_remove:
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok"}
+        mock_remove.assert_called_once()
+
+    def test_noop_envelope_when_already_removed(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "noop"}
+        with patch("mureo.web.handlers.remove_auth_hook", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "noop"}
+
+    def test_error_envelope_surfaces_to_client(self, wizard: ConfigureWizard) -> None:
+        """The wrapper catches its own exceptions and returns
+        ``ActionResult(status="error")``; the route MUST surface this as
+        a 200 envelope (not a 500). 500 is reserved for genuine route
+        bugs."""
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "error", "detail": "OSError"}
+        with patch("mureo.web.handlers.remove_auth_hook", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "error", "detail": "OSError"}
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestPostSetupSkillsRemove:
+    """``POST /api/setup/skills/remove`` — uninstall workflow skills."""
+
+    ROUTE = "/api/setup/skills/remove"
+
+    def test_ok_dispatches_to_remove_workflow_skills(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok", "detail": "removed 15 skills"}
+        with patch(
+            "mureo.web.handlers.remove_workflow_skills", return_value=fake
+        ) as mock_remove:
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok", "detail": "removed 15 skills"}
+        mock_remove.assert_called_once()
+
+    def test_noop_envelope_when_nothing_to_remove(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "noop"}
+        with patch("mureo.web.handlers.remove_workflow_skills", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "noop"}
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403
+
+    def test_rejects_wrong_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf="bad")
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "evil.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestPostSetupBasicClear:
+    """``POST /api/setup/basic/clear`` — bulk uninstall (clear all)."""
+
+    ROUTE = "/api/setup/basic/clear"
+
+    def test_ok_dispatches_to_clear_all_setup(self, wizard: ConfigureWizard) -> None:
+        """Returns the bulk envelope verbatim."""
+        envelope: dict[str, Any] = {
+            "mureo_mcp": {"status": "ok"},
+            "auth_hook": {"status": "noop"},
+            "skills": {"status": "ok"},
+            "legacy_commands": ["onboard.md"],
+            "providers": {"google-ads-official": {"status": "ok"}},
+        }
+        with patch(
+            "mureo.web.handlers.clear_all_setup", return_value=envelope
+        ) as mock_clear:
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == envelope
+        mock_clear.assert_called_once()
+
+    def test_partial_failure_surfaces_in_envelope(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """Acceptance criteria L132-L134: a step failure is reported in
+        the envelope, not as a 500."""
+        envelope: dict[str, Any] = {
+            "mureo_mcp": {"status": "error", "detail": "OSError"},
+            "auth_hook": {"status": "ok"},
+            "skills": {"status": "ok"},
+            "legacy_commands": [],
+        }
+        with patch("mureo.web.handlers.clear_all_setup", return_value=envelope):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["mureo_mcp"]["status"] == "error"
+        assert body["auth_hook"]["status"] == "ok"
+
+    def test_passes_wizard_home_through(self, wizard: ConfigureWizard) -> None:
+        """The handler propagates ``self.wizard.home`` to ``clear_all_setup``
+        so the per-step ``clear_part`` calls write to the same setup_state.json."""
+        with patch("mureo.web.handlers.clear_all_setup", return_value={}) as mock_clear:
+            _post(wizard, self.ROUTE, {})
+
+        kwargs = mock_clear.call_args.kwargs
+        home_arg: Any = kwargs.get("home")
+        if home_arg is None and mock_clear.call_args.args:
+            home_arg = mock_clear.call_args.args[0]
+        assert home_arg == wizard.home
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403
+
+    def test_rejects_wrong_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf="bad")
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403

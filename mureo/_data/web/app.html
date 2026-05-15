@@ -12,7 +12,6 @@
     <nav class="app-header-nav">
       <button type="button" class="lang-toggle" data-lang-toggle="en">English</button>
       <button type="button" class="lang-toggle" data-lang-toggle="ja">日本語</button>
-      <button type="button" class="cancel-btn" data-cancel-button>×</button>
     </nav>
   </header>
 
@@ -53,7 +52,7 @@
       <div class="dashboard-header">
         <h1 data-i18n="dashboard.title">mureo configuration</h1>
         <div class="dashboard-controls">
-          <button type="button" data-dashboard-rerun-wizard data-i18n="dashboard.rerun_wizard_button">Re-run wizard</button>
+          <button type="button" class="btn btn-primary" data-dashboard-rerun-wizard data-i18n="dashboard.rerun_wizard_button">Re-run wizard</button>
         </div>
       </div>
 
@@ -72,13 +71,14 @@
         <ul data-dashboard-providers-list></ul>
       </div>
 
-      <div class="dashboard-section" data-dashboard-env">
-        <h2 data-i18n="dashboard.env_title">Environment variables (advanced)</h2>
+      <div class="dashboard-section" data-dashboard-env>
+        <h2 data-i18n="dashboard.env_title">mureo Credentials (advanced)</h2>
+        <ul class="dashboard-env-list" data-dashboard-env-list></ul>
         <details>
-          <summary data-i18n="dashboard.env_details">Set an environment variable</summary>
+          <summary data-i18n="dashboard.env_details">Set a credential value</summary>
           <form data-env-form>
             <label>
-              <span data-i18n="dashboard.env_name_label">Variable</span>
+              <span data-i18n="dashboard.env_name_label">Field</span>
               <select name="env_name" data-env-name>
                 <option value="GOOGLE_ADS_DEVELOPER_TOKEN">GOOGLE_ADS_DEVELOPER_TOKEN</option>
                 <option value="GOOGLE_ADS_CLIENT_ID">GOOGLE_ADS_CLIENT_ID</option>
@@ -98,9 +98,15 @@
               <span data-i18n="dashboard.env_value_label">Value</span>
               <input type="password" name="env_value" autocomplete="off">
             </label>
-            <button type="submit" data-i18n="dashboard.env_submit">Save</button>
+            <button type="submit" class="btn btn-primary" data-i18n="dashboard.env_submit">Save</button>
           </form>
         </details>
+      </div>
+
+      <div class="dashboard-section dashboard-danger" data-dashboard-danger
+           style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ccc;">
+        <button type="button" class="btn btn-danger" data-dashboard-clear-all
+                data-i18n="dashboard.clear_all">Clear All</button>
       </div>
     </section>
 
@@ -110,8 +116,8 @@
   <dialog data-confirm-dialog>
     <p data-confirm-text></p>
     <div>
-      <button type="button" value="cancel" data-confirm-cancel data-i18n="common.cancel">Cancel</button>
-      <button type="button" value="ok" data-confirm-ok data-i18n="common.ok">OK</button>
+      <button type="button" class="btn btn-secondary" value="cancel" data-confirm-cancel data-i18n="common.cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" value="ok" data-confirm-ok data-i18n="common.ok">OK</button>
     </div>
   </dialog>
 

@@ -43,8 +43,7 @@ body {
   align-items: center;
 }
 
-.lang-toggle,
-.cancel-btn {
+.lang-toggle {
   background: none;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -142,6 +141,13 @@ body {
   margin-right: auto;
 }
 
+/* Pin Next to the right edge even when prev/skip are hidden (Step 1).
+ * `justify-content: space-between` flex-starts a lone child, so we
+ * force the Next button to the right with margin-left:auto. */
+.wizard-actions [data-wizard-action="next"] {
+  margin-left: auto;
+}
+
 .wizard-actions button {
   padding: 10px 24px;
   border-radius: var(--radius);
@@ -216,6 +222,12 @@ body {
   margin-left: 8px;
   font-size: 12px;
   color: var(--color-success);
+}
+
+.wizard-choice-desc {
+  margin: 4px 0 8px 24px;
+  font-size: 13px;
+  color: var(--color-muted);
 }
 
 .wizard-shared-with-sc-note {
@@ -310,4 +322,107 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   background: var(--color-primary);
   color: white;
   border-color: var(--color-primary);
+}
+
+/* ------------------------------------------------------------------
+ * Generic button classes — applied to dashboard / wizard buttons
+ * that lacked styling (per-row delete, bulk clear, install,
+ * authenticate, etc.). Mirrors existing primary/danger palette.
+ * ------------------------------------------------------------------ */
+.btn {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn:hover {
+  background: #f0f1f3;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.btn-danger {
+  background: #c0392b;
+  color: white;
+  border-color: #c0392b;
+}
+
+.btn-danger:hover {
+  background: #a93226;
+  border-color: #a93226;
+}
+
+.btn-danger:focus-visible {
+  outline: 2px solid #c0392b;
+  outline-offset: 2px;
+}
+
+/* Right-align the bulk-clear "全削除" button inside the danger zone. */
+.dashboard-danger {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Env vars listing — name + masked/plain value side by side. */
+.dashboard-env-list {
+  margin: 0 0 12px;
+}
+
+.dashboard-env-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-border);
+  gap: 12px;
+}
+
+.dashboard-env-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.dashboard-env-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  color: var(--color-muted);
+  word-break: break-all;
+  text-align: right;
+  flex: 1;
+}
+
+.dashboard-env-value.dashboard-env-unset {
+  font-style: italic;
 }
