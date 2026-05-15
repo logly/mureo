@@ -601,4 +601,19 @@
       hide();
     }
   });
+
+  // Re-render JS-built sections on locale change. `data-i18n` static
+  // text is handled by app.js; dynamic nodes built via MUREO.t(...)
+  // (demo scenario options, BYOD rows, env-var rows, provider/basic
+  // rows) are frozen at first render, so reuse renderAll() to rebuild
+  // them. renderAll() reads cached MUREO.state.status (no extra fetch)
+  // and clears each container before rebuilding, so repeated locale
+  // switches stay idempotent (no duplicate rows/options). Guarded so
+  // it is a no-op when the dashboard is absent or hidden. Listener is
+  // registered once at module eval — no double-binding.
+  document.addEventListener("mureo:locale_changed", function () {
+    const dashboard = document.querySelector("[data-dashboard]");
+    if (!dashboard || dashboard.hidden) return;
+    renderAll();
+  });
 })();
