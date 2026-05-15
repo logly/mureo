@@ -20,6 +20,12 @@ Routes
 ``POST /api/credentials/env-var``→ write one env var into credentials
 ``POST /api/oauth/<p>/start``    → spawn WebAuthWizard, return consent URL
 ``POST /api/legacy/cleanup``     → delete legacy slash commands
+``GET  /api/demo/scenarios``     → list registered demo scenarios
+``POST /api/demo/init``          → scaffold a demo workspace
+``GET  /api/byod/status``        → per-platform byod/live status
+``POST /api/byod/import``        → import a Sheet bundle XLSX
+``POST /api/byod/remove``        → drop one platform's BYOD data
+``POST /api/byod/clear``         → wipe all BYOD data
 """
 
 from __future__ import annotations
@@ -38,6 +44,13 @@ from mureo.web._helpers import (
     send_error_json,
     send_json,
 )
+from mureo.web.byod_actions import (
+    byod_clear,
+    byod_import,
+    byod_remove,
+    byod_status,
+)
+from mureo.web.demo_actions import init_demo, list_demo_scenarios
 from mureo.web.env_var_writer import is_allowed_env_var, write_credential_env_var
 from mureo.web.legacy_commands import remove_legacy_commands
 from mureo.web.session import OAUTH_PROVIDERS, SUPPORTED_HOSTS
@@ -153,6 +166,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/csrf":
             self._serve_csrf()
+            return
+        if path == "/api/demo/scenarios":
+            send_json(self, list_demo_scenarios().as_dict())
+            return
+        if path == "/api/byod/status":
+            send_json(self, byod_status().as_dict())
             return
         match = _OAUTH_PROVIDER_RE.match(path)
         if match is not None and match.group("verb") == "status":
@@ -313,6 +332,40 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         removed = remove_legacy_commands(self.wizard.host_paths.commands_dir)
         send_json(self, {"removed": removed})
 
+    def _post_demo_init(self, payload: dict[str, Any]) -> None:
+        target = str(payload.get("target", "")).strip()
+        if not target:
+            send_error_json(self, 400, "target_required")
+            return
+        result = init_demo(
+            scenario_name=str(payload.get("scenario_name", "")),
+            target=target,
+            force=bool(payload.get("force", False)),
+            skip_import=bool(payload.get("skip_import", False)),
+        )
+        send_json(self, result.as_dict())
+
+    def _post_byod_import(self, payload: dict[str, Any]) -> None:
+        file_path = str(payload.get("file_path", "")).strip()
+        if not file_path:
+            send_error_json(self, 400, "file_path_required")
+            return
+        result = byod_import(
+            file_path=file_path,
+            replace=bool(payload.get("replace", False)),
+        )
+        send_json(self, result.as_dict())
+
+    def _post_byod_remove(self, payload: dict[str, Any]) -> None:
+        result = byod_remove(
+            google_ads=bool(payload.get("google_ads", False)),
+            meta_ads=bool(payload.get("meta_ads", False)),
+        )
+        send_json(self, result.as_dict())
+
+    def _post_byod_clear(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
+        send_json(self, byod_clear().as_dict())
+
     def _post_oauth_start(
         self, provider: str, payload: dict[str, Any]
     ) -> None:  # noqa: ARG002
@@ -347,4 +400,8 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/providers/remove": _post_providers_remove,
         "/api/credentials/env-var": _post_env_var,
         "/api/legacy/cleanup": _post_legacy_cleanup,
+        "/api/demo/init": _post_demo_init,
+        "/api/byod/import": _post_byod_import,
+        "/api/byod/remove": _post_byod_remove,
+        "/api/byod/clear": _post_byod_clear,
     }

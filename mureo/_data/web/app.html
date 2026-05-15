@@ -103,6 +103,52 @@
         </details>
       </div>
 
+      <div class="dashboard-section" data-dashboard-demo>
+        <h2 data-i18n="dashboard.demo_title">デモ / Demo</h2>
+        <p data-i18n="dashboard.demo_desc">Scaffold a self-contained demo workspace with synthetic ad data.</p>
+        <label>
+          <span data-i18n="dashboard.demo_scenario_label">Scenario</span>
+          <select data-demo-scenario></select>
+        </label>
+        <label>
+          <span data-i18n="dashboard.demo_target_label">Target directory</span>
+          <input type="text" data-demo-target autocomplete="off" placeholder="/Users/you/mureo-demo">
+        </label>
+        <label>
+          <input type="checkbox" data-demo-skip-import>
+          <span data-i18n="dashboard.demo_skip_import_label">Write files only (do not import bundle)</span>
+        </label>
+        <button type="button" class="btn btn-primary" data-demo-create data-i18n="dashboard.demo_create">Create demo</button>
+        <p class="dashboard-demo-result" data-demo-result></p>
+      </div>
+
+      <div class="dashboard-section" data-dashboard-byod>
+        <h2 data-i18n="dashboard.byod_title">データ取込 (BYOD)</h2>
+        <p data-i18n="dashboard.byod_desc">Import your own ad data from a Sheet bundle XLSX and analyse it locally.</p>
+        <table class="dashboard-byod-table">
+          <thead>
+            <tr>
+              <th data-i18n="dashboard.byod_col_platform">Platform</th>
+              <th data-i18n="dashboard.byod_col_mode">Mode</th>
+              <th data-i18n="dashboard.byod_col_detail">Detail</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody data-byod-status-body></tbody>
+        </table>
+        <label>
+          <span data-i18n="dashboard.byod_file_label">Bundle XLSX path</span>
+          <input type="text" data-byod-file autocomplete="off" placeholder="/Users/you/bundle.xlsx">
+        </label>
+        <label>
+          <input type="checkbox" data-byod-replace>
+          <span data-i18n="dashboard.byod_replace_label">Replace existing data</span>
+        </label>
+        <button type="button" class="btn btn-primary" data-byod-import data-i18n="dashboard.byod_import">Import bundle</button>
+        <p class="dashboard-byod-result" data-byod-result></p>
+        <button type="button" class="btn btn-danger" data-byod-clear data-i18n="dashboard.byod_clear">Clear all BYOD data</button>
+      </div>
+
       <div class="dashboard-section dashboard-danger" data-dashboard-danger
            style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ccc;">
         <button type="button" class="btn btn-danger" data-dashboard-clear-all

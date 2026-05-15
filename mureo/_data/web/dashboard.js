@@ -246,18 +246,257 @@
     btn.addEventListener("click", runBulkClear);
   }
 
+  // ----- Demo section -------------------------------------------------
+
+  async function loadDemoScenarios() {
+    const select = document.querySelector("[data-demo-scenario]");
+    if (!select) return;
+    let body;
+    try {
+      const res = await fetch("/api/demo/scenarios");
+      body = await res.json();
+    } catch (_err) {
+      return;
+    }
+    if (!body || body.status !== "ok" || !Array.isArray(body.scenarios)) {
+      return;
+    }
+    while (select.firstChild) select.removeChild(select.firstChild);
+    body.scenarios.forEach(function (sc) {
+      const opt = document.createElement("option");
+      opt.value = sc.name;
+      opt.textContent = sc.title + " — " + sc.blurb;
+      if (sc.default) opt.selected = true;
+      select.appendChild(opt);
+    });
+  }
+
+  function wireDemoCreate() {
+    const btn = document.querySelector("[data-demo-create]");
+    if (!btn) return;
+    btn.addEventListener("click", async function () {
+      const scenario = document.querySelector("[data-demo-scenario]");
+      const targetNode = document.querySelector("[data-demo-target]");
+      const skipNode = document.querySelector("[data-demo-skip-import]");
+      const resultNode = document.querySelector("[data-demo-result]");
+      const target = targetNode ? targetNode.value.trim() : "";
+      if (!target) {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.demo_target_required");
+        }
+        return;
+      }
+      if (resultNode) resultNode.textContent = MUREO.t("dashboard.demo_creating");
+      let res;
+      try {
+        res = await MUREO.postJson("/api/demo/init", {
+          scenario_name: scenario ? scenario.value : "",
+          target: target,
+          force: false,
+          skip_import: skipNode ? skipNode.checked : false,
+        });
+      } catch (_err) {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.demo_failed", {
+            detail: "network",
+          });
+        }
+        return;
+      }
+      const data = (res && res.body) || {};
+      if (res && res.ok && data.status === "ok") {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.demo_success", {
+            path: data.created_path || target,
+          });
+        }
+      } else if (resultNode) {
+        resultNode.textContent = MUREO.t("dashboard.demo_failed", {
+          detail: (data && data.detail) || "error",
+        });
+      }
+    });
+  }
+
+  // ----- BYOD section -------------------------------------------------
+
+  function byodModeLabel(mode) {
+    if (mode === "byod") return MUREO.t("dashboard.byod_mode_byod");
+    if (mode === "not_configured") {
+      return MUREO.t("dashboard.byod_mode_not_configured");
+    }
+    return MUREO.t("dashboard.byod_mode_live");
+  }
+
+  function buildByodRemoveButton(platform) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-secondary";
+    btn.textContent = MUREO.t("dashboard.byod_remove");
+    btn.setAttribute("data-i18n", "dashboard.byod_remove");
+    btn.addEventListener("click", async function () {
+      const confirmed = await MUREO.confirmAction(
+        MUREO.t("dashboard.byod_confirm_remove", { platform: platform })
+      );
+      if (!confirmed) return;
+      let res;
+      try {
+        res = await MUREO.postJson("/api/byod/remove", {
+          google_ads: platform === "google_ads",
+          meta_ads: platform === "meta_ads",
+        });
+      } catch (_err) {
+        MUREO.toast(MUREO.t("dashboard.byod_remove_failed"));
+        return;
+      }
+      const data = (res && res.body) || {};
+      if (res && res.ok && data.status !== "error") {
+        await renderByodStatus();
+      } else {
+        MUREO.toast(MUREO.t("dashboard.byod_remove_failed"));
+      }
+    });
+    return btn;
+  }
+
+  function appendByodRow(tbody, p) {
+    const tr = document.createElement("tr");
+    const platformCell = document.createElement("td");
+    platformCell.textContent = p.platform;
+    const modeCell = document.createElement("td");
+    modeCell.textContent = byodModeLabel(p.mode);
+    const detailCell = document.createElement("td");
+    if (p.mode === "byod") {
+      const range = p.date_range
+        ? (p.date_range.start || "?") + ".." + (p.date_range.end || "?")
+        : "";
+      detailCell.textContent =
+        (p.rows != null ? p.rows + " rows" : "") +
+        (range ? " (" + range + ")" : "");
+    }
+    const actionCell = document.createElement("td");
+    if (p.mode === "byod") {
+      actionCell.appendChild(buildByodRemoveButton(p.platform));
+    }
+    tr.appendChild(platformCell);
+    tr.appendChild(modeCell);
+    tr.appendChild(detailCell);
+    tr.appendChild(actionCell);
+    tbody.appendChild(tr);
+  }
+
+  async function renderByodStatus() {
+    const tbody = document.querySelector("[data-byod-status-body]");
+    if (!tbody) return;
+    let body;
+    try {
+      const res = await fetch("/api/byod/status");
+      body = await res.json();
+    } catch (_err) {
+      return;
+    }
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+    if (!body || body.status !== "ok" || !Array.isArray(body.platforms)) {
+      return;
+    }
+    body.platforms.forEach(function (p) {
+      appendByodRow(tbody, p);
+    });
+  }
+
+  function wireByodImport() {
+    const btn = document.querySelector("[data-byod-import]");
+    if (!btn) return;
+    btn.addEventListener("click", async function () {
+      const fileNode = document.querySelector("[data-byod-file]");
+      const replaceNode = document.querySelector("[data-byod-replace]");
+      const resultNode = document.querySelector("[data-byod-result]");
+      const filePath = fileNode ? fileNode.value.trim() : "";
+      if (!filePath) {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.byod_file_required");
+        }
+        return;
+      }
+      if (resultNode) {
+        resultNode.textContent = MUREO.t("dashboard.byod_importing");
+      }
+      let res;
+      try {
+        res = await MUREO.postJson("/api/byod/import", {
+          file_path: filePath,
+          replace: replaceNode ? replaceNode.checked : false,
+        });
+      } catch (_err) {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.byod_import_failed", {
+            detail: "network",
+          });
+        }
+        return;
+      }
+      const data = (res && res.body) || {};
+      if (res && res.ok && data.status === "ok") {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.byod_import_success");
+        }
+        await renderByodStatus();
+      } else if (resultNode) {
+        resultNode.textContent = MUREO.t("dashboard.byod_import_failed", {
+          detail: (data && data.detail) || "error",
+        });
+      }
+    });
+  }
+
+  async function runByodClear() {
+    const ok1 = await MUREO.confirmAction(
+      MUREO.t("dashboard.byod_confirm_clear_1")
+    );
+    if (!ok1) return;
+    const ok2 = await MUREO.confirmAction(
+      MUREO.t("dashboard.byod_confirm_clear_2")
+    );
+    if (!ok2) return;
+    let res;
+    try {
+      res = await MUREO.postJson("/api/byod/clear", {});
+    } catch (_err) {
+      MUREO.toast(MUREO.t("dashboard.byod_clear_failed"));
+      return;
+    }
+    const data = (res && res.body) || {};
+    if (res && res.ok && data.status !== "error") {
+      MUREO.toast(MUREO.t("dashboard.byod_clear_success"));
+      await renderByodStatus();
+    } else {
+      MUREO.toast(MUREO.t("dashboard.byod_clear_failed"));
+    }
+  }
+
+  function wireByodClear() {
+    const btn = document.querySelector("[data-byod-clear]");
+    if (!btn) return;
+    btn.addEventListener("click", runByodClear);
+  }
+
   function renderAll() {
     const status = MUREO.state.status;
     renderHostSection(status);
     renderBasicSection(status);
     renderProvidersSection(status);
     renderEnvVarsSection(status);
+    loadDemoScenarios();
+    renderByodStatus();
   }
 
   document.addEventListener("mureo:ready", function () {
     wireEnvForm();
     wireRerunWizardButton();
     wireBulkClearButton();
+    wireDemoCreate();
+    wireByodImport();
+    wireByodClear();
     if (MUREO.isDashboardRoute()) {
       show();
       renderAll();

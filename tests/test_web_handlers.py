@@ -590,6 +590,400 @@ class TestPostSetupSkillsRemove:
         assert exc.value.code == 403
 
 
+# ---------------------------------------------------------------------------
+# Dashboard demo + byod routes (planner HANDOFF
+# feat-web-config-ui-phase1-demo-byod.md). 6 new endpoints:
+#   GET  /api/demo/scenarios   (Host-gated only, no CSRF for GET)
+#   POST /api/demo/init        (CSRF + Host gated)
+#   GET  /api/byod/status      (Host-gated only)
+#   POST /api/byod/import      (CSRF + Host gated)
+#   POST /api/byod/remove      (CSRF + Host gated)
+#   POST /api/byod/clear       (CSRF + Host gated)
+# The demo_actions / byod_actions wrappers themselves are tested in
+# test_web_demo_actions.py / test_web_byod_actions.py; here we pin only
+# the route layer (dispatch, gating, payload validation, JSON shape).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGetDemoScenarios:
+    """``GET /api/demo/scenarios`` — list registered demo scenarios."""
+
+    ROUTE = "/api/demo/scenarios"
+
+    def test_returns_scenarios_payload(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {
+            "status": "ok",
+            "scenarios": [
+                {
+                    "name": "seasonality-trap",
+                    "title": "T",
+                    "blurb": "B",
+                    "default": True,
+                },
+            ],
+        }
+        with patch(
+            "mureo.web.handlers.list_demo_scenarios", return_value=fake
+        ) as mock_list:
+            resp = _get(wizard, self.ROUTE)
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "ok"
+        assert body["scenarios"][0]["name"] == "seasonality-trap"
+        mock_list.assert_called_once()
+
+    def test_get_does_not_require_csrf(self, wizard: ConfigureWizard) -> None:
+        """GET routes are Host-gated only per existing pattern."""
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok", "scenarios": []}
+        with patch("mureo.web.handlers.list_demo_scenarios", return_value=fake):
+            resp = _get(wizard, self.ROUTE)
+        assert resp.status == 200
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        req = urllib.request.Request(_url(wizard, self.ROUTE))
+        req.add_header("Host", "attacker.example.com")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestPostDemoInit:
+    """``POST /api/demo/init`` — scaffold a demo workspace."""
+
+    ROUTE = "/api/demo/init"
+
+    def test_dispatches_to_init_demo(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {
+            "status": "ok",
+            "created_path": "/tmp/mureo-demo",
+            "imported": True,
+        }
+        with patch(
+            "mureo.web.handlers.init_demo", return_value=fake
+        ) as mock_init:
+            resp = _post(
+                wizard,
+                self.ROUTE,
+                {
+                    "scenario_name": "seasonality-trap",
+                    "target": "/tmp/mureo-demo",
+                    "force": False,
+                    "skip_import": False,
+                },
+            )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "ok"
+        assert body["created_path"] == "/tmp/mureo-demo"
+        mock_init.assert_called_once()
+
+    def test_missing_target_returns_400(self, wizard: ConfigureWizard) -> None:
+        with patch("mureo.web.handlers.init_demo") as mock_init:
+            with pytest.raises(urllib.error.HTTPError) as exc:
+                _post(
+                    wizard,
+                    self.ROUTE,
+                    {"scenario_name": "seasonality-trap"},
+                )
+            assert exc.value.code == 400
+        mock_init.assert_not_called()
+
+    def test_error_envelope_surfaces_as_200(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """The wrapper catches its own exceptions and returns an
+        ``error`` envelope; the route surfaces it as 200, not 500."""
+        fake = MagicMock()
+        fake.as_dict.return_value = {
+            "status": "error",
+            "detail": "DemoInitError",
+        }
+        with patch("mureo.web.handlers.init_demo", return_value=fake):
+            resp = _post(
+                wizard,
+                self.ROUTE,
+                {
+                    "scenario_name": "seasonality-trap",
+                    "target": "/tmp/x",
+                },
+            )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "error"
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(
+                wizard,
+                self.ROUTE,
+                {"scenario_name": "x", "target": "/tmp/x"},
+                csrf=None,
+            )
+        assert exc.value.code == 403
+
+    def test_rejects_wrong_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(
+                wizard,
+                self.ROUTE,
+                {"scenario_name": "x", "target": "/tmp/x"},
+                csrf="bad",
+            )
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({"scenario_name": "x", "target": "/tmp/x"}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestGetByodStatus:
+    """``GET /api/byod/status`` — per-platform byod/live status."""
+
+    ROUTE = "/api/byod/status"
+
+    def test_returns_status_payload(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {
+            "status": "ok",
+            "platforms": [
+                {
+                    "platform": "google_ads",
+                    "mode": "byod",
+                    "rows": 10,
+                    "date_range": {
+                        "start": "2026-01-01",
+                        "end": "2026-01-31",
+                    },
+                },
+                {"platform": "meta_ads", "mode": "live"},
+            ],
+        }
+        with patch(
+            "mureo.web.handlers.byod_status", return_value=fake
+        ) as mock_status:
+            resp = _get(wizard, self.ROUTE)
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "ok"
+        assert {p["platform"] for p in body["platforms"]} == {
+            "google_ads",
+            "meta_ads",
+        }
+        mock_status.assert_called_once()
+
+    def test_get_does_not_require_csrf(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok", "platforms": []}
+        with patch("mureo.web.handlers.byod_status", return_value=fake):
+            resp = _get(wizard, self.ROUTE)
+        assert resp.status == 200
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        req = urllib.request.Request(_url(wizard, self.ROUTE))
+        req.add_header("Host", "attacker.example.com")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestPostByodImport:
+    """``POST /api/byod/import`` — import a Sheet bundle XLSX."""
+
+    ROUTE = "/api/byod/import"
+
+    def test_dispatches_to_byod_import(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {
+            "status": "ok",
+            "platforms": {"google_ads": {"rows": 42}},
+        }
+        with patch(
+            "mureo.web.handlers.byod_import", return_value=fake
+        ) as mock_imp:
+            resp = _post(
+                wizard,
+                self.ROUTE,
+                {"file_path": "/tmp/bundle.xlsx", "replace": False},
+            )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "ok"
+        mock_imp.assert_called_once()
+
+    def test_missing_file_path_returns_400(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        with patch("mureo.web.handlers.byod_import") as mock_imp:
+            with pytest.raises(urllib.error.HTTPError) as exc:
+                _post(wizard, self.ROUTE, {"replace": True})
+            assert exc.value.code == 400
+        mock_imp.assert_not_called()
+
+    def test_validation_error_envelope_surfaces_as_200(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {
+            "status": "error",
+            "detail": "not_xlsx",
+        }
+        with patch("mureo.web.handlers.byod_import", return_value=fake):
+            resp = _post(
+                wizard,
+                self.ROUTE,
+                {"file_path": "/tmp/data.csv", "replace": False},
+            )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "error"
+
+    def test_does_not_echo_file_bytes(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok", "platforms": {}}
+        with patch("mureo.web.handlers.byod_import", return_value=fake):
+            resp = _post(
+                wizard,
+                self.ROUTE,
+                {"file_path": "/tmp/bundle.xlsx", "replace": False},
+            )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert "PK\x03\x04" not in json.dumps(body)
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(
+                wizard,
+                self.ROUTE,
+                {"file_path": "/tmp/b.xlsx"},
+                csrf=None,
+            )
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({"file_path": "/tmp/b.xlsx"}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestPostByodRemove:
+    """``POST /api/byod/remove`` — drop one platform's BYOD data."""
+
+    ROUTE = "/api/byod/remove"
+
+    def test_dispatches_to_byod_remove(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok", "detail": "google_ads"}
+        with patch(
+            "mureo.web.handlers.byod_remove", return_value=fake
+        ) as mock_rm:
+            resp = _post(
+                wizard,
+                self.ROUTE,
+                {"google_ads": True, "meta_ads": False},
+            )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "ok"
+        mock_rm.assert_called_once()
+
+    def test_error_envelope_surfaces_as_200(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {
+            "status": "error",
+            "detail": "select exactly one",
+        }
+        with patch("mureo.web.handlers.byod_remove", return_value=fake):
+            resp = _post(
+                wizard,
+                self.ROUTE,
+                {"google_ads": True, "meta_ads": True},
+            )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "error"
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(
+                wizard,
+                self.ROUTE,
+                {"google_ads": True},
+                csrf=None,
+            )
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({"google_ads": True}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestPostByodClear:
+    """``POST /api/byod/clear`` — wipe all BYOD data."""
+
+    ROUTE = "/api/byod/clear"
+
+    def test_dispatches_to_byod_clear(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.byod_clear", return_value=fake
+        ) as mock_clear:
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "ok"
+        mock_clear.assert_called_once()
+
+    def test_noop_envelope_when_nothing_present(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "noop"}
+        with patch("mureo.web.handlers.byod_clear", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "noop"
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403
+
+    def test_rejects_wrong_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf="bad")
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
 @pytest.mark.unit
 class TestPostSetupBasicClear:
     """``POST /api/setup/basic/clear`` — bulk uninstall (clear all)."""
