@@ -307,7 +307,10 @@
       const titleKey = "demo.scenario." + sc.name;
       const localised = MUREO.t(titleKey);
       const title = localised === titleKey ? sc.title : localised;
-      opt.textContent = title + " — " + sc.blurb;
+      // Title only: sc.blurb is hardcoded English from the Python
+      // scenario registry, so appending it would leave an English
+      // tail on a Japanese option under locale=ja.
+      opt.textContent = title;
       if (sc.default) opt.selected = true;
       select.appendChild(opt);
     });

@@ -64,6 +64,18 @@ body {
   padding: 0 24px;
 }
 
+/* The dashboard uses a sidebar + content layout that needs far more
+ * horizontal room than the single-column wizard/landing (800px is
+ * fine for those). The dashboard <section data-dashboard> only loses
+ * its native `hidden` attribute while the dashboard view is active
+ * (toggled in dashboard.js), so scoping a wider max-width via :has()
+ * widens ONLY the dashboard. Wizard/landing keep `hidden` on
+ * [data-dashboard], the selector does not match, and they stay at
+ * 800px. Browsers without :has() simply fall back to 800px. */
+.app-main:has([data-dashboard]:not([hidden])) {
+  max-width: 1200px;
+}
+
 .landing {
   text-align: center;
 }
@@ -272,7 +284,7 @@ body {
 }
 
 .dashboard-nav {
-  flex: 0 0 180px;
+  flex: 0 0 210px;
 }
 
 .dashboard-nav ul {
