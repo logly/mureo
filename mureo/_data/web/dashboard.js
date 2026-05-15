@@ -43,10 +43,47 @@
     },
   ];
 
+  // Default left-nav group shown when the dashboard opens.
+  const DEFAULT_NAV = "setup";
+
+  function selectNavGroup(name) {
+    const groups = document.querySelectorAll("[data-dashboard-group]");
+    groups.forEach(function (g) {
+      g.hidden = g.getAttribute("data-dashboard-group") !== name;
+    });
+    const items = document.querySelectorAll("[data-dashboard-nav]");
+    items.forEach(function (item) {
+      const active = item.getAttribute("data-dashboard-nav") === name;
+      if (active) {
+        item.setAttribute("aria-current", "page");
+      } else {
+        item.removeAttribute("aria-current");
+      }
+    });
+  }
+
+  function wireDashboardNav() {
+    const items = document.querySelectorAll("[data-dashboard-nav]");
+    items.forEach(function (item) {
+      const name = item.getAttribute("data-dashboard-nav");
+      item.addEventListener("click", function (evt) {
+        evt.preventDefault();
+        selectNavGroup(name);
+      });
+      item.addEventListener("keydown", function (evt) {
+        if (evt.key === "Enter" || evt.key === " " || evt.key === "Spacebar") {
+          evt.preventDefault();
+          selectNavGroup(name);
+        }
+      });
+    });
+  }
+
   function show() {
     document.querySelector("[data-wizard]").hidden = true;
     document.querySelector("[data-landing]").hidden = true;
     document.querySelector("[data-dashboard]").hidden = false;
+    selectNavGroup(DEFAULT_NAV);
   }
 
   function hide() {
@@ -265,7 +302,12 @@
     body.scenarios.forEach(function (sc) {
       const opt = document.createElement("option");
       opt.value = sc.name;
-      opt.textContent = sc.title + " — " + sc.blurb;
+      // Prefer a localised title; MUREO.t returns the key verbatim when
+      // missing, so an unknown scenario falls back to the API title.
+      const titleKey = "demo.scenario." + sc.name;
+      const localised = MUREO.t(titleKey);
+      const title = localised === titleKey ? sc.title : localised;
+      opt.textContent = title + " — " + sc.blurb;
       if (sc.default) opt.selected = true;
       select.appendChild(opt);
     });
@@ -491,6 +533,7 @@
   }
 
   document.addEventListener("mureo:ready", function () {
+    wireDashboardNav();
     wireEnvForm();
     wireRerunWizardButton();
     wireBulkClearButton();

@@ -260,8 +260,82 @@ body {
   cursor: pointer;
 }
 
+/* ------------------------------------------------------------------
+ * Dashboard left-sidebar layout: vertical nav + content pane.
+ * Reuses the existing surface/border/primary palette.
+ * ------------------------------------------------------------------ */
+.dashboard-layout {
+  display: flex;
+  gap: 24px;
+  margin-top: 24px;
+  align-items: flex-start;
+}
+
+.dashboard-nav {
+  flex: 0 0 180px;
+}
+
+.dashboard-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dashboard-nav li {
+  margin: 0 0 4px;
+}
+
+.dashboard-nav-item {
+  display: block;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  color: var(--color-text);
+  text-decoration: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.dashboard-nav-item:hover {
+  background: #f0f1f3;
+}
+
+.dashboard-nav-item:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.dashboard-nav-item[aria-current="page"] {
+  background: var(--color-primary);
+  color: white;
+}
+
+.dashboard-pane {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dashboard-group[hidden] {
+  display: none;
+}
+
+/* Constrain wide controls (e.g. long demo scenario names) to the
+ * pane width. Native <option> lists cannot ellipsize while open
+ * (browser-controlled); the closed state stays within bounds. */
+.dashboard-pane select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .dashboard-section {
   margin-top: 24px;
+}
+
+.dashboard-group > .dashboard-section:first-child {
+  margin-top: 0;
 }
 
 .dashboard-section h2 {
