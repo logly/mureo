@@ -71,9 +71,20 @@ def _read_servers(config_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def install_desktop_mcp_block(
-    config_path: Path, command: str, *, backup: bool = True
+    config_path: Path,
+    command: str,
+    args: list[str],
+    *,
+    backup: bool = True,
 ) -> bool:
     """Register the ``mcpServers.mureo`` block in the Desktop config.
+
+    Writes the MCP launcher's required ``{"command": <exe>, "args":
+    [...]}`` shape — ``command`` is the bare executable and ``args`` is
+    a separate list, matching the proven Claude Code
+    ``auth_setup._MCP_SERVER_CONFIG`` schema. ``command`` must NOT be a
+    pre-joined ``"<exe> -m mureo.mcp"`` string (Claude Desktop would try
+    to spawn an executable literally named that and fail).
 
     Returns ``True`` when the block was written, ``False`` when a
     ``mureo`` entry was already present (caller emits ``noop
@@ -89,7 +100,7 @@ def install_desktop_mcp_block(
 
     merged = copy.deepcopy(config)
     merged_servers = dict(servers)
-    merged_servers["mureo"] = {"command": command}
+    merged_servers["mureo"] = {"command": command, "args": list(args)}
     merged["mcpServers"] = merged_servers
     _atomic_write_config(config_path, merged)
     return True

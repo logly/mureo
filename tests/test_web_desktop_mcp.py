@@ -3,7 +3,11 @@
 Pins the module created per planner HANDOFF
 ``feat-web-config-ui-phase1-desktop-host.md`` (Q1/Q6 decisions):
 
-- ``install_desktop_mcp_block(config_path, command, *, backup=True) -> bool``
+- ``install_desktop_mcp_block(config_path, command, args, *, backup=True) -> bool``
+  writes the MCP launcher shape ``{"command": <exe>, "args": [...]}``
+  (command + args SPLIT — matches the proven Claude Code
+  ``auth_setup._MCP_SERVER_CONFIG`` schema; a pre-joined
+  ``"<exe> -m mureo.mcp"`` string would fail to spawn)
     1. ``_load_config(config_path)`` (reuses desktop_installer primitive)
     2. read ``mcpServers``; a non-dict value is corrupt → raise/return error,
        NEVER overwrite the user's file
@@ -44,8 +48,12 @@ from mureo.desktop_installer import DesktopConfigCorruptError
 
 def _desktop_config_path(tmp_path: Path) -> Path:
     """A throwaway Claude Desktop config path under the tmp home."""
-    return tmp_path / "Library" / "Application Support" / "Claude" / (
-        "claude_desktop_config.json"
+    return (
+        tmp_path
+        / "Library"
+        / "Application Support"
+        / "Claude"
+        / ("claude_desktop_config.json")
     )
 
 
@@ -75,15 +83,16 @@ class TestDesktopMcpModuleSurface:
         assert hasattr(desktop_mcp, "install_desktop_mcp_block")
         assert hasattr(desktop_mcp, "remove_desktop_mcp_block")
 
-    def test_install_signature_accepts_command_and_backup(
+    def test_install_signature_accepts_command_args_and_backup(
         self, tmp_path: Path
     ) -> None:
         from mureo.web import desktop_mcp
 
         cfg = _desktop_config_path(tmp_path)
-        # Keyword-only ``backup`` per planner HANDOFF L31.
+        # ``args`` positional + keyword-only ``backup`` per planner
+        # HANDOFF L31 and the corrected MCP launcher shape.
         result = desktop_mcp.install_desktop_mcp_block(
-            cfg, "python -m mureo.mcp", backup=True
+            cfg, "python", ["-m", "mureo.mcp"], backup=True
         )
         assert isinstance(result, bool)
 
@@ -95,9 +104,7 @@ class TestDesktopMcpModuleSurface:
 
 @pytest.mark.unit
 class TestInstallDesktopMcpBlock:
-    def test_creates_config_with_mureo_block_when_absent(
-        self, tmp_path: Path
-    ) -> None:
+    def test_creates_config_with_mureo_block_when_absent(self, tmp_path: Path) -> None:
         """No config on disk → creates it with ``mcpServers.mureo``."""
         from mureo.web import desktop_mcp
 
@@ -105,16 +112,21 @@ class TestInstallDesktopMcpBlock:
         assert not cfg.exists()
 
         changed = desktop_mcp.install_desktop_mcp_block(
-            cfg, "python -m mureo.mcp"
+            cfg, "python", ["-m", "mureo.mcp"]
         )
 
         assert changed is True
         payload = json.loads(cfg.read_text(encoding="utf-8"))
         assert "mureo" in payload["mcpServers"]
+        # The written block must be the exact MCP launcher shape
+        # (command + args SPLIT) — same schema as the proven Claude
+        # Code ``auth_setup._MCP_SERVER_CONFIG``.
+        assert payload["mcpServers"]["mureo"] == {
+            "command": "python",
+            "args": ["-m", "mureo.mcp"],
+        }
 
-    def test_returns_false_when_mureo_already_present(
-        self, tmp_path: Path
-    ) -> None:
+    def test_returns_false_when_mureo_already_present(self, tmp_path: Path) -> None:
         """Idempotent: an existing ``mureo`` entry → ``False`` (→ noop),
         file content byte-for-byte unchanged."""
         from mureo.web import desktop_mcp
@@ -124,7 +136,7 @@ class TestInstallDesktopMcpBlock:
         before = cfg.read_bytes()
 
         changed = desktop_mcp.install_desktop_mcp_block(
-            cfg, "python -m mureo.mcp"
+            cfg, "python", ["-m", "mureo.mcp"]
         )
 
         assert changed is False
@@ -141,14 +153,12 @@ class TestInstallDesktopMcpBlock:
         _write_json(
             cfg,
             {
-                "mcpServers": {
-                    "other-server": {"command": "node", "args": ["x.js"]}
-                },
+                "mcpServers": {"other-server": {"command": "node", "args": ["x.js"]}},
                 "globalShortcut": "Cmd+Shift+Space",
             },
         )
 
-        desktop_mcp.install_desktop_mcp_block(cfg, "python -m mureo.mcp")
+        desktop_mcp.install_desktop_mcp_block(cfg, "python", ["-m", "mureo.mcp"])
 
         payload = json.loads(cfg.read_text(encoding="utf-8"))
         assert payload["mcpServers"]["other-server"] == {
@@ -166,13 +176,11 @@ class TestInstallDesktopMcpBlock:
         cfg = _desktop_config_path(tmp_path)
         _write_json(cfg, {"mcpServers": {}})
 
-        desktop_mcp.install_desktop_mcp_block(cfg, "python -m mureo.mcp")
+        desktop_mcp.install_desktop_mcp_block(cfg, "python", ["-m", "mureo.mcp"])
 
         assert _tmp_debris(cfg) == []
 
-    def test_backs_up_existing_config_before_write(
-        self, tmp_path: Path
-    ) -> None:
+    def test_backs_up_existing_config_before_write(self, tmp_path: Path) -> None:
         """When the config exists and ``backup=True``, a timestamped
         ``.bak.`` snapshot is created (reuses ``_backup_config``)."""
         from mureo.web import desktop_mcp
@@ -181,7 +189,7 @@ class TestInstallDesktopMcpBlock:
         _write_json(cfg, {"mcpServers": {"other": {"command": "x"}}})
 
         desktop_mcp.install_desktop_mcp_block(
-            cfg, "python -m mureo.mcp", backup=True
+            cfg, "python", ["-m", "mureo.mcp"], backup=True
         )
 
         backups = list(cfg.parent.glob(cfg.name + ".bak.*"))
@@ -193,14 +201,12 @@ class TestInstallDesktopMcpBlock:
 
         cfg = _desktop_config_path(tmp_path)
         desktop_mcp.install_desktop_mcp_block(
-            cfg, "python -m mureo.mcp", backup=True
+            cfg, "python", ["-m", "mureo.mcp"], backup=True
         )
 
         assert list(cfg.parent.glob(cfg.name + ".bak.*")) == []
 
-    def test_invalid_json_is_refused_not_overwritten(
-        self, tmp_path: Path
-    ) -> None:
+    def test_invalid_json_is_refused_not_overwritten(self, tmp_path: Path) -> None:
         """Corrupt (non-JSON) config → ``DesktopConfigCorruptError``;
         original bytes untouched (no silent overwrite)."""
         from mureo.web import desktop_mcp
@@ -211,7 +217,7 @@ class TestInstallDesktopMcpBlock:
         before = cfg.read_bytes()
 
         with pytest.raises(DesktopConfigCorruptError):
-            desktop_mcp.install_desktop_mcp_block(cfg, "python -m mureo.mcp")
+            desktop_mcp.install_desktop_mcp_block(cfg, "python", ["-m", "mureo.mcp"])
 
         assert cfg.read_bytes() == before
 
@@ -227,7 +233,7 @@ class TestInstallDesktopMcpBlock:
         before = cfg.read_bytes()
 
         with pytest.raises(DesktopConfigCorruptError):
-            desktop_mcp.install_desktop_mcp_block(cfg, "python -m mureo.mcp")
+            desktop_mcp.install_desktop_mcp_block(cfg, "python", ["-m", "mureo.mcp"])
 
         assert cfg.read_bytes() == before
 
@@ -240,7 +246,7 @@ class TestInstallDesktopMcpBlock:
         _write_json(cfg, [1, 2, 3])
 
         with pytest.raises(DesktopConfigCorruptError):
-            desktop_mcp.install_desktop_mcp_block(cfg, "python -m mureo.mcp")
+            desktop_mcp.install_desktop_mcp_block(cfg, "python", ["-m", "mureo.mcp"])
 
     def test_symlinked_config_is_refused(self, tmp_path: Path) -> None:
         """A symlinked config must be refused (reuses
@@ -254,18 +260,24 @@ class TestInstallDesktopMcpBlock:
         cfg.symlink_to(real)
 
         with pytest.raises(DesktopConfigCorruptError):
-            desktop_mcp.install_desktop_mcp_block(cfg, "python -m mureo.mcp")
+            desktop_mcp.install_desktop_mcp_block(cfg, "python", ["-m", "mureo.mcp"])
 
-    def test_command_value_is_recorded_in_block(self, tmp_path: Path) -> None:
-        """The supplied command string is what lands in the mureo block."""
+    def test_command_and_args_recorded_split_in_block(self, tmp_path: Path) -> None:
+        """The supplied executable + args land as the split MCP launcher
+        shape — ``command`` is the bare executable (NOT a pre-joined
+        ``"<exe> -m mureo.mcp"`` string) and ``args`` is its own list."""
         from mureo.web import desktop_mcp
 
         cfg = _desktop_config_path(tmp_path)
-        desktop_mcp.install_desktop_mcp_block(cfg, "/usr/bin/mywrapper.sh")
+        desktop_mcp.install_desktop_mcp_block(
+            cfg, "/usr/bin/python3.10", ["-m", "mureo.mcp"]
+        )
 
         payload = json.loads(cfg.read_text(encoding="utf-8"))
-        serialized = json.dumps(payload["mcpServers"]["mureo"])
-        assert "/usr/bin/mywrapper.sh" in serialized
+        assert payload["mcpServers"]["mureo"] == {
+            "command": "/usr/bin/python3.10",
+            "args": ["-m", "mureo.mcp"],
+        }
 
     def test_never_touches_credentials_json(self, tmp_path: Path) -> None:
         """CTO decision #3: the Desktop MCP writer NEVER reads/writes/
@@ -278,7 +290,7 @@ class TestInstallDesktopMcpBlock:
         before = creds.read_bytes()
 
         cfg = _desktop_config_path(tmp_path)
-        desktop_mcp.install_desktop_mcp_block(cfg, "python -m mureo.mcp")
+        desktop_mcp.install_desktop_mcp_block(cfg, "python", ["-m", "mureo.mcp"])
 
         assert creds.exists()
         assert creds.read_bytes() == before
@@ -291,7 +303,7 @@ class TestInstallDesktopMcpBlock:
         cfg = _desktop_config_path(tmp_path)
         assert not cfg.parent.exists()
 
-        desktop_mcp.install_desktop_mcp_block(cfg, "python -m mureo.mcp")
+        desktop_mcp.install_desktop_mcp_block(cfg, "python", ["-m", "mureo.mcp"])
 
         assert cfg.exists()
 
@@ -303,9 +315,7 @@ class TestInstallDesktopMcpBlock:
 
 @pytest.mark.unit
 class TestRemoveDesktopMcpBlock:
-    def test_removes_only_mureo_preserving_others(
-        self, tmp_path: Path
-    ) -> None:
+    def test_removes_only_mureo_preserving_others(self, tmp_path: Path) -> None:
         """Drops the ``mureo`` key only; sibling servers + top-level keys
         survive."""
         from mureo.web import desktop_mcp
@@ -382,9 +392,7 @@ class TestRemoveDesktopMcpBlock:
         assert first is True
         assert second is False
 
-    def test_corrupt_config_refused_not_overwritten(
-        self, tmp_path: Path
-    ) -> None:
+    def test_corrupt_config_refused_not_overwritten(self, tmp_path: Path) -> None:
         from mureo.web import desktop_mcp
 
         cfg = _desktop_config_path(tmp_path)
@@ -419,9 +427,7 @@ class TestRemoveDesktopMcpBlock:
 
 @pytest.mark.unit
 class TestPathResolutionViaHostPaths:
-    def test_macos_path_matches_host_paths_settings_path(
-        self, tmp_path: Path
-    ) -> None:
+    def test_macos_path_matches_host_paths_settings_path(self, tmp_path: Path) -> None:
         """On macOS the resolved Desktop config path equals
         ``get_host_paths("claude-desktop", home).settings_path`` — i.e.
         the writer must NOT hardcode ``desktop_installer._macos_config_path``
@@ -438,9 +444,7 @@ class TestPathResolutionViaHostPaths:
         # And it lives under the tmp home, never the real ~/Library.
         assert str(tmp_path) in str(resolved)
 
-    def test_non_macos_falls_back_to_claude_settings(
-        self, tmp_path: Path
-    ) -> None:
+    def test_non_macos_falls_back_to_claude_settings(self, tmp_path: Path) -> None:
         """Off macOS, the path falls back to ``<home>/.claude/settings.json``
         (host_paths fallback) — no unsupported-platform error in the web
         flow (acceptance criteria L23 / L118)."""

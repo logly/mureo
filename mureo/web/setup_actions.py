@@ -72,8 +72,12 @@ def _install_desktop_mcp(home: Path | None) -> ActionResult:
     """Register the mureo MCP block in the Claude Desktop config."""
     try:
         config_path = resolve_desktop_config_path(home)
-        command = f"{sys.executable} -m mureo.mcp"
-        wrote = install_desktop_mcp_block(config_path, command)
+        # Mirror the proven Claude Code ``_MCP_SERVER_CONFIG`` shape:
+        # bare executable + split args. ``sys.executable`` is the
+        # absolute interpreter so Desktop spawns the right Python.
+        wrote = install_desktop_mcp_block(
+            config_path, sys.executable, ["-m", "mureo.mcp"]
+        )
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_mureo_mcp (desktop) failed")
         return ActionResult(status="error", detail=type(exc).__name__)
