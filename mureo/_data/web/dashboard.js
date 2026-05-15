@@ -61,7 +61,11 @@
       }
     });
     const rerun = document.querySelector("[data-dashboard-rerun-wizard]");
-    if (rerun) rerun.hidden = name !== "setup";
+    if (rerun) {
+      // .btn sets an explicit `display`, which overrides the UA
+      // `[hidden]{display:none}` rule — toggle display directly.
+      rerun.style.display = name === "setup" ? "" : "none";
+    }
   }
 
   function wireDashboardNav() {
