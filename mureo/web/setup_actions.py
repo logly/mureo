@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,11 @@ from mureo.cli.settings_remove import (
     remove_mcp_config,
 )
 from mureo.cli.setup_cmd import remove_skills
+from mureo.web.desktop_mcp import (
+    install_desktop_mcp_block,
+    remove_desktop_mcp_block,
+    resolve_desktop_config_path,
+)
 from mureo.web.legacy_commands import remove_legacy_commands
 from mureo.web.setup_state import (
     PART_HOOK,
@@ -30,6 +36,12 @@ from mureo.web.setup_state import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Host identifiers (mirrors ``host_paths.SUPPORTED_HOSTS``). ``host``
+# defaults to ``_HOST_CODE`` on every wrapper so existing callers and
+# tests keep the exact pre-change Claude Code behaviour.
+_HOST_CODE = "claude-code"
+_HOST_DESKTOP = "claude-desktop"
 
 # Official MCP provider IDs that ``clear_all_setup`` will try to remove if
 # they are present in ``settings.json``. Listed explicitly (rather than
@@ -56,8 +68,32 @@ class ActionResult:
         return out
 
 
-def install_mureo_mcp(home: Path | None = None) -> ActionResult:
-    """Register the mureo MCP block in Claude settings."""
+def _install_desktop_mcp(home: Path | None) -> ActionResult:
+    """Register the mureo MCP block in the Claude Desktop config."""
+    try:
+        config_path = resolve_desktop_config_path(home)
+        command = f"{sys.executable} -m mureo.mcp"
+        wrote = install_desktop_mcp_block(config_path, command)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("install_mureo_mcp (desktop) failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    mark_part_installed(PART_MCP, home=home)
+    if not wrote:
+        return ActionResult(status="noop", detail="already_configured")
+    return ActionResult(status="ok", detail=str(config_path))
+
+
+def install_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> ActionResult:
+    """Register the mureo MCP block in the host's config.
+
+    ``host="claude-code"`` (default) is byte-for-byte the prior
+    behaviour. ``host="claude-desktop"`` writes only the
+    ``mcpServers.mureo`` block to ``claude_desktop_config.json``.
+    """
+    if host == _HOST_DESKTOP:
+        return _install_desktop_mcp(home)
+
     try:
         from mureo.auth_setup import install_mcp_config
 
@@ -72,8 +108,16 @@ def install_mureo_mcp(home: Path | None = None) -> ActionResult:
     return ActionResult(status="ok", detail=str(result))
 
 
-def install_auth_hook(home: Path | None = None) -> ActionResult:
-    """Install the credential-guard PreToolUse hook."""
+def install_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> ActionResult:
+    """Install the credential-guard PreToolUse hook.
+
+    Claude Desktop has no ``hooks.PreToolUse`` surface, so the Desktop
+    branch is a graceful no-op that writes nothing and does NOT mark
+    ``PART_HOOK`` installed (planner HANDOFF Q2).
+    """
+    if host == _HOST_DESKTOP:
+        return ActionResult(status="noop", detail="unsupported_on_desktop")
+
     try:
         from mureo.auth_setup import install_credential_guard
 
@@ -88,8 +132,17 @@ def install_auth_hook(home: Path | None = None) -> ActionResult:
     return ActionResult(status="ok", detail=str(result))
 
 
-def install_workflow_skills(home: Path | None = None) -> ActionResult:
-    """Copy workflow skills into ~/.claude/skills."""
+def install_workflow_skills(
+    home: Path | None = None, host: str = _HOST_CODE
+) -> ActionResult:
+    """Copy workflow skills into ~/.claude/skills.
+
+    Host-agnostic by design (planner HANDOFF Q3): both Claude Code and
+    Claude Desktop share ``~/.claude/skills`` and there is no Desktop
+    plugin bundle in the repo. The ``host`` param is accepted for
+    signature symmetry only and intentionally does not branch.
+    """
+    del host  # host-agnostic; accepted for signature symmetry only
     try:
         from mureo.cli.setup_cmd import install_skills
 
@@ -102,12 +155,14 @@ def install_workflow_skills(home: Path | None = None) -> ActionResult:
     return ActionResult(status="ok", detail=f"installed {count} skills at {dest}")
 
 
-def install_basic_setup(home: Path | None = None) -> dict[str, Any]:
-    """Run all three basic-setup parts in order."""
+def install_basic_setup(
+    home: Path | None = None, host: str = _HOST_CODE
+) -> dict[str, Any]:
+    """Run all three basic-setup parts in order, forwarding ``host``."""
     return {
-        PART_MCP: install_mureo_mcp(home=home).as_dict(),
-        PART_HOOK: install_auth_hook(home=home).as_dict(),
-        PART_SKILLS: install_workflow_skills(home=home).as_dict(),
+        PART_MCP: install_mureo_mcp(home=home, host=host).as_dict(),
+        PART_HOOK: install_auth_hook(home=home, host=host).as_dict(),
+        PART_SKILLS: install_workflow_skills(home=home, host=host).as_dict(),
     }
 
 
@@ -185,8 +240,31 @@ def remove_provider(provider_id: str) -> ActionResult:
 # ---------------------------------------------------------------------------
 
 
-def remove_mureo_mcp(home: Path | None = None) -> ActionResult:
-    """Pop the mureo MCP block from Claude settings."""
+def _remove_desktop_mcp(home: Path | None) -> ActionResult:
+    """Pop the mureo MCP block from the Claude Desktop config."""
+    try:
+        config_path = resolve_desktop_config_path(home)
+        removed = remove_desktop_mcp_block(config_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("remove_mureo_mcp (desktop) failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    if not removed:
+        return ActionResult(status="noop", detail="not_installed")
+    clear_part(PART_MCP, home=home)
+    return ActionResult(status="ok")
+
+
+def remove_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> ActionResult:
+    """Pop the mureo MCP block from the host's config.
+
+    ``host="claude-code"`` (default) is unchanged;
+    ``host="claude-desktop"`` removes only ``mcpServers.mureo`` from
+    ``claude_desktop_config.json``.
+    """
+    if host == _HOST_DESKTOP:
+        return _remove_desktop_mcp(home)
+
     try:
         result = remove_mcp_config()
     except Exception as exc:  # noqa: BLE001
@@ -199,8 +277,16 @@ def remove_mureo_mcp(home: Path | None = None) -> ActionResult:
     return ActionResult(status="ok")
 
 
-def remove_auth_hook(home: Path | None = None) -> ActionResult:
-    """Drop the credential-guard PreToolUse hook from Claude settings."""
+def remove_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> ActionResult:
+    """Drop the credential-guard PreToolUse hook from the host config.
+
+    Mirror of ``install_auth_hook``: the Desktop branch is a no-op
+    (Desktop has no hook surface) that touches no file and does NOT
+    clear ``PART_HOOK`` state (planner HANDOFF Q2).
+    """
+    if host == _HOST_DESKTOP:
+        return ActionResult(status="noop", detail="unsupported_on_desktop")
+
     try:
         result = remove_credential_guard()
     except Exception as exc:  # noqa: BLE001
@@ -213,8 +299,16 @@ def remove_auth_hook(home: Path | None = None) -> ActionResult:
     return ActionResult(status="ok")
 
 
-def remove_workflow_skills(home: Path | None = None) -> ActionResult:
-    """Delete bundle-listed workflow skills from ``~/.claude/skills``."""
+def remove_workflow_skills(
+    home: Path | None = None, host: str = _HOST_CODE
+) -> ActionResult:
+    """Delete bundle-listed workflow skills from ``~/.claude/skills``.
+
+    Host-agnostic (planner HANDOFF Q3): skills live in the shared
+    ``~/.claude/skills`` for both hosts. ``host`` is accepted for
+    signature symmetry only and intentionally does not branch.
+    """
+    del host  # host-agnostic; accepted for signature symmetry only
     try:
         count, dest = remove_skills()
     except Exception as exc:  # noqa: BLE001
@@ -271,17 +365,19 @@ def _safe_step(fn: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
     return {"status": "ok", "detail": str(result)}
 
 
-def clear_all_setup(home: Path | None = None) -> dict[str, Any]:
+def clear_all_setup(home: Path | None = None, host: str = _HOST_CODE) -> dict[str, Any]:
     """Run every uninstall step regardless of prior failures.
 
     Envelope keys: ``mureo_mcp``, ``auth_hook``, ``skills``,
-    ``legacy_commands``, ``providers``. Per CTO decision #3, this function
-    MUST NOT touch ``~/.mureo/credentials.json`` (credential removal is a
-    separate user decision).
+    ``legacy_commands``, ``providers``. ``host`` is forwarded to the
+    mcp + hook removers so Desktop uninstall is symmetric. Per CTO
+    decision #3, this function MUST NOT touch
+    ``~/.mureo/credentials.json`` (credential removal is a separate
+    user decision).
     """
     envelope: dict[str, Any] = {}
-    envelope["mureo_mcp"] = _safe_step(remove_mureo_mcp, home=home)
-    envelope["auth_hook"] = _safe_step(remove_auth_hook, home=home)
+    envelope["mureo_mcp"] = _safe_step(remove_mureo_mcp, home=home, host=host)
+    envelope["auth_hook"] = _safe_step(remove_auth_hook, home=home, host=host)
     envelope["skills"] = _safe_step(remove_workflow_skills, home=home)
 
     commands_dir = (home or Path.home()) / ".claude" / "commands"

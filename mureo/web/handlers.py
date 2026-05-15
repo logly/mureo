@@ -269,25 +269,29 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         send_json(self, {"host": self.wizard.session.host})
 
     def _post_setup_basic(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
-        result = install_basic_setup(home=self.wizard.home)
+        result = install_basic_setup(
+            home=self.wizard.home, host=self.wizard.session.host
+        )
         send_json(self, result)
 
     def _post_setup_mcp_remove(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
-        result = remove_mureo_mcp(home=self.wizard.home)
+        result = remove_mureo_mcp(home=self.wizard.home, host=self.wizard.session.host)
         send_json(self, result.as_dict())
 
     def _post_setup_hook_remove(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
-        result = remove_auth_hook(home=self.wizard.home)
+        result = remove_auth_hook(home=self.wizard.home, host=self.wizard.session.host)
         send_json(self, result.as_dict())
 
     def _post_setup_skills_remove(
         self, payload: dict[str, Any]
     ) -> None:  # noqa: ARG002
-        result = remove_workflow_skills(home=self.wizard.home)
+        result = remove_workflow_skills(
+            home=self.wizard.home, host=self.wizard.session.host
+        )
         send_json(self, result.as_dict())
 
     def _post_setup_basic_clear(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
-        envelope = clear_all_setup(home=self.wizard.home)
+        envelope = clear_all_setup(home=self.wizard.home, host=self.wizard.session.host)
         send_json(self, envelope)
 
     def _post_providers_install(self, payload: dict[str, Any]) -> None:

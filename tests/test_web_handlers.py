@@ -269,6 +269,163 @@ class TestPostSetupBasic:
         mock_install.assert_called_once()
 
 
+# ---------------------------------------------------------------------------
+# Session-host propagation into setup_actions (planner HANDOFF
+# feat-web-config-ui-phase1-desktop-host.md, Q5). The 5 setup handler
+# methods must read ``self.wizard.session.host`` and pass it as the new
+# ``host=`` kwarg into setup_actions. ``host`` defaults to "claude-code"
+# everywhere, so a session with no explicit host keeps today's behaviour.
+# setup_actions is mocked at the handler's imported symbol so no real FS
+# write occurs; we assert only the propagated ``host`` kwarg.
+# ---------------------------------------------------------------------------
+
+
+def _set_host(wiz: ConfigureWizard, host: str) -> None:
+    """Drive ``POST /api/host`` so the session host is set the real way."""
+    resp = _post(wiz, "/api/host", {"host": host})
+    body = json.loads(resp.read().decode("utf-8"))
+    assert body == {"host": host}
+
+
+def _host_kwarg(mock: MagicMock) -> Any:
+    """Extract the propagated ``host`` (kwarg or trailing positional)."""
+    kwargs = mock.call_args.kwargs
+    if "host" in kwargs:
+        return kwargs["host"]
+    return None
+
+
+@pytest.mark.unit
+class TestSetupBasicHostPropagation:
+    """``POST /api/setup/basic`` forwards the session host."""
+
+    ROUTE = "/api/setup/basic"
+
+    def test_default_session_uses_claude_code(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """No explicit host set → handler passes ``host="claude-code"``."""
+        with patch(
+            "mureo.web.handlers.install_basic_setup",
+            return_value={"mureo_mcp": {"status": "ok"}},
+        ) as mock_install:
+            _post(wizard, self.ROUTE, {})
+
+        assert _host_kwarg(mock_install) == "claude-code"
+
+    def test_desktop_session_propagates_desktop_host(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """Session host = claude-desktop → ``host="claude-desktop"``
+        forwarded into ``install_basic_setup``."""
+        _set_host(wizard, "claude-desktop")
+        with patch(
+            "mureo.web.handlers.install_basic_setup",
+            return_value={"mureo_mcp": {"status": "ok"}},
+        ) as mock_install:
+            _post(wizard, self.ROUTE, {})
+
+        assert _host_kwarg(mock_install) == "claude-desktop"
+
+    def test_home_still_propagated_alongside_host(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """Adding ``host`` must not drop the existing ``home`` kwarg."""
+        with patch(
+            "mureo.web.handlers.install_basic_setup",
+            return_value={},
+        ) as mock_install:
+            _post(wizard, self.ROUTE, {})
+
+        assert mock_install.call_args.kwargs.get("home") == wizard.home
+
+
+@pytest.mark.unit
+class TestSetupBasicClearHostPropagation:
+    """``POST /api/setup/basic/clear`` forwards the session host."""
+
+    ROUTE = "/api/setup/basic/clear"
+
+    def test_default_session_uses_claude_code(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        with patch(
+            "mureo.web.handlers.clear_all_setup", return_value={}
+        ) as mock_clear:
+            _post(wizard, self.ROUTE, {})
+
+        assert _host_kwarg(mock_clear) == "claude-code"
+
+    def test_desktop_session_propagates_desktop_host(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        _set_host(wizard, "claude-desktop")
+        with patch(
+            "mureo.web.handlers.clear_all_setup", return_value={}
+        ) as mock_clear:
+            _post(wizard, self.ROUTE, {})
+
+        assert _host_kwarg(mock_clear) == "claude-desktop"
+
+    def test_home_still_propagated_alongside_host(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        with patch(
+            "mureo.web.handlers.clear_all_setup", return_value={}
+        ) as mock_clear:
+            _post(wizard, self.ROUTE, {})
+
+        assert mock_clear.call_args.kwargs.get("home") == wizard.home
+
+
+@pytest.mark.unit
+class TestSetupRemoveRoutesHostPropagation:
+    """``/api/setup/{mcp,hook,skills}/remove`` forward the session host."""
+
+    def test_mcp_remove_default_host(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.remove_mureo_mcp", return_value=fake
+        ) as mock_remove:
+            _post(wizard, "/api/setup/mcp/remove", {})
+
+        assert _host_kwarg(mock_remove) == "claude-code"
+
+    def test_mcp_remove_desktop_host(self, wizard: ConfigureWizard) -> None:
+        _set_host(wizard, "claude-desktop")
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.remove_mureo_mcp", return_value=fake
+        ) as mock_remove:
+            _post(wizard, "/api/setup/mcp/remove", {})
+
+        assert _host_kwarg(mock_remove) == "claude-desktop"
+
+    def test_hook_remove_desktop_host(self, wizard: ConfigureWizard) -> None:
+        _set_host(wizard, "claude-desktop")
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "noop"}
+        with patch(
+            "mureo.web.handlers.remove_auth_hook", return_value=fake
+        ) as mock_remove:
+            _post(wizard, "/api/setup/hook/remove", {})
+
+        assert _host_kwarg(mock_remove) == "claude-desktop"
+
+    def test_skills_remove_desktop_host(self, wizard: ConfigureWizard) -> None:
+        _set_host(wizard, "claude-desktop")
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.remove_workflow_skills", return_value=fake
+        ) as mock_remove:
+            _post(wizard, "/api/setup/skills/remove", {})
+
+        assert _host_kwarg(mock_remove) == "claude-desktop"
+
+
 @pytest.mark.unit
 class TestPostProviders:
     def test_install_provider_requires_provider_id(
