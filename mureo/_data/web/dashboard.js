@@ -322,7 +322,6 @@
     btn.addEventListener("click", async function () {
       const scenario = document.querySelector("[data-demo-scenario]");
       const targetNode = document.querySelector("[data-demo-target]");
-      const skipNode = document.querySelector("[data-demo-skip-import]");
       const resultNode = document.querySelector("[data-demo-result]");
       const target = targetNode ? targetNode.value.trim() : "";
       if (!target) {
@@ -338,7 +337,7 @@
           scenario_name: scenario ? scenario.value : "",
           target: target,
           force: false,
-          skip_import: skipNode ? skipNode.checked : false,
+          skip_import: false,
         });
       } catch (_err) {
         if (resultNode) {
