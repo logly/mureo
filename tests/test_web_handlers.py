@@ -984,6 +984,152 @@ class TestPostByodClear:
         assert exc.value.code == 403
 
 
+# ---------------------------------------------------------------------------
+# Native OS file/dir picker routes (planner HANDOFF
+# feat-web-config-ui-phase1-native-picker.md). 2 new CSRF + Host gated
+# POST endpoints:
+#   POST /api/pick/directory   body {title?}        -> pick_directory
+#   POST /api/pick/file        body {title?, kind}  -> pick_file (xlsx)
+# The native_picker module itself is tested in
+# test_web_native_picker.py; here we pin only the route layer (dispatch,
+# gating, JSON shape). The picker is mocked at the handler's imported
+# symbol (``mureo.web.handlers.pick_directory`` / ``.pick_file``) so no
+# real subprocess / Tk window is ever spawned.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestPostPickDirectory:
+    """``POST /api/pick/directory`` — native OS folder picker."""
+
+    ROUTE = "/api/pick/directory"
+
+    def test_dispatches_to_pick_directory(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {
+            "status": "ok",
+            "path": "/Users/me/projects/demo",
+        }
+        with patch(
+            "mureo.web.handlers.pick_directory", return_value=fake
+        ) as mock_pick:
+            resp = _post(wizard, self.ROUTE, {"title": "Pick a folder"})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "ok"
+        assert body["path"] == "/Users/me/projects/demo"
+        mock_pick.assert_called_once()
+
+    def test_cancelled_envelope_surfaces_as_200(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """A user-cancelled dialog is a normal outcome, not a 500."""
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "cancelled", "path": None}
+        with patch("mureo.web.handlers.pick_directory", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "cancelled"
+
+    def test_error_envelope_surfaces_as_200(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """tkinter-unavailable degrades to an error envelope (UI falls
+        back to manual entry), never a 500."""
+        fake = MagicMock()
+        fake.as_dict.return_value = {
+            "status": "error",
+            "detail": "tkinter_unavailable",
+        }
+        with patch("mureo.web.handlers.pick_directory", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "error"
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403
+
+    def test_rejects_wrong_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf="not-the-real-token")
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestPostPickFile:
+    """``POST /api/pick/file`` — native OS Excel-file picker."""
+
+    ROUTE = "/api/pick/file"
+
+    def test_dispatches_to_pick_file(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {
+            "status": "ok",
+            "path": "/Users/me/data/bundle.xlsx",
+        }
+        with patch(
+            "mureo.web.handlers.pick_file", return_value=fake
+        ) as mock_pick:
+            resp = _post(
+                wizard,
+                self.ROUTE,
+                {"title": "Pick xlsx", "kind": "xlsx"},
+            )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "ok"
+        assert body["path"] == "/Users/me/data/bundle.xlsx"
+        mock_pick.assert_called_once()
+
+    def test_cancelled_envelope_surfaces_as_200(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "cancelled", "path": None}
+        with patch("mureo.web.handlers.pick_file", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {"kind": "xlsx"})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "cancelled"
+
+    def test_error_envelope_surfaces_as_200(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {
+            "status": "error",
+            "detail": "tkinter_unavailable",
+        }
+        with patch("mureo.web.handlers.pick_file", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {"kind": "xlsx"})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "error"
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {"kind": "xlsx"}, csrf=None)
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({"kind": "xlsx"}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
 @pytest.mark.unit
 class TestPostSetupBasicClear:
     """``POST /api/setup/basic/clear`` — bulk uninstall (clear all)."""

@@ -72,7 +72,7 @@
             <li>
               <a href="#" class="dashboard-nav-item" data-dashboard-nav="byod"
                  role="button" tabindex="0"
-                 data-i18n="dashboard.nav_byod">Imported Data</a>
+                 data-i18n="dashboard.nav_byod">BYOD</a>
             </li>
             <li>
               <a href="#" class="dashboard-nav-item" data-dashboard-nav="danger"
@@ -144,6 +144,7 @@
                 <span data-i18n="dashboard.demo_target_label">Target directory</span>
                 <input type="text" data-demo-target autocomplete="off" placeholder="/Users/you/mureo-demo">
               </label>
+              <button type="button" class="btn btn-secondary" data-demo-browse data-i18n="dashboard.browse">Browse…</button>
               <label>
                 <input type="checkbox" data-demo-skip-import>
                 <span data-i18n="dashboard.demo_skip_import_label">Write files only (do not import data)</span>
@@ -155,7 +156,7 @@
 
           <div class="dashboard-group" data-dashboard-group="byod" hidden>
             <div class="dashboard-section" data-dashboard-byod>
-              <h2 data-i18n="dashboard.byod_title">データ取込 (BYOD)</h2>
+              <h2 data-i18n="dashboard.byod_title">BYOD</h2>
               <p data-i18n="dashboard.byod_desc">Import your own ad data from an Ad data file (Excel) and analyse it locally.</p>
               <table class="dashboard-byod-table">
                 <thead>
@@ -172,6 +173,7 @@
                 <span data-i18n="dashboard.byod_file_label">Ad data file (Excel) path</span>
                 <input type="text" data-byod-file autocomplete="off" placeholder="/Users/you/ad-data.xlsx">
               </label>
+              <button type="button" class="btn btn-secondary" data-byod-browse data-i18n="dashboard.browse">Browse…</button>
               <label>
                 <input type="checkbox" data-byod-replace>
                 <span data-i18n="dashboard.byod_replace_label">Replace existing data</span>

@@ -53,6 +53,7 @@ from mureo.web.byod_actions import (
 from mureo.web.demo_actions import init_demo, list_demo_scenarios
 from mureo.web.env_var_writer import is_allowed_env_var, write_credential_env_var
 from mureo.web.legacy_commands import remove_legacy_commands
+from mureo.web.native_picker import pick_directory, pick_file
 from mureo.web.session import OAUTH_PROVIDERS, SUPPORTED_HOSTS
 from mureo.web.setup_actions import (
     clear_all_setup,
@@ -366,6 +367,16 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     def _post_byod_clear(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         send_json(self, byod_clear().as_dict())
 
+    def _post_pick_directory(self, payload: dict[str, Any]) -> None:
+        title = str(payload.get("title", "Select a folder"))
+        send_json(self, pick_directory(title=title).as_dict())
+
+    def _post_pick_file(self, payload: dict[str, Any]) -> None:
+        title = str(payload.get("title", "Select a file"))
+        kind = str(payload.get("kind", "xlsx"))
+        patterns = ("*.xlsx", "*.xlsm") if kind == "xlsx" else ("*.*",)
+        send_json(self, pick_file(title=title, patterns=patterns).as_dict())
+
     def _post_oauth_start(
         self, provider: str, payload: dict[str, Any]
     ) -> None:  # noqa: ARG002
@@ -404,4 +415,6 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/byod/import": _post_byod_import,
         "/api/byod/remove": _post_byod_remove,
         "/api/byod/clear": _post_byod_clear,
+        "/api/pick/directory": _post_pick_directory,
+        "/api/pick/file": _post_pick_file,
     }

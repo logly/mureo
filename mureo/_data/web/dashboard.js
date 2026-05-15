@@ -363,6 +363,44 @@
     });
   }
 
+  function wireBrowseButton(buttonSelector, inputSelector, endpoint, body) {
+    const btn = document.querySelector(buttonSelector);
+    if (!btn) return;
+    btn.addEventListener("click", async function () {
+      const input = document.querySelector(inputSelector);
+      let res;
+      try {
+        res = await MUREO.postJson(endpoint, body);
+      } catch (_err) {
+        MUREO.toast(MUREO.t("dashboard.picker_error"));
+        return;
+      }
+      const data = (res && res.body) || {};
+      if (data.status === "ok" && data.path) {
+        if (input) input.value = data.path;
+      } else if (data.status === "cancelled") {
+        return;
+      } else {
+        MUREO.toast(MUREO.t("dashboard.picker_error"));
+      }
+    });
+  }
+
+  function wirePickers() {
+    wireBrowseButton(
+      "[data-demo-browse]",
+      "[data-demo-target]",
+      "/api/pick/directory",
+      { title: MUREO.t("dashboard.browse") }
+    );
+    wireBrowseButton(
+      "[data-byod-browse]",
+      "[data-byod-file]",
+      "/api/pick/file",
+      { title: MUREO.t("dashboard.browse"), kind: "xlsx" }
+    );
+  }
+
   // ----- BYOD section -------------------------------------------------
 
   function byodModeLabel(mode) {
@@ -543,6 +581,7 @@
     wireDemoCreate();
     wireByodImport();
     wireByodClear();
+    wirePickers();
     if (MUREO.isDashboardRoute()) {
       show();
       renderAll();
