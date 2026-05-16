@@ -59,6 +59,10 @@ class StatusSnapshot:
     credentials_oauth: dict[str, bool]
     env_vars: dict[str, dict[str, Any]]
     legacy_commands_present: bool
+    # Per-platform: True ⇔ mcpServers.mureo.env.MUREO_DISABLE_<P> == "1"
+    # (mureo-native tools for that platform are stepped aside so the
+    # official MCP is the single source). Drives the dashboard toggle.
+    mureo_disable: dict[str, bool]
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -69,6 +73,7 @@ class StatusSnapshot:
             "credentials_oauth": dict(self.credentials_oauth),
             "env_vars": {k: dict(v) for k, v in self.env_vars.items()},
             "legacy_commands_present": self.legacy_commands_present,
+            "mureo_disable": dict(self.mureo_disable),
         }
 
 
@@ -88,6 +93,27 @@ def _detect_installed_providers(mcp_registry_path: Path) -> dict[str, bool]:
     installed = {pid: pid in mcp_servers for pid in OFFICIAL_PROVIDER_IDS}
     installed[MUREO_NATIVE_ID] = MUREO_NATIVE_ID in mcp_servers
     return installed
+
+
+# Platforms that have a MUREO_DISABLE_<P> toggle (mirror
+# mureo.providers.mureo_env._PLATFORM_TO_ENV_VAR — Search Console is
+# intentionally absent: mureo is always canonical for it).
+_DISABLE_PLATFORMS: tuple[str, ...] = ("google_ads", "meta_ads", "ga4")
+
+
+def _detect_mureo_disable(mcp_registry_path: Path) -> dict[str, bool]:
+    """Per-platform: is ``mcpServers.mureo.env.MUREO_DISABLE_<P>`` ``"1"``.
+
+    Read-only parse of the file the host actually reads MCP from. A
+    missing/corrupt file or absent mureo block means nothing is
+    disabled (all ``False``) — never raises.
+    """
+    payload = read_json_safe(mcp_registry_path)
+    servers = payload.get("mcpServers")
+    mureo = servers.get("mureo") if isinstance(servers, dict) else None
+    env = mureo.get("env") if isinstance(mureo, dict) else None
+    env = env if isinstance(env, dict) else {}
+    return {p: env.get("MUREO_DISABLE_" + p.upper()) == "1" for p in _DISABLE_PLATFORMS}
 
 
 def _detect_credentials_present(credentials_path: Path) -> dict[str, bool]:
@@ -185,6 +211,7 @@ def collect_status(
     creds_oauth = _detect_credentials_oauth(resolved.credentials_path)
     env_vars = _collect_env_vars(resolved.credentials_path)
     legacy = _detect_legacy_commands(resolved.commands_dir)
+    mureo_disable = _detect_mureo_disable(resolved.mcp_registry_path)
     return StatusSnapshot(
         host=resolved.host,
         setup_parts=setup_parts,
@@ -193,4 +220,5 @@ def collect_status(
         credentials_oauth=creds_oauth,
         env_vars=env_vars,
         legacy_commands_present=legacy,
+        mureo_disable=mureo_disable,
     )

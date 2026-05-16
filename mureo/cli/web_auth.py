@@ -215,6 +215,9 @@ _I18N: dict[str, dict[str, str]] = {
         "meta_picker.empty_heading": "No Meta ad accounts found",
         "meta_picker.empty_notice": "We could not find any ad accounts reachable by this login. You can continue, but no <code>account_id</code> will be recorded.",
         "meta_picker.continue": "Continue",
+        "done.title": "mureo setup — done",
+        "done.heading": "Setup complete",
+        "done.body": "Credentials saved. You can close this tab and return to mureo configure.",
     },
     "ja": {
         "meta.title": "Meta Ads — mureo セットアップ",
@@ -251,6 +254,9 @@ _I18N: dict[str, dict[str, str]] = {
         "meta_picker.empty_heading": "Meta 広告アカウントが見つかりません",
         "meta_picker.empty_notice": "このログインで到達可能な広告アカウントが見つかりませんでした。続行できますが、<code>account_id</code> は記録されません。",
         "meta_picker.continue": "続行",
+        "done.title": "mureo セットアップ — 完了",
+        "done.heading": "セットアップ完了",
+        "done.body": "認証情報を保存しました。このタブを閉じて mureo configure に戻ってください。",
     },
 }
 
@@ -450,12 +456,17 @@ def render_error(message: str) -> str:
 # Terminal page served at /done — marks the wizard complete and tells
 # the user the tab can be closed. The configure-UI's OAuthBridge watcher
 # polls ``wizard.completed`` to learn when this page was reached.
-_DONE_PAGE = f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>mureo setup — done</title>{_BASE_STYLE}</head>
+# Localized: the configure UI threads its operator's locale into this
+# wizard (``?locale=ja``); a hardcoded English page here was the reported
+# "Setup complete stays English" bug.
+def render_done_page(locale: str) -> str:
+    """Render the terminal /done page in the session's locale."""
+    return f"""<!doctype html>
+<html lang="{_html_lang(locale)}">
+<head><meta charset="utf-8"><title>{_t(locale, "done.title")}</title>{_BASE_STYLE}</head>
 <body>
-<h1>Setup complete</h1>
-<p>Credentials saved. You can close this tab and return to mureo configure.</p>
+<h1>{_t(locale, "done.heading")}</h1>
+<p>{_t(locale, "done.body")}</p>
 </body></html>
 """
 
@@ -502,7 +513,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             self._handle_meta_account_pick_page()
         elif path == "/done":
             self.server.wizard.mark_completed()
-            self._send_html(_DONE_PAGE)
+            self._send_html(render_done_page(self.server.wizard.session.locale))
         else:
             self.send_error(404, "Not found")
 

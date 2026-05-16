@@ -449,6 +449,33 @@ class TestPostProviders:
         assert body == {"hosted_connected": {"meta-ads-official": True}}
         mock_hosted.assert_called_once()
 
+    def test_native_toggle_dispatches(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok", "detail": "google_ads"}
+        with patch(
+            "mureo.web.handlers.set_native_preference", return_value=fake
+        ) as mock_fn:
+            resp = _post(
+                wizard,
+                "/api/providers/native-toggle",
+                {"platform": "google_ads", "prefer_official": True},
+            )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok", "detail": "google_ads"}
+        mock_fn.assert_called_once()
+        args, kwargs = mock_fn.call_args
+        assert args[0] == "google_ads"
+        assert args[1] is True
+        assert kwargs["home"] == wizard.home
+        assert kwargs["host"] == wizard.session.host
+
+    def test_native_toggle_requires_platform(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, "/api/providers/native-toggle", {"platform": ""})
+        assert exc.value.code == 400
+
     def test_remove_provider_requires_provider_id(
         self, wizard: ConfigureWizard
     ) -> None:

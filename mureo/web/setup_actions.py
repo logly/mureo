@@ -32,6 +32,7 @@ from mureo.web.desktop_mcp import (
     remove_desktop_mcp_block,
     remove_desktop_server_block,
     resolve_desktop_config_path,
+    set_mureo_disable_env_desktop,
     unset_mureo_disable_env_desktop,
 )
 from mureo.web.legacy_commands import remove_legacy_commands
@@ -96,28 +97,228 @@ def _install_desktop_mcp(home: Path | None) -> ActionResult:
     return ActionResult(status="ok", detail=str(config_path))
 
 
+def backfill_disable_for_installed_providers(
+    host: str, home: Path | None = None
+) -> None:
+    """Set ``MUREO_DISABLE_<PLATFORM>`` for official providers already
+    registered when the mureo MCP is (re)configured.
+
+    Closes the order-dependency hole: ``mureo providers add`` only
+    auto-sets the disable env when a ``mcpServers.mureo`` block already
+    exists. A user who added the official provider FIRST and configured
+    the mureo MCP LATER otherwise ended up with native + official both
+    active and no deterministic precedence. This runs after the mureo
+    block is written and backfills the disable env for each overlapping
+    provider that is actually in effect.
+
+    Scope:
+    - pipx/npm providers (google-ads-official, ga4-official):
+      file-registry presence in the host's MCP config is the signal —
+      a pure, network-free read.
+    - hosted_http (Meta) is intentionally NOT backfilled here: detecting
+      it would need a network ``claude mcp list`` probe, which must not
+      run on the basic-setup path. Meta native↔official is handled by
+      the explicit ``mureo providers confirm`` / dashboard native-toggle
+      (both gate on the verified connector — no-strand preserved).
+
+    Best-effort and idempotent: never raises (a failure must not break
+    basic setup) and never invents a mureo block (the per-host setter
+    no-ops when absent). Search Console has no catalog provider and is
+    never disabled.
+    """
+    try:
+        from mureo.providers.catalog import get_catalog
+        from mureo.providers.config_writer import is_provider_installed
+        from mureo.web.host_paths import get_host_paths
+
+        registry = get_host_paths(host, home).mcp_registry_path
+        for spec in get_catalog():
+            platform = spec.coexists_with_mureo_platform
+            if not platform:
+                continue
+            # hosted_http (Meta) is deliberately NOT backfilled here:
+            # detecting it needs a network `claude mcp list` probe, which
+            # must not run on the basic-setup path (kept out of every
+            # frequently-run/sync surface — same rationale as the
+            # separate hosted-status endpoint). Meta native↔official is
+            # handled by the explicit `providers confirm` / the dashboard
+            # native-toggle, which gate on the verified connector.
+            if spec.install_kind == "hosted_http":
+                continue
+            if is_provider_installed(spec.id, settings_path=registry):
+                _disable_native_for(host, platform, home, registry)
+    except Exception:  # noqa: BLE001 — backfill must never break setup
+        logger.exception("backfill disable-env after mureo MCP install failed")
+
+
+def _apply_disable_env(
+    host: str, platform: str, home: Path | None, registry: Path
+) -> tuple[bool, bool]:
+    """Single host-aware ``MUREO_DISABLE_<platform>`` setter.
+
+    Returns ``(changed, mureo_block_present)``. Idempotent; never
+    invents a ``mcpServers.mureo`` block. The env-var name and the
+    host dispatch live ONLY here (the Code path's canonical source of
+    truth is ``mureo_env._PLATFORM_TO_ENV_VAR``; the Desktop branch
+    derives the same name by uppercase — holds for every catalog
+    platform google_ads/meta_ads/ga4, revisit if a future platform
+    isn't a simple uppercase mapping). Desktop has no
+    ``mureo_block_present`` signal, so it reports ``True`` (callers
+    that gate on it only do so for Code, preserving prior behaviour).
+    """
+    if host == _HOST_DESKTOP:
+        env_var = "MUREO_DISABLE_" + platform.upper()
+        changed = set_mureo_disable_env_desktop(
+            resolve_desktop_config_path(home), env_var
+        )
+        return changed, True
+    from mureo.providers.mureo_env import set_mureo_disable_env
+
+    res = set_mureo_disable_env(platform, settings_path=registry)  # type: ignore[arg-type]
+    return res.changed, res.mureo_block_present
+
+
+def _disable_native_for(
+    host: str, platform: str, home: Path | None, registry: Path
+) -> None:
+    """Best-effort backfill setter (result ignored — see
+    ``backfill_disable_for_installed_providers``)."""
+    _apply_disable_env(host, platform, home, registry)
+
+
+_TOGGLE_PLATFORMS: tuple[str, ...] = ("google_ads", "meta_ads", "ga4")
+
+
+def set_native_preference(
+    platform: str,
+    prefer_official: bool,
+    home: Path | None = None,
+    host: str = _HOST_CODE,
+) -> ActionResult:
+    """User-driven per-platform switch between mureo-native and official.
+
+    ``prefer_official=True`` sets ``MUREO_DISABLE_<PLATFORM>=1`` (native
+    steps aside, official is the single source) — allowed ONLY when the
+    official path is actually in effect (pipx/npm provider registered,
+    or Meta's account-level connector verified Connected), so the user
+    can't strand themselves. ``prefer_official=False`` removes the flag
+    (restore native) — always allowed (the un-strand path).
+
+    Statuses: ``ok`` (changed), ``noop`` (already in desired state),
+    ``error`` with detail ``invalid_platform`` /
+    ``provider_not_installed`` / ``connector_not_connected`` /
+    ``no_mureo_block``.
+    """
+    if platform not in _TOGGLE_PLATFORMS:
+        return ActionResult(status="error", detail="invalid_platform")
+
+    try:
+        from mureo.web.host_paths import get_host_paths
+
+        registry = get_host_paths(host, home).mcp_registry_path
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("set_native_preference path resolve failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    if not prefer_official:
+        return _restore_native(host, platform, home, registry)
+
+    # prefer_official: guard — the official path must really be usable.
+    try:
+        from mureo.providers.catalog import get_catalog
+        from mureo.providers.config_writer import (
+            is_hosted_provider_connected,
+            is_provider_installed,
+        )
+
+        spec = next(
+            (s for s in get_catalog() if s.coexists_with_mureo_platform == platform),
+            None,
+        )
+        if spec is None:
+            return ActionResult(status="error", detail="invalid_platform")
+        if spec.install_kind == "hosted_http":
+            if not is_hosted_provider_connected(spec):
+                return ActionResult(status="error", detail="connector_not_connected")
+        elif not is_provider_installed(spec.id, settings_path=registry):
+            return ActionResult(status="error", detail="provider_not_installed")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("set_native_preference guard failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    return _prefer_official(host, platform, home, registry)
+
+
+def _prefer_official(
+    host: str, platform: str, home: Path | None, registry: Path
+) -> ActionResult:
+    """Set MUREO_DISABLE_<platform> (guard already passed)."""
+    try:
+        changed, mureo_block_present = _apply_disable_env(
+            host, platform, home, registry
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("set_native_preference set failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+    if not mureo_block_present:
+        return ActionResult(status="error", detail="no_mureo_block")
+    return ActionResult(status="ok" if changed else "noop", detail=platform)
+
+
+def _restore_native(
+    host: str, platform: str, home: Path | None, registry: Path
+) -> ActionResult:
+    """Remove MUREO_DISABLE_<platform> (always allowed)."""
+    try:
+        if host == _HOST_DESKTOP:
+            env_var = "MUREO_DISABLE_" + platform.upper()
+            changed = unset_mureo_disable_env_desktop(
+                resolve_desktop_config_path(home), env_var
+            )
+        else:
+            from mureo.providers.mureo_env import unset_mureo_disable_env
+
+            changed = unset_mureo_disable_env(
+                platform,  # type: ignore[arg-type]
+                settings_path=registry,
+            ).changed
+        return ActionResult(status="ok" if changed else "noop", detail=platform)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("set_native_preference unset failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+
 def install_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> ActionResult:
     """Register the mureo MCP block in the host's config.
 
     ``host="claude-code"`` (default) is byte-for-byte the prior
     behaviour. ``host="claude-desktop"`` writes only the
-    ``mcpServers.mureo`` block to ``claude_desktop_config.json``.
+    ``mcpServers.mureo`` block to ``claude_desktop_config.json``. After
+    a successful (re)write the disable env is backfilled for any
+    official provider that was registered BEFORE the mureo MCP — closing
+    the order-dependency precedence hole.
     """
     if host == _HOST_DESKTOP:
-        return _install_desktop_mcp(home)
+        result = _install_desktop_mcp(home)
+    else:
+        try:
+            from mureo.auth_setup import install_mcp_config
 
-    try:
-        from mureo.auth_setup import install_mcp_config
+            res = install_mcp_config(scope="global")
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("install_mureo_mcp failed")
+            return ActionResult(status="error", detail=type(exc).__name__)
 
-        result = install_mcp_config(scope="global")
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("install_mureo_mcp failed")
-        return ActionResult(status="error", detail=type(exc).__name__)
+        mark_part_installed(PART_MCP, home=home)
+        result = (
+            ActionResult(status="noop", detail="already_configured")
+            if res is None
+            else ActionResult(status="ok", detail=str(res))
+        )
 
-    mark_part_installed(PART_MCP, home=home)
-    if result is None:
-        return ActionResult(status="noop", detail="already_configured")
-    return ActionResult(status="ok", detail=str(result))
+    if result.status != "error":
+        backfill_disable_for_installed_providers(host, home)
+    return result
 
 
 def install_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> ActionResult:

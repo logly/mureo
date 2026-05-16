@@ -588,3 +588,24 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   color: var(--color-muted);
   line-height: 1.5;
 }
+
+/* Status marks: green ✓ / red ✗ (own span so locale re-translation of a
+   sibling data-i18n text node can't wipe them). */
+.mark-ok {
+  color: #1e8e3e;
+  font-weight: 600;
+}
+.mark-no {
+  color: #c0392b;
+  font-weight: 600;
+}
+
+/* Native↔official tool toggle: extra breathing room from the
+   explanatory note above, and space between the state text and the
+   switch button. */
+.dashboard-tooluse {
+  margin-top: 10px;
+}
+.dashboard-tooluse .btn {
+  margin-left: 12px;
+}

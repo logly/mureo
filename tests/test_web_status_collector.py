@@ -262,3 +262,56 @@ class TestStatusSnapshotShape:
             "claude-code", home=_build_home(tmp_path), paths=_paths(tmp_path)
         )
         assert isinstance(snapshot, StatusSnapshot)
+
+
+@pytest.mark.unit
+class TestMureoDisableState:
+    """`mureo_disable` reports the per-platform MUREO_DISABLE_<P> state
+    read from mcpServers.mureo.env in the host's MCP registry."""
+
+    def test_absent_means_all_false(self, tmp_path: Path) -> None:
+        paths = _paths(tmp_path)
+        (tmp_path / ".claude.json").write_text(
+            json.dumps({"mcpServers": {"mureo": {"command": "python"}}}),
+            encoding="utf-8",
+        )
+        snap = collect_status(
+            "claude-code", home=_build_home(tmp_path), paths=paths
+        )
+        assert snap.mureo_disable == {
+            "google_ads": False,
+            "meta_ads": False,
+            "ga4": False,
+        }
+        assert "mureo_disable" in snap.as_dict()
+
+    def test_reflects_set_flag(self, tmp_path: Path) -> None:
+        paths = _paths(tmp_path)
+        (tmp_path / ".claude.json").write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "mureo": {
+                            "command": "python",
+                            "env": {"MUREO_DISABLE_GOOGLE_ADS": "1"},
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        snap = collect_status(
+            "claude-code", home=_build_home(tmp_path), paths=paths
+        )
+        assert snap.mureo_disable["google_ads"] is True
+        assert snap.mureo_disable["meta_ads"] is False
+
+    def test_missing_registry_is_all_false(self, tmp_path: Path) -> None:
+        snap = collect_status(
+            "claude-code", home=_build_home(tmp_path), paths=_paths(tmp_path)
+        )
+        assert snap.mureo_disable == {
+            "google_ads": False,
+            "meta_ads": False,
+            "ga4": False,
+        }

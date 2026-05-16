@@ -18,6 +18,7 @@ Routes
 ``POST /api/providers/install``  → install one official MCP
 ``POST /api/providers/confirm``  → disable native once hosted connector works
 ``POST /api/providers/hosted-status`` → hosted connectors' Connected state
+``POST /api/providers/native-toggle`` → switch a platform native↔official
 ``POST /api/providers/remove``   → remove one official MCP entry
 ``POST /api/credentials/env-var``→ write one env var into credentials
 ``POST /api/oauth/<p>/start``    → spawn WebAuthWizard, return consent URL
@@ -71,6 +72,7 @@ from mureo.web.setup_actions import (
     remove_mureo_mcp,
     remove_provider,
     remove_workflow_skills,
+    set_native_preference,
 )
 from mureo.web.status_collector import collect_status
 
@@ -338,6 +340,19 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             {"hosted_connected": hosted_provider_status(self.wizard.session.host)},
         )
 
+    def _post_providers_native_toggle(self, payload: dict[str, Any]) -> None:
+        platform = str(payload.get("platform", "")).strip()
+        if not platform:
+            send_error_json(self, 400, "platform_required")
+            return
+        result = set_native_preference(
+            platform,
+            bool(payload.get("prefer_official", False)),
+            home=self.wizard.home,
+            host=self.wizard.session.host,
+        )
+        send_json(self, result.as_dict())
+
     def _post_providers_remove(self, payload: dict[str, Any]) -> None:
         provider_id = str(payload.get("provider_id", "")).strip()
         if not provider_id:
@@ -474,6 +489,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/providers/install": _post_providers_install,
         "/api/providers/confirm": _post_providers_confirm,
         "/api/providers/hosted-status": _post_providers_hosted_status,
+        "/api/providers/native-toggle": _post_providers_native_toggle,
         "/api/providers/remove": _post_providers_remove,
         "/api/credentials/env-var": _post_env_var,
         "/api/credentials/remove": _post_credentials_remove,

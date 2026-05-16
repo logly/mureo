@@ -22,6 +22,24 @@
   // meta-ads-official. Extend when a new hosted provider is added.
   const HOSTED_PROVIDER_IDS = ["meta-ads-official"];
 
+  // Official provider id → the mureo-native platform it overlaps. Drives
+  // the per-platform native↔official tool toggle. GA4 is intentionally
+  // ABSENT: mureo has no native GA4 tools (official-only), so there is
+  // nothing to toggle between for it.
+  const PROVIDER_PLATFORM = {
+    "google-ads-official": "google_ads",
+    "meta-ads-official": "meta_ads",
+  };
+
+  // Colored ✓ / ✗ status mark as its own element (kept separate from any
+  // data-i18n text node so a locale re-translation can't wipe it).
+  function statusMark(ok) {
+    const m = document.createElement("span");
+    m.className = ok ? "mark-ok" : "mark-no";
+    m.textContent = ok ? "✓" : "✗";
+    return m;
+  }
+
   // Basic-setup row definitions. Keyed entries map a status part to its
   // label, per-row remove endpoint, confirmation key, and button label.
   // Kept as a module-local constant so renderBasicSection stays small.
@@ -160,7 +178,7 @@
       const li = document.createElement("li");
       const installed = parts[row.key] === true;
       const labelSpan = document.createElement("span");
-      let labelText = (installed ? "✓ " : "✗ ") + MUREO.t(row.labelKey);
+      let labelText = MUREO.t(row.labelKey);
       // The credential-guard hook has no surface on Claude Desktop, so
       // annotate it inline rather than implying it can be installed.
       if (
@@ -170,7 +188,8 @@
       ) {
         labelText += " " + MUREO.t("wizard.basic.auth_hook_desktop_na");
       }
-      labelSpan.textContent = labelText;
+      labelSpan.appendChild(statusMark(installed));
+      labelSpan.appendChild(document.createTextNode(" " + labelText));
       li.appendChild(labelSpan);
       if (installed) {
         li.appendChild(buildBasicRemoveButton(row));
@@ -211,7 +230,8 @@
         if (!installed) anyNotInstalled = true;
       }
       const labelSpan = document.createElement("span");
-      labelSpan.textContent = (installed ? "✓ " : "✗ ") + pid;
+      labelSpan.appendChild(statusMark(installed));
+      labelSpan.appendChild(document.createTextNode(" " + pid));
       li.appendChild(labelSpan);
       // No Remove for hosted: mureo can't unregister an account-level
       // Connector (it never created it). Only file-registered (pipx)
@@ -258,6 +278,58 @@
         } else {
           appendNote("dashboard.provider_hosted_oauth_note");
         }
+      }
+
+      // Per-platform native↔official tool toggle. Only meaningful when
+      // the mureo MCP itself is configured (otherwise there are no
+      // native tools to step aside). Server enforces the no-strand
+      // guard; the UI just reflects state and surfaces the reason.
+      const platform = PROVIDER_PLATFORM[pid];
+      if (platform && providers.mureo) {
+        const md = (status && status.mureo_disable) || {};
+        const preferred = md[platform] === true;
+        const tg = document.createElement("div");
+        tg.className = "dashboard-provider-hosted-note dashboard-tooluse";
+        const stateKey = preferred
+          ? "dashboard.tooluse_state_official"
+          : "dashboard.tooluse_state_native";
+        const stateSpan = document.createElement("span");
+        stateSpan.textContent =
+          MUREO.t("dashboard.tooluse_label") + " " + MUREO.t(stateKey);
+        tg.appendChild(stateSpan);
+        const toKey = preferred
+          ? "dashboard.tooluse_use_native"
+          : "dashboard.tooluse_use_official";
+        const tBtn = document.createElement("button");
+        tBtn.type = "button";
+        tBtn.className = "btn btn-secondary";
+        tBtn.textContent = MUREO.t(toKey);
+        tBtn.setAttribute("data-i18n", toKey);
+        tBtn.addEventListener("click", async function () {
+          const res = await MUREO.postJson(
+            "/api/providers/native-toggle",
+            { platform: platform, prefer_official: !preferred }
+          );
+          const body = res && res.body;
+          if (res.ok && body && (body.status === "ok" || body.status === "noop")) {
+            MUREO.toast(MUREO.t("dashboard.tooluse_restart_note"));
+            await MUREO.loadStatus();
+            renderAll();
+            return;
+          }
+          const detail = body && body.detail;
+          const errKey =
+            detail === "provider_not_installed"
+              ? "dashboard.tooluse_err_provider_not_installed"
+              : detail === "connector_not_connected"
+              ? "dashboard.tooluse_err_connector_not_connected"
+              : detail === "no_mureo_block"
+              ? "dashboard.tooluse_err_no_mureo_block"
+              : "dashboard.tooluse_err_generic";
+          MUREO.toast(MUREO.t(errKey));
+        });
+        tg.appendChild(tBtn);
+        li.appendChild(tg);
       }
       list.appendChild(li);
     });
@@ -712,9 +784,14 @@
       const configured = row.configured(status, present);
       const li = document.createElement("li");
       const label = document.createElement("span");
-      label.textContent =
-        (configured ? "✓ " : "✗ ") + MUREO.t(row.labelKey);
-      label.setAttribute("data-i18n", row.labelKey);
+      label.appendChild(statusMark(configured));
+      label.appendChild(document.createTextNode(" "));
+      // data-i18n on an INNER span only, so a locale re-translation
+      // (which overwrites the node's textContent) can't wipe the mark.
+      const labelText = document.createElement("span");
+      labelText.textContent = MUREO.t(row.labelKey);
+      labelText.setAttribute("data-i18n", row.labelKey);
+      label.appendChild(labelText);
       li.appendChild(label);
       if (configured) any = true;
       if (configured && row.removable) {
