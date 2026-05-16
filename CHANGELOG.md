@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — BYOD/demo relative windows silently went empty over time
+- The CSV-backed BYOD/demo clients resolved relative MCP query windows (`LAST_7_DAYS`, …) against `date.today()`. The demo dataset has fixed historical dates, so as wall-clock time moved past it the demo silently returned `[]` — `LAST_7_DAYS` first, then every window — making Meta insights / anomaly checks / Search Console appear broken even though the data was present.
+- `_period_to_range` now accepts an optional `anchor`; the BYOD/demo metrics readers anchor relative windows on the **dataset's own latest date** (same span, ending at the most recent available day) so the demo stays non-empty regardless of the current date. `anchor=None` preserves the exact legacy wall-clock behaviour, so live-API and non-demo callers are completely unaffected.
+
 ### Added — `mureo providers` CLI (Issue #86, Phase 1: Claude Code)
 - **`mureo providers list / add / remove`** — one-command install of the official platform MCP servers into Claude Code's `~/.claude/settings.json`. mureo owns both package acquisition and config registration. `add` is idempotent; `add --all` installs every catalog entry and continues past per-provider failures (non-zero exit overall). `--dry-run` prints the planned `pipx`/`npm` argv (or, for hosted endpoints, the "no local install step" notice) plus the JSON delta without touching disk or subprocess. `remove` only edits the settings file (it does not uninstall the underlying pipx/npm package; no-op for hosted-HTTP entries which have none).
 - Phase 1 catalog (3 entries):
