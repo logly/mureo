@@ -104,6 +104,8 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "auth_wizards.js",
     "dashboard.js",
     "i18n.json",
+    "logo.png",
+    "logo-dark.png",
 )
 
 # Regex on path: /api/oauth/<provider>/status or /start

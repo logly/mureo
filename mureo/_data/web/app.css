@@ -1,40 +1,189 @@
+/* ============================================================================
+ * mureo configure — visual system
+ * "Calm precision instrument": a quiet, trustworthy local tool. Refined
+ * minimalism — the polish is in spacing rhythm, hairline borders, a single
+ * confident accent, crafted shadows and restrained motion. Bundled CSS only
+ * (strict CSP: no web fonts, no CDN). Light + dark via tokens.
+ * Every class / [data-*] hook used by app.html + the JS is preserved.
+ * ========================================================================== */
+
 :root {
-  --color-bg: #f7f8fa;
-  --color-surface: #ffffff;
-  --color-text: #1d1d1f;
-  --color-muted: #6b6b6f;
-  --color-border: #d0d2d6;
-  --color-primary: #2563eb;
-  --color-primary-hover: #1e4fc7;
-  --color-success: #1f9d55;
-  --color-danger: #c53030;
-  --radius: 8px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* ---- palette (light) ------------------------------------------------ */
+  --paper: #f4f4f1;          /* warm canvas, not cold blue-grey            */
+  --surface: #ffffff;
+  --surface-2: #fafaf8;      /* sunken / inset                            */
+  --ink: #14161a;
+  --ink-soft: #3b3f47;
+  --muted: #6c7079;
+  --hairline: #e4e3df;       /* low-contrast 1px borders                  */
+  --hairline-strong: #d2d1cb;
+
+  /* Accent: a deep, slightly desaturated indigo — confident, not the
+     default #2563eb SaaS blue. One accent, used sparingly. */
+  --accent: #4b4fd6;
+  --accent-press: #3a3eb0;
+  --accent-tint: #ecedfb;    /* soft fill for selected / info             */
+  --accent-ring: rgba(75, 79, 214, 0.38);
+
+  --success: #1f7a4d;
+  --success-tint: #e6f4ec;
+  --danger: #b3261e;
+  --danger-press: #8f1e18;
+  --danger-tint: #fbe9e7;
+  --warn-tint: #fdf3da;
+  --warn-line: #e6c463;
+
+  /* legacy token aliases — kept so existing rules and any consumer that
+     references --color-* / --radius keep resolving. */
+  --color-bg: var(--paper);
+  --color-surface: var(--surface);
+  --color-text: var(--ink);
+  --color-muted: var(--muted);
+  --color-border: var(--hairline);
+  --color-primary: var(--accent);
+  --color-primary-hover: var(--accent-press);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+
+  /* ---- scale ---------------------------------------------------------- */
+  --r-sm: 7px;
+  --r-md: 11px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+  --radius: var(--r-md);
+
+  --shadow-sm: 0 1px 2px rgba(20, 22, 26, 0.05),
+    0 1px 1px rgba(20, 22, 26, 0.04);
+  --shadow-md: 0 6px 22px -8px rgba(20, 22, 26, 0.18),
+    0 2px 6px -2px rgba(20, 22, 26, 0.08);
+  --shadow-pop: 0 24px 60px -20px rgba(20, 22, 26, 0.35);
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    monospace;
+
+  color-scheme: light dark;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0e0f12;
+    --surface: #16181d;
+    --surface-2: #1c1f25;
+    --ink: #ecedf0;
+    --ink-soft: #c4c7cf;
+    --muted: #8a8f99;
+    --hairline: #2a2d34;
+    --hairline-strong: #3a3e47;
+    --accent: #8a8df5;
+    --accent-press: #a3a5f8;
+    --accent-tint: #20223a;
+    --accent-ring: rgba(138, 141, 245, 0.45);
+    --success: #4cc38a;
+    --success-tint: #16271f;
+    --danger: #f4857c;        /* ~5:1 on dark surfaces (AA for small text) */
+    --danger-press: #f7a39c;
+    --danger-tint: #2a1816;
+    --warn-tint: #2a2410;
+    --warn-line: #6b5a25;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 8px 26px -10px rgba(0, 0, 0, 0.65);
+    --shadow-pop: 0 26px 70px -22px rgba(0, 0, 0, 0.8);
+  }
 }
 
 * {
   box-sizing: border-box;
 }
 
-body {
-  margin: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
-  line-height: 1.5;
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
+body {
+  margin: 0;
+  background: var(--paper);
+  /* faint atmospheric depth instead of a dead flat fill */
+  background-image: radial-gradient(
+    1100px 600px at 50% -10%,
+    color-mix(in srgb, var(--accent) 7%, transparent),
+    transparent 70%
+  );
+  background-attachment: fixed;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.55;
+  letter-spacing: 0.005em;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+a {
+  color: var(--accent);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---- header --------------------------------------------------------- */
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 24px;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  padding: 14px clamp(16px, 4vw, 40px);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: saturate(1.6) blur(12px);
+  -webkit-backdrop-filter: saturate(1.6) blur(12px);
+  border-bottom: 1px solid var(--hairline);
 }
 
 .app-header-title {
-  font-weight: 700;
-  font-size: 18px;
+  display: flex;
+  align-items: center;
+  line-height: 0;
+}
+
+/* Official mureo wordmark (413×63). Two variants, swapped by scheme so
+   the mark stays legible on both light and dark headers. */
+.app-logo {
+  height: 24px;
+  width: auto;
+  display: block;
+}
+
+.app-logo-dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-logo-light {
+    display: none;
+  }
+  .app-logo-dark {
+    display: block;
+  }
 }
 
 .app-header-nav {
@@ -44,108 +193,211 @@ body {
 }
 
 .lang-toggle {
-  background: none;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-pill);
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 13px;
   cursor: pointer;
-  color: var(--color-text);
+  color: var(--muted);
+  transition: color 0.15s var(--ease), border-color 0.15s var(--ease),
+    background 0.15s var(--ease);
+}
+
+.lang-toggle:hover {
+  color: var(--ink);
+  border-color: var(--ink-soft);
 }
 
 .lang-toggle[aria-pressed="true"] {
-  background: var(--color-primary);
-  color: white;
-  border-color: var(--color-primary);
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
+@media (prefers-color-scheme: dark) {
+  .lang-toggle[aria-pressed="true"] {
+    color: #0e0f12;
+  }
+}
+
+/* ---- main shell ----------------------------------------------------- */
 .app-main {
-  max-width: 800px;
-  margin: 32px auto;
-  padding: 0 24px;
+  max-width: 760px;
+  margin: clamp(28px, 6vh, 56px) auto;
+  padding: 0 clamp(16px, 4vw, 32px);
+  animation: rise 0.5s var(--ease) both;
 }
 
 /* The dashboard uses a sidebar + content layout that needs far more
- * horizontal room than the single-column wizard/landing (800px is
- * fine for those). The dashboard <section data-dashboard> only loses
- * its native `hidden` attribute while the dashboard view is active
- * (toggled in dashboard.js), so scoping a wider max-width via :has()
- * widens ONLY the dashboard. Wizard/landing keep `hidden` on
- * [data-dashboard], the selector does not match, and they stay at
- * 800px. Browsers without :has() simply fall back to 800px. */
+ * horizontal room than the single-column wizard/landing. The dashboard
+ * <section data-dashboard> only loses its native `hidden` attribute
+ * while the dashboard view is active (toggled in dashboard.js), so
+ * scoping a wider max-width via :has() widens ONLY the dashboard.
+ * Browsers without :has() simply fall back to the narrow width. */
 .app-main:has([data-dashboard]:not([hidden])) {
-  max-width: 1200px;
+  max-width: 1180px;
 }
 
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* shared surface treatment */
+.landing-card,
+.wizard,
+.dashboard {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+}
+
+/* ---- landing -------------------------------------------------------- */
 .landing {
   text-align: center;
 }
 
 .landing-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 48px 32px;
+  padding: clamp(40px, 8vw, 72px) clamp(24px, 6vw, 56px);
 }
 
 .landing-title {
-  font-size: 28px;
-  margin: 0 0 8px;
+  font-size: clamp(28px, 5vw, 38px);
+  font-weight: 660;
+  margin: 0 0 10px;
 }
 
 .landing-desc {
-  color: var(--color-muted);
-  margin: 0 0 32px;
+  color: var(--muted);
+  margin: 0 auto 36px;
+  max-width: 46ch;
+  font-size: 16px;
 }
 
 .landing-cta {
-  font-size: 18px;
-  padding: 14px 36px;
-  background: var(--color-primary);
-  color: white;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 560;
+  padding: 14px 40px;
+  background: var(--accent);
+  color: #fff;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: var(--r-pill);
   cursor: pointer;
+  box-shadow: 0 8px 20px -8px var(--accent-ring);
+  transition: transform 0.16s var(--ease), background 0.16s var(--ease),
+    box-shadow 0.16s var(--ease);
 }
 
 .landing-cta:hover {
-  background: var(--color-primary-hover);
+  background: var(--accent-press);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px -8px var(--accent-ring);
+}
+
+.landing-cta:active {
+  transform: translateY(0);
+}
+
+@media (prefers-color-scheme: dark) {
+  .landing-cta,
+  .btn-primary,
+  .dashboard-controls button {
+    color: #0e0f12;
+  }
 }
 
 .landing-legacy-notice {
   margin-top: 24px;
-  background: #fff8e1;
-  border: 1px solid #f0c75e;
-  border-radius: var(--radius);
-  padding: 16px;
+  background: var(--warn-tint);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  padding: 18px 20px;
   text-align: left;
 }
 
+.landing-legacy-notice h2 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+.landing-legacy-notice p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
 .landing-legacy-notice button {
-  margin-top: 8px;
+  margin-top: 12px;
   padding: 8px 16px;
-  background: var(--color-danger);
-  color: white;
+  background: var(--danger);
+  color: #fff;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: 13px;
   cursor: pointer;
 }
 
+/* ---- wizard --------------------------------------------------------- */
 .wizard {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 32px;
+  padding: clamp(28px, 5vw, 44px);
+}
+
+.wizard-step {
+  animation: stepIn 0.32s var(--ease) both;
+}
+
+@keyframes stepIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .wizard-step h2 {
+  margin: 0 0 6px;
+  font-size: 21px;
+  font-weight: 620;
+}
+
+.wizard-step > p {
+  color: var(--muted);
   margin-top: 0;
+}
+
+.wizard-step label {
+  display: block;
+  margin: 14px 0;
+  font-size: 14px;
+}
+
+.wizard-step label > span {
+  display: inline-block;
+  margin-bottom: 5px;
+  color: var(--ink-soft);
 }
 
 .wizard-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 32px;
+  margin-top: 36px;
+  padding-top: 22px;
+  border-top: 1px solid var(--hairline);
   gap: 12px;
 }
 
@@ -161,130 +413,198 @@ body {
 }
 
 .wizard-actions button {
-  padding: 10px 24px;
-  border-radius: var(--radius);
+  padding: 10px 22px;
+  border-radius: var(--r-sm);
   cursor: pointer;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  color: var(--ink);
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease),
+    transform 0.12s var(--ease);
+}
+
+.wizard-actions button:hover {
+  background: var(--surface-2);
+  border-color: var(--ink-soft);
+}
+
+.wizard-actions button:active {
+  transform: translateY(1px);
 }
 
 .wizard-actions [data-wizard-action="next"] {
-  background: var(--color-primary);
-  color: white;
-  border-color: var(--color-primary);
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.wizard-actions [data-wizard-action="next"]:hover {
+  background: var(--accent-press);
+  border-color: var(--accent-press);
+}
+
+@media (prefers-color-scheme: dark) {
+  .wizard-actions [data-wizard-action="next"] {
+    color: #0e0f12;
+  }
 }
 
 .wizard-actions [data-wizard-action="next"]:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+  transform: none;
 }
 
 .wizard-progress {
   text-align: right;
-  color: var(--color-muted);
-  font-size: 13px;
-  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  margin-top: 14px;
 }
 
 .wizard-advanced-skip {
-  margin-top: 16px;
+  margin-top: 18px;
   text-align: center;
   font-size: 13px;
-  color: var(--color-muted);
+  color: var(--muted);
 }
 
 .wizard-advanced-skip a {
-  color: var(--color-primary);
+  color: var(--accent);
   text-decoration: underline;
+  text-underline-offset: 2px;
   cursor: pointer;
 }
 
 .wizard-basic-parts {
   list-style: none;
   padding: 0;
-  margin: 16px 0;
+  margin: 18px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
+/* pills — refined tinted chips with a hairline, not candy fills */
 .wizard-step-pill {
-  display: inline-block;
-  margin-right: 12px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  font-size: 12.5px;
+  font-weight: 540;
+  border: 1px solid transparent;
 }
 
 .wizard-step-pill.done {
-  background: #e1f7e7;
-  color: var(--color-success);
+  background: var(--success-tint);
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
 }
 
 .wizard-step-pill.not-done {
-  background: #fde2e2;
-  color: var(--color-danger);
+  background: var(--danger-tint);
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
 }
 
 .wizard-completed-summary {
-  background: #f0f9ff;
-  border-radius: var(--radius);
-  padding: 16px 24px;
+  list-style: none;
+  background: var(--accent-tint);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: var(--r-md);
+  padding: 16px 22px;
+  margin: 16px 0;
+}
+
+.wizard-completed-summary li {
+  padding: 4px 0;
 }
 
 .wizard-choice-already-done {
   margin-left: 8px;
   font-size: 12px;
-  color: var(--color-success);
+  font-weight: 560;
+  color: var(--success);
 }
 
 .wizard-choice-desc {
-  margin: 4px 0 8px 24px;
+  margin: 4px 0 10px 26px;
   font-size: 13px;
-  color: var(--color-muted);
+  color: var(--muted);
 }
 
 .wizard-shared-with-sc-note {
   margin-top: 12px;
-  padding: 8px 12px;
-  background: #f0f9ff;
-  border-left: 4px solid var(--color-primary);
+  padding: 10px 14px;
+  background: var(--accent-tint);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
   font-size: 13px;
+  color: var(--ink-soft);
 }
 
+/* ---- dashboard ------------------------------------------------------ */
 .dashboard {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 32px;
+  padding: clamp(26px, 4vw, 40px);
 }
 
 .dashboard-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dashboard-header h1 {
+  font-size: 22px;
+  font-weight: 640;
+  margin: 0;
 }
 
 .dashboard-controls button {
-  background: var(--color-primary);
-  color: white;
-  border: 0;
-  border-radius: var(--radius);
-  padding: 8px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  padding: 9px 17px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 520;
   cursor: pointer;
+  box-shadow: 0 6px 16px -10px var(--accent-ring);
+  transition: background 0.15s var(--ease), transform 0.12s var(--ease);
+}
+
+.dashboard-controls button:hover {
+  background: var(--accent-press);
+  border-color: var(--accent-press);
+}
+
+.dashboard-controls button:active {
+  transform: translateY(1px);
 }
 
 /* ------------------------------------------------------------------
  * Dashboard left-sidebar layout: vertical nav + content pane.
- * Reuses the existing surface/border/primary palette.
  * ------------------------------------------------------------------ */
 .dashboard-layout {
   display: flex;
-  gap: 24px;
-  margin-top: 24px;
+  gap: 28px;
+  margin-top: 26px;
   align-items: flex-start;
 }
 
 .dashboard-nav {
-  flex: 0 0 210px;
+  flex: 0 0 208px;
+  position: sticky;
+  top: 84px;
 }
 
 .dashboard-nav ul {
@@ -294,31 +614,47 @@ body {
 }
 
 .dashboard-nav li {
-  margin: 0 0 4px;
+  margin: 0 0 2px;
 }
 
 .dashboard-nav-item {
+  position: relative;
   display: block;
-  padding: 8px 12px;
-  border-radius: var(--radius);
-  color: var(--color-text);
+  padding: 9px 14px;
+  border-radius: var(--r-sm);
+  color: var(--muted);
   text-decoration: none;
   cursor: pointer;
   font-size: 14px;
+  font-weight: 520;
+  transition: color 0.14s var(--ease), background 0.14s var(--ease);
 }
 
 .dashboard-nav-item:hover {
-  background: #f0f1f3;
+  background: var(--surface-2);
+  color: var(--ink);
 }
 
 .dashboard-nav-item:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .dashboard-nav-item[aria-current="page"] {
-  background: var(--color-primary);
-  color: white;
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 620;
+}
+
+.dashboard-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 18%;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--accent);
 }
 
 .dashboard-pane {
@@ -330,29 +666,73 @@ body {
   display: none;
 }
 
-/* Constrain wide controls (e.g. long demo scenario names) to the
- * pane width. Native <option> lists cannot ellipsize while open
+/* Constrain wide controls (e.g. long demo scenario names) to the pane
+ * width. Native <option> lists cannot ellipsize while open
  * (browser-controlled); the closed state stays within bounds. */
-.dashboard-pane select {
+.dashboard-pane select,
+.dashboard-pane input[type="text"],
+.dashboard-pane input[type="password"],
+.dashboard-section input[type="text"],
+.dashboard-section input[type="password"],
+.dashboard-section select,
+.wizard-step input[type="text"],
+.wizard-step input[type="password"],
+.wizard-step select {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  transition: border-color 0.14s var(--ease), box-shadow 0.14s var(--ease);
+}
+
+.dashboard-pane input:focus,
+.dashboard-pane select:focus,
+.dashboard-section input:focus,
+.dashboard-section select:focus,
+.wizard-step input:focus,
+.wizard-step select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent);
 }
 
 .dashboard-section {
-  margin-top: 24px;
+  margin-top: 26px;
+  padding-top: 26px;
+  border-top: 1px solid var(--hairline);
 }
 
 .dashboard-group > .dashboard-section:first-child {
   margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .dashboard-section h2 {
-  margin: 0 0 8px;
-  font-size: 16px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 640;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.dashboard-section > p {
+  color: var(--ink-soft);
+  font-size: 14px;
 }
 
 .dashboard-section ul {
@@ -365,8 +745,10 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--color-border);
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 14px;
 }
 
 .dashboard-section li:last-child {
@@ -375,110 +757,174 @@ body {
 
 .app-toast {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
-  background: #1d1d1f;
-  color: white;
-  padding: 12px 16px;
-  border-radius: var(--radius);
+  bottom: 26px;
+  right: 26px;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 13px 18px;
+  border-radius: var(--r-md);
   font-size: 14px;
-  max-width: 320px;
+  max-width: 340px;
+  box-shadow: var(--shadow-pop);
+  animation: toastIn 0.28s var(--ease) both;
+  z-index: 50;
 }
 
 .app-toast[hidden] {
   display: none;
 }
 
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 dialog[data-confirm-dialog] {
-  border: 0;
-  border-radius: var(--radius);
-  padding: 24px;
-  max-width: 400px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  padding: 26px;
+  max-width: 420px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+}
+
+dialog[data-confirm-dialog]::backdrop {
+  background: rgba(10, 11, 14, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+dialog[data-confirm-dialog] [data-confirm-text] {
+  margin: 0 0 20px;
+  font-size: 15px;
+}
+
+dialog[data-confirm-dialog] > div {
+  display: flex;
+  justify-content: flex-end;
 }
 
 dialog[data-confirm-dialog] button {
-  padding: 8px 16px;
-  border-radius: var(--radius);
-  border: 1px solid var(--color-border);
+  padding: 9px 18px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
   cursor: pointer;
   margin-left: 8px;
 }
 
 dialog[data-confirm-dialog] [data-confirm-ok] {
-  background: var(--color-primary);
-  color: white;
-  border-color: var(--color-primary);
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  dialog[data-confirm-dialog] [data-confirm-ok] {
+    color: #0e0f12;
+  }
 }
 
 /* ------------------------------------------------------------------
- * Generic button classes — applied to dashboard / wizard buttons
- * that lacked styling (per-row delete, bulk clear, install,
- * authenticate, etc.). Mirrors existing primary/danger palette.
+ * Generic button classes — per-row delete, bulk clear, install,
+ * authenticate, etc.
  * ------------------------------------------------------------------ */
 .btn {
-  display: inline-block;
-  padding: 8px 16px;
-  border-radius: var(--radius);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-size: 14px;
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 17px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  color: var(--ink);
   font-family: inherit;
+  font-size: 14px;
+  font-weight: 520;
+  line-height: 1.2;
+  cursor: pointer;
   white-space: nowrap;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease),
+    transform 0.12s var(--ease), box-shadow 0.15s var(--ease);
 }
 
 .btn:hover {
-  background: #f0f1f3;
+  background: var(--surface-2);
+  border-color: var(--ink-soft);
+}
+
+.btn:active {
+  transform: translateY(1px);
 }
 
 .btn:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
 }
 
 .btn-primary {
-  background: var(--color-primary);
-  color: white;
-  border-color: var(--color-primary);
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 6px 16px -10px var(--accent-ring);
 }
 
 .btn-primary:hover {
-  background: var(--color-primary-hover);
-  border-color: var(--color-primary-hover);
+  background: var(--accent-press);
+  border-color: var(--accent-press);
 }
 
 .btn-secondary {
-  background: var(--color-surface);
-  color: var(--color-text);
-  border-color: var(--color-border);
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--hairline-strong);
 }
 
 .btn-danger {
-  background: #c0392b;
-  color: white;
-  border-color: #c0392b;
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
 }
 
 .btn-danger:hover {
-  background: #a93226;
-  border-color: #a93226;
+  background: var(--danger-press);
+  border-color: var(--danger-press);
 }
 
 .btn-danger:focus-visible {
-  outline: 2px solid #c0392b;
+  outline: 2px solid var(--danger);
   outline-offset: 2px;
 }
 
-/* Right-align the bulk-clear "全削除" button inside the danger zone. */
+/* Right-align the bulk-clear button inside the danger zone. */
 .dashboard-danger {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dashboard-danger p {
+  margin: 0 auto 0 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* Env vars listing — name + masked/plain value side by side. */
@@ -490,21 +936,21 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--color-border);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
   gap: 12px;
 }
 
 .dashboard-env-name {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 13px;
-  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink);
 }
 
 .dashboard-env-value {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 13px;
-  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--muted);
   word-break: break-all;
   text-align: right;
   flex: 1;
@@ -512,67 +958,89 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 
 .dashboard-env-value.dashboard-env-unset {
   font-style: italic;
+  opacity: 0.8;
+}
+
+.dashboard-env [data-env-form] {
+  display: grid;
+  gap: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  padding: 16px;
+  margin-top: 4px;
+}
+
+.dashboard-env [data-env-form] button {
+  justify-self: start;
 }
 
 /* Manual-setup card: hosted MCP that must be added via Claude Desktop
    Connectors (e.g. official Meta Ads). Reads as an actionable info
    callout, not an error. */
-.connector-setup-card {
-  border: 1px solid var(--color-border);
-  border-left: 4px solid var(--color-primary);
-  background: var(--color-surface);
-  border-radius: 8px;
+.connector-setup-card,
+.wizard-pending-reminder {
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: var(--r-md);
   padding: 16px 18px;
-  margin: 12px 0;
+  margin: 14px 0;
 }
+
 .connector-setup-card h4 {
   margin: 0 0 6px;
   font-size: 15px;
 }
+
 .connector-setup-card p.connector-setup-lead {
   margin: 0 0 10px;
-  color: var(--color-muted);
+  color: var(--muted);
   font-size: 13px;
 }
+
 .connector-setup-card ol {
   margin: 0;
   padding-left: 20px;
 }
+
 .connector-setup-card ol li {
-  margin: 4px 0;
-  line-height: 1.5;
+  margin: 5px 0;
+  line-height: 1.55;
+  font-size: 13.5px;
 }
+
 .connector-url-row {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 8px 0;
 }
+
 .connector-url-row code {
   flex: 1;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 13px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  padding: 7px 10px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
   overflow-x: auto;
   white-space: nowrap;
 }
+
 .connector-copy-btn {
   flex: 0 0 auto;
 }
+
 .wizard-pending-reminder {
-  border: 1px solid var(--color-border);
-  border-left: 4px solid var(--color-primary);
-  background: var(--color-surface);
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin: 12px 0;
   font-size: 14px;
 }
+
 .wizard-pending-reminder strong {
   display: block;
   margin-bottom: 4px;
+  color: var(--ink);
 }
 
 /* hosted_http provider sub-note lives inside the provider <li> so it
@@ -581,31 +1049,44 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .dashboard-section li:has(.dashboard-provider-hosted-note) {
   flex-wrap: wrap;
 }
+
 .dashboard-provider-hosted-note {
   flex-basis: 100%;
   margin: 6px 0 2px;
   font-size: 13px;
-  color: var(--color-muted);
-  line-height: 1.5;
+  color: var(--muted);
+  line-height: 1.55;
 }
 
 /* Status marks: green ✓ / red ✗ (own span so locale re-translation of a
    sibling data-i18n text node can't wipe them). */
 .mark-ok {
-  color: #1e8e3e;
-  font-weight: 600;
-}
-.mark-no {
-  color: #c0392b;
-  font-weight: 600;
+  color: var(--success);
+  font-weight: 660;
 }
 
-/* Native↔official tool toggle: extra breathing room from the
-   explanatory note above, and space between the state text and the
-   switch button. */
-.dashboard-tooluse {
-  margin-top: 10px;
+.mark-no {
+  color: var(--danger);
+  font-weight: 660;
 }
+
+/* Native↔official tool toggle: breathing room from the explanatory
+   note above, and space between the state text and the switch. */
+.dashboard-tooluse {
+  margin-top: 12px;
+}
+
 .dashboard-tooluse .btn {
   margin-left: 12px;
+}
+
+/* ---- reduced motion ------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
