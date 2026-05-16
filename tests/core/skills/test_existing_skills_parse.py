@@ -2,7 +2,7 @@
 
 These tests guard the contract that the parser (P1-08) accepts every
 SKILL.md currently shipped at the repository root under ``skills/``.
-None of the 16 in-tree files declare a ``capabilities`` block in
+None of the in-tree files declare a ``capabilities`` block in
 Phase 1, so every parsed entry must report empty capability frozensets.
 This sentinel catches accidental drift if someone adds ``capabilities``
 without going through the dedicated migration PR (planner tracks this

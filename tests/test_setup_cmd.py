@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 # Number of skills shipped in mureo/_data/skills/. Update this constant
 # whenever a skill is added or removed from the packaged set.
-EXPECTED_PACKAGED_SKILLS = 15
+EXPECTED_PACKAGED_SKILLS = 16
 
 
 @pytest.mark.unit
@@ -40,6 +40,7 @@ def test_install_skills(tmp_path: Path) -> None:
     assert dest == tmp_path / "skills"
     # Operational skills (formerly slash commands)
     assert (dest / "daily-check" / "SKILL.md").exists()
+    assert (dest / "learn" / "SKILL.md").exists()
     assert (dest / "onboard" / "SKILL.md").exists()
     assert (dest / "rescue" / "SKILL.md").exists()
     # Foundation skills (referenced as PREREQUISITE by the operational ones)
