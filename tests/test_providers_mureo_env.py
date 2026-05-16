@@ -274,11 +274,13 @@ def test_set_mureo_disable_env_writes_atomically(tmp_path: Path) -> None:
 def test_set_mureo_disable_env_uses_path_home_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Omitting ``settings_path`` resolves to ``Path.home()/.claude/settings.json``."""
+    """Omitting ``settings_path`` resolves to ``Path.home()/.claude.json``
+    (the file Claude Code reads user-scope MCP servers from — NOT
+    ``~/.claude/settings.json``)."""
     from mureo.providers.mureo_env import set_mureo_disable_env
 
     monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
-    settings_path = tmp_path / ".claude" / "settings.json"
+    settings_path = tmp_path / ".claude.json"
     _seed_settings(settings_path, {"mcpServers": {"mureo": {"command": "python"}}})
 
     result = set_mureo_disable_env("google_ads")
@@ -459,6 +461,51 @@ def test_add_provider_and_disable_in_mureo_single_atomic_write(
     assert spec.id in payload["mcpServers"]
     env = payload["mcpServers"]["mureo"]["env"]
     assert env["MUREO_DISABLE_GOOGLE_ADS"] == "1"
+
+
+@pytest.mark.unit
+def test_add_provider_and_disable_in_mureo_injects_extra_env(
+    tmp_path: Path,
+) -> None:
+    """``extra_env`` lands on the official provider block in the SAME write.
+
+    The provider registration AND its credential env block must be one
+    atomic ``os.replace`` (no torn state), AND the mureo-disable env
+    must still be set on the surviving native block.
+    """
+    from mureo.providers.mureo_env import add_provider_and_disable_in_mureo
+
+    settings_path = tmp_path / ".claude" / "settings.json"
+    _seed_settings(
+        settings_path,
+        {
+            "mcpServers": {
+                "mureo": {"command": "python", "args": ["-m", "mureo.mcp"]},
+            }
+        },
+    )
+    spec = _make_provider_spec()
+
+    result = add_provider_and_disable_in_mureo(
+        spec,
+        settings_path=settings_path,
+        extra_env={"GOOGLE_ADS_DEVELOPER_TOKEN": "DT"},
+    )
+
+    payload = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert payload["mcpServers"][spec.id]["env"] == {
+        "GOOGLE_ADS_DEVELOPER_TOKEN": "DT"
+    }
+    assert payload["mcpServers"]["mureo"]["env"]["MUREO_DISABLE_GOOGLE_ADS"] == "1"
+    assert result.changed is True
+
+    # Idempotent re-add with same env → no rewrite.
+    second = add_provider_and_disable_in_mureo(
+        spec,
+        settings_path=settings_path,
+        extra_env={"GOOGLE_ADS_DEVELOPER_TOKEN": "DT"},
+    )
+    assert second.changed is False
 
 
 @pytest.mark.unit

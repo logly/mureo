@@ -1,8 +1,8 @@
 """Tests for mureo.cli.web_auth — the browser-based OAuth wizard.
 
-The wizard lets a non-technical user run ``mureo auth setup --web``
-and walk through secret-entry + OAuth entirely in their browser, so
-they never see a terminal.
+The wizard is spawned per-platform by ``mureo.web.oauth_bridge`` on
+behalf of the ``mureo configure`` UI: the user walks through secret-
+entry + OAuth entirely in their browser, so they never see a terminal.
 
 These tests start the real wizard HTTP server on 127.0.0.1:0 (random
 port) in a background thread, make requests via ``urllib.request``,
@@ -16,44 +16,27 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
-from http.client import HTTPResponse
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Module under test — does not exist yet (RED).
 from mureo.cli.web_auth import (  # noqa: I001
     WebAuthWizard,
     WizardSession,
-    render_after_platform,
-    render_done,
     render_google_account_picker,
     render_google_secrets_form,
-    render_home,
     render_meta_account_picker,
     render_meta_secrets_form,
 )
 
+if TYPE_CHECKING:
+    from http.client import HTTPResponse
+    from pathlib import Path
+
 # ---------------------------------------------------------------------------
 # Pure-view tests (no HTTP server)
 # ---------------------------------------------------------------------------
-
-
-class TestRenderHome:
-    def test_shows_google_ads_button(self) -> None:
-        session = WizardSession()
-        html = render_home(session)
-        assert "<!doctype html>" in html.lower()
-        assert "Google" in html and "Ads" in html
-        assert "/google-ads" in html
-
-    def test_shows_meta_ads_button(self) -> None:
-        session = WizardSession()
-        html = render_home(session)
-        assert "Meta" in html and "Ads" in html
-        assert "/meta-ads" in html
 
 
 class TestRenderMetaSecretsForm:
@@ -140,21 +123,55 @@ def _fetch(wiz: Any, path: str) -> HTTPResponse:
     return urllib.request.urlopen(_url(wiz, path), timeout=2.0)
 
 
-class TestHomeRoute:
-    def test_serves_home_page(self, wizard: Any) -> None:
-        resp = _fetch(wizard, "/")
-        assert resp.status == 200
-        body = resp.read().decode("utf-8")
-        assert "mureo" in body.lower()
-        assert "/google-ads" in body
-
-
 class TestGoogleAdsFormRoute:
     def test_serves_form_with_csrf_token(self, wizard: Any) -> None:
         resp = _fetch(wizard, "/google-ads")
         assert resp.status == 200
         body = resp.read().decode("utf-8")
         assert wizard.session.csrf_token in body
+
+
+class TestLocaleRendering:
+    """``?locale=ja`` over the wire renders Japanese inline strings."""
+
+    def test_default_locale_is_english(self) -> None:
+        html = render_google_secrets_form(WizardSession())
+        assert 'lang="en"' in html
+        assert "Google Ads credentials" in html
+
+    def test_japanese_session_renders_japanese_heading(self) -> None:
+        session = WizardSession(locale="ja")
+        html = render_google_secrets_form(session)
+        assert 'lang="ja"' in html
+        assert "Google Ads 認証情報" in html
+
+    def test_japanese_meta_form_renders_japanese_heading(self) -> None:
+        session = WizardSession(locale="ja")
+        html = render_meta_secrets_form(session)
+        assert 'lang="ja"' in html
+        assert "Meta Ads 認証情報" in html
+
+    def test_query_locale_ja_switches_response(self, wizard: Any) -> None:
+        resp = _fetch(wizard, "/google-ads?locale=ja")
+        body = resp.read().decode("utf-8")
+        assert 'lang="ja"' in body
+        assert "Google Ads 認証情報" in body
+
+    def test_query_locale_unknown_falls_back_to_english(self, wizard: Any) -> None:
+        resp = _fetch(wizard, "/google-ads?locale=fr")
+        body = resp.read().decode("utf-8")
+        assert 'lang="en"' in body
+        assert "Google Ads credentials" in body
+
+    def test_empty_google_picker_japanese(self) -> None:
+        session = WizardSession(locale="ja")
+        html = render_google_account_picker(session, [])
+        assert "Google Ads アカウントが見つかりません" in html
+
+    def test_empty_meta_picker_japanese(self) -> None:
+        session = WizardSession(locale="ja")
+        html = render_meta_account_picker(session, [])
+        assert "Meta 広告アカウントが見つかりません" in html
 
 
 class TestGoogleAdsSubmitRoute:
@@ -321,14 +338,14 @@ class TestGoogleAdsCallbackRoute:
         assert wizard.session.google_client_id == "CID-abc"
         assert wizard.session.google_client_secret == "SECRET-xyz"
 
-    def test_callback_list_accounts_failure_proceeds_to_after_platform(
+    def test_callback_list_accounts_failure_proceeds_to_done(
         self, wizard: Any, tmp_path: Path
     ) -> None:
         """If the Google Ads API account list call fails or returns
         empty, the wizard still saves the credentials (with null
-        customer_id / login_customer_id) and sends the user to the
-        after-platform page with a warning flag. The user doesn't
-        lose the refresh token."""
+        customer_id / login_customer_id) and sends the user to /done so
+        the spawning configure-UI can collect the completion signal.
+        The user doesn't lose the refresh token."""
         wizard.session.google_flow = MagicMock()
         wizard.session.google_developer_token = "DT-123"
         wizard.session.google_client_id = "CID-abc"
@@ -364,9 +381,7 @@ class TestGoogleAdsCallbackRoute:
                 )
             assert exc_info.value.code == 302
             loc = exc_info.value.headers.get("Location", "")
-            assert "/after-platform" in loc
-            assert "platform=google" in loc
-            assert "warn=no_accounts" in loc
+            assert loc == "/done"
 
         import json
 
@@ -628,7 +643,7 @@ class TestMetaAdsCallbackRoute:
         assert wizard.session.meta_app_id == "APP-123"
         assert wizard.session.meta_app_secret == "SECRET-abc"
 
-    def test_callback_list_accounts_failure_proceeds_to_after_platform(
+    def test_callback_list_accounts_failure_proceeds_to_done(
         self, wizard: Any, tmp_path: Path
     ) -> None:
         wizard.session.meta_app_id = "APP-123"
@@ -664,9 +679,7 @@ class TestMetaAdsCallbackRoute:
                 )
             assert exc_info.value.code == 302
             loc = exc_info.value.headers.get("Location", "")
-            assert "/after-platform" in loc
-            assert "platform=meta" in loc
-            assert "warn=no_accounts" in loc
+            assert loc == "/done"
 
         import json
 
@@ -684,7 +697,7 @@ class TestSecurityHardening:
     """Regression tests for the P2-2 security review findings."""
 
     def test_response_has_full_security_headers(self, wizard: Any) -> None:
-        resp = _fetch(wizard, "/")
+        resp = _fetch(wizard, "/google-ads")
         csp = resp.headers["Content-Security-Policy"]
         for directive in (
             "default-src 'none'",
@@ -772,122 +785,14 @@ class TestSecurityHardening:
 
 
 class TestDoneRoute:
-    def test_done_page_marks_completion(self, wizard: Any, tmp_path: Path) -> None:
-        # Simulate a completed Google save so the page has something to
-        # describe. Without credentials on disk, render_done uses a
-        # neutral fallback.
-        import json
-
-        creds_file = tmp_path / ".mureo" / "credentials.json"
-        creds_file.parent.mkdir(parents=True, exist_ok=True)
-        creds_file.write_text(
-            json.dumps(
-                {
-                    "google_ads": {
-                        "developer_token": "DT",
-                        "client_id": "CID",
-                        "client_secret": "SEC",
-                        "refresh_token": "RT",
-                        "customer_id": "1111111111",
-                        "login_customer_id": "1111111111",
-                    }
-                }
-            ),
-            encoding="utf-8",
-        )
-
+    def test_done_page_marks_completion(self, wizard: Any) -> None:
+        """`/done` renders the terminal page and flips wizard.completed,
+        which is the binding contract the OAuthBridge watcher polls on."""
         resp = _fetch(wizard, "/done")
         assert resp.status == 200
         body = resp.read().decode("utf-8")
         assert "close" in body.lower() or "done" in body.lower()
         assert wizard.completed is True
-
-    def test_dynamic_message_mentions_only_google_when_only_google(
-        self, wizard: Any, tmp_path: Path
-    ) -> None:
-        import json
-
-        creds_file = tmp_path / ".mureo" / "credentials.json"
-        creds_file.parent.mkdir(parents=True, exist_ok=True)
-        creds_file.write_text(
-            json.dumps(
-                {
-                    "google_ads": {
-                        "developer_token": "DT",
-                        "client_id": "CID",
-                        "client_secret": "SEC",
-                        "refresh_token": "RT",
-                        # customer_id required for "configured" status —
-                        # without it the creds are unusable and /done
-                        # must not lie about completion.
-                        "customer_id": "1111111111",
-                        "login_customer_id": "1111111111",
-                    }
-                }
-            ),
-            encoding="utf-8",
-        )
-
-        resp = _fetch(wizard, "/done")
-        body = resp.read().decode("utf-8")
-        assert "Google Ads" in body
-        assert "Meta Ads" not in body
-
-    def test_dynamic_message_mentions_both_when_both_configured(
-        self, wizard: Any, tmp_path: Path
-    ) -> None:
-        import json
-
-        creds_file = tmp_path / ".mureo" / "credentials.json"
-        creds_file.parent.mkdir(parents=True, exist_ok=True)
-        creds_file.write_text(
-            json.dumps(
-                {
-                    "google_ads": {
-                        "developer_token": "DT",
-                        "client_id": "CID",
-                        "client_secret": "SEC",
-                        "refresh_token": "RT",
-                        "customer_id": "1111111111",
-                        "login_customer_id": "1111111111",
-                    },
-                    "meta_ads": {
-                        "access_token": "AT",
-                        "app_id": "APP",
-                        "app_secret": "S",
-                        "account_id": "act_111111",
-                    },
-                }
-            ),
-            encoding="utf-8",
-        )
-
-        resp = _fetch(wizard, "/done")
-        body = resp.read().decode("utf-8")
-        assert "Google Ads" in body
-        assert "Meta Ads" in body
-
-
-class TestRenderDone:
-    def test_mentions_google_only(self) -> None:
-        html = render_done({"google"})
-        assert "Google Ads" in html
-        assert "Meta Ads" not in html
-
-    def test_mentions_meta_only(self) -> None:
-        html = render_done({"meta"})
-        assert "Meta Ads" in html
-        assert "Google Ads" not in html
-
-    def test_mentions_both(self) -> None:
-        html = render_done({"google", "meta"})
-        assert "Google Ads" in html
-        assert "Meta Ads" in html
-
-    def test_fallback_when_none_configured(self) -> None:
-        # Shouldn't normally happen, but must not crash.
-        html = render_done(set())
-        assert "<!doctype html>" in html.lower()
 
 
 class TestRenderGoogleAccountPicker:
@@ -943,37 +848,6 @@ class TestRenderMetaAccountPicker:
         assert 'action="/meta-ads/select-account"' in html
         assert "act_111" in html
         assert "Primary" in html
-
-
-class TestRenderAfterPlatform:
-    def test_shows_configure_meta_when_only_google_done(self) -> None:
-        html = render_after_platform({"google"}, just_completed="google")
-        assert "/meta-ads" in html
-        assert "Finish" in html or "finish" in html.lower()
-
-    def test_shows_configure_google_when_only_meta_done(self) -> None:
-        html = render_after_platform({"meta"}, just_completed="meta")
-        assert "/google-ads" in html
-
-    def test_shows_only_finish_when_both_done(self) -> None:
-        html = render_after_platform({"google", "meta"}, just_completed="meta")
-        # The "configure other" CTA must not appear.
-        assert "Configure Google Ads" not in html
-        assert "Configure Meta Ads" not in html
-        assert "Finish" in html or "finish" in html.lower()
-
-    def test_shows_warning_when_no_accounts(self) -> None:
-        html = render_after_platform(
-            {"google"},
-            just_completed="google",
-            warn="no_accounts",
-        )
-        # A visible warning word/phrase — don't pin exact copy.
-        assert (
-            "warn" in html.lower()
-            or "warning" in html.lower()
-            or ("could not" in html.lower())
-        )
 
 
 class TestGoogleAccountPickerRoute:
@@ -1077,8 +951,7 @@ class TestGoogleAccountSubmitRoute:
             opener.open(req, timeout=2.0)
         assert exc_info.value.code == 302
         loc = exc_info.value.headers.get("Location", "")
-        assert "/after-platform" in loc
-        assert "platform=google" in loc
+        assert loc == "/done"
 
         import json
 
@@ -1200,8 +1073,7 @@ class TestMetaAccountSubmitRoute:
             opener.open(req, timeout=2.0)
         assert exc_info.value.code == 302
         loc = exc_info.value.headers.get("Location", "")
-        assert "/after-platform" in loc
-        assert "platform=meta" in loc
+        assert loc == "/done"
 
         import json
 
@@ -1234,153 +1106,6 @@ class TestMetaAccountSubmitRoute:
         with pytest.raises(urllib.error.HTTPError) as exc_info:
             urllib.request.urlopen(req, timeout=2.0)
         assert exc_info.value.code == 400
-
-
-class TestAfterPlatformRoute:
-    def _write_google_only(self, tmp_path: Path) -> None:
-        import json
-
-        creds = tmp_path / ".mureo" / "credentials.json"
-        creds.parent.mkdir(parents=True, exist_ok=True)
-        creds.write_text(
-            json.dumps(
-                {
-                    "google_ads": {
-                        "developer_token": "DT",
-                        "client_id": "CID",
-                        "client_secret": "SEC",
-                        "refresh_token": "RT",
-                        "customer_id": "1111111111",
-                        "login_customer_id": "1111111111",
-                    }
-                }
-            ),
-            encoding="utf-8",
-        )
-
-    def _write_both(self, tmp_path: Path) -> None:
-        import json
-
-        creds = tmp_path / ".mureo" / "credentials.json"
-        creds.parent.mkdir(parents=True, exist_ok=True)
-        creds.write_text(
-            json.dumps(
-                {
-                    "google_ads": {
-                        "developer_token": "DT",
-                        "client_id": "CID",
-                        "client_secret": "SEC",
-                        "refresh_token": "RT",
-                        "customer_id": "1111111111",
-                        "login_customer_id": "1111111111",
-                    },
-                    "meta_ads": {
-                        "access_token": "AT",
-                        "account_id": "act_111111",
-                    },
-                }
-            ),
-            encoding="utf-8",
-        )
-
-    def test_shows_configure_other_when_one_done(
-        self, wizard: Any, tmp_path: Path
-    ) -> None:
-        self._write_google_only(tmp_path)
-        resp = _fetch(wizard, "/after-platform?platform=google")
-        assert resp.status == 200
-        body = resp.read().decode("utf-8")
-        # Should include a way to reach /meta-ads.
-        assert "/meta-ads" in body
-
-    def test_shows_only_finish_when_both_done(
-        self, wizard: Any, tmp_path: Path
-    ) -> None:
-        self._write_both(tmp_path)
-        resp = _fetch(wizard, "/after-platform?platform=meta")
-        assert resp.status == 200
-        body = resp.read().decode("utf-8")
-        # No CTA text for configuring the other platform.
-        assert "Configure Google Ads" not in body
-        assert "Configure Meta Ads" not in body
-        # But the finish link must be there.
-        assert "/done" in body
-
-    def test_shows_warning_when_warn_no_accounts(
-        self, wizard: Any, tmp_path: Path
-    ) -> None:
-        self._write_google_only(tmp_path)
-        resp = _fetch(
-            wizard,
-            "/after-platform?platform=google&warn=no_accounts",
-        )
-        body = resp.read().decode("utf-8")
-        # Some indication of the warning.
-        assert (
-            "could not" in body.lower()
-            or "no account" in body.lower()
-            or ("warning" in body.lower())
-        )
-
-
-class TestFinishConfirmRoute:
-    """`/done` must be gated by a Yes/No confirmation page so the user
-    can't quit the wizard by accidentally mashing a button that looks
-    identical to "Configure the other platform too"."""
-
-    def test_after_platform_finish_button_targets_confirm(
-        self, wizard: Any, tmp_path: Path
-    ) -> None:
-        """The Finish setup form on /after-platform must post to
-        /done/confirm, not /done directly."""
-        import json
-
-        creds = tmp_path / ".mureo" / "credentials.json"
-        creds.parent.mkdir(parents=True, exist_ok=True)
-        creds.write_text(
-            json.dumps(
-                {
-                    "google_ads": {
-                        "developer_token": "DT",
-                        "client_id": "CID",
-                        "client_secret": "SEC",
-                        "refresh_token": "RT",
-                        "customer_id": "1111111111",
-                        "login_customer_id": "1111111111",
-                    }
-                }
-            ),
-            encoding="utf-8",
-        )
-        resp = _fetch(wizard, "/after-platform?platform=google")
-        body = resp.read().decode("utf-8")
-        assert 'action="/done/confirm"' in body
-        # The Finish button wears the distinct "btn-finish" class so it
-        # doesn't visually collide with the primary-blue "Configure X
-        # too" button right next to it.
-        assert "btn-finish" in body
-
-    def test_confirm_page_shows_yes_and_no(self, wizard: Any) -> None:
-        resp = _fetch(wizard, "/done/confirm?platform=meta")
-        body = resp.read().decode("utf-8")
-        # Yes goes to the terminal /done page.
-        assert 'action="/done"' in body
-        # No sends the user back to the after-platform they came from.
-        assert 'action="/after-platform"' in body
-        assert 'value="meta"' in body
-        # Visually distinct styling.
-        assert "btn-finish" in body  # Yes is the positive-terminal color
-        assert "btn-secondary" in body  # No is the soft-cancel style
-
-    def test_confirm_page_rejects_unknown_platform_safely(self, wizard: Any) -> None:
-        """A garbage ``platform`` query still renders the page — the
-        return path falls back to ``google`` so clicking No doesn't
-        stall at a broken URL."""
-        resp = _fetch(wizard, "/done/confirm?platform=../../evil")
-        body = resp.read().decode("utf-8")
-        assert 'value="google"' in body
-        # And no reflection of the attacker string into the HTML.
-        assert "../../evil" not in body
 
 
 class TestUnknownRoute:

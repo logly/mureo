@@ -39,6 +39,11 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     # Also patch auth_setup.Path.home so the regression test that calls
     # install_mcp_config() writes into tmp_path rather than the user's home.
     monkeypatch.setattr("mureo.auth_setup.Path.home", lambda: tmp_path)
+    # Force the no-CLI fallback everywhere so integration tests are
+    # deterministic and never shell out to a real ``claude`` binary
+    # (which would mutate the developer's actual ~/.claude.json).
+    monkeypatch.setattr("mureo.providers.config_writer.shutil.which", lambda _: None)
+    monkeypatch.setattr("mureo.auth_setup.shutil.which", lambda _: None)
 
     mock_run = MagicMock(
         return_value=subprocess.CompletedProcess(
@@ -107,66 +112,64 @@ def test_add_invokes_pipx_for_google_ads(home: Path) -> None:
 
 
 @pytest.mark.integration
-def test_add_meta_writes_hosted_url_without_subprocess(home: Path) -> None:
-    """``add meta-ads-official`` writes the hosted endpoint without subprocess.
+def test_add_meta_does_not_register_prints_connector_steps(home: Path) -> None:
+    """``add meta-ads-official``: Meta's hosted MCP has no OAuth dynamic
+    client registration, so it cannot be `/mcp`-authenticated as a
+    user-scope server. mureo does NOT write it to ~/.claude.json — it
+    prints the Claude.ai connector steps instead. No subprocess;
+    mureo-native Meta is NOT auto-disabled (no-strand)."""
+    settings_path = home / ".claude.json"
+    _seed_mureo_block(settings_path)
 
-    Meta delivers its official Ads MCP as a hosted HTTP service at
-    ``https://mcp.facebook.com/ads`` (no local install, no business-id in
-    the URL — Business Manager / ad-account selection happens during the
-    browser OAuth consent flow on first connect). ``run_install`` must
-    short-circuit so ``subprocess.run`` is never invoked; the
-    ``mcpServers.meta-ads-official`` entry is registered directly with
-    the Claude Code HTTP-transport shape.
-    """
     result = _invoke("providers", "add", "meta-ads-official")
     assert result.exit_code == 0, result.output
 
-    # No pipx / npm subprocess for hosted endpoints.
     mock_run = _get_subprocess_mock()
     mock_run.assert_not_called()
 
-    # The hosted endpoint config landed in settings.json.
-    settings_path = home / ".claude" / "settings.json"
-    assert settings_path.exists()
+    # NOT registered: the seeded file is untouched (no meta entry added,
+    # native Meta not disabled).
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
-    entry = payload["mcpServers"]["meta-ads-official"]
-    assert entry["type"] == "http"
-    assert entry["url"] == "https://mcp.facebook.com/ads"
+    assert "meta-ads-official" not in payload["mcpServers"]
+    assert "MUREO_DISABLE_META_ADS" not in payload["mcpServers"]["mureo"].get("env", {})
+
+    combined = (result.output or "") + (result.stderr or "")
+    lowered = combined.lower()
+    assert "connector" in lowered
+    assert "claude.ai" in lowered
+    assert "mcp.facebook.com/ads" in combined
 
 
 @pytest.mark.integration
-def test_add_meta_dry_run_marks_hosted_no_install(home: Path) -> None:
-    """``--dry-run meta-ads-official`` describes the hosted no-op explicitly.
-
-    Hosted endpoints have no subprocess to dry-run-preview. The CLI must
-    still confirm what would be written into ``mcpServers``, and the
-    dry-run banner should make clear that no local install is invoked
-    (instead of printing ``would run argv []`` which is confusing).
-    """
+def test_add_meta_dry_run_says_not_registered_connector(home: Path) -> None:
+    """``--dry-run meta-ads-official`` says it would NOT register
+    locally and points at the Claude.ai connector steps; nothing is
+    written."""
     result = _invoke("providers", "add", "meta-ads-official", "--dry-run")
     assert result.exit_code == 0, result.output
 
     mock_run = _get_subprocess_mock()
     mock_run.assert_not_called()
 
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     assert not settings_path.exists()
 
     out = result.output
-    # Mentions the hosted-endpoint nature.
-    assert "hosted" in out.lower() or "no local install" in out.lower()
-    # Still surfaces the planned mcpServers payload.
-    assert "mcp.facebook.com/ads" in out
+    lowered = out.lower()
+    assert "would not register" in lowered
+    assert "connector" in lowered
     assert "meta-ads-official" in out
+    # No native auto-disable is promised.
+    assert "mureo_disable_meta_ads" not in lowered
 
 
 @pytest.mark.integration
 def test_add_writes_settings_json(home: Path) -> None:
-    """``add`` writes ``mcpServers.<id>`` to ``~/.claude/settings.json``."""
+    """``add`` writes ``mcpServers.<id>`` to ``~/.claude.json``."""
     result = _invoke("providers", "add", "google-ads-official")
     assert result.exit_code == 0, result.output
 
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     assert settings_path.exists()
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
     assert "google-ads-official" in payload["mcpServers"]
@@ -177,7 +180,7 @@ def test_add_is_idempotent(home: Path) -> None:
     """Two ``add`` calls produce a byte-equal settings file and exit 0 each."""
     first = _invoke("providers", "add", "google-ads-official")
     assert first.exit_code == 0, first.output
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     first_bytes = settings_path.read_bytes()
 
     second = _invoke("providers", "add", "google-ads-official")
@@ -208,10 +211,17 @@ def test_add_all_installs_every_catalog_entry(home: Path) -> None:
     mock_run = _get_subprocess_mock()
     assert mock_run.call_count == expected_subprocess_calls
 
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
+    # Non-hosted catalog entries are registered as mcpServers entries
+    # (pipx ones run a subprocess first). hosted_http (Meta) is NOT
+    # registered locally — Meta's MCP has no OAuth dynamic client
+    # registration, so it can only be wired via a Claude.ai connector.
     for spec in CATALOG:
-        assert spec.id in payload["mcpServers"], spec.id
+        if spec.install_kind == "hosted_http":
+            assert spec.id not in payload["mcpServers"], spec.id
+        else:
+            assert spec.id in payload["mcpServers"], spec.id
 
 
 @pytest.mark.integration
@@ -271,7 +281,7 @@ def test_add_dry_run_does_not_call_subprocess(home: Path) -> None:
     mock_run = _get_subprocess_mock()
     mock_run.assert_not_called()
 
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     assert not settings_path.exists()
 
     # The output should describe what would happen.
@@ -293,7 +303,7 @@ def test_add_emits_coexistence_warning(home: Path) -> None:
 @pytest.mark.integration
 def test_remove_deletes_key(home: Path) -> None:
     """``remove`` pops the provider key but leaves the native ``mureo`` entry."""
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(
         json.dumps(
@@ -337,6 +347,8 @@ def test_existing_setup_claude_code_still_works(home: Path) -> None:
     """Regression: ``install_mcp_config`` + new providers ``add`` coexist."""
     from mureo.auth_setup import install_mcp_config
 
+    # ``home`` fixture forces the no-CLI fallback (no real ``claude``
+    # shell-out), so this writes into tmp_path/.claude.json.
     result_path = install_mcp_config(scope="global")
     assert result_path is not None
     assert result_path.exists()
@@ -372,7 +384,7 @@ def test_main_registers_providers_app(home: Path) -> None:
 
 
 def _seed_mureo_block(settings_path: Path) -> None:
-    """Pre-seed ``~/.claude/settings.json`` with the native mureo entry.
+    """Pre-seed ``~/.claude.json`` with the native mureo entry.
 
     Represents the state after the user has previously run
     ``mureo setup claude-code``.
@@ -393,7 +405,7 @@ def _seed_mureo_block(settings_path: Path) -> None:
 @pytest.mark.integration
 def test_add_google_ads_sets_mureo_disable_env(home: Path) -> None:
     """``add google-ads-official`` writes ``MUREO_DISABLE_GOOGLE_ADS=1``."""
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     _seed_mureo_block(settings_path)
 
     result = _invoke("providers", "add", "google-ads-official")
@@ -406,29 +418,32 @@ def test_add_google_ads_sets_mureo_disable_env(home: Path) -> None:
 
 
 @pytest.mark.integration
-def test_add_meta_ads_sets_mureo_disable_env(home: Path) -> None:
-    """``add meta-ads-official`` (hosted_http) still writes ``MUREO_DISABLE_META_ADS=1``.
+def test_add_meta_ads_does_not_disable_native(home: Path) -> None:
+    """``add meta-ads-official`` neither registers the hosted entry nor
+    disables mureo-native Meta.
 
-    Meta is hosted_http so ``subprocess.run`` is NOT invoked, but the
-    auto-disable env var IS still written (the registration flow is the
-    same — only the install method differs).
+    Meta's hosted MCP cannot be `/mcp`-authenticated (no dynamic client
+    registration); mureo does not register it locally. Nothing is
+    registered/verified, so disabling native would strand the user
+    (observed regression). Native stays until `providers confirm`
+    after the connector is verified Connected.
     """
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     _seed_mureo_block(settings_path)
 
     result = _invoke("providers", "add", "meta-ads-official")
     assert result.exit_code == 0, result.output
 
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert "meta-ads-official" in payload["mcpServers"]
+    assert "meta-ads-official" not in payload["mcpServers"]
     mureo_env = payload["mcpServers"]["mureo"].get("env", {})
-    assert mureo_env.get("MUREO_DISABLE_META_ADS") == "1"
+    assert "MUREO_DISABLE_META_ADS" not in mureo_env
 
 
 @pytest.mark.integration
 def test_add_ga4_sets_mureo_disable_env(home: Path) -> None:
     """``add ga4-official`` writes ``MUREO_DISABLE_GA4=1``."""
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     _seed_mureo_block(settings_path)
 
     result = _invoke("providers", "add", "ga4-official")
@@ -447,7 +462,7 @@ def test_remove_provider_unsets_mureo_disable_env(home: Path) -> None:
     Seeds a user-added ``PYTHONPATH`` env entry before ``add`` so we can
     verify that ``remove`` does NOT pop it alongside the MUREO_DISABLE key.
     """
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(
         json.dumps(
@@ -496,7 +511,7 @@ def test_add_without_existing_mureo_block_skips_disable_env_gracefully(
     auto-disable because no mureo block exists. The official provider
     registration still happens (existing Phase 1 behavior).
     """
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     assert not settings_path.exists()
 
     result = _invoke("providers", "add", "google-ads-official")
@@ -518,3 +533,75 @@ def test_add_without_existing_mureo_block_skips_disable_env_gracefully(
         or "skipped" in lowered
         or "not found" in lowered
     )
+
+
+# ---------------------------------------------------------------------------
+# `mureo providers confirm <id>` — disable native ONCE the official hosted
+# connector is verified Connected (closes the post-setup coexistence gap
+# without ever auto-disabling native before the official path works).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_confirm_unknown_provider_exit_2(home: Path) -> None:
+    result = _invoke("providers", "confirm", "nope")
+    assert result.exit_code == 2
+    assert "unknown provider" in (result.output + (result.stderr or "")).lower()
+
+
+@pytest.mark.integration
+def test_confirm_non_hosted_is_rejected(home: Path) -> None:
+    result = _invoke("providers", "confirm", "google-ads-official")
+    assert result.exit_code == 2
+    assert "hosted" in result.output.lower()
+
+
+@pytest.mark.integration
+def test_confirm_not_connected_does_not_disable_native(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Connector not yet authorised → guidance, exit 1, native untouched."""
+    settings_path = home / ".claude.json"
+    _seed_mureo_block(settings_path)
+    monkeypatch.setattr(
+        "mureo.cli.providers_cmd.is_hosted_provider_connected",
+        lambda spec: False,
+    )
+
+    result = _invoke("providers", "confirm", "meta-ads-official")
+    assert result.exit_code == 1
+    out = result.output.lower()
+    assert "connector" in out and "claude mcp list" in out
+    payload = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert "MUREO_DISABLE_META_ADS" not in payload["mcpServers"]["mureo"].get("env", {})
+
+
+@pytest.mark.integration
+def test_confirm_connected_disables_native(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings_path = home / ".claude.json"
+    _seed_mureo_block(settings_path)
+    monkeypatch.setattr(
+        "mureo.cli.providers_cmd.is_hosted_provider_connected",
+        lambda spec: True,
+    )
+
+    result = _invoke("providers", "confirm", "meta-ads-official")
+    assert result.exit_code == 0, result.output
+    payload = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert payload["mcpServers"]["mureo"]["env"]["MUREO_DISABLE_META_ADS"] == "1"
+    assert "restart" in result.output.lower()
+
+
+@pytest.mark.integration
+def test_confirm_connected_no_mureo_block_informative(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "mureo.cli.providers_cmd.is_hosted_provider_connected",
+        lambda spec: True,
+    )
+    result = _invoke("providers", "confirm", "meta-ads-official")
+    assert result.exit_code == 0
+    assert "setup claude-code" in result.output.lower()

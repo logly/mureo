@@ -211,6 +211,10 @@ def test_setup_claude_code_runs_without_tty(
     monkeypatch.setattr("mureo.cli.setup_cmd.Path.home", lambda: tmp_path)
     monkeypatch.setattr("mureo.auth_setup.Path.home", lambda: tmp_path)
     monkeypatch.setattr("mureo.cli.setup_codex.Path.home", lambda: tmp_path)
+    # Force the no-CLI fallback so the test never shells out to a real
+    # ``claude`` binary (which would mutate the developer's real
+    # ~/.claude.json); the mureo MCP block then lands in tmp/.claude.json.
+    monkeypatch.setattr("mureo.auth_setup.shutil.which", lambda _: None)
     # Guard: if any code path tries to reach OAuth, fail loudly.
     from mureo import auth_setup
 
@@ -226,12 +230,17 @@ def test_setup_claude_code_runs_without_tty(
     assert "No TTY detected" in result.output
     assert "Setup complete" in result.output
 
-    # MCP config must exist with mureo registered.
+    # MCP config must exist with mureo registered. User-scope MCP servers
+    # live in ~/.claude.json (NOT settings.json — never read for MCP).
+    claude_json = tmp_path / ".claude.json"
+    assert claude_json.exists()
+    mcp_cfg = json.loads(claude_json.read_text(encoding="utf-8"))
+    assert "mureo" in mcp_cfg.get("mcpServers", {})
+    # Credential guard hook installed in settings.json (hooks DO live
+    # there — only MCP discovery does not).
     settings_path = tmp_path / ".claude" / "settings.json"
     assert settings_path.exists()
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert "mureo" in settings.get("mcpServers", {})
-    # Credential guard hook installed (same settings.json).
     hooks = settings.get("hooks", {}).get("PreToolUse", [])
     assert any(
         "[mureo-credential-guard]" in h.get("command", "")

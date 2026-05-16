@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mureo configuration</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-header-title">
+      <img class="app-logo app-logo-light" src="/static/logo.png" alt="mureo" width="413" height="63" />
+      <img class="app-logo app-logo-dark" src="/static/logo-dark.png" alt="mureo" width="413" height="63" />
+    </div>
+    <nav class="app-header-nav">
+      <button type="button" class="btn btn-secondary" data-nav-dashboard data-i18n="nav.dashboard">Dashboard</button>
+      <button type="button" class="lang-toggle" data-lang-toggle="en">English</button>
+      <button type="button" class="lang-toggle" data-lang-toggle="ja">日本語</button>
+    </nav>
+  </header>
+
+  <main class="app-main">
+    <!-- Pre-Wizard: Welcome -->
+    <section class="landing" data-landing hidden>
+      <div class="landing-card">
+        <h1 class="landing-title" data-i18n="landing.title">Welcome to mureo</h1>
+        <p class="landing-desc" data-i18n="landing.desc">Set up mureo for your Claude application.</p>
+        <button type="button" class="landing-cta" data-landing-start data-i18n="landing.start">
+          Start setup
+        </button>
+      </div>
+
+      <div class="landing-legacy-notice" data-landing-legacy-notice hidden>
+        <h2 data-i18n="landing.legacy_notice_title">Legacy commands detected</h2>
+        <p data-i18n="landing.legacy_notice_desc">Older mureo versions left workflow files in ~/.claude/commands/. They are now superseded by skills.</p>
+        <button type="button" data-landing-legacy-remove data-i18n="landing.legacy_notice_button">Remove legacy files</button>
+      </div>
+    </section>
+
+    <!-- Wizard root -->
+    <section class="wizard" data-wizard hidden>
+      <div class="wizard-step" data-wizard-step>
+        <!-- step body rendered by wizard.js -->
+      </div>
+
+      <footer class="wizard-actions" data-wizard-actions>
+        <button type="button" class="wizard-back" data-wizard-action="prev" data-i18n="wizard.back">Back</button>
+        <button type="button" class="wizard-skip" data-wizard-action="skip" data-i18n="wizard.skip">Skip</button>
+        <button type="button" class="wizard-next" data-wizard-action="next" data-i18n="wizard.next">Next</button>
+      </footer>
+      <p class="wizard-progress" data-wizard-progress></p>
+    </section>
+
+    <!-- Dashboard root -->
+    <section class="dashboard" data-dashboard hidden>
+      <div class="dashboard-header">
+        <h1 data-i18n="dashboard.title">mureo configuration</h1>
+        <div class="dashboard-controls">
+          <button type="button" class="btn btn-primary" data-dashboard-rerun-wizard data-i18n="dashboard.rerun_wizard_button">Re-run wizard</button>
+        </div>
+      </div>
+
+      <div class="dashboard-layout">
+        <nav class="dashboard-nav" aria-label="Dashboard sections">
+          <ul>
+            <li>
+              <a href="#" class="dashboard-nav-item" data-dashboard-nav="setup"
+                 role="button" tabindex="0" aria-current="page"
+                 data-i18n="dashboard.nav_setup">Setup</a>
+            </li>
+            <li>
+              <a href="#" class="dashboard-nav-item" data-dashboard-nav="demo"
+                 role="button" tabindex="0"
+                 data-i18n="dashboard.nav_demo">Demo</a>
+            </li>
+            <li>
+              <a href="#" class="dashboard-nav-item" data-dashboard-nav="byod"
+                 role="button" tabindex="0"
+                 data-i18n="dashboard.nav_byod">BYOD</a>
+            </li>
+            <li>
+              <a href="#" class="dashboard-nav-item" data-dashboard-nav="danger"
+                 role="button" tabindex="0"
+                 data-i18n="dashboard.nav_danger">Danger Zone</a>
+            </li>
+          </ul>
+        </nav>
+
+        <div class="dashboard-pane">
+          <div class="dashboard-group" data-dashboard-group="setup">
+            <div class="dashboard-section" data-dashboard-host>
+              <h2 data-i18n="dashboard.host_title">Claude app</h2>
+              <p data-dashboard-host-value></p>
+            </div>
+
+            <div class="dashboard-section" data-dashboard-basic>
+              <h2 data-i18n="dashboard.basic_title">mureo basic setup</h2>
+              <ul data-dashboard-basic-list></ul>
+            </div>
+
+            <div class="dashboard-section" data-dashboard-native>
+              <h2 data-i18n="dashboard.native_title">mureo integrations</h2>
+              <ul data-dashboard-native-list></ul>
+            </div>
+
+            <div class="dashboard-section" data-dashboard-providers>
+              <h2 data-i18n="dashboard.providers_title">Official MCP providers</h2>
+              <ul data-dashboard-providers-list></ul>
+            </div>
+
+            <div class="dashboard-section" data-dashboard-env>
+              <h2 data-i18n="dashboard.env_title">mureo Credentials (advanced)</h2>
+              <ul class="dashboard-env-list" data-dashboard-env-list></ul>
+              <details>
+                <summary data-i18n="dashboard.env_details">Set a credential value</summary>
+                <form data-env-form>
+                  <label>
+                    <span data-i18n="dashboard.env_name_label">Field</span>
+                    <select name="env_name" data-env-name>
+                      <option value="GOOGLE_ADS_DEVELOPER_TOKEN">GOOGLE_ADS_DEVELOPER_TOKEN</option>
+                      <option value="GOOGLE_ADS_CLIENT_ID">GOOGLE_ADS_CLIENT_ID</option>
+                      <option value="GOOGLE_ADS_CLIENT_SECRET">GOOGLE_ADS_CLIENT_SECRET</option>
+                      <option value="GOOGLE_ADS_REFRESH_TOKEN">GOOGLE_ADS_REFRESH_TOKEN</option>
+                      <option value="GOOGLE_ADS_LOGIN_CUSTOMER_ID">GOOGLE_ADS_LOGIN_CUSTOMER_ID</option>
+                      <option value="GOOGLE_ADS_CUSTOMER_ID">GOOGLE_ADS_CUSTOMER_ID</option>
+                      <option value="META_ADS_ACCESS_TOKEN">META_ADS_ACCESS_TOKEN</option>
+                      <option value="META_ADS_APP_ID">META_ADS_APP_ID</option>
+                      <option value="META_ADS_APP_SECRET">META_ADS_APP_SECRET</option>
+                      <option value="META_ADS_ACCOUNT_ID">META_ADS_ACCOUNT_ID</option>
+                      <option value="GOOGLE_APPLICATION_CREDENTIALS">GOOGLE_APPLICATION_CREDENTIALS</option>
+                      <option value="GOOGLE_PROJECT_ID">GOOGLE_PROJECT_ID</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span data-i18n="dashboard.env_value_label">Value</span>
+                    <input type="password" name="env_value" autocomplete="off">
+                  </label>
+                  <button type="submit" class="btn btn-primary" data-i18n="dashboard.env_submit">Save</button>
+                </form>
+              </details>
+            </div>
+          </div>
+
+          <div class="dashboard-group" data-dashboard-group="demo" hidden>
+            <div class="dashboard-section" data-dashboard-demo>
+              <h2 data-i18n="dashboard.demo_title">デモ / Demo</h2>
+              <p data-i18n="dashboard.demo_desc">Scaffold a self-contained demo workspace with synthetic ad data.</p>
+              <label>
+                <span data-i18n="dashboard.demo_scenario_label">Scenario</span>
+                <select data-demo-scenario></select>
+              </label>
+              <label>
+                <span data-i18n="dashboard.demo_target_label">Target directory</span>
+                <input type="text" data-demo-target autocomplete="off" placeholder="/Users/you/mureo-demo">
+              </label>
+              <button type="button" class="btn btn-secondary" data-demo-browse data-i18n="dashboard.browse">Browse…</button>
+              <button type="button" class="btn btn-primary" data-demo-create data-i18n="dashboard.demo_create">Create demo</button>
+              <p class="dashboard-demo-result" data-demo-result></p>
+            </div>
+          </div>
+
+          <div class="dashboard-group" data-dashboard-group="byod" hidden>
+            <div class="dashboard-section" data-dashboard-byod>
+              <h2 data-i18n="dashboard.byod_title">BYOD</h2>
+              <p data-i18n="dashboard.byod_desc">Import your own ad data from an Ad data file (Excel) and analyse it locally.</p>
+              <table class="dashboard-byod-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="dashboard.byod_col_platform">Platform</th>
+                    <th data-i18n="dashboard.byod_col_mode">Mode</th>
+                    <th data-i18n="dashboard.byod_col_detail">Detail</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody data-byod-status-body></tbody>
+              </table>
+              <label>
+                <span data-i18n="dashboard.byod_file_label">Ad data file (Excel) path</span>
+                <input type="text" data-byod-file autocomplete="off" placeholder="/Users/you/ad-data.xlsx">
+              </label>
+              <button type="button" class="btn btn-secondary" data-byod-browse data-i18n="dashboard.browse">Browse…</button>
+              <label>
+                <input type="checkbox" data-byod-replace>
+                <span data-i18n="dashboard.byod_replace_label">Replace existing data</span>
+              </label>
+              <button type="button" class="btn btn-primary" data-byod-import data-i18n="dashboard.byod_import">Import ad data file</button>
+              <p class="dashboard-byod-result" data-byod-result></p>
+              <button type="button" class="btn btn-danger" data-byod-clear data-i18n="dashboard.byod_clear">Clear all BYOD data</button>
+            </div>
+          </div>
+
+          <div class="dashboard-group" data-dashboard-group="danger" hidden>
+            <div class="dashboard-section dashboard-danger" data-dashboard-danger>
+              <p data-i18n="dashboard.clear_all_desc">Deletes all mureo configuration.</p>
+              <button type="button" class="btn btn-danger" data-dashboard-clear-all
+                      data-i18n="dashboard.clear_all">Clear All</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="app-toast" data-toast hidden></div>
+  </main>
+
+  <dialog data-confirm-dialog>
+    <p data-confirm-text></p>
+    <div>
+      <button type="button" class="btn btn-secondary" value="cancel" data-confirm-cancel data-i18n="common.cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" value="ok" data-confirm-ok data-i18n="common.ok">OK</button>
+    </div>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+  <script src="/static/landing.js"></script>
+  <script src="/static/wizard.js"></script>
+  <script src="/static/auth_wizards.js"></script>
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>

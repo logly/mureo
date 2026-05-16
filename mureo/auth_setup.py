@@ -13,6 +13,9 @@ import json
 import logging
 import os
 import secrets
+import shutil
+import subprocess  # noqa: S404 - fixed argv, shell=False (claude mcp add-json)
+import sys
 import threading
 import urllib.parse
 import webbrowser
@@ -503,33 +506,133 @@ async def list_accessible_accounts(
 # MCP configuration deployment
 # ---------------------------------------------------------------------------
 
+# ``command`` is the ABSOLUTE interpreter (``sys.executable``), not bare
+# "python". Claude Code spawns MCP servers with its own minimal PATH —
+# NOT the user's interactive shell — so a bare "python" resolves to a
+# system Python that does not have mureo installed (pyenv/venv shims are
+# absent from that PATH). The result is the mureo MCP silently failing
+# to start ("MCP tools not found", Claude falls back to the CLI).
+# sys.executable is the interpreter running `mureo configure` / `mureo
+# setup`, i.e. the env where mureo IS installed — mirrors the Claude
+# Desktop fix.
+# ``type: "stdio"`` is REQUIRED by Claude Code's ``mcp add-json`` schema
+# and by the ``~/.claude.json`` user-scope entry shape.
 _MCP_SERVER_CONFIG = {
-    "command": "python",
+    "type": "stdio",
+    "command": sys.executable,
     "args": ["-m", "mureo.mcp"],
 }
 
 
+def _claude_user_config_path() -> Path:
+    """Path of the file ``claude mcp add-json --scope user`` writes to.
+
+    Claude Code persists *user-scope* MCP servers at the root-level
+    ``mcpServers`` object of ``~/.claude.json`` — NOT
+    ``~/.claude/settings.json`` (that file is hooks/permissions/env only
+    and is never consulted for MCP discovery). Returned for caller
+    messaging and as the target of the no-CLI fallback merge.
+    """
+    return Path.home() / ".claude.json"
+
+
+def _register_user_scope_mcp() -> Path:
+    """Register the mureo MCP server at Claude Code *user* scope.
+
+    Primary path delegates to the official ``claude mcp add-json``
+    CLI so Claude Code mutates its own (large, live) ``~/.claude.json``
+    safely — avoiding the lost-write race of hand-editing a file the
+    running app rewrites. ``remove`` precedes ``add`` so a stale/wrong
+    entry (e.g. an old bare-``python`` command) self-heals.
+
+    Fallback (only when the ``claude`` binary is absent from PATH —
+    i.e. Claude Code is almost certainly not running) atomically merges
+    into ``~/.claude.json`` root ``mcpServers``.
+
+    Raises:
+        RuntimeError: the ``claude`` CLI is present but registration
+            failed — surfaced loudly rather than silently misconfigured.
+    """
+    config_json = json.dumps(_MCP_SERVER_CONFIG)
+    claude_bin = shutil.which("claude")
+
+    if claude_bin is not None:
+        # Best-effort remove first (idempotent self-heal); ignore its rc.
+        subprocess.run(  # noqa: S603 - fixed argv, shell=False
+            [claude_bin, "mcp", "remove", "mureo", "--scope", "user"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        completed = subprocess.run(  # noqa: S603 - fixed argv, shell=False
+            [
+                claude_bin,
+                "mcp",
+                "add-json",
+                "mureo",
+                config_json,
+                "--scope",
+                "user",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "claude mcp add-json failed (rc="
+                f"{completed.returncode}): {completed.stderr.strip()}"
+            )
+        path = _claude_user_config_path()
+        logger.info("mureo MCP registered (user scope) via claude CLI: %s", path)
+        return path
+
+    # No claude binary: hand-merge into ~/.claude.json root mcpServers.
+    # ~/.claude.json holds the user's entire Claude Code state — reuse the
+    # hardened atomic, refuse-malformed writer (mkstemp+0o600+fsync+
+    # os.replace; raises ConfigWriteError rather than clobbering a
+    # corrupt-but-recoverable file) instead of a plain truncating write.
+    from mureo.providers.config_writer import (
+        _atomic_write_json,
+        _load_existing,
+    )
+
+    path = _claude_user_config_path()
+    existing = _load_existing(path)  # {} if absent; raises on malformed
+    mcp_servers = existing.setdefault("mcpServers", {})
+    mcp_servers["mureo"] = _MCP_SERVER_CONFIG
+    existing["mcpServers"] = mcp_servers
+    _atomic_write_json(existing, path)
+    logger.info("mureo MCP registered (user scope) via fallback merge: %s", path)
+    return path
+
+
 def install_mcp_config(scope: str = "global") -> Path | None:
-    """Add MCP configuration to the Claude Code settings file.
+    """Register the mureo MCP server with Claude Code.
 
-    Global: Merge into mcpServers in ~/.claude/settings.json
-    Project: Merge into .mcp.json in the current directory
-
-    Skips if mureo is already configured.
+    Global: user scope via ``claude mcp add-json --scope user``
+    (persists to ``~/.claude.json`` root ``mcpServers``).
+    Project: merge into ``.mcp.json`` in the current directory.
 
     Args:
-        scope: "global" (~/.claude/settings.json) or "project" (.mcp.json)
+        scope: "global" (Claude Code user scope) or "project"
+            (``.mcp.json``).
 
     Returns:
-        Path to the settings file. None if skipped.
+        Path the registration was written to. ``None`` only for the
+        project scope when mureo is already present (skip).
+
+    Raises:
+        RuntimeError: global scope, ``claude`` CLI present but
+            registration failed.
     """
     if scope == "global":
-        settings_path = Path.home() / ".claude" / "settings.json"
-    else:
-        # Project-level MCP config goes in .mcp.json
-        settings_path = Path.cwd() / ".mcp.json"
+        return _register_user_scope_mcp()
 
-    # Load existing settings
+    # Project-level MCP config goes in .mcp.json (Claude Code DOES read
+    # this file; user scope, by contrast, is NOT in settings.json).
+    settings_path = Path.cwd() / ".mcp.json"
+
     existing: dict[str, Any] = {}
     if settings_path.exists():
         try:
@@ -537,19 +640,14 @@ def install_mcp_config(scope: str = "global") -> Path | None:
         except (json.JSONDecodeError, OSError):
             existing = {}
 
-    # Get or create mcpServers section
     mcp_servers = existing.setdefault("mcpServers", {})
-
-    # Skip if mureo is already configured
     if "mureo" in mcp_servers:
         logger.info("MCP configuration already exists: %s", settings_path)
         return None
 
-    # Add mureo
     mcp_servers["mureo"] = _MCP_SERVER_CONFIG
     existing["mcpServers"] = mcp_servers
 
-    # Create directory and write
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(
         json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
@@ -572,7 +670,7 @@ def setup_mcp_config() -> None:
         from simple_term_menu import TerminalMenu
 
         options = [
-            "Global (~/.claude/settings.json) — Available in all projects",
+            "Global (Claude Code user scope) — Available in all projects",
             "This directory (.mcp.json) — This project only",
             "Skip (configure manually)",
         ]
@@ -587,7 +685,7 @@ def setup_mcp_config() -> None:
     except ImportError:
         # Fallback: number input
         print("Where should the MCP configuration be placed?")
-        print("  1. Global (~/.claude/settings.json) — Available in all projects")
+        print("  1. Global (Claude Code user scope) — Available in all projects")
         print("  2. This directory (.mcp.json) — This project only")
         print("  3. Skip (configure manually)")
         print()

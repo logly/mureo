@@ -46,13 +46,35 @@ When official ad-platform MCPs ship (Meta Ads MCP, Google Ads MCP, etc.), mureo 
 
 ## Choose your setup
 
-mureo has **3 modes** (where the data comes from) and runs across **3 hosts** (where the agent operates). Pick the cell, run the command:
+### The easy way: `pip install` + `mureo configure`
+
+For most people, two commands set up mureo for Claude — **no terminal secret-pasting, no JSON editing**:
+
+```bash
+pip install mureo
+mureo configure
+```
+
+`mureo configure` opens a local browser UI (bound to `127.0.0.1`, ephemeral port — no remote access) that walks you through everything:
+
+- **Pick your Claude app** — *Claude Code (CLI / Desktop app)* or *Claude Desktop app (Chat, Cowork)*; mureo writes the right config file for that host.
+- **Basic setup** — registers the mureo MCP server, the credential-guard hook (Claude Code), and the workflow skills, in one click.
+- **Connect platforms** — interactive Google / Meta OAuth in the browser (deep links to each console), or paste a GA4 service-account path / project id; values are written to `~/.mureo/credentials.json` for you.
+- **Official MCP providers** — register Google Ads / GA4 official MCPs into `~/.claude.json`. (Meta is a hosted MCP with no OAuth dynamic client registration, so it can't be wired as a Claude Code user-scope server; the UI shows how to add it as a Claude.ai account connector instead — it then works in Claude Code and Claude Desktop alike.)
+- **Per-platform tool source** — a dashboard toggle to switch each platform between mureo-native tools and the official MCP.
+- **Demo / BYOD** — scaffold a demo scenario or import your XLSX bundle from the same UI.
+
+The terminal flow below still works (and is scriptable); `mureo configure` is just the friendlier front door to the same operations.
+
+### Manual / scriptable (3 modes × 3 hosts)
+
+mureo has **3 modes** (where the data comes from) and runs across **3 hosts** (where the agent operates). Pick the cell, run the command — or just use `mureo configure` above:
 
 | | Claude Code | Claude Desktop chat | Cowork (Desktop) |
 |---|---|---|---|
 | **Demo** (synthetic) | `mureo setup claude-code --skip-auth` + `mureo demo init --scenario seasonality-trap` | `mureo install-desktop --with-demo seasonality-trap` | Same as chat + connect the workspace folder |
 | **BYOD** (your XLSX) | `mureo setup claude-code --skip-auth` + `mureo byod import bundle.xlsx` | `mureo install-desktop` + `mureo byod import bundle.xlsx` | Same as chat + connect the workspace folder |
-| **Auth** (Live API) | `mureo setup claude-code` (interactive OAuth) | `mureo install-desktop` + `mureo auth setup --web` | Same as chat + connect the workspace folder |
+| **Auth** (Live API) | `mureo setup claude-code` (interactive OAuth) | `mureo install-desktop` + `mureo configure` | Same as chat + connect the workspace folder |
 
 Full per-row walkthroughs (including how to obtain your XLSX, where to put it, and how to import it): **[Getting Started →](docs/getting-started.md)**.
 
@@ -85,12 +107,14 @@ Connect mureo directly to Google Ads / Meta Ads APIs. **Required to actually exe
 
 ```bash
 pip install mureo
-mureo auth setup           # browser-based OAuth wizard
-mureo setup claude-code    # MCP + workflow commands
+mureo configure            # browser UI: pick host, basic setup, OAuth, providers
+# …or the terminal equivalent:
+#   mureo auth setup        # interactive OAuth in the terminal
+#   mureo setup claude-code # MCP server + workflow skills
 # Open Claude Code and ask: "Run /daily-check"
 ```
 
-Prerequisites: Google Ads Developer Token + OAuth Client; Meta App ID + Secret. The wizard walks you through both — see [Authentication](#authentication) below.
+Prerequisites: Google Ads Developer Token + OAuth Client; Meta App ID + Secret. Both `mureo configure` (browser) and `mureo auth setup` (terminal) walk you through them — see [Authentication](#authentication) below.
 
 ### Which mode fits?
 
@@ -308,14 +332,24 @@ Why this matters: `link_click` vs `pixel_lead` optimization is a tracking distin
 - **Google Ads** -- [Developer Token](https://developers.google.com/google-ads/api/docs/get-started/dev-token) and OAuth Client ID / Client Secret
 - **Meta Ads** -- Create an app on [Meta for Developers](https://developers.facebook.com/) to obtain an App ID / App Secret (development mode is fine)
 
-The `mureo auth setup` wizard walks you through both.
+Both `mureo configure` (browser) and `mureo auth setup` (terminal) walk you through both.
 
-### Browser-based auth wizard (`mureo auth setup --web`)
+### Browser configuration UI (`mureo configure`)
 
-Pasting long secrets into a terminal prompt is error-prone. After installation, `mureo auth setup --web` starts a short-lived local wizard on `http://127.0.0.1:<random-port>/` and opens your browser to a local form where you paste the Developer Token / App ID / App Secret (each field has a deep link to Google Cloud Console / Google Ads API Center / Meta for Developers). The OAuth flow completes in the same browser window and the wizard writes `~/.mureo/credentials.json` for you.
+> `mureo auth setup --web` was **removed** — its browser flow is now part of the unified **`mureo configure`** UI.
+
+Pasting long secrets into a terminal prompt is error-prone. `mureo configure` starts a short-lived local UI on `http://127.0.0.1:<random-port>/` and opens your browser. Beyond credential entry it covers the whole Claude setup:
+
+- choose the Claude host (Claude Code / Claude Desktop) — mureo writes that host's config file;
+- one-click **basic setup** (mureo MCP server + credential-guard hook + workflow skills);
+- **connect platforms** — interactive Google / Meta OAuth in the same window (each field deep-links to Google Cloud Console / Google Ads API Center / Meta for Developers), or a GA4 service-account path / project id; written to `~/.mureo/credentials.json`;
+- register the **official MCP providers** (Google Ads / GA4) into `~/.claude.json`; Meta is a hosted MCP with no OAuth dynamic client registration, so the UI shows how to add it as a Claude.ai account connector (works in Claude Code and Claude Desktop) instead of registering it locally;
+- a **dashboard** to review status, switch each platform between mureo-native and the official MCP, and scaffold **Demo / BYOD**.
+
+Flags: `--no-browser` (don't auto-open a tab), `--timeout-seconds N` (idle shutdown, default 600).
 
 <details>
-<summary>Why the wizard is safe to run locally</summary>
+<summary>Why the UI is safe to run locally</summary>
 
 The wizard binds only to `127.0.0.1` on a random OS-assigned port. The form is CSRF-protected (token rotates after every successful submit); the OAuth `state` parameter is validated with `secrets.compare_digest` on callback; a `Host`-header allow-list blocks DNS-rebinding attacks; redirect URLs are pinned to `https://accounts.google.com/` and `https://www.facebook.com/` so the wizard cannot be tricked into an open-redirect; session secrets are zeroed in memory after credentials are persisted. POST bodies are capped at 16 KiB and the process shuts the server down once the `/done` page is served. All dependencies are stdlib — no external web framework to supply-chain-compromise.
 

@@ -29,7 +29,6 @@ to ``~/.claude/settings.json``.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -37,11 +36,13 @@ from mureo.providers.config_writer import (
     AddResult,
     ConfigWriteError,
     _atomic_write_json,
+    _build_desired_config,
     _default_settings_path,
     _load_existing,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from mureo.providers.catalog import CoexistsPlatform, ProviderSpec
@@ -204,14 +205,18 @@ def add_provider_and_disable_in_mureo(
     spec: ProviderSpec,
     *,
     settings_path: Path | None = None,
+    extra_env: Mapping[str, str] | None = None,
 ) -> AddResult:
     """Combined single-atomic-write helper.
 
     Performs BOTH operations inside a single read/merge/write cycle so a
     crash between them cannot leave the file half-updated:
 
-    1. Sets ``mcpServers[spec.id] = dict(spec.mcp_server_config)`` (the
-       Phase 1 provider registration).
+    1. Sets ``mcpServers[spec.id]`` to the provider block, with
+       ``extra_env`` (credential env resolved from credentials.json)
+       merged into its ``env`` so the official MCP is usable on first
+       connect — without it the upstream server, which reads ONLY env
+       vars, starts with zero credentials.
     2. If ``spec.coexists_with_mureo_platform`` is non-None AND a
        ``mcpServers.mureo`` block exists, also sets
        ``mcpServers.mureo.env[MUREO_DISABLE_<PLATFORM>] = "1"``.
@@ -244,11 +249,10 @@ def add_provider_and_disable_in_mureo(
             f"overwrite to protect user data."
         )
 
-    # JSON round-trip so the comparison key matches what would actually be
-    # written to disk (mirrors `add_provider_to_claude_settings`).
-    desired_config: dict[str, Any] = json.loads(
-        json.dumps(dict(spec.mcp_server_config), ensure_ascii=False)
-    )
+    # Shared builder: JSON round-trip + stdio ``type`` + ``extra_env``
+    # merge, so the comparison key matches what would actually be written
+    # to disk (mirrors `add_provider_to_claude_settings`).
+    desired_config = _build_desired_config(spec, extra_env)
     provider_changed = mcp_servers.get(spec.id) != desired_config
     if provider_changed:
         mcp_servers[spec.id] = desired_config

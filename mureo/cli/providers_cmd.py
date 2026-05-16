@@ -23,12 +23,14 @@ from mureo.providers.catalog import CATALOG, ProviderSpec, get_provider
 from mureo.providers.coexistence import coexistence_warning
 from mureo.providers.config_writer import (
     add_provider_to_claude_settings,
+    is_hosted_provider_connected,
     is_provider_installed,
     remove_provider_from_claude_settings,
 )
 from mureo.providers.installer import run_install
 from mureo.providers.mureo_env import (
     add_provider_and_disable_in_mureo,
+    set_mureo_disable_env,
     unset_mureo_disable_env,
 )
 
@@ -88,6 +90,38 @@ def _emit_coexistence(spec: ProviderSpec, *, mureo_block_present: bool) -> None:
         typer.echo(warning)
 
 
+def _emit_hosted_auth_notice(spec: ProviderSpec, *, dry_run: bool) -> None:
+    """Print how to wire a hosted MCP via a Claude.ai connector.
+
+    Meta's hosted Ads MCP cannot be OAuth-authenticated as a Claude Code
+    *user-scope* server: it does not support RFC 7591 Dynamic Client
+    Registration, so Claude Code's `/mcp` OAuth fails with
+    "redirect_uris are not registered for this client". mureo therefore
+    does NOT register it locally; the only path that works on Claude
+    Code today is adding it as a Claude.ai account connector (Anthropic
+    brokers the OAuth there). Once added at claude.ai it is available
+    account-wide and surfaces in Claude Code automatically.
+    """
+    url = spec.mcp_server_config.get("url", "")
+    prefix = "[dry-run] " if dry_run else ""
+    typer.echo(
+        f"{prefix}{spec.id}: Meta's hosted MCP cannot be OAuth-"
+        f"authenticated as a Claude Code user-scope server (no dynamic "
+        f"client registration), so mureo does NOT register it locally. "
+        f"Add it as a Claude.ai connector instead:\n"
+        f"{prefix}  1. Open claude.ai -> Settings -> Connectors "
+        f"(https://claude.ai/customize/connectors). Requires a paid plan "
+        f"(Pro/Max/Team/Enterprise; Free cannot add connectors).\n"
+        f"{prefix}  2. Add custom connector -> URL: {url} -> Add, then "
+        f"complete the Meta Business sign-in in the browser.\n"
+        f"{prefix}  3. In Claude Code run /mcp to verify — Meta tools "
+        f"load as mcp__claude_ai_MetaAds__* (free during Meta's beta).\n"
+        f"{prefix}mureo-native Meta stays active until you switch it off "
+        f"with `mureo providers confirm {spec.id}` (after the connector "
+        f"is Connected)."
+    )
+
+
 def _dry_run_preview(spec: ProviderSpec) -> None:
     """Print the planned subprocess argv, ``mcpServers`` delta, and env write."""
     if spec.install_kind == "hosted_http":
@@ -122,6 +156,27 @@ def _add_one(spec: ProviderSpec, *, dry_run: bool) -> bool:
     no mureo block exists, the provider is registered as before and a
     degraded coexistence note is emitted instead.
     """
+    if spec.install_kind == "hosted_http":
+        # Meta's hosted MCP has no Dynamic Client Registration, so it
+        # CANNOT be OAuth-authenticated as a Claude Code user-scope
+        # server (`/mcp` fails: "redirect_uris are not registered for
+        # this client"). mureo therefore does NOT register it locally —
+        # the only working Claude Code path is a Claude.ai account
+        # connector. We print those steps and do not touch
+        # ~/.claude.json. mureo-native Meta is left active (no-strand);
+        # it steps aside only via `providers confirm` once the connector
+        # is verified Connected.
+        if dry_run:
+            typer.echo(
+                f"[dry-run] {spec.id}: would NOT register locally "
+                f"(Meta has no dynamic client registration); add it via "
+                f"a Claude.ai connector instead (no native auto-disable)"
+            )
+            _emit_hosted_auth_notice(spec, dry_run=True)
+            return True
+        _emit_hosted_auth_notice(spec, dry_run=False)
+        return True
+
     if dry_run:
         _dry_run_preview(spec)
         # In dry-run we don't know whether a mureo block is on disk —
@@ -309,3 +364,87 @@ def remove_cmd(
                 f"cleared mcpServers.mureo.env.{env_var}; "
                 f"mureo's native tools for this platform will re-register"
             )
+
+
+@providers_app.command("confirm")
+def confirm_cmd(
+    provider_id: str = typer.Argument(
+        ...,
+        help=(
+            "Hosted provider id (e.g. meta-ads-official) to confirm. "
+            "Once its account-level Connector shows Connected in "
+            "`claude mcp list`, this disables the overlapping "
+            "mureo-native tool family (MUREO_DISABLE_<PLATFORM>=1) so the "
+            "model stops calling the credential-less native tools."
+        ),
+    ),
+) -> None:
+    """Switch mureo-native tools off ONCE the official hosted connector works.
+
+    A ``hosted_http`` provider (Meta) can only be wired via Claude's
+    account-level Connectors, authorised by a one-time browser OAuth that
+    mureo cannot perform. We never auto-disable native before that — it
+    would strand the user. This command is the explicit, safe follow-up:
+    it disables native only after verifying the connector is actually
+    Connected.
+    """
+    try:
+        spec = get_provider(provider_id)
+    except KeyError:
+        valid = ", ".join(s.id for s in CATALOG)
+        typer.echo(
+            f"error: unknown provider {provider_id!r}. valid ids: {valid}",
+            err=True,
+        )
+        raise typer.Exit(code=2) from None
+
+    if spec.install_kind != "hosted_http":
+        typer.echo(
+            f"error: confirm only applies to hosted providers; "
+            f"{provider_id!r} is install_kind={spec.install_kind!r} "
+            f"(it is registered directly by `mureo providers add`).",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    platform = spec.coexists_with_mureo_platform
+    if platform is None:
+        typer.echo(
+            f"{provider_id}: no overlapping mureo-native platform; "
+            f"nothing to switch."
+        )
+        return
+
+    if not is_hosted_provider_connected(spec):
+        url = spec.mcp_server_config.get("url", "")
+        typer.echo(
+            f"{provider_id}: not detected as Connected yet.\n"
+            f"Finish the one-time browser setup first — add the Meta Ads "
+            f"connector in Claude's Connectors (claude.ai → Settings → "
+            f"Connectors), sign in with Meta, then verify with "
+            f"`claude mcp list` (look for {url} … ✓ Connected) and re-run "
+            f"this command.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    env_result = set_mureo_disable_env(platform)
+    env_var = f"MUREO_DISABLE_{platform.upper()}"
+    if env_result.changed:
+        typer.echo(
+            f"{provider_id} confirmed Connected. Set "
+            f'mcpServers.mureo.env.{env_var}="1" — mureo-native '
+            f"{platform} tools are now disabled so the model uses the "
+            f"official connector. Restart Claude to apply."
+        )
+    elif env_result.mureo_block_present:
+        typer.echo(
+            f"{provider_id} confirmed Connected; "
+            f"mcpServers.mureo.env.{env_var} was already set. Nothing to do."
+        )
+    else:
+        typer.echo(
+            f"{provider_id} confirmed Connected, but no mcpServers.mureo "
+            f"block was found. Run `mureo setup claude-code` first, then "
+            f"re-run this command to disable native {platform}."
+        )

@@ -1,11 +1,11 @@
-"""Browser-based OAuth wizard for non-technical users.
+"""Browser-based OAuth wizard for per-platform credential setup.
 
-``mureo auth setup --web`` starts a short-lived localhost HTTP server
-and opens the operator's browser to a simple form. The user pastes
-the Google Ads Developer Token / OAuth Client ID / Secret, clicks
-"Continue", completes Google OAuth in the same browser window, and
-the wizard saves ``~/.mureo/credentials.json`` without requiring any
-terminal interaction.
+The configure UI (``mureo configure``) spawns this wizard via
+``mureo.web.oauth_bridge`` for a single platform at a time. The user
+pastes the Google Ads Developer Token / OAuth Client ID / Secret (or
+Meta App ID / Secret), clicks "Continue", completes OAuth in the same
+browser window, and the wizard saves ``~/.mureo/credentials.json``
+without requiring any terminal interaction.
 
 Design choices and safety properties:
 
@@ -28,8 +28,6 @@ Design choices and safety properties:
 - **Session is in-memory only.** No persistence beyond the save of
   final credentials. If the process dies before ``/done`` the half-
   entered secrets are lost — desired, not regrettable.
-
-Meta Ads support ships in a follow-up PR (P2-3).
 """
 
 from __future__ import annotations
@@ -42,9 +40,7 @@ import logging
 import secrets as _secrets
 import socketserver
 import threading
-import time
 import urllib.parse
-import webbrowser
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -104,6 +100,11 @@ class WizardSession:
     """
 
     csrf_token: str = field(default_factory=_fresh_csrf_token)
+    # Locale chosen in the parent configure UI; threaded through the
+    # ``?locale=`` query string on the first GET into this wizard so
+    # the inline (English-by-default) HTML can switch to Japanese
+    # without growing a full i18n catalog. Allow-list: "en" | "ja".
+    locale: str = "en"
     google_flow: Any = None
     google_developer_token: str | None = None
     google_client_id: str | None = None
@@ -172,47 +173,134 @@ button.btn-secondary:hover { background: #f2f2f2; color: #222; }
 </style>"""
 
 
-def render_home(session: WizardSession) -> str:  # noqa: ARG001
-    """Platform chooser — first page the user sees."""
-    return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>mureo setup</title>{_BASE_STYLE}</head>
-<body>
-<h1>mureo setup</h1>
-<p>Pick the ad platform you want to configure. You can run both in sequence from this wizard.</p>
-<form method="get" action="/google-ads" style="display:inline-block; margin-right:12px">
-  <button type="submit">Configure Google Ads</button>
-</form>
-<form method="get" action="/meta-ads" style="display:inline-block">
-  <button type="submit">Configure Meta Ads</button>
-</form>
-</body></html>
-"""
+# Inline bilingual strings — kept here (rather than in the configure
+# UI's i18n.json) because this wizard is a stand-alone process spun up
+# per platform and must not depend on the configure UI's static assets.
+# Add a new key here AND a JA translation when introducing user-facing
+# copy. The lookup is a simple per-locale dict; missing keys fall back
+# to English. NEVER place a secret or user input in these strings.
+_I18N: dict[str, dict[str, str]] = {
+    "en": {
+        "meta.title": "Meta Ads — mureo setup",
+        "meta.heading": "Meta Ads credentials",
+        "meta.intro": "Paste the App ID and App Secret from your Meta for Developers app.",
+        "meta.app_id_label": "App ID",
+        "meta.app_id_hint": 'Find or create your app on <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers → My Apps</a>. The App ID appears on the app\'s dashboard.',
+        "meta.app_secret_label": "App Secret",
+        "meta.app_secret_hint": "On the app dashboard, open <em>Settings → Basic</em> and click <em>Show</em> next to App Secret. Development Mode is fine — App Review is not required when operating your own ad account.",
+        "meta.submit": "Continue to Facebook sign-in",
+        "meta.notice": "During sign-in you may see a permission warning for <code>business_management</code>. This is required for ad accounts reached through a Business Portfolio and is safe to accept.",
+        "google.title": "Google Ads — mureo setup",
+        "google.heading": "Google Ads credentials",
+        "google.intro": "Paste the three values below. Links next to each field take you to the page in Google's console where each value is displayed.",
+        "google.dev_token_label": "Developer Token",
+        "google.dev_token_hint": 'Available in the Google Ads API Center — <a href="https://ads.google.com/aw/apicenter" target="_blank" rel="noopener">ads.google.com/aw/apicenter</a>. Requires an approved Google Ads manager account.',
+        "google.client_id_label": "OAuth Client ID",
+        "google.client_id_hint": 'Create an OAuth 2.0 client (Application type: Desktop) in <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console → APIs &amp; Services → Credentials</a>.',
+        "google.client_secret_label": "OAuth Client Secret",
+        "google.client_secret_hint": "Shown once when the OAuth client is created. Re-open the client in Cloud Console to copy it again.",
+        "google.submit": "Continue to Google sign-in",
+        "google.notice": "Nothing leaves your machine. The next page is Google's own sign-in, and the refresh token it returns is written to <code>~/.mureo/credentials.json</code> locally.",
+        "google_picker.title": "Google Ads — choose account",
+        "google_picker.heading": "Choose a Google Ads account",
+        "google_picker.intro": "Pick the account you want mureo to operate on. For a child account reached through a manager (MCC), the manager is used automatically as the login context.",
+        "google_picker.submit": "Save selection",
+        "google_picker.empty_heading": "No Google Ads accounts found",
+        "google_picker.empty_notice": "We could not find any Google Ads accounts reachable by this login. You can continue, but no <code>customer_id</code> will be recorded.",
+        "google_picker.continue": "Continue",
+        "meta_picker.title": "Meta Ads — choose account",
+        "meta_picker.heading": "Choose a Meta ad account",
+        "meta_picker.intro": "Pick the ad account you want mureo to operate on.",
+        "meta_picker.submit": "Save selection",
+        "meta_picker.empty_heading": "No Meta ad accounts found",
+        "meta_picker.empty_notice": "We could not find any ad accounts reachable by this login. You can continue, but no <code>account_id</code> will be recorded.",
+        "meta_picker.continue": "Continue",
+        "done.title": "mureo setup — done",
+        "done.heading": "Setup complete",
+        "done.body": "Credentials saved. You can close this tab and return to mureo configure.",
+    },
+    "ja": {
+        "meta.title": "Meta Ads — mureo セットアップ",
+        "meta.heading": "Meta Ads 認証情報",
+        "meta.intro": "Meta for Developers アプリの App ID と App Secret を貼り付けてください。",
+        "meta.app_id_label": "App ID",
+        "meta.app_id_hint": '<a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers → My Apps</a> でアプリを作成または開いてください。App ID はアプリのダッシュボードに表示されます。',
+        "meta.app_secret_label": "App Secret",
+        "meta.app_secret_hint": "アプリのダッシュボードで <em>Settings → Basic</em> を開き、App Secret の隣の <em>Show</em> をクリックします。Development Mode のままで OK — 自社の広告アカウントを使う限り App Review は不要です。",
+        "meta.submit": "Facebook サインインに進む",
+        "meta.notice": "サインイン中に <code>business_management</code> のパーミッション警告が表示されることがあります。Business Portfolio 経由の広告アカウントに必要な権限で、許可しても安全です。",
+        "google.title": "Google Ads — mureo セットアップ",
+        "google.heading": "Google Ads 認証情報",
+        "google.intro": "下記の 3 つの値を貼り付けてください。各項目のリンクをクリックすると、Google 管理画面の該当ページが開きます。",
+        "google.dev_token_label": "Developer Token",
+        "google.dev_token_hint": 'Google Ads API センター — <a href="https://ads.google.com/aw/apicenter" target="_blank" rel="noopener">ads.google.com/aw/apicenter</a> から取得できます。承認済みの Google Ads マネージャアカウントが必要です。',
+        "google.client_id_label": "OAuth Client ID",
+        "google.client_id_hint": '<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console → APIs &amp; Services → Credentials</a> で OAuth 2.0 クライアント（種別: Desktop）を作成してください。',
+        "google.client_secret_label": "OAuth Client Secret",
+        "google.client_secret_hint": "OAuth クライアント作成時に一度だけ表示されます。Cloud Console で再度開いてコピーしてください。",
+        "google.submit": "Google サインインに進む",
+        "google.notice": "情報はマシンの外に出ません。次は Google 自身のサインインで、返却された refresh token はローカルの <code>~/.mureo/credentials.json</code> に保存されます。",
+        "google_picker.title": "Google Ads — アカウント選択",
+        "google_picker.heading": "Google Ads アカウントを選択",
+        "google_picker.intro": "mureo に操作させたいアカウントを選んでください。MCC 配下の子アカウントを選んだ場合、ログインコンテキストには自動的にマネージャが使われます。",
+        "google_picker.submit": "選択を保存",
+        "google_picker.empty_heading": "Google Ads アカウントが見つかりません",
+        "google_picker.empty_notice": "このログインで到達可能な Google Ads アカウントが見つかりませんでした。続行できますが、<code>customer_id</code> は記録されません。",
+        "google_picker.continue": "続行",
+        "meta_picker.title": "Meta Ads — アカウント選択",
+        "meta_picker.heading": "Meta 広告アカウントを選択",
+        "meta_picker.intro": "mureo に操作させたい広告アカウントを選んでください。",
+        "meta_picker.submit": "選択を保存",
+        "meta_picker.empty_heading": "Meta 広告アカウントが見つかりません",
+        "meta_picker.empty_notice": "このログインで到達可能な広告アカウントが見つかりませんでした。続行できますが、<code>account_id</code> は記録されません。",
+        "meta_picker.continue": "続行",
+        "done.title": "mureo セットアップ — 完了",
+        "done.heading": "セットアップ完了",
+        "done.body": "認証情報を保存しました。このタブを閉じて mureo configure に戻ってください。",
+    },
+}
+
+
+def _t(locale: str, key: str) -> str:
+    """Look up ``key`` in the inline catalog. Falls back to English."""
+    catalog = _I18N.get(locale) if locale in _I18N else _I18N["en"]
+    if catalog is None:  # defensive — keeps mypy quiet
+        catalog = _I18N["en"]
+    if key in catalog:
+        return catalog[key]
+    return _I18N["en"].get(key, key)
+
+
+def _html_lang(locale: str) -> str:
+    """Return a safe ``lang`` attribute value (allow-list)."""
+    return "ja" if locale == "ja" else "en"
 
 
 def render_meta_secrets_form(session: WizardSession) -> str:
     """Form for Meta App ID / Secret."""
     csrf = html.escape(session.csrf_token, quote=True)
+    loc = session.locale
+    lang = _html_lang(loc)
     return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Meta Ads — mureo setup</title>{_BASE_STYLE}</head>
+<html lang="{lang}">
+<head><meta charset="utf-8"><title>{_t(loc, "meta.title")}</title>{_BASE_STYLE}</head>
 <body>
-<h1>Meta Ads credentials</h1>
-<p>Paste the App ID and App Secret from your Meta for Developers app.</p>
+<h1>{_t(loc, "meta.heading")}</h1>
+<p>{_t(loc, "meta.intro")}</p>
 <form method="post" action="/meta-ads/submit">
   <input type="hidden" name="csrf_token" value="{csrf}">
 
-  <label for="meta_app_id">App ID</label>
+  <label for="meta_app_id">{_t(loc, "meta.app_id_label")}</label>
   <input id="meta_app_id" name="app_id" type="text" required autocomplete="off">
-  <div class="hint">Find or create your app on <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers → My Apps</a>. The App ID appears on the app's dashboard.</div>
+  <div class="hint">{_t(loc, "meta.app_id_hint")}</div>
 
-  <label for="meta_app_secret">App Secret</label>
+  <label for="meta_app_secret">{_t(loc, "meta.app_secret_label")}</label>
   <input id="meta_app_secret" name="app_secret" type="password" required autocomplete="off">
-  <div class="hint">On the app dashboard, open <em>Settings → Basic</em> and click <em>Show</em> next to App Secret. Development Mode is fine — App Review is not required when operating your own ad account.</div>
+  <div class="hint">{_t(loc, "meta.app_secret_hint")}</div>
 
-  <button type="submit">Continue to Facebook sign-in</button>
+  <button type="submit">{_t(loc, "meta.submit")}</button>
 </form>
-<p class="notice">During sign-in you may see a permission warning for <code>business_management</code>. This is required for ad accounts reached through a Business Portfolio and is safe to accept.</p>
+<p class="notice">{_t(loc, "meta.notice")}</p>
 </body></html>
 """
 
@@ -220,84 +308,32 @@ def render_meta_secrets_form(session: WizardSession) -> str:
 def render_google_secrets_form(session: WizardSession) -> str:
     """Form for Developer Token / Client ID / Secret."""
     csrf = html.escape(session.csrf_token, quote=True)
+    loc = session.locale
+    lang = _html_lang(loc)
     return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Google Ads — mureo setup</title>{_BASE_STYLE}</head>
+<html lang="{lang}">
+<head><meta charset="utf-8"><title>{_t(loc, "google.title")}</title>{_BASE_STYLE}</head>
 <body>
-<h1>Google Ads credentials</h1>
-<p>Paste the three values below. Links next to each field take you to the page in Google's console where each value is displayed.</p>
+<h1>{_t(loc, "google.heading")}</h1>
+<p>{_t(loc, "google.intro")}</p>
 <form method="post" action="/google-ads/submit">
   <input type="hidden" name="csrf_token" value="{csrf}">
 
-  <label for="developer_token">Developer Token</label>
+  <label for="developer_token">{_t(loc, "google.dev_token_label")}</label>
   <input id="developer_token" name="developer_token" type="text" required autocomplete="off">
-  <div class="hint">Available in the Google Ads API Center — <a href="https://ads.google.com/aw/apicenter" target="_blank" rel="noopener">ads.google.com/aw/apicenter</a>. Requires an approved Google Ads manager account.</div>
+  <div class="hint">{_t(loc, "google.dev_token_hint")}</div>
 
-  <label for="client_id">OAuth Client ID</label>
+  <label for="client_id">{_t(loc, "google.client_id_label")}</label>
   <input id="client_id" name="client_id" type="text" required autocomplete="off">
-  <div class="hint">Create an OAuth 2.0 client (Application type: Desktop) in <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console → APIs &amp; Services → Credentials</a>.</div>
+  <div class="hint">{_t(loc, "google.client_id_hint")}</div>
 
-  <label for="client_secret">OAuth Client Secret</label>
+  <label for="client_secret">{_t(loc, "google.client_secret_label")}</label>
   <input id="client_secret" name="client_secret" type="password" required autocomplete="off">
-  <div class="hint">Shown once when the OAuth client is created. Re-open the client in Cloud Console to copy it again.</div>
+  <div class="hint">{_t(loc, "google.client_secret_hint")}</div>
 
-  <button type="submit">Continue to Google sign-in</button>
+  <button type="submit">{_t(loc, "google.submit")}</button>
 </form>
-<p class="notice">Nothing leaves your machine. The next page is Google's own sign-in, and the refresh token it returns is written to <code>~/.mureo/credentials.json</code> locally.</p>
-</body></html>
-"""
-
-
-def render_finish_confirm(return_platform: str) -> str:
-    """Yes/No confirmation page before terminating the wizard.
-
-    ``return_platform`` is the platform slug the user came from on
-    `/after-platform` so "No" can send them back. Unknown values fall
-    back to ``google`` which is harmless for the return path.
-    """
-    safe_platform = (
-        return_platform if return_platform in {"google", "meta"} else "google"
-    )
-    return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Finish setup? — mureo</title>{_BASE_STYLE}</head>
-<body>
-<h1>Finish setup?</h1>
-<p>This will close the wizard. You can re-run <code>mureo auth setup --web</code> later if you need to reconfigure.</p>
-<form method="get" action="/done" style="display:inline-block; margin-right:12px">
-  <button class="btn-finish" type="submit">Yes, finish</button>
-</form>
-<form method="get" action="/after-platform" style="display:inline-block">
-  <input type="hidden" name="platform" value="{html.escape(safe_platform, quote=True)}">
-  <button class="btn-secondary" type="submit">No, go back</button>
-</form>
-</body></html>
-"""
-
-
-def render_done(configured: set[str]) -> str:
-    """Terminal page. Message adapts to which platforms are configured.
-
-    ``configured`` is the set of platform slugs ({"google", "meta"}) as
-    determined from the on-disk credentials.json.
-    """
-    if configured == {"google", "meta"}:
-        headline = "Google Ads and Meta Ads are configured."
-    elif configured == {"google"}:
-        headline = "Google Ads is configured."
-    elif configured == {"meta"}:
-        headline = "Meta Ads is configured."
-    else:
-        # Defensive — /done shouldn't normally be reached with no
-        # platforms, but render a neutral page instead of crashing.
-        headline = "Setup complete."
-    return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>mureo setup — done</title>{_BASE_STYLE}</head>
-<body>
-<h1>Setup complete</h1>
-<p>{html.escape(headline)} You can close this tab.</p>
-<p class="notice">Credentials saved to <code>~/.mureo/credentials.json</code>. Restart Claude Desktop (or your MCP client) to pick up the new configuration.</p>
+<p class="notice">{_t(loc, "google.notice")}</p>
 </body></html>
 """
 
@@ -311,14 +347,16 @@ def render_google_account_picker(
     dicts with ``id``, ``name``, ``is_manager``, ``parent_id``.
     """
     csrf = html.escape(session.csrf_token, quote=True)
+    loc = session.locale
+    lang = _html_lang(loc)
     if not accounts:
         return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Google Ads — choose account</title>{_BASE_STYLE}</head>
+<html lang="{lang}">
+<head><meta charset="utf-8"><title>{_t(loc, "google_picker.title")}</title>{_BASE_STYLE}</head>
 <body>
-<h1>No Google Ads accounts found</h1>
-<p class="notice">We could not find any Google Ads accounts reachable by this login. You can continue, but no <code>customer_id</code> will be recorded.</p>
-<p><a href="/after-platform?platform=google&amp;warn=no_accounts">Continue</a></p>
+<h1>{_t(loc, "google_picker.empty_heading")}</h1>
+<p class="notice">{_t(loc, "google_picker.empty_notice")}</p>
+<p><a href="/done">{_t(loc, "google_picker.continue")}</a></p>
 </body></html>
 """
     rows = []
@@ -344,15 +382,15 @@ def render_google_account_picker(
         )
     rows_html = "\n".join(rows)
     return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Google Ads — choose account</title>{_BASE_STYLE}</head>
+<html lang="{lang}">
+<head><meta charset="utf-8"><title>{_t(loc, "google_picker.title")}</title>{_BASE_STYLE}</head>
 <body>
-<h1>Choose a Google Ads account</h1>
-<p>Pick the account you want mureo to operate on. For a child account reached through a manager (MCC), the manager is used automatically as the login context.</p>
+<h1>{_t(loc, "google_picker.heading")}</h1>
+<p>{_t(loc, "google_picker.intro")}</p>
 <form method="post" action="/google-ads/select-account">
   <input type="hidden" name="csrf_token" value="{csrf}">
   {rows_html}
-  <button type="submit">Save selection</button>
+  <button type="submit">{_t(loc, "google_picker.submit")}</button>
 </form>
 </body></html>
 """
@@ -363,14 +401,16 @@ def render_meta_account_picker(
 ) -> str:
     """Radio-group picker for a Meta ad account."""
     csrf = html.escape(session.csrf_token, quote=True)
+    loc = session.locale
+    lang = _html_lang(loc)
     if not accounts:
         return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Meta Ads — choose account</title>{_BASE_STYLE}</head>
+<html lang="{lang}">
+<head><meta charset="utf-8"><title>{_t(loc, "meta_picker.title")}</title>{_BASE_STYLE}</head>
 <body>
-<h1>No Meta ad accounts found</h1>
-<p class="notice">We could not find any ad accounts reachable by this login. You can continue, but no <code>account_id</code> will be recorded.</p>
-<p><a href="/after-platform?platform=meta&amp;warn=no_accounts">Continue</a></p>
+<h1>{_t(loc, "meta_picker.empty_heading")}</h1>
+<p class="notice">{_t(loc, "meta_picker.empty_notice")}</p>
+<p><a href="/done">{_t(loc, "meta_picker.continue")}</a></p>
 </body></html>
 """
     rows = []
@@ -386,69 +426,15 @@ def render_meta_account_picker(
         )
     rows_html = "\n".join(rows)
     return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Meta Ads — choose account</title>{_BASE_STYLE}</head>
+<html lang="{lang}">
+<head><meta charset="utf-8"><title>{_t(loc, "meta_picker.title")}</title>{_BASE_STYLE}</head>
 <body>
-<h1>Choose a Meta ad account</h1>
-<p>Pick the ad account you want mureo to operate on.</p>
+<h1>{_t(loc, "meta_picker.heading")}</h1>
+<p>{_t(loc, "meta_picker.intro")}</p>
 <form method="post" action="/meta-ads/select-account">
   <input type="hidden" name="csrf_token" value="{csrf}">
   {rows_html}
-  <button type="submit">Save selection</button>
-</form>
-</body></html>
-"""
-
-
-def render_after_platform(
-    configured: set[str],
-    just_completed: str,
-    warn: str | None = None,
-) -> str:
-    """Intermediate "what next?" page after one platform finishes."""
-    labels = {"google": "Google Ads", "meta": "Meta Ads"}
-    just_label = labels.get(just_completed, just_completed)
-
-    warning_block = ""
-    if warn == "no_accounts":
-        warning_block = (
-            '<p class="notice" style="border-left-color:#c90">'
-            "Warning: we could not list any accounts for "
-            f"{html.escape(just_label)}. Credentials were saved, but no "
-            "account_id was recorded. You can re-run setup later to "
-            "select one, or continue without it.</p>"
-        )
-
-    # "Configure the other platform too" CTA. We offer it for any
-    # platform that is BOTH not-yet-configured AND not the one the user
-    # just finished (so we don't suggest "Configure Google too" right
-    # after a Google submit). ``configured`` is the usable-credentials
-    # set; ``just_completed`` is the path the user just came from — it
-    # may not appear in ``configured`` when the account list was empty.
-    remaining = {"google", "meta"} - configured - {just_completed}
-    other_cta = ""
-    if remaining:
-        other = next(iter(remaining))
-        other_label = labels.get(other, other)
-        other_path = "/google-ads" if other == "google" else "/meta-ads"
-        other_cta = (
-            f'<form method="get" action="{other_path}" '
-            'style="display:inline-block; margin-right:12px">'
-            f'<button type="submit">Configure {html.escape(other_label)} too</button>'
-            "</form>"
-        )
-
-    return f"""<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>{html.escape(just_label)} — configured</title>{_BASE_STYLE}</head>
-<body>
-<h1>{html.escape(just_label)} is configured</h1>
-{warning_block}
-<p>What next?</p>
-{other_cta}
-<form method="get" action="/done/confirm" style="display:inline-block">
-  <input type="hidden" name="platform" value="{html.escape(just_completed, quote=True)}">
-  <button class="btn-finish" type="submit">Finish setup</button>
+  <button type="submit">{_t(loc, "meta_picker.submit")}</button>
 </form>
 </body></html>
 """
@@ -463,6 +449,24 @@ def render_error(message: str) -> str:
 <h1>Something went wrong</h1>
 <p>{safe}</p>
 <p><a href="/">Back to start</a></p>
+</body></html>
+"""
+
+
+# Terminal page served at /done — marks the wizard complete and tells
+# the user the tab can be closed. The configure-UI's OAuthBridge watcher
+# polls ``wizard.completed`` to learn when this page was reached.
+# Localized: the configure UI threads its operator's locale into this
+# wizard (``?locale=ja``); a hardcoded English page here was the reported
+# "Setup complete stays English" bug.
+def render_done_page(locale: str) -> str:
+    """Render the terminal /done page in the session's locale."""
+    return f"""<!doctype html>
+<html lang="{_html_lang(locale)}">
+<head><meta charset="utf-8"><title>{_t(locale, "done.title")}</title>{_BASE_STYLE}</head>
+<body>
+<h1>{_t(locale, "done.heading")}</h1>
+<p>{_t(locale, "done.body")}</p>
 </body></html>
 """
 
@@ -490,9 +494,12 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
-        if path == "/":
-            self._send_html(render_home(self.server.wizard.session))
-        elif path == "/google-ads":
+        # The configure UI threads its operator's locale through the
+        # first GET into this wizard via ``?locale=ja``. Persist it on
+        # the session so subsequent GETs (callback, picker) re-use it.
+        # Allow-list defends against echoing arbitrary attacker input.
+        self._absorb_locale_from_query(parsed.query)
+        if path == "/google-ads":
             self._send_html(render_google_secrets_form(self.server.wizard.session))
         elif path == "/google-ads/callback":
             self._handle_google_callback(parsed.query)
@@ -504,18 +511,23 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             self._handle_meta_callback(parsed.query)
         elif path == "/meta-ads/select-account":
             self._handle_meta_account_pick_page()
-        elif path == "/after-platform":
-            self._handle_after_platform(parsed.query)
-        elif path == "/done/confirm":
-            params = urllib.parse.parse_qs(parsed.query)
-            platform = params.get("platform", [""])[0]
-            self._send_html(render_finish_confirm(platform))
         elif path == "/done":
-            configured = self._configured_platforms()
-            self._send_html(render_done(configured))
             self.server.wizard.mark_completed()
+            self._send_html(render_done_page(self.server.wizard.session.locale))
         else:
             self.send_error(404, "Not found")
+
+    def _absorb_locale_from_query(self, query: str) -> None:
+        """If ``?locale=en|ja`` is present, persist it on the session."""
+        if not query:
+            return
+        params = urllib.parse.parse_qs(query, keep_blank_values=False)
+        candidates = params.get("locale", [])
+        if not candidates:
+            return
+        chosen = candidates[0]
+        if chosen in {"en", "ja"}:
+            self.server.wizard.session.locale = chosen
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urllib.parse.urlparse(self.path)
@@ -738,10 +750,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             )
             sess.clear_secrets()
             self.send_response(302)
-            self.send_header(
-                "Location",
-                "/after-platform?platform=google&warn=no_accounts",
-            )
+            self.send_header("Location", "/done")
             self.end_headers()
             return
 
@@ -761,9 +770,9 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
     def _handle_google_account_pick_page(self) -> None:
         sess = self.server.wizard.session
         if not sess.google_accessible_accounts:
-            # Stale link or direct URL guess; bounce home.
+            # Stale link or direct URL guess; bounce to the Google form.
             self.send_response(302)
-            self.send_header("Location", "/")
+            self.send_header("Location", "/google-ads")
             self.end_headers()
             return
         self._send_html(
@@ -817,7 +826,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         sess.rotate_csrf()
 
         self.send_response(302)
-        self.send_header("Location", "/after-platform?platform=google")
+        self.send_header("Location", "/done")
         self.end_headers()
 
     # --- Meta flow ------------------------------------------------------
@@ -972,10 +981,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             )
             sess.clear_secrets()
             self.send_response(302)
-            self.send_header(
-                "Location",
-                "/after-platform?platform=meta&warn=no_accounts",
-            )
+            self.send_header("Location", "/done")
             self.end_headers()
             return
 
@@ -994,7 +1000,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         sess = self.server.wizard.session
         if not sess.meta_ad_accounts:
             self.send_response(302)
-            self.send_header("Location", "/")
+            self.send_header("Location", "/meta-ads")
             self.end_headers()
             return
         self._send_html(render_meta_account_picker(sess, sess.meta_ad_accounts))
@@ -1042,57 +1048,8 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         sess.rotate_csrf()
 
         self.send_response(302)
-        self.send_header("Location", "/after-platform?platform=meta")
+        self.send_header("Location", "/done")
         self.end_headers()
-
-    # --- After-platform intermediate ------------------------------------
-
-    def _handle_after_platform(self, query: str) -> None:
-        params = urllib.parse.parse_qs(query)
-        platform = params.get("platform", [""])[0]
-        warn = params.get("warn", [None])[0]
-        configured = self._configured_platforms()
-        # Note: do NOT bounce to `/` when ``configured`` is empty. A
-        # partial save (refresh_token without customer_id on a
-        # no-accounts fallback) leaves credentials.json non-usable but
-        # still mid-flow — we need the user to reach the Finish button,
-        # not get kicked back to the home screen with no feedback.
-        if platform not in {"google", "meta"}:
-            # Direct URL guess with no platform hint — pick whichever
-            # the user has made any progress on, defaulting to Google.
-            platform = (
-                "google"
-                if "google" in configured
-                else ("meta" if "meta" in configured else "google")
-            )
-        self._send_html(
-            render_after_platform(configured, just_completed=platform, warn=warn)
-        )
-
-    def _configured_platforms(self) -> set[str]:
-        """Inspect credentials.json and report which platforms have
-        non-empty credentials. Quiet about missing/unreadable files."""
-        import json
-
-        path = self.server.wizard.credentials_path
-        if path is None or not path.exists():
-            return set()
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return set()
-        configured: set[str] = set()
-        g = data.get("google_ads") or {}
-        # A platform counts as configured only if the credentials are
-        # actually usable — refresh_token alone without customer_id
-        # produces API calls that fail, and the wizard must not lie to
-        # the user on `/done` by declaring an incomplete setup "complete".
-        if g.get("refresh_token") and g.get("customer_id"):
-            configured.add("google")
-        m = data.get("meta_ads") or {}
-        if m.get("access_token") and m.get("account_id"):
-            configured.add("meta")
-        return configured
 
     # --- helpers ---------------------------------------------------------
 
@@ -1220,42 +1177,3 @@ class WebAuthWizard:
 
     def mark_completed(self) -> None:
         self.completed = True
-
-
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
-
-
-def run_web_wizard(
-    *,
-    credentials_path: Path | None = None,
-    open_browser: bool = True,
-    timeout_seconds: float = 600.0,
-) -> None:
-    """Start the wizard, open the browser, wait for completion."""
-    wizard = WebAuthWizard(credentials_path=credentials_path)
-    thread = threading.Thread(target=wizard.serve, daemon=True)
-    thread.start()
-    wizard.wait_until_ready()
-
-    url = wizard.home_url()
-    print(f"mureo setup wizard running at {url}")
-    print("(the browser should open automatically; if not, copy the URL)")
-    if open_browser:
-        try:
-            webbrowser.open(url)
-        except Exception:  # noqa: BLE001
-            logger.exception("Could not open browser automatically")
-
-    deadline = time.monotonic() + timeout_seconds
-    try:
-        while not wizard.completed:
-            if time.monotonic() > deadline:
-                print("Timed out waiting for setup completion.")
-                return
-            time.sleep(0.5)
-        print("Setup complete.")
-    finally:
-        wizard.shutdown()
-        thread.join(timeout=2.0)

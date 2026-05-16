@@ -225,7 +225,7 @@ restart Claude Code; the MCP server detects the missing manifest at
 startup and falls back to credentials.json automatically.
 
 If you see `not configured` for the platform you removed,
-run `mureo auth setup` (or `mureo auth setup --web`) to populate
+run `mureo auth setup` (or `mureo configure`) to populate
 `~/.mureo/credentials.json`.
 
 ---
@@ -287,7 +287,7 @@ between currencies, so all per-account analysis (CTR / CPC / CPA)
 treats the cost column as a single coherent unit.
 
 For the full live-account experience, run `mureo auth setup` (or
-`mureo auth setup --web`) and `mureo byod clear` to switch back to
+`mureo configure`) and `mureo byod clear` to switch back to
 Live API mode.
 
 ---

@@ -1,0 +1,897 @@
+// dashboard.js — `#dashboard` route renderer.
+// Surfaces installed providers, basic-setup parts, host, and the env-
+// var form. Listens for `mureo:route_changed` to toggle visibility.
+//
+// Per-row [削除] buttons: each installed basic-setup row gets a delete
+// button that confirms via MUREO.confirmAction, POSTs to the matching
+// backend route, then re-fetches /api/status and re-renders. Errors
+// surface via MUREO.toast — never an unhandled exception, never a stack
+// trace in the DOM.
+//
+// [全削除] button: double-confirm bulk clear. Posts to
+// /api/setup/basic/clear which intentionally does NOT touch
+// ~/.mureo/credentials.json (per CTO decision #3, surfaced in the
+// second confirmation dialog).
+
+(function () {
+  "use strict";
+
+  // Official provider ids whose catalog entry is a hosted_http server
+  // (auth is client-side browser OAuth on first use in Claude). Source
+  // of truth: catalog.py install_kind === "hosted_http". Phase 1: only
+  // meta-ads-official. Extend when a new hosted provider is added.
+  const HOSTED_PROVIDER_IDS = ["meta-ads-official"];
+
+  // Official provider id → the mureo-native platform it overlaps. Drives
+  // the per-platform native↔official tool toggle. GA4 is intentionally
+  // ABSENT: mureo has no native GA4 tools (official-only), so there is
+  // nothing to toggle between for it.
+  const PROVIDER_PLATFORM = {
+    "google-ads-official": "google_ads",
+    "meta-ads-official": "meta_ads",
+  };
+
+  // Colored ✓ / ✗ status mark as its own element (kept separate from any
+  // data-i18n text node so a locale re-translation can't wipe it).
+  function statusMark(ok) {
+    const m = document.createElement("span");
+    m.className = ok ? "mark-ok" : "mark-no";
+    m.textContent = ok ? "✓" : "✗";
+    return m;
+  }
+
+  // Basic-setup row definitions. Keyed entries map a status part to its
+  // label, per-row remove endpoint, confirmation key, and button label.
+  // Kept as a module-local constant so renderBasicSection stays small.
+  const BASIC_ROWS = [
+    {
+      key: "mureo_mcp",
+      labelKey: "wizard.basic.mureo_mcp",
+      removeUrl: "/api/setup/mcp/remove",
+      confirmKey: "dashboard.confirm_remove_mcp",
+      actionKey: "dashboard.action_remove_mcp",
+    },
+    {
+      key: "auth_hook",
+      labelKey: "wizard.basic.auth_hook",
+      removeUrl: "/api/setup/hook/remove",
+      confirmKey: "dashboard.confirm_remove_hook",
+      actionKey: "dashboard.action_remove_hook",
+    },
+    {
+      key: "skills",
+      labelKey: "wizard.basic.skills",
+      removeUrl: "/api/setup/skills/remove",
+      confirmKey: "dashboard.confirm_remove_skills",
+      actionKey: "dashboard.action_remove_skills",
+    },
+  ];
+
+  // Default left-nav group shown when the dashboard opens.
+  const DEFAULT_NAV = "setup";
+
+  function selectNavGroup(name) {
+    const groups = document.querySelectorAll("[data-dashboard-group]");
+    groups.forEach(function (g) {
+      g.hidden = g.getAttribute("data-dashboard-group") !== name;
+    });
+    const items = document.querySelectorAll("[data-dashboard-nav]");
+    items.forEach(function (item) {
+      const active = item.getAttribute("data-dashboard-nav") === name;
+      if (active) {
+        item.setAttribute("aria-current", "page");
+      } else {
+        item.removeAttribute("aria-current");
+      }
+    });
+    const rerun = document.querySelector("[data-dashboard-rerun-wizard]");
+    if (rerun) {
+      // .btn sets an explicit `display`, which overrides the UA
+      // `[hidden]{display:none}` rule — toggle display directly.
+      rerun.style.display = name === "setup" ? "" : "none";
+    }
+  }
+
+  function wireDashboardNav() {
+    const items = document.querySelectorAll("[data-dashboard-nav]");
+    items.forEach(function (item) {
+      const name = item.getAttribute("data-dashboard-nav");
+      item.addEventListener("click", function (evt) {
+        evt.preventDefault();
+        selectNavGroup(name);
+      });
+      item.addEventListener("keydown", function (evt) {
+        if (evt.key === "Enter" || evt.key === " " || evt.key === "Spacebar") {
+          evt.preventDefault();
+          selectNavGroup(name);
+        }
+      });
+    });
+  }
+
+  function show() {
+    document.querySelector("[data-wizard]").hidden = true;
+    document.querySelector("[data-landing]").hidden = true;
+    document.querySelector("[data-dashboard]").hidden = false;
+    selectNavGroup(DEFAULT_NAV);
+  }
+
+  function hide() {
+    document.querySelector("[data-dashboard]").hidden = true;
+  }
+
+  function renderHostSection(status) {
+    const node = document.querySelector("[data-dashboard-host-value]");
+    if (!node || !status) return;
+    // Show the friendly host name (same labels as the wizard host
+    // selector), not the raw "claude-desktop" / "claude-code" id.
+    const hostKey =
+      status.host === "claude-desktop"
+        ? "wizard.host.claude_desktop"
+        : status.host === "claude-code"
+        ? "wizard.host.claude_code"
+        : null;
+    if (hostKey) {
+      node.textContent = MUREO.t(hostKey);
+      node.setAttribute("data-i18n", hostKey);
+    } else {
+      node.textContent = status.host || "";
+      node.removeAttribute("data-i18n");
+    }
+  }
+
+  function buildBasicRemoveButton(row) {
+    // Returns a button element wired to call `row.removeUrl` after a
+    // single confirm. Toast (not throw) on failure.
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-secondary";
+    btn.textContent = MUREO.t(row.actionKey);
+    btn.setAttribute("data-i18n", row.actionKey);
+    btn.setAttribute("data-basic-remove", row.key);
+    btn.addEventListener("click", async function () {
+      const confirmed = await MUREO.confirmAction(MUREO.t(row.confirmKey));
+      if (!confirmed) return;
+      let res;
+      try {
+        res = await MUREO.postJson(row.removeUrl, {});
+      } catch (_err) {
+        MUREO.toast(MUREO.t("dashboard.remove_failed"));
+        return;
+      }
+      if (!res || !res.ok) {
+        MUREO.toast(MUREO.t("dashboard.remove_failed"));
+        return;
+      }
+      await MUREO.loadStatus();
+      renderAll();
+    });
+    return btn;
+  }
+
+  function renderBasicSection(status) {
+    const list = document.querySelector("[data-dashboard-basic-list]");
+    if (!list) return;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    const parts = (status && status.setup_parts) || {};
+    BASIC_ROWS.forEach(function (row) {
+      const li = document.createElement("li");
+      const installed = parts[row.key] === true;
+      const labelSpan = document.createElement("span");
+      let labelText = MUREO.t(row.labelKey);
+      // The credential-guard hook has no surface on Claude Desktop, so
+      // annotate it inline rather than implying it can be installed.
+      if (
+        row.key === "auth_hook" &&
+        status &&
+        status.host === "claude-desktop"
+      ) {
+        labelText += " " + MUREO.t("wizard.basic.auth_hook_desktop_na");
+      }
+      labelSpan.appendChild(statusMark(installed));
+      labelSpan.appendChild(document.createTextNode(" " + labelText));
+      li.appendChild(labelSpan);
+      if (installed) {
+        li.appendChild(buildBasicRemoveButton(row));
+      }
+      list.appendChild(li);
+    });
+  }
+
+  // Connected-state for hosted_http providers (account-level Connectors
+  // mureo never writes to the config file, so providers_installed always
+  // reports them ✗). Lazily fetched once from /api/providers/hosted-status
+  // and cached; null = not fetched yet.
+  let hostedConnected = null;
+  let hostedFetchInFlight = false;
+
+  function renderProvidersSection(status) {
+    const list = document.querySelector("[data-dashboard-providers-list]");
+    if (!list) return;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    const providers = (status && status.providers_installed) || {};
+    let anyNotInstalled = false;
+    let needHostedProbe = false;
+    [
+      "google-ads-official",
+      "meta-ads-official",
+      "ga4-official",
+    ].forEach(function (pid) {
+      const li = document.createElement("li");
+      const isHosted = HOSTED_PROVIDER_IDS.indexOf(pid) !== -1;
+      // Hosted providers are "installed" ⇔ their account-level Connector
+      // is Connected (mureo never registers them in the config file).
+      let installed;
+      if (isHosted) {
+        installed = Boolean(hostedConnected && hostedConnected[pid] === true);
+        if (hostedConnected === null) needHostedProbe = true;
+      } else {
+        installed = providers[pid];
+        if (!installed) anyNotInstalled = true;
+      }
+      const labelSpan = document.createElement("span");
+      labelSpan.appendChild(statusMark(installed));
+      labelSpan.appendChild(document.createTextNode(" " + pid));
+      li.appendChild(labelSpan);
+      // No Remove for hosted here: a hosted MCP's lifecycle (the
+      // ~/.claude.json http entry + its `/mcp` OAuth) is managed via
+      // the wizard / `claude mcp remove`, not this dashboard row. Only
+      // file-registered (pipx) providers get a Remove button.
+      if (installed && !isHosted) {
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "btn btn-secondary";
+        removeBtn.textContent = MUREO.t("dashboard.action_remove");
+        removeBtn.setAttribute("data-i18n", "dashboard.action_remove");
+        removeBtn.addEventListener("click", async function () {
+          const res = await MUREO.postJson("/api/providers/remove", {
+            provider_id: pid,
+          });
+          if (res.ok) {
+            await MUREO.loadStatus();
+            renderAll();
+          } else {
+            MUREO.toast("Operation failed");
+          }
+        });
+        li.appendChild(removeBtn);
+      }
+
+      // hosted_http note(s) live INSIDE the provider's own <li> so
+      // they read as part of the same Meta Ads row — not as separate
+      // bordered list items. Guarded so a missing translation never
+      // echoes the key.
+      if (HOSTED_PROVIDER_IDS.indexOf(pid) !== -1) {
+        function appendNote(key) {
+          const text = MUREO.t(key);
+          if (!text || text === key) return;
+          const note = document.createElement("div");
+          note.className = "dashboard-provider-hosted-note";
+          note.textContent = text;
+          note.setAttribute("data-i18n", key);
+          li.appendChild(note);
+        }
+        if (status && status.host === "claude-desktop") {
+          // Desktop: a remote MCP can't be wired from here (Desktop
+          // rejects http config; Meta's hosted MCP has no OAuth DCR).
+          // Only the Connectors instruction applies.
+          appendNote("dashboard.provider_desktop_connectors_note");
+        } else {
+          appendNote("dashboard.provider_hosted_oauth_note");
+        }
+      }
+
+      // Per-platform native↔official tool toggle. Only meaningful when
+      // the mureo MCP itself is configured (otherwise there are no
+      // native tools to step aside). Server enforces the no-strand
+      // guard; the UI just reflects state and surfaces the reason.
+      const platform = PROVIDER_PLATFORM[pid];
+      if (platform && providers.mureo) {
+        const md = (status && status.mureo_disable) || {};
+        const preferred = md[platform] === true;
+        const tg = document.createElement("div");
+        tg.className = "dashboard-provider-hosted-note dashboard-tooluse";
+        const stateKey = preferred
+          ? "dashboard.tooluse_state_official"
+          : "dashboard.tooluse_state_native";
+        const stateSpan = document.createElement("span");
+        stateSpan.textContent =
+          MUREO.t("dashboard.tooluse_label") + " " + MUREO.t(stateKey);
+        tg.appendChild(stateSpan);
+        const toKey = preferred
+          ? "dashboard.tooluse_use_native"
+          : "dashboard.tooluse_use_official";
+        const tBtn = document.createElement("button");
+        tBtn.type = "button";
+        tBtn.className = "btn btn-secondary";
+        tBtn.textContent = MUREO.t(toKey);
+        tBtn.setAttribute("data-i18n", toKey);
+        tBtn.addEventListener("click", async function () {
+          const res = await MUREO.postJson(
+            "/api/providers/native-toggle",
+            { platform: platform, prefer_official: !preferred }
+          );
+          const body = res && res.body;
+          if (res.ok && body && (body.status === "ok" || body.status === "noop")) {
+            MUREO.toast(MUREO.t("dashboard.tooluse_restart_note"));
+            await MUREO.loadStatus();
+            renderAll();
+            return;
+          }
+          const detail = body && body.detail;
+          const errKey =
+            detail === "provider_not_installed"
+              ? "dashboard.tooluse_err_provider_not_installed"
+              : detail === "connector_not_connected"
+              ? "dashboard.tooluse_err_connector_not_connected"
+              : detail === "no_mureo_block"
+              ? "dashboard.tooluse_err_no_mureo_block"
+              : "dashboard.tooluse_err_generic";
+          MUREO.toast(MUREO.t(errKey));
+        });
+        tg.appendChild(tBtn);
+        li.appendChild(tg);
+      }
+      list.appendChild(li);
+    });
+    if (anyNotInstalled) {
+      const note = document.createElement("li");
+      note.className = "dashboard-provider-add-note";
+      note.textContent = MUREO.t("dashboard.provider_add_via_wizard");
+      note.setAttribute("data-i18n", "dashboard.provider_add_via_wizard");
+      list.appendChild(note);
+    }
+
+    // Probe the hosted connectors' Connected state once, then re-render
+    // so a finished account-level Connector flips ✗ → ✓ without a manual
+    // page reload. Cached + in-flight guarded so this never loops.
+    if (needHostedProbe && !hostedFetchInFlight) {
+      hostedFetchInFlight = true;
+      MUREO.postJson("/api/providers/hosted-status", {})
+        .then(function (res) {
+          hostedConnected =
+            (res && res.body && res.body.hosted_connected) || {};
+        })
+        .catch(function () {
+          hostedConnected = {}; // best-effort: leave rows as ✗
+        })
+        .then(function () {
+          hostedFetchInFlight = false;
+          renderProvidersSection(MUREO.state && MUREO.state.status);
+        });
+    }
+  }
+
+  function wireEnvForm() {
+    const form = document.querySelector("[data-env-form]");
+    if (!form) return;
+    form.addEventListener("submit", async function (evt) {
+      evt.preventDefault();
+      const name = form.querySelector("[data-env-name]").value;
+      const value = form.querySelector('[name="env_value"]').value;
+      if (!name || !value) return;
+      const res = await MUREO.postJson("/api/credentials/env-var", {
+        name: name,
+        value: value,
+      });
+      if (res.ok) {
+        form.querySelector('[name="env_value"]').value = "";
+        MUREO.toast("Saved.");
+        // Refresh to surface the freshly-saved value preview.
+        await MUREO.loadStatus();
+        renderEnvVarsSection(MUREO.state.status);
+      } else {
+        MUREO.toast("Save failed.");
+      }
+    });
+  }
+
+  function renderEnvVarsSection(status) {
+    // Renders one row per known env var: <name> <masked-or-full-preview>.
+    // Secret-named vars arrive already masked from status_collector —
+    // this function does NOT mask, and the raw value is never available
+    // to the browser. Unset vars get a localised "(not set)" placeholder.
+    const list = document.querySelector("[data-dashboard-env-list]");
+    if (!list) return;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    const envVars = (status && status.env_vars) || {};
+    const names = Object.keys(envVars).sort();
+    names.forEach(function (name) {
+      const entry = envVars[name] || {};
+      const li = document.createElement("li");
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "dashboard-env-name";
+      nameSpan.textContent = name;
+      const valueSpan = document.createElement("span");
+      valueSpan.className = "dashboard-env-value";
+      if (entry.set && entry.value_preview != null) {
+        valueSpan.textContent = entry.value_preview;
+      } else {
+        valueSpan.classList.add("dashboard-env-unset");
+        valueSpan.textContent = MUREO.t("dashboard.env_value_unset");
+      }
+      li.appendChild(nameSpan);
+      li.appendChild(valueSpan);
+      list.appendChild(li);
+    });
+  }
+
+  function wireRerunWizardButton() {
+    const btn = document.querySelector("[data-dashboard-rerun-wizard]");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      MUREO.navigateToWizard();
+      document.dispatchEvent(
+        new CustomEvent("mureo:wizard_start", { detail: {} })
+      );
+    });
+  }
+
+  async function runBulkClear() {
+    // Two-step confirmation. Either decline aborts.
+    const ok1 = await MUREO.confirmAction(MUREO.t("dashboard.confirm_clear_all_1"));
+    if (!ok1) return;
+    const ok2 = await MUREO.confirmAction(MUREO.t("dashboard.confirm_clear_all_2"));
+    if (!ok2) return;
+    let res;
+    try {
+      res = await MUREO.postJson("/api/setup/basic/clear", {});
+    } catch (_err) {
+      MUREO.toast(MUREO.t("dashboard.remove_failed"));
+      return;
+    }
+    if (!res || !res.ok) {
+      MUREO.toast(MUREO.t("dashboard.remove_failed"));
+      return;
+    }
+    await MUREO.loadStatus();
+    renderAll();
+    MUREO.toast(MUREO.t("dashboard.clear_all_success"));
+  }
+
+  function wireBulkClearButton() {
+    const btn = document.querySelector("[data-dashboard-clear-all]");
+    if (!btn) return;
+    btn.addEventListener("click", runBulkClear);
+  }
+
+  // ----- Demo section -------------------------------------------------
+
+  async function loadDemoScenarios() {
+    const select = document.querySelector("[data-demo-scenario]");
+    if (!select) return;
+    let body;
+    try {
+      const res = await fetch("/api/demo/scenarios");
+      body = await res.json();
+    } catch (_err) {
+      return;
+    }
+    if (!body || body.status !== "ok" || !Array.isArray(body.scenarios)) {
+      return;
+    }
+    while (select.firstChild) select.removeChild(select.firstChild);
+    body.scenarios.forEach(function (sc) {
+      const opt = document.createElement("option");
+      opt.value = sc.name;
+      // Prefer a localised title; MUREO.t returns the key verbatim when
+      // missing, so an unknown scenario falls back to the API title.
+      const titleKey = "demo.scenario." + sc.name;
+      const localised = MUREO.t(titleKey);
+      const title = localised === titleKey ? sc.title : localised;
+      // Title only: sc.blurb is hardcoded English from the Python
+      // scenario registry, so appending it would leave an English
+      // tail on a Japanese option under locale=ja.
+      opt.textContent = title;
+      if (sc.default) opt.selected = true;
+      select.appendChild(opt);
+    });
+  }
+
+  function wireDemoCreate() {
+    const btn = document.querySelector("[data-demo-create]");
+    if (!btn) return;
+    btn.addEventListener("click", async function () {
+      const scenario = document.querySelector("[data-demo-scenario]");
+      const targetNode = document.querySelector("[data-demo-target]");
+      const resultNode = document.querySelector("[data-demo-result]");
+      const target = targetNode ? targetNode.value.trim() : "";
+      if (!target) {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.demo_target_required");
+        }
+        return;
+      }
+      if (resultNode) resultNode.textContent = MUREO.t("dashboard.demo_creating");
+      let res;
+      try {
+        res = await MUREO.postJson("/api/demo/init", {
+          scenario_name: scenario ? scenario.value : "",
+          target: target,
+          force: false,
+          skip_import: false,
+        });
+      } catch (_err) {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.demo_failed", {
+            detail: "network",
+          });
+        }
+        return;
+      }
+      const data = (res && res.body) || {};
+      if (res && res.ok && data.status === "ok") {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.demo_success", {
+            path: data.created_path || target,
+          });
+        }
+      } else if (resultNode) {
+        resultNode.textContent = MUREO.t("dashboard.demo_failed", {
+          detail: (data && data.detail) || "error",
+        });
+      }
+    });
+  }
+
+  function wireBrowseButton(buttonSelector, inputSelector, endpoint, body) {
+    const btn = document.querySelector(buttonSelector);
+    if (!btn) return;
+    btn.addEventListener("click", async function () {
+      const input = document.querySelector(inputSelector);
+      let res;
+      try {
+        res = await MUREO.postJson(endpoint, body);
+      } catch (_err) {
+        MUREO.toast(MUREO.t("dashboard.picker_error"));
+        return;
+      }
+      const data = (res && res.body) || {};
+      if (data.status === "ok" && data.path) {
+        if (input) input.value = data.path;
+      } else if (data.status === "cancelled") {
+        return;
+      } else {
+        MUREO.toast(MUREO.t("dashboard.picker_error"));
+      }
+    });
+  }
+
+  function wirePickers() {
+    wireBrowseButton(
+      "[data-demo-browse]",
+      "[data-demo-target]",
+      "/api/pick/directory",
+      { title: MUREO.t("dashboard.browse") }
+    );
+    wireBrowseButton(
+      "[data-byod-browse]",
+      "[data-byod-file]",
+      "/api/pick/file",
+      { title: MUREO.t("dashboard.browse"), kind: "xlsx" }
+    );
+  }
+
+  // ----- BYOD section -------------------------------------------------
+
+  function byodModeLabel(mode) {
+    if (mode === "byod") return MUREO.t("dashboard.byod_mode_byod");
+    if (mode === "not_configured") {
+      return MUREO.t("dashboard.byod_mode_not_configured");
+    }
+    return MUREO.t("dashboard.byod_mode_live");
+  }
+
+  function buildByodRemoveButton(platform) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-secondary";
+    btn.textContent = MUREO.t("dashboard.byod_remove");
+    btn.setAttribute("data-i18n", "dashboard.byod_remove");
+    btn.addEventListener("click", async function () {
+      const confirmed = await MUREO.confirmAction(
+        MUREO.t("dashboard.byod_confirm_remove", { platform: platform })
+      );
+      if (!confirmed) return;
+      let res;
+      try {
+        res = await MUREO.postJson("/api/byod/remove", {
+          google_ads: platform === "google_ads",
+          meta_ads: platform === "meta_ads",
+        });
+      } catch (_err) {
+        MUREO.toast(MUREO.t("dashboard.byod_remove_failed"));
+        return;
+      }
+      const data = (res && res.body) || {};
+      if (res && res.ok && data.status !== "error") {
+        await renderByodStatus();
+      } else {
+        MUREO.toast(MUREO.t("dashboard.byod_remove_failed"));
+      }
+    });
+    return btn;
+  }
+
+  function appendByodRow(tbody, p) {
+    const tr = document.createElement("tr");
+    const platformCell = document.createElement("td");
+    platformCell.textContent = p.platform;
+    const modeCell = document.createElement("td");
+    modeCell.textContent = byodModeLabel(p.mode);
+    const detailCell = document.createElement("td");
+    if (p.mode === "byod") {
+      const range = p.date_range
+        ? (p.date_range.start || "?") + ".." + (p.date_range.end || "?")
+        : "";
+      detailCell.textContent =
+        (p.rows != null ? p.rows + " rows" : "") +
+        (range ? " (" + range + ")" : "");
+    }
+    const actionCell = document.createElement("td");
+    if (p.mode === "byod") {
+      actionCell.appendChild(buildByodRemoveButton(p.platform));
+    }
+    tr.appendChild(platformCell);
+    tr.appendChild(modeCell);
+    tr.appendChild(detailCell);
+    tr.appendChild(actionCell);
+    tbody.appendChild(tr);
+  }
+
+  async function renderByodStatus() {
+    const tbody = document.querySelector("[data-byod-status-body]");
+    if (!tbody) return;
+    let body;
+    try {
+      const res = await fetch("/api/byod/status");
+      body = await res.json();
+    } catch (_err) {
+      return;
+    }
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+    if (!body || body.status !== "ok" || !Array.isArray(body.platforms)) {
+      return;
+    }
+    body.platforms.forEach(function (p) {
+      appendByodRow(tbody, p);
+    });
+  }
+
+  function wireByodImport() {
+    const btn = document.querySelector("[data-byod-import]");
+    if (!btn) return;
+    btn.addEventListener("click", async function () {
+      const fileNode = document.querySelector("[data-byod-file]");
+      const replaceNode = document.querySelector("[data-byod-replace]");
+      const resultNode = document.querySelector("[data-byod-result]");
+      const filePath = fileNode ? fileNode.value.trim() : "";
+      if (!filePath) {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.byod_file_required");
+        }
+        return;
+      }
+      if (resultNode) {
+        resultNode.textContent = MUREO.t("dashboard.byod_importing");
+      }
+      let res;
+      try {
+        res = await MUREO.postJson("/api/byod/import", {
+          file_path: filePath,
+          replace: replaceNode ? replaceNode.checked : false,
+        });
+      } catch (_err) {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.byod_import_failed", {
+            detail: "network",
+          });
+        }
+        return;
+      }
+      const data = (res && res.body) || {};
+      if (res && res.ok && data.status === "ok") {
+        if (resultNode) {
+          resultNode.textContent = MUREO.t("dashboard.byod_import_success");
+        }
+        await renderByodStatus();
+      } else if (resultNode) {
+        resultNode.textContent = MUREO.t("dashboard.byod_import_failed", {
+          detail: (data && data.detail) || "error",
+        });
+      }
+    });
+  }
+
+  async function runByodClear() {
+    const ok1 = await MUREO.confirmAction(
+      MUREO.t("dashboard.byod_confirm_clear_1")
+    );
+    if (!ok1) return;
+    const ok2 = await MUREO.confirmAction(
+      MUREO.t("dashboard.byod_confirm_clear_2")
+    );
+    if (!ok2) return;
+    let res;
+    try {
+      res = await MUREO.postJson("/api/byod/clear", {});
+    } catch (_err) {
+      MUREO.toast(MUREO.t("dashboard.byod_clear_failed"));
+      return;
+    }
+    const data = (res && res.body) || {};
+    if (res && res.ok && data.status !== "error") {
+      MUREO.toast(MUREO.t("dashboard.byod_clear_success"));
+      await renderByodStatus();
+    } else {
+      MUREO.toast(MUREO.t("dashboard.byod_clear_failed"));
+    }
+  }
+
+  function wireByodClear() {
+    const btn = document.querySelector("[data-byod-clear]");
+    if (!btn) return;
+    btn.addEventListener("click", runByodClear);
+  }
+
+  // mureo-native platforms (mureo ships native tools for these:
+  // Google Ads, Meta Ads, Search Console — there is NO native GA4, so
+  // GA4 is deliberately NOT a row here; it is an official-provider-only
+  // platform). Search Console has no own credentials.json section — it
+  // reuses the google_ads Google OAuth (adwords + webmasters scopes),
+  // so it is a status-only row (configured ⇔ the shared Google OAuth is
+  // present, which the wizard's Search Console step writes) with no
+  // standalone Remove (removing it would nuke the shared Google sign-in
+  // / Google Ads — done from the Google Ads row instead).
+  const NATIVE_SECTIONS = [
+    {
+      key: "google_ads",
+      section: "google_ads",
+      labelKey: "wizard.platforms.google_ads",
+      removable: true,
+      configured: function (s, present) {
+        return present.google_ads === true;
+      },
+    },
+    {
+      key: "meta_ads",
+      section: "meta_ads",
+      labelKey: "wizard.platforms.meta_ads",
+      removable: true,
+      configured: function (s, present) {
+        return present.meta_ads === true;
+      },
+    },
+    {
+      key: "search_console",
+      labelKey: "wizard.platforms.search_console",
+      removable: false,
+      noteKey: "dashboard.native_sc_row_note",
+      configured: function (s) {
+        return Boolean(
+          s && s.credentials_oauth && s.credentials_oauth.google
+        );
+      },
+    },
+  ];
+
+  function renderNativeSection(status) {
+    const list = document.querySelector("[data-dashboard-native-list]");
+    if (!list) return;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    const present = (status && status.credentials_present) || {};
+    let any = false;
+    NATIVE_SECTIONS.forEach(function (row) {
+      const configured = row.configured(status, present);
+      const li = document.createElement("li");
+      const label = document.createElement("span");
+      label.appendChild(statusMark(configured));
+      label.appendChild(document.createTextNode(" "));
+      // data-i18n on an INNER span only, so a locale re-translation
+      // (which overwrites the node's textContent) can't wipe the mark.
+      const labelText = document.createElement("span");
+      labelText.textContent = MUREO.t(row.labelKey);
+      labelText.setAttribute("data-i18n", row.labelKey);
+      label.appendChild(labelText);
+      li.appendChild(label);
+      if (configured) any = true;
+      if (configured && row.removable) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn btn-secondary";
+        btn.textContent = MUREO.t("dashboard.action_remove");
+        btn.setAttribute("data-i18n", "dashboard.action_remove");
+        btn.addEventListener("click", async function () {
+          const ok = await MUREO.confirmAction(
+            MUREO.t("dashboard.confirm_remove_credentials")
+          );
+          if (!ok) return;
+          const res = await MUREO.postJson("/api/credentials/remove", {
+            section: row.section,
+          });
+          if (res.ok) {
+            await MUREO.loadStatus();
+            renderAll();
+          } else {
+            MUREO.toast(MUREO.t("dashboard.remove_failed"));
+          }
+        });
+        li.appendChild(btn);
+      }
+      // Google Ads + Search Console share the one Google OAuth.
+      if (configured && row.key === "google_ads") {
+        const note = document.createElement("div");
+        note.className = "dashboard-provider-hosted-note";
+        note.textContent = MUREO.t("dashboard.native_sc_shared");
+        note.setAttribute("data-i18n", "dashboard.native_sc_shared");
+        li.appendChild(note);
+      }
+      // Search Console row: always explain the shared-sign-in coupling.
+      if (row.noteKey) {
+        const note = document.createElement("div");
+        note.className = "dashboard-provider-hosted-note";
+        note.textContent = MUREO.t(row.noteKey);
+        note.setAttribute("data-i18n", row.noteKey);
+        li.appendChild(note);
+      }
+      list.appendChild(li);
+    });
+    if (!any) {
+      const none = document.createElement("li");
+      none.className = "dashboard-provider-hosted-note";
+      none.textContent = MUREO.t("dashboard.native_none");
+      none.setAttribute("data-i18n", "dashboard.native_none");
+      list.appendChild(none);
+    }
+  }
+
+  function renderAll() {
+    const status = MUREO.state.status;
+    renderHostSection(status);
+    renderBasicSection(status);
+    renderNativeSection(status);
+    renderProvidersSection(status);
+    renderEnvVarsSection(status);
+    loadDemoScenarios();
+    renderByodStatus();
+  }
+
+  document.addEventListener("mureo:ready", function () {
+    wireDashboardNav();
+    wireEnvForm();
+    wireRerunWizardButton();
+    wireBulkClearButton();
+    wireDemoCreate();
+    wireByodImport();
+    wireByodClear();
+    wirePickers();
+    if (MUREO.isDashboardRoute()) {
+      show();
+      renderAll();
+    }
+  });
+
+  document.addEventListener("mureo:route_changed", function (evt) {
+    if (evt.detail && evt.detail.route === "dashboard") {
+      show();
+      MUREO.loadStatus().then(renderAll);
+    } else {
+      hide();
+    }
+  });
+
+  // Re-render JS-built sections on locale change. `data-i18n` static
+  // text is handled by app.js; dynamic nodes built via MUREO.t(...)
+  // (demo scenario options, BYOD rows, env-var rows, provider/basic
+  // rows) are frozen at first render, so reuse renderAll() to rebuild
+  // them. renderAll() reads cached MUREO.state.status (no extra fetch)
+  // and clears each container before rebuilding, so repeated locale
+  // switches stay idempotent (no duplicate rows/options). Guarded so
+  // it is a no-op when the dashboard is absent or hidden. Listener is
+  // registered once at module eval — no double-binding.
+  document.addEventListener("mureo:locale_changed", function () {
+    const dashboard = document.querySelector("[data-dashboard]");
+    if (!dashboard || dashboard.hidden) return;
+    renderAll();
+  });
+})();
