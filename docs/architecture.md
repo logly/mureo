@@ -138,10 +138,11 @@ mureo/
 │   ├── setup_cmd.py         # mureo setup claude-code / cursor / codex / gemini (Typer handlers)
 │   ├── setup_codex.py       # Codex install-kit (MCP config, credential guard, workflow-command skills, shared skills)
 │   ├── setup_gemini.py      # Gemini extension manifest (~/.gemini/extensions/mureo/gemini-extension.json)
-│   ├── auth_cmd.py          # mureo auth setup (+ --web) / status / check-*
+│   ├── auth_cmd.py          # mureo auth setup (terminal) / status / check-*
+│   ├── configure_cmd.py     # mureo configure — launches the local browser configuration UI
 │   ├── rollback_cmd.py      # mureo rollback list / show (inspection only; apply routes through MCP)
 │   ├── _tty.py              # TTY-safe helpers (confirm_or_default, is_tty) for non-interactive setup
-│   └── web_auth.py          # mureo auth setup --web — browser-based OAuth wizard (Google + Meta)
+│   └── web_auth.py          # OAuth handoff server used by `mureo configure` (Google + Meta) — was `auth setup --web`
 └── mcp/                     # MCP server
     ├── __main__.py                        # python -m mureo.mcp entry point
     ├── server.py                          # MCP server setup (stdio transport)

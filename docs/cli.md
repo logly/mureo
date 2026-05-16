@@ -99,16 +99,17 @@ mureo auth check-meta
 # Interactive authentication wizard (terminal prompts)
 mureo auth setup
 
-# Browser-based authentication wizard (no terminal input needed)
-mureo auth setup --web
+# Browser configuration UI (no terminal input needed) — supersedes the
+# removed `mureo auth setup --web`
+mureo configure
 ```
 
-`mureo auth setup` has two flavours:
+Credential entry has two front doors:
 
-- **Terminal mode (default)** — walks you through Google Ads / Meta Ads setup via stdin prompts. Best when you're comfortable with pasting secrets into a terminal.
-- **`--web` mode** — starts a local HTTP wizard on `http://127.0.0.1:<random-port>/`, opens it in your browser, and asks for the same secrets via an HTML form. Recommended when you were pointed here by an AI agent (Claude Code, etc.) that cannot itself receive terminal input safely. Every field has a deep link next to it so you know where to fetch the Developer Token / App ID / Secret from Google's or Meta's console.
+- **`mureo auth setup` (terminal, default)** — walks you through Google Ads / Meta Ads setup via stdin prompts. Best when you're comfortable pasting secrets into a terminal.
+- **`mureo configure` (browser)** — starts a local UI on `http://127.0.0.1:<random-port>/` and opens your browser. It does the same credential entry (HTML forms + standard OAuth redirects, each field deep-linked to the right console) **and** the rest of Claude setup: pick the host, run basic setup, add official MCP providers, scaffold Demo/BYOD. Recommended when an AI agent (Claude Code, etc.) pointed you here, or you just prefer a GUI. (The old `mureo auth setup --web` was removed and folded into `mureo configure`.)
 
-Both modes end at the same destination: `~/.mureo/credentials.json` is populated and Claude Desktop (or any other MCP client) picks up mureo after a restart.
+Both end at the same destination: `~/.mureo/credentials.json` is populated and Claude (or any other MCP client) picks up mureo after a restart.
 
 See [authentication.md](authentication.md) for details on credentials.
 

@@ -233,9 +233,10 @@
       labelSpan.appendChild(statusMark(installed));
       labelSpan.appendChild(document.createTextNode(" " + pid));
       li.appendChild(labelSpan);
-      // No Remove for hosted: mureo can't unregister an account-level
-      // Connector (it never created it). Only file-registered (pipx)
-      // providers get a Remove button.
+      // No Remove for hosted here: a hosted MCP's lifecycle (the
+      // ~/.claude.json http entry + its `/mcp` OAuth) is managed via
+      // the wizard / `claude mcp remove`, not this dashboard row. Only
+      // file-registered (pipx) providers get a Remove button.
       if (installed && !isHosted) {
         const removeBtn = document.createElement("button");
         removeBtn.type = "button";

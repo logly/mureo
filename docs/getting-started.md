@@ -12,7 +12,7 @@ For a 30-second overview of which combination to pick, jump to [Choosing the rig
 |---|---|---|---|
 | **Demo** (synthetic data) | `mureo setup claude-code --skip-auth` + `mureo demo init --scenario seasonality-trap` | `mureo install-desktop --with-demo seasonality-trap` | Same as Desktop chat + connect the workspace folder in Cowork |
 | **BYOD** (your XLSX bundle) | `mureo setup claude-code --skip-auth` + `mureo byod import bundle.xlsx` | `mureo install-desktop` + `mureo byod import bundle.xlsx` | Same as Desktop chat + connect the workspace folder |
-| **Auth** (Live API) | `mureo setup claude-code` (interactive OAuth) | `mureo install-desktop` + `mureo auth setup --web` | Same as Desktop chat + connect the workspace folder |
+| **Auth** (Live API) | `mureo setup claude-code` (interactive OAuth) | `mureo install-desktop` + `mureo configure` | Same as Desktop chat + connect the workspace folder |
 
 **Host quick reference:**
 
@@ -196,7 +196,7 @@ The setup command opens a local web wizard at `http://127.0.0.1:<random-port>/`,
 ```bash
 pip install mureo
 mureo install-desktop --workspace ~/mureo
-mureo auth setup --web              # browser-based OAuth wizard
+mureo configure                     # browser UI: OAuth + host setup + providers
 ```
 
 Restart Claude Desktop. In a chat tab:
@@ -211,7 +211,7 @@ The MCP server picks up the credentials from `~/.mureo/credentials.json` automat
 
 Same as Desktop chat — Cowork uses the same MCP entry. After `install-desktop` + `auth setup`, **connect the workspace folder** in Cowork (`~/mureo`) so the agent can also see local files when needed.
 
-> **Phase 4 preview**: a `mureo_auth_setup` MCP tool will let you start the OAuth wizard from chat directly. Until then, run `mureo auth setup --web` in your terminal once.
+> **Phase 4 preview**: a `mureo_auth_setup` MCP tool will let you start the OAuth wizard from chat directly. Until then, run `mureo configure` once (it opens the browser UI).
 
 ## Step 3 — Verify
 

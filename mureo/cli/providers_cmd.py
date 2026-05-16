@@ -90,31 +90,37 @@ def _emit_coexistence(spec: ProviderSpec, *, mureo_block_present: bool) -> None:
         typer.echo(warning)
 
 
-def _emit_hosted_manual_notice(spec: ProviderSpec, *, dry_run: bool) -> None:
-    """Explain why a hosted (no-DCR) provider is NOT auto-registered.
+def _emit_hosted_auth_notice(spec: ProviderSpec, *, dry_run: bool) -> None:
+    """Print the post-registration OAuth steps for a hosted MCP.
 
-    Meta's hosted Ads MCP has no OAuth Dynamic Client Registration, so a
-    raw ``~/.claude.json`` http entry can never connect. Direct the user
-    to Claude's account-level Connectors (which perform the OAuth with a
-    pre-registered client) and make clear mureo-native Meta stays
-    enabled (nothing is disabled, nothing is written).
+    A hosted HTTP MCP IS a valid Claude Code user-scope server (it was
+    just registered into ``~/.claude.json``). The 401 "✗ Failed to
+    connect" until OAuth is the EXPECTED pre-auth state; mureo cannot do
+    the OAuth, so tell the user exactly how to finish it via ``/mcp``.
+    Meta's server does not support Dynamic Client Registration, so the
+    plain ``/mcp`` flow needs a pre-registered OAuth client.
     """
     url = spec.mcp_server_config.get("url", "")
     prefix = "[dry-run] " if dry_run else ""
     typer.echo(
-        f"{prefix}{spec.id}: hosted MCP — mureo does NOT register this and "
-        f"does NOT disable mureo-native tools.\n"
-        f"{prefix}A raw ~/.claude.json http entry cannot complete Meta's "
-        f"OAuth (no Dynamic Client Registration), so it must be added via "
-        f"Claude's Connectors:\n"
-        f"{prefix}  1. Open Claude's Connectors settings "
-        f"(claude.ai → Settings → Connectors, or the Connectors panel in "
-        f"Claude Code / Desktop).\n"
-        f"{prefix}  2. Add the Meta Ads connector and sign in with your "
-        f"Meta Business account.\n"
-        f"{prefix}  Endpoint for reference: {url}\n"
-        f"{prefix}mureo-native Meta Ads stays enabled until you confirm "
-        f"the official connector works."
+        f"{prefix}{spec.id}: registered as a hosted HTTP MCP in "
+        f"~/.claude.json (user scope). It shows '✗ Failed to connect' "
+        f"until you authenticate — that is expected. To finish:\n"
+        f"{prefix}  1. In Claude Code run: /mcp\n"
+        f"{prefix}  2. Select {spec.id} → Authenticate, and sign in with "
+        f"your Meta Business account in the browser.\n"
+        f"{prefix}  3. Reconnect / restart Claude Code — the mcp__*__ "
+        f"tools then load.\n"
+        f"{prefix}Note: {spec.id} does NOT support OAuth dynamic client "
+        f"registration. If /mcp reports that, re-register with a "
+        f"pre-registered Meta OAuth app:\n"
+        f"{prefix}  claude mcp remove {spec.id} -s user && claude mcp add "
+        f"--transport http --scope user --client-id <id> --client-secret "
+        f"--callback-port <port> {spec.id} {url}\n"
+        f"{prefix}(Or use the account-level claude.ai Meta Ads connector "
+        f"instead — Anthropic supplies the OAuth client there.)\n"
+        f"{prefix}mureo-native Meta stays active until you switch it off "
+        f"with `mureo providers confirm {spec.id}` (after it is Connected)."
     )
 
 
@@ -153,16 +159,24 @@ def _add_one(spec: ProviderSpec, *, dry_run: bool) -> bool:
     degraded coexistence note is emitted instead.
     """
     if spec.install_kind == "hosted_http":
-        # A hosted MCP with no OAuth Dynamic Client Registration (Meta's
-        # Ads MCP) CANNOT be wired as a raw ~/.claude.json http entry —
-        # Claude registers it but can never complete Meta's OAuth, so it
-        # shows "✗ Failed to connect". The only working path is Claude's
-        # account-level Connectors, which mureo cannot create. So we do
-        # NOT register a dead entry and do NOT auto-disable native Meta
-        # (that would strand the user with no Meta at all). Print the
-        # manual Connectors guidance and treat it as success (manual
-        # setup is expected, not a failure).
-        _emit_hosted_manual_notice(spec, dry_run=dry_run)
+        # A hosted HTTP MCP IS a valid Claude Code user-scope server.
+        # Register the {"type":"http","url":...} block (same as
+        # `claude mcp add --transport http`); the user finishes OAuth
+        # interactively via `/mcp` (mureo can't do that). Do NOT
+        # auto-disable mureo-native — registration ≠ authenticated;
+        # native steps aside only via `providers confirm` after the
+        # connector is verified Connected (no-strand preserved).
+        if dry_run:
+            typer.echo(
+                f"[dry-run] {spec.id}: would register hosted HTTP MCP "
+                f"{json.dumps({spec.id: dict(spec.mcp_server_config)}, ensure_ascii=False)} "
+                f"in ~/.claude.json (no native auto-disable)"
+            )
+            _emit_hosted_auth_notice(spec, dry_run=True)
+            return True
+        add_provider_to_claude_settings(spec)
+        typer.echo(f"registered {spec.id} in ~/.claude.json (user scope)")
+        _emit_hosted_auth_notice(spec, dry_run=False)
         return True
 
     if dry_run:

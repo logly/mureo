@@ -67,7 +67,7 @@ _OFFICIAL_PROVIDER_IDS: tuple[str, ...] = (
 class ActionResult:
     """JSON-friendly result of one setup action."""
 
-    status: str  # "ok" | "noop" | "error" | "manual_required"
+    status: str  # "ok"|"noop"|"error"|"manual_required"|"auth_required"
     detail: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -434,22 +434,27 @@ def _install_provider_code(
         return ActionResult(status="error", detail=type(exc).__name__)
 
     if spec.install_kind == "hosted_http":
-        # A remote MCP with no OAuth Dynamic Client Registration (Meta's
-        # hosted Ads MCP) CANNOT be wired into Claude Code as a raw
-        # user-scope http entry: `claude mcp add-json` registers it, but
-        # the client can never complete Meta's OAuth, so it shows up as
-        # "✗ Failed to connect". The only working path is Claude's
-        # account-level Connectors (the claude.ai MetaAds connector),
-        # which mureo cannot create programmatically — same constraint
-        # the Desktop path already handles via `manual_required`.
+        # Claude Code: a hosted HTTP MCP IS a valid user-scope server.
+        # Register the {"type":"http","url":...} block into ~/.claude.json
+        # (same mechanism as `claude mcp add --transport http`, a
+        # documented path independent of and higher-precedence than
+        # claude.ai Connectors). The 401 "✗ Failed to connect" before
+        # OAuth is the EXPECTED pre-auth state — the user completes it
+        # interactively via `/mcp` → Authenticate (browser login). mureo
+        # cannot perform that OAuth, so we return ``auth_required`` and
+        # the UI/CLI surface the exact `/mcp` steps (incl. Meta's no-DCR
+        # caveat).
         #
-        # Crucially we DO NOT auto-disable mureo-native Meta here:
-        # disabling the working native tools while the official path is
-        # unverified strands the user with no Meta capability at all
-        # (observed regression). Native stays until the user has the
-        # official connector actually working. The UI surfaces the
-        # manual Connectors steps.
-        return ActionResult(status="manual_required", detail=spec.id)
+        # We do NOT auto-disable mureo-native Meta on registration:
+        # registration ≠ authenticated. Native steps aside only once the
+        # connector is verified Connected, via `providers confirm` /
+        # the dashboard native-toggle (no-strand preserved).
+        try:
+            add_provider_to_claude_settings(spec, extra_env={})
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("install_provider (hosted) register failed")
+            return ActionResult(status="error", detail=type(exc).__name__)
+        return ActionResult(status="auth_required", detail=spec.id)
 
     try:
         result = run_install(spec, dry_run=False)

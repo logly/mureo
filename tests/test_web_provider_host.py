@@ -314,13 +314,13 @@ class TestInstallProviderInjectsCredentialEnv:
             "GOOGLE_PROJECT_ID": "proj-1",
         }
 
-    def test_code_host_hosted_meta_no_write_no_disable(
+    def test_code_host_hosted_meta_registers_without_native_disable(
         self, tmp_path: Path
     ) -> None:
-        """Meta's hosted MCP can't be wired as a raw http entry on Claude
-        Code (no DCR) — the Code path returns ``manual_required`` and
-        touches NEITHER the provider config NOR the native-disable env,
-        even when a meta_ads section exists in credentials.json."""
+        """Claude Code: a hosted HTTP MCP IS a valid user-scope server.
+        It is REGISTERED (the user finishes OAuth via `/mcp`), status is
+        ``auth_required``, and mureo-native Meta is NOT auto-disabled
+        (registration ≠ authenticated — no-strand preserved)."""
         from mureo.web import setup_actions
 
         creds = tmp_path / ".mureo" / "credentials.json"
@@ -333,20 +333,26 @@ class TestInstallProviderInjectsCredentialEnv:
                 return_value=_ok_install(),
             ),
             patch(
-                "mureo.providers.config_writer.add_provider_to_claude_settings",
-                side_effect=AssertionError("no http block on hosted_http/Code"),
-            ),
+                "mureo.providers.config_writer.add_provider_to_claude_settings"
+            ) as mock_add,
             patch(
                 "mureo.providers.mureo_env.add_provider_and_disable_in_mureo",
-                side_effect=AssertionError("no native auto-disable on hosted_http"),
+                side_effect=AssertionError(
+                    "must NOT auto-disable native on hosted register"
+                ),
             ),
         ):
             result = setup_actions.install_provider(
                 _META, credentials_path=creds
             )
 
-        assert result.status == "manual_required"
+        assert result.status == "auth_required"
         assert result.detail == _META
+        # Registered (the http block written), with NO extra_env (hosted
+        # MCP authenticates via /mcp OAuth, not env vars).
+        mock_add.assert_called_once()
+        _, kwargs = mock_add.call_args
+        assert kwargs.get("extra_env") == {}
 
     def test_code_host_missing_credentials_still_registers_bare(
         self, tmp_path: Path
@@ -821,41 +827,37 @@ class TestHostedHttpDesktopManualRequired:
 
         assert not cfg.exists()
 
-    def test_code_host_hosted_http_returns_manual_required(
+    def test_code_host_hosted_http_registers_auth_required(
         self, tmp_path: Path
     ) -> None:
-        """meta-ads-official on Claude Code: a raw user-scope http entry
-        can NEVER connect (Meta has no OAuth Dynamic Client
-        Registration — Claude shows "✗ Failed to connect"). So the Code
-        path must mirror Desktop: ``manual_required``, NO dead http block
-        written, and mureo-native Meta NOT auto-disabled (auto-disabling
-        while the official path is unverified strands the user — the
-        observed regression). The working path is Claude's account-level
-        Connectors, which mureo cannot create programmatically."""
+        """meta-ads-official on Claude Code: a hosted HTTP MCP is a valid
+        user-scope server (separate from / higher precedence than
+        claude.ai Connectors). It IS registered into ~/.claude.json; the
+        401 "✗ Failed to connect" until the user runs `/mcp` →
+        Authenticate is the expected pre-auth state. Status is
+        ``auth_required``; native is NOT auto-disabled (no-strand)."""
         from mureo.web import setup_actions
 
-        cfg = _desktop_cfg(tmp_path)
         with (
             patch(
                 "mureo.providers.installer.run_install",
                 return_value=_ok_install(),
             ),
             patch(
-                "mureo.providers.config_writer.add_provider_to_claude_settings",
-                side_effect=AssertionError("no http block on hosted_http/Code"),
-            ),
+                "mureo.providers.config_writer.add_provider_to_claude_settings"
+            ) as mock_add,
             patch(
                 "mureo.providers.mureo_env.add_provider_and_disable_in_mureo",
-                side_effect=AssertionError("no native auto-disable on hosted_http"),
+                side_effect=AssertionError("no native auto-disable on register"),
             ),
         ):
             result = setup_actions.install_provider(
                 _META, host="claude-code", home=tmp_path
             )
 
-        assert result.status == "manual_required"
+        assert result.status == "auth_required"
         assert result.detail == _META
-        assert not cfg.exists()
+        mock_add.assert_called_once()
 
     def test_pipx_provider_desktop_block_unchanged(self, tmp_path: Path) -> None:
         """pipx providers on Desktop keep their existing

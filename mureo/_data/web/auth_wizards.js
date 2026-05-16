@@ -19,6 +19,7 @@
     // hosted_http providers (catalog install_kind === "hosted_http").
     // Phase 1: only meta-ads-official. Extend when a new one is added.
     const isHosted = providerId === "meta-ads-official";
+    const onDesktop = state.host === "claude-desktop";
 
     // Meta's official hosted Ads MCP endpoint (matches catalog.py).
     const META_HOSTED_URL = "https://mcp.facebook.com/ads";
@@ -29,14 +30,14 @@
     // returns true (the card has no missing-translation failure mode;
     // labels fall back via MUREO.t).
     function showManualSetup() {
-      // Meta's hosted Ads MCP has no OAuth Dynamic Client Registration,
-      // so it can't be wired from here on EITHER host — the working
-      // path is Claude's Connectors. But the steps genuinely differ:
-      //   - Claude Desktop: Settings → Connectors → Add custom connector
-      //     (paste the URL).
-      //   - Claude Code (terminal): there is no Connectors GUI; the
-      //     account-level "Meta Ads" connector is added at claude.ai in
-      //     a browser and then surfaces in Claude Code automatically.
+      // mureo cannot perform the hosted MCP's OAuth — but the finish
+      // steps genuinely differ by host:
+      //   - Claude Code: mureo already REGISTERED the http entry; the
+      //     user authenticates interactively via `/mcp` → Authenticate
+      //     (connector.code.* steps; Meta is no-DCR so a pre-registered
+      //     OAuth client / the account connector is the fallback).
+      //   - Claude Desktop: no in-Code `/mcp`; add it via Settings →
+      //     Connectors → Add custom connector (connector.* steps).
       // Pick the host-specific i18n family accordingly.
       const isDesktopHost = state.host === "claude-desktop";
       const kp = isDesktopHost ? "connector." : "connector.code.";
@@ -154,12 +155,14 @@
       return true;
     }
 
-    // Hosted MCP on EITHER host: Meta's hosted Ads MCP has no OAuth
-    // Dynamic Client Registration, so neither the Claude Code
-    // ~/.claude.json http entry nor a Claude Desktop custom connector
-    // created here can connect. Show the manual Connectors steps
-    // DIRECTLY — no dead Install button, no misleading status line.
-    if (isHosted) {
+    // Claude DESKTOP hosted MCP: there is no in-Code `/mcp` OAuth and
+    // Desktop's config can't carry the remote http shape — the user
+    // adds it via Settings → Connectors. Show those steps directly
+    // (no Install button — nothing for mureo to register on Desktop).
+    // Claude CODE hosted falls through to the normal Install button:
+    // mureo registers the http entry, the result is `auth_required`,
+    // and the `/mcp` Authenticate steps are shown afterwards.
+    if (isHosted && onDesktop) {
       wrap.innerHTML =
         "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
       if (!showManualSetup()) onComplete();
@@ -222,10 +225,12 @@
             window.MUREO_WIZARD.hydrateStateFromStatus(MUREO.state.status);
           }
           onComplete();
-        } else if (st === "manual_required") {
-          // hosted MCP can't be wired from here (Desktop has no
-          // config path for remote MCP; Meta has no OAuth DCR).
-          // Replace the install button with the setup steps.
+        } else if (st === "auth_required" || st === "manual_required") {
+          // auth_required: Claude Code registered the hosted http entry;
+          // the user must finish OAuth via `/mcp` (showManualSetup
+          // renders the connector.code.* `/mcp` steps for this host).
+          // manual_required: Claude Desktop → Settings → Connectors.
+          state.providerInstalled[providerId] = true;
           btn.remove();
           statusLine.hidden = true;
           if (!showManualSetup()) onComplete();

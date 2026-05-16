@@ -20,8 +20,9 @@ mureo setup gemini
 # CLI-only users (authentication only, terminal prompts)
 mureo auth setup
 
-# Browser-based auth wizard — localhost HTML form, no terminal input needed
-mureo auth setup --web
+# Browser configuration UI — localhost, no terminal input needed
+# (supersedes the removed `mureo auth setup --web`)
+mureo configure
 ```
 
 ### `--skip-auth` and non-interactive invocation
@@ -32,9 +33,11 @@ When `mureo setup …` is invoked from an AI agent's subprocess (Claude Code's B
 
 Each subcommand also exposes explicit `--google-ads/--no-google-ads` and `--meta-ads/--no-meta-ads` flags, so you can specify exactly which platforms to configure without any prompt. Passing them alongside `--skip-auth` (or under a non-TTY) emits a warning and is ignored.
 
-### `mureo auth setup --web` — browser-based wizard
+### `mureo configure` — browser configuration UI
 
-Prefer the `--web` flavour when you were pointed to mureo by an AI agent that cannot safely receive terminal input. It starts a short-lived HTTP server on a random localhost port, opens your browser at it, and walks you through Google Ads / Meta Ads credential entry via HTML forms and standard OAuth redirects. Every field in the form has a deep link next to it so you know where to fetch each secret. Security hardening (CSRF rotation, OAuth `state` re-validation, DNS-rebinding guard, localhost-pinned redirect verification, generic error surface, POST size cap, CSP) is described in `SECURITY.md` → "Browser-based auth wizard".
+> `mureo auth setup --web` was **removed**; its browser credential flow is now part of the unified `mureo configure` UI.
+
+Prefer `mureo configure` when you were pointed to mureo by an AI agent that cannot safely receive terminal input, or you simply want a GUI. It starts a short-lived HTTP server on a random localhost port, opens your browser at it, and — beyond Google Ads / Meta Ads / GA4 credential entry via HTML forms and standard OAuth redirects (every field deep-linked to the right console) — also lets you pick the Claude host, run basic setup (MCP server + credential-guard hook + skills), add the official MCP providers, switch each platform between mureo-native and the official MCP, and scaffold Demo/BYOD. Flags: `--no-browser`, `--timeout-seconds N` (idle shutdown, default 600). The same security hardening (CSRF rotation, OAuth `state` re-validation, DNS-rebinding guard, localhost-pinned redirect verification, generic error surface, POST size cap, CSP) applies — see `SECURITY.md`.
 
 ## How Credentials Work
 
