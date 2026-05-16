@@ -435,9 +435,14 @@ class TestPathResolutionViaHostPaths:
         from mureo.web import desktop_mcp
         from mureo.web.host_paths import get_host_paths
 
-        expected = get_host_paths("claude-desktop", home=tmp_path).settings_path
-
+        # Both sides MUST be evaluated under the same patched platform —
+        # ``_claude_desktop_settings_path`` is OS-dependent, so computing
+        # ``expected`` outside the Darwin patch makes this assertion
+        # platform-sensitive (passes on macOS, fails on the Linux CI).
         with patch.object(platform, "system", return_value="Darwin"):
+            expected = get_host_paths(
+                "claude-desktop", home=tmp_path
+            ).settings_path
             resolved = desktop_mcp.resolve_desktop_config_path(home=tmp_path)
 
         assert resolved == expected
