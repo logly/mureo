@@ -151,6 +151,8 @@ print("Refresh token:", flow.credentials.refresh_token)
 
 Alternatively, use the [Google OAuth Playground](https://developers.google.com/oauthplayground/) with the `https://www.googleapis.com/auth/adwords` scope.
 
+> **Scope matters.** The refresh token *must* carry the Google Ads scope `https://www.googleapis.com/auth/adwords`. Reusing a refresh token minted for a different scope makes Google Ads API calls fail at runtime with `ACCESS_TOKEN_SCOPE_INSUFFICIENT`. `mureo configure` / `mureo auth setup` request this scope (plus Search Console) automatically — prefer them over hand-minted tokens. Official reference: [Google Ads API — OAuth 2.0 scopes](https://developers.google.com/google-ads/api/docs/oauth/overview).
+
 ## Obtaining Meta Ads Credentials
 
 ### Access Token

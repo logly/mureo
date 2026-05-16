@@ -169,14 +169,17 @@ CATALOG: tuple[ProviderSpec, ...] = (
         # OAuth consent flow.
         required_env=(),
         notes=(
-            "Registers Meta's official hosted MCP at "
-            "`https://mcp.facebook.com/ads` (announced 2026-04-29 as "
-            "Meta Ads AI Connectors). No local install needed. "
-            "Authentication is interactive Meta Business OAuth in the "
-            "browser on first connect — no Meta Developer App, no API "
-            "tokens, and no env vars to pre-populate. The user selects the "
-            "Business Manager / ad accounts to share during OAuth consent. "
-            "Currently in public beta and free during the beta."
+            "Meta's official hosted MCP at `https://mcp.facebook.com/ads` "
+            "(announced 2026-04-29 as Meta Ads AI Connectors). It does "
+            "NOT support OAuth dynamic client registration, so it cannot "
+            "be authenticated as a Claude Code user-scope server "
+            "(`/mcp` fails: redirect_uris not registered) — mureo does "
+            "not register it locally. Add it as a Claude.ai account "
+            "connector instead (claude.ai → Settings → Connectors → Add "
+            "custom connector → the URL above); Anthropic brokers the "
+            "Meta Business sign-in there and it then works account-wide "
+            "in Claude Code and Claude Desktop. Public beta, free during "
+            "the beta."
         ),
         coexists_with_mureo_platform="meta_ads",
     ),

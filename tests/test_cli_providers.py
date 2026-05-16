@@ -42,9 +42,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     # Force the no-CLI fallback everywhere so integration tests are
     # deterministic and never shell out to a real ``claude`` binary
     # (which would mutate the developer's actual ~/.claude.json).
-    monkeypatch.setattr(
-        "mureo.providers.config_writer.shutil.which", lambda _: None
-    )
+    monkeypatch.setattr("mureo.providers.config_writer.shutil.which", lambda _: None)
     monkeypatch.setattr("mureo.auth_setup.shutil.which", lambda _: None)
 
     mock_run = MagicMock(
@@ -114,11 +112,12 @@ def test_add_invokes_pipx_for_google_ads(home: Path) -> None:
 
 
 @pytest.mark.integration
-def test_add_meta_registers_http_and_prints_auth_steps(home: Path) -> None:
-    """``add meta-ads-official`` registers the hosted HTTP MCP into
-    ~/.claude.json (a valid Claude Code user-scope server) and prints
-    the `/mcp` OAuth steps. No subprocess; mureo-native Meta is NOT
-    auto-disabled (registration ≠ authenticated — no-strand)."""
+def test_add_meta_does_not_register_prints_connector_steps(home: Path) -> None:
+    """``add meta-ads-official``: Meta's hosted MCP has no OAuth dynamic
+    client registration, so it cannot be `/mcp`-authenticated as a
+    user-scope server. mureo does NOT write it to ~/.claude.json — it
+    prints the Claude.ai connector steps instead. No subprocess;
+    mureo-native Meta is NOT auto-disabled (no-strand)."""
     settings_path = home / ".claude.json"
     _seed_mureo_block(settings_path)
 
@@ -128,26 +127,24 @@ def test_add_meta_registers_http_and_prints_auth_steps(home: Path) -> None:
     mock_run = _get_subprocess_mock()
     mock_run.assert_not_called()
 
+    # NOT registered: the seeded file is untouched (no meta entry added,
+    # native Meta not disabled).
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
-    entry = payload["mcpServers"]["meta-ads-official"]
-    assert entry["type"] == "http"
-    assert entry["url"] == "https://mcp.facebook.com/ads"
-    # Registration ≠ authenticated → native Meta stays active.
-    assert "MUREO_DISABLE_META_ADS" not in payload["mcpServers"]["mureo"].get(
-        "env", {}
-    )
+    assert "meta-ads-official" not in payload["mcpServers"]
+    assert "MUREO_DISABLE_META_ADS" not in payload["mcpServers"]["mureo"].get("env", {})
 
     combined = (result.output or "") + (result.stderr or "")
     lowered = combined.lower()
-    assert "/mcp" in combined
-    assert "authenticate" in lowered
+    assert "connector" in lowered
+    assert "claude.ai" in lowered
     assert "mcp.facebook.com/ads" in combined
 
 
 @pytest.mark.integration
-def test_add_meta_dry_run_marks_register_and_auth(home: Path) -> None:
-    """``--dry-run meta-ads-official`` says it WOULD register the http
-    entry and points at the `/mcp` auth steps; nothing is written."""
+def test_add_meta_dry_run_says_not_registered_connector(home: Path) -> None:
+    """``--dry-run meta-ads-official`` says it would NOT register
+    locally and points at the Claude.ai connector steps; nothing is
+    written."""
     result = _invoke("providers", "add", "meta-ads-official", "--dry-run")
     assert result.exit_code == 0, result.output
 
@@ -159,8 +156,8 @@ def test_add_meta_dry_run_marks_register_and_auth(home: Path) -> None:
 
     out = result.output
     lowered = out.lower()
-    assert "would register" in lowered
-    assert "/mcp" in out
+    assert "would not register" in lowered
+    assert "connector" in lowered
     assert "meta-ads-official" in out
     # No native auto-disable is promised.
     assert "mureo_disable_meta_ads" not in lowered
@@ -216,11 +213,15 @@ def test_add_all_installs_every_catalog_entry(home: Path) -> None:
 
     settings_path = home / ".claude.json"
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
-    # Every catalog entry — incl. hosted_http (Meta) — is registered as
-    # an mcpServers entry (hosted ones await `/mcp` OAuth; pipx ones run
-    # a subprocess first).
+    # Non-hosted catalog entries are registered as mcpServers entries
+    # (pipx ones run a subprocess first). hosted_http (Meta) is NOT
+    # registered locally — Meta's MCP has no OAuth dynamic client
+    # registration, so it can only be wired via a Claude.ai connector.
     for spec in CATALOG:
-        assert spec.id in payload["mcpServers"], spec.id
+        if spec.install_kind == "hosted_http":
+            assert spec.id not in payload["mcpServers"], spec.id
+        else:
+            assert spec.id in payload["mcpServers"], spec.id
 
 
 @pytest.mark.integration
@@ -418,11 +419,12 @@ def test_add_google_ads_sets_mureo_disable_env(home: Path) -> None:
 
 @pytest.mark.integration
 def test_add_meta_ads_does_not_disable_native(home: Path) -> None:
-    """``add meta-ads-official`` registers the hosted entry but must NOT
-    disable mureo-native Meta.
+    """``add meta-ads-official`` neither registers the hosted entry nor
+    disables mureo-native Meta.
 
-    Registration ≠ authenticated (the user still has to `/mcp`
-    Authenticate). Disabling native before that strands the user
+    Meta's hosted MCP cannot be `/mcp`-authenticated (no dynamic client
+    registration); mureo does not register it locally. Nothing is
+    registered/verified, so disabling native would strand the user
     (observed regression). Native stays until `providers confirm`
     after the connector is verified Connected.
     """
@@ -433,7 +435,7 @@ def test_add_meta_ads_does_not_disable_native(home: Path) -> None:
     assert result.exit_code == 0, result.output
 
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert "meta-ads-official" in payload["mcpServers"]
+    assert "meta-ads-official" not in payload["mcpServers"]
     mureo_env = payload["mcpServers"]["mureo"].get("env", {})
     assert "MUREO_DISABLE_META_ADS" not in mureo_env
 
@@ -571,9 +573,7 @@ def test_confirm_not_connected_does_not_disable_native(
     out = result.output.lower()
     assert "connector" in out and "claude mcp list" in out
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert "MUREO_DISABLE_META_ADS" not in payload["mcpServers"]["mureo"].get(
-        "env", {}
-    )
+    assert "MUREO_DISABLE_META_ADS" not in payload["mcpServers"]["mureo"].get("env", {})
 
 
 @pytest.mark.integration
@@ -590,9 +590,7 @@ def test_confirm_connected_disables_native(
     result = _invoke("providers", "confirm", "meta-ads-official")
     assert result.exit_code == 0, result.output
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert (
-        payload["mcpServers"]["mureo"]["env"]["MUREO_DISABLE_META_ADS"] == "1"
-    )
+    assert payload["mcpServers"]["mureo"]["env"]["MUREO_DISABLE_META_ADS"] == "1"
     assert "restart" in result.output.lower()
 
 

@@ -30,14 +30,16 @@
     // returns true (the card has no missing-translation failure mode;
     // labels fall back via MUREO.t).
     function showManualSetup() {
-      // mureo cannot perform the hosted MCP's OAuth — but the finish
-      // steps genuinely differ by host:
-      //   - Claude Code: mureo already REGISTERED the http entry; the
-      //     user authenticates interactively via `/mcp` → Authenticate
-      //     (connector.code.* steps; Meta is no-DCR so a pre-registered
-      //     OAuth client / the account connector is the fallback).
-      //   - Claude Desktop: no in-Code `/mcp`; add it via Settings →
-      //     Connectors → Add custom connector (connector.* steps).
+      // mureo never registers the hosted MCP locally on EITHER host
+      // (Meta has no OAuth dynamic client registration, so a local
+      // user-scope server can't be authenticated). It is added as a
+      // Claude.ai account connector; only the surrounding wording
+      // differs by host:
+      //   - Claude Code: claude.ai → Settings → Connectors → Add
+      //     custom connector; /mcp then picks it up account-wide
+      //     (connector.code.* steps).
+      //   - Claude Desktop: Settings → Connectors → Add custom
+      //     connector (connector.* steps).
       // Pick the host-specific i18n family accordingly.
       const isDesktopHost = state.host === "claude-desktop";
       const kp = isDesktopHost ? "connector." : "connector.code.";
@@ -155,14 +157,15 @@
       return true;
     }
 
-    // Claude DESKTOP hosted MCP: there is no in-Code `/mcp` OAuth and
-    // Desktop's config can't carry the remote http shape — the user
-    // adds it via Settings → Connectors. Show those steps directly
-    // (no Install button — nothing for mureo to register on Desktop).
-    // Claude CODE hosted falls through to the normal Install button:
-    // mureo registers the http entry, the result is `auth_required`,
-    // and the `/mcp` Authenticate steps are shown afterwards.
-    if (isHosted && onDesktop) {
+    // Hosted MCP (Meta): mureo never registers it locally on EITHER
+    // host. Meta's hosted MCP has no OAuth dynamic client registration,
+    // so it cannot be authenticated as a Claude Code user-scope server
+    // (`/mcp` fails) and Desktop's config can't carry the remote http
+    // shape either. The only working path is a Claude.ai account
+    // connector — show those steps directly (no Install button; there
+    // is nothing for mureo to register). showManualSetup() picks the
+    // connector.code.* (Code) vs connector.* (Desktop) copy by host.
+    if (isHosted) {
       wrap.innerHTML =
         "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
       if (!showManualSetup()) onComplete();
@@ -226,10 +229,12 @@
           }
           onComplete();
         } else if (st === "auth_required" || st === "manual_required") {
-          // auth_required: Claude Code registered the hosted http entry;
-          // the user must finish OAuth via `/mcp` (showManualSetup
-          // renders the connector.code.* `/mcp` steps for this host).
-          // manual_required: Claude Desktop → Settings → Connectors.
+          // Defensive fallback: hosted (Meta) is short-circuited to the
+          // connector card BEFORE this Install button is ever shown
+          // (mureo registers nothing locally on either host). If a
+          // backend path still reports manual_required/auth_required,
+          // surface the Claude.ai connector steps (connector.code.* on
+          // Code, connector.* on Desktop) rather than a bare error.
           state.providerInstalled[providerId] = true;
           btn.remove();
           statusLine.hidden = true;
@@ -392,6 +397,32 @@
     const wrap = document.createElement("section");
     const titleKey = "wizard.auth." + slot.key + "_title";
     wrap.innerHTML = "<h3>" + MUREO.t(titleKey) + "</h3>";
+
+    if (slot.key === "google_ads") {
+      // Scope guidance: the OAuth button mints a refresh token with the
+      // adwords + webmasters scopes (mureo.auth_setup._GOOGLE_SCOPES).
+      // A reused token lacking the adwords scope fails at runtime with
+      // ACCESS_TOKEN_SCOPE_INSUFFICIENT, so spell this out + link the
+      // official scope reference.
+      const scopeNote = document.createElement("p");
+      scopeNote.className = "wizard-shared-with-sc-note";
+      const scopeText = document.createElement("span");
+      scopeText.textContent = MUREO.t("auth_wizard.google_ads.scope_note");
+      scopeText.setAttribute("data-i18n", "auth_wizard.google_ads.scope_note");
+      const scopeLink = document.createElement("a");
+      scopeLink.href =
+        "https://developers.google.com/google-ads/api/docs/oauth/overview";
+      scopeLink.target = "_blank";
+      scopeLink.rel = "noopener noreferrer";
+      scopeLink.textContent = MUREO.t("auth_wizard.google_ads.scope_doc_link");
+      scopeLink.setAttribute(
+        "data-i18n", "auth_wizard.google_ads.scope_doc_link"
+      );
+      scopeNote.appendChild(scopeText);
+      scopeNote.appendChild(document.createTextNode(" "));
+      scopeNote.appendChild(scopeLink);
+      wrap.appendChild(scopeNote);
+    }
 
     if (slot.key === "google_ads" && outerState && outerState.platforms.search_console) {
       const note = document.createElement("div");

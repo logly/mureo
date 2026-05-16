@@ -67,7 +67,9 @@ _OFFICIAL_PROVIDER_IDS: tuple[str, ...] = (
 class ActionResult:
     """JSON-friendly result of one setup action."""
 
-    status: str  # "ok"|"noop"|"error"|"manual_required"|"auth_required"
+    # "ok"|"noop"|"error"|"manual_required" (+ "auth_required" reserved,
+    # not currently produced — hosted Meta now returns manual_required).
+    status: str
     detail: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -434,27 +436,23 @@ def _install_provider_code(
         return ActionResult(status="error", detail=type(exc).__name__)
 
     if spec.install_kind == "hosted_http":
-        # Claude Code: a hosted HTTP MCP IS a valid user-scope server.
-        # Register the {"type":"http","url":...} block into ~/.claude.json
-        # (same mechanism as `claude mcp add --transport http`, a
-        # documented path independent of and higher-precedence than
-        # claude.ai Connectors). The 401 "✗ Failed to connect" before
-        # OAuth is the EXPECTED pre-auth state — the user completes it
-        # interactively via `/mcp` → Authenticate (browser login). mureo
-        # cannot perform that OAuth, so we return ``auth_required`` and
-        # the UI/CLI surface the exact `/mcp` steps (incl. Meta's no-DCR
-        # caveat).
+        # Claude Code: Meta's hosted MCP CANNOT be OAuth-authenticated as
+        # a user-scope server — it has no RFC 7591 Dynamic Client
+        # Registration, so `/mcp` → Authenticate fails with
+        # "redirect_uris are not registered for this client". Registering
+        # the {"type":"http","url":...} block would only create an
+        # unauthenticatable server. The only Claude Code path that works
+        # today is a Claude.ai account connector (Anthropic brokers the
+        # OAuth there). So mureo does NOT register it locally; it returns
+        # ``manual_required`` and the UI surfaces the claude.ai connector
+        # steps (connector.code.* — identical result shape to the
+        # Desktop hosted_http path).
         #
-        # We do NOT auto-disable mureo-native Meta on registration:
-        # registration ≠ authenticated. Native steps aside only once the
-        # connector is verified Connected, via `providers confirm` /
-        # the dashboard native-toggle (no-strand preserved).
-        try:
-            add_provider_to_claude_settings(spec, extra_env={})
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("install_provider (hosted) register failed")
-            return ActionResult(status="error", detail=type(exc).__name__)
-        return ActionResult(status="auth_required", detail=spec.id)
+        # No native auto-disable: nothing was registered and the
+        # connector is not yet verified. mureo-native Meta steps aside
+        # only once the connector is confirmed Connected, via
+        # `providers confirm` / the dashboard native-toggle (no-strand).
+        return ActionResult(status="manual_required", detail=spec.id)
 
     try:
         result = run_install(spec, dry_run=False)

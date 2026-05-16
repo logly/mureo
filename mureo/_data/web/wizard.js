@@ -414,21 +414,21 @@
       '<p data-i18n="wizard.completed.desc">' +
       MUREO.t("wizard.completed.desc") +
       "</p>";
-    // Official Meta on Claude Desktop is set up manually via the
-    // Connectors UI — mureo saved nothing for it. Don't list it as
-    // "saved"; instead surface an explicit, actionable reminder so the
-    // user knows there's one step left (silent omission would read as
-    // "done" or "forgotten").
-    const metaPendingManual =
+    // Official Meta still has a pending step on BOTH hosts after the
+    // wizard: Meta's hosted MCP has no OAuth dynamic client
+    // registration, so mureo never registers/authenticates it locally —
+    // the user adds it as a Claude.ai account connector. Don't list
+    // Meta as "saved"; surface an explicit, actionable reminder (the
+    // pending_meta copy covers both hosts).
+    const metaPending =
       STATE.platforms.meta_ads &&
-      STATE.providerChoice.meta_ads === "official" &&
-      STATE.host === "claude-desktop";
+      STATE.providerChoice.meta_ads === "official";
 
     const summary = document.createElement("ul");
     summary.className = "wizard-completed-summary";
     PLATFORMS.forEach(function (p) {
       if (!STATE.platforms[p]) return;
-      if (p === "meta_ads" && metaPendingManual) return;
+      if (p === "meta_ads" && metaPending) return;
       const li = document.createElement("li");
       li.textContent = MUREO.t("wizard.platforms." + p);
       li.setAttribute("data-i18n", "wizard.platforms." + p);
@@ -436,7 +436,7 @@
     });
     if (summary.children.length > 0) wrap.appendChild(summary);
 
-    if (metaPendingManual) {
+    if (metaPending) {
       const reminder = document.createElement("div");
       reminder.className = "wizard-pending-reminder";
       const head = document.createElement("strong");

@@ -263,9 +263,7 @@ class TestInstallProviderInjectsCredentialEnv:
                 "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
             ) as mock_disable,
         ):
-            result = setup_actions.install_provider(
-                _GOOGLE, credentials_path=creds
-            )
+            result = setup_actions.install_provider(_GOOGLE, credentials_path=creds)
 
         assert result.status == "ok"
         _, kwargs = mock_disable.call_args
@@ -277,9 +275,7 @@ class TestInstallProviderInjectsCredentialEnv:
             "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "123",
         }
 
-    def test_code_host_injects_ga4_env_from_credentials(
-        self, tmp_path: Path
-    ) -> None:
+    def test_code_host_injects_ga4_env_from_credentials(self, tmp_path: Path) -> None:
         """ga4-official is registered WITH GOOGLE_APPLICATION_CREDENTIALS
         / GOOGLE_PROJECT_ID resolved from credentials.json. This is the
         end-to-end contract the wizard's GA4 input step now feeds (it
@@ -314,13 +310,15 @@ class TestInstallProviderInjectsCredentialEnv:
             "GOOGLE_PROJECT_ID": "proj-1",
         }
 
-    def test_code_host_hosted_meta_registers_without_native_disable(
+    def test_code_host_hosted_meta_not_registered_manual_required(
         self, tmp_path: Path
     ) -> None:
-        """Claude Code: a hosted HTTP MCP IS a valid user-scope server.
-        It is REGISTERED (the user finishes OAuth via `/mcp`), status is
-        ``auth_required``, and mureo-native Meta is NOT auto-disabled
-        (registration ≠ authenticated — no-strand preserved)."""
+        """Claude Code: Meta's hosted MCP has no dynamic client
+        registration, so it CANNOT be `/mcp`-authenticated as a
+        user-scope server. mureo does NOT register it locally — it
+        returns ``manual_required`` (the UI shows the Claude.ai
+        connector steps) and mureo-native Meta is NOT auto-disabled
+        (nothing registered/verified — no-strand preserved)."""
         from mureo.web import setup_actions
 
         creds = tmp_path / ".mureo" / "credentials.json"
@@ -333,26 +331,22 @@ class TestInstallProviderInjectsCredentialEnv:
                 return_value=_ok_install(),
             ),
             patch(
-                "mureo.providers.config_writer.add_provider_to_claude_settings"
-            ) as mock_add,
+                "mureo.providers.config_writer.add_provider_to_claude_settings",
+                side_effect=AssertionError(
+                    "must NOT register hosted MCP locally on Claude Code"
+                ),
+            ),
             patch(
                 "mureo.providers.mureo_env.add_provider_and_disable_in_mureo",
                 side_effect=AssertionError(
-                    "must NOT auto-disable native on hosted register"
+                    "must NOT auto-disable native for unregistered hosted"
                 ),
             ),
         ):
-            result = setup_actions.install_provider(
-                _META, credentials_path=creds
-            )
+            result = setup_actions.install_provider(_META, credentials_path=creds)
 
-        assert result.status == "auth_required"
+        assert result.status == "manual_required"
         assert result.detail == _META
-        # Registered (the http block written), with NO extra_env (hosted
-        # MCP authenticates via /mcp OAuth, not env vars).
-        mock_add.assert_called_once()
-        _, kwargs = mock_add.call_args
-        assert kwargs.get("extra_env") == {}
 
     def test_code_host_missing_credentials_still_registers_bare(
         self, tmp_path: Path
@@ -372,9 +366,7 @@ class TestInstallProviderInjectsCredentialEnv:
                 "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
             ) as mock_disable,
         ):
-            result = setup_actions.install_provider(
-                _GOOGLE, credentials_path=creds
-            )
+            result = setup_actions.install_provider(_GOOGLE, credentials_path=creds)
 
         assert result.status == "ok"
         _, kwargs = mock_disable.call_args
@@ -827,15 +819,16 @@ class TestHostedHttpDesktopManualRequired:
 
         assert not cfg.exists()
 
-    def test_code_host_hosted_http_registers_auth_required(
+    def test_code_host_hosted_http_not_registered_manual_required(
         self, tmp_path: Path
     ) -> None:
-        """meta-ads-official on Claude Code: a hosted HTTP MCP is a valid
-        user-scope server (separate from / higher precedence than
-        claude.ai Connectors). It IS registered into ~/.claude.json; the
-        401 "✗ Failed to connect" until the user runs `/mcp` →
-        Authenticate is the expected pre-auth state. Status is
-        ``auth_required``; native is NOT auto-disabled (no-strand)."""
+        """meta-ads-official on Claude Code: Meta's hosted MCP has no
+        OAuth dynamic client registration, so `/mcp` → Authenticate
+        fails ("redirect_uris are not registered for this client"). It
+        therefore CANNOT be a usable user-scope server — mureo does NOT
+        register it into ~/.claude.json. Status is ``manual_required``
+        (the UI shows the Claude.ai connector steps); native is NOT
+        auto-disabled (nothing registered/verified — no-strand)."""
         from mureo.web import setup_actions
 
         with (
@@ -844,20 +837,22 @@ class TestHostedHttpDesktopManualRequired:
                 return_value=_ok_install(),
             ),
             patch(
-                "mureo.providers.config_writer.add_provider_to_claude_settings"
-            ) as mock_add,
+                "mureo.providers.config_writer.add_provider_to_claude_settings",
+                side_effect=AssertionError(
+                    "must NOT register hosted MCP locally on Claude Code"
+                ),
+            ),
             patch(
                 "mureo.providers.mureo_env.add_provider_and_disable_in_mureo",
-                side_effect=AssertionError("no native auto-disable on register"),
+                side_effect=AssertionError("no native auto-disable"),
             ),
         ):
             result = setup_actions.install_provider(
                 _META, host="claude-code", home=tmp_path
             )
 
-        assert result.status == "auth_required"
+        assert result.status == "manual_required"
         assert result.detail == _META
-        mock_add.assert_called_once()
 
     def test_pipx_provider_desktop_block_unchanged(self, tmp_path: Path) -> None:
         """pipx providers on Desktop keep their existing
@@ -1010,9 +1005,7 @@ class TestHostedHttpDesktopDisablesMureoTools:
         payload = json.loads(cfg.read_text(encoding="utf-8"))
         assert "mureo" not in payload["mcpServers"]
 
-    def test_remove_self_heals_stale_disable_meta_env(
-        self, tmp_path: Path
-    ) -> None:
+    def test_remove_self_heals_stale_disable_meta_env(self, tmp_path: Path) -> None:
         """Migration self-heal: a user who installed Meta-official under
         the OLD logic has MUREO_DISABLE_META_ADS=1 stuck on their mureo
         block (native stranded). ``remove`` must unset it and report
@@ -1128,9 +1121,7 @@ class TestConfirmHostedProvider:
         mureo = {"command": "python", "args": ["-m", "mureo.mcp"]}
         if env is not None:
             mureo["env"] = env
-        cfg.write_text(
-            json.dumps({"mcpServers": {"mureo": mureo}}), encoding="utf-8"
-        )
+        cfg.write_text(json.dumps({"mcpServers": {"mureo": mureo}}), encoding="utf-8")
         return cfg
 
     def test_unknown_provider_errors(self, tmp_path: Path) -> None:
@@ -1153,9 +1144,7 @@ class TestConfirmHostedProvider:
         from mureo.web import setup_actions
 
         cfg = self._seed(tmp_path)
-        monkeypatch.setattr(
-            "mureo.providers.config_writer.Path.home", lambda: tmp_path
-        )
+        monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
         monkeypatch.setattr(
             "mureo.providers.config_writer.is_hosted_provider_connected",
             lambda spec: False,
@@ -1171,9 +1160,7 @@ class TestConfirmHostedProvider:
         from mureo.web import setup_actions
 
         cfg = self._seed(tmp_path)
-        monkeypatch.setattr(
-            "mureo.providers.config_writer.Path.home", lambda: tmp_path
-        )
+        monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
         monkeypatch.setattr(
             "mureo.providers.config_writer.is_hosted_provider_connected",
             lambda spec: True,
@@ -1181,10 +1168,7 @@ class TestConfirmHostedProvider:
         r = setup_actions.confirm_hosted_provider(_META)
         assert r.status == "ok"
         payload = json.loads(cfg.read_text(encoding="utf-8"))
-        assert (
-            payload["mcpServers"]["mureo"]["env"]["MUREO_DISABLE_META_ADS"]
-            == "1"
-        )
+        assert payload["mcpServers"]["mureo"]["env"]["MUREO_DISABLE_META_ADS"] == "1"
 
     def test_connected_already_disabled_is_noop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1192,9 +1176,7 @@ class TestConfirmHostedProvider:
         from mureo.web import setup_actions
 
         self._seed(tmp_path, env={"MUREO_DISABLE_META_ADS": "1"})
-        monkeypatch.setattr(
-            "mureo.providers.config_writer.Path.home", lambda: tmp_path
-        )
+        monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
         monkeypatch.setattr(
             "mureo.providers.config_writer.is_hosted_provider_connected",
             lambda spec: True,
@@ -1207,9 +1189,7 @@ class TestConfirmHostedProvider:
     ) -> None:
         from mureo.web import setup_actions
 
-        monkeypatch.setattr(
-            "mureo.providers.config_writer.Path.home", lambda: tmp_path
-        )
+        monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
         monkeypatch.setattr(
             "mureo.providers.config_writer.is_hosted_provider_connected",
             lambda spec: True,
@@ -1235,31 +1215,23 @@ class TestHostedProviderStatus:
     them, so the file-parse status always says ✗ — this drives the
     dashboard's ✓ once the user finishes the browser Connector setup)."""
 
-    def test_returns_connected_true(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_connected_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from mureo.web import setup_actions
 
         monkeypatch.setattr(
             "mureo.providers.config_writer.is_hosted_provider_connected",
             lambda spec: True,
         )
-        assert setup_actions.hosted_provider_status() == {
-            "meta-ads-official": True
-        }
+        assert setup_actions.hosted_provider_status() == {"meta-ads-official": True}
 
-    def test_returns_connected_false(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_connected_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from mureo.web import setup_actions
 
         monkeypatch.setattr(
             "mureo.providers.config_writer.is_hosted_provider_connected",
             lambda spec: False,
         )
-        assert setup_actions.hosted_provider_status() == {
-            "meta-ads-official": False
-        }
+        assert setup_actions.hosted_provider_status() == {"meta-ads-official": False}
 
     def test_never_raises_returns_empty_on_error(
         self, monkeypatch: pytest.MonkeyPatch

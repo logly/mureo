@@ -60,7 +60,7 @@ mureo configure
 - **Pick your Claude app** — *Claude Code (CLI / Desktop app)* or *Claude Desktop app (Chat, Cowork)*; mureo writes the right config file for that host.
 - **Basic setup** — registers the mureo MCP server, the credential-guard hook (Claude Code), and the workflow skills, in one click.
 - **Connect platforms** — interactive Google / Meta OAuth in the browser (deep links to each console), or paste a GA4 service-account path / project id; values are written to `~/.mureo/credentials.json` for you.
-- **Official MCP providers** — register Google Ads / GA4 / Meta Ads official MCPs into `~/.claude.json`. (Meta is a hosted MCP: it's registered here, then you finish OAuth in Claude Code via `/mcp` → Authenticate — the UI shows the exact steps, including Meta's pre-registered-client requirement.)
+- **Official MCP providers** — register Google Ads / GA4 official MCPs into `~/.claude.json`. (Meta is a hosted MCP with no OAuth dynamic client registration, so it can't be wired as a Claude Code user-scope server; the UI shows how to add it as a Claude.ai account connector instead — it then works in Claude Code and Claude Desktop alike.)
 - **Per-platform tool source** — a dashboard toggle to switch each platform between mureo-native tools and the official MCP.
 - **Demo / BYOD** — scaffold a demo scenario or import your XLSX bundle from the same UI.
 
@@ -343,7 +343,7 @@ Pasting long secrets into a terminal prompt is error-prone. `mureo configure` st
 - choose the Claude host (Claude Code / Claude Desktop) — mureo writes that host's config file;
 - one-click **basic setup** (mureo MCP server + credential-guard hook + workflow skills);
 - **connect platforms** — interactive Google / Meta OAuth in the same window (each field deep-links to Google Cloud Console / Google Ads API Center / Meta for Developers), or a GA4 service-account path / project id; written to `~/.mureo/credentials.json`;
-- register the **official MCP providers** (Google Ads / GA4 / Meta Ads) into `~/.claude.json`; for Meta (a hosted MCP) the UI then shows the `/mcp` → Authenticate steps to finish OAuth in Claude Code;
+- register the **official MCP providers** (Google Ads / GA4) into `~/.claude.json`; Meta is a hosted MCP with no OAuth dynamic client registration, so the UI shows how to add it as a Claude.ai account connector (works in Claude Code and Claude Desktop) instead of registering it locally;
 - a **dashboard** to review status, switch each platform between mureo-native and the official MCP, and scaffold **Demo / BYOD**.
 
 Flags: `--no-browser` (don't auto-open a tab), `--timeout-seconds N` (idle shutdown, default 600).
