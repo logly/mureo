@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-05-16
+
+### Fixed — `/learn` slash command restored (regression from #77)
+- Phase 3 plugin packaging (#77) migrated every `.claude/commands/*.md` slash command into an operational skill under `skills/` + the bundled `mureo/_data/skills/`, but **dropped `learn` entirely** (deleted `.claude/commands/learn.md`, never created a `learn` skill). `/learn` became uninvocable while every other workflow command kept working, even though README/docs still document it. Restored as an operational skill (`skills/learn/` + byte-identical bundled copy): `name: learn` (no `_` prefix → appears in the picker), saves insights to `../_mureo-pro-diagnosis/SKILL.md` (scaffolding that canonical-only knowledge base on first use), approval-required and append-only, never Claude memory or secrets/PII.
+
+### Changed — `mureo configure` visual refresh + official mureo logo
+- The configure Web UI got a cohesive design-system pass (refined spacing/type/color tokens, light **and** dark via `prefers-color-scheme`, crafted cards/buttons/focus states, system fonts only — strict CSP, no web fonts/CDN/build). The header now shows the official mureo wordmark (bundled `logo.png` / `logo-dark.png`, scheme-swapped). CSS-only; every `data-*` / `data-i18n` hook and EN/JA parity preserved.
+
+### Added — Google Ads OAuth-scope guidance in the auth step
+- The Web UI Google Ads auth step and `docs/authentication.md` now explain that a reused refresh token **must** carry the Google Ads scope `https://www.googleapis.com/auth/adwords` or API calls fail with `ACCESS_TOKEN_SCOPE_INSUFFICIENT`, with a link to the official Google scope reference. mureo's own OAuth already requests it; the note prevents the failure when users supply a hand-minted token.
+
 ### Fixed — Meta hosted MCP on Claude Code goes through the Claude.ai connector (supersedes the earlier "/mcp register" Unreleased note)
 - A prior Unreleased change had `mureo configure` / `mureo providers add` / the wizard **register** `meta-ads-official` into `~/.claude.json` on Claude Code and tell the user to finish OAuth via `/mcp` → Authenticate. Real-environment verification proved this **cannot work**: Meta's hosted MCP (`https://mcp.facebook.com/ads`) does **not** support OAuth Dynamic Client Registration, so Claude Code's `/mcp` OAuth fails with `SDK auth failed: The provided redirect_uris are not registered for this client`. Registering it locally only creates an unauthenticatable user-scope server. Corrected behavior: on Claude Code, mureo now **does not register Meta locally at all** — `install_provider` / `mureo providers add` return `manual_required` (no `~/.claude.json` write, no subprocess) and the UI/CLI point the user to add Meta as a **Claude.ai account connector** (claude.ai → Settings → Connectors → Add custom connector → `https://mcp.facebook.com/ads`; Anthropic brokers the Meta Business sign-in there, requires a paid plan, then works account-wide in Claude Code *and* Claude Desktop and surfaces as `mcp__claude_ai_MetaAds__*`). mureo-native Meta is still **not** auto-disabled (nothing registered/verified — native steps aside only via `mureo providers confirm` once the connector is verified Connected; no-strand preserved). Claude **Desktop** is unchanged (`manual_required`, Settings → Connectors). This re-aligns with the "no dead config entry / Connectors" behavior described in the bullets below; the intervening "/mcp register on Code" wording is withdrawn.
 
