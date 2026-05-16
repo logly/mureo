@@ -104,7 +104,22 @@
 
   function renderHostSection(status) {
     const node = document.querySelector("[data-dashboard-host-value]");
-    if (node && status) node.textContent = status.host || "";
+    if (!node || !status) return;
+    // Show the friendly host name (same labels as the wizard host
+    // selector), not the raw "claude-desktop" / "claude-code" id.
+    const hostKey =
+      status.host === "claude-desktop"
+        ? "wizard.host.claude_desktop"
+        : status.host === "claude-code"
+        ? "wizard.host.claude_code"
+        : null;
+    if (hostKey) {
+      node.textContent = MUREO.t(hostKey);
+      node.setAttribute("data-i18n", hostKey);
+    } else {
+      node.textContent = status.host || "";
+      node.removeAttribute("data-i18n");
+    }
   }
 
   function buildBasicRemoveButton(row) {
