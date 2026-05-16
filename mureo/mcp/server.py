@@ -38,6 +38,9 @@ from mcp.server.stdio import stdio_server
 if TYPE_CHECKING:
     from mcp.types import Tool
 
+    from mureo.mcp.tool_provider import MCPToolProvider
+
+from mureo.mcp.tool_provider import collect_plugin_tools
 from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
 from mureo.mcp.tools_analysis import handle_tool as handle_analysis_tool
 from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
@@ -103,6 +106,29 @@ _ROLLBACK_NAMES: frozenset[str] = frozenset(t.name for t in ROLLBACK_TOOLS)
 _ANALYSIS_NAMES: frozenset[str] = frozenset(t.name for t in ANALYSIS_TOOLS)
 _MUREO_CONTEXT_NAMES: frozenset[str] = frozenset(t.name for t in MUREO_CONTEXT_TOOLS)
 
+# ---------------------------------------------------------------------------
+# Third-party plugin tools (entry-point–discovered providers implementing
+# MCPToolProvider). Purely additive: built-in platforms keep their static
+# TOOLS and are NOT routed here, so there is no double-exposure. If no
+# plugins are installed this is a no-op and behaviour is byte-identical to
+# before. Built-in tool names are reserved so a plugin can never shadow a
+# core tool. Discovery faults are contained (PluginToolWarning), never fatal.
+# ---------------------------------------------------------------------------
+_PLUGIN_TOOLS: list[Tool]
+_PLUGIN_DISPATCH: dict[str, MCPToolProvider]
+_PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
+    reserved_names=(
+        _GOOGLE_ADS_NAMES
+        | _META_ADS_NAMES
+        | _SEARCH_CONSOLE_NAMES
+        | _ROLLBACK_NAMES
+        | _ANALYSIS_NAMES
+        | _MUREO_CONTEXT_NAMES
+    ),
+)
+_ALL_TOOLS.extend(_PLUGIN_TOOLS)
+_PLUGIN_NAMES: frozenset[str] = frozenset(_PLUGIN_DISPATCH)
+
 
 # ---------------------------------------------------------------------------
 # Handlers (defined as module-level functions so tests can call them directly)
@@ -132,6 +158,8 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         return await handle_analysis_tool(name, arguments)
     if name in _MUREO_CONTEXT_NAMES:
         return await handle_mureo_context_tool(name, arguments)
+    if name in _PLUGIN_NAMES:
+        return await _PLUGIN_DISPATCH[name].handle_mcp_tool(name, arguments)
     raise ValueError(f"Unknown tool: {name}")
 
 
