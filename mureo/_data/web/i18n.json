@@ -190,7 +190,7 @@
     "wizard.back": "戻る",
     "wizard.next": "次へ",
     "wizard.skip": "スキップ",
-    "wizard.step_progress": "Step {current} / {total}",
+    "wizard.step_progress": "ステップ {current} / {total}",
     "wizard.host.title": "設定先を選んでください",
     "wizard.host.claude_code": "Claude Code（CLI、デスクトップアプリ）",
     "wizard.host.claude_desktop": "Claudeデスクトップアプリ（Chat、Cowork）",
