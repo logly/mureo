@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — plugin → MCP tool exposure (Issue #89 follow-up)
+- **`mureo.mcp.tool_provider`**: new `MCPToolProvider` opt-in secondary Protocol (`mcp_tools()` + `async handle_mcp_tool()`) and `collect_plugin_tools()`. A third-party provider discovered via the `mureo.providers` entry-point group that *also* satisfies `MCPToolProvider` now has its operations published as `mcp__mureo__*` tools. A provider that does not implement it is still discovered and skill-matched, just not exposed (graceful). Added to the stable plugin ABI (see `docs/ABI-stability.md` §1).
+- **`mureo/mcp/server.py`**: purely additive wiring — built-in platforms keep their static tool list and are not routed through the plugin path (no double-exposure). With no third-party plugins installed, the tool list and behaviour are byte-identical to before. Built-in tool names are reserved (a colliding plugin tool is dropped, built-ins win); plugin↔plugin collisions are first-wins; a broken/malicious plugin (construct / `mcp_tools()` / non-async handler / wholesale discovery failure) is skipped with a `PluginToolWarning` and can never crash the server or starve other plugins.
+- Docs: `plugin-authoring.md` §3 "Exposing operations as MCP tools", `mcp-server.md` "Plugin-Provided Tools", `ABI-stability.md` updated.
+
 ### Added — `mureo providers` CLI (Issue #86, Phase 1: Claude Code)
 - **`mureo providers list / add / remove`** — one-command install of the official platform MCP servers into Claude Code's `~/.claude/settings.json`. mureo owns both package acquisition and config registration. `add` is idempotent; `add --all` installs every catalog entry and continues past per-provider failures (non-zero exit overall). `--dry-run` prints the planned `pipx`/`npm` argv (or, for hosted endpoints, the "no local install step" notice) plus the JSON delta without touching disk or subprocess. `remove` only edits the settings file (it does not uninstall the underlying pipx/npm package; no-op for hosted-HTTP entries which have none).
 - Phase 1 catalog (3 entries):

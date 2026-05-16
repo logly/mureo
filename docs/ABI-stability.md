@@ -37,6 +37,7 @@ The mureo plugin ABI consists of exactly the following:
 | `Capability` enum **values** | `mureo.core.providers.capabilities` | Stable |
 | `BaseProvider` Protocol shape (3 attributes) | `mureo.core.providers.base` | Stable |
 | Domain Protocol method signatures (`CampaignProvider`, `KeywordProvider`, `AudienceProvider`, `ExtensionProvider`) | `mureo.core.providers.{campaign,keyword,audience,extension}` | Stable (Phase 1) |
+| `MCPToolProvider` Protocol shape (`mcp_tools()` + `async handle_mcp_tool()`) — the opt-in MCP-exposure secondary Protocol | `mureo.mcp.tool_provider` | Stable (Phase 1; structural / `runtime_checkable`) |
 | Model dataclass shapes (`Campaign`, `Ad`, `Keyword`, ...) | `mureo.core.providers.models` | Stable (Phase 1; additive evolution allowed) |
 | Status / Kind / MatchType / BidStrategy **enum values** | `mureo.core.providers.models` | Stable |
 | Entry-point group names (`mureo.providers`, `mureo.skills`) | `mureo.core.providers.registry` | Stable |
@@ -465,9 +466,13 @@ between minor releases. Do not depend on them from plugin code:
   to mureo's first-party adapters and not intended for plugin
   inheritance. The Protocol contract is the ABI; the adapter
   classes are reference implementations.
-- **MCP tool surface**: the MCP server's tool list and parameters
-  are independent of the provider Protocol layer. They evolve on
-  their own schedule.
+- **Built-in MCP tool surface**: the *built-in* platform tools
+  (`google_ads_*`, `meta_ads_*`, ...) — their names, parameters, and
+  `inputSchema` — are independent of the provider Protocol layer and
+  evolve on their own schedule. (The `MCPToolProvider` *Protocol* a
+  plugin implements to expose its own tools **is** part of the stable
+  surface — see Section 1. A plugin's own tool names/schemas are
+  authored and owned by the plugin, not by mureo.)
 - **`ProviderEntry.source_distribution`** values: PEP 503
   normalization rules may evolve in upstream `importlib.metadata`.
   The field exists and is stable; treat its value as untrusted
