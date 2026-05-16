@@ -477,6 +477,35 @@ Cross-platform anomaly detection that operates on STATE.json's `action_log` hist
 
 `had_prior_spend` (default `true`) suppresses the zero-spend alert for fresh campaigns. `min_baseline_entries` (default `7`) controls how many history entries are required before a baseline is built; below this, `baseline` is `null` and only zero-spend is evaluated. Numeric fields accept int / float / numeric-string and reject `"N/A"` or booleans. `state_file` is sandboxed the same way as for the rollback tools. A parseable-but-corrupt `STATE.json` produces a `baseline_warning` in the response without silencing live zero-spend detection.
 
+### Plugin-Provided Tools (third-party providers)
+
+Beyond the built-in platforms above, the server also exposes tools from
+**third-party provider plugins** discovered via the `mureo.providers`
+entry-point group. A plugin opts in by implementing the
+`MCPToolProvider` Protocol (`mcp_tools()` + `async handle_mcp_tool()`);
+see [`plugin-authoring.md`](plugin-authoring.md) §3.
+
+Server behaviour:
+
+- **Additive.** Plugin tools are appended *after* all built-in tools.
+  With no third-party plugins installed, the tool list is identical to
+  before — built-in behaviour is unchanged.
+- **Built-ins win on name collision.** A plugin tool whose name matches
+  any built-in tool is dropped (a `PluginToolWarning` is emitted); the
+  built-in keeps the name. Plugin authors should namespace tool names
+  with their provider name (e.g. `acme_ads_list_campaigns`).
+- **First plugin wins** when two plugins contribute the same tool name.
+- **Fault-isolated.** A plugin that fails to construct, whose
+  `mcp_tools()` raises, or whose `handle_mcp_tool` is not `async`, is
+  skipped with a `PluginToolWarning` — it can never crash the server or
+  block other plugins. Discovery itself failing wholesale yields zero
+  plugin tools rather than a startup error.
+- **Discovered once at server start**, like the env-var gates below.
+
+Plugin tools obey the same `MUREO_DISABLE_*` reasoning only insofar as
+the plugin chooses; the disable env vars gate the built-in families,
+not third-party plugins.
+
 ## Workflow Commands
 
 Beyond individual MCP tools, mureo provides higher-level operational workflows via **Claude Code slash commands**. These commands orchestrate multiple MCP tools in sequence, guided by the strategy context defined in `STRATEGY.md`.
