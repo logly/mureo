@@ -145,7 +145,17 @@
       const li = document.createElement("li");
       const installed = parts[row.key] === true;
       const labelSpan = document.createElement("span");
-      labelSpan.textContent = (installed ? "✓ " : "✗ ") + MUREO.t(row.labelKey);
+      let labelText = (installed ? "✓ " : "✗ ") + MUREO.t(row.labelKey);
+      // The credential-guard hook has no surface on Claude Desktop, so
+      // annotate it inline rather than implying it can be installed.
+      if (
+        row.key === "auth_hook" &&
+        status &&
+        status.host === "claude-desktop"
+      ) {
+        labelText += " " + MUREO.t("wizard.basic.auth_hook_desktop_na");
+      }
+      labelSpan.textContent = labelText;
       li.appendChild(labelSpan);
       if (installed) {
         li.appendChild(buildBasicRemoveButton(row));

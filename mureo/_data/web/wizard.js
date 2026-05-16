@@ -220,12 +220,19 @@
       const mark = installed ? "✓" : "✗";
       return '<span class="wizard-step-pill ' + cls + '">' + mark + " " + label + "</span>";
     }
+    // The credential-guard hook has no surface on Claude Desktop
+    // (install_auth_hook returns noop:unsupported_on_desktop there), so
+    // annotate the row when the chosen host is the Desktop app.
+    let authHookLabel = MUREO.t("wizard.basic.auth_hook");
+    if (STATE.host === "claude-desktop") {
+      authHookLabel += " " + MUREO.t("wizard.basic.auth_hook_desktop_na");
+    }
     wrap.innerHTML =
       '<h2>' + MUREO.t("wizard.basic.title") + "</h2>" +
       '<p>' + MUREO.t("wizard.basic.desc") + "</p>" +
       '<ul class="wizard-basic-parts">' +
       '<li>' + pill(parts.mureo_mcp, MUREO.t("wizard.basic.mureo_mcp")) + "</li>" +
-      '<li>' + pill(parts.auth_hook, MUREO.t("wizard.basic.auth_hook")) + "</li>" +
+      '<li>' + pill(parts.auth_hook, authHookLabel) + "</li>" +
       '<li>' + pill(parts.skills, MUREO.t("wizard.basic.skills")) + "</li>" +
       "</ul>" +
       '<button type="button" class="btn btn-primary" data-basic-install>' +

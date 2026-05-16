@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — host selector clarity + Desktop-unavailable credential-guard hook note
+- The configure-UI host selector labels were ambiguous (`Claude Code (terminal)` implied terminal-only). Relabelled to **`Claude Code (CLI, Desktop app)`** vs **`Claude Desktop app (Chat, Cowork)`** so users running Claude Code *inside* the Desktop app correctly pick the Claude Code option (which targets `~/.claude.json`). Japanese punctuation made consistent (fullwidth `、`).
+- The credential-guard hook has no surface on Claude Desktop (`install_auth_hook` is a `noop:unsupported_on_desktop` there). The basic-setup list (wizard **and** dashboard) now appends "(not available on the Desktop app)" / "（デスクトップアプリでは利用できません）" to that row when the chosen host is Claude Desktop, instead of implying it can be installed.
+
 ### Fixed — dashboard "mureo integrations" listed GA4 (not native) and omitted Search Console
 - The configure-UI dashboard's **mureo integrations** section listed `Google Ads / Meta Ads / GA4`. mureo ships **no native GA4 tools** (GA4 is official-provider-only), so GA4 did not belong there; meanwhile the genuinely mureo-native **Search Console** was missing (only a sub-note under Google Ads). GA4's presence came from the `ga4` credentials.json section, which actually stores the *official* GA4 MCP's service-account env — not a mureo-native integration.
 - Removed the GA4 row; added a **Search Console** row. Search Console has no own credentials section (it reuses the Google Ads Google OAuth — adwords + webmasters scopes), so the row is status-only: it shows configured the moment the wizard's Search Console / Google sign-in is done (driven by the existing `credentials_oauth.google` signal) and has no standalone Remove (a note directs removal to the Google Ads row, since the sign-in is shared).
