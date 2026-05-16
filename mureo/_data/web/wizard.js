@@ -343,22 +343,26 @@
           wrap.appendChild(desc);
         }
       }
+
+      // hosted_http note — attached DIRECTLY under the OFFICIAL option
+      // (never at the bottom of the card, where it read as if it
+      // described the mureo-native option). Makes clear it's the
+      // official/hosted choice that is set up later via Connectors.
+      if (
+        opt.value === "official" &&
+        HOSTED_PLATFORMS.indexOf(platform) !== -1
+      ) {
+        const noteKey = "wizard.provider_choice.hosted_oauth_note";
+        const noteText = MUREO.t(noteKey);
+        if (noteText && noteText !== noteKey) {
+          const note = document.createElement("div");
+          note.className = "wizard-choice-desc";
+          note.textContent = noteText;
+          wrap.appendChild(note);
+        }
+      }
     });
 
-    // hosted_http OAuth note — rendered ONCE per hosted provider card.
-    // Reuses the wizard-choice-desc styling and the "render only if
-    // MUREO.t resolves" guard so a missing translation never echoes
-    // the key.
-    if (HOSTED_PLATFORMS.indexOf(platform) !== -1) {
-      const noteKey = "wizard.provider_choice.hosted_oauth_note";
-      const noteText = MUREO.t(noteKey);
-      if (noteText && noteText !== noteKey) {
-        const note = document.createElement("div");
-        note.className = "wizard-choice-desc";
-        note.textContent = noteText;
-        wrap.appendChild(note);
-      }
-    }
     return wrap;
   }
 

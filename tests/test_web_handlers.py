@@ -439,6 +439,16 @@ class TestPostProviders:
         mock_install.assert_called_once()
         assert mock_install.call_args.args[0] == "p1"
 
+    def test_hosted_status_dispatches(self, wizard: ConfigureWizard) -> None:
+        with patch(
+            "mureo.web.handlers.hosted_provider_status",
+            return_value={"meta-ads-official": True},
+        ) as mock_hosted:
+            resp = _post(wizard, "/api/providers/hosted-status", {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"hosted_connected": {"meta-ads-official": True}}
+        mock_hosted.assert_called_once()
+
     def test_remove_provider_requires_provider_id(
         self, wizard: ConfigureWizard
     ) -> None:

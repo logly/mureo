@@ -32,7 +32,6 @@ from mureo.web.desktop_mcp import (
     remove_desktop_mcp_block,
     remove_desktop_server_block,
     resolve_desktop_config_path,
-    set_mureo_disable_env_desktop,
     unset_mureo_disable_env_desktop,
 )
 from mureo.web.legacy_commands import remove_legacy_commands
@@ -233,6 +232,24 @@ def _install_provider_code(
         logger.exception("install_provider import/resolve failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
+    if spec.install_kind == "hosted_http":
+        # A remote MCP with no OAuth Dynamic Client Registration (Meta's
+        # hosted Ads MCP) CANNOT be wired into Claude Code as a raw
+        # user-scope http entry: `claude mcp add-json` registers it, but
+        # the client can never complete Meta's OAuth, so it shows up as
+        # "✗ Failed to connect". The only working path is Claude's
+        # account-level Connectors (the claude.ai MetaAds connector),
+        # which mureo cannot create programmatically — same constraint
+        # the Desktop path already handles via `manual_required`.
+        #
+        # Crucially we DO NOT auto-disable mureo-native Meta here:
+        # disabling the working native tools while the official path is
+        # unverified strands the user with no Meta capability at all
+        # (observed regression). Native stays until the user has the
+        # official connector actually working. The UI surfaces the
+        # manual Connectors steps.
+        return ActionResult(status="manual_required", detail=spec.id)
+
     try:
         result = run_install(spec, dry_run=False)
     except Exception as exc:  # noqa: BLE001
@@ -297,10 +314,12 @@ def _install_provider_desktop(
     the config file (Desktop rejects the native http shape; mcp-remote
     fails on Meta's no-DCR OAuth), so the Meta block is NOT written and
     the result is ``manual_required`` (the UI shows Connectors steps).
-    As a side effect, ``MUREO_DISABLE_<PLATFORM>=1`` is best-effort set
-    on mureo's OWN ``mcpServers.mureo.env`` so the surviving mureo MCP
-    stops exposing the now-redundant unauthenticated tool family
-    (mirrors the Code-host ``add_provider_and_disable_in_mureo``).
+    mureo-native Meta is intentionally NOT auto-disabled: the official
+    path only works once the user has manually added the connector, and
+    disabling native before that strands the user with zero Meta
+    capability (observed regression — see the Code/CLI hosted_http
+    handling for the same rationale). Consistent across Code, CLI and
+    Desktop.
 
     ``credentials.json`` is never touched.
     """
@@ -322,26 +341,14 @@ def _install_provider_desktop(
         # OAuth Dynamic Client Registration (Meta's hosted Ads MCP:
         # "InvalidClientMetadataError: Dynamic registration is not
         # available"). The only working path is the user adding it via
-        # Claude Desktop → Settings → Connectors → Add custom connector,
-        # so the Meta MCP block itself is NOT written here.
+        # Claude's Connectors, so the Meta MCP block is NOT written here.
         #
-        # We CAN, however, still disable mureo's own now-redundant
-        # tool family for that platform: mcpServers.mureo.env is
-        # mureo's OWN block in claude_desktop_config.json (no DCR/OAuth
-        # constraint). Without this the surviving mureo MCP would expose
-        # unauthenticated meta_ads_* tools that duplicate / conflict
-        # with the official hosted MCP. Mirrors the Code-host
-        # add_provider_and_disable_in_mureo behaviour.
-        platform = spec.coexists_with_mureo_platform
-        if platform:
-            env_var = "MUREO_DISABLE_" + platform.upper()
-            try:
-                config_path = resolve_desktop_config_path(home)
-                set_mureo_disable_env_desktop(config_path, env_var)
-            except Exception:  # noqa: BLE001
-                # Best-effort: a missing/locked config must not block
-                # the manual-setup guidance the UI still needs to show.
-                logger.exception("install_provider (desktop) disable-env write failed")
+        # We also do NOT disable mureo-native Meta: the official path is
+        # not usable until the user completes the manual Connectors
+        # setup, and auto-disabling native before that leaves the user
+        # with no Meta capability at all (the reported regression).
+        # Native stays until the user confirms the connector works —
+        # identical to the Code/CLI hosted_http behaviour.
         return ActionResult(status="manual_required", detail=spec.id)
 
     if spec.install_argv:
@@ -476,6 +483,96 @@ def remove_provider(
     if not result.changed:
         return ActionResult(status="noop", detail="not_registered")
     return ActionResult(status="ok", detail=provider_id)
+
+
+def confirm_hosted_provider(
+    provider_id: str, home: Path | None = None, host: str = _HOST_CODE
+) -> ActionResult:
+    """Disable mureo-native tools ONCE the official hosted connector works.
+
+    A ``hosted_http`` provider (Meta) can only be wired via Claude's
+    account-level Connectors, authorised by a one-time browser OAuth that
+    mureo cannot perform. Native is never auto-disabled before that (it
+    would strand the user). This is the explicit, safe follow-up.
+
+    Claude Code: verify the connector is Connected via
+    ``is_hosted_provider_connected`` (parses ``claude mcp list``), and
+    only then set ``MUREO_DISABLE_<PLATFORM>=1`` on ``mcpServers.mureo``.
+    Statuses: ``ok`` (just disabled), ``noop`` (already disabled),
+    ``not_connected`` (finish the browser setup first), ``manual``
+    (Desktop — mureo can't auto-detect, the user verifies there),
+    ``error`` (``unknown_provider`` / ``not_hosted`` / ``no_mureo_block``).
+    """
+    try:
+        from mureo.providers.catalog import get_provider
+
+        spec = get_provider(provider_id)
+    except KeyError:
+        return ActionResult(status="error", detail="unknown_provider")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("confirm_hosted_provider import/resolve failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    if spec.install_kind != "hosted_http":
+        return ActionResult(status="error", detail="not_hosted")
+
+    platform = spec.coexists_with_mureo_platform
+    if platform is None:
+        return ActionResult(status="noop", detail="nothing_to_switch")
+
+    if host == _HOST_DESKTOP:
+        # No reliable programmatic signal for the account connector on
+        # Desktop (no `claude mcp list`); the user verifies in Claude
+        # Desktop. Never auto-disable native here (no stranding).
+        return ActionResult(status="manual", detail=spec.id)
+
+    try:
+        from mureo.providers.config_writer import is_hosted_provider_connected
+        from mureo.providers.mureo_env import set_mureo_disable_env
+
+        if not is_hosted_provider_connected(spec):
+            return ActionResult(status="not_connected", detail=spec.id)
+        env_result = set_mureo_disable_env(platform)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("confirm_hosted_provider failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    if env_result.changed:
+        return ActionResult(status="ok", detail=spec.id)
+    if env_result.mureo_block_present:
+        return ActionResult(status="noop", detail="already_disabled")
+    return ActionResult(status="error", detail="no_mureo_block")
+
+
+def hosted_provider_status(host: str = _HOST_CODE) -> dict[str, bool]:
+    """Connected-state for every ``hosted_http`` catalog provider.
+
+    mureo never registers a hosted provider in the config file (it can't
+    — Meta has no OAuth DCR), so the file-parse status always reports it
+    absent. This probes ``claude mcp list`` (timeout-bounded, never
+    raises) so the dashboard can show ``✓`` once the user has finished
+    the account-level Connector browser setup. Returns ``{id: bool}``.
+
+    Deliberately a SEPARATE endpoint, NOT folded into ``collect_status``:
+    the subprocess/network probe must not slow every ``/api/status`` poll
+    nor leak a real ``claude`` subprocess into the broad status test
+    surface. ``host`` is accepted for symmetry; detection is via the
+    Claude Code ``claude`` CLI (absent on Desktop ⇒ all ``False``, which
+    correctly drives the "use Connectors" UI there).
+    """
+    del host  # detection is CLI-based; absent ⇒ False (correct for Desktop)
+    try:
+        from mureo.providers.catalog import get_catalog
+        from mureo.providers.config_writer import is_hosted_provider_connected
+
+        return {
+            spec.id: is_hosted_provider_connected(spec)
+            for spec in get_catalog()
+            if spec.install_kind == "hosted_http"
+        }
+    except Exception:  # noqa: BLE001 — status probe must never raise
+        logger.exception("hosted_provider_status failed")
+        return {}
 
 
 # ---------------------------------------------------------------------------

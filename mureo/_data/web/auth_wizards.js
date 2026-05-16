@@ -19,7 +19,6 @@
     // hosted_http providers (catalog install_kind === "hosted_http").
     // Phase 1: only meta-ads-official. Extend when a new one is added.
     const isHosted = providerId === "meta-ads-official";
-    const onDesktop = state.host === "claude-desktop";
 
     // Meta's official hosted Ads MCP endpoint (matches catalog.py).
     const META_HOSTED_URL = "https://mcp.facebook.com/ads";
@@ -30,42 +29,45 @@
     // returns true (the card has no missing-translation failure mode;
     // labels fall back via MUREO.t).
     function showManualSetup() {
-      if (!onDesktop) {
-        // Claude Code: the native http MCP is registered; OAuth runs
-        // inside Claude on first use. A short reassurance is enough.
-        const p = document.createElement("p");
-        p.className = "dashboard-provider-hosted-note";
-        p.textContent = MUREO.t("dashboard.provider_hosted_oauth_note");
-        p.setAttribute("data-i18n", "dashboard.provider_hosted_oauth_note");
-        wrap.appendChild(p);
-        return true;
-      }
+      // Meta's hosted Ads MCP has no OAuth Dynamic Client Registration,
+      // so it can't be wired from here on EITHER host — the working
+      // path is Claude's Connectors. But the steps genuinely differ:
+      //   - Claude Desktop: Settings → Connectors → Add custom connector
+      //     (paste the URL).
+      //   - Claude Code (terminal): there is no Connectors GUI; the
+      //     account-level "Meta Ads" connector is added at claude.ai in
+      //     a browser and then surfaces in Claude Code automatically.
+      // Pick the host-specific i18n family accordingly.
+      const isDesktopHost = state.host === "claude-desktop";
+      const kp = isDesktopHost ? "connector." : "connector.code.";
       const card = document.createElement("div");
       card.className = "connector-setup-card";
 
       const h = document.createElement("h4");
-      h.textContent = MUREO.t("connector.setup_title");
-      h.setAttribute("data-i18n", "connector.setup_title");
+      h.textContent = MUREO.t(kp + "setup_title");
+      h.setAttribute("data-i18n", kp + "setup_title");
       card.appendChild(h);
 
       const lead = document.createElement("p");
       lead.className = "connector-setup-lead";
-      lead.textContent = MUREO.t("connector.setup_lead");
-      lead.setAttribute("data-i18n", "connector.setup_lead");
+      lead.textContent = MUREO.t(kp + "setup_lead");
+      lead.setAttribute("data-i18n", kp + "setup_lead");
       card.appendChild(lead);
 
       const ol = document.createElement("ol");
-      ["connector.step1", "connector.step2"].forEach(function (k) {
+      [kp + "step1", kp + "step2"].forEach(function (k) {
         const liEl = document.createElement("li");
         liEl.textContent = MUREO.t(k);
         liEl.setAttribute("data-i18n", k);
         ol.appendChild(liEl);
       });
-      // Step 3: paste-this-URL with an inline copy button.
+      // Step 3: the reference endpoint with an inline copy button
+      // (Desktop pastes it into the custom-connector dialog; Code users
+      // rarely need it but it's handy to confirm the right endpoint).
       const liUrl = document.createElement("li");
       const step3 = document.createElement("span");
-      step3.textContent = MUREO.t("connector.step3");
-      step3.setAttribute("data-i18n", "connector.step3");
+      step3.textContent = MUREO.t(kp + "step3");
+      step3.setAttribute("data-i18n", kp + "step3");
       liUrl.appendChild(step3);
       const urlRow = document.createElement("div");
       urlRow.className = "connector-url-row";
@@ -97,21 +99,67 @@
       ol.appendChild(liUrl);
 
       const liStep4 = document.createElement("li");
-      liStep4.textContent = MUREO.t("connector.step4");
-      liStep4.setAttribute("data-i18n", "connector.step4");
+      liStep4.textContent = MUREO.t(kp + "step4");
+      liStep4.setAttribute("data-i18n", kp + "step4");
       ol.appendChild(liStep4);
 
       card.appendChild(ol);
+
+      // "I've connected it — finalize" : verifies the connector is
+      // actually Connected, then disables the overlapping mureo-native
+      // tool family so the model stops calling the credential-less
+      // native tools. Never disables native unless the official path is
+      // confirmed working (no stranding).
+      const finalizeBtn = document.createElement("button");
+      finalizeBtn.type = "button";
+      finalizeBtn.className = "btn btn-secondary";
+      finalizeBtn.textContent = MUREO.t("connector.finalize");
+      finalizeBtn.setAttribute("data-i18n", "connector.finalize");
+      const fStatus = document.createElement("p");
+      fStatus.className = "dashboard-provider-hosted-note";
+      fStatus.hidden = true;
+      finalizeBtn.addEventListener("click", async function () {
+        finalizeBtn.disabled = true;
+        fStatus.hidden = false;
+        fStatus.textContent = MUREO.t("connector.finalize_checking");
+        let res;
+        try {
+          res = await MUREO.postJson("/api/providers/confirm", {
+            provider_id: providerId,
+          });
+        } catch (_e) {
+          finalizeBtn.disabled = false;
+          fStatus.textContent = MUREO.t("connector.finalize_failed");
+          return;
+        }
+        finalizeBtn.disabled = false;
+        const st = res && res.body && res.body.status;
+        const key =
+          st === "ok"
+            ? "connector.finalize_ok"
+            : st === "noop"
+            ? "connector.finalize_already"
+            : st === "not_connected"
+            ? "connector.finalize_not_connected"
+            : st === "manual"
+            ? "connector.finalize_manual"
+            : "connector.finalize_failed";
+        fStatus.textContent = MUREO.t(key);
+        fStatus.setAttribute("data-i18n", key);
+      });
+      card.appendChild(finalizeBtn);
+      card.appendChild(fStatus);
+
       wrap.appendChild(card);
       return true;
     }
 
-    // Desktop + hosted MCP: a remote MCP cannot be wired from the
-    // configure UI (Claude Desktop has no config path for remote MCP;
-    // Meta's hosted Ads MCP has no OAuth Dynamic Client Registration).
-    // Show the manual Connectors steps DIRECTLY on this page — no
-    // misleading "✗ not registered" line, no dead Install button.
-    if (isHosted && onDesktop) {
+    // Hosted MCP on EITHER host: Meta's hosted Ads MCP has no OAuth
+    // Dynamic Client Registration, so neither the Claude Code
+    // ~/.claude.json http entry nor a Claude Desktop custom connector
+    // created here can connect. Show the manual Connectors steps
+    // DIRECTLY — no dead Install button, no misleading status line.
+    if (isHosted) {
       wrap.innerHTML =
         "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
       if (!showManualSetup()) onComplete();

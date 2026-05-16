@@ -154,25 +154,44 @@
     });
   }
 
+  // Connected-state for hosted_http providers (account-level Connectors
+  // mureo never writes to the config file, so providers_installed always
+  // reports them ✗). Lazily fetched once from /api/providers/hosted-status
+  // and cached; null = not fetched yet.
+  let hostedConnected = null;
+  let hostedFetchInFlight = false;
+
   function renderProvidersSection(status) {
     const list = document.querySelector("[data-dashboard-providers-list]");
     if (!list) return;
     while (list.firstChild) list.removeChild(list.firstChild);
     const providers = (status && status.providers_installed) || {};
     let anyNotInstalled = false;
+    let needHostedProbe = false;
     [
       "google-ads-official",
       "meta-ads-official",
       "ga4-official",
     ].forEach(function (pid) {
       const li = document.createElement("li");
-      const installed = providers[pid];
-      if (!installed) anyNotInstalled = true;
+      const isHosted = HOSTED_PROVIDER_IDS.indexOf(pid) !== -1;
+      // Hosted providers are "installed" ⇔ their account-level Connector
+      // is Connected (mureo never registers them in the config file).
+      let installed;
+      if (isHosted) {
+        installed = Boolean(hostedConnected && hostedConnected[pid] === true);
+        if (hostedConnected === null) needHostedProbe = true;
+      } else {
+        installed = providers[pid];
+        if (!installed) anyNotInstalled = true;
+      }
       const labelSpan = document.createElement("span");
-      labelSpan.textContent =
-        (installed ? "✓ " : "✗ ") + pid;
+      labelSpan.textContent = (installed ? "✓ " : "✗ ") + pid;
       li.appendChild(labelSpan);
-      if (installed) {
+      // No Remove for hosted: mureo can't unregister an account-level
+      // Connector (it never created it). Only file-registered (pipx)
+      // providers get a Remove button.
+      if (installed && !isHosted) {
         const removeBtn = document.createElement("button");
         removeBtn.type = "button";
         removeBtn.className = "btn btn-secondary";
@@ -223,6 +242,25 @@
       note.textContent = MUREO.t("dashboard.provider_add_via_wizard");
       note.setAttribute("data-i18n", "dashboard.provider_add_via_wizard");
       list.appendChild(note);
+    }
+
+    // Probe the hosted connectors' Connected state once, then re-render
+    // so a finished account-level Connector flips ✗ → ✓ without a manual
+    // page reload. Cached + in-flight guarded so this never loops.
+    if (needHostedProbe && !hostedFetchInFlight) {
+      hostedFetchInFlight = true;
+      MUREO.postJson("/api/providers/hosted-status", {})
+        .then(function (res) {
+          hostedConnected =
+            (res && res.body && res.body.hosted_connected) || {};
+        })
+        .catch(function () {
+          hostedConnected = {}; // best-effort: leave rows as ✗
+        })
+        .then(function () {
+          hostedFetchInFlight = false;
+          renderProvidersSection(MUREO.state && MUREO.state.status);
+        });
     }
   }
 
@@ -598,14 +636,45 @@
     btn.addEventListener("click", runByodClear);
   }
 
-  // mureo-native platform sections in credentials.json and their UI
-  // labels. Search Console is intentionally NOT a row here: it has no
-  // own credential section — it reuses the google_ads Google OAuth, so
-  // it is surfaced as a sub-note on the Google Ads row instead.
+  // mureo-native platforms (mureo ships native tools for these:
+  // Google Ads, Meta Ads, Search Console — there is NO native GA4, so
+  // GA4 is deliberately NOT a row here; it is an official-provider-only
+  // platform). Search Console has no own credentials.json section — it
+  // reuses the google_ads Google OAuth (adwords + webmasters scopes),
+  // so it is a status-only row (configured ⇔ the shared Google OAuth is
+  // present, which the wizard's Search Console step writes) with no
+  // standalone Remove (removing it would nuke the shared Google sign-in
+  // / Google Ads — done from the Google Ads row instead).
   const NATIVE_SECTIONS = [
-    { section: "google_ads", labelKey: "wizard.platforms.google_ads" },
-    { section: "meta_ads", labelKey: "wizard.platforms.meta_ads" },
-    { section: "ga4", labelKey: "wizard.platforms.ga4" },
+    {
+      key: "google_ads",
+      section: "google_ads",
+      labelKey: "wizard.platforms.google_ads",
+      removable: true,
+      configured: function (s, present) {
+        return present.google_ads === true;
+      },
+    },
+    {
+      key: "meta_ads",
+      section: "meta_ads",
+      labelKey: "wizard.platforms.meta_ads",
+      removable: true,
+      configured: function (s, present) {
+        return present.meta_ads === true;
+      },
+    },
+    {
+      key: "search_console",
+      labelKey: "wizard.platforms.search_console",
+      removable: false,
+      noteKey: "dashboard.native_sc_row_note",
+      configured: function (s) {
+        return Boolean(
+          s && s.credentials_oauth && s.credentials_oauth.google
+        );
+      },
+    },
   ];
 
   function renderNativeSection(status) {
@@ -615,15 +684,15 @@
     const present = (status && status.credentials_present) || {};
     let any = false;
     NATIVE_SECTIONS.forEach(function (row) {
-      const configured = present[row.section] === true;
+      const configured = row.configured(status, present);
       const li = document.createElement("li");
       const label = document.createElement("span");
       label.textContent =
         (configured ? "✓ " : "✗ ") + MUREO.t(row.labelKey);
       label.setAttribute("data-i18n", row.labelKey);
       li.appendChild(label);
-      if (configured) {
-        any = true;
+      if (configured) any = true;
+      if (configured && row.removable) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "btn btn-secondary";
@@ -645,14 +714,22 @@
           }
         });
         li.appendChild(btn);
-        // Google Ads + Search Console share the one Google OAuth.
-        if (row.section === "google_ads") {
-          const note = document.createElement("div");
-          note.className = "dashboard-provider-hosted-note";
-          note.textContent = MUREO.t("dashboard.native_sc_shared");
-          note.setAttribute("data-i18n", "dashboard.native_sc_shared");
-          li.appendChild(note);
-        }
+      }
+      // Google Ads + Search Console share the one Google OAuth.
+      if (configured && row.key === "google_ads") {
+        const note = document.createElement("div");
+        note.className = "dashboard-provider-hosted-note";
+        note.textContent = MUREO.t("dashboard.native_sc_shared");
+        note.setAttribute("data-i18n", "dashboard.native_sc_shared");
+        li.appendChild(note);
+      }
+      // Search Console row: always explain the shared-sign-in coupling.
+      if (row.noteKey) {
+        const note = document.createElement("div");
+        note.className = "dashboard-provider-hosted-note";
+        note.textContent = MUREO.t(row.noteKey);
+        note.setAttribute("data-i18n", row.noteKey);
+        li.appendChild(note);
       }
       list.appendChild(li);
     });

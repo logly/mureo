@@ -194,8 +194,17 @@ def _claude_bin() -> str | None:
     return shutil.which("claude")
 
 
-def _claude_mcp(*args: str) -> subprocess.CompletedProcess[str]:
-    """Run ``claude mcp <args>`` (fixed argv, shell=False) and return it."""
+def _claude_mcp(
+    *args: str, timeout: float | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run ``claude mcp <args>`` (fixed argv, shell=False) and return it.
+
+    ``timeout`` (seconds) is forwarded to ``subprocess.run``; pass it for
+    subcommands that probe the network (``mcp list`` health-checks every
+    endpoint) so an unreachable server can't hang an interactive caller.
+    On expiry ``subprocess.run`` raises ``subprocess.TimeoutExpired`` —
+    callers that promise not to raise must catch it.
+    """
     claude_bin = _claude_bin()
     assert claude_bin is not None  # callers check first  # noqa: S101
     return subprocess.run(  # noqa: S603 - fixed argv, shell=False
@@ -203,6 +212,7 @@ def _claude_mcp(*args: str) -> subprocess.CompletedProcess[str]:
         check=False,
         capture_output=True,
         text=True,
+        timeout=timeout,
     )
 
 
@@ -389,6 +399,50 @@ def remove_provider_from_claude_settings(
     existing["mcpServers"] = mcp_servers
     _atomic_write_json(existing, target)
     return RemoveResult(changed=True)
+
+
+def is_hosted_provider_connected(spec: ProviderSpec) -> bool:
+    """Return True iff ``claude mcp list`` shows the spec's hosted URL connected.
+
+    A ``hosted_http`` provider (Meta) can only be wired through Claude's
+    account-level Connectors, authorised by a one-time browser OAuth.
+    The single programmatic signal that the user finished that step is
+    ``claude mcp list`` showing the endpoint URL on a line whose status
+    is connected (a ``✓``/``Connected`` marker) and NOT
+    ``Needs authentication`` / ``Failed``.
+
+    Returns ``False`` (never raises) when the spec has no URL, the
+    ``claude`` CLI is absent, the URL is not listed, or its line is not
+    in a connected state — so callers can gate the
+    ``MUREO_DISABLE_<platform>`` switch on a confirmed-working official
+    path without ever stranding the user.
+    """
+    url = spec.mcp_server_config.get("url")
+    if not url or _claude_bin() is None:
+        return False
+    try:
+        # `claude mcp list` health-checks every endpoint over the
+        # network; cap it so an unreachable server can't hang the
+        # interactive caller (CLI / confirm request). Timeout ⇒ treat as
+        # not-connected (caller never strands native on a False).
+        completed = _claude_mcp("list", timeout=15)
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    if completed.returncode != 0:
+        return False
+    # NOTE: substring match on the endpoint URL. Phase 1 has a single
+    # hosted provider (one Meta endpoint), so prefix collisions
+    # (e.g. ".../ads" vs ".../ads-v2") are not a concern; revisit if a
+    # second hosted endpoint sharing a prefix is ever added.
+    for line in completed.stdout.splitlines():
+        if url not in line:
+            continue
+        if re.search(r"needs authentication|failed", line, re.IGNORECASE):
+            return False
+        # ``\bconnected\b`` so "Disconnected"/"Reconnecting" don't match;
+        # "Failed to connect" is already excluded above.
+        return re.search(r"\bconnected\b", line, re.IGNORECASE) is not None
+    return False
 
 
 def is_provider_installed(

@@ -16,6 +16,8 @@ Routes
 ``POST /api/host``               → set Claude application host
 ``POST /api/setup/basic``        → run mureo_mcp / hook / skills
 ``POST /api/providers/install``  → install one official MCP
+``POST /api/providers/confirm``  → disable native once hosted connector works
+``POST /api/providers/hosted-status`` → hosted connectors' Connected state
 ``POST /api/providers/remove``   → remove one official MCP entry
 ``POST /api/credentials/env-var``→ write one env var into credentials
 ``POST /api/oauth/<p>/start``    → spawn WebAuthWizard, return consent URL
@@ -61,6 +63,8 @@ from mureo.web.native_picker import pick_directory, pick_file
 from mureo.web.session import OAUTH_PROVIDERS, SUPPORTED_HOSTS
 from mureo.web.setup_actions import (
     clear_all_setup,
+    confirm_hosted_provider,
+    hosted_provider_status,
     install_basic_setup,
     install_provider,
     remove_auth_hook,
@@ -314,6 +318,26 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         )
         send_json(self, result.as_dict())
 
+    def _post_providers_confirm(self, payload: dict[str, Any]) -> None:
+        provider_id = str(payload.get("provider_id", "")).strip()
+        if not provider_id:
+            send_error_json(self, 400, "provider_id_required")
+            return
+        result = confirm_hosted_provider(
+            provider_id,
+            home=self.wizard.home,
+            host=self.wizard.session.host,
+        )
+        send_json(self, result.as_dict())
+
+    def _post_providers_hosted_status(  # noqa: ARG002
+        self, payload: dict[str, Any]
+    ) -> None:
+        send_json(
+            self,
+            {"hosted_connected": hosted_provider_status(self.wizard.session.host)},
+        )
+
     def _post_providers_remove(self, payload: dict[str, Any]) -> None:
         provider_id = str(payload.get("provider_id", "")).strip()
         if not provider_id:
@@ -448,6 +472,8 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/setup/hook/remove": _post_setup_hook_remove,
         "/api/setup/skills/remove": _post_setup_skills_remove,
         "/api/providers/install": _post_providers_install,
+        "/api/providers/confirm": _post_providers_confirm,
+        "/api/providers/hosted-status": _post_providers_hosted_status,
         "/api/providers/remove": _post_providers_remove,
         "/api/credentials/env-var": _post_env_var,
         "/api/credentials/remove": _post_credentials_remove,
