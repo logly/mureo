@@ -1,9 +1,0 @@
-# Canonicalize commit/co-author identities for git shortlog, blame, and
-# the GitHub contributors graph (all honor .mailmap).
-#
-# A few early commits carried a `Co-Authored-By: Claude … <noreply@anthropic.com>`
-# trailer (Claude Code attribution, since disabled). The human author is
-# the maintainer; fold that co-author identity into the canonical one so
-# tooling does not list a spurious "claude" contributor. No history is
-# rewritten — this only affects how identities are displayed.
-Hirokazu Yoshinaga <4027404+hyoshi@users.noreply.github.com> <noreply@anthropic.com>
