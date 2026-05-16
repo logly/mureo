@@ -4,10 +4,26 @@ This guide walks you through running mureo end-to-end. mureo is your local-first
 
 For a 30-second overview of which combination to pick, jump to [Choosing the right combination](#choosing-the-right-combination) at the bottom.
 
+## Before you start
+
+mureo is installed and started from a **terminal** (your computer's command app — not inside Claude). Open one:
+
+- **macOS:** press ⌘ + Space, type `Terminal`, press Enter.
+- **Windows:** open the Start menu, type `Terminal` (or `PowerShell`), press Enter.
+- **Linux:** open your terminal application.
+
+mureo needs **Python 3.10 or newer**. In the terminal, run:
+
+```bash
+python3 --version
+```
+
+If it prints `Python 3.10.x` or higher, you're ready (`pip` ships with Python). If the command is **not found** or the version is **older than 3.10**, install Python from **<https://www.python.org/downloads/>** (the installer includes `pip`), then close and reopen the terminal. If a later step says `pip: command not found`, use `python3 -m pip` in place of `pip`.
+
 > **Two ways to set up mureo — pick one.**
 >
-> - **Easiest — do it all from a browser (recommended):** `pip install mureo` then `mureo configure`. A local web UI (bound to `127.0.0.1`) lets you do **everything on this page by point-and-click** — host selection, basic setup, OAuth/credentials, official MCP providers, Demo/BYOD. No terminal commands needed.
-> - **Manual — run the commands yourself:** everything below walks you through it **one command at a time**. Use this for scripting/CI or fine-grained control.
+> - **Easiest — do it all from a browser (recommended):** in the terminal run just two commands — `pip install mureo` then `mureo configure`. That opens a local web UI (bound to `127.0.0.1`) where you do **everything else on this page by point-and-click** — host selection, basic setup, OAuth/credentials, official MCP providers, Demo/BYOD. No further commands.
+> - **Manual — run the commands yourself:** everything below walks you through it **one command at a time** in the terminal. Use this for scripting/CI or fine-grained control.
 >
 > Both reach the same result. If you're not sure, use `mureo configure`.
 
