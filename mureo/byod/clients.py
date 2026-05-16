@@ -66,20 +66,54 @@ def _parse_date(v: str) -> date | None:
         return None
 
 
-def _period_to_range(period: str) -> tuple[date, date]:
-    today = date.today()
-    if period == "LAST_7_DAYS":
+def _max_date(rows: list[dict[str, Any]], key: str = "date") -> date | None:
+    """Latest parseable ``key`` value across ``rows`` (``None`` if none)."""
+    best: date | None = None
+    for r in rows:
+        d = _parse_date(r.get(key, ""))
+        if d is not None and (best is None or d > best):
+            best = d
+    return best
+
+
+def _period_to_range(period: str, *, anchor: date | None = None) -> tuple[date, date]:
+    """Resolve a relative ``period`` to a concrete ``(start, end)``.
+
+    ``anchor=None`` preserves the legacy wall-clock behaviour (windows
+    end *yesterday* relative to ``date.today()``) — unchanged for any
+    caller that does not opt in.
+
+    When ``anchor`` is given (the BYOD/demo dataset's own latest date),
+    the window is rebased to END at ``anchor`` with the same span, so a
+    fixed historical demo dataset keeps returning its most-recent N days
+    no matter how far wall-clock time has drifted past it. ``YESTERDAY``
+    / ``TODAY`` collapse to the anchor day itself (the latest data we
+    have). This is what stops the demo silently going empty over time.
+    """
+    if anchor is None:
+        today = date.today()
+        if period == "LAST_14_DAYS":
+            return today - timedelta(days=14), today - timedelta(days=1)
+        if period == "LAST_30_DAYS":
+            return today - timedelta(days=30), today - timedelta(days=1)
+        if period == "YESTERDAY":
+            d = today - timedelta(days=1)
+            return d, d
+        if period == "TODAY":
+            return today, today
+        # LAST_7_DAYS and the default fall-through.
         return today - timedelta(days=7), today - timedelta(days=1)
-    if period == "LAST_14_DAYS":
-        return today - timedelta(days=14), today - timedelta(days=1)
-    if period == "LAST_30_DAYS":
-        return today - timedelta(days=30), today - timedelta(days=1)
-    if period == "YESTERDAY":
-        d = today - timedelta(days=1)
-        return d, d
-    if period == "TODAY":
-        return today, today
-    return today - timedelta(days=7), today - timedelta(days=1)
+
+    span = {
+        "LAST_7_DAYS": 7,
+        "LAST_14_DAYS": 14,
+        "LAST_30_DAYS": 30,
+    }.get(period)
+    if span is not None:
+        return anchor - timedelta(days=span - 1), anchor
+    if period in ("YESTERDAY", "TODAY"):
+        return anchor, anchor
+    return anchor - timedelta(days=6), anchor  # default: last 7 days
 
 
 # Verb prefixes that should never silently no-op in BYOD mode.
@@ -322,8 +356,8 @@ class ByodGoogleAdsClient:
         period: str = "LAST_30_DAYS",
         **_: Any,
     ) -> list[dict[str, Any]]:
-        start, end = _period_to_range(period)
         rows = self._metrics()
+        start, end = _period_to_range(period, anchor=_max_date(rows))
         if campaign_id:
             rows = [r for r in rows if r.get("campaign_id") == str(campaign_id)]
         agg = self._aggregate_metrics(rows, start, end, group_by="campaign_id")
@@ -639,8 +673,8 @@ class ByodMetaAdsClient:
         period: str = "LAST_30_DAYS",
         **_: Any,
     ) -> list[dict[str, Any]]:
-        start, end = _period_to_range(period)
         rows = self._metrics()
+        start, end = _period_to_range(period, anchor=_max_date(rows))
         if campaign_id:
             rows = [r for r in rows if r.get("campaign_id") == str(campaign_id)]
 
@@ -722,8 +756,8 @@ class ByodMetaAdsClient:
         impressions / clicks / spend / conversions / reach / frequency
         / result_indicator for a single (date, campaign).
         """
-        start, end = _period_to_range(period)
         rows = self._metrics()
+        start, end = _period_to_range(period, anchor=_max_date(rows))
         if campaign_id:
             rows = [r for r in rows if r.get("campaign_id") == str(campaign_id)]
         out: list[dict[str, Any]] = []
@@ -755,8 +789,8 @@ class ByodMetaAdsClient:
     ) -> list[dict[str, Any]]:
         """Per-day ad-set metrics — populated when the source export
         has Ad set name + Day breakdown. Empty list when absent."""
-        start, end = _period_to_range(period)
         rows = self._ad_set_metrics()
+        start, end = _period_to_range(period, anchor=_max_date(rows))
         if campaign_id:
             rows = [r for r in rows if r.get("campaign_id") == str(campaign_id)]
         if ad_set_id:
@@ -789,8 +823,8 @@ class ByodMetaAdsClient:
     ) -> list[dict[str, Any]]:
         """Per-day per-ad metrics — populated when the source export
         has Ad name + Day breakdown. Empty list when absent."""
-        start, end = _period_to_range(period)
         rows = self._ad_metrics()
+        start, end = _period_to_range(period, anchor=_max_date(rows))
         if ad_set_id:
             rows = [r for r in rows if r.get("ad_set_id") == str(ad_set_id)]
         if ad_id:
@@ -828,8 +862,8 @@ class ByodMetaAdsClient:
         ``dimension`` filters to a single breakdown axis when set.
         Empty list when the source export carried no breakdown columns.
         """
-        start, end = _period_to_range(period)
         rows = self._demographics()
+        start, end = _period_to_range(period, anchor=_max_date(rows))
         if campaign_id:
             rows = [r for r in rows if r.get("campaign_id") == str(campaign_id)]
         if dimension:

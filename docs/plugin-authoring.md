@@ -83,9 +83,13 @@ plugin should not depend on them):
   without breaking existing plugins.
 - Runtime authorization checks (`permit()`). Today the matcher gates
   purely against the declared `capabilities` frozenset.
-- MCP tool auto-exposure. The MCP server still has its hand-written
-  tool list. Providers are not automatically published as MCP tools
-  in Phase 1.
+- MCP tool **auto-generation** from the Protocol. A provider is not
+  published as MCP tools merely by implementing a domain Protocol.
+  Exposure is **opt-in**: implement the secondary `MCPToolProvider`
+  Protocol (see Section 3, "Exposing operations as MCP tools") and the
+  MCP server discovers and publishes your tools. A provider that does
+  not implement it is still discovered and skill-matched — just not
+  exposed as MCP tools.
 - Thread safety. Discovery and registration run single-threaded at
   CLI / MCP-server startup.
 
@@ -325,6 +329,67 @@ class MyAdapter:
 If a caller is already inside an event loop, `asyncio.run` raises
 `RuntimeError`. That is the documented Phase 1 behaviour and is
 allowed to propagate.
+
+### Exposing operations as MCP tools (`MCPToolProvider`)
+
+Implementing a domain Protocol makes your provider discoverable and
+skill-matchable. It does **not**, on its own, publish your operations
+as `mcp__mureo__*` tools. MCP exposure is a separate, **opt-in
+secondary Protocol** — `mureo.mcp.tool_provider.MCPToolProvider` — that
+you implement *in addition to* `BaseProvider` / a domain Protocol:
+
+```python
+from mcp.types import TextContent, Tool
+
+class MyAdapter:               # already a CampaignProvider, etc.
+    # ... name / display_name / capabilities / Protocol methods ...
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        # MUST be pure and credential-free: it is called at MCP-server
+        # start, before any API key is necessarily present. Return
+        # static Tool definitions only — no network, no secret access.
+        return MY_TOOLS
+
+    async def handle_mcp_tool(
+        self, name: str, arguments: dict
+    ) -> list[TextContent]:
+        # Called only for tool names you returned from mcp_tools().
+        ...
+```
+
+`isinstance` (structural, `runtime_checkable`) is how the server
+detects the surface, so you do **not** need to import `MCPToolProvider`
+— matching the two method shapes is sufficient. This keeps your plugin
+working against any mureo release whose server performs the wiring,
+without a hard import dependency on it.
+
+Rules the server enforces (a non-conforming provider is skipped with a
+`PluginToolWarning`, never fatal):
+
+- **No-arg constructible.** The server does `YourClass()` at startup.
+  Resolve credentials lazily on first tool *call*, not in `__init__`.
+- **`mcp_tools()` is static / credential-free.** It runs before any
+  secret is guaranteed present.
+- **`handle_mcp_tool` must be `async`.** A sync handler is rejected at
+  collection time (the dispatch path is not fault-isolated).
+- **Namespace your tool names.** Prefix every tool with your provider
+  name (e.g. `acme_ads_list_campaigns`). Built-in tool names are
+  reserved — a colliding plugin tool is dropped (built-ins win), and a
+  name already taken by an earlier plugin is dropped (first wins).
+- **Validate inbound arguments yourself.** `inputSchema` validation is
+  advisory on the client side and the dispatch path is not
+  fault-isolated; translate malformed arguments into your own error
+  type rather than letting a bare `KeyError`/`ValueError` escape.
+
+Sync clients: run blocking work off the event loop with
+`asyncio.to_thread(...)` inside `handle_mcp_tool` so you do not block
+the MCP server.
+
+This is an **opt-in, hand-written** surface (the plugin author writes
+the `Tool` schemas). Auto-generating tools from the domain Protocol is
+intentionally *not* done — it cannot express platform-specific
+operations that fall outside the shared Protocol, which hand-written
+`mcp_tools()` can. See `docs/mcp-server.md` for the server-side view.
 
 ---
 
