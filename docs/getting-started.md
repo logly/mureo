@@ -4,6 +4,8 @@ This guide walks you through running mureo end-to-end. mureo is your local-first
 
 For a 30-second overview of which combination to pick, jump to [Choosing the right combination](#choosing-the-right-combination) at the bottom.
 
+> **The easy way — most people should start here.** `pip install mureo` then `mureo configure` opens a local browser UI (bound to `127.0.0.1`) that walks you through host selection, basic setup, OAuth/credentials, official MCP providers, and Demo/BYOD — no terminal flags. The CLI walkthrough below is the manual / scriptable reference (CI, automation, fine-grained control); both reach the same end state.
+
 ---
 
 ## Modes × Hosts at a glance
