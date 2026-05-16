@@ -277,6 +277,43 @@ class TestInstallProviderInjectsCredentialEnv:
             "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "123",
         }
 
+    def test_code_host_injects_ga4_env_from_credentials(
+        self, tmp_path: Path
+    ) -> None:
+        """ga4-official is registered WITH GOOGLE_APPLICATION_CREDENTIALS
+        / GOOGLE_PROJECT_ID resolved from credentials.json. This is the
+        end-to-end contract the wizard's GA4 input step now feeds (it
+        previously collected the values and discarded them)."""
+        from mureo.web import setup_actions
+
+        creds = tmp_path / ".mureo" / "credentials.json"
+        creds.parent.mkdir(parents=True, exist_ok=True)
+        creds.write_text(
+            '{"ga4": {"service_account_path": "/p/sa.json",'
+            ' "project_id": "proj-1"}}',
+            "utf-8",
+        )
+
+        with (
+            patch(
+                "mureo.providers.installer.run_install",
+                return_value=_ok_install(),
+            ),
+            patch(
+                "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
+            ) as mock_disable,
+        ):
+            result = setup_actions.install_provider(
+                "ga4-official", credentials_path=creds
+            )
+
+        assert result.status == "ok"
+        _, kwargs = mock_disable.call_args
+        assert kwargs["extra_env"] == {
+            "GOOGLE_APPLICATION_CREDENTIALS": "/p/sa.json",
+            "GOOGLE_PROJECT_ID": "proj-1",
+        }
+
     def test_code_host_hosted_meta_no_write_no_disable(
         self, tmp_path: Path
     ) -> None:

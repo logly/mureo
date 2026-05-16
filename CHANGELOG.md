@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — GA4 wizard inputs were collected but never saved
+- The configure-UI auth wizard's GA4 step rendered the service-account-path / project-id inputs and a "Done" button whose handler only advanced the wizard — the entered values were **discarded**, so `GOOGLE_APPLICATION_CREDENTIALS` / `GOOGLE_PROJECT_ID` were never written to `credentials.json` and the official `ga4-official` MCP launched unauthenticated (same class as the earlier Google Ads bug). The Done handler now POSTs each value through the allow-listed `/api/credentials/env-var` writer (into the `ga4` section) **before** advancing, only proceeding if every write succeeds (otherwise it surfaces a save-failed message and stays on the step). Host-accurate labels + saving/failure status added (EN + JA).
+
 ### Changed — host selector clarity + Desktop-unavailable credential-guard hook note
 - The configure-UI host selector labels were ambiguous (`Claude Code (terminal)` implied terminal-only). Relabelled to **`Claude Code (CLI, Desktop app)`** vs **`Claude Desktop app (Chat, Cowork)`** so users running Claude Code *inside* the Desktop app correctly pick the Claude Code option (which targets `~/.claude.json`). Japanese punctuation made consistent (fullwidth `、`).
 - The credential-guard hook has no surface on Claude Desktop (`install_auth_hook` is a `noop:unsupported_on_desktop` there). The basic-setup list (wizard **and** dashboard) now appends "(not available on the Desktop app)" / "（デスクトップアプリでは利用できません）" to that row when the chosen host is Claude Desktop, instead of implying it can be installed.

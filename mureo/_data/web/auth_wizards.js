@@ -292,7 +292,24 @@
     // must not do it. The provider-choice "next page" (providers_install
     // step) shows the manual setup instructions instead.
     if (state.platforms.ga4) {
-      queue.push({ key: "ga4", inputs: ["service_account_path", "project_id"] });
+      // Each input carries the credentials.json-backed env var NAME it
+      // persists to (POSTed to /api/credentials/env-var on Done) plus a
+      // localized label key. GA4-official reads these env vars at
+      // launch, so they MUST be saved here — collecting without
+      // persisting silently leaves the official MCP unauthenticated.
+      queue.push({
+        key: "ga4",
+        inputs: [
+          {
+            name: "GOOGLE_APPLICATION_CREDENTIALS",
+            labelKey: "wizard.auth.ga4_sa_path",
+          },
+          {
+            name: "GOOGLE_PROJECT_ID",
+            labelKey: "wizard.auth.ga4_project_id",
+          },
+        ],
+      });
     }
     return queue;
   }
@@ -395,25 +412,61 @@
       doneBtn.textContent = MUREO.t("wizard.auth.done_button");
       doneBtn.setAttribute("data-i18n", "wizard.auth.done_button");
       doneBtn.disabled = true;
-      doneBtn.addEventListener("click", function () { onAllDone(); });
 
+      const status = document.createElement("p");
+      status.className = "wizard-shared-with-sc-note";
+      status.hidden = true;
+
+      const values = {};
       const completionFlags = {};
-      slot.inputs.forEach(function (field) {
+      slot.inputs.forEach(function (spec) {
         const label = document.createElement("label");
         label.style.display = "block";
-        label.textContent = field;
+        label.textContent = MUREO.t(spec.labelKey);
+        label.setAttribute("data-i18n", spec.labelKey);
         const input = document.createElement("input");
         input.type = "text";
         input.addEventListener("input", function () {
-          completionFlags[field] = Boolean(input.value);
-          const allFilled = slot.inputs.every(function (f) {
-            return completionFlags[f];
+          values[spec.name] = input.value;
+          completionFlags[spec.name] = Boolean(input.value);
+          const allFilled = slot.inputs.every(function (s) {
+            return completionFlags[s.name];
           });
           doneBtn.disabled = !allFilled;
         });
         label.appendChild(input);
         wrap.appendChild(label);
       });
+
+      doneBtn.addEventListener("click", async function () {
+        // Persist each value to credentials.json via the allow-listed
+        // env-var writer BEFORE advancing. Without this the entered
+        // GA4 service-account path / project id were discarded and the
+        // official GA4 MCP launched unauthenticated.
+        doneBtn.disabled = true;
+        status.hidden = false;
+        status.textContent = MUREO.t("wizard.auth.saving");
+        try {
+          for (let i = 0; i < slot.inputs.length; i += 1) {
+            const spec = slot.inputs[i];
+            const res = await MUREO.postJson("/api/credentials/env-var", {
+              name: spec.name,
+              value: values[spec.name],
+            });
+            if (!res.ok) {
+              status.textContent = MUREO.t("wizard.auth.save_failed");
+              doneBtn.disabled = false;
+              return;
+            }
+          }
+        } catch (_e) {
+          status.textContent = MUREO.t("wizard.auth.save_failed");
+          doneBtn.disabled = false;
+          return;
+        }
+        onAllDone();
+      });
+      wrap.appendChild(status);
     }
 
     if (slot.oauthProvider) {
