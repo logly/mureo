@@ -214,7 +214,10 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     # Pre-flight helpers
     # ------------------------------------------------------------------
     def _host_ok(self) -> bool:
-        port = int(self.server.server_address[1])
+        # BaseServer.server_address is a broad union in typeshed; for the
+        # TCPServer this handler always runs under, it is the (host, port)
+        # tuple, so the port index is safe.
+        port = int(self.server.server_address[1])  # type: ignore[index]
         host = self.headers.get("Host", "")
         if host_header_ok(host, port):
             return True
