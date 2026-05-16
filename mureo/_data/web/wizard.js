@@ -403,9 +403,17 @@
 
   function buildStepBody_completed() {
     const wrap = document.createElement("div");
+    // data-i18n on every text node so a language switch AFTER this
+    // screen is rendered re-translates it (setLocale → applyTranslations
+    // only re-resolves [data-i18n] nodes; build-time MUREO.t() alone
+    // would freeze the completed screen in the build-time locale).
     wrap.innerHTML =
-      '<h2>' + MUREO.t("wizard.completed.title") + "</h2>" +
-      '<p>' + MUREO.t("wizard.completed.desc") + "</p>";
+      '<h2 data-i18n="wizard.completed.title">' +
+      MUREO.t("wizard.completed.title") +
+      "</h2>" +
+      '<p data-i18n="wizard.completed.desc">' +
+      MUREO.t("wizard.completed.desc") +
+      "</p>";
     // Official Meta on Claude Desktop is set up manually via the
     // Connectors UI — mureo saved nothing for it. Don't list it as
     // "saved"; instead surface an explicit, actionable reminder so the
@@ -423,6 +431,7 @@
       if (p === "meta_ads" && metaPendingManual) return;
       const li = document.createElement("li");
       li.textContent = MUREO.t("wizard.platforms." + p);
+      li.setAttribute("data-i18n", "wizard.platforms." + p);
       summary.appendChild(li);
     });
     if (summary.children.length > 0) wrap.appendChild(summary);
@@ -444,6 +453,7 @@
     btn.type = "button";
     btn.className = "btn btn-primary";
     btn.textContent = MUREO.t("wizard.completed.dashboard_button");
+    btn.setAttribute("data-i18n", "wizard.completed.dashboard_button");
     btn.addEventListener("click", function () {
       MUREO.navigateToDashboard();
     });
