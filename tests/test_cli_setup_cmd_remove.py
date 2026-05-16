@@ -51,6 +51,7 @@ _BUNDLE_NAMES = (
     "creative-refresh",
     "daily-check",
     "goal-review",
+    "learn",
     "onboard",
     "rescue",
     "search-term-cleanup",

@@ -106,7 +106,7 @@ def _reset_discovery_cache() -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Case 1 — built-in scan finds the 16 in-tree skills (integration)
+# Case 1 — built-in scan finds the in-tree skills (integration)
 # ---------------------------------------------------------------------------
 
 
@@ -129,7 +129,7 @@ def test_builtin_scan_finds_in_tree_skills() -> None:
 
     assert len(entries) >= 1, "built-in scan must yield at least one skill"
     names = {e.name for e in entries}
-    # daily-check is one of the 16 known built-ins.
+    # daily-check is one of the known built-ins.
     assert "daily-check" in names, f"expected daily-check among built-ins; got {names}"
 
 
