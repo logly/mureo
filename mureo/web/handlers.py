@@ -51,7 +51,11 @@ from mureo.web.byod_actions import (
     byod_status,
 )
 from mureo.web.demo_actions import init_demo, list_demo_scenarios
-from mureo.web.env_var_writer import is_allowed_env_var, write_credential_env_var
+from mureo.web.env_var_writer import (
+    is_allowed_env_var,
+    remove_credential_section,
+    write_credential_env_var,
+)
 from mureo.web.legacy_commands import remove_legacy_commands
 from mureo.web.native_picker import pick_directory, pick_file
 from mureo.web.session import OAUTH_PROVIDERS, SUPPORTED_HOSTS
@@ -300,7 +304,10 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             send_error_json(self, 400, "provider_id_required")
             return
         result = install_provider(
-            provider_id, home=self.wizard.home, host=self.wizard.session.host
+            provider_id,
+            home=self.wizard.home,
+            host=self.wizard.session.host,
+            credentials_path=self.wizard.host_paths.credentials_path,
         )
         send_json(self, result.as_dict())
 
@@ -336,6 +343,28 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         # Never echo the value.
         send_json(self, {"status": "ok", "name": name})
+
+    def _post_credentials_remove(self, payload: dict[str, Any]) -> None:
+        section = str(payload.get("section", "")).strip()
+        try:
+            removed = remove_credential_section(
+                section,
+                credentials_path=self.wizard.host_paths.credentials_path,
+            )
+        except ValueError:
+            send_error_json(self, 400, "section_not_allowed")
+            return
+        except Exception:  # noqa: BLE001
+            logger.exception("credentials remove failed")
+            send_error_json(self, 500, "internal_error")
+            return
+        send_json(
+            self,
+            {
+                "status": "ok" if removed else "noop",
+                "section": section,
+            },
+        )
 
     def _post_legacy_cleanup(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         removed = remove_legacy_commands(self.wizard.host_paths.commands_dir)
@@ -418,6 +447,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/providers/install": _post_providers_install,
         "/api/providers/remove": _post_providers_remove,
         "/api/credentials/env-var": _post_env_var,
+        "/api/credentials/remove": _post_credentials_remove,
         "/api/legacy/cleanup": _post_legacy_cleanup,
         "/api/demo/init": _post_demo_init,
         "/api/byod/import": _post_byod_import,

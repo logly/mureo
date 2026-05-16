@@ -21,12 +21,23 @@ in Phase 1, which keeps subprocess argv safe by construction.
 
 from __future__ import annotations
 
+import sys
 import types
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+# Absolute interpreter running `mureo configure` (the env where mureo IS
+# installed and known-working). pipx-based official providers pin their
+# venv to THIS Python rather than letting pipx pick the newest one on
+# PATH: the upstream `google-ads-mcp` dep chain (aiofile -> a newer
+# importlib_metadata) raises `KeyError: 'Author'` and crashes on import
+# under Python >= 3.11, so an unpinned `pipx run` registers but then
+# "✗ Failed to connect". Same philosophy as the mureo MCP `sys.executable`
+# fix. Captured at import time (stable for the configure process).
+_PIPX_PYTHON = sys.executable
 
 InstallKind = Literal["pipx", "npm", "hosted_http"]
 CoexistsPlatform = Literal["google_ads", "meta_ads", "ga4"]
@@ -101,6 +112,8 @@ CATALOG: tuple[ProviderSpec, ...] = (
         install_argv=(
             "pipx",
             "install",
+            "--python",
+            _PIPX_PYTHON,
             "git+https://github.com/googleads/google-ads-mcp.git",
         ),
         mcp_server_config=_freeze_config(
@@ -108,6 +121,8 @@ CATALOG: tuple[ProviderSpec, ...] = (
                 "command": "pipx",
                 "args": [
                     "run",
+                    "--python",
+                    _PIPX_PYTHON,
                     "--spec",
                     "git+https://github.com/googleads/google-ads-mcp.git",
                     "google-ads-mcp",
@@ -169,11 +184,11 @@ CATALOG: tuple[ProviderSpec, ...] = (
         id="ga4-official",
         display_name="Google Analytics 4 (official MCP)",
         install_kind="pipx",
-        install_argv=("pipx", "install", "analytics-mcp"),
+        install_argv=("pipx", "install", "--python", _PIPX_PYTHON, "analytics-mcp"),
         mcp_server_config=_freeze_config(
             {
                 "command": "pipx",
-                "args": ["run", "analytics-mcp"],
+                "args": ["run", "--python", _PIPX_PYTHON, "analytics-mcp"],
             }
         ),
         required_env=(

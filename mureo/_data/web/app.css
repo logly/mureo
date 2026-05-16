@@ -513,3 +513,78 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .dashboard-env-value.dashboard-env-unset {
   font-style: italic;
 }
+
+/* Manual-setup card: hosted MCP that must be added via Claude Desktop
+   Connectors (e.g. official Meta Ads). Reads as an actionable info
+   callout, not an error. */
+.connector-setup-card {
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-primary);
+  background: var(--color-surface);
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin: 12px 0;
+}
+.connector-setup-card h4 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+.connector-setup-card p.connector-setup-lead {
+  margin: 0 0 10px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.connector-setup-card ol {
+  margin: 0;
+  padding-left: 20px;
+}
+.connector-setup-card ol li {
+  margin: 4px 0;
+  line-height: 1.5;
+}
+.connector-url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.connector-url-row code {
+  flex: 1;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.connector-copy-btn {
+  flex: 0 0 auto;
+}
+.wizard-pending-reminder {
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-primary);
+  background: var(--color-surface);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  font-size: 14px;
+}
+.wizard-pending-reminder strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* hosted_http provider sub-note lives inside the provider <li> so it
+   reads as part of the same row (no separate divider line). The li
+   wraps; the note takes a full-width second line, muted and indented. */
+.dashboard-section li:has(.dashboard-provider-hosted-note) {
+  flex-wrap: wrap;
+}
+.dashboard-provider-hosted-note {
+  flex-basis: 100%;
+  margin: 6px 0 2px;
+  font-size: 13px;
+  color: var(--color-muted);
+  line-height: 1.5;
+}

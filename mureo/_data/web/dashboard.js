@@ -191,36 +191,31 @@
         });
         li.appendChild(removeBtn);
       }
-      list.appendChild(li);
 
-      // hosted_http OAuth note — rendered ONCE per hosted provider,
-      // immediately after its row. Guarded so a missing translation
-      // never echoes the key.
+      // hosted_http note(s) live INSIDE the provider's own <li> so
+      // they read as part of the same Meta Ads row — not as separate
+      // bordered list items. Guarded so a missing translation never
+      // echoes the key.
       if (HOSTED_PROVIDER_IDS.indexOf(pid) !== -1) {
-        const noteKey = "dashboard.provider_hosted_oauth_note";
-        const noteText = MUREO.t(noteKey);
-        if (noteText && noteText !== noteKey) {
-          const hostedNote = document.createElement("li");
-          hostedNote.className = "dashboard-provider-hosted-note";
-          hostedNote.textContent = noteText;
-          hostedNote.setAttribute("data-i18n", noteKey);
-          list.appendChild(hostedNote);
+        function appendNote(key) {
+          const text = MUREO.t(key);
+          if (!text || text === key) return;
+          const note = document.createElement("div");
+          note.className = "dashboard-provider-hosted-note";
+          note.textContent = text;
+          note.setAttribute("data-i18n", key);
+          li.appendChild(note);
         }
-        // On Claude Desktop the hosted MCP is bridged via the
-        // mcp-remote stdio shim, which needs Node.js (npx) on this
-        // machine. Surface that prerequisite once, only for Desktop.
         if (status && status.host === "claude-desktop") {
-          const nodeKey = "dashboard.provider_desktop_node_note";
-          const nodeText = MUREO.t(nodeKey);
-          if (nodeText && nodeText !== nodeKey) {
-            const nodeNote = document.createElement("li");
-            nodeNote.className = "dashboard-provider-hosted-note";
-            nodeNote.textContent = nodeText;
-            nodeNote.setAttribute("data-i18n", nodeKey);
-            list.appendChild(nodeNote);
-          }
+          // Desktop: a remote MCP can't be wired from here (Desktop
+          // rejects http config; Meta's hosted MCP has no OAuth DCR).
+          // Only the Connectors instruction applies.
+          appendNote("dashboard.provider_desktop_connectors_note");
+        } else {
+          appendNote("dashboard.provider_hosted_oauth_note");
         }
       }
+      list.appendChild(li);
     });
     if (anyNotInstalled) {
       const note = document.createElement("li");
@@ -603,10 +598,78 @@
     btn.addEventListener("click", runByodClear);
   }
 
+  // mureo-native platform sections in credentials.json and their UI
+  // labels. Search Console is intentionally NOT a row here: it has no
+  // own credential section — it reuses the google_ads Google OAuth, so
+  // it is surfaced as a sub-note on the Google Ads row instead.
+  const NATIVE_SECTIONS = [
+    { section: "google_ads", labelKey: "wizard.platforms.google_ads" },
+    { section: "meta_ads", labelKey: "wizard.platforms.meta_ads" },
+    { section: "ga4", labelKey: "wizard.platforms.ga4" },
+  ];
+
+  function renderNativeSection(status) {
+    const list = document.querySelector("[data-dashboard-native-list]");
+    if (!list) return;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    const present = (status && status.credentials_present) || {};
+    let any = false;
+    NATIVE_SECTIONS.forEach(function (row) {
+      const configured = present[row.section] === true;
+      const li = document.createElement("li");
+      const label = document.createElement("span");
+      label.textContent =
+        (configured ? "✓ " : "✗ ") + MUREO.t(row.labelKey);
+      label.setAttribute("data-i18n", row.labelKey);
+      li.appendChild(label);
+      if (configured) {
+        any = true;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn btn-secondary";
+        btn.textContent = MUREO.t("dashboard.action_remove");
+        btn.setAttribute("data-i18n", "dashboard.action_remove");
+        btn.addEventListener("click", async function () {
+          const ok = await MUREO.confirmAction(
+            MUREO.t("dashboard.confirm_remove_credentials")
+          );
+          if (!ok) return;
+          const res = await MUREO.postJson("/api/credentials/remove", {
+            section: row.section,
+          });
+          if (res.ok) {
+            await MUREO.loadStatus();
+            renderAll();
+          } else {
+            MUREO.toast(MUREO.t("dashboard.remove_failed"));
+          }
+        });
+        li.appendChild(btn);
+        // Google Ads + Search Console share the one Google OAuth.
+        if (row.section === "google_ads") {
+          const note = document.createElement("div");
+          note.className = "dashboard-provider-hosted-note";
+          note.textContent = MUREO.t("dashboard.native_sc_shared");
+          note.setAttribute("data-i18n", "dashboard.native_sc_shared");
+          li.appendChild(note);
+        }
+      }
+      list.appendChild(li);
+    });
+    if (!any) {
+      const none = document.createElement("li");
+      none.className = "dashboard-provider-hosted-note";
+      none.textContent = MUREO.t("dashboard.native_none");
+      none.setAttribute("data-i18n", "dashboard.native_none");
+      list.appendChild(none);
+    }
+  }
+
   function renderAll() {
     const status = MUREO.state.status;
     renderHostSection(status);
     renderBasicSection(status);
+    renderNativeSection(status);
     renderProvidersSection(status);
     renderEnvVarsSection(status);
     loadDemoScenarios();

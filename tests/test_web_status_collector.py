@@ -35,6 +35,7 @@ def _paths(tmp_path: Path) -> HostPaths:
         skills_dir=tmp_path / "skills",
         commands_dir=tmp_path / "commands",
         credentials_path=tmp_path / "credentials.json",
+        mcp_registry_path=tmp_path / ".claude.json",
     )
 
 

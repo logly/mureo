@@ -32,6 +32,8 @@ from mureo.web.desktop_mcp import (
     remove_desktop_mcp_block,
     remove_desktop_server_block,
     resolve_desktop_config_path,
+    set_mureo_disable_env_desktop,
+    unset_mureo_disable_env_desktop,
 )
 from mureo.web.legacy_commands import remove_legacy_commands
 from mureo.web.setup_state import (
@@ -65,7 +67,7 @@ _OFFICIAL_PROVIDER_IDS: tuple[str, ...] = (
 class ActionResult:
     """JSON-friendly result of one setup action."""
 
-    status: str  # "ok" | "noop" | "error"
+    status: str  # "ok" | "noop" | "error" | "manual_required"
     detail: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -177,8 +179,43 @@ def install_basic_setup(
     }
 
 
-def _install_provider_code(provider_id: str) -> ActionResult:
-    """Claude Code path — byte-for-byte the pre-host-param behaviour."""
+def _credential_env_for(
+    spec: ProviderSpec, credentials_path: Path | None
+) -> dict[str, str]:
+    """Resolve the credential env an official MCP needs from credentials.json.
+
+    The upstream local-install MCPs (e.g. ``google-ads-mcp``) read their
+    config ONLY from environment variables — never mureo's
+    ``credentials.json`` — so a freshly registered provider is unusable
+    unless this env is injected into its ``mcpServers[<id>]`` block.
+
+    ``hosted_http`` providers are excluded: Meta's hosted Ads MCP
+    authenticates via interactive browser OAuth on first connect (no
+    env vars to pre-populate), and injecting stale meta_ads creds would
+    be wrong. Returns ``{}`` (caller writes the pre-fix bare block) for
+    hosted entries, providers with no overlapping platform, or when no
+    matching credentials exist yet.
+    """
+    if spec.install_kind == "hosted_http":
+        return {}
+    section = spec.coexists_with_mureo_platform
+    if not section:
+        return {}
+    from mureo.web.env_var_writer import build_credentials_env
+
+    return build_credentials_env(section, credentials_path=credentials_path)
+
+
+def _install_provider_code(
+    provider_id: str, credentials_path: Path | None = None
+) -> ActionResult:
+    """Claude Code path — register the provider WITH its credential env.
+
+    Behaviour is unchanged for the registration mechanics; the only
+    addition is the ``extra_env`` (resolved from credentials.json) so the
+    official MCP can actually authenticate on first connect instead of
+    registering into an unusable, credential-less state.
+    """
     try:
         from mureo.providers.catalog import get_provider
         from mureo.providers.config_writer import (
@@ -208,11 +245,12 @@ def _install_provider_code(provider_id: str) -> ActionResult:
             detail=f"install_returncode_{result.returncode}",
         )
 
+    extra_env = _credential_env_for(spec, credentials_path)
     try:
         if spec.coexists_with_mureo_platform is None:
-            add_provider_to_claude_settings(spec)
+            add_provider_to_claude_settings(spec, extra_env=extra_env)
         else:
-            add_provider_and_disable_in_mureo(spec)
+            add_provider_and_disable_in_mureo(spec, extra_env=extra_env)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider settings write failed")
         return ActionResult(status="error", detail=type(exc).__name__)
@@ -221,35 +259,49 @@ def _install_provider_code(provider_id: str) -> ActionResult:
 
 
 def _desktop_block_for(spec: ProviderSpec) -> Mapping[str, Any]:
-    """Translate a catalog spec to the block Claude Desktop accepts.
+    """Return the stdio block Claude Desktop accepts for a local-install spec.
 
     ``claude_desktop_config.json`` only accepts stdio servers
-    (``command``/``args``). A ``hosted_http`` provider's catalog block is
-    the Claude Code native remote shape ``{"type":"http","url":...}``,
-    which Desktop rejects. Wrap it with the standard mcp-remote stdio
-    bridge: the ``url`` (read from ``mcp_server_config["url"]``, never
-    sniffed from the block shape) is placed as a DISCRETE argv element —
-    no shell, no string join, no f-string concat into a command string.
+    (``command``/``args``). pipx/npm catalog blocks are already that
+    shape and are returned verbatim, exactly preserving the pre-change
+    Desktop behaviour for local-install providers.
 
-    Every other ``install_kind`` (pipx/npm) is returned verbatim so the
-    pre-change Desktop behaviour for local-install providers is exactly
-    preserved.
+    ``hosted_http`` providers never reach this function: a remote MCP
+    cannot be wired into Claude Desktop via the config file at all.
+    Claude Desktop's config rejects the Claude Code native
+    ``{"type":"http","url":...}`` shape, and the ``mcp-remote`` stdio
+    bridge fails against servers without OAuth Dynamic Client
+    Registration (e.g. Meta's hosted Ads MCP returns
+    ``InvalidClientMetadataError: Dynamic registration is not
+    available``). The only working path is the user adding it manually
+    via Claude Desktop → Settings → Connectors → Add custom connector,
+    so ``_install_provider_desktop`` short-circuits hosted_http with a
+    ``manual_required`` result before ever calling this.
     """
-    if spec.install_kind == "hosted_http":
-        url = spec.mcp_server_config["url"]
-        return {"command": "npx", "args": ["-y", "mcp-remote", url]}
     return spec.mcp_server_config
 
 
-def _install_provider_desktop(provider_id: str, home: Path | None) -> ActionResult:
-    """Desktop path — write the provider block to claude_desktop_config.json.
+def _install_provider_desktop(
+    provider_id: str,
+    home: Path | None,
+    credentials_path: Path | None = None,
+) -> ActionResult:
+    """Desktop path — install one official provider.
 
     pipx/npm: the local ``run_install`` subprocess STILL runs (the
     install is host-agnostic); on non-zero returncode NO config is
-    written. hosted_http: the subprocess is skipped (empty
-    ``install_argv``). Only the catalog ``mcp_server_config`` block is
-    written — the Code-only ``MUREO_DISABLE_*`` env auto-disable is
-    intentionally NOT ported (Phase-2 follow-up, planner Q2).
+    written; otherwise the catalog ``mcp_server_config`` block is
+    written to ``claude_desktop_config.json``.
+
+    hosted_http: a remote MCP cannot be wired into Claude Desktop via
+    the config file (Desktop rejects the native http shape; mcp-remote
+    fails on Meta's no-DCR OAuth), so the Meta block is NOT written and
+    the result is ``manual_required`` (the UI shows Connectors steps).
+    As a side effect, ``MUREO_DISABLE_<PLATFORM>=1`` is best-effort set
+    on mureo's OWN ``mcpServers.mureo.env`` so the surviving mureo MCP
+    stops exposing the now-redundant unauthenticated tool family
+    (mirrors the Code-host ``add_provider_and_disable_in_mureo``).
+
     ``credentials.json`` is never touched.
     """
     try:
@@ -263,6 +315,35 @@ def _install_provider_desktop(provider_id: str, home: Path | None) -> ActionResu
         logger.exception("install_provider (desktop) import/resolve failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
+    if spec.install_kind == "hosted_http":
+        # A remote MCP cannot be wired into Claude Desktop via the
+        # config file: Desktop rejects the native {"type":"http",...}
+        # shape, and the mcp-remote bridge fails on servers without
+        # OAuth Dynamic Client Registration (Meta's hosted Ads MCP:
+        # "InvalidClientMetadataError: Dynamic registration is not
+        # available"). The only working path is the user adding it via
+        # Claude Desktop → Settings → Connectors → Add custom connector,
+        # so the Meta MCP block itself is NOT written here.
+        #
+        # We CAN, however, still disable mureo's own now-redundant
+        # tool family for that platform: mcpServers.mureo.env is
+        # mureo's OWN block in claude_desktop_config.json (no DCR/OAuth
+        # constraint). Without this the surviving mureo MCP would expose
+        # unauthenticated meta_ads_* tools that duplicate / conflict
+        # with the official hosted MCP. Mirrors the Code-host
+        # add_provider_and_disable_in_mureo behaviour.
+        platform = spec.coexists_with_mureo_platform
+        if platform:
+            env_var = "MUREO_DISABLE_" + platform.upper()
+            try:
+                config_path = resolve_desktop_config_path(home)
+                set_mureo_disable_env_desktop(config_path, env_var)
+            except Exception:  # noqa: BLE001
+                # Best-effort: a missing/locked config must not block
+                # the manual-setup guidance the UI still needs to show.
+                logger.exception("install_provider (desktop) disable-env write failed")
+        return ActionResult(status="manual_required", detail=spec.id)
+
     if spec.install_argv:
         try:
             result = run_install(spec, dry_run=False)
@@ -275,11 +356,13 @@ def _install_provider_desktop(provider_id: str, home: Path | None) -> ActionResu
                 detail=f"install_returncode_{result.returncode}",
             )
 
+    block: dict[str, Any] = dict(_desktop_block_for(spec))
+    extra_env = _credential_env_for(spec, credentials_path)
+    if extra_env:
+        block = {**block, "env": {**block.get("env", {}), **extra_env}}
     try:
         config_path = resolve_desktop_config_path(home)
-        wrote = install_desktop_server_block(
-            config_path, spec.id, _desktop_block_for(spec)
-        )
+        wrote = install_desktop_server_block(config_path, spec.id, block)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider (desktop) config write failed")
         return ActionResult(status="error", detail=type(exc).__name__)
@@ -290,17 +373,25 @@ def _install_provider_desktop(provider_id: str, home: Path | None) -> ActionResu
 
 
 def install_provider(
-    provider_id: str, home: Path | None = None, host: str = _HOST_CODE
+    provider_id: str,
+    home: Path | None = None,
+    host: str = _HOST_CODE,
+    *,
+    credentials_path: Path | None = None,
 ) -> ActionResult:
     """Install one official MCP provider by catalog id.
 
-    ``host="claude-code"`` (default) is byte-for-byte the prior
-    behaviour. ``host="claude-desktop"`` writes the provider's
-    ``mcp_server_config`` block into ``claude_desktop_config.json``.
+    ``host="claude-code"`` (default) registers into ``~/.claude.json``;
+    ``host="claude-desktop"`` writes the provider block into
+    ``claude_desktop_config.json``. In BOTH cases the credential env the
+    upstream MCP needs is resolved from ``credentials_path`` (defaults to
+    ``~/.mureo/credentials.json``) and injected into the registered
+    block — without it the official server registers but cannot
+    authenticate.
     """
     if host == _HOST_DESKTOP:
-        return _install_provider_desktop(provider_id, home)
-    return _install_provider_code(provider_id)
+        return _install_provider_desktop(provider_id, home, credentials_path)
+    return _install_provider_code(provider_id, credentials_path)
 
 
 def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResult:
@@ -312,12 +403,31 @@ def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResul
     try:
         from mureo.providers.catalog import get_provider
 
-        get_provider(provider_id)
+        spec = get_provider(provider_id)
     except KeyError:
         return ActionResult(status="error", detail="unknown_provider")
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_provider (desktop) import/resolve failed")
         return ActionResult(status="error", detail=type(exc).__name__)
+
+    if spec.install_kind == "hosted_http":
+        # The hosted MCP block was never written on Desktop (manual
+        # Connectors). The meaningful inverse of install here is
+        # re-enabling mureo's own tool family for the platform by
+        # unsetting MUREO_DISABLE_<PLATFORM> on mcpServers.mureo.env.
+        platform = spec.coexists_with_mureo_platform
+        if not platform:
+            return ActionResult(status="noop", detail="not_registered")
+        env_var = "MUREO_DISABLE_" + platform.upper()
+        try:
+            config_path = resolve_desktop_config_path(home)
+            changed = unset_mureo_disable_env_desktop(config_path, env_var)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("remove_provider (desktop) unset-env failed")
+            return ActionResult(status="error", detail=type(exc).__name__)
+        if not changed:
+            return ActionResult(status="noop", detail="not_registered")
+        return ActionResult(status="ok", detail=provider_id)
 
     try:
         config_path = resolve_desktop_config_path(home)
@@ -334,11 +444,11 @@ def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResul
 def remove_provider(
     provider_id: str, home: Path | None = None, host: str = _HOST_CODE
 ) -> ActionResult:
-    """Drop a provider entry from the host's config file.
+    """Unregister a provider from the host.
 
-    ``host="claude-code"`` (default) drops it from
-    ``~/.claude/settings.json`` (unchanged). ``host="claude-desktop"``
-    pops only ``mcpServers[provider_id]`` from
+    ``host="claude-code"`` (default) unregisters it from user scope via
+    the ``claude`` CLI (``~/.claude.json``), NOT ``settings.json``.
+    ``host="claude-desktop"`` pops only ``mcpServers[provider_id]`` from
     ``claude_desktop_config.json``.
     """
     if host == _HOST_DESKTOP:
@@ -460,22 +570,28 @@ def remove_workflow_skills(
 def _installed_official_providers(
     home: Path | None, host: str = _HOST_CODE
 ) -> list[str]:
-    """Return the subset of ``_OFFICIAL_PROVIDER_IDS`` present in settings.
+    """Return the subset of ``_OFFICIAL_PROVIDER_IDS`` actually registered.
 
-    Reads the host-correct settings file directly because
     ``clear_all_setup`` needs to know which providers were installed
-    without depending on the ``setup_state.json`` flags (those only
-    track the basic-setup parts). For ``host="claude-desktop"`` this
-    resolves ``claude_desktop_config.json`` so Desktop bulk-uninstall
-    actually finds the entries. A missing or malformed settings file is
-    treated as "no installed providers" — the bulk action degrades
-    gracefully.
+    without depending on ``setup_state.json`` flags (those only track
+    basic-setup parts).
+
+    For ``host="claude-code"`` registration lives in ``~/.claude.json``
+    (managed by ``claude mcp``) — NOT ``~/.claude/settings.json`` — so we
+    probe via ``config_writer.is_provider_installed`` (``claude mcp get``
+    with a ``~/.claude.json`` fallback), the SAME source the
+    install/remove path writes to. Reading settings.json here is exactly
+    what left bulk-clear unable to find (and therefore unable to remove)
+    an official provider. For ``host="claude-desktop"`` entries live in
+    ``claude_desktop_config.json`` so that file is read directly. A
+    missing/malformed file degrades gracefully to "none".
     """
-    if host == _HOST_DESKTOP:
-        settings_path = resolve_desktop_config_path(home)
-    else:
-        base = home or Path.home()
-        settings_path = base / ".claude" / "settings.json"
+    if host != _HOST_DESKTOP:
+        from mureo.providers.config_writer import is_provider_installed
+
+        return [pid for pid in _OFFICIAL_PROVIDER_IDS if is_provider_installed(pid)]
+
+    settings_path = resolve_desktop_config_path(home)
     if not settings_path.exists():
         return []
     try:

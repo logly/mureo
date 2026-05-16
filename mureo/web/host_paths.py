@@ -18,6 +18,12 @@ class HostPaths:
     skills_dir: Path
     commands_dir: Path
     credentials_path: Path
+    # File the host actually reads MCP servers from. For Claude Code this
+    # is ``~/.claude.json`` (user scope, managed by ``claude mcp``) — NOT
+    # ``settings.json`` (hooks/permissions/env only, never consulted for
+    # MCP discovery). For Claude Desktop it is the same
+    # ``claude_desktop_config.json`` as ``settings_path``.
+    mcp_registry_path: Path
 
 
 def _claude_code_paths(home: Path) -> HostPaths:
@@ -27,6 +33,7 @@ def _claude_code_paths(home: Path) -> HostPaths:
         skills_dir=home / ".claude" / "skills",
         commands_dir=home / ".claude" / "commands",
         credentials_path=home / ".mureo" / "credentials.json",
+        mcp_registry_path=home / ".claude.json",
     )
 
 
@@ -52,12 +59,15 @@ def _claude_desktop_settings_path(home: Path) -> Path:
 
 
 def _claude_desktop_paths(home: Path) -> HostPaths:
+    desktop_config = _claude_desktop_settings_path(home)
     return HostPaths(
         host="claude-desktop",
-        settings_path=_claude_desktop_settings_path(home),
+        settings_path=desktop_config,
         skills_dir=home / ".claude" / "skills",
         commands_dir=home / ".claude" / "commands",
         credentials_path=home / ".mureo" / "credentials.json",
+        # Desktop reads MCP from the same claude_desktop_config.json.
+        mcp_registry_path=desktop_config,
     )
 
 

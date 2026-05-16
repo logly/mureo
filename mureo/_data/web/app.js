@@ -39,9 +39,22 @@
     });
   }
 
+  var LOCALE_KEY = "mureo.locale";
+
   function setLocale(locale) {
     if (locale !== "en" && locale !== "ja") return;
     STATE.locale = locale;
+    // Persist so the choice survives a page reload — notably the
+    // OAuth round-trip (Google/Meta consent navigates away and the
+    // configure page reloads on return). Without this, boot() forced
+    // "en" and the completion screen rendered in English even when
+    // the user had selected 日本語. Best-effort: ignore storage errors
+    // (private mode / disabled storage).
+    try {
+      window.localStorage.setItem(LOCALE_KEY, locale);
+    } catch (_e) {
+      /* storage unavailable — fall back to in-memory only */
+    }
     applyTranslations(document);
     document.documentElement.lang = locale;
     document
@@ -197,7 +210,16 @@
     await loadStatus();
     wireLangToggles();
     wireDashboardLink();
-    setLocale("en");
+    // Restore the persisted language (survives the OAuth reload);
+    // default to "en" when unset or storage is unavailable.
+    var savedLocale = "en";
+    try {
+      var stored = window.localStorage.getItem(LOCALE_KEY);
+      if (stored === "en" || stored === "ja") savedLocale = stored;
+    } catch (_e) {
+      /* storage unavailable — default en */
+    }
+    setLocale(savedLocale);
     applyTranslations(document);
     document.dispatchEvent(
       new CustomEvent("mureo:ready", { detail: { state: STATE } })

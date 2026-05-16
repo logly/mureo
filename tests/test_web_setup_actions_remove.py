@@ -443,15 +443,16 @@ class TestClearAllSetup:
     def test_iterates_installed_official_providers(
         self, tmp_path: Path
     ) -> None:
-        """Bulk path enumerates ``mcpServers`` for installed official
-        providers and calls ``remove_provider`` for each. CTO decision
-        #3, acceptance criteria L132-L134."""
+        """Bulk path enumerates installed official providers from the
+        real registry (``~/.claude.json`` for Claude Code, NOT
+        settings.json) and calls ``remove_provider`` for each. CTO
+        decision #3, acceptance criteria L132-L134."""
         from mureo.web import setup_actions
 
-        # Synthesize a settings.json with two installed official providers.
-        settings_path = tmp_path / ".claude" / "settings.json"
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-        settings_path.write_text(
+        # Registration lives in ~/.claude.json (user scope). Seed it and
+        # force the no-CLI fallback so enumeration is deterministic.
+        claude_json = tmp_path / ".claude.json"
+        claude_json.write_text(
             (
                 '{"mcpServers": {"mureo": {"command":"python"}, '
                 '"google-ads-official": {"command":"pipx"}, '
@@ -461,6 +462,14 @@ class TestClearAllSetup:
         )
 
         with (
+            patch(
+                "mureo.providers.config_writer.shutil.which",
+                return_value=None,
+            ),
+            patch(
+                "mureo.providers.config_writer.Path.home",
+                return_value=tmp_path,
+            ),
             patch(
                 "mureo.web.setup_actions.remove_mureo_mcp",
                 return_value=ActionResult(status="ok"),

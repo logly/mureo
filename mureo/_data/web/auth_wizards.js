@@ -16,29 +16,177 @@
     wrap.style.marginTop = "16px";
     const providerId = platform.replace("_", "-") + "-official";
     const installed = state.providerInstalled[providerId];
+    // hosted_http providers (catalog install_kind === "hosted_http").
+    // Phase 1: only meta-ads-official. Extend when a new one is added.
+    const isHosted = providerId === "meta-ads-official";
+    const onDesktop = state.host === "claude-desktop";
+
+    // Meta's official hosted Ads MCP endpoint (matches catalog.py).
+    const META_HOSTED_URL = "https://mcp.facebook.com/ads";
+
+    // Render the manual Connectors setup as an actionable card:
+    // numbered steps + a copy-to-clipboard URL. No own "Continue"
+    // button — the outer wizard's Next advances this step. Always
+    // returns true (the card has no missing-translation failure mode;
+    // labels fall back via MUREO.t).
+    function showManualSetup() {
+      if (!onDesktop) {
+        // Claude Code: the native http MCP is registered; OAuth runs
+        // inside Claude on first use. A short reassurance is enough.
+        const p = document.createElement("p");
+        p.className = "dashboard-provider-hosted-note";
+        p.textContent = MUREO.t("dashboard.provider_hosted_oauth_note");
+        p.setAttribute("data-i18n", "dashboard.provider_hosted_oauth_note");
+        wrap.appendChild(p);
+        return true;
+      }
+      const card = document.createElement("div");
+      card.className = "connector-setup-card";
+
+      const h = document.createElement("h4");
+      h.textContent = MUREO.t("connector.setup_title");
+      h.setAttribute("data-i18n", "connector.setup_title");
+      card.appendChild(h);
+
+      const lead = document.createElement("p");
+      lead.className = "connector-setup-lead";
+      lead.textContent = MUREO.t("connector.setup_lead");
+      lead.setAttribute("data-i18n", "connector.setup_lead");
+      card.appendChild(lead);
+
+      const ol = document.createElement("ol");
+      ["connector.step1", "connector.step2"].forEach(function (k) {
+        const liEl = document.createElement("li");
+        liEl.textContent = MUREO.t(k);
+        liEl.setAttribute("data-i18n", k);
+        ol.appendChild(liEl);
+      });
+      // Step 3: paste-this-URL with an inline copy button.
+      const liUrl = document.createElement("li");
+      const step3 = document.createElement("span");
+      step3.textContent = MUREO.t("connector.step3");
+      step3.setAttribute("data-i18n", "connector.step3");
+      liUrl.appendChild(step3);
+      const urlRow = document.createElement("div");
+      urlRow.className = "connector-url-row";
+      const code = document.createElement("code");
+      code.textContent = META_HOSTED_URL;
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "btn btn-secondary connector-copy-btn";
+      copyBtn.textContent = MUREO.t("connector.copy");
+      copyBtn.setAttribute("data-i18n", "connector.copy");
+      copyBtn.addEventListener("click", function () {
+        const done = function () {
+          copyBtn.textContent = MUREO.t("connector.copied");
+          setTimeout(function () {
+            copyBtn.textContent = MUREO.t("connector.copy");
+          }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(META_HOSTED_URL).then(done, function () {
+            MUREO.toast(META_HOSTED_URL);
+          });
+        } else {
+          MUREO.toast(META_HOSTED_URL);
+        }
+      });
+      urlRow.appendChild(code);
+      urlRow.appendChild(copyBtn);
+      liUrl.appendChild(urlRow);
+      ol.appendChild(liUrl);
+
+      const liStep4 = document.createElement("li");
+      liStep4.textContent = MUREO.t("connector.step4");
+      liStep4.setAttribute("data-i18n", "connector.step4");
+      ol.appendChild(liStep4);
+
+      card.appendChild(ol);
+      wrap.appendChild(card);
+      return true;
+    }
+
+    // Desktop + hosted MCP: a remote MCP cannot be wired from the
+    // configure UI (Claude Desktop has no config path for remote MCP;
+    // Meta's hosted Ads MCP has no OAuth Dynamic Client Registration).
+    // Show the manual Connectors steps DIRECTLY on this page — no
+    // misleading "✗ not registered" line, no dead Install button.
+    if (isHosted && onDesktop) {
+      wrap.innerHTML =
+        "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
+      if (!showManualSetup()) onComplete();
+      return wrap;
+    }
+
     wrap.innerHTML =
       "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>" +
       "<p>" + (installed ? "✓ " + MUREO.t("dashboard.installed") : "✗ " + MUREO.t("dashboard.not_installed")) + "</p>";
+
     if (!installed) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "btn btn-primary";
       btn.textContent = MUREO.t("dashboard.action_install");
+      // Status line so a slow pipx/git build doesn't look frozen and
+      // a failure shows WHY (not a silent no-op — issue #1).
+      const statusLine = document.createElement("p");
+      statusLine.className = "dashboard-provider-hosted-note";
+      statusLine.hidden = true;
+      function fail(detail) {
+        const tmpl = MUREO.t("wizard.providers_install.failed");
+        const msg = tmpl.replace("{detail}", detail || "unknown");
+        statusLine.hidden = false;
+        statusLine.textContent = msg;
+        MUREO.toast(msg);
+      }
       btn.addEventListener("click", async function () {
         btn.disabled = true;
-        const res = await MUREO.postJson("/api/providers/install", {
-          provider_id: providerId,
-        });
+        statusLine.hidden = false;
+        statusLine.textContent = MUREO.t("wizard.providers_install.installing");
+        let res;
+        try {
+          res = await MUREO.postJson("/api/providers/install", {
+            provider_id: providerId,
+          });
+        } catch (_e) {
+          btn.disabled = false;
+          fail("network_error");
+          return;
+        }
         btn.disabled = false;
-        if (res.ok && res.body && res.body.status === "ok") {
+        if (!res.ok || !res.body) {
+          fail(res && res.body ? res.body.detail : "request_failed");
+          return;
+        }
+        const st = res.body.status;
+        if (st === "ok") {
+          // Re-sync wizard state from the authoritative /api/status
+          // (the optimistic local flag alone left the row showing
+          // "✗ not registered" when status disagreed — issue #1).
           state.providerInstalled[providerId] = true;
           await MUREO.loadStatus();
+          if (
+            window.MUREO_WIZARD &&
+            typeof window.MUREO_WIZARD.hydrateStateFromStatus === "function" &&
+            MUREO.state &&
+            MUREO.state.status
+          ) {
+            window.MUREO_WIZARD.hydrateStateFromStatus(MUREO.state.status);
+          }
           onComplete();
+        } else if (st === "manual_required") {
+          // hosted MCP can't be wired from here (Desktop has no
+          // config path for remote MCP; Meta has no OAuth DCR).
+          // Replace the install button with the setup steps.
+          btn.remove();
+          statusLine.hidden = true;
+          if (!showManualSetup()) onComplete();
         } else {
-          MUREO.toast("Install failed");
+          fail(res.body.detail || st);
         }
       });
       wrap.appendChild(btn);
+      wrap.appendChild(statusLine);
     }
     return wrap;
   }
@@ -72,7 +220,11 @@
 
   function buildAuthQueue(state) {
     const queue = [];
-    if (state.platforms.google_ads && state.providerChoice.google_ads === "native") {
+    if (state.platforms.google_ads) {
+      // Native AND official Google Ads both need the same Developer
+      // Token + Google OAuth refresh token. The official upstream MCP
+      // cannot read credentials.json, so we still collect them here and
+      // inject them as env into its MCP block at install time.
       queue.push({ key: "google_ads", oauthProvider: "google" });
     }
     if (
@@ -86,17 +238,11 @@
     if (state.platforms.meta_ads && state.providerChoice.meta_ads === "native") {
       queue.push({ key: "meta_ads", oauthProvider: "meta" });
     }
-    if (
-      state.platforms.meta_ads &&
-      state.providerChoice.meta_ads === "official"
-    ) {
-      // Official Meta uses the same OAuth bridge.
-      queue.push({
-        key: "meta_ads_official",
-        oauthProvider: "meta",
-        action: "oauth_meta",
-      });
-    }
+    // NOTE: official Meta (hosted_http) is intentionally NOT queued for
+    // OAuth here. Its OAuth is the MCP HTTP-transport handshake performed
+    // by Claude itself on first connect (RFC 9728) — configure cannot and
+    // must not do it. The provider-choice "next page" (providers_install
+    // step) shows the manual setup instructions instead.
     if (state.platforms.ga4) {
       queue.push({ key: "ga4", inputs: ["service_account_path", "project_id"] });
     }

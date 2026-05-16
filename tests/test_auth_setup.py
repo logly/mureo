@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import sys
 import threading
 import time
 from pathlib import Path
@@ -763,18 +764,93 @@ async def test_run_google_oauth_flow_exception() -> None:
 
 
 @pytest.mark.unit
-def test_install_mcp_config_global(tmp_path: Path) -> None:
-    """グローバルMCP設定が正しく作成されること"""
+def test_install_mcp_config_global_via_claude_cli(tmp_path: Path) -> None:
+    """Global scope delegates to ``claude mcp add-json --scope user``.
+
+    Claude Code reads user-scope MCP servers from ``~/.claude.json``
+    (managed by the ``claude`` CLI), NOT from ``~/.claude/settings.json``
+    — so the installer must shell out to the CLI, not edit settings.json.
+    """
+    from types import SimpleNamespace
+
     from mureo.auth_setup import install_mcp_config
 
-    with patch("mureo.auth_setup.Path.home", return_value=tmp_path):
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+        calls.append(argv)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    with (
+        patch("mureo.auth_setup.shutil.which", return_value="/usr/bin/claude"),
+        patch("mureo.auth_setup.subprocess.run", side_effect=fake_run),
+        patch("mureo.auth_setup.Path.home", return_value=tmp_path),
+    ):
         result = install_mcp_config(scope="global")
 
-    assert result is not None
-    settings = json.loads(result.read_text(encoding="utf-8"))
-    assert "mureo" in settings["mcpServers"]
-    assert settings["mcpServers"]["mureo"]["command"] == "python"
-    assert settings["mcpServers"]["mureo"]["args"] == ["-m", "mureo.mcp"]
+    assert result == tmp_path / ".claude.json"
+    # Self-heal: a stale/wrong entry is removed before re-adding.
+    assert calls[0][1:3] == ["mcp", "remove"]
+    add = calls[1]
+    assert add[1:4] == ["mcp", "add-json", "mureo"]
+    assert add[add.index("--scope") + 1] == "user"
+    payload = json.loads(add[4])
+    assert payload["type"] == "stdio"
+    # Absolute interpreter (sys.executable), not bare "python" — Claude
+    # Code spawns MCP servers with a minimal PATH that lacks pyenv/venv
+    # shims, so bare "python" would not have mureo installed.
+    assert payload["command"] == sys.executable
+    assert payload["args"] == ["-m", "mureo.mcp"]
+
+
+@pytest.mark.unit
+def test_install_mcp_config_global_cli_failure_raises(tmp_path: Path) -> None:
+    """A present-but-failing ``claude`` CLI surfaces loudly (no silent
+    misconfiguration)."""
+    from types import SimpleNamespace
+
+    from mureo.auth_setup import install_mcp_config
+
+    def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+        rc = 0 if "remove" in argv else 2
+        return SimpleNamespace(returncode=rc, stdout="", stderr="boom")
+
+    with (
+        patch("mureo.auth_setup.shutil.which", return_value="/usr/bin/claude"),
+        patch("mureo.auth_setup.subprocess.run", side_effect=fake_run),
+        patch("mureo.auth_setup.Path.home", return_value=tmp_path),
+        pytest.raises(RuntimeError, match="add-json failed"),
+    ):
+        install_mcp_config(scope="global")
+
+
+@pytest.mark.unit
+def test_install_mcp_config_global_fallback_no_cli(tmp_path: Path) -> None:
+    """No ``claude`` binary → atomic merge into ``~/.claude.json`` root
+    ``mcpServers``, preserving unrelated keys."""
+    from mureo.auth_setup import install_mcp_config
+
+    claude_json = tmp_path / ".claude.json"
+    claude_json.write_text(
+        json.dumps(
+            {"numStartups": 3, "mcpServers": {"figma": {"type": "http"}}}
+        ),
+        encoding="utf-8",
+    )
+
+    with (
+        patch("mureo.auth_setup.shutil.which", return_value=None),
+        patch("mureo.auth_setup.Path.home", return_value=tmp_path),
+    ):
+        result = install_mcp_config(scope="global")
+
+    assert result == claude_json
+    payload = json.loads(claude_json.read_text(encoding="utf-8"))
+    assert payload["numStartups"] == 3  # unrelated key preserved
+    assert "figma" in payload["mcpServers"]  # other server preserved
+    assert payload["mcpServers"]["mureo"]["type"] == "stdio"
+    assert payload["mcpServers"]["mureo"]["command"] == sys.executable
+    assert payload["mcpServers"]["mureo"]["args"] == ["-m", "mureo.mcp"]
 
 
 @pytest.mark.unit
@@ -792,52 +868,45 @@ def test_install_mcp_config_project(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_install_mcp_config_already_exists(tmp_path: Path) -> None:
-    """既にmureoが設定済みならスキップすること"""
+def test_install_mcp_config_project_already_exists(tmp_path: Path) -> None:
+    """Project scope skips when mureo is already in ``.mcp.json``."""
     from mureo.auth_setup import install_mcp_config
 
-    # 既存設定を作成
-    claude_dir = tmp_path / ".claude"
-    claude_dir.mkdir()
-    settings_path = claude_dir / "settings.json"
-    settings_path.write_text(
+    mcp_json = tmp_path / ".mcp.json"
+    mcp_json.write_text(
         json.dumps(
-            {
-                "mcpServers": {
-                    "mureo": {"command": "python", "args": ["-m", "mureo.mcp"]}
-                }
-            }
-        )
+            {"mcpServers": {"mureo": {"command": "python", "args": ["-m"]}}}
+        ),
+        encoding="utf-8",
     )
 
-    with patch("mureo.auth_setup.Path.home", return_value=tmp_path):
-        result = install_mcp_config(scope="global")
+    with patch("mureo.auth_setup.Path.cwd", return_value=tmp_path):
+        result = install_mcp_config(scope="project")
 
-    assert result is None  # スキップ
+    assert result is None  # skip
 
 
 @pytest.mark.unit
-def test_install_mcp_config_merges_existing(tmp_path: Path) -> None:
-    """既存のsettings.jsonにマージされること"""
+def test_install_mcp_config_project_merges_existing(tmp_path: Path) -> None:
+    """Project scope merges into an existing ``.mcp.json``."""
     from mureo.auth_setup import install_mcp_config
 
-    # 他のMCPサーバーが既に設定済み
-    claude_dir = tmp_path / ".claude"
-    claude_dir.mkdir()
-    settings_path = claude_dir / "settings.json"
-    settings_path.write_text(
+    mcp_json = tmp_path / ".mcp.json"
+    mcp_json.write_text(
         json.dumps(
-            {"mcpServers": {"other-tool": {"command": "node", "args": ["server.js"]}}}
-        )
+            {"mcpServers": {"other-tool": {"command": "node", "args": ["s.js"]}}}
+        ),
+        encoding="utf-8",
     )
 
-    with patch("mureo.auth_setup.Path.home", return_value=tmp_path):
-        result = install_mcp_config(scope="global")
+    with patch("mureo.auth_setup.Path.cwd", return_value=tmp_path):
+        result = install_mcp_config(scope="project")
 
     assert result is not None
     settings = json.loads(result.read_text(encoding="utf-8"))
-    assert "other-tool" in settings["mcpServers"]  # 既存は維持
-    assert "mureo" in settings["mcpServers"]  # mureoが追加
+    assert "other-tool" in settings["mcpServers"]  # preserved
+    assert "mureo" in settings["mcpServers"]  # added
+    assert settings["mcpServers"]["mureo"]["type"] == "stdio"
 
 
 # ---------------------------------------------------------------------------

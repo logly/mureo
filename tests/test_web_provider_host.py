@@ -48,6 +48,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mureo.providers.catalog import get_provider
 from mureo.providers.installer import InstallResult
 from mureo.web.setup_actions import install_provider, remove_provider
 
@@ -152,9 +153,7 @@ class TestInstallProviderCodeHostUnchanged:
         mock_desktop.assert_not_called()
         assert not cfg.exists()
 
-    def test_explicit_code_host_identical_to_default(
-        self, tmp_path: Path
-    ) -> None:
+    def test_explicit_code_host_identical_to_default(self, tmp_path: Path) -> None:
         """``host="claude-code"`` is identical to the default — Code
         writer invoked exactly as today, no Desktop file created."""
         from mureo.web import setup_actions
@@ -184,9 +183,7 @@ class TestInstallProviderCodeHostUnchanged:
 
         bad = InstallResult(returncode=2, stdout="", stderr="boom", argv=[])
         with (
-            patch(
-                "mureo.providers.installer.run_install", return_value=bad
-            ),
+            patch("mureo.providers.installer.run_install", return_value=bad),
             patch(
                 "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
             ) as mock_disable,
@@ -197,9 +194,7 @@ class TestInstallProviderCodeHostUnchanged:
         assert result.detail == "install_returncode_2"
         mock_disable.assert_not_called()
 
-    def test_unknown_provider_code_host_no_fs_write(
-        self, tmp_path: Path
-    ) -> None:
+    def test_unknown_provider_code_host_no_fs_write(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         cfg = _desktop_cfg(tmp_path)
@@ -211,21 +206,130 @@ class TestInstallProviderCodeHostUnchanged:
 
 
 # ---------------------------------------------------------------------------
+# Credential env injection — the reported "registers but unusable" bug
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestInstallProviderInjectsCredentialEnv:
+    def test_install_provider_accepts_credentials_path(self) -> None:
+        params = inspect.signature(install_provider).parameters
+        assert "credentials_path" in params
+        assert params["credentials_path"].default is None
+
+    def test_code_host_injects_google_env_from_credentials(
+        self, tmp_path: Path
+    ) -> None:
+        """The official Google Ads block is registered WITH the env the
+        upstream MCP needs, resolved from credentials.json — without this
+        it registers but cannot authenticate (the reported bug)."""
+        from mureo.web import setup_actions
+
+        creds = tmp_path / ".mureo" / "credentials.json"
+        creds.parent.mkdir(parents=True, exist_ok=True)
+        creds.write_text(
+            '{"google_ads": {"developer_token": "DT", "client_id": "CID",'
+            ' "client_secret": "CS", "refresh_token": "RT",'
+            ' "login_customer_id": "123"}}',
+            "utf-8",
+        )
+
+        with (
+            patch(
+                "mureo.providers.installer.run_install",
+                return_value=_ok_install(),
+            ),
+            patch(
+                "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
+            ) as mock_disable,
+        ):
+            result = setup_actions.install_provider(
+                _GOOGLE, credentials_path=creds
+            )
+
+        assert result.status == "ok"
+        _, kwargs = mock_disable.call_args
+        assert kwargs["extra_env"] == {
+            "GOOGLE_ADS_DEVELOPER_TOKEN": "DT",
+            "GOOGLE_ADS_CLIENT_ID": "CID",
+            "GOOGLE_ADS_CLIENT_SECRET": "CS",
+            "GOOGLE_ADS_REFRESH_TOKEN": "RT",
+            "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "123",
+        }
+
+    def test_code_host_hosted_meta_gets_no_credential_env(
+        self, tmp_path: Path
+    ) -> None:
+        """Meta's hosted MCP authenticates via browser OAuth on first
+        connect — credential env vars must NOT be injected even if a
+        meta_ads section exists in credentials.json."""
+        from mureo.web import setup_actions
+
+        creds = tmp_path / ".mureo" / "credentials.json"
+        creds.parent.mkdir(parents=True, exist_ok=True)
+        creds.write_text('{"meta_ads": {"access_token": "T"}}', "utf-8")
+
+        with (
+            patch(
+                "mureo.providers.installer.run_install",
+                return_value=_ok_install(),
+            ),
+            patch(
+                "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
+            ) as mock_disable,
+        ):
+            result = setup_actions.install_provider(
+                _META, credentials_path=creds
+            )
+
+        assert result.status == "ok"
+        _, kwargs = mock_disable.call_args
+        assert not kwargs.get("extra_env")
+
+    def test_code_host_missing_credentials_still_registers_bare(
+        self, tmp_path: Path
+    ) -> None:
+        """No credentials.json yet → provider still registers (bare
+        block, pre-fix shape); no crash."""
+        from mureo.web import setup_actions
+
+        creds = tmp_path / ".mureo" / "credentials.json"
+
+        with (
+            patch(
+                "mureo.providers.installer.run_install",
+                return_value=_ok_install(),
+            ),
+            patch(
+                "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
+            ) as mock_disable,
+        ):
+            result = setup_actions.install_provider(
+                _GOOGLE, credentials_path=creds
+            )
+
+        assert result.status == "ok"
+        _, kwargs = mock_disable.call_args
+        assert not kwargs.get("extra_env")
+
+
+# ---------------------------------------------------------------------------
 # Desktop host — install
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestInstallProviderDesktopHost:
-    def test_hosted_http_writes_http_block_to_desktop_config(
+    def test_hosted_http_returns_manual_required_writes_nothing(
         self, tmp_path: Path
     ) -> None:
-        """meta-ads-official on Desktop: no real subprocess; the
-        mcp-remote stdio bridge block lands in
-        ``claude_desktop_config.json`` (Desktop rejects the native http
-        shape — see ``TestHostedHttpDesktopMcpRemoteTranslation``); a
-        pre-existing unrelated server and a top-level key are preserved
-        verbatim."""
+        """meta-ads-official on Desktop: a remote MCP cannot be wired
+        into Claude Desktop via the config file (Desktop rejects the
+        native http shape; mcp-remote fails on Meta's no-DCR OAuth
+        server). The only working path is the user adding it manually
+        via Settings → Connectors. So the result is ``manual_required``
+        and the config file is NEVER written/created; a pre-existing
+        unrelated server and a top-level key are left byte-identical."""
         from mureo.web import setup_actions
 
         cfg = _desktop_cfg(tmp_path)
@@ -239,6 +343,7 @@ class TestInstallProviderDesktopHost:
             ),
             encoding="utf-8",
         )
+        before = cfg.read_bytes()
 
         with (
             patch.object(platform, "system", return_value="Darwin"),
@@ -251,49 +356,35 @@ class TestInstallProviderDesktopHost:
                 _META, host="claude-desktop", home=tmp_path
             )
 
-        assert result.status == "ok"
-        payload = json.loads(cfg.read_text(encoding="utf-8"))
-        assert payload["mcpServers"][_META] == {
-            "command": "npx",
-            "args": ["-y", "mcp-remote", "https://mcp.facebook.com/ads"],
-        }
-        assert payload["mcpServers"]["other"] == {"command": "node"}
-        assert payload["globalShortcut"] == "Cmd+Shift+Space"
+        assert result.status == "manual_required"
+        assert result.detail == _META
+        assert cfg.read_bytes() == before
 
-    def test_hosted_http_does_not_call_code_writers(
-        self, tmp_path: Path
-    ) -> None:
+    def test_hosted_http_does_not_call_code_writers(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         with (
             patch.object(platform, "system", return_value="Darwin"),
             patch(
-                "mureo.providers.config_writer."
-                "add_provider_to_claude_settings"
+                "mureo.providers.config_writer." "add_provider_to_claude_settings"
             ) as mock_add,
             patch(
                 "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
             ) as mock_disable,
         ):
-            setup_actions.install_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
+            setup_actions.install_provider(_META, host="claude-desktop", home=tmp_path)
 
         mock_add.assert_not_called()
         mock_disable.assert_not_called()
 
-    def test_hosted_http_does_not_write_settings_json(
-        self, tmp_path: Path
-    ) -> None:
+    def test_hosted_http_does_not_write_settings_json(self, tmp_path: Path) -> None:
         """The Code ``settings.json`` must NOT be created on the Desktop
         path (config goes only to the Desktop file)."""
         from mureo.web import setup_actions
 
         settings = tmp_path / ".claude" / "settings.json"
         with patch.object(platform, "system", return_value="Darwin"):
-            setup_actions.install_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
+            setup_actions.install_provider(_META, host="claude-desktop", home=tmp_path)
 
         assert not settings.exists()
 
@@ -325,9 +416,7 @@ class TestInstallProviderDesktopHost:
         assert payload["mcpServers"][_GOOGLE]["args"][0] == "run"
         assert not (tmp_path / ".claude" / "settings.json").exists()
 
-    def test_pipx_desktop_does_not_call_disable_in_mureo(
-        self, tmp_path: Path
-    ) -> None:
+    def test_pipx_desktop_does_not_call_disable_in_mureo(self, tmp_path: Path) -> None:
         """Q2: on Desktop only the provider block is written — the
         Code-only ``add_provider_and_disable_in_mureo`` is NOT called."""
         from mureo.web import setup_actions
@@ -348,9 +437,7 @@ class TestInstallProviderDesktopHost:
 
         mock_disable.assert_not_called()
 
-    def test_pipx_returncode_nonzero_no_config_write(
-        self, tmp_path: Path
-    ) -> None:
+    def test_pipx_returncode_nonzero_no_config_write(self, tmp_path: Path) -> None:
         """Subprocess first; on non-zero returncode NO config write is
         performed (mirrors Code ordering)."""
         from mureo.web import setup_actions
@@ -359,9 +446,7 @@ class TestInstallProviderDesktopHost:
         bad = InstallResult(returncode=3, stdout="", stderr="x", argv=[])
         with (
             patch.object(platform, "system", return_value="Darwin"),
-            patch(
-                "mureo.providers.installer.run_install", return_value=bad
-            ),
+            patch("mureo.providers.installer.run_install", return_value=bad),
         ):
             result = setup_actions.install_provider(
                 _GOOGLE, host="claude-desktop", home=tmp_path
@@ -371,37 +456,30 @@ class TestInstallProviderDesktopHost:
         assert result.detail == "install_returncode_3"
         assert not cfg.exists()
 
-    def test_idempotent_re_add_no_rewrite(self, tmp_path: Path) -> None:
-        """Re-adding an already-present identical block → ``noop`` /
-        file bytes unchanged. The on-disk block is the TRANSLATED
-        mcp-remote bridge (what a real install writes), so idempotency
-        is checked like-for-like."""
+    def test_pipx_idempotent_re_add_no_rewrite(self, tmp_path: Path) -> None:
+        """A pipx provider already present with an identical block →
+        ``noop`` / file bytes unchanged (pipx is the only Desktop path
+        that writes the config; hosted_http never does)."""
         from mureo.web import setup_actions
 
+        spec = get_provider(_GOOGLE)
         cfg = _desktop_cfg(tmp_path)
         cfg.parent.mkdir(parents=True, exist_ok=True)
         cfg.write_text(
-            json.dumps(
-                {
-                    "mcpServers": {
-                        _META: {
-                            "command": "npx",
-                            "args": [
-                                "-y",
-                                "mcp-remote",
-                                "https://mcp.facebook.com/ads",
-                            ],
-                        }
-                    }
-                }
-            ),
+            json.dumps({"mcpServers": {_GOOGLE: dict(spec.mcp_server_config)}}),
             encoding="utf-8",
         )
         before = cfg.read_bytes()
 
-        with patch.object(platform, "system", return_value="Darwin"):
+        with (
+            patch.object(platform, "system", return_value="Darwin"),
+            patch(
+                "mureo.providers.installer.run_install",
+                return_value=_ok_install(),
+            ),
+        ):
             result = setup_actions.install_provider(
-                _META, host="claude-desktop", home=tmp_path
+                _GOOGLE, host="claude-desktop", home=tmp_path
             )
 
         assert result.status == "noop"
@@ -417,17 +495,21 @@ class TestInstallProviderDesktopHost:
         cfg.write_text("{ not json", encoding="utf-8")
         before = cfg.read_bytes()
 
-        with patch.object(platform, "system", return_value="Darwin"):
+        with (
+            patch.object(platform, "system", return_value="Darwin"),
+            patch(
+                "mureo.providers.installer.run_install",
+                return_value=_ok_install(),
+            ),
+        ):
             result = setup_actions.install_provider(
-                _META, host="claude-desktop", home=tmp_path
+                _GOOGLE, host="claude-desktop", home=tmp_path
             )
 
         assert result.status == "error"
         assert cfg.read_bytes() == before
 
-    def test_unknown_provider_desktop_no_fs_write(
-        self, tmp_path: Path
-    ) -> None:
+    def test_unknown_provider_desktop_no_fs_write(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         cfg = _desktop_cfg(tmp_path)
@@ -466,18 +548,19 @@ class TestInstallProviderDesktopHost:
 
 @pytest.mark.unit
 class TestRemoveProviderDesktopHost:
-    def test_removes_only_that_id_preserving_siblings(
-        self, tmp_path: Path
-    ) -> None:
+    def test_removes_only_that_id_preserving_siblings(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         cfg = _desktop_cfg(tmp_path)
         cfg.parent.mkdir(parents=True, exist_ok=True)
+        # Use a pipx provider — that is the path that still pops an
+        # mcpServers block on Desktop (hosted_http remove instead
+        # unsets MUREO_DISABLE_*, covered separately).
         cfg.write_text(
             json.dumps(
                 {
                     "mcpServers": {
-                        _META: _META_BLOCK,
+                        _GOOGLE: {"command": "pipx"},
                         "mureo": {"command": "python"},
                     },
                     "theme": "dark",
@@ -488,18 +571,16 @@ class TestRemoveProviderDesktopHost:
 
         with patch.object(platform, "system", return_value="Darwin"):
             result = setup_actions.remove_provider(
-                _META, host="claude-desktop", home=tmp_path
+                _GOOGLE, host="claude-desktop", home=tmp_path
             )
 
         assert result.status == "ok"
         payload = json.loads(cfg.read_text(encoding="utf-8"))
-        assert _META not in payload["mcpServers"]
+        assert _GOOGLE not in payload["mcpServers"]
         assert payload["mcpServers"]["mureo"] == {"command": "python"}
         assert payload["theme"] == "dark"
 
-    def test_absent_provider_is_noop_not_registered(
-        self, tmp_path: Path
-    ) -> None:
+    def test_absent_provider_is_noop_not_registered(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         cfg = _desktop_cfg(tmp_path)
@@ -519,9 +600,7 @@ class TestRemoveProviderDesktopHost:
         assert result.detail == "not_registered"
         assert cfg.read_bytes() == before
 
-    def test_missing_config_file_is_noop_not_registered(
-        self, tmp_path: Path
-    ) -> None:
+    def test_missing_config_file_is_noop_not_registered(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         cfg = _desktop_cfg(tmp_path)
@@ -534,9 +613,7 @@ class TestRemoveProviderDesktopHost:
         assert result.detail == "not_registered"
         assert not cfg.exists()
 
-    def test_remove_desktop_does_not_call_code_remover(
-        self, tmp_path: Path
-    ) -> None:
+    def test_remove_desktop_does_not_call_code_remover(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         cfg = _desktop_cfg(tmp_path)
@@ -548,19 +625,14 @@ class TestRemoveProviderDesktopHost:
         with (
             patch.object(platform, "system", return_value="Darwin"),
             patch(
-                "mureo.providers.config_writer."
-                "remove_provider_from_claude_settings"
+                "mureo.providers.config_writer." "remove_provider_from_claude_settings"
             ) as mock_code_remove,
         ):
-            setup_actions.remove_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
+            setup_actions.remove_provider(_META, host="claude-desktop", home=tmp_path)
 
         mock_code_remove.assert_not_called()
 
-    def test_remove_credentials_json_never_touched(
-        self, tmp_path: Path
-    ) -> None:
+    def test_remove_credentials_json_never_touched(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         creds, before = _seed_creds(tmp_path)
@@ -571,15 +643,11 @@ class TestRemoveProviderDesktopHost:
             encoding="utf-8",
         )
         with patch.object(platform, "system", return_value="Darwin"):
-            setup_actions.remove_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
+            setup_actions.remove_provider(_META, host="claude-desktop", home=tmp_path)
 
         assert creds.read_bytes() == before
 
-    def test_unknown_provider_desktop_remove_errors(
-        self, tmp_path: Path
-    ) -> None:
+    def test_unknown_provider_desktop_remove_errors(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         with patch.object(platform, "system", return_value="Darwin"):
@@ -599,8 +667,7 @@ class TestRemoveProviderCodeHostUnchanged:
         from mureo.web import setup_actions
 
         with patch(
-            "mureo.providers.config_writer."
-            "remove_provider_from_claude_settings",
+            "mureo.providers.config_writer." "remove_provider_from_claude_settings",
             return_value=MagicMock(changed=True),
         ) as mock_code_remove:
             result = setup_actions.remove_provider(_META)
@@ -616,9 +683,7 @@ class TestRemoveProviderCodeHostUnchanged:
 
 @pytest.mark.unit
 class TestStatusCollectorPathAgreement:
-    def test_desktop_install_reflected_in_collect_status(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_install_reflected_in_collect_status(self, tmp_path: Path) -> None:
         """After ``install_provider(host="claude-desktop")``,
         ``collect_status("claude-desktop", home=...)`` reports the
         provider installed — proves the writer and the (unmodified)
@@ -642,33 +707,29 @@ class TestStatusCollectorPathAgreement:
 
 
 # ---------------------------------------------------------------------------
-# mcp-remote bridge translation (planner HANDOFF
-# feat-web-config-ui-phase1-mcp-remote.md)
+# hosted_http on Claude Desktop = manual Connectors only
 #
-# RED until ``_install_provider_desktop`` translates a ``hosted_http``
-# provider's catalog ``{"type":"http","url":...}`` block into the stdio
-# bridge ``{"command":"npx","args":["-y","mcp-remote","<url>"]}`` BEFORE
-# calling ``install_desktop_server_block``. Currently the catalog http
-# block is written verbatim — Claude Desktop rejects it.
+# A remote MCP cannot be wired into Claude Desktop via the config file:
+# Desktop rejects the native {"type":"http","url":...} shape, and the
+# mcp-remote stdio bridge fails on servers without OAuth Dynamic Client
+# Registration (Meta's hosted Ads MCP returns
+# "InvalidClientMetadataError: Dynamic registration is not available").
+# The only working path is the user adding it via Claude Desktop →
+# Settings → Connectors → Add custom connector. So hosted_http + Desktop
+# returns ``manual_required`` and writes NOTHING. Code host is unchanged
+# (native http block); pipx/npm Desktop is unchanged (their stdio block).
 # ---------------------------------------------------------------------------
 
 
 _META_HTTP_BLOCK = {"type": "http", "url": "https://mcp.facebook.com/ads"}
-_META_NPX_BLOCK = {
-    "command": "npx",
-    "args": ["-y", "mcp-remote", "https://mcp.facebook.com/ads"],
-}
 
 
 @pytest.mark.unit
-class TestHostedHttpDesktopMcpRemoteTranslation:
-    def test_hosted_http_desktop_writes_mcp_remote_block(
-        self, tmp_path: Path
-    ) -> None:
-        """meta-ads-official on Desktop must land the npx/mcp-remote stdio
-        bridge block — NOT the catalog ``{"type":"http",...}`` shape
-        (Claude Desktop rejects http servers in
-        ``claude_desktop_config.json``)."""
+class TestHostedHttpDesktopManualRequired:
+    def test_hosted_http_desktop_returns_manual_required(self, tmp_path: Path) -> None:
+        """meta-ads-official on Desktop: result is ``manual_required``
+        (the user must add it via Settings → Connectors); NO subprocess,
+        NO config file written or created."""
         from mureo.web import setup_actions
 
         cfg = _desktop_cfg(tmp_path)
@@ -683,98 +744,35 @@ class TestHostedHttpDesktopMcpRemoteTranslation:
                 _META, host="claude-desktop", home=tmp_path
             )
 
-        assert result.status == "ok"
-        payload = json.loads(cfg.read_text(encoding="utf-8"))
-        written = payload["mcpServers"][_META]
-        assert written == _META_NPX_BLOCK
-        # Hard guard: the http shape must NOT leak through.
-        assert "type" not in written
-        assert "url" not in written
+        assert result.status == "manual_required"
+        assert result.detail == _META
+        assert not cfg.exists()
 
-    def test_url_is_a_discrete_argv_element_not_shell_joined(
-        self, tmp_path: Path
-    ) -> None:
-        """The URL is one standalone argv element — never shell-joined or
-        string-concatenated into the command (the block is written to a
-        config another process executes)."""
+    def test_hosted_http_desktop_no_mcp_remote_anywhere(self, tmp_path: Path) -> None:
+        """Hard guard: the abandoned mcp-remote bridge must NEVER be
+        written for a hosted_http provider on Desktop."""
         from mureo.web import setup_actions
 
         cfg = _desktop_cfg(tmp_path)
         with patch.object(platform, "system", return_value="Darwin"):
-            setup_actions.install_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
+            setup_actions.install_provider(_META, host="claude-desktop", home=tmp_path)
 
-        block = json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"][
-            _META
-        ]
-        assert block["command"] == "npx"
-        # Exact list equality — element order + discreteness pinned.
-        assert block["args"] == [
-            "-y",
-            "mcp-remote",
-            "https://mcp.facebook.com/ads",
-        ]
-        # The url is its own element, never fused with another token.
-        assert "https://mcp.facebook.com/ads" in block["args"]
-        assert block["command"] == "npx"  # not "npx -y mcp-remote ..."
-        for arg in block["args"]:
-            assert " " not in arg or arg == "https://mcp.facebook.com/ads"
+        assert not cfg.exists()
 
-    def test_url_extracted_from_catalog_config_url_key(
-        self, tmp_path: Path
-    ) -> None:
-        """The url must come from ``spec.mcp_server_config["url"]`` (read
-        the key), not a hardcoded literal: patch the catalog spec's config
-        url and the written args must track it."""
-        from mureo.providers.catalog import get_provider
-        from mureo.web import setup_actions
-
-        real_spec = get_provider(_META)
-        patched_cfg = {
-            "type": "http",
-            "url": "https://example.test/other-ads-endpoint",
-        }
-        patched_spec = replace(real_spec, mcp_server_config=patched_cfg)
-
-        cfg = _desktop_cfg(tmp_path)
-        with (
-            patch.object(platform, "system", return_value="Darwin"),
-            patch(
-                "mureo.providers.catalog.get_provider",
-                return_value=patched_spec,
-            ),
-        ):
-            setup_actions.install_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
-
-        block = json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"][
-            _META
-        ]
-        assert block == {
-            "command": "npx",
-            "args": [
-                "-y",
-                "mcp-remote",
-                "https://example.test/other-ads-endpoint",
-            ],
-        }
-
-    def test_code_host_still_writes_native_http_block(
-        self, tmp_path: Path
-    ) -> None:
+    def test_code_host_still_writes_native_http_block(self, tmp_path: Path) -> None:
         """Back-compat regression guard: ``host="claude-code"`` is
         byte-for-byte unchanged — the NATIVE
         ``{"type":"http","url":...}`` block still flows through the Code
-        writer; NO mcp-remote translation, NO Desktop file."""
+        writer; NO Desktop file."""
         from mureo.web import setup_actions
 
         cfg = _desktop_cfg(tmp_path)
         captured: dict[str, object] = {}
 
-        def _capture(spec: Any) -> None:
+        def _capture(spec: Any, *, extra_env: Any = None) -> None:
             captured["config"] = _unfreeze(spec.mcp_server_config)
+            # Hosted Meta authenticates via browser OAuth — no env injected.
+            captured["extra_env"] = extra_env
 
         with (
             patch(
@@ -792,18 +790,13 @@ class TestHostedHttpDesktopMcpRemoteTranslation:
 
         assert result.status == "ok"
         mock_disable.assert_called_once()
-        # The Code path passes the catalog spec UNTRANSLATED — still the
-        # native http remote shape.
         assert captured["config"] == _META_HTTP_BLOCK
         assert not cfg.exists()
 
-    def test_pipx_provider_desktop_block_unchanged_no_wrapping(
-        self, tmp_path: Path
-    ) -> None:
+    def test_pipx_provider_desktop_block_unchanged(self, tmp_path: Path) -> None:
         """pipx providers on Desktop keep their existing
-        ``{"command":"pipx","args":[...]}`` block — they are NOT wrapped
-        in mcp-remote (translation is gated on ``hosted_http`` only)."""
-        from mureo.providers.catalog import get_provider
+        ``{"command":"pipx","args":[...]}`` block (the manual-required
+        short-circuit is gated on ``hosted_http`` only)."""
         from mureo.web import setup_actions
 
         expected = _unfreeze(get_provider(_GOOGLE).mcp_server_config)
@@ -819,106 +812,47 @@ class TestHostedHttpDesktopMcpRemoteTranslation:
                 _GOOGLE, host="claude-desktop", home=tmp_path
             )
 
-        block = json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"][
-            _GOOGLE
-        ]
+        block = json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"][_GOOGLE]
         assert block == expected
         assert block["command"] == "pipx"
         assert "mcp-remote" not in json.dumps(block)
 
-    def test_ga4_provider_desktop_block_unchanged_no_wrapping(
-        self, tmp_path: Path
-    ) -> None:
-        from mureo.providers.catalog import get_provider
-        from mureo.web import setup_actions
-
-        ga4 = "ga4-official"
-        expected = _unfreeze(get_provider(ga4).mcp_server_config)
-        cfg = _desktop_cfg(tmp_path)
-        with (
-            patch.object(platform, "system", return_value="Darwin"),
-            patch(
-                "mureo.providers.installer.run_install",
-                return_value=_ok_install(),
-            ),
-        ):
-            setup_actions.install_provider(
-                ga4, host="claude-desktop", home=tmp_path
-            )
-
-        block = json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"][
-            ga4
-        ]
-        assert block == expected
-        assert "mcp-remote" not in json.dumps(block)
-
-    def test_hosted_http_desktop_skips_subprocess(
-        self, tmp_path: Path
-    ) -> None:
-        """Contract lock: ``run_install`` is NEVER invoked for the hosted
-        provider on Desktop (empty ``install_argv``)."""
+    def test_hosted_http_desktop_skips_subprocess(self, tmp_path: Path) -> None:
+        """``run_install`` is NEVER invoked for the hosted provider on
+        Desktop (short-circuited before the subprocess branch)."""
         from mureo.web import setup_actions
 
         with (
             patch.object(platform, "system", return_value="Darwin"),
-            patch(
-                "mureo.providers.installer.run_install"
-            ) as mock_run,
+            patch("mureo.providers.installer.run_install") as mock_run,
         ):
-            setup_actions.install_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
+            setup_actions.install_provider(_META, host="claude-desktop", home=tmp_path)
 
         mock_run.assert_not_called()
 
-    def test_hosted_http_desktop_idempotent_noop_on_translated_block(
+    def test_remove_hosted_http_desktop_clean_tree_is_noop(
         self, tmp_path: Path
     ) -> None:
-        """Install twice: the second call sees the already-written
-        TRANSLATED npx block and returns ``noop already_configured``;
-        the file is byte-identical."""
+        """On Desktop the Meta MCP block is never written by mureo
+        (manual Connectors), so removing it on a tree with no
+        MUREO_DISABLE_META_ADS env is a noop not_registered. The
+        env-unset behaviour when it IS set is covered by
+        TestHostedHttpDesktopDisablesMureoTools."""
         from mureo.web import setup_actions
 
         cfg = _desktop_cfg(tmp_path)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(
+            json.dumps({"mcpServers": {"mureo": {"command": "python"}}}),
+            encoding="utf-8",
+        )
         with patch.object(platform, "system", return_value="Darwin"):
-            first = setup_actions.install_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
-            after_first = cfg.read_bytes()
-            second = setup_actions.install_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
-
-        assert first.status == "ok"
-        assert second.status == "noop"
-        assert second.detail == "already_configured"
-        assert cfg.read_bytes() == after_first
-
-    def test_remove_hosted_http_desktop_by_id_unchanged(
-        self, tmp_path: Path
-    ) -> None:
-        """``remove_provider`` still pops the ``meta-ads-official`` key
-        (block shape is irrelevant to removal); second remove → noop
-        not_registered."""
-        from mureo.web import setup_actions
-
-        cfg = _desktop_cfg(tmp_path)
-        with patch.object(platform, "system", return_value="Darwin"):
-            setup_actions.install_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
             removed = setup_actions.remove_provider(
                 _META, host="claude-desktop", home=tmp_path
             )
-            removed_again = setup_actions.remove_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
 
-        assert removed.status == "ok"
-        payload = json.loads(cfg.read_text(encoding="utf-8"))
-        assert _META not in payload.get("mcpServers", {})
-        assert removed_again.status == "noop"
-        assert removed_again.detail == "not_registered"
+        assert removed.status == "noop"
+        assert removed.detail == "not_registered"
 
     def test_credentials_json_never_touched_install_and_remove(
         self, tmp_path: Path
@@ -927,42 +861,158 @@ class TestHostedHttpDesktopMcpRemoteTranslation:
 
         creds, before = _seed_creds(tmp_path)
         with patch.object(platform, "system", return_value="Darwin"):
-            setup_actions.install_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
-            setup_actions.remove_provider(
-                _META, host="claude-desktop", home=tmp_path
-            )
+            setup_actions.install_provider(_META, host="claude-desktop", home=tmp_path)
+            setup_actions.remove_provider(_META, host="claude-desktop", home=tmp_path)
 
         assert creds.exists()
         assert creds.read_bytes() == before
 
 
 # ---------------------------------------------------------------------------
-# _desktop_block_for(spec) -> Mapping[str, Any]  (planner scope L51-L53)
+# _desktop_block_for(spec) -> Mapping[str, Any]
 #
-# The implementer MUST extract this private translation helper. Unit-test
-# it directly. RED until it exists (AttributeError on the symbol).
+# hosted_http never reaches this helper (short-circuited to
+# manual_required). It returns the catalog block verbatim for the
+# stdio-shaped pipx/npm specs that DO write the Desktop config.
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestHostedHttpDesktopDisablesMureoTools:
+    """Official Meta on Desktop: the Meta MCP block is NOT written
+    (manual Connectors), but mureo's OWN block must get
+    MUREO_DISABLE_META_ADS=1 so the surviving mureo MCP stops exposing
+    unauthenticated meta_ads_* tools that duplicate the official one."""
+
+    def _seed_mureo_block(self, tmp_path: Path, extra=None) -> Path:
+        cfg = _desktop_cfg(tmp_path)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        servers = {"mureo": {"command": "python", "args": ["-m", "mureo.mcp"]}}
+        if extra:
+            servers.update(extra)
+        cfg.write_text(
+            json.dumps({"mcpServers": servers, "theme": "dark"}),
+            encoding="utf-8",
+        )
+        return cfg
+
+    def test_install_sets_disable_meta_env_on_mureo_block(self, tmp_path: Path) -> None:
+        from mureo.web import setup_actions
+
+        cfg = self._seed_mureo_block(tmp_path, extra={"other": {"command": "node"}})
+        with patch.object(platform, "system", return_value="Darwin"):
+            result = setup_actions.install_provider(
+                _META, host="claude-desktop", home=tmp_path
+            )
+
+        assert result.status == "manual_required"
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
+        assert payload["mcpServers"]["mureo"]["env"]["MUREO_DISABLE_META_ADS"] == "1"
+        # mureo block command/args + other server + top-level key intact.
+        assert payload["mcpServers"]["mureo"]["command"] == "python"
+        assert payload["mcpServers"]["mureo"]["args"] == ["-m", "mureo.mcp"]
+        assert payload["mcpServers"]["other"] == {"command": "node"}
+        assert payload["theme"] == "dark"
+        # The Meta MCP block itself is NOT written (manual Connectors).
+        assert _META not in payload["mcpServers"]
+
+    def test_install_no_mureo_block_is_noop_still_manual_required(
+        self, tmp_path: Path
+    ) -> None:
+        """No mureo block yet (basic setup skipped): disable-env is a
+        best-effort no-op; the result is still manual_required and the
+        file is not corrupted."""
+        from mureo.web import setup_actions
+
+        cfg = _desktop_cfg(tmp_path)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
+        with patch.object(platform, "system", return_value="Darwin"):
+            result = setup_actions.install_provider(
+                _META, host="claude-desktop", home=tmp_path
+            )
+
+        assert result.status == "manual_required"
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
+        assert "mureo" not in payload["mcpServers"]
+
+    def test_remove_unsets_disable_meta_env(self, tmp_path: Path) -> None:
+        from mureo.web import setup_actions
+
+        cfg = self._seed_mureo_block(tmp_path)
+        with patch.object(platform, "system", return_value="Darwin"):
+            setup_actions.install_provider(_META, host="claude-desktop", home=tmp_path)
+            removed = setup_actions.remove_provider(
+                _META, host="claude-desktop", home=tmp_path
+            )
+
+        assert removed.status == "ok"
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
+        env = payload["mcpServers"]["mureo"].get("env", {})
+        assert "MUREO_DISABLE_META_ADS" not in env
+        # mureo block otherwise intact.
+        assert payload["mcpServers"]["mureo"]["command"] == "python"
+
+    def test_remove_when_not_set_is_noop(self, tmp_path: Path) -> None:
+        from mureo.web import setup_actions
+
+        self._seed_mureo_block(tmp_path)
+        with patch.object(platform, "system", return_value="Darwin"):
+            removed = setup_actions.remove_provider(
+                _META, host="claude-desktop", home=tmp_path
+            )
+        assert removed.status == "noop"
+        assert removed.detail == "not_registered"
+
+    def test_malformed_env_refused_not_overwritten(self, tmp_path: Path) -> None:
+        """A truthy non-dict ``mcpServers.mureo.env`` is a corrupt
+        config: set_mureo_disable_env_desktop must raise
+        DesktopConfigCorruptError (not a bare ValueError) without
+        rewriting the file. Surfaced via the install best-effort log;
+        the user still gets manual_required and the file is intact."""
+        from mureo.desktop_installer import DesktopConfigCorruptError
+        from mureo.web import desktop_mcp, setup_actions
+
+        cfg = _desktop_cfg(tmp_path)
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(
+            json.dumps({"mcpServers": {"mureo": {"command": "python", "env": "x"}}}),
+            encoding="utf-8",
+        )
+        before = cfg.read_bytes()
+
+        with pytest.raises(DesktopConfigCorruptError):
+            desktop_mcp.set_mureo_disable_env_desktop(cfg, "MUREO_DISABLE_META_ADS")
+        assert cfg.read_bytes() == before
+
+        # install still degrades gracefully to manual_required.
+        with patch.object(platform, "system", return_value="Darwin"):
+            result = setup_actions.install_provider(
+                _META, host="claude-desktop", home=tmp_path
+            )
+        assert result.status == "manual_required"
+        assert cfg.read_bytes() == before
+
+    def test_credentials_json_never_touched(self, tmp_path: Path) -> None:
+        from mureo.web import setup_actions
+
+        self._seed_mureo_block(tmp_path)
+        creds, before = _seed_creds(tmp_path)
+        with patch.object(platform, "system", return_value="Darwin"):
+            setup_actions.install_provider(_META, host="claude-desktop", home=tmp_path)
+            setup_actions.remove_provider(_META, host="claude-desktop", home=tmp_path)
+        assert creds.exists()
+        assert creds.read_bytes() == before
 
 
 @pytest.mark.unit
 class TestDesktopBlockForHelper:
     def test_helper_exists(self) -> None:
-        """RED: ``_desktop_block_for`` is not defined yet."""
         from mureo.web import setup_actions
 
         assert hasattr(setup_actions, "_desktop_block_for")
 
-    def test_hosted_http_spec_translated_to_npx_mcp_remote(self) -> None:
-        from mureo.providers.catalog import get_provider
-        from mureo.web import setup_actions
-
-        block = setup_actions._desktop_block_for(get_provider(_META))
-        assert _unfreeze(block) == _META_NPX_BLOCK
-
     def test_pipx_spec_returned_verbatim(self) -> None:
-        from mureo.providers.catalog import get_provider
         from mureo.web import setup_actions
 
         spec = get_provider(_GOOGLE)
@@ -970,16 +1020,10 @@ class TestDesktopBlockForHelper:
         block = setup_actions._desktop_block_for(spec)
         assert _unfreeze(block) == expected
 
-    def test_helper_reads_url_key_not_hardcoded(self) -> None:
-        from mureo.providers.catalog import get_provider
+    def test_ga4_spec_returned_verbatim(self) -> None:
         from mureo.web import setup_actions
 
-        spec = replace(
-            get_provider(_META),
-            mcp_server_config={"type": "http", "url": "https://x.test/y"},
-        )
+        spec = get_provider("ga4-official")
+        expected = _unfreeze(spec.mcp_server_config)
         block = setup_actions._desktop_block_for(spec)
-        assert _unfreeze(block) == {
-            "command": "npx",
-            "args": ["-y", "mcp-remote", "https://x.test/y"],
-        }
+        assert _unfreeze(block) == expected

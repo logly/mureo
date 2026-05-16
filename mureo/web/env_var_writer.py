@@ -71,6 +71,57 @@ def get_env_var_target(name: str) -> EnvVarTarget | None:
     return _ENV_VAR_TO_FIELD.get(name)
 
 
+# Reverse of the closed allow-list: credentials.json section → list of
+# (env var name, field). Built once at import. Used to materialise the
+# ``env`` block an official upstream MCP needs (it reads ONLY env vars,
+# never mureo's credentials.json).
+_SECTION_TO_ENV_VARS: dict[str, tuple[tuple[str, str], ...]] = {}
+for _name, _target in _ENV_VAR_TO_FIELD.items():
+    _SECTION_TO_ENV_VARS.setdefault(_target.section, ())
+    _SECTION_TO_ENV_VARS[_target.section] += ((_name, _target.field),)
+del _name, _target
+
+
+def build_credentials_env(
+    section: str,
+    *,
+    credentials_path: Path | None = None,
+) -> dict[str, str]:
+    """Build the ``env`` block an official MCP needs from credentials.json.
+
+    Reverse of :func:`write_credential_env_var`: for every entry in the
+    closed allow-list whose target section is ``section``, read the
+    field from ``credentials.json`` and emit ``{ENV_NAME: str(value)}``
+    for every PRESENT, NON-EMPTY value (ints coerced to ``str``; only
+    allow-listed fields are ever surfaced).
+
+    The official upstream MCPs (e.g. ``google-ads-mcp``) read their
+    config ONLY from environment variables — they cannot see mureo's
+    ``credentials.json`` — so injecting this into the registered
+    ``mcpServers[<id>].env`` block is what makes a freshly added official
+    provider actually usable.
+
+    Returns ``{}`` when the file or the section is absent (the caller
+    then writes a bare block, exactly the pre-fix shape).
+    """
+    pairs = _SECTION_TO_ENV_VARS.get(section)
+    if not pairs:
+        return {}
+    path = _resolve_credentials_path(credentials_path)
+    existing = read_json_safe(path)
+    section_data = existing.get(section)
+    if not isinstance(section_data, dict):
+        return {}
+
+    env: dict[str, str] = {}
+    for env_name, field in pairs:
+        value = section_data.get(field)
+        if value is None or value == "":
+            continue
+        env[env_name] = str(value)
+    return env
+
+
 def _resolve_credentials_path(credentials_path: Path | None) -> Path:
     if credentials_path is not None:
         return credentials_path
@@ -108,3 +159,45 @@ def write_credential_env_var(
     atomic_write_json(path, merged)
     # Log the field, not the value.
     logger.info("Wrote credential env var %s into %s", name, target.section)
+
+
+# Closed allow-list of removable mureo-native credential sections. Keyed
+# to the dashboard's per-platform Remove buttons. Search Console is NOT
+# listed: it has no own section — it reuses the google_ads Google OAuth
+# (mureo.auth_setup._GOOGLE_SCOPES), so removing it == removing
+# google_ads. The dashboard surfaces that relationship rather than a
+# misleading standalone SC remove.
+_REMOVABLE_SECTIONS: frozenset[str] = frozenset({"google_ads", "meta_ads", "ga4"})
+
+
+def removable_credential_sections() -> tuple[str, ...]:
+    """Allow-listed mureo-native credential sections (UI/validation)."""
+    return tuple(sorted(_REMOVABLE_SECTIONS))
+
+
+def remove_credential_section(
+    section: str,
+    *,
+    credentials_path: Path | None = None,
+) -> bool:
+    """Atomically pop one mureo-native platform section from credentials.json.
+
+    Explicit per-platform user action from the dashboard — distinct
+    from bulk clear, which deliberately never touches credentials.json.
+    Idempotent: returns ``False`` (no rewrite) when the section is
+    absent or the file does not exist; ``True`` when it was removed.
+    Raises ``ValueError`` for a section outside the closed allow-list.
+    """
+    if section not in _REMOVABLE_SECTIONS:
+        raise ValueError(f"credential section not allowed: {section!r}")
+
+    path = _resolve_credentials_path(credentials_path)
+    existing = read_json_safe(path)
+    if section not in existing:
+        return False
+
+    merged: dict[str, Any] = dict(existing)
+    merged.pop(section, None)
+    atomic_write_json(path, merged)
+    logger.info("Removed mureo credential section %s", section)
+    return True

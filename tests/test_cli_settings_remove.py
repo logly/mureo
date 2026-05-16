@@ -77,6 +77,88 @@ def _make_unrelated_hook(name: str, command: str = "echo unrelated") -> dict[str
 
 
 @pytest.mark.unit
+class TestRemoveMcpConfigClaudeCli:
+    """Default (no ``settings_path``) delegates to the ``claude`` CLI so
+    Claude Code mutates its own live ``~/.claude.json`` safely."""
+
+    def test_cli_present_and_registered_removes(self) -> None:
+        from types import SimpleNamespace
+
+        from mureo.cli.settings_remove import RemoveResult, remove_mcp_config
+
+        calls: list[list[str]] = []
+
+        def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+            calls.append(argv)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with (
+            patch(
+                "mureo.cli.settings_remove.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.cli.settings_remove.subprocess.run",
+                side_effect=fake_run,
+            ),
+        ):
+            result = remove_mcp_config()
+
+        assert result == RemoveResult(changed=True)
+        assert calls[0][1:3] == ["mcp", "get"]
+        assert calls[1][1:3] == ["mcp", "remove"]
+        assert calls[1][calls[1].index("--scope") + 1] == "user"
+
+    def test_cli_present_not_registered_is_noop(self) -> None:
+        from types import SimpleNamespace
+
+        from mureo.cli.settings_remove import RemoveResult, remove_mcp_config
+
+        def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+            # ``mcp get`` returns nonzero when not registered.
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+
+        with (
+            patch(
+                "mureo.cli.settings_remove.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.cli.settings_remove.subprocess.run",
+                side_effect=fake_run,
+            ),
+        ):
+            result = remove_mcp_config()
+
+        assert result == RemoveResult(changed=False)
+
+    def test_cli_remove_failure_raises(self) -> None:
+        from types import SimpleNamespace
+
+        from mureo.cli.settings_remove import (
+            ConfigWriteError,
+            remove_mcp_config,
+        )
+
+        def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+            rc = 0 if "get" in argv else 3
+            return SimpleNamespace(returncode=rc, stdout="", stderr="boom")
+
+        with (
+            patch(
+                "mureo.cli.settings_remove.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.cli.settings_remove.subprocess.run",
+                side_effect=fake_run,
+            ),
+            pytest.raises(ConfigWriteError, match="remove failed"),
+        ):
+            remove_mcp_config()
+
+
+@pytest.mark.unit
 class TestRemoveMcpConfig:
     def test_removes_only_mureo_key(self, tmp_path: Path) -> None:
         """Given a settings.json with mureo + google-ads-official + pet,
@@ -266,25 +348,29 @@ class TestRemoveMcpConfig:
         leftovers = list(settings_path.parent.glob("*.tmp*"))
         assert leftovers == []
 
-    def test_default_path_uses_path_home(
+    def test_default_path_is_claude_json_when_no_cli(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Omitting ``settings_path`` resolves to
-        ``Path.home()/.claude/settings.json``."""
+        """No ``claude`` binary → default target is ``~/.claude.json``
+        root ``mcpServers`` (NOT settings.json — that file is never
+        consulted for MCP discovery)."""
         from mureo.cli.settings_remove import remove_mcp_config
 
         monkeypatch.setattr(
+            "mureo.cli.settings_remove.shutil.which", lambda _: None
+        )
+        monkeypatch.setattr(
             "mureo.cli.settings_remove.Path.home", lambda: tmp_path
         )
-        settings_path = tmp_path / ".claude" / "settings.json"
+        claude_json = tmp_path / ".claude.json"
         _write_settings(
-            settings_path,
+            claude_json,
             {"mcpServers": {"mureo": _MUREO_MCP_BLOCK, "pet": _PET_BLOCK}},
         )
 
         result = remove_mcp_config()
 
-        payload = json.loads(settings_path.read_text(encoding="utf-8"))
+        payload = json.loads(claude_json.read_text(encoding="utf-8"))
         assert "mureo" not in payload["mcpServers"]
         assert "pet" in payload["mcpServers"]
         assert result.changed is True

@@ -1,15 +1,13 @@
-"""i18n key-presence guard for the new Desktop Node/npx requirement note.
+"""i18n key-presence guard for the Desktop Connectors instruction note.
 
-planner HANDOFF feat-web-config-ui-phase1-mcp-remote.md (scope L54-L58 /
-test plan case 10): hosted_http providers on Claude Desktop now need
-``npx`` (Node.js) on the user machine to run the mcp-remote stdio bridge.
-The dashboard surfaces a one-time note keyed
-``dashboard.provider_desktop_node_note``. There is NO JS test harness in
-the repo, so the EN/JA parity of the new key is asserted here against the
-bundled ``mureo/_data/web/i18n.json`` content directly.
-
-RED until the key is added to BOTH the ``en`` and ``ja`` blocks of
-``i18n.json``. No filesystem mutation, no network. ``@pytest.mark.unit``.
+A remote MCP (hosted_http, e.g. meta-ads-official) cannot be wired into
+Claude Desktop via the config file: Desktop rejects the native http
+shape and the mcp-remote bridge fails on Meta's no-DCR OAuth server. The
+dashboard surfaces a one-time instruction (key
+``dashboard.provider_desktop_connectors_note``) telling the user to add
+it via Settings → Connectors. There is NO JS test harness in the repo,
+so the EN/JA parity of the key is asserted here against the bundled
+``mureo/_data/web/i18n.json`` content directly. ``@pytest.mark.unit``.
 """
 
 from __future__ import annotations
@@ -20,7 +18,7 @@ from typing import Any
 
 import pytest
 
-_NEW_KEY = "dashboard.provider_desktop_node_note"
+_NEW_KEY = "dashboard.provider_desktop_connectors_note"
 # Existing key — present today; used as a structural sanity anchor so a
 # failure clearly isolates the NEW key rather than a path/shape problem.
 _EXISTING_KEY = "dashboard.provider_hosted_oauth_note"

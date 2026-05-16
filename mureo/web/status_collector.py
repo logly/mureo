@@ -72,9 +72,17 @@ class StatusSnapshot:
         }
 
 
-def _detect_installed_providers(settings_path: Path) -> dict[str, bool]:
-    """Read mcpServers from settings.json and report installed provider ids."""
-    payload = read_json_safe(settings_path)
+def _detect_installed_providers(mcp_registry_path: Path) -> dict[str, bool]:
+    """Report which official providers + the mureo native block are
+    registered.
+
+    Reads the file the host actually discovers MCP servers from
+    (``~/.claude.json`` for Claude Code — NOT ``settings.json`` —;
+    ``claude_desktop_config.json`` for Desktop). A read-only parse is
+    deterministic and race-safe for status display; writes still go
+    through the ``claude`` CLI.
+    """
+    payload = read_json_safe(mcp_registry_path)
     raw = payload.get("mcpServers")
     mcp_servers: dict[str, Any] = raw if isinstance(raw, dict) else {}
     installed = {pid: pid in mcp_servers for pid in OFFICIAL_PROVIDER_IDS}
@@ -172,7 +180,7 @@ def collect_status(
     """Build a status snapshot for ``host``."""
     resolved = paths if paths is not None else get_host_paths(host, home)
     setup_parts = read_setup_state(home)
-    providers = _detect_installed_providers(resolved.settings_path)
+    providers = _detect_installed_providers(resolved.mcp_registry_path)
     creds = _detect_credentials_present(resolved.credentials_path)
     creds_oauth = _detect_credentials_oauth(resolved.credentials_path)
     env_vars = _collect_env_vars(resolved.credentials_path)

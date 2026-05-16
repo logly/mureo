@@ -148,6 +148,7 @@ class ConfigureWizard:
             skills_dir=self._host_paths.skills_dir,
             commands_dir=self._commands_path_override,
             credentials_path=self._host_paths.credentials_path,
+            mcp_registry_path=self._host_paths.mcp_registry_path,
         )
 
 

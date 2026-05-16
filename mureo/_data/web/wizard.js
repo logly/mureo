@@ -43,13 +43,19 @@
     stepIndex: 0,
   };
 
+  // ``auth`` MUST precede ``providers_install``: the official upstream
+  // MCPs read credentials ONLY from env vars resolved (at install time)
+  // from ~/.mureo/credentials.json, so the Developer-Token + OAuth slot
+  // has to populate that file BEFORE the provider block is written.
+  // (Native flows never show ``providers_install``, so the swap is inert
+  // for them.)
   const ALL_STEPS = [
     "host",
     "basic",
     "platforms",
     "provider_choice",
-    "providers_install",
     "auth",
+    "providers_install",
     "completed",
   ];
 
@@ -74,10 +80,20 @@
     );
   }
 
-  function hasMureoNativeAuthQueued() {
+  function hasAuthQueued() {
+    // INVARIANT: ``auth`` MUST stay ordered AFTER ``provider_choice`` in
+    // ALL_STEPS. This predicate is true for google_ads regardless of
+    // provider choice, so surfacing the auth step before the choice is
+    // made would strand the user on an ambiguous slot.
+    // Google Ads: BOTH native and official need the same credentials
+    // (Developer Token + Google OAuth refresh token). The official
+    // upstream MCP can't see credentials.json, so the auth step still
+    // runs to collect them — they're injected as env at install time.
+    // Meta: only the native path is queued here; official Meta is a
+    // hosted MCP whose OAuth is the HTTP-transport handshake Claude
+    // performs on first connect (handled on the providers_install page).
     return (
-      (STATE.platforms.google_ads &&
-        STATE.providerChoice.google_ads === "native") ||
+      STATE.platforms.google_ads ||
       (STATE.platforms.meta_ads &&
         STATE.providerChoice.meta_ads === "native") ||
       STATE.platforms.search_console ||
@@ -88,7 +104,7 @@
   function isStepRelevant(step) {
     if (step === "provider_choice") return hasGoogleOrMetaPlatform();
     if (step === "providers_install") return hasOfficialProviderQueued();
-    if (step === "auth") return hasMureoNativeAuthQueued();
+    if (step === "auth") return hasAuthQueued();
     return true;
   }
 
@@ -379,16 +395,40 @@
     wrap.innerHTML =
       '<h2>' + MUREO.t("wizard.completed.title") + "</h2>" +
       '<p>' + MUREO.t("wizard.completed.desc") + "</p>";
+    // Official Meta on Claude Desktop is set up manually via the
+    // Connectors UI — mureo saved nothing for it. Don't list it as
+    // "saved"; instead surface an explicit, actionable reminder so the
+    // user knows there's one step left (silent omission would read as
+    // "done" or "forgotten").
+    const metaPendingManual =
+      STATE.platforms.meta_ads &&
+      STATE.providerChoice.meta_ads === "official" &&
+      STATE.host === "claude-desktop";
+
     const summary = document.createElement("ul");
     summary.className = "wizard-completed-summary";
     PLATFORMS.forEach(function (p) {
-      if (STATE.platforms[p]) {
-        const li = document.createElement("li");
-        li.textContent = MUREO.t("wizard.platforms." + p);
-        summary.appendChild(li);
-      }
+      if (!STATE.platforms[p]) return;
+      if (p === "meta_ads" && metaPendingManual) return;
+      const li = document.createElement("li");
+      li.textContent = MUREO.t("wizard.platforms." + p);
+      summary.appendChild(li);
     });
     if (summary.children.length > 0) wrap.appendChild(summary);
+
+    if (metaPendingManual) {
+      const reminder = document.createElement("div");
+      reminder.className = "wizard-pending-reminder";
+      const head = document.createElement("strong");
+      head.textContent = MUREO.t("wizard.platforms.meta_ads");
+      head.setAttribute("data-i18n", "wizard.platforms.meta_ads");
+      const body = document.createElement("span");
+      body.textContent = MUREO.t("wizard.completed.pending_meta");
+      body.setAttribute("data-i18n", "wizard.completed.pending_meta");
+      reminder.appendChild(head);
+      reminder.appendChild(body);
+      wrap.appendChild(reminder);
+    }
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "btn btn-primary";

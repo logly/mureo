@@ -52,7 +52,12 @@ def test_add_provider_creates_settings_file_when_absent(tmp_path: Path) -> None:
 
     assert settings_path.exists()
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert payload["mcpServers"][spec.id] == spec.mcp_server_config
+    # Stdio entries are normalized with the required transport ``type``
+    # (Claude Code's mcp schema rejects a typeless stdio entry).
+    assert payload["mcpServers"][spec.id] == {
+        "type": "stdio",
+        **dict(spec.mcp_server_config),
+    }
     assert result.changed is True
 
 
@@ -118,6 +123,70 @@ def test_add_provider_idempotent(tmp_path: Path) -> None:
     assert first.changed is True
     assert second.changed is False
     assert first_bytes == second_bytes
+
+
+@pytest.mark.unit
+def test_add_provider_injects_extra_env(tmp_path: Path) -> None:
+    """``extra_env`` is written into the provider block's ``env``.
+
+    Without this the official upstream MCP (which reads ONLY env vars,
+    never mureo's credentials.json) starts with zero credentials and is
+    unusable despite being "registered" — the exact reported bug.
+    """
+    from mureo.providers.config_writer import add_provider_to_claude_settings
+
+    settings_path = tmp_path / ".claude" / "settings.json"
+    spec = _make_spec()
+
+    result = add_provider_to_claude_settings(
+        spec,
+        settings_path=settings_path,
+        extra_env={"GOOGLE_ADS_DEVELOPER_TOKEN": "DT", "GOOGLE_ADS_CLIENT_ID": "C"},
+    )
+
+    payload = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert payload["mcpServers"][spec.id] == {
+        "type": "stdio",
+        **dict(spec.mcp_server_config),
+        "env": {"GOOGLE_ADS_DEVELOPER_TOKEN": "DT", "GOOGLE_ADS_CLIENT_ID": "C"},
+    }
+    assert result.changed is True
+
+
+@pytest.mark.unit
+def test_add_provider_extra_env_idempotent(tmp_path: Path) -> None:
+    """Re-adding with the same ``extra_env`` is a byte-equal no-op."""
+    from mureo.providers.config_writer import add_provider_to_claude_settings
+
+    settings_path = tmp_path / ".claude" / "settings.json"
+    spec = _make_spec()
+    env = {"GOOGLE_ADS_REFRESH_TOKEN": "RT"}
+
+    first = add_provider_to_claude_settings(
+        spec, settings_path=settings_path, extra_env=env
+    )
+    first_bytes = settings_path.read_bytes()
+    second = add_provider_to_claude_settings(
+        spec, settings_path=settings_path, extra_env=env
+    )
+
+    assert first.changed is True
+    assert second.changed is False
+    assert first_bytes == settings_path.read_bytes()
+
+
+@pytest.mark.unit
+def test_add_provider_empty_extra_env_writes_no_env_key(tmp_path: Path) -> None:
+    """An empty/omitted ``extra_env`` keeps the pre-fix bare-block shape."""
+    from mureo.providers.config_writer import add_provider_to_claude_settings
+
+    settings_path = tmp_path / ".claude" / "settings.json"
+    spec = _make_spec()
+
+    add_provider_to_claude_settings(spec, settings_path=settings_path, extra_env={})
+
+    payload = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert "env" not in payload["mcpServers"][spec.id]
 
 
 @pytest.mark.unit
@@ -371,18 +440,239 @@ def test_add_provider_tmp_file_is_mode_0600(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_settings_path_default_uses_path_home(
+def test_settings_path_default_is_claude_json_when_no_cli(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Omitting ``settings_path`` resolves to ``Path.home()/.claude/settings.json``."""
+    """No ``claude`` binary → fallback target is ``~/.claude.json`` root
+    ``mcpServers`` (NOT settings.json — never read for MCP discovery)."""
     from mureo.providers.config_writer import add_provider_to_claude_settings
 
-    monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
+    monkeypatch.setattr(
+        "mureo.providers.config_writer.shutil.which", lambda _: None
+    )
+    monkeypatch.setattr(
+        "mureo.providers.config_writer.Path.home", lambda: tmp_path
+    )
 
     spec = _make_spec()
     add_provider_to_claude_settings(spec)
 
-    expected = tmp_path / ".claude" / "settings.json"
+    expected = tmp_path / ".claude.json"
     assert expected.exists()
     payload = json.loads(expected.read_text(encoding="utf-8"))
     assert spec.id in payload["mcpServers"]
+
+
+@pytest.mark.unit
+class TestProviderClaudeCli:
+    """Default (no ``settings_path``) delegates to the ``claude`` CLI."""
+
+    def test_add_via_cli_self_heals(self) -> None:
+        from types import SimpleNamespace
+
+        from mureo.providers.config_writer import (
+            AddResult,
+            add_provider_to_claude_settings,
+        )
+
+        calls: list[list[str]] = []
+
+        def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+            calls.append(argv)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with (
+            patch(
+                "mureo.providers.config_writer.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.providers.config_writer.subprocess.run",
+                side_effect=fake_run,
+            ),
+        ):
+            result = add_provider_to_claude_settings(_make_spec())
+
+        assert result == AddResult(changed=True)
+        assert calls[0][1:3] == ["mcp", "remove"]  # self-heal first
+        add = calls[1]
+        assert add[1:3] == ["mcp", "add-json"]
+        assert add[3] == "google-ads-official"
+        assert add[add.index("--scope") + 1] == "user"
+        # Normalized with the required stdio transport ``type``.
+        assert json.loads(add[4]) == {
+            "type": "stdio",
+            "command": "pipx",
+            "args": ["run", "google-ads-mcp"],
+        }
+
+    def test_add_via_cli_failure_raises(self) -> None:
+        from types import SimpleNamespace
+
+        from mureo.providers.config_writer import (
+            ConfigWriteError,
+            add_provider_to_claude_settings,
+        )
+
+        def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+            rc = 0 if "remove" in argv else 2
+            return SimpleNamespace(returncode=rc, stdout="", stderr="boom")
+
+        with (
+            patch(
+                "mureo.providers.config_writer.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.providers.config_writer.subprocess.run",
+                side_effect=fake_run,
+            ),
+            pytest.raises(ConfigWriteError, match="add-json"),
+        ):
+            add_provider_to_claude_settings(_make_spec())
+
+    def test_add_via_cli_failure_redacts_secret_from_stderr(self) -> None:
+        """A rejecting CLI that echoes the payload must NOT leak the
+        injected credential env values into the raised/logged message."""
+        from types import SimpleNamespace
+
+        from mureo.providers.config_writer import (
+            ConfigWriteError,
+            add_provider_to_claude_settings,
+        )
+
+        secret = "1//0secret-refresh-token"
+
+        def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+            rc = 0 if "remove" in argv else 2
+            # Simulate the CLI echoing the offending payload back.
+            return SimpleNamespace(
+                returncode=rc,
+                stdout="",
+                stderr=f"invalid config: {secret} rejected",
+            )
+
+        with (
+            patch(
+                "mureo.providers.config_writer.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.providers.config_writer.subprocess.run",
+                side_effect=fake_run,
+            ),
+            pytest.raises(ConfigWriteError) as exc_info,
+        ):
+            add_provider_to_claude_settings(
+                _make_spec(),
+                extra_env={"GOOGLE_ADS_REFRESH_TOKEN": secret},
+            )
+
+        message = str(exc_info.value)
+        assert secret not in message
+        assert "***" in message
+
+    def test_remove_via_cli(self) -> None:
+        from types import SimpleNamespace
+
+        from mureo.providers.config_writer import (
+            RemoveResult,
+            remove_provider_from_claude_settings,
+        )
+
+        def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with (
+            patch(
+                "mureo.providers.config_writer.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.providers.config_writer.subprocess.run",
+                side_effect=fake_run,
+            ),
+        ):
+            result = remove_provider_from_claude_settings("google-ads-official")
+
+        assert result == RemoveResult(changed=True)
+
+    def test_remove_via_cli_noop_when_absent(self) -> None:
+        from types import SimpleNamespace
+
+        from mureo.providers.config_writer import (
+            RemoveResult,
+            remove_provider_from_claude_settings,
+        )
+
+        def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+
+        with (
+            patch(
+                "mureo.providers.config_writer.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.providers.config_writer.subprocess.run",
+                side_effect=fake_run,
+            ),
+        ):
+            result = remove_provider_from_claude_settings("google-ads-official")
+
+        assert result == RemoveResult(changed=False)
+
+    def test_injection_shaped_id_is_rejected(self) -> None:
+        """An id that could be parsed as a ``claude`` option flag is
+        refused before any subprocess (defense-in-depth)."""
+        from mureo.providers.config_writer import (
+            ConfigWriteError,
+            is_provider_installed,
+            remove_provider_from_claude_settings,
+        )
+
+        ran = False
+
+        def fake_run(*_: object, **__: object) -> object:
+            nonlocal ran
+            ran = True
+            raise AssertionError("subprocess must not run for a bad id")
+
+        with (
+            patch(
+                "mureo.providers.config_writer.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.providers.config_writer.subprocess.run",
+                side_effect=fake_run,
+            ),
+        ):
+            with pytest.raises(ConfigWriteError, match="invalid provider id"):
+                remove_provider_from_claude_settings("--help")
+            # Degraded-env contract: never raises, just "not installed".
+            assert is_provider_installed("-x") is False
+
+        assert ran is False
+
+    def test_is_installed_via_cli(self) -> None:
+        from types import SimpleNamespace
+
+        from mureo.providers.config_writer import is_provider_installed
+
+        def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+            rc = 0 if argv[3] == "google-ads-official" else 1
+            return SimpleNamespace(returncode=rc, stdout="", stderr="")
+
+        with (
+            patch(
+                "mureo.providers.config_writer.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.providers.config_writer.subprocess.run",
+                side_effect=fake_run,
+            ),
+        ):
+            assert is_provider_installed("google-ads-official") is True
+            assert is_provider_installed("meta-ads-official") is False

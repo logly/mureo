@@ -301,9 +301,7 @@ class TestSetupBasicHostPropagation:
 
     ROUTE = "/api/setup/basic"
 
-    def test_default_session_uses_claude_code(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_default_session_uses_claude_code(self, wizard: ConfigureWizard) -> None:
         """No explicit host set → handler passes ``host="claude-code"``."""
         with patch(
             "mureo.web.handlers.install_basic_setup",
@@ -346,12 +344,8 @@ class TestSetupBasicClearHostPropagation:
 
     ROUTE = "/api/setup/basic/clear"
 
-    def test_default_session_uses_claude_code(
-        self, wizard: ConfigureWizard
-    ) -> None:
-        with patch(
-            "mureo.web.handlers.clear_all_setup", return_value={}
-        ) as mock_clear:
+    def test_default_session_uses_claude_code(self, wizard: ConfigureWizard) -> None:
+        with patch("mureo.web.handlers.clear_all_setup", return_value={}) as mock_clear:
             _post(wizard, self.ROUTE, {})
 
         assert _host_kwarg(mock_clear) == "claude-code"
@@ -360,9 +354,7 @@ class TestSetupBasicClearHostPropagation:
         self, wizard: ConfigureWizard
     ) -> None:
         _set_host(wizard, "claude-desktop")
-        with patch(
-            "mureo.web.handlers.clear_all_setup", return_value={}
-        ) as mock_clear:
+        with patch("mureo.web.handlers.clear_all_setup", return_value={}) as mock_clear:
             _post(wizard, self.ROUTE, {})
 
         assert _host_kwarg(mock_clear) == "claude-desktop"
@@ -370,9 +362,7 @@ class TestSetupBasicClearHostPropagation:
     def test_home_still_propagated_alongside_host(
         self, wizard: ConfigureWizard
     ) -> None:
-        with patch(
-            "mureo.web.handlers.clear_all_setup", return_value={}
-        ) as mock_clear:
+        with patch("mureo.web.handlers.clear_all_setup", return_value={}) as mock_clear:
             _post(wizard, self.ROUTE, {})
 
         assert mock_clear.call_args.kwargs.get("home") == wizard.home
@@ -524,9 +514,7 @@ class TestPostProvidersHostPropagation:
 
         assert mock_install.call_args.kwargs.get("home") == wizard.home
 
-    def test_install_still_passes_provider_id(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_install_still_passes_provider_id(self, wizard: ConfigureWizard) -> None:
         """The provider_id remains the first positional arg."""
         fake = MagicMock()
         fake.as_dict.return_value = {"status": "ok"}
@@ -574,9 +562,7 @@ class TestPostProvidersHostPropagation:
 
         assert mock_remove.call_args.kwargs.get("home") == wizard.home
 
-    def test_remove_still_passes_provider_id(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_remove_still_passes_provider_id(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
         fake.as_dict.return_value = {"status": "ok"}
         with patch(
@@ -655,6 +641,60 @@ class TestPostEnvVar:
                     },
                 )
             assert exc.value.code == 500
+
+
+@pytest.mark.unit
+class TestPostCredentialsRemove:
+    def test_removes_present_section(self, wizard: ConfigureWizard) -> None:
+        creds = wizard.host_paths.credentials_path
+        creds.parent.mkdir(parents=True, exist_ok=True)
+        creds.write_text(
+            json.dumps(
+                {
+                    "google_ads": {"developer_token": "X"},
+                    "meta_ads": {"access_token": "Y"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        resp = _post(wizard, "/api/credentials/remove", {"section": "google_ads"})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok", "section": "google_ads"}
+        payload = json.loads(creds.read_text(encoding="utf-8"))
+        assert "google_ads" not in payload
+        assert payload["meta_ads"] == {"access_token": "Y"}
+
+    def test_absent_section_is_noop(self, wizard: ConfigureWizard) -> None:
+        creds = wizard.host_paths.credentials_path
+        creds.parent.mkdir(parents=True, exist_ok=True)
+        creds.write_text(
+            json.dumps({"meta_ads": {"access_token": "Y"}}), encoding="utf-8"
+        )
+        resp = _post(wizard, "/api/credentials/remove", {"section": "google_ads"})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "noop", "section": "google_ads"}
+        assert json.loads(creds.read_text(encoding="utf-8")) == {
+            "meta_ads": {"access_token": "Y"}
+        }
+
+    def test_disallowed_section_returns_400(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(
+                wizard,
+                "/api/credentials/remove",
+                {"section": "search_console"},
+            )
+        assert exc.value.code == 400
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(
+                wizard,
+                "/api/credentials/remove",
+                {"section": "google_ads"},
+                csrf=False,
+            )
+        assert exc.value.code == 403
 
 
 @pytest.mark.unit
@@ -941,9 +981,7 @@ class TestPostDemoInit:
             "created_path": "/tmp/mureo-demo",
             "imported": True,
         }
-        with patch(
-            "mureo.web.handlers.init_demo", return_value=fake
-        ) as mock_init:
+        with patch("mureo.web.handlers.init_demo", return_value=fake) as mock_init:
             resp = _post(
                 wizard,
                 self.ROUTE,
@@ -970,9 +1008,7 @@ class TestPostDemoInit:
             assert exc.value.code == 400
         mock_init.assert_not_called()
 
-    def test_error_envelope_surfaces_as_200(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
         """The wrapper catches its own exceptions and returns an
         ``error`` envelope; the route surfaces it as 200, not 500."""
         fake = MagicMock()
@@ -1046,9 +1082,7 @@ class TestGetByodStatus:
                 {"platform": "meta_ads", "mode": "live"},
             ],
         }
-        with patch(
-            "mureo.web.handlers.byod_status", return_value=fake
-        ) as mock_status:
+        with patch("mureo.web.handlers.byod_status", return_value=fake) as mock_status:
             resp = _get(wizard, self.ROUTE)
         body = json.loads(resp.read().decode("utf-8"))
         assert body["status"] == "ok"
@@ -1085,9 +1119,7 @@ class TestPostByodImport:
             "status": "ok",
             "platforms": {"google_ads": {"rows": 42}},
         }
-        with patch(
-            "mureo.web.handlers.byod_import", return_value=fake
-        ) as mock_imp:
+        with patch("mureo.web.handlers.byod_import", return_value=fake) as mock_imp:
             resp = _post(
                 wizard,
                 self.ROUTE,
@@ -1097,9 +1129,7 @@ class TestPostByodImport:
         assert body["status"] == "ok"
         mock_imp.assert_called_once()
 
-    def test_missing_file_path_returns_400(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_missing_file_path_returns_400(self, wizard: ConfigureWizard) -> None:
         with patch("mureo.web.handlers.byod_import") as mock_imp:
             with pytest.raises(urllib.error.HTTPError) as exc:
                 _post(wizard, self.ROUTE, {"replace": True})
@@ -1165,9 +1195,7 @@ class TestPostByodRemove:
     def test_dispatches_to_byod_remove(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
         fake.as_dict.return_value = {"status": "ok", "detail": "google_ads"}
-        with patch(
-            "mureo.web.handlers.byod_remove", return_value=fake
-        ) as mock_rm:
+        with patch("mureo.web.handlers.byod_remove", return_value=fake) as mock_rm:
             resp = _post(
                 wizard,
                 self.ROUTE,
@@ -1177,9 +1205,7 @@ class TestPostByodRemove:
         assert body["status"] == "ok"
         mock_rm.assert_called_once()
 
-    def test_error_envelope_surfaces_as_200(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
         fake.as_dict.return_value = {
             "status": "error",
@@ -1224,17 +1250,13 @@ class TestPostByodClear:
     def test_dispatches_to_byod_clear(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
         fake.as_dict.return_value = {"status": "ok"}
-        with patch(
-            "mureo.web.handlers.byod_clear", return_value=fake
-        ) as mock_clear:
+        with patch("mureo.web.handlers.byod_clear", return_value=fake) as mock_clear:
             resp = _post(wizard, self.ROUTE, {})
         body = json.loads(resp.read().decode("utf-8"))
         assert body["status"] == "ok"
         mock_clear.assert_called_once()
 
-    def test_noop_envelope_when_nothing_present(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_noop_envelope_when_nothing_present(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
         fake.as_dict.return_value = {"status": "noop"}
         with patch("mureo.web.handlers.byod_clear", return_value=fake):
@@ -1289,18 +1311,14 @@ class TestPostPickDirectory:
             "status": "ok",
             "path": "/Users/me/projects/demo",
         }
-        with patch(
-            "mureo.web.handlers.pick_directory", return_value=fake
-        ) as mock_pick:
+        with patch("mureo.web.handlers.pick_directory", return_value=fake) as mock_pick:
             resp = _post(wizard, self.ROUTE, {"title": "Pick a folder"})
         body = json.loads(resp.read().decode("utf-8"))
         assert body["status"] == "ok"
         assert body["path"] == "/Users/me/projects/demo"
         mock_pick.assert_called_once()
 
-    def test_cancelled_envelope_surfaces_as_200(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_cancelled_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
         """A user-cancelled dialog is a normal outcome, not a 500."""
         fake = MagicMock()
         fake.as_dict.return_value = {"status": "cancelled", "path": None}
@@ -1309,9 +1327,7 @@ class TestPostPickDirectory:
         body = json.loads(resp.read().decode("utf-8"))
         assert body["status"] == "cancelled"
 
-    def test_error_envelope_surfaces_as_200(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
         """tkinter-unavailable degrades to an error envelope (UI falls
         back to manual entry), never a 500."""
         fake = MagicMock()
@@ -1357,9 +1373,7 @@ class TestPostPickFile:
             "status": "ok",
             "path": "/Users/me/data/bundle.xlsx",
         }
-        with patch(
-            "mureo.web.handlers.pick_file", return_value=fake
-        ) as mock_pick:
+        with patch("mureo.web.handlers.pick_file", return_value=fake) as mock_pick:
             resp = _post(
                 wizard,
                 self.ROUTE,
@@ -1370,9 +1384,7 @@ class TestPostPickFile:
         assert body["path"] == "/Users/me/data/bundle.xlsx"
         mock_pick.assert_called_once()
 
-    def test_cancelled_envelope_surfaces_as_200(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_cancelled_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
         fake.as_dict.return_value = {"status": "cancelled", "path": None}
         with patch("mureo.web.handlers.pick_file", return_value=fake):
@@ -1380,9 +1392,7 @@ class TestPostPickFile:
         body = json.loads(resp.read().decode("utf-8"))
         assert body["status"] == "cancelled"
 
-    def test_error_envelope_surfaces_as_200(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
         fake.as_dict.return_value = {
             "status": "error",

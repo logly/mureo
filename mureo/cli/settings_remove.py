@@ -23,6 +23,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
+import subprocess  # noqa: S404 - fixed argv, shell=False (claude mcp remove)
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +57,15 @@ class RemoveResult:
 def _default_settings_path() -> Path:
     """Return the default settings path (computed at call time)."""
     return Path.home() / ".claude" / "settings.json"
+
+
+def _default_user_mcp_path() -> Path:
+    """File ``claude mcp ... --scope user`` persists to (``~/.claude.json``).
+
+    User-scope MCP servers live here, NOT in ``settings.json`` — see
+    ``mureo.auth_setup._claude_user_config_path``.
+    """
+    return Path.home() / ".claude.json"
 
 
 def _load_existing(settings_path: Path) -> dict[str, Any] | None:
@@ -142,20 +153,55 @@ def _atomic_write_json(payload: dict[str, Any], settings_path: Path) -> None:
 
 
 def remove_mcp_config(*, settings_path: Path | None = None) -> RemoveResult:
-    """Pop the ``"mureo"`` entry from ``mcpServers`` in ``settings.json``.
+    """Unregister the mureo MCP server (Claude Code *user* scope).
 
-    Idempotent: a second call (already removed) returns
-    ``RemoveResult(changed=False)`` without rewriting the file. A missing
-    settings file is treated as already-removed.
+    Symmetric with ``auth_setup.install_mcp_config(scope="global")``:
+    user-scope servers live in ``~/.claude.json`` (managed by the
+    ``claude`` CLI), NOT in ``~/.claude/settings.json``.
+
+    When ``settings_path`` is omitted and the ``claude`` binary is on
+    PATH, delegation to ``claude mcp remove mureo --scope user`` lets
+    Claude Code mutate its own live config file safely. Otherwise the
+    ``mureo`` key is popped from the target's root ``mcpServers`` via the
+    same atomic, malformed-JSON-refusing writer.
+
+    Idempotent: an already-removed state returns
+    ``RemoveResult(changed=False)`` without rewriting anything.
 
     Args:
-        settings_path: override target path. Defaults to
-            ``Path.home() / ".claude" / "settings.json"``.
+        settings_path: override target file. Defaults to
+            ``~/.claude.json`` (and forces file mode, skipping the CLI).
 
     Raises:
-        ConfigWriteError: existing settings file is malformed JSON.
+        ConfigWriteError: target file is malformed JSON, or the
+            ``claude`` CLI is present but the remove command failed.
     """
-    target = settings_path or _default_settings_path()
+    if settings_path is None:
+        claude_bin = shutil.which("claude")
+        if claude_bin is not None:
+            probe = subprocess.run(  # noqa: S603 - fixed argv, shell=False
+                [claude_bin, "mcp", "get", "mureo"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if probe.returncode != 0:
+                return RemoveResult(changed=False)  # not registered
+            removed = subprocess.run(  # noqa: S603 - fixed argv, shell=False
+                [claude_bin, "mcp", "remove", "mureo", "--scope", "user"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if removed.returncode != 0:
+                raise ConfigWriteError(
+                    "claude mcp remove failed (rc="
+                    f"{removed.returncode}): {removed.stderr.strip()}"
+                )
+            logger.info("mureo MCP unregistered (user scope) via claude CLI")
+            return RemoveResult(changed=True)
+
+    target = settings_path or _default_user_mcp_path()
     existing = _load_existing(target)
     if existing is None:
         return RemoveResult(changed=False)

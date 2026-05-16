@@ -39,6 +39,13 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     # Also patch auth_setup.Path.home so the regression test that calls
     # install_mcp_config() writes into tmp_path rather than the user's home.
     monkeypatch.setattr("mureo.auth_setup.Path.home", lambda: tmp_path)
+    # Force the no-CLI fallback everywhere so integration tests are
+    # deterministic and never shell out to a real ``claude`` binary
+    # (which would mutate the developer's actual ~/.claude.json).
+    monkeypatch.setattr(
+        "mureo.providers.config_writer.shutil.which", lambda _: None
+    )
+    monkeypatch.setattr("mureo.auth_setup.shutil.which", lambda _: None)
 
     mock_run = MagicMock(
         return_value=subprocess.CompletedProcess(
@@ -126,7 +133,7 @@ def test_add_meta_writes_hosted_url_without_subprocess(home: Path) -> None:
     mock_run.assert_not_called()
 
     # The hosted endpoint config landed in settings.json.
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     assert settings_path.exists()
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
     entry = payload["mcpServers"]["meta-ads-official"]
@@ -149,7 +156,7 @@ def test_add_meta_dry_run_marks_hosted_no_install(home: Path) -> None:
     mock_run = _get_subprocess_mock()
     mock_run.assert_not_called()
 
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     assert not settings_path.exists()
 
     out = result.output
@@ -162,11 +169,11 @@ def test_add_meta_dry_run_marks_hosted_no_install(home: Path) -> None:
 
 @pytest.mark.integration
 def test_add_writes_settings_json(home: Path) -> None:
-    """``add`` writes ``mcpServers.<id>`` to ``~/.claude/settings.json``."""
+    """``add`` writes ``mcpServers.<id>`` to ``~/.claude.json``."""
     result = _invoke("providers", "add", "google-ads-official")
     assert result.exit_code == 0, result.output
 
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     assert settings_path.exists()
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
     assert "google-ads-official" in payload["mcpServers"]
@@ -177,7 +184,7 @@ def test_add_is_idempotent(home: Path) -> None:
     """Two ``add`` calls produce a byte-equal settings file and exit 0 each."""
     first = _invoke("providers", "add", "google-ads-official")
     assert first.exit_code == 0, first.output
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     first_bytes = settings_path.read_bytes()
 
     second = _invoke("providers", "add", "google-ads-official")
@@ -208,7 +215,7 @@ def test_add_all_installs_every_catalog_entry(home: Path) -> None:
     mock_run = _get_subprocess_mock()
     assert mock_run.call_count == expected_subprocess_calls
 
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
     for spec in CATALOG:
         assert spec.id in payload["mcpServers"], spec.id
@@ -271,7 +278,7 @@ def test_add_dry_run_does_not_call_subprocess(home: Path) -> None:
     mock_run = _get_subprocess_mock()
     mock_run.assert_not_called()
 
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     assert not settings_path.exists()
 
     # The output should describe what would happen.
@@ -293,7 +300,7 @@ def test_add_emits_coexistence_warning(home: Path) -> None:
 @pytest.mark.integration
 def test_remove_deletes_key(home: Path) -> None:
     """``remove`` pops the provider key but leaves the native ``mureo`` entry."""
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(
         json.dumps(
@@ -337,6 +344,8 @@ def test_existing_setup_claude_code_still_works(home: Path) -> None:
     """Regression: ``install_mcp_config`` + new providers ``add`` coexist."""
     from mureo.auth_setup import install_mcp_config
 
+    # ``home`` fixture forces the no-CLI fallback (no real ``claude``
+    # shell-out), so this writes into tmp_path/.claude.json.
     result_path = install_mcp_config(scope="global")
     assert result_path is not None
     assert result_path.exists()
@@ -372,7 +381,7 @@ def test_main_registers_providers_app(home: Path) -> None:
 
 
 def _seed_mureo_block(settings_path: Path) -> None:
-    """Pre-seed ``~/.claude/settings.json`` with the native mureo entry.
+    """Pre-seed ``~/.claude.json`` with the native mureo entry.
 
     Represents the state after the user has previously run
     ``mureo setup claude-code``.
@@ -393,7 +402,7 @@ def _seed_mureo_block(settings_path: Path) -> None:
 @pytest.mark.integration
 def test_add_google_ads_sets_mureo_disable_env(home: Path) -> None:
     """``add google-ads-official`` writes ``MUREO_DISABLE_GOOGLE_ADS=1``."""
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     _seed_mureo_block(settings_path)
 
     result = _invoke("providers", "add", "google-ads-official")
@@ -413,7 +422,7 @@ def test_add_meta_ads_sets_mureo_disable_env(home: Path) -> None:
     auto-disable env var IS still written (the registration flow is the
     same — only the install method differs).
     """
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     _seed_mureo_block(settings_path)
 
     result = _invoke("providers", "add", "meta-ads-official")
@@ -428,7 +437,7 @@ def test_add_meta_ads_sets_mureo_disable_env(home: Path) -> None:
 @pytest.mark.integration
 def test_add_ga4_sets_mureo_disable_env(home: Path) -> None:
     """``add ga4-official`` writes ``MUREO_DISABLE_GA4=1``."""
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     _seed_mureo_block(settings_path)
 
     result = _invoke("providers", "add", "ga4-official")
@@ -447,7 +456,7 @@ def test_remove_provider_unsets_mureo_disable_env(home: Path) -> None:
     Seeds a user-added ``PYTHONPATH`` env entry before ``add`` so we can
     verify that ``remove`` does NOT pop it alongside the MUREO_DISABLE key.
     """
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(
         json.dumps(
@@ -496,7 +505,7 @@ def test_add_without_existing_mureo_block_skips_disable_env_gracefully(
     auto-disable because no mureo block exists. The official provider
     registration still happens (existing Phase 1 behavior).
     """
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude.json"
     assert not settings_path.exists()
 
     result = _invoke("providers", "add", "google-ads-official")

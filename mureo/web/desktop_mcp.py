@@ -41,6 +41,8 @@ __all__ = [
     "remove_desktop_mcp_block",
     "remove_desktop_server_block",
     "resolve_desktop_config_path",
+    "set_mureo_disable_env_desktop",
+    "unset_mureo_disable_env_desktop",
 ]
 
 
@@ -126,6 +128,78 @@ def install_desktop_server_block(
     merged_servers = dict(servers)
     merged_servers[server_id] = block
     merged["mcpServers"] = merged_servers
+    _atomic_write_config(config_path, merged)
+    return True
+
+
+def set_mureo_disable_env_desktop(config_path: Path, env_var: str) -> bool:
+    """Set ``mcpServers.mureo.env[env_var] = "1"`` in the Desktop config.
+
+    Used when an official hosted provider is chosen on the Desktop host
+    so the surviving mureo MCP stops exposing its now-redundant,
+    unauthenticated tool family for that platform (mirrors the Claude
+    Code ``set_mureo_disable_env``). Only mureo's OWN block is touched —
+    not the Connectors-managed remote MCP — so there is no DCR/OAuth
+    constraint here. Atomic, surgical, all other entries preserved.
+
+    Returns ``True`` when the file was rewritten, ``False`` for a no-op
+    (no ``mcpServers.mureo`` block to update, or the var is already
+    ``"1"``). Raises ``DesktopConfigCorruptError`` (via ``_read_servers``)
+    on a corrupt config without overwriting it.
+    """
+    config, servers = _read_servers(config_path)
+    mureo_block = servers.get("mureo")
+    if not isinstance(mureo_block, dict):
+        return False
+    env = mureo_block.get("env")
+    if env is not None and not isinstance(env, dict):
+        raise DesktopConfigCorruptError(
+            f"'mcpServers.mureo.env' in {config_path} is not an object. "
+            "Fix or remove it before re-running."
+        )
+    if isinstance(env, dict) and env.get(env_var) == "1":
+        return False
+
+    if config_path.exists():
+        _backup_config(config_path)
+    merged = copy.deepcopy(config)
+    merged_block = dict(merged["mcpServers"]["mureo"])
+    merged_env = dict(merged_block.get("env") or {})
+    merged_env[env_var] = "1"
+    merged_block["env"] = merged_env
+    merged["mcpServers"]["mureo"] = merged_block
+    _atomic_write_config(config_path, merged)
+    return True
+
+
+def unset_mureo_disable_env_desktop(config_path: Path, env_var: str) -> bool:
+    """Pop ``mcpServers.mureo.env[env_var]`` from the Desktop config.
+
+    The inverse of :func:`set_mureo_disable_env_desktop` — re-enables
+    mureo's own tool family for the platform when the official provider
+    is removed. Drops an emptied ``env`` object so the block stays
+    clean. Idempotent ``False`` no-op when the block, the ``env``, or
+    the key is absent.
+    """
+    config, servers = _read_servers(config_path)
+    mureo_block = servers.get("mureo")
+    if not isinstance(mureo_block, dict):
+        return False
+    env = mureo_block.get("env")
+    if not isinstance(env, dict) or env_var not in env:
+        return False
+
+    if config_path.exists():
+        _backup_config(config_path)
+    merged = copy.deepcopy(config)
+    merged_block = dict(merged["mcpServers"]["mureo"])
+    merged_env = dict(merged_block.get("env") or {})
+    merged_env.pop(env_var, None)
+    if merged_env:
+        merged_block["env"] = merged_env
+    else:
+        merged_block.pop("env", None)
+    merged["mcpServers"]["mureo"] = merged_block
     _atomic_write_config(config_path, merged)
     return True
 
