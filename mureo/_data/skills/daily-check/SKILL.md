@@ -18,7 +18,7 @@ Run a daily health check on all marketing accounts using the strategy context.
 
 1. **Load context**: Read STRATEGY.md (especially Operation Mode, Data Sources, and all Goal sections) and STATE.json.
 
-2. **Discover available platforms**: Identify all configured platforms from STATE.json `platforms` and check which data sources (Search Console, GA4) are accessible.
+2. **Discover available platforms**: Identify all configured platforms from STATE.json `platforms` and check which data sources (Search Console, GA4) are accessible. Also enumerate installed **plugin** platforms (`mcp__mureo__<plugin>_*` tools) and include them best-effort — see `_mureo-shared` → *Plugin platforms*.
 
 3. **Sync state**: For each platform in STATE.json `platforms`, fetch current campaign data and update STATE.json.
    - **Google Ads**: prefer mureo native `google_ads_campaigns_list`. If mureo's Google Ads tools are unavailable (i.e. `MUREO_DISABLE_GOOGLE_ADS=1` was set when the user installed the official MCP via `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's equivalent campaign-list tool (typically `list_campaigns` or `report_campaigns`).

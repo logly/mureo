@@ -112,6 +112,17 @@ When you don't have direct filesystem tools (Desktop / Cowork / web), always rea
 
 The platform tools (`google_ads_*`, `meta_ads_*`, `search_console_*`) are the same across all hosts because they only exist as MCP tools.
 
+## Plugin platforms (third-party providers)
+
+Beyond the built-in platforms, an entry-point provider installed as a mureo plugin can expose its own operations as `mcp__mureo__<plugin>_*` tools. When a workflow enumerates "all configured platforms", **also enumerate these plugin tools** and include each plugin platform on a **best-effort, clearly-labelled** line (e.g. `Acme Ads (plugin) — …`), driving it with the plugin's own tools as their names/descriptions imply.
+
+Honest scope for a plugin platform:
+
+- **Include** the basic listing / performance / health its tools support.
+- **Skip** mureo-only value-adds — anomaly detection, `result_indicator` CV-mismatch, RSA-asset audit, rule-based scoring. These are platform-specific to the built-ins and do not exist for plugins; say so in the output.
+- Plugin tool calls are already audited by mureo, and successful mutations promoted into `action_log` (`platform="plugin:<dist>"`) when run in a strategy workspace (a `STATE.json` exists). Treat plugin findings as **advisory**; do not assume mureo's strategy/rollback guarantees beyond what `action_log` records (an arbitrary plugin operation is not auto-reversible).
+- Plugin tool-name mapping is **best-effort** (infer from the live tool list), not deterministic. Never fail the whole workflow because a plugin tool is missing — report it and continue with the built-ins.
+
 ## MCP Server Configuration
 
 ### Claude Code / Cursor
