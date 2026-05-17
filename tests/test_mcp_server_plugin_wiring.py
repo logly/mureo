@@ -141,3 +141,101 @@ def test_no_plugins_is_additive_no_op() -> None:
     mod = importlib.reload(mod)
     assert frozenset() == mod._PLUGIN_NAMES
     assert mod._PLUGIN_TOOLS == []
+
+
+# ---------------------------------------------------------------------------
+# #114 Phase 1 — plugin dispatch is audited + throttled, fault-isolated.
+# ---------------------------------------------------------------------------
+
+
+class _BoomPlugin:
+    name = "boom_plugin"
+    display_name = "Boom"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="boom_plugin_explode",
+                description="raises",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+        )
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        raise RuntimeError("plugin blew up")
+
+
+def _boom_discover(**_kw: Any) -> tuple[ProviderEntry, ...]:
+    return (
+        ProviderEntry(
+            name=_BoomPlugin.name,
+            display_name=_BoomPlugin.display_name,
+            capabilities=_BoomPlugin.capabilities,
+            provider_class=_BoomPlugin,
+            source_distribution="boom-dist",
+        ),
+    )
+
+
+@pytest.mark.unit
+class TestPluginAuditAndThrottle:
+    async def test_success_is_audited(
+        self, server_with_plugin, tmp_path, monkeypatch
+    ) -> None:
+        import json
+
+        from mureo.mcp import plugin_audit
+
+        log = tmp_path / "plugin_audit.jsonl"
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
+
+        out = await server_with_plugin.handle_call_tool(
+            "wired_plugin_echo", {"msg": "hi", "api_key": "SECRET"}
+        )
+        assert out[0].text == "hi"
+        rec = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+        assert rec["tool"] == "wired_plugin_echo"
+        assert rec["source"] == "wired-dist"
+        assert rec["ok"] is True
+        assert rec["args"]["api_key"] == "***"
+
+    async def test_throttle_acquired_before_dispatch(
+        self, server_with_plugin, monkeypatch
+    ) -> None:
+        calls: list[str] = []
+
+        class _SpyThrottler:
+            async def acquire(self) -> None:
+                calls.append("acquire")
+
+        monkeypatch.setattr(server_with_plugin, "_PLUGIN_THROTTLER", _SpyThrottler())
+        await server_with_plugin.handle_call_tool("wired_plugin_echo", {"msg": "x"})
+        assert calls == ["acquire"]
+
+    async def test_plugin_exception_audited_reraised_no_crash(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import json
+
+        from mureo.mcp import plugin_audit
+
+        log = tmp_path / "plugin_audit.jsonl"
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers", _boom_discover
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            with pytest.raises(RuntimeError, match="plugin blew up"):
+                await mod.handle_call_tool("boom_plugin_explode", {"x": 1})
+            # Error recorded...
+            rec = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+            assert rec["ok"] is False and "plugin blew up" in rec["error"]
+            # ...and the server is NOT dead — a built-in still dispatches.
+            names = {t.name for t in await mod.handle_list_tools()}
+            assert "rollback_plan_get" in names
+        finally:
+            importlib.reload(mod)

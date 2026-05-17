@@ -14,6 +14,7 @@ from mureo.mcp.tool_provider import (
     MCPToolProvider,
     PluginToolWarning,
     collect_plugin_tools,
+    plugin_source,
 )
 
 # --- fakes -----------------------------------------------------------------
@@ -246,3 +247,14 @@ def test_default_discover_is_registry_and_yields_no_op_when_empty() -> None:
     # env → additive no-op (the regression guarantee for the 3116 suite).
     tools, dispatch = collect_plugin_tools(reserved_names=set())
     assert tools == [] and dispatch == {}
+
+
+def test_collect_stamps_source_distribution_for_audit() -> None:
+    """The dispatched provider instance carries its pip distribution so
+    the server audit trail can attribute plugin calls (#114 Phase 1)."""
+    _tools, dispatch = collect_plugin_tools(
+        reserved_names=set(), discover=_discover(_GoodProvider)
+    )
+    assert plugin_source(dispatch["good_plugin_ping"]) == "test-dist"
+    # Unknown / non-plugin object → empty string, never raises.
+    assert plugin_source(object()) == ""

@@ -41,6 +41,7 @@ Design constraints
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import warnings
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -167,6 +168,13 @@ def _collect_one(
         # Discovered & skill-matchable, just no MCP surface. Not a fault.
         return
 
+    # Stamp the originating distribution onto the instance so the server
+    # dispatch path can attribute audit records without changing the
+    # (test-depended-on) collect_plugin_tools return signature. Best-
+    # effort: some objects forbid attribute assignment (__slots__).
+    with contextlib.suppress(AttributeError, TypeError):
+        instance._mureo_source_distribution = entry.source_distribution  # type: ignore[attr-defined]
+
     # ``runtime_checkable`` only proves the attributes exist, not that
     # ``handle_mcp_tool`` is awaitable. The server dispatch path
     # (``await provider.handle_mcp_tool(...)``) is NOT fault-isolated,
@@ -208,8 +216,19 @@ def _collect_one(
         dispatch[tool_name] = instance
 
 
+def plugin_source(provider: object) -> str:
+    """Return the pip distribution that supplied ``provider``.
+
+    Read back the breadcrumb stamped in ``_collect_one``. Empty string
+    when unknown (older instance, ``__slots__``, or a non-plugin).
+    """
+    value = getattr(provider, "_mureo_source_distribution", "")
+    return value if isinstance(value, str) else ""
+
+
 __all__ = [
     "MCPToolProvider",
     "PluginToolWarning",
     "collect_plugin_tools",
+    "plugin_source",
 ]
