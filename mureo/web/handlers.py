@@ -448,6 +448,17 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     def _post_byod_clear(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         send_json(self, byod_clear().as_dict())
 
+    def _post_shutdown(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
+        """Stop the configure server so the terminal is freed.
+
+        The user finished in the browser; ask the CLI loop to return
+        instead of blocking until ``--timeout-seconds``. Reply first,
+        then signal — the response still flushes because the daemon
+        request thread outlives ``serve_forever`` returning.
+        """
+        send_json(self, {"status": "stopping"})
+        self.wizard.request_stop()
+
     def _post_pick_directory(self, payload: dict[str, Any]) -> None:
         title = str(payload.get("title", "Select a folder"))
         send_json(self, pick_directory(title=title).as_dict())
@@ -500,6 +511,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/byod/import": _post_byod_import,
         "/api/byod/remove": _post_byod_remove,
         "/api/byod/clear": _post_byod_clear,
+        "/api/shutdown": _post_shutdown,
         "/api/pick/directory": _post_pick_directory,
         "/api/pick/file": _post_pick_file,
     }

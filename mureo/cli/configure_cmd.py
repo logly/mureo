@@ -26,7 +26,11 @@ def configure(
     timeout_seconds: float = typer.Option(
         600.0,
         "--timeout-seconds",
-        help="Stop the server after this many seconds of inactivity.",
+        help=(
+            "Hard cap: auto-stop after this many seconds even if you "
+            "never finish. Normally it exits the moment you finish in "
+            "the browser or press Ctrl+C."
+        ),
     ),
 ) -> None:
     """Open the local mureo configuration UI in a browser."""

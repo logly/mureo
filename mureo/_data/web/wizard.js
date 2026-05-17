@@ -458,6 +458,34 @@
       MUREO.navigateToDashboard();
     });
     wrap.appendChild(btn);
+
+    // Free the terminal: the CLI blocks until the user finishes (or
+    // --timeout-seconds). This button POSTs /api/shutdown so the
+    // `mureo configure` process exits immediately instead of leaving
+    // the terminal "stuck".
+    const finishBtn = document.createElement("button");
+    finishBtn.type = "button";
+    finishBtn.className = "btn btn-secondary";
+    finishBtn.style.marginLeft = "8px";
+    finishBtn.textContent = MUREO.t("wizard.completed.finish_button");
+    finishBtn.setAttribute("data-i18n", "wizard.completed.finish_button");
+    const finishNote = document.createElement("p");
+    finishNote.className = "dashboard-provider-hosted-note";
+    finishNote.hidden = true;
+    finishNote.setAttribute("data-i18n", "wizard.completed.finished_note");
+    finishBtn.addEventListener("click", async function () {
+      finishBtn.disabled = true;
+      try {
+        await MUREO.postJson("/api/shutdown", {});
+      } catch (_e) {
+        // The server may close the socket before the response is read;
+        // that's success, not failure — fall through to the note.
+      }
+      finishNote.hidden = false;
+      finishNote.textContent = MUREO.t("wizard.completed.finished_note");
+    });
+    wrap.appendChild(finishBtn);
+    wrap.appendChild(finishNote);
     return wrap;
   }
 
