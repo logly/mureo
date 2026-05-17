@@ -185,7 +185,9 @@
     "dashboard.byod_mode_not_configured": "Not configured",
     "auth_wizard.google.already_authenticated": "Already authenticated for Google (Search Console / Google Ads shared scope).",
     "auth_wizard.google_ads.scope_note": "Use the “Authenticate with Google” button below — mureo requests the required Google Ads scope (https://www.googleapis.com/auth/adwords) plus Search Console automatically. If you instead reuse a refresh token minted elsewhere, it MUST include the Google Ads (AdWords) scope, or API calls fail with ACCESS_TOKEN_SCOPE_INSUFFICIENT. Official scope reference:",
-    "auth_wizard.google_ads.scope_doc_link": "Google Ads API — OAuth 2.0 scopes (official docs)"
+    "auth_wizard.google_ads.scope_doc_link": "Google Ads API — OAuth 2.0 scopes (official docs)",
+    "wizard.completed.finish_button": "Finish & free the terminal",
+    "wizard.completed.finished_note": "Done — the mureo configure server has stopped and your terminal is free. You can close this tab."
   },
   "ja": {
     "nav.dashboard": "ダッシュボード",
@@ -373,6 +375,8 @@
     "dashboard.byod_mode_not_configured": "未設定",
     "auth_wizard.google.already_authenticated": "Google は認証済みです（Search Console / Google Ads 共通スコープ）。",
     "auth_wizard.google_ads.scope_note": "下の「Authenticate with Google」ボタンを使ってください — mureo は必要な Google Ads スコープ（https://www.googleapis.com/auth/adwords）と Search Console を自動的に要求します。他で発行した refresh token を流用する場合は、Google Ads（AdWords）スコープを必ず含めてください。含まないと API 呼び出しが ACCESS_TOKEN_SCOPE_INSUFFICIENT で失敗します。公式スコープ説明:",
-    "auth_wizard.google_ads.scope_doc_link": "Google Ads API — OAuth 2.0 スコープ（公式ドキュメント）"
+    "auth_wizard.google_ads.scope_doc_link": "Google Ads API — OAuth 2.0 スコープ（公式ドキュメント）",
+    "wizard.completed.finish_button": "終了してターミナルを解放",
+    "wizard.completed.finished_note": "完了 — mureo configure サーバを停止しました。ターミナルは解放されています。このタブは閉じて構いません。"
   }
 }

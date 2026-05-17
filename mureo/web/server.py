@@ -11,9 +11,9 @@ from __future__ import annotations
 import contextlib
 import http.server
 import logging
+import signal
 import socketserver
 import threading
-import time
 import webbrowser
 from importlib import resources
 from pathlib import Path
@@ -76,6 +76,7 @@ class ConfigureWizard:
 
         self._server: _ConfigureServer | None = None
         self._ready = threading.Event()
+        self._stop = threading.Event()
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
@@ -126,6 +127,20 @@ class ConfigureWizard:
         if not self._ready.wait(timeout=timeout):
             raise TimeoutError("configure wizard failed to bind within timeout")
 
+    @property
+    def stop_event(self) -> threading.Event:
+        """Set when the CLI loop should stop serving and exit."""
+        return self._stop
+
+    def request_stop(self) -> None:
+        """Ask ``run_configure_wizard`` to stop serving and return.
+
+        Called from a SIGINT/SIGTERM handler or the ``/api/shutdown``
+        route so the terminal is freed the moment the user finishes (or
+        presses Ctrl+C) instead of blocking until ``timeout_seconds``.
+        """
+        self._stop.set()
+
     def shutdown(self) -> None:
         with self._lock:
             server = self._server
@@ -171,10 +186,31 @@ def run_configure_wizard(
         with contextlib.suppress(Exception):
             webbrowser.open(url)
 
-    deadline = time.monotonic() + timeout_seconds
+    # Stop the moment the user finishes (UI POSTs /api/shutdown ->
+    # request_stop), presses Ctrl+C (SIGINT) or the process is asked to
+    # terminate (SIGTERM); fall back to timeout_seconds as a hard cap.
+    # An explicit signal handler that sets the stop Event is reliable in
+    # this multi-threaded process (the HTTP server runs on a daemon
+    # thread) where bare KeyboardInterrupt delivery is not. Signal
+    # handlers can only be registered from the main thread, so degrade
+    # gracefully (e.g. under pytest) to a plain timed wait.
+    prev_handlers: dict[int, object] = {}
+
+    def _on_signal(_signum: int, _frame: object) -> None:
+        wizard.request_stop()
+
     try:
-        while time.monotonic() < deadline:
-            time.sleep(0.5)
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            with contextlib.suppress(ValueError, OSError):
+                prev_handlers[sig] = signal.signal(sig, _on_signal)
+        wizard.stop_event.wait(timeout=timeout_seconds)
+    except KeyboardInterrupt:
+        # Belt-and-braces: if a KeyboardInterrupt still surfaces (e.g.
+        # the handler could not be installed), treat it as a stop.
+        pass
     finally:
+        for sig, prev in prev_handlers.items():
+            with contextlib.suppress(ValueError, OSError):
+                signal.signal(sig, prev)  # type: ignore[arg-type]
         wizard.shutdown()
         thread.join(timeout=2.0)

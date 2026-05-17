@@ -245,6 +245,80 @@ class TestRunConfigureWizardCli:
 
 
 @pytest.mark.unit
+class TestStopLifecycle:
+    """``request_stop`` / ``/api/shutdown`` free the terminal instead of
+    blocking until ``--timeout-seconds`` (regression: closing the
+    browser left the CLI hung for up to 10 minutes; Ctrl+C unreliable)."""
+
+    def test_request_stop_sets_event(self, home_dir: Path) -> None:
+        wiz = ConfigureWizard(home=home_dir)
+        assert not wiz.stop_event.is_set()
+        wiz.request_stop()
+        assert wiz.stop_event.is_set()
+
+    def test_run_configure_wizard_returns_immediately_when_stopped(
+        self, home_dir: Path
+    ) -> None:
+        """With a 60s cap, ``request_stop()`` must end the CLI loop in
+        well under a second — not wait out the timeout."""
+        captured: dict[str, ConfigureWizard] = {}
+        real_ctor = ConfigureWizard
+
+        def _spy(**kwargs: object) -> ConfigureWizard:
+            wiz = real_ctor(**kwargs)  # type: ignore[arg-type]
+            captured["wiz"] = wiz
+            return wiz
+
+        with (
+            patch("mureo.web.server.webbrowser.open"),
+            patch("mureo.web.server.ConfigureWizard", side_effect=_spy),
+        ):
+            thread = threading.Thread(
+                target=run_configure_wizard,
+                kwargs={
+                    "home": home_dir,
+                    "open_browser": False,
+                    "timeout_seconds": 60.0,
+                },
+                daemon=True,
+            )
+            thread.start()
+            for _ in range(50):
+                if "wiz" in captured:
+                    break
+                time.sleep(0.05)
+            captured["wiz"].wait_until_ready(timeout=5.0)
+
+            start = time.monotonic()
+            captured["wiz"].request_stop()
+            thread.join(timeout=5.0)
+            elapsed = time.monotonic() - start
+
+        assert not thread.is_alive(), "CLI loop did not stop on request_stop"
+        assert elapsed < 3.0, f"stop took {elapsed:.2f}s (should be ~instant)"
+
+    def test_api_shutdown_route_triggers_stop(
+        self, served_wizard: ConfigureWizard
+    ) -> None:
+        import json
+        import urllib.request
+
+        base = f"http://127.0.0.1:{served_wizard.port}"
+        token = served_wizard.session.csrf_token
+        req = urllib.request.Request(
+            f"{base}/api/shutdown",
+            data=b"{}",
+            method="POST",
+            headers={"Content-Type": "application/json", "X-CSRF-Token": token},
+        )
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+
+        assert body == {"status": "stopping"}
+        assert served_wizard.stop_event.is_set()
+
+
+@pytest.mark.unit
 class TestResolveStaticDir:
     def test_falls_back_when_resources_raises(self, home_dir: Path) -> None:
         """Force the importlib.resources path to fail and verify the
