@@ -19,6 +19,20 @@ only ever reads the local XLSX file.**
 > the existing Live API OAuth path (see `docs/authentication.md`) —
 > they are **not** part of the BYOD bundle.
 
+> **Compatibility — BYOD/Demo run on mureo-native only.** BYOD (and
+> `mureo demo`, which is just a synthetic BYOD bundle) is served
+> entirely by mureo's own CSV-backed MCP tools. The **official
+> platform MCPs** (`mureo providers add google-ads-official` /
+> `meta-ads-official`, or the Claude.ai Meta connector) are the
+> **Live-API** path — they connect to the real platform and cannot
+> read your local BYOD/demo data. Per platform the two are mutually
+> exclusive: do **not** `mureo providers add` (which sets
+> `MUREO_DISABLE_<PLATFORM>=1`) or switch a platform to the official
+> MCP if you analyze that platform via BYOD or the demo — keep
+> mureo-native enabled for it. Use the official MCP only for the Live
+> API. (`mureo providers remove` / the dashboard native↔official
+> toggle re-enables mureo-native.)
+
 ---
 
 ## Why BYOD?

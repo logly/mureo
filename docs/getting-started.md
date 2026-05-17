@@ -132,6 +132,8 @@ Detailed step-by-step:
 
 The exports are independent — you can start with one platform and add the other later. Search Console and GA4 are not part of BYOD; they require the Live API path.
 
+> **BYOD and Demo run on mureo-native only.** They are served by mureo's CSV-backed MCP tools; the official platform MCPs (`mureo providers add …` / the Claude.ai Meta connector) are the Live-API path and cannot read BYOD/demo data. Don't route a platform to the official MCP (or `mureo providers add` it) if you analyze it via BYOD or the demo — keep mureo-native enabled for it. See [docs/byod.md](byod.md#why-byod) → *Compatibility*.
+
 ## Step 2 — Where to put the file
 
 The XLSX itself is just a temporary input — once imported, the data lives under `<workspace>/byod/<platform>/` (or the global `~/.mureo/byod/<platform>/` if you are running CLI without `install-desktop`).
