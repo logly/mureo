@@ -194,7 +194,7 @@ def run_configure_wizard(
     # thread) where bare KeyboardInterrupt delivery is not. Signal
     # handlers can only be registered from the main thread, so degrade
     # gracefully (e.g. under pytest) to a plain timed wait.
-    prev_handlers: dict[int, object] = {}
+    prev_handlers: list[tuple[int, object]] = []
 
     def _on_signal(_signum: int, _frame: object) -> None:
         wizard.request_stop()
@@ -202,15 +202,15 @@ def run_configure_wizard(
     try:
         for sig in (signal.SIGINT, signal.SIGTERM):
             with contextlib.suppress(ValueError, OSError):
-                prev_handlers[sig] = signal.signal(sig, _on_signal)
+                prev_handlers.append((sig, signal.signal(sig, _on_signal)))
         wizard.stop_event.wait(timeout=timeout_seconds)
     except KeyboardInterrupt:
         # Belt-and-braces: if a KeyboardInterrupt still surfaces (e.g.
         # the handler could not be installed), treat it as a stop.
         pass
     finally:
-        for sig, prev in prev_handlers.items():
+        for signum, prev in prev_handlers:
             with contextlib.suppress(ValueError, OSError):
-                signal.signal(sig, prev)  # type: ignore[arg-type]
+                signal.signal(signum, prev)  # type: ignore[arg-type]
         wizard.shutdown()
         thread.join(timeout=2.0)
