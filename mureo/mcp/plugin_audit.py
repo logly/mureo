@@ -28,7 +28,7 @@ import json
 import logging
 import os
 import re
-import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -80,7 +80,7 @@ def record_plugin_call(
     """Append one masked JSON-Lines audit record. Never raises."""
     try:
         rec = {
-            "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "tool": tool,
             "source": source or "<unknown>",
             "ok": ok,

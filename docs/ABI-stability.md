@@ -38,6 +38,7 @@ The mureo plugin ABI consists of exactly the following:
 | `BaseProvider` Protocol shape (3 attributes) | `mureo.core.providers.base` | Stable |
 | Domain Protocol method signatures (`CampaignProvider`, `KeywordProvider`, `AudienceProvider`, `ExtensionProvider`) | `mureo.core.providers.{campaign,keyword,audience,extension}` | Stable (Phase 1) |
 | `MCPToolProvider` Protocol shape (`mcp_tools()` + `async handle_mcp_tool()`) — the opt-in MCP-exposure secondary Protocol | `mureo.mcp.tool_provider` | Stable (Phase 1; structural / `runtime_checkable`) |
+| Plugin tool-call safety semantics: mureo reads **standard MCP** `Tool.annotations.readOnlyHint` (a non-read tool ⇒ *mutating*, conservative default) and the optional `Tool` `_meta["mureo"]` keys `reversal` / `throttle`. No new required Protocol surface — purely additive & opt-in; undeclared behaviour is unchanged from Phase 1 (audited + throttled). | `mureo.mcp.{server,plugin_semantics}` | Stable (Phase 2; additive — these meta key names are the only contract) |
 | Model dataclass shapes (`Campaign`, `Ad`, `Keyword`, ...) | `mureo.core.providers.models` | Stable (Phase 1; additive evolution allowed) |
 | Status / Kind / MatchType / BidStrategy **enum values** | `mureo.core.providers.models` | Stable |
 | Entry-point group names (`mureo.providers`, `mureo.skills`) | `mureo.core.providers.registry` | Stable |

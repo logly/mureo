@@ -6,7 +6,7 @@ import importlib
 from typing import Any
 
 import pytest
-from mcp.types import TextContent, Tool
+from mcp.types import TextContent, Tool, ToolAnnotations
 
 from mureo.core.providers.capabilities import Capability
 from mureo.core.providers.registry import ProviderEntry
@@ -237,5 +237,131 @@ class TestPluginAuditAndThrottle:
             # ...and the server is NOT dead — a built-in still dispatches.
             names = {t.name for t in await mod.handle_list_tools()}
             assert "rollback_plan_get" in names
+        finally:
+            importlib.reload(mod)
+
+
+# ---------------------------------------------------------------------------
+# #114 Phase 2 — mutating plugin calls promoted to STATE.json action_log;
+# read-only ones are not; declared throttle gets a dedicated bucket.
+# ---------------------------------------------------------------------------
+
+
+class _ReadOnlyPlugin:
+    name = "ro_plugin"
+    display_name = "RO"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="ro_plugin_report",
+                description="read",
+                inputSchema={"type": "object", "properties": {}},
+                annotations=ToolAnnotations(readOnlyHint=True),
+            ),
+        )
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text="ok")]
+
+
+class _ThrottleHintPlugin:
+    name = "th_plugin"
+    display_name = "TH"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="th_plugin_go",
+                description="x",
+                inputSchema={"type": "object", "properties": {}},
+                meta={"mureo": {"throttle": {"rate": 1.0, "burst": 1}}},
+            ),
+        )
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text="ok")]
+
+
+def _disc_for(cls: type):
+    def _fn(**_kw: Any) -> tuple[ProviderEntry, ...]:
+        return (
+            ProviderEntry(
+                name=cls.name,
+                display_name=cls.display_name,
+                capabilities=cls.capabilities,
+                provider_class=cls,
+                source_distribution=f"{cls.name}-dist",
+            ),
+        )
+
+    return _fn
+
+
+def _seed_state(d) -> None:
+    from mureo.context.models import StateDocument
+    from mureo.context.state import write_state_file
+
+    write_state_file(d / "STATE.json", StateDocument())
+
+
+@pytest.mark.unit
+class TestPhase2Promotion:
+    async def test_mutating_plugin_promoted_to_action_log(
+        self, server_with_plugin, tmp_path, monkeypatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+        from mureo.mcp import plugin_audit
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
+        )
+        await server_with_plugin.handle_call_tool("wired_plugin_echo", {"msg": "x"})
+        doc = read_state_file(tmp_path / "STATE.json")
+        assert len(doc.action_log) == 1
+        assert doc.action_log[0].action == "wired_plugin_echo"
+        assert doc.action_log[0].platform == "plugin:wired-dist"
+
+    async def test_readonly_plugin_not_promoted(self, tmp_path, monkeypatch) -> None:
+        from mureo.context.state import read_state_file
+        from mureo.mcp import plugin_audit
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
+        )
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_ReadOnlyPlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            await mod.handle_call_tool("ro_plugin_report", {})
+            doc = read_state_file(tmp_path / "STATE.json")
+            assert doc.action_log == ()  # read-only ⇒ jsonl only
+            assert (tmp_path / "audit.jsonl").exists()
+        finally:
+            importlib.reload(mod)
+
+    def test_declared_throttle_gets_dedicated_bucket(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_ThrottleHintPlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            assert "th_plugin_go" in mod._PLUGIN_TOOL_THROTTLERS
+            assert (
+                mod._PLUGIN_TOOL_THROTTLERS["th_plugin_go"] is not mod._PLUGIN_THROTTLER
+            )
         finally:
             importlib.reload(mod)

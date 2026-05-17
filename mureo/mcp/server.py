@@ -41,6 +41,11 @@ if TYPE_CHECKING:
     from mureo.mcp.tool_provider import MCPToolProvider
 
 from mureo.mcp.plugin_audit import record_plugin_call
+from mureo.mcp.plugin_semantics import (
+    ToolSemantics,
+    derive_semantics,
+    record_mutation_action_log,
+)
 from mureo.mcp.tool_provider import collect_plugin_tools, plugin_source
 from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
 from mureo.mcp.tools_analysis import handle_tool as handle_analysis_tool
@@ -136,6 +141,19 @@ _PLUGIN_NAMES: frozenset[str] = frozenset(_PLUGIN_DISPATCH)
 # plugin dispatch branch.
 _PLUGIN_THROTTLER = Throttler(PLUGIN_THROTTLE)
 
+# Phase 2 (#114): per-tool safety semantics derived from STANDARD MCP
+# metadata (annotations.readOnlyHint + optional meta["mureo"]). No new
+# ABI surface. A declared throttle hint gets its own bucket; everything
+# else shares _PLUGIN_THROTTLER. Undeclared ⇒ mutating (conservative).
+_PLUGIN_SEMANTICS: dict[str, ToolSemantics] = {
+    t.name: derive_semantics(t) for t in _PLUGIN_TOOLS
+}
+_PLUGIN_TOOL_THROTTLERS: dict[str, Throttler] = {
+    name: Throttler(sem.throttle)
+    for name, sem in _PLUGIN_SEMANTICS.items()
+    if sem.throttle is not None
+}
+
 
 # ---------------------------------------------------------------------------
 # Handlers (defined as module-level functions so tests can call them directly)
@@ -168,7 +186,9 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     if name in _PLUGIN_NAMES:
         provider = _PLUGIN_DISPATCH[name]
         source = plugin_source(provider)
-        await _PLUGIN_THROTTLER.acquire()
+        sem = _PLUGIN_SEMANTICS.get(name)
+        throttler = _PLUGIN_TOOL_THROTTLERS.get(name, _PLUGIN_THROTTLER)
+        await throttler.acquire()
         try:
             result = await provider.handle_mcp_tool(name, arguments)
         except KeyboardInterrupt:
@@ -186,6 +206,16 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
             )
             raise
         record_plugin_call(tool=name, arguments=arguments, source=source, ok=True)
+        # Phase 2: promote a *successful mutating* call into STATE.json's
+        # action_log (only when a STATE.json exists in cwd) so the agent
+        # / strategy review / rollback can see it like a built-in op.
+        # Read-only tools stay in the jsonl audit only (no STATE bloat).
+        if sem is None or sem.mutating:
+            record_mutation_action_log(
+                tool=name,
+                source=source,
+                reversal=None if sem is None else sem.reversal,
+            )
         return result
     raise ValueError(f"Unknown tool: {name}")
 
