@@ -42,6 +42,20 @@ _SENSITIVE_KEY = re.compile(
     r"|access[_-]?token|refresh[_-]?token|client[_-]?secret|bearer|cookie)",
     re.IGNORECASE,
 )
+# Secret-shaped *values* that can appear in a free-text error string
+# (``error`` is not key/value-masked like ``args``). Covers HTTP bearer
+# headers and Amazon LwA access/refresh tokens (Atza|… / Atzr|…). The
+# Amazon bridge is the first credentialed plugin path, so this is
+# defense-in-depth for every plugin's recorded exception text.
+_SECRET_VALUE = re.compile(
+    r"(Bearer\s+\S+|Atza\|[^\s'\"]+|Atzr\|[^\s'\"]+)",
+    re.IGNORECASE,
+)
+
+
+def _scrub(text: str) -> str:
+    """Redact secret-shaped substrings from a free-text error string."""
+    return _SECRET_VALUE.sub("***", text)
 
 
 def _audit_path() -> Path:
@@ -88,7 +102,7 @@ def record_plugin_call(
             "args": _mask(arguments if isinstance(arguments, dict) else {}),
         }
         if error is not None:
-            rec["error"] = error[:_MAX_STR]
+            rec["error"] = _scrub(error)[:_MAX_STR]
         path = _audit_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(rec, ensure_ascii=False, default=str) + "\n"

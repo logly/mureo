@@ -18,6 +18,7 @@ from importlib import metadata
 import typer
 
 import mureo
+from mureo.cli.amazon_cmd import amazon_app
 from mureo.cli.auth_cmd import auth_app
 from mureo.cli.byod_cmd import byod_app
 from mureo.cli.configure_cmd import configure_app
@@ -44,6 +45,7 @@ app.add_typer(rollback_app)
 app.add_typer(byod_app)
 app.add_typer(demo_app)
 app.add_typer(providers_app)
+app.add_typer(amazon_app)
 app.add_typer(configure_app)
 app.add_typer(open_app)
 app.add_typer(service_app)
