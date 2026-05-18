@@ -283,6 +283,25 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         self.wizard.set_host(host)
         send_json(self, {"host": self.wizard.session.host})
 
+    def _resolve_host(self, payload: dict[str, Any]) -> str:
+        """Client-authoritative host for host-dependent actions.
+
+        The server's ``session.host`` lives in the ``mureo configure``
+        process memory and resets to the ``claude-code`` default if that
+        process restarts, while the browser keeps the user's real
+        choice. Relying on ``session.host`` alone silently routed a
+        Desktop user down the Claude Code verification path. So a valid
+        ``host`` in the request payload wins and is written back into
+        the session (self-healing a reset/stale session); an absent or
+        invalid value falls back to the current session host.
+        """
+        host: str = payload.get("host", "")
+        if host in SUPPORTED_HOSTS:
+            self.wizard.set_host(host)
+            return host
+        session_host: str = self.wizard.session.host
+        return session_host
+
     def _post_setup_basic(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         result = install_basic_setup(
             home=self.wizard.home, host=self.wizard.session.host
@@ -330,7 +349,8 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         result = confirm_hosted_provider(
             provider_id,
             home=self.wizard.home,
-            host=self.wizard.session.host,
+            host=self._resolve_host(payload),
+            affirm=bool(payload.get("affirm", False)),
         )
         send_json(self, result.as_dict())
 
@@ -351,7 +371,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             platform,
             bool(payload.get("prefer_official", False)),
             home=self.wizard.home,
-            host=self.wizard.session.host,
+            host=self._resolve_host(payload),
         )
         send_json(self, result.as_dict())
 

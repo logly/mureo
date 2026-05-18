@@ -31,7 +31,9 @@ import subprocess  # noqa: S404 - fixed argv, shell=False (claude mcp ...)
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
+
+HostedConnectivity = Literal["connected", "not_connected", "unknown"]
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -401,35 +403,48 @@ def remove_provider_from_claude_settings(
     return RemoveResult(changed=True)
 
 
-def is_hosted_provider_connected(spec: ProviderSpec) -> bool:
-    """Return True iff ``claude mcp list`` shows the spec's hosted URL connected.
+def hosted_provider_connectivity(spec: ProviderSpec) -> HostedConnectivity:
+    """Tri-state connectivity of a ``hosted_http`` provider's connector.
 
     A ``hosted_http`` provider (Meta) can only be wired through Claude's
     account-level Connectors, authorised by a one-time browser OAuth.
-    The single programmatic signal that the user finished that step is
-    ``claude mcp list`` showing the endpoint URL on a line whose status
-    is connected (a ``✓``/``Connected`` marker) and NOT
-    ``Needs authentication`` / ``Failed``.
+    The only programmatic signal is ``claude mcp list`` showing the
+    endpoint URL on a line marked connected (``✓``/``Connected``) and
+    NOT ``Needs authentication`` / ``Failed``.
 
-    Returns ``False`` (never raises) when the spec has no URL, the
-    ``claude`` CLI is absent, the URL is not listed, or its line is not
-    in a connected state — so callers can gate the
-    ``MUREO_DISABLE_<platform>`` switch on a confirmed-working official
-    path without ever stranding the user.
+    Returns (never raises):
+
+    - ``"connected"`` — the URL is listed in a connected state.
+    - ``"not_connected"`` — verification *ran* and the connector is
+      genuinely absent / needs-auth / failed (spec has no URL, or the
+      URL is not in a connected line). The user must still finish the
+      browser setup.
+    - ``"unknown"`` — verification could NOT run, so connectivity is
+      undetermined: the Claude **Code** CLI is absent (e.g. a
+      Desktop-only machine, or it is not on the ``mureo configure``
+      process PATH), ``claude mcp list`` timed out, or it exited
+      non-zero. This is NOT "not connected" — callers must not tell the
+      user their browser login failed; they should offer an explicit
+      "I verified it" path instead.
+
+    All three states keep the no-strand guarantee: only ``"connected"``
+    (or an explicit user affirmation, handled by the caller) may flip
+    ``MUREO_DISABLE_<platform>``.
     """
     url = spec.mcp_server_config.get("url")
-    if not url or _claude_bin() is None:
-        return False
+    if not url:
+        return "not_connected"  # nothing to connect — genuinely absent
+    if _claude_bin() is None:
+        return "unknown"  # no Claude Code CLI here ⇒ cannot verify
     try:
         # `claude mcp list` health-checks every endpoint over the
         # network; cap it so an unreachable server can't hang the
-        # interactive caller (CLI / confirm request). Timeout ⇒ treat as
-        # not-connected (caller never strands native on a False).
+        # interactive caller (CLI / confirm request).
         completed = _claude_mcp("list", timeout=15)
     except (subprocess.TimeoutExpired, OSError):
-        return False
+        return "unknown"  # could not determine — not "not connected"
     if completed.returncode != 0:
-        return False
+        return "unknown"
     # NOTE: substring match on the endpoint URL. Phase 1 has a single
     # hosted provider (one Meta endpoint), so prefix collisions
     # (e.g. ".../ads" vs ".../ads-v2") are not a concern; revisit if a
@@ -438,11 +453,27 @@ def is_hosted_provider_connected(spec: ProviderSpec) -> bool:
         if url not in line:
             continue
         if re.search(r"needs authentication|failed", line, re.IGNORECASE):
-            return False
+            return "not_connected"
         # ``\bconnected\b`` so "Disconnected"/"Reconnecting" don't match;
         # "Failed to connect" is already excluded above.
-        return re.search(r"\bconnected\b", line, re.IGNORECASE) is not None
-    return False
+        if re.search(r"\bconnected\b", line, re.IGNORECASE):
+            return "connected"
+        return "not_connected"
+    return "not_connected"  # CLI ran, list ok, endpoint simply absent
+
+
+def is_hosted_provider_connected(spec: ProviderSpec) -> bool:
+    """Boolean view of :func:`hosted_provider_connectivity`.
+
+    ``True`` only for ``"connected"``. ``"not_connected"`` and
+    ``"unknown"`` both map to ``False`` so existing guards
+    (``set_native_preference`` / ``hosted_provider_status`` /
+    ``providers confirm`` CLI) keep their conservative no-strand
+    behaviour unchanged. Callers that must distinguish "can't verify"
+    from "verified-absent" call ``hosted_provider_connectivity``
+    directly.
+    """
+    return hosted_provider_connectivity(spec) == "connected"
 
 
 def is_provider_installed(

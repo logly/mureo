@@ -14,6 +14,32 @@
   // new hosted provider is added to the catalog.
   const HOSTED_PLATFORMS = ["meta_ads"];
 
+  // The user's explicit host choice is persisted client-side so it
+  // survives a page reload AND a `mureo configure` server restart
+  // (which resets the in-memory session host to the claude-code
+  // default). It is the authoritative source for host-dependent
+  // actions; the server session is reconciled FROM it.
+  const HOST_KEY = "mureo.host";
+
+  function readStoredHost() {
+    try {
+      const v = window.localStorage.getItem(HOST_KEY);
+      return v === "claude-code" || v === "claude-desktop" ? v : null;
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  // Push the host to the server, retrying once, and surfacing a toast
+  // instead of silently swallowing a persistent failure (a silent
+  // failure is exactly what routed a Desktop user down the Code path).
+  function syncHostToServer(host, retried) {
+    return MUREO.postJson("/api/host", { host: host }).catch(function () {
+      if (!retried) return syncHostToServer(host, true);
+      MUREO.toast(MUREO.t("wizard.host.sync_failed"));
+    });
+  }
+
   const STATE = {
     host: "claude-code",
     basicInstallCompleted: false,
@@ -174,7 +200,15 @@
 
   function hydrateStateFromStatus(status) {
     if (!status) return;
-    if (status.host) STATE.host = status.host;
+    // An explicit, persisted user choice wins over the server-echoed
+    // host: if the configure process restarted, status.host is the
+    // claude-code default and must NOT clobber the real selection.
+    const stored = readStoredHost();
+    if (stored) {
+      STATE.host = stored;
+    } else if (status.host) {
+      STATE.host = status.host;
+    }
     if (deriveCompletion(status)) {
       STATE.basicInstallCompleted = true;
     }
@@ -200,11 +234,21 @@
       '<label><input type="radio" name="host" value="claude-desktop">' +
       MUREO.t("wizard.host.claude_desktop") + "</label>" +
       "</div>";
+    // Assert the current selection to the server on step entry too —
+    // not only on a radio `change`. A resumed wizard / restarted
+    // configure process can leave the desktop radio pre-checked (no
+    // change event) while the server session is still the default.
+    syncHostToServer(STATE.host);
     wrap.querySelectorAll('input[name="host"]').forEach(function (input) {
       input.checked = input.value === STATE.host;
       input.addEventListener("change", function () {
         STATE.host = input.value;
-        MUREO.postJson("/api/host", { host: input.value }).catch(function () {});
+        try {
+          window.localStorage.setItem(HOST_KEY, input.value);
+        } catch (_e) {
+          /* private-mode / disabled storage — server sync still runs */
+        }
+        syncHostToServer(input.value);
         updateNextEnabled();
       });
     });
@@ -559,6 +603,11 @@
   function onReady(evt) {
     const status = evt.detail && evt.detail.state ? evt.detail.state.status : null;
     hydrateStateFromStatus(status);
+    // Reconcile a (possibly reset/stale) server session FROM the
+    // persisted client choice up-front, so a host-dependent action
+    // reached without revisiting the host step still uses the real
+    // host. Confirm also sends host in its payload as a second guard.
+    if (readStoredHost()) syncHostToServer(STATE.host);
     wireNav();
     if (MUREO.isDashboardRoute()) {
       document.querySelector("[data-wizard]").hidden = true;
