@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-05-18
+
+### Fixed — `mureo configure` no longer misroutes Claude Desktop users on the Meta connector finalize (#118)
+- A Claude **Desktop** user who had connected the Meta hosted MCP saw the misleading *"not connected yet — finish the Meta login"* when clicking *finalize*. The in-memory `session.host` could reset to the `claude-code` default (configure process restart; `/api/host` was sent only on a radio change, fire-and-forget, errors swallowed), so `confirm_hosted_provider` ran the Claude **Code** `claude mcp list` verification path for a Desktop user; with no Claude Code CLI present, a bare `False` became an accusatory dead-end. The official Meta MCP itself was always usable — only the *switch-native-off* step was wrongly blocked (tool ambiguity, never a strand).
+  - **Client-authoritative host:** `/api/providers/confirm` and `/api/providers/native-toggle` resolve `host` from the request payload (validated against the supported hosts, written back to self-heal a stale session); the finalize button now sends the UI's known host.
+  - **Host-sync hardening:** the wizard persists the explicit host choice to `localStorage` and prefers it over the server-echoed value; the `/api/host` sync retries once and surfaces a toast instead of silently swallowing a failure; the host is re-asserted on host-step entry and on load.
+  - **Tri-state connectivity:** `hosted_provider_connectivity` now distinguishes `connected` / `not_connected` / `unknown`. `unknown` (no Claude Code CLI, `claude mcp list` timeout, or non-zero exit) is **not** reported as "not connected". `confirm_hosted_provider` gained an explicit-affirmation path: on Desktop, or when connectivity is `unknown`, the user can confirm "I've verified it" to apply the native↔official switch — preserving the no-strand guarantee (the switch still requires a positive signal: an auto-verified `connected` or a deliberate user affirmation). Existing no-strand guards are unchanged (`is_hosted_provider_connected` kept as a `== "connected"` wrapper). New EN/JA strings + an affirm button; reworded the Desktop "manual" copy so it no longer dead-ends.
+
 ## [0.9.1] - 2026-05-18
 
 ### Added — mureo safety layer for third-party plugin tools (#114, #116)
