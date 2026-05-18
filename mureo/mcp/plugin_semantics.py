@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -42,6 +42,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Phase 4 (#114): structural strategy parity. A built-in mutation gets
+# an observation window (set contextually by its platform skill) so the
+# daily-check evidence loop reviews the outcome. An arbitrary plugin has
+# no per-platform skill to set one, so the mechanical promotion applies
+# a conservative default window — long enough to avoid single-day-noise
+# conclusions (daily-check requires ≥7 consecutive days) and matching
+# the "keyword/creative changes 14 days" guidance in ActionLogEntry.
+# A plugin may shorten/lengthen it via meta["mureo"]["observation_days"].
+_DEFAULT_OBSERVATION_DAYS = 14
+
 
 @dataclass(frozen=True)
 class ToolSemantics:
@@ -50,6 +60,7 @@ class ToolSemantics:
     mutating: bool
     reversal: dict[str, Any] | None = None
     throttle: ThrottleConfig | None = None
+    observation_days: int | None = None
 
 
 def _meta_mureo(tool: Tool) -> dict[str, Any]:
@@ -98,11 +109,26 @@ def derive_semantics(tool: Tool) -> ToolSemantics:
         except (KeyError, TypeError, ValueError):
             throttle = None  # malformed hint → fall back to shared default
 
-    return ToolSemantics(mutating=mutating, reversal=reversal, throttle=throttle)
+    observation_days: int | None = None
+    raw_days = section.get("observation_days")
+    # bool is an int subclass — exclude it; require a positive int.
+    if isinstance(raw_days, int) and not isinstance(raw_days, bool) and raw_days > 0:
+        observation_days = raw_days
+
+    return ToolSemantics(
+        mutating=mutating,
+        reversal=reversal,
+        throttle=throttle,
+        observation_days=observation_days,
+    )
 
 
 def record_mutation_action_log(
-    *, tool: str, source: str, reversal: dict[str, Any] | None
+    *,
+    tool: str,
+    source: str,
+    reversal: dict[str, Any] | None,
+    observation_days: int | None = None,
 ) -> None:
     """Append a plugin mutation to STATE.json's action_log. Never raises.
 
@@ -110,6 +136,15 @@ def record_mutation_action_log(
     Called only after a *successful* call; a failed mutation did not
     change platform state, so it is intentionally NOT promoted here —
     failed attempts live in the Phase 1 jsonl audit only (by design).
+
+    Phase 4 (#114): an ``observation_due`` window is always set so the
+    entry enters the same evidence/outcome-review loop a built-in
+    mutation does (daily-check step 9 / ``_mureo-learning``). It is
+    ``observation_days`` (when the plugin declared one) or the
+    conservative default. ``metrics_at_action`` is intentionally left
+    unset — capturing baseline metrics is platform-specific analytics
+    that does not exist for an arbitrary plugin; the outcome review
+    falls back to a qualitative read, by design.
     """
     try:
         state_path = Path.cwd() / "STATE.json"
@@ -118,12 +153,15 @@ def record_mutation_action_log(
         from mureo.context.models import ActionLogEntry
         from mureo.context.state import append_action_log
 
+        now = datetime.now(timezone.utc)
+        days = observation_days or _DEFAULT_OBSERVATION_DAYS
         entry = ActionLogEntry(
-            timestamp=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            timestamp=now.isoformat(timespec="seconds"),
             action=tool,
             platform=f"plugin:{source or 'unknown'}",
             summary=f"plugin tool {tool} (mutating)",
             command=tool,
+            observation_due=(now + timedelta(days=days)).date().isoformat(),
             reversible_params=reversal,
         )
         append_action_log(state_path, entry)

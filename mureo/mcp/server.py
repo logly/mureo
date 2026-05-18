@@ -215,6 +215,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
                 tool=name,
                 source=source,
                 reversal=None if sem is None else sem.reversal,
+                observation_days=None if sem is None else sem.observation_days,
             )
         return result
     raise ValueError(f"Unknown tool: {name}")

@@ -4,6 +4,7 @@ mutating-call promotion into STATE.json's action_log.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING
 
 import pytest
@@ -55,6 +56,14 @@ class TestDeriveSemantics:
         bad = derive_semantics(_tool(meta={"mureo": {"throttle": {"rate": "x"}}}))
         assert bad.throttle is None
 
+    def test_observation_days_meta_parsed_and_malformed_ignored(self) -> None:
+        assert derive_semantics(_tool()).observation_days is None
+        good = derive_semantics(_tool(meta={"mureo": {"observation_days": 7}}))
+        assert good.observation_days == 7
+        for bad_val in ("x", 0, -3, 1.5, None, True, False):
+            sem = derive_semantics(_tool(meta={"mureo": {"observation_days": bad_val}}))
+            assert sem.observation_days is None
+
 
 @pytest.mark.unit
 class TestRecordMutationActionLog:
@@ -103,3 +112,39 @@ class TestRecordMutationActionLog:
 
         monkeypatch.setattr("mureo.context.state.append_action_log", _boom)
         record_mutation_action_log(tool="t", source="s", reversal=None)  # swallowed
+
+    def _due_date(self, doc_path: Path) -> date:
+        from mureo.context.state import read_state_file
+
+        e = read_state_file(doc_path).action_log[0]
+        assert e.observation_due is not None  # structural strategy parity
+        return date.fromisoformat(e.observation_due)
+
+    def test_default_observation_window_when_undeclared(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from datetime import datetime, timezone
+
+        from mureo.mcp.plugin_semantics import _DEFAULT_OBSERVATION_DAYS
+
+        self._seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        record_mutation_action_log(tool="acme_ads_pause", source="d", reversal=None)
+        today = datetime.now(timezone.utc).date()
+        delta = (self._due_date(tmp_path / "STATE.json") - today).days
+        # tolerate a UTC midnight roll-over during the test
+        assert _DEFAULT_OBSERVATION_DAYS - 1 <= delta <= _DEFAULT_OBSERVATION_DAYS
+
+    def test_declared_observation_days_honored(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from datetime import datetime, timezone
+
+        self._seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        record_mutation_action_log(
+            tool="acme_ads_pause", source="d", reversal=None, observation_days=3
+        )
+        today = datetime.now(timezone.utc).date()
+        delta = (self._due_date(tmp_path / "STATE.json") - today).days
+        assert 2 <= delta <= 3

@@ -120,8 +120,18 @@ Honest scope for a plugin platform:
 
 - **Include** the basic listing / performance / health its tools support.
 - **Skip** mureo-only value-adds — anomaly detection, `result_indicator` CV-mismatch, RSA-asset audit, rule-based scoring. These are platform-specific to the built-ins and do not exist for plugins; say so in the output.
-- Plugin tool calls are already audited by mureo, and successful mutations promoted into `action_log` (`platform="plugin:<dist>"`) when run in a strategy workspace (a `STATE.json` exists). Treat plugin findings as **advisory**; do not assume mureo's strategy/rollback guarantees beyond what `action_log` records (an arbitrary plugin operation is not auto-reversible).
+- Plugin tool calls are already audited by mureo, and successful mutations promoted into `action_log` (`platform="plugin:<dist>"`) when run in a strategy workspace (a `STATE.json` exists). Treat plugin **read** findings as **advisory**; do not assume mureo's strategy/rollback guarantees beyond what `action_log` records (an arbitrary plugin operation is not auto-reversible).
 - Plugin tool-name mapping is **best-effort** (infer from the live tool list), not deterministic. Never fail the whole workflow because a plugin tool is missing — report it and continue with the built-ins.
+
+### Mutating plugin tools — structural strategy parity
+
+A **mutating** plugin tool (anything not declared `readOnlyHint`) is subject to the *same structural strategy handling as a built-in write*, even though mureo has no platform-specific analytics for it:
+
+- **Confirm before the call.** The *Security Rules → Confirm Before Write Operations* requirement applies to plugin write tools exactly as it does to `google_ads_*` / `meta_ads_*` writes — show the user what will change and get explicit approval first.
+- **Gate against strategy.** Before the call, read STRATEGY.md (Operation Mode, Goals, brand/rules) and STATE.json. If the mutation conflicts with the current Operation Mode or a Goal, do **not** run it — surface the conflict and let the user decide, the same as you would for a built-in write.
+- **Outcome review is automatic.** The promoted `action_log` entry carries an `observation_due` window, so daily-check's evidence step reviews its outcome like a built-in. There is no `metrics_at_action` baseline (platform-specific analytics do not exist for a plugin) — evaluate that entry **qualitatively/advisory** and never attribute metric movement to it without an independent check.
+
+What does **not** reach parity (by design, state it in output): mureo's platform-specific analytics — anomaly detection, `result_indicator` CV-mismatch, RSA-asset audit, rule-based scoring — and automatic rollback (only built-in allow-listed operations are auto-reversible; a plugin reversal hint is recorded for visibility, not executed).
 
 ## MCP Server Configuration
 

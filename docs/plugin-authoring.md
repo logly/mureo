@@ -424,12 +424,27 @@ mureo-specific Protocol method:
   - `"throttle": {"rate": <float>, "burst": <int>, "hourly_limit": <int|null>}`
     — a dedicated bucket for that tool; malformed/absent ⇒ shared
     default.
+  - `"observation_days": <positive int>` — the outcome-review window
+    for a mutating call. Absent/malformed ⇒ a conservative 14-day
+    default. The promoted `action_log` entry's `observation_due` is set
+    from this so daily-check's evidence step reviews the outcome like a
+    built-in write (no `metrics_at_action` baseline ⇒ reviewed
+    qualitatively).
 
-This is the realistic meaning of "strategy-gated" for a third-party
-platform: **visibility + audit + rollback intent in the same channel
-built-ins use** — not automatic enforcement of `STRATEGY.md` rules
-(mureo's rule checks are platform-specific and cannot be applied
-generically to an unknown platform).
+**Structural strategy parity (mutating tools).** A mutating plugin
+call gets the same *structural* strategy handling as a built-in write:
+the agent must confirm it with the user and gate it against
+`STRATEGY.md` (Operation Mode / Goals) before running it, the call is
+audited, promoted to `action_log`, given an observation window for
+automatic outcome review, and may record a rollback hint — **the same
+channel built-ins use**.
+
+What is **not** generically possible (and is not claimed): mureo's
+platform-specific analytics (anomaly detection, `result_indicator`
+CV-mismatch, RSA-asset audit, rule-based scoring) and *executable*
+auto-rollback. Those are hand-written per built-in; matching their
+depth for your platform requires authoring platform-specific skill
+logic — mureo cannot synthesise it for an unknown platform.
 
 ---
 

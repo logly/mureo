@@ -325,6 +325,10 @@ class TestPhase2Promotion:
         assert len(doc.action_log) == 1
         assert doc.action_log[0].action == "wired_plugin_echo"
         assert doc.action_log[0].platform == "plugin:wired-dist"
+        # Phase 4: structural strategy parity — a default observation
+        # window is set so the daily-check evidence loop reviews the
+        # outcome like a built-in op.
+        assert doc.action_log[0].observation_due is not None
 
     async def test_readonly_plugin_not_promoted(self, tmp_path, monkeypatch) -> None:
         from mureo.context.state import read_state_file

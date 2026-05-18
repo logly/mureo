@@ -52,8 +52,9 @@ Run a daily health check on all marketing accounts using the strategy context.
    ```
 
 9. **Evidence check**: Review `action_log` entries that have `observation_due` dates:
-   - For entries whose observation window has passed: collect current metrics for the same campaign, compare with `metrics_at_action`, and evaluate the outcome. Report findings with confidence level (see `_mureo-learning` skill).
+   - For entries whose observation window has passed: collect current metrics for the same campaign, compare with `metrics_at_action` (when present), and evaluate the outcome. Report findings with confidence level (see `_mureo-learning` skill).
    - For entries still within their observation window: note them as "pending observation" and do NOT recommend further changes to those campaigns.
+   - `platform="plugin:<dist>"` entries participate in this loop on equal footing with built-ins; they have no `metrics_at_action` baseline, so evaluate them **qualitatively/advisory** (see `_mureo-shared` → *Mutating plugin tools — structural strategy parity*).
    - Do NOT attribute metric movements to specific actions without checking sample sizes and observation windows.
 
 10. **Report**: Summarize findings as:
