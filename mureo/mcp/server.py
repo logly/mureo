@@ -40,7 +40,13 @@ if TYPE_CHECKING:
 
     from mureo.mcp.tool_provider import MCPToolProvider
 
-from mureo.mcp.tool_provider import collect_plugin_tools
+from mureo.mcp.plugin_audit import record_plugin_call
+from mureo.mcp.plugin_semantics import (
+    ToolSemantics,
+    derive_semantics,
+    record_mutation_action_log,
+)
+from mureo.mcp.tool_provider import collect_plugin_tools, plugin_source
 from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
 from mureo.mcp.tools_analysis import handle_tool as handle_analysis_tool
 from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
@@ -53,6 +59,7 @@ from mureo.mcp.tools_rollback import TOOLS as ROLLBACK_TOOLS
 from mureo.mcp.tools_rollback import handle_tool as handle_rollback_tool
 from mureo.mcp.tools_search_console import TOOLS as SEARCH_CONSOLE_TOOLS
 from mureo.mcp.tools_search_console import handle_tool as handle_search_console_tool
+from mureo.throttle import PLUGIN_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +136,24 @@ _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
 _ALL_TOOLS.extend(_PLUGIN_TOOLS)
 _PLUGIN_NAMES: frozenset[str] = frozenset(_PLUGIN_DISPATCH)
 
+# One conservative shared bucket for all plugin tool calls. Built-in
+# platforms keep their own per-platform throttlers; this only gates the
+# plugin dispatch branch.
+_PLUGIN_THROTTLER = Throttler(PLUGIN_THROTTLE)
+
+# Phase 2 (#114): per-tool safety semantics derived from STANDARD MCP
+# metadata (annotations.readOnlyHint + optional meta["mureo"]). No new
+# ABI surface. A declared throttle hint gets its own bucket; everything
+# else shares _PLUGIN_THROTTLER. Undeclared ⇒ mutating (conservative).
+_PLUGIN_SEMANTICS: dict[str, ToolSemantics] = {
+    t.name: derive_semantics(t) for t in _PLUGIN_TOOLS
+}
+_PLUGIN_TOOL_THROTTLERS: dict[str, Throttler] = {
+    name: Throttler(sem.throttle)
+    for name, sem in _PLUGIN_SEMANTICS.items()
+    if sem.throttle is not None
+}
+
 
 # ---------------------------------------------------------------------------
 # Handlers (defined as module-level functions so tests can call them directly)
@@ -159,7 +184,40 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     if name in _MUREO_CONTEXT_NAMES:
         return await handle_mureo_context_tool(name, arguments)
     if name in _PLUGIN_NAMES:
-        return await _PLUGIN_DISPATCH[name].handle_mcp_tool(name, arguments)
+        provider = _PLUGIN_DISPATCH[name]
+        source = plugin_source(provider)
+        sem = _PLUGIN_SEMANTICS.get(name)
+        throttler = _PLUGIN_TOOL_THROTTLERS.get(name, _PLUGIN_THROTTLER)
+        await throttler.acquire()
+        try:
+            result = await provider.handle_mcp_tool(name, arguments)
+        except KeyboardInterrupt:
+            raise
+        except BaseException as exc:  # noqa: BLE001
+            # Record the failed call, then re-raise unchanged so the MCP
+            # framework surfaces a clean tool error exactly as before
+            # (no server crash, no silently-swallowed error).
+            record_plugin_call(
+                tool=name,
+                arguments=arguments,
+                source=source,
+                ok=False,
+                error=repr(exc),
+            )
+            raise
+        record_plugin_call(tool=name, arguments=arguments, source=source, ok=True)
+        # Phase 2: promote a *successful mutating* call into STATE.json's
+        # action_log (only when a STATE.json exists in cwd) so the agent
+        # / strategy review / rollback can see it like a built-in op.
+        # Read-only tools stay in the jsonl audit only (no STATE bloat).
+        if sem is None or sem.mutating:
+            record_mutation_action_log(
+                tool=name,
+                source=source,
+                reversal=None if sem is None else sem.reversal,
+                observation_days=None if sem is None else sem.observation_days,
+            )
+        return result
     raise ValueError(f"Unknown tool: {name}")
 
 

@@ -391,6 +391,61 @@ intentionally *not* done — it cannot express platform-specific
 operations that fall outside the shared Protocol, which hand-written
 `mcp_tools()` can. See `docs/mcp-server.md` for the server-side view.
 
+#### Safety treatment of plugin tool calls (mureo applies this for you)
+
+Every plugin tool call is, automatically and without you opting in:
+
+- **Audited** — appended (secret-masked) to `~/.mureo/plugin_audit.jsonl`.
+- **Throttled** — a conservative shared token bucket gates the plugin
+  dispatch path. mureo never crashes on, nor silently swallows, a
+  plugin exception: it is recorded then re-raised unchanged.
+
+You can refine this purely with **standard MCP `Tool` metadata** — no
+mureo-specific Protocol method:
+
+- `annotations=ToolAnnotations(readOnlyHint=True)` → the tool is a
+  read; it stays in the jsonl audit only. **Anything else (no
+  annotations / `readOnlyHint` absent or false) is treated as
+  *mutating* (conservative default).**
+- A *mutating* call is additionally promoted into `STATE.json`'s
+  `action_log` (`platform="plugin:<your-dist>"`) **only when a
+  `STATE.json` already exists in the cwd** — mureo never creates one
+  just because a plugin ran. This makes plugin mutations visible to
+  the agent / strategy review / `rollback_plan_get` like a built-in
+  op.
+- Optional `_meta={"mureo": {...}}` (the canonical alias; the
+  intuitive `meta=` spelling is also accepted):
+  - `"reversal": {"operation": "...", "params": {...}}` — recorded
+    verbatim into the entry's `reversible_params`. **Honest scope:**
+    `rollback_plan_get` only builds an *executable* reversal when
+    `operation` is in mureo's built-in rollback allow-list; an
+    arbitrary plugin operation is recorded for audit/visibility but
+    is **not** auto-reversible.
+  - `"throttle": {"rate": <float>, "burst": <int>, "hourly_limit": <int|null>}`
+    — a dedicated bucket for that tool; malformed/absent ⇒ shared
+    default.
+  - `"observation_days": <positive int>` — the outcome-review window
+    for a mutating call. Absent/malformed ⇒ a conservative 14-day
+    default. The promoted `action_log` entry's `observation_due` is set
+    from this so daily-check's evidence step reviews the outcome like a
+    built-in write (no `metrics_at_action` baseline ⇒ reviewed
+    qualitatively).
+
+**Structural strategy parity (mutating tools).** A mutating plugin
+call gets the same *structural* strategy handling as a built-in write:
+the agent must confirm it with the user and gate it against
+`STRATEGY.md` (Operation Mode / Goals) before running it, the call is
+audited, promoted to `action_log`, given an observation window for
+automatic outcome review, and may record a rollback hint — **the same
+channel built-ins use**.
+
+What is **not** generically possible (and is not claimed): mureo's
+platform-specific analytics (anomaly detection, `result_indicator`
+CV-mismatch, RSA-asset audit, rule-based scoring) and *executable*
+auto-rollback. Those are hand-written per built-in; matching their
+depth for your platform requires authoring platform-specific skill
+logic — mureo cannot synthesise it for an unknown platform.
+
 ---
 
 ## 4. Capabilities
