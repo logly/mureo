@@ -13,7 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from mureo.auth import AmazonAdsCredentials, load_amazon_ads_credentials
+from mureo.auth import (
+    AmazonAdsCredentials,
+    load_amazon_ads_credentials,
+    save_amazon_access_token,
+)
 
 
 def _write(tmp_path: Path, payload: dict) -> Path:
@@ -106,3 +110,55 @@ class TestLoadAmazonAdsCredentials:
         assert c is not None
         with pytest.raises(dataclasses.FrozenInstanceError):
             c.access_token = "mutated"  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestSaveAmazonAccessToken:
+    def test_updates_section_preserving_others(self, tmp_path: Path) -> None:
+        cf = _write(
+            tmp_path,
+            {
+                "google_ads": {"developer_token": "keep"},
+                "amazon_ads": {
+                    "client_id": "cid",
+                    "access_token": "OLD",
+                    "region": "eu",
+                },
+            },
+        )
+        save_amazon_access_token("Atza|NEW", "Atzr|NEW", path=cf)
+        doc = json.loads(cf.read_text())
+        assert doc["amazon_ads"]["access_token"] == "Atza|NEW"
+        assert doc["amazon_ads"]["refresh_token"] == "Atzr|NEW"
+        assert doc["amazon_ads"]["client_id"] == "cid"  # preserved
+        assert doc["amazon_ads"]["region"] == "eu"  # preserved
+        assert doc["google_ads"]["developer_token"] == "keep"  # untouched
+
+    def test_creates_section_when_absent(self, tmp_path: Path) -> None:
+        cf = _write(tmp_path, {"meta_ads": {"access_token": "m"}})
+        save_amazon_access_token("Atza|NEW", path=cf)
+        doc = json.loads(cf.read_text())
+        assert doc["amazon_ads"]["access_token"] == "Atza|NEW"
+        assert "refresh_token" not in doc["amazon_ads"]
+        assert doc["meta_ads"]["access_token"] == "m"
+
+    def test_creates_file_when_missing(self, tmp_path: Path) -> None:
+        cf = tmp_path / "credentials.json"
+        save_amazon_access_token("Atza|NEW", path=cf)
+        assert json.loads(cf.read_text())["amazon_ads"]["access_token"] == "Atza|NEW"
+
+    def test_written_file_is_0600(self, tmp_path: Path) -> None:
+        import stat
+
+        cf = tmp_path / "credentials.json"
+        save_amazon_access_token("Atza|NEW", path=cf)
+        assert stat.S_IMODE(cf.stat().st_mode) == 0o600
+
+    def test_round_trips_with_loader(self, tmp_path: Path) -> None:
+        cf = _write(
+            tmp_path,
+            {"amazon_ads": {"client_id": "cid", "access_token": "OLD"}},
+        )
+        save_amazon_access_token("Atza|NEW", path=cf)
+        c = load_amazon_ads_credentials(path=cf)
+        assert c is not None and c.access_token == "Atza|NEW"

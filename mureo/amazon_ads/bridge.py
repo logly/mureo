@@ -16,6 +16,7 @@ strategy / rollback) as entry-point plugins:
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
@@ -25,11 +26,19 @@ from typing import Any
 from mcp.types import Tool
 
 from mureo.amazon_ads.endpoints import endpoint_url, request_headers
+from mureo.amazon_ads.lwa import AmazonAuthError as _LwaAuthError
+from mureo.amazon_ads.lwa import LwaTokens, refresh_access_token
 from mureo.amazon_ads.manifest import _default_connect, manifest_path
-from mureo.auth import AmazonAdsCredentials, load_amazon_ads_credentials
+from mureo.auth import (
+    AmazonAdsCredentials,
+    load_amazon_ads_credentials,
+    save_amazon_access_token,
+)
 
 ConnectFactory = Callable[[str, dict[str, str]], AbstractAsyncContextManager[Any]]
 CredsLoader = Callable[[], AmazonAdsCredentials | None]
+Refresher = Callable[[AmazonAdsCredentials], LwaTokens]
+TokenSaver = Callable[[str, str | None], None]
 
 
 class AmazonBridgeError(RuntimeError):
@@ -49,10 +58,14 @@ class AmazonAdsBridge:
         manifest_path: Path | None = None,
         creds_loader: CredsLoader | None = None,
         connect: ConnectFactory | None = None,
+        refresher: Refresher | None = None,
+        token_saver: TokenSaver | None = None,
     ) -> None:
         self._manifest_path = manifest_path or _default_manifest_path()
         self._creds_loader: CredsLoader = creds_loader or load_amazon_ads_credentials
         self._connect: ConnectFactory = connect or _default_connect
+        self._refresher: Refresher = refresher or refresh_access_token
+        self._token_saver: TokenSaver = token_saver or save_amazon_access_token
 
     # -- collection-time (pure, never raises) -------------------------------
 
@@ -79,6 +92,48 @@ class AmazonAdsBridge:
                 "amazon_ads credentials not configured in "
                 "~/.mureo/credentials.json (run the Amazon setup first)"
             )
+        try:
+            return await self._call(creds, name, arguments)
+        except KeyboardInterrupt:
+            raise
+        except BaseException as first_exc:
+            # The Amazon access token expires after 60 min. We do not
+            # observe the MCP transport's exact 401 shape, so on ANY
+            # first failure — when refresh creds are present — attempt
+            # exactly one LwA refresh + persist + retry. Bounded (one
+            # extra POST + one retry). Accepted trade-off: a *non-auth*
+            # first failure also triggers one wasted refresh (a token
+            # rotation + a credentials.json write) before the same
+            # error recurs; this is intentional until the 401 shape is
+            # observed and can be narrowed. The original error is always
+            # chained (``from first_exc``) so it is never lost.
+            if not (creds.refresh_token and creds.client_secret):
+                raise
+            try:
+                tokens = self._refresher(creds)
+            except _LwaAuthError as auth_exc:
+                raise AmazonBridgeError(
+                    f"Amazon access token expired and refresh failed: {auth_exc}"
+                ) from first_exc
+            self._token_saver(tokens.access_token, tokens.refresh_token)
+            refreshed = dataclasses.replace(
+                creds,
+                access_token=tokens.access_token,
+                refresh_token=tokens.refresh_token,
+            )
+            try:
+                return await self._call(refreshed, name, arguments)
+            except KeyboardInterrupt:
+                raise
+            except BaseException as retry_exc:
+                raise retry_exc from first_exc
+
+    async def _call(
+        self,
+        creds: AmazonAdsCredentials,
+        name: str,
+        arguments: dict[str, Any],
+    ) -> list[Any]:
         url = endpoint_url(creds.region)
         headers = request_headers(creds)
         async with self._connect(url, headers) as session:

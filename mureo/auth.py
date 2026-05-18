@@ -546,6 +546,51 @@ def _save_meta_token(
         _atomic_write_json(data, path)
 
 
+def save_amazon_access_token(
+    access_token: str,
+    refresh_token: str | None = None,
+    path: Path | None = None,
+) -> None:
+    """Atomically persist a refreshed Amazon access token (#113 Phase 2A).
+
+    Mirrors ``_save_meta_token``: read-modify-write the ``amazon_ads``
+    section via a temp file + ``os.replace`` (0600), preserving every
+    other field/section. ``refresh_token`` is written only when given
+    (LwA returns the same one, but write it through for robustness).
+    """
+    resolved = path if path is not None else _resolve_default_path()
+
+    data: dict[str, Any] = {}
+    if resolved.exists():
+        try:
+            data = json.loads(resolved.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            data = {}
+    if not isinstance(data, dict):
+        data = {}
+
+    section = data.get("amazon_ads", {})
+    if not isinstance(section, dict):
+        section = {}
+    section["access_token"] = access_token
+    if refresh_token:
+        section["refresh_token"] = refresh_token
+    data["amazon_ads"] = section
+
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=resolved.parent, suffix=".tmp")
+    os.fchmod(fd, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, resolved)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
