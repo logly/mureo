@@ -469,9 +469,7 @@ class TestPostProviders:
         assert kwargs["home"] == wizard.home
         assert kwargs["host"] == wizard.session.host
 
-    def test_native_toggle_requires_platform(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_native_toggle_requires_platform(self, wizard: ConfigureWizard) -> None:
         with pytest.raises(urllib.error.HTTPError) as exc:
             _post(wizard, "/api/providers/native-toggle", {"platform": ""})
         assert exc.value.code == 400
@@ -1527,3 +1525,89 @@ class TestPostSetupBasicClear:
         with pytest.raises(urllib.error.HTTPError) as exc:
             urllib.request.urlopen(req, timeout=2.0)
         assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestConfirmHostResolution:
+    """``/api/providers/confirm`` is client-host-authoritative: a valid
+    payload ``host`` wins over a stale/reset server session (the root
+    cause of the Desktop user getting the Code-path 'not connected'),
+    self-heals the session, and forwards ``affirm``."""
+
+    ROUTE = "/api/providers/confirm"
+
+    def _patch(self):
+        m = patch("mureo.web.handlers.confirm_hosted_provider")
+        return m
+
+    def test_payload_host_wins_over_default_session(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        # session is the claude-code default (never set)
+        with self._patch() as mock:
+            mock.return_value.as_dict.return_value = {"status": "manual"}
+            _post(
+                wizard,
+                self.ROUTE,
+                {"provider_id": "meta-ads-official", "host": "claude-desktop"},
+            )
+        assert mock.call_args.kwargs["host"] == "claude-desktop"
+        # session self-healed so later host-dependent calls agree
+        assert wizard.session.host == "claude-desktop"
+
+    def test_affirm_forwarded(self, wizard: ConfigureWizard) -> None:
+        with self._patch() as mock:
+            mock.return_value.as_dict.return_value = {"status": "ok"}
+            _post(
+                wizard,
+                self.ROUTE,
+                {
+                    "provider_id": "meta-ads-official",
+                    "host": "claude-desktop",
+                    "affirm": True,
+                },
+            )
+        assert mock.call_args.kwargs["affirm"] is True
+
+    def test_invalid_payload_host_falls_back_to_session(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        _set_host(wizard, "claude-desktop")
+        with self._patch() as mock:
+            mock.return_value.as_dict.return_value = {"status": "manual"}
+            _post(
+                wizard,
+                self.ROUTE,
+                {"provider_id": "meta-ads-official", "host": "vscode"},
+            )
+        assert mock.call_args.kwargs["host"] == "claude-desktop"
+
+    def test_absent_payload_host_uses_session(self, wizard: ConfigureWizard) -> None:
+        with self._patch() as mock:
+            mock.return_value.as_dict.return_value = {"status": "not_connected"}
+            _post(wizard, self.ROUTE, {"provider_id": "meta-ads-official"})
+        assert mock.call_args.kwargs["host"] == "claude-code"
+        assert mock.call_args.kwargs["affirm"] is False
+
+
+@pytest.mark.unit
+class TestNativeToggleHostResolution:
+    """``/api/providers/native-toggle`` uses the same client-authoritative
+    host resolution so a reset session can't misroute the guard."""
+
+    ROUTE = "/api/providers/native-toggle"
+
+    def test_payload_host_wins(self, wizard: ConfigureWizard) -> None:
+        with patch("mureo.web.handlers.set_native_preference") as mock:
+            mock.return_value.as_dict.return_value = {"status": "ok"}
+            _post(
+                wizard,
+                self.ROUTE,
+                {
+                    "platform": "meta_ads",
+                    "prefer_official": True,
+                    "host": "claude-desktop",
+                },
+            )
+        assert mock.call_args.kwargs["host"] == "claude-desktop"
+        assert wizard.session.host == "claude-desktop"

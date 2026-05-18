@@ -1138,6 +1138,13 @@ class TestConfirmHostedProvider:
         assert r.status == "error"
         assert r.detail == "not_hosted"
 
+    def _conn(self, monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+        """Patch the tri-state connectivity probe (the new API)."""
+        monkeypatch.setattr(
+            "mureo.providers.config_writer.hosted_provider_connectivity",
+            lambda spec: value,
+        )
+
     def test_not_connected_does_not_disable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1145,14 +1152,42 @@ class TestConfirmHostedProvider:
 
         cfg = self._seed(tmp_path)
         monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
-        monkeypatch.setattr(
-            "mureo.providers.config_writer.is_hosted_provider_connected",
-            lambda spec: False,
-        )
+        self._conn(monkeypatch, "not_connected")
         r = setup_actions.confirm_hosted_provider(_META)
         assert r.status == "not_connected"
         payload = json.loads(cfg.read_text(encoding="utf-8"))
         assert "env" not in payload["mcpServers"]["mureo"]
+
+    def test_unknown_without_affirm_is_unverifiable_not_disabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No Claude Code CLI / timeout ⇒ 'unverifiable', NOT
+        'not_connected', and native stays on (no stranding)."""
+        from mureo.web import setup_actions
+
+        cfg = self._seed(tmp_path)
+        monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
+        self._conn(monkeypatch, "unknown")
+        r = setup_actions.confirm_hosted_provider(_META)
+        assert r.status == "unverifiable"
+        assert r.detail == _META
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
+        assert "env" not in payload["mcpServers"]["mureo"]
+
+    def test_unknown_with_affirm_disables_native(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Explicit user affirmation substitutes for auto-verification
+        on the unverifiable path (no-strand by deliberate consent)."""
+        from mureo.web import setup_actions
+
+        cfg = self._seed(tmp_path)
+        monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
+        self._conn(monkeypatch, "unknown")
+        r = setup_actions.confirm_hosted_provider(_META, affirm=True)
+        assert r.status == "ok"
+        payload = json.loads(cfg.read_text(encoding="utf-8"))
+        assert payload["mcpServers"]["mureo"]["env"]["MUREO_DISABLE_META_ADS"] == "1"
 
     def test_connected_disables_native(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1161,10 +1196,7 @@ class TestConfirmHostedProvider:
 
         cfg = self._seed(tmp_path)
         monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
-        monkeypatch.setattr(
-            "mureo.providers.config_writer.is_hosted_provider_connected",
-            lambda spec: True,
-        )
+        self._conn(monkeypatch, "connected")
         r = setup_actions.confirm_hosted_provider(_META)
         assert r.status == "ok"
         payload = json.loads(cfg.read_text(encoding="utf-8"))
@@ -1177,10 +1209,7 @@ class TestConfirmHostedProvider:
 
         self._seed(tmp_path, env={"MUREO_DISABLE_META_ADS": "1"})
         monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
-        monkeypatch.setattr(
-            "mureo.providers.config_writer.is_hosted_provider_connected",
-            lambda spec: True,
-        )
+        self._conn(monkeypatch, "connected")
         r = setup_actions.confirm_hosted_provider(_META)
         assert r.status == "noop"
 
@@ -1190,15 +1219,12 @@ class TestConfirmHostedProvider:
         from mureo.web import setup_actions
 
         monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
-        monkeypatch.setattr(
-            "mureo.providers.config_writer.is_hosted_provider_connected",
-            lambda spec: True,
-        )
+        self._conn(monkeypatch, "connected")
         r = setup_actions.confirm_hosted_provider(_META)
         assert r.status == "error"
         assert r.detail == "no_mureo_block"
 
-    def test_desktop_host_is_manual(self, tmp_path: Path) -> None:
+    def test_desktop_host_without_affirm_is_manual(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         r = setup_actions.confirm_hosted_provider(
@@ -1206,6 +1232,29 @@ class TestConfirmHostedProvider:
         )
         assert r.status == "manual"
         assert r.detail == _META
+
+    def test_desktop_host_with_affirm_disables_native(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Desktop can't be auto-verified; an explicit affirmation
+        applies the switch via the Desktop config writer."""
+        from mureo.web import setup_actions
+
+        calls: dict[str, object] = {}
+
+        def fake_desktop(path: object, env_var: str) -> bool:
+            calls["path"] = path
+            calls["env_var"] = env_var
+            return True
+
+        monkeypatch.setattr(
+            "mureo.web.setup_actions.set_mureo_disable_env_desktop", fake_desktop
+        )
+        r = setup_actions.confirm_hosted_provider(
+            _META, host="claude-desktop", home=tmp_path, affirm=True
+        )
+        assert r.status == "ok"
+        assert calls["env_var"] == "MUREO_DISABLE_META_ADS"
 
 
 @pytest.mark.unit

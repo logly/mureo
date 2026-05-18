@@ -118,24 +118,45 @@
       finalizeBtn.className = "btn btn-secondary";
       finalizeBtn.textContent = MUREO.t("connector.finalize");
       finalizeBtn.setAttribute("data-i18n", "connector.finalize");
+      // Shown only when mureo can't auto-verify (Desktop = no
+      // `claude mcp list`; or Claude Code CLI absent / list timed out).
+      // The user's explicit "I've verified it" replaces auto-detection
+      // (no-strand by deliberate consent, not a silent default).
+      const affirmBtn = document.createElement("button");
+      affirmBtn.type = "button";
+      affirmBtn.className = "btn btn-secondary";
+      affirmBtn.textContent = MUREO.t("connector.finalize_affirm");
+      affirmBtn.setAttribute("data-i18n", "connector.finalize_affirm");
+      affirmBtn.hidden = true;
       const fStatus = document.createElement("p");
       fStatus.className = "dashboard-provider-hosted-note";
       fStatus.hidden = true;
-      finalizeBtn.addEventListener("click", async function () {
+
+      async function runConfirm(affirm) {
         finalizeBtn.disabled = true;
+        affirmBtn.disabled = true;
         fStatus.hidden = false;
-        fStatus.textContent = MUREO.t("connector.finalize_checking");
+        fStatus.textContent = MUREO.t(
+          affirm ? "connector.finalize_affirming" : "connector.finalize_checking"
+        );
         let res;
         try {
           res = await MUREO.postJson("/api/providers/confirm", {
             provider_id: providerId,
+            // Client-authoritative host: the server session can reset
+            // to the claude-code default on a configure restart, which
+            // used to route a Desktop user down the Code path.
+            host: state.host,
+            affirm: Boolean(affirm),
           });
         } catch (_e) {
           finalizeBtn.disabled = false;
+          affirmBtn.disabled = false;
           fStatus.textContent = MUREO.t("connector.finalize_failed");
           return;
         }
         finalizeBtn.disabled = false;
+        affirmBtn.disabled = false;
         const st = res && res.body && res.body.status;
         const key =
           st === "ok"
@@ -146,11 +167,24 @@
             ? "connector.finalize_not_connected"
             : st === "manual"
             ? "connector.finalize_manual"
+            : st === "unverifiable"
+            ? "connector.finalize_unverifiable"
             : "connector.finalize_failed";
+        // manual / unverifiable = "couldn't auto-verify" → reveal the
+        // explicit affirm button. ok/noop = done → hide it.
+        affirmBtn.hidden = !(st === "manual" || st === "unverifiable");
         fStatus.textContent = MUREO.t(key);
         fStatus.setAttribute("data-i18n", key);
+      }
+
+      finalizeBtn.addEventListener("click", function () {
+        runConfirm(false);
+      });
+      affirmBtn.addEventListener("click", function () {
+        runConfirm(true);
       });
       card.appendChild(finalizeBtn);
+      card.appendChild(affirmBtn);
       card.appendChild(fStatus);
 
       wrap.appendChild(card);

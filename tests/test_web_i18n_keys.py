@@ -66,3 +66,34 @@ class TestI18nNodeNoteKeyParity:
         localization, mirrors the existing oauth-note convention)."""
         data = _load_i18n()
         assert data["en"][_NEW_KEY] != data["ja"][_NEW_KEY]
+
+
+@pytest.mark.unit
+class TestConfirmHostFixKeysParity:
+    """EN/JA parity for the keys added by the host-confirm desync fix
+    (no JS test harness — assert against bundled i18n.json directly)."""
+
+    _KEYS = (
+        "connector.finalize_unverifiable",
+        "connector.finalize_affirm",
+        "connector.finalize_affirming",
+        "connector.finalize_manual",
+        "wizard.host.sync_failed",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_manual_message_no_longer_dead_ends(self) -> None:
+        """The reworded manual copy must point at the affirm action,
+        not just say 'can't auto-detect'."""
+        data = _load_i18n()
+        assert "verified" in data["en"]["connector.finalize_manual"].lower()
+        assert "確認" in data["ja"]["connector.finalize_manual"]

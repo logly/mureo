@@ -447,12 +447,8 @@ def test_settings_path_default_is_claude_json_when_no_cli(
     ``mcpServers`` (NOT settings.json — never read for MCP discovery)."""
     from mureo.providers.config_writer import add_provider_to_claude_settings
 
-    monkeypatch.setattr(
-        "mureo.providers.config_writer.shutil.which", lambda _: None
-    )
-    monkeypatch.setattr(
-        "mureo.providers.config_writer.Path.home", lambda: tmp_path
-    )
+    monkeypatch.setattr("mureo.providers.config_writer.shutil.which", lambda _: None)
+    monkeypatch.setattr("mureo.providers.config_writer.Path.home", lambda: tmp_path)
 
     spec = _make_spec()
     add_provider_to_claude_settings(spec)
@@ -756,9 +752,7 @@ class TestIsHostedProviderConnected:
     def test_false_when_claude_cli_absent(self) -> None:
         from mureo.providers.config_writer import is_hosted_provider_connected
 
-        with patch(
-            "mureo.providers.config_writer.shutil.which", return_value=None
-        ):
+        with patch("mureo.providers.config_writer.shutil.which", return_value=None):
             assert is_hosted_provider_connected(self._spec()) is False
 
     def test_false_for_non_hosted_spec_without_url(self) -> None:
@@ -794,9 +788,124 @@ class TestIsHostedProviderConnected:
     def test_disconnected_line_is_not_a_false_positive(self) -> None:
         from mureo.providers.config_writer import is_hosted_provider_connected
 
-        listing = (
-            "claude.ai MetaAds: https://mcp.facebook.com/ads - Disconnected\n"
-        )
+        listing = "claude.ai MetaAds: https://mcp.facebook.com/ads - Disconnected\n"
         w, r = self._patch(listing)
         with w, r:
             assert is_hosted_provider_connected(self._spec()) is False
+
+
+@pytest.mark.unit
+class TestHostedProviderConnectivity:
+    """Tri-state ``hosted_provider_connectivity``: distinguishes
+    'verified absent' (not_connected) from 'could not verify' (unknown)
+    so the confirm UX never tells a genuinely-connected user their
+    Meta login failed."""
+
+    def _spec(self):
+        return _make_spec(
+            spec_id="meta-ads-official",
+            mcp_server_config={
+                "type": "http",
+                "url": "https://mcp.facebook.com/ads",
+            },
+        )
+
+    def _patch(self, stdout: str, rc: int = 0):
+        from types import SimpleNamespace
+
+        def fake_run(argv: list[str], **_: object) -> SimpleNamespace:
+            return SimpleNamespace(returncode=rc, stdout=stdout, stderr="")
+
+        return (
+            patch(
+                "mureo.providers.config_writer.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.providers.config_writer.subprocess.run",
+                side_effect=fake_run,
+            ),
+        )
+
+    def test_connected(self) -> None:
+        from mureo.providers.config_writer import hosted_provider_connectivity
+
+        w, r = self._patch(
+            "claude.ai MetaAds: https://mcp.facebook.com/ads - ✓ Connected\n"
+        )
+        with w, r:
+            assert hosted_provider_connectivity(self._spec()) == "connected"
+
+    def test_not_connected_when_needs_authentication(self) -> None:
+        from mureo.providers.config_writer import hosted_provider_connectivity
+
+        w, r = self._patch(
+            "claude.ai MetaAds: https://mcp.facebook.com/ads - "
+            "! Needs authentication\n"
+        )
+        with w, r:
+            assert hosted_provider_connectivity(self._spec()) == "not_connected"
+
+    def test_not_connected_when_listed_but_absent(self) -> None:
+        from mureo.providers.config_writer import hosted_provider_connectivity
+
+        w, r = self._patch("mureo: ... - ✓ Connected\n")
+        with w, r:
+            assert hosted_provider_connectivity(self._spec()) == "not_connected"
+
+    def test_not_connected_when_spec_has_no_url(self) -> None:
+        from mureo.providers.config_writer import hosted_provider_connectivity
+
+        w, r = self._patch(
+            "claude.ai MetaAds: https://mcp.facebook.com/ads - ✓ Connected\n"
+        )
+        with w, r:
+            # default _make_spec has no "url" → genuinely nothing to connect
+            assert hosted_provider_connectivity(_make_spec()) == "not_connected"
+
+    def test_unknown_when_claude_cli_absent(self) -> None:
+        from mureo.providers.config_writer import hosted_provider_connectivity
+
+        with patch("mureo.providers.config_writer.shutil.which", return_value=None):
+            assert hosted_provider_connectivity(self._spec()) == "unknown"
+
+    def test_unknown_on_timeout(self) -> None:
+        import subprocess
+
+        from mureo.providers.config_writer import hosted_provider_connectivity
+
+        def fake_run(argv: list[str], **_: object):
+            raise subprocess.TimeoutExpired(cmd=argv, timeout=15)
+
+        with (
+            patch(
+                "mureo.providers.config_writer.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch(
+                "mureo.providers.config_writer.subprocess.run",
+                side_effect=fake_run,
+            ),
+        ):
+            assert hosted_provider_connectivity(self._spec()) == "unknown"
+
+    def test_unknown_on_nonzero_returncode(self) -> None:
+        from mureo.providers.config_writer import hosted_provider_connectivity
+
+        w, r = self._patch("", rc=1)
+        with w, r:
+            assert hosted_provider_connectivity(self._spec()) == "unknown"
+
+    def test_is_hosted_provider_connected_wrapper_true_only_for_connected(
+        self,
+    ) -> None:
+        from mureo.providers.config_writer import is_hosted_provider_connected
+
+        # unknown ⇒ wrapper False (conservative no-strand for old callers)
+        with patch("mureo.providers.config_writer.shutil.which", return_value=None):
+            assert is_hosted_provider_connected(self._spec()) is False
+        w, r = self._patch(
+            "claude.ai MetaAds: https://mcp.facebook.com/ads - ✓ Connected\n"
+        )
+        with w, r:
+            assert is_hosted_provider_connected(self._spec()) is True

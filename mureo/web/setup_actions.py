@@ -690,22 +690,41 @@ def remove_provider(
 
 
 def confirm_hosted_provider(
-    provider_id: str, home: Path | None = None, host: str = _HOST_CODE
+    provider_id: str,
+    home: Path | None = None,
+    host: str = _HOST_CODE,
+    affirm: bool = False,
 ) -> ActionResult:
     """Disable mureo-native tools ONCE the official hosted connector works.
 
     A ``hosted_http`` provider (Meta) can only be wired via Claude's
     account-level Connectors, authorised by a one-time browser OAuth that
-    mureo cannot perform. Native is never auto-disabled before that (it
-    would strand the user). This is the explicit, safe follow-up.
+    mureo cannot perform. Native is never auto-disabled before the
+    official path is in effect (that would strand the user).
 
-    Claude Code: verify the connector is Connected via
-    ``is_hosted_provider_connected`` (parses ``claude mcp list``), and
-    only then set ``MUREO_DISABLE_<PLATFORM>=1`` on ``mcpServers.mureo``.
+    Verification is tri-state (``hosted_provider_connectivity``):
+
+    - **Claude Code**, connector verified ``connected`` → disable native.
+    - **Claude Code**, ``not_connected`` (CLI ran, connector genuinely
+      absent / needs-auth) → ``not_connected``: finish the browser setup.
+    - **Claude Code**, ``unknown`` (no Claude Code CLI on this machine /
+      ``claude mcp list`` timed out — common when mureo runs on a
+      Desktop-centric box) → ``unverifiable``: mureo can't auto-check;
+      do NOT claim the login failed.
+    - **Claude Desktop** → ``manual``: there is no ``claude mcp list``
+      to parse, so mureo can never auto-detect the account connector.
+
+    ``affirm=True`` is the user's explicit "I have verified Meta shows
+    Connected" — it substitutes for auto-verification on the ``manual``
+    and ``unverifiable`` paths and applies the switch. This preserves
+    the no-strand guarantee (the switch is gated on a positive signal —
+    either an auto-verified ``connected`` or a deliberate user
+    affirmation), while no longer trapping Desktop / no-CLI users who
+    genuinely connected the connector.
+
     Statuses: ``ok`` (just disabled), ``noop`` (already disabled),
-    ``not_connected`` (finish the browser setup first), ``manual``
-    (Desktop — mureo can't auto-detect, the user verifies there),
-    ``error`` (``unknown_provider`` / ``not_hosted`` / ``no_mureo_block``).
+    ``not_connected``, ``unverifiable``, ``manual``, ``error``
+    (``unknown_provider`` / ``not_hosted`` / ``no_mureo_block``).
     """
     try:
         from mureo.providers.catalog import get_provider
@@ -724,26 +743,49 @@ def confirm_hosted_provider(
     if platform is None:
         return ActionResult(status="noop", detail="nothing_to_switch")
 
-    if host == _HOST_DESKTOP:
-        # No reliable programmatic signal for the account connector on
-        # Desktop (no `claude mcp list`); the user verifies in Claude
-        # Desktop. Never auto-disable native here (no stranding).
-        return ActionResult(status="manual", detail=spec.id)
-
     try:
-        from mureo.providers.config_writer import is_hosted_provider_connected
-        from mureo.providers.mureo_env import set_mureo_disable_env
+        if host == _HOST_DESKTOP:
+            # No `claude mcp list` on Desktop ⇒ never auto-verifiable.
+            # Apply only on an explicit user affirmation (no stranding).
+            if not affirm:
+                return ActionResult(status="manual", detail=spec.id)
+        else:
+            from mureo.providers.config_writer import (
+                hosted_provider_connectivity,
+            )
 
-        if not is_hosted_provider_connected(spec):
-            return ActionResult(status="not_connected", detail=spec.id)
-        env_result = set_mureo_disable_env(platform)
+            conn = hosted_provider_connectivity(spec)
+            if conn == "not_connected":
+                return ActionResult(status="not_connected", detail=spec.id)
+            if conn == "unknown" and not affirm:
+                # Could not verify (no CLI / timeout) — NOT "your login
+                # failed". Offer the explicit affirm path instead.
+                return ActionResult(status="unverifiable", detail=spec.id)
+            # conn == "connected", or unknown + user affirmation → apply.
+
+        # Host-aware disable. The Code path keeps the original
+        # default-path resolution (set_mureo_disable_env, no explicit
+        # registry) so it stays consistent with the rest of confirm and
+        # its tests; Desktop writes the env into claude_desktop_config.
+        if host == _HOST_DESKTOP:
+            env_var = "MUREO_DISABLE_" + platform.upper()
+            changed = set_mureo_disable_env_desktop(
+                resolve_desktop_config_path(home), env_var
+            )
+            mureo_block_present = True  # Desktop has no such signal
+        else:
+            from mureo.providers.mureo_env import set_mureo_disable_env
+
+            env_result = set_mureo_disable_env(platform)
+            changed = env_result.changed
+            mureo_block_present = env_result.mureo_block_present
     except Exception as exc:  # noqa: BLE001
         logger.exception("confirm_hosted_provider failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
-    if env_result.changed:
+    if changed:
         return ActionResult(status="ok", detail=spec.id)
-    if env_result.mureo_block_present:
+    if mureo_block_present:
         return ActionResult(status="noop", detail="already_disabled")
     return ActionResult(status="error", detail="no_mureo_block")
 
