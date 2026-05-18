@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-05-18
+
+### Added — mureo safety layer for third-party plugin tools (#114, #116)
+- Entry-point plugin providers (`MCPToolProvider`) dispatch straight to the plugin and previously bypassed mureo's per-handler audit, throttle, and strategy plumbing. mureo now wraps the plugin dispatch path with its own safety layer — **opt-in & purely additive via standard MCP `Tool` metadata, no plugin-side changes required**:
+  - **Phase 1 — audit / throttle / fault-isolation.** Every plugin tool call is appended (secret-masked, over-long values truncated) to a dedicated `~/.mureo/plugin_audit.jsonl` (created `0600`), gated by a conservative shared token bucket, and a plugin exception is recorded then re-raised unchanged (mureo never crashes on, nor silently swallows, a plugin error). Auditing never raises.
+  - **Phase 2 — classify + promote mutating calls.** Safety semantics are derived from standard `Tool.annotations.readOnlyHint` (undeclared ⇒ *mutating*, conservative default) and optional `_meta["mureo"]` (`reversal`, `throttle`). A successful **mutating** call is promoted into `STATE.json`'s `action_log` (`platform="plugin:<dist>"`) — only when a `STATE.json` already exists in the cwd (mureo never creates one for a plugin) — so it is visible to the agent / strategy review / `rollback_plan_get` like a built-in op.
+  - **Phase 3 — provider-aware skill guidance.** Workflow skills now enumerate installed plugin platforms best-effort and treat their findings as advisory, skipping mureo-only value-adds that do not exist for an unknown platform.
+  - **Phase 4 — structural strategy parity.** A mutating plugin call now also receives an `observation_due` window (conservative 14-day default, overridable via `_meta["mureo"]["observation_days"]`) so daily-check's evidence loop reviews its outcome like a built-in write. **Honest scope:** confirm + `STRATEGY.md` gating are skill-mediated and audit / `action_log` / observation / rollback-intent are mechanical — the *same channel built-ins use* — but mureo's platform-specific analytics (anomaly detection, `result_indicator` CV-mismatch, RSA-asset audit, rule-based scoring) and *executable* auto-rollback for arbitrary operations are **not** generically possible and are not claimed. Documented in `docs/plugin-authoring.md` and `docs/ABI-stability.md`.
+
+### Fixed — `mureo configure` frees the terminal on finish / Ctrl+C (#111)
+- The `configure` local web server now releases the terminal on completion and on Ctrl+C via an explicit stop event plus signal handling, so the shell prompt returns instead of hanging.
+
+### Docs
+- Getting-started now leads with `mureo configure` as the easy path (EN/JA) and adds a "Before you start" section (terminal + Python/pip) for non-engineers (#109, #110).
+- Clarified that BYOD/Demo are mureo-native only and not driven by the official MCPs (#112).
+
+### Chore
+- Removed `.mailmap` (added then reverted — ineffective for folding the Claude co-author identity; #107, #108).
+
 ## [0.9.0] - 2026-05-16
 
 ### Fixed — `/learn` slash command restored (regression from #77)
