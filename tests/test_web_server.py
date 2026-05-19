@@ -315,7 +315,13 @@ class TestStopLifecycle:
             body = json.loads(resp.read().decode("utf-8"))
 
         assert body == {"status": "stopping"}
-        assert served_wizard.stop_event.is_set()
+        # The handler returns "stopping" and the server thread sets the
+        # stop event; sampling is_set() immediately races that thread
+        # (flaky on CI). stop_event is a threading.Event — wait for it
+        # with a bounded timeout instead.
+        assert served_wizard.stop_event.wait(
+            timeout=5.0
+        ), "/api/shutdown did not trigger stop within 5s"
 
 
 @pytest.mark.unit
