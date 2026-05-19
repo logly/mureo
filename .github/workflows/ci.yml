@@ -50,3 +50,22 @@ jobs:
           files: coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
+  # Windows compatibility guard. mureo has no Windows dev machines, so
+  # this job is the real-Windows verification: the os.fchmod crash and
+  # the %APPDATA% Claude Desktop path are otherwise only exercised by
+  # simulation on Linux. Single Python (3.12) — a compat tripwire, not
+  # a full matrix; no coverage/codecov (the ubuntu job owns that).
+  test-windows:
+    needs: lint
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+      - name: Install dependencies
+        run: pip install -e ".[dev,cli,mcp]"
+      - name: Run tests
+        run: pytest tests/ -q

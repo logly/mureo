@@ -49,7 +49,10 @@ def _skill(
         description=f"Skill {name}.",
         required_capabilities=required,
         advisory_mode_capabilities=advisory,
-        source_path=Path(f"/tmp/skills/{name}/SKILL.md"),
+        # OS-absolute: ``/tmp/...`` is not absolute on Windows (no
+        # drive). ``Path.cwd().anchor`` is ``/`` on POSIX, the current
+        # drive on Windows — absolute on every OS.
+        source_path=Path(Path.cwd().anchor or "/", "tmp", "skills", name, "SKILL.md"),
         source_distribution=None,
     )
 

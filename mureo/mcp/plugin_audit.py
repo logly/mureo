@@ -23,7 +23,6 @@ Design:
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 import os
@@ -31,6 +30,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from mureo.fsutil import secure_chmod
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,6 @@ def record_plugin_call(
 
         with open(path, "a", encoding="utf-8", opener=_opener) as fh:
             fh.write(line)
-        with contextlib.suppress(OSError):
-            os.chmod(path, 0o600)
+        secure_chmod(path)
     except Exception:  # noqa: BLE001 — audit must never break the tool call
         logger.warning("plugin audit write failed for tool %r", tool, exc_info=True)

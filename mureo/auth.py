@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from google.oauth2.credentials import Credentials
 
+from mureo.fsutil import secure_fchmod
 from mureo.google_ads import GoogleAdsApiClient
 from mureo.meta_ads import MetaAdsApiClient
 from mureo.search_console import SearchConsoleApiClient
@@ -404,7 +405,7 @@ def _save_meta_token(
     content = json.dumps(data, indent=2, ensure_ascii=False)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    os.fchmod(fd, 0o600)
+    secure_fchmod(fd)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)

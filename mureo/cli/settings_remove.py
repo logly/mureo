@@ -30,6 +30,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from mureo.fsutil import secure_fchmod
+
 logger = logging.getLogger(__name__)
 
 
@@ -131,7 +133,7 @@ def _atomic_write_json(payload: dict[str, Any], settings_path: Path) -> None:
     )
     tmp_path = Path(tmp_name)
     try:
-        os.fchmod(tmp_fd, 0o600)
+        secure_fchmod(tmp_fd)
         with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
             tmp_fd = -1  # ownership transferred to ``fh``
             fh.write(serialized)

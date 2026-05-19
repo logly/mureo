@@ -21,6 +21,16 @@ import pytest
 from mureo.core.providers.capabilities import Capability
 from mureo.core.skills.models import SkillEntry  # noqa: E402 — RED-phase import
 
+# OS-absolute path builder: ``/tmp/...`` is absolute on POSIX but NOT on
+# Windows (no drive). ``Path.cwd().anchor`` is ``/`` on POSIX and the
+# current drive (e.g. ``C:\``) on Windows, so paths are absolute on
+# every OS while keeping the tests readable.
+_ANCHOR = Path(Path.cwd().anchor or "/")
+
+
+def _abs(*parts: str) -> Path:
+    return _ANCHOR.joinpath("tmp", "skills", *parts)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -36,7 +46,7 @@ def _build(
     source_distribution: str | None = None,
 ) -> SkillEntry:
     if source_path is None:
-        source_path = Path("/tmp/skills/valid-skill/SKILL.md")
+        source_path = _abs("valid-skill", "SKILL.md")
     return SkillEntry(
         name=name,
         description=description,
@@ -60,7 +70,7 @@ def test_valid_construction() -> None:
         description="Declares one cap.",
         required=frozenset({Capability.READ_CAMPAIGNS}),
         advisory=frozenset({Capability.READ_CAMPAIGNS}),
-        source_path=Path("/tmp/skills/cap-skill/SKILL.md"),
+        source_path=_abs("cap-skill", "SKILL.md"),
         source_distribution="mureo",
     )
 
@@ -68,7 +78,7 @@ def test_valid_construction() -> None:
     assert entry.description == "Declares one cap."
     assert entry.required_capabilities == frozenset({Capability.READ_CAMPAIGNS})
     assert entry.advisory_mode_capabilities == frozenset({Capability.READ_CAMPAIGNS})
-    assert entry.source_path == Path("/tmp/skills/cap-skill/SKILL.md")
+    assert entry.source_path == _abs("cap-skill", "SKILL.md")
     assert entry.source_distribution == "mureo"
 
 
@@ -121,7 +131,7 @@ def test_non_frozenset_capabilities_rejected() -> None:
             description="bad",
             required_capabilities={Capability.READ_CAMPAIGNS},  # type: ignore[arg-type]
             advisory_mode_capabilities=frozenset(),
-            source_path=Path("/tmp/skills/bad/SKILL.md"),
+            source_path=_abs("bad", "SKILL.md"),
             source_distribution=None,
         )
 
@@ -234,7 +244,7 @@ def test_extra_preserves_keys_and_is_read_only() -> None:
         description="Carries forward-compat metadata.",
         required_capabilities=frozenset(),
         advisory_mode_capabilities=frozenset(),
-        source_path=Path("/tmp/skills/extra-skill/SKILL.md"),
+        source_path=_abs("extra-skill", "SKILL.md"),
         source_distribution=None,
         extra=payload,
     )
@@ -268,7 +278,7 @@ def test_extra_must_be_mapping() -> None:
             description="bad",
             required_capabilities=frozenset(),
             advisory_mode_capabilities=frozenset(),
-            source_path=Path("/tmp/skills/bad-extra/SKILL.md"),
+            source_path=_abs("bad-extra", "SKILL.md"),
             source_distribution=None,
             extra=["not", "a", "mapping"],  # type: ignore[arg-type]
         )
@@ -291,7 +301,7 @@ def test_extra_keys_must_be_strings() -> None:
             description="bad",
             required_capabilities=frozenset(),
             advisory_mode_capabilities=frozenset(),
-            source_path=Path("/tmp/skills/bad-extra-keys/SKILL.md"),
+            source_path=_abs("bad-extra-keys", "SKILL.md"),
             source_distribution=None,
             extra={1: "int key not allowed"},  # type: ignore[dict-item]
         )
@@ -315,7 +325,7 @@ def test_extra_does_not_affect_equality_or_hash() -> None:
         "description": "same desc",
         "required_capabilities": frozenset(),
         "advisory_mode_capabilities": frozenset(),
-        "source_path": Path("/tmp/skills/same-skill/SKILL.md"),
+        "source_path": _abs("same-skill", "SKILL.md"),
         "source_distribution": None,
     }
     a = SkillEntry(**base_kwargs, extra={"metadata": {"version": "0.1.0"}})
