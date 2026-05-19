@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-05-19
+
+### Fixed — Windows compatibility (#122)
+- mureo crashed on Windows: `os.fchmod` is Unix-only (`AttributeError`) in **every** credential/config write path (credentials.json save, provider-config write, settings rewrite, OAuth token store, plugin audit). New `mureo/fsutil.py` (`secure_fchmod` / `secure_chmod`) applies owner-only `0o600` on POSIX (byte-identical — no Linux/macOS change) and a best-effort, never-raising no-op on Windows. All 6 call sites migrated. On NTFS, file confidentiality relies on the `%USERPROFILE%` profile ACL (documented best-effort, not a silent regression).
+- The interactive setup menu (`simple_term_menu`) imports Unix-only `termios` and raises `NotImplementedError` (not `ImportError`) on Windows, so the plain number-input fallback was unreachable. Both fallbacks now `except (ImportError, NotImplementedError)` — also degrades gracefully in non-terminal environments (CI, pipes, PyCharm console) instead of crashing.
+- `mureo configure` resolved the wrong Claude Desktop config location on Windows. `host_paths` now returns `%APPDATA%\Claude\claude_desktop_config.json` on Windows (macOS unchanged; Linux keeps the Code-style fallback — Claude Desktop has no Linux build).
+
+### CI
+- Added a `windows-latest` CI job. mureo has no Windows dev machines, so this is the real-Windows verification (the fixes were otherwise only simulated on Linux) and an automatic regression guard. POSIX-only test assertions (file-mode, absolute paths, the macOS-only `install-desktop` `.sh` wrapper, a Windows socket-close timing difference) were made platform-aware.
+
+### Known limitations (out of scope; not crashes)
+- `mureo install-desktop` (CLI) is still macOS-only by explicit design — a Windows launcher is a separate feature; it errors gracefully off macOS.
+- Real-desktop UX not exercisable by headless CI (browser auto-open, the native file/folder picker dialog) is not yet end-to-end verified on Windows.
+
 ## [0.9.2] - 2026-05-18
 
 ### Fixed — `mureo configure` no longer misroutes Claude Desktop users on the Meta connector finalize (#118)
