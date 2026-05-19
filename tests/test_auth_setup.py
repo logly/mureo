@@ -14,6 +14,33 @@ import pytest
 
 from mureo.auth import GoogleAdsCredentials
 
+# Windows test shim: `simple_term_menu` imports Unix-only `termios` and
+# raises NotImplementedError at import on Windows, so even
+# `patch("simple_term_menu.TerminalMenu", ...)` cannot resolve its
+# target there. These tests exercise the arrow-menu and the
+# numeric-input *fallback*; on a real Windows runtime the fallback is
+# what executes (production's widened `except (ImportError,
+# NotImplementedError)`), so installing a minimal stub here only lets
+# the existing patch-based tests run on Windows — it does NOT fake
+# product behaviour (production never sees this stub on real Windows;
+# it genuinely has no simple_term_menu and falls back).
+if sys.platform == "win32":  # pragma: no cover - Windows CI only
+    import types as _types
+
+    try:  # real package present? (won't be on Windows, but be safe)
+        import simple_term_menu as _stm_real  # noqa: F401
+    except Exception:
+        _stm_stub = _types.ModuleType("simple_term_menu")
+
+        class _StubTerminalMenu:  # patched per-test; never truly used
+            def __init__(self, *a: object, **k: object) -> None: ...
+
+            def show(self) -> None:
+                return None
+
+        _stm_stub.TerminalMenu = _StubTerminalMenu  # type: ignore[attr-defined]
+        sys.modules["simple_term_menu"] = _stm_stub
+
 
 # ---------------------------------------------------------------------------
 # 1. ローカルサーバーがcallbackを受信できること（Meta Ads用に残す）
