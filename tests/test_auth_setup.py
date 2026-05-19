@@ -609,6 +609,10 @@ def test_save_credentials_without_customer_id(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX 0o600; Windows perms are documented best-effort (NTFS ACL)",
+)
 def test_save_credentials_file_permissions(tmp_path: Path) -> None:
     """credentials.jsonが0600パーミッションで保存されること"""
     import stat

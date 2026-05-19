@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import stat
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -715,6 +716,10 @@ async def test_setup_meta_ads_out_of_range_choice(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX 0o600; Windows perms are documented best-effort (NTFS ACL)",
+)
 async def test_setup_meta_ads_file_permissions(tmp_path: Path) -> None:
     """Meta Ads認証情報保存時にファイルパーミッションが0600になること"""
     credentials_path = tmp_path / "credentials.json"

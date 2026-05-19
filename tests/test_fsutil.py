@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 import tempfile
 from pathlib import Path
 
@@ -18,9 +19,18 @@ import pytest
 
 from mureo.fsutil import secure_chmod, secure_fchmod
 
+# POSIX file-mode assertions: on Windows chmod cannot set 0o600 — the
+# helpers are best-effort there (the never-raise contract is verified
+# by the Windows-path tests below). Skip the mode assertions on win32.
+_posix_only = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX file-mode semantics; Windows secure_* is best-effort",
+)
+
 
 @pytest.mark.unit
 class TestSecureFchmod:
+    @_posix_only
     def test_posix_sets_0600(self, tmp_path: Path) -> None:
         p = tmp_path / "f"
         fd = os.open(str(p), os.O_WRONLY | os.O_CREAT, 0o666)
@@ -52,6 +62,7 @@ class TestSecureFchmod:
 
 @pytest.mark.unit
 class TestSecureChmod:
+    @_posix_only
     def test_posix_sets_0600(self, tmp_path: Path) -> None:
         p = tmp_path / "f"
         p.write_text("x")
@@ -59,6 +70,7 @@ class TestSecureChmod:
         secure_chmod(p)
         assert stat.S_IMODE(p.stat().st_mode) == 0o600
 
+    @_posix_only
     def test_accepts_str_path(self, tmp_path: Path) -> None:
         p = tmp_path / "f"
         p.write_text("x")

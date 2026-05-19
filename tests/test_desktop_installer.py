@@ -17,10 +17,21 @@ touch the user's real Claude Desktop config or ``~/.local/bin``.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+# The generated MCP wrapper is a POSIX ``#!/bin/bash`` script with an
+# exec bit and ``export VAR=`` lines; ``mureo install-desktop`` itself
+# is macOS-only (raises DesktopInstallUnsupportedPlatformError off
+# Darwin). These wrapper-content / exec-bit assertions are inherently
+# POSIX and are skipped on Windows.
+_posix_wrapper_only = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX .sh wrapper / exec bit; install-desktop is macOS-only",
+)
 
 pytestmark = pytest.mark.unit
 
@@ -71,6 +82,7 @@ def test_install_creates_workspace(fake_home: Path) -> None:
     assert result.workspace == fake_home / "mureo"
 
 
+@_posix_wrapper_only
 def test_install_generates_executable_wrapper(fake_home: Path) -> None:
     from mureo.desktop_installer import install_desktop
 
@@ -85,6 +97,7 @@ def test_install_generates_executable_wrapper(fake_home: Path) -> None:
     assert "-m mureo.mcp" in body
 
 
+@_posix_wrapper_only
 def test_wrapper_exports_workspace_local_byod_dir(fake_home: Path) -> None:
     """The wrapper must ``export MUREO_BYOD_DIR=<workspace>/byod`` so
     the MCP process reads/writes BYOD data inside the workspace.
@@ -520,6 +533,7 @@ def test_install_with_demo_lands_byod_in_workspace_not_global(
     ), f"Demo bundle leaked into global {global_manifest}"
 
 
+@_posix_wrapper_only
 @pytest.mark.integration
 def test_two_workspaces_keep_byod_isolated(fake_home: Path) -> None:
     """The headline guarantee: a demo workspace and a real workspace

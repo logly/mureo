@@ -64,8 +64,13 @@ def _select_account(
         selected = accounts[idx]
         print(f"Selected: {selected['name']} ({selected['id']})")
         return selected["id"]  # type: ignore[no-any-return]
-    except ImportError:
-        # Fall back to number input if simple-term-menu is not available
+    except (ImportError, NotImplementedError):
+        # Fall back to plain number input when the arrow-key menu is
+        # unusable: simple-term-menu not installed (ImportError); on
+        # Windows it imports Unix-only ``termios`` and raises
+        # NotImplementedError; and it also raises NotImplementedError
+        # in a non-terminal env (CI, pipes, PyCharm console) — all of
+        # which should degrade gracefully, not crash.
         for i, label in enumerate(labels, 1):
             print(f"  {i}. {label}")
         print()
@@ -682,8 +687,11 @@ def setup_mcp_config() -> None:
             print("MCP configuration skipped.")
             return
         scope = "global" if idx == 0 else "project"
-    except ImportError:
-        # Fallback: number input
+    except (ImportError, NotImplementedError):
+        # Plain number-input fallback: simple-term-menu missing
+        # (ImportError), Windows (Unix-only termios →
+        # NotImplementedError), or a non-terminal env (CI / pipe /
+        # PyCharm → NotImplementedError) — degrade, never crash.
         print("Where should the MCP configuration be placed?")
         print("  1. Global (Claude Code user scope) — Available in all projects")
         print("  2. This directory (.mcp.json) — This project only")
