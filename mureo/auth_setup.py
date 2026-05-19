@@ -11,7 +11,6 @@ import html
 import http.server
 import json
 import logging
-import os
 import secrets
 import shutil
 import subprocess  # noqa: S404 - fixed argv, shell=False (claude mcp add-json)
@@ -27,6 +26,7 @@ import httpx
 from google_auth_oauthlib.flow import Flow, InstalledAppFlow
 
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
+from mureo.fsutil import secure_chmod
 
 logger = logging.getLogger(__name__)
 
@@ -869,8 +869,8 @@ def save_credentials(
         encoding="utf-8",
     )
 
-    # Set permissions (owner read/write only)
-    os.chmod(resolved, 0o600)
+    # Set permissions (owner read/write only; best-effort on Windows)
+    secure_chmod(resolved)
 
     logger.info("Credentials saved: %s", resolved)
 

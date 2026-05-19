@@ -40,11 +40,15 @@ def _claude_code_paths(home: Path) -> HostPaths:
 def _claude_desktop_settings_path(home: Path) -> Path:
     """Resolve Claude Desktop's per-platform config path.
 
-    On macOS the canonical location is
-    ``~/Library/Application Support/Claude/claude_desktop_config.json``.
-    On Linux/Windows the install kit falls back to the Claude Code
-    style ``~/.claude/settings.json`` — Claude Desktop's per-platform
-    layout is not finalised on those OSes.
+    Per-OS canonical locations:
+
+    - **macOS** (``Darwin``):
+      ``~/Library/Application Support/Claude/claude_desktop_config.json``
+    - **Windows**: ``%APPDATA%\\Claude\\claude_desktop_config.json``
+      (i.e. ``~/AppData/Roaming/Claude/claude_desktop_config.json``)
+    - **Linux**: Claude Desktop has no Linux build, so the Claude
+      Code-style ``~/.claude/settings.json`` best-effort fallback is
+      kept (nothing on Linux reads this anyway).
     """
     system = platform.system()
     if system == "Darwin":
@@ -55,6 +59,11 @@ def _claude_desktop_settings_path(home: Path) -> Path:
             / "Claude"
             / "claude_desktop_config.json"
         )
+    if system == "Windows":
+        # %APPDATA% defaults to ~/AppData/Roaming; deriving it from the
+        # injected ``home`` keeps this testable and honours a custom
+        # home, mirroring the macOS branch's home-relative approach.
+        return home / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json"
     return home / ".claude" / "settings.json"
 
 

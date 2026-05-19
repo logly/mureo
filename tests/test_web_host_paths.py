@@ -106,12 +106,32 @@ class TestGetHostPathsClaudeDesktopMacOS:
 
 
 @pytest.mark.unit
-class TestGetHostPathsClaudeDesktopLinuxWindows:
-    @pytest.mark.parametrize("system", ["Linux", "Windows"])
-    def test_non_macos_falls_back_to_dot_claude_settings(
-        self, tmp_path: Path, system: str
+class TestGetHostPathsClaudeDesktopWindows:
+    def test_windows_uses_appdata_roaming_path(self, tmp_path: Path) -> None:
+        with patch("mureo.web.host_paths.platform.system", return_value="Windows"):
+            paths = get_host_paths("claude-desktop", home=tmp_path)
+        expected = (
+            tmp_path / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json"
+        )
+        assert paths.settings_path == expected
+        # Desktop reads MCP from the same claude_desktop_config.json.
+        assert paths.mcp_registry_path == expected
+
+    def test_windows_shares_skills_and_commands_with_claude_code(
+        self, tmp_path: Path
     ) -> None:
-        with patch("mureo.web.host_paths.platform.system", return_value=system):
+        with patch("mureo.web.host_paths.platform.system", return_value="Windows"):
+            paths = get_host_paths("claude-desktop", home=tmp_path)
+        assert paths.skills_dir == tmp_path / ".claude" / "skills"
+        assert paths.commands_dir == tmp_path / ".claude" / "commands"
+
+
+@pytest.mark.unit
+class TestGetHostPathsClaudeDesktopLinux:
+    def test_linux_falls_back_to_dot_claude_settings(self, tmp_path: Path) -> None:
+        # Claude Desktop has no Linux build; the Code-style fallback is
+        # the documented best-effort there.
+        with patch("mureo.web.host_paths.platform.system", return_value="Linux"):
             paths = get_host_paths("claude-desktop", home=tmp_path)
         assert paths.settings_path == tmp_path / ".claude" / "settings.json"
 

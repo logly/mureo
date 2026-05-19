@@ -16,6 +16,8 @@ import tempfile
 import urllib.parse
 from typing import TYPE_CHECKING, Any
 
+from mureo.fsutil import secure_chmod
+
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler
     from pathlib import Path
@@ -184,8 +186,7 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
             fh.flush()
             os.fsync(fh.fileno())
         os.replace(tmp_name, path)
-        with contextlib.suppress(OSError):
-            os.chmod(path, 0o600)
+        secure_chmod(path)
     except Exception:
         with contextlib.suppress(OSError):
             os.unlink(tmp_name)

@@ -33,6 +33,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from mureo.fsutil import secure_fchmod
+
 HostedConnectivity = Literal["connected", "not_connected", "unknown"]
 
 if TYPE_CHECKING:
@@ -151,7 +153,7 @@ def _atomic_write_json(payload: dict[str, Any], settings_path: Path) -> None:
     try:
         # Restrict permissions BEFORE writing the data so the file is never
         # readable to other local users during the write/replace window.
-        os.fchmod(tmp_fd, 0o600)
+        secure_fchmod(tmp_fd)
         with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
             tmp_fd = -1  # ownership transferred to ``fh``; do not close twice
             fh.write(serialized)
