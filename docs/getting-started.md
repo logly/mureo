@@ -148,7 +148,7 @@ The filename is arbitrary; you pass the path on import.
 
 ## Step 3 — Import the file
 
-> **Today**: BYOD import runs from your terminal (Phase 4 of the roadmap will add a `mureo_byod_import` MCP tool so you can do this from chat). Until then, run the command below in any shell.
+> BYOD import runs from your terminal — run the command below in any shell.
 
 ```bash
 mureo byod import ~/Downloads/mureo-google-ads.xlsx
@@ -235,8 +235,6 @@ The MCP server picks up the credentials from `~/.mureo/credentials.json` automat
 ### C. Auth in Cowork
 
 Same as Desktop chat — Cowork uses the same MCP entry. After `install-desktop` + `auth setup`, **connect the workspace folder** in Cowork (`~/mureo`) so the agent can also see local files when needed.
-
-> **Phase 4 preview**: a `mureo_auth_setup` MCP tool will let you start the OAuth wizard from chat directly. Until then, run `mureo configure` once (it opens the browser UI).
 
 ## Step 3 — Verify
 

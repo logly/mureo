@@ -1,6 +1,6 @@
 # Architecture
 
-mureo is a **local-first control plane** for AI-driven ad ops. It does not compete with the official ad-platform MCPs (Meta Ads MCP, Google Ads MCP, etc.) — it consumes them as drivers and provides the layer they structurally cannot: strategic intent, outcome correlation, and audit trail. Where the official MCPs answer *how to call the API*, mureo answers *should this change happen, what does it mean for the business, and how do we prove it later*.
+mureo is a **local-first control plane** for AI-driven ad ops. It does not compete with the official ad-platform MCPs (Meta Ads MCP, Google Ads MCP, etc.) — it consumes them as drivers and provides the layer they structurally cannot: strategic intent, safety gating, and audit trail. Where the official MCPs answer *how to call the API*, mureo answers *should this change happen, what does it mean for the business, and how do we prove it later*.
 
 ## System Architecture
 
@@ -70,10 +70,6 @@ Mutations are bounded by a rollback allow-list, GAQL injection guards, BYOD read
 ### Audit
 
 Every decision is recorded in an append-only ledger: who proposed, when, with what reasoning, on what evidence, with what predicted impact, with what rollback plan. Decisions are reversible. An official MCP records API calls, not strategic intent. This is the layer that makes AI ad ops survivable in regulated industries (GDPR, CCPA) and through procurement / SOC2 review.
-
-### Outcome (🚧 Coming v0.9, Q3 2026)
-
-Platform metrics describe what happened inside the walled garden. mureo will correlate them with your business outcomes — CRM lead quality, sales, LTV, P&L — kept locally. Decisions will be graded on outcomes, not platform reports. Implementation tracks for v0.9 (target 2026-08).
 
 mureo's value increases — not decreases — as official MCPs ship.
 

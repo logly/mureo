@@ -42,8 +42,6 @@ When official ad-platform MCPs ship (Meta Ads MCP, Google Ads MCP, etc.), mureo 
 - **Local-first** — credentials never leave your machine
 - **Learnable** — `/learn` builds account-specific knowledge over time
 
-> 🚧 **Coming v0.9 (Q3 2026)**: Outcome correlation — link platform metrics with your CRM / sales / LTV data, locally.
-
 ## Choose your setup
 
 ### The easy way: `pip install` + `mureo configure`
