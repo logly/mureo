@@ -24,10 +24,24 @@ import pytest
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def _clear_runtime_context_cache():
+    """Reset the resolver cache before and after every test in this file
+    so the workspace-aware ``_resolve_path`` rebuilds a
+    :class:`FilesystemStateStore` with the (per-test) CWD instead of
+    reusing a stale one cached during an earlier test or test module."""
+    from mureo.core.runtime_context import reset_runtime_context
+
+    reset_runtime_context()
+    yield
+    reset_runtime_context()
+
+
 @pytest.fixture
 def cwd_to_tmp(tmp_path, monkeypatch):
     """Run each test with cwd = tmp_path so STRATEGY.md/STATE.json land
-    inside the sandbox by default."""
+    inside the sandbox by default. The autouse cache-reset fixture above
+    runs first, so the resolver picks up the chdir on the next call."""
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
@@ -268,9 +282,73 @@ async def test_upsert_campaign_updates_existing(cwd_to_tmp) -> None:
 
 
 async def test_path_argument_refuses_traversal(cwd_to_tmp) -> None:
-    """Custom ``path`` outside cwd is rejected — symmetric with rollback's
-    ``_resolve_state_file`` guard. A prompt-injected agent must not be
-    able to point mureo at an attacker-crafted file elsewhere on disk."""
+    """Custom ``path`` outside the active workspace is rejected —
+    symmetric with rollback's ``_resolve_state_file`` guard. A
+    prompt-injected agent must not be able to point mureo at an
+    attacker-crafted file elsewhere on disk.
+
+    The default workspace is CWD (the resolved
+    :class:`FilesystemStateStore` derives ``workspace`` from
+    ``Path.cwd()`` at construction), so this test exercises the
+    workspace boundary while CWD is ``cwd_to_tmp``."""
     mod = _import_tools()
-    with pytest.raises(ValueError, match="Refusing to read/write outside cwd"):
+    with pytest.raises(
+        ValueError, match="Refusing to read/write outside workspace"
+    ):
         await mod.handle_tool("mureo_strategy_get", {"path": "/etc/passwd"})
+
+
+# ---------------------------------------------------------------------------
+# RuntimeContext-routing (workspace-aware default path)
+# ---------------------------------------------------------------------------
+
+
+async def test_default_path_follows_runtime_context_workspace(
+    tmp_path, monkeypatch
+) -> None:
+    """When no ``path`` argument is supplied, handlers read/write at
+    ``state_store.workspace / 'STATE.json'`` — picking up any alternate
+    :class:`StateStore` registered via the
+    ``mureo.runtime_context_factory`` entry-point group.
+
+    Verified by injecting a :class:`FilesystemStateStore` whose
+    workspace is a sibling of CWD, then asserting the on-disk write
+    lands in the injected workspace (NOT in CWD)."""
+    from mureo.core.runtime_context import (
+        RuntimeContext,
+        default_runtime_context,
+    )
+
+    # CWD is one dir, the injected workspace is a SIBLING dir.
+    cwd_dir = tmp_path / "cwd"
+    workspace_dir = tmp_path / "tenant"
+    cwd_dir.mkdir()
+    workspace_dir.mkdir()
+    monkeypatch.chdir(cwd_dir)
+
+    base = default_runtime_context(workspace=workspace_dir)
+    injected = RuntimeContext(
+        secret_store=base.secret_store,
+        state_store=base.state_store,
+        knowledge_store=base.knowledge_store,
+        throttle_store=base.throttle_store,
+        workspace_id="injected",
+    )
+    monkeypatch.setattr("mureo.core.runtime_context._cached_context", injected)
+
+    mod = _import_tools()
+    await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {
+            "entry": {
+                "timestamp": "2026-05-21T00:00:00Z",
+                "action": "test",
+                "platform": "google_ads",
+            }
+        },
+    )
+
+    # The action_log write must land under the injected workspace,
+    # NOT under CWD — proving the handler followed the RuntimeContext.
+    assert (workspace_dir / "STATE.json").exists()
+    assert not (cwd_dir / "STATE.json").exists()
