@@ -71,8 +71,10 @@ WEB_EXTENSIONS_ENTRY_POINT_GROUP: Final[str] = "mureo.web_extensions"
 #: ``WebExtension.name`` and ``WebExtensionEntry.name`` — kebab-case,
 #: 1–33 chars, must start with a lowercase letter. Used as the
 #: URL-path segment (``/api/ext/<name>/...``) and as the dict key for
-#: duplicate-name detection.
-_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9-]{0,32}$")
+#: duplicate-name detection. Exposed as a bare string so the dispatch
+#: layer in :mod:`mureo.web.handlers` can build its URL-matching
+#: regex from the same source of truth.
+NAME_PATTERN: Final[str] = r"[a-z][a-z0-9-]{0,32}"
 
 #: ``StaticAsset.filename`` — lowercase, alphanumeric + ``._-``, no
 #: directory separator, must start with a letter, must contain at
@@ -80,14 +82,17 @@ _NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9-]{0,32}$")
 #: ``vendor.bundle.js``, ``i18n.en-us.json``) — modern JS toolchain
 #: outputs use them routinely. Leading dot, ``..``, ``/``, ``\``,
 #: whitespace, and uppercase remain rejected.
-_FILENAME_RE: Final[re.Pattern[str]] = re.compile(
-    r"^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)*\.[a-z0-9]+$"
-)
+FILENAME_PATTERN: Final[str] = r"[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)*\.[a-z0-9]+"
 
 #: ``RouteContribution.subpath`` — leading slash, then one or more
 #: segments of ``[A-Za-z0-9_-]``, separated by single slashes. No
-#: query string, no fragment, no traversal, no double-slash.
-_SUBPATH_RE: Final[re.Pattern[str]] = re.compile(r"^(/[A-Za-z0-9_-]+)+$")
+#: query string, no fragment, no traversal, no double-slash, no
+#: trailing slash.
+SUBPATH_PATTERN: Final[str] = r"(?:/[A-Za-z0-9_-]+)+"
+
+_NAME_RE: Final[re.Pattern[str]] = re.compile(rf"^{NAME_PATTERN}$")
+_FILENAME_RE: Final[re.Pattern[str]] = re.compile(rf"^{FILENAME_PATTERN}$")
+_SUBPATH_RE: Final[re.Pattern[str]] = re.compile(rf"^{SUBPATH_PATTERN}$")
 
 #: Inline-executable patterns banned in ``html_fragment``. The
 #: configure-UI CSP forbids ``unsafe-inline`` so these would not
@@ -402,7 +407,10 @@ def _resolve_source(ep: Any) -> str | None:
 
 
 __all__ = [
+    "FILENAME_PATTERN",
+    "NAME_PATTERN",
     "RouteContribution",
+    "SUBPATH_PATTERN",
     "StaticAsset",
     "ViewContribution",
     "WEB_EXTENSIONS_ENTRY_POINT_GROUP",
