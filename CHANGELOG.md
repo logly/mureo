@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-05-21
+
+### Added — Extension Protocols and `mureo learn` CLI (#125)
+
+A new public surface under `mureo.core` lets alternate backends and tests inject pluggable persistence without forking call sites. The shape mirrors the existing `mureo.core.providers` and `mureo.core.skills` extension patterns. Every default reproduces today's file-backed behaviour, so existing users see no change.
+
+- **`mureo.core.SecretStore`** — `Protocol` for credential round-trip (load / save / delete). Default `FilesystemSecretStore` reads and writes `~/.mureo/credentials.json` byte-for-byte equivalent to the previous flow (atomic write, `0o600` via `mureo.fsutil.secure_fchmod`, `ensure_ascii=False`).
+- **`mureo.core.StateStore`** — `Protocol` for `STATE.json` / `STRATEGY.md` / action_log persistence. Default `FilesystemStateStore` composes the existing helpers in `mureo.context.state` / `mureo.context.strategy`.
+- **`mureo.core.KnowledgeStore`** — two-tier `Protocol` for `/learn` insights (operator + workspace). Default `FilesystemKnowledgeStore` writes to today's `~/.claude/skills/_mureo-pro-diagnosis/SKILL.md` location with the same frontmatter scaffold.
+- **`mureo.core.ThrottleStore`** — `Protocol` for per-key API rate limiting. Default `ProcessLocalThrottleStore` wraps `mureo.throttle.Throttler`; `register(key, config)` pre-installs custom buckets matching the MCP server's `_PLUGIN_TOOL_THROTTLERS` pattern.
+- **`mureo.core.RuntimeContext`** — frozen dataclass aggregating the four stores plus a `workspace_id`. `DEFAULT_WORKSPACE_ID = "default"` is the canonical single-workspace sentinel.
+- **`mureo.core.default_runtime_context()`** — factory wiring the four file-backed defaults.
+- **`mureo.core.get_runtime_context()`** — process-cached resolver that discovers a single zero-arg factory under the `mureo.runtime_context_factory` entry-point group; raises `RuntimeContextFactoryError` on multiple registrations or a returning-non-`RuntimeContext` factory.
+
+### Added — `mureo learn add` CLI
+
+`mureo learn add <text> [--scope {operator,workspace}]` persists `/learn` insights through `RuntimeContext.knowledge_store` rather than writing files directly. Default scope `operator` writes the cross-workspace tier (today's pro-diagnosis location); `--scope workspace` writes a workspace-scoped tier if one is configured. The `/learn` skill (`skills/learn/SKILL.md`) now invokes the CLI instead of carrying its own copy of the file scaffold.
+
+### Changed — Consumers routed through the new Protocols
+
+These refactors are call-site changes only; all on-disk artefacts and CLI behaviour are byte-equivalent in the default file-backed runtime.
+
+- `mureo.auth.load_google_ads_credentials` / `load_meta_ads_credentials` read through `SecretStore` (`get_runtime_context().secret_store` when `path` is not passed; one-shot `FilesystemSecretStore(path=…)` when it is).
+- MCP handlers `mureo_strategy_*`, `mureo_state_*`, `rollback_*`, `analysis_anomalies_check` resolve their `path` / `state_file` argument against `state_store.workspace` rather than raw CWD. Error messages and traversal-refusal semantics are preserved; symlink refusal in the analysis handler is unchanged.
+- MCP plugin dispatch acquires its throttle slot via `RuntimeContext.throttle_store`. The default `ProcessLocalThrottleStore` is seeded with the existing per-tool `Throttler` instances (`_PLUGIN_TOOL_THROTTLERS`) on first call; alternate backends receive `acquire(name)` and own per-key fallback semantics.
+- `mureo.cli.rollback_cmd` `--state-file` default is now resolved through `RuntimeContext` (rather than the literal `Path("STATE.json")`).
+- `mureo.byod.runtime.byod_data_dir()` adds a middle-priority resolution path: when a non-default `RuntimeContext` exposes a filesystem `workspace`, BYOD data lives at `<workspace>/byod/`. `MUREO_BYOD_DIR` env var and the legacy `~/.mureo/byod/` fallback are unchanged.
+
 ## [0.9.3] - 2026-05-19
 
 ### Fixed — Windows compatibility (#122)
