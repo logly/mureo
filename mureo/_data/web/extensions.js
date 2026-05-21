@@ -23,6 +23,9 @@
   // collapse to one /api/extensions fetch even before the first
   // response resolves, and so the no-extensions case (_extensions
   // stays []) does not re-fetch on every dashboard open.
+  // Exception paths intentionally leave this true: a failed discovery
+  // requires a full page reload (not a silent retry) so the operator
+  // can investigate the root cause via the console.warn diagnostics.
   let _initialised = false;
 
   function _navList() {
