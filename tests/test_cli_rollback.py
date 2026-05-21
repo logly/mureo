@@ -18,6 +18,19 @@ if TYPE_CHECKING:
 runner = CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def _clear_runtime_context_cache():
+    """Reset the resolver cache before and after every test so the
+    workspace-aware ``_resolve_default_state_file`` rebuilds a
+    :class:`FilesystemStateStore` with the (per-test) CWD instead of
+    reusing a stale one cached during an earlier test or test module."""
+    from mureo.core.runtime_context import reset_runtime_context
+
+    reset_runtime_context()
+    yield
+    reset_runtime_context()
+
+
 def _make_state(path: Path, action_log: list[dict[str, Any]]) -> None:
     path.write_text(
         json.dumps({"version": "2", "campaigns": [], "action_log": action_log}),
@@ -194,3 +207,99 @@ class TestRollbackGroupRegistered:
             if g.typer_instance
         ]
         assert "rollback" in group_names
+
+
+@pytest.mark.unit
+class TestStateFileDefault:
+    """``--state-file`` is optional: when omitted the CLI resolves the
+    path through ``mureo.core.runtime_context.get_runtime_context``, so
+    an alternate backend registered via the
+    ``mureo.runtime_context_factory`` entry-point group can redirect
+    the read without each command growing its own flag."""
+
+    def test_default_resolves_to_cwd_workspace(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No ``--state-file`` flag → STATE.json under CWD is read.
+
+        The default ``FilesystemStateStore`` constructs its workspace
+        from ``Path.cwd()`` at first resolver call; the autouse cache
+        reset above guarantees the per-test ``chdir`` is observed.
+        """
+        monkeypatch.chdir(tmp_path)
+        _make_state(
+            tmp_path / "STATE.json",
+            [
+                {
+                    "timestamp": "2026-04-15T10:00:00",
+                    "action": "update_budget",
+                    "platform": "google_ads",
+                    "campaign_id": "111",
+                    "reversible_params": {
+                        "operation": "google_ads_budget_update",
+                        "params": {"budget_id": "222", "amount_micros": 1_000_000_000},
+                    },
+                },
+            ],
+        )
+        from mureo.cli.main import app
+
+        result = runner.invoke(app, ["rollback", "list"])
+        assert result.exit_code == 0, result.output
+        assert "update_budget" in result.output
+
+    def test_default_resolves_via_injected_runtime_context(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An injected RuntimeContext (workspace ≠ CWD) must be honoured.
+
+        Verifies the integration point that alternate backends use:
+        register a custom ``RuntimeContext`` and the CLI follows it
+        without touching the underlying flag plumbing."""
+        from mureo.core.runtime_context import (
+            RuntimeContext,
+            default_runtime_context,
+        )
+
+        cwd_dir = tmp_path / "cwd"
+        workspace_dir = tmp_path / "tenant"
+        cwd_dir.mkdir()
+        workspace_dir.mkdir()
+        monkeypatch.chdir(cwd_dir)
+
+        _make_state(
+            workspace_dir / "STATE.json",
+            [
+                {
+                    "timestamp": "2026-04-15T10:00:00",
+                    "action": "from_workspace",
+                    "platform": "meta_ads",
+                    "campaign_id": "ws-1",
+                    "reversible_params": {
+                        "operation": "meta_ads_campaigns_update_status",
+                        "params": {"campaign_id": "ws-1", "status": "ACTIVE"},
+                    },
+                },
+            ],
+        )
+        # CWD STATE.json deliberately has a *different* action_log so we
+        # can assert the CLI read the workspace one (not the CWD one).
+        _make_state(cwd_dir / "STATE.json", [])
+
+        base = default_runtime_context(workspace=workspace_dir)
+        injected = RuntimeContext(
+            secret_store=base.secret_store,
+            state_store=base.state_store,
+            knowledge_store=base.knowledge_store,
+            throttle_store=base.throttle_store,
+            workspace_id="injected",
+        )
+        monkeypatch.setattr(
+            "mureo.core.runtime_context._cached_context", injected
+        )
+
+        from mureo.cli.main import app
+
+        result = runner.invoke(app, ["rollback", "list"])
+        assert result.exit_code == 0, result.output
+        assert "from_workspace" in result.output

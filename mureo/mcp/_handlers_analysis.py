@@ -4,8 +4,10 @@ Thin composition layer over the pure ``detect_anomalies`` +
 ``baseline_from_history`` functions in ``mureo.analysis.anomaly_detector``.
 The handler:
 
-1. Sandboxes ``state_file`` against the MCP server's current working
-   directory: path traversal, absolute paths outside CWD, and symlinks
+1. Sandboxes ``state_file`` against the active workspace (the
+   ``StateStore.workspace`` exposed by the resolved
+   :class:`mureo.core.runtime_context.RuntimeContext`, defaulting to
+   CWD): path traversal, absolute paths outside it, and symlinks
    that resolve outside are all refused so a prompt-injected agent
    cannot point the tool at an attacker-crafted STATE.json.
 2. Builds a ``CampaignMetrics`` from the ``current`` argument.
@@ -39,32 +41,57 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_state_file(arguments: dict[str, Any]) -> Path:
-    """Sandbox ``state_file`` against the MCP server's CWD.
+    """Sandbox ``state_file`` against the active workspace.
+
+    The active workspace is
+    ``getattr(get_runtime_context().state_store, "workspace", Path.cwd())``
+    — CWD in the default file-backed configuration, or whatever
+    filesystem-backed :class:`StateStore` an alternate backend
+    registers via the ``mureo.runtime_context_factory`` entry-point
+    group.
 
     A prompt-injected agent cannot point the tool at an attacker-crafted
     STATE.json elsewhere on disk. Rejects (a) paths that resolve outside
-    CWD, (b) symlinks whose target escapes CWD, even when the link itself
-    sits inside CWD.
+    the workspace, (b) symlinks whose target escapes the workspace,
+    even when the link itself sits inside it. The symlink refusal is
+    stricter than the rollback / mureo_context handlers because the
+    analysis surface returns derived metrics that could leak file
+    contents an attacker swaps in mid-call.
     """
-    raw = _opt(arguments, "state_file", "STATE.json")
+    from mureo.core.runtime_context import get_runtime_context
+
+    store = get_runtime_context().state_store
+    workspace = getattr(store, "workspace", Path.cwd()).resolve()
+    raw = arguments.get("state_file")
+    if not raw:
+        attr = getattr(store, "state_path", None)
+        if attr is not None:
+            # Backend-owned path: trusted output of an installed
+            # ``StateStore``; the entry-point factory is host code,
+            # not an untrusted MCP caller, so the symlink and
+            # workspace-boundary checks below do not apply.
+            return Path(attr).resolve()
+        return workspace / "STATE.json"
     candidate = Path(raw)
-    cwd = Path.cwd().resolve()
     # strict=False so the file not yet existing is allowed (callers handle
     # missing-file with .exists()), but symlinks are still followed.
-    target = (cwd / candidate) if not candidate.is_absolute() else candidate
+    target = (workspace / candidate) if not candidate.is_absolute() else candidate
     resolved = target.resolve(strict=False)
     try:
-        resolved.relative_to(cwd)
+        resolved.relative_to(workspace)
     except ValueError as exc:
         raise ValueError(
-            f"state_file must resolve inside the current working directory "
-            f"({cwd}); got {resolved}."
+            f"state_file must resolve inside the active workspace "
+            f"({workspace}); got {resolved}."
         ) from exc
-    # Refuse symlinks even when both the link and its target live under CWD:
-    # a symlink is agent-writable and would let a future STATE.json swap
-    # redirect the handler without changing the argument it was called with.
+    # Refuse symlinks even when both the link and its target live under
+    # the workspace: a symlink is agent-writable and would let a future
+    # STATE.json swap redirect the handler without changing the
+    # argument it was called with.
     if target.is_symlink() or any(
-        p.is_symlink() for p in target.parents if cwd in p.parents or p == cwd
+        p.is_symlink()
+        for p in target.parents
+        if workspace in p.parents or p == workspace
     ):
         raise ValueError(f"state_file must not traverse a symlink; got {target}.")
     return resolved

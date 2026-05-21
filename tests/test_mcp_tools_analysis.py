@@ -4,7 +4,8 @@ Locks in that the tool is registered on the aggregate MCP server, its
 schema rejects malformed input, and the handler correctly composes
 ``baseline_from_history`` with ``detect_anomalies`` over STATE.json.
 Path sandboxing mirrors rollback_apply — ``state_file`` must resolve
-inside CWD.
+inside the active workspace (CWD by default; configurable via the
+``mureo.runtime_context_factory`` entry-point group).
 """
 
 from __future__ import annotations
@@ -52,6 +53,19 @@ def _history_entry(
         campaign_id=campaign_id,
         metrics_at_action=metrics,
     )
+
+
+@pytest.fixture(autouse=True)
+def _clear_runtime_context_cache():
+    """Reset the resolver cache before and after every test so the
+    workspace-aware ``_resolve_state_file`` rebuilds a
+    :class:`FilesystemStateStore` with the (per-test) CWD instead of
+    reusing a stale one cached during an earlier test or test module."""
+    from mureo.core.runtime_context import reset_runtime_context
+
+    reset_runtime_context()
+    yield
+    reset_runtime_context()
 
 
 @pytest.fixture
@@ -185,10 +199,7 @@ class TestAnomalyHandler:
             },
         )
         payload = json.loads(result[0].text)
-        assert (
-            "error" in payload
-            and "current working directory" in payload["error"]
-        )
+        assert "error" in payload and "active workspace" in payload["error"]
 
     @pytest.mark.asyncio
     async def test_ctr_drop_detected_with_history(self, sandboxed_cwd: Path) -> None:
