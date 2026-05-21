@@ -118,6 +118,7 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "wizard.js",
     "auth_wizards.js",
     "dashboard.js",
+    "extensions.js",
     "i18n.json",
     "logo.png",
     "logo-dark.png",
