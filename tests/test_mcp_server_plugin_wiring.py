@@ -203,14 +203,29 @@ class TestPluginAuditAndThrottle:
     async def test_throttle_acquired_before_dispatch(
         self, server_with_plugin, monkeypatch
     ) -> None:
+        """The plugin dispatch path must await a throttle slot before
+        calling the provider. We exercise that contract by installing a
+        spy throttler in place of the module-level ``_PLUGIN_THROTTLER``
+        AND clearing the throttle-store seeding cache so the next call
+        re-seeds the resolved store with our spy."""
         calls: list[str] = []
 
         class _SpyThrottler:
             async def acquire(self) -> None:
                 calls.append("acquire")
 
+        # Drop any seeded throttle_store and reset the RuntimeContext
+        # resolver so the next handler call rebuilds the chain from
+        # the freshly-patched ``_PLUGIN_THROTTLER``.
+        from mureo.core.runtime_context import reset_runtime_context
+
         monkeypatch.setattr(server_with_plugin, "_PLUGIN_THROTTLER", _SpyThrottler())
-        await server_with_plugin.handle_call_tool("wired_plugin_echo", {"msg": "x"})
+        monkeypatch.setattr(server_with_plugin, "_throttle_store_seeded", set())
+        reset_runtime_context()
+        try:
+            await server_with_plugin.handle_call_tool("wired_plugin_echo", {"msg": "x"})
+        finally:
+            reset_runtime_context()
         assert calls == ["acquire"]
 
     async def test_plugin_exception_audited_reraised_no_crash(
