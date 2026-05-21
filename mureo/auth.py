@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from google.oauth2.credentials import Credentials
 
+from mureo.core.secret_store import FilesystemSecretStore, SecretStore
 from mureo.fsutil import secure_fchmod
 from mureo.google_ads import GoogleAdsApiClient
 from mureo.meta_ads import MetaAdsApiClient
@@ -107,16 +108,25 @@ def load_google_ads_credentials(
     """Load Google Ads credentials with environment variable fallback.
 
     Priority:
-        1. google_ads section in credentials.json
-        2. Environment variables (GOOGLE_ADS_*)
+        1. ``google_ads`` section from the resolved
+           :class:`mureo.core.secret_store.SecretStore`. When ``path``
+           is supplied, the store is a one-shot
+           :class:`FilesystemSecretStore` reading that file directly
+           (preserves the long-standing test contract). When ``path``
+           is ``None``, the store is the process-wide one returned by
+           :func:`mureo.core.runtime_context.get_runtime_context` —
+           ``FilesystemSecretStore(~/.mureo/credentials.json)`` by
+           default, or whatever an installed alternate backend
+           registers via the ``mureo.runtime_context_factory``
+           entry-point group.
+        2. Environment variables (``GOOGLE_ADS_*``).
 
     Returns:
         GoogleAdsCredentials or None if required fields are missing.
     """
-    data = load_credentials(path)
-    google_section = data.get("google_ads")
+    google_section = _resolve_secret_store(path).load("google_ads")
 
-    if isinstance(google_section, dict):
+    if isinstance(google_section, dict) and google_section:
         developer_token = google_section.get("developer_token", "")
         client_id = google_section.get("client_id", "")
         client_secret = google_section.get("client_secret", "")
@@ -147,16 +157,18 @@ def load_meta_ads_credentials(
     """Load Meta Ads credentials with environment variable fallback.
 
     Priority:
-        1. meta_ads section in credentials.json
-        2. Environment variables (META_ADS_*)
+        1. ``meta_ads`` section from the resolved
+           :class:`mureo.core.secret_store.SecretStore` (see
+           :func:`load_google_ads_credentials` for the full resolution
+           rules — same shape).
+        2. Environment variables (``META_ADS_*``).
 
     Returns:
         MetaAdsCredentials or None if required fields are missing.
     """
-    data = load_credentials(path)
-    meta_section = data.get("meta_ads")
+    meta_section = _resolve_secret_store(path).load("meta_ads")
 
-    if isinstance(meta_section, dict):
+    if isinstance(meta_section, dict) and meta_section:
         access_token = meta_section.get("access_token", "")
         if access_token:
             return MetaAdsCredentials(
@@ -424,6 +436,30 @@ def _save_meta_token(
 def _resolve_default_path() -> Path:
     """Resolve the default credentials.json path."""
     return Path.home() / ".mureo" / "credentials.json"
+
+
+def _resolve_secret_store(path: Path | None) -> SecretStore:
+    """Pick the SecretStore that ``load_*_credentials`` should consult.
+
+    - ``path`` given → one-shot :class:`FilesystemSecretStore` bound to
+      that path. Bypasses the process-wide RuntimeContext so tests that
+      pass an explicit per-test file are isolated from any installed
+      alternate backend.
+    - ``path`` is ``None`` → the SecretStore from
+      :func:`mureo.core.runtime_context.get_runtime_context` (the
+      default file-backed store today, or whatever a registered
+      ``mureo.runtime_context_factory`` entry-point returns).
+
+    Imported lazily to keep ``mureo.auth`` decoupled from
+    ``mureo.core.runtime_context``: if the resolver later wants to
+    reference an ``mureo.auth`` type, a top-level import here would
+    create a circular dependency.
+    """
+    if path is not None:
+        return FilesystemSecretStore(path=path)
+    from mureo.core.runtime_context import get_runtime_context
+
+    return get_runtime_context().secret_store
 
 
 def _load_google_ads_from_env() -> GoogleAdsCredentials | None:
