@@ -23,12 +23,27 @@ def _write_state(path: Path, entries: list[ActionLogEntry]) -> None:
     write_state_file(path, StateDocument(version="2", action_log=tuple(entries)))
 
 
+@pytest.fixture(autouse=True)
+def _clear_runtime_context_cache():
+    """Reset the resolver cache before and after every test so the
+    workspace-aware ``_resolve_state_file`` rebuilds a
+    :class:`FilesystemStateStore` with the (per-test) CWD instead of
+    reusing a stale one cached during an earlier test or test module."""
+    from mureo.core.runtime_context import reset_runtime_context
+
+    reset_runtime_context()
+    yield
+    reset_runtime_context()
+
+
 @pytest.fixture
 def sandboxed_cwd(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Path:
     """Run each test under ``tmp_path`` so the handler's path-sandboxing
-    accepts a relative ``STATE.json`` argument."""
+    accepts a relative ``STATE.json`` argument. The autouse cache-reset
+    fixture above runs first, so the resolver picks up the chdir on the
+    next call."""
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
@@ -166,7 +181,10 @@ class TestApplyHandler:
 
     @pytest.mark.asyncio
     async def test_path_traversal_refused(self, sandboxed_cwd: Path) -> None:
-        """A state_file argument that resolves outside CWD must be rejected."""
+        """A state_file argument that resolves outside the active workspace
+        must be rejected. In the default file-backed configuration the
+        workspace equals CWD, so writing to ``sandboxed_cwd.parent`` is
+        outside both."""
         # Write a valid STATE.json outside the sandbox.
         outside = sandboxed_cwd.parent / "rogue_STATE.json"
         _write_state(outside, [_budget_entry()])
@@ -182,8 +200,7 @@ class TestApplyHandler:
         payload = json.loads(result[0].text)
         # Path validation raises ValueError -> surfaces in response
         assert (
-            "inside the current working directory"
-            in payload.get("error", "")
+            "inside the active workspace" in payload.get("error", "")
             or payload.get("status") == "refused"
         )
 

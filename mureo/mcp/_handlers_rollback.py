@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.context.errors import ContextFileError
 from mureo.context.state import read_state_file
-from mureo.mcp._helpers import _json_result, _opt, _require
+from mureo.mcp._helpers import _json_result, _require
 from mureo.rollback import (
     RollbackExecutionError,
     execute_rollback,
@@ -48,23 +48,50 @@ def _get_dispatcher() -> Callable[[str, dict[str, Any]], Awaitable[list[Any]]]:
 
 
 def _resolve_state_file(arguments: dict[str, Any]) -> Path:
-    """Resolve ``state_file`` against the MCP server's working directory.
+    """Resolve ``state_file`` against the active workspace.
 
-    The MCP caller is untrusted (a prompt-injected agent could point at
-    an attacker-crafted STATE.json elsewhere on the filesystem). We
-    require the argument to resolve to a path inside the current working
-    directory so the agent cannot smuggle in a rogue action_log.
+    The active workspace is
+    ``getattr(get_runtime_context().state_store, "workspace", Path.cwd())``
+    — CWD in the default file-backed configuration, or whatever
+    filesystem-backed :class:`StateStore` an alternate backend
+    registers via the ``mureo.runtime_context_factory`` entry-point
+    group.
+
+    The MCP caller is untrusted (a prompt-injected agent could point
+    at an attacker-crafted STATE.json elsewhere on the filesystem).
+    We require the argument to resolve to a path inside the workspace
+    so the agent cannot smuggle in a rogue action_log. ``Path.resolve()``
+    follows symlinks, so a file inside the workspace that symlinks to
+    ``/etc/passwd`` resolves to the target and is correctly refused.
     """
-    raw = _opt(arguments, "state_file", "STATE.json")
+    from mureo.core.runtime_context import get_runtime_context
+
+    store = get_runtime_context().state_store
+    workspace = getattr(store, "workspace", Path.cwd()).resolve()
+    raw = arguments.get("state_file")
+    if not raw:
+        attr = getattr(store, "state_path", None)
+        if attr is not None:
+            # Backend-owned path: trusted output of an installed
+            # ``StateStore`` (the entry-point factory is host code,
+            # not an untrusted MCP caller). Skip the workspace
+            # boundary check so a backend can legitimately point
+            # outside ``workspace`` if its design requires it.
+            # ``.resolve()`` normalises relative backend paths so
+            # downstream ``execute_rollback`` is not surprised by a
+            # CWD-relative interpretation later.
+            return Path(attr).resolve()
+        return workspace / "STATE.json"
     candidate = Path(raw)
-    cwd = Path.cwd().resolve()
-    resolved = (cwd / candidate if not candidate.is_absolute() else candidate).resolve()
+    resolved = (
+        workspace / candidate if not candidate.is_absolute() else candidate
+    ).resolve()
     try:
-        resolved.relative_to(cwd)
+        resolved.relative_to(workspace)
     except ValueError as exc:
         raise ValueError(
-            f"state_file must resolve inside the current working directory "
-            f"({cwd}); got {resolved}."
+            f"state_file must resolve inside the active workspace "
+            f"({workspace}); got {resolved}."
         ) from exc
     return resolved
 

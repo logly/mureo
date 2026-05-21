@@ -39,10 +39,37 @@ def _safe(value: str) -> str:
 
 
 _STATE_FILE_OPTION = typer.Option(
-    Path("STATE.json"),
+    None,
     "--state-file",
-    help="Path to the STATE.json file to inspect.",
+    help=(
+        "Path to the STATE.json file to inspect. Defaults to the active "
+        "workspace's STATE.json — CWD-relative in the default file-backed "
+        "configuration, or whatever location an installed alternate "
+        "backend exposes via the mureo.runtime_context_factory entry "
+        "point."
+    ),
 )
+
+
+def _resolve_default_state_file() -> Path:
+    """Return the workspace-derived default for ``--state-file``.
+
+    Mirrors the workspace lookup the MCP handlers (rollback, analysis,
+    mureo_context) perform: the file lives at the active StateStore's
+    ``state_path`` if exposed, otherwise ``<workspace>/STATE.json``
+    where workspace falls back to ``Path.cwd()``.
+
+    Lazy import keeps ``mureo.cli.rollback_cmd`` import-time-free of
+    the runtime_context resolver, so Typer's startup remains cheap.
+    """
+    from mureo.core.runtime_context import get_runtime_context
+
+    store = get_runtime_context().state_store
+    attr = getattr(store, "state_path", None)
+    if attr is not None:
+        return Path(attr).resolve()
+    workspace = getattr(store, "workspace", Path.cwd())
+    return Path(workspace) / "STATE.json"
 
 
 def _load_plans(
@@ -79,7 +106,7 @@ def _load_plans(
 
 @rollback_app.command("list")  # type: ignore[untyped-decorator, unused-ignore]
 def rollback_list(
-    state_file: Path = _STATE_FILE_OPTION,
+    state_file: Path | None = _STATE_FILE_OPTION,
     platform: str | None = typer.Option(
         None,
         "--platform",
@@ -87,6 +114,8 @@ def rollback_list(
     ),
 ) -> None:
     """List action_log entries and whether they can be rolled back."""
+    if state_file is None:
+        state_file = _resolve_default_state_file()
     plans = _load_plans(state_file, platform=platform)
     if not plans:
         typer.echo("No reversible actions recorded in the action log.")
@@ -109,9 +138,11 @@ def rollback_list(
 @rollback_app.command("show")  # type: ignore[untyped-decorator, unused-ignore]
 def rollback_show(
     index: int = typer.Argument(..., help="Index into STATE.json action_log.", min=0),
-    state_file: Path = _STATE_FILE_OPTION,
+    state_file: Path | None = _STATE_FILE_OPTION,
 ) -> None:
     """Show the full rollback plan for one action_log entry."""
+    if state_file is None:
+        state_file = _resolve_default_state_file()
     if not state_file.exists():
         typer.echo(f"Error: STATE.json not found at {state_file}", err=True)
         raise typer.Exit(1)

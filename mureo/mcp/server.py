@@ -139,6 +139,12 @@ _PLUGIN_NAMES: frozenset[str] = frozenset(_PLUGIN_DISPATCH)
 # One conservative shared bucket for all plugin tool calls. Built-in
 # platforms keep their own per-platform throttlers; this only gates the
 # plugin dispatch branch.
+#
+# Kept as a module-level attribute because (a) existing tests
+# monkey-patch it directly to inject a spy throttler and (b) the lazy
+# seeding helper below copies its instance into the resolved
+# :class:`ProcessLocalThrottleStore` so the same bucket is observed
+# regardless of which path enters the dispatcher.
 _PLUGIN_THROTTLER = Throttler(PLUGIN_THROTTLE)
 
 # Phase 2 (#114): per-tool safety semantics derived from STANDARD MCP
@@ -153,6 +159,86 @@ _PLUGIN_TOOL_THROTTLERS: dict[str, Throttler] = {
     for name, sem in _PLUGIN_SEMANTICS.items()
     if sem.throttle is not None
 }
+
+
+# ---------------------------------------------------------------------------
+# Throttle dispatch — bridge legacy module state to the RuntimeContext
+# throttle_store so an alternate backend (registered via
+# ``mureo.runtime_context_factory``) can take over without each handler
+# having to know about it.
+# ---------------------------------------------------------------------------
+
+
+# Sentinel key for the "everything else" bucket installed alongside the
+# per-tool buckets when seeding a default ``ProcessLocalThrottleStore``.
+# Kept as a module-level constant so the seeding helper and the
+# unknown-name fallback both reference the same string.
+_PLUGIN_DEFAULT_BUCKET = "__plugin_default__"
+
+# Set of ``id()``s of ``ProcessLocalThrottleStore`` instances we have
+# already seeded with the legacy ``_PLUGIN_TOOL_THROTTLERS`` configs.
+# Idempotent: re-entry against a previously-seeded store is a no-op.
+# Tests that monkey-patch ``_PLUGIN_THROTTLER`` or
+# ``_PLUGIN_TOOL_THROTTLERS`` directly must clear this set AND call
+# ``reset_runtime_context()`` so the next handler call re-seeds a
+# freshly-resolved store with the patched throttlers.
+_throttle_store_seeded: set[int] = set()
+
+
+async def _acquire_plugin_throttle(name: str) -> None:
+    """Acquire one throttle slot for plugin tool ``name``.
+
+    Routes through ``get_runtime_context().throttle_store`` so an
+    alternate backend can intercept the call. For the default
+    file-backed runtime the throttle_store is a
+    :class:`ProcessLocalThrottleStore`; this function lazily seeds it
+    with the per-tool ``Throttler`` instances built at module load,
+    preserving today's per-name bucket semantics. The fallback bucket
+    for unknown names is the store's ``default_config`` (=
+    ``PLUGIN_THROTTLE`` for the default runtime).
+
+    The legacy ``_PLUGIN_THROTTLER`` / ``_PLUGIN_TOOL_THROTTLERS``
+    module attributes are still consulted: tests that monkey-patch
+    them continue to observe their spy being invoked, because the
+    seeded ``ProcessLocalThrottleStore`` uses those exact instances.
+
+    Alternate backends (non-``ProcessLocalThrottleStore`` returned by a
+    ``mureo.runtime_context_factory`` entry-point) receive a single
+    ``acquire(name)`` call and own the full per-key + unknown-name
+    fallback semantics themselves. The seeding step above is
+    deliberately skipped for them: this Protocol exposes only
+    ``acquire``, so a backend that wants the "unknown name → shared
+    default bucket" behaviour must implement it internally.
+    """
+    # Lazy import to avoid an import cycle: ``mureo.core.runtime_context``
+    # is free to reference MCP types in future without circling back to
+    # this module via the top-level import graph.
+    from mureo.core.runtime_context import get_runtime_context
+    from mureo.core.throttle_store import ProcessLocalThrottleStore
+
+    store = get_runtime_context().throttle_store
+    if isinstance(store, ProcessLocalThrottleStore):
+        ident = id(store)
+        if ident not in _throttle_store_seeded:
+            # Install per-tool buckets first.
+            for tname, throttler in _PLUGIN_TOOL_THROTTLERS.items():
+                store.throttlers.setdefault(tname, throttler)
+            # And the conservative fallback bucket for unknown names.
+            # We DO NOT call store.register() here because that would
+            # rebuild a fresh Throttler from default_config; reusing
+            # ``_PLUGIN_THROTTLER`` keeps the singleton state (token
+            # bucket) coherent across the legacy and RuntimeContext
+            # paths.
+            store.throttlers.setdefault(_PLUGIN_DEFAULT_BUCKET, _PLUGIN_THROTTLER)
+            _throttle_store_seeded.add(ident)
+        # Unknown names go through the default bucket. Resolve here
+        # because the Protocol does not expose "give me the throttler
+        # for this key" — only acquire(key) — and we want the named
+        # bucket for known names but the SHARED bucket for unknown.
+        if name not in _PLUGIN_TOOL_THROTTLERS:
+            await store.throttlers[_PLUGIN_DEFAULT_BUCKET].acquire()
+            return
+    await store.acquire(name)
 
 
 # ---------------------------------------------------------------------------
@@ -187,8 +273,7 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         provider = _PLUGIN_DISPATCH[name]
         source = plugin_source(provider)
         sem = _PLUGIN_SEMANTICS.get(name)
-        throttler = _PLUGIN_TOOL_THROTTLERS.get(name, _PLUGIN_THROTTLER)
-        await throttler.acquire()
+        await _acquire_plugin_throttle(name)
         try:
             result = await provider.handle_mcp_tool(name, arguments)
         except KeyboardInterrupt:

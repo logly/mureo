@@ -4,11 +4,20 @@ These handlers expose the context layer as MCP tools so that hosts
 without direct filesystem access (Claude Desktop chat, claude.ai web,
 remote MCP connectors) can read and update mureo's strategic context.
 
-All file paths are resolved against the MCP server's current working
-directory and refused if they escape it — symmetric with the rollback
-surface's ``_resolve_state_file`` guard. A prompt-injected agent must
-not be able to point mureo at an attacker-crafted file elsewhere on
-the filesystem.
+All file paths are resolved against the **active workspace** —
+``getattr(get_runtime_context().state_store, "workspace", Path.cwd())``
+— and refused if they escape it. The active workspace is CWD by
+default (preserving today's single-workspace behaviour), or whatever
+filesystem-backed :class:`mureo.core.state_store.StateStore` an
+alternate backend registers via the ``mureo.runtime_context_factory``
+entry-point group.
+
+The security guard is symmetric with the rollback surface's
+``_resolve_state_file`` guard: a prompt-injected agent must not be
+able to point mureo at an attacker-crafted file elsewhere on the
+filesystem. ``Path.resolve()`` follows symlinks, so a STRATEGY.md
+inside the workspace that symlinks to /etc/passwd resolves to the
+target and is correctly refused.
 
 Atomic write semantics come from ``mureo.context.state._atomic_write``
 and the equivalent path in ``context.strategy``: write to a temp file
@@ -37,32 +46,60 @@ from mureo.context.strategy import (
     parse_strategy,
     write_strategy_file,
 )
-from mureo.mcp._helpers import _json_result, _opt, _require
+from mureo.core.runtime_context import get_runtime_context
+from mureo.mcp._helpers import _json_result, _require
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
 
 
-def _resolve_path(arguments: dict[str, Any], default_name: str) -> Path:
-    """Resolve a user-supplied path, refusing anything outside cwd.
+def _resolve_path(
+    arguments: dict[str, Any], default_name: str, *, store_attr: str | None = None
+) -> Path:
+    """Resolve a user-supplied path, refusing anything outside the workspace.
 
-    The MCP caller is untrusted (a prompt-injected agent could point at
-    an attacker-crafted file elsewhere on the filesystem). We require
-    the argument to resolve to a path inside the current working
-    directory so the agent cannot smuggle in a rogue STRATEGY.md or
-    STATE.json. ``Path.resolve()`` follows symlinks, so a STRATEGY.md
-    inside cwd that symlinks to /etc/passwd resolves to the target and
-    is correctly refused. Mirrors ``_handlers_rollback._resolve_state_file``.
+    Resolution rules:
+
+    - ``path`` argument missing or empty (``None`` or ``""``) → the
+      workspace-derived default (``getattr(store, store_attr)`` when
+      available, otherwise ``workspace / default_name``). Picks up
+      any alternate :class:`StateStore` wired via the
+      ``mureo.runtime_context_factory`` entry-point group without the
+      caller having to know about it. Note: the empty-string case
+      used to dispatch to ``Path(".")`` under the old ``_opt``-based
+      implementation; the new behaviour is intentional and safer.
+    - ``path`` argument present → resolved relative to the workspace
+      (not the process CWD — they coincide in the default file-backed
+      configuration but may diverge under an alternate runtime),
+      then security-checked: ``Path.resolve()`` follows symlinks, so a
+      file inside the workspace that symlinks to ``/etc/passwd``
+      resolves to the target and is correctly refused.
     """
-    raw = _opt(arguments, "path", default_name)
+    store = get_runtime_context().state_store
+    workspace = getattr(store, "workspace", Path.cwd()).resolve()
+    raw = arguments.get("path")
+    if not raw:
+        if store_attr is not None:
+            attr = getattr(store, store_attr, None)
+            if attr is not None:
+                # Backend-owned path: trusted output of an installed
+                # ``StateStore`` (the entry-point factory is host code,
+                # not an untrusted MCP caller). Skip the workspace
+                # boundary check so a backend can legitimately point
+                # outside ``workspace`` if its design requires it.
+                return Path(attr)
+        return workspace / default_name
+
     candidate = Path(raw)
-    cwd = Path.cwd().resolve()
-    resolved = (cwd / candidate if not candidate.is_absolute() else candidate).resolve()
+    resolved = (
+        workspace / candidate if not candidate.is_absolute() else candidate
+    ).resolve()
     try:
-        resolved.relative_to(cwd)
+        resolved.relative_to(workspace)
     except ValueError as exc:
         raise ValueError(
-            f"Refusing to read/write outside cwd: {resolved} is not inside {cwd}"
+            f"Refusing to read/write outside workspace: "
+            f"{resolved} is not inside {workspace}"
         ) from exc
     return resolved
 
@@ -73,7 +110,7 @@ def _resolve_path(arguments: dict[str, Any], default_name: str) -> Path:
 
 
 async def handle_strategy_get(arguments: dict[str, Any]) -> list[TextContent]:
-    path = _resolve_path(arguments, "STRATEGY.md")
+    path = _resolve_path(arguments, "STRATEGY.md", store_attr="strategy_path")
     if not path.exists():
         return _json_result({"markdown": "", "exists": False, "path": str(path)})
     text = path.read_text(encoding="utf-8")
@@ -82,7 +119,7 @@ async def handle_strategy_get(arguments: dict[str, Any]) -> list[TextContent]:
 
 async def handle_strategy_set(arguments: dict[str, Any]) -> list[TextContent]:
     markdown = _require(arguments, "markdown")
-    path = _resolve_path(arguments, "STRATEGY.md")
+    path = _resolve_path(arguments, "STRATEGY.md", store_attr="strategy_path")
     # Round-trip through parse so callers can't write a STRATEGY.md
     # whose subsequent parse_strategy() call breaks downstream skills.
     entries = parse_strategy(markdown)
@@ -107,7 +144,7 @@ def _state_to_dict(doc: StateDocument) -> dict[str, Any]:
 
 
 async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
-    path = _resolve_path(arguments, "STATE.json")
+    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
     # read_state_file already returns an empty default StateDocument when
     # the file is absent; round-trip through render_state to keep the
     # missing-file and present-file branches in lockstep.
@@ -137,7 +174,7 @@ async def handle_state_action_log_append(
         reversible_params=raw.get("reversible_params"),
         rollback_of=raw.get("rollback_of"),
     )
-    path = _resolve_path(arguments, "STATE.json")
+    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
     doc = append_action_log(path, entry)
     return _json_result(_state_to_dict(doc))
 
@@ -162,7 +199,7 @@ async def handle_state_upsert_campaign(
         campaign_goal=raw.get("campaign_goal"),
         notes=raw.get("notes"),
     )
-    path = _resolve_path(arguments, "STATE.json")
+    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
     try:
         doc = upsert_campaign(path, campaign)
     except ContextFileError as exc:
