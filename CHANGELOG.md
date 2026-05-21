@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-05-21
+
 ### Added — Web extensions: third-party tabs and API routes for `mureo configure`
 
 A new entry-point group `mureo.web_extensions` lets a plugin register additional tabs and API routes inside the `mureo configure` wizard without each surface having to know about the plugin. The mechanism mirrors the existing `mureo.providers` / `mureo.runtime_context_factory` entry-point patterns: discovery iterates the group exactly once at startup, isolates per-plugin faults (`WebExtensionWarning`), and exposes survivors as frozen `WebExtensionEntry` records consumed by `mureo.web.handlers`.
