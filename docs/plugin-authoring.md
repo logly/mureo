@@ -28,6 +28,7 @@ and which are not, see [ABI-stability.md](./ABI-stability.md).
 10. [Security considerations](#10-security-considerations)
 11. [End-to-end example](#11-end-to-end-example)
 12. [Troubleshooting](#12-troubleshooting)
+13. [Web extensions](#13-web-extensions)
 
 ---
 
@@ -1281,6 +1282,177 @@ clear_skills_cache()
 
 Both wipe the in-process cache; the next `discover_*` call
 re-iterates entry points.
+
+---
+
+## 13. Web extensions
+
+Configure-UI extensions let a plugin add tabs / API routes to the
+`mureo configure` wizard without each surface having to know about the
+plugin. The mechanism mirrors §3 (provider Protocols) and §8 (entry-points
+registration): you implement a small `WebExtension` Protocol, register
+it under a dedicated entry-point group, and the configure server picks
+it up at startup.
+
+### When to use a web extension
+
+- Setup UI for an alternate backend the user must configure
+  (Vault / cloud secret manager credentials, custom state store
+  connection strings).
+- A connection-test or diagnostic panel that operators run from the
+  same wizard they use for the built-in setup.
+- Any custom data source / panel that benefits from being reachable
+  inside `mureo configure` rather than via a separate CLI.
+
+The mechanism only covers the configure wizard. For MCP tools see §3
+(provider Protocols); for slash-command skills see §9.
+
+### `WebExtension` Protocol
+
+```python
+# my_plugin/web_extension.py
+from typing import Any
+
+from mureo.web.extensions import (
+    RouteContribution,
+    StaticAsset,
+    ViewContribution,
+)
+
+
+def _ping(_request: Any, payload: dict[str, Any]) -> None:
+    from mureo.web._helpers import send_json
+    send_json(_request, {"echo": payload})
+
+
+class MyExtension:
+    name = "acme-vault"
+    display_name = "Acme Vault setup"
+
+    def routes(self) -> tuple[RouteContribution, ...]:
+        return (
+            RouteContribution(method="GET", subpath="/ping", handler=_ping),
+        )
+
+    def view(self) -> ViewContribution | None:
+        return ViewContribution(
+            html_fragment=(
+                '<section><h2>Acme Vault</h2>'
+                '<button id="acme-vault-ping">Ping</button></section>'
+            ),
+            scripts=(
+                StaticAsset(
+                    filename="acme-vault.js",
+                    content_type="application/javascript",
+                    body=(
+                        b"document.getElementById('acme-vault-ping')"
+                        b".addEventListener('click', () =>"
+                        b" fetch('/api/ext/acme-vault/ping?x=1')"
+                        b".then(r => r.json()).then(console.log));"
+                    ),
+                ),
+            ),
+        )
+```
+
+### `pyproject.toml`
+
+```toml
+[project.entry-points."mureo.web_extensions"]
+acme-vault = "my_plugin.web_extension:MyExtension"
+```
+
+The entry-point value can resolve to either:
+
+- the **class** (instantiated zero-arg by the loader; the example
+  above), or
+- a **callable** that returns an instance.
+
+Discovery happens once at `ConfigureWizard` construction; if your
+plugin is installed (`pip install`) and your entry-point resolves
+cleanly, the extension appears as an extra tab in the dashboard the
+next time the user runs `mureo configure`.
+
+### URL surface
+
+| URL | Notes |
+|---|---|
+| `GET /api/extensions` | Index consumed by the front-end renderer. |
+| `GET /api/ext/<name>/<subpath>` | Your GET routes. Payload is the flattened query string. |
+| `POST /api/ext/<name>/<subpath>` | Your POST routes. Body is the parsed JSON object. CSRF + Host gate already applied. |
+| `GET /static/ext/<name>/<filename>` | Your `StaticAsset` bodies, served verbatim with the Content-Type you declared. |
+
+Subpaths and filenames are regex-validated at both registration and
+dispatch (`NAME_PATTERN` / `SUBPATH_PATTERN` / `FILENAME_PATTERN` in
+`mureo.web.extensions`): the dispatcher refuses subpaths containing
+`..`, double-slash, trailing slash, `?`, or `#`, and filenames
+containing directory separators or starting with a dot. Real query
+strings appear AFTER the URL path and are handled by the dispatcher's
+`_flatten_query` helper (first-value-wins).
+
+### Security model
+
+Every response inherits the configure-UI Content-Security-Policy
+(`default-src 'none'; script-src 'self'; style-src 'self'`). Your
+extension UI MUST therefore ship its JavaScript and CSS via
+`StaticAsset` (served from `/static/ext/<name>/<file>`, same origin as
+the CSP allows) and MUST NOT embed inline `<script>` / `<style>` /
+`on*=` event handlers / `javascript:` URLs in `html_fragment`.
+Discovery rejects html fragments that include any of these patterns
+so the failure surfaces explicitly instead of producing a silently
+inert UI under the CSP.
+
+CSRF protection applies automatically to your POST routes: the
+dispatcher runs the same Host-header + CSRF check the built-in routes
+use before calling your handler, so you do not need to add any token
+plumbing.
+
+Handler exceptions are caught by the dispatcher and surfaced as a
+generic `500 {"error": "extension_handler_error"}` JSON envelope; the
+exception `repr` is logged server-side only (it may contain secrets
+the handler touched). Your handler MUST NOT raise after starting to
+write the response — the dispatcher cannot retroactively suppress a
+partial response that has already shipped bytes to the wire.
+
+### Lazy loading
+
+The configure UI fetches `/api/extensions` once when the dashboard
+opens and renders one tab per extension. The `html_fragment` and
+`scripts` / `styles` of any specific extension are only injected into
+the DOM the first time the user clicks that extension's tab. Operators
+who never visit your tab pay zero extra page weight; once visited,
+your assets persist for the rest of the configure session.
+
+### Debugging discovery
+
+- `pip show <your-dist>` confirms the install.
+- `importlib.metadata.entry_points(group="mureo.web_extensions")` lists
+  the registered entry points in the running interpreter.
+- `mureo configure --log-level=DEBUG` (if your shell respects it via
+  `MUREO_LOG_LEVEL=DEBUG mureo configure`) surfaces
+  `WebExtensionWarning` messages explaining why an entry point was
+  skipped (bad name, broken `ep.load()`, `routes()` / `view()`
+  exception, duplicate name shadowed by an earlier registration).
+
+Strict-mode deployments can convert warnings into hard failures with:
+
+```python
+import warnings
+from mureo.web.extensions import WebExtensionWarning
+
+warnings.filterwarnings("error", category=WebExtensionWarning)
+```
+
+### Programmatic registration (tests)
+
+```python
+from mureo.web.extensions import reset_web_extensions
+
+# clear the process-wide cache so the next discover_web_extensions()
+# call re-iterates entry points (which your test fixtures might have
+# monkeypatched).
+reset_web_extensions()
+```
 
 ---
 

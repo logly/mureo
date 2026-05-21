@@ -29,12 +29,17 @@ Routes
 ``POST /api/byod/import``        → import a Sheet bundle XLSX
 ``POST /api/byod/remove``        → drop one platform's BYOD data
 ``POST /api/byod/clear``         → wipe all BYOD data
+``GET  /api/extensions``         → list registered web extensions
+``GET  /api/ext/<n>/<sub>``      → dispatch to extension GET handler
+``POST /api/ext/<n>/<sub>``      → dispatch to extension POST handler
+``GET  /static/ext/<n>/<file>``  → serve extension-shipped static asset
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import urllib.parse
 from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Any
 
@@ -59,6 +64,11 @@ from mureo.web.env_var_writer import (
     remove_credential_section,
     write_credential_env_var,
 )
+from mureo.web.extensions import (
+    FILENAME_PATTERN,
+    NAME_PATTERN,
+    SUBPATH_PATTERN,
+)
 from mureo.web.legacy_commands import remove_legacy_commands
 from mureo.web.native_picker import pick_directory, pick_file
 from mureo.web.session import OAUTH_PROVIDERS, SUPPORTED_HOSTS
@@ -79,6 +89,11 @@ from mureo.web.status_collector import collect_status
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from mureo.web.extensions import (
+        RouteContribution,
+        StaticAsset,
+        WebExtensionEntry,
+    )
     from mureo.web.server import ConfigureWizard
 
 logger = logging.getLogger(__name__)
@@ -103,6 +118,7 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "wizard.js",
     "auth_wizards.js",
     "dashboard.js",
+    "extensions.js",
     "i18n.json",
     "logo.png",
     "logo-dark.png",
@@ -112,6 +128,64 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
 _OAUTH_PROVIDER_RE = re.compile(
     r"^/api/oauth/(?P<provider>[a-z_]+)/(?P<verb>status|start)$"
 )
+
+# Third-party web-extension dispatch (see ``mureo.web.extensions``).
+# Path components reuse the bare patterns exported by
+# ``mureo.web.extensions`` so the registration-side validation and the
+# dispatch-side URL match share a single source of truth — a future
+# tweak to ``NAME_PATTERN`` etc. flows through both layers in lockstep.
+_EXTENSION_API_RE = re.compile(
+    rf"^/api/ext/(?P<name>{NAME_PATTERN})(?P<subpath>{SUBPATH_PATTERN})$"
+)
+_EXTENSION_STATIC_RE = re.compile(
+    rf"^/static/ext/(?P<name>{NAME_PATTERN})/(?P<filename>{FILENAME_PATTERN})$"
+)
+
+
+def _find_extension(
+    extensions: tuple[WebExtensionEntry, ...], name: str
+) -> WebExtensionEntry | None:
+    """Linear scan; the registered set is small (single digits typical)."""
+    for entry in extensions:
+        if entry.name == name:
+            return entry
+    return None
+
+
+def _find_extension_route(
+    entry: WebExtensionEntry, method: str, subpath: str
+) -> RouteContribution | None:
+    for route in entry.routes:
+        if route.method == method and route.subpath == subpath:
+            return route
+    return None
+
+
+def _find_extension_static(
+    entry: WebExtensionEntry, filename: str
+) -> StaticAsset | None:
+    if entry.view is None:
+        return None
+    for asset in entry.view.scripts:
+        if asset.filename == filename:
+            return asset
+    for asset in entry.view.styles:
+        if asset.filename == filename:
+            return asset
+    return None
+
+
+def _flatten_query(path: str) -> dict[str, str]:
+    """Parse a URL's query string into ``{key: first_value}``.
+
+    Multi-value handlers can still reach the raw query via
+    ``request.path`` — this helper is the lightweight default the
+    extension API contract documents.
+    """
+    if "?" not in path:
+        return {}
+    parsed = urllib.parse.parse_qs(path.split("?", 1)[1], keep_blank_values=True)
+    return {k: v[0] for k, v in parsed.items() if v}
 
 
 def _resolve_static_body(wizard: ConfigureWizard, filename: str) -> bytes | None:
@@ -171,6 +245,16 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if path == "/" or path == "/index.html":
             self._serve_app_html()
             return
+        # Extension static assets are matched BEFORE the generic
+        # ``/static/`` branch so the same prefix can route into both
+        # the built-in allowlist and the extension-owned asset set.
+        ext_static_match = _EXTENSION_STATIC_RE.match(path)
+        if ext_static_match is not None:
+            self._serve_extension_static(
+                ext_static_match.group("name"),
+                ext_static_match.group("filename"),
+            )
+            return
         if path.startswith("/static/"):
             self._serve_static(path[len("/static/") :])
             return
@@ -179,6 +263,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/csrf":
             self._serve_csrf()
+            return
+        if path == "/api/extensions":
+            self._serve_extensions_index()
             return
         if path == "/api/demo/scenarios":
             send_json(self, list_demo_scenarios().as_dict())
@@ -189,6 +276,13 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         match = _OAUTH_PROVIDER_RE.match(path)
         if match is not None and match.group("verb") == "status":
             self._serve_oauth_status(match.group("provider"))
+            return
+        ext_api_match = _EXTENSION_API_RE.match(path)
+        if ext_api_match is not None:
+            self._dispatch_extension_get(
+                ext_api_match.group("name"),
+                ext_api_match.group("subpath"),
+            )
             return
         send_error_json(self, 404, "not_found")
 
@@ -208,13 +302,22 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             send_error_json(self, 403, "csrf_invalid")
             return
 
-        route = self._POST_ROUTES.get(self.path.split("?", 1)[0])
+        path = self.path.split("?", 1)[0]
+        route = self._POST_ROUTES.get(path)
         if route is not None:
             route(self, payload)
             return
-        match = _OAUTH_PROVIDER_RE.match(self.path.split("?", 1)[0])
+        match = _OAUTH_PROVIDER_RE.match(path)
         if match is not None and match.group("verb") == "start":
             self._post_oauth_start(match.group("provider"), payload)
+            return
+        ext_api_match = _EXTENSION_API_RE.match(path)
+        if ext_api_match is not None:
+            self._dispatch_extension_post(
+                ext_api_match.group("name"),
+                ext_api_match.group("subpath"),
+                payload,
+            )
             return
         send_error_json(self, 404, "not_found")
 
@@ -507,6 +610,105 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             send_error_json(self, 400, "unknown_provider")
             return
         send_json(self, result.as_dict())
+
+    # ------------------------------------------------------------------
+    # Extension dispatch
+    # ------------------------------------------------------------------
+    def _serve_extensions_index(self) -> None:
+        """Return the renderer-facing index of registered extensions.
+
+        Each item carries enough information for ``app.js`` to render a
+        tab + lazy-load the view: ``name`` is also the URL segment used
+        when calling ``/api/ext/<name>/...`` and ``/static/ext/<name>/...``.
+        ``view`` is ``null`` for headless extensions (route-only).
+        """
+        payload: list[dict[str, Any]] = []
+        for entry in self.wizard.extensions:
+            item: dict[str, Any] = {
+                "name": entry.name,
+                "display_name": entry.display_name,
+            }
+            if entry.view is None:
+                item["view"] = None
+            else:
+                item["view"] = {
+                    "html_fragment": entry.view.html_fragment,
+                    "scripts": [a.filename for a in entry.view.scripts],
+                    "styles": [a.filename for a in entry.view.styles],
+                }
+            payload.append(item)
+        send_json(self, payload)
+
+    def _serve_extension_static(self, name: str, filename: str) -> None:
+        """Serve an extension-shipped static asset by name + filename."""
+        entry = _find_extension(self.wizard.extensions, name)
+        if entry is None:
+            send_error_json(self, 404, "not_found")
+            return
+        asset = _find_extension_static(entry, filename)
+        if asset is None:
+            send_error_json(self, 404, "not_found")
+            return
+        send_bytes(self, asset.body, content_type=asset.content_type)
+
+    def _dispatch_extension_get(self, name: str, subpath: str) -> None:
+        self._dispatch_extension(name, "GET", subpath, payload=None)
+
+    def _dispatch_extension_post(
+        self, name: str, subpath: str, payload: dict[str, Any]
+    ) -> None:
+        self._dispatch_extension(name, "POST", subpath, payload=payload)
+
+    def _dispatch_extension(
+        self,
+        name: str,
+        method: str,
+        subpath: str,
+        *,
+        payload: dict[str, Any] | None,
+    ) -> None:
+        """Common dispatch path for GET + POST extension routes.
+
+        Handler exceptions are caught here so one faulty extension
+        cannot tear down the configure server. The error is logged
+        with the extension/subpath context and a generic 500 envelope
+        is returned to the client — we deliberately do not echo the
+        exception ``repr`` because it may carry secrets (path
+        fragments, token prefixes, etc.) the extension touched.
+
+        A handler that has already begun writing a response before
+        raising puts the 500 envelope in an impossible position (the
+        wire would carry two status lines). We attempt the envelope
+        once and swallow any follow-up failure, downgrading the report
+        to a debug log. The contract documented in
+        :mod:`mureo.web.extensions` is "handler must not raise after
+        starting to write the response" — this branch is the
+        defensive backstop, not a free pass.
+        """
+        entry = _find_extension(self.wizard.extensions, name)
+        if entry is None:
+            send_error_json(self, 404, "not_found")
+            return
+        route = _find_extension_route(entry, method, subpath)
+        if route is None:
+            send_error_json(self, 404, "not_found")
+            return
+        if method == "GET":
+            handler_payload = _flatten_query(self.path)
+        else:
+            handler_payload = payload or {}
+        try:
+            route.handler(self, handler_payload)
+        except Exception:  # noqa: BLE001 — per-extension fault isolation
+            logger.exception("web extension %r raised in %s %s", name, method, subpath)
+            try:
+                send_error_json(self, 500, "extension_handler_error")
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "web extension %r already wrote a partial response; "
+                    "the 500 envelope could not be appended",
+                    name,
+                )
 
     # ------------------------------------------------------------------
     # Route table

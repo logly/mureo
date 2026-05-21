@@ -114,6 +114,11 @@
     document.querySelector("[data-landing]").hidden = true;
     document.querySelector("[data-dashboard]").hidden = false;
     selectNavGroup(DEFAULT_NAV);
+    // Render third-party extension tabs (if any). The init call is
+    // idempotent — see ``mureo/_data/web/extensions.js``.
+    if (MUREO.extensions && typeof MUREO.extensions.init === "function") {
+      MUREO.extensions.init();
+    }
   }
 
   function hide() {

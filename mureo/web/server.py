@@ -18,6 +18,7 @@ import webbrowser
 from importlib import resources
 from pathlib import Path
 
+from mureo.web.extensions import discover_web_extensions
 from mureo.web.handlers import ConfigureHandler
 from mureo.web.host_paths import HostPaths, get_host_paths
 from mureo.web.oauth_bridge import OAuthBridge
@@ -73,6 +74,11 @@ class ConfigureWizard:
         self._commands_path_override = commands_path
         self._apply_commands_override()
         self.oauth_bridge = OAuthBridge()
+        # Discover third-party extensions once at wizard construction.
+        # ``discover_web_extensions`` caches internally, so this call
+        # plus every subsequent call within the same process re-uses
+        # the same tuple — see :mod:`mureo.web.extensions`.
+        self.extensions = discover_web_extensions()
 
         self._server: _ConfigureServer | None = None
         self._ready = threading.Event()

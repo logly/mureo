@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Web extensions: third-party tabs and API routes for `mureo configure`
+
+A new entry-point group `mureo.web_extensions` lets a plugin register additional tabs and API routes inside the `mureo configure` wizard without each surface having to know about the plugin. The mechanism mirrors the existing `mureo.providers` / `mureo.runtime_context_factory` entry-point patterns: discovery iterates the group exactly once at startup, isolates per-plugin faults (`WebExtensionWarning`), and exposes survivors as frozen `WebExtensionEntry` records consumed by `mureo.web.handlers`.
+
+- **`mureo.web.extensions`** — public surface: `WebExtension` Protocol (`name`, `display_name`, `routes()`, `view()`), frozen dataclasses `RouteContribution(method, subpath, handler)`, `ViewContribution(html_fragment, scripts, styles)`, `StaticAsset(filename, content_type, body)`, plus `discover_web_extensions()` / `reset_web_extensions()` and the regex constants (`NAME_PATTERN`, `SUBPATH_PATTERN`, `FILENAME_PATTERN`) shared with the dispatch layer.
+- **HTTP surface** in `mureo.web.handlers`:
+  - `GET /api/extensions` — index for the front-end renderer (one entry per extension; `view` is `null` for headless / route-only plugins).
+  - `GET /api/ext/<name>/<subpath>` — extension GET route; payload is the flattened query string (first-value-wins).
+  - `POST /api/ext/<name>/<subpath>` — extension POST route, gated by the existing Host + body-cap + CSRF pipeline (the plugin author inherits CSRF protection for free).
+  - `GET /static/ext/<name>/<filename>` — extension-shipped static asset served from in-memory bytes with the same Content-Security-Policy + X-Frame-Options + Cache-Control header stack as the bundled static files.
+- **Front-end** (`mureo/_data/web/extensions.js`): the configure UI fetches `/api/extensions` once when the dashboard opens, renders one nav tab per extension, and lazy-loads each extension's `html_fragment` / scripts / styles on first tab activation. Operators who never visit a given tab pay zero added page weight.
+- **Plugin author guide**: `docs/plugin-authoring.md` §13 documents the contract end-to-end (entry-point setup, sample `WebExtension`, URL surface, CSP / CSRF / fault-isolation model, lazy-load behaviour, debugging recipe).
+- **Security**: subpaths and filenames are regex-validated at both registration and dispatch so `..`, double-slash, trailing slash, `?`, `#`, and directory separators cannot smuggle the dispatcher outside `/api/ext/<name>/` or `/static/ext/<name>/`. Static asset bodies stay in memory; the dispatcher never reads from disk so filesystem traversal is impossible by construction. `html_fragment` is rejected at registration if it contains `<script>`, `<style>`, `on*=` event handlers, or `javascript:` URLs — the CSP (`script-src 'self'; style-src 'self'`) is the runtime enforcement, the regex is the explicit author-feedback signal. Handler exceptions are caught by the dispatcher and surfaced as a generic `{"error": "extension_handler_error"}` 500 envelope; exception details are logged server-side only (they may carry secrets the handler touched).
+
+Backward compatibility: when no third-party `mureo.web_extensions` entry points are installed, `discover_web_extensions()` returns an empty tuple, `/api/extensions` returns `[]`, the renderer creates zero DOM nodes, and the configure UI is byte-identical to v0.9.4.
+
 ## [0.9.4] - 2026-05-21
 
 ### Added — Extension Protocols and `mureo learn` CLI (#125)
