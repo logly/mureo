@@ -43,7 +43,17 @@ def byod_data_dir() -> Path:
          itself during ``--with-demo`` seeding. Each Claude Desktop
          workspace sees its own BYOD store and demo data does not
          leak across workspaces.
-      2. Legacy ``~/.mureo/byod/`` for existing CLI / Claude Code
+      2. A non-default ``RuntimeContext`` (an alternate backend
+         registered via the ``mureo.runtime_context_factory``
+         entry-point group whose ``state_store`` exposes a filesystem
+         ``workspace``). Resolves to ``<workspace>/byod`` so a
+         backend-supplied workspace co-locates its BYOD data with the
+         rest of the workspace's state (STATE.json / STRATEGY.md /
+         credentials.json). Only triggers when
+         ``workspace_id != "default"`` so the existing legacy CLI /
+         Claude Code single-workspace behaviour is preserved by
+         construction.
+      3. Legacy ``~/.mureo/byod/`` for existing CLI / Claude Code
          users — preserves backward compatibility.
 
     An empty or whitespace-only env var is treated as 'unset' so a
@@ -54,7 +64,36 @@ def byod_data_dir() -> Path:
     override = os.environ.get(_BYOD_DIR_ENV)
     if override and override.strip():
         return Path(override.strip()).expanduser()
+    ws_path = _runtime_context_workspace()
+    if ws_path is not None:
+        return ws_path / _BYOD_SUBDIR
     return Path.home() / _USER_DIR_NAME / _BYOD_SUBDIR
+
+
+def _runtime_context_workspace() -> Path | None:
+    """Return the resolved workspace dir from the RuntimeContext, or
+    ``None`` when the runtime is the default single-workspace one.
+
+    Imported lazily inside this helper so ``mureo.byod.runtime`` keeps
+    its "no external dependencies" promise (see module docstring) for
+    callers that never need to touch the runtime layer.
+    """
+    try:
+        from mureo.core.runtime_context import (
+            DEFAULT_WORKSPACE_ID,
+            get_runtime_context,
+        )
+    except ImportError:  # pragma: no cover — keeps the module standalone
+        return None
+    ctx = get_runtime_context()
+    if ctx.workspace_id == DEFAULT_WORKSPACE_ID:
+        # Single-workspace runtime: keep the legacy ~/.mureo/byod/
+        # location so existing CLI / Claude Code users are unaffected.
+        return None
+    workspace = getattr(ctx.state_store, "workspace", None)
+    if workspace is None:
+        return None
+    return Path(workspace)
 
 
 def manifest_path() -> Path:
