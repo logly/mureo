@@ -74,11 +74,15 @@ def test_public_all_matches_documented_surface() -> None:
         "FilesystemStateStore",
         "KnowledgeStore",
         "ProcessLocalThrottleStore",
+        "RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP",
         "RuntimeContext",
+        "RuntimeContextFactoryError",
         "SecretStore",
         "StateStore",
         "ThrottleStore",
         "default_runtime_context",
+        "get_runtime_context",
+        "reset_runtime_context",
     ])
 
 

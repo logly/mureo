@@ -17,8 +17,12 @@ from __future__ import annotations
 from mureo.core.knowledge_store import FilesystemKnowledgeStore, KnowledgeStore
 from mureo.core.runtime_context import (
     DEFAULT_WORKSPACE_ID,
+    RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP,
     RuntimeContext,
+    RuntimeContextFactoryError,
     default_runtime_context,
+    get_runtime_context,
+    reset_runtime_context,
 )
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
 from mureo.core.state_store import FilesystemStateStore, StateStore
@@ -31,9 +35,13 @@ __all__ = [
     "FilesystemStateStore",
     "KnowledgeStore",
     "ProcessLocalThrottleStore",
+    "RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP",
     "RuntimeContext",
+    "RuntimeContextFactoryError",
     "SecretStore",
     "StateStore",
     "ThrottleStore",
     "default_runtime_context",
+    "get_runtime_context",
+    "reset_runtime_context",
 ]
