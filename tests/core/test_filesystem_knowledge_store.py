@@ -81,7 +81,10 @@ def test_workspace_tier_round_trip_when_configured(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_default_operator_path_under_claude_skills(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("HOME", str(tmp_path))
+    """Patches ``Path.home`` directly so the test is Windows-safe — see
+    ``test_runtime_context.test_default_factory_no_args_uses_legacy_paths``
+    for the rationale."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     store = FilesystemKnowledgeStore()
     expected = tmp_path / ".claude" / "skills" / "_mureo-pro-diagnosis" / "SKILL.md"
     assert store.operator_path == expected

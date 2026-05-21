@@ -104,7 +104,10 @@ def test_corrupt_file_returns_empty_on_load(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_default_path_resolves_under_dot_mureo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("HOME", str(tmp_path))
+    """Patches ``Path.home`` directly so the test is Windows-safe — see
+    ``test_runtime_context.test_default_factory_no_args_uses_legacy_paths``
+    for the rationale."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     store = FilesystemSecretStore()
     assert store.path == tmp_path / ".mureo" / "credentials.json"
 

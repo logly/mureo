@@ -10,13 +10,13 @@ a separate commit.
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, dataclass
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from mureo.context.models import ActionLogEntry, StateDocument, StrategyEntry
 from mureo.core.runtime_context import RuntimeContext
-
 
 # ---------------------------------------------------------------------------
 # Minimal in-process fakes — kept here (not shared) so this test stays
@@ -128,3 +128,88 @@ def test_workspace_id_required() -> None:
 def test_workspace_id_rejects_empty_or_whitespace(bad: str) -> None:
     with pytest.raises(ValueError, match="workspace_id"):
         _ctx(workspace_id=bad)
+
+
+# ---------------------------------------------------------------------------
+# default_runtime_context() — wires the four file-backed default stores
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_default_factory_wires_all_four_filesystem_defaults(tmp_path: Path) -> None:
+    from mureo.core.knowledge_store import FilesystemKnowledgeStore
+    from mureo.core.runtime_context import default_runtime_context
+    from mureo.core.secret_store import FilesystemSecretStore
+    from mureo.core.state_store import FilesystemStateStore
+    from mureo.core.throttle_store import ProcessLocalThrottleStore
+
+    ctx = default_runtime_context(
+        workspace=tmp_path,
+        credentials_path=tmp_path / "creds.json",
+        operator_knowledge_path=tmp_path / "op.md",
+    )
+    assert isinstance(ctx.secret_store, FilesystemSecretStore)
+    assert isinstance(ctx.state_store, FilesystemStateStore)
+    assert isinstance(ctx.knowledge_store, FilesystemKnowledgeStore)
+    assert isinstance(ctx.throttle_store, ProcessLocalThrottleStore)
+
+
+@pytest.mark.unit
+def test_default_factory_workspace_id_is_default_sentinel(tmp_path: Path) -> None:
+    """The canonical sentinel for single-workspace callers is the literal
+    ``"default"`` — pinned here so it does not drift."""
+    from mureo.core.runtime_context import default_runtime_context
+
+    ctx = default_runtime_context(workspace=tmp_path)
+    assert ctx.workspace_id == "default"
+
+
+@pytest.mark.unit
+def test_default_factory_no_args_uses_legacy_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Called without overrides, the factory must reproduce today's
+    file locations: ``~/.mureo/credentials.json``, CWD-relative STATE.json
+    / STRATEGY.md, ``~/.claude/skills/_mureo-pro-diagnosis/SKILL.md``.
+
+    Patches ``Path.home`` directly so the test is Windows-safe — the
+    ``HOME`` env var is consulted on POSIX but Windows looks at
+    ``USERPROFILE`` first, which would make a ``setenv("HOME", ...)``
+    approach silently fall through to the real home directory on the
+    Windows CI lane added in #122."""
+    from mureo.core.runtime_context import default_runtime_context
+
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.chdir(tmp_path)
+
+    ctx = default_runtime_context()
+    assert ctx.secret_store.path == tmp_path / ".mureo" / "credentials.json"  # type: ignore[attr-defined]
+    assert ctx.state_store.state_path == tmp_path / "STATE.json"  # type: ignore[attr-defined]
+    assert ctx.state_store.strategy_path == tmp_path / "STRATEGY.md"  # type: ignore[attr-defined]
+    assert (
+        ctx.knowledge_store.operator_path  # type: ignore[attr-defined]
+        == tmp_path / ".claude" / "skills" / "_mureo-pro-diagnosis" / "SKILL.md"
+    )
+    assert ctx.knowledge_store.workspace_path is None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_default_factory_accepts_workspace_knowledge_override(tmp_path: Path) -> None:
+    from mureo.core.runtime_context import default_runtime_context
+
+    ws_md = tmp_path / "ws.md"
+    ctx = default_runtime_context(
+        workspace=tmp_path,
+        workspace_knowledge_path=ws_md,
+    )
+    assert ctx.knowledge_store.workspace_path == ws_md  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_default_factory_accepts_throttle_config_override(tmp_path: Path) -> None:
+    from mureo.core.runtime_context import default_runtime_context
+    from mureo.throttle import ThrottleConfig
+
+    config = ThrottleConfig(rate=42.0, burst=7)
+    ctx = default_runtime_context(workspace=tmp_path, throttle_config=config)
+    assert ctx.throttle_store.default_config is config  # type: ignore[attr-defined]

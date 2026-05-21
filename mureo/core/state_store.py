@@ -29,9 +29,8 @@ commit.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from mureo.context.models import ActionLogEntry, StateDocument, StrategyEntry
 from mureo.context.state import (
     append_action_log as _legacy_append_action_log,
 )
@@ -43,6 +42,9 @@ from mureo.context.strategy import (
     read_strategy_file,
     write_strategy_file,
 )
+
+if TYPE_CHECKING:
+    from mureo.context.models import ActionLogEntry, StateDocument, StrategyEntry
 
 
 @runtime_checkable

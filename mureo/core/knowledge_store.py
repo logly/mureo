@@ -100,11 +100,7 @@ class FilesystemKnowledgeStore:
             self.operator_path = operator_path
         else:
             self.operator_path = (
-                Path.home()
-                / ".claude"
-                / "skills"
-                / "_mureo-pro-diagnosis"
-                / "SKILL.md"
+                Path.home() / ".claude" / "skills" / "_mureo-pro-diagnosis" / "SKILL.md"
             )
         self.workspace_path = workspace_path
 
