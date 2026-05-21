@@ -1,23 +1,40 @@
-"""``SecretStore`` Protocol — pluggable credential persistence.
+"""``SecretStore`` Protocol and default in-process implementation.
 
-Abstracts the read/write of ad-platform credentials and other secret
-material. The OSS default implementation (added in a follow-up commit)
-wraps the existing ``~/.mureo/credentials.json`` flow in ``mureo.auth``,
-behaviourally equivalent to today's behaviour for callers that do not
-inject a custom store.
+The Protocol abstracts the read/write of ad-platform credentials and
+other secret material so callers (tests, alternate backends such as OS
+keychains, HashiCorp Vault, GCP Secret Manager, AWS Secrets Manager)
+can swap the underlying storage without touching the rest of mureo.
 
-Designed so callers (tests, alternate backends such as OS keychains,
-HashiCorp Vault, GCP Secret Manager, AWS Secrets Manager) can swap the
-underlying storage without touching the rest of mureo.
+``FilesystemSecretStore`` is the default implementation. It is
+behaviourally equivalent to the legacy ``~/.mureo/credentials.json``
+flow read by :func:`mureo.auth.load_credentials`: missing or corrupt
+files yield an empty result rather than raising; the on-disk root must
+be a JSON object keyed by platform name; saves preserve unrelated
+platform keys; saves land at ``0o600`` on POSIX so credential files
+stay owner-readable (via :func:`mureo.fsutil.secure_fchmod`, the
+cross-platform helper used elsewhere in the repo).
 
-The Protocol is intentionally minimal — three opaque dict round-trip
-operations keyed by a string — so concrete backends can map ``key``
-onto whatever namespace they natively use.
+This default is **single-writer**. Concurrent writes from different
+processes can lose updates because the read-modify-write inside
+``save`` / ``delete`` is not file-locked. The legacy
+``mureo.auth._save_meta_token`` has the same property; cross-process
+locking is out of scope for the in-memory default and belongs in an
+alternate backend if a deployment needs it.
 """
 
 from __future__ import annotations
 
+import contextlib
+import json
+import logging
+import os
+import tempfile
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+from mureo.fsutil import secure_fchmod
+
+logger = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -42,3 +59,86 @@ class SecretStore(Protocol):
     def save(self, key: str, value: dict[str, Any]) -> None: ...
 
     def delete(self, key: str) -> None: ...
+
+
+# ---------------------------------------------------------------------------
+# Default implementation — JSON file under ``~/.mureo/``
+# ---------------------------------------------------------------------------
+
+
+class FilesystemSecretStore:
+    """Persist credentials in a single JSON file (default
+    ``~/.mureo/credentials.json``).
+
+    The file root is a ``dict[str, dict[str, Any]]`` keyed by platform
+    name (``"google_ads"``, ``"meta_ads"``, ``"search_console"``, …).
+    Reads tolerate missing files, OS errors, JSON decode errors, and
+    non-object roots — all collapse to an empty result so the MCP
+    server can still start when credentials have not yet been
+    configured. Writes are atomic (tempfile + ``os.replace``) and land
+    at ``0o600`` on POSIX.
+    """
+
+    def __init__(self, path: Path | None = None) -> None:
+        self.path = (
+            path if path is not None else Path.home() / ".mureo" / "credentials.json"
+        )
+
+    def load(self, key: str) -> dict[str, Any]:
+        data = self._read_root()
+        value = data.get(key, {})
+        # Defensive copy so callers cannot mutate our cached return.
+        return dict(value) if isinstance(value, dict) else {}
+
+    def save(self, key: str, value: dict[str, Any]) -> None:
+        data = self._read_root()
+        data[key] = dict(value)  # defensive copy of caller's input
+        self._write_root(data)
+
+    def delete(self, key: str) -> None:
+        data = self._read_root()
+        if key in data:
+            del data[key]
+            self._write_root(data)
+
+    # ------------------------------------------------------------------
+
+    def _read_root(self) -> dict[str, Any]:
+        """Return the file's root object, tolerating every reasonable
+        failure mode (missing, unreadable, malformed, wrong type)."""
+        if not self.path.exists():
+            logger.debug("credentials file not found: %s", self.path)
+            return {}
+        try:
+            text = self.path.read_text(encoding="utf-8")
+            data = json.loads(text)
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("failed to read credentials file: %s", exc)
+            return {}
+        if not isinstance(data, dict):
+            logger.warning("credentials file root is not an object: %s", self.path)
+            return {}
+        return data
+
+    def _write_root(self, data: dict[str, Any]) -> None:
+        """Atomically write the root object and apply secure permissions.
+
+        Matches :func:`mureo.auth._save_meta_token` byte-for-byte:
+        ``ensure_ascii=False`` so on-disk JSON keeps UTF-8 (operators
+        editing the file by hand see real characters, not ``\\uXXXX``
+        escapes), ``secure_fchmod`` applied to the temp fd before
+        ``os.replace`` so the destination inherits ``0o600`` atomically
+        on POSIX, and best-effort no-op on Windows (see
+        :mod:`mureo.fsutil`).
+        """
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), suffix=".tmp")
+        try:
+            secure_fchmod(fd)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(json.dumps(data, indent=2, ensure_ascii=False))
+            os.replace(tmp, self.path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
