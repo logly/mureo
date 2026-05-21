@@ -91,32 +91,21 @@ def test_default_operator_path_under_claude_skills(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.unit
-def test_scaffold_matches_skills_learn_template() -> None:
-    """Regression guard: the seeded scaffold must stay byte-identical to
-    the template embedded in ``skills/learn/SKILL.md``. If that template
-    is edited without updating ``_OPERATOR_SCAFFOLD`` (or vice-versa)
-    files written by /learn and files seeded by the default
-    KnowledgeStore will silently diverge.
+def test_scaffold_has_expected_frontmatter_and_section() -> None:
+    """The seeded scaffold must contain the YAML frontmatter and the
+    ``## Learned Insights`` section that downstream diagnostic skills
+    rely on.
 
-    The skill file embeds the scaffold inside a ```` ```markdown ```` fence
-    nested in a numbered list, so every line carries a 3-space indent.
-    Strip the common indent before comparing."""
-    import re
-    import textwrap
-
+    The /learn skill no longer ships its own copy of this scaffold (it
+    now invokes ``mureo learn add`` which uses :class:`KnowledgeStore`
+    instead of writing the file directly), so the previous
+    drift-vs-skill regression test is replaced by a shape check on the
+    constant itself."""
     from mureo.core.knowledge_store import _OPERATOR_SCAFFOLD
 
-    repo_root = Path(__file__).resolve().parents[2]
-    skill_md = (repo_root / "skills" / "learn" / "SKILL.md").read_text(encoding="utf-8")
-
-    match = re.search(
-        r"```markdown\n(   ---\n.*?## Learned Insights\n)\s*```",
-        skill_md,
-        re.DOTALL,
-    )
-    assert match, (
-        "could not locate the scaffold fence in skills/learn/SKILL.md; "
-        "if the skill format changed, update both files together"
-    )
-    dedented = textwrap.dedent(match.group(1))
-    assert dedented == _OPERATOR_SCAFFOLD
+    assert _OPERATOR_SCAFFOLD.startswith("---\n")
+    assert "name: _mureo-pro-diagnosis" in _OPERATOR_SCAFFOLD
+    assert "## Learned Insights" in _OPERATOR_SCAFFOLD
+    # The scaffold MUST end with a newline so the first appended
+    # insight does not land on the same line as "## Learned Insights".
+    assert _OPERATOR_SCAFFOLD.endswith("\n")

@@ -2,17 +2,25 @@
 name: learn
 description: "Save a marketing diagnosis insight to the pro-diagnosis knowledge base so it is applied in future operations across all platforms. Use when the user runs /learn, explicitly teaches the agent a marketing insight, corrects the agent's analysis, or asks to remember/record an operational learning for next time."
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Learn
 
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, output format, and **Tool Selection** (Read/Write on Code, `mureo_strategy_*` / `mureo_state_*` MCP on Desktop / Cowork).
 
-Save a marketing diagnosis insight to the pro-diagnosis knowledge base
-(`../_mureo-pro-diagnosis/SKILL.md`). Saved insights are loaded at the
-start of future sessions and applied across `/daily-check`, `/rescue`,
-`/budget-rebalance`, and the other diagnostic workflows.
+Save a marketing diagnosis insight to the pro-diagnosis knowledge base.
+Saved insights are loaded at the start of future sessions and applied
+across `/daily-check`, `/rescue`, `/budget-rebalance`, and the other
+diagnostic workflows.
+
+The skill persists insights by shelling out to `mureo learn add`,
+which routes the write through the KnowledgeStore Protocol. The
+default backend writes to
+`~/.claude/skills/_mureo-pro-diagnosis/SKILL.md` (preserving the
+prior file layout); an alternate backend registered via the
+`mureo.runtime_context_factory` entry-point group can redirect or
+split the write without changing this skill.
 
 ## When to use
 
@@ -31,31 +39,7 @@ start of future sessions and applied across `/daily-check`, `/rescue`,
    moments where the user corrected the agent's analysis or supplied
    marketing expertise, and select the most reusable one(s).
 
-2. **Locate the knowledge base.** The target is the sibling skill file
-   `../_mureo-pro-diagnosis/SKILL.md` (relative to this skill, i.e.
-   `~/.claude/skills/_mureo-pro-diagnosis/SKILL.md` for an installed
-   user). If it already exists, read it first to avoid duplicate or
-   conflicting entries. If it does **not** exist (it is not shipped — it
-   grows per account), create the directory and seed the file with this
-   minimal scaffold before appending:
-
-   ```markdown
-   ---
-   name: _mureo-pro-diagnosis
-   description: "Professional marketing diagnostic frameworks: expert-level campaign analysis that grows with your experience."
-   metadata:
-     version: 0.1.0
-   ---
-
-   # Pro Diagnosis — Account Knowledge Base
-
-   Insights learned from operating this account, applied by every mureo
-   diagnostic workflow.
-
-   ## Learned Insights
-   ```
-
-3. **Structure the insight** using this template:
+2. **Structure the insight** using this template:
 
    ```markdown
    ### [Short descriptive title]
@@ -68,20 +52,33 @@ start of future sessions and applied across `/daily-check`, `/rescue`,
    Date learned: YYYY-MM-DD
    ```
 
-4. **Present for approval.** Show the formatted insight to the user and
-   ask for explicit confirmation before writing anything. Capture the
+3. **Present for approval.** Show the formatted insight to the user
+   and ask for explicit confirmation before saving. Capture the
    generalized lesson only — never record account IDs, credentials,
    access tokens, or personal data in the knowledge base.
 
-5. **Save.** Append the approved insight under the `## Learned Insights`
-   section of `../_mureo-pro-diagnosis/SKILL.md` (creating the file from
-   the scaffold in step 2 first if it was absent). Append only — never
-   rewrite or reorder existing entries.
+4. **Save by invoking the CLI.** Pass the approved insight verbatim
+   (including its leading blank line and trailing newline) to:
 
-6. **Confirm.** Tell the user the insight was saved and that it will be
-   applied in future `/daily-check`, `/rescue`, `/budget-rebalance`, and
-   other diagnostic workflows.
+   ```bash
+   mureo learn add "$INSIGHT_MARKDOWN"
+   ```
 
-IMPORTANT: Always save to `../_mureo-pro-diagnosis/SKILL.md`, never to
-Claude Code memory. The skill file persists across sessions and is read
-by all mureo diagnostic workflows; Claude memory is not.
+   - The default `--scope operator` writes the cross-workspace tier
+     read by every diagnostic skill. Use this for general practitioner
+     know-how that applies to every account the operator runs.
+   - Pass `--scope workspace` when the insight is specific to the
+     active account and should not leak to other workspaces (only
+     meaningful when a workspace-aware KnowledgeStore backend is
+     installed; the command exits with a helpful message otherwise).
+
+5. **Confirm.** Tell the user the insight was saved and that it will
+   be applied in future `/daily-check`, `/rescue`, `/budget-rebalance`,
+   and other diagnostic workflows.
+
+IMPORTANT: Always save through `mureo learn add`, never by writing the
+file path manually. Going through the CLI keeps the skill compatible
+with alternate KnowledgeStore backends and avoids the agent having to
+know about the scaffold/file layout. Never save to Claude Code memory;
+the on-disk knowledge base persists across sessions, Claude memory
+does not.
