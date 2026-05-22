@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-05-22
+
 ### Fixed — Meta Ads `period` argument no longer silently falls back to `last_7d` (#134)
 
 The Meta Ads MCP tools' `period` argument advertised `last_14d`, `last_90d`, and explicit `YYYY-MM-DD..YYYY-MM-DD` ranges, but the implementation accepted only six hard-coded preset names and silently returned `last_7d` data for anything else. Period-over-period analyses (`meta_ads_analysis_performance`, `meta_ads_analysis_cost`) doubled the bug: the "previous" window was likewise mapped via a tiny dict that, for `last_7d`, returned `last_30d` — a superset that overlaps the current window, making every delta meaningless.
