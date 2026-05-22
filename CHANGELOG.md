@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-05-22
+
 ### Added — Optional per-locale labels for web-extension nav tabs
 
 Web extensions can now ship an optional `display_name_i18n: Mapping[str, str]` class attribute alongside `display_name` so the configure-UI nav tab follows the active locale. Built-in nav tabs (Setup / Demo / BYOD / Danger Zone) are already translated via `data-i18n` keys in `i18n.json`; extension tabs now follow the same convention without extension authors having to touch the OSS `i18n.json` catalog.
