@@ -469,6 +469,224 @@ def test_reset_clears_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     assert second == ()
 
 
+# ---------------------------------------------------------------------------
+# display_name_i18n — optional per-locale labels for the nav tab
+# ---------------------------------------------------------------------------
+
+
+class _DemoI18nExtension:
+    """Extension that ships per-locale labels alongside the English default."""
+
+    name = "demo-i18n"
+    display_name = "Demo (en fallback)"
+    display_name_i18n = {"en": "Demo", "ja": "デモ"}
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        return None
+
+
+class _BadI18nMappingType:
+    name = "bad-i18n-type"
+    display_name = "Bad i18n type"
+    display_name_i18n = ["en", "Foo"]  # list, not mapping
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        return None
+
+
+class _BadI18nValueType:
+    name = "bad-i18n-value"
+    display_name = "Bad i18n value"
+    display_name_i18n = {"en": 123}  # value is not a str
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        return None
+
+
+class _BadI18nKeyType:
+    name = "bad-i18n-key"
+    display_name = "Bad i18n key"
+    display_name_i18n = {1: "Foo"}  # key is not a str
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        return None
+
+
+@pytest.mark.unit
+def test_web_extension_entry_defaults_display_name_i18n_to_empty_dict() -> None:
+    """Existing callers that construct ``WebExtensionEntry`` without the
+    new ``display_name_i18n`` field must continue to work."""
+    from mureo.web.extensions import WebExtensionEntry
+
+    entry = WebExtensionEntry(
+        name="legacy",
+        display_name="Legacy",
+        routes=(),
+        view=None,
+        source_distribution=None,
+    )
+    assert entry.display_name_i18n == {}
+
+
+@pytest.mark.unit
+def test_web_extension_entry_accepts_display_name_i18n() -> None:
+    from mureo.web.extensions import WebExtensionEntry
+
+    entry = WebExtensionEntry(
+        name="i18n",
+        display_name="I18n",
+        routes=(),
+        view=None,
+        source_distribution=None,
+        display_name_i18n={"en": "I18n", "ja": "国際化"},
+    )
+    assert entry.display_name_i18n == {"en": "I18n", "ja": "国際化"}
+
+
+@pytest.mark.unit
+def test_discover_picks_up_display_name_i18n(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import discover_web_extensions
+
+    _patch_entry_points(monkeypatch, [_FakeEP("demo-i18n", _DemoI18nExtension)])
+    entries = discover_web_extensions()
+    assert len(entries) == 1
+    assert entries[0].display_name_i18n == {"en": "Demo", "ja": "デモ"}
+
+
+@pytest.mark.unit
+def test_discover_defaults_missing_display_name_i18n_to_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An extension that does not declare ``display_name_i18n`` — i.e. every
+    extension shipped before this feature existed — must continue to load."""
+    from mureo.web.extensions import discover_web_extensions
+
+    _patch_entry_points(monkeypatch, [_FakeEP("demo", _DemoExtension)])
+    entries = discover_web_extensions()
+    assert len(entries) == 1
+    assert entries[0].display_name_i18n == {}
+
+
+@pytest.mark.unit
+def test_discover_skips_extension_with_non_mapping_display_name_i18n(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import WebExtensionWarning, discover_web_extensions
+
+    _patch_entry_points(
+        monkeypatch,
+        [
+            _FakeEP("bad-i18n-type", _BadI18nMappingType),
+            _FakeEP("demo", _DemoExtension),
+        ],
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        entries = discover_web_extensions()
+    assert [e.name for e in entries] == ["demo"]
+    assert any(
+        issubclass(w.category, WebExtensionWarning)
+        and "bad-i18n-type" in str(w.message)
+        for w in caught
+    )
+
+
+@pytest.mark.unit
+def test_discover_skips_extension_with_non_str_i18n_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import WebExtensionWarning, discover_web_extensions
+
+    _patch_entry_points(
+        monkeypatch,
+        [
+            _FakeEP("bad-i18n-value", _BadI18nValueType),
+            _FakeEP("demo", _DemoExtension),
+        ],
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        entries = discover_web_extensions()
+    assert [e.name for e in entries] == ["demo"]
+    assert any(
+        issubclass(w.category, WebExtensionWarning)
+        and "bad-i18n-value" in str(w.message)
+        for w in caught
+    )
+
+
+@pytest.mark.unit
+def test_discover_skips_extension_with_non_str_i18n_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import WebExtensionWarning, discover_web_extensions
+
+    _patch_entry_points(
+        monkeypatch,
+        [
+            _FakeEP("bad-i18n-key", _BadI18nKeyType),
+            _FakeEP("demo", _DemoExtension),
+        ],
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        entries = discover_web_extensions()
+    assert [e.name for e in entries] == ["demo"]
+    assert any(
+        issubclass(w.category, WebExtensionWarning) and "bad-i18n-key" in str(w.message)
+        for w in caught
+    )
+
+
+class _NoneI18n:
+    name = "none-i18n"
+    display_name = "None i18n"
+    display_name_i18n = None  # explicit None — not a Mapping
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        return None
+
+
+@pytest.mark.unit
+def test_discover_skips_extension_with_none_display_name_i18n(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit ``None`` value is distinct from the attribute being
+    absent (which defaults to ``{}`` via ``getattr``). ``None`` is not a
+    ``Mapping`` so discovery must skip the entry."""
+    from mureo.web.extensions import WebExtensionWarning, discover_web_extensions
+
+    _patch_entry_points(
+        monkeypatch,
+        [_FakeEP("none-i18n", _NoneI18n), _FakeEP("demo", _DemoExtension)],
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        entries = discover_web_extensions()
+    assert [e.name for e in entries] == ["demo"]
+    assert any(
+        issubclass(w.category, WebExtensionWarning) and "none-i18n" in str(w.message)
+        for w in caught
+    )
+
+
 @pytest.fixture(autouse=True)
 def _reset_extensions_cache() -> Iterator[None]:
     """Every test starts with a clean discovery cache."""

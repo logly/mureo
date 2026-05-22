@@ -1355,6 +1355,51 @@ class MyExtension:
         )
 ```
 
+### Localising the nav-tab label
+
+`display_name` is the fallback label and is always required. To follow
+the same convention as the built-in nav tabs (Setup / Demo / BYOD /
+Danger Zone — translated via `data-i18n` keys in `i18n.json`), declare
+an optional `display_name_i18n` class attribute keyed by BCP-47
+language code:
+
+```python
+class MyExtension:
+    name = "acme-vault"
+    display_name = "Acme Vault setup"          # fallback for any locale
+    display_name_i18n = {                       # optional, per-locale labels
+        "en": "Acme Vault",
+        "ja": "Acme Vault 設定",
+    }
+    # ...routes() / view() unchanged
+```
+
+Lookup priority on the renderer side: `display_name_i18n[active_locale]`
+→ `display_name_i18n["en"]` → `display_name`. Operators who toggle the
+configure-UI locale see your tab name update without a page reload —
+the renderer listens for `mureo:locale_changed`. Extensions that do
+not declare `display_name_i18n` keep the legacy behaviour: a single
+string shown verbatim in every locale.
+
+The attribute is **optional**: it is read via `getattr` so the
+`WebExtension` Protocol itself stays unchanged and pre-feature
+extensions continue to load without modification. The value must be a
+`Mapping[str, str]` — anything else (a list of pairs, a key of type
+`int`, a value of type `int`, etc.) is a packaging bug and the
+extension is skipped at discovery with a `WebExtensionWarning`.
+
+Currently the configure-UI ships an `en` / `ja` locale toggle; if you
+add labels for other BCP-47 codes they are stored and surfaced via
+`/api/extensions` but never selected by the built-in UI today. The
+contract is forward-compatible — if mureo grows more locales later,
+your existing entries Just Work.
+
+Empty-string values (`{"ja": ""}`) are treated as missing — the
+renderer's `i18n[locale] || i18n.en || display_name` chain skips
+falsy entries and falls through to the next candidate. If you want
+to ship an intentionally blank label, render an explicit zero-width
+character (e.g. `"​"`) instead of `""`.
+
 ### `pyproject.toml`
 
 ```toml

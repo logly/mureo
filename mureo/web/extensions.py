@@ -50,7 +50,8 @@ from __future__ import annotations
 
 import re
 import warnings
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from importlib.metadata import entry_points
 from typing import (
     TYPE_CHECKING,
@@ -236,6 +237,17 @@ class WebExtension(Protocol):
     a :class:`WebExtensionEntry`. Exceptions raised by either method
     skip the extension (with :class:`WebExtensionWarning`) without
     affecting other extensions or the configure server.
+
+    Optional class attribute (read via :func:`getattr` so the Protocol
+    itself stays backward-compatible):
+
+    * ``display_name_i18n: Mapping[str, str]`` — per-locale labels
+      keyed by BCP-47 language code (``"en"``, ``"ja"``). When the
+      configure-UI swaps locale, the renderer prefers
+      ``display_name_i18n[locale]``, falling back to
+      ``display_name_i18n["en"]``, then to ``display_name``.
+      Extensions that do not declare it behave exactly as before —
+      ``display_name`` is shown unchanged in every locale.
     """
 
     @property
@@ -251,13 +263,21 @@ class WebExtension(Protocol):
 
 @dataclass(frozen=True)
 class WebExtensionEntry:
-    """Frozen record of one successfully-discovered extension."""
+    """Frozen record of one successfully-discovered extension.
+
+    ``display_name_i18n`` defaults to an empty mapping so callers that
+    construct an entry without supplying the field continue to work
+    after the field was added. The renderer treats an empty mapping
+    the same as a missing one — ``display_name`` is the fallback in
+    both cases.
+    """
 
     name: str
     display_name: str
     routes: tuple[RouteContribution, ...]
     view: ViewContribution | None
     source_distribution: str | None
+    display_name_i18n: Mapping[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +394,31 @@ def _load_entry_point(ep: Any) -> WebExtensionEntry | None:
                 f"view() returned {type(view_value).__name__}, "
                 f"expected ViewContribution or None"
             )
+        # ``display_name_i18n`` is read defensively so the Protocol
+        # itself does not require the attribute — every pre-feature
+        # extension keeps working without modification. When present
+        # the value must be a mapping of ``str -> str``; anything else
+        # is a packaging bug and the entry is skipped (defence against
+        # mistakes like ``[("en", "Foo")]``, ``{"en": 123}``, or
+        # ``{1: "Foo"}`` reaching the JSON serialiser later).
+        i18n_value = getattr(extension, "display_name_i18n", {})
+        if not isinstance(i18n_value, Mapping):
+            raise TypeError(
+                f"display_name_i18n must be a Mapping, "
+                f"got {type(i18n_value).__name__}"
+            )
+        i18n_normalised: dict[str, str] = {}
+        for key, value in i18n_value.items():
+            if not isinstance(key, str):
+                raise TypeError(
+                    f"display_name_i18n keys must be str, got {type(key).__name__}"
+                )
+            if not isinstance(value, str):
+                raise TypeError(
+                    f"display_name_i18n values must be str, "
+                    f"got {type(value).__name__} for key {key!r}"
+                )
+            i18n_normalised[key] = value
     except Exception as exc:  # noqa: BLE001 — per-plugin fault isolation
         warnings.warn(
             f"failed to load web extension {ep_name!r}: {exc!r}",
@@ -388,6 +433,7 @@ def _load_entry_point(ep: Any) -> WebExtensionEntry | None:
         routes=routes_value,
         view=view_value,
         source_distribution=_resolve_source(ep),
+        display_name_i18n=i18n_normalised,
     )
 
 
