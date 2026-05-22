@@ -208,9 +208,44 @@ def test_extensions_index_lists_registered(
     item = payload[0]
     assert item["name"] == "demo"
     assert item["display_name"] == "Demo extension"
+    assert item["display_name_i18n"] == {}
     assert item["view"]["html_fragment"].startswith("<section")
     assert item["view"]["scripts"] == ["demo.js"]
     assert item["view"]["styles"] == ["demo.css"]
+
+
+@pytest.mark.unit
+def test_extensions_index_includes_display_name_i18n(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An extension that ships per-locale labels surfaces them on
+    ``/api/extensions`` so the renderer can swap nav labels when the
+    operator toggles locale without round-tripping the server."""
+    i18n_entry = WebExtensionEntry(
+        name="i18n-demo",
+        display_name="I18n demo",
+        routes=(),
+        view=ViewContribution(html_fragment="<p>i18n</p>"),
+        source_distribution=None,
+        display_name_i18n={"en": "Demo", "ja": "デモ"},
+    )
+    monkeypatch.setattr("mureo.web.extensions._cached_entries", (i18n_entry,))
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    (home / ".claude" / "commands").mkdir()
+    (home / ".mureo").mkdir()
+    wiz = ConfigureWizard(home=home)
+    t = threading.Thread(target=wiz.serve, daemon=True)
+    t.start()
+    wiz.wait_until_ready(timeout=5.0)
+    try:
+        resp = _get(wiz, "/api/extensions")
+        payload = json.loads(resp.read().decode())
+        assert payload[0]["display_name_i18n"] == {"en": "Demo", "ja": "デモ"}
+    finally:
+        wiz.shutdown()
+        t.join(timeout=2.0)
 
 
 @pytest.mark.unit
@@ -237,7 +272,14 @@ def test_extensions_index_view_null_when_extension_has_no_view(
     try:
         resp = _get(wiz, "/api/extensions")
         payload = json.loads(resp.read().decode())
-        assert payload == [{"name": "nogui", "display_name": "No GUI", "view": None}]
+        assert payload == [
+            {
+                "name": "nogui",
+                "display_name": "No GUI",
+                "display_name_i18n": {},
+                "view": None,
+            }
+        ]
     finally:
         wiz.shutdown()
         t.join(timeout=2.0)

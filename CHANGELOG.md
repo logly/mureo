@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Optional per-locale labels for web-extension nav tabs
+
+Web extensions can now ship an optional `display_name_i18n: Mapping[str, str]` class attribute alongside `display_name` so the configure-UI nav tab follows the active locale. Built-in nav tabs (Setup / Demo / BYOD / Danger Zone) are already translated via `data-i18n` keys in `i18n.json`; extension tabs now follow the same convention without extension authors having to touch the OSS `i18n.json` catalog.
+
+- **`mureo.web.extensions`** — `WebExtensionEntry` gains a `display_name_i18n: Mapping[str, str]` field that defaults to `{}` so existing constructors continue to work unchanged. The `WebExtension` Protocol is **unchanged** — the new attribute is read defensively via `getattr` so every pre-feature extension keeps loading without modification. Discovery validates the value as `Mapping[str, str]` (`str` keys and values both required) and skips the extension with a `WebExtensionWarning` if the shape is wrong.
+- **HTTP** — `GET /api/extensions` includes a new `display_name_i18n` field per entry (empty `{}` when the extension did not declare any). JSON-only addition; existing consumers ignore unknown keys.
+- **Front-end** (`mureo/_data/web/extensions.js`) — initial render reads `document.documentElement.lang` and looks up `display_name_i18n[locale]` with a fallback chain `locale → "en" → display_name`. A `mureo:locale_changed` listener (fired by `app.js#setLocale`) re-runs the lookup so every nav label updates the moment the operator toggles 日本語 / English.
+- **Plugin author docs** — `docs/plugin-authoring.md` §13 gains a *Localising the nav-tab label* subsection with the example class attribute and the documented lookup priority.
+
+Backward compatibility: extensions that do not declare `display_name_i18n` get an empty `dict` in their `WebExtensionEntry`; the renderer's fallback chain resolves to `display_name`, so the nav tab looks byte-identical to v0.9.5.
+
 ## [0.9.5] - 2026-05-21
 
 ### Added — Web extensions: third-party tabs and API routes for `mureo configure`

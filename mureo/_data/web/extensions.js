@@ -28,6 +28,23 @@
   // can investigate the root cause via the console.warn diagnostics.
   let _initialised = false;
 
+  function _currentLocale() {
+    // ``document.documentElement.lang`` is the source of truth (set by
+    // ``app.js#setLocale``). Falls back to "en" before app.js has run
+    // and for the rare case where the attribute is removed.
+    return document.documentElement.lang || "en";
+  }
+
+  function _resolveDisplayName(extension, locale) {
+    // Lookup priority mirrors the convention documented in
+    // ``docs/plugin-authoring.md`` §13: localized label for the active
+    // locale, then the English entry as a portable default, then the
+    // legacy ``display_name`` string. Extensions that do not ship a
+    // ``display_name_i18n`` map keep the legacy behaviour exactly.
+    const i18n = extension.display_name_i18n || {};
+    return i18n[locale] || i18n.en || extension.display_name;
+  }
+
   function _navList() {
     return document.querySelector(".dashboard-nav ul");
   }
@@ -133,7 +150,7 @@
     a.setAttribute("data-dashboard-nav", _navItemId(extension.name));
     a.setAttribute("role", "button");
     a.setAttribute("tabindex", "0");
-    a.textContent = extension.display_name;
+    a.textContent = _resolveDisplayName(extension, _currentLocale());
     const onActivate = _onTabClick(extension);
     a.addEventListener("click", onActivate);
     a.addEventListener("keydown", function (evt) {
@@ -187,6 +204,28 @@
     });
     _extensions.forEach(_renderNavItem);
   }
+
+  function _onLocaleChanged(evt) {
+    // Walk every nav <a> we previously rendered and update its label
+    // for the new locale. Resolved via _resolveDisplayName so the
+    // fallback chain (locale → en → display_name) stays consistent
+    // with the initial render path.
+    const locale = (evt && evt.detail && evt.detail.locale) || _currentLocale();
+    _extensions.forEach(function (extension) {
+      const a = document.querySelector(
+        '[data-dashboard-nav="' + _navItemId(extension.name) + '"]',
+      );
+      if (a) {
+        a.textContent = _resolveDisplayName(extension, locale);
+      }
+    });
+  }
+
+  // Registered at module-eval time so a locale change that happens
+  // before ``init()`` finishes still triggers a re-render on the next
+  // matching event — ``_extensions`` is simply empty until init()
+  // populates it, so the listener is harmless until then.
+  document.addEventListener("mureo:locale_changed", _onLocaleChanged);
 
   window.MUREO = window.MUREO || {};
   window.MUREO.extensions = {

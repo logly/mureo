@@ -627,6 +627,11 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             item: dict[str, Any] = {
                 "name": entry.name,
                 "display_name": entry.display_name,
+                # Defensive copy — the renderer is free to mutate the
+                # returned dict (the JSON serialiser does not), and an
+                # extension may share the same mapping object across
+                # multiple discovery calls within a process.
+                "display_name_i18n": dict(entry.display_name_i18n),
             }
             if entry.view is None:
                 item["view"] = None
