@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-05-22
+
 ### Added — Optional `account_credential_fields` for self-describing providers
 
 Provider plugins (built-in `google_ads` / `meta_ads`, and third-party plugins discovered via the `mureo.providers` entry-point group) can now declare an optional `account_credential_fields: tuple[AccountCredentialField, ...]` class attribute so introspection tooling — the `mureo providers …` CLI, configuration wizards, plugin authoring guides — can render setup prompts, validate config, and document plugins without hardcoding per-provider knowledge.
