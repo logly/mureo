@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Optional `account_credential_fields` for self-describing providers
+
+Provider plugins (built-in `google_ads` / `meta_ads`, and third-party plugins discovered via the `mureo.providers` entry-point group) can now declare an optional `account_credential_fields: tuple[AccountCredentialField, ...]` class attribute so introspection tooling — the `mureo providers …` CLI, configuration wizards, plugin authoring guides — can render setup prompts, validate config, and document plugins without hardcoding per-provider knowledge.
+
+```python
+from mureo.core.providers import AccountCredentialField
+
+class MyAdsProvider:
+    name = "my_ads"
+    display_name = "My Ads"
+    capabilities = frozenset({...})
+    account_credential_fields = (
+        AccountCredentialField(
+            key="advertiser_id",
+            display_name="Advertiser ID",
+            placeholder="adv-12345",
+            required=True,
+            description="From the MyAds dashboard.",
+        ),
+    )
+```
+
+- **New public surface in `mureo.core.providers`**: `AccountCredentialField` (frozen dataclass — `key`, `display_name`, `placeholder=""`, `required=False`, `description=""`) and `get_account_credential_fields(provider) -> tuple[AccountCredentialField, ...]` accessor. The accessor reads the optional attribute defensively (returns `()` when absent) and validates the shape (`tuple` of `AccountCredentialField` only) — malformed declarations raise `TypeError` at introspection time, not deep inside the consuming UI.
+- **`BaseProvider` Protocol is unchanged**. The new attribute is documented as optional in the `BaseProvider` docstring; the Protocol body itself stays stable so every pre-feature plugin keeps loading without modification.
+- **Built-in adapters updated**: `mureo.adapters.google_ads.GoogleAdsAdapter` declares `customer_id`; `mureo.adapters.meta_ads.MetaAdsAdapter` declares `ad_account_id`. Operator-shared credentials (developer token, app secret, refresh token, MCC `login_customer_id`) intentionally do NOT appear — those belong to a separate operator-level layer.
+- **Plugin author guide**: `docs/plugin-authoring.md` §3 (`BaseProvider`) gains a *Declaring per-account credential fields (optional)* subsection covering the dataclass shape, defaults, and the accessor's defensive-read / strict-validation semantics.
+
+Backward compatibility: providers that do not declare `account_credential_fields` continue to load unchanged; `get_account_credential_fields()` returns `()`, which downstream tooling treats as "no per-account configuration needed."
+
 ## [0.9.6] - 2026-05-22
 
 ### Added — Optional per-locale labels for web-extension nav tabs

@@ -54,6 +54,7 @@ from mureo.adapters.meta_ads.mappers import (
     to_daily_report_row,
 )
 from mureo.core.providers.capabilities import Capability
+from mureo.core.providers.credentials import AccountCredentialField
 from mureo.core.providers.models import (
     Ad,
     AdStatus,
@@ -134,6 +135,23 @@ class MetaAdsAdapter:
             Capability.WRITE_CAMPAIGN_STATUS,
             Capability.WRITE_AUDIENCES,
         }
+    )
+    # Per-account credential the operator must supply for Meta Ads.
+    # Token-level material (the System User access token / app id /
+    # app secret) is operator-shared in the common Business Manager
+    # setup and lives outside this declaration; ``ad_account_id`` is
+    # the only field that varies per account.
+    account_credential_fields: tuple[AccountCredentialField, ...] = (
+        AccountCredentialField(
+            key="ad_account_id",
+            display_name="Ad Account ID",
+            placeholder="act_1234567890",
+            required=True,
+            description=(
+                "Meta ad account ID prefixed with ``act_``. "
+                "Find it in Meta Ads Manager > Account Settings."
+            ),
+        ),
     )
 
     def __init__(self, client: MetaAdsApiClient) -> None:

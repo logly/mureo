@@ -28,6 +28,7 @@ import pytest
 # module ``mureo.core.providers.registry`` does not exist yet. That is
 # correct. The implementer (GREEN phase) will create it.
 from mureo.core.providers.capabilities import Capability
+from mureo.core.providers.credentials import AccountCredentialField
 from mureo.core.providers.registry import (  # noqa: E402
     ProviderEntry,
     RegistryWarning,
@@ -509,3 +510,105 @@ def test_clear_registry_resets_state(monkeypatch: pytest.MonkeyPatch) -> None:
         "clear_registry() must also invalidate the discovery cache so "
         "the next discover_providers() re-iterates entry_points."
     )
+
+
+# ---------------------------------------------------------------------------
+# get_account_credential_fields — defensive read of the optional
+# ``account_credential_fields`` class attribute (PR description: declarative
+# introspection so tooling can render setup prompts without per-provider
+# hardcoding).
+# ---------------------------------------------------------------------------
+
+
+class _ProviderWithoutAccountFields:
+    """Provider that does not declare ``account_credential_fields``.
+
+    Returning ``()`` from the accessor lets tooling render "no
+    per-account configuration needed" without raising ``AttributeError``.
+    """
+
+    name = "no_fields_provider"
+    display_name = "No fields"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+
+class _ProviderWithAccountFields:
+    name = "fields_provider"
+    display_name = "Fields"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+    account_credential_fields = (
+        AccountCredentialField(
+            key="account_id",
+            display_name="Account ID",
+            placeholder="acct-1",
+            required=True,
+            description="hint",
+        ),
+    )
+
+
+class _BadAccountFieldsNotTuple:
+    name = "bad_not_tuple"
+    display_name = "Bad not tuple"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+    account_credential_fields = ["should be tuple"]  # list, not tuple
+
+
+class _BadAccountFieldsWrongElement:
+    name = "bad_wrong_element"
+    display_name = "Bad wrong element"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+    account_credential_fields = ("not a dataclass instance",)  # str, not field
+
+
+@pytest.mark.unit
+def test_account_fields_returns_empty_when_attr_absent() -> None:
+    from mureo.core.providers.registry import get_account_credential_fields
+
+    assert get_account_credential_fields(_ProviderWithoutAccountFields()) == ()
+
+
+@pytest.mark.unit
+def test_account_fields_returns_declared_tuple() -> None:
+    from mureo.core.providers.registry import get_account_credential_fields
+
+    fields = get_account_credential_fields(_ProviderWithAccountFields())
+    assert isinstance(fields, tuple)
+    assert len(fields) == 1
+    field = fields[0]
+    assert isinstance(field, AccountCredentialField)
+    assert field.key == "account_id"
+    assert field.required is True
+
+
+@pytest.mark.unit
+def test_account_fields_raises_for_non_tuple() -> None:
+    from mureo.core.providers.registry import get_account_credential_fields
+
+    with pytest.raises(TypeError, match="must be a tuple"):
+        get_account_credential_fields(_BadAccountFieldsNotTuple())
+
+
+@pytest.mark.unit
+def test_account_fields_raises_for_wrong_element_type() -> None:
+    from mureo.core.providers.registry import get_account_credential_fields
+
+    with pytest.raises(TypeError, match="must be AccountCredentialField"):
+        get_account_credential_fields(_BadAccountFieldsWrongElement())
+
+
+@pytest.mark.unit
+def test_account_fields_helper_is_exported_from_package() -> None:
+    """Public surface — consumers should reach the helper via
+    ``mureo.core.providers`` without knowing the registry submodule."""
+    from mureo.core.providers import (
+        AccountCredentialField as ReexportedField,
+    )
+    from mureo.core.providers import (
+        get_account_credential_fields,
+    )
+
+    assert callable(get_account_credential_fields)
+    # Sanity: the dataclass is also re-exported from the package root.
+    field = ReexportedField(key="x", display_name="X")
+    assert field.key == "x"

@@ -84,6 +84,21 @@ class BaseProvider(Protocol):
     would be a breaking change for installed plugins; new behaviour
     should be added via secondary Protocols rather than expanding this
     one.
+
+    Optional class attributes (read defensively via :func:`getattr`
+    so the Protocol body itself stays stable across releases):
+
+    * ``account_credential_fields: tuple[AccountCredentialField, ...]``
+      — declares the per-account credential fields the provider needs
+      (e.g., Google Ads ``customer_id``, Meta Ads ``ad_account_id``).
+      Tooling that introspects providers (the ``mureo providers …``
+      CLI, configuration wizards, plugin authoring docs) reads this
+      via :func:`mureo.core.providers.get_account_credential_fields`
+      to render setup prompts, validate config, and document plugins
+      without hardcoding per-provider knowledge. Providers that omit
+      the attribute behave as before — tooling assumes "no
+      per-account fields" (operator-shared credentials are the entire
+      credential set).
     """
 
     name: str

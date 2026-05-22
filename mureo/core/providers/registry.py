@@ -86,6 +86,7 @@ from mureo.core.providers.base import (
     validate_provider_name,
 )
 from mureo.core.providers.capabilities import Capability
+from mureo.core.providers.credentials import AccountCredentialField
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -544,6 +545,59 @@ def clear_registry() -> None:
     default_registry.clear()
 
 
+def get_account_credential_fields(
+    provider: object,
+) -> tuple[AccountCredentialField, ...]:
+    """Return ``provider.account_credential_fields`` defensively.
+
+    The attribute is **optional** — providers shipped before this
+    helper existed (and providers that genuinely have no per-account
+    fields) do not declare it. Returning ``()`` for the missing case
+    lets introspection tooling render "no per-account configuration
+    needed" without raising :class:`AttributeError` at every call
+    site.
+
+    Shape validation is strict: if the provider declared the attribute
+    but the value is not a ``tuple``, or any element is not an
+    :class:`AccountCredentialField`, the helper raises
+    :class:`TypeError`. The error surfaces here rather than at the
+    consumer (the CLI / wizard rendering loop) so a malformed plugin
+    fails loudly at the boundary instead of silently degrading the UX.
+
+    Args:
+        provider: The provider instance to introspect. Any object
+            exposing the optional class attribute works — the helper
+            uses :func:`getattr` and never instantiates anything.
+
+    Returns:
+        The declared tuple of :class:`AccountCredentialField`s, or
+        the empty tuple when the attribute is absent.
+
+    Raises:
+        TypeError: The attribute is present but not a ``tuple``, or
+            it contains a non-:class:`AccountCredentialField` element.
+    """
+    # Mirror ``base._identity_hint`` semantics inline so the helper
+    # stays in the foundation layer above ``base`` without exporting
+    # additional private surface — a non-``str`` / empty ``name`` falls
+    # back to ``repr`` so the offending provider is locatable in logs.
+    raw_name = getattr(provider, "name", None)
+    identity = raw_name if isinstance(raw_name, str) and raw_name else repr(provider)
+    fields = getattr(provider, "account_credential_fields", ())
+    if not isinstance(fields, tuple):
+        raise TypeError(
+            f"{identity}.account_credential_fields must be a tuple, "
+            f"got {type(fields).__name__}"
+        )
+    for f in fields:
+        if not isinstance(f, AccountCredentialField):
+            raise TypeError(
+                f"{identity}.account_credential_fields entries must be "
+                f"AccountCredentialField, got {type(f).__name__}"
+            )
+    return cast("tuple[AccountCredentialField, ...]", fields)
+
+
 __all__ = [
     "PROVIDERS_ENTRY_POINT_GROUP",
     "SKILLS_ENTRY_POINT_GROUP",
@@ -553,6 +607,7 @@ __all__ = [
     "clear_registry",
     "default_registry",
     "discover_providers",
+    "get_account_credential_fields",
     "get_provider",
     "list_providers_by_capability",
     "register_provider_class",

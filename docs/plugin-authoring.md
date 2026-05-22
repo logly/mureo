@@ -271,6 +271,59 @@ both look them up on the class via `getattr`.
 adding required methods later cannot break installed plugins — new
 behaviour goes into secondary Protocols.
 
+### Declaring per-account credential fields (optional)
+
+Providers often need identifiers that vary per platform account —
+Google Ads `customer_id`, Meta Ads `ad_account_id`, an analytics
+product's `advertiser_id`. These are distinct from operator-shared
+OAuth credentials (developer tokens, refresh tokens) which typically
+apply to every account on the same platform.
+
+Declare them via the optional `account_credential_fields` class
+attribute so introspection tooling — the `mureo providers …` CLI,
+configuration wizards, plugin authoring guides — can render setup
+prompts, validate config, and document your provider without
+hardcoding per-provider knowledge:
+
+```python
+from mureo.core.providers import AccountCredentialField
+
+class MyAdsProvider:
+    name = "my_ads"
+    display_name = "My Ads"
+    capabilities = frozenset({...})
+    account_credential_fields = (
+        AccountCredentialField(
+            key="advertiser_id",
+            display_name="Advertiser ID",
+            placeholder="adv-12345",
+            required=True,
+            description="Advertiser ID from the MyAds dashboard.",
+        ),
+    )
+```
+
+| Field | Default | Notes |
+|---|---|---|
+| `key` | (required) | Stable snake_case identifier used in credential storage. Treat as part of your public ABI — renaming after release breaks operator config. |
+| `display_name` | (required) | Human-readable label for CLI prompts / wizard forms. |
+| `placeholder` | `""` | Example value shown in form inputs (never used as a default — auto-applying would surprise operators). |
+| `required` | `False` | When `True`, tooling may warn or block on a missing value. |
+| `description` | `""` | One-line operator-facing hint pointing at where the value comes from. |
+
+The accessor `mureo.core.providers.get_account_credential_fields(provider)`
+reads the attribute defensively (returns `()` when absent) and
+validates the shape — providers shipped before this feature existed
+keep loading without modification, but a malformed declaration
+(non-tuple, wrong element type) raises `TypeError` at introspection
+time so the failure surfaces near the plugin, not deep inside the
+consuming UI.
+
+OAuth-level / operator-shared credentials (developer token, app
+secret, refresh token, MCC `login_customer_id`) intentionally do
+NOT live here — `account_credential_fields` is for the per-account
+slice only.
+
 ### Domain Protocols (implement at least one)
 
 | Protocol | Purpose | Methods |

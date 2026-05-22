@@ -45,6 +45,7 @@ from mureo.adapters.google_ads.mappers import (
     to_search_term,
 )
 from mureo.core.providers.capabilities import Capability
+from mureo.core.providers.credentials import AccountCredentialField
 from mureo.core.providers.models import (
     Ad,
     AdStatus,
@@ -106,6 +107,23 @@ class GoogleAdsAdapter:
             Capability.WRITE_EXTENSIONS,
             Capability.WRITE_CAMPAIGN_STATUS,
         }
+    )
+    # Per-account credential the operator must supply for Google Ads.
+    # The MCC ``login_customer_id`` is intentionally NOT listed here —
+    # it identifies the operator's manager account and is typically
+    # shared across every Google Ads account the operator manages
+    # (operator-shared OAuth-level credential, not per-account).
+    account_credential_fields: tuple[AccountCredentialField, ...] = (
+        AccountCredentialField(
+            key="customer_id",
+            display_name="Customer ID",
+            placeholder="123-456-7890",
+            required=True,
+            description=(
+                "10-digit Google Ads customer ID (with or without dashes). "
+                "Find it in the Google Ads UI top-right corner."
+            ),
+        ),
     )
 
     def __init__(self, client: GoogleAdsApiClient) -> None:

@@ -41,6 +41,7 @@ _ADAPTER_ALLOWED: frozenset[str] = frozenset(
         "mureo.core.providers",
         "mureo.core.providers.base",
         "mureo.core.providers.capabilities",
+        "mureo.core.providers.credentials",
         "mureo.core.providers.models",
         "mureo.core.providers.registry",
         "mureo.core.providers.campaign",

@@ -201,6 +201,26 @@ def test_capabilities_match_exact_expected_set() -> None:
 
 
 @pytest.mark.unit
+def test_account_credential_fields_declared_for_customer_id() -> None:
+    """Google Ads is per-account-identified by ``customer_id`` (10 digit,
+    optionally dash-separated). The declarative field lets generic
+    introspection tooling render setup prompts without hardcoding
+    per-provider knowledge."""
+    from mureo.core.providers.credentials import AccountCredentialField
+
+    fields = GoogleAdsAdapter.account_credential_fields  # type: ignore[attr-defined]
+    assert isinstance(fields, tuple)
+    assert len(fields) == 1
+    field = fields[0]
+    assert isinstance(field, AccountCredentialField)
+    assert field.key == "customer_id"
+    assert field.required is True
+    # Placeholder shape is a hint, not a regex contract — assert it
+    # carries the canonical Google Ads dashed form.
+    assert "123-456-7890" in field.placeholder
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("forbidden", sorted(_FORBIDDEN_CAPABILITIES, key=str))
 def test_forbidden_capabilities_not_declared(forbidden: Capability) -> None:
     """Audience and bid capabilities are explicitly NOT declared in

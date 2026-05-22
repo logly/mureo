@@ -254,6 +254,25 @@ def test_capabilities_match_exact_expected_set() -> None:
 
 
 @pytest.mark.unit
+def test_account_credential_fields_declared_for_ad_account_id() -> None:
+    """Meta Ads is per-account-identified by ``ad_account_id`` (the
+    ``act_*`` form Meta Ads Manager exposes). The declarative field
+    lets generic introspection tooling render setup prompts without
+    hardcoding per-provider knowledge."""
+    from mureo.core.providers.credentials import AccountCredentialField
+
+    fields = MetaAdsAdapter.account_credential_fields  # type: ignore[attr-defined]
+    assert isinstance(fields, tuple)
+    assert len(fields) == 1
+    field = fields[0]
+    assert isinstance(field, AccountCredentialField)
+    assert field.key == "ad_account_id"
+    assert field.required is True
+    # Placeholder hint carries the canonical ``act_`` prefix.
+    assert field.placeholder.startswith("act_")
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("forbidden", sorted(_FORBIDDEN_CAPABILITIES, key=str))
 def test_forbidden_capabilities_not_declared(forbidden: Capability) -> None:
     """Keyword / extension / bid capabilities are explicitly NOT declared
