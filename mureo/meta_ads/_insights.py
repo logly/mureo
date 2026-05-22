@@ -4,17 +4,9 @@ import json
 import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from mureo.meta_ads._period import previous_period, resolve_period
 
-# Meta API date_preset mapping
-_PERIOD_TO_DATE_PRESET: dict[str, str] = {
-    "today": "today",
-    "yesterday": "yesterday",
-    "last_7d": "last_7d",
-    "last_30d": "last_30d",
-    "this_month": "this_month",
-    "last_month": "last_month",
-}
+logger = logging.getLogger(__name__)
 
 # Common Insights retrieval fields
 _INSIGHTS_FIELDS = (
@@ -29,6 +21,17 @@ _INSIGHTS_FIELDS = (
 # Protocol's ``DailyReportRow`` only needs date, volume, cost, and
 # action counts.
 _TIME_RANGE_INSIGHTS_FIELDS = "impressions,clicks,spend,actions,date_start,date_stop"
+
+
+def _period_params(period: str) -> dict[str, Any]:
+    """Build the Meta API date parameters from a ``period`` string.
+
+    Returns a fresh dict with exactly one of ``date_preset`` or
+    ``time_range`` populated. Unknown ``period`` values raise
+    :class:`ValueError` — fix for #134 (no silent fallback to
+    ``last_7d``).
+    """
+    return resolve_period(period).to_api_params()
 
 
 class InsightsMixin:
@@ -50,23 +53,24 @@ class InsightsMixin:
         period: str = "last_7d",
         level: str = "campaign",
     ) -> list[dict[str, Any]]:
-        """Get performance report
+        """Get performance report.
 
         Args:
             campaign_id: Campaign ID (limits to this campaign when specified)
-            period: Period (today, yesterday, last_7d, last_30d, this_month, last_month)
+            period: Either a documented Meta ``date_preset`` (``today``,
+                ``yesterday``, ``last_7d``, ``last_14d``, ``last_30d``,
+                ``last_90d``, ``this_month``, ``last_month``) or an
+                explicit ``YYYY-MM-DD..YYYY-MM-DD`` range. Unknown
+                values raise :class:`ValueError` (no silent fallback —
+                fix for #134).
             level: Aggregation level (campaign, adset, ad)
 
         Returns:
             List of insight data.
         """
-        date_preset = _PERIOD_TO_DATE_PRESET.get(period, "last_7d")
-
-        params: dict[str, Any] = {
-            "fields": _INSIGHTS_FIELDS,
-            "date_preset": date_preset,
-            "level": level,
-        }
+        params: dict[str, Any] = _period_params(period)
+        params["fields"] = _INSIGHTS_FIELDS
+        params["level"] = level
 
         if campaign_id:
             path = f"/{campaign_id}/insights"
@@ -123,20 +127,18 @@ class InsightsMixin:
     ) -> dict[str, Any]:
         """Comprehensively analyze campaign performance.
 
-        Compares current and previous period insights to identify issues.
+        Compares current and previous period insights to identify
+        issues. The previous-period window is computed as the
+        same-length block immediately before ``period`` (fix for
+        #134 — the pre-fix code mapped ``last_7d`` to ``last_30d``,
+        a superset that overlapped the current window and made every
+        delta meaningless).
         """
         current = await self.get_performance_report(
             campaign_id=campaign_id, period=period
         )
 
-        # Get previous period data
-        prev_period_map = {
-            "last_7d": "last_30d",
-            "last_30d": "last_month",
-            "today": "yesterday",
-            "yesterday": "last_7d",
-        }
-        prev_period = prev_period_map.get(period, "last_30d")
+        prev_period = previous_period(period)
         previous = await self.get_performance_report(
             campaign_id=campaign_id, period=prev_period
         )
@@ -297,13 +299,9 @@ class InsightsMixin:
         Returns:
             List of insight data with breakdowns.
         """
-        date_preset = _PERIOD_TO_DATE_PRESET.get(period, "last_7d")
-
-        params: dict[str, Any] = {
-            "fields": _INSIGHTS_FIELDS,
-            "date_preset": date_preset,
-            "breakdowns": breakdown,
-        }
+        params: dict[str, Any] = _period_params(period)
+        params["fields"] = _INSIGHTS_FIELDS
+        params["breakdowns"] = breakdown
 
         result = await self._get(f"/{campaign_id}/insights", params)
         return result.get("data", [])  # type: ignore[no-any-return]

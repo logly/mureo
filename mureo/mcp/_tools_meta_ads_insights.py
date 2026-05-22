@@ -27,7 +27,8 @@ _PERIOD_PARAM = {
     "description": (
         "Analysis window. Accepts Meta predefined ranges ('today', "
         "'yesterday', 'last_7d', 'last_14d', 'last_30d' (default), "
-        "'last_90d') or explicit 'YYYY-MM-DD..YYYY-MM-DD'. Longer "
+        "'last_90d', 'this_month', 'last_month') or explicit "
+        "'YYYY-MM-DD..YYYY-MM-DD' (both endpoints inclusive). Longer "
         "windows cost more Graph API quota."
     ),
 }

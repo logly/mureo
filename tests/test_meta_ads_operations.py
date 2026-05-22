@@ -548,6 +548,46 @@ class TestInsightsMixin:
         assert "/camp1/insights" in client._get.call_args[0][0]
 
     @pytest.mark.asyncio
+    async def test_get_performance_report_forwards_custom_range_as_time_range(
+        self, client
+    ) -> None:
+        """Issue #134 regression: ``YYYY-MM-DD..YYYY-MM-DD`` must be
+        forwarded to Meta as ``time_range``, not silently degraded to
+        ``last_7d`` via ``date_preset``."""
+        client._get = AsyncMock(return_value={"data": []})
+        await client.get_performance_report(period="2026-05-01..2026-05-14")
+        params = client._get.call_args[0][1]
+        assert "date_preset" not in params, (
+            f"custom range must not be coerced into a date_preset; "
+            f"got params={params}"
+        )
+        assert params["time_range"] == json.dumps(
+            {"since": "2026-05-01", "until": "2026-05-14"}
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("preset", ["last_14d", "last_90d"])
+    async def test_get_performance_report_accepts_documented_presets(
+        self, client, preset
+    ) -> None:
+        """``last_14d`` and ``last_90d`` are advertised in the tool
+        description; #134 was that they silently fell back to
+        ``last_7d``. Now they must round-trip into ``date_preset``."""
+        client._get = AsyncMock(return_value={"data": []})
+        await client.get_performance_report(period=preset)
+        params = client._get.call_args[0][1]
+        assert params.get("date_preset") == preset
+
+    @pytest.mark.asyncio
+    async def test_get_performance_report_rejects_unknown_period(self, client) -> None:
+        """No silent fallback. The pre-fix code accepted any string and
+        returned last_7d data — silently misleading. Now an unknown
+        ``period`` must raise so the operator hears about it."""
+        client._get = AsyncMock(return_value={"data": []})
+        with pytest.raises(ValueError):
+            await client.get_performance_report(period="last_60d")
+
+    @pytest.mark.asyncio
     async def test_analyze_performance_no_data(self, client) -> None:
         client._get = AsyncMock(return_value={"data": []})
         result = await client.analyze_performance()
@@ -717,6 +757,44 @@ class TestAnalysisMixin:
         result = await client.investigate_cost("camp1")
         assert len(result["findings"]) > 0
         assert any("increased" in f.lower() for f in result["findings"])
+
+    @pytest.mark.asyncio
+    async def test_investigate_cost_previous_window_does_not_overlap_current(
+        self, client
+    ) -> None:
+        """Issue #134 regression: the pre-fix code mapped
+        ``last_7d``-as-current to ``last_30d``-as-previous, which is a
+        SUPERSET (it overlaps last_7d entirely). Now the previous
+        window must be a same-length block that does not overlap.
+
+        We capture the ``period`` strings passed to
+        ``get_performance_report`` and verify the previous one parses
+        to a 7-day range immediately before today's last 7 days."""
+        from datetime import date
+
+        from mureo.meta_ads._period import resolve_period
+
+        captured: list[str] = []
+
+        async def fake_report(**kwargs):
+            captured.append(kwargs.get("period", ""))
+            return [{"spend": "1", "cpc": "1", "clicks": "1"}]
+
+        client.get_performance_report = AsyncMock(side_effect=fake_report)
+        await client.investigate_cost("camp1", period="last_7d")
+        assert captured[0] == "last_7d"
+        prev_str = captured[1]
+        # Must NOT be the broken pre-fix value.
+        assert prev_str != "last_30d", (
+            "previous-window must not be the last_30d superset of "
+            "last_7d (pre-#134 bug)"
+        )
+        prev_rp = resolve_period(prev_str)
+        # And the parsed window must be 7 days long and end before today.
+        assert prev_rp.days == 7
+        assert prev_rp.time_range is not None
+        prev_until_str = prev_rp.time_range[1]
+        assert date.fromisoformat(prev_until_str) < date.today()
 
     @pytest.mark.asyncio
     async def test_compare_ads_no_data(self, client) -> None:

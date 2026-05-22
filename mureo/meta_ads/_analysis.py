@@ -8,6 +8,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from mureo.meta_ads._period import previous_period as _previous_period
+
 logger = logging.getLogger(__name__)
 
 
@@ -132,15 +134,20 @@ class AnalysisMixin:
         campaign_id: str,
         period: str = "last_7d",
     ) -> dict[str, Any]:
-        """Investigate causes of ad spend increase or CPA degradation."""
-        prev_map = {"last_7d": "last_30d", "last_30d": "last_month"}
-        prev_period = prev_map.get(period, "last_30d")
+        """Investigate causes of ad spend increase or CPA degradation.
+
+        The previous-period window is computed as the same-length
+        block immediately preceding ``period`` (fix for #134 — the
+        pre-fix code mapped ``last_7d`` to ``last_30d``, a superset
+        rather than a previous, which made every delta meaningless).
+        """
+        prev_period_str = _previous_period(period)
 
         current = await self.get_performance_report(
             campaign_id=campaign_id, period=period
         )
         previous = await self.get_performance_report(
-            campaign_id=campaign_id, period=prev_period
+            campaign_id=campaign_id, period=prev_period_str
         )
 
         if not current:

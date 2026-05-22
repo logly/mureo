@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Meta Ads `period` argument no longer silently falls back to `last_7d` (#134)
+
+The Meta Ads MCP tools' `period` argument advertised `last_14d`, `last_90d`, and explicit `YYYY-MM-DD..YYYY-MM-DD` ranges, but the implementation accepted only six hard-coded preset names and silently returned `last_7d` data for anything else. Period-over-period analyses (`meta_ads_analysis_performance`, `meta_ads_analysis_cost`) doubled the bug: the "previous" window was likewise mapped via a tiny dict that, for `last_7d`, returned `last_30d` — a superset that overlaps the current window, making every delta meaningless.
+
+This release wires the full advertised surface through to the Meta Graph API:
+
+- New `mureo/meta_ads/_period.py`: `resolve_period(period)` returns either `("date_preset", str)` or `("time_range", (since, until))`. Unknown values raise `ValueError` — there is no silent fallback. ISO date validation, ordering, and `..` separator counting all surface clear errors at the boundary.
+- `get_performance_report` and `get_breakdown_report` now build their request params via the resolver, so a `YYYY-MM-DD..YYYY-MM-DD` `period` is forwarded as Meta's `time_range`, and `last_14d` / `last_90d` are forwarded as `date_preset` (instead of being silently downgraded).
+- `previous_period(period, *, today=…)` returns a same-length window that sits immediately before the current window. For `last_7d` the previous block is the 7 days before that — never the `last_30d` superset. `this_month` round-trips to `last_month`; `last_month` returns an explicit calendar-month range so callers don't need to do calendar arithmetic themselves.
+- `AnalysisMixin.investigate_cost` uses the new helper, so its current/previous comparison is correct for every accepted `period` shape (including custom date ranges).
+
+Regression tests (`tests/test_meta_ads_period.py`, plus four additions to `tests/test_meta_ads_operations.py`) pin every preset name, the explicit-range path, and the "previous must not overlap current" invariant.
+
 ## [0.9.7] - 2026-05-22
 
 ### Added — Optional `account_credential_fields` for self-describing providers
