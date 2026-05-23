@@ -56,6 +56,29 @@ def test_aggregate_google_metrics_handles_empty() -> None:
 
 
 @pytest.mark.unit
+def test_aggregate_google_metrics_accepts_byod_flat_shape() -> None:
+    """BYOD ``get_performance_report`` returns rows with metrics at the
+    top level, not nested under ``metrics``. The aggregator must accept
+    both shapes — regression for the silent-zero bug found during #120
+    live-wiring validation.
+    """
+    rows: list[dict[str, Any]] = [
+        # BYOD shape — flat
+        {
+            "campaign_id": "camp_abc",
+            "cost": 392000.0,
+            "impressions": 5600,
+            "clicks": 1120,
+            "conversions": 179.2,
+        },
+    ]
+    result = _aggregate_google_metrics(rows, account_id="byod-acct")
+    assert result.cost == 392000.0
+    assert result.impressions == 5600
+    assert result.conversions == pytest.approx(179.2)
+
+
+@pytest.mark.unit
 def test_aggregate_google_metrics_handles_none_values() -> None:
     rows: list[dict[str, Any]] = [
         {"metrics": {"cost": None, "impressions": None, "clicks": None}}
@@ -92,6 +115,27 @@ def test_aggregate_meta_metrics_sums_actions() -> None:
     assert result.clicks == 55
     # 3 (lead) + 2 (lead) + 1 (purchase) = 6
     assert result.conversions == 6
+
+
+@pytest.mark.unit
+def test_aggregate_meta_metrics_accepts_byod_flat_conversions() -> None:
+    """BYOD Meta returns conversions as a top-level field with no
+    ``actions`` list. Regression for the silent-zero bug found during
+    #120 live-wiring validation.
+    """
+    rows: list[dict[str, Any]] = [
+        {
+            "campaign_id": "camp_1",
+            "spend": 100.0,
+            "impressions": 500,
+            "clicks": 30,
+            "conversions": 12.0,
+            "result_indicator": "actions:offsite_conversion.fb_pixel_lead",
+        }
+    ]
+    result = _aggregate_meta_metrics(rows, account_id="act_byod")
+    assert result.cost == 100.0
+    assert result.conversions == 12.0
 
 
 @pytest.mark.unit
@@ -272,15 +316,16 @@ async def test_fetch_meta_ads_performance_rows_raises_when_creds_missing() -> No
 
 
 @pytest.mark.unit
-def test_aggregation_masks_per_campaign_anomaly_known_limitation() -> None:
-    """Pin the known-limitation trade-off documented on
-    :func:`fetch_google_ads_metrics`: one campaign dropping cost to
-    zero while another scales up nets out at the aggregate.
+def test_aggregation_masks_per_campaign_anomaly_legacy_path() -> None:
+    """The legacy aggregate path (still used by the
+    ``metrics_fetcher`` injection point) collapses N campaigns into
+    one :class:`CampaignMetrics`, so offsetting per-campaign movements
+    net out and no anomaly fires.
 
-    This is intentional Phase-1 behavior — per-campaign fan-out is a
-    follow-up. The test exists so a future change that breaks the
-    trade-off (in either direction) is caught and reviewed
-    deliberately rather than slipping past.
+    Per-campaign fan-out (now the default live path) fixes this — see
+    ``test_per_campaign_fanout_surfaces_masked_anomaly``. This test
+    pins the **legacy** behaviour so removing the back-compat path is
+    a deliberate decision rather than silent breakage.
     """
     from mureo.analysis.anomaly_detector import detect_anomalies
 
@@ -331,6 +376,224 @@ def test_aggregation_masks_per_campaign_anomaly_known_limitation() -> None:
         "assertion fires, the trade-off has changed and the docstring on "
         "fetch_google_ads_metrics must be updated."
     )
+
+
+# ---------------------------------------------------------------------------
+# Per-campaign fan-out
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_google_ads_per_campaign_metrics_keys_by_campaign() -> None:
+    """Per-campaign fetcher returns one entry per campaign with the
+    matching baseline joined from the prior window.
+    """
+    from mureo.analytics.builtin._live_clients import (
+        fetch_google_ads_per_campaign_metrics,
+    )
+
+    fake_client = AsyncMock()
+    # Current: 2 campaigns. Baseline: same 2 campaigns + 1 ghost
+    # ("camp_C" exists in prior but not current — must NOT appear in
+    # the per-campaign dict because we only iterate current).
+    fake_client.get_performance_report = AsyncMock(
+        side_effect=[
+            [
+                {
+                    "campaign_id": "camp_A",
+                    "cost": 100,
+                    "impressions": 500,
+                    "clicks": 30,
+                    "conversions": 5,
+                },
+                {
+                    "campaign_id": "camp_B",
+                    "cost": 200,
+                    "impressions": 1000,
+                    "clicks": 60,
+                    "conversions": 10,
+                },
+            ],
+            [
+                {
+                    "campaign_id": "camp_A",
+                    "cost": 80,
+                    "impressions": 400,
+                    "clicks": 24,
+                    "conversions": 4,
+                },
+                {
+                    "campaign_id": "camp_B",
+                    "cost": 180,
+                    "impressions": 900,
+                    "clicks": 55,
+                    "conversions": 9,
+                },
+                {
+                    "campaign_id": "camp_C",
+                    "cost": 50,
+                    "impressions": 250,
+                    "clicks": 15,
+                    "conversions": 2,
+                },
+            ],
+        ]
+    )
+    with (
+        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.auth.load_google_ads_credentials", return_value=object()),
+        patch(
+            "mureo.mcp._client_factory.get_google_ads_client",
+            return_value=fake_client,
+        ),
+    ):
+        result = await fetch_google_ads_per_campaign_metrics("acct", window_days=7)
+
+    assert set(result.keys()) == {"camp_A", "camp_B"}
+    current_a, baseline_a = result["camp_A"]
+    assert current_a.cost == 100
+    assert baseline_a is not None
+    assert baseline_a.cost == 80
+
+
+@pytest.mark.asyncio
+async def test_fetch_google_ads_per_campaign_metrics_baseline_none_for_new_campaign() -> (
+    None
+):
+    """A campaign present in current but not in baseline (new
+    campaign) gets ``baseline=None`` rather than a synthetic zero —
+    that's the contract the pure detector expects.
+    """
+    from mureo.analytics.builtin._live_clients import (
+        fetch_google_ads_per_campaign_metrics,
+    )
+
+    fake_client = AsyncMock()
+    fake_client.get_performance_report = AsyncMock(
+        side_effect=[
+            [
+                {
+                    "campaign_id": "new_camp",
+                    "cost": 100,
+                    "impressions": 500,
+                    "clicks": 30,
+                    "conversions": 5,
+                }
+            ],
+            [],  # no rows in baseline
+        ]
+    )
+    with (
+        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.auth.load_google_ads_credentials", return_value=object()),
+        patch(
+            "mureo.mcp._client_factory.get_google_ads_client",
+            return_value=fake_client,
+        ),
+    ):
+        result = await fetch_google_ads_per_campaign_metrics("acct", window_days=7)
+    _, baseline = result["new_camp"]
+    assert baseline is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_meta_ads_per_campaign_metrics_keys_by_campaign() -> None:
+    """Parallel of the Google per-campaign test for Meta."""
+    from mureo.analytics.builtin._live_clients import (
+        fetch_meta_ads_per_campaign_metrics,
+    )
+
+    fake_client = AsyncMock()
+    fake_client.get_performance_report = AsyncMock(
+        side_effect=[
+            [
+                {
+                    "campaign_id": "c1",
+                    "spend": 100,
+                    "impressions": 500,
+                    "clicks": 30,
+                    "conversions": 5,
+                },
+            ],
+            [
+                {
+                    "campaign_id": "c1",
+                    "spend": 80,
+                    "impressions": 400,
+                    "clicks": 25,
+                    "conversions": 4,
+                },
+            ],
+        ]
+    )
+    with (
+        patch("mureo.byod.runtime.byod_has", return_value=False),
+        patch("mureo.auth.load_meta_ads_credentials", return_value=object()),
+        patch(
+            "mureo.mcp._client_factory.get_meta_ads_client",
+            return_value=fake_client,
+        ),
+    ):
+        result = await fetch_meta_ads_per_campaign_metrics("act_1", window_days=7)
+
+    assert set(result.keys()) == {"c1"}
+    current, baseline = result["c1"]
+    assert current.cost == 100
+    assert baseline is not None
+    assert baseline.cost == 80
+
+
+@pytest.mark.unit
+def test_index_google_rows_drops_rows_without_campaign_id() -> None:
+    """Rows missing a usable ``campaign_id`` are dropped rather than
+    aggregated into a synthetic ``""``-keyed entry.
+    """
+    from mureo.analytics.builtin._live_clients import (
+        _index_google_rows_by_campaign,
+    )
+
+    rows: list[dict[str, Any]] = [
+        {"cost": 100, "impressions": 500},  # no campaign_id
+        {"campaign_id": "", "cost": 100},  # empty campaign_id
+        {
+            "campaign_id": "valid",
+            "cost": 200,
+            "impressions": 800,
+            "clicks": 50,
+            "conversions": 8,
+        },
+    ]
+    indexed = _index_google_rows_by_campaign(rows)
+    assert set(indexed.keys()) == {"valid"}
+
+
+@pytest.mark.unit
+def test_index_google_rows_sums_repeated_campaign_id() -> None:
+    """Multiple rows for the same campaign (day-grain) get summed."""
+    from mureo.analytics.builtin._live_clients import (
+        _index_google_rows_by_campaign,
+    )
+
+    rows: list[dict[str, Any]] = [
+        {
+            "campaign_id": "x",
+            "cost": 100,
+            "impressions": 500,
+            "clicks": 30,
+            "conversions": 5,
+        },
+        {
+            "campaign_id": "x",
+            "cost": 150,
+            "impressions": 800,
+            "clicks": 50,
+            "conversions": 7,
+        },
+    ]
+    indexed = _index_google_rows_by_campaign(rows)
+    assert indexed["x"].cost == 250
+    assert indexed["x"].clicks == 80
+    assert indexed["x"].conversions == 12
 
 
 @pytest.mark.asyncio

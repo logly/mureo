@@ -25,17 +25,26 @@ and BYOD mode is picked up automatically.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.anomaly_detector import detect_anomalies
+from mureo.analytics.builtin._budget_efficiency import score_budget_efficiency
 from mureo.analytics.builtin._common import (
     MetricsFetcher,
+    PerCampaignMetricsFetcher,
     PerformanceFetcher,
+    google_row_metrics,
     to_analytics_anomalies,
 )
+
+if TYPE_CHECKING:
+    from mureo.analysis.anomaly_detector import CampaignMetrics
+from mureo.analytics.builtin._creative_audit import audit_google_ads_creatives
 from mureo.analytics.builtin._live_clients import (
     NoCredentialsError,
-    fetch_google_ads_metrics,
+    fetch_google_ads_list,
+    fetch_google_ads_per_campaign_metrics,
     fetch_google_ads_performance_rows,
 )
 from mureo.analytics.models import (
@@ -51,8 +60,17 @@ _CAPABILITIES: frozenset[AnalyticsCapability] = frozenset(
     {
         AnalyticsCapability.DETECT_ANOMALIES,
         AnalyticsCapability.DIAGNOSE_PERFORMANCE,
+        AnalyticsCapability.AUDIT_CREATIVE,
+        AnalyticsCapability.ANALYZE_BUDGET_EFFICIENCY,
     }
 )
+
+# Injectable fetchers for ``audit_creative`` and
+# ``analyze_budget_efficiency``. Production paths resolve to the live
+# client; tests inject deterministic stubs. Aliased here rather than in
+# ``_common.py`` because they're adapter-local — only used by one of
+# the two methods on one of the two adapters each.
+AdsListFetcher = Callable[[str], "Awaitable[list[dict[str, object]]]"]
 
 
 class GoogleAdsAnalyticsModule(AnalyticsModule):
@@ -64,13 +82,19 @@ class GoogleAdsAnalyticsModule(AnalyticsModule):
         self,
         metrics_fetcher: MetricsFetcher | None = None,
         performance_fetcher: PerformanceFetcher | None = None,
+        per_campaign_metrics_fetcher: PerCampaignMetricsFetcher | None = None,
+        ads_list_fetcher: AdsListFetcher | None = None,
     ) -> None:
-        # Default to the live fetcher; tests inject deterministic stubs.
-        # The fetcher is async but :class:`MetricsFetcher` is declared
-        # as a sync callable so the existing test stubs remain valid —
-        # we re-derive the async path at the call site below.
+        # ``metrics_fetcher`` is the legacy aggregate-path injection
+        # (kept for back-compat with existing tests); the live default
+        # is per-campaign fan-out via
+        # :func:`fetch_google_ads_per_campaign_metrics`. Tests that
+        # care about per-campaign behaviour inject
+        # ``per_campaign_metrics_fetcher`` instead.
         self._metrics_fetcher = metrics_fetcher
         self._performance_fetcher = performance_fetcher
+        self._per_campaign_metrics_fetcher = per_campaign_metrics_fetcher
+        self._ads_list_fetcher = ads_list_fetcher
 
     def capabilities(self) -> frozenset[AnalyticsCapability]:
         return _CAPABILITIES
@@ -81,31 +105,65 @@ class GoogleAdsAnalyticsModule(AnalyticsModule):
         *,
         window_days: int = 7,
     ) -> tuple[Anomaly, ...]:
-        """Detect anomalies on ``account_id`` over the trailing window.
+        """Detect anomalies per campaign on ``account_id``.
 
-        The injected ``metrics_fetcher`` (if any) takes precedence; it
-        keeps the unit-test surface synchronous so the existing tests
-        in ``tests/analytics/builtin/`` keep working. When no override
-        is supplied, the adapter falls back to the async live fetcher.
-        Missing credentials return an empty anomaly tuple so an
-        unconfigured account never shows up as "spend dropped to
-        zero" — that would be a config error, not a real anomaly.
+        Default path: per-campaign fan-out — the live fetcher returns
+        ``{campaign_id: (current, baseline)}`` and the pure detector
+        runs once per campaign. This surfaces single-campaign anomalies
+        that the previous account-level aggregation masked when an
+        offsetting campaign moved in the opposite direction (see #120).
+
+        Back-compat: an injected ``metrics_fetcher`` still triggers
+        the legacy aggregate path; existing tests continue to work
+        without modification. Missing credentials return an empty
+        anomaly tuple — config error, not an anomaly.
         """
         if self._metrics_fetcher is not None:
             current, baseline = self._metrics_fetcher(
                 account_id, window_days=window_days
             )
-        else:
-            try:
-                current, baseline = await fetch_google_ads_metrics(
-                    account_id, window_days=window_days
-                )
-            except NoCredentialsError:
-                return ()
+            had_prior_spend = baseline is not None and baseline.cost > 0
+            detected = detect_anomalies(
+                current, baseline, had_prior_spend=had_prior_spend
+            )
+            return to_analytics_anomalies(detected)
 
-        had_prior_spend = baseline is not None and baseline.cost > 0
-        detected = detect_anomalies(current, baseline, had_prior_spend=had_prior_spend)
-        return to_analytics_anomalies(detected)
+        per_campaign = await self._resolve_per_campaign_metrics(
+            account_id, window_days=window_days
+        )
+        if per_campaign is None:
+            return ()
+
+        all_anomalies: list[Anomaly] = []
+        for current, baseline in per_campaign.values():
+            had_prior_spend = baseline is not None and baseline.cost > 0
+            detected = detect_anomalies(
+                current, baseline, had_prior_spend=had_prior_spend
+            )
+            all_anomalies.extend(to_analytics_anomalies(detected))
+        return tuple(all_anomalies)
+
+    async def _resolve_per_campaign_metrics(
+        self,
+        account_id: str,
+        *,
+        window_days: int,
+    ) -> dict[str, tuple[CampaignMetrics, CampaignMetrics | None]] | None:
+        """Resolve the per-campaign metrics map for ``account_id``.
+
+        Returns ``None`` on missing credentials (the adapter renders
+        that as an empty anomaly tuple); returns the dict otherwise.
+        """
+        if self._per_campaign_metrics_fetcher is not None:
+            return await self._per_campaign_metrics_fetcher(
+                account_id, window_days=window_days
+            )
+        try:
+            return await fetch_google_ads_per_campaign_metrics(
+                account_id, window_days=window_days
+            )
+        except NoCredentialsError:
+            return None
 
     async def diagnose_performance(
         self,
@@ -152,15 +210,59 @@ class GoogleAdsAnalyticsModule(AnalyticsModule):
         )
 
     async def audit_creative(self, account_id: str) -> CreativeAudit:
-        raise NotImplementedError(
-            "GoogleAdsAnalyticsModule does not advertise AUDIT_CREATIVE; "
-            "consult capabilities() before calling"
+        """Audit RSA / RDA creative assets on ``account_id``.
+
+        Pulls ads via the live (or injected) ``list_ads`` fetcher,
+        passes the result through the pure
+        :func:`audit_google_ads_creatives` checker, and packs the
+        findings into a :class:`CreativeAudit`. Returns an empty audit
+        when credentials are missing (config error, not "no findings").
+        """
+        if self._ads_list_fetcher is not None:
+            ads = await self._ads_list_fetcher(account_id)
+        else:
+            try:
+                ads = await fetch_google_ads_list(account_id)
+            except NoCredentialsError:
+                return CreativeAudit(
+                    platform=self.platform,
+                    account_id=account_id,
+                    findings=(),
+                )
+        findings = audit_google_ads_creatives(ads)
+        return CreativeAudit(
+            platform=self.platform,
+            account_id=account_id,
+            findings=tuple(findings),
         )
 
     async def analyze_budget_efficiency(self, account_id: str) -> BudgetEfficiency:
-        raise NotImplementedError(
-            "GoogleAdsAnalyticsModule does not advertise "
-            "ANALYZE_BUDGET_EFFICIENCY; consult capabilities() before calling"
+        """Score per-campaign budget efficiency over the last 30 days.
+
+        Re-uses the same performance fetcher as
+        :meth:`diagnose_performance` (the data is the same — only the
+        analysis differs). Returns an empty :class:`BudgetEfficiency`
+        on missing credentials so the caller can branch uniformly with
+        :meth:`detect_anomalies` and :meth:`diagnose_performance`.
+        """
+        period = "LAST_30_DAYS"
+        if self._performance_fetcher is not None:
+            rows = await self._performance_fetcher(account_id, period)
+        else:
+            try:
+                rows = await fetch_google_ads_performance_rows(account_id, period)
+            except NoCredentialsError:
+                return BudgetEfficiency(
+                    platform=self.platform,
+                    account_id=account_id,
+                    rebalance_suggestion="google_ads credentials not configured",
+                )
+        return score_budget_efficiency(
+            rows,
+            platform=self.platform,
+            account_id=account_id,
+            spend_key="cost",
+            nested_metrics=True,
         )
 
 
@@ -190,12 +292,12 @@ def _summarise_performance(
     clicks = 0
     conversions = 0.0
     for row in rows:
-        metrics = row.get("metrics") or {}
-        if isinstance(metrics, dict):
-            cost += float(metrics.get("cost", 0) or 0)
-            impressions += int(metrics.get("impressions", 0) or 0)
-            clicks += int(metrics.get("clicks", 0) or 0)
-            conversions += float(metrics.get("conversions", 0) or 0)
+        # Live vs BYOD row shape — see :func:`google_row_metrics`.
+        metrics = google_row_metrics(row)
+        cost += float(metrics.get("cost") or 0)
+        impressions += int(metrics.get("impressions") or 0)
+        clicks += int(metrics.get("clicks") or 0)
+        conversions += float(metrics.get("conversions") or 0)
 
     cpa = (cost / conversions) if conversions > 0 else None
     ctr = (clicks / impressions) if impressions > 0 else None

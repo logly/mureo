@@ -20,8 +20,10 @@ def test_advertised_capabilities() -> None:
     caps = GoogleAdsAnalyticsModule().capabilities()
     assert AnalyticsCapability.DETECT_ANOMALIES in caps
     assert AnalyticsCapability.DIAGNOSE_PERFORMANCE in caps
-    assert AnalyticsCapability.AUDIT_CREATIVE not in caps
-    assert AnalyticsCapability.ANALYZE_BUDGET_EFFICIENCY not in caps
+    assert AnalyticsCapability.AUDIT_CREATIVE in caps
+    # ANALYZE_BUDGET_EFFICIENCY is advertised so the registry routes
+    # the call; the live wiring lands in the next step of this PR.
+    assert AnalyticsCapability.ANALYZE_BUDGET_EFFICIENCY in caps
 
 
 @pytest.mark.asyncio
@@ -76,12 +78,70 @@ async def test_diagnose_performance_returns_stub_shape() -> None:
 
 
 @pytest.mark.asyncio
-async def test_audit_creative_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="AUDIT_CREATIVE"):
-        await GoogleAdsAnalyticsModule().audit_creative("acct")
+async def test_per_campaign_fanout_surfaces_masked_anomaly() -> None:
+    """Demonstrates that per-campaign fan-out catches the offsetting
+    anomaly that the legacy aggregate path masked: campaign A drops to
+    zero spend while B keeps running.
+    """
+    from mureo.analysis.anomaly_detector import CampaignMetrics
+
+    async def per_campaign_fetcher(
+        account_id: str, *, window_days: int
+    ) -> dict[str, tuple[CampaignMetrics, CampaignMetrics | None]]:
+        # camp_A: spend collapsed to zero.
+        a_current = CampaignMetrics(
+            campaign_id="camp_A", cost=0, impressions=0, clicks=0, conversions=0
+        )
+        a_baseline = CampaignMetrics(
+            campaign_id="camp_A",
+            cost=500,
+            impressions=2500,
+            clicks=100,
+            conversions=10,
+        )
+        # camp_B: running normally.
+        b_current = CampaignMetrics(
+            campaign_id="camp_B",
+            cost=1000,
+            impressions=5000,
+            clicks=200,
+            conversions=20,
+        )
+        b_baseline = CampaignMetrics(
+            campaign_id="camp_B",
+            cost=500,
+            impressions=2500,
+            clicks=100,
+            conversions=10,
+        )
+        return {
+            "camp_A": (a_current, a_baseline),
+            "camp_B": (b_current, b_baseline),
+        }
+
+    module = GoogleAdsAnalyticsModule(per_campaign_metrics_fetcher=per_campaign_fetcher)
+    anomalies = await module.detect_anomalies("acct-1")
+    # Fan-out should fire the zero-spend critical on camp_A.
+    assert any(a.campaign_id == "camp_A" and a.metric == "cost" for a in anomalies)
 
 
 @pytest.mark.asyncio
-async def test_analyze_budget_efficiency_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="ANALYZE_BUDGET_EFFICIENCY"):
-        await GoogleAdsAnalyticsModule().analyze_budget_efficiency("acct")
+async def test_analyze_budget_efficiency_uses_performance_fetcher() -> None:
+    async def fetcher(account_id: str, period: str) -> list[dict[str, object]]:
+        return [
+            {
+                "campaign_id": "good",
+                "metrics": {"cost": 1000.0, "conversions": 50},
+            },
+            {
+                "campaign_id": "bad",
+                "metrics": {"cost": 1000.0, "conversions": 5},
+            },
+        ]
+
+    module = GoogleAdsAnalyticsModule(performance_fetcher=fetcher)
+    result = await module.analyze_budget_efficiency("acct-1")
+    scores = dict(result.per_campaign_score)
+    assert scores["good"] == 1.0
+    assert scores["bad"] == pytest.approx(0.1, abs=0.01)
+    assert "reallocate" in result.rebalance_suggestion

@@ -20,17 +20,26 @@ Meta-specific:
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.anomaly_detector import detect_anomalies
+from mureo.analytics.builtin._budget_efficiency import score_budget_efficiency
 from mureo.analytics.builtin._common import (
     MetricsFetcher,
+    PerCampaignMetricsFetcher,
     PerformanceFetcher,
+    meta_row_conversions,
     to_analytics_anomalies,
 )
+
+if TYPE_CHECKING:
+    from mureo.analysis.anomaly_detector import CampaignMetrics
+from mureo.analytics.builtin._creative_audit import audit_meta_ads_creatives
 from mureo.analytics.builtin._live_clients import (
     NoCredentialsError,
-    fetch_meta_ads_metrics,
+    fetch_meta_ads_list,
+    fetch_meta_ads_per_campaign_metrics,
     fetch_meta_ads_performance_rows,
 )
 from mureo.analytics.models import (
@@ -46,8 +55,12 @@ _CAPABILITIES: frozenset[AnalyticsCapability] = frozenset(
     {
         AnalyticsCapability.DETECT_ANOMALIES,
         AnalyticsCapability.DIAGNOSE_PERFORMANCE,
+        AnalyticsCapability.AUDIT_CREATIVE,
+        AnalyticsCapability.ANALYZE_BUDGET_EFFICIENCY,
     }
 )
+
+AdsListFetcher = Callable[[str], "Awaitable[list[dict[str, object]]]"]
 
 
 # Heuristic: action_types we treat as "click-style" vs "conversion-style"
@@ -72,9 +85,13 @@ class MetaAdsAnalyticsModule(AnalyticsModule):
         self,
         metrics_fetcher: MetricsFetcher | None = None,
         performance_fetcher: PerformanceFetcher | None = None,
+        per_campaign_metrics_fetcher: PerCampaignMetricsFetcher | None = None,
+        ads_list_fetcher: AdsListFetcher | None = None,
     ) -> None:
         self._metrics_fetcher = metrics_fetcher
         self._performance_fetcher = performance_fetcher
+        self._per_campaign_metrics_fetcher = per_campaign_metrics_fetcher
+        self._ads_list_fetcher = ads_list_fetcher
 
     def capabilities(self) -> frozenset[AnalyticsCapability]:
         return _CAPABILITIES
@@ -85,21 +102,50 @@ class MetaAdsAnalyticsModule(AnalyticsModule):
         *,
         window_days: int = 7,
     ) -> tuple[Anomaly, ...]:
+        """Detect anomalies per campaign — parallel to the Google
+        adapter's docstring (see that module for the rationale).
+        """
         if self._metrics_fetcher is not None:
             current, baseline = self._metrics_fetcher(
                 account_id, window_days=window_days
             )
-        else:
-            try:
-                current, baseline = await fetch_meta_ads_metrics(
-                    account_id, window_days=window_days
-                )
-            except NoCredentialsError:
-                return ()
+            had_prior_spend = baseline is not None and baseline.cost > 0
+            detected = detect_anomalies(
+                current, baseline, had_prior_spend=had_prior_spend
+            )
+            return to_analytics_anomalies(detected)
 
-        had_prior_spend = baseline is not None and baseline.cost > 0
-        detected = detect_anomalies(current, baseline, had_prior_spend=had_prior_spend)
-        return to_analytics_anomalies(detected)
+        per_campaign = await self._resolve_per_campaign_metrics(
+            account_id, window_days=window_days
+        )
+        if per_campaign is None:
+            return ()
+
+        all_anomalies: list[Anomaly] = []
+        for current, baseline in per_campaign.values():
+            had_prior_spend = baseline is not None and baseline.cost > 0
+            detected = detect_anomalies(
+                current, baseline, had_prior_spend=had_prior_spend
+            )
+            all_anomalies.extend(to_analytics_anomalies(detected))
+        return tuple(all_anomalies)
+
+    async def _resolve_per_campaign_metrics(
+        self,
+        account_id: str,
+        *,
+        window_days: int,
+    ) -> dict[str, tuple[CampaignMetrics, CampaignMetrics | None]] | None:
+        if self._per_campaign_metrics_fetcher is not None:
+            return await self._per_campaign_metrics_fetcher(
+                account_id, window_days=window_days
+            )
+        try:
+            return await fetch_meta_ads_per_campaign_metrics(
+                account_id, window_days=window_days
+            )
+        except NoCredentialsError:
+            return None
 
     async def diagnose_performance(
         self,
@@ -134,15 +180,47 @@ class MetaAdsAnalyticsModule(AnalyticsModule):
         )
 
     async def audit_creative(self, account_id: str) -> CreativeAudit:
-        raise NotImplementedError(
-            "MetaAdsAnalyticsModule does not advertise AUDIT_CREATIVE; "
-            "consult capabilities() before calling"
+        """Audit Meta creative assets — see the Google adapter docstring."""
+        if self._ads_list_fetcher is not None:
+            ads = await self._ads_list_fetcher(account_id)
+        else:
+            try:
+                ads = await fetch_meta_ads_list(account_id)
+            except NoCredentialsError:
+                return CreativeAudit(
+                    platform=self.platform,
+                    account_id=account_id,
+                    findings=(),
+                )
+        findings = audit_meta_ads_creatives(ads)
+        return CreativeAudit(
+            platform=self.platform,
+            account_id=account_id,
+            findings=tuple(findings),
         )
 
     async def analyze_budget_efficiency(self, account_id: str) -> BudgetEfficiency:
-        raise NotImplementedError(
-            "MetaAdsAnalyticsModule does not advertise "
-            "ANALYZE_BUDGET_EFFICIENCY; consult capabilities() before calling"
+        """Score per-campaign budget efficiency on Meta — see the
+        Google adapter docstring for the policy.
+        """
+        period = "last_30d"
+        if self._performance_fetcher is not None:
+            rows = await self._performance_fetcher(account_id, period)
+        else:
+            try:
+                rows = await fetch_meta_ads_performance_rows(account_id, period)
+            except NoCredentialsError:
+                return BudgetEfficiency(
+                    platform=self.platform,
+                    account_id=account_id,
+                    rebalance_suggestion="meta_ads credentials not configured",
+                )
+        return score_budget_efficiency(
+            rows,
+            platform=self.platform,
+            account_id=account_id,
+            spend_key="spend",
+            nested_metrics=False,
         )
 
 
@@ -213,17 +291,12 @@ def _summarise_meta_performance(
     clicks = 0
     conversions = 0.0
     for row in rows:
-        cost += float(row.get("spend", 0) or 0)
-        impressions += int(row.get("impressions", 0) or 0)
-        clicks += int(row.get("clicks", 0) or 0)
-        actions = row.get("actions") or []
-        if isinstance(actions, list):
-            for action in actions:
-                if not isinstance(action, dict):
-                    continue
-                action_type = str(action.get("action_type", ""))
-                if any(t in action_type for t in _CONVERSION_RESULT_TOKENS):
-                    conversions += float(action.get("value", 0) or 0)
+        cost += float(row.get("spend") or 0)
+        impressions += int(row.get("impressions") or 0)
+        clicks += int(row.get("clicks") or 0)
+        # Tolerates live (actions list) and BYOD (flat conversions);
+        # both shapes are valid factory outputs.
+        conversions += meta_row_conversions(row)
 
     cpa = (cost / conversions) if conversions > 0 else None
     ctr = (clicks / impressions) if impressions > 0 else None
