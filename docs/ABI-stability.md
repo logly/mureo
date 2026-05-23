@@ -222,6 +222,17 @@ platforms. Renaming or removing a member is breaking, same rule as
 mutation rules in §5 apply to them identically — adding a field with
 a default is non-breaking; adding one without a default is breaking.
 
+Stable additions so far (each was added with a default, so existing
+plugin code keeps constructing without changes):
+
+- `CreativeFinding.campaign_id: str = ""` — owning campaign for the
+  finding, empty when the platform's `list_ads` response omits the
+  join.
+- `CreativeAudit.per_campaign_summary: tuple[tuple[str, int], ...] = ()`
+  — `(campaign_id, finding_count)` pairs sorted by campaign_id,
+  letting workflow skills drill down without re-walking the findings
+  tuple.
+
 The four analytics methods follow the same Protocol-evolution rules
 as §4: adding a new method is breaking, adding a new method
 parameter as a keyword with a default is non-breaking. Adding an

@@ -74,22 +74,39 @@ class PerformanceDiagnosis:
 
 @dataclass(frozen=True)
 class CreativeFinding:
-    """One issue or insight from :meth:`AnalyticsModule.audit_creative`."""
+    """One issue or insight from :meth:`AnalyticsModule.audit_creative`.
+
+    ``campaign_id`` is the owning campaign when the platform's
+    ``list_ads`` response includes it (it does on both Google and
+    Meta, live and BYOD). Defaults to the empty string so an adapter
+    that genuinely cannot resolve the campaign keeps the field stable
+    and the workflow can branch on ``finding.campaign_id != ""``
+    rather than catching ``AttributeError``.
+    """
 
     asset_id: str
     asset_type: str
     severity: AnomalySeverity
     message: str
     recommended_action: str
+    campaign_id: str = ""
 
 
 @dataclass(frozen=True)
 class CreativeAudit:
-    """Result of :meth:`AnalyticsModule.audit_creative`."""
+    """Result of :meth:`AnalyticsModule.audit_creative`.
+
+    ``per_campaign_summary`` is a deterministically-sorted list of
+    ``(campaign_id, finding_count)`` pairs that lets a workflow skill
+    say "campaign X has 3 RSA issues" without walking every finding
+    twice. Empty when no findings carry a campaign_id (rare today;
+    expected when a platform's ``list_ads`` omits the campaign join).
+    """
 
     platform: str
     account_id: str
     findings: tuple[CreativeFinding, ...] = ()
+    per_campaign_summary: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True)

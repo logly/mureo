@@ -40,7 +40,10 @@ from mureo.analytics.builtin._common import (
 
 if TYPE_CHECKING:
     from mureo.analysis.anomaly_detector import CampaignMetrics
-from mureo.analytics.builtin._creative_audit import audit_google_ads_creatives
+from mureo.analytics.builtin._creative_audit import (
+    audit_google_ads_creatives,
+    summarise_findings_by_campaign,
+)
 from mureo.analytics.builtin._live_clients import (
     NoCredentialsError,
     fetch_google_ads_list,
@@ -229,11 +232,12 @@ class GoogleAdsAnalyticsModule(AnalyticsModule):
                     account_id=account_id,
                     findings=(),
                 )
-        findings = audit_google_ads_creatives(ads)
+        findings = tuple(audit_google_ads_creatives(ads))
         return CreativeAudit(
             platform=self.platform,
             account_id=account_id,
-            findings=tuple(findings),
+            findings=findings,
+            per_campaign_summary=summarise_findings_by_campaign(findings),
         )
 
     async def analyze_budget_efficiency(self, account_id: str) -> BudgetEfficiency:
