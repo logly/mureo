@@ -27,9 +27,18 @@ Failure modes:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.anomaly_detector import CampaignMetrics
+from mureo.analytics.builtin._common import (
+    google_row_metrics as _google_row_metrics,
+)
+from mureo.analytics.builtin._common import (
+    meta_row_conversions as _meta_row_conversions,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class NoCredentialsError(RuntimeError):
@@ -53,23 +62,6 @@ _GOOGLE_PERIOD_MAP: dict[int, tuple[str, str]] = {
     14: ("LAST_14_DAYS", "LAST_30_DAYS"),
     30: ("LAST_30_DAYS", "LAST_30_DAYS"),
 }
-
-
-def _google_row_metrics(row: dict[str, Any]) -> dict[str, Any]:
-    """Return the metrics view of a Google Ads performance row.
-
-    Live :func:`mureo.google_ads.mappers.map_performance_report` nests
-    metrics under ``row["metrics"]``; BYOD
-    :class:`mureo.byod.clients.ByodGoogleAdsClient.get_performance_report`
-    returns them flat at the top level. Both shapes are valid responses
-    from :func:`mureo.mcp._client_factory.get_google_ads_client`, so
-    the aggregator has to accept either or it silently double-zeros
-    the BYOD path (confirmed bug during #120 live-wiring validation).
-    """
-    nested = row.get("metrics")
-    if isinstance(nested, dict) and nested:
-        return nested
-    return row
 
 
 def _aggregate_google_metrics(
@@ -184,6 +176,205 @@ async def fetch_google_ads_performance_rows(
     return await client.get_performance_report(period=period)  # type: ignore[attr-defined,no-any-return]
 
 
+def _row_to_campaign_metrics(
+    row: dict[str, Any],
+    *,
+    nested_metrics_getter: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    spend_key: str = "cost",
+    conversion_getter: Callable[[dict[str, Any]], float] | None = None,
+) -> CampaignMetrics | None:
+    """Convert one platform row into a :class:`CampaignMetrics`.
+
+    Centralises the BYOD↔Live shape tolerance documented on
+    :func:`_google_row_metrics` / :func:`_meta_row_conversions` so both
+    fan-out fetchers can reuse the same logic.
+
+    Returns ``None`` when the row has no usable ``campaign_id`` — such
+    rows are dropped rather than aggregated into a synthetic
+    ``""``-keyed entry that would silently mix multiple campaigns'
+    metrics.
+    """
+    campaign_id = str(row.get("campaign_id") or "").strip()
+    if not campaign_id:
+        return None
+
+    metrics = nested_metrics_getter(row) if nested_metrics_getter else row
+    cost = float(metrics.get(spend_key) or 0)
+    impressions = int(metrics.get("impressions") or 0)
+    clicks = int(metrics.get("clicks") or 0)
+    if conversion_getter is not None:
+        conversions = conversion_getter(row)
+    else:
+        conversions = float(metrics.get("conversions") or 0)
+    return CampaignMetrics(
+        campaign_id=campaign_id,
+        cost=cost,
+        impressions=impressions,
+        clicks=clicks,
+        conversions=conversions,
+    )
+
+
+def _index_google_rows_by_campaign(
+    rows: list[dict[str, Any]],
+) -> dict[str, CampaignMetrics]:
+    """Build ``{campaign_id: metrics}`` from Google rows.
+
+    A campaign appearing multiple times (e.g. day-grain rows) is
+    summed; the metrics are added field-by-field on a single
+    :class:`CampaignMetrics`. Real per-period reports return one row
+    per campaign so the sum is usually a no-op, but the contract is
+    explicit either way.
+    """
+    indexed: dict[str, CampaignMetrics] = {}
+    for row in rows:
+        metric = _row_to_campaign_metrics(
+            row, nested_metrics_getter=_google_row_metrics
+        )
+        if metric is None:
+            continue
+        existing = indexed.get(metric.campaign_id)
+        if existing is None:
+            indexed[metric.campaign_id] = metric
+        else:
+            indexed[metric.campaign_id] = CampaignMetrics(
+                campaign_id=metric.campaign_id,
+                cost=existing.cost + metric.cost,
+                impressions=existing.impressions + metric.impressions,
+                clicks=existing.clicks + metric.clicks,
+                conversions=existing.conversions + metric.conversions,
+            )
+    return indexed
+
+
+async def fetch_google_ads_per_campaign_metrics(
+    account_id: str,
+    *,
+    window_days: int,
+) -> dict[str, tuple[CampaignMetrics, CampaignMetrics | None]]:
+    """Return ``{campaign_id: (current, baseline)}`` for one Google account.
+
+    Per-campaign fan-out (#120 follow-up). Replaces the account-level
+    aggregation that masked offsetting per-campaign anomalies
+    (campaign A drops to zero spend while B scales up — aggregate
+    cost unchanged, no anomaly fires).
+
+    Baseline is ``None`` for campaigns that have no rows in the prior
+    window (new campaigns) or whose prior-window cost is zero
+    (paused/weekend dayparting). The pure detector treats those cases
+    correctly — see :func:`mureo.analysis.anomaly_detector.detect_anomalies`.
+
+    Raises :class:`NoCredentialsError` uniformly with
+    :func:`fetch_google_ads_metrics`.
+    """
+    client = _open_google_ads_client(account_id)
+    current_period, baseline_period = _GOOGLE_PERIOD_MAP.get(
+        window_days, ("LAST_7_DAYS", "LAST_30_DAYS")
+    )
+    current_rows = await client.get_performance_report(  # type: ignore[attr-defined]
+        period=current_period
+    )
+    baseline_rows = await client.get_performance_report(  # type: ignore[attr-defined]
+        period=baseline_period
+    )
+
+    current_index = _index_google_rows_by_campaign(current_rows)
+    baseline_index = _index_google_rows_by_campaign(baseline_rows)
+
+    out: dict[str, tuple[CampaignMetrics, CampaignMetrics | None]] = {}
+    for campaign_id, current in current_index.items():
+        baseline = baseline_index.get(campaign_id)
+        # Zero-spend baseline → no useful comparison; detector
+        # suppresses ratio-based alerts in that case anyway.
+        if baseline is not None and baseline.cost <= 0:
+            baseline = None
+        out[campaign_id] = (current, baseline)
+    return out
+
+
+def _index_meta_rows_by_campaign(
+    rows: list[dict[str, Any]],
+) -> dict[str, CampaignMetrics]:
+    """Build ``{campaign_id: metrics}`` from Meta rows.
+
+    Mirrors :func:`_index_google_rows_by_campaign` for Meta's flatter
+    shape — Meta exposes ``spend`` and either an ``actions`` list
+    (Live) or a top-level ``conversions`` field (BYOD).
+    """
+    indexed: dict[str, CampaignMetrics] = {}
+    for row in rows:
+        metric = _row_to_campaign_metrics(
+            row,
+            spend_key="spend",
+            conversion_getter=_meta_row_conversions,
+        )
+        if metric is None:
+            continue
+        existing = indexed.get(metric.campaign_id)
+        if existing is None:
+            indexed[metric.campaign_id] = metric
+        else:
+            indexed[metric.campaign_id] = CampaignMetrics(
+                campaign_id=metric.campaign_id,
+                cost=existing.cost + metric.cost,
+                impressions=existing.impressions + metric.impressions,
+                clicks=existing.clicks + metric.clicks,
+                conversions=existing.conversions + metric.conversions,
+            )
+    return indexed
+
+
+async def fetch_google_ads_list(
+    account_id: str,
+) -> list[dict[str, object]]:
+    """Return ``list_ads`` results for ``account_id`` (live or BYOD).
+
+    Used by :meth:`GoogleAdsAnalyticsModule.audit_creative`. Raises
+    :class:`NoCredentialsError` in live mode when creds are missing.
+    """
+    client = _open_google_ads_client(account_id)
+    return await client.list_ads()  # type: ignore[attr-defined,no-any-return]
+
+
+async def fetch_meta_ads_list(
+    account_id: str,
+) -> list[dict[str, object]]:
+    """Return ``list_ads`` results for one Meta account."""
+    client = _open_meta_ads_client(account_id)
+    return await client.list_ads()  # type: ignore[attr-defined,no-any-return]
+
+
+async def fetch_meta_ads_per_campaign_metrics(
+    account_id: str,
+    *,
+    window_days: int,
+) -> dict[str, tuple[CampaignMetrics, CampaignMetrics | None]]:
+    """Per-campaign fan-out for Meta — parallel to
+    :func:`fetch_google_ads_per_campaign_metrics`.
+    """
+    client = _open_meta_ads_client(account_id)
+    current_period, baseline_period = _META_PERIOD_MAP.get(
+        window_days, ("last_7d", "last_30d")
+    )
+    current_rows = await client.get_performance_report(  # type: ignore[attr-defined]
+        period=current_period
+    )
+    baseline_rows = await client.get_performance_report(  # type: ignore[attr-defined]
+        period=baseline_period
+    )
+
+    current_index = _index_meta_rows_by_campaign(current_rows)
+    baseline_index = _index_meta_rows_by_campaign(baseline_rows)
+
+    out: dict[str, tuple[CampaignMetrics, CampaignMetrics | None]] = {}
+    for campaign_id, current in current_index.items():
+        baseline = baseline_index.get(campaign_id)
+        if baseline is not None and baseline.cost <= 0:
+            baseline = None
+        out[campaign_id] = (current, baseline)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Meta Ads
 # ---------------------------------------------------------------------------
@@ -196,39 +387,6 @@ _META_PERIOD_MAP: dict[int, tuple[str, str]] = {
     14: ("last_14d", "last_30d"),
     30: ("last_30d", "last_30d"),
 }
-
-
-def _meta_row_conversions(row: dict[str, Any]) -> float:
-    """Return conversion count for a Meta performance row.
-
-    Two shapes have to be accepted:
-
-    * Live :class:`MetaAdsApiClient` returns the raw Marketing API
-      response — conversions live inside an ``actions`` list keyed by
-      ``action_type``.
-    * BYOD :class:`ByodMetaAdsClient.get_performance_report` pre-
-      aggregates conversions into a top-level ``conversions`` field
-      and provides a ``result_indicator`` instead of the ``actions``
-      list.
-
-    Detected during #120 live-wiring validation — accepting only the
-    Live shape silently zeroes BYOD conversions.
-    """
-    actions = row.get("actions")
-    if isinstance(actions, list):
-        total = 0.0
-        for action in actions:
-            if not isinstance(action, dict):
-                continue
-            action_type = str(action.get("action_type", ""))
-            # Match the existing analysis-surface convention
-            # (mureo/meta_ads/_analysis.py): leads + purchases are
-            # the canonical conversion actions.
-            if "lead" in action_type or "purchase" in action_type:
-                total += float(action.get("value") or 0)
-        return total
-    # BYOD path — already aggregated.
-    return float(row.get("conversions") or 0)
 
 
 def _aggregate_meta_metrics(
@@ -314,8 +472,12 @@ async def fetch_meta_ads_performance_rows(
 
 __all__ = [
     "NoCredentialsError",
+    "fetch_google_ads_list",
     "fetch_google_ads_metrics",
+    "fetch_google_ads_per_campaign_metrics",
     "fetch_google_ads_performance_rows",
+    "fetch_meta_ads_list",
     "fetch_meta_ads_metrics",
+    "fetch_meta_ads_per_campaign_metrics",
     "fetch_meta_ads_performance_rows",
 ]

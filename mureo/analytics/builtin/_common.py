@@ -18,7 +18,7 @@ avoids cycles at registration time.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from mureo.analysis.anomaly_detector import (
     Anomaly as _DetectorAnomaly,
@@ -34,10 +34,67 @@ if TYPE_CHECKING:
     from mureo.analysis.anomaly_detector import CampaignMetrics
 
 
+def google_row_metrics(row: dict[str, Any]) -> dict[str, Any]:
+    """Return the metrics view of a Google Ads performance row.
+
+    Live :func:`mureo.google_ads.mappers.map_performance_report` nests
+    metrics under ``row["metrics"]``; BYOD
+    :class:`mureo.byod.clients.ByodGoogleAdsClient.get_performance_report`
+    returns them flat at the top level. Both are valid factory outputs
+    so the helper accepts either — strictly preferring the nested view
+    when it is a non-empty dict (the live mapper always populates it),
+    falling back to the row itself for the BYOD shape.
+
+    Promoted from ``_live_clients`` so the budget-efficiency scorer
+    and the diagnose summariser can share the same single helper
+    rather than each importing a private symbol.
+    """
+    nested = row.get("metrics")
+    if isinstance(nested, dict) and nested:
+        return nested
+    return row
+
+
+def meta_row_conversions(row: dict[str, Any]) -> float:
+    """Return the conversion count for a Meta performance row.
+
+    Live: conversions live inside an ``actions`` list keyed by
+    ``action_type``. BYOD: pre-aggregated under a top-level
+    ``conversions`` field with no ``actions`` list. Detected during
+    the #120 live-wiring validation — accepting only the live shape
+    silently zeroes BYOD conversions.
+    """
+    actions = row.get("actions")
+    if isinstance(actions, list):
+        total = 0.0
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+            action_type = str(action.get("action_type", ""))
+            if "lead" in action_type or "purchase" in action_type:
+                total += float(action.get("value") or 0)
+        return total
+    return float(row.get("conversions") or 0)
+
+
 # Type alias used by both built-in adapters' ``diagnose_performance``.
 # Tests inject a deterministic stub; production paths resolve to the
 # live client inside the adapter.
 PerformanceFetcher = Callable[[str, str], Awaitable[list[dict[str, object]]]]
+
+
+# Per-campaign fan-out fetcher — successor to the legacy
+# :class:`MetricsFetcher` aggregate path. Returns a mapping of
+# ``campaign_id`` to ``(current, baseline)`` so the detector runs once
+# per campaign instead of once per account. ``baseline`` is ``None``
+# when the campaign has no usable prior-window data.
+if TYPE_CHECKING:
+    from mureo.analysis.anomaly_detector import CampaignMetrics
+
+PerCampaignMetricsFetcher = Callable[
+    ...,
+    "Awaitable[dict[str, tuple[CampaignMetrics, CampaignMetrics | None]]]",
+]
 
 
 _SEVERITY_MAP: dict[_DetectorSeverity, AnomalySeverity] = {
@@ -99,7 +156,10 @@ class MetricsFetcher(Protocol):
 
 __all__ = [
     "MetricsFetcher",
+    "PerCampaignMetricsFetcher",
     "PerformanceFetcher",
+    "google_row_metrics",
+    "meta_row_conversions",
     "to_analytics_anomalies",
     "to_analytics_anomaly",
 ]

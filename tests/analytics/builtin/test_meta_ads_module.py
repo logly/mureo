@@ -22,6 +22,8 @@ def test_advertised_capabilities() -> None:
         {
             AnalyticsCapability.DETECT_ANOMALIES,
             AnalyticsCapability.DIAGNOSE_PERFORMANCE,
+            AnalyticsCapability.AUDIT_CREATIVE,
+            AnalyticsCapability.ANALYZE_BUDGET_EFFICIENCY,
         }
     )
 
@@ -64,12 +66,15 @@ async def test_diagnose_performance_carries_through_scope() -> None:
 
 
 @pytest.mark.asyncio
-async def test_audit_creative_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        await MetaAdsAnalyticsModule().audit_creative("act_1")
+async def test_analyze_budget_efficiency_uses_performance_fetcher() -> None:
+    async def fetcher(account_id: str, period: str) -> list[dict[str, object]]:
+        return [
+            {"campaign_id": "good", "spend": 100, "conversions": 10},
+            {"campaign_id": "bad", "spend": 100, "conversions": 1},
+        ]
 
-
-@pytest.mark.asyncio
-async def test_analyze_budget_efficiency_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        await MetaAdsAnalyticsModule().analyze_budget_efficiency("act_1")
+    module = MetaAdsAnalyticsModule(performance_fetcher=fetcher)
+    result = await module.analyze_budget_efficiency("act_1")
+    scores = dict(result.per_campaign_score)
+    assert scores["good"] == 1.0
+    assert scores["bad"] == pytest.approx(0.1, abs=0.01)
