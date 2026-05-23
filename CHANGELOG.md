@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.9] - 2026-05-23
+
+### Added — Per-platform analytics module surface for external-integration platforms (#120)
+
+External-integration platforms (official MCPs and third-party plugins) now have an opt-in path to mureo's deep analytics — the same anomaly detection, performance diagnosis, creative audit, and budget-efficiency analysis the built-in `google_ads` / `meta_ads` adapters provide. mureo's workflow skills (`daily-check`, `rescue`, …) consult a new registry and either run the platform's analytics module or honestly report `analytics_not_available_for_<platform>`. Auto-deriving heuristics from tool schemas is explicitly rejected — it would fabricate plausible-but-wrong analysis and violate mureo's trustworthiness principle.
+
+**New public surface in `mureo.analytics`**:
+
+- `AnalyticsModule` Protocol (`runtime_checkable`, opt-in) with four methods: `detect_anomalies`, `diagnose_performance`, `audit_creative`, `analyze_budget_efficiency`. Modules advertise their actually-supported subset via `capabilities()`; un-advertised methods raise `NotImplementedError`. Validation is **explicit and attribute-based**, not Protocol `isinstance` — a subclass with un-overridden Protocol stubs is detected by qualified name and rejected at discovery time.
+- `AnalyticsCapability` `StrEnum`-style — `DETECT_ANOMALIES`, `DIAGNOSE_PERFORMANCE`, `AUDIT_CREATIVE`, `ANALYZE_BUDGET_EFFICIENCY`.
+- Frozen-dataclass models: `Anomaly`, `AnomalySeverity`, `PerformanceDiagnosis`, `PerformanceScope`, `CreativeAudit`, `CreativeFinding`, `BudgetEfficiency`.
+- Registry + entry-point group `mureo.analytics` (independent of `mureo.providers` / `mureo.skills`). Plugin packages register one class via `[project.entry-points."mureo.analytics"]`. Built-in `google_ads` / `meta_ads` adapters auto-register at process startup; broken plugins are skipped with an `AnalyticsModuleWarning` and never crash the MCP server.
+- `mureo_analytics_modules_list` MCP tool — returns one entry per registered platform with its advertised capabilities + source distribution so workflow skills can branch dynamically.
+
+**Built-in adapters wired against live + BYOD clients**:
+
+- `google_ads` and `meta_ads` advertise all four capabilities. `detect_anomalies` runs per-campaign fan-out (`{campaign_id: (current, baseline)}` — single-campaign anomalies are no longer masked by offsetting movements at the aggregate). `diagnose_performance` returns aggregate metrics by default and per-campaign drilldown (sorted by spend descending, one finding per campaign with spend / CV / CPA) at `PerformanceScope.DEEP`. `audit_creative` checks RSA / RDA / Meta ad shape against Google's Ad-Strength thresholds and Meta's creative requirements, stamping `campaign_id` on every finding and exposing a sorted `CreativeAudit.per_campaign_summary`. `analyze_budget_efficiency` normalises `conversions/cost` across campaigns and emits a concrete reallocation suggestion when the spread is wide.
+- Lazy auth resolution + BYOD routing via the existing `mureo.mcp._client_factory.get_*_client`. Missing credentials in live mode produce sentinel responses (empty anomaly tuple, sentinel `PerformanceDiagnosis` headline) rather than noisy errors — config error, not anomaly.
+- Tolerates both the **live row shape** (metrics nested under `row["metrics"]` for Google; conversions inside `row["actions"]` for Meta) **and the BYOD flat shape** (metrics + conversions at the top level). Regression tests pin both shapes after a silent-zero bug was caught during end-to-end validation.
+
+**Plugin-side documentation contract — TypedDicts for row shapes**:
+
+`GoogleLivePerformanceRow`, `GoogleByodPerformanceRow`, `GoogleMetricsDict`, `GooglePerformanceRow`, `MetaLivePerformanceRow`, `MetaByodPerformanceRow`, `MetaActionEntry`, `MetaPerformanceRow`, `GoogleAdRow`, `MetaAdRow` — all `total=False`. Re-exported from `mureo.analytics` so plugin authors can type their own analytics modules against the same shapes the built-in adapters consume. `docs/ABI-stability.md` §4a documents the field-set contract.
+
+**Skill integration**: `daily-check`, `rescue`, `_mureo-shared` updated to consult `mureo_analytics_modules_list` and report `analytics_not_available_for_<platform>` honestly when a module is absent for an external-integration platform.
+
+**Docs**: `docs/plugin-authoring.md` §14 "Shipping analytics with your plugin" + `docs/ABI-stability.md` §4a (Protocol contract) + §6 (entry-point group `mureo.analytics`).
+
+This release shipped across five PRs: #137 (Protocol + registry + skill integration), #138 (live client wiring + BYOD shape fix), #139 (per-campaign fan-out + `audit_creative` + `analyze_budget_efficiency`), #140 (per-campaign drilldown for `audit_creative`), #141 (DEEP scope drilldown for `diagnose_performance` + TypedDicts).
+
 ## [0.9.8] - 2026-05-22
 
 ### Fixed — Meta Ads `period` argument no longer silently falls back to `last_7d` (#134)
