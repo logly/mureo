@@ -72,15 +72,25 @@ def test_google_summarise_aggregates_two_campaigns() -> None:
 
 
 @pytest.mark.unit
-def test_google_summarise_deep_scope_flags_no_drilldown() -> None:
+def test_google_summarise_deep_scope_emits_per_campaign_findings() -> None:
     rows: list[dict[str, Any]] = [
         {
+            "campaign_id": "camp_lowspend",
             "metrics": {
                 "cost": 100.0,
                 "impressions": 1000,
                 "clicks": 30,
                 "conversions": 2,
-            }
+            },
+        },
+        {
+            "campaign_id": "camp_highspend",
+            "metrics": {
+                "cost": 500.0,
+                "impressions": 5000,
+                "clicks": 150,
+                "conversions": 10,
+            },
         },
     ]
     diag = _summarise_performance(
@@ -89,7 +99,18 @@ def test_google_summarise_deep_scope_flags_no_drilldown() -> None:
         scope=PerformanceScope.DEEP,
         rows=rows,
     )
-    assert any("drilldown not yet implemented" in f for f in diag.findings)
+    # Per-campaign findings are appended one per campaign.
+    findings_text = " ".join(diag.findings)
+    assert "camp_lowspend" in findings_text
+    assert "camp_highspend" in findings_text
+    # Per-campaign metrics keyed by campaign_id, sorted by spend desc.
+    per_campaign = dict(diag.per_campaign_metrics)
+    assert set(per_campaign.keys()) == {"camp_lowspend", "camp_highspend"}
+    # Highest-spend campaign first.
+    assert diag.per_campaign_metrics[0][0] == "camp_highspend"
+    high_metrics = dict(per_campaign["camp_highspend"])
+    assert high_metrics["cost"] == 500.0
+    assert high_metrics["cpa"] == 50.0
 
 
 @pytest.mark.unit
@@ -252,6 +273,72 @@ def test_meta_summarise_no_data() -> None:
         rows=[],
     )
     assert diag.headline == "no performance data available"
+
+
+@pytest.mark.unit
+def test_meta_summarise_deep_scope_emits_per_campaign_findings() -> None:
+    rows: list[dict[str, Any]] = [
+        {
+            "campaign_id": "small",
+            "spend": 100,
+            "impressions": 500,
+            "clicks": 20,
+            "conversions": 2,
+        },
+        {
+            "campaign_id": "big",
+            "spend": 800,
+            "impressions": 4000,
+            "clicks": 200,
+            "conversions": 16,
+        },
+    ]
+    diag = _summarise_meta_performance(
+        platform="meta_ads",
+        account_id="act_1",
+        scope=PerformanceScope.DEEP,
+        rows=rows,
+    )
+    assert diag.per_campaign_metrics[0][0] == "big"
+    findings_text = " ".join(diag.findings)
+    assert "small" in findings_text and "big" in findings_text
+
+
+@pytest.mark.unit
+def test_account_scope_leaves_per_campaign_metrics_empty() -> None:
+    """ACCOUNT scope must not populate per_campaign_metrics — that's a
+    deliberate signal to the workflow that the diagnosis is summary-only.
+    """
+    rows: list[dict[str, Any]] = [{"campaign_id": "c", "spend": 100, "conversions": 5}]
+    diag = _summarise_meta_performance(
+        platform="meta_ads",
+        account_id="a",
+        scope=PerformanceScope.ACCOUNT,
+        rows=rows,
+    )
+    assert diag.per_campaign_metrics == ()
+
+
+@pytest.mark.unit
+def test_deep_scope_drops_rows_without_campaign_id() -> None:
+    """Aggregate totals still include the row, but it cannot appear in
+    per_campaign_metrics under a synthetic ``""`` key.
+    """
+    rows: list[dict[str, Any]] = [
+        {"spend": 50, "conversions": 3},  # no campaign_id
+        {"campaign_id": "named", "spend": 100, "conversions": 5},
+    ]
+    diag = _summarise_meta_performance(
+        platform="meta_ads",
+        account_id="a",
+        scope=PerformanceScope.DEEP,
+        rows=rows,
+    )
+    keys = [k for k, _ in diag.per_campaign_metrics]
+    assert keys == ["named"]
+    # Aggregate still includes the no-id row's spend.
+    metrics = dict(diag.metrics)
+    assert metrics["cost"] == 150.0
 
 
 # ---------------------------------------------------------------------------

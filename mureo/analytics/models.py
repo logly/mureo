@@ -62,6 +62,14 @@ class PerformanceDiagnosis:
     is the skill's responsibility). ``metrics`` carries the structured
     numbers the skill may want to render in a table; key names should be
     stable per platform.
+
+    ``per_campaign_metrics`` is populated when the diagnosis ran at
+    :attr:`PerformanceScope.DEEP` — one entry per campaign as
+    ``(campaign_id, ((metric_name, value), ...))``. Empty when the
+    diagnosis ran at coarser scope, or when the adapter did not
+    enumerate campaigns. The skill can do
+    ``dict(diag.per_campaign_metrics)`` and then ``dict(...)`` on each
+    value to drill in.
     """
 
     platform: str
@@ -70,6 +78,7 @@ class PerformanceDiagnosis:
     headline: str
     findings: tuple[str, ...]
     metrics: tuple[tuple[str, float], ...] = ()
+    per_campaign_metrics: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = ()
 
 
 @dataclass(frozen=True)

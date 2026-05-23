@@ -232,6 +232,34 @@ plugin code keeps constructing without changes):
   — `(campaign_id, finding_count)` pairs sorted by campaign_id,
   letting workflow skills drill down without re-walking the findings
   tuple.
+- `PerformanceDiagnosis.per_campaign_metrics: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = ()`
+  — populated when `diagnose_performance` runs at
+  `PerformanceScope.DEEP`. One entry per campaign as
+  `(campaign_id, ((metric_name, value), ...))`, sorted by spend
+  descending. Empty at coarser scopes.
+
+### Row-shape TypedDicts (documentation contract)
+
+Plugin authors can import these `TypedDict`s from
+`mureo.analytics` to type their own analytics-module code against
+the shapes the built-in adapters consume:
+
+| Type | Shape source |
+|---|---|
+| `GoogleLivePerformanceRow` | `mureo.google_ads.mappers.map_performance_report` |
+| `GoogleByodPerformanceRow` | `mureo.byod.clients.ByodGoogleAdsClient.get_performance_report` |
+| `GoogleMetricsDict` | inner `row["metrics"]` of the live shape |
+| `GooglePerformanceRow` | union of live + BYOD |
+| `MetaLivePerformanceRow` | `MetaAdsApiClient.get_performance_report` |
+| `MetaByodPerformanceRow` | `ByodMetaAdsClient.get_performance_report` |
+| `MetaActionEntry` | element of live Meta `actions` list |
+| `MetaPerformanceRow` | union of live + BYOD |
+| `GoogleAdRow` / `MetaAdRow` | `list_ads` row, audit-relevant subset |
+
+All are `total=False` — mureo only promises the field *set* as the
+ABI, not that any given field is always present at runtime. Adding
+a field to an existing TypedDict is **non-breaking**; removing or
+renaming a field is **breaking**.
 
 The four analytics methods follow the same Protocol-evolution rules
 as §4: adding a new method is breaking, adding a new method
