@@ -208,22 +208,19 @@ def _summarise_meta_performance(
             findings=(),
         )
 
+    from mureo.analytics.builtin._live_clients import _meta_row_conversions
+
     cost = 0.0
     impressions = 0
     clicks = 0
     conversions = 0.0
     for row in rows:
-        cost += float(row.get("spend", 0) or 0)
-        impressions += int(row.get("impressions", 0) or 0)
-        clicks += int(row.get("clicks", 0) or 0)
-        actions = row.get("actions") or []
-        if isinstance(actions, list):
-            for action in actions:
-                if not isinstance(action, dict):
-                    continue
-                action_type = str(action.get("action_type", ""))
-                if any(t in action_type for t in _CONVERSION_RESULT_TOKENS):
-                    conversions += float(action.get("value", 0) or 0)
+        cost += float(row.get("spend") or 0)
+        impressions += int(row.get("impressions") or 0)
+        clicks += int(row.get("clicks") or 0)
+        # Tolerates live (actions list) and BYOD (flat conversions);
+        # both shapes are valid factory outputs.
+        conversions += _meta_row_conversions(row)
 
     cpa = (cost / conversions) if conversions > 0 else None
     ctr = (clicks / impressions) if impressions > 0 else None

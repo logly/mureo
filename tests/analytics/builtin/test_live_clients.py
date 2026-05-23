@@ -56,6 +56,29 @@ def test_aggregate_google_metrics_handles_empty() -> None:
 
 
 @pytest.mark.unit
+def test_aggregate_google_metrics_accepts_byod_flat_shape() -> None:
+    """BYOD ``get_performance_report`` returns rows with metrics at the
+    top level, not nested under ``metrics``. The aggregator must accept
+    both shapes — regression for the silent-zero bug found during #120
+    live-wiring validation.
+    """
+    rows: list[dict[str, Any]] = [
+        # BYOD shape — flat
+        {
+            "campaign_id": "camp_abc",
+            "cost": 392000.0,
+            "impressions": 5600,
+            "clicks": 1120,
+            "conversions": 179.2,
+        },
+    ]
+    result = _aggregate_google_metrics(rows, account_id="byod-acct")
+    assert result.cost == 392000.0
+    assert result.impressions == 5600
+    assert result.conversions == pytest.approx(179.2)
+
+
+@pytest.mark.unit
 def test_aggregate_google_metrics_handles_none_values() -> None:
     rows: list[dict[str, Any]] = [
         {"metrics": {"cost": None, "impressions": None, "clicks": None}}
@@ -92,6 +115,27 @@ def test_aggregate_meta_metrics_sums_actions() -> None:
     assert result.clicks == 55
     # 3 (lead) + 2 (lead) + 1 (purchase) = 6
     assert result.conversions == 6
+
+
+@pytest.mark.unit
+def test_aggregate_meta_metrics_accepts_byod_flat_conversions() -> None:
+    """BYOD Meta returns conversions as a top-level field with no
+    ``actions`` list. Regression for the silent-zero bug found during
+    #120 live-wiring validation.
+    """
+    rows: list[dict[str, Any]] = [
+        {
+            "campaign_id": "camp_1",
+            "spend": 100.0,
+            "impressions": 500,
+            "clicks": 30,
+            "conversions": 12.0,
+            "result_indicator": "actions:offsite_conversion.fb_pixel_lead",
+        }
+    ]
+    result = _aggregate_meta_metrics(rows, account_id="act_byod")
+    assert result.cost == 100.0
+    assert result.conversions == 12.0
 
 
 @pytest.mark.unit

@@ -55,6 +55,23 @@ _GOOGLE_PERIOD_MAP: dict[int, tuple[str, str]] = {
 }
 
 
+def _google_row_metrics(row: dict[str, Any]) -> dict[str, Any]:
+    """Return the metrics view of a Google Ads performance row.
+
+    Live :func:`mureo.google_ads.mappers.map_performance_report` nests
+    metrics under ``row["metrics"]``; BYOD
+    :class:`mureo.byod.clients.ByodGoogleAdsClient.get_performance_report`
+    returns them flat at the top level. Both shapes are valid responses
+    from :func:`mureo.mcp._client_factory.get_google_ads_client`, so
+    the aggregator has to accept either or it silently double-zeros
+    the BYOD path (confirmed bug during #120 live-wiring validation).
+    """
+    nested = row.get("metrics")
+    if isinstance(nested, dict) and nested:
+        return nested
+    return row
+
+
 def _aggregate_google_metrics(
     rows: list[dict[str, Any]],
     account_id: str,
@@ -72,11 +89,11 @@ def _aggregate_google_metrics(
     clicks = 0
     conversions = 0.0
     for row in rows:
-        metrics = row.get("metrics") or {}
-        cost += float(metrics.get("cost", 0) or 0)
-        impressions += int(metrics.get("impressions", 0) or 0)
-        clicks += int(metrics.get("clicks", 0) or 0)
-        conversions += float(metrics.get("conversions", 0) or 0)
+        metrics = _google_row_metrics(row)
+        cost += float(metrics.get("cost") or 0)
+        impressions += int(metrics.get("impressions") or 0)
+        clicks += int(metrics.get("clicks") or 0)
+        conversions += float(metrics.get("conversions") or 0)
     return CampaignMetrics(
         campaign_id=account_id,
         cost=cost,
@@ -181,28 +198,57 @@ _META_PERIOD_MAP: dict[int, tuple[str, str]] = {
 }
 
 
+def _meta_row_conversions(row: dict[str, Any]) -> float:
+    """Return conversion count for a Meta performance row.
+
+    Two shapes have to be accepted:
+
+    * Live :class:`MetaAdsApiClient` returns the raw Marketing API
+      response — conversions live inside an ``actions`` list keyed by
+      ``action_type``.
+    * BYOD :class:`ByodMetaAdsClient.get_performance_report` pre-
+      aggregates conversions into a top-level ``conversions`` field
+      and provides a ``result_indicator`` instead of the ``actions``
+      list.
+
+    Detected during #120 live-wiring validation — accepting only the
+    Live shape silently zeroes BYOD conversions.
+    """
+    actions = row.get("actions")
+    if isinstance(actions, list):
+        total = 0.0
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+            action_type = str(action.get("action_type", ""))
+            # Match the existing analysis-surface convention
+            # (mureo/meta_ads/_analysis.py): leads + purchases are
+            # the canonical conversion actions.
+            if "lead" in action_type or "purchase" in action_type:
+                total += float(action.get("value") or 0)
+        return total
+    # BYOD path — already aggregated.
+    return float(row.get("conversions") or 0)
+
+
 def _aggregate_meta_metrics(
     rows: list[dict[str, Any]],
     account_id: str,
 ) -> CampaignMetrics:
-    """Aggregate Meta insights rows to an account-level metric tuple."""
+    """Aggregate Meta insights rows to an account-level metric tuple.
+
+    Tolerates both the Live (``actions`` list) and BYOD (flat
+    ``conversions``) row shapes — see :func:`_meta_row_conversions`.
+    """
     cost = 0.0
     impressions = 0
     clicks = 0
     conversions = 0.0
     for row in rows:
-        cost += float(row.get("spend", 0) or 0)
-        impressions += int(row.get("impressions", 0) or 0)
-        clicks += int(row.get("clicks", 0) or 0)
-        # Meta returns conversions per action_type. We sum
-        # offsite_conversion.fb_pixel_lead + onsite_conversion.lead_grouped
-        # if present — same convention as the existing analysis surface
-        # (mureo/meta_ads/_analysis.py treats those as the canonical
-        # "lead" actions).
-        for action in row.get("actions", []) or []:
-            action_type = str(action.get("action_type", ""))
-            if "lead" in action_type or "purchase" in action_type:
-                conversions += float(action.get("value", 0) or 0)
+        cost += float(row.get("spend") or 0)
+        impressions += int(row.get("impressions") or 0)
+        clicks += int(row.get("clicks") or 0)
+        conversions += _meta_row_conversions(row)
     return CampaignMetrics(
         campaign_id=account_id,
         cost=cost,

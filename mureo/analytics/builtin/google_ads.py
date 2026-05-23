@@ -190,12 +190,15 @@ def _summarise_performance(
     clicks = 0
     conversions = 0.0
     for row in rows:
-        metrics = row.get("metrics") or {}
-        if isinstance(metrics, dict):
-            cost += float(metrics.get("cost", 0) or 0)
-            impressions += int(metrics.get("impressions", 0) or 0)
-            clicks += int(metrics.get("clicks", 0) or 0)
-            conversions += float(metrics.get("conversions", 0) or 0)
+        # Live vs BYOD row shape — see _google_row_metrics for the
+        # rationale; both shapes are valid factory outputs.
+        from mureo.analytics.builtin._live_clients import _google_row_metrics
+
+        metrics = _google_row_metrics(row)
+        cost += float(metrics.get("cost") or 0)
+        impressions += int(metrics.get("impressions") or 0)
+        clicks += int(metrics.get("clicks") or 0)
+        conversions += float(metrics.get("conversions") or 0)
 
     cpa = (cost / conversions) if conversions > 0 else None
     ctr = (clicks / impressions) if impressions > 0 else None
