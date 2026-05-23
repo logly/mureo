@@ -133,6 +133,14 @@ A **mutating** plugin tool (anything not declared `readOnlyHint`) is subject to 
 
 What does **not** reach parity (by design, state it in output): mureo's platform-specific analytics — anomaly detection, `result_indicator` CV-mismatch, RSA-asset audit, rule-based scoring — and automatic rollback (only built-in allow-listed operations are auto-reversible; a plugin reversal hint is recorded for visibility, not executed).
 
+### Optional: analytics-module parity (Issue #120)
+
+A plugin author OR an official-MCP wrapper can opt into mureo's analytics surface by registering an `AnalyticsModule` (entry-point group `mureo.analytics`; see `docs/plugin-authoring.md` → *Shipping analytics with your plugin*). When a module is registered:
+
+- The MCP tool `mureo_analytics_modules_list` reports which platforms have analytics and which capabilities each advertises (`detect_anomalies`, `diagnose_performance`, `audit_creative`, `analyze_budget_efficiency`).
+- Workflow skills (daily-check, rescue, …) consult that list **before** running deep diagnostics on an external-integration platform: if the platform has no module or the needed capability is missing, the skill must say `analytics_not_available_for_<platform>` in its output rather than invent heuristics from the integration's tool schemas. Auto-deriving analytics is unsafe (would produce plausible-but-wrong analysis) and is explicitly out of scope.
+- Built-in google_ads and meta_ads ship analytics modules for the capabilities they support today; new platforms get parity by **hand-authoring** a module, not by code generation.
+
 ## MCP Server Configuration
 
 ### Claude Code / Cursor

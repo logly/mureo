@@ -29,6 +29,7 @@ and which are not, see [ABI-stability.md](./ABI-stability.md).
 11. [End-to-end example](#11-end-to-end-example)
 12. [Troubleshooting](#12-troubleshooting)
 13. [Web extensions](#13-web-extensions)
+14. [Shipping analytics with your plugin](#14-shipping-analytics-with-your-plugin)
 
 ---
 
@@ -1551,6 +1552,139 @@ from mureo.web.extensions import reset_web_extensions
 # monkeypatched).
 reset_web_extensions()
 ```
+
+---
+
+## 14. Shipping analytics with your plugin
+
+> Status: Issue #120 Phase 1/2. Audience: plugin authors who want to
+> give their platform the same deep-analytics treatment mureo applies
+> to its built-in google_ads / meta_ads adapters — anomaly detection,
+> performance diagnosis, creative audit, budget efficiency. Skills
+> consume the contract uniformly; built-ins and plugins look identical
+> to a workflow.
+
+### Why this is opt-in (and why mureo cannot auto-derive it)
+
+An external integration — a plugin or an official MCP — exposes only
+tool names, input schemas, free-text descriptions, and opaque result
+blobs. mureo cannot synthesize platform-specific heuristics from that
+surface: metric semantics, entity relationships, conversion taxonomy,
+billing/delivery model, and failure modes are platform-specific
+domain knowledge. Auto-generated analytics would fabricate plausible-
+but-wrong analysis and violate mureo's trustworthiness principle.
+
+Therefore: analytics modules are **hand-authored** per platform. A
+plugin that does not ship one is fully supported — skills detect the
+absence and emit `analytics_not_available_for_<platform>` rather than
+guessing.
+
+### The `AnalyticsModule` Protocol
+
+A plugin ships **one class** with these members (see
+`mureo/analytics/protocol.py` for the runtime-checked Protocol):
+
+| Member | Required | Purpose |
+|--------|----------|---------|
+| `platform: str` (class attribute) | yes | Stable identifier matching STATE.json `platforms` and your provider's `name`. |
+| `capabilities() -> frozenset[AnalyticsCapability]` | yes | Which of the four methods this module actually supports. |
+| `async detect_anomalies(account_id, *, window_days=7) -> tuple[Anomaly, ...]` | when capability advertised | Anomaly detection over the trailing window. MUST gate by sample size. |
+| `async diagnose_performance(account_id, *, scope) -> PerformanceDiagnosis` | when capability advertised | Headline + findings + structured metrics. |
+| `async audit_creative(account_id) -> CreativeAudit` | when capability advertised | RSA / image / video / copy audit. |
+| `async analyze_budget_efficiency(account_id) -> BudgetEfficiency` | when capability advertised | Per-campaign efficiency score + reallocation suggestion. |
+
+Unsupported methods MUST raise `NotImplementedError` (the registry
+does not stub them). Skills consult `capabilities()` and skip the call
+when the capability is absent, so the exception is a defensive
+fallback for misbehaving callers, not the primary signalling channel.
+
+### `pyproject.toml` — entry point
+
+```toml
+[project.entry-points."mureo.analytics"]
+acme_ads = "mureo_acme_ads.analytics:AcmeAdsAnalyticsModule"
+```
+
+`mureo.analytics` is independent of `mureo.providers`: a package may
+ship a provider only, an analytics module only, or both. The two
+groups have separate discovery paths and separate fault isolation.
+
+### Minimal example
+
+```python
+# mureo_acme_ads/analytics.py
+from mureo.analytics import (
+    AnalyticsCapability,
+    Anomaly,
+    AnomalySeverity,
+    BudgetEfficiency,
+    CreativeAudit,
+    PerformanceDiagnosis,
+    PerformanceScope,
+)
+
+
+class AcmeAdsAnalyticsModule:
+    platform = "acme_ads"
+
+    _SUPPORTED = frozenset({AnalyticsCapability.DETECT_ANOMALIES})
+
+    def capabilities(self) -> frozenset[AnalyticsCapability]:
+        return self._SUPPORTED
+
+    async def detect_anomalies(
+        self, account_id: str, *, window_days: int = 7,
+    ) -> tuple[Anomaly, ...]:
+        # Hand-authored heuristics over your platform's API live here.
+        # MUST gate alerts by sample size — a single bad day is noise.
+        return ()
+
+    async def diagnose_performance(
+        self, account_id: str, *, scope: PerformanceScope,
+    ) -> PerformanceDiagnosis:
+        raise NotImplementedError
+
+    async def audit_creative(self, account_id: str) -> CreativeAudit:
+        raise NotImplementedError
+
+    async def analyze_budget_efficiency(
+        self, account_id: str,
+    ) -> BudgetEfficiency:
+        raise NotImplementedError
+```
+
+### Discovery + fault isolation
+
+`mureo.analytics.registry.discover_analytics_modules()` iterates the
+`mureo.analytics` entry-point group, instantiates each class with no
+arguments, validates it against the Protocol, and registers it. Any
+exception during load, construction, attribute access, or Protocol
+validation is contained and reported as an
+`AnalyticsModuleWarning` — discovery never raises.
+
+Built-ins register before discovery runs and therefore cannot be
+shadowed by a plugin. Two plugins claiming the same `platform` →
+first-discovered wins (second is dropped with a warning).
+
+### Skill consumption surface
+
+Skills look up modules via the MCP tool
+`mureo_analytics_modules_list`, which returns one entry per registered
+platform with its advertised capabilities and source distribution.
+Skills must respect that result: if a platform is not in the list, or
+its module does not advertise the needed capability, skills emit
+`analytics_not_available_for_<platform>` instead of inventing
+heuristics.
+
+### What you do NOT need to do
+
+- Register the module on the registry yourself — entry-points
+  discovery does it on first use.
+- Reimplement anomaly thresholds — feel free to delegate to
+  `mureo.analysis.anomaly_detector` (it is a pure function and ABI-
+  stable; the built-in adapters do exactly this).
+- Ship a separate MCP tool — the registry surface is mureo's, not
+  yours; you only ship the `AnalyticsModule` class.
 
 ---
 

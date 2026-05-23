@@ -49,6 +49,12 @@ from mureo.mcp.plugin_semantics import (
 from mureo.mcp.tool_provider import collect_plugin_tools, plugin_source
 from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
 from mureo.mcp.tools_analysis import handle_tool as handle_analysis_tool
+from mureo.mcp.tools_analytics_registry import (
+    TOOLS as ANALYTICS_REGISTRY_TOOLS,
+)
+from mureo.mcp.tools_analytics_registry import (
+    handle_tool as handle_analytics_registry_tool,
+)
 from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
 from mureo.mcp.tools_google_ads import handle_tool as handle_google_ads_tool
 from mureo.mcp.tools_meta_ads import TOOLS as META_ADS_TOOLS
@@ -101,6 +107,7 @@ _ALL_TOOLS: list[Tool] = [
     *ROLLBACK_TOOLS,
     *ANALYSIS_TOOLS,
     *MUREO_CONTEXT_TOOLS,
+    *ANALYTICS_REGISTRY_TOOLS,
 ]
 _GOOGLE_ADS_NAMES: frozenset[str] = (
     frozenset(t.name for t in GOOGLE_ADS_TOOLS) if _GOOGLE_ADS_ENABLED else frozenset()
@@ -112,6 +119,9 @@ _SEARCH_CONSOLE_NAMES: frozenset[str] = frozenset(t.name for t in SEARCH_CONSOLE
 _ROLLBACK_NAMES: frozenset[str] = frozenset(t.name for t in ROLLBACK_TOOLS)
 _ANALYSIS_NAMES: frozenset[str] = frozenset(t.name for t in ANALYSIS_TOOLS)
 _MUREO_CONTEXT_NAMES: frozenset[str] = frozenset(t.name for t in MUREO_CONTEXT_TOOLS)
+_ANALYTICS_REGISTRY_NAMES: frozenset[str] = frozenset(
+    t.name for t in ANALYTICS_REGISTRY_TOOLS
+)
 
 # ---------------------------------------------------------------------------
 # Third-party plugin tools (entry-point–discovered providers implementing
@@ -131,6 +141,7 @@ _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
         | _ROLLBACK_NAMES
         | _ANALYSIS_NAMES
         | _MUREO_CONTEXT_NAMES
+        | _ANALYTICS_REGISTRY_NAMES
     ),
 )
 _ALL_TOOLS.extend(_PLUGIN_TOOLS)
@@ -269,6 +280,8 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         return await handle_analysis_tool(name, arguments)
     if name in _MUREO_CONTEXT_NAMES:
         return await handle_mureo_context_tool(name, arguments)
+    if name in _ANALYTICS_REGISTRY_NAMES:
+        return await handle_analytics_registry_tool(name, arguments)
     if name in _PLUGIN_NAMES:
         provider = _PLUGIN_DISPATCH[name]
         source = plugin_source(provider)

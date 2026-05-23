@@ -186,6 +186,51 @@ keep an eye on Protocol changelogs.
 
 ---
 
+## 4a. AnalyticsModule Protocol (Issue #120)
+
+`mureo.analytics.AnalyticsModule` is a separate runtime-checkable
+Protocol shipped under its own entry-point group
+(`mureo.analytics`). It is opt-in: a plugin that does not implement
+it remains fully supported, and skills detect the absence via
+`mureo_analytics_modules_list` and report
+`analytics_not_available_for_<platform>` honestly.
+
+The contract:
+
+| Member | Stability |
+|---|---|
+| `platform: str` class attribute | Required; must match STATE.json platform identifier. |
+| `capabilities() -> frozenset[AnalyticsCapability]` | Required. |
+| `async detect_anomalies(account_id, *, window_days=7)` | Required signature; raise `NotImplementedError` when capability not advertised. |
+| `async diagnose_performance(account_id, *, scope)` | Same. |
+| `async audit_creative(account_id)` | Same. |
+| `async analyze_budget_efficiency(account_id)` | Same. |
+
+`AnalyticsCapability` is `class AnalyticsCapability(str, Enum)` (not
+the 3.11-only `StrEnum`, since mureo supports 3.10). Member values
+are stable strings — compare with `cap.value` or `cap == "detect_anomalies"`,
+not `str(cap)` (which renders the enum repr, not the value).
+`AnomalySeverity` and `PerformanceScope` follow the same convention.
+Adding a new member is **non-breaking**: existing modules simply do
+not advertise it; skills that need it report unavailability for those
+platforms. Renaming or removing a member is breaking, same rule as
+`Capability`.
+
+`Anomaly` / `PerformanceDiagnosis` / `CreativeAudit` /
+`CreativeFinding` / `BudgetEfficiency` live in
+`mureo.analytics.models` as `@dataclass(frozen=True)`. The field-
+mutation rules in §5 apply to them identically — adding a field with
+a default is non-breaking; adding one without a default is breaking.
+
+The four analytics methods follow the same Protocol-evolution rules
+as §4: adding a new method is breaking, adding a new method
+parameter as a keyword with a default is non-breaking. Adding an
+entirely new analytics method is breaking unless gated by a new
+`AnalyticsCapability`; the safer move is to add a new sibling
+Protocol when the new surface is large.
+
+---
+
 ## 5. Model dataclass shapes
 
 Every entity / DTO in `mureo.core.providers.models` is
@@ -234,17 +279,24 @@ boundary. This is permanent.
 
 ## 6. Entry-point group names
 
-Two group names are part of the ABI:
+Three group names are part of the ABI:
 
 | Constant | Value | Iterated by |
 |---|---|---|
 | `PROVIDERS_ENTRY_POINT_GROUP` | `"mureo.providers"` | `Registry.discover` |
 | `SKILLS_ENTRY_POINT_GROUP` | `"mureo.skills"` | `discover_skills` |
+| `ANALYTICS_ENTRY_POINT_GROUP` | `"mureo.analytics"` | `AnalyticsRegistry.discover` |
 
-Both names are exported from `mureo.core.providers.registry` (and
-re-exported from `mureo.core.skills`). Renaming either group is a
-breaking change — every plugin's `pyproject.toml` would have to
-change.
+`PROVIDERS_…` / `SKILLS_…` are exported from
+`mureo.core.providers.registry` (re-exported from
+`mureo.core.skills`); `ANALYTICS_…` is exported from
+`mureo.analytics`. Renaming any of these groups is a breaking
+change — every plugin's `pyproject.toml` would have to change.
+
+The three groups are independent: a package may register against any
+subset (provider only, analytics only, both, etc.) — the discovery
+paths and fault isolation are separate, so a failure in one group
+cannot disable another.
 
 If a new entry-point group is introduced (e.g. for a future
 `mureo.workflows` extension), it will be **additive**. Plugins that
