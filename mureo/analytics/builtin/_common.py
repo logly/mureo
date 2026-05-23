@@ -17,6 +17,7 @@ avoids cycles at registration time.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Protocol
 
 from mureo.analysis.anomaly_detector import (
@@ -31,6 +32,12 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from mureo.analysis.anomaly_detector import CampaignMetrics
+
+
+# Type alias used by both built-in adapters' ``diagnose_performance``.
+# Tests inject a deterministic stub; production paths resolve to the
+# live client inside the adapter.
+PerformanceFetcher = Callable[[str, str], Awaitable[list[dict[str, object]]]]
 
 
 _SEVERITY_MAP: dict[_DetectorSeverity, AnomalySeverity] = {
@@ -92,6 +99,7 @@ class MetricsFetcher(Protocol):
 
 __all__ = [
     "MetricsFetcher",
+    "PerformanceFetcher",
     "to_analytics_anomalies",
     "to_analytics_anomaly",
 ]
