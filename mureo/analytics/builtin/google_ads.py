@@ -25,6 +25,8 @@ and BYOD mode is picked up automatically.
 
 from __future__ import annotations
 
+from typing import Any
+
 from mureo.analysis.anomaly_detector import detect_anomalies
 from mureo.analytics.builtin._common import (
     MetricsFetcher,
@@ -167,7 +169,7 @@ def _summarise_performance(
     platform: str,
     account_id: str,
     scope: PerformanceScope,
-    rows: list[dict[str, object]],
+    rows: list[dict[str, Any]],
 ) -> PerformanceDiagnosis:
     """Build a :class:`PerformanceDiagnosis` from raw performance rows.
 

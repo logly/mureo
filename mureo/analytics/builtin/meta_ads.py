@@ -20,6 +20,8 @@ Meta-specific:
 
 from __future__ import annotations
 
+from typing import Any
+
 from mureo.analysis.anomaly_detector import detect_anomalies
 from mureo.analytics.builtin._common import (
     MetricsFetcher,
@@ -164,7 +166,7 @@ def _classify_result_indicator(action_types: list[str]) -> str:
     return "unknown"
 
 
-def _detect_cv_definition_mismatch(rows: list[dict[str, object]]) -> str | None:
+def _detect_cv_definition_mismatch(rows: list[dict[str, Any]]) -> str | None:
     """Return a finding string if the account mixes click- and
     conversion-style result indicators across campaigns, else ``None``.
     """
@@ -194,7 +196,7 @@ def _summarise_meta_performance(
     platform: str,
     account_id: str,
     scope: PerformanceScope,
-    rows: list[dict[str, object]],
+    rows: list[dict[str, Any]],
 ) -> PerformanceDiagnosis:
     """Pure renderer for Meta performance rows."""
     if not rows:
