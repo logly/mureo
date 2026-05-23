@@ -291,17 +291,36 @@ def _summarise_performance(
             findings=(),
         )
 
+    # Per-campaign extraction first: the DEEP scope re-uses these, and
+    # the aggregate sums also fall out of them — single pass.
+    per_campaign: list[tuple[str, dict[str, float]]] = []
     cost = 0.0
     impressions = 0
     clicks = 0
     conversions = 0.0
     for row in rows:
-        # Live vs BYOD row shape — see :func:`google_row_metrics`.
         metrics = google_row_metrics(row)
-        cost += float(metrics.get("cost") or 0)
-        impressions += int(metrics.get("impressions") or 0)
-        clicks += int(metrics.get("clicks") or 0)
-        conversions += float(metrics.get("conversions") or 0)
+        row_cost = float(metrics.get("cost") or 0)
+        row_impressions = int(metrics.get("impressions") or 0)
+        row_clicks = int(metrics.get("clicks") or 0)
+        row_conversions = float(metrics.get("conversions") or 0)
+        cost += row_cost
+        impressions += row_impressions
+        clicks += row_clicks
+        conversions += row_conversions
+        campaign_id = str(row.get("campaign_id") or "").strip()
+        if campaign_id:
+            per_campaign.append(
+                (
+                    campaign_id,
+                    {
+                        "cost": row_cost,
+                        "impressions": float(row_impressions),
+                        "clicks": float(row_clicks),
+                        "conversions": row_conversions,
+                    },
+                )
+            )
 
     cpa = (cost / conversions) if conversions > 0 else None
     ctr = (clicks / impressions) if impressions > 0 else None
@@ -314,8 +333,6 @@ def _summarise_performance(
         findings.append(f"CPA={cpa:,.0f}")
     if ctr is not None:
         findings.append(f"CTR={ctr*100:.2f}%")
-    if scope is PerformanceScope.DEEP:
-        findings.append("per-campaign drilldown not yet implemented for this adapter")
 
     metrics_tuple: tuple[tuple[str, float], ...] = (
         ("cost", cost),
@@ -328,6 +345,35 @@ def _summarise_performance(
     if ctr is not None:
         metrics_tuple = (*metrics_tuple, ("ctr", ctr))
 
+    # DEEP scope: emit per-campaign findings + structured per-campaign
+    # metrics. Sort by spend descending so the highest-impact campaigns
+    # appear first regardless of the API's row order.
+    per_campaign_metrics: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = ()
+    if scope is PerformanceScope.DEEP:
+        per_campaign.sort(key=lambda entry: entry[1]["cost"], reverse=True)
+        deep_findings: list[str] = []
+        deep_metrics: list[tuple[str, tuple[tuple[str, float], ...]]] = []
+        for campaign_id, m in per_campaign:
+            campaign_cpa = (
+                (m["cost"] / m["conversions"]) if m["conversions"] > 0 else None
+            )
+            metrics_pairs: tuple[tuple[str, float], ...] = (
+                ("cost", m["cost"]),
+                ("impressions", m["impressions"]),
+                ("clicks", m["clicks"]),
+                ("conversions", m["conversions"]),
+            )
+            cpa_text = f", CPA={campaign_cpa:,.0f}" if campaign_cpa is not None else ""
+            deep_findings.append(
+                f"{campaign_id}: spend={m['cost']:,.0f}, "
+                f"CV={m['conversions']:.1f}{cpa_text}"
+            )
+            if campaign_cpa is not None:
+                metrics_pairs = (*metrics_pairs, ("cpa", campaign_cpa))
+            deep_metrics.append((campaign_id, metrics_pairs))
+        findings.extend(deep_findings)
+        per_campaign_metrics = tuple(deep_metrics)
+
     headline = f"{platform}: {len(rows)} campaigns, spend={cost:,.0f}"
     return PerformanceDiagnosis(
         platform=platform,
@@ -336,6 +382,7 @@ def _summarise_performance(
         headline=headline,
         findings=tuple(findings),
         metrics=metrics_tuple,
+        per_campaign_metrics=per_campaign_metrics,
     )
 
 

@@ -26,6 +26,18 @@ from mureo.analysis.anomaly_detector import (
 from mureo.analysis.anomaly_detector import (
     Severity as _DetectorSeverity,
 )
+from mureo.analytics.builtin._row_types import (
+    GoogleAdRow,
+    GoogleByodPerformanceRow,
+    GoogleLivePerformanceRow,
+    GoogleMetricsDict,
+    GooglePerformanceRow,
+    MetaActionEntry,
+    MetaAdRow,
+    MetaByodPerformanceRow,
+    MetaLivePerformanceRow,
+    MetaPerformanceRow,
+)
 from mureo.analytics.models import Anomaly, AnomalySeverity
 
 if TYPE_CHECKING:
@@ -45,9 +57,12 @@ def google_row_metrics(row: dict[str, Any]) -> dict[str, Any]:
     when it is a non-empty dict (the live mapper always populates it),
     falling back to the row itself for the BYOD shape.
 
-    Promoted from ``_live_clients`` so the budget-efficiency scorer
-    and the diagnose summariser can share the same single helper
-    rather than each importing a private symbol.
+    The parameter is typed as ``dict[str, Any]`` rather than the
+    :class:`GooglePerformanceRow` union because callers pass the raw
+    factory output and TypedDicts cannot freely accept ``dict[str, Any]``
+    at the call site without a `cast`. The expected runtime shape is
+    documented by :class:`GoogleLivePerformanceRow` /
+    :class:`GoogleByodPerformanceRow`.
     """
     nested = row.get("metrics")
     if isinstance(nested, dict) and nested:
@@ -63,6 +78,10 @@ def meta_row_conversions(row: dict[str, Any]) -> float:
     ``conversions`` field with no ``actions`` list. Detected during
     the #120 live-wiring validation — accepting only the live shape
     silently zeroes BYOD conversions.
+
+    Expected runtime shape: :class:`MetaLivePerformanceRow` /
+    :class:`MetaByodPerformanceRow`. Same caller-ergonomics rationale
+    as :func:`google_row_metrics` for the looser parameter type.
     """
     actions = row.get("actions")
     if isinstance(actions, list):
@@ -155,6 +174,16 @@ class MetricsFetcher(Protocol):
 
 
 __all__ = [
+    "GoogleAdRow",
+    "GoogleByodPerformanceRow",
+    "GoogleLivePerformanceRow",
+    "GoogleMetricsDict",
+    "GooglePerformanceRow",
+    "MetaActionEntry",
+    "MetaAdRow",
+    "MetaByodPerformanceRow",
+    "MetaLivePerformanceRow",
+    "MetaPerformanceRow",
     "MetricsFetcher",
     "PerCampaignMetricsFetcher",
     "PerformanceFetcher",

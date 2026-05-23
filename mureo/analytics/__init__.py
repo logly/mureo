@@ -33,6 +33,18 @@ Public surface (re-exports):
 
 from __future__ import annotations
 
+from mureo.analytics.builtin._row_types import (
+    GoogleAdRow,
+    GoogleByodPerformanceRow,
+    GoogleLivePerformanceRow,
+    GoogleMetricsDict,
+    GooglePerformanceRow,
+    MetaActionEntry,
+    MetaAdRow,
+    MetaByodPerformanceRow,
+    MetaLivePerformanceRow,
+    MetaPerformanceRow,
+)
 from mureo.analytics.models import (
     Anomaly,
     AnomalySeverity,
@@ -67,6 +79,16 @@ __all__ = [
     "BudgetEfficiency",
     "CreativeAudit",
     "CreativeFinding",
+    "GoogleAdRow",
+    "GoogleByodPerformanceRow",
+    "GoogleLivePerformanceRow",
+    "GoogleMetricsDict",
+    "GooglePerformanceRow",
+    "MetaActionEntry",
+    "MetaAdRow",
+    "MetaByodPerformanceRow",
+    "MetaLivePerformanceRow",
+    "MetaPerformanceRow",
     "PerformanceDiagnosis",
     "PerformanceScope",
     "clear_analytics_registry",
