@@ -1114,16 +1114,24 @@ mureo/
 │   └── _*.py                # 15 Mixin modules (campaigns, ads, creatives, audiences, etc.)
 ├── search_console/          # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py            # SearchConsoleApiClient
+├── analytics/               # Per-platform analytics-module Protocol + registry (#120, v0.9.9+)
+│   ├── protocol.py          # AnalyticsModule Protocol + AnalyticsCapability
+│   ├── registry.py          # Entry-point discovery (`mureo.analytics` group) + fault isolation
+│   ├── models.py            # Anomaly / PerformanceDiagnosis / CreativeAudit / BudgetEfficiency
+│   └── builtin/             # Built-in adapters for google_ads / meta_ads
 ├── analysis/                # Cross-platform analysis utilities
+│   ├── anomaly_detector.py  # Sample-size-gated anomaly detection (pure function)
 │   └── lp_analyzer.py       # Landing page analysis engine
 ├── context/                 # File-based context (STRATEGY.md, STATE.json)
-│   ├── models.py            # Immutable dataclasses (StrategyEntry, StateDocument)
+│   ├── models.py            # Immutable dataclasses (StrategyEntry, StateDocument, ActionLogEntry)
 │   ├── strategy.py          # STRATEGY.md parser / renderer
 │   ├── state.py             # STATE.json parser / renderer
 │   └── errors.py            # Context-related errors
+├── rollback/                # Allow-list-gated rollback with append-only audit trail
+├── byod/                    # BYOD bundle importer + CSV-backed clients
 ├── cli/                     # Typer CLI (setup + auth only)
 │   ├── main.py              # Entry point (mureo command)
-│   ├── setup_cmd.py         # mureo setup claude-code / cursor
+│   ├── setup_cmd.py         # mureo setup claude-code / cursor / codex / gemini
 │   └── auth_cmd.py          # mureo auth setup / status / check-*
 └── mcp/                     # MCP server
     ├── __main__.py                        # python -m mureo.mcp entry point
