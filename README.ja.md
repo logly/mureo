@@ -44,7 +44,29 @@ mureoは、**AI 広告運用のためのローカル制御平面（control plane
 
 ## セットアップを選ぶ
 
-mureo は **3 つのモード**(どのデータを使うか)× **3 つのホスト**(どこでエージェントを動かすか)で利用できます。該当するセルのコマンドを実行:
+### 簡単な方法: `pip install` + `mureo configure`
+
+ほとんどの場合、Claude 向けの mureo セットアップは 2 コマンドで完了します — **ターミナルで秘密情報を貼り付ける必要も、JSON を手で編集する必要もありません**:
+
+```bash
+pip install mureo
+mureo configure
+```
+
+`mureo configure` はローカル（`127.0.0.1` のランダムポートにバインド — 外部からはアクセス不可）にブラウザ UI を起動し、すべての手順を案内します:
+
+- **Claude アプリを選ぶ** — *Claude Code (CLI / Desktop アプリ)* または *Claude Desktop アプリ (Chat, Cowork)*; mureo がそのホスト用の正しい設定ファイルを書き込みます。
+- **基本セットアップ** — mureo MCP サーバ、認証情報ガードフック (Claude Code 用)、ワークフロースキルを 1 クリックで登録。
+- **プラットフォーム接続** — Google / Meta OAuth を同じウィンドウで対話的に完了（各コンソールへのディープリンクあり）、または GA4 サービスアカウントのパス / project id を貼り付け。値は `~/.mureo/credentials.json` に書き込まれます。
+- **公式 MCP プロバイダ** — Google Ads / GA4 の公式 MCP を `~/.claude.json` に登録。（Meta は OAuth dynamic client registration を持たない hosted MCP のため Claude Code の user-scope サーバとして接続できません。UI には代わりに Claude.ai のアカウントコネクタとして追加する方法が表示されます — 一度設定すれば Claude Code と Claude Desktop の両方で動作します。）
+- **プラットフォーム別ツールソース** — ダッシュボードのトグルで、各プラットフォームを mureo-native ツールと公式 MCP の間で切り替え。
+- **Demo / BYOD** — デモシナリオのスキャフォールド、または XLSX バンドルの取込みを同じ UI から実行。
+
+下記のターミナルフローも引き続き利用可能です（スクリプト化したい場合に有用）。`mureo configure` は同じ操作を行うフレンドリーな入口です。
+
+### 手動 / スクリプト用 (3 モード × 3 ホスト)
+
+mureo は **3 つのモード**(どのデータを使うか)× **3 つのホスト**(どこでエージェントを動かすか)で利用できます。該当するセルのコマンドを実行 — もしくは上記の `mureo configure` を使うだけでも OK:
 
 | | Claude Code | Claude Desktop チャット | Cowork (Desktop) |
 |---|---|---|---|
