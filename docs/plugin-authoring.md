@@ -321,9 +321,56 @@ time so the failure surfaces near the plugin, not deep inside the
 consuming UI.
 
 OAuth-level / operator-shared credentials (developer token, app
-secret, refresh token, MCC `login_customer_id`) intentionally do
-NOT live here — `account_credential_fields` is for the per-account
-slice only.
+secret, refresh token) intentionally do NOT live here —
+`account_credential_fields` is for the per-account slice only.
+
+#### Multiple account-level fields
+
+A provider can declare more than one `AccountCredentialField` when
+the per-account configuration genuinely requires multiple values.
+The built-in `GoogleAdsAdapter` is the canonical example: a single
+OAuth identity can reach accounts that live under different Manager
+(MCC) accounts, so both `customer_id` (which account to operate on)
+*and* `login_customer_id` (which manager account to route the call
+through) are per-account in that setup.
+
+```python
+account_credential_fields = (
+    AccountCredentialField(
+        key="customer_id",
+        display_name="Customer ID",
+        placeholder="123-456-7890",
+        required=True,
+        description=(
+            "10-digit Google Ads customer ID — find it in the "
+            "Google Ads UI top-right corner."
+        ),
+    ),
+    AccountCredentialField(
+        key="login_customer_id",
+        display_name="Login Customer ID (MCC)",
+        placeholder="987-654-3210",
+        required=False,
+        description=(
+            "Manager (MCC) Customer ID used as ``login_customer_id`` "
+            "when calling the API. Leave blank to inherit the "
+            "operator-wide MCC default; set per account when the "
+            "target ``customer_id`` resolves through a different MCC."
+        ),
+    ),
+)
+```
+
+Two patterns worth noting in the example:
+
+- **Required + optional mixed**: the primary identifier is `required=True`;
+  an additional field can be `required=False` so tooling falls back to
+  an operator-wide value when the per-account override is blank.
+- **Cross-reference**: the optional field's description points to where
+  the value comes from — for Google Ads, the `parent_id` returned by
+  `mureo.google_ads.list_accessible_accounts` for child accounts
+  reached via MCC traversal. Surfacing this in the description lets
+  tooling auto-populate the field from a discovery call.
 
 ### Domain Protocols (implement at least one)
 

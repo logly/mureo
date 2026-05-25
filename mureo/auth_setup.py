@@ -28,6 +28,21 @@ from google_auth_oauthlib.flow import Flow, InstalledAppFlow
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 from mureo.fsutil import secure_chmod
 
+# Backward-compat re-exports of the platform-level account-discovery
+# helpers that used to live in this module. The canonical homes are
+# now :mod:`mureo.google_ads.accounts` and :mod:`mureo.meta_ads.accounts`
+# (public-API surface for configure-wizard tooling and third-party
+# setup utilities). The legacy import paths
+# ``mureo.auth_setup.list_accessible_accounts`` /
+# ``mureo.auth_setup.list_meta_ad_accounts`` remain stable via these
+# aliases — existing callers do not need to change.
+from mureo.google_ads.accounts import (  # noqa: F401 — re-export
+    list_accessible_accounts,
+)
+from mureo.meta_ads.accounts import (  # noqa: F401 — re-export
+    list_meta_ad_accounts,
+)
+
 logger = logging.getLogger(__name__)
 
 _GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
@@ -86,14 +101,20 @@ def _select_account(
         return None
 
 
-_META_GRAPH_API_BASE = "https://graph.facebook.com/v21.0"
+# ``_META_GRAPH_API_BASE`` and ``_HTTP_TIMEOUT`` are now defined in
+# :mod:`mureo.meta_ads.accounts` (the public-API home for Meta account
+# discovery). Importing from there keeps a single source of truth so a
+# Graph API version bump only needs to land in one place.
+from mureo.meta_ads.accounts import (  # noqa: E402
+    _HTTP_TIMEOUT,
+    _META_GRAPH_API_BASE,
+)
+
 _META_AUTH_URL = "https://www.facebook.com/v21.0/dialog/oauth"
 _META_OAUTH_SCOPES = (
     "ads_management,ads_read,business_management,"
     "pages_show_list,pages_manage_ads,pages_read_engagement,leads_retrieval"
 )
-
-_HTTP_TIMEOUT = 30.0
 
 # Input function replaceable for testing
 input_func = input
@@ -360,151 +381,6 @@ async def run_google_oauth(
         refresh_token=credentials.refresh_token,
         access_token=credentials.token,
     )
-
-
-# ---------------------------------------------------------------------------
-# Account list retrieval
-# ---------------------------------------------------------------------------
-
-
-async def list_accessible_accounts(
-    credentials: GoogleAdsCredentials,
-) -> list[dict[str, Any]]:
-    """Retrieve the list of accessible accounts via Google Ads API.
-
-    Enumerates all accounts the user can operate on:
-    1. Directly accessible accounts (from listAccessibleCustomers).
-    2. Child accounts under any accessible Manager (MCC) account,
-       traversed via the customer_client table.
-
-    This handles the common case where a user has been granted access
-    only to an MCC, but needs to operate on its child client accounts.
-
-    Args:
-        credentials: Google Ads credentials
-
-    Returns:
-        List of account info dicts. Each dict contains:
-        - id: Customer ID (10-digit string)
-        - name: Descriptive name
-        - is_manager: True if this is an MCC account
-        - parent_id: Parent MCC ID for child accounts reached via
-          MCC traversal. None for directly accessible accounts.
-          Used as login_customer_id when operating on the account.
-    """
-    from google.ads.googleads.client import GoogleAdsClient
-    from google.oauth2.credentials import Credentials as OAuthCredentials
-
-    oauth_creds = OAuthCredentials(  # type: ignore[no-untyped-call]
-        token=None,
-        refresh_token=credentials.refresh_token,
-        client_id=credentials.client_id,
-        client_secret=credentials.client_secret,
-        token_uri="https://oauth2.googleapis.com/token",
-    )
-
-    def _make_client(login_cid: str | None = None) -> Any:
-        return GoogleAdsClient(
-            credentials=oauth_creds,
-            developer_token=credentials.developer_token,
-            login_customer_id=login_cid,
-        )
-
-    # Step 1: Get directly accessible accounts
-    base_client = _make_client(login_cid=credentials.login_customer_id)
-    try:
-        customer_service = base_client.get_service("CustomerService")
-        response = customer_service.list_accessible_customers()
-    except Exception:
-        logger.warning("Failed to retrieve account list", exc_info=True)
-        return []
-
-    accounts: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
-
-    def _add(
-        customer_id: str,
-        name: str,
-        is_manager: bool = False,
-        parent_id: str | None = None,
-    ) -> None:
-        if customer_id in seen_ids:
-            return
-        accounts.append(
-            {
-                "id": customer_id,
-                "name": name,
-                "is_manager": is_manager,
-                "parent_id": parent_id,
-            }
-        )
-        seen_ids.add(customer_id)
-
-    # Step 2: For each directly accessible account, get info and traverse
-    # children if it's an MCC
-    base_ga_service = base_client.get_service("GoogleAdsService")
-    for resource_name in response.resource_names:
-        customer_id = resource_name.split("/")[-1]
-
-        name = customer_id
-        is_manager = False
-        try:
-            query = (
-                "SELECT customer.descriptive_name, customer.manager "
-                "FROM customer LIMIT 1"
-            )
-            rows = base_ga_service.search(customer_id=customer_id, query=query)
-            for row in rows:
-                name = row.customer.descriptive_name or customer_id
-                is_manager = bool(row.customer.manager)
-                break
-        except Exception:
-            logger.debug(
-                "Failed to retrieve account info: %s", customer_id, exc_info=True
-            )
-
-        _add(customer_id, name, is_manager=is_manager, parent_id=None)
-
-        if not is_manager:
-            continue
-
-        # Step 3: Traverse child accounts under this MCC.
-        # Requires login_customer_id set to the MCC.
-        try:
-            mcc_client = _make_client(login_cid=customer_id)
-            mcc_ga_service = mcc_client.get_service("GoogleAdsService")
-            child_query = (
-                "SELECT "
-                "  customer_client.id, "
-                "  customer_client.descriptive_name, "
-                "  customer_client.manager, "
-                "  customer_client.level, "
-                "  customer_client.status "
-                "FROM customer_client "
-                "WHERE customer_client.status = 'ENABLED' "
-                "AND customer_client.level > 0"
-            )
-            child_rows = mcc_ga_service.search(
-                customer_id=customer_id, query=child_query
-            )
-            for child_row in child_rows:
-                child = child_row.customer_client
-                child_id = str(child.id)
-                child_name = child.descriptive_name or child_id
-                _add(
-                    child_id,
-                    child_name,
-                    is_manager=bool(child.manager),
-                    parent_id=customer_id,
-                )
-        except Exception:
-            logger.warning(
-                "Failed to retrieve child accounts for MCC %s",
-                customer_id,
-                exc_info=True,
-            )
-
-    return accounts
 
 
 # ---------------------------------------------------------------------------
@@ -1173,45 +1049,6 @@ async def _exchange_short_for_long_token(
             )
     except Exception as exc:
         raise RuntimeError(f"Failed to convert to Long-Lived Token: {exc}") from exc
-
-
-# ---------------------------------------------------------------------------
-# Meta ad account list retrieval
-# ---------------------------------------------------------------------------
-
-
-async def list_meta_ad_accounts(access_token: str) -> list[dict[str, Any]]:
-    """Retrieve ad account list via Graph API.
-
-    GET https://graph.facebook.com/v21.0/me/adaccounts?
-        fields=id,name,account_status&
-        access_token={access_token}
-
-    Args:
-        access_token: Meta Ads access token
-
-    Returns:
-        List of ad account dicts (id, name, account_status).
-
-    Raises:
-        RuntimeError: If ad account list retrieval fails.
-    """
-    params = {
-        "fields": "id,name,account_status",
-        "access_token": access_token,
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            response = await client.get(
-                f"{_META_GRAPH_API_BASE}/me/adaccounts",
-                params=params,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data.get("data", [])  # type: ignore[no-any-return]
-    except Exception as exc:
-        raise RuntimeError(f"Failed to retrieve ad account list: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------

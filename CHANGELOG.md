@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `login_customer_id` is now an optional account-level field on `GoogleAdsAdapter`
+
+`GoogleAdsAdapter.account_credential_fields` previously declared only `customer_id`. The MCC `login_customer_id` was treated as operator-shared (one MCC default per OAuth identity). That works for the common case but stranded the multi-MCC setup, where a single OAuth identity reaches accounts under different manager accounts and each child must be routed through its own MCC.
+
+This release adds `login_customer_id` as a second, **optional** field on the same declaration. Leave it blank to inherit the operator-wide MCC default (no behaviour change for existing setups); set it per account when the target `customer_id` resolves through a different MCC. The new `parent_id` returned by `mureo.google_ads.list_accessible_accounts` for child accounts reached via MCC traversal is exactly the value to populate into `login_customer_id`, so account-picker tooling can auto-fill the field from a discovery call.
+
+The `account_credential_fields` ABI is non-breaking — adding a new entry to the tuple is purely additive. Plugins that read the tuple iteratively keep working without modification.
+
+### Added — Public-API surface for accessible-account discovery
+
+`list_accessible_accounts(credentials)` (Google Ads) and `list_meta_ad_accounts(access_token)` (Meta) were previously defined inside `mureo.auth_setup` as helpers for the interactive OAuth wizard's account-picker step. They are now part of the public API surface so configure-UI tooling and third-party setup utilities can build account pickers without reaching into the wizard's internal module:
+
+- `mureo.google_ads.list_accessible_accounts` — re-exported from the new `mureo.google_ads.accounts` module. Enumerates directly accessible accounts plus child accounts reached via MCC traversal; child entries carry `parent_id` (the MCC used to reach the child), which doubles as the `login_customer_id` value to set on `GoogleAdsAdapter` per the new account-level field above.
+- `mureo.meta_ads.list_meta_ad_accounts` — re-exported from the new `mureo.meta_ads.accounts` module. Calls `GET /me/adaccounts` on the Graph API and returns the raw `data` array.
+
+Both functions keep their original signatures and `list[dict[str, Any]]` return shape. The legacy import paths (`mureo.auth_setup.list_accessible_accounts`, `mureo.auth_setup.list_meta_ad_accounts`) are preserved as documented backward-compat re-exports — existing callers do not need to change.
+
 ## [0.9.9] - 2026-05-23
 
 ### Added — Per-platform analytics module surface for external-integration platforms (#120)

@@ -203,21 +203,34 @@ def test_capabilities_match_exact_expected_set() -> None:
 @pytest.mark.unit
 def test_account_credential_fields_declared_for_customer_id() -> None:
     """Google Ads is per-account-identified by ``customer_id`` (10 digit,
-    optionally dash-separated). The declarative field lets generic
-    introspection tooling render setup prompts without hardcoding
-    per-provider knowledge."""
+    optionally dash-separated) plus an optional MCC ``login_customer_id``
+    that names the manager account the API call routes through. The
+    declarative fields let generic introspection tooling render setup
+    prompts without hardcoding per-provider knowledge."""
     from mureo.core.providers.credentials import AccountCredentialField
 
     fields = GoogleAdsAdapter.account_credential_fields  # type: ignore[attr-defined]
     assert isinstance(fields, tuple)
-    assert len(fields) == 1
-    field = fields[0]
-    assert isinstance(field, AccountCredentialField)
-    assert field.key == "customer_id"
-    assert field.required is True
+    by_key = {f.key: f for f in fields}
+    # Assert the contract on field *keys* rather than the tuple length
+    # so a future additive field doesn't break this test for non-reasons.
+    assert {"customer_id", "login_customer_id"} <= set(by_key)
+
+    customer = by_key["customer_id"]
+    assert isinstance(customer, AccountCredentialField)
+    assert customer.required is True
     # Placeholder shape is a hint, not a regex contract — assert it
     # carries the canonical Google Ads dashed form.
-    assert "123-456-7890" in field.placeholder
+    assert "123-456-7890" in customer.placeholder
+
+    login = by_key["login_customer_id"]
+    assert isinstance(login, AccountCredentialField)
+    # Optional — operator-wide MCC default is inherited when this is
+    # blank. Set per account only when the target customer_id resolves
+    # through a different MCC than the operator-wide default.
+    assert login.required is False
+    assert login.display_name  # human-readable label populated
+    assert login.description  # explains when to set vs leave blank
 
 
 @pytest.mark.unit

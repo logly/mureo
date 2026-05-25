@@ -108,11 +108,22 @@ class GoogleAdsAdapter:
             Capability.WRITE_CAMPAIGN_STATUS,
         }
     )
-    # Per-account credential the operator must supply for Google Ads.
-    # The MCC ``login_customer_id`` is intentionally NOT listed here —
-    # it identifies the operator's manager account and is typically
-    # shared across every Google Ads account the operator manages
-    # (operator-shared OAuth-level credential, not per-account).
+    # Per-account credentials the operator must supply for Google Ads.
+    #
+    # ``customer_id`` (required) identifies which Google Ads account to
+    # operate on.
+    #
+    # ``login_customer_id`` (optional) names the Manager (MCC) account
+    # used as the ``login_customer_id`` header when calling the Google
+    # Ads API. Leave blank to use the operator-wide default declared at
+    # the OAuth credential level (the common case where one MCC owns
+    # every reachable account). Set per account when the target
+    # ``customer_id`` is reached through a different MCC than the
+    # operator-wide default — i.e. the same OAuth identity has access
+    # to multiple manager accounts and each child resolves through its
+    # own MCC. ``mureo.google_ads.list_accessible_accounts`` populates
+    # ``parent_id`` with exactly this value for child accounts reached
+    # via MCC traversal.
     account_credential_fields: tuple[AccountCredentialField, ...] = (
         AccountCredentialField(
             key="customer_id",
@@ -122,6 +133,21 @@ class GoogleAdsAdapter:
             description=(
                 "10-digit Google Ads customer ID (with or without dashes). "
                 "Find it in the Google Ads UI top-right corner."
+            ),
+        ),
+        AccountCredentialField(
+            key="login_customer_id",
+            display_name="Login Customer ID (MCC)",
+            placeholder="987-654-3210",
+            required=False,
+            description=(
+                "Manager (MCC) Customer ID used as ``login_customer_id`` "
+                "when calling the Google Ads API for this account. Leave "
+                "blank to inherit the operator-wide MCC default. Set "
+                "when the target ``customer_id`` is owned by a manager "
+                "account different from that default — most often "
+                "populated automatically from the ``parent_id`` field "
+                "returned by ``mureo.google_ads.list_accessible_accounts``."
             ),
         ),
     )
