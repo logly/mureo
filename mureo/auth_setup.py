@@ -36,11 +36,14 @@ from mureo.fsutil import secure_chmod
 # ``mureo.auth_setup.list_accessible_accounts`` /
 # ``mureo.auth_setup.list_meta_ad_accounts`` remain stable via these
 # aliases — existing callers do not need to change.
-from mureo.google_ads.accounts import (  # noqa: F401 — re-export
-    list_accessible_accounts,
+#
+# ``as <same-name>`` is the PEP 484 explicit-re-export form mypy --strict
+# requires before a downstream module can import the symbol back out.
+from mureo.google_ads.accounts import (
+    list_accessible_accounts as list_accessible_accounts,
 )
-from mureo.meta_ads.accounts import (  # noqa: F401 — re-export
-    list_meta_ad_accounts,
+from mureo.meta_ads.accounts import (
+    list_meta_ad_accounts as list_meta_ad_accounts,
 )
 
 logger = logging.getLogger(__name__)
