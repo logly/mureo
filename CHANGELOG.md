@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.10] - 2026-05-25
+
 ### Added — `login_customer_id` is now an optional account-level field on `GoogleAdsAdapter`
 
 `GoogleAdsAdapter.account_credential_fields` previously declared only `customer_id`. The MCC `login_customer_id` was treated as operator-shared (one MCC default per OAuth identity). That works for the common case but stranded the multi-MCC setup, where a single OAuth identity reaches accounts under different manager accounts and each child must be routed through its own MCC.
