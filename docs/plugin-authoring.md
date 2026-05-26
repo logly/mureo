@@ -311,6 +311,7 @@ class MyAdsProvider:
 | `placeholder` | `""` | Example value shown in form inputs (never used as a default — auto-applying would surprise operators). |
 | `required` | `False` | When `True`, tooling may warn or block on a missing value. |
 | `description` | `""` | One-line operator-facing hint pointing at where the value comes from. |
+| `secret` | `False` | When `True`, consumers render a masked input and may pick tighter storage permissions. Use only when the per-account slice itself is sensitive (e.g. a per-account API key). See "Secret per-account fields" below. |
 
 The accessor `mureo.core.providers.get_account_credential_fields(provider)`
 reads the attribute defensively (returns `()` when absent) and
@@ -371,6 +372,43 @@ Two patterns worth noting in the example:
   `mureo.google_ads.list_accessible_accounts` for child accounts
   reached via MCC traversal. Surfacing this in the description lets
   tooling auto-populate the field from a discovery call.
+
+#### Secret per-account fields
+
+When a per-account field carries a secret value (API key, per-account
+OAuth token, etc.) rather than a public identifier, set
+`secret=True`. Consumers — configure wizards, third-party setup UIs —
+use the flag to:
+
+- Render the value as a masked / password-style input.
+- Avoid pre-populating the value on edit / re-display (a blank input
+  conventionally means "keep the existing value").
+- Choose tighter storage permissions, typically `0o600`, when the
+  value lands in a file rather than an injected `SecretStore`.
+
+```python
+account_credential_fields = (
+    AccountCredentialField(
+        key="api_key",
+        display_name="API Key",
+        placeholder="advertiser_api_key_xxxx",
+        required=True,
+        secret=True,
+        description=(
+            "Per-account API key sent in the X-API-Key header on "
+            "every request. Each account has its own key."
+        ),
+    ),
+)
+```
+
+The OSS-shipped `GoogleAdsAdapter` and `MetaAdsAdapter` do **not**
+use `secret=True` — their per-account fields are public identifiers
+(`customer_id`, `ad_account_id`, `login_customer_id`); the sensitive
+material (refresh tokens, system user tokens) is operator-shared and
+lives in the `SecretStore` base layer, not in
+`account_credential_fields`. Use `secret=True` when the per-account
+slice itself is the secret.
 
 ### Domain Protocols (implement at least one)
 

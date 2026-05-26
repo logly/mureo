@@ -47,6 +47,20 @@ class AccountCredentialField:
             the value comes from (e.g., ``"From Google Ads UI >
             Settings > Account details > Customer ID"``).
             Default: ``""``.
+        secret: ``True`` when the field carries a secret value (API
+            key, per-account OAuth token, etc.) rather than a public
+            identifier (``customer_id``, ``ad_account_id``, …). Like
+            the other attributes this flag is declarative metadata
+            only — mureo itself does not redact or remask the value.
+            Consumers — configure wizards, third-party setup UIs —
+            can use this flag to render a masked input, redact the
+            value in logs, and choose tighter storage permissions
+            (typically ``0o600``). Default: ``False`` — most
+            per-account fields are non-secret identifiers, and the
+            OSS-shipped ``GoogleAdsAdapter`` / ``MetaAdsAdapter``
+            leave secret material (refresh tokens, system user
+            tokens) in the operator-shared ``SecretStore`` layer
+            rather than declaring it here.
 
     The dataclass is JSON-friendly: ``dataclasses.asdict(field)``
     returns a plain ``dict`` of primitive ``str`` / ``bool`` values
@@ -58,6 +72,7 @@ class AccountCredentialField:
     placeholder: str = ""
     required: bool = False
     description: str = ""
+    secret: bool = False
 
 
 __all__ = ["AccountCredentialField"]

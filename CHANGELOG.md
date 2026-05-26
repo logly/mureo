@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.12] - 2026-05-26
+
+### Added — `AccountCredentialField` gains optional `secret: bool` flag
+
+`AccountCredentialField` (introduced in v0.9.7 to let providers declare per-account credential fields) gains an optional `secret: bool = False` attribute. It lets a provider mark a per-account field as a secret value (API key, per-account OAuth token, etc.) rather than a public identifier.
+
+Consumers — configure wizards, third-party setup UIs — read the flag to render a masked input, avoid pre-populating the value on edit, and choose tighter storage permissions (typically `0o600`) when the value lands in a file. The flag defaults to `False`, so existing plugin and built-in declarations continue to work unchanged.
+
+The OSS-shipped `GoogleAdsAdapter` and `MetaAdsAdapter` do not declare any field with `secret=True` — their per-account fields are public identifiers and the sensitive material lives in the operator-shared `SecretStore` layer. The flag exists for plugins whose authentication model places the secret inside the per-account slice (e.g. ad platforms with one API key per account).
+
+`docs/plugin-authoring.md` documents the new flag under "Secret per-account fields".
+
 ## [0.9.11] - 2026-05-26
 
 ### Fixed — `list_accessible_accounts` resolves name + manager flag for customers outside the operator-default MCC

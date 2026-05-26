@@ -32,12 +32,50 @@ def test_construct_with_required_and_optional_fields() -> None:
 
 @pytest.mark.unit
 def test_optional_fields_default_to_documented_values() -> None:
-    """``placeholder``, ``required``, ``description`` are optional with
-    well-defined defaults so a provider can declare a single line."""
+    """``placeholder``, ``required``, ``description``, ``secret`` are
+    optional with well-defined defaults so a provider can declare a
+    single line."""
     field = AccountCredentialField(key="account_id", display_name="Account ID")
     assert field.placeholder == ""
     assert field.required is False
     assert field.description == ""
+    assert field.secret is False
+
+
+@pytest.mark.unit
+def test_secret_flag_can_be_set_to_true() -> None:
+    """``secret=True`` lets a provider declare an API-key-shaped field
+    so consumers (configure wizards, third-party setup UIs) can render
+    a masked input and choose tighter storage permissions."""
+    field = AccountCredentialField(
+        key="api_key",
+        display_name="API Key",
+        placeholder="advertiser_api_key_xxxx",
+        required=True,
+        secret=True,
+        description="Per-account API key sent in the X-API-Key header.",
+    )
+    assert field.secret is True
+    assert field.required is True
+
+
+@pytest.mark.unit
+def test_secret_flag_serialises_in_asdict() -> None:
+    """``secret`` must round-trip through ``dataclasses.asdict`` so
+    consumers receiving the field over an HTTP / JSON boundary can
+    react to the flag without reflection."""
+    field = AccountCredentialField(
+        key="api_key",
+        display_name="API Key",
+        required=True,
+        secret=True,
+    )
+    payload = asdict(field)
+    assert payload["secret"] is True
+    # Public identifiers default to ``secret=False`` so existing
+    # built-in declarations stay non-secret without a code change.
+    other = AccountCredentialField(key="customer_id", display_name="Customer ID")
+    assert asdict(other)["secret"] is False
 
 
 @pytest.mark.unit
@@ -66,6 +104,7 @@ def test_asdict_is_json_friendly() -> None:
         "placeholder": "act_123",
         "required": True,
         "description": "hint",
+        "secret": False,
     }
     # Verify no exotic types slipped in.
     for value in payload.values():
