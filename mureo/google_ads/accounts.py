@@ -115,10 +115,21 @@ async def list_accessible_accounts(
         seen_ids.add(customer_id)
 
     # Step 2: For each directly accessible account, get info and traverse
-    # children if it's an MCC
-    base_ga_service = base_client.get_service("GoogleAdsService")
+    # children if it's an MCC.
+    #
+    # ``listAccessibleCustomers`` can return customers reachable via a
+    # manager-link to an MCC other than ``credentials.login_customer_id``
+    # — direct access to those customers requires the request's
+    # ``login_customer_id`` header to match their own MCC context, not
+    # the operator-wide default. Build a fresh client per customer so
+    # both the info query and the child traversal run against the
+    # right context; the operator-default ``base_client`` is reserved
+    # for the ``listAccessibleCustomers`` call itself.
     for resource_name in response.resource_names:
         customer_id = resource_name.split("/")[-1]
+
+        own_client = _make_client(login_cid=customer_id)
+        own_ga_service = own_client.get_service("GoogleAdsService")
 
         name = customer_id
         is_manager = False
@@ -127,7 +138,7 @@ async def list_accessible_accounts(
                 "SELECT customer.descriptive_name, customer.manager "
                 "FROM customer LIMIT 1"
             )
-            rows = base_ga_service.search(customer_id=customer_id, query=query)
+            rows = own_ga_service.search(customer_id=customer_id, query=query)
             for row in rows:
                 name = row.customer.descriptive_name or customer_id
                 is_manager = bool(row.customer.manager)
@@ -142,11 +153,9 @@ async def list_accessible_accounts(
         if not is_manager:
             continue
 
-        # Step 3: Traverse child accounts under this MCC.
-        # Requires login_customer_id set to the MCC.
+        # Step 3: Traverse child accounts under this MCC. Same client
+        # already has ``login_customer_id`` set to the MCC.
         try:
-            mcc_client = _make_client(login_cid=customer_id)
-            mcc_ga_service = mcc_client.get_service("GoogleAdsService")
             child_query = (
                 "SELECT "
                 "  customer_client.id, "
@@ -158,7 +167,7 @@ async def list_accessible_accounts(
                 "WHERE customer_client.status = 'ENABLED' "
                 "AND customer_client.level > 0"
             )
-            child_rows = mcc_ga_service.search(
+            child_rows = own_ga_service.search(
                 customer_id=customer_id, query=child_query
             )
             for child_row in child_rows:

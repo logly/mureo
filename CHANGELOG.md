@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.11] - 2026-05-26
+
+### Fixed — `list_accessible_accounts` resolves name + manager flag for customers outside the operator-default MCC
+
+`mureo.google_ads.list_accessible_accounts` queried every customer returned by `listAccessibleCustomers` through the operator-wide `credentials.login_customer_id`. Customers reachable only via a manager-link to a different MCC could not be queried with that header — the Google Ads API rejects the request — so they silently fell back to the raw customer ID for `name` and `False` for `is_manager`, and their child accounts were never traversed.
+
+The fix builds a fresh client per customer with the customer's own ID as `login_customer_id` for both the info query and the child traversal. The operator-default `base_client` is now used only for `listAccessibleCustomers` itself. The function's signature and return shape are unchanged.
+
 ## [0.9.10] - 2026-05-25
 
 ### Added — `login_customer_id` is now an optional account-level field on `GoogleAdsAdapter`
