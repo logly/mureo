@@ -266,9 +266,7 @@ def test_save_rejects_unknown_provider(
     store = _store(tmp_path)
 
     with pytest.raises(UnknownProviderError):
-        save_plugin_credentials(
-            "ghost", {"api_key": "x"}, secret_store=store
-        )
+        save_plugin_credentials("ghost", {"api_key": "x"}, secret_store=store)
     # No file written.
     assert not (tmp_path / "credentials.json").exists()
 
@@ -287,9 +285,7 @@ def test_save_drops_unknown_field_keys(
         [
             _entry(
                 "demo_ads",
-                fields=(
-                    AccountCredentialField(key="api_key", display_name="API Key"),
-                ),
+                fields=(AccountCredentialField(key="api_key", display_name="API Key"),),
             )
         ],
     )
@@ -574,9 +570,7 @@ def test_save_rejects_required_field_absent_from_payload(
     )
     store = _store(tmp_path)
     with pytest.raises(RequiredFieldMissingError):
-        save_plugin_credentials(
-            "demo_ads", {"label": "L1"}, secret_store=store
-        )
+        save_plugin_credentials("demo_ads", {"label": "L1"}, secret_store=store)
 
 
 @pytest.mark.unit
@@ -596,9 +590,7 @@ def test_save_rejects_non_string_values(
         [
             _entry(
                 "demo_ads",
-                fields=(
-                    AccountCredentialField(key="api_key", display_name="API"),
-                ),
+                fields=(AccountCredentialField(key="api_key", display_name="API"),),
             )
         ],
     )

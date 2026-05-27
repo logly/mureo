@@ -459,9 +459,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if not isinstance(raw_values, dict):
             send_error_json(self, 400, "invalid_values")
             return
-        store = FilesystemSecretStore(
-            path=self.wizard.host_paths.credentials_path
-        )
+        store = FilesystemSecretStore(path=self.wizard.host_paths.credentials_path)
         try:
             result = save_plugin_credentials(
                 provider_name, raw_values, secret_store=store

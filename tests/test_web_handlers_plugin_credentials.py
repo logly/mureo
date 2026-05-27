@@ -307,6 +307,4 @@ def test_post_save_blank_secret_keeps_existing(
     assert body["accepted_keys"] == ["account_id"]
 
     on_disk = json.loads(credentials_path.read_text())
-    assert on_disk == {
-        "demo_ads": {"api_key": "previous", "account_id": "new-label"}
-    }
+    assert on_disk == {"demo_ads": {"api_key": "previous", "account_id": "new-label"}}
