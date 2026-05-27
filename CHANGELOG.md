@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.13] - 2026-05-27
+
+### Added — `mureo configure` UI registers plugin per-account credentials
+
+The configure-UI dashboard gains a "Plugin credentials" section under Setup. For every installed provider (built-in or third-party) that declares non-empty `account_credential_fields`, the section renders one collapsible form. Each declared field becomes an input: `secret=True` fields render as `<input type="password">` with a "leave blank to keep current value" placeholder; non-secret fields render as plain text inputs. Submitting persists the values to `~/.mureo/credentials.json` at `{<provider_name>: {<field_key>: <value>}}` — the same JSON shape built-in Google Ads / Meta Ads adapters already read via `FilesystemSecretStore`, so plugins pick up the values without additional wiring.
+
+Two new HTTP endpoints back the UI:
+
+- `GET /api/credentials/plugins` — JSON list of `{provider_name, display_name, fields: [...]}` for every provider with declared fields, sorted by `provider_name`.
+- `POST /api/credentials/plugins/save` — write one provider's values. The response envelope is `{status: "ok", provider_name, accepted_keys: [...]}` where `accepted_keys` is the subset of keys this call actually changed. Unknown providers return `400 unknown_provider`; non-string values return `400 invalid_field_value`; `required=True` fields with no value to persist return `400 required_field_missing`; unknown field keys (a UI lagging behind the plugin's schema) are silently dropped; blank values for `secret=True` fields are treated as "keep existing" so an edit form does not force the operator to re-enter the API key — but only when an existing value is already stored, otherwise the field falls under the `required` check.
+
+The new module `mureo.web.plugin_credentials` exposes the same two operations as a Python API for programmatic callers. Secret values never appear in mureo's log output; only the list of saved field keys is logged for auditability.
+
+This closes [#149](https://github.com/logly/mureo/issues/149) Part 2 (Part 1 — the `secret: bool` flag on `AccountCredentialField` — shipped in v0.9.12).
+
 ## [0.9.12] - 2026-05-26
 
 ### Added — `AccountCredentialField` gains optional `secret: bool` flag

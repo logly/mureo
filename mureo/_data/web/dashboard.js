@@ -856,9 +856,127 @@
     renderBasicSection(status);
     renderNativeSection(status);
     renderProvidersSection(status);
+    renderPluginCredentials();
     renderEnvVarsSection(status);
     loadDemoScenarios();
     renderByodStatus();
+  }
+
+  // Plugin credentials section — one collapsible form per provider
+  // declaring AccountCredentialField entries. Fetches once per render
+  // call. secret=True fields render as type="password" and submit
+  // blank → "keep existing value" per the helper's contract.
+  async function renderPluginCredentials() {
+    const container = document.querySelector(
+      "[data-dashboard-plugin-credentials-list]"
+    );
+    if (!container) return;
+    container.textContent = "";
+    let plugins = [];
+    try {
+      const res = await fetch("/api/credentials/plugins", { credentials: "same-origin" });
+      if (!res.ok) throw new Error("status " + res.status);
+      const body = await res.json();
+      plugins = Array.isArray(body.plugins) ? body.plugins : [];
+    } catch (_e) {
+      // Silent failure — section is non-critical. Other dashboard
+      // sections continue to function.
+      return;
+    }
+    if (plugins.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.setAttribute("data-i18n", "dashboard.plugin_credentials_empty");
+      empty.textContent = MUREO.t("dashboard.plugin_credentials_empty");
+      container.appendChild(empty);
+      return;
+    }
+    plugins.forEach(function (plugin) {
+      container.appendChild(buildPluginCredentialsForm(plugin));
+    });
+  }
+
+  function buildPluginCredentialsForm(plugin) {
+    const wrap = document.createElement("details");
+    wrap.className = "plugin-credentials-form";
+    const summary = document.createElement("summary");
+    summary.textContent = plugin.display_name;
+    wrap.appendChild(summary);
+
+    const form = document.createElement("form");
+    plugin.fields.forEach(function (field) {
+      const label = document.createElement("label");
+      const labelText = document.createElement("span");
+      labelText.textContent = field.display_name;
+      if (field.required) labelText.textContent += " *";
+      label.appendChild(labelText);
+      const input = document.createElement("input");
+      input.name = field.key;
+      input.type = field.secret ? "password" : "text";
+      // ``new-password`` defeats browser autofill of saved site
+      // passwords into the per-account credential input — ``off`` is
+      // ignored by Safari/Chrome on password inputs.
+      input.autocomplete = field.secret ? "new-password" : "off";
+      if (field.secret) {
+        input.placeholder = MUREO.t(
+          "dashboard.plugin_credentials_secret_placeholder"
+        );
+      } else if (field.placeholder) {
+        input.placeholder = field.placeholder;
+      }
+      label.appendChild(input);
+      if (field.description) {
+        const hint = document.createElement("small");
+        hint.className = "field-hint";
+        hint.textContent = field.description;
+        label.appendChild(hint);
+      }
+      form.appendChild(label);
+    });
+
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.className = "btn btn-primary";
+    submit.textContent = MUREO.t("dashboard.plugin_credentials_save");
+    form.appendChild(submit);
+
+    form.addEventListener("submit", function (evt) {
+      evt.preventDefault();
+      const values = {};
+      Array.from(form.querySelectorAll("input")).forEach(function (input) {
+        values[input.name] = input.value;
+      });
+      submitPluginCredentials(plugin.provider_name, values, form);
+    });
+    wrap.appendChild(form);
+    return wrap;
+  }
+
+  async function submitPluginCredentials(providerName, values, form) {
+    let res;
+    try {
+      res = await MUREO.postJson("/api/credentials/plugins/save", {
+        provider_name: providerName,
+        values: values,
+      });
+    } catch (_e) {
+      MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"));
+      return;
+    }
+    // ``postJson`` returns ``{ok, status: <HTTP code>, body}`` — the
+    // server's logical ``"ok"`` envelope lives inside ``body.status``.
+    if (res && res.ok && res.body && res.body.status === "ok") {
+      MUREO.toast(MUREO.t("dashboard.plugin_credentials_saved"));
+      // Clear secret inputs so the next view starts from the "keep
+      // existing" baseline rather than the just-typed plain text.
+      Array.from(form.querySelectorAll('input[type="password"]')).forEach(
+        function (input) {
+          input.value = "";
+        }
+      );
+    } else {
+      MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"));
+    }
   }
 
   document.addEventListener("mureo:ready", function () {
