@@ -21,6 +21,8 @@ Routes
 ``POST /api/providers/native-toggle`` → switch a platform native↔official
 ``POST /api/providers/remove``   → remove one official MCP entry
 ``POST /api/credentials/env-var``→ write one env var into credentials
+``GET  /api/credentials/plugins``→ list plugins declaring per-account fields
+``POST /api/credentials/plugins/save`` → save one plugin's credentials
 ``POST /api/oauth/<p>/start``    → spawn WebAuthWizard, return consent URL
 ``POST /api/legacy/cleanup``     → delete legacy slash commands
 ``GET  /api/demo/scenarios``     → list registered demo scenarios
@@ -43,6 +45,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Any
 
+from mureo.core.secret_store import FilesystemSecretStore
 from mureo.web._helpers import (
     compare_csrf,
     host_header_ok,
@@ -71,6 +74,13 @@ from mureo.web.extensions import (
 )
 from mureo.web.legacy_commands import remove_legacy_commands
 from mureo.web.native_picker import pick_directory, pick_file
+from mureo.web.plugin_credentials import (
+    InvalidFieldValueError,
+    RequiredFieldMissingError,
+    UnknownProviderError,
+    list_plugin_credential_fields,
+    save_plugin_credentials,
+)
 from mureo.web.session import OAUTH_PROVIDERS, SUPPORTED_HOSTS
 from mureo.web.setup_actions import (
     clear_all_setup,
@@ -273,6 +283,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if path == "/api/byod/status":
             send_json(self, byod_status().as_dict())
             return
+        if path == "/api/credentials/plugins":
+            send_json(self, {"plugins": list_plugin_credential_fields()})
+            return
         match = _OAUTH_PROVIDER_RE.match(path)
         if match is not None and match.group("verb") == "status":
             self._serve_oauth_status(match.group("provider"))
@@ -430,6 +443,46 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     def _post_setup_basic_clear(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         envelope = clear_all_setup(home=self.wizard.home, host=self.wizard.session.host)
         send_json(self, envelope)
+
+    def _post_plugin_credentials_save(self, payload: dict[str, Any]) -> None:
+        """Persist one plugin provider's per-account credential values.
+
+        Maps :class:`UnknownProviderError` to ``400 unknown_provider``
+        and :class:`InvalidFieldValueError` to ``400 invalid_field_value``
+        so a stale UI gets a clean envelope instead of a 500.
+        """
+        provider_name = str(payload.get("provider_name", "")).strip()
+        if not provider_name:
+            send_error_json(self, 400, "provider_name_required")
+            return
+        raw_values = payload.get("values", {})
+        if not isinstance(raw_values, dict):
+            send_error_json(self, 400, "invalid_values")
+            return
+        store = FilesystemSecretStore(
+            path=self.wizard.host_paths.credentials_path
+        )
+        try:
+            result = save_plugin_credentials(
+                provider_name, raw_values, secret_store=store
+            )
+        except UnknownProviderError:
+            send_error_json(self, 400, "unknown_provider")
+            return
+        except InvalidFieldValueError:
+            send_error_json(self, 400, "invalid_field_value")
+            return
+        except RequiredFieldMissingError:
+            send_error_json(self, 400, "required_field_missing")
+            return
+        send_json(
+            self,
+            {
+                "status": "ok",
+                "provider_name": provider_name,
+                "accepted_keys": sorted(result["accepted_keys"]),
+            },
+        )
 
     def _post_providers_install(self, payload: dict[str, Any]) -> None:
         provider_id = str(payload.get("provider_id", "")).strip()
@@ -733,6 +786,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/providers/remove": _post_providers_remove,
         "/api/credentials/env-var": _post_env_var,
         "/api/credentials/remove": _post_credentials_remove,
+        "/api/credentials/plugins/save": _post_plugin_credentials_save,
         "/api/legacy/cleanup": _post_legacy_cleanup,
         "/api/demo/init": _post_demo_init,
         "/api/byod/import": _post_byod_import,
