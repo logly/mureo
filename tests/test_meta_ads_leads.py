@@ -272,9 +272,11 @@ class TestGetLeads:
     async def test_get_leads_paginates_through_next_cursor(
         self, client: LeadsMixin
     ) -> None:
-        """``paging.next`` がある間は ``after`` cursor で繰り返し取得し、
-        全件を結合して返す。limit=100 を超える form でも silently
-        truncate しないこと (export_leads_to_csv と挙動を揃える)。"""
+        """Follow ``paging.next`` cursors via the ``after`` token,
+        concatenate the results, and return them all. Forms with
+        more than ``limit`` leads must NOT be silently truncated —
+        ``get_leads`` should match ``export_leads_to_csv``'s
+        pagination behaviour."""
         page_1 = {
             "data": [{"id": f"lead_{i}", "field_data": []} for i in range(2)],
             "paging": {
@@ -294,7 +296,8 @@ class TestGetLeads:
         result = await client.get_leads("form_1")
         assert [r["id"] for r in result] == ["lead_0", "lead_1", "lead_2"]
         assert client._get.await_count == 2
-        # 2 回目は after cursor だけ更新して同じ相対 path に
+        # Second call keeps the same relative path; only ``after``
+        # is updated.
         second_call = client._get.await_args_list[1]
         assert second_call.args[0] == "/form_1/leads"
         assert second_call.args[1].get("after") == "CUR_A"
@@ -348,7 +351,7 @@ class TestGetAdLeads:
     async def test_get_ad_leads_paginates_through_next_cursor(
         self, client: LeadsMixin
     ) -> None:
-        """get_leads と同じ paging.next 追跡を行うこと"""
+        """Identical ``paging.next`` traversal to :func:`get_leads`."""
         page_1 = {
             "data": [{"id": "lead_a", "field_data": []}],
             "paging": {
@@ -884,12 +887,13 @@ class TestDuplicateLeadForm:
     async def test_duplicate_lead_form_copies_advanced_fields(
         self, client: LeadsMixin
     ) -> None:
-        """PR 3 で追加した advanced fields (context_card / thank_you_page
-        / is_higher_intent / conditional_questions_choices) を持つ source
-        form を duplicate すると、それらも新 form に引き継がれること。
+        """A source form carrying the PR 3 advanced fields
+        (``context_card`` / ``thank_you_page`` / ``is_higher_intent`` /
+        ``conditional_questions_choices``) must round-trip those
+        fields onto the new form when duplicated.
 
-        PR 2 の docstring で『PR 3 で widen する』と書いた約束を、
-        PR 4 で履行する。
+        This fulfils the v0.9.15 docstring promise that "PR 3 will
+        widen the copied surface", which was deferred at the time.
         """
         source = {
             "id": "form_1",
@@ -938,9 +942,9 @@ class TestDuplicateLeadForm:
     async def test_duplicate_lead_form_skips_absent_advanced_fields(
         self, client: LeadsMixin
     ) -> None:
-        """advanced fields を持たない source form の duplicate では、
-        payload に余計な空 field を増やさない (=既存の backcompat shape
-        を維持)。
+        """A source form without the advanced fields produces a
+        payload that does not gain extra empty keys — preserves the
+        backward-compatible shape pinned by earlier tests.
         """
         source = {
             "id": "form_1",
@@ -965,8 +969,9 @@ class TestDuplicateLeadForm:
     async def test_duplicate_lead_form_higher_intent_false_not_sent(
         self, client: LeadsMixin
     ) -> None:
-        """is_higher_intent=False の source は payload に True を立て
-        ない (= Meta デフォルトと一致するので omit)。"""
+        """``is_higher_intent=False`` on the source is elided from
+        the payload — it matches Meta's default, so omitting it
+        keeps the request body minimal."""
         source = {
             "id": "form_1",
             "name": "原本",
@@ -1518,8 +1523,10 @@ class TestExportLeadsToCsv:
         client: LeadsMixin,
         tmp_path: pytest.TempPathFactory,
     ) -> None:
-        """非標準形 (after= が欠落した paging.next) では即終了 — 無限
-        ループに陥らないことを pin。"""
+        """A non-standard ``paging.next`` URL missing the ``after``
+        query parameter must terminate the loop immediately — pins
+        the defensive break path so we never infinite-loop on a
+        malformed cursor."""
         from pathlib import Path
 
         form = {
@@ -1535,7 +1542,7 @@ class TestExportLeadsToCsv:
                     "field_data": [{"name": "email", "values": ["a@x.io"]}],
                 }
             ],
-            # next 自体は存在するが after クエリ無し
+            # ``next`` is present but has no ``after=`` query.
             "paging": {
                 "next": "https://graph.facebook.com/v23.0/form_1/leads?foo=bar"
             },
@@ -1545,7 +1552,7 @@ class TestExportLeadsToCsv:
         out: Path = tmp_path / "out.csv"  # type: ignore[assignment]
         count = await client.export_leads_to_csv("form_1", out)
         assert count == 1
-        # form fetch + 1 page fetch = 2 calls (3 回目以降は呼ばれない)
+        # form fetch + 1 page fetch = 2 calls; no third call.
         assert client._get.await_count == 2
 
     @pytest.mark.asyncio

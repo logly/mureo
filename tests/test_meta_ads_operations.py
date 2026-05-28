@@ -537,11 +537,11 @@ class TestCreativesMixin:
     async def test_create_lead_ad_creative_rejects_video_and_image_together(
         self, client
     ) -> None:
-        """video_id と (image_url が指定されていて image_hash が未設定) の
-        組み合わせは曖昧。Meta は video_data.image_hash を thumbnail として
-        受けるので image_hash 単独は OK だが、image_url の auto-upload は
-        video モードでは適用しない (caller の意図が読めない)。
-        """
+        """``video_id`` plus ``image_url`` is ambiguous. ``image_url``'s
+        auto-upload semantics belong to image mode; video mode wants
+        an explicit thumbnail ``image_hash``. The helper rejects
+        the combination at the call site rather than silently
+        picking one branch."""
         with pytest.raises(ValueError) as excinfo:
             await client.create_lead_ad_creative(
                 "LeadCreativeBoth",
