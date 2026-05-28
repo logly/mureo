@@ -279,7 +279,7 @@ class CreativesMixin:
             "link_data": link_data,
         }
 
-        data: dict[str, Any] = {
+        data = {
             "name": name,
             "object_story_spec": json.dumps(object_story_spec),
         }
