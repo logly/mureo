@@ -7,9 +7,14 @@ Lead data contains PII and is not logged.
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qs, urlparse
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,21 @@ _LEAD_FIELDS = "id,created_time,field_data,ad_id,ad_name,form_id"
 # values (``DRAFT``, ``DELETED``, ``DELETION_PENDING``) appear in
 # read paths but cannot be set by an operator.
 _VALID_FORM_STATUSES: frozenset[str] = frozenset({"ACTIVE", "ARCHIVED"})
+
+# Characters that turn a CSV cell into a live formula in
+# Excel / Sheets / Numbers. Prepending a single-quote disarms the
+# injection without breaking the visible value for spreadsheet users.
+_CSV_INJECTION_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value: str) -> str:
+    """Escape leading characters that would otherwise be interpreted
+    as a spreadsheet formula. Idempotent — re-escaping the result is
+    a no-op because the leading single quote is itself benign.
+    """
+    if value and value[0] in _CSV_INJECTION_PREFIXES:
+        return "'" + value
+    return value
 
 
 class LeadsMixin:
@@ -94,19 +114,54 @@ class LeadsMixin:
         *,
         follow_up_action_url: str | None = None,
         locale: str | None = None,
+        context_card: dict[str, Any] | None = None,
+        thank_you_page: dict[str, Any] | None = None,
+        is_higher_intent: bool = False,
+        conditional_questions_choices: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Create a lead form
+        """Create a lead form.
 
         Args:
-            page_id: Facebook page ID
-            name: Form name
-            questions: List of questions (FULL_NAME, EMAIL, PHONE_NUMBER, COMPANY_NAME, CUSTOM, etc.)
-            privacy_policy_url: Privacy policy URL
-            follow_up_action_url: Redirect URL after form submission
-            locale: Locale
+            page_id: Facebook page ID.
+            name: Form name shown in Ads Manager and Lead Center.
+            questions: Ordered list of question dicts. Standard
+                types (``FULL_NAME``, ``EMAIL``, ``PHONE_NUMBER``,
+                ``COMPANY_NAME``, ``JOB_TITLE``, ``CITY``, ``STATE``,
+                ``ZIP_CODE``, ``COUNTRY``, ``DATE_OF_BIRTH``) only
+                need ``type``; ``CUSTOM`` questions require ``key``,
+                ``label``, and (for dropdowns) ``options``.
+            privacy_policy_url: HTTPS URL of the advertiser's
+                privacy policy. Required by Meta policy.
+            follow_up_action_url: Optional redirect URL shown after
+                submission. Omit for Meta's default confirmation.
+            locale: Optional form locale (e.g. ``"ja_JP"``).
+            context_card: Optional intro / welcome screen shown
+                before the form. Expected shape:
+                ``{"title": "...", "content": "...",
+                "style": "PARAGRAPH_STYLE" | "LIST_STYLE",
+                "cover_photo_id": "..."}``. Meta lifts conversion
+                rates measurably when an intro is supplied.
+            thank_you_page: Optional custom completion screen with
+                a CTA. Expected shape (subset):
+                ``{"title": "...", "body": "...",
+                "button_type": "VIEW_WEBSITE" | "CALL_BUSINESS" |
+                "MESSAGE_BUSINESS" | "DOWNLOAD" | "DOWNLOAD_APP",
+                "website_url": "...", "button_text": "..."}``.
+                Replaces ``follow_up_action_url``'s simple redirect.
+            is_higher_intent: When ``True``, Meta renders a 3-step
+                form (input → review → submit) which trims junk
+                submissions at the cost of total leads volume.
+                Default ``False`` (single-step standard form).
+            conditional_questions_choices: Branching logic — list of
+                entries that, given a prior question's value, choose
+                which question to ask next. Each entry's expected
+                shape: ``{"question": "<key>", "value": "<choice>",
+                "next_question_key": "<key>"}``. Mureo passes the
+                value through unchanged; Meta validates the keys
+                refer to real questions.
 
         Returns:
-            Created lead form information.
+            Created lead form info dict.
         """
         data: dict[str, Any] = {
             "name": name,
@@ -118,6 +173,16 @@ class LeadsMixin:
             data["follow_up_action_url"] = follow_up_action_url
         if locale is not None:
             data["locale"] = locale
+        if context_card is not None:
+            data["context_card"] = json.dumps(context_card)
+        if thank_you_page is not None:
+            data["thank_you_page"] = json.dumps(thank_you_page)
+        if is_higher_intent:
+            data["is_higher_intent"] = True
+        if conditional_questions_choices is not None:
+            data["conditional_questions_choices"] = json.dumps(
+                conditional_questions_choices
+            )
 
         logger.info(
             "Lead form creation: page_id=%s, name=%s",
@@ -288,3 +353,121 @@ class LeadsMixin:
         leads = result.get("data", [])
         logger.info("Lead data by ad: ad_id=%s, count=%d", ad_id, len(leads))
         return leads  # type: ignore[no-any-return]
+
+    async def export_leads_to_csv(
+        self,
+        form_id: str,
+        output_path: Path,
+        *,
+        limit: int = 1000,
+        field_order: list[str] | None = None,
+    ) -> int:
+        """Fetch all leads for a form and write them to a CSV file.
+
+        The header row is ``["id", "created_time", *field_keys]``.
+        ``field_keys`` is derived from the form's declared questions
+        in declared order — for standard questions without an
+        explicit ``key`` (the common case) Meta's wire format uses
+        the lowercased ``type`` (``"EMAIL"`` → ``"email"``), so the
+        helper aligns column names with ``field_data[].name``. Pass
+        ``field_order`` to lock a different column order — useful
+        when the operator wants a stable CRM-import schema
+        regardless of future form edits.
+
+        Pagination is followed automatically: the helper calls
+        ``/{form_id}/leads?fields=…&limit=<limit>`` and keeps
+        traversing ``paging.next`` cursors until no more pages
+        remain, so a form with arbitrarily many leads completes in
+        one call.
+
+        CSV-injection defense: values starting with ``= + - @ \\t
+        \\r`` are prefixed with a single quote before they reach the
+        ``csv.writer``. Lead values are operator-controlled
+        downstream (the operator opens the export in Excel /
+        Sheets / Numbers), so the prefix prevents user-supplied
+        text becoming a live formula. Multi-value answers are
+        joined with ``" | "`` so a comma inside one value does not
+        get confused with a value separator (``csv.writer`` quotes
+        the whole cell, but the prior format collapsed multi-values
+        into a single comma-joined string which was ambiguous).
+
+        Lead values are sensitive (PII): nothing from the lead's
+        ``field_data`` is ever surfaced in mureo's log output. Only
+        the row count, form_id, and path make it to the info log.
+
+        Args:
+            form_id: Lead form ID.
+            output_path: File path for the CSV. Parent directory is
+                auto-created. UTF-8 encoded; existing files are
+                overwritten.
+            limit: Max leads to fetch per Graph API call. Default
+                1000 (Meta's per-call ceiling). The helper still
+                fetches every lead via pagination — this only
+                controls page size.
+            field_order: Optional explicit list of question keys to
+                drive the column order. Overrides the form's
+                declared question order.
+
+        Returns:
+            Number of lead rows written (excluding the header).
+        """
+        form = await self.get_lead_form(form_id)
+        if field_order is None:
+            field_order = []
+            for q in form.get("questions", []):
+                # Meta's wire format for ``field_data[].name`` uses
+                # the lowercased standard type (e.g. ``"EMAIL"`` →
+                # ``"email"``) when the form question has no explicit
+                # ``key``. CUSTOM questions always have a ``key``.
+                key = q.get("key") or q.get("type", "").lower()
+                if key:
+                    field_order.append(key)
+
+        # Page through /{form_id}/leads until paging.next is absent.
+        # Meta returns a fully-qualified ``paging.next`` URL, but
+        # ``_get`` always prepends ``BASE_URL`` so an absolute URL
+        # would double-prefix. Extract the ``after`` cursor instead
+        # and re-issue with the same relative path.
+        all_leads: list[dict[str, Any]] = []
+        path: str = f"/{form_id}/leads"
+        params: dict[str, Any] = {"fields": _LEAD_FIELDS, "limit": limit}
+        while True:
+            result = await self._get(path, params)
+            all_leads.extend(result.get("data", []) or [])
+            next_url = (result.get("paging", {}) or {}).get("next")
+            if not next_url:
+                break
+            after_values = parse_qs(urlparse(next_url).query).get("after")
+            if not after_values:
+                # Paging cursor missing in a non-standard ``next`` —
+                # bail out rather than loop forever.
+                break
+            params = {**params, "after": after_values[0]}
+
+        header = ["id", "created_time", *field_order]
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8", newline="") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(header)
+            for lead in all_leads:
+                field_lookup = {
+                    fd.get("name", ""): _csv_safe(
+                        " | ".join(fd.get("values", []) or [])
+                    )
+                    for fd in lead.get("field_data", [])
+                }
+                row = [
+                    _csv_safe(lead.get("id", "")),
+                    _csv_safe(lead.get("created_time", "")),
+                    *[field_lookup.get(key, "") for key in field_order],
+                ]
+                writer.writerow(row)
+
+        # PII intentionally not logged — only the count.
+        logger.info(
+            "Lead CSV export: form_id=%s, rows=%d, path=%s",
+            form_id,
+            len(all_leads),
+            output_path,
+        )
+        return len(all_leads)

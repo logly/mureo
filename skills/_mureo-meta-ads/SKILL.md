@@ -98,6 +98,7 @@ metadata:
 | 78 | `meta_ads_creatives_create_lead` | Lead / Creative | Write | Create a Lead Ad AdCreative attached to an Instant Form |
 | 79 | `meta_ads_lead_forms_update` | Lead | Write | Change a lead form status (ACTIVE / ARCHIVED) |
 | 80 | `meta_ads_lead_forms_duplicate` | Lead | Write | Duplicate a lead form under a Page with a new name |
+| 81 | `meta_ads_leads_export_csv` | Lead | Write (local) | Export form leads to a local CSV file |
 
 ## Key Differences from Google Ads
 
@@ -467,7 +468,25 @@ metadata:
 - `create` -- Create a lead form. **Requires user confirmation.**
   ```
   Required: account_id, page_id, name, questions (array), privacy_policy_url
+  Optional advanced: locale, context_card (intro screen),
+    thank_you_page (custom completion screen), is_higher_intent
+    (3-step input→review→submit form), conditional_questions_choices
+    (branching logic), follow_up_action_url (simple redirect; superseded
+    by thank_you_page when both present)
   ```
+
+  When to use `is_higher_intent=true`: trims junk submissions, lowers
+  total volume — pick when CV quality matters more than CV volume
+  (e.g. B2B / enterprise lead capture).
+
+  When to use `context_card`: lifts conversion rate measurably. Always
+  worth a `{title, content, style=PARAGRAPH_STYLE}` minimum for any
+  campaign that survives past a 1-week test.
+
+  When to use `conditional_questions_choices`: when a follow-up
+  question is only relevant given a prior answer (e.g. "How many
+  employees?" only if "Decision-maker?" was YES). Reduces form length
+  for users who don't need the branch.
 
 - `update` -- Change a lead form status (ACTIVE / ARCHIVED only — other
   fields are immutable post-creation). **Requires user confirmation.**
@@ -483,6 +502,17 @@ metadata:
   ```
 
 ### leads
+
+- `export_csv` -- Export form leads to a local CSV file. Header row
+  is ``[id, created_time, *question_keys]`` (question_keys come from
+  the form's declared questions in declared order, or from caller-
+  supplied ``field_order`` to lock a custom schema). PII does NOT
+  appear in mureo's log output — only the row count.
+  ```
+  Required: account_id, form_id, output_path
+  Optional: limit (default 1000, max 1000), field_order (list of
+    question keys to override column order)
+  ```
 
 - `get` -- Get lead data (per form).
   ```

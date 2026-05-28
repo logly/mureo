@@ -55,6 +55,7 @@ from mureo.mcp._handlers_meta_ads import (
     handle_lead_forms_get,
     handle_lead_forms_list,
     handle_lead_forms_update,
+    handle_leads_export_csv,
     handle_leads_get,
     handle_leads_get_by_ad,
     handle_products_add,
@@ -221,6 +222,7 @@ _HANDLERS: dict[str, Any] = {
     "meta_ads_lead_forms_create": handle_lead_forms_create,
     "meta_ads_lead_forms_update": handle_lead_forms_update,
     "meta_ads_lead_forms_duplicate": handle_lead_forms_duplicate,
+    "meta_ads_leads_export_csv": handle_leads_export_csv,
     "meta_ads_leads_get": handle_leads_get,
     "meta_ads_leads_get_by_ad": handle_leads_get_by_ad,
     # Image upload
