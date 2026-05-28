@@ -218,13 +218,29 @@ TOOLS: list[Tool] = [
                         "Pre-uploaded image hash from "
                         "meta_ads_creatives_upload_image / "
                         "meta_ads_images_upload_file. Mutually "
-                        "exclusive with image_url."
+                        "exclusive with image_url. In video mode "
+                        "(when video_id is set), used as the video "
+                        "thumbnail."
+                    ),
+                },
+                "video_id": {
+                    "type": "string",
+                    "description": (
+                        "Pre-uploaded video ID from "
+                        "meta_ads_videos_upload / "
+                        "meta_ads_videos_upload_file. When supplied, "
+                        "the creative becomes a video Lead Ad — "
+                        "object_story_spec.video_data is used (not "
+                        "link_data) and lead_gen_form_id is nested "
+                        "under call_to_action.value. image_url is "
+                        "rejected in video mode; supply image_hash "
+                        "directly as the thumbnail."
                     ),
                 },
                 "message": {
                     "type": "string",
                     "description": (
-                        "Primary ad body text shown above the image. "
+                        "Primary ad body text shown above the creative. "
                         "Plain text, emoji allowed. ≤125 characters "
                         "fits most placements without truncation."
                     ),
@@ -232,8 +248,10 @@ TOOLS: list[Tool] = [
                 "headline": {
                     "type": "string",
                     "description": (
-                        "Headline shown below the image. ~40 "
-                        "characters fits most placements."
+                        "Headline shown with the creative. ~40 "
+                        "characters fits most placements. Mapped to "
+                        "link_data.name in image mode and "
+                        "video_data.title in video mode."
                     ),
                 },
                 "description": {

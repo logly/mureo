@@ -501,6 +501,59 @@ class TestCreativesMixin:
         assert path == "/act_123/adcreatives"
 
     @pytest.mark.asyncio
+    async def test_create_lead_ad_creative_with_video_uses_video_data(
+        self, client
+    ) -> None:
+        """Lead Ad with video_id uses ``video_data`` payload with the
+        lead_gen_form_id nested under ``call_to_action.value`` — that's
+        how Meta routes the Instant Form attachment for video creatives
+        (not under ``link_data`` like image creatives)."""
+        await client.create_lead_ad_creative(
+            "LeadCreativeVideo",
+            "page1",
+            "form_99",
+            "https://example.com/landing",
+            video_id="video_abc",
+            image_hash="thumb_hash",
+            message="本文",
+            headline="見出し",
+        )
+        spec = json.loads(client._post.call_args[0][1]["object_story_spec"])
+        assert "video_data" in spec
+        assert "link_data" not in spec
+        vd = spec["video_data"]
+        assert vd["video_id"] == "video_abc"
+        # thumbnail
+        assert vd["image_hash"] == "thumb_hash"
+        # message / title
+        assert vd["message"] == "本文"
+        assert vd["title"] == "見出し"
+        # CTA value carries lead_gen_form_id + link
+        assert vd["call_to_action"]["type"] == "SIGN_UP"
+        assert vd["call_to_action"]["value"]["lead_gen_form_id"] == "form_99"
+        assert vd["call_to_action"]["value"]["link"] == "https://example.com/landing"
+
+    @pytest.mark.asyncio
+    async def test_create_lead_ad_creative_rejects_video_and_image_together(
+        self, client
+    ) -> None:
+        """``video_id`` plus ``image_url`` is ambiguous. ``image_url``'s
+        auto-upload semantics belong to image mode; video mode wants
+        an explicit thumbnail ``image_hash``. The helper rejects
+        the combination at the call site rather than silently
+        picking one branch."""
+        with pytest.raises(ValueError) as excinfo:
+            await client.create_lead_ad_creative(
+                "LeadCreativeBoth",
+                "page1",
+                "form_99",
+                "https://example.com",
+                video_id="video_abc",
+                image_url="https://img.example.com/x.jpg",
+            )
+        assert "image_url" in str(excinfo.value) and "video_id" in str(excinfo.value)
+
+    @pytest.mark.asyncio
     async def test_create_dynamic_creative(self, client) -> None:
         await client.create_dynamic_creative(
             "DC1",

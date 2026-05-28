@@ -268,6 +268,40 @@ class TestGetLeads:
 
         assert result == []
 
+    @pytest.mark.asyncio
+    async def test_get_leads_paginates_through_next_cursor(
+        self, client: LeadsMixin
+    ) -> None:
+        """Follow ``paging.next`` cursors via the ``after`` token,
+        concatenate the results, and return them all. Forms with
+        more than ``limit`` leads must NOT be silently truncated —
+        ``get_leads`` should match ``export_leads_to_csv``'s
+        pagination behaviour."""
+        page_1 = {
+            "data": [{"id": f"lead_{i}", "field_data": []} for i in range(2)],
+            "paging": {
+                "next": (
+                    "https://graph.facebook.com/v23.0/form_1/leads"
+                    "?fields=id,created_time,field_data,ad_id,ad_name,form_id"
+                    "&limit=100&after=CUR_A"
+                )
+            },
+        }
+        page_2 = {
+            "data": [{"id": "lead_2", "field_data": []}],
+            "paging": {},
+        }
+        client._get = AsyncMock(side_effect=[page_1, page_2])
+
+        result = await client.get_leads("form_1")
+        assert [r["id"] for r in result] == ["lead_0", "lead_1", "lead_2"]
+        assert client._get.await_count == 2
+        # Second call keeps the same relative path; only ``after``
+        # is updated.
+        second_call = client._get.await_args_list[1]
+        assert second_call.args[0] == "/form_1/leads"
+        assert second_call.args[1].get("after") == "CUR_A"
+
 
 # ===========================================================================
 # test_get_ad_leads — 広告別リードデータ取得
@@ -312,6 +346,31 @@ class TestGetAdLeads:
 
         params = client._get.call_args[0][1]
         assert params["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_get_ad_leads_paginates_through_next_cursor(
+        self, client: LeadsMixin
+    ) -> None:
+        """Identical ``paging.next`` traversal to :func:`get_leads`."""
+        page_1 = {
+            "data": [{"id": "lead_a", "field_data": []}],
+            "paging": {
+                "next": (
+                    "https://graph.facebook.com/v23.0/ad_456/leads"
+                    "?limit=100&after=AD_CUR_A"
+                )
+            },
+        }
+        page_2 = {
+            "data": [{"id": "lead_b", "field_data": []}],
+            "paging": {},
+        }
+        client._get = AsyncMock(side_effect=[page_1, page_2])
+
+        result = await client.get_ad_leads("ad_456")
+        assert [r["id"] for r in result] == ["lead_a", "lead_b"]
+        assert client._get.await_count == 2
+        assert client._get.await_args_list[1].args[1].get("after") == "AD_CUR_A"
 
 
 # ===========================================================================
@@ -823,6 +882,112 @@ class TestDuplicateLeadForm:
             await client.duplicate_lead_form(
                 "form_1", page_id="page_123", new_name="Copy"
             )
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_copies_advanced_fields(
+        self, client: LeadsMixin
+    ) -> None:
+        """A source form carrying the PR 3 advanced fields
+        (``context_card`` / ``thank_you_page`` / ``is_higher_intent`` /
+        ``conditional_questions_choices``) must round-trip those
+        fields onto the new form when duplicated.
+
+        This fulfils the v0.9.15 docstring promise that "PR 3 will
+        widen the copied surface", which was deferred at the time.
+        """
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "questions": [{"type": "EMAIL"}],
+            "privacy_policy": {"url": "https://example.com/policy"},
+            "context_card": {
+                "title": "資料請求",
+                "content": "60秒で完了",
+                "style": "PARAGRAPH_STYLE",
+            },
+            "thank_you_page": {
+                "title": "ありがとうございます",
+                "body": "担当者から連絡します",
+                "button_type": "VIEW_WEBSITE",
+                "website_url": "https://example.com/thanks",
+            },
+            "is_higher_intent": True,
+            "conditional_questions_choices": [
+                {
+                    "question": "predefined",
+                    "value": "INTERESTED",
+                    "next_question_key": "company_size",
+                },
+            ],
+        }
+        client._get = AsyncMock(return_value=source)
+        client._post = AsyncMock(return_value={"id": "form_2"})
+
+        await client.duplicate_lead_form(
+            "form_1", page_id="page_123", new_name="Copy"
+        )
+
+        post_data = client._post.call_args[0][1]
+        assert json.loads(post_data["context_card"]) == source["context_card"]
+        assert (
+            json.loads(post_data["thank_you_page"]) == source["thank_you_page"]
+        )
+        assert post_data["is_higher_intent"] is True
+        assert (
+            json.loads(post_data["conditional_questions_choices"])
+            == source["conditional_questions_choices"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_skips_absent_advanced_fields(
+        self, client: LeadsMixin
+    ) -> None:
+        """A source form without the advanced fields produces a
+        payload that does not gain extra empty keys — preserves the
+        backward-compatible shape pinned by earlier tests.
+        """
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "questions": [{"type": "EMAIL"}],
+            "privacy_policy": {"url": "https://example.com/policy"},
+        }
+        client._get = AsyncMock(return_value=source)
+        client._post = AsyncMock(return_value={"id": "form_2"})
+
+        await client.duplicate_lead_form(
+            "form_1", page_id="page_123", new_name="Copy"
+        )
+
+        post_data = client._post.call_args[0][1]
+        assert "context_card" not in post_data
+        assert "thank_you_page" not in post_data
+        assert "is_higher_intent" not in post_data
+        assert "conditional_questions_choices" not in post_data
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_higher_intent_false_not_sent(
+        self, client: LeadsMixin
+    ) -> None:
+        """``is_higher_intent=False`` on the source is elided from
+        the payload — it matches Meta's default, so omitting it
+        keeps the request body minimal."""
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "questions": [{"type": "EMAIL"}],
+            "privacy_policy": {"url": "https://example.com/policy"},
+            "is_higher_intent": False,
+        }
+        client._get = AsyncMock(return_value=source)
+        client._post = AsyncMock(return_value={"id": "form_2"})
+
+        await client.duplicate_lead_form(
+            "form_1", page_id="page_123", new_name="Copy"
+        )
+
+        post_data = client._post.call_args[0][1]
+        assert "is_higher_intent" not in post_data
 
 
 # ===========================================================================
@@ -1351,6 +1516,44 @@ class TestExportLeadsToCsv:
         # 2nd & 3rd call は paging.next の URL を path にして呼ぶ —
         # 4 回目以降は呼ばれない (= ループ終了が正常)
         assert client._get.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_csv_pagination_bails_when_next_has_no_after_cursor(
+        self,
+        client: LeadsMixin,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        """A non-standard ``paging.next`` URL missing the ``after``
+        query parameter must terminate the loop immediately — pins
+        the defensive break path so we never infinite-loop on a
+        malformed cursor."""
+        from pathlib import Path
+
+        form = {
+            "id": "form_1",
+            "questions": [{"type": "EMAIL", "key": "email"}],
+            "privacy_policy": {"url": "https://example.com/p"},
+        }
+        page = {
+            "data": [
+                {
+                    "id": "lead_only",
+                    "created_time": "2026-01-01T00:00:00+0000",
+                    "field_data": [{"name": "email", "values": ["a@x.io"]}],
+                }
+            ],
+            # ``next`` is present but has no ``after=`` query.
+            "paging": {
+                "next": "https://graph.facebook.com/v23.0/form_1/leads?foo=bar"
+            },
+        }
+        client._get = AsyncMock(side_effect=[form, page])
+
+        out: Path = tmp_path / "out.csv"  # type: ignore[assignment]
+        count = await client.export_leads_to_csv("form_1", out)
+        assert count == 1
+        # form fetch + 1 page fetch = 2 calls; no third call.
+        assert client._get.await_count == 2
 
     @pytest.mark.asyncio
     async def test_csv_pagination_uses_relative_path_with_after_cursor(
