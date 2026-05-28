@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.15] - 2026-05-28
+
+### Added — Meta Instant Form: lifecycle (status update + duplicate)
+
+`mureo.meta_ads` gains `update_lead_form(form_id, *, status)` and `duplicate_lead_form(form_id, *, page_id, new_name)` on `LeadsMixin`. The Meta API permits only `status` (`ACTIVE` / `ARCHIVED`) to be changed after a form is created; everything else (name, questions, privacy_policy_url, follow_up_action_url, locale) is immutable, so the update helper rejects other values at the helper layer rather than after a server 400. The duplicate helper has no native counterpart on the Meta side — it fetches the source form's mutable configuration and creates a fresh form under the supplied Page with a new name; both old- and new-shaped `privacy_policy` fields (nested object or flat `privacy_policy_url` string) are tolerated.
+
+New MCP tools `meta_ads_lead_forms_update` and `meta_ads_lead_forms_duplicate` expose the helpers; the `_mureo-meta-ads` skill documents both in the tool table and the lead_forms reference section.
+
+This is part 2 of 3 closing [#151](https://github.com/logly/mureo/issues/151) (Meta Instant Form full coverage). Part 1 ([#152](https://github.com/logly/mureo/issues/152) — end-to-end Lead Ad creative) shipped in 0.9.14; part 3 ([#154](https://github.com/logly/mureo/issues/154) — CSV export + conditional questions + multi-step) follows in 0.9.16. Closes [#153](https://github.com/logly/mureo/issues/153).
+
 ## [0.9.14] - 2026-05-28
 
 ### Added — Meta Instant Form: end-to-end Lead Ad deployability

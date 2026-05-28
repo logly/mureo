@@ -12,8 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mureo.meta_ads._leads import LeadsMixin
-
+from mureo.meta_ads._leads import _VALID_FORM_STATUSES, LeadsMixin
 
 # ---------------------------------------------------------------------------
 # ヘルパー: Mixinをテスト可能にするモッククラス
@@ -556,6 +555,11 @@ class TestLeadAdsToolDefinitions:
                 "meta_ads_lead_forms_create",
                 ["page_id", "name", "questions", "privacy_policy_url"],
             ),
+            ("meta_ads_lead_forms_update", ["form_id", "status"]),
+            (
+                "meta_ads_lead_forms_duplicate",
+                ["form_id", "page_id", "new_name"],
+            ),
             ("meta_ads_leads_get", ["form_id"]),
             ("meta_ads_leads_get_by_ad", ["ad_id"]),
         ],
@@ -570,14 +574,251 @@ class TestLeadAdsToolDefinitions:
         assert set(tool.inputSchema["required"]) == set(expected_required)
 
     def test_all_lead_tools_exist(self) -> None:
-        """5つのLead Adsツールがすべて登録されていること"""
+        """7つのLead Adsツールがすべて登録されていること"""
         mod = _import_meta_ads_tools()
         tool_names = {t.name for t in mod.TOOLS}
         expected = {
             "meta_ads_lead_forms_list",
             "meta_ads_lead_forms_get",
             "meta_ads_lead_forms_create",
+            "meta_ads_lead_forms_update",
+            "meta_ads_lead_forms_duplicate",
             "meta_ads_leads_get",
             "meta_ads_leads_get_by_ad",
         }
         assert expected.issubset(tool_names)
+
+
+# ===========================================================================
+# update_lead_form — フォームステータス変更 (PR 2)
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestUpdateLeadForm:
+    @pytest.fixture()
+    def client(self) -> LeadsMixin:
+        return _make_mock_client()
+
+    @pytest.mark.asyncio
+    async def test_update_lead_form_archived(self, client: LeadsMixin) -> None:
+        """status="ARCHIVED" を POST /{form_id} に送る"""
+        await client.update_lead_form("form_1", status="ARCHIVED")
+        client._post.assert_called_once()
+        call_args = client._post.call_args
+        assert "/form_1" in call_args[0][0]
+        assert call_args[0][1] == {"status": "ARCHIVED"}
+
+    @pytest.mark.asyncio
+    async def test_update_lead_form_active(self, client: LeadsMixin) -> None:
+        """status="ACTIVE" でフォームを復活できること"""
+        await client.update_lead_form("form_1", status="ACTIVE")
+        call_args = client._post.call_args
+        assert call_args[0][1] == {"status": "ACTIVE"}
+
+    @pytest.mark.asyncio
+    async def test_update_lead_form_rejects_invalid_status(
+        self, client: LeadsMixin
+    ) -> None:
+        """Meta が許す status 値以外は ValueError で早期に弾く
+
+        サーバラウンドトリップして 400 を見るより、helper 段階で型エラーに
+        するほうがオペレーター視点でデバッグしやすい。
+        """
+        with pytest.raises(ValueError) as excinfo:
+            await client.update_lead_form("form_1", status="DELETED")
+        assert "status" in str(excinfo.value)
+        # API call は走らない
+        client._post.assert_not_called()
+
+    def test_valid_statuses_pinned(self) -> None:
+        """validation の根拠となる定数が ARCHIVED / ACTIVE の 2 値であること"""
+        assert frozenset({"ACTIVE", "ARCHIVED"}) == _VALID_FORM_STATUSES
+
+
+# ===========================================================================
+# duplicate_lead_form — フォーム複製 (PR 2)
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestDuplicateLeadForm:
+    @pytest.fixture()
+    def client(self) -> LeadsMixin:
+        return _make_mock_client()
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_fetches_source_then_creates(
+        self, client: LeadsMixin
+    ) -> None:
+        """source form を get_lead_form で取得 → page_id 経由で
+        leadgen_forms に POST する"""
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "status": "ACTIVE",
+            "locale": "ja_JP",
+            "questions": [
+                {"type": "FULL_NAME"},
+                {"type": "EMAIL"},
+            ],
+            "follow_up_action_url": "https://example.com/thanks",
+            # privacy_policy はネストされた dict として返ってくる
+            "privacy_policy": {"url": "https://example.com/policy"},
+        }
+        client._get = AsyncMock(return_value=source)
+        client._post = AsyncMock(return_value={"id": "form_2", "name": "複製"})
+
+        result = await client.duplicate_lead_form(
+            "form_1", page_id="page_123", new_name="複製"
+        )
+
+        assert result == {"id": "form_2", "name": "複製"}
+        # source fetch
+        assert client._get.call_args[0][0] == "/form_1"
+        # create call
+        post_path = client._post.call_args[0][0]
+        post_data = client._post.call_args[0][1]
+        assert post_path == "/page_123/leadgen_forms"
+        assert post_data["name"] == "複製"
+        # questions は JSON エンコードされて渡る
+        assert json.loads(post_data["questions"]) == [
+            {"type": "FULL_NAME"},
+            {"type": "EMAIL"},
+        ]
+        # privacy_policy.url が抜き出されて privacy_policy={"url": ...} に再構築される
+        assert json.loads(post_data["privacy_policy"]) == {
+            "url": "https://example.com/policy"
+        }
+        # follow_up_action_url / locale は preserved
+        assert post_data["follow_up_action_url"] == "https://example.com/thanks"
+        assert post_data["locale"] == "ja_JP"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_handles_missing_optional_fields(
+        self, client: LeadsMixin
+    ) -> None:
+        """source に follow_up_action_url / locale が無い場合も動く"""
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "questions": [{"type": "EMAIL"}],
+            "privacy_policy": {"url": "https://example.com/policy"},
+        }
+        client._get = AsyncMock(return_value=source)
+        client._post = AsyncMock(return_value={"id": "form_2"})
+
+        await client.duplicate_lead_form("form_1", page_id="page_123", new_name="Copy")
+
+        post_data = client._post.call_args[0][1]
+        # 任意フィールドは追加されない
+        assert "follow_up_action_url" not in post_data
+        assert "locale" not in post_data
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_accepts_string_privacy_policy_url(
+        self, client: LeadsMixin
+    ) -> None:
+        """旧形式で privacy_policy_url 文字列が返ってくるケースも吸収する"""
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "questions": [{"type": "EMAIL"}],
+            "privacy_policy_url": "https://example.com/policy",
+        }
+        client._get = AsyncMock(return_value=source)
+        client._post = AsyncMock(return_value={"id": "form_2"})
+
+        await client.duplicate_lead_form("form_1", page_id="page_123", new_name="Copy")
+
+        post_data = client._post.call_args[0][1]
+        assert json.loads(post_data["privacy_policy"]) == {
+            "url": "https://example.com/policy"
+        }
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_uses_new_name_not_source_name(
+        self, client: LeadsMixin
+    ) -> None:
+        """新しい name で複製されること (source の name は使わない)"""
+        source = {
+            "id": "form_1",
+            "name": "オリジナル",
+            "questions": [{"type": "EMAIL"}],
+            "privacy_policy": {"url": "https://example.com/policy"},
+        }
+        client._get = AsyncMock(return_value=source)
+        client._post = AsyncMock(return_value={"id": "form_2"})
+
+        await client.duplicate_lead_form(
+            "form_1", page_id="page_123", new_name="まったく違う名前"
+        )
+
+        post_data = client._post.call_args[0][1]
+        assert post_data["name"] == "まったく違う名前"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_missing_privacy_policy_raises(
+        self, client: LeadsMixin
+    ) -> None:
+        """privacy_policy も privacy_policy_url も無い場合は ValueError
+
+        Meta は lead form 作成時に privacy_policy.url を必須としているので、
+        source から取れなかったら早期にエラーにする (Meta から 400 を返さ
+        れる前に弾く)。
+        """
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "questions": [{"type": "EMAIL"}],
+        }
+        client._get = AsyncMock(return_value=source)
+
+        with pytest.raises(ValueError) as excinfo:
+            await client.duplicate_lead_form(
+                "form_1", page_id="page_123", new_name="Copy"
+            )
+        assert "privacy_policy" in str(excinfo.value)
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_empty_privacy_url_raises(
+        self, client: LeadsMixin
+    ) -> None:
+        """privacy_policy.url が空文字 / 欠落の場合も同じ ValueError 経路を通る
+
+        Meta は url が空のままだと 400 を返すので、helper 段階で拾って
+        オペレーターに即座に分かるエラーにする。
+        """
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "questions": [{"type": "EMAIL"}],
+            "privacy_policy": {"url": ""},
+        }
+        client._get = AsyncMock(return_value=source)
+
+        with pytest.raises(ValueError) as excinfo:
+            await client.duplicate_lead_form(
+                "form_1", page_id="page_123", new_name="Copy"
+            )
+        assert "privacy_policy" in str(excinfo.value)
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_link_text_only_privacy_raises(
+        self, client: LeadsMixin
+    ) -> None:
+        """privacy_policy dict が link_text だけで url を持たないケースも
+        ValueError (Meta は url 必須)
+        """
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "questions": [{"type": "EMAIL"}],
+            "privacy_policy": {"link_text": "Privacy Policy"},
+        }
+        client._get = AsyncMock(return_value=source)
+
+        with pytest.raises(ValueError):
+            await client.duplicate_lead_form(
+                "form_1", page_id="page_123", new_name="Copy"
+            )

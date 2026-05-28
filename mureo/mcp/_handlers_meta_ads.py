@@ -572,6 +572,31 @@ async def handle_lead_forms_create(args: dict[str, Any]) -> list[TextContent]:
 
 
 @api_error_handler
+async def handle_lead_forms_update(args: dict[str, Any]) -> list[TextContent]:
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    result = await client.update_lead_form(
+        _require(args, "form_id"),
+        status=_require(args, "status"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_lead_forms_duplicate(args: dict[str, Any]) -> list[TextContent]:
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    result = await client.duplicate_lead_form(
+        _require(args, "form_id"),
+        page_id=_require(args, "page_id"),
+        new_name=_require(args, "new_name"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
 async def handle_leads_get(args: dict[str, Any]) -> list[TextContent]:
     client = await _get_client(args)
     if client is None:

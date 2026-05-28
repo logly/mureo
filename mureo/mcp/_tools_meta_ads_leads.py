@@ -60,7 +60,9 @@ TOOLS: list[Tool] = [
             "Fetches the full detail record for a single lead form, "
             "including its question definitions and legal pages. "
             "Returns id, name, status, locale, questions (array with "
-            "type / key / label per question), privacy_policy_url, "
+            "type / key / label per question), privacy_policy "
+            "(``{url, link_text?}``) and the legacy "
+            "``privacy_policy_url`` flat field, "
             "follow_up_action_url, leads_count, and created_time. "
             "Read-only. Call this before designing downstream CRM sync "
             "so you know the exact field keys to map."
@@ -182,6 +184,85 @@ TOOLS: list[Tool] = [
                 "questions",
                 "privacy_policy_url",
             ],
+        },
+    ),
+    Tool(
+        name="meta_ads_lead_forms_update",
+        description=(
+            "Changes a lead form's lifecycle status. This tool updates "
+            "only the status field — other form fields (questions, "
+            "privacy_policy_url, name, follow_up_action_url, locale, "
+            "advanced layout) are intentionally out of scope; Meta's "
+            "post-creation mutability has shifted between versions, "
+            "so mureo stays conservative. Pass status=ARCHIVED to "
+            "retire a form (existing leads stay queryable; the form "
+            "stops accepting new submissions). Pass status=ACTIVE to "
+            "undo an archive. Mutating, reversible (re-call with the "
+            "opposite value)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "form_id": {
+                    "type": "string",
+                    "description": "Lead form ID to update.",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["ACTIVE", "ARCHIVED"],
+                    "description": (
+                        "Target status. ACTIVE accepts submissions; "
+                        "ARCHIVED stops them. Other values (DRAFT, "
+                        "DELETED, DELETION_PENDING) appear in read "
+                        "paths but cannot be set by an operator."
+                    ),
+                },
+            },
+            "required": ["form_id", "status"],
+        },
+    ),
+    Tool(
+        name="meta_ads_lead_forms_duplicate",
+        description=(
+            "Duplicates a lead form under the same (or another) Page. "
+            "Meta has no native copy endpoint, so this fetches the "
+            "source form's questions, privacy_policy, optional "
+            "follow_up_action_url and locale, then creates a fresh "
+            "form with the supplied new_name. Returns the new form's "
+            "id. Source form is untouched. Mutating, reversible via "
+            "meta_ads_lead_forms_update {status: ARCHIVED} on the new "
+            "form's id. **Lossy:** advanced fields on the source "
+            "(legal_content_id, gdpr_required / custom_disclaimer, "
+            "question_page_custom_headline, intro/thank-you screens, "
+            "conditional question branches) are NOT copied; re-create "
+            "them on the new form manually if needed."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "form_id": {
+                    "type": "string",
+                    "description": ("Source lead form ID to copy from."),
+                },
+                "page_id": {
+                    "type": "string",
+                    "description": (
+                        "Facebook Page that will own the new form. "
+                        "Usually the same Page that owns the source "
+                        "form."
+                    ),
+                },
+                "new_name": {
+                    "type": "string",
+                    "description": (
+                        "Name for the new form. Pick something "
+                        "distinct from the source."
+                    ),
+                },
+            },
+            "required": ["form_id", "page_id", "new_name"],
         },
     ),
     Tool(

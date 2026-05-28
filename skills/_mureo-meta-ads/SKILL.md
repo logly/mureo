@@ -96,6 +96,8 @@ metadata:
 | 76 | `meta_ads_instagram_media` | Instagram | Read | List Instagram posts |
 | 77 | `meta_ads_instagram_boost` | Instagram | Write | Boost an Instagram post |
 | 78 | `meta_ads_creatives_create_lead` | Lead / Creative | Write | Create a Lead Ad AdCreative attached to an Instant Form |
+| 79 | `meta_ads_lead_forms_update` | Lead | Write | Change a lead form status (ACTIVE / ARCHIVED) |
+| 80 | `meta_ads_lead_forms_duplicate` | Lead | Write | Duplicate a lead form under a Page with a new name |
 
 ## Key Differences from Google Ads
 
@@ -465,6 +467,19 @@ metadata:
 - `create` -- Create a lead form. **Requires user confirmation.**
   ```
   Required: account_id, page_id, name, questions (array), privacy_policy_url
+  ```
+
+- `update` -- Change a lead form status (ACTIVE / ARCHIVED only — other
+  fields are immutable post-creation). **Requires user confirmation.**
+  ```
+  Required: account_id, form_id, status ("ACTIVE" or "ARCHIVED")
+  ```
+
+- `duplicate` -- Copy an existing form (questions / privacy_policy /
+  follow_up_action_url / locale) under a new name on the given Page.
+  Source form is untouched. **Requires user confirmation.**
+  ```
+  Required: account_id, form_id, page_id, new_name
   ```
 
 ### leads
