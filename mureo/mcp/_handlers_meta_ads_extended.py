@@ -228,6 +228,7 @@ async def handle_creatives_create_lead(args: dict[str, Any]) -> list[TextContent
     for key in (
         "image_url",
         "image_hash",
+        "video_id",
         "message",
         "headline",
         "description",

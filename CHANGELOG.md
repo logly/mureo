@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.17] - 2026-05-29
+
+### Added — Meta Instant Form: gap-closure patch
+
+Pre-release patch addressing three HIGH-priority gaps in the v0.9.14-v0.9.16 Instant Form rollout (umbrella [#151](https://github.com/logly/mureo/issues/151)):
+
+- **`create_lead_ad_creative` video support**: adds optional `video_id` kwarg. When supplied, the payload uses `object_story_spec.video_data` (instead of `link_data`) with `lead_gen_form_id` nested under `call_to_action.value` — Meta's contract for video Lead Ads. `image_hash` becomes the video thumbnail. Image and video modes are mutually exclusive (`video_id` + `image_url` raises `ValueError` at the helper layer). The MCP tool `meta_ads_creatives_create_lead` gains a matching `video_id` schema entry.
+
+- **`get_leads` / `get_ad_leads` pagination**: both helpers previously truncated at the per-call `limit` (default 100) and silently dropped any leads past that. They now follow `paging.next` cursors automatically (extracting the `after` query parameter via `urllib.parse` and re-issuing on the relative path) until no more pages remain — matching the behaviour `export_leads_to_csv` already had. `limit` now controls per-page size, not the total cap. Pagination logic is consolidated into a shared `_paginate_leads` helper so future read paths inherit it; `export_leads_to_csv` was refactored to use it too.
+
+- **`duplicate_lead_form` widening**: the duplicate helper now copies the PR 3 advanced fields (`context_card`, `thank_you_page`, `is_higher_intent`, `conditional_questions_choices`) from the source form to the new form, fulfilling the "PR 3 will widen the copied surface" promise that the v0.9.15 docstring left outstanding. `_LEAD_FORM_FIELDS` was extended to fetch the four fields so `get_lead_form` surfaces them. `is_higher_intent=False` is still elided from the payload to match Meta's default.
+
+This is a follow-up to PRs [#155](https://github.com/logly/mureo/pull/155) / [#156](https://github.com/logly/mureo/pull/156) / [#158](https://github.com/logly/mureo/pull/158); the umbrella issue closes with v0.9.17.
+
 ## [0.9.16] - 2026-05-28
 
 ### Added — Meta Instant Form: CSV export + advanced form authoring

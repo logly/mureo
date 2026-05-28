@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 _LEAD_FORM_FIELDS = (
     "id,name,status,locale,questions,privacy_policy,"
     "follow_up_action_url,created_time,expired_leads_count,"
-    "leads_count,organic_leads_count"
+    "leads_count,organic_leads_count,"
+    # PR 4 — surfaced so duplicate_lead_form can copy them.
+    "context_card,thank_you_page,is_higher_intent,"
+    "conditional_questions_choices"
 )
 
 # Lead data retrieval fields
@@ -38,6 +41,12 @@ _VALID_FORM_STATUSES: frozenset[str] = frozenset({"ACTIVE", "ARCHIVED"})
 # Excel / Sheets / Numbers. Prepending a single-quote disarms the
 # injection without breaking the visible value for spreadsheet users.
 _CSV_INJECTION_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
+
+# Safety cap on ``paging.next`` traversal to defeat a hypothetical
+# misbehaving Meta cursor loop. Even at the default per-call limit
+# (100 leads), 10_000 pages = 1M leads — well past any real form's
+# lifetime; the per-page max of 1000 lifts that to 10M.
+_MAX_LEAD_PAGES = 10_000
 
 
 def _csv_safe(value: str) -> str:
@@ -236,19 +245,21 @@ class LeadsMixin:
         """Duplicate a lead form under the same (or another) Page.
 
         Meta has no native "copy" endpoint, so the helper fetches the
-        source form's core configuration (questions, privacy policy,
-        optional follow-up URL, locale) and creates a fresh form
-        with the supplied ``new_name``. The returned dict carries
-        the new form's ID; the source form is untouched.
+        source form's configuration and creates a fresh form with
+        the supplied ``new_name``. The returned dict carries the
+        new form's ID; the source form is untouched.
 
-        **Lossy duplication.** Only the four fields above round-trip.
-        Advanced features that may exist on the source —
-        ``legal_content_id``, ``gdpr_required`` /
+        **Copied fields**: ``questions``, ``privacy_policy``,
+        ``follow_up_action_url``, ``locale``, ``context_card``,
+        ``thank_you_page``, ``is_higher_intent``,
+        ``conditional_questions_choices``.
+
+        **NOT copied** (lossy by design — Meta either makes them
+        immutable post-creation or they require separate setup on
+        the new Page): ``legal_content_id``, ``gdpr_required`` /
         ``custom_disclaimer``, ``question_page_custom_headline``,
-        intro / thank-you screens, conditional question branches —
-        are **not** copied. If you need those, re-create them on the
-        new form manually after duplication. PR 3 (advanced form
-        features) will widen the copied surface.
+        and any other future advanced fields not in the list
+        above. Re-apply manually on the new form if needed.
 
         Args:
             form_id: Source lead form ID to copy from.
@@ -290,6 +301,22 @@ class LeadsMixin:
         if source.get("locale"):
             data["locale"] = source["locale"]
 
+        # PR 4 — copy the advanced fields PR 3 added support for, so
+        # an operator who built a form with intro / thank-you /
+        # higher-intent / conditional logic gets all of it on the
+        # duplicate. JSON-encode dict / list fields the same way
+        # create_lead_form does.
+        if source.get("context_card"):
+            data["context_card"] = json.dumps(source["context_card"])
+        if source.get("thank_you_page"):
+            data["thank_you_page"] = json.dumps(source["thank_you_page"])
+        if source.get("is_higher_intent"):
+            data["is_higher_intent"] = True
+        if source.get("conditional_questions_choices"):
+            data["conditional_questions_choices"] = json.dumps(
+                source["conditional_questions_choices"]
+            )
+
         logger.info(
             "Lead form duplicate: source=%s, page_id=%s, new_name=%s",
             form_id,
@@ -304,27 +331,29 @@ class LeadsMixin:
         *,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """Get lead data submitted to a form
+        """Get every lead submitted to a form.
+
+        Pagination is automatic: the helper follows ``paging.next``
+        cursors (extracting the ``after`` query parameter and
+        re-issuing on the relative path, to avoid the
+        ``BASE_URL``-prepend behaviour) until no more pages remain.
+        ``limit`` controls per-page size, not the total cap.
 
         Lead data contains PII (name, email, phone, etc.) and
         is not logged.
 
         Args:
-            form_id: Lead form ID
-            limit: Maximum number of items to retrieve
+            form_id: Lead form ID.
+            limit: Maximum number of items per Graph API call.
+                Default 100; the helper still returns every lead
+                via pagination.
 
         Returns:
-            List of lead data.
+            All leads (list-of-dict).
         """
-        params: dict[str, Any] = {
-            "fields": _LEAD_FIELDS,
-            "limit": limit,
-        }
-        result = await self._get(f"/{form_id}/leads", params)
-        # Not logged because it contains PII
-        leads = result.get("data", [])
+        leads = await self._paginate_leads(f"/{form_id}/leads", limit)
         logger.info("Lead data retrieval: form_id=%s, count=%d", form_id, len(leads))
-        return leads  # type: ignore[no-any-return]
+        return leads
 
     async def get_ad_leads(
         self,
@@ -332,27 +361,54 @@ class LeadsMixin:
         *,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """Get lead data via ads
+        """Get every lead attributed to a single ad.
+
+        Pagination is automatic, mirroring :meth:`get_leads`.
 
         Lead data contains PII (name, email, phone, etc.) and
         is not logged.
 
         Args:
-            ad_id: Ad ID
-            limit: Maximum number of items to retrieve
+            ad_id: Ad ID.
+            limit: Maximum number of items per Graph API call.
+                Default 100; the helper still returns every lead
+                via pagination.
 
         Returns:
-            List of lead data.
+            All leads (list-of-dict).
         """
-        params: dict[str, Any] = {
-            "fields": _LEAD_FIELDS,
-            "limit": limit,
-        }
-        result = await self._get(f"/{ad_id}/leads", params)
-        # Not logged because it contains PII
-        leads = result.get("data", [])
+        leads = await self._paginate_leads(f"/{ad_id}/leads", limit)
         logger.info("Lead data by ad: ad_id=%s, count=%d", ad_id, len(leads))
-        return leads  # type: ignore[no-any-return]
+        return leads
+
+    async def _paginate_leads(self, path: str, limit: int) -> list[dict[str, Any]]:
+        """Follow ``paging.next`` cursors and return the concatenated
+        ``data`` arrays. Shared by :meth:`get_leads`,
+        :meth:`get_ad_leads`, and :meth:`export_leads_to_csv` so the
+        cursor-extraction trick (avoid passing absolute URL through
+        ``_get``) lives in one place. A hard cap of
+        :data:`_MAX_LEAD_PAGES` iterations guards against a
+        misbehaving Meta cursor loop.
+        """
+        all_leads: list[dict[str, Any]] = []
+        params: dict[str, Any] = {"fields": _LEAD_FIELDS, "limit": limit}
+        for _ in range(_MAX_LEAD_PAGES):
+            result = await self._get(path, params)
+            all_leads.extend(result.get("data", []) or [])
+            next_url = (result.get("paging", {}) or {}).get("next")
+            if not next_url:
+                return all_leads
+            after_values = parse_qs(urlparse(next_url).query).get("after")
+            if not after_values:
+                return all_leads
+            params = {**params, "after": after_values[0]}
+        logger.warning(
+            "Lead pagination hit safety cap (%d pages) on path=%s — "
+            "returning what we have; investigate the cursor loop",
+            _MAX_LEAD_PAGES,
+            path,
+        )
+        return all_leads
 
     async def export_leads_to_csv(
         self,
@@ -423,26 +479,10 @@ class LeadsMixin:
                 if key:
                     field_order.append(key)
 
-        # Page through /{form_id}/leads until paging.next is absent.
-        # Meta returns a fully-qualified ``paging.next`` URL, but
-        # ``_get`` always prepends ``BASE_URL`` so an absolute URL
-        # would double-prefix. Extract the ``after`` cursor instead
-        # and re-issue with the same relative path.
-        all_leads: list[dict[str, Any]] = []
-        path: str = f"/{form_id}/leads"
-        params: dict[str, Any] = {"fields": _LEAD_FIELDS, "limit": limit}
-        while True:
-            result = await self._get(path, params)
-            all_leads.extend(result.get("data", []) or [])
-            next_url = (result.get("paging", {}) or {}).get("next")
-            if not next_url:
-                break
-            after_values = parse_qs(urlparse(next_url).query).get("after")
-            if not after_values:
-                # Paging cursor missing in a non-standard ``next`` —
-                # bail out rather than loop forever.
-                break
-            params = {**params, "after": after_values[0]}
+        # Pagination is delegated to the shared :meth:`_paginate_leads`
+        # so the cursor-extraction trick (avoid passing absolute URL
+        # through ``_get``) lives in one place.
+        all_leads = await self._paginate_leads(f"/{form_id}/leads", limit)
 
         header = ["id", "created_time", *field_order]
         output_path.parent.mkdir(parents=True, exist_ok=True)

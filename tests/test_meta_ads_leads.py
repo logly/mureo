@@ -268,6 +268,37 @@ class TestGetLeads:
 
         assert result == []
 
+    @pytest.mark.asyncio
+    async def test_get_leads_paginates_through_next_cursor(
+        self, client: LeadsMixin
+    ) -> None:
+        """``paging.next`` がある間は ``after`` cursor で繰り返し取得し、
+        全件を結合して返す。limit=100 を超える form でも silently
+        truncate しないこと (export_leads_to_csv と挙動を揃える)。"""
+        page_1 = {
+            "data": [{"id": f"lead_{i}", "field_data": []} for i in range(2)],
+            "paging": {
+                "next": (
+                    "https://graph.facebook.com/v23.0/form_1/leads"
+                    "?fields=id,created_time,field_data,ad_id,ad_name,form_id"
+                    "&limit=100&after=CUR_A"
+                )
+            },
+        }
+        page_2 = {
+            "data": [{"id": "lead_2", "field_data": []}],
+            "paging": {},
+        }
+        client._get = AsyncMock(side_effect=[page_1, page_2])
+
+        result = await client.get_leads("form_1")
+        assert [r["id"] for r in result] == ["lead_0", "lead_1", "lead_2"]
+        assert client._get.await_count == 2
+        # 2 回目は after cursor だけ更新して同じ相対 path に
+        second_call = client._get.await_args_list[1]
+        assert second_call.args[0] == "/form_1/leads"
+        assert second_call.args[1].get("after") == "CUR_A"
+
 
 # ===========================================================================
 # test_get_ad_leads — 広告別リードデータ取得
@@ -312,6 +343,31 @@ class TestGetAdLeads:
 
         params = client._get.call_args[0][1]
         assert params["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_get_ad_leads_paginates_through_next_cursor(
+        self, client: LeadsMixin
+    ) -> None:
+        """get_leads と同じ paging.next 追跡を行うこと"""
+        page_1 = {
+            "data": [{"id": "lead_a", "field_data": []}],
+            "paging": {
+                "next": (
+                    "https://graph.facebook.com/v23.0/ad_456/leads"
+                    "?limit=100&after=AD_CUR_A"
+                )
+            },
+        }
+        page_2 = {
+            "data": [{"id": "lead_b", "field_data": []}],
+            "paging": {},
+        }
+        client._get = AsyncMock(side_effect=[page_1, page_2])
+
+        result = await client.get_ad_leads("ad_456")
+        assert [r["id"] for r in result] == ["lead_a", "lead_b"]
+        assert client._get.await_count == 2
+        assert client._get.await_args_list[1].args[1].get("after") == "AD_CUR_A"
 
 
 # ===========================================================================
@@ -823,6 +879,110 @@ class TestDuplicateLeadForm:
             await client.duplicate_lead_form(
                 "form_1", page_id="page_123", new_name="Copy"
             )
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_copies_advanced_fields(
+        self, client: LeadsMixin
+    ) -> None:
+        """PR 3 で追加した advanced fields (context_card / thank_you_page
+        / is_higher_intent / conditional_questions_choices) を持つ source
+        form を duplicate すると、それらも新 form に引き継がれること。
+
+        PR 2 の docstring で『PR 3 で widen する』と書いた約束を、
+        PR 4 で履行する。
+        """
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "questions": [{"type": "EMAIL"}],
+            "privacy_policy": {"url": "https://example.com/policy"},
+            "context_card": {
+                "title": "資料請求",
+                "content": "60秒で完了",
+                "style": "PARAGRAPH_STYLE",
+            },
+            "thank_you_page": {
+                "title": "ありがとうございます",
+                "body": "担当者から連絡します",
+                "button_type": "VIEW_WEBSITE",
+                "website_url": "https://example.com/thanks",
+            },
+            "is_higher_intent": True,
+            "conditional_questions_choices": [
+                {
+                    "question": "predefined",
+                    "value": "INTERESTED",
+                    "next_question_key": "company_size",
+                },
+            ],
+        }
+        client._get = AsyncMock(return_value=source)
+        client._post = AsyncMock(return_value={"id": "form_2"})
+
+        await client.duplicate_lead_form(
+            "form_1", page_id="page_123", new_name="Copy"
+        )
+
+        post_data = client._post.call_args[0][1]
+        assert json.loads(post_data["context_card"]) == source["context_card"]
+        assert (
+            json.loads(post_data["thank_you_page"]) == source["thank_you_page"]
+        )
+        assert post_data["is_higher_intent"] is True
+        assert (
+            json.loads(post_data["conditional_questions_choices"])
+            == source["conditional_questions_choices"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_skips_absent_advanced_fields(
+        self, client: LeadsMixin
+    ) -> None:
+        """advanced fields を持たない source form の duplicate では、
+        payload に余計な空 field を増やさない (=既存の backcompat shape
+        を維持)。
+        """
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "questions": [{"type": "EMAIL"}],
+            "privacy_policy": {"url": "https://example.com/policy"},
+        }
+        client._get = AsyncMock(return_value=source)
+        client._post = AsyncMock(return_value={"id": "form_2"})
+
+        await client.duplicate_lead_form(
+            "form_1", page_id="page_123", new_name="Copy"
+        )
+
+        post_data = client._post.call_args[0][1]
+        assert "context_card" not in post_data
+        assert "thank_you_page" not in post_data
+        assert "is_higher_intent" not in post_data
+        assert "conditional_questions_choices" not in post_data
+
+    @pytest.mark.asyncio
+    async def test_duplicate_lead_form_higher_intent_false_not_sent(
+        self, client: LeadsMixin
+    ) -> None:
+        """is_higher_intent=False の source は payload に True を立て
+        ない (= Meta デフォルトと一致するので omit)。"""
+        source = {
+            "id": "form_1",
+            "name": "原本",
+            "questions": [{"type": "EMAIL"}],
+            "privacy_policy": {"url": "https://example.com/policy"},
+            "is_higher_intent": False,
+        }
+        client._get = AsyncMock(return_value=source)
+        client._post = AsyncMock(return_value={"id": "form_2"})
+
+        await client.duplicate_lead_form(
+            "form_1", page_id="page_123", new_name="Copy"
+        )
+
+        post_data = client._post.call_args[0][1]
+        assert "is_higher_intent" not in post_data
 
 
 # ===========================================================================
@@ -1351,6 +1511,42 @@ class TestExportLeadsToCsv:
         # 2nd & 3rd call は paging.next の URL を path にして呼ぶ —
         # 4 回目以降は呼ばれない (= ループ終了が正常)
         assert client._get.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_csv_pagination_bails_when_next_has_no_after_cursor(
+        self,
+        client: LeadsMixin,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        """非標準形 (after= が欠落した paging.next) では即終了 — 無限
+        ループに陥らないことを pin。"""
+        from pathlib import Path
+
+        form = {
+            "id": "form_1",
+            "questions": [{"type": "EMAIL", "key": "email"}],
+            "privacy_policy": {"url": "https://example.com/p"},
+        }
+        page = {
+            "data": [
+                {
+                    "id": "lead_only",
+                    "created_time": "2026-01-01T00:00:00+0000",
+                    "field_data": [{"name": "email", "values": ["a@x.io"]}],
+                }
+            ],
+            # next 自体は存在するが after クエリ無し
+            "paging": {
+                "next": "https://graph.facebook.com/v23.0/form_1/leads?foo=bar"
+            },
+        }
+        client._get = AsyncMock(side_effect=[form, page])
+
+        out: Path = tmp_path / "out.csv"  # type: ignore[assignment]
+        count = await client.export_leads_to_csv("form_1", out)
+        assert count == 1
+        # form fetch + 1 page fetch = 2 calls (3 回目以降は呼ばれない)
+        assert client._get.await_count == 2
 
     @pytest.mark.asyncio
     async def test_csv_pagination_uses_relative_path_with_after_cursor(

@@ -146,6 +146,7 @@ class CreativesMixin:
         *,
         image_url: str | None = None,
         image_hash: str | None = None,
+        video_id: str | None = None,
         message: str | None = None,
         headline: str | None = None,
         description: str | None = None,
@@ -153,11 +154,17 @@ class CreativesMixin:
     ) -> dict[str, Any]:
         """Create an AdCreative wired to a Meta Instant Form (Lead Ad).
 
-        Builds the ``object_story_spec.link_data.lead_gen_form_id``
-        contract that turns a normal link creative into a Lead Ad so
-        the resulting creative can be attached to an Ad whose Ad Set
-        uses ``optimization_goal=LEAD_GENERATION`` under a campaign
-        with ``objective=OUTCOME_LEADS``.
+        Image mode (default): builds
+        ``object_story_spec.link_data.lead_gen_form_id`` so the
+        creative can be attached to an Ad whose Ad Set uses
+        ``optimization_goal=LEAD_GENERATION`` under a campaign with
+        ``objective=OUTCOME_LEADS``.
+
+        Video mode (``video_id`` supplied): builds
+        ``object_story_spec.video_data`` with ``lead_gen_form_id``
+        nested under ``call_to_action.value`` — Meta routes Instant
+        Form attachments for video creatives through that path, not
+        ``link_data``.
 
         Args:
             name: Internal creative label shown in Ads Manager.
@@ -169,14 +176,20 @@ class CreativesMixin:
                 page on placements where the in-app form cannot
                 render. Required by the API even for pure Lead Ads.
             image_url: Optional public HTTPS image URL — triggers
-                auto-upload to ``image_hash``. Mutually exclusive
-                with ``image_hash``.
+                auto-upload to ``image_hash``. Image mode only;
+                supplying both ``image_url`` and ``video_id`` raises
+                ``ValueError`` (caller intent ambiguous).
             image_hash: Optional pre-uploaded image hash from
-                ``upload_ad_image`` / ``upload_ad_image_file``.
-            message: Primary body text shown above the image.
-            headline: Headline text shown below the image
-                (mapped to ``link_data.name``).
-            description: Link-caption shown below the headline.
+                ``upload_ad_image`` / ``upload_ad_image_file``. In
+                video mode, used as the video thumbnail.
+            video_id: Optional pre-uploaded video ID from
+                ``upload_ad_video`` / ``upload_ad_video_file``.
+                When supplied, the creative becomes a video Lead Ad.
+            message: Primary body text shown above the creative.
+            headline: Headline text. In image mode mapped to
+                ``link_data.name``; in video mode mapped to
+                ``video_data.title``.
+            description: Link-caption / description.
             call_to_action: CTA button label. Defaults to
                 ``"SIGN_UP"`` (canonical Lead Ad CTA). Other commonly
                 supported values: ``LEARN_MORE``, ``APPLY_NOW``,
@@ -191,7 +204,52 @@ class CreativesMixin:
 
         Returns:
             Created AdCreative info dict (id, ...).
+
+        Raises:
+            ValueError: ``video_id`` and ``image_url`` are both set.
+                Supply ``image_hash`` directly for the video
+                thumbnail instead.
         """
+        if video_id and image_url:
+            raise ValueError(
+                "video_id and image_url cannot be combined — supply "
+                "image_hash directly for the video thumbnail"
+            )
+
+        if video_id:
+            video_data: dict[str, Any] = {
+                "video_id": video_id,
+                "call_to_action": {
+                    "type": call_to_action,
+                    "value": {
+                        "lead_gen_form_id": form_id,
+                        "link": link_url,
+                    },
+                },
+            }
+            if image_hash:
+                # Meta's video_data thumbnail accepts either
+                # ``image_url`` or ``image_hash`` (per Marketing API
+                # docs, exactly one). We use ``image_hash`` for
+                # consistency with link_data and the upload helpers
+                # (``upload_ad_image`` returns ``{"hash": ..., "url": ...}``).
+                video_data["image_hash"] = image_hash
+            if message:
+                video_data["message"] = message
+            if headline:
+                video_data["title"] = headline
+            if description:
+                video_data["description"] = description
+            object_story_spec = {
+                "page_id": page_id,
+                "video_data": video_data,
+            }
+            data: dict[str, Any] = {
+                "name": name,
+                "object_story_spec": json.dumps(object_story_spec),
+            }
+            return await self._post(f"/{self._ad_account_id}/adcreatives", data)
+
         link_data: dict[str, Any] = {
             "link": link_url,
             "lead_gen_form_id": form_id,
