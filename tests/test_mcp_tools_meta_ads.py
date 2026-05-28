@@ -34,9 +34,9 @@ class TestMetaAdsToolDefinitions:
     """Meta Adsツール一覧が正しく定義されていることを検証する"""
 
     def test_tool_count(self) -> None:
-        """全77ツールが定義されていること"""
+        """全78ツールが定義されていること"""
         mod = _import_meta_ads_tools()
-        assert len(mod.TOOLS) == 77
+        assert len(mod.TOOLS) == 78
 
     def test_all_tool_names(self) -> None:
         """全ツール名が meta_ads_ で始まること（MCP仕様準拠の underscore 区切り）"""

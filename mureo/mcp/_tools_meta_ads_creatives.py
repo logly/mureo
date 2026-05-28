@@ -162,6 +162,110 @@ TOOLS: list[Tool] = [
         },
     ),
     Tool(
+        name="meta_ads_creatives_create_lead",
+        description=(
+            "Creates a Lead Ad AdCreative attached to a Meta Instant "
+            "Form. Returns the new creative's id and object_story_id. "
+            "Mutating, reversible via rollback_apply. Use under a "
+            "campaign with objective=OUTCOME_LEADS and an ad set with "
+            "optimization_goal=LEAD_GENERATION. Pre-requisite: the "
+            "lead form must exist (create via "
+            "meta_ads_lead_forms_create) and belong to the same "
+            "Facebook Page. link_url is the fallback landing page for "
+            "placements where the in-app form cannot render; it must "
+            "be HTTPS and domain-verified on the ad account."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "name": {
+                    "type": "string",
+                    "description": (
+                        "Creative name shown in Ads Manager. Internal "
+                        "label — not visible to end users."
+                    ),
+                },
+                "page_id": _PAGE_ID_PARAM,
+                "form_id": {
+                    "type": "string",
+                    "description": (
+                        "Lead Form ID returned by "
+                        "meta_ads_lead_forms_create or listed via "
+                        "meta_ads_lead_forms_list. The form must belong "
+                        "to the supplied page_id."
+                    ),
+                },
+                "link_url": {
+                    "type": "string",
+                    "description": (
+                        "Fallback destination URL for placements where "
+                        "the in-app form cannot render. Must be HTTPS "
+                        "and domain-verified on the ad account."
+                    ),
+                },
+                "image_url": {
+                    "type": "string",
+                    "description": (
+                        "Public HTTPS image URL. Auto-uploaded to "
+                        "image_hash. Mutually exclusive with "
+                        "image_hash."
+                    ),
+                },
+                "image_hash": {
+                    "type": "string",
+                    "description": (
+                        "Pre-uploaded image hash from "
+                        "meta_ads_creatives_upload_image / "
+                        "meta_ads_images_upload_file. Mutually "
+                        "exclusive with image_url."
+                    ),
+                },
+                "message": {
+                    "type": "string",
+                    "description": (
+                        "Primary ad body text shown above the image. "
+                        "Plain text, emoji allowed. ≤125 characters "
+                        "fits most placements without truncation."
+                    ),
+                },
+                "headline": {
+                    "type": "string",
+                    "description": (
+                        "Headline shown below the image. ~40 "
+                        "characters fits most placements."
+                    ),
+                },
+                "description": {
+                    "type": "string",
+                    "description": (
+                        "Link-caption text shown below the headline. "
+                        "Optional; not all placements render it."
+                    ),
+                },
+                "call_to_action": {
+                    "type": "string",
+                    "enum": [
+                        "SIGN_UP",
+                        "LEARN_MORE",
+                        "APPLY_NOW",
+                        "GET_QUOTE",
+                        "SUBSCRIBE",
+                        "CONTACT_US",
+                        "DOWNLOAD",
+                        "BOOK_TRAVEL",
+                    ],
+                    "description": (
+                        "CTA button label. SIGN_UP is the canonical "
+                        "Lead Ad CTA and the default. Choose the one "
+                        "that matches the form's purpose."
+                    ),
+                },
+            },
+            "required": ["name", "page_id", "form_id", "link_url"],
+        },
+    ),
+    Tool(
         name="meta_ads_creatives_create_dynamic",
         description=(
             "Creates a Dynamic Creative — Meta auto-generates and "

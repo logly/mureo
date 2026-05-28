@@ -95,6 +95,7 @@ metadata:
 | 75 | `meta_ads_instagram_accounts` | Instagram | Read | List connected Instagram accounts |
 | 76 | `meta_ads_instagram_media` | Instagram | Read | List Instagram posts |
 | 77 | `meta_ads_instagram_boost` | Instagram | Write | Boost an Instagram post |
+| 78 | `meta_ads_creatives_create_lead` | Lead / Creative | Write | Create a Lead Ad AdCreative attached to an Instant Form |
 
 ## Key Differences from Google Ads
 
@@ -653,18 +654,48 @@ Step 3: Create a dynamic product ad creative (CONFIRM WITH USER)
   -> meta_ads_creatives_create_dynamic {account_id, catalog_id}
 ```
 
-### 6. Lead Generation
+### 6. Lead Generation (Instant Form, end-to-end)
 
 ```
-Step 1: Create a lead form (CONFIRM WITH USER)
+Step 1: Create the Instant Form (CONFIRM WITH USER)
   -> meta_ads_lead_forms_create {account_id, page_id, name, questions, privacy_policy_url}
+  Returns: { id: "<form_id>", ... }
 
-Step 2: Set up campaign with LEAD_GENERATION objective
-  -> meta_ads_campaigns_create {account_id, name, objective: "LEAD_GENERATION"}
+Step 2: Create a Lead Ad creative attached to the form
+  -> meta_ads_creatives_create_lead {
+       account_id, name, page_id, form_id: "<form_id>",
+       link_url: "<https-domain-verified-url>",
+       image_hash (or image_url), message, headline,
+       call_to_action: "SIGN_UP"   # default; APPLY_NOW / LEARN_MORE / etc. also valid
+     }
+  Returns: { id: "<creative_id>", ... }
 
-Step 3: Download leads
+Step 3: Set up the campaign + ad set
+  -> meta_ads_campaigns_create {account_id, name, objective: "OUTCOME_LEADS"}
+  -> meta_ads_ad_sets_create {
+       account_id, campaign_id, name, daily_budget,
+       optimization_goal: "LEAD_GENERATION",
+       targeting: { ... }
+     }
+
+Step 4: Attach the creative to a new ad
+  -> meta_ads_ads_create {account_id, ad_set_id, name, creative_id: "<creative_id>"}
+
+Step 5: Download leads as they come in (poll)
   -> meta_ads_leads_get {account_id, form_id}
+  Or by ad: meta_ads_leads_get_by_ad {account_id, ad_id}
 ```
+
+The legacy `LEAD_GENERATION` campaign objective is still accepted by
+the API but `OUTCOME_LEADS` is the current (ODAX) canonical name.
+
+Pre-requisites the API will enforce (catch them before campaign
+launch, not after):
+- the Page that owns the form must have its lead-form Terms of
+  Service accepted (or the form must be created with
+  `leadgen_tos_accepted=true`);
+- the Page must be linked to a CRM destination or have lead access
+  configured, otherwise the lead data sits unread in Meta's UI.
 
 ### 7. Pause / Enable Entities
 

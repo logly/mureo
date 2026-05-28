@@ -298,6 +298,7 @@ Or use `uv` to run it:
 | `meta_ads_creatives_create_carousel` | Create a carousel creative (2-10 cards) | `account_id`, `page_id`, `cards`, `link` |
 | `meta_ads_creatives_create_collection` | Create a collection creative | `account_id`, `page_id`, `product_ids`, `link` |
 | `meta_ads_creatives_create_dynamic` | Create a dynamic product ad creative | `account_id`, `catalog_id` |
+| `meta_ads_creatives_create_lead` | Create a Lead Ad creative attached to an Instant Form | `account_id`, `name`, `page_id`, `form_id`, `link_url` |
 | `meta_ads_creatives_upload_image` | Upload an image for use in creatives | `account_id`, `file_path` |
 
 #### Images

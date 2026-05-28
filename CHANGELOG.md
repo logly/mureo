@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.14] - 2026-05-28
+
+### Added — Meta Instant Form: end-to-end Lead Ad deployability
+
+`mureo.meta_ads` gains `create_lead_ad_creative(name, page_id, form_id, link_url, ...)`, the missing link that lets mureo deploy ads attached to a Meta Instant Form (Lead Form). Previously the wizard could create the form and fetch the leads, but had no way to produce the `object_story_spec.link_data.lead_gen_form_id` wiring required to attach the form to a creative — so the form-to-running-ad path required hand-crafting the spec elsewhere.
+
+The helper builds the correct payload (lead_gen_form_id + link + call_to_action) and auto-uploads `image_url` to an `image_hash` the same way the existing `create_ad_creative` does. The default CTA is `SIGN_UP` (the canonical Lead Ad CTA); `LEARN_MORE`, `APPLY_NOW`, `GET_QUOTE`, `SUBSCRIBE`, `CONTACT_US`, `DOWNLOAD`, and `BOOK_TRAVEL` are also valid.
+
+The new MCP tool `meta_ads_creatives_create_lead` exposes the operation; the `_mureo-meta-ads` skill now documents the end-to-end Lead Generation workflow (form → creative → campaign with `OUTCOME_LEADS` objective → ad set with `LEAD_GENERATION` optimisation goal → ad → leads polling).
+
+This is part 1 of 3 closing [#151](https://github.com/logly/mureo/issues/151) (Meta Instant Form full coverage). Parts 2 ([#153](https://github.com/logly/mureo/issues/153) — form lifecycle) and 3 ([#154](https://github.com/logly/mureo/issues/154) — CSV export + conditional questions + multi-step) follow in subsequent releases.
+
 ## [0.9.13] - 2026-05-27
 
 ### Added — `mureo configure` UI registers plugin per-account credentials

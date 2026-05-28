@@ -83,6 +83,7 @@ from mureo.mcp._handlers_meta_ads_extended import (
     handle_campaigns_pause,
     handle_creatives_create,
     handle_creatives_create_dynamic,
+    handle_creatives_create_lead,
     handle_creatives_list,
     handle_creatives_upload_image,
     handle_pixels_events,
@@ -226,6 +227,7 @@ _HANDLERS: dict[str, Any] = {
     # Creatives
     "meta_ads_creatives_list": handle_creatives_list,
     "meta_ads_creatives_create": handle_creatives_create,
+    "meta_ads_creatives_create_lead": handle_creatives_create_lead,
     "meta_ads_creatives_create_dynamic": handle_creatives_create_dynamic,
     "meta_ads_creatives_upload_image": handle_creatives_upload_image,
     "meta_ads_creatives_create_carousel": handle_creatives_create_carousel,

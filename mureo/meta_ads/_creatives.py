@@ -137,6 +137,97 @@ class CreativesMixin:
 
         return await self._post(f"/{self._ad_account_id}/adcreatives", data)
 
+    async def create_lead_ad_creative(
+        self,
+        name: str,
+        page_id: str,
+        form_id: str,
+        link_url: str,
+        *,
+        image_url: str | None = None,
+        image_hash: str | None = None,
+        message: str | None = None,
+        headline: str | None = None,
+        description: str | None = None,
+        call_to_action: str = "SIGN_UP",
+    ) -> dict[str, Any]:
+        """Create an AdCreative wired to a Meta Instant Form (Lead Ad).
+
+        Builds the ``object_story_spec.link_data.lead_gen_form_id``
+        contract that turns a normal link creative into a Lead Ad so
+        the resulting creative can be attached to an Ad whose Ad Set
+        uses ``optimization_goal=LEAD_GENERATION`` under a campaign
+        with ``objective=OUTCOME_LEADS``.
+
+        Args:
+            name: Internal creative label shown in Ads Manager.
+            page_id: Facebook Page that owns the Lead Form (the form
+                must belong to this Page).
+            form_id: Lead Form ID to attach. Get it from
+                ``list_lead_forms`` / ``create_lead_form``.
+            link_url: Destination URL used as the fallback landing
+                page on placements where the in-app form cannot
+                render. Required by the API even for pure Lead Ads.
+            image_url: Optional public HTTPS image URL — triggers
+                auto-upload to ``image_hash``. Mutually exclusive
+                with ``image_hash``.
+            image_hash: Optional pre-uploaded image hash from
+                ``upload_ad_image`` / ``upload_ad_image_file``.
+            message: Primary body text shown above the image.
+            headline: Headline text shown below the image
+                (mapped to ``link_data.name``).
+            description: Link-caption shown below the headline.
+            call_to_action: CTA button label. Defaults to
+                ``"SIGN_UP"`` (canonical Lead Ad CTA). Other commonly
+                supported values: ``LEARN_MORE``, ``APPLY_NOW``,
+                ``GET_QUOTE``, ``SUBSCRIBE``, ``CONTACT_US``,
+                ``DOWNLOAD``, ``BOOK_TRAVEL``. Meta's published list
+                also includes ``GET_OFFER`` / ``ORDER_NOW`` /
+                ``REGISTER``; mureo passes the value through
+                untouched, and Meta validates server-side. Note that
+                ``SHOP_NOW`` (valid for normal link creatives) is
+                explicitly **not** allowed on Lead Ads — Meta rejects
+                it with a 400.
+
+        Returns:
+            Created AdCreative info dict (id, ...).
+        """
+        link_data: dict[str, Any] = {
+            "link": link_url,
+            "lead_gen_form_id": form_id,
+            "call_to_action": {"type": call_to_action},
+        }
+
+        if image_url and not image_hash:
+            upload_result = await self.upload_ad_image(image_url)
+            if "hash" in upload_result:
+                image_hash = upload_result["hash"]
+            else:
+                logger.warning(
+                    "Auto-upload failed for %s: %s", image_url, upload_result
+                )
+
+        if image_hash:
+            link_data["image_hash"] = image_hash
+        if message:
+            link_data["message"] = message
+        if headline:
+            link_data["name"] = headline
+        if description:
+            link_data["description"] = description
+
+        object_story_spec = {
+            "page_id": page_id,
+            "link_data": link_data,
+        }
+
+        data: dict[str, Any] = {
+            "name": name,
+            "object_story_spec": json.dumps(object_story_spec),
+        }
+
+        return await self._post(f"/{self._ad_account_id}/adcreatives", data)
+
     async def upload_ad_image(
         self,
         image_url: str,

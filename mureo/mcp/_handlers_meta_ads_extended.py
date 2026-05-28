@@ -173,7 +173,7 @@ async def handle_audiences_create_lookalike(
 
 
 # ---------------------------------------------------------------------------
-# Creative list / create / dynamic / upload_image
+# Creative list / create / create_lead / dynamic / upload_image
 # ---------------------------------------------------------------------------
 
 
@@ -210,6 +210,33 @@ async def handle_creatives_create(args: dict[str, Any]) -> list[TextContent]:
         if val is not None:
             kwargs[key] = val
     result = await client.create_ad_creative(**kwargs)
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_creatives_create_lead(args: dict[str, Any]) -> list[TextContent]:
+    """Create a Lead Ad creative wired to a Meta Instant Form."""
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    kwargs: dict[str, Any] = {
+        "name": _require(args, "name"),
+        "page_id": _require(args, "page_id"),
+        "form_id": _require(args, "form_id"),
+        "link_url": _require(args, "link_url"),
+    }
+    for key in (
+        "image_url",
+        "image_hash",
+        "message",
+        "headline",
+        "description",
+        "call_to_action",
+    ):
+        val = _opt(args, key)
+        if val is not None:
+            kwargs[key] = val
+    result = await client.create_lead_ad_creative(**kwargs)
     return _json_result(result)
 
 

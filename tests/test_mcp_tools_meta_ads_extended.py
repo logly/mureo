@@ -343,6 +343,59 @@ class TestCreativeHandlers:
         parsed = json.loads(result[0].text)
         assert parsed["id"] == "cr_2"
 
+    async def test_creatives_create_lead(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.create_lead_ad_creative.return_value = {"id": "cr_lead_1"}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            result = await mod.handle_tool(
+                "meta_ads_creatives_create_lead",
+                {
+                    "account_id": "act_123",
+                    "name": "LeadCreative",
+                    "page_id": "pg_1",
+                    "form_id": "form_42",
+                    "link_url": "https://example.com",
+                    "call_to_action": "APPLY_NOW",
+                },
+            )
+
+        client.create_lead_ad_creative.assert_awaited_once()
+        kwargs = client.create_lead_ad_creative.call_args.kwargs
+        assert kwargs["form_id"] == "form_42"
+        assert kwargs["call_to_action"] == "APPLY_NOW"
+        parsed = json.loads(result[0].text)
+        assert parsed["id"] == "cr_lead_1"
+
+    async def test_creatives_create_lead_requires_form_id(self) -> None:
+        """form_id is a hard requirement of the Lead Ad spec — omit it
+        and the handler must raise rather than POST a malformed
+        payload."""
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            with pytest.raises(Exception):  # noqa: B017, PT011
+                await mod.handle_tool(
+                    "meta_ads_creatives_create_lead",
+                    {
+                        "account_id": "act_123",
+                        "name": "LeadCreative",
+                        "page_id": "pg_1",
+                        # form_id missing
+                        "link_url": "https://example.com",
+                    },
+                )
+
     async def test_creatives_create_dynamic(self) -> None:
         mod = _import_meta_ads_tools()
         handlers = _import_handlers()

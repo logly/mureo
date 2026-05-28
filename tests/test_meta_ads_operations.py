@@ -376,6 +376,131 @@ class TestCreativesMixin:
         assert "error" in result
 
     @pytest.mark.asyncio
+    async def test_create_lead_ad_creative_attaches_form_id(self, client) -> None:
+        """Lead Ad creative must surface ``lead_gen_form_id`` inside
+        ``link_data`` — this is the API contract that turns a normal
+        link creative into a Lead Ad."""
+        await client.create_lead_ad_creative(
+            "LeadCreative1",
+            "page1",
+            "form_99",
+            "https://example.com/landing",
+        )
+        data = client._post.call_args[0][1]
+        spec = json.loads(data["object_story_spec"])
+        assert spec["page_id"] == "page1"
+        assert spec["link_data"]["lead_gen_form_id"] == "form_99"
+        assert spec["link_data"]["link"] == "https://example.com/landing"
+
+    @pytest.mark.asyncio
+    async def test_create_lead_ad_creative_defaults_cta_to_sign_up(
+        self, client
+    ) -> None:
+        """``SIGN_UP`` is the canonical CTA for Lead Ads — must be the
+        default so the operator does not have to remember it."""
+        await client.create_lead_ad_creative(
+            "LeadCreative2",
+            "page1",
+            "form_42",
+            "https://example.com",
+        )
+        spec = json.loads(client._post.call_args[0][1]["object_story_spec"])
+        assert spec["link_data"]["call_to_action"] == {"type": "SIGN_UP"}
+
+    @pytest.mark.asyncio
+    async def test_create_lead_ad_creative_accepts_alternate_cta(
+        self, client
+    ) -> None:
+        """Lead Ads support several CTAs (LEARN_MORE, APPLY_NOW,
+        GET_QUOTE, SUBSCRIBE, ...) — the helper must pass through
+        whatever the caller chooses without validation."""
+        await client.create_lead_ad_creative(
+            "LeadCreative3",
+            "page1",
+            "form_42",
+            "https://example.com",
+            call_to_action="APPLY_NOW",
+        )
+        spec = json.loads(client._post.call_args[0][1]["object_story_spec"])
+        assert spec["link_data"]["call_to_action"] == {"type": "APPLY_NOW"}
+
+    @pytest.mark.asyncio
+    async def test_create_lead_ad_creative_with_image_hash(self, client) -> None:
+        """image_hash flows into link_data unchanged — no auto-upload."""
+        await client.create_lead_ad_creative(
+            "LeadCreative4",
+            "page1",
+            "form_42",
+            "https://example.com",
+            image_hash="hash_abc",
+            message="本文",
+            headline="見出し",
+            description="説明",
+        )
+        spec = json.loads(client._post.call_args[0][1]["object_story_spec"])
+        assert spec["link_data"]["image_hash"] == "hash_abc"
+        assert spec["link_data"]["message"] == "本文"
+        assert spec["link_data"]["name"] == "見出し"
+        assert spec["link_data"]["description"] == "説明"
+
+    @pytest.mark.asyncio
+    async def test_create_lead_ad_creative_with_image_url_auto_uploads(
+        self, client
+    ) -> None:
+        """An image_url triggers auto-upload (same convention as
+        ``create_ad_creative``) so the operator does not need a
+        separate step."""
+        client.upload_ad_image = AsyncMock(
+            return_value={"hash": "uploaded_hash", "url": "https://cdn/x.jpg"}
+        )
+        await client.create_lead_ad_creative(
+            "LeadCreative5",
+            "page1",
+            "form_42",
+            "https://example.com",
+            image_url="https://img.example.com/x.jpg",
+        )
+        client.upload_ad_image.assert_awaited_once_with(
+            "https://img.example.com/x.jpg"
+        )
+        spec = json.loads(client._post.call_args[0][1]["object_story_spec"])
+        assert spec["link_data"]["image_hash"] == "uploaded_hash"
+
+    @pytest.mark.asyncio
+    async def test_create_lead_ad_creative_link_url_present_without_image(
+        self, client
+    ) -> None:
+        """Meta requires ``link_data.link`` even on pure Lead Ads
+        (used as fallback landing page on placements that cannot
+        render the in-app form). The helper must surface it
+        regardless of whether an image is supplied."""
+        await client.create_lead_ad_creative(
+            "LeadCreativeNoImage",
+            "page1",
+            "form_42",
+            "https://example.com/fallback",
+        )
+        spec = json.loads(client._post.call_args[0][1]["object_story_spec"])
+        assert spec["link_data"]["link"] == "https://example.com/fallback"
+        # No image fields when neither image_hash nor image_url supplied.
+        assert "image_hash" not in spec["link_data"]
+
+    @pytest.mark.asyncio
+    async def test_create_lead_ad_creative_calls_correct_endpoint(
+        self, client
+    ) -> None:
+        """The POST goes to ``/<ad_account_id>/adcreatives`` — same
+        endpoint as ``create_ad_creative``, only the payload differs."""
+        await client.create_lead_ad_creative(
+            "LeadCreative6",
+            "page1",
+            "form_42",
+            "https://example.com",
+        )
+        path = client._post.call_args[0][0]
+        assert path == "/act_123/adcreatives"
+
+    @pytest.mark.asyncio
     async def test_create_dynamic_creative(self, client) -> None:
         await client.create_dynamic_creative(
             "DC1",
