@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.16] - 2026-05-28
+
+### Added — Meta Instant Form: CSV export + advanced form authoring
+
+Two additions on `LeadsMixin`:
+
+- `export_leads_to_csv(form_id, output_path, *, limit=1000, field_order=None) -> int` — pulls the form's leads and writes them to a local CSV file. Header is `[id, created_time, *question_keys]`; the question_keys column order comes from the form's declared questions (or from caller-supplied `field_order` for a stable CRM-import schema). PII is never surfaced in mureo's log output — only the row count. Returns the number of rows written.
+- `create_lead_form` gains four optional advanced kwargs that pass through to Meta as-is (all default to "no-op" so existing callers are unaffected):
+  - `context_card` — intro / welcome screen. Lifts conversion rate measurably; recommended for any campaign past a one-week test.
+  - `thank_you_page` — custom completion screen with a CTA; supersedes the simpler `follow_up_action_url` redirect when both are supplied.
+  - `is_higher_intent=False` — flip to `True` for a 3-step input → review → submit form. Trims junk submissions at the cost of total leads volume; pick when CV quality matters more than CV volume.
+  - `conditional_questions_choices` — branching logic, so a follow-up question only shows when a prior answer matches.
+
+Two new MCP-tool entries expose the additions: `meta_ads_leads_export_csv` (new tool) and an extended `meta_ads_lead_forms_create` (signature only — tool name unchanged). The `_mureo-meta-ads` skill documents both in the tool table and the lead_forms / leads reference sections, with usage guidance on when each advanced flag is worth the friction.
+
+This is part 3 of 3 closing [#151](https://github.com/logly/mureo/issues/151) (Meta Instant Form full coverage). Part 1 ([#152](https://github.com/logly/mureo/issues/152)) and part 2 ([#153](https://github.com/logly/mureo/issues/153)) shipped in 0.9.14 and 0.9.15. Closes [#154](https://github.com/logly/mureo/issues/154).
+
 ## [0.9.15] - 2026-05-28
 
 ### Added — Meta Instant Form: lifecycle (status update + duplicate)

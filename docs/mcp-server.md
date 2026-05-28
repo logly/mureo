@@ -377,6 +377,7 @@ Or use `uv` to run it:
 | `meta_ads_lead_forms_create` | Create a lead form | `account_id`, `page_id`, `name`, `questions`, `privacy_policy_url` |
 | `meta_ads_lead_forms_update` | Update lead form status (ACTIVE / ARCHIVED) | `account_id`, `form_id`, `status` |
 | `meta_ads_lead_forms_duplicate` | Duplicate a lead form under a Page with a new name | `account_id`, `form_id`, `page_id`, `new_name` |
+| `meta_ads_leads_export_csv` | Export form leads to a local CSV file | `account_id`, `form_id`, `output_path` |
 | `meta_ads_leads_get` | Get lead data (per form) | `account_id`, `form_id` |
 | `meta_ads_leads_get_by_ad` | Get lead data (per ad) | `account_id`, `ad_id` |
 

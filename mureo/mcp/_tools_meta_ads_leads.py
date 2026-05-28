@@ -174,8 +174,56 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Optional URL the user is redirected to after "
                         "submission (e.g. thank-you page). Omit to show "
-                        "Meta's default confirmation only."
+                        "Meta's default confirmation only. Superseded by "
+                        "thank_you_page when both are supplied."
                     ),
+                },
+                "locale": {
+                    "type": "string",
+                    "description": (
+                        "Optional form locale (e.g. ``ja_JP``). Defaults "
+                        "to the Page's primary locale."
+                    ),
+                },
+                "context_card": {
+                    "type": "object",
+                    "description": (
+                        "Optional intro / welcome screen shown before "
+                        "the form. Lifts conversion rate measurably when "
+                        "supplied. Expected keys: title, content, style "
+                        "(PARAGRAPH_STYLE or LIST_STYLE), cover_photo_id."
+                    ),
+                },
+                "thank_you_page": {
+                    "type": "object",
+                    "description": (
+                        "Optional custom completion screen with a CTA. "
+                        "Replaces follow_up_action_url's simple "
+                        "redirect when supplied. Expected keys: title, "
+                        "body, button_type (VIEW_WEBSITE / "
+                        "CALL_BUSINESS / MESSAGE_BUSINESS / DOWNLOAD / "
+                        "DOWNLOAD_APP), website_url, button_text."
+                    ),
+                },
+                "is_higher_intent": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, Meta renders a 3-step form "
+                        "(input → review → submit) which trims junk "
+                        "submissions at the cost of total leads "
+                        "volume. Default false (single-step)."
+                    ),
+                },
+                "conditional_questions_choices": {
+                    "type": "array",
+                    "description": (
+                        "Branching logic — given a prior question's "
+                        "value, choose which question to ask next. "
+                        "Each entry: {question: <key>, value: "
+                        "<choice>, next_question_key: <key>}. Meta "
+                        "validates the keys refer to real questions."
+                    ),
+                    "items": {"type": "object"},
                 },
             },
             "required": [
@@ -263,6 +311,58 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["form_id", "page_id", "new_name"],
+        },
+    ),
+    Tool(
+        name="meta_ads_leads_export_csv",
+        description=(
+            "Fetches all leads for a lead form and writes them to a "
+            "local CSV file. Returns the number of rows written. "
+            'Header row is ``["id", "created_time", *question_keys]``; '
+            "question_keys come from the form's declared questions "
+            "(in declared order) so column order stays stable across "
+            "exports. Pass field_order to lock a different column "
+            "order (useful for stable CRM-import schemas). PII never "
+            "appears in mureo's log output — only the row count. "
+            "Read-only with respect to Meta, but writes locally. "
+            "Meta retains lead data for 90 days; export regularly."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "form_id": {
+                    "type": "string",
+                    "description": "Lead form ID whose leads to export.",
+                },
+                "output_path": {
+                    "type": "string",
+                    "description": (
+                        "Absolute local path for the CSV file. Parent "
+                        "directory is auto-created if missing; "
+                        "existing file is overwritten. UTF-8 encoded."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": (
+                        "Max leads per API call. Default 1000, "
+                        "Meta's per-call ceiling."
+                    ),
+                },
+                "field_order": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Optional list of question keys to lock the "
+                        "column order. Overrides the form's declared "
+                        "question order."
+                    ),
+                },
+            },
+            "required": ["form_id", "output_path"],
         },
     ),
     Tool(

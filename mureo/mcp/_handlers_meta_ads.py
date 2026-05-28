@@ -564,11 +564,43 @@ async def handle_lead_forms_create(args: dict[str, Any]) -> list[TextContent]:
         "questions": _require(args, "questions"),
         "privacy_policy_url": _require(args, "privacy_policy_url"),
     }
-    follow_up = _opt(args, "follow_up_action_url")
-    if follow_up is not None:
-        kwargs["follow_up_action_url"] = follow_up
+    for key in (
+        "follow_up_action_url",
+        "locale",
+        "context_card",
+        "thank_you_page",
+        "conditional_questions_choices",
+    ):
+        val = _opt(args, key)
+        if val is not None:
+            kwargs[key] = val
+    if _opt(args, "is_higher_intent"):
+        kwargs["is_higher_intent"] = True
     result = await client.create_lead_form(**kwargs)
     return _json_result(result)
+
+
+@api_error_handler
+async def handle_leads_export_csv(args: dict[str, Any]) -> list[TextContent]:
+    """Export form leads to a local CSV file."""
+    from pathlib import Path as _Path
+
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    kwargs: dict[str, Any] = {}
+    limit = _opt(args, "limit")
+    if limit is not None:
+        kwargs["limit"] = limit
+    field_order = _opt(args, "field_order")
+    if field_order is not None:
+        kwargs["field_order"] = field_order
+    count = await client.export_leads_to_csv(
+        _require(args, "form_id"),
+        _Path(_require(args, "output_path")),
+        **kwargs,
+    )
+    return _json_result({"rows": count})
 
 
 @api_error_handler
