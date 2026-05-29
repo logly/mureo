@@ -16,6 +16,9 @@ Run a daily health check on all marketing accounts using the strategy context.
 
 ## Steps
 
+**Before you start**: Call `mureo_learning_insights_get` (no arguments) and treat the returned Markdown as authoritative practitioner know-how. Those insights were recorded by the operator via `/learn` precisely because they're worth applying — let them inform every conclusion you draw below. When the response is the "no insights saved yet" guidance, proceed without it.
+
+
 1. **Load context**: Read STRATEGY.md (especially Operation Mode, Data Sources, and all Goal sections) and STATE.json.
 
 2. **Discover available platforms**: Identify all configured platforms from STATE.json `platforms` and check which data sources (Search Console, GA4) are accessible. Also enumerate installed **plugin** platforms (`mcp__mureo__<plugin>_*` tools) and include them best-effort — see `_mureo-shared` → *Plugin platforms*.

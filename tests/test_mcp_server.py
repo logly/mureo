@@ -44,10 +44,10 @@ class TestListTools:
     async def test_list_tools_returns_all_tools(self) -> None:
         """list_tools returns all tools (Google Ads 83 + Meta Ads 81 + Search Console 10
         + Rollback 2 + Analysis 1 + Mureo Context 5 + Analytics Registry 1
-        = 183)."""
+        + Learning 1 = 184)."""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
-        assert len(tools) == 183
+        assert len(tools) == 184
 
     async def test_list_tools_contains_google_and_meta(self) -> None:
         """Google Ads and Meta Ads tools are included."""

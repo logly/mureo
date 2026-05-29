@@ -57,6 +57,8 @@ from mureo.mcp.tools_analytics_registry import (
 )
 from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
 from mureo.mcp.tools_google_ads import handle_tool as handle_google_ads_tool
+from mureo.mcp.tools_learning import TOOLS as LEARNING_TOOLS
+from mureo.mcp.tools_learning import handle_tool as handle_learning_tool
 from mureo.mcp.tools_meta_ads import TOOLS as META_ADS_TOOLS
 from mureo.mcp.tools_meta_ads import handle_tool as handle_meta_ads_tool
 from mureo.mcp.tools_mureo_context import TOOLS as MUREO_CONTEXT_TOOLS
@@ -108,6 +110,7 @@ _ALL_TOOLS: list[Tool] = [
     *ANALYSIS_TOOLS,
     *MUREO_CONTEXT_TOOLS,
     *ANALYTICS_REGISTRY_TOOLS,
+    *LEARNING_TOOLS,
 ]
 _GOOGLE_ADS_NAMES: frozenset[str] = (
     frozenset(t.name for t in GOOGLE_ADS_TOOLS) if _GOOGLE_ADS_ENABLED else frozenset()
@@ -122,6 +125,7 @@ _MUREO_CONTEXT_NAMES: frozenset[str] = frozenset(t.name for t in MUREO_CONTEXT_T
 _ANALYTICS_REGISTRY_NAMES: frozenset[str] = frozenset(
     t.name for t in ANALYTICS_REGISTRY_TOOLS
 )
+_LEARNING_NAMES: frozenset[str] = frozenset(t.name for t in LEARNING_TOOLS)
 
 # ---------------------------------------------------------------------------
 # Third-party plugin tools (entry-point–discovered providers implementing
@@ -142,6 +146,7 @@ _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
         | _ANALYSIS_NAMES
         | _MUREO_CONTEXT_NAMES
         | _ANALYTICS_REGISTRY_NAMES
+        | _LEARNING_NAMES
     ),
 )
 _ALL_TOOLS.extend(_PLUGIN_TOOLS)
@@ -282,6 +287,8 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         return await handle_mureo_context_tool(name, arguments)
     if name in _ANALYTICS_REGISTRY_NAMES:
         return await handle_analytics_registry_tool(name, arguments)
+    if name in _LEARNING_NAMES:
+        return await handle_learning_tool(name, arguments)
     if name in _PLUGIN_NAMES:
         provider = _PLUGIN_DISPATCH[name]
         source = plugin_source(provider)
