@@ -37,6 +37,9 @@ from mcp.types import TextContent, Tool
 
 from mureo.core.knowledge_store import _OPERATOR_SCAFFOLD
 from mureo.core.runtime_context import get_runtime_context
+from mureo.learning.context_builder import build_query
+from mureo.learning.federation import Fragment, consult_advisors
+from mureo.learning.insight_sources import load_insight_sources
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +88,20 @@ def _is_scaffold_only(text: str) -> bool:
     return not tail.strip()
 
 
+_NO_ADVISORS_MESSAGE = (
+    "(No external advisor sources configured. Set up "
+    "~/.mureo/insight_sources.json with the MCP servers you want "
+    "mureo to consult — see docs/insight-federation.md.)"
+)
+
+
+_ADVISORS_RETURNED_NOTHING = (
+    "(All configured advisors returned no matching fragments for "
+    "this question. Proceed with local /learn history and "
+    "STATE.json / STRATEGY.md only.)"
+)
+
+
 TOOLS: list[Tool] = [
     Tool(
         name="mureo_learning_insights_get",
@@ -106,6 +123,46 @@ TOOLS: list[Tool] = [
             "required": [],
         },
     ),
+    Tool(
+        name="mureo_consult_advisor",
+        description=(
+            "Consult external advisor MCP servers (vector search) for "
+            "fragments relevant to a specific question. mureo enriches "
+            "the question with the local campaign state (metrics, "
+            "recent action log, STRATEGY.md) before forwarding it to "
+            "every server configured in ~/.mureo/insight_sources.json. "
+            "Each server returns top-k snippets with similarity "
+            "scores; the agent reasons over them. Use this when "
+            "/learn history is thin or when you need a second "
+            "opinion from a shared knowledge base (consulting cos, "
+            "industry benchmarks, OSS communities, internal wikis)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": (
+                        "The specific diagnostic question to search "
+                        "for. Concrete > generic — 'why is CPA up "
+                        "30% on Brand-Search?' beats 'tips for "
+                        "Google Ads'."
+                    ),
+                },
+                "campaign_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional campaign id. When supplied, mureo "
+                        "attaches the campaign's name / status / "
+                        "budget and the last few action-log entries "
+                        "to the query so the advisor's vector "
+                        "search has richer context to match against."
+                    ),
+                },
+            },
+            "required": ["question"],
+        },
+    ),
 ]
 
 
@@ -123,6 +180,8 @@ async def handle_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]
     """
     if name == "mureo_learning_insights_get":
         return await _handle_learning_insights_get(arguments)
+    if name == "mureo_consult_advisor":
+        return await _handle_consult_advisor(arguments)
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -144,6 +203,100 @@ async def _handle_learning_insights_get(
         logger.debug("learning insights: knowledge base empty / scaffold-only")
         return [TextContent(type="text", text=_NO_INSIGHTS_MESSAGE)]
     return [TextContent(type="text", text=text)]
+
+
+async def _handle_consult_advisor(
+    arguments: dict[str, Any],
+) -> list[TextContent]:
+    """Fan out to external advisor servers and aggregate fragments.
+
+    Step 1: load ``~/.mureo/insight_sources.json``. If no advisors are
+    configured, return guidance (the agent should fall back to local
+    insights only).
+
+    Step 2: build a context-rich query from the operator's question +
+    the local campaign state.
+
+    Step 3: ``consult_advisors`` fans out to every advisor concurrently
+    (each per-source error is isolated, so one bad source can't break
+    the others).
+
+    Step 4: format the merged result into a single markdown payload
+    the agent can reason over. Per-source headings + similarity
+    scores let the agent weigh fragments without server-side help.
+    """
+    question = str(arguments.get("question", "")).strip()
+    campaign_id_raw = arguments.get("campaign_id")
+    campaign_id = (
+        str(campaign_id_raw).strip()
+        if isinstance(campaign_id_raw, str) and campaign_id_raw.strip()
+        else None
+    )
+
+    if not question:
+        return [
+            TextContent(
+                type="text",
+                text="(mureo_consult_advisor requires a non-empty 'question'.)",
+            )
+        ]
+
+    config = load_insight_sources()
+    if not config.sources:
+        return [TextContent(type="text", text=_NO_ADVISORS_MESSAGE)]
+
+    ctx = get_runtime_context()
+    query = build_query(
+        state_store=ctx.state_store,
+        question=question,
+        campaign_id=campaign_id,
+    )
+    results = await consult_advisors(config.sources, query=query)
+    body = _format_advisor_response(results)
+    return [TextContent(type="text", text=body)]
+
+
+def _format_advisor_response(
+    results: dict[str, tuple[Fragment, ...]],
+) -> str:
+    """Render the per-advisor fragments dict as markdown.
+
+    Empty advisors are skipped silently; when every advisor returned
+    nothing, the caller-facing string is the ``_ADVISORS_RETURNED_NOTHING``
+    sentinel so the agent doesn't quote an empty block into its
+    analysis.
+    """
+    sections: list[str] = []
+    for name, fragments in results.items():
+        if not fragments:
+            continue
+        lines = [f"## {name}"]
+        for frag in fragments:
+            lines.append(f"- (similarity {frag.similarity:.2f}) {_sanitize(frag.text)}")
+        sections.append("\n".join(lines))
+    if not sections:
+        return _ADVISORS_RETURNED_NOTHING
+    return "\n\n---\n\n".join(sections)
+
+
+def _sanitize(text: str) -> str:
+    """Collapse advisor-supplied text into a single Markdown-safe line.
+
+    Advisor fragments are untrusted: a hostile response can contain
+    newlines, ``---`` section separators, or ``## headings`` that would
+    spoof per-source boundaries when the operator-side agent reads the
+    aggregated payload. We:
+
+    1. Flatten whitespace so the fragment occupies a single line and
+       cannot smuggle a real heading-at-line-start.
+    2. Break up consecutive ``#`` runs so even an LLM reader scanning
+       for ``## name`` patterns mid-line will not mistake the
+       fragment text for a section header attributing content to a
+       different advisor.
+    """
+    flattened = " ".join(text.split())
+    # Defang heading and rule markers without losing the visible word.
+    return flattened.replace("##", "# #").replace("---", "—")
 
 
 __all__ = ["TOOLS", "handle_tool"]
