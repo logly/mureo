@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.19] - 2026-05-30
+
+### Added — `mureo_consult_advisor` MCP tool: retrieval-pattern federation with external advisor servers
+
+v0.9.18 closed the local `/learn` read-side gap. This release extends the read surface to **external advisor MCP servers** through a retrieval-pattern federation: mureo sends a query text to each configured server, the server performs vector search over its own corpus (embedder + vector store, no LLM), and returns the top-k matching fragments with similarity scores. The operator-side Claude reasons over the aggregated fragments. The earlier text-return federation proposal ([#163](https://github.com/logly/mureo/issues/163)) was abandoned because returning the full corpus per call leaked the advisor's know-how; this design only ever surfaces the relevant snippets.
+
+A new MCP tool, `mureo_consult_advisor`, takes a `question` (required) and an optional `campaign_id`. mureo enriches the question with the local campaign's metrics, recent action-log entries, and `STRATEGY.md` excerpt via the new `mureo.learning.context_builder` so the advisor's vector search has rich context to match against — not just the raw question. The tool then fans out to every server declared in `~/.mureo/insight_sources.json`, gathers the per-source fragments, and renders them as a single Markdown payload with per-advisor sections and similarity scores.
+
+Config schema (`~/.mureo/insight_sources.json`):
+
+```json
+{
+  "sources": [
+    {
+      "name": "acme",
+      "transport": "stdio",
+      "command": "acme-advisor-mcp",
+      "tool": "vector_search",
+      "top_k": 5
+    },
+    {
+      "name": "benchmarks",
+      "transport": "http",
+      "url": "https://benchmarks.example/mcp",
+      "tool": "vector_search",
+      "top_k": 3
+    }
+  ]
+}
+```
+
+Three transports are supported: `stdio` (subprocess; mcp SDK's `stdio_client`), `sse` (`sse_client`), and `http` (`streamablehttp_client`). Per-source isolation rules: a single misbehaving source NEVER blocks the diagnostic flow. Per-source timeout (default 10s) caps each call via `asyncio.wait_for`; failures yield an empty tuple for that source and the others continue. Sources fan out via `asyncio.gather` so total wall-time is bounded by the slowest, not the sum. `asyncio.CancelledError` is re-raised so structured concurrency cleanup still works.
+
+Server authors only need to expose a single vector-search tool that takes `{query, top_k}` and returns a JSON array of `{text, similarity, ...}` fragments. The advisor side does NOT need an LLM — just an embedder (e.g. sentence-transformers) and a vector store (ChromaDB, pgvector, Pinecone, Vespa). `docs/insight-federation.md` ships a 30-line example.
+
+The existing `mureo_learning_insights_get` tool from v0.9.18 is unchanged and continues to surface only the operator's local `/learn` history.
+
+Closes [#166](https://github.com/logly/mureo/issues/166) (part 2 of 2 of umbrella [#161](https://github.com/logly/mureo/issues/161)). Supersedes [#163](https://github.com/logly/mureo/issues/163).
+
 ## [0.9.18] - 2026-05-29
 
 ### Added — `mureo_learning_insights_get` MCP tool closes the `/learn` read-side gap
