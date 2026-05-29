@@ -31,15 +31,12 @@ using ``/learn``.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from mcp.types import TextContent, Tool
 
 from mureo.core.knowledge_store import _OPERATOR_SCAFFOLD
 from mureo.core.runtime_context import get_runtime_context
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +112,7 @@ TOOLS: list[Tool] = [
 _TOOL_NAMES: frozenset[str] = frozenset(t.name for t in TOOLS)
 
 
-async def handle_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextContent]:
+async def handle_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Dispatch entry point used by ``mureo.mcp.server``.
 
     Mirrors the shape of every other ``tools_*`` module's
@@ -131,7 +128,7 @@ async def handle_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextCont
 
 async def _handle_learning_insights_get(
     arguments: dict[str, Any],  # noqa: ARG001
-) -> Sequence[TextContent]:
+) -> list[TextContent]:
     """Return the operator-tier knowledge base as a single
     ``TextContent``.
 
