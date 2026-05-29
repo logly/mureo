@@ -37,6 +37,8 @@ from mcp.types import TextContent, Tool
 
 from mureo.core.knowledge_store import _OPERATOR_SCAFFOLD
 from mureo.core.runtime_context import get_runtime_context
+from mureo.learning.federation import fetch_all
+from mureo.learning.insight_sources import load_insight_sources
 
 logger = logging.getLogger(__name__)
 
@@ -129,21 +131,51 @@ async def handle_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]
 async def _handle_learning_insights_get(
     arguments: dict[str, Any],  # noqa: ARG001
 ) -> list[TextContent]:
-    """Return the operator-tier knowledge base as a single
-    ``TextContent``.
+    """Return local + external insights as a single ``TextContent``.
 
-    Defers to the runtime context's ``KnowledgeStore`` so an
-    alternate backend registered via
-    ``mureo.runtime_context_factory`` (filesystem-backed by default;
-    could be DB-backed or remote-fetch-backed under a third-party
-    runtime context factory) works transparently.
+    Local first (operator's own ``/learn`` history is canonical),
+    then each external MCP source declared in
+    ``~/.mureo/insight_sources.json`` as a labelled ``## <name>``
+    section separated by a horizontal rule. Local defers to the
+    runtime context's ``KnowledgeStore`` so an alternate backend
+    registered via ``mureo.runtime_context_factory`` (filesystem-
+    backed by default; could be DB-backed or remote-fetch-backed
+    under a third-party runtime context factory) works
+    transparently. External sources fan out via
+    :func:`mureo.learning.federation.fetch_all` so a slow / dead
+    source does not block siblings.
+
+    Returns the guidance message only when both the local store
+    AND every external source produced no content — otherwise the
+    agent sees whatever is available so the diagnostic flow can
+    proceed informed.
     """
+    sections: list[str] = []
+
     store = get_runtime_context().knowledge_store
-    text = store.read_operator_knowledge()
-    if _is_scaffold_only(text):
-        logger.debug("learning insights: knowledge base empty / scaffold-only")
+    local_text = store.read_operator_knowledge()
+    if not _is_scaffold_only(local_text):
+        # Prefix local insights with an "authoritative" label so the
+        # agent treats them as canonical guidance from the operator
+        # and external sections (added below) as advisory cross-
+        # references rather than ground truth.
+        sections.append("## Local /learn history (authoritative)\n\n" + local_text)
+
+    config = load_insight_sources()
+    if config.sources:
+        external = await fetch_all(config.sources)
+        # Iterate in config order so the agent sees external
+        # sections in the order the operator declared them — that
+        # ordering doubles as a priority hint.
+        for source in config.sources:
+            text = external.get(source.name)
+            if text:
+                sections.append(f"## {source.name} (advisory)\n\n{text}")
+
+    if not sections:
+        logger.debug("learning insights: no content from local or any external source")
         return [TextContent(type="text", text=_NO_INSIGHTS_MESSAGE)]
-    return [TextContent(type="text", text=text)]
+    return [TextContent(type="text", text="\n\n---\n\n".join(sections))]
 
 
 __all__ = ["TOOLS", "handle_tool"]

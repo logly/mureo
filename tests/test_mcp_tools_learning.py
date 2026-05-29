@@ -21,6 +21,7 @@ These tests pin three things:
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -166,8 +167,7 @@ diagnostic workflow.
         # scaffold-only — guards against a regression where the
         # derived marker drifts and starts catching everything.
         insight = (
-            "### Use micro-conversions when CV is sparse\n\n"
-            "**Situation:** ...\n"
+            "### Use micro-conversions when CV is sparse\n\n" "**Situation:** ...\n"
         )
         assert _is_scaffold_only(_OPERATOR_SCAFFOLD + insight) is False
 
@@ -179,6 +179,186 @@ diagnostic workflow.
         mod = _import_learning_tools()
         with pytest.raises(ValueError, match="Unknown tool"):
             await mod.handle_tool("not_a_real_tool", {})
+
+
+@pytest.mark.unit
+class TestLearningInsightsHandlerAggregation:
+    """The handler merges local insights with external sources loaded
+    via :mod:`mureo.learning.federation`. Local always comes first
+    (operator's own ``/learn`` history is canonical); each external
+    source becomes a labelled section after a horizontal rule."""
+
+    @pytest.mark.asyncio
+    async def test_local_only_when_no_external_sources(self) -> None:
+        from mureo.learning.insight_sources import InsightSourceConfig
+
+        mod = _import_learning_tools()
+        fake_store = MagicMock()
+        fake_store.read_operator_knowledge.return_value = (
+            "## Learned Insights\n\n### Local lesson\n"
+        )
+        fake_ctx = MagicMock(knowledge_store=fake_store)
+        with (
+            patch(
+                "mureo.mcp.tools_learning.get_runtime_context",
+                return_value=fake_ctx,
+            ),
+            patch(
+                "mureo.mcp.tools_learning.load_insight_sources",
+                return_value=InsightSourceConfig(sources=()),
+            ),
+        ):
+            result = await mod.handle_tool("mureo_learning_insights_get", {})
+
+        assert len(result) == 1
+        assert "Local lesson" in result[0].text
+        # No external sources → no horizontal rule separator.
+        assert "---" not in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_external_sources_appended_after_local(self) -> None:
+        from mureo.learning.insight_sources import (
+            InsightSource,
+            InsightSourceConfig,
+        )
+
+        mod = _import_learning_tools()
+        fake_store = MagicMock()
+        fake_store.read_operator_knowledge.return_value = (
+            "## Learned Insights\n\n### Local lesson\n"
+        )
+        fake_ctx = MagicMock(knowledge_store=fake_store)
+        sources = (
+            InsightSource(name="acme", transport="stdio", tool="t", command="c"),
+            InsightSource(
+                name="benchmarks", transport="sse", tool="t", url="https://x"
+            ),
+        )
+
+        async def fake_fetch_all(srcs: Any) -> dict[str, str]:
+            return {
+                "acme": "## Acme consulting insight",
+                "benchmarks": "## Industry benchmark",
+            }
+
+        with (
+            patch(
+                "mureo.mcp.tools_learning.get_runtime_context",
+                return_value=fake_ctx,
+            ),
+            patch(
+                "mureo.mcp.tools_learning.load_insight_sources",
+                return_value=InsightSourceConfig(sources=sources),
+            ),
+            patch(
+                "mureo.mcp.tools_learning.fetch_all",
+                side_effect=fake_fetch_all,
+            ),
+        ):
+            result = await mod.handle_tool("mureo_learning_insights_get", {})
+
+        text = result[0].text
+        local_idx = text.index("Local lesson")
+        acme_idx = text.index("Acme consulting insight")
+        bench_idx = text.index("Industry benchmark")
+        assert local_idx < acme_idx < bench_idx
+        # External sections labelled with their name.
+        assert "## acme" in text
+        assert "## benchmarks" in text
+        # Horizontal rule separator between sections.
+        assert "---" in text
+
+    @pytest.mark.asyncio
+    async def test_external_only_when_local_empty(self) -> None:
+        """If the operator has no local /learn entries but does have
+        external sources configured, return just the external
+        sections — no guidance message, since the agent does have
+        insights to consult."""
+        from mureo.learning.insight_sources import (
+            InsightSource,
+            InsightSourceConfig,
+        )
+
+        mod = _import_learning_tools()
+        fake_store = MagicMock()
+        fake_store.read_operator_knowledge.return_value = ""
+        fake_ctx = MagicMock(knowledge_store=fake_store)
+
+        async def fake_fetch_all(srcs: Any) -> dict[str, str]:
+            return {"acme": "## Acme insight"}
+
+        with (
+            patch(
+                "mureo.mcp.tools_learning.get_runtime_context",
+                return_value=fake_ctx,
+            ),
+            patch(
+                "mureo.mcp.tools_learning.load_insight_sources",
+                return_value=InsightSourceConfig(
+                    sources=(
+                        InsightSource(
+                            name="acme",
+                            transport="stdio",
+                            tool="t",
+                            command="c",
+                        ),
+                    ),
+                ),
+            ),
+            patch(
+                "mureo.mcp.tools_learning.fetch_all",
+                side_effect=fake_fetch_all,
+            ),
+        ):
+            result = await mod.handle_tool("mureo_learning_insights_get", {})
+
+        text = result[0].text
+        assert "Acme insight" in text
+        assert "no insights" not in text.lower()
+
+    @pytest.mark.asyncio
+    async def test_all_empty_returns_guidance(self) -> None:
+        """Local empty + every external source failed (returned None
+        and was dropped by ``fetch_all``) → guidance message."""
+        from mureo.learning.insight_sources import (
+            InsightSource,
+            InsightSourceConfig,
+        )
+
+        mod = _import_learning_tools()
+        fake_store = MagicMock()
+        fake_store.read_operator_knowledge.return_value = ""
+        fake_ctx = MagicMock(knowledge_store=fake_store)
+
+        async def fake_fetch_all(srcs: Any) -> dict[str, str]:
+            return {}  # all sources failed
+
+        with (
+            patch(
+                "mureo.mcp.tools_learning.get_runtime_context",
+                return_value=fake_ctx,
+            ),
+            patch(
+                "mureo.mcp.tools_learning.load_insight_sources",
+                return_value=InsightSourceConfig(
+                    sources=(
+                        InsightSource(
+                            name="dead",
+                            transport="stdio",
+                            tool="t",
+                            command="c",
+                        ),
+                    ),
+                ),
+            ),
+            patch(
+                "mureo.mcp.tools_learning.fetch_all",
+                side_effect=fake_fetch_all,
+            ),
+        ):
+            result = await mod.handle_tool("mureo_learning_insights_get", {})
+
+        assert "no insights" in result[0].text.lower()
 
 
 @pytest.mark.unit

@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.19] - 2026-05-29
+
+### Added — External MCP insight-source federation
+
+v0.9.18 closed the `/learn` read-side gap by exposing the local knowledge base via `mureo_learning_insights_get`. This release extends that tool to **federate with external MCP servers** — anyone can run an MCP server that publishes practitioner know-how (consulting companies, industry benchmark sources, OSS community knowledge bases, internal team wikis) and mureo will aggregate it alongside the operator's local `/learn` history.
+
+**Config**: declare external sources in `~/.mureo/insight_sources.json`:
+
+```json
+{
+  "sources": [
+    {
+      "name": "acme-consulting",
+      "transport": "stdio",
+      "command": "acme-insights-mcp",
+      "args": ["--scope", "google-ads"],
+      "env": {"ACME_API_KEY": "..."},
+      "tool": "insights_get",
+      "timeout_sec": 10
+    },
+    {
+      "name": "industry-benchmarks",
+      "transport": "sse",
+      "url": "https://benchmarks.example/mcp",
+      "headers": {"Authorization": "Bearer ..."},
+      "tool": "benchmarks_get"
+    }
+  ]
+}
+```
+
+Three transports are supported: `stdio` (subprocess; the mcp SDK's `stdio_client`), `sse` (`sse_client`), and `http` (`streamablehttp_client`).
+
+**Per-source error isolation**: a single misbehaving source (slow, crashed, malformed response, network error) NEVER blocks the diagnostic flow. Per-source timeouts (default 10s) cap each call; failures yield `None` for that source and the others continue. Sources fan out via `asyncio.gather` so total wall-time is bounded by the slowest, not the sum.
+
+**Aggregation**: local insights come first (operator's own `/learn` history is canonical), then each external source becomes a labelled `## <name>` section separated by a horizontal rule (`---`). When all sources (local + external) are empty, the guidance message from v0.9.18 is returned unchanged.
+
+**No tool-shape change**: `mureo_learning_insights_get` still takes no arguments and returns a single `TextContent` — existing skill prompts work unchanged. Federation happens behind the `KnowledgeStore` Protocol, so an alternate runtime context factory that wraps a remote-fetch backend (PR A's exit point) keeps working without changes.
+
+New modules: `mureo.learning.insight_sources` (frozen-dataclass model + tolerant JSON parser) and `mureo.learning.federation` (MCP-client wrappers + per-source fetch + aggregator).
+
+Closes [#163](https://github.com/logly/mureo/issues/163) (part 2 of 2 of umbrella [#161](https://github.com/logly/mureo/issues/161)).
+
 ## [0.9.18] - 2026-05-29
 
 ### Added — `mureo_learning_insights_get` MCP tool closes the `/learn` read-side gap
