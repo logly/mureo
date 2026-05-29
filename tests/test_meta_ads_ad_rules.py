@@ -1,6 +1,6 @@
-"""Meta Ads Ad Rules (自動ルール) ユニットテスト
+"""Unit tests for Meta Ads Ad Rules (automated rules).
 
-AdRulesMixinの全メソッドをモックベースでテストする。
+Mock-based coverage of every method on AdRulesMixin.
 """
 
 from __future__ import annotations
@@ -14,12 +14,12 @@ from mureo.meta_ads._ad_rules import AdRulesMixin
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー: Mixinをテスト可能にするモッククラス
+# Helpers: mock class wrapping the Mixin for test isolation
 # ---------------------------------------------------------------------------
 
 
 def _make_mock_client() -> AdRulesMixin:
-    """AdRulesMixinにモック _get/_post/_delete を付与したインスタンスを生成"""
+    """Build an AdRulesMixin instance with mocked _get/_post/_delete."""
 
     class MockClient(AdRulesMixin):
         def __init__(self) -> None:
@@ -32,7 +32,7 @@ def _make_mock_client() -> AdRulesMixin:
 
 
 # ===========================================================================
-# AdRulesMixin テスト
+# AdRulesMixin tests
 # ===========================================================================
 
 
@@ -47,7 +47,7 @@ class TestAdRulesMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_list_ad_rules(self, client: AdRulesMixin) -> None:
-        """自動ルール一覧を取得できること"""
+        """Can list automated rules."""
         client._get = AsyncMock(
             return_value={
                 "data": [
@@ -68,7 +68,7 @@ class TestAdRulesMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_get_ad_rule(self, client: AdRulesMixin) -> None:
-        """自動ルール詳細を取得できること"""
+        """Can fetch automated rule details."""
         client._get = AsyncMock(
             return_value={
                 "id": "rule_001",
@@ -89,7 +89,7 @@ class TestAdRulesMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_create_ad_rule(self, client: AdRulesMixin) -> None:
-        """自動ルールを作成できること"""
+        """Can create an automated rule."""
         client._post = AsyncMock(return_value={"id": "rule_new"})
         evaluation_spec = {
             "evaluation_type": "TRIGGER",
@@ -115,7 +115,7 @@ class TestAdRulesMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_update_ad_rule(self, client: AdRulesMixin) -> None:
-        """自動ルールを更新できること"""
+        """Can update an automated rule."""
         client._post = AsyncMock(return_value={"success": True})
         result = await client.update_ad_rule("rule_001", {"name": "更新後ルール名"})
         assert result["success"] is True
@@ -130,7 +130,7 @@ class TestAdRulesMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_delete_ad_rule(self, client: AdRulesMixin) -> None:
-        """自動ルールを削除できること"""
+        """Can delete an automated rule."""
         client._delete = AsyncMock(return_value={"success": True})
         result = await client.delete_ad_rule("rule_001")
         assert result["success"] is True
@@ -143,7 +143,7 @@ class TestAdRulesMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_list_ad_rules_empty(self, client: AdRulesMixin) -> None:
-        """自動ルールがない場合に空リストを返すこと"""
+        """Returns an empty list when there are no automated rules."""
         client._get = AsyncMock(return_value={"data": []})
         result = await client.list_ad_rules()
         assert result == []
@@ -153,7 +153,7 @@ class TestAdRulesMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_api_error(self, client: AdRulesMixin) -> None:
-        """APIエラー時にRuntimeErrorが伝播すること"""
+        """API errors propagate as RuntimeError."""
         client._get = AsyncMock(side_effect=RuntimeError("Meta API request failed"))
         with pytest.raises(RuntimeError, match="Meta API"):
             await client.list_ad_rules()
@@ -163,7 +163,7 @@ class TestAdRulesMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_create_ad_rule_notification(self, client: AdRulesMixin) -> None:
-        """通知タイプの自動ルールを作成できること"""
+        """Can create a notification-type automated rule."""
         client._post = AsyncMock(return_value={"id": "rule_notify"})
         evaluation_spec = {
             "evaluation_type": "TRIGGER",

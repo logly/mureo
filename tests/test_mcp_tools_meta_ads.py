@@ -1,6 +1,7 @@
-"""Meta Ads MCPツール定義・ハンドラーテスト
+"""Tests for the Meta Ads MCP tool definitions and handlers.
 
-ツール定義（inputSchema、requiredフィールド）とハンドラー（クライアントモック）の検証。
+Verifies tool definitions (inputSchema, required fields) and handlers
+(with the client mocked).
 """
 
 from __future__ import annotations
@@ -25,27 +26,27 @@ def _import_handlers():
 
 
 # ---------------------------------------------------------------------------
-# ツール定義テスト
+# Tool-definition tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestMetaAdsToolDefinitions:
-    """Meta Adsツール一覧が正しく定義されていることを検証する"""
+    """Verify the Meta Ads tool list is defined correctly."""
 
     def test_tool_count(self) -> None:
-        """全81ツールが定義されていること"""
+        """All 81 tools are defined."""
         mod = _import_meta_ads_tools()
         assert len(mod.TOOLS) == 81
 
     def test_all_tool_names(self) -> None:
-        """全ツール名が meta_ads_ で始まること（MCP仕様準拠の underscore 区切り）"""
+        """Every tool name starts with meta_ads_ (underscore-separated, per MCP spec)."""
         mod = _import_meta_ads_tools()
         for tool in mod.TOOLS:
-            assert tool.name.startswith("meta_ads_"), f"不正なツール名: {tool.name}"
+            assert tool.name.startswith("meta_ads_"), f"Invalid tool name: {tool.name}"
 
     def test_all_tools_have_input_schema(self) -> None:
-        """全ツールにinputSchemaが定義されていること"""
+        """Every tool defines an inputSchema."""
         mod = _import_meta_ads_tools()
         for tool in mod.TOOLS:
             assert "type" in tool.inputSchema
@@ -86,33 +87,33 @@ class TestMetaAdsToolDefinitions:
     def test_required_fields(
         self, tool_name: str, expected_required: list[str]
     ) -> None:
-        """各ツールのrequiredフィールドが正しいこと"""
+        """Each tool's required field list is correct."""
         mod = _import_meta_ads_tools()
         tool = next((t for t in mod.TOOLS if t.name == tool_name), None)
-        assert tool is not None, f"ツール {tool_name} が見つかりません"
+        assert tool is not None, f"Tool {tool_name} not found"
         assert set(tool.inputSchema["required"]) == set(expected_required)
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — ヘルパー
+# Handler tests — helpers
 # ---------------------------------------------------------------------------
 
 
 def _mock_meta_ads_context():
-    """Meta Ads認証情報とクライアントのモックを返す"""
+    """Return mocks for Meta Ads credentials and the API client."""
     mock_client = AsyncMock()
     mock_creds = MagicMock()
     return mock_creds, mock_client
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — キャンペーン
+# Handler tests — campaigns
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestMetaAdsCampaignHandlers:
-    """キャンペーン系ハンドラーテスト"""
+    """Campaign-related handler tests."""
 
     async def test_campaigns_list(self) -> None:
         mod = _import_meta_ads_tools()
@@ -189,13 +190,13 @@ class TestMetaAdsCampaignHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — 広告セット
+# Handler tests — ad sets
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestMetaAdsAdSetHandlers:
-    """広告セット系ハンドラーテスト"""
+    """Ad-set-related handler tests."""
 
     async def test_ad_sets_list(self) -> None:
         mod = _import_meta_ads_tools()
@@ -254,13 +255,13 @@ class TestMetaAdsAdSetHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — 広告
+# Handler tests — ads
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestMetaAdsAdHandlers:
-    """広告系ハンドラーテスト"""
+    """Ad-related handler tests."""
 
     async def test_ads_list(self) -> None:
         mod = _import_meta_ads_tools()
@@ -319,13 +320,13 @@ class TestMetaAdsAdHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — インサイト
+# Handler tests — insights
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestMetaAdsInsightsHandlers:
-    """インサイト系ハンドラーテスト"""
+    """Insight-related handler tests."""
 
     async def test_insights_report(self) -> None:
         mod = _import_meta_ads_tools()
@@ -362,13 +363,13 @@ class TestMetaAdsInsightsHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — オーディエンス
+# Handler tests — audiences
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestMetaAdsAudienceHandlers:
-    """オーディエンス系ハンドラーテスト"""
+    """Audience-related handler tests."""
 
     async def test_audiences_list(self) -> None:
         mod = _import_meta_ads_tools()
@@ -409,16 +410,16 @@ class TestMetaAdsAudienceHandlers:
 
 
 # ---------------------------------------------------------------------------
-# エラーハンドリングテスト
+# Error-handling tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestMetaAdsErrorHandling:
-    """エラーハンドリングの検証"""
+    """Verify error handling."""
 
     async def test_missing_required_param(self) -> None:
-        """account_id未指定 + credentials.jsonにもない場合にエラーテキスト返却"""
+        """Returns error text when account_id is missing and credentials.json has none."""
         mod = _import_meta_ads_tools()
         with patch(
             "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
@@ -428,13 +429,13 @@ class TestMetaAdsErrorHandling:
             assert any("Credentials not found" in r.text for r in result)
 
     async def test_unknown_tool_raises_error(self) -> None:
-        """未知のツール名でValueErrorが発生"""
+        """An unknown tool name raises ValueError."""
         mod = _import_meta_ads_tools()
         with pytest.raises(ValueError, match="Unknown"):
             await mod.handle_tool("meta_ads_unknown_tool", {"account_id": "act_123"})
 
     async def test_no_credentials_returns_error_text(self) -> None:
-        """認証情報なしでエラーテキストを返す"""
+        """Returns error text when no credentials are present."""
         handlers = _import_handlers()
         mod = _import_meta_ads_tools()
         with patch.object(handlers, "load_meta_ads_credentials", return_value=None):
@@ -445,7 +446,7 @@ class TestMetaAdsErrorHandling:
         assert "Credentials not found" in result[0].text
 
     async def test_handler_api_error(self) -> None:
-        """API例外がTextContentエラーメッセージに変換されること"""
+        """API exceptions are converted into TextContent error messages."""
         mod = _import_meta_ads_tools()
         handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()

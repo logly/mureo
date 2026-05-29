@@ -1,7 +1,7 @@
-"""Google Ads _diagnostics.py ユニットテスト
+"""Unit tests for Google Ads _diagnostics.py.
 
-_DiagnosticsMixin の diagnose_campaign_delivery と
-ヘルパーメソッドをモックベースでテストする。
+Mock-based tests for _DiagnosticsMixin.diagnose_campaign_delivery and
+its helper methods.
 """
 
 from __future__ import annotations
@@ -22,12 +22,12 @@ from mureo.google_ads._diagnostics import (
 
 
 # ---------------------------------------------------------------------------
-# テスト用のモッククライアントクラス
+# Mock client class for tests
 # ---------------------------------------------------------------------------
 
 
 class _MockDiagClient(_DiagnosticsMixin):
-    """_DiagnosticsMixin をテスト可能にするモッククラス"""
+    """Mock class that makes _DiagnosticsMixin testable."""
 
     def __init__(self) -> None:
         self._customer_id = "1234567890"
@@ -37,7 +37,7 @@ class _MockDiagClient(_DiagnosticsMixin):
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str:
         if not value or not value.isdigit():
-            raise ValueError(f"{field_name} は数値文字列である必要があります: {value}")
+            raise ValueError(f"{field_name} must be a numeric string: {value}")
         return value
 
     def _get_service(self, service_name: str):
@@ -57,7 +57,7 @@ class _MockDiagClient(_DiagnosticsMixin):
 
 
 # ---------------------------------------------------------------------------
-# _extract_bidding_details テスト
+# _extract_bidding_details tests
 # ---------------------------------------------------------------------------
 
 
@@ -66,7 +66,7 @@ class TestExtractBiddingDetails:
     def test_target_cpa(self) -> None:
         campaign = MagicMock()
         campaign.bidding_strategy_type = 6  # TARGET_CPA enum
-        campaign.target_cpa.target_cpa_micros = 5_000_000_000  # 5000円
+        campaign.target_cpa.target_cpa_micros = 5_000_000_000  # 5000 JPY
 
         with patch(
             "mureo.google_ads._diagnostics.map_bidding_strategy_type",
@@ -139,7 +139,7 @@ class TestExtractBiddingDetails:
 
 
 # ---------------------------------------------------------------------------
-# diagnose_campaign_delivery テスト
+# diagnose_campaign_delivery tests
 # ---------------------------------------------------------------------------
 
 
@@ -167,12 +167,12 @@ class TestDiagnoseCampaignDelivery:
 
     @pytest.mark.asyncio
     async def test_healthy_campaign(self, client: _MockDiagClient) -> None:
-        """正常なキャンペーンでは issues が空"""
+        """For a healthy campaign, issues is empty."""
         campaign = self._make_base_campaign()
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[{"id": "1"}])
 
-        # キーワードモック
+        # Keyword mock
         kw_mock = MagicMock()
         kw_mock.ad_group_criterion.keyword.text = "test"
         kw_mock.ad_group_criterion.keyword.match_type = "BROAD"
@@ -182,7 +182,7 @@ class TestDiagnoseCampaignDelivery:
             "mureo.google_ads._diagnostics.map_criterion_approval_status",
             return_value="APPROVED",
         ):
-            # 広告モック
+            # Ad mock
             ad_mock = MagicMock()
             ad_mock.ad_group_ad.policy_summary.approval_status = 2
             ad_mock.ad_group_ad.policy_summary.review_status = 2
@@ -227,7 +227,7 @@ class TestDiagnoseCampaignDelivery:
 
                 result = await client.diagnose_campaign_delivery("123")
 
-        # 基本的な検証（地域未設定は warnings に入る）
+        # Basic checks (missing geo targeting lands in warnings).
         assert (
             result["diagnosis"] == "No issues" or "issues found" in result["diagnosis"]
         )
@@ -235,14 +235,14 @@ class TestDiagnoseCampaignDelivery:
 
     @pytest.mark.asyncio
     async def test_campaign_not_found(self, client: _MockDiagClient) -> None:
-        """キャンペーンが見つからない場合"""
+        """When the campaign cannot be found."""
         client.get_campaign = AsyncMock(return_value=None)
         result = await client.diagnose_campaign_delivery("999")
         assert "error" in result
 
     @pytest.mark.asyncio
     async def test_paused_campaign(self, client: _MockDiagClient) -> None:
-        """一時停止中のキャンペーンは issues に含まれる"""
+        """A paused campaign is included in issues."""
         campaign = self._make_base_campaign(status="PAUSED")
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
@@ -255,7 +255,7 @@ class TestDiagnoseCampaignDelivery:
 
     @pytest.mark.asyncio
     async def test_learning_status_detected(self, client: _MockDiagClient) -> None:
-        """学習中ステータスが learning_status に含まれる"""
+        """A learning status is included in learning_status."""
         campaign = self._make_base_campaign(
             bidding_strategy_system_status="LEARNING_NEW"
         )
@@ -269,7 +269,7 @@ class TestDiagnoseCampaignDelivery:
 
     @pytest.mark.asyncio
     async def test_zero_budget_issue(self, client: _MockDiagClient) -> None:
-        """日予算0は issues に含まれる"""
+        """A daily budget of 0 is included in issues."""
         campaign = self._make_base_campaign(budget_daily=0)
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
@@ -280,7 +280,7 @@ class TestDiagnoseCampaignDelivery:
 
     @pytest.mark.asyncio
     async def test_primary_status_reasons_issues(self, client: _MockDiagClient) -> None:
-        """primary_status_reasonsのissue判定"""
+        """Issue classification from primary_status_reasons."""
         campaign = self._make_base_campaign(
             primary_status="NOT_ELIGIBLE",
             primary_status_reasons=["CAMPAIGN_PAUSED", "BUDGET_CONSTRAINED"],
@@ -290,14 +290,14 @@ class TestDiagnoseCampaignDelivery:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        # CAMPAIGN_PAUSED は issue
+        # CAMPAIGN_PAUSED is an issue.
         assert any("CAMPAIGN_PAUSED" in issue for issue in result["issues"])
-        # BUDGET_CONSTRAINED は warning (issueではない)
+        # BUDGET_CONSTRAINED is a warning (not an issue).
         assert any("BUDGET_CONSTRAINED" in w for w in result["warnings"])
 
     @pytest.mark.asyncio
     async def test_smart_bidding_no_cv_tracking(self, client: _MockDiagClient) -> None:
-        """スマート入札でCV未設定の場合は issues に含まれる"""
+        """Smart bidding without conversions configured is included in issues."""
         campaign = self._make_base_campaign(
             bidding_details={"strategy": "MAXIMIZE_CONVERSIONS"}
         )
@@ -307,14 +307,14 @@ class TestDiagnoseCampaignDelivery:
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        # スマート入札 + CV0 → issue
+        # Smart bidding + CV=0 → issue
         cv_actions = result.get("active_conversion_actions")
         if cv_actions == 0:
             assert any("conversion" in i.lower() for i in result["issues"])
 
 
 # ---------------------------------------------------------------------------
-# 定数テスト
+# Constants tests
 # ---------------------------------------------------------------------------
 
 
@@ -338,7 +338,7 @@ class TestDiagnosticsConstants:
 
 
 # ---------------------------------------------------------------------------
-# 追加テスト: 未カバー行の網羅
+# Additional tests: cover previously uncovered lines
 # ---------------------------------------------------------------------------
 
 
@@ -366,7 +366,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_serving_status_not_serving(self, client: _MockDiagClient) -> None:
-        """serving_statusがSERVINGでない場合にissueに含まれる（行196）"""
+        """When serving_status is not SERVING, it is included in issues (line 196)."""
         campaign = self._make_base_campaign(serving_status="SUSPENDED")
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
@@ -377,7 +377,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_bidding_misconfigured_status(self, client: _MockDiagClient) -> None:
-        """bidding_strategy_system_statusがMISCONFIGURED*の場合（行225）"""
+        """When bidding_strategy_system_status is MISCONFIGURED* (line 225)."""
         campaign = self._make_base_campaign(
             bidding_strategy_system_status="MISCONFIGURED_ZERO_BUDGET"
         )
@@ -390,7 +390,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_bidding_limited_status(self, client: _MockDiagClient) -> None:
-        """bidding_strategy_system_statusがLIMITED*の場合（行253-254）"""
+        """When bidding_strategy_system_status is LIMITED* (lines 253-254)."""
         campaign = self._make_base_campaign(
             bidding_strategy_system_status="LIMITED_BY_DATA"
         )
@@ -403,7 +403,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_future_start_date(self, client: _MockDiagClient) -> None:
-        """開始日が未来の場合（行263-271）"""
+        """When the start date is in the future (lines 263-271)."""
         campaign = self._make_base_campaign(start_date="2099-12-31")
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
@@ -417,7 +417,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_past_end_date(self, client: _MockDiagClient) -> None:
-        """終了日を過ぎた場合（行273-281）"""
+        """When the end date has passed (lines 273-281)."""
         campaign = self._make_base_campaign(end_date="2020-01-01")
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
@@ -428,19 +428,19 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_invalid_start_date_format(self, client: _MockDiagClient) -> None:
-        """不正な日付フォーマットでもエラーにならない（行271）"""
+        """Invalid date formats do not raise (line 271)."""
         campaign = self._make_base_campaign(start_date="not-a-date")
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
         client._search = AsyncMock(return_value=[])
 
         result = await client.diagnose_campaign_delivery("123")
-        # ValueError catch でスキップされるため、エラーなく診断結果が返る
+        # The ValueError is caught and skipped; a diagnostic result is returned without error.
         assert "campaign" in result
 
     @pytest.mark.asyncio
     async def test_budget_status_not_enabled(self, client: _MockDiagClient) -> None:
-        """予算ステータスがENABLEDでない場合（行287）"""
+        """When the budget status is not ENABLED (line 287)."""
         campaign = self._make_base_campaign(budget_status="PAUSED")
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
@@ -454,7 +454,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_bidding_details_issue(self, client: _MockDiagClient) -> None:
-        """入札戦略に問題がある場合（行294）"""
+        """When the bidding strategy has a problem (line 294)."""
         campaign = self._make_base_campaign(
             bidding_details={
                 "strategy": "TARGET_IMPRESSION_SHARE",
@@ -470,7 +470,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_disapproved_keywords_warning(self, client: _MockDiagClient) -> None:
-        """不承認キーワードのwarning（行337）"""
+        """Disapproved-keyword warning (line 337)."""
         campaign = self._make_base_campaign()
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[{"id": "1"}])
@@ -503,7 +503,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
     async def test_rarely_served_keywords_warning(
         self, client: _MockDiagClient
     ) -> None:
-        """RARELY_SERVEDキーワードのwarning（行343）"""
+        """RARELY_SERVED keyword warning (line 343)."""
         campaign = self._make_base_campaign()
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[{"id": "1"}])
@@ -534,7 +534,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_disapproved_ads_issue(self, client: _MockDiagClient) -> None:
-        """不承認広告のissue（行431）"""
+        """Disapproved-ad issue (line 431)."""
         campaign = self._make_base_campaign()
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[{"id": "1"}])
@@ -588,7 +588,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_limited_ads_warning(self, client: _MockDiagClient) -> None:
-        """制限付き承認広告のwarning（行433）"""
+        """Approved-with-limitation ad warning (line 433)."""
         campaign = self._make_base_campaign()
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[{"id": "1"}])
@@ -642,7 +642,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_performance_report_exception(self, client: _MockDiagClient) -> None:
-        """パフォーマンスレポート取得失敗時のフォールバック（行473-474）"""
+        """Fallback when the performance report fetch fails (lines 473-474)."""
         campaign = self._make_base_campaign()
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
@@ -654,7 +654,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_sitelinks_exception(self, client: _MockDiagClient) -> None:
-        """サイトリンク取得失敗時のフォールバック（行480-482）"""
+        """Fallback when the sitelink fetch fails (lines 480-482)."""
         campaign = self._make_base_campaign()
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
@@ -666,7 +666,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_billing_check_failure(self, client: _MockDiagClient) -> None:
-        """請求設定チェック失敗時のフォールバック（行499-500）"""
+        """Fallback when the billing-setup check fails (lines 499-500)."""
         campaign = self._make_base_campaign()
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[])
@@ -676,7 +676,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
         async def _search_side_effect(query):
             nonlocal call_count
             call_count += 1
-            # billing_setup クエリ（4回目）で例外
+            # Raise on the billing_setup query (the 4th call).
             if "billing_setup" in query:
                 raise RuntimeError("billing error")
             return []
@@ -688,7 +688,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
     @pytest.mark.asyncio
     async def test_impression_share_warnings(self, client: _MockDiagClient) -> None:
-        """インプレッションシェアのwarning（行584-607）"""
+        """Impression-share warning (lines 584-607)."""
         campaign = self._make_base_campaign()
         client.get_campaign = AsyncMock(return_value=campaign)
         client.list_ad_groups = AsyncMock(return_value=[{"id": "1"}])
@@ -711,7 +711,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 
         result = await client.diagnose_campaign_delivery("123")
         assert "impression_share" in result
-        # 予算制限 warning
+        # Budget-constrained warning
         assert any("budget" in w.lower() for w in result["warnings"])
         # Ad rank warning
         assert any("ad rank" in w.lower() for w in result["warnings"])
@@ -720,7 +720,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
     async def test_recommendations_for_primary_reasons(
         self, client: _MockDiagClient
     ) -> None:
-        """primary_status_reasonsに基づく推奨アクション（行634-652）"""
+        """Recommended actions based on primary_status_reasons (lines 634-652)."""
         campaign = self._make_base_campaign(
             primary_status="NOT_ELIGIBLE",
             primary_status_reasons=[
@@ -746,7 +746,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
     async def test_target_impression_share_recommendations(
         self, client: _MockDiagClient
     ) -> None:
-        """TARGET_IMPRESSION_SHARE入札戦略の推奨アクション（行612-626）"""
+        """Recommended actions for the TARGET_IMPRESSION_SHARE bidding strategy (lines 612-626)."""
         campaign = self._make_base_campaign(
             bidding_details={
                 "strategy": "TARGET_IMPRESSION_SHARE",
@@ -770,7 +770,7 @@ class TestDiagnoseCampaignDeliveryAdditional:
 @pytest.mark.unit
 class TestExtractBiddingDetailsAdditional:
     def test_maximize_conversions_without_optional_cpa(self) -> None:
-        """MAXIMIZE_CONVERSIONS でoptional_target_cpaが0の場合"""
+        """MAXIMIZE_CONVERSIONS with optional_target_cpa = 0."""
         campaign = MagicMock()
         campaign.bidding_strategy_type = 10
         campaign.maximize_conversions.target_cpa_micros = 0
@@ -785,7 +785,7 @@ class TestExtractBiddingDetailsAdditional:
         assert "optional_target_cpa" not in details
 
     def test_maximize_clicks_without_ceiling(self) -> None:
-        """MAXIMIZE_CLICKS でceilingが0の場合"""
+        """MAXIMIZE_CLICKS with ceiling = 0."""
         campaign = MagicMock()
         campaign.bidding_strategy_type = 2
         campaign.target_spend.cpc_bid_ceiling_micros = 0
@@ -800,7 +800,7 @@ class TestExtractBiddingDetailsAdditional:
         assert "cpc_bid_ceiling" not in details
 
     def test_target_impression_share_normal(self) -> None:
-        """TARGET_IMPRESSION_SHARE の正常パラメータ（issueなし）"""
+        """Healthy parameters for TARGET_IMPRESSION_SHARE (no issues)."""
         campaign = MagicMock()
         campaign.bidding_strategy_type = 15
         tis = campaign.target_impression_share

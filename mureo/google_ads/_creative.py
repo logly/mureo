@@ -103,7 +103,7 @@ class _CreativeMixin:
             )
         except Exception:
             logger.warning("Failed to retrieve existing ads", exc_info=True)
-            result["existing_ads"] = "取得失敗"
+            result["existing_ads"] = "fetch_failed"
 
         # --- 3. Search term insights ---
         try:
@@ -112,7 +112,7 @@ class _CreativeMixin:
             )
         except Exception:
             logger.warning("Failed to retrieve search term insights", exc_info=True)
-            result["search_term_insights"] = "取得失敗"
+            result["search_term_insights"] = "fetch_failed"
 
         # --- 4. Keyword suggestions ---
         try:
@@ -123,7 +123,7 @@ class _CreativeMixin:
                 result["keyword_suggestions"] = []
         except Exception:
             logger.warning("Failed to retrieve keyword suggestions", exc_info=True)
-            result["keyword_suggestions"] = "取得失敗"
+            result["keyword_suggestions"] = "fetch_failed"
 
         # --- 5. Existing keywords ---
         try:
@@ -132,7 +132,7 @@ class _CreativeMixin:
             )
         except Exception:
             logger.warning("Failed to retrieve existing keywords", exc_info=True)
-            result["existing_keywords"] = "取得失敗"
+            result["existing_keywords"] = "fetch_failed"
 
         # --- 6. Context summary for LLM ---
         result["context_summary"] = self._build_context_summary(result)

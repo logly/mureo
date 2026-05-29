@@ -1,7 +1,7 @@
-"""Meta Ads Instagram/ページ投稿連携 ユニットテスト
+"""Unit tests for Meta Ads Instagram / page-post integration.
 
-PagePostsMixin / InstagramMixin の _get / _post をモックしてテストする。
-MCPツールハンドラーのテストも含む。
+Tests PagePostsMixin / InstagramMixin with _get / _post mocked.
+Also covers the MCP tool handlers.
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ from mureo.meta_ads._instagram import InstagramMixin
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー: Mixinをテスト可能にするモッククラス
+# Helpers: mock class wrapping the Mixin for test isolation
 # ---------------------------------------------------------------------------
 
 
 def _make_page_posts_client() -> PagePostsMixin:
-    """PagePostsMixinにモック _get/_post/_ad_account_id を付与したインスタンスを生成"""
+    """Build a PagePostsMixin instance with mocked _get/_post/_ad_account_id."""
 
     class MockClient(PagePostsMixin):
         def __init__(self) -> None:
@@ -33,7 +33,7 @@ def _make_page_posts_client() -> PagePostsMixin:
 
 
 def _make_instagram_client() -> InstagramMixin:
-    """InstagramMixinにモック _get/_post/_ad_account_id を付与したインスタンスを生成"""
+    """Build an InstagramMixin instance with mocked _get/_post/_ad_account_id."""
 
     class MockClient(InstagramMixin):
         def __init__(self) -> None:
@@ -45,7 +45,7 @@ def _make_instagram_client() -> InstagramMixin:
 
 
 # ===========================================================================
-# PagePostsMixin テスト
+# PagePostsMixin tests
 # ===========================================================================
 
 
@@ -57,7 +57,7 @@ class TestListPagePosts:
 
     @pytest.mark.asyncio
     async def test_list_page_posts(self, client: PagePostsMixin) -> None:
-        """ページ投稿一覧を取得できること"""
+        """Can list page posts."""
         client._get_as_page = AsyncMock(
             return_value={
                 "data": [
@@ -88,7 +88,7 @@ class TestListPagePosts:
 
     @pytest.mark.asyncio
     async def test_list_page_posts_empty(self, client: PagePostsMixin) -> None:
-        """投稿がない場合は空リストが返ること"""
+        """Returns an empty list when there are no posts."""
         client._get_as_page = AsyncMock(return_value={"data": []})
         result = await client.list_page_posts("111")
 
@@ -96,7 +96,7 @@ class TestListPagePosts:
 
     @pytest.mark.asyncio
     async def test_list_page_posts_with_limit(self, client: PagePostsMixin) -> None:
-        """limit指定が渡ること"""
+        """The `limit` argument is forwarded."""
         client._get_as_page = AsyncMock(return_value={"data": []})
         await client.list_page_posts("111", limit=10)
 
@@ -113,7 +113,7 @@ class TestBoostPost:
 
     @pytest.mark.asyncio
     async def test_boost_post(self, client: PagePostsMixin) -> None:
-        """ページ投稿を広告化できること"""
+        """Can promote a page post into an ad."""
         client._post = AsyncMock(return_value={"id": "ad_999"})
         result = await client.boost_post(
             page_id="111",
@@ -133,7 +133,7 @@ class TestBoostPost:
 
     @pytest.mark.asyncio
     async def test_boost_post_custom_name(self, client: PagePostsMixin) -> None:
-        """カスタム名を指定して投稿を広告化できること"""
+        """Can promote a post with a custom ad name."""
         client._post = AsyncMock(return_value={"id": "ad_999"})
         result = await client.boost_post(
             page_id="111",
@@ -148,7 +148,7 @@ class TestBoostPost:
 
     @pytest.mark.asyncio
     async def test_boost_post_default_name(self, client: PagePostsMixin) -> None:
-        """名前未指定の場合はデフォルト名が付くこと"""
+        """A default name is applied when none is specified."""
         client._post = AsyncMock(return_value={"id": "ad_999"})
         await client.boost_post(
             page_id="111",
@@ -162,7 +162,7 @@ class TestBoostPost:
 
     @pytest.mark.asyncio
     async def test_boost_post_api_error(self, client: PagePostsMixin) -> None:
-        """APIエラー時にRuntimeErrorが発生すること"""
+        """Raises RuntimeError on API errors."""
         client._post = AsyncMock(side_effect=RuntimeError("Meta API request failed"))
         with pytest.raises(RuntimeError, match="Meta API"):
             await client.boost_post(
@@ -173,7 +173,7 @@ class TestBoostPost:
 
 
 # ===========================================================================
-# InstagramMixin テスト
+# InstagramMixin tests
 # ===========================================================================
 
 
@@ -185,7 +185,7 @@ class TestListInstagramAccounts:
 
     @pytest.mark.asyncio
     async def test_list_instagram_accounts(self, client: InstagramMixin) -> None:
-        """連携Instagramアカウント一覧を取得できること"""
+        """Can list linked Instagram accounts."""
         client._get = AsyncMock(
             return_value={
                 "data": [
@@ -208,7 +208,7 @@ class TestListInstagramAccounts:
 
     @pytest.mark.asyncio
     async def test_list_instagram_accounts_empty(self, client: InstagramMixin) -> None:
-        """Instagramアカウントがない場合は空リストが返ること"""
+        """Returns an empty list when there are no Instagram accounts."""
         client._get = AsyncMock(return_value={"data": []})
         result = await client.list_instagram_accounts()
         assert result == []
@@ -222,7 +222,7 @@ class TestListInstagramMedia:
 
     @pytest.mark.asyncio
     async def test_list_instagram_media(self, client: InstagramMixin) -> None:
-        """Instagram投稿一覧を取得できること"""
+        """Can list Instagram posts."""
         client._get = AsyncMock(
             return_value={
                 "data": [
@@ -258,7 +258,7 @@ class TestListInstagramMedia:
     async def test_list_instagram_media_with_limit(
         self, client: InstagramMixin
     ) -> None:
-        """limit指定が渡ること"""
+        """The `limit` argument is forwarded."""
         client._get = AsyncMock(return_value={"data": []})
         await client.list_instagram_media("ig_111", limit=5)
 
@@ -275,7 +275,7 @@ class TestBoostInstagramPost:
 
     @pytest.mark.asyncio
     async def test_boost_instagram_post(self, client: InstagramMixin) -> None:
-        """Instagram投稿を広告化できること"""
+        """Can promote an Instagram post into an ad."""
         client._post = AsyncMock(return_value={"id": "ad_888"})
         result = await client.boost_instagram_post(
             ig_user_id="ig_111",
@@ -299,7 +299,7 @@ class TestBoostInstagramPost:
     async def test_boost_instagram_post_custom_name(
         self, client: InstagramMixin
     ) -> None:
-        """カスタム名を指定してInstagram投稿を広告化できること"""
+        """Can promote an Instagram post with a custom ad name."""
         client._post = AsyncMock(return_value={"id": "ad_888"})
         await client.boost_instagram_post(
             ig_user_id="ig_111",
@@ -314,7 +314,7 @@ class TestBoostInstagramPost:
 
     @pytest.mark.asyncio
     async def test_boost_instagram_post_api_error(self, client: InstagramMixin) -> None:
-        """APIエラー時にRuntimeErrorが発生すること"""
+        """Raises RuntimeError on API errors."""
         client._post = AsyncMock(side_effect=RuntimeError("Meta API request failed"))
         with pytest.raises(RuntimeError, match="Meta API"):
             await client.boost_instagram_post(

@@ -34,7 +34,10 @@ _USER_AGENT = "Mozilla/5.0 (compatible; MarketingAgent/1.0; +https://example.com
 # Price pattern (Japanese yen notation)
 _PRICE_PATTERN = re.compile(r"[￥¥][\d,]+|[\d,]+円")
 
-# Industry estimation keyword dictionary
+# Industry estimation keyword dictionary. Keys are Japanese industry
+# labels surfaced to callers via ``industry_hints``; values are Japanese
+# keywords detected in LP body text. Intentionally left in Japanese:
+# mureo's LP analyzer is designed to classify Japanese landing pages.
 _INDUSTRY_KEYWORDS: dict[str, tuple[str, ...]] = {
     "美容": ("エステ", "脱毛", "美容", "化粧品", "スキンケア", "コスメ", "美白"),
     "不動産": ("物件", "賃貸", "マンション", "不動産", "住宅", "リフォーム", "建売"),

@@ -1,7 +1,7 @@
-"""Meta Ads Conversions API (CAPI) ユニットテスト
+"""Unit tests for the Meta Ads Conversions API (CAPI).
 
-send_event / send_purchase_event / send_lead_event および
-ハッシュ化ユーティリティ（hash_email, hash_phone, normalize_user_data）をテストする。
+Covers send_event / send_purchase_event / send_lead_event and the
+hashing utilities (hash_email, hash_phone, normalize_user_data).
 """
 
 from __future__ import annotations
@@ -20,12 +20,12 @@ from mureo.meta_ads._conversions import ConversionsMixin
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー: ConversionsMixinをテスト可能にするモッククラス
+# Helpers: mock class wrapping ConversionsMixin for test isolation
 # ---------------------------------------------------------------------------
 
 
 def _make_conversions_client() -> ConversionsMixin:
-    """ConversionsMixinにモック _post を付与したインスタンスを生成"""
+    """Build a ConversionsMixin instance with a mocked _post."""
 
     class MockClient(ConversionsMixin):
         def __init__(self) -> None:
@@ -37,54 +37,54 @@ def _make_conversions_client() -> ConversionsMixin:
 
 
 # ===========================================================================
-# hash_email テスト
+# hash_email tests
 # ===========================================================================
 
 
 @pytest.mark.unit
 class TestHashEmail:
     def test_basic(self) -> None:
-        """メールをSHA-256ハッシュ化"""
+        """SHA-256 hash an email address."""
         result = hash_email("Test@Example.COM")
         expected = hashlib.sha256("test@example.com".encode()).hexdigest()
         assert result == expected
 
     def test_strips_whitespace(self) -> None:
-        """前後の空白を除去してからハッシュ化"""
+        """Strip leading/trailing whitespace before hashing."""
         result = hash_email("  user@test.com  ")
         expected = hashlib.sha256("user@test.com".encode()).hexdigest()
         assert result == expected
 
 
 # ===========================================================================
-# hash_phone テスト
+# hash_phone tests
 # ===========================================================================
 
 
 @pytest.mark.unit
 class TestHashPhone:
     def test_basic(self) -> None:
-        """電話番号を数字のみに正規化してSHA-256ハッシュ化"""
+        """Normalize a phone number to digits only, then SHA-256 hash it."""
         result = hash_phone("+81-90-1234-5678")
         expected = hashlib.sha256("819012345678".encode()).hexdigest()
         assert result == expected
 
     def test_strips_spaces_and_parens(self) -> None:
-        """スペース・括弧・ハイフンを除去"""
+        """Strip spaces, parentheses, and hyphens."""
         result = hash_phone("(090) 1234-5678")
         expected = hashlib.sha256("09012345678".encode()).hexdigest()
         assert result == expected
 
 
 # ===========================================================================
-# normalize_user_data テスト
+# normalize_user_data tests
 # ===========================================================================
 
 
 @pytest.mark.unit
 class TestNormalizeUserData:
     def test_hashes_em_and_ph(self) -> None:
-        """em(email)とph(phone)を自動ハッシュ化"""
+        """Auto-hash em (email) and ph (phone)."""
         user_data = {
             "em": "user@example.com",
             "ph": "+81901234567",
@@ -92,15 +92,15 @@ class TestNormalizeUserData:
             "client_user_agent": "Mozilla/5.0",
         }
         result = normalize_user_data(user_data)
-        # emとphはハッシュ化される
+        # em and ph get hashed.
         assert result["em"] == hash_email("user@example.com")
         assert result["ph"] == hash_phone("+81901234567")
-        # 非PIIフィールドはそのまま
+        # Non-PII fields are passed through unchanged.
         assert result["client_ip_address"] == "1.2.3.4"
         assert result["client_user_agent"] == "Mozilla/5.0"
 
     def test_already_hashed_skips(self) -> None:
-        """既にSHA-256ハッシュ済み（64文字の16進数）ならスキップ"""
+        """Skip values that are already SHA-256 hashed (64 hex chars)."""
         already_hashed = hashlib.sha256("test@example.com".encode()).hexdigest()
         user_data = {
             "em": already_hashed,
@@ -111,7 +111,7 @@ class TestNormalizeUserData:
         assert result["ph"] == user_data["ph"]
 
     def test_list_values_hashed(self) -> None:
-        """emやphがリスト形式の場合も各要素をハッシュ化"""
+        """Each item is hashed when em or ph is a list."""
         user_data = {
             "em": ["user1@example.com", "user2@example.com"],
         }
@@ -121,7 +121,7 @@ class TestNormalizeUserData:
         assert result["em"][1] == hash_email("user2@example.com")
 
     def test_handles_fn_ln_and_other_pii_fields(self) -> None:
-        """fn(名), ln(姓)等のPIIフィールドもハッシュ化"""
+        """PII fields like fn (first name) and ln (last name) are also hashed."""
         user_data = {
             "fn": "Taro",
             "ln": "Yamada",
@@ -140,7 +140,7 @@ class TestNormalizeUserData:
 
 
 # ===========================================================================
-# ConversionsMixin.send_event テスト
+# ConversionsMixin.send_event tests
 # ===========================================================================
 
 
@@ -152,7 +152,7 @@ class TestSendEvent:
 
     @pytest.mark.asyncio
     async def test_send_event(self, client: ConversionsMixin) -> None:
-        """正常にイベントを送信"""
+        """Successfully sends an event."""
         events = [
             {
                 "event_name": "Purchase",
@@ -172,13 +172,13 @@ class TestSendEvent:
         call_args = client._post.call_args  # type: ignore[union-attr]
         assert "/pixel123/events" in call_args[0][0]
 
-        # dataパラメータにイベントが含まれる
+        # The data parameter contains the events.
         post_data = call_args[1].get("data") or call_args[0][1]
         assert "data" in post_data
 
     @pytest.mark.asyncio
     async def test_send_event_with_test_code(self, client: ConversionsMixin) -> None:
-        """テストイベントコード付きで送信"""
+        """Send with a test_event_code."""
         events = [
             {
                 "event_name": "Lead",
@@ -198,7 +198,7 @@ class TestSendEvent:
 
     @pytest.mark.asyncio
     async def test_send_event_api_error(self, client: ConversionsMixin) -> None:
-        """APIエラー時にRuntimeErrorを伝搬"""
+        """Propagates RuntimeError on API errors."""
         client._post = AsyncMock(  # type: ignore[assignment]
             side_effect=RuntimeError("Meta API request failed")
         )
@@ -215,7 +215,7 @@ class TestSendEvent:
 
 
 # ===========================================================================
-# ConversionsMixin.send_purchase_event テスト
+# ConversionsMixin.send_purchase_event tests
 # ===========================================================================
 
 
@@ -227,7 +227,7 @@ class TestSendPurchaseEvent:
 
     @pytest.mark.asyncio
     async def test_send_purchase_event(self, client: ConversionsMixin) -> None:
-        """購入イベントを正しい形式で送信"""
+        """Sends a purchase event in the correct format."""
         user_data = {
             "em": "buyer@example.com",
             "client_ip_address": "1.2.3.4",
@@ -246,7 +246,7 @@ class TestSendPurchaseEvent:
         call_args = client._post.call_args  # type: ignore[union-attr]
         post_data = call_args[1].get("data") or call_args[0][1]
 
-        # dataフィールドのイベント確認
+        # Check the event in the `data` field.
         import json
 
         events = json.loads(post_data["data"])
@@ -261,7 +261,7 @@ class TestSendPurchaseEvent:
 
 
 # ===========================================================================
-# ConversionsMixin.send_lead_event テスト
+# ConversionsMixin.send_lead_event tests
 # ===========================================================================
 
 
@@ -273,7 +273,7 @@ class TestSendLeadEvent:
 
     @pytest.mark.asyncio
     async def test_send_lead_event(self, client: ConversionsMixin) -> None:
-        """リードイベントを正しい形式で送信"""
+        """Sends a lead event in the correct format."""
         user_data = {
             "em": "lead@example.com",
             "client_ip_address": "10.0.0.1",

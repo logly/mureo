@@ -159,9 +159,10 @@ def _check_zero_spend(
         baseline_value=None,
         deviation_pct=None,
         sample_size=0,
-        message="支出がゼロです。配信が停止している可能性があります。",
+        message="Spend is zero. Delivery may be paused.",
         recommended_action=(
-            "キャンペーンの配信ステータス、予算残高、入札・ポリシー制限を確認してください。"
+            "Check the campaign's delivery status, remaining budget, and "
+            "bid/policy restrictions."
         ),
     )
 
@@ -194,11 +195,12 @@ def _check_cpa_spike(
         deviation_pct=deviation_pct,
         sample_size=round(current.conversions),
         message=(
-            f"CPAがベースラインの{ratio:.2f}倍に上昇しました "
-            f"(current={current_cpa:.0f}, baseline={baseline_cpa:.0f})。"
+            f"CPA rose to {ratio:.2f}x the baseline "
+            f"(current={current_cpa:.0f}, baseline={baseline_cpa:.0f})."
         ),
         recommended_action=(
-            "高CPAキーワード・検索語句の特定と停止、または入札調整を検討してください。"
+            "Identify and pause high-CPA keywords and search terms, "
+            "or consider a bid adjustment."
         ),
     )
 
@@ -228,11 +230,12 @@ def _check_ctr_drop(
         deviation_pct=deviation_pct,
         sample_size=current.impressions,
         message=(
-            f"CTRがベースラインの{ratio:.2f}倍まで低下しました "
-            f"(current={current_ctr:.3%}, baseline={baseline_ctr:.3%})。"
+            f"CTR dropped to {ratio:.2f}x the baseline "
+            f"(current={current_ctr:.3%}, baseline={baseline_ctr:.3%})."
         ),
         recommended_action=(
-            "広告文の刷新、検索語句レビュー、マッチタイプ・ネガティブキーワードの見直しを検討してください。"
+            "Consider refreshing ad copy, reviewing search terms, and revisiting "
+            "match types and negative keywords."
         ),
     )
 

@@ -1,7 +1,7 @@
-"""Meta Ads client.py ユニットテスト
+"""Unit tests for Meta Ads client.py.
 
-MetaAdsApiClient の初期化・_request・_check_rate_limit・
-コンテキストマネージャをテストする。
+Covers MetaAdsApiClient initialization, _request, _check_rate_limit,
+and the context manager.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from mureo.meta_ads.client import (
 
 
 # ---------------------------------------------------------------------------
-# 初期化テスト
+# Initialization tests
 # ---------------------------------------------------------------------------
 
 
@@ -46,7 +46,7 @@ class TestMetaAdsApiClientInit:
 
 
 # ---------------------------------------------------------------------------
-# _check_rate_limit テスト
+# _check_rate_limit tests
 # ---------------------------------------------------------------------------
 
 
@@ -57,13 +57,13 @@ class TestCheckRateLimit:
         return MetaAdsApiClient("token", "act_123")
 
     def test_no_header(self, client: MetaAdsApiClient) -> None:
-        """ヘッダーがない場合は何もしない"""
+        """Does nothing when the header is missing."""
         resp = MagicMock()
         resp.headers = {}
-        client._check_rate_limit(resp)  # 例外なし
+        client._check_rate_limit(resp)  # no exception
 
     def test_high_usage_warning(self, client: MetaAdsApiClient) -> None:
-        """使用率が閾値超の場合は警告ログ"""
+        """Logs a warning when usage exceeds the threshold."""
         usage = {"biz1": [{"call_count": 90, "total_cputime": 10, "total_time": 10}]}
         resp = MagicMock()
         resp.headers = {"x-business-use-case-usage": json.dumps(usage)}
@@ -73,7 +73,7 @@ class TestCheckRateLimit:
             mock_logger.warning.assert_called_once()
 
     def test_low_usage_no_warning(self, client: MetaAdsApiClient) -> None:
-        """使用率が閾値以下の場合は警告なし"""
+        """No warning when usage is at or below the threshold."""
         usage = {"biz1": [{"call_count": 10, "total_cputime": 5, "total_time": 5}]}
         resp = MagicMock()
         resp.headers = {"x-business-use-case-usage": json.dumps(usage)}
@@ -83,14 +83,14 @@ class TestCheckRateLimit:
             mock_logger.warning.assert_not_called()
 
     def test_malformed_header(self, client: MetaAdsApiClient) -> None:
-        """不正なJSONヘッダーでも例外にならない"""
+        """A malformed JSON header does not raise an exception."""
         resp = MagicMock()
         resp.headers = {"x-business-use-case-usage": "not-json"}
-        client._check_rate_limit(resp)  # 例外なし
+        client._check_rate_limit(resp)  # no exception
 
 
 # ---------------------------------------------------------------------------
-# _request テスト
+# _request tests
 # ---------------------------------------------------------------------------
 
 
@@ -150,7 +150,7 @@ class TestRequest:
 
     @pytest.mark.asyncio
     async def test_429_retry(self, client: MetaAdsApiClient) -> None:
-        """429応答で指数バックオフリトライする"""
+        """Retries with exponential backoff on a 429 response."""
         mock_429 = MagicMock()
         mock_429.status_code = 429
         mock_429.headers = {}
@@ -169,7 +169,7 @@ class TestRequest:
 
     @pytest.mark.asyncio
     async def test_max_retries_exhausted(self, client: MetaAdsApiClient) -> None:
-        """最大リトライ回数を超えた場合"""
+        """Behaviour when the maximum retry count is exceeded."""
         mock_429 = MagicMock()
         mock_429.status_code = 429
         mock_429.headers = {}
@@ -183,7 +183,7 @@ class TestRequest:
 
     @pytest.mark.asyncio
     async def test_http_error_retry(self, client: MetaAdsApiClient) -> None:
-        """HTTPエラーでリトライ"""
+        """Retries on HTTP errors."""
         mock_200 = MagicMock()
         mock_200.status_code = 200
         mock_200.json.return_value = {"ok": True}
@@ -200,7 +200,7 @@ class TestRequest:
 
     @pytest.mark.asyncio
     async def test_http_error_max_retries(self, client: MetaAdsApiClient) -> None:
-        """HTTPエラーが最大回数を超えた場合"""
+        """Behaviour when HTTP errors exceed the maximum retry count."""
         client._http = MagicMock()
         client._http.get = AsyncMock(side_effect=httpx.ConnectError("always fail"))
 
@@ -215,7 +215,7 @@ class TestRequest:
 
 
 # ---------------------------------------------------------------------------
-# コンテキストマネージャ テスト
+# Context manager tests
 # ---------------------------------------------------------------------------
 
 

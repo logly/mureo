@@ -396,7 +396,7 @@ class _MonitoringMixin:
         except Exception:
             logger.warning("Failed to retrieve campaign information", exc_info=True)
 
-        # 2. CV計測設定
+        # 2. Conversion tracking configuration
         cv_actions: list[dict[str, Any]] = []
         try:
             cv_actions = await self.list_conversion_actions()
@@ -570,7 +570,7 @@ class _MonitoringMixin:
         elif status == "warning":
             result["summary"] = (
                 f"Campaign {campaign_id} has 0 conversions."
-                f"Imp={impressions:,}, Click={clicks:,}, CV=0。"
+                f"Imp={impressions:,}, Click={clicks:,}, CV=0."
                 f"Planning an improvement strategy is recommended"
             )
         else:

@@ -1,6 +1,6 @@
-"""Meta Ads 分析ハンドラーテスト
+"""Tests for the Meta Ads analysis handlers.
 
-_handlers_meta_ads.py の分析系ハンドラーをカバーする。
+Covers the analysis-style handlers in _handlers_meta_ads.py.
 """
 
 from __future__ import annotations
@@ -24,25 +24,25 @@ def _import_handlers():
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
+# Helpers
 # ---------------------------------------------------------------------------
 
 
 def _mock_meta_ads_context():
-    """Meta Ads認証情報とクライアントのモックを返す"""
+    """Return mocks for Meta Ads credentials and client."""
     mock_client = AsyncMock()
     mock_creds = MagicMock()
     return mock_creds, mock_client
 
 
 # ---------------------------------------------------------------------------
-# 分析系ハンドラー
+# Analysis handlers
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestAnalysisHandlers:
-    """分析系ハンドラーテスト"""
+    """Analysis handler tests."""
 
     async def test_analysis_performance(self) -> None:
         mod = _import_meta_ads_tools()

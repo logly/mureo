@@ -3,7 +3,7 @@
 Tool descriptions follow ``docs/tdqs-style-guide.md``. Meta hierarchy:
 Campaign → Ad Set → Ad. Budgets and targeting live on Ad Sets; creative
 assets live on Ads. All budgets are passed in minor currency units
-(cents for USD, 円 for JPY since JPY has no minor unit — Meta treats 1
+(cents for USD, yen for JPY since JPY has no minor unit — Meta treats 1
 yen as 1 unit).
 """
 

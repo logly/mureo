@@ -48,8 +48,8 @@
     // OAuth round-trip (Google/Meta consent navigates away and the
     // configure page reloads on return). Without this, boot() forced
     // "en" and the completion screen rendered in English even when
-    // the user had selected 日本語. Best-effort: ignore storage errors
-    // (private mode / disabled storage).
+    // the user had selected Japanese. Best-effort: ignore storage
+    // errors (private mode / disabled storage).
     try {
       window.localStorage.setItem(LOCALE_KEY, locale);
     } catch (_e) {

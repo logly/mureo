@@ -39,7 +39,10 @@ _STATUS_MAP: dict[int, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# Informational query patterns
+# Informational query patterns. Japanese tokens that signal informational
+# (non-commercial) search intent — e.g. "とは" (what is), "比較" (compare),
+# "口コミ" (reviews). Kept in Japanese because mureo is designed to
+# classify Japanese ad-platform search terms.
 # ---------------------------------------------------------------------------
 
 _INFORMATIONAL_PATTERNS: tuple[str, ...] = (

@@ -1,9 +1,10 @@
-"""Google Ads _keywords.py テスト
+"""Tests for Google Ads _keywords.py.
 
-_KeywordsMixin の list_keywords, add_keywords, remove_keyword,
+Covers _KeywordsMixin's list_keywords, add_keywords, remove_keyword,
 pause_keyword, diagnose_keywords, suggest_keywords,
-list_negative_keywords, add_negative_keywords, add_negative_keywords_to_ad_group,
-remove_negative_keyword, get_search_terms_report のテスト。
+list_negative_keywords, add_negative_keywords,
+add_negative_keywords_to_ad_group, remove_negative_keyword, and
+get_search_terms_report.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from mureo.google_ads.client import GoogleAdsApiClient
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
+# Helpers
 # ---------------------------------------------------------------------------
 
 

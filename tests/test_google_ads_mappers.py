@@ -1,6 +1,7 @@
-"""Google Ads mappers テスト
+"""Tests for the Google Ads mappers.
 
-mappers.pyの各関数にモックデータを渡して正しく変換されることを確認する。
+Feeds mock data to each function in mappers.py and verifies the
+conversions.
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ from mureo.google_ads.mappers import (
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー関数
+# Helper functions
 # ---------------------------------------------------------------------------
 
 
@@ -95,7 +96,7 @@ class TestSafeStr:
 
 
 # ---------------------------------------------------------------------------
-# enum変換
+# Enum conversion
 # ---------------------------------------------------------------------------
 
 
@@ -126,7 +127,7 @@ class TestEnumMappers:
         assert map_primary_status(9) == "LEARNING"
 
     def test_map_bidding_strategy_type_maximize_clicks(self) -> None:
-        """v23でTARGET_SPENDに統合されたMAXIMIZE_CLICKSが正しく返る"""
+        """MAXIMIZE_CLICKS (merged into TARGET_SPEND in v23) is returned correctly."""
         assert _BIDDING_STRATEGY_MAP[9] == "MAXIMIZE_CLICKS"
 
     def test_map_criterion_approval_status_int(self) -> None:
@@ -144,7 +145,7 @@ class TestEnumMappers:
 
 
 # ---------------------------------------------------------------------------
-# エンティティ変換
+# Entity conversion
 # ---------------------------------------------------------------------------
 
 
@@ -187,7 +188,7 @@ class TestMapCampaign:
         assert result["end_date"] == "2024-12-31"
 
     def test_advertising_channel_type_SEARCH(self) -> None:
-        """advertising_channel_type が "SEARCH" として返ること。"""
+        """advertising_channel_type is returned as "SEARCH"."""
         campaign = MagicMock()
         campaign.id = 100
         campaign.name = "Search Campaign"
@@ -200,7 +201,7 @@ class TestMapCampaign:
         assert result["channel_type"] == "SEARCH"
 
     def test_advertising_channel_type_DISPLAY(self) -> None:
-        """advertising_channel_type が "DISPLAY" として返ること。"""
+        """advertising_channel_type is returned as "DISPLAY"."""
         campaign = MagicMock()
         campaign.id = 200
         campaign.name = "Display Campaign"
@@ -276,7 +277,7 @@ class TestMapKeyword:
         assert "approval_status" not in result
 
     def test_approval_status_unspecified(self) -> None:
-        """approval_status=0(UNSPECIFIED)でもマッピングされる"""
+        """approval_status=0 (UNSPECIFIED) is still mapped."""
         keyword = MagicMock()
         keyword.criterion_id = 33333
         keyword.keyword.text = "テスト"

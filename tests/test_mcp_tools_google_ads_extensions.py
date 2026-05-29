@@ -1,6 +1,7 @@
-"""Google Ads MCP拡張ツール ハンドラーテスト
+"""Tests for the extended Google Ads MCP-tool handlers.
 
-サイトリンク、コールアウト、コンバージョン、ターゲティング、変更履歴ハンドラーの検証。
+Verifies the sitelink, callout, conversion, targeting, and change
+history handlers.
 """
 
 from __future__ import annotations
@@ -24,20 +25,20 @@ def _import_handlers():
 
 
 def _mock_google_ads_context():
-    """Google Ads認証情報とクライアントのモックを返す"""
+    """Return mocks for Google Ads credentials and the API client."""
     mock_client = AsyncMock()
     mock_creds = MagicMock()
     return mock_creds, mock_client
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — サイトリンク
+# Handler tests — sitelinks
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsSitelinkHandlers:
-    """サイトリンク系ハンドラーテスト"""
+    """Sitelink-related handler tests."""
 
     async def test_sitelinks_list(self) -> None:
         mod = _import_google_ads_tools()
@@ -103,13 +104,13 @@ class TestGoogleAdsSitelinkHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — コールアウト
+# Handler tests — callouts
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsCalloutHandlers:
-    """コールアウト系ハンドラーテスト"""
+    """Callout-related handler tests."""
 
     async def test_callouts_list(self) -> None:
         mod = _import_google_ads_tools()
@@ -174,13 +175,13 @@ class TestGoogleAdsCalloutHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — コンバージョン
+# Handler tests — conversions
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsConversionHandlers:
-    """コンバージョン系ハンドラーテスト"""
+    """Conversion-related handler tests."""
 
     async def test_conversions_list(self) -> None:
         mod = _import_google_ads_tools()
@@ -321,13 +322,13 @@ class TestGoogleAdsConversionHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — ターゲティング
+# Handler tests — targeting
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsTargetingHandlers:
-    """ターゲティング系ハンドラーテスト"""
+    """Targeting-related handler tests."""
 
     async def test_recommendations_list(self) -> None:
         mod = _import_google_ads_tools()

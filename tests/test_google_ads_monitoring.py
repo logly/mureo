@@ -1,7 +1,7 @@
-"""Google Ads _monitoring.py ユニットテスト
+"""Unit tests for Google Ads _monitoring.py.
 
-_MonitoringMixin の evaluate_delivery_goal / evaluate_cpa_goal /
-evaluate_cv_goal / diagnose_zero_conversions をモックベースでテストする。
+Mock-based tests for _MonitoringMixin's evaluate_delivery_goal,
+evaluate_cpa_goal, evaluate_cv_goal, and diagnose_zero_conversions.
 """
 
 from __future__ import annotations
@@ -14,12 +14,12 @@ from mureo.google_ads._monitoring import _MonitoringMixin
 
 
 # ---------------------------------------------------------------------------
-# テスト用のモッククライアントクラス
+# Mock client class for tests
 # ---------------------------------------------------------------------------
 
 
 class _MockMonitoringClient(_MonitoringMixin):
-    """_MonitoringMixin をテスト可能にするモッククラス"""
+    """Mock class that makes _MonitoringMixin testable."""
 
     def __init__(self) -> None:
         self._customer_id = "1234567890"
@@ -28,7 +28,7 @@ class _MockMonitoringClient(_MonitoringMixin):
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str:
         if not value or not value.isdigit():
-            raise ValueError(f"{field_name} は数値文字列である必要があります: {value}")
+            raise ValueError(f"{field_name} must be a numeric string: {value}")
         return value
 
     async def get_campaign(self, campaign_id: str):
@@ -54,7 +54,7 @@ class _MockMonitoringClient(_MonitoringMixin):
 
 
 # ---------------------------------------------------------------------------
-# evaluate_delivery_goal テスト
+# evaluate_delivery_goal tests
 # ---------------------------------------------------------------------------
 
 
@@ -66,7 +66,7 @@ class TestEvaluateDeliveryGoal:
 
     @pytest.mark.asyncio
     async def test_healthy_campaign(self, client: _MockMonitoringClient) -> None:
-        """正常な配信状態 → healthy"""
+        """Healthy delivery → healthy."""
         client.get_campaign = AsyncMock(return_value={"status": "ENABLED"})
         client.diagnose_campaign_delivery = AsyncMock(
             return_value={
@@ -84,7 +84,7 @@ class TestEvaluateDeliveryGoal:
 
     @pytest.mark.asyncio
     async def test_critical_no_impressions(self, client: _MockMonitoringClient) -> None:
-        """インプレッション0 → critical"""
+        """Zero impressions → critical."""
         client.get_campaign = AsyncMock(return_value={"status": "ENABLED"})
         client.diagnose_campaign_delivery = AsyncMock(
             return_value={
@@ -102,7 +102,7 @@ class TestEvaluateDeliveryGoal:
 
     @pytest.mark.asyncio
     async def test_critical_with_issues(self, client: _MockMonitoringClient) -> None:
-        """診断で issues 検出 → critical"""
+        """Diagnostic issues detected → critical."""
         client.get_campaign = AsyncMock(return_value={"status": "ENABLED"})
         client.diagnose_campaign_delivery = AsyncMock(
             return_value={
@@ -121,7 +121,7 @@ class TestEvaluateDeliveryGoal:
     async def test_warning_with_warnings_only(
         self, client: _MockMonitoringClient
     ) -> None:
-        """診断で warnings のみ → warning"""
+        """Only warnings from the diagnostic → warning."""
         client.get_campaign = AsyncMock(return_value={"status": "ENABLED"})
         client.diagnose_campaign_delivery = AsyncMock(
             return_value={
@@ -140,7 +140,7 @@ class TestEvaluateDeliveryGoal:
     async def test_paused_campaign_critical(
         self, client: _MockMonitoringClient
     ) -> None:
-        """一時停止中 → critical"""
+        """Paused → critical."""
         client.get_campaign = AsyncMock(return_value={"status": "PAUSED"})
         client.diagnose_campaign_delivery = AsyncMock(
             return_value={
@@ -157,7 +157,7 @@ class TestEvaluateDeliveryGoal:
 
     @pytest.mark.asyncio
     async def test_exception_handling(self, client: _MockMonitoringClient) -> None:
-        """各メソッドの例外は吸収される"""
+        """Exceptions from each method are swallowed."""
         client.get_campaign = AsyncMock(side_effect=RuntimeError("fail"))
         client.diagnose_campaign_delivery = AsyncMock(side_effect=RuntimeError("fail"))
         client.get_performance_report = AsyncMock(side_effect=RuntimeError("fail"))
@@ -167,7 +167,7 @@ class TestEvaluateDeliveryGoal:
 
 
 # ---------------------------------------------------------------------------
-# evaluate_cpa_goal テスト
+# evaluate_cpa_goal tests
 # ---------------------------------------------------------------------------
 
 
@@ -179,7 +179,7 @@ class TestEvaluateCpaGoal:
 
     @pytest.mark.asyncio
     async def test_healthy_cpa(self, client: _MockMonitoringClient) -> None:
-        """CPA目標内 → healthy"""
+        """Within the CPA target → healthy."""
         client.get_performance_report = AsyncMock(
             return_value=[{"metrics": {"cost": 10000, "conversions": 10}}]
         )
@@ -191,7 +191,7 @@ class TestEvaluateCpaGoal:
 
     @pytest.mark.asyncio
     async def test_warning_cpa(self, client: _MockMonitoringClient) -> None:
-        """CPA目標の1.2倍以内 → warning"""
+        """At or below 1.2× the CPA target → warning."""
         client.get_performance_report = AsyncMock(
             return_value=[{"metrics": {"cost": 11000, "conversions": 10}}]  # CPA=1100
         )
@@ -203,7 +203,7 @@ class TestEvaluateCpaGoal:
 
     @pytest.mark.asyncio
     async def test_critical_cpa(self, client: _MockMonitoringClient) -> None:
-        """CPA目標の1.2倍超 → critical"""
+        """Above 1.2× the CPA target → critical."""
         client.get_performance_report = AsyncMock(
             return_value=[{"metrics": {"cost": 15000, "conversions": 10}}]  # CPA=1500
         )
@@ -229,7 +229,7 @@ class TestEvaluateCpaGoal:
     async def test_wasteful_terms_extraction(
         self, client: _MockMonitoringClient
     ) -> None:
-        """wasteful_search_termsが正しく抽出される"""
+        """wasteful_search_terms are extracted correctly."""
         client.get_performance_report = AsyncMock(
             return_value=[{"metrics": {"cost": 5000, "conversions": 5}}]
         )
@@ -240,11 +240,11 @@ class TestEvaluateCpaGoal:
         )
 
         result = await client.evaluate_cpa_goal("123", 2000.0)
-        assert len(result["wasteful_terms"]) == 5  # 上位5件
+        assert len(result["wasteful_terms"]) == 5  # top 5
 
 
 # ---------------------------------------------------------------------------
-# evaluate_cv_goal テスト
+# evaluate_cv_goal tests
 # ---------------------------------------------------------------------------
 
 
@@ -256,7 +256,7 @@ class TestEvaluateCvGoal:
 
     @pytest.mark.asyncio
     async def test_healthy_cv(self, client: _MockMonitoringClient) -> None:
-        """CV目標達成 → healthy"""
+        """CV target met → healthy."""
         client.get_performance_report = AsyncMock(
             return_value=[
                 {"metrics": {"impressions": 1000, "clicks": 100, "conversions": 70}}
@@ -270,7 +270,7 @@ class TestEvaluateCvGoal:
 
     @pytest.mark.asyncio
     async def test_warning_cv(self, client: _MockMonitoringClient) -> None:
-        """CV目標の80%以上 → warning"""
+        """At or above 80% of the CV target → warning."""
         client.get_performance_report = AsyncMock(
             return_value=[
                 {"metrics": {"impressions": 1000, "clicks": 100, "conversions": 63}}
@@ -283,7 +283,7 @@ class TestEvaluateCvGoal:
 
     @pytest.mark.asyncio
     async def test_critical_cv(self, client: _MockMonitoringClient) -> None:
-        """CV目標の80%未満 → critical"""
+        """Below 80% of the CV target → critical."""
         client.get_performance_report = AsyncMock(
             return_value=[
                 {"metrics": {"impressions": 1000, "clicks": 100, "conversions": 35}}
@@ -297,7 +297,7 @@ class TestEvaluateCvGoal:
 
     @pytest.mark.asyncio
     async def test_bottleneck_impression(self, client: _MockMonitoringClient) -> None:
-        """インプレッション系インサイト → impression ボトルネック"""
+        """Impression-related insight → impression bottleneck."""
         client.get_performance_report = AsyncMock(
             return_value=[
                 {"metrics": {"impressions": 10, "clicks": 5, "conversions": 0}}
@@ -312,7 +312,7 @@ class TestEvaluateCvGoal:
 
     @pytest.mark.asyncio
     async def test_bottleneck_ctr(self, client: _MockMonitoringClient) -> None:
-        """低CTR → ctr ボトルネック"""
+        """Low CTR → CTR bottleneck."""
         client.get_performance_report = AsyncMock(
             return_value=[
                 {"metrics": {"impressions": 10000, "clicks": 10, "conversions": 0}}
@@ -325,7 +325,7 @@ class TestEvaluateCvGoal:
 
     @pytest.mark.asyncio
     async def test_bottleneck_cvr(self, client: _MockMonitoringClient) -> None:
-        """低CVR → cvr ボトルネック"""
+        """Low CVR → CVR bottleneck."""
         client.get_performance_report = AsyncMock(
             return_value=[
                 {"metrics": {"impressions": 10000, "clicks": 500, "conversions": 1}}
@@ -351,7 +351,7 @@ class TestEvaluateCvGoal:
 
 
 # ---------------------------------------------------------------------------
-# diagnose_zero_conversions テスト
+# diagnose_zero_conversions tests
 # ---------------------------------------------------------------------------
 
 
@@ -363,7 +363,7 @@ class TestDiagnoseZeroConversions:
 
     @pytest.mark.asyncio
     async def test_no_cv_tracking_critical(self, client: _MockMonitoringClient) -> None:
-        """CV計測未設定 → critical"""
+        """No CV measurement configured → critical."""
         client.get_campaign = AsyncMock(
             return_value={"bidding_strategy": "MAXIMIZE_CONVERSIONS"}
         )
@@ -394,7 +394,7 @@ class TestDiagnoseZeroConversions:
 
     @pytest.mark.asyncio
     async def test_no_delivery_bottleneck(self, client: _MockMonitoringClient) -> None:
-        """インプレッション0 → no_delivery ボトルネック"""
+        """Zero impressions → no_delivery bottleneck."""
         client.get_campaign = AsyncMock(
             return_value={"bidding_strategy": "MAXIMIZE_CLICKS"}
         )
@@ -424,7 +424,7 @@ class TestDiagnoseZeroConversions:
 
     @pytest.mark.asyncio
     async def test_no_clicks_bottleneck(self, client: _MockMonitoringClient) -> None:
-        """クリック0 → no_clicks ボトルネック"""
+        """Zero clicks → no_clicks bottleneck."""
         client.get_campaign = AsyncMock(
             return_value={"bidding_strategy": "MAXIMIZE_CLICKS"}
         )
@@ -456,7 +456,7 @@ class TestDiagnoseZeroConversions:
     async def test_healthy_with_conversions(
         self, client: _MockMonitoringClient
     ) -> None:
-        """CVあり → healthy"""
+        """With conversions → healthy."""
         client.get_campaign = AsyncMock(
             return_value={"bidding_strategy": "MAXIMIZE_CLICKS"}
         )
@@ -488,7 +488,7 @@ class TestDiagnoseZeroConversions:
     async def test_search_term_quality_high_waste(
         self, client: _MockMonitoringClient
     ) -> None:
-        """CVなし検索語句のコストが50%超の場合はissueに含まれる"""
+        """If zero-conversion search terms account for >50% of cost, it is an issue."""
         client.get_campaign = AsyncMock(
             return_value={"bidding_strategy": "MAXIMIZE_CLICKS"}
         )
@@ -525,14 +525,14 @@ class TestDiagnoseZeroConversions:
 
 
 # ---------------------------------------------------------------------------
-# _build_cv_recommendations テスト
+# _build_cv_recommendations tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestBuildCvRecommendations:
     def test_all_issues(self) -> None:
-        """全問題が存在する場合の推奨アクション"""
+        """Recommended actions when all problems are present."""
         actions = _MonitoringMixin._build_cv_recommendations(
             has_cv_issue=True,
             bidding_issue="入札戦略不整合",
@@ -545,12 +545,12 @@ class TestBuildCvRecommendations:
         assert "fix_bidding_strategy" in action_types
         assert "add_negative_keywords" in action_types
         assert "fix_delivery" in action_types
-        # 優先順位が昇順
+        # Priority should be ascending.
         priorities = [a["priority"] for a in actions]
         assert priorities == sorted(priorities)
 
     def test_no_issues(self) -> None:
-        """問題がない場合でも基本的な提案は含まれる"""
+        """Basic suggestions are included even when there are no problems."""
         actions = _MonitoringMixin._build_cv_recommendations(
             has_cv_issue=False,
             bidding_issue=None,

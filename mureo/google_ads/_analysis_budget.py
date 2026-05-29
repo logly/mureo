@@ -205,7 +205,7 @@ class _BudgetAnalysisMixin:
                     "proposed_daily_budget": new_budget,
                     "change_amount": -reduction,
                     "reason": (
-                        f"効率比 {camp.get('efficiency_ratio', 0)} "
+                        f"Efficiency ratio {camp.get('efficiency_ratio', 0)} "
                         f"(CPA: ¥{camp.get('cpa', 0):,.0f})"
                     ),
                 }
@@ -227,7 +227,7 @@ class _BudgetAnalysisMixin:
                         "proposed_daily_budget": new_budget,
                         "change_amount": per_campaign,
                         "reason": (
-                            f"効率比 {camp.get('efficiency_ratio', 0)} "
+                            f"Efficiency ratio {camp.get('efficiency_ratio', 0)} "
                             f"(CPA: ¥{camp.get('cpa', 0):,.0f})"
                         ),
                     }
@@ -251,5 +251,5 @@ class _BudgetAnalysisMixin:
             **efficiency,
             "reallocation_plan": reallocation_plan,
             "total_freed": total_freed,
-            "summary": "。".join(summary_parts),
+            "summary": ". ".join(summary_parts),
         }

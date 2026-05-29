@@ -1,8 +1,8 @@
-"""Meta Ads operations ユニットテスト
+"""Unit tests for Meta Ads operations.
 
-CampaignsMixin / AdSetsMixin / AdsMixin / CreativesMixin /
-AudiencesMixin / PixelsMixin / InsightsMixin / AnalysisMixin を
-_get / _post / _delete をモックしてテストする。
+Tests CampaignsMixin / AdSetsMixin / AdsMixin / CreativesMixin /
+AudiencesMixin / PixelsMixin / InsightsMixin / AnalysisMixin with
+_get / _post / _delete mocked.
 """
 
 from __future__ import annotations
@@ -23,12 +23,12 @@ from mureo.meta_ads._analysis import AnalysisMixin, _safe_float, _extract_cv
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー: 各Mixinをテスト可能にするモッククラス
+# Helpers: factory producing mock classes wrapping each Mixin for test isolation
 # ---------------------------------------------------------------------------
 
 
 def _make_mock_class(mixin_cls):
-    """Mixinにモック _get/_post/_delete/_ad_account_id を付与したクラスを生成"""
+    """Build a class with mocked _get/_post/_delete/_ad_account_id."""
 
     class MockClient(mixin_cls):
         def __init__(self):
@@ -41,7 +41,7 @@ def _make_mock_class(mixin_cls):
 
 
 # ===========================================================================
-# CampaignsMixin テスト
+# CampaignsMixin tests
 # ===========================================================================
 
 
@@ -129,7 +129,7 @@ class TestCampaignsMixin:
 
 
 # ===========================================================================
-# AdSetsMixin テスト
+# AdSetsMixin tests
 # ===========================================================================
 
 
@@ -166,7 +166,7 @@ class TestAdSetsMixin:
         assert data["campaign_id"] == "camp1"
         assert data["name"] == "AdSet1"
         assert data["daily_budget"] == 5000
-        # デフォルトターゲティング
+        # Default targeting
         targeting = json.loads(data["targeting"])
         assert targeting["geo_locations"]["countries"] == ["JP"]
 
@@ -210,7 +210,7 @@ class TestAdSetsMixin:
 
 
 # ===========================================================================
-# AdsMixin テスト
+# AdsMixin tests
 # ===========================================================================
 
 
@@ -270,7 +270,7 @@ class TestAdsMixin:
 
 
 # ===========================================================================
-# CreativesMixin テスト
+# CreativesMixin tests
 # ===========================================================================
 
 
@@ -577,7 +577,7 @@ class TestCreativesMixin:
 
 
 # ===========================================================================
-# AudiencesMixin テスト
+# AudiencesMixin tests
 # ===========================================================================
 
 
@@ -650,7 +650,7 @@ class TestAudiencesMixin:
 
 
 # ===========================================================================
-# PixelsMixin テスト
+# PixelsMixin tests
 # ===========================================================================
 
 
@@ -681,14 +681,14 @@ class TestPixelsMixin:
         )
         result = await client.get_pixel_stats("px1", "last_30d")
         assert len(result) == 1
-        # パスの確認
+        # Verify the path
         assert "/px1/stats" in client._get.call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_get_pixel_stats_default_period(self, client) -> None:
         client._get = AsyncMock(return_value={"data": []})
         await client.get_pixel_stats("px1")
-        # デフォルト: last_7d → 7日間
+        # Default: last_7d → 7 days
 
     @pytest.mark.asyncio
     async def test_get_pixel_events(self, client) -> None:
@@ -700,7 +700,7 @@ class TestPixelsMixin:
 
 
 # ===========================================================================
-# InsightsMixin テスト
+# InsightsMixin tests
 # ===========================================================================
 
 
@@ -709,7 +709,7 @@ class TestInsightsMixin:
     @pytest.fixture()
     def client(self):
         cls = _make_mock_class(InsightsMixin)
-        # InsightsMixinはget_breakdown_reportも持つ
+        # InsightsMixin also exposes get_breakdown_report.
         return cls()
 
     @pytest.mark.asyncio
@@ -774,7 +774,7 @@ class TestInsightsMixin:
 
     @pytest.mark.asyncio
     async def test_analyze_performance_with_decline(self, client) -> None:
-        """表示回数が20%以上減少した場合のインサイト"""
+        """Insight when impressions drop 20% or more."""
 
         async def fake_get(path, params):
             period = params.get("date_preset", "")
@@ -823,11 +823,11 @@ class TestInsightsMixin:
                 ]
             }
         )
-        # analyze_audience は get_breakdown_report を呼ぶので実装が必要
-        # InsightsMixin.get_breakdown_report は _get を使う
+        # analyze_audience calls get_breakdown_report, so it must be implemented.
+        # InsightsMixin.get_breakdown_report uses _get.
         result = await client.analyze_audience("camp1")
         assert len(result["segments"]) == 2
-        # CV0 + spend > 0 のインサイト
+        # Insight for CV=0 and spend > 0.
         assert any("0 CV" in i for i in result["insights"])
 
     @pytest.mark.asyncio
@@ -838,7 +838,7 @@ class TestInsightsMixin:
 
 
 # ===========================================================================
-# AnalysisMixin ヘルパー関数テスト
+# AnalysisMixin helper-function tests
 # ===========================================================================
 
 
@@ -868,7 +868,7 @@ class TestAnalysisHelpers:
 
 
 # ===========================================================================
-# AnalysisMixin テスト
+# AnalysisMixin tests
 # ===========================================================================
 
 
@@ -912,7 +912,7 @@ class TestAnalysisMixin:
         )
         result = await client.analyze_placements("camp1")
         assert len(result["placements"]) == 2
-        # instagramはCV0でコスト発生 → insight
+        # Instagram has CV=0 with non-zero cost → insight.
         assert any("instagram" in i for i in result["insights"])
 
     @pytest.mark.asyncio
@@ -922,7 +922,7 @@ class TestAnalysisMixin:
 
     @pytest.mark.asyncio
     async def test_investigate_cost_with_increase(self, client) -> None:
-        """広告費増加の検出"""
+        """Detect an ad-spend increase."""
 
         async def fake_report(**kwargs):
             period = kwargs.get("period", "")
@@ -1020,7 +1020,7 @@ class TestAnalysisMixin:
 
     @pytest.mark.asyncio
     async def test_suggest_creative_improvements_low_ctr(self, client) -> None:
-        """平均CTRの半分以下の広告を検出"""
+        """Detect ads whose CTR is at most half of the average."""
         client.get_performance_report = AsyncMock(
             return_value=[
                 {
@@ -1046,7 +1046,7 @@ class TestAnalysisMixin:
 
     @pytest.mark.asyncio
     async def test_suggest_creative_improvements_zero_cv(self, client) -> None:
-        """CV0で高コストの広告を検出"""
+        """Detect high-cost ads with zero conversions."""
         client.get_performance_report = AsyncMock(
             return_value=[
                 {
@@ -1064,7 +1064,7 @@ class TestAnalysisMixin:
 
     @pytest.mark.asyncio
     async def test_suggest_creative_improvements_high_cpa(self, client) -> None:
-        """CPA格差の検出"""
+        """Detect CPA disparity."""
         client.get_performance_report = AsyncMock(
             return_value=[
                 {

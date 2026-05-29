@@ -1,7 +1,7 @@
-"""Meta Ads 拡張ハンドラーテスト
+"""Tests for the extended Meta Ads handlers.
 
-キャンペーン、広告セット、広告、オーディエンス、クリエイティブ、ピクセル
-ハンドラーをカバーする。
+Covers the campaign, ad set, ad, audience, creative, and pixel
+handlers.
 """
 
 from __future__ import annotations
@@ -25,25 +25,25 @@ def _import_handlers():
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
+# Helpers
 # ---------------------------------------------------------------------------
 
 
 def _mock_meta_ads_context():
-    """Meta Ads認証情報とクライアントのモックを返す"""
+    """Return mocks for Meta Ads credentials and the API client."""
     mock_client = AsyncMock()
     mock_creds = MagicMock()
     return mock_creds, mock_client
 
 
 # ---------------------------------------------------------------------------
-# キャンペーン pause / enable
+# Campaign pause / enable
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestCampaignPauseEnableHandlers:
-    """キャンペーン pause/enable ハンドラーテスト"""
+    """Campaign pause/enable handler tests."""
 
     async def test_campaigns_pause(self) -> None:
         mod = _import_meta_ads_tools()
@@ -85,13 +85,13 @@ class TestCampaignPauseEnableHandlers:
 
 
 # ---------------------------------------------------------------------------
-# 広告セット get / pause / enable
+# Ad set get / pause / enable
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestAdSetExtendedHandlers:
-    """広告セット get/pause/enable ハンドラーテスト"""
+    """Ad set get/pause/enable handler tests."""
 
     async def test_ad_sets_get(self) -> None:
         mod = _import_meta_ads_tools()
@@ -152,13 +152,13 @@ class TestAdSetExtendedHandlers:
 
 
 # ---------------------------------------------------------------------------
-# 広告 get / pause / enable
+# Ad get / pause / enable
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestAdExtendedHandlers:
-    """広告 get/pause/enable ハンドラーテスト"""
+    """Ad get/pause/enable handler tests."""
 
     async def test_ads_get(self) -> None:
         mod = _import_meta_ads_tools()
@@ -219,13 +219,13 @@ class TestAdExtendedHandlers:
 
 
 # ---------------------------------------------------------------------------
-# オーディエンス get / delete / create_lookalike
+# Audience get / delete / create_lookalike
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestAudienceExtendedHandlers:
-    """オーディエンス get/delete/create_lookalike ハンドラーテスト"""
+    """Audience get/delete/create_lookalike handler tests."""
 
     async def test_audiences_get(self) -> None:
         mod = _import_meta_ads_tools()
@@ -292,13 +292,13 @@ class TestAudienceExtendedHandlers:
 
 
 # ---------------------------------------------------------------------------
-# クリエイティブ list / create / create_dynamic / upload_image
+# Creative list / create / create_dynamic / upload_image
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestCreativeHandlers:
-    """クリエイティブ系ハンドラーテスト"""
+    """Creative-related handler tests."""
 
     async def test_creatives_list(self) -> None:
         mod = _import_meta_ads_tools()
@@ -447,13 +447,13 @@ class TestCreativeHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ピクセル list / get / stats / events
+# Pixel list / get / stats / events
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestPixelHandlers:
-    """ピクセル系ハンドラーテスト"""
+    """Pixel-related handler tests."""
 
     async def test_pixels_list(self) -> None:
         mod = _import_meta_ads_tools()

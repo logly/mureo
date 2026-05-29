@@ -1,6 +1,7 @@
-"""import検証テスト
+"""Import verification tests.
 
-全モジュールがimportできること、DB/LLM系のimportが含まれていないことを確認する。
+Verifies that every module imports cleanly and that none of them pull
+in database or LLM dependencies.
 """
 
 from __future__ import annotations
@@ -12,10 +13,10 @@ from typing import Any
 
 import pytest
 
-# mureo-core パッケージルート
+# mureo-core package root
 _MUREO_ROOT = pathlib.Path(__file__).resolve().parent.parent / "mureo"
 
-# DB/LLM系の禁止importパターン
+# Forbidden import patterns (DB / LLM)
 _FORBIDDEN_MODULES: frozenset[str] = frozenset(
     {
         "sqlalchemy",
@@ -36,7 +37,7 @@ _FORBIDDEN_MODULES: frozenset[str] = frozenset(
     }
 )
 
-# テスト対象モジュール一覧
+# Modules under test
 _ALL_MODULES: list[str] = [
     "mureo",
     "mureo.google_ads",
@@ -83,7 +84,7 @@ _ALL_MODULES: list[str] = [
 
 
 def _collect_imports_from_file(filepath: pathlib.Path) -> list[str]:
-    """ASTを使ってPythonファイルからimport文のモジュール名を収集する"""
+    """Collect imported module names from a Python file using the AST."""
     source = filepath.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(filepath))
 
@@ -100,31 +101,31 @@ def _collect_imports_from_file(filepath: pathlib.Path) -> list[str]:
 
 @pytest.mark.unit
 class TestModuleImports:
-    """全モジュールがimportできることを確認"""
+    """Verify that all modules can be imported."""
 
     @pytest.mark.parametrize("module_name", _ALL_MODULES)
     def test_import_succeeds(self, module_name: str) -> None:
-        """各モジュールが正常にimportできる"""
+        """Each module imports successfully."""
         mod = importlib.import_module(module_name)
         assert mod is not None
 
 
 @pytest.mark.unit
 class TestNoForbiddenImports:
-    """DB/LLM系のimportが含まれていないことをAST解析で確認"""
+    """Verify no DB/LLM imports are present, using AST analysis."""
 
     def _collect_all_py_files(self) -> list[pathlib.Path]:
-        """mureo/ 配下の全.pyファイルを収集"""
+        """Collect all .py files under mureo/."""
         return sorted(_MUREO_ROOT.rglob("*.py"))
 
     def test_no_forbidden_imports_in_package(self) -> None:
-        """mureo/配下の全ファイルに禁止importが含まれていない"""
+        """No forbidden imports in any file under mureo/."""
         violations: list[str] = []
 
         for py_file in self._collect_all_py_files():
             imports = _collect_imports_from_file(py_file)
             for imp in imports:
-                # トップレベルモジュール名で比較
+                # Compare on top-level module name
                 top_module = imp.split(".")[0]
                 for forbidden in _FORBIDDEN_MODULES:
                     if top_module == forbidden.split(".")[0] and imp.startswith(
@@ -137,4 +138,4 @@ class TestNoForbiddenImports:
 
         assert (
             violations == []
-        ), "禁止されたDB/LLM系のimportが検出されました:\n" + "\n".join(violations)
+        ), "Forbidden DB/LLM imports detected:\n" + "\n".join(violations)

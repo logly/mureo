@@ -43,7 +43,7 @@ def _normalize_device_type(raw: Any) -> str:
     if isinstance(raw, int):
         return _DEVICE_ENUM_MAP.get(raw, f"UNKNOWN({raw})")
     s = str(raw)
-    # "DeviceType.DESKTOP" 形式
+    # "DeviceType.DESKTOP" format
     if "." in s:
         return s.split(".")[-1]
     # Integer string "2", "3", "4"

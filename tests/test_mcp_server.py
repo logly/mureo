@@ -1,7 +1,8 @@
-"""MCP サーバーテスト
+"""MCP server tests.
 
-MCPサーバーの list_tools / call_tool の動作を検証する。
-GoogleAdsApiClient / MetaAdsApiClient はモックし、stdio 層は介さずサーバー関数を直接呼ぶ。
+Exercises list_tools / call_tool on the MCP server.
+GoogleAdsApiClient and MetaAdsApiClient are mocked, and the server
+functions are invoked directly without the stdio layer.
 """
 
 from __future__ import annotations
@@ -14,12 +15,12 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
+# Helpers
 # ---------------------------------------------------------------------------
 
 
 def _import_server_module():
-    """mureo/mcp/server.py をインポートする"""
+    """Import mureo/mcp/server.py."""
     from mureo.mcp import server as mcp_server_module
 
     return mcp_server_module
@@ -32,24 +33,24 @@ def _import_google_ads_handlers():
 
 
 # ---------------------------------------------------------------------------
-# list_tools テスト
+# list_tools tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestListTools:
-    """list_tools が正しいツール定義を返すことを検証する"""
+    """Verify list_tools returns the correct tool definitions."""
 
     async def test_list_tools_returns_all_tools(self) -> None:
-        """list_tools は全ツール（Google Ads 83 + Meta Ads 81 + Search Console 10
+        """list_tools returns all tools (Google Ads 83 + Meta Ads 81 + Search Console 10
         + Rollback 2 + Analysis 1 + Mureo Context 5 + Analytics Registry 1
-        = 183）を返す"""
+        = 183)."""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
         assert len(tools) == 183
 
     async def test_list_tools_contains_google_and_meta(self) -> None:
-        """Google Ads と Meta Ads のツールが含まれること"""
+        """Google Ads and Meta Ads tools are included."""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
         names = {t.name for t in tools}
@@ -59,7 +60,7 @@ class TestListTools:
         assert "meta_ads_campaigns_get" in names
 
     async def test_list_tools_campaigns_list_schema(self) -> None:
-        """campaigns.list の inputSchema が customer_id を optional で持つこと"""
+        """campaigns.list's inputSchema has customer_id as optional."""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
         tool = next(t for t in tools if t.name == "google_ads_campaigns_list")
@@ -70,7 +71,7 @@ class TestListTools:
         assert "customer_id" not in schema.get("required", [])
 
     async def test_list_tools_campaigns_get_schema(self) -> None:
-        """campaigns.get の inputSchema が campaign_id を required で持つこと"""
+        """campaigns.get's inputSchema has campaign_id as required."""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
         tool = next(t for t in tools if t.name == "google_ads_campaigns_get")
@@ -83,16 +84,16 @@ class TestListTools:
 
 
 # ---------------------------------------------------------------------------
-# call_tool テスト
+# call_tool tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestCallToolCampaignsList:
-    """call_tool で google_ads_campaigns_list を呼ぶテスト"""
+    """Tests that call_tool invokes google_ads_campaigns_list."""
 
     async def test_campaigns_list_calls_client(self) -> None:
-        """campaigns.list が GoogleAdsApiClient.list_campaigns を呼ぶこと"""
+        """campaigns.list calls GoogleAdsApiClient.list_campaigns."""
         mod = _import_server_module()
         ga_mod = _import_google_ads_handlers()
 
@@ -123,10 +124,10 @@ class TestCallToolCampaignsList:
 
 @pytest.mark.unit
 class TestCallToolCampaignsGet:
-    """call_tool で google_ads_campaigns_get を呼ぶテスト"""
+    """Tests that call_tool invokes google_ads_campaigns_get."""
 
     async def test_campaigns_get_calls_client(self) -> None:
-        """campaigns.get が GoogleAdsApiClient.get_campaign を呼ぶこと"""
+        """campaigns.get calls GoogleAdsApiClient.get_campaign."""
         mod = _import_server_module()
         ga_mod = _import_google_ads_handlers()
 
@@ -159,17 +160,17 @@ class TestCallToolCampaignsGet:
 
 @pytest.mark.unit
 class TestCallToolErrors:
-    """call_tool のエラーケースを検証する"""
+    """Verify call_tool error cases."""
 
     async def test_unknown_tool_raises_error(self) -> None:
-        """未知のツール名で ValueError が発生すること"""
+        """An unknown tool name raises ValueError."""
         mod = _import_server_module()
 
         with pytest.raises(ValueError, match="Unknown tool"):
             await mod.handle_call_tool("nonexistent.tool", {})
 
     async def test_missing_required_param_customer_id(self) -> None:
-        """campaigns.list で customer_id が欠損 + credentials.jsonにもない場合"""
+        """campaigns.list with missing customer_id and no credentials.json fallback."""
         mod = _import_server_module()
 
         with patch(
@@ -180,7 +181,7 @@ class TestCallToolErrors:
             assert any("Credentials not found" in r.text for r in result)
 
     async def test_missing_required_param_campaign_id(self) -> None:
-        """campaigns.get で campaign_id が欠損した場合にエラーになること"""
+        """campaigns.get errors when campaign_id is missing."""
         mod = _import_server_module()
         ga_mod = _import_google_ads_handlers()
 
@@ -195,7 +196,7 @@ class TestCallToolErrors:
                 )
 
     async def test_no_credentials_returns_error_text(self) -> None:
-        """認証情報がない場合、エラーメッセージを TextContent で返すこと"""
+        """When credentials are missing, the error is returned as TextContent."""
         ga_mod = _import_google_ads_handlers()
         mod = _import_server_module()
 

@@ -1,6 +1,7 @@
-"""Meta Ads 動画アップロード・カルーセル・コレクションクリエイティブのテスト
+"""Tests for Meta Ads video uploads, carousel, and collection creatives.
 
-TDD: テストを先に作成し、実装はこのテストが通るように行う。
+TDD: tests are written first; the implementation is added until the
+tests pass.
 """
 
 from __future__ import annotations
@@ -15,13 +16,13 @@ import pytest
 from mureo.auth import MetaAdsCredentials
 
 # ---------------------------------------------------------------------------
-# フィクスチャ
+# Fixtures
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture()
 def meta_client() -> Any:
-    """テスト用MetaAdsApiClientを作成する"""
+    """Create a MetaAdsApiClient for tests."""
     from mureo.meta_ads.client import MetaAdsApiClient
 
     return MetaAdsApiClient(
@@ -32,7 +33,7 @@ def meta_client() -> Any:
 
 @pytest.fixture()
 def sample_video(tmp_path: Path) -> Path:
-    """テスト用のダミー動画ファイル（mp4）を作成する"""
+    """Create a dummy video file (mp4) for tests."""
     video = tmp_path / "test_video.mp4"
     video.write_bytes(b"\x00\x00\x00\x1cftypisom" + b"\x00" * 100)
     return video
@@ -40,24 +41,24 @@ def sample_video(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def sample_mov(tmp_path: Path) -> Path:
-    """テスト用のダミーMOVファイルを作成する"""
+    """Create a dummy MOV file for tests."""
     video = tmp_path / "test_video.mov"
     video.write_bytes(b"\x00" * 100)
     return video
 
 
 # ---------------------------------------------------------------------------
-# 1. test_upload_ad_video — URL指定動画アップロード
+# 1. test_upload_ad_video — upload video via URL
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestUploadAdVideo:
-    """URL指定での動画アップロード"""
+    """Upload video via a URL."""
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video(self, meta_client: Any) -> None:
-        """URL指定で動画をアップロードし、video_idが返ること"""
+        """Upload a video by URL and receive a video_id."""
         meta_client._post = AsyncMock(return_value={"id": "video_123"})
 
         result = await meta_client.upload_ad_video(
@@ -77,7 +78,7 @@ class TestUploadAdVideo:
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_without_title(self, meta_client: Any) -> None:
-        """title省略時もアップロードできること"""
+        """Upload succeeds even when title is omitted."""
         meta_client._post = AsyncMock(return_value={"id": "video_456"})
 
         result = await meta_client.upload_ad_video(
@@ -93,19 +94,19 @@ class TestUploadAdVideo:
 
 
 # ---------------------------------------------------------------------------
-# 2. test_upload_ad_video_file — ファイル指定動画アップロード
+# 2. test_upload_ad_video_file — upload video from a local file
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestUploadAdVideoFile:
-    """ローカルファイルからの動画アップロード"""
+    """Upload video from a local file."""
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_file(
         self, meta_client: Any, sample_video: Path
     ) -> None:
-        """正常アップロードでvideo_idが返ること"""
+        """Successful upload returns a video_id."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"id": "video_789"}
@@ -128,7 +129,7 @@ class TestUploadAdVideoFile:
     async def test_upload_ad_video_file_with_title(
         self, meta_client: Any, sample_video: Path
     ) -> None:
-        """title指定時にそのtitleが送信されること"""
+        """When title is supplied, that value is sent."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"id": "video_789"}
@@ -151,19 +152,19 @@ class TestUploadAdVideoFile:
 
 
 # ---------------------------------------------------------------------------
-# 3. test_upload_ad_video_file_too_large — サイズ超過
+# 3. test_upload_ad_video_file_too_large — size exceeded
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestUploadAdVideoFileTooLarge:
-    """動画ファイルサイズ制限"""
+    """Video file size limit."""
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_file_too_large(
         self, meta_client: Any, tmp_path: Path
     ) -> None:
-        """100MB超のファイルでValueErrorが発生すること"""
+        """Raises ValueError for files larger than 100MB."""
         large_file = tmp_path / "large.mp4"
         # 100MB + 1 byte
         large_file.write_bytes(b"\x00" * (100 * 1024 * 1024 + 1))
@@ -173,19 +174,19 @@ class TestUploadAdVideoFileTooLarge:
 
 
 # ---------------------------------------------------------------------------
-# 4. test_upload_ad_video_file_invalid_format — 未対応形式
+# 4. test_upload_ad_video_file_invalid_format — unsupported format
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestUploadAdVideoFileInvalidFormat:
-    """動画ファイル形式チェック"""
+    """Video file-format check."""
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_file_invalid_format(
         self, meta_client: Any, tmp_path: Path
     ) -> None:
-        """未対応形式（txt）でValueErrorが発生すること"""
+        """Raises ValueError for unsupported formats (e.g. txt)."""
         txt_file = tmp_path / "document.txt"
         txt_file.write_bytes(b"not a video")
 
@@ -196,7 +197,7 @@ class TestUploadAdVideoFileInvalidFormat:
     async def test_upload_ad_video_file_supported_formats(
         self, meta_client: Any, tmp_path: Path
     ) -> None:
-        """mp4, mov, avi, wmv, mkvが許可されること"""
+        """mp4, mov, avi, wmv, mkv are all allowed."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"id": "v1"}
@@ -219,7 +220,7 @@ class TestUploadAdVideoFileInvalidFormat:
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_file_not_found(self, meta_client: Any) -> None:
-        """ファイルが存在しない場合にFileNotFoundErrorが発生すること"""
+        """Raises FileNotFoundError when the file does not exist."""
         with pytest.raises(FileNotFoundError):
             await meta_client.upload_ad_video_file("/nonexistent/path/video.mp4")
 
@@ -227,7 +228,7 @@ class TestUploadAdVideoFileInvalidFormat:
     async def test_upload_ad_video_file_path_traversal(
         self, meta_client: Any, tmp_path: Path
     ) -> None:
-        """パストラバーサルを含むパスが拒否されること"""
+        """Paths containing path-traversal segments are rejected."""
         with pytest.raises(ValueError, match="Invalid file path"):
             await meta_client.upload_ad_video_file(
                 str(tmp_path / ".." / ".." / "etc" / "passwd")
@@ -235,17 +236,17 @@ class TestUploadAdVideoFileInvalidFormat:
 
 
 # ---------------------------------------------------------------------------
-# 5. test_create_carousel_creative — カルーセル作成（正常）
+# 5. test_create_carousel_creative — create a carousel (happy path)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestCreateCarouselCreative:
-    """カルーセルクリエイティブ作成"""
+    """Create a carousel creative."""
 
     @pytest.mark.asyncio()
     async def test_create_carousel_creative(self, meta_client: Any) -> None:
-        """3枚のカードでカルーセルが作成できること"""
+        """A carousel with 3 cards can be created."""
         meta_client._post = AsyncMock(return_value={"id": "creative_carousel_1"})
 
         cards = [
@@ -283,7 +284,7 @@ class TestCreateCarouselCreative:
         data = (
             call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data", {})
         )
-        # object_story_specにchild_attachmentsが含まれること
+        # object_story_spec must include child_attachments.
         oss = json.loads(data["object_story_spec"])
         assert oss["page_id"] == "page_123"
         assert len(oss["link_data"]["child_attachments"]) == 3
@@ -291,17 +292,17 @@ class TestCreateCarouselCreative:
 
 
 # ---------------------------------------------------------------------------
-# 6. test_create_carousel_creative_min_cards — 2枚（最小）
+# 6. test_create_carousel_creative_min_cards — minimum (2 cards)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestCreateCarouselCreativeMinCards:
-    """カルーセル最小カード数"""
+    """Carousel minimum card count."""
 
     @pytest.mark.asyncio()
     async def test_create_carousel_creative_min_cards(self, meta_client: Any) -> None:
-        """2枚のカードでカルーセルが作成できること"""
+        """A carousel with 2 cards can be created."""
         meta_client._post = AsyncMock(return_value={"id": "creative_carousel_min"})
 
         cards = [
@@ -327,17 +328,17 @@ class TestCreateCarouselCreativeMinCards:
 
 
 # ---------------------------------------------------------------------------
-# 7. test_create_carousel_creative_too_few — 1枚でエラー
+# 7. test_create_carousel_creative_too_few — 1 card is an error
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestCreateCarouselCreativeTooFew:
-    """カルーセルカード数バリデーション"""
+    """Carousel card-count validation."""
 
     @pytest.mark.asyncio()
     async def test_create_carousel_creative_too_few(self, meta_client: Any) -> None:
-        """1枚のカードでValueErrorが発生すること"""
+        """Raises ValueError when there is only 1 card."""
         cards = [
             {
                 "link": "https://example.com/p1",
@@ -355,7 +356,7 @@ class TestCreateCarouselCreativeTooFew:
 
     @pytest.mark.asyncio()
     async def test_create_carousel_creative_too_many(self, meta_client: Any) -> None:
-        """11枚のカードでValueErrorが発生すること"""
+        """Raises ValueError for 11 cards."""
         cards = [
             {
                 "link": f"https://example.com/p{i}",
@@ -374,7 +375,7 @@ class TestCreateCarouselCreativeTooFew:
 
     @pytest.mark.asyncio()
     async def test_create_carousel_creative_max_cards(self, meta_client: Any) -> None:
-        """10枚のカードでカルーセルが作成できること"""
+        """A carousel with 10 cards can be created."""
         meta_client._post = AsyncMock(return_value={"id": "creative_carousel_max"})
 
         cards = [
@@ -396,17 +397,17 @@ class TestCreateCarouselCreativeTooFew:
 
 
 # ---------------------------------------------------------------------------
-# 8. test_create_collection_creative — コレクション作成
+# 8. test_create_collection_creative — create a collection
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestCreateCollectionCreative:
-    """コレクションクリエイティブ作成"""
+    """Create a collection creative."""
 
     @pytest.mark.asyncio()
     async def test_create_collection_creative(self, meta_client: Any) -> None:
-        """画像カバーでコレクションが作成できること"""
+        """A collection with an image cover can be created."""
         meta_client._post = AsyncMock(return_value={"id": "creative_collection_1"})
 
         result = await meta_client.create_collection_creative(
@@ -432,19 +433,19 @@ class TestCreateCollectionCreative:
 
 
 # ---------------------------------------------------------------------------
-# 9. test_create_collection_creative_with_video — 動画カバー付き
+# 9. test_create_collection_creative_with_video — with a video cover
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestCreateCollectionCreativeWithVideo:
-    """動画カバー付きコレクションクリエイティブ"""
+    """Collection creative with a video cover."""
 
     @pytest.mark.asyncio()
     async def test_create_collection_creative_with_video(
         self, meta_client: Any
     ) -> None:
-        """動画カバーでコレクションが作成できること"""
+        """A collection with a video cover can be created."""
         meta_client._post = AsyncMock(return_value={"id": "creative_collection_video"})
 
         result = await meta_client.create_collection_creative(
@@ -466,7 +467,7 @@ class TestCreateCollectionCreativeWithVideo:
 
     @pytest.mark.asyncio()
     async def test_create_collection_creative_no_cover(self, meta_client: Any) -> None:
-        """カバーなしでもコレクションが作成できること"""
+        """A collection can be created even without a cover."""
         meta_client._post = AsyncMock(
             return_value={"id": "creative_collection_nocover"}
         )
@@ -481,13 +482,13 @@ class TestCreateCollectionCreativeWithVideo:
 
 
 # ---------------------------------------------------------------------------
-# MCPツール定義テスト
+# MCP tool-definition tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestMetaAdsMediaToolDefinitions:
-    """動画・カルーセル・コレクション MCPツール定義テスト"""
+    """MCP tool-definition tests for videos, carousels, and collections."""
 
     def _get_tools(self) -> list[Any]:
         from mureo.mcp.tools_meta_ads import TOOLS
@@ -497,33 +498,33 @@ class TestMetaAdsMediaToolDefinitions:
     def _get_tool(self, name: str) -> Any:
         tools = self._get_tools()
         tool = next((t for t in tools if t.name == name), None)
-        assert tool is not None, f"ツール {name} が見つかりません"
+        assert tool is not None, f"Tool {name} not found"
         return tool
 
     def test_videos_upload_tool_exists(self) -> None:
-        """meta_ads_videos_upload がTOOLSに定義されていること"""
+        """meta_ads_videos_upload is defined in TOOLS."""
         self._get_tool("meta_ads_videos_upload")
 
     def test_videos_upload_required_fields(self) -> None:
-        """videos.uploadの必須パラメータが正しいこと"""
+        """The required parameters of videos.upload are correct."""
         tool = self._get_tool("meta_ads_videos_upload")
         assert set(tool.inputSchema["required"]) == {"video_url"}
 
     def test_videos_upload_file_tool_exists(self) -> None:
-        """meta_ads_videos_upload_file がTOOLSに定義されていること"""
+        """meta_ads_videos_upload_file is defined in TOOLS."""
         self._get_tool("meta_ads_videos_upload_file")
 
     def test_videos_upload_file_required_fields(self) -> None:
-        """videos.upload_fileの必須パラメータが正しいこと"""
+        """The required parameters of videos.upload_file are correct."""
         tool = self._get_tool("meta_ads_videos_upload_file")
         assert set(tool.inputSchema["required"]) == {"file_path"}
 
     def test_creatives_create_carousel_tool_exists(self) -> None:
-        """meta_ads_creatives_create_carousel がTOOLSに定義されていること"""
+        """meta_ads_creatives_create_carousel is defined in TOOLS."""
         self._get_tool("meta_ads_creatives_create_carousel")
 
     def test_creatives_create_carousel_required_fields(self) -> None:
-        """create_carouselの必須パラメータが正しいこと"""
+        """The required parameters of create_carousel are correct."""
         tool = self._get_tool("meta_ads_creatives_create_carousel")
         assert set(tool.inputSchema["required"]) == {
             "page_id",
@@ -532,11 +533,11 @@ class TestMetaAdsMediaToolDefinitions:
         }
 
     def test_creatives_create_collection_tool_exists(self) -> None:
-        """meta_ads_creatives_create_collection がTOOLSに定義されていること"""
+        """meta_ads_creatives_create_collection is defined in TOOLS."""
         self._get_tool("meta_ads_creatives_create_collection")
 
     def test_creatives_create_collection_required_fields(self) -> None:
-        """create_collectionの必須パラメータが正しいこと"""
+        """The required parameters of create_collection are correct."""
         tool = self._get_tool("meta_ads_creatives_create_collection")
         assert set(tool.inputSchema["required"]) == {
             "page_id",
@@ -546,17 +547,17 @@ class TestMetaAdsMediaToolDefinitions:
 
 
 # ---------------------------------------------------------------------------
-# MCPハンドラーテスト
+# MCP handler tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestMetaAdsMediaHandlers:
-    """動画・カルーセル・コレクション MCPハンドラーテスト"""
+    """MCP handler tests for videos, carousels, and collections."""
 
     @pytest.mark.asyncio()
     async def test_handle_videos_upload(self) -> None:
-        """videos.uploadハンドラーが正しくクライアントを呼び出すこと"""
+        """The videos.upload handler invokes the client correctly."""
         from mureo.mcp.tools_meta_ads import handle_tool
 
         mock_client = AsyncMock()
@@ -588,7 +589,7 @@ class TestMetaAdsMediaHandlers:
 
     @pytest.mark.asyncio()
     async def test_handle_videos_upload_file(self, sample_video: Path) -> None:
-        """videos.upload_fileハンドラーが正しくクライアントを呼び出すこと"""
+        """The videos.upload_file handler invokes the client correctly."""
         from mureo.mcp.tools_meta_ads import handle_tool
 
         mock_client = AsyncMock()
@@ -618,7 +619,7 @@ class TestMetaAdsMediaHandlers:
 
     @pytest.mark.asyncio()
     async def test_handle_creatives_create_carousel(self) -> None:
-        """create_carouselハンドラーが正しくクライアントを呼び出すこと"""
+        """The create_carousel handler invokes the client correctly."""
         from mureo.mcp.tools_meta_ads import handle_tool
 
         mock_client = AsyncMock()
@@ -654,7 +655,7 @@ class TestMetaAdsMediaHandlers:
 
     @pytest.mark.asyncio()
     async def test_handle_creatives_create_collection(self) -> None:
-        """create_collectionハンドラーが正しくクライアントを呼び出すこと"""
+        """The create_collection handler invokes the client correctly."""
         from mureo.mcp.tools_meta_ads import handle_tool
 
         mock_client = AsyncMock()

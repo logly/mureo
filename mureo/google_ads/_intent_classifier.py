@@ -43,6 +43,11 @@ class SearchTermIntent:
     exclude_recommendation: bool  # Whether exclusion is recommended
 
 
+# Japanese-language LLM prompt template. mureo's intent classifier
+# operates on Japanese ad-platform search terms, and the LLM is
+# instructed to reason and respond in Japanese; translating the prompt
+# would change classification behavior and break the JSON-schema parser
+# below.
 _CLASSIFY_PROMPT = """\
 あなたはリスティング広告の検索語句分析の専門家です。
 

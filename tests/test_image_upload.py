@@ -1,8 +1,8 @@
-"""画像アップロード機能のテスト
+"""Tests for the image-upload feature.
 
 Meta Ads: upload_ad_image_file
 Google Ads: upload_image_asset
-MCPツール: meta_ads_images_upload_file, google_ads_assets_upload_image
+MCP tools: meta_ads_images_upload_file, google_ads_assets_upload_image
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import pytest
 
 @pytest.fixture()
 def meta_client() -> Any:
-    """テスト用MetaAdsApiClientを作成する"""
+    """Create a MetaAdsApiClient for tests."""
     from mureo.meta_ads.client import MetaAdsApiClient
 
     return MetaAdsApiClient(
@@ -32,7 +32,7 @@ def meta_client() -> Any:
 
 @pytest.fixture()
 def sample_image(tmp_path: Path) -> Path:
-    """テスト用のダミー画像ファイルを作成する"""
+    """Create a dummy image file for tests."""
     img = tmp_path / "test_image.png"
     img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
     return img
@@ -40,20 +40,20 @@ def sample_image(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def sample_jpg(tmp_path: Path) -> Path:
-    """テスト用のダミーJPGファイルを作成する"""
+    """Create a dummy JPG file for tests."""
     img = tmp_path / "photo.jpg"
     img.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
     return img
 
 
 class TestMetaUploadAdImageFile:
-    """Meta Ads upload_ad_image_file のテスト"""
+    """Tests for Meta Ads upload_ad_image_file."""
 
     @pytest.mark.asyncio()
     async def test_upload_ad_image_file(
         self, meta_client: Any, sample_image: Path
     ) -> None:
-        """正常アップロードでhash/urlが返ること"""
+        """Successful upload returns hash/url."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -83,7 +83,7 @@ class TestMetaUploadAdImageFile:
     async def test_upload_ad_image_file_with_name(
         self, meta_client: Any, sample_image: Path
     ) -> None:
-        """name指定時にそのnameが使われること"""
+        """When `name` is provided, that value is used."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -112,7 +112,7 @@ class TestMetaUploadAdImageFile:
 
     @pytest.mark.asyncio()
     async def test_upload_ad_image_file_not_found(self, meta_client: Any) -> None:
-        """ファイルが存在しない場合にFileNotFoundErrorが発生すること"""
+        """Raises FileNotFoundError when the file does not exist."""
         with pytest.raises(FileNotFoundError):
             await meta_client.upload_ad_image_file("/nonexistent/path/image.png")
 
@@ -120,7 +120,7 @@ class TestMetaUploadAdImageFile:
     async def test_upload_ad_image_file_too_large(
         self, meta_client: Any, tmp_path: Path
     ) -> None:
-        """30MB超のファイルでValueErrorが発生すること"""
+        """Raises ValueError for files larger than 30MB."""
         large_file = tmp_path / "large.png"
         # 30MB + 1 byte
         large_file.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * (30 * 1024 * 1024 + 1))
@@ -132,7 +132,7 @@ class TestMetaUploadAdImageFile:
     async def test_upload_ad_image_file_invalid_format(
         self, meta_client: Any, tmp_path: Path
     ) -> None:
-        """未対応形式でValueErrorが発生すること"""
+        """Raises ValueError for unsupported file formats."""
         txt_file = tmp_path / "document.txt"
         txt_file.write_bytes(b"not an image")
 
@@ -143,7 +143,7 @@ class TestMetaUploadAdImageFile:
     async def test_upload_ad_image_file_path_traversal(
         self, meta_client: Any, tmp_path: Path
     ) -> None:
-        """パストラバーサルを含むパスが拒否されること"""
+        """Paths containing path-traversal segments are rejected."""
         with pytest.raises(ValueError, match="Invalid file path"):
             await meta_client.upload_ad_image_file(
                 str(tmp_path / ".." / ".." / "etc" / "passwd")
@@ -153,7 +153,7 @@ class TestMetaUploadAdImageFile:
     async def test_upload_ad_image_file_supported_formats(
         self, meta_client: Any, tmp_path: Path
     ) -> None:
-        """jpg, jpeg, png, gif, bmp, tiffが許可されること"""
+        """jpg, jpeg, png, gif, bmp, tiff are all allowed."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"images": {"img": {"hash": "h", "url": "u"}}}
@@ -181,11 +181,11 @@ class TestMetaUploadAdImageFile:
 
 
 class TestGoogleAdsUploadImageAsset:
-    """Google Ads upload_image_asset のテスト"""
+    """Tests for Google Ads upload_image_asset."""
 
     @pytest.fixture()
     def google_client(self) -> Any:
-        """テスト用GoogleAdsApiClientをモックで作成する"""
+        """Create a mocked GoogleAdsApiClient for tests."""
         from mureo.google_ads.client import GoogleAdsApiClient
 
         with patch("mureo.google_ads.client.GoogleAdsClient") as mock_gads:
@@ -203,8 +203,8 @@ class TestGoogleAdsUploadImageAsset:
     async def test_upload_image_asset(
         self, google_client: Any, sample_image: Path
     ) -> None:
-        """正常アップロードでresource_name/id/nameが返ること"""
-        # AssetServiceのモック
+        """Successful upload returns resource_name/id/name."""
+        # Mock AssetService
         mock_asset_service = MagicMock()
         mock_response = MagicMock()
         mock_result = MagicMock()
@@ -214,13 +214,13 @@ class TestGoogleAdsUploadImageAsset:
 
         google_client._client.get_service.return_value = mock_asset_service
 
-        # AssetOperation のモック
+        # Mock AssetOperation
         mock_operation = MagicMock()
         mock_asset = MagicMock()
         mock_operation.create = mock_asset
         google_client._client.get_type.return_value = mock_operation
 
-        # enums のモック
+        # Mock enums
         mock_enum = MagicMock()
         mock_enum.IMAGE = 1
         google_client._client.enums.AssetTypeEnum.AssetType = mock_enum
@@ -237,7 +237,7 @@ class TestGoogleAdsUploadImageAsset:
 
     @pytest.mark.asyncio()
     async def test_upload_image_asset_not_found(self, google_client: Any) -> None:
-        """ファイルが存在しない場合にFileNotFoundErrorが発生すること"""
+        """Raises FileNotFoundError when the file does not exist."""
         with pytest.raises(FileNotFoundError):
             await google_client.upload_image_asset("/nonexistent/image.png")
 
@@ -245,7 +245,7 @@ class TestGoogleAdsUploadImageAsset:
     async def test_upload_image_asset_too_large(
         self, google_client: Any, tmp_path: Path
     ) -> None:
-        """5MB超のファイルでValueErrorが発生すること"""
+        """Raises ValueError for files larger than 5MB."""
         large_file = tmp_path / "large.png"
         large_file.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * (5 * 1024 * 1024 + 1))
 
@@ -256,7 +256,7 @@ class TestGoogleAdsUploadImageAsset:
     async def test_upload_image_asset_invalid_format(
         self, google_client: Any, tmp_path: Path
     ) -> None:
-        """未対応形式（bmp等）でValueErrorが発生すること"""
+        """Raises ValueError for unsupported formats (e.g. bmp)."""
         bmp_file = tmp_path / "image.bmp"
         bmp_file.write_bytes(b"\x00" * 100)
 
@@ -267,7 +267,7 @@ class TestGoogleAdsUploadImageAsset:
     async def test_upload_image_asset_path_traversal(
         self, google_client: Any, tmp_path: Path
     ) -> None:
-        """パストラバーサルを含むパスが拒否されること"""
+        """Paths containing path-traversal segments are rejected."""
         with pytest.raises(ValueError, match="Invalid file path"):
             await google_client.upload_image_asset(
                 str(tmp_path / ".." / ".." / "etc" / "passwd")
@@ -277,7 +277,7 @@ class TestGoogleAdsUploadImageAsset:
     async def test_upload_image_asset_with_name(
         self, google_client: Any, sample_image: Path
     ) -> None:
-        """name指定時にそのnameがアセット名として使われること"""
+        """When `name` is provided, that value is used as the asset name."""
         mock_asset_service = MagicMock()
         mock_response = MagicMock()
         mock_result = MagicMock()
@@ -309,22 +309,22 @@ class TestGoogleAdsUploadImageAsset:
 
 
 # ---------------------------------------------------------------------------
-# MCP ツール
+# MCP tools
 # ---------------------------------------------------------------------------
 
 
 class TestMcpMetaUploadFile:
-    """MCP meta_ads_images_upload_file ツールのテスト"""
+    """Tests for the MCP meta_ads_images_upload_file tool."""
 
     def test_tool_definition_exists(self) -> None:
-        """meta_ads_images_upload_file がTOOLSに定義されていること"""
+        """meta_ads_images_upload_file is defined in TOOLS."""
         from mureo.mcp.tools_meta_ads import TOOLS
 
         names = [t.name for t in TOOLS]
         assert "meta_ads_images_upload_file" in names
 
     def test_tool_schema(self) -> None:
-        """ツールスキーマにfile_pathが必須パラメータとして含まれること"""
+        """The tool schema includes file_path as a required parameter."""
         from mureo.mcp.tools_meta_ads import TOOLS
 
         tool = next(t for t in TOOLS if t.name == "meta_ads_images_upload_file")
@@ -333,7 +333,7 @@ class TestMcpMetaUploadFile:
 
     @pytest.mark.asyncio()
     async def test_mcp_meta_upload_file(self, sample_image: Path) -> None:
-        """MCPハンドラーが正常にクライアントを呼び出すこと"""
+        """The MCP handler invokes the client correctly."""
         from mureo.mcp.tools_meta_ads import handle_tool
 
         mock_client = AsyncMock()
@@ -369,17 +369,17 @@ class TestMcpMetaUploadFile:
 
 
 class TestMcpGoogleUploadImage:
-    """MCP google_ads_assets_upload_image ツールのテスト"""
+    """Tests for the MCP google_ads_assets_upload_image tool."""
 
     def test_tool_definition_exists(self) -> None:
-        """google_ads_assets_upload_image がTOOLSに定義されていること"""
+        """google_ads_assets_upload_image is defined in TOOLS."""
         from mureo.mcp.tools_google_ads import TOOLS
 
         names = [t.name for t in TOOLS]
         assert "google_ads_assets_upload_image" in names
 
     def test_tool_schema(self) -> None:
-        """ツールスキーマにfile_pathが必須パラメータとして含まれること"""
+        """The tool schema includes file_path as a required parameter."""
         from mureo.mcp.tools_google_ads import TOOLS
 
         tool = next(t for t in TOOLS if t.name == "google_ads_assets_upload_image")
@@ -388,7 +388,7 @@ class TestMcpGoogleUploadImage:
 
     @pytest.mark.asyncio()
     async def test_mcp_google_upload_image(self, sample_image: Path) -> None:
-        """MCPハンドラーが正常にクライアントを呼び出すこと"""
+        """The MCP handler invokes the client correctly."""
         from mureo.mcp.tools_google_ads import handle_tool
 
         mock_client = AsyncMock()

@@ -1,6 +1,6 @@
-"""Google Ads 分析 Mixin 群のユニットテスト。
+"""Unit tests for the Google Ads analysis mixin family.
 
-対象モジュール:
+Target modules:
 - _analysis_constants.py
 - _analysis_performance.py
 - _analysis_search_terms.py
@@ -10,8 +10,8 @@
 - _analysis_auction.py
 - _analysis_btob.py
 
-DB/外部API/LLM呼び出しは一切行わず、
-_run_query / _run_report / _search 等をモックして検証する。
+No database, external API, or LLM call is made — _run_query /
+_run_report / _search and friends are mocked.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ from mureo.google_ads._analysis_search_terms import (
 
 
 # =====================================================================
-# モッククライアント
+# Mock client
 # =====================================================================
 
 
@@ -61,13 +61,13 @@ class MockAnalysisClient(
     _AuctionAnalysisMixin,
     _BtoBAnalysisMixin,
 ):
-    """テスト用に全Mixinを統合し、親クラスメソッドをモックするクラス。"""
+    """A class for tests that integrates all Mixins and mocks the parent-class methods."""
 
     def __init__(self) -> None:
         self._customer_id = "1234567890"
         self._client = None  # type: ignore[assignment]
 
-        # モック可能な関数群
+        # Mockable functions
         self.get_campaign = AsyncMock(return_value=None)
         self.list_campaigns = AsyncMock(return_value=[])
         self.get_performance_report = AsyncMock(return_value=[])
@@ -85,7 +85,7 @@ class MockAnalysisClient(
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str:
         if not value:
-            raise ValueError(f"{field_name} は必須です")
+            raise ValueError(f"{field_name} is required")
         return value
 
     def _period_to_date_clause(self, period: str) -> str:
@@ -96,12 +96,12 @@ class MockAnalysisClient(
 
 
 # =====================================================================
-# _analysis_constants テスト
+# _analysis_constants tests
 # =====================================================================
 
 
 class TestAnalysisConstants:
-    """_analysis_constants.py の関数テスト。"""
+    """Function tests for _analysis_constants.py."""
 
     @pytest.mark.unit
     def test_calc_change_rate_normal(self) -> None:
@@ -173,22 +173,22 @@ class TestAnalysisConstants:
 
     @pytest.mark.unit
     def test_get_comparison_date_ranges_unknown_period(self) -> None:
-        """不明な期間はデフォルト7日で処理される。"""
+        """Unknown periods default to 7 days."""
         current, previous = _get_comparison_date_ranges("UNKNOWN_PERIOD")
         assert "BETWEEN" in current
 
     @pytest.mark.unit
     def test_get_comparison_date_ranges_no_overlap(self) -> None:
-        """当期と前期が重複しないことを検証。"""
+        """Verify the current and previous periods do not overlap."""
         current, previous = _get_comparison_date_ranges("LAST_7_DAYS")
-        # BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' からdateを抽出
+        # Extract the dates from BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'.
         import re
 
         dates = re.findall(r"\d{4}-\d{2}-\d{2}", current + previous)
         cur_start, cur_end, prev_start, prev_end = [
             date.fromisoformat(d) for d in dates
         ]
-        # 前期の終了日 < 当期の開始日
+        # The previous period's end date must be earlier than the current period's start.
         assert prev_end < cur_start
 
     @pytest.mark.unit
@@ -223,12 +223,12 @@ class TestAnalysisConstants:
 
 
 # =====================================================================
-# _analysis_performance テスト
+# _analysis_performance tests
 # =====================================================================
 
 
 class TestPerformanceAnalysisMixin:
-    """_PerformanceAnalysisMixin のテスト。"""
+    """Tests for _PerformanceAnalysisMixin."""
 
     def _make_client(self) -> MockAnalysisClient:
         return MockAnalysisClient()
@@ -527,12 +527,12 @@ class TestPerformanceAnalysisMixin:
     async def test_analyze_search_term_changes(self) -> None:
         client = self._make_client()
         client.get_search_terms_report.side_effect = [
-            # 当期
+            # Current period
             [
                 {"search_term": "new term", "metrics": {"cost": 500, "conversions": 0}},
                 {"search_term": "old term", "metrics": {"cost": 300, "conversions": 1}},
             ],
-            # 前期
+            # Previous period
             [
                 {"search_term": "old term", "metrics": {"cost": 200, "conversions": 1}},
             ],
@@ -544,12 +544,12 @@ class TestPerformanceAnalysisMixin:
 
 
 # =====================================================================
-# _analysis_search_terms テスト
+# _analysis_search_terms tests
 # =====================================================================
 
 
 class TestSearchTermsAnalysisMixin:
-    """_SearchTermsAnalysisMixin のテスト。"""
+    """Tests for _SearchTermsAnalysisMixin."""
 
     def _make_client(self) -> MockAnalysisClient:
         return MockAnalysisClient()
@@ -656,7 +656,7 @@ class TestSearchTermsAnalysisMixin:
     async def test_suggest_negative_keywords_basic(self) -> None:
         client = self._make_client()
         client.get_campaign.return_value = {"bidding_details": {"target_cpa": 3000}}
-        # 当期
+        # Current period
         terms_current = [
             {
                 "search_term": "expensive term",
@@ -689,7 +689,7 @@ class TestSearchTermsAnalysisMixin:
                 },
             },
         ]
-        # 前期
+        # Previous period
         terms_prev = [
             {"search_term": "expensive term", "metrics": {}},
             {"search_term": "cheap term", "metrics": {}},
@@ -703,13 +703,13 @@ class TestSearchTermsAnalysisMixin:
         )
         assert result["target_cpa"] == 3000.0
         assert result["target_cpa_source"] == "bidding_strategy"
-        # expensive term: cost 5000 > 3000*1.5=4500 → 除外候補
+        # expensive term: cost 5000 > 3000*1.5=4500 → exclusion candidate
         assert len(result["suggestions"]) >= 1
         assert result["suggestions"][0]["search_term"] == "expensive term"
 
     @pytest.mark.unit
     async def test_suggest_negative_keywords_informational(self) -> None:
-        """情報収集パターンはCPA閾値に関わらず除外候補になる。"""
+        """Informational patterns become exclusion candidates regardless of the CPA threshold."""
         client = self._make_client()
         client.get_campaign.return_value = {"bidding_details": {"target_cpa": 10000}}
         terms = [
@@ -725,8 +725,8 @@ class TestSearchTermsAnalysisMixin:
             },
         ]
         client.get_search_terms_report.side_effect = [
-            terms,  # 当期
-            terms,  # 前期（同じ→既存語句扱い）
+            terms,  # current period
+            terms,  # previous period (identical → treated as existing terms)
         ]
         client.list_negative_keywords.return_value = []
         result = await client.suggest_negative_keywords(
@@ -737,11 +737,11 @@ class TestSearchTermsAnalysisMixin:
 
     @pytest.mark.unit
     async def test_review_search_terms_classification(self) -> None:
-        """多段階ルールによる分類テスト。"""
+        """Classification test via multi-stage rules."""
         client = self._make_client()
         client.get_campaign.return_value = {"bidding_details": {"target_cpa": 3000}}
         terms = [
-            # Rule 1: CV>=2 & 未登録 → add
+            # Rule 1: CV>=2 & not yet registered → add
             {
                 "search_term": "high cv term",
                 "metrics": {
@@ -761,7 +761,7 @@ class TestSearchTermsAnalysisMixin:
                     "impressions": 1000,
                 },
             },
-            # Rule 6: 情報収集 & CV=0 → exclude
+            # Rule 6: informational & CV=0 → exclude
             {
                 "search_term": "SEOとは",
                 "metrics": {
@@ -773,8 +773,8 @@ class TestSearchTermsAnalysisMixin:
             },
         ]
         client.get_search_terms_report.side_effect = [
-            terms,  # 当期
-            terms,  # 前期
+            terms,  # current period
+            terms,  # previous period
         ]
         client.list_keywords.return_value = []
         client.list_negative_keywords.return_value = []
@@ -785,7 +785,7 @@ class TestSearchTermsAnalysisMixin:
 
     @pytest.mark.unit
     def test_classify_search_term_rule1_add(self) -> None:
-        """Rule 1: CV>=2 & 未登録 → add EXACT (score=90)。"""
+        """Rule 1: CV>=2 & not yet registered → add EXACT (score=90)."""
         client = self._make_client()
         add: list[dict[str, Any]] = []
         exclude: list[dict[str, Any]] = []
@@ -814,7 +814,7 @@ class TestSearchTermsAnalysisMixin:
 
     @pytest.mark.unit
     def test_classify_search_term_rule2_add(self) -> None:
-        """Rule 2: CV=1 & CPA<=目標CPA → add EXACT (score=70)。"""
+        """Rule 2: CV=1 & CPA <= target CPA → add EXACT (score=70)."""
         client = self._make_client()
         add: list[dict[str, Any]] = []
         client._classify_search_term(
@@ -870,7 +870,7 @@ class TestSearchTermsAnalysisMixin:
         """Rule 4: CV=0 & cost>=CPA*2 → exclude EXACT (score=80)。"""
         client = self._make_client()
         exclude: list[dict[str, Any]] = []
-        # clicks=10, impressions=1000 → CTR=1% でRule3にマッチしない
+        # clicks=10, impressions=1000 → CTR=1%, so Rule 3 does not match.
         client._classify_search_term(
             {
                 "search_term": "waste",
@@ -883,7 +883,7 @@ class TestSearchTermsAnalysisMixin:
             },
             keyword_texts=set(),
             existing_neg_texts=set(),
-            prev_term_set={"waste"},  # 既存語句
+            prev_term_set={"waste"},  # existing terms
             resolved_cpa=3000.0,
             add_candidates=[],
             exclude_candidates=exclude,
@@ -920,7 +920,7 @@ class TestSearchTermsAnalysisMixin:
 
     @pytest.mark.unit
     def test_classify_search_term_already_excluded(self) -> None:
-        """既に除外登録済みの語句はスキップされる。"""
+        """Terms already registered as exclusions are skipped."""
         client = self._make_client()
         exclude: list[dict[str, Any]] = []
         client._classify_search_term(
@@ -945,7 +945,7 @@ class TestSearchTermsAnalysisMixin:
 
     @pytest.mark.unit
     def test_classify_search_term_no_match(self) -> None:
-        """どのルールにもマッチしない場合はどのリストにも追加されない。"""
+        """When no rules match, the term is added to no list."""
         client = self._make_client()
         add: list[dict[str, Any]] = []
         exclude: list[dict[str, Any]] = []
@@ -974,12 +974,12 @@ class TestSearchTermsAnalysisMixin:
 
 
 # =====================================================================
-# _analysis_keywords テスト
+# _analysis_keywords tests
 # =====================================================================
 
 
 class TestKeywordsAnalysisMixin:
-    """_KeywordsAnalysisMixin のテスト。"""
+    """Tests for _KeywordsAnalysisMixin."""
 
     def _make_client(self) -> MockAnalysisClient:
         return MockAnalysisClient()
@@ -997,7 +997,7 @@ class TestKeywordsAnalysisMixin:
         cost_micros: int = 5_000_000,
         conversions: float = 1.0,
     ) -> SimpleNamespace:
-        """GAQL レスポンス行をSimpleNamespaceで模倣する。"""
+        """Simulate a GAQL response row using SimpleNamespace."""
         return SimpleNamespace(
             ad_group_criterion=SimpleNamespace(
                 criterion_id=criterion_id,
@@ -1040,7 +1040,7 @@ class TestKeywordsAnalysisMixin:
 
     @pytest.mark.unit
     def test_evaluate_keyword_rule1_broad_no_cv(self) -> None:
-        """Rule 1: BROAD & CV=0 & コスト>目標CPA → narrow_to_phrase。"""
+        """Rule 1: BROAD & CV=0 & cost > target CPA → narrow_to_phrase."""
         kw = {
             "text": "broad kw",
             "criterion_id": "1",
@@ -1116,7 +1116,7 @@ class TestKeywordsAnalysisMixin:
 
     @pytest.mark.unit
     def test_evaluate_keyword_no_action(self) -> None:
-        """どのルールにもマッチしない → None。"""
+        """No rules match → None."""
         kw = {
             "text": "kw",
             "criterion_id": "1",
@@ -1161,7 +1161,7 @@ class TestKeywordsAnalysisMixin:
     @pytest.mark.unit
     async def test_find_cross_adgroup_duplicates(self) -> None:
         client = self._make_client()
-        # 同じキーワード・マッチタイプが2つの広告グループに存在
+        # The same keyword/match type exists in two ad groups.
         client._search.return_value = [
             self._make_gaql_row(
                 criterion_id=1,
@@ -1263,16 +1263,16 @@ class TestKeywordsAnalysisMixin:
         )
         assert len(dups) == 1
         assert removable == 1
-        assert waste == 500  # CV=0のremovableのcost
+        assert waste == 500  # cost of a removable with CV=0
 
 
 # =====================================================================
-# _analysis_budget テスト
+# _analysis_budget tests
 # =====================================================================
 
 
 class TestBudgetAnalysisMixin:
-    """_BudgetAnalysisMixin のテスト。"""
+    """Tests for _BudgetAnalysisMixin."""
 
     def _make_client(self) -> MockAnalysisClient:
         return MockAnalysisClient()
@@ -1292,7 +1292,7 @@ class TestBudgetAnalysisMixin:
         assert result["total_cost"] == 10000
         assert result["total_conversions"] == 12.0
         assert len(result["campaigns"]) == 2
-        # Camp 1 は効率的（cv_share/cost_share > 1.2）
+        # Camp 1 is efficient (cv_share/cost_share > 1.2).
         camp1 = next(c for c in result["campaigns"] if c["campaign_id"] == "1")
         assert camp1["verdict"] == "EFFICIENT"
 
@@ -1335,7 +1335,7 @@ class TestBudgetAnalysisMixin:
         result = await client.suggest_budget_reallocation()
         assert "reallocation_plan" in result
         plan = result["reallocation_plan"]
-        # 非効率キャンペーンから削減 → 効率キャンペーンへ増額
+        # Cut budget from inefficient campaigns → add it to efficient ones.
         decreases = [p for p in plan if p["action"] == "DECREASE"]
         increases = [p for p in plan if p["action"] == "INCREASE"]
         assert len(decreases) >= 1
@@ -1351,12 +1351,12 @@ class TestBudgetAnalysisMixin:
 
 
 # =====================================================================
-# _analysis_rsa テスト
+# _analysis_rsa tests
 # =====================================================================
 
 
 class TestRsaAnalysisMixin:
-    """_RsaAnalysisMixin のテスト。"""
+    """Tests for _RsaAnalysisMixin."""
 
     def _make_client(self) -> MockAnalysisClient:
         return MockAnalysisClient()
@@ -1428,7 +1428,7 @@ class TestRsaAnalysisMixin:
             self._make_asset_row("H2", "HEADLINE", "GOOD"),
         ]
         result = await client.audit_rsa_assets("123")
-        # 2本しかないので add_headlines 推奨
+        # Only 2 headlines, so recommend add_headlines.
         rec_types = [r["type"] for r in result["recommendations"]]
         assert "add_headlines" in rec_types
 
@@ -1487,17 +1487,17 @@ class TestRsaAnalysisMixin:
 
 
 # =====================================================================
-# _analysis_auction テスト
+# _analysis_auction tests
 # =====================================================================
 
 
 class TestAuctionAnalysisMixin:
-    """_AuctionAnalysisMixin のテスト。"""
+    """Tests for _AuctionAnalysisMixin."""
 
     def _make_client(self) -> MockAnalysisClient:
         return MockAnalysisClient()
 
-    # --- デバイス分析 ---
+    # --- Device analysis ---
 
     def _make_device_row(
         self,
@@ -1609,7 +1609,7 @@ class TestAuctionAnalysisMixin:
         insights = _AuctionAnalysisMixin._generate_device_insights(devices)
         assert any("Mobile CTR" in i for i in insights)
 
-    # --- CPC トレンド ---
+    # --- CPC trend ---
 
     @pytest.mark.unit
     def test_calculate_cpc_trend_rising(self) -> None:
@@ -1659,7 +1659,7 @@ class TestAuctionAnalysisMixin:
 
     @pytest.mark.unit
     def test_generate_cpc_insights_weekly_spike(self) -> None:
-        # 14日分のデータ: 前7日=100, 直近7日=130 → 30%急騰
+        # 14 days of data: first 7 days = 100, last 7 days = 130 → 30% spike.
         values = [100] * 7 + [130] * 7
         trend = {"direction": "rising", "change_rate_per_day_pct": 1.5, "avg_cpc": 115}
         insights = _AuctionAnalysisMixin._generate_cpc_insights(values, trend, [])
@@ -1715,7 +1715,7 @@ class TestAuctionAnalysisMixin:
         assert result["data_points"] == 7
         assert result["trend"]["direction"] in ("rising", "stable", "falling")
 
-    # --- オークション分析 (impression share metrics) ---
+    # --- Auction analysis (impression-share metrics) ---
 
     def _make_auction_row(
         self,
@@ -1804,12 +1804,12 @@ class TestAuctionAnalysisMixin:
 
 
 # =====================================================================
-# _analysis_btob テスト
+# _analysis_btob tests
 # =====================================================================
 
 
 class TestBtoBAnalysisMixin:
-    """_BtoBAnalysisMixin のテスト。"""
+    """Tests for _BtoBAnalysisMixin."""
 
     def _make_client(self) -> MockAnalysisClient:
         return MockAnalysisClient()
@@ -1866,7 +1866,7 @@ class TestBtoBAnalysisMixin:
     @pytest.mark.unit
     async def test_check_device_mobile_higher_cpa(self) -> None:
         client = self._make_client()
-        # analyze_device_performance をモック
+        # Mock analyze_device_performance.
         client.analyze_device_performance = AsyncMock(
             return_value={
                 "devices": [
@@ -1926,7 +1926,7 @@ class TestBtoBAnalysisMixin:
     @pytest.mark.unit
     async def test_check_search_terms_high_info_ratio(self) -> None:
         client = self._make_client()
-        # 30%が情報収集系
+        # 30% are informational.
         terms = [
             {"search_term": "SEOとは"},
             {"search_term": "ツール比較"},

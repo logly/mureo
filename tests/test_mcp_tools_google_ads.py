@@ -1,6 +1,7 @@
-"""Google Ads MCPツール定義・ハンドラーテスト
+"""Tests for the Google Ads MCP tool definitions and handlers.
 
-ツール定義（inputSchema、requiredフィールド）とハンドラー（クライアントモック）の検証。
+Verifies tool definitions (inputSchema, required fields) and handlers
+(with the client mocked).
 """
 
 from __future__ import annotations
@@ -25,27 +26,27 @@ def _import_handlers():
 
 
 # ---------------------------------------------------------------------------
-# ツール定義テスト
+# Tool-definition tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsToolDefinitions:
-    """Google Adsツール一覧が正しく定義されていることを検証する"""
+    """Verify the Google Ads tool list is defined correctly."""
 
     def test_tool_count(self) -> None:
-        """全83ツールが定義されていること"""
+        """All 83 tools are defined."""
         mod = _import_google_ads_tools()
         assert len(mod.TOOLS) == 83
 
     def test_all_tool_names(self) -> None:
-        """全ツール名が google_ads_ で始まること（MCP仕様準拠の underscore 区切り）"""
+        """Every tool name starts with google_ads_ (underscore-separated, per MCP spec)."""
         mod = _import_google_ads_tools()
         for tool in mod.TOOLS:
-            assert tool.name.startswith("google_ads_"), f"不正なツール名: {tool.name}"
+            assert tool.name.startswith("google_ads_"), f"Invalid tool name: {tool.name}"
 
     def test_all_tools_have_input_schema(self) -> None:
-        """全ツールにinputSchemaが定義されていること"""
+        """Every tool defines an inputSchema."""
         mod = _import_google_ads_tools()
         for tool in mod.TOOLS:
             assert "type" in tool.inputSchema
@@ -130,33 +131,33 @@ class TestGoogleAdsToolDefinitions:
     def test_required_fields(
         self, tool_name: str, expected_required: list[str]
     ) -> None:
-        """各ツールのrequiredフィールドが正しいこと"""
+        """Each tool's required field list is correct."""
         mod = _import_google_ads_tools()
         tool = next((t for t in mod.TOOLS if t.name == tool_name), None)
-        assert tool is not None, f"ツール {tool_name} が見つかりません"
+        assert tool is not None, f"Tool {tool_name} not found"
         assert set(tool.inputSchema["required"]) == set(expected_required)
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — ヘルパー
+# Handler tests — helpers
 # ---------------------------------------------------------------------------
 
 
 def _mock_google_ads_context():
-    """Google Ads認証情報とクライアントのモックを返す"""
+    """Return mocks for Google Ads credentials and the API client."""
     mock_client = AsyncMock()
     mock_creds = MagicMock()
     return mock_creds, mock_client
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — キャンペーン
+# Handler tests — campaigns
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsCampaignHandlers:
-    """キャンペーン系ハンドラーテスト"""
+    """Campaign-related handler tests."""
 
     async def test_campaigns_list(self) -> None:
         mod = _import_google_ads_tools()
@@ -217,7 +218,7 @@ class TestGoogleAdsCampaignHandlers:
         assert "resource_name" in parsed
 
     async def test_campaigns_create_forwards_channel_type(self) -> None:
-        """handle_campaigns_create が channel_type を client.create_campaign に転送すること。"""
+        """handle_campaigns_create forwards channel_type to client.create_campaign."""
         mod = _import_google_ads_tools()
         creds, client = _mock_google_ads_context()
         client.create_campaign.return_value = {
@@ -289,13 +290,13 @@ class TestGoogleAdsCampaignHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — 広告グループ
+# Handler tests — ad groups
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsAdGroupHandlers:
-    """広告グループ系ハンドラーテスト"""
+    """Ad-group-related handler tests."""
 
     async def test_ad_groups_list(self) -> None:
         mod = _import_google_ads_tools()
@@ -356,13 +357,13 @@ class TestGoogleAdsAdGroupHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — 広告
+# Handler tests — ads
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsAdHandlers:
-    """広告系ハンドラーテスト"""
+    """Ad-related handler tests."""
 
     async def test_ads_list(self) -> None:
         mod = _import_google_ads_tools()
@@ -468,13 +469,13 @@ class TestGoogleAdsAdHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — キーワード
+# Handler tests — keywords
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsKeywordHandlers:
-    """キーワード系ハンドラーテスト"""
+    """Keyword-related handler tests."""
 
     async def test_keywords_list(self) -> None:
         mod = _import_google_ads_tools()
@@ -608,13 +609,13 @@ class TestGoogleAdsKeywordHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — 予算
+# Handler tests — budget
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsBudgetHandlers:
-    """予算系ハンドラーテスト"""
+    """Budget-related handler tests."""
 
     async def test_budget_get(self) -> None:
         mod = _import_google_ads_tools()
@@ -652,13 +653,13 @@ class TestGoogleAdsBudgetHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — 分析
+# Handler tests — analysis
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsAnalysisHandlers:
-    """分析系ハンドラーテスト"""
+    """Analysis-related handler tests."""
 
     async def test_performance_report(self) -> None:
         mod = _import_google_ads_tools()
@@ -764,16 +765,16 @@ class TestGoogleAdsAnalysisHandlers:
 
 
 # ---------------------------------------------------------------------------
-# エラーハンドリングテスト
+# Error-handling tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsErrorHandling:
-    """エラーハンドリングの検証"""
+    """Verify error handling."""
 
     async def test_missing_required_param(self) -> None:
-        """customer_id未指定 + credentials.jsonにもない場合にエラーテキスト返却"""
+        """Returns error text when customer_id is missing and credentials.json has none."""
         mod = _import_google_ads_tools()
         with patch(
             "mureo.mcp._handlers_google_ads.load_google_ads_credentials",
@@ -783,13 +784,13 @@ class TestGoogleAdsErrorHandling:
             assert any("Credentials not found" in r.text for r in result)
 
     async def test_unknown_tool_raises_error(self) -> None:
-        """未知のツール名でValueErrorが発生"""
+        """An unknown tool name raises ValueError."""
         mod = _import_google_ads_tools()
         with pytest.raises(ValueError, match="Unknown"):
             await mod.handle_tool("google_ads_unknown_tool", {"customer_id": "123"})
 
     async def test_no_credentials_returns_error_text(self) -> None:
-        """認証情報なしでエラーテキストを返す"""
+        """Returns error text when no credentials are present."""
         mod = _import_google_ads_tools()
         h = _import_handlers()
         with patch.object(h, "load_google_ads_credentials", return_value=None):
@@ -800,7 +801,7 @@ class TestGoogleAdsErrorHandling:
         assert "Credentials not found" in result[0].text
 
     async def test_diagnose_campaign_handler(self) -> None:
-        """campaigns.diagnose ハンドラーが動作すること"""
+        """The campaigns.diagnose handler works."""
         mod = _import_google_ads_tools()
         creds, client = _mock_google_ads_context()
         client.diagnose_campaign_delivery.return_value = {"issues": []}
@@ -818,7 +819,7 @@ class TestGoogleAdsErrorHandling:
         client.diagnose_campaign_delivery.assert_awaited_once_with("456")
 
     async def test_handler_api_error(self) -> None:
-        """API例外がTextContentエラーメッセージに変換されること"""
+        """API exceptions are converted into TextContent error messages."""
         mod = _import_google_ads_tools()
         creds, client = _mock_google_ads_context()
         client.list_campaigns.side_effect = RuntimeError("API接続エラー")

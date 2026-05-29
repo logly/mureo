@@ -1,6 +1,7 @@
-"""LP analyzer テスト
+"""Tests for the LP analyzer.
 
-HTML解析ロジックのテスト。外部HTTPなしでテスト可能（HTMLをモックデータで渡す）。
+Exercises the HTML-parsing logic. Runs without external HTTP — HTML
+is passed in as mock data.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from mureo.analysis.lp_analyzer import (
 
 
 # ---------------------------------------------------------------------------
-# テスト用HTML
+# Test HTML
 # ---------------------------------------------------------------------------
 
 _SAMPLE_HTML = """\
@@ -71,7 +72,7 @@ def analyzer() -> LPAnalyzer:
 
 
 # ---------------------------------------------------------------------------
-# _parse_html テスト
+# _parse_html tests
 # ---------------------------------------------------------------------------
 
 
@@ -107,7 +108,7 @@ class TestParseHtml:
     def test_特徴抽出(self, analyzer: LPAnalyzer) -> None:
         result = analyzer._parse_html("https://example.com", _SAMPLE_HTML)
 
-        # 3文字以下のliは除外される
+        # li elements with <= 3 chars are excluded.
         assert any("高品質" in f for f in result.features)
         assert not any(f == "短い" for f in result.features)
 
@@ -151,7 +152,7 @@ class TestParseHtml:
 
 
 # ---------------------------------------------------------------------------
-# 業界推定テスト
+# Industry estimation tests
 # ---------------------------------------------------------------------------
 
 
@@ -176,21 +177,21 @@ class TestEstimateIndustry:
         assert hints == ()
 
     def test_2キーワード未満では判定しない(self, analyzer: LPAnalyzer) -> None:
-        text = "クラウドの活用"  # SaaSキーワード1個のみ
+        text = "クラウドの活用"  # Only one SaaS keyword
         hints = analyzer._estimate_industry(text)
 
         assert "SaaS" not in hints
 
 
 # ---------------------------------------------------------------------------
-# SSRF対策テスト
+# SSRF protection tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestValidateUrl:
     def test_正常なURL(self, analyzer: LPAnalyzer) -> None:
-        # 例外が発生しなければOK
+        # OK as long as no exception is raised.
         analyzer._validate_url("https://example.com")
 
     def test_localhostブロック(self, analyzer: LPAnalyzer) -> None:
@@ -218,14 +219,14 @@ class TestValidateUrl:
             analyzer._validate_url("http://10.0.0.1/test")
 
     def test_ipv6_loopbackブロック(self, analyzer: LPAnalyzer) -> None:
-        # ::1はurlparseでhostnameがNoneになるため「ホスト名」エラー
-        # ブラケット付き[::1]の場合は「内部ネットワーク」エラー
+        # urlparse returns hostname=None for `::1`, producing a "hostname" error.
+        # When bracketed as `[::1]` it raises an "internal network" error instead.
         with pytest.raises(ValueError):
             analyzer._validate_url("http://[::1]/test")
 
 
 # ---------------------------------------------------------------------------
-# LPContent データクラステスト
+# LPContent dataclass tests
 # ---------------------------------------------------------------------------
 
 

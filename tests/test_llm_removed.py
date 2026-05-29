@@ -1,7 +1,7 @@
-"""LLM除去済みモジュールのテスト
+"""Tests for the LLM-stripped modules.
 
-_rsa_insights.py, _intent_classifier.py, _message_match.py の
-build_prompt / parse_response が正しく動作することを確認する。
+Verifies that build_prompt / parse_response in _rsa_insights.py,
+_intent_classifier.py, and _message_match.py behave correctly.
 """
 
 from __future__ import annotations
@@ -255,7 +255,7 @@ class TestIntentClassifierParseResponse:
         assert results[0].relevance_score == 100
 
     def test_LLM出力と元語句のマッチング(self) -> None:
-        """LLM出力の語句順序が異なっても正しくマッチする"""
+        """Matches correctly even when the order of LLM-output terms differs."""
         response = json.dumps(
             [
                 {
@@ -435,7 +435,7 @@ class TestRSAInsight:
 
 
 # ===========================================================================
-# LPScreenshotter (SSRF検証・import失敗パス)
+# LPScreenshotter (SSRF validation + import-failure path)
 # ===========================================================================
 
 
@@ -443,7 +443,7 @@ class TestRSAInsight:
 class TestLPScreenshotterCapture:
     @pytest.mark.asyncio
     async def test_ssrf対策でプライベートIPを拒否(self) -> None:
-        """SSRF対策: LPAnalyzer._validate_url経由でプライベートIPを拒否"""
+        """SSRF protection: reject private IPs via LPAnalyzer._validate_url."""
         from unittest.mock import patch
 
         screenshotter = LPScreenshotter()
@@ -457,17 +457,17 @@ class TestLPScreenshotterCapture:
 
     @pytest.mark.asyncio
     async def test_playwrightが未インストールの場合(self) -> None:
-        """playwright未インストール時にRuntimeErrorを送出"""
+        """Raises RuntimeError when playwright is not installed."""
         import sys
         from unittest.mock import patch
 
         screenshotter = LPScreenshotter()
 
-        # _validate_urlは通過させ、playwright importで失敗させる
+        # Let _validate_url pass, but make the playwright import fail.
         with patch(
             "mureo.analysis.lp_analyzer.LPAnalyzer._validate_url",
         ):
-            # playwrightモジュールを一時的にブロック
+            # Temporarily block the playwright module.
             import importlib
 
             _real_import = builtins.__import__
@@ -485,7 +485,7 @@ class TestLPScreenshotterCapture:
 @pytest.mark.unit
 class TestMessageMatchEvaluatorParseResponseEdgeCases:
     def test_コードブロックのみ_jsonラベルなし(self) -> None:
-        """```だけでjsonラベルがないコードブロックをパースする（行145カバー）"""
+        """Parse a code block fenced with only ``` (no json label) — covers line 145."""
         response = '```\n{"overall_score": 6, "headline_match": 7, "description_match": 5, "cta_match": 6, "strengths": ["OK"], "weaknesses": [], "suggestions": []}\n```'
 
         result = MessageMatchEvaluator.parse_response(response)
@@ -495,7 +495,7 @@ class TestMessageMatchEvaluatorParseResponseEdgeCases:
         assert result.error is None
 
     def test_戦略コンテキストなしのプロンプト(self) -> None:
-        """strategic_context=Noneの場合、戦略コンテキストセクションが含まれない"""
+        """When strategic_context=None, the strategic-context section is omitted."""
         evaluator = MessageMatchEvaluator()
 
         prompt = evaluator.build_prompt(

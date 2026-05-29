@@ -1,6 +1,6 @@
-"""Meta Ads その他ハンドラーテスト
+"""Tests for miscellaneous Meta Ads handlers.
 
-ページ投稿、Instagram、スプリットテスト、自動ルールハンドラーをカバーする。
+Covers the page posts, Instagram, split test, and automated rule handlers.
 """
 
 from __future__ import annotations
@@ -24,25 +24,25 @@ def _import_handlers():
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
+# Helpers
 # ---------------------------------------------------------------------------
 
 
 def _mock_meta_ads_context():
-    """Meta Ads認証情報とクライアントのモックを返す"""
+    """Return mocks for Meta Ads credentials and client."""
     mock_client = AsyncMock()
     mock_creds = MagicMock()
     return mock_creds, mock_client
 
 
 # ---------------------------------------------------------------------------
-# ページ投稿ハンドラー
+# Page post handlers
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestPagePostsHandlers:
-    """ページ投稿系ハンドラーテスト"""
+    """Page post handler tests."""
 
     async def test_page_posts_list(self) -> None:
         mod = _import_meta_ads_tools()
@@ -89,13 +89,13 @@ class TestPagePostsHandlers:
 
 
 # ---------------------------------------------------------------------------
-# Instagramハンドラー
+# Instagram handlers
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestInstagramHandlers:
-    """Instagram系ハンドラーテスト"""
+    """Instagram handler tests."""
 
     async def test_instagram_accounts(self) -> None:
         mod = _import_meta_ads_tools()
@@ -161,13 +161,13 @@ class TestInstagramHandlers:
 
 
 # ---------------------------------------------------------------------------
-# Split Test (A/Bテスト) ハンドラー
+# Split Test (A/B test) handlers
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestSplitTestHandlers:
-    """スプリットテスト系ハンドラーテスト"""
+    """Split test handler tests."""
 
     async def test_split_tests_list(self) -> None:
         mod = _import_meta_ads_tools()
@@ -254,13 +254,13 @@ class TestSplitTestHandlers:
 
 
 # ---------------------------------------------------------------------------
-# Ad Rules (自動ルール) ハンドラー
+# Ad Rules (automated rule) handlers
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestAdRulesHandlers:
-    """自動ルール系ハンドラーテスト"""
+    """Automated rule handler tests."""
 
     async def test_ad_rules_list(self) -> None:
         mod = _import_meta_ads_tools()

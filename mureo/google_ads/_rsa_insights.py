@@ -26,7 +26,11 @@ class RSAInsight:
     error: str | None = None
 
 
-# Prompt template for LLM calls on the Managed side (src/plugins/google_ads)
+# Prompt template for LLM calls on the Managed side (src/plugins/google_ads).
+# Japanese-language: mureo's RSA insight extractor operates on Japanese
+# ad copy and headlines, and the LLM is instructed to reason and respond
+# in Japanese; translating the prompt would change extraction behavior
+# and break the JSON-schema parser below.
 _INSIGHT_PROMPT = """\
 あなたはリスティング広告のRSA（レスポンシブ検索広告）の専門家です。
 

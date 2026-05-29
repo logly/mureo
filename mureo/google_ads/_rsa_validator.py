@@ -205,12 +205,12 @@ def _sanitize_text(text: str) -> tuple[str, list[str]]:
         text = _SYMBOL_REPEAT.sub(lambda m: m.group(1)[0], text)
         fixes.append("Reduced decorative symbol repetition to single")
 
-    # Consecutive full-width spacesを半角スペース1個に変換
+    # Convert consecutive full-width spaces to a single half-width space.
     if _ZENKAKU_SPACES.search(text):
         text = _ZENKAKU_SPACES.sub(" ", text)
         fixes.append("Converted consecutive full-width spaces to half-width space")
 
-    # Leading/trailing unnecessary symbolsを除去
+    # Strip leading/trailing unnecessary symbols.
     if _EDGE_SYMBOLS.search(text):
         text = _EDGE_SYMBOLS.sub("", text)
         fixes.append("Removed leading/trailing unnecessary symbols")
@@ -244,7 +244,7 @@ def validate_rsa_texts(
 ) -> RSAValidationResult:
     """Validate RSA ad text and return corrected text.
 
-    処理順序:
+    Processing order:
     1. URL format check for final_url (ValueError if invalid)
     2. Auto-correct each text via _sanitize_text
     3. Check each text for prohibited expressions (_check_prohibited)
@@ -365,7 +365,7 @@ _SYNONYM_PAIRS_TUPLES: tuple[tuple[str, str], ...] = (
 
 @dataclass(frozen=True)
 class AdStrengthFactor:
-    """Ad Strength 評価因子。"""
+    """Ad Strength evaluation factor."""
 
     name: str  # Factor name
     score: float  # 0.0 ~ 1.0
@@ -375,7 +375,7 @@ class AdStrengthFactor:
 
 @dataclass(frozen=True)
 class AdStrengthResult:
-    """Ad Strength 予測結果。"""
+    """Ad Strength prediction result."""
 
     level: str  # "POOR" | "AVERAGE" | "GOOD" | "EXCELLENT"
     score: float  # 0.0 ~ 1.0
@@ -432,7 +432,7 @@ def _check_headline_diversity(
 
     diversity_score = 1.0 - (len(similar_pairs) / total_pairs)
     messages: list[str] = []
-    for a, b in similar_pairs[:3]:  # 最大3件まで報告
+    for a, b in similar_pairs[:3]:  # Report at most 3 pairs.
         messages.append(f'Similar headlines: "{a}" and "{b}"')
 
     return max(0.0, diversity_score), messages

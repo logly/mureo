@@ -1,7 +1,8 @@
-"""Google Ads client.py テスト
+"""Tests for Google Ads client.py.
 
-GoogleAdsApiClientのコンストラクタ、バリデーション、キャンペーン/広告グループ/予算/レポート関連メソッドのテスト。
-Google Ads APIの呼び出しはすべてモックする。
+Covers GoogleAdsApiClient's constructor, validation, and the
+campaign / ad group / budget / report methods. All Google Ads API
+calls are mocked.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from mureo.google_ads.client import (
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
+# Helpers
 # ---------------------------------------------------------------------------
 
 
@@ -32,7 +33,7 @@ def _make_client(
     developer_token: str = "test-dev-token",
     login_customer_id: str | None = None,
 ) -> GoogleAdsApiClient:
-    """テスト用のGoogleAdsApiClientを生成（GoogleAdsClient自体をモック）"""
+    """Build a GoogleAdsApiClient for tests (the underlying GoogleAdsClient is mocked)."""
     creds = MagicMock()
     with patch("mureo.google_ads.client.GoogleAdsClient") as mock_gads:
         mock_instance = MagicMock()
@@ -51,7 +52,7 @@ def _make_google_ads_exception(
     attr_name: str | None = None,
     error_name: str | None = None,
 ) -> GoogleAdsException:
-    """モック GoogleAdsException を生成"""
+    """Construct a mock GoogleAdsException."""
     error = MagicMock()
     error.message = message
     if attr_name and error_name:
@@ -66,13 +67,13 @@ def _make_google_ads_exception(
     exc._failure = failure
     exc._call = MagicMock()
     exc._request_id = "req-123"
-    # failure プロパティをモック
+    # Mock the failure property.
     type(exc).failure = property(lambda self: self._failure)
     return exc
 
 
 def _make_search_row(**kwargs: Any) -> MagicMock:
-    """GAQL検索結果行のモック"""
+    """Mock GAQL search-result row."""
     row = MagicMock()
     for key, value in kwargs.items():
         parts = key.split(".")
@@ -84,7 +85,7 @@ def _make_search_row(**kwargs: Any) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# コンストラクタ
+# Constructor
 # ---------------------------------------------------------------------------
 
 
@@ -125,7 +126,7 @@ class TestGoogleAdsApiClientInit:
 
 
 # ---------------------------------------------------------------------------
-# 静的バリデーションメソッド
+# Static validation methods
 # ---------------------------------------------------------------------------
 
 
@@ -215,7 +216,7 @@ class TestValidateResourceName:
 
 
 # ---------------------------------------------------------------------------
-# ユーティリティメソッド
+# Utility methods
 # ---------------------------------------------------------------------------
 
 
@@ -239,7 +240,7 @@ class TestExtractErrorDetail:
 
     def test_メッセージなし(self) -> None:
         exc = _make_google_ads_exception()
-        # message属性がある場合はそれを返す
+        # If a `message` attribute is present, return it.
         result = GoogleAdsApiClient._extract_error_detail(exc)
         assert isinstance(result, str)
 
@@ -391,7 +392,7 @@ class TestListCampaigns:
         row.campaign.bidding_strategy_type = 9
         row.campaign.primary_status = 0
         row.campaign.primary_status_reasons = []
-        row.campaign_budget.amount_micros = 5000_000_000  # 5000円
+        row.campaign_budget.amount_micros = 5000_000_000  # 5000 JPY
 
         with patch.object(client, "_search", return_value=[row]):
             result = await client.list_campaigns()
@@ -518,9 +519,9 @@ class TestCreateCampaign:
 
     @pytest.mark.asyncio
     async def test_channel_type_DISPLAY_でディスプレイキャンペーン作成(self) -> None:
-        """channel_type=DISPLAYでディスプレイキャンペーンが作成される。
+        """channel_type=DISPLAY creates a display campaign.
 
-        ネットワーク設定はディスプレイ向け（content_network=True）。
+        The network settings are configured for display (content_network=True).
         """
         client = _make_client()
         mock_result = MagicMock()
@@ -531,8 +532,8 @@ class TestCreateCampaign:
         mock_service.mutate_campaigns.return_value = mock_response
         client._client.get_service.return_value = mock_service
 
-        # campaign_op.create に設定された値を後から検証するため、
-        # MagicMock のデフォルト挙動（属性を設定したら保持される）を活用する
+        # We later verify the values set on campaign_op.create, so we
+        # rely on MagicMock's default behaviour (it retains set attributes).
         captured_op = MagicMock()
         client._client.get_type.return_value = captured_op
         client._client.enums = MagicMock()
@@ -546,7 +547,7 @@ class TestCreateCampaign:
         )
         assert result["resource_name"] == "customers/123/campaigns/789"
 
-        # ネットワーク設定がディスプレイ向けに設定されていること
+        # Network settings should be configured for display.
         campaign = captured_op.create
         assert campaign.network_settings.target_google_search is False
         assert campaign.network_settings.target_search_network is False
@@ -554,7 +555,7 @@ class TestCreateCampaign:
 
     @pytest.mark.asyncio
     async def test_channel_type_未指定でSEARCHキャンペーン作成(self) -> None:
-        """channel_type 未指定時は従来通りSEARCHキャンペーンが作成される。"""
+        """When channel_type is unspecified, a SEARCH campaign is created (legacy behaviour)."""
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/campaigns/100"
@@ -572,7 +573,7 @@ class TestCreateCampaign:
             {"name": "検索キャンペーン", "bidding_strategy": "MAXIMIZE_CLICKS"}
         )
 
-        # 検索向けのネットワーク設定が維持されていること
+        # Search-oriented network settings should be preserved.
         campaign = captured_op.create
         assert campaign.network_settings.target_google_search is True
         assert campaign.network_settings.target_search_network is True
@@ -580,7 +581,7 @@ class TestCreateCampaign:
 
     @pytest.mark.asyncio
     async def test_channel_type_SEARCHでSEARCHキャンペーン作成(self) -> None:
-        """channel_type=SEARCHは未指定時と同じ動作。"""
+        """channel_type=SEARCH behaves the same as omitting it."""
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/campaigns/200"
@@ -785,11 +786,12 @@ class TestUpdateAdGroup:
 
     @pytest.mark.asyncio
     async def test_cpc_bid_micros_自動入札戦略下で拒否(self) -> None:
-        """親キャンペーンが MAXIMIZE_CLICKS 等の自動入札戦略のとき、
-        cpc_bid_micros の更新は事前に明確なエラーで拒否される。
+        """When the parent campaign uses an automated bidding strategy
+        (e.g. MAXIMIZE_CLICKS), updating cpc_bid_micros is rejected
+        upfront with a clear error.
         """
         client = _make_client()
-        # 親キャンペーンが MAXIMIZE_CLICKS (enum 9, TARGET_SPEND) だと返す
+        # Return that the parent campaign is MAXIMIZE_CLICKS (enum 9, TARGET_SPEND).
         row = MagicMock()
         row.campaign.bidding_strategy_type = 9  # MAXIMIZE_CLICKS
         with patch.object(client, "_search", return_value=[row]):
@@ -805,7 +807,7 @@ class TestUpdateAdGroup:
 
     @pytest.mark.asyncio
     async def test_cpc_bid_micros_手動入札ならOK(self) -> None:
-        """MANUAL_CPC のキャンペーンでは cpc_bid_micros が通常通り更新される。"""
+        """For MANUAL_CPC campaigns, cpc_bid_micros is updated as usual."""
         client = _make_client()
         row = MagicMock()
         row.campaign.bidding_strategy_type = 3  # MANUAL_CPC
@@ -1129,7 +1131,7 @@ class TestGetNetworkPerformanceReport:
 
 
 # ---------------------------------------------------------------------------
-# _wrap_mutate_error デコレータ
+# _wrap_mutate_error decorator
 # ---------------------------------------------------------------------------
 
 
@@ -1137,7 +1139,7 @@ class TestGetNetworkPerformanceReport:
 class TestWrapMutateError:
     @pytest.mark.asyncio
     async def test_正常実行(self) -> None:
-        """デコレータが正常実行を妨げないこと"""
+        """The decorator does not interfere with normal execution."""
 
         class FakeClient:
             _customer_id = "123"
@@ -1160,7 +1162,7 @@ class TestWrapMutateError:
 
     @pytest.mark.asyncio
     async def test_RESOURCE_NOT_FOUND(self) -> None:
-        """RESOURCE_NOT_FOUNDの場合に具体的なヒントを返す"""
+        """For RESOURCE_NOT_FOUND, returns a concrete hint."""
         exc = _make_google_ads_exception(
             attr_name="mutate_error",
             error_name="RESOURCE_NOT_FOUND",
@@ -1210,10 +1212,11 @@ class TestWrapMutateError:
 
     @pytest.mark.asyncio
     async def test_APIエラー詳細が返却メッセージに含まれる(self) -> None:
-        """Google Ads API が返した詳細メッセージが RuntimeError に含まれること。
+        """The detailed message returned by the Google Ads API is included in
+        the RuntimeError.
 
-        これにより「bidが最低値を下回っている」等の具体的な拒否理由が
-        エージェントに伝わる。
+        This surfaces concrete rejection reasons (e.g. "bid is below
+        the minimum") to the agent.
         """
         exc = _make_google_ads_exception("bid too low")
 
@@ -1237,13 +1240,13 @@ class TestWrapMutateError:
         client = FakeClient()
         with pytest.raises(RuntimeError) as exc_info:
             await client.do_something()
-        # 詳細メッセージが含まれていること
+        # The detailed message should be included.
         assert "minimum bid" in str(exc_info.value)
         assert "ad group update" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_RESOURCE_NOT_FOUND_詳細も含める(self) -> None:
-        """RESOURCE_NOT_FOUND ヒントに加えて API 詳細も含まれること。"""
+        """Includes the API detail in addition to the RESOURCE_NOT_FOUND hint."""
         exc = _make_google_ads_exception(
             attr_name="mutate_error",
             error_name="RESOURCE_NOT_FOUND",
@@ -1268,10 +1271,10 @@ class TestWrapMutateError:
         with pytest.raises(RuntimeError) as exc_info:
             await client.do_something()
         msg = str(exc_info.value)
-        # 既存のヒントが含まれること
+        # The existing hint should be included.
         assert "not found" in msg
         assert "list tool" in msg
-        # API詳細も含まれること
+        # The API detail should also be included.
         assert "customer/123/ads/999" in msg
 
 
@@ -1306,14 +1309,14 @@ class TestCheckBudgetBiddingCompatibility:
     @pytest.mark.asyncio
     async def test_非スマート入札_チェックスキップ(self) -> None:
         client = _make_client()
-        # _searchが呼ばれないことを確認
+        # Verify that _search is not called.
         with patch.object(client, "_search") as mock_search:
             await client._check_budget_bidding_compatibility("100", "MANUAL_CPC")
             mock_search.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# PARTNER_CPA_WARNING_RATIO 定数
+# PARTNER_CPA_WARNING_RATIO constant
 # ---------------------------------------------------------------------------
 
 

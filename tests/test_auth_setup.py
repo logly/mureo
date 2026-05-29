@@ -1,4 +1,4 @@
-"""Google Ads OAuthフロー + セットアップウィザードのテスト（TDD: RED -> GREEN -> IMPROVE）"""
+"""Tests for the Google Ads OAuth flow and setup wizard (TDD: RED -> GREEN -> IMPROVE)."""
 
 from __future__ import annotations
 
@@ -43,24 +43,24 @@ if sys.platform == "win32":  # pragma: no cover - Windows CI only
 
 
 # ---------------------------------------------------------------------------
-# 1. ローカルサーバーがcallbackを受信できること（Meta Ads用に残す）
+# 1. The local server receives the callback (kept for Meta Ads)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_oauth_callback_server() -> None:
-    """ローカルHTTPサーバーがOAuthコールバックを受信できること"""
+    """The local HTTP server receives the OAuth callback."""
     from mureo.auth_setup import OAuthCallbackServer
 
-    server = OAuthCallbackServer(port=0)  # 空きポート自動選択
+    server = OAuthCallbackServer(port=0)  # auto-select a free port
     actual_port = server.server.server_address[1]
 
-    # サーバーをバックグラウンドで起動
+    # Start the server in the background.
     server_thread = threading.Thread(target=server.wait_for_callback, daemon=True)
     server_thread.start()
 
-    # コールバックリクエストを送信
-    time.sleep(0.1)  # サーバー起動待ち
+    # Send the callback request.
+    time.sleep(0.1)  # wait for the server to start
     conn = http.client.HTTPConnection("localhost", actual_port)
     conn.request("GET", "/callback?code=test-auth-code-123")
     response = conn.getresponse()
@@ -72,7 +72,7 @@ def test_oauth_callback_server() -> None:
 
 @pytest.mark.unit
 def test_oauth_callback_server_error() -> None:
-    """OAuthコールバックでエラーパラメータが返された場合"""
+    """When the OAuth callback returns an error parameter."""
     from mureo.auth_setup import OAuthCallbackServer
 
     server = OAuthCallbackServer(port=0)
@@ -93,13 +93,13 @@ def test_oauth_callback_server_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 4. credentials.json 新規保存
+# 4. credentials.json — new save
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_save_credentials_new(tmp_path: Path) -> None:
-    """新規のcredentials.jsonが正しく保存されること"""
+    """A new credentials.json is saved correctly."""
     from mureo.auth_setup import save_credentials
 
     cred_path = tmp_path / "credentials.json"
@@ -128,18 +128,18 @@ def test_save_credentials_new(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5. credentials.json 既存データとマージ保存
+# 5. credentials.json — merge save with existing data
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_save_credentials_merge(tmp_path: Path) -> None:
-    """既存のcredentials.jsonにマージして保存されること"""
+    """Existing credentials.json is merged and saved."""
     from mureo.auth_setup import save_credentials
 
     cred_path = tmp_path / "credentials.json"
 
-    # 既存のMeta Ads認証情報を事前に保存
+    # Pre-save existing Meta Ads credentials.
     existing = {
         "meta_ads": {
             "access_token": "existing-meta-token",
@@ -148,7 +148,7 @@ def test_save_credentials_merge(tmp_path: Path) -> None:
     }
     cred_path.write_text(json.dumps(existing), encoding="utf-8")
 
-    # Google Ads認証情報を追加
+    # Add Google Ads credentials.
     google_creds = GoogleAdsCredentials(
         developer_token="dev-tok",
         client_id="cid",
@@ -159,20 +159,20 @@ def test_save_credentials_merge(tmp_path: Path) -> None:
     save_credentials(path=cred_path, google=google_creds)
 
     data = json.loads(cred_path.read_text(encoding="utf-8"))
-    # Google Adsが追加されている
+    # Google Ads is added.
     assert data["google_ads"]["developer_token"] == "dev-tok"
-    # Meta Adsが保持されている
+    # Meta Ads is preserved.
     assert data["meta_ads"]["access_token"] == "existing-meta-token"
 
 
 # ---------------------------------------------------------------------------
-# 6. ディレクトリが存在しない場合に作成
+# 6. Create the directory if it does not exist
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_save_credentials_creates_directory(tmp_path: Path) -> None:
-    """~/.mureo/ ディレクトリが存在しない場合に自動作成されること"""
+    """The ~/.mureo/ directory is auto-created when it does not exist."""
     from mureo.auth_setup import save_credentials
 
     nested_path = tmp_path / "nonexistent" / "dir" / "credentials.json"
@@ -192,14 +192,14 @@ def test_save_credentials_creates_directory(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 7. アカウント一覧取得（APIモック）
+# 7. List accounts (API mocked)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_accessible_accounts() -> None:
-    """Google Ads APIでアクセス可能なアカウント一覧を取得できること"""
+    """Can list accessible accounts via the Google Ads API."""
     from mureo.auth_setup import list_accessible_accounts
 
     creds = GoogleAdsCredentials(
@@ -209,10 +209,10 @@ async def test_list_accessible_accounts() -> None:
         refresh_token="rtok",
     )
 
-    # Google Ads SDK直接呼び出しのモック
+    # Mock direct calls into the Google Ads SDK.
     mock_ga_client = MagicMock()
 
-    # CustomerService（アカウント一覧取得用）
+    # CustomerService (used for listing accounts).
     mock_customer_service = MagicMock()
     mock_response = MagicMock()
     mock_response.resource_names = [
@@ -221,8 +221,8 @@ async def test_list_accessible_accounts() -> None:
     ]
     mock_customer_service.list_accessible_customers.return_value = mock_response
 
-    # GoogleAdsService（アカウント名取得用）
-    # どちらも非マネージャーアカウント
+    # GoogleAdsService (used for fetching account names).
+    # Both are non-manager accounts.
     mock_ga_service = MagicMock()
     mock_row_1 = MagicMock()
     mock_row_1.customer.descriptive_name = "テストアカウント1"
@@ -258,7 +258,7 @@ async def test_list_accessible_accounts() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_accessible_accounts_traverses_mcc_children() -> None:
-    """MCCアカウントの配下の子アカウントも列挙できること"""
+    """Can also enumerate child accounts under an MCC."""
     from mureo.auth_setup import list_accessible_accounts
 
     creds = GoogleAdsCredentials(
@@ -270,18 +270,18 @@ async def test_list_accessible_accounts_traverses_mcc_children() -> None:
 
     mock_ga_client = MagicMock()
 
-    # listAccessibleCustomersはMCC 1件だけを返す
+    # listAccessibleCustomers returns only the MCC.
     mock_customer_service = MagicMock()
     mock_response = MagicMock()
     mock_response.resource_names = ["customers/1111111111"]
     mock_customer_service.list_accessible_customers.return_value = mock_response
 
-    # 1回目のsearch: MCCの情報
+    # 1st search: MCC info.
     mcc_row = MagicMock()
     mcc_row.customer.descriptive_name = "親MCC"
     mcc_row.customer.manager = True
 
-    # 2回目のsearch: MCC配下の子アカウント2件
+    # 2nd search: the two child accounts under the MCC.
     child_row_1 = MagicMock()
     child_row_1.customer_client.id = 2222222222
     child_row_1.customer_client.descriptive_name = "子アカウントA"
@@ -310,17 +310,17 @@ async def test_list_accessible_accounts_traverses_mcc_children() -> None:
         accounts = await list_accessible_accounts(creds)
 
     assert len(accounts) == 3
-    # 親MCC
+    # Parent MCC
     assert accounts[0]["id"] == "1111111111"
     assert accounts[0]["name"] == "親MCC"
     assert accounts[0]["is_manager"] is True
     assert accounts[0]["parent_id"] is None
-    # 子アカウントA（parent_id = MCC）
+    # Child account A (parent_id = MCC).
     assert accounts[1]["id"] == "2222222222"
     assert accounts[1]["name"] == "子アカウントA"
     assert accounts[1]["is_manager"] is False
     assert accounts[1]["parent_id"] == "1111111111"
-    # 子アカウントB
+    # Child account B.
     assert accounts[2]["id"] == "3333333333"
     assert accounts[2]["name"] == "子アカウントB"
     assert accounts[2]["is_manager"] is False
@@ -330,7 +330,7 @@ async def test_list_accessible_accounts_traverses_mcc_children() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_accessible_accounts_empty() -> None:
-    """アクセス可能なアカウントがない場合は空リストを返すこと"""
+    """Returns an empty list when no accounts are accessible."""
     from mureo.auth_setup import list_accessible_accounts
 
     creds = GoogleAdsCredentials(
@@ -356,19 +356,19 @@ async def test_list_accessible_accounts_empty() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 8. セットアップ全体フロー（input/OAuth/APIすべてモック）
+# 8. Full setup flow (input / OAuth / API all mocked)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_setup_google_ads_flow(tmp_path: Path) -> None:
-    """Google Adsセットアップの全体フローが正しく動作すること"""
+    """The complete Google Ads setup flow works correctly."""
     from mureo.auth_setup import OAuthResult, setup_google_ads
 
     cred_path = tmp_path / "credentials.json"
 
-    # ユーザー入力のモック
+    # Mock user input.
     user_inputs = iter(
         [
             "test-developer-token",  # Developer Token
@@ -419,7 +419,7 @@ async def test_setup_google_ads_flow(tmp_path: Path) -> None:
     assert result.refresh_token == "1//test-refresh-token"
     assert result.login_customer_id == "1234567890"
 
-    # credentials.jsonに保存されていること
+    # The result should be saved into credentials.json.
     data = json.loads(cred_path.read_text(encoding="utf-8"))
     assert data["google_ads"]["developer_token"] == "test-developer-token"
     assert data["google_ads"]["login_customer_id"] == "1234567890"
@@ -428,7 +428,7 @@ async def test_setup_google_ads_flow(tmp_path: Path) -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_setup_google_ads_flow_no_accounts(tmp_path: Path) -> None:
-    """アカウントが見つからない場合もcredentials.jsonが保存されること"""
+    """credentials.json is still saved when no account is found."""
     from mureo.auth_setup import OAuthResult, setup_google_ads
 
     cred_path = tmp_path / "credentials.json"
@@ -472,7 +472,7 @@ async def test_setup_google_ads_flow_no_accounts(tmp_path: Path) -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_setup_google_ads_flow_selects_mcc_child(tmp_path: Path) -> None:
-    """MCC配下の子アカウントを選択した場合、login_customer_idは親MCCになること"""
+    """When a child account under an MCC is selected, login_customer_id is the parent MCC."""
     from mureo.auth_setup import OAuthResult, setup_google_ads
 
     cred_path = tmp_path / "credentials.json"
@@ -485,7 +485,7 @@ async def test_setup_google_ads_flow_selects_mcc_child(tmp_path: Path) -> None:
         ]
     )
 
-    # MCC + 2つの子アカウント（子はparent_id付き）
+    # MCC + 2 child accounts (children carry parent_id).
     mock_accounts = [
         {
             "id": "1111111111",
@@ -508,7 +508,7 @@ async def test_setup_google_ads_flow_selects_mcc_child(tmp_path: Path) -> None:
 
     with (
         patch("mureo.auth_setup.input_func", side_effect=user_inputs),
-        # 子アカウントAを選択
+        # Select child account A.
         patch("mureo.auth_setup._select_account", return_value="2222222222"),
         patch(
             "mureo.auth_setup.run_google_oauth",
@@ -523,26 +523,26 @@ async def test_setup_google_ads_flow_selects_mcc_child(tmp_path: Path) -> None:
     ):
         result = await setup_google_ads(credentials_path=cred_path)
 
-    # login_customer_idは親MCCに設定されること
+    # login_customer_id should be set to the parent MCC.
     assert result.login_customer_id == "1111111111"
-    # customer_idは選択された子アカウントに設定されること
+    # customer_id should be set to the selected child account.
     assert result.customer_id == "2222222222"
 
-    # credentials.jsonにも両方保存されていること
+    # Both should also be saved into credentials.json.
     data = json.loads(cred_path.read_text(encoding="utf-8"))
     assert data["google_ads"]["login_customer_id"] == "1111111111"
     assert data["google_ads"]["customer_id"] == "2222222222"
 
 
 # ---------------------------------------------------------------------------
-# 9. OAuthフロー全体（InstalledAppFlow）
+# 9. Full OAuth flow (InstalledAppFlow)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_run_google_oauth() -> None:
-    """run_google_oauthがInstalledAppFlowでOAuth認証を実行すること"""
+    """run_google_oauth runs OAuth via InstalledAppFlow."""
     from mureo.auth_setup import OAuthResult, run_google_oauth
 
     mock_credentials = MagicMock()
@@ -565,7 +565,7 @@ async def test_run_google_oauth() -> None:
     assert result.refresh_token == "1//mock-refresh"
     assert result.access_token == "ya29.mock-access"
 
-    # InstalledAppFlowが正しいclient_configで初期化されること
+    # InstalledAppFlow should be initialised with the correct client_config.
     mock_from_config.assert_called_once()
     call_args = mock_from_config.call_args
     client_config = call_args[0][0]
@@ -576,14 +576,14 @@ async def test_run_google_oauth() -> None:
         "https://www.googleapis.com/auth/webmasters",
     ]
 
-    # run_local_serverがport=0（自動選択）, prompt="consent"で呼ばれること
+    # run_local_server should be called with port=0 (auto-select) and prompt="consent".
     mock_flow.run_local_server.assert_called_once_with(port=0, prompt="consent")
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_run_google_oauth_no_refresh_token() -> None:
-    """refresh_tokenが取得できない場合にエラーが発生すること"""
+    """Raises an error when refresh_token cannot be obtained."""
     from mureo.auth_setup import run_google_oauth
 
     mock_credentials = MagicMock()
@@ -605,13 +605,13 @@ async def test_run_google_oauth_no_refresh_token() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 10. save_credentials でlogin_customer_idなし
+# 10. save_credentials without login_customer_id
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_save_credentials_without_customer_id(tmp_path: Path) -> None:
-    """customer_id未指定でもcredentials.jsonが正しく保存されること"""
+    """credentials.json is saved correctly even without customer_id."""
     from mureo.auth_setup import save_credentials
 
     cred_path = tmp_path / "credentials.json"
@@ -631,7 +631,7 @@ def test_save_credentials_without_customer_id(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 11. ファイルパーミッション（credentials.jsonは600）
+# 11. File permissions (credentials.json is 0600)
 # ---------------------------------------------------------------------------
 
 
@@ -641,7 +641,7 @@ def test_save_credentials_without_customer_id(tmp_path: Path) -> None:
     reason="POSIX 0o600; Windows perms are documented best-effort (NTFS ACL)",
 )
 def test_save_credentials_file_permissions(tmp_path: Path) -> None:
-    """credentials.jsonが0600パーミッションで保存されること"""
+    """credentials.json is saved with 0600 permissions."""
     import stat
 
     from mureo.auth_setup import save_credentials
@@ -658,18 +658,18 @@ def test_save_credentials_file_permissions(tmp_path: Path) -> None:
     save_credentials(path=cred_path, google=google_creds)
 
     file_mode = cred_path.stat().st_mode
-    # owner read/write のみ
+    # owner read/write only
     assert stat.S_IMODE(file_mode) == 0o600
 
 
 # ---------------------------------------------------------------------------
-# 12. OAuth stateパラメータ（CSRF対策）— Meta Ads用コールバックサーバー
+# 12. OAuth state parameter (CSRF protection) — Meta Ads callback server
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_oauth_callback_server_validates_state() -> None:
-    """コールバックサーバーがstateパラメータを正しく検証すること"""
+    """The callback server validates the state parameter correctly."""
     from mureo.auth_setup import OAuthCallbackServer
 
     server = OAuthCallbackServer(port=0, expected_state="correct-state")
@@ -690,7 +690,7 @@ def test_oauth_callback_server_validates_state() -> None:
 
 @pytest.mark.unit
 def test_oauth_state_mismatch() -> None:
-    """stateパラメータが不一致の場合エラーになること"""
+    """An error is raised when the state parameter mismatches."""
     from mureo.auth_setup import OAuthCallbackServer
 
     server = OAuthCallbackServer(port=0, expected_state="correct-state")
@@ -713,7 +713,7 @@ def test_oauth_state_mismatch() -> None:
 
 @pytest.mark.unit
 def test_oauth_state_missing_in_callback() -> None:
-    """コールバックにstateパラメータが無い場合エラーになること"""
+    """An error is raised when the callback has no state parameter."""
     from mureo.auth_setup import OAuthCallbackServer
 
     server = OAuthCallbackServer(port=0, expected_state="expected-state")
@@ -733,13 +733,13 @@ def test_oauth_state_missing_in_callback() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 13. XSS防止（HTMLエスケープ）
+# 13. XSS prevention (HTML escaping)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_xss_prevention() -> None:
-    """コールバックサーバーのHTML出力がエスケープされていること"""
+    """The callback server's HTML output is properly escaped."""
     from mureo.auth_setup import OAuthCallbackServer
 
     server = OAuthCallbackServer(port=0)
@@ -750,7 +750,7 @@ def test_xss_prevention() -> None:
 
     time.sleep(0.1)
     conn = http.client.HTTPConnection("localhost", actual_port)
-    # XSS攻撃を模したerrorパラメータ
+    # An error parameter simulating an XSS attack.
     conn.request(
         "GET",
         "/callback?error=%3Cscript%3Ealert(1)%3C/script%3E",
@@ -759,20 +759,20 @@ def test_xss_prevention() -> None:
     body = response.read().decode("utf-8")
     conn.close()
 
-    # <script>タグがエスケープされていること
+    # The <script> tag should be escaped.
     assert "<script>" not in body
     assert "&lt;script&gt;" in body
 
 
 # ---------------------------------------------------------------------------
-# 14. InstalledAppFlowがrun_local_serverで例外を投げた場合
+# 14. InstalledAppFlow.run_local_server raises an exception
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_run_google_oauth_flow_exception() -> None:
-    """InstalledAppFlow.run_local_server()が例外を投げた場合にそのまま伝播すること"""
+    """When InstalledAppFlow.run_local_server() raises, the exception propagates."""
     from mureo.auth_setup import run_google_oauth
 
     mock_flow = MagicMock()
@@ -790,7 +790,7 @@ async def test_run_google_oauth_flow_exception() -> None:
 
 
 # ---------------------------------------------------------------------------
-# MCP設定の配置テスト
+# Tests for MCP-config placement
 # ---------------------------------------------------------------------------
 
 
@@ -886,7 +886,7 @@ def test_install_mcp_config_global_fallback_no_cli(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_install_mcp_config_project(tmp_path: Path) -> None:
-    """プロジェクトMCP設定が正しく作成されること"""
+    """Project-level MCP config is created correctly."""
     from mureo.auth_setup import install_mcp_config
 
     with patch("mureo.auth_setup.Path.cwd", return_value=tmp_path):
@@ -941,7 +941,7 @@ def test_install_mcp_config_project_merges_existing(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# install_credential_guard テスト
+# install_credential_guard tests
 # ---------------------------------------------------------------------------
 
 
@@ -1050,13 +1050,13 @@ def test_install_credential_guard_skip_on_corrupt_json(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# _select_account テスト
+# _select_account tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_select_account_fallback_valid_choice() -> None:
-    """simple-term-menuなしで番号入力による選択（行62-76）"""
+    """Selection by number input without simple-term-menu (lines 62-76)."""
     from mureo.auth_setup import _select_account
 
     accounts = [
@@ -1073,7 +1073,7 @@ def test_select_account_fallback_valid_choice() -> None:
 
 @pytest.mark.unit
 def test_select_account_fallback_invalid_choice() -> None:
-    """simple-term-menuなしで無効な番号入力（行75-76）"""
+    """Invalid number input without simple-term-menu (lines 75-76)."""
     from mureo.auth_setup import _select_account
 
     accounts = [
@@ -1089,7 +1089,7 @@ def test_select_account_fallback_invalid_choice() -> None:
 
 @pytest.mark.unit
 def test_select_account_fallback_non_numeric() -> None:
-    """simple-term-menuなしで数値以外の入力（行73）"""
+    """Non-numeric input without simple-term-menu (line 73)."""
     from mureo.auth_setup import _select_account
 
     accounts = [
@@ -1105,7 +1105,7 @@ def test_select_account_fallback_non_numeric() -> None:
 
 @pytest.mark.unit
 def test_select_account_terminal_menu_cancel() -> None:
-    """TerminalMenuでキャンセル（Noneが返る）（行56-58）"""
+    """Cancel from TerminalMenu (returns None) (lines 56-58)."""
     from mureo.auth_setup import _select_account
 
     accounts = [
@@ -1113,7 +1113,7 @@ def test_select_account_terminal_menu_cancel() -> None:
     ]
 
     mock_menu = MagicMock()
-    mock_menu.show.return_value = None  # キャンセル
+    mock_menu.show.return_value = None  # cancel
 
     with patch("simple_term_menu.TerminalMenu", return_value=mock_menu):
         result = _select_account(accounts)
@@ -1123,7 +1123,7 @@ def test_select_account_terminal_menu_cancel() -> None:
 
 @pytest.mark.unit
 def test_select_account_with_custom_label_fn() -> None:
-    """label_fn指定時にカスタムラベルが使われる（行46-47）"""
+    """A custom label is used when label_fn is provided (lines 46-47)."""
     from mureo.auth_setup import _select_account
 
     accounts = [
@@ -1137,19 +1137,19 @@ def test_select_account_with_custom_label_fn() -> None:
         result = _select_account(accounts, label_fn=lambda a: f"Custom: {a['name']}")
 
     assert result == "111"
-    # TerminalMenuに渡されたラベルを確認
+    # Verify the labels passed to TerminalMenu.
     call_args = MockTM.call_args
     assert call_args[0][0] == ["Custom: Account A"]
 
 
 # ---------------------------------------------------------------------------
-# setup_mcp_config テスト
+# setup_mcp_config tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_setup_mcp_config_fallback_global() -> None:
-    """simple-term-menuなしで番号入力でグローバル選択（行388-398）"""
+    """Choose Global via number input without simple-term-menu (lines 388-398)."""
     from mureo.auth_setup import setup_mcp_config
 
     with (
@@ -1166,7 +1166,7 @@ def test_setup_mcp_config_fallback_global() -> None:
 
 @pytest.mark.unit
 def test_setup_mcp_config_fallback_project() -> None:
-    """simple-term-menuなしで番号入力でプロジェクト選択"""
+    """Choose Project via number input without simple-term-menu."""
     from mureo.auth_setup import setup_mcp_config
 
     with (
@@ -1183,7 +1183,7 @@ def test_setup_mcp_config_fallback_project() -> None:
 
 @pytest.mark.unit
 def test_setup_mcp_config_fallback_skip() -> None:
-    """simple-term-menuなしで番号入力でスキップ（行395-396）"""
+    """Skip via number input without simple-term-menu (lines 395-396)."""
     from mureo.auth_setup import setup_mcp_config
 
     with (
@@ -1198,7 +1198,7 @@ def test_setup_mcp_config_fallback_skip() -> None:
 
 @pytest.mark.unit
 def test_setup_mcp_config_fallback_default() -> None:
-    """simple-term-menuなしで空入力時はデフォルト（グローバル）（行394）"""
+    """Empty input defaults to Global without simple-term-menu (line 394)."""
     from mureo.auth_setup import setup_mcp_config
 
     with (
@@ -1215,11 +1215,11 @@ def test_setup_mcp_config_fallback_default() -> None:
 
 @pytest.mark.unit
 def test_setup_mcp_config_terminal_menu_skip() -> None:
-    """TerminalMenuでスキップ選択（index=2）（行383）"""
+    """Choose Skip from TerminalMenu (index=2) (line 383)."""
     from mureo.auth_setup import setup_mcp_config
 
     mock_menu = MagicMock()
-    mock_menu.show.return_value = 2  # スキップ
+    mock_menu.show.return_value = 2  # skip
 
     with (
         patch("simple_term_menu.TerminalMenu", return_value=mock_menu),
@@ -1232,7 +1232,7 @@ def test_setup_mcp_config_terminal_menu_skip() -> None:
 
 @pytest.mark.unit
 def test_setup_mcp_config_terminal_menu_cancel() -> None:
-    """TerminalMenuでキャンセル（None）"""
+    """Cancel from TerminalMenu (None)."""
     from mureo.auth_setup import setup_mcp_config
 
     mock_menu = MagicMock()
@@ -1249,11 +1249,11 @@ def test_setup_mcp_config_terminal_menu_cancel() -> None:
 
 @pytest.mark.unit
 def test_setup_mcp_config_already_exists() -> None:
-    """MCP設定が既に存在する場合（行403-404）"""
+    """When MCP config already exists (lines 403-404)."""
     from mureo.auth_setup import setup_mcp_config
 
     mock_menu = MagicMock()
-    mock_menu.show.return_value = 0  # グローバル
+    mock_menu.show.return_value = 0  # global
 
     with (
         patch("simple_term_menu.TerminalMenu", return_value=mock_menu),
@@ -1265,13 +1265,13 @@ def test_setup_mcp_config_already_exists() -> None:
 
 
 # ---------------------------------------------------------------------------
-# OAuthCallbackServer 追加テスト
+# Additional OAuthCallbackServer tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_oauth_callback_server_invalid_request() -> None:
-    """不正なリクエスト（codeもerrorもない）の場合"""
+    """A malformed request (no code, no error)."""
     from mureo.auth_setup import OAuthCallbackServer
 
     server = OAuthCallbackServer(port=0)
@@ -1293,21 +1293,21 @@ def test_oauth_callback_server_invalid_request() -> None:
 
 @pytest.mark.unit
 def test_oauth_callback_server_shutdown() -> None:
-    """shutdownメソッドが正常に動作する"""
+    """The shutdown method works correctly."""
     from mureo.auth_setup import OAuthCallbackServer
 
     server = OAuthCallbackServer(port=0)
-    server.shutdown()  # 例外なく完了すること
+    server.shutdown()  # should complete without raising
 
 
 # ---------------------------------------------------------------------------
-# save_credentials Meta Ads テスト
+# save_credentials Meta Ads tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_save_credentials_meta_ads(tmp_path: Path) -> None:
-    """Meta Ads認証情報が正しく保存されること"""
+    """Meta Ads credentials are saved correctly."""
     from mureo.auth import MetaAdsCredentials
     from mureo.auth_setup import save_credentials
 
@@ -1334,7 +1334,7 @@ def test_save_credentials_meta_ads(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_save_credentials_corrupted_existing(tmp_path: Path) -> None:
-    """既存のcredentials.jsonが壊れている場合でも新規作成される"""
+    """A new file is created even when the existing credentials.json is corrupt."""
     from mureo.auth_setup import save_credentials
 
     cred_path = tmp_path / "credentials.json"
@@ -1354,13 +1354,13 @@ def test_save_credentials_corrupted_existing(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Meta Ads OAuth テスト
+# Meta Ads OAuth tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_generate_meta_auth_url() -> None:
-    """Meta OAuth認証URLが正しく生成されること"""
+    """The Meta OAuth authorization URL is generated correctly."""
     from mureo.auth_setup import _generate_meta_auth_url
 
     url = _generate_meta_auth_url(app_id="test-app-id", port=8888, state="abc123")
@@ -1373,7 +1373,7 @@ def test_generate_meta_auth_url() -> None:
 
 @pytest.mark.unit
 def test_generate_meta_auth_url_no_state() -> None:
-    """state=Noneの場合はstateパラメータが含まれない"""
+    """When state=None, the state parameter is omitted."""
     from mureo.auth_setup import _generate_meta_auth_url
 
     url = _generate_meta_auth_url(app_id="test-app-id", port=8888, state=None)
@@ -1384,7 +1384,7 @@ def test_generate_meta_auth_url_no_state() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_exchange_code_for_short_token() -> None:
-    """Short-Lived Tokenの取得"""
+    """Fetching a short-lived token."""
     from mureo.auth_setup import _exchange_code_for_short_token
 
     mock_response = MagicMock()
@@ -1411,7 +1411,7 @@ async def test_exchange_code_for_short_token() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_exchange_code_for_short_token_error() -> None:
-    """Short-Lived Token取得失敗時にRuntimeError"""
+    """RuntimeError when short-lived token fetch fails."""
     from mureo.auth_setup import _exchange_code_for_short_token
 
     with patch("httpx.AsyncClient") as MockClient:
@@ -1433,7 +1433,7 @@ async def test_exchange_code_for_short_token_error() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_exchange_short_for_long_token() -> None:
-    """Long-Lived Tokenへの変換"""
+    """Converting to a long-lived token."""
     from mureo.auth_setup import MetaOAuthResult, _exchange_short_for_long_token
 
     mock_response = MagicMock()
@@ -1464,7 +1464,7 @@ async def test_exchange_short_for_long_token() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_exchange_short_for_long_token_error() -> None:
-    """Long-Lived Token変換失敗時にRuntimeError"""
+    """RuntimeError when long-lived token conversion fails."""
     from mureo.auth_setup import _exchange_short_for_long_token
 
     with patch("httpx.AsyncClient") as MockClient:
@@ -1485,7 +1485,7 @@ async def test_exchange_short_for_long_token_error() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_meta_ad_accounts() -> None:
-    """Meta広告アカウント一覧取得"""
+    """Fetching the Meta ad-account list."""
     from mureo.auth_setup import list_meta_ad_accounts
 
     mock_response = MagicMock()
@@ -1512,7 +1512,7 @@ async def test_list_meta_ad_accounts() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_meta_ad_accounts_error() -> None:
-    """Meta広告アカウント一覧取得失敗時にRuntimeError"""
+    """RuntimeError when fetching the Meta ad-account list fails."""
     from mureo.auth_setup import list_meta_ad_accounts
 
     with patch("httpx.AsyncClient") as MockClient:
@@ -1529,7 +1529,7 @@ async def test_list_meta_ad_accounts_error() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_run_meta_oauth() -> None:
-    """Meta OAuthフロー全体"""
+    """Full Meta OAuth flow."""
     from mureo.auth_setup import MetaOAuthResult, run_meta_oauth
 
     with (
@@ -1552,7 +1552,7 @@ async def test_run_meta_oauth() -> None:
         server_instance.server.server_address = ("localhost", 9999)
         server_instance.error = None
         server_instance.authorization_code = "test-auth-code"
-        # wait_for_callbackは即座に返る
+        # wait_for_callback returns immediately.
         server_instance.wait_for_callback = MagicMock()
 
         result = await run_meta_oauth(
@@ -1567,7 +1567,7 @@ async def test_run_meta_oauth() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_run_meta_oauth_error() -> None:
-    """Meta OAuthフローでエラーが返された場合"""
+    """When the Meta OAuth flow returns an error."""
     from mureo.auth_setup import run_meta_oauth
 
     with (
@@ -1590,7 +1590,7 @@ async def test_run_meta_oauth_error() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_run_meta_oauth_timeout() -> None:
-    """Meta OAuthフローでタイムアウトした場合"""
+    """When the Meta OAuth flow times out."""
     from mureo.auth_setup import run_meta_oauth
 
     with (
@@ -1600,7 +1600,7 @@ async def test_run_meta_oauth_timeout() -> None:
         server_instance = MockServer.return_value
         server_instance.server.server_address = ("localhost", 9999)
         server_instance.error = None
-        server_instance.authorization_code = None  # タイムアウト
+        server_instance.authorization_code = None  # timeout
         server_instance.wait_for_callback = MagicMock()
 
         with pytest.raises(RuntimeError, match="Authentication timed out"):
@@ -1613,7 +1613,7 @@ async def test_run_meta_oauth_timeout() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_setup_meta_ads_flow(tmp_path: Path) -> None:
-    """Meta Adsセットアップの全体フロー"""
+    """The complete Meta Ads setup flow."""
     from mureo.auth_setup import MetaOAuthResult, setup_meta_ads
 
     cred_path = tmp_path / "credentials.json"
@@ -1657,7 +1657,7 @@ async def test_setup_meta_ads_flow(tmp_path: Path) -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_setup_meta_ads_single_account(tmp_path: Path) -> None:
-    """1アカウントのみの場合は自動選択"""
+    """A single account is auto-selected."""
     from mureo.auth_setup import MetaOAuthResult, setup_meta_ads
 
     cred_path = tmp_path / "credentials.json"
@@ -1695,7 +1695,7 @@ async def test_setup_meta_ads_single_account(tmp_path: Path) -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_setup_meta_ads_no_accounts(tmp_path: Path) -> None:
-    """アカウントが見つからない場合はRuntimeError"""
+    """RuntimeError when no accounts are found."""
     from mureo.auth_setup import MetaOAuthResult, setup_meta_ads
 
     cred_path = tmp_path / "credentials.json"
@@ -1727,7 +1727,7 @@ async def test_setup_meta_ads_no_accounts(tmp_path: Path) -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_setup_meta_ads_cancel_selection(tmp_path: Path) -> None:
-    """アカウント選択をキャンセルした場合はデフォルトアカウントを使用"""
+    """When account selection is cancelled, the default account is used."""
     from mureo.auth_setup import MetaOAuthResult, setup_meta_ads
 
     cred_path = tmp_path / "credentials.json"
@@ -1761,13 +1761,13 @@ async def test_setup_meta_ads_cancel_selection(tmp_path: Path) -> None:
         result = await setup_meta_ads(credentials_path=cred_path)
 
     data = json.loads(cred_path.read_text(encoding="utf-8"))
-    # キャンセル時は最初のアカウントがデフォルト
+    # On cancel, the first account is the default.
     assert data["meta_ads"]["account_id"] == "act_111"
 
 
 @pytest.mark.unit
 def test_resolve_default_path() -> None:
-    """デフォルトパスの解決"""
+    """Resolve the default path."""
     from mureo.auth_setup import _resolve_default_path
 
     path = _resolve_default_path()

@@ -1,6 +1,7 @@
-"""Meta Ads mappers テスト
+"""Tests for the Meta Ads mappers.
 
-mappers.pyの各関数にモックデータを渡して正しく変換されることを確認する。
+Feeds mock data to each function in mappers.py and verifies the
+conversions.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from mureo.meta_ads.mappers import (
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー関数
+# Helper functions
 # ---------------------------------------------------------------------------
 
 

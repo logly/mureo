@@ -1,8 +1,8 @@
-"""Meta Ads Lead Ads (リード広告) ユニットテスト
+"""Unit tests for Meta Ads Lead Ads.
 
-LeadsMixin の _get / _post をモックしてテストする。
-MCPツールハンドラーのテストも含む。
-リードデータには個人情報が含まれるためログ出力しないことも検証する。
+Mocks LeadsMixin's _get / _post during testing and also covers the
+MCP tool handlers. Verifies that lead data — which contains PII — is
+never written to logs.
 """
 
 from __future__ import annotations
@@ -15,12 +15,12 @@ import pytest
 from mureo.meta_ads._leads import _VALID_FORM_STATUSES, LeadsMixin
 
 # ---------------------------------------------------------------------------
-# ヘルパー: Mixinをテスト可能にするモッククラス
+# Helpers: mock class that makes the mixin testable
 # ---------------------------------------------------------------------------
 
 
 def _make_mock_client() -> LeadsMixin:
-    """LeadsMixinにモック _get/_post/_ad_account_id を付与したインスタンスを生成"""
+    """Build a LeadsMixin instance with mocked _get/_post/_ad_account_id."""
 
     class MockClient(LeadsMixin):
         def __init__(self) -> None:
@@ -32,7 +32,7 @@ def _make_mock_client() -> LeadsMixin:
 
 
 # ===========================================================================
-# test_list_lead_forms — フォーム一覧取得
+# test_list_lead_forms - fetch lead-form list
 # ===========================================================================
 
 
@@ -44,7 +44,7 @@ class TestListLeadForms:
 
     @pytest.mark.asyncio
     async def test_list_lead_forms(self, client: LeadsMixin) -> None:
-        """page_id指定でリードフォーム一覧を取得できること"""
+        """Can list lead forms by page_id."""
         client._get_as_page = AsyncMock(
             return_value={
                 "data": [
@@ -64,7 +64,7 @@ class TestListLeadForms:
 
     @pytest.mark.asyncio
     async def test_list_lead_forms_empty(self, client: LeadsMixin) -> None:
-        """フォームが存在しない場合は空リストを返すこと"""
+        """Returns an empty list when there are no forms."""
         client._get_as_page = AsyncMock(return_value={"data": []})
         result = await client.list_lead_forms("page_123")
 
@@ -72,7 +72,7 @@ class TestListLeadForms:
 
 
 # ===========================================================================
-# test_get_lead_form — フォーム詳細取得
+# test_get_lead_form - fetch lead-form detail
 # ===========================================================================
 
 
@@ -84,7 +84,7 @@ class TestGetLeadForm:
 
     @pytest.mark.asyncio
     async def test_get_lead_form(self, client: LeadsMixin) -> None:
-        """form_id指定でリードフォーム詳細を取得できること"""
+        """Can fetch a lead-form detail by form_id."""
         client._get = AsyncMock(
             return_value={
                 "id": "form_1",
@@ -108,7 +108,7 @@ class TestGetLeadForm:
 
 
 # ===========================================================================
-# test_create_lead_form — フォーム作成
+# test_create_lead_form - create lead form
 # ===========================================================================
 
 
@@ -120,7 +120,7 @@ class TestCreateLeadForm:
 
     @pytest.mark.asyncio
     async def test_create_lead_form(self, client: LeadsMixin) -> None:
-        """基本的なフォームを作成できること"""
+        """Can create a basic form."""
         client._post = AsyncMock(return_value={"id": "form_new"})
         questions = [
             {"type": "FULL_NAME"},
@@ -141,7 +141,7 @@ class TestCreateLeadForm:
         assert post_data["name"] == "問い合わせフォーム"
         parsed_privacy = json.loads(post_data["privacy_policy"])
         assert parsed_privacy["url"] == "https://example.com/privacy"
-        # questionsはJSON文字列として送信される
+        # questions is sent as a JSON string.
         parsed_questions = json.loads(post_data["questions"])
         assert len(parsed_questions) == 2
 
@@ -149,7 +149,7 @@ class TestCreateLeadForm:
     async def test_create_lead_form_with_custom_questions(
         self, client: LeadsMixin
     ) -> None:
-        """カスタム質問付きフォームを作成できること"""
+        """Can create a form with custom questions."""
         client._post = AsyncMock(return_value={"id": "form_custom"})
         questions = [
             {"type": "FULL_NAME"},
@@ -190,7 +190,7 @@ class TestCreateLeadForm:
     async def test_create_lead_form_with_thank_you_page(
         self, client: LeadsMixin
     ) -> None:
-        """follow_up_action_urlを指定できること"""
+        """Can specify follow_up_action_url."""
         client._post = AsyncMock(return_value={"id": "form_ty"})
         result = await client.create_lead_form(
             page_id="page_123",
@@ -206,7 +206,7 @@ class TestCreateLeadForm:
 
 
 # ===========================================================================
-# test_get_leads — リードデータ取得
+# test_get_leads - fetch lead data
 # ===========================================================================
 
 
@@ -218,7 +218,7 @@ class TestGetLeads:
 
     @pytest.mark.asyncio
     async def test_get_leads(self, client: LeadsMixin) -> None:
-        """フォームに送信されたリードデータを取得できること"""
+        """Can fetch lead data submitted to a form."""
         client._get = AsyncMock(
             return_value={
                 "data": [
@@ -253,7 +253,7 @@ class TestGetLeads:
 
     @pytest.mark.asyncio
     async def test_get_leads_with_custom_limit(self, client: LeadsMixin) -> None:
-        """limit指定でリードデータを取得できること"""
+        """Can fetch lead data with the `limit` argument."""
         client._get = AsyncMock(return_value={"data": []})
         await client.get_leads("form_1", limit=25)
 
@@ -262,7 +262,7 @@ class TestGetLeads:
 
     @pytest.mark.asyncio
     async def test_get_leads_empty(self, client: LeadsMixin) -> None:
-        """リードデータが空の場合は空リストを返すこと"""
+        """Returns an empty list when there is no lead data."""
         client._get = AsyncMock(return_value={"data": []})
         result = await client.get_leads("form_1")
 
@@ -304,7 +304,7 @@ class TestGetLeads:
 
 
 # ===========================================================================
-# test_get_ad_leads — 広告別リードデータ取得
+# test_get_ad_leads - fetch ad-level lead data
 # ===========================================================================
 
 
@@ -316,7 +316,7 @@ class TestGetAdLeads:
 
     @pytest.mark.asyncio
     async def test_get_ad_leads(self, client: LeadsMixin) -> None:
-        """広告経由のリードデータを取得できること"""
+        """Can fetch lead data for a specific ad."""
         client._get = AsyncMock(
             return_value={
                 "data": [
@@ -340,7 +340,7 @@ class TestGetAdLeads:
 
     @pytest.mark.asyncio
     async def test_get_ad_leads_with_limit(self, client: LeadsMixin) -> None:
-        """limit指定で広告別リードデータを取得できること"""
+        """Can fetch per-ad lead data with the `limit` argument."""
         client._get = AsyncMock(return_value={"data": []})
         await client.get_ad_leads("ad_456", limit=50)
 
@@ -374,7 +374,7 @@ class TestGetAdLeads:
 
 
 # ===========================================================================
-# test_api_error — APIエラーハンドリング
+# test_api_error - API error handling
 # ===========================================================================
 
 
@@ -386,7 +386,7 @@ class TestLeadsApiError:
 
     @pytest.mark.asyncio
     async def test_api_error_propagates(self, client: LeadsMixin) -> None:
-        """APIエラーが適切に伝播すること"""
+        """API errors propagate appropriately."""
         client._get_as_page = AsyncMock(
             side_effect=RuntimeError(
                 "Meta API request failed (status=400, path=/page_123/leadgen_forms)"
@@ -397,7 +397,7 @@ class TestLeadsApiError:
 
     @pytest.mark.asyncio
     async def test_api_error_on_create(self, client: LeadsMixin) -> None:
-        """フォーム作成時のAPIエラーが適切に伝播すること"""
+        """API errors during form creation propagate appropriately."""
         client._post = AsyncMock(
             side_effect=RuntimeError(
                 "Meta API request failed (status=403, path=/page_123/leadgen_forms)"
@@ -413,14 +413,14 @@ class TestLeadsApiError:
 
     @pytest.mark.asyncio
     async def test_api_error_on_get_leads(self, client: LeadsMixin) -> None:
-        """リードデータ取得時のAPIエラーが適切に伝播すること"""
+        """API errors during lead-data fetch propagate appropriately."""
         client._get = AsyncMock(side_effect=RuntimeError("Meta API request failed"))
         with pytest.raises(RuntimeError):
             await client.get_leads("form_1")
 
 
 # ===========================================================================
-# MCPツールハンドラーテスト
+# MCP tool handler tests
 # ===========================================================================
 
 
@@ -437,7 +437,7 @@ def _import_handlers():
 
 
 def _mock_meta_ads_context():
-    """Meta Ads認証情報とクライアントのモックを返す"""
+    """Return mocks for Meta Ads credentials and the API client."""
     mock_client = AsyncMock()
     mock_creds = MagicMock()
     return mock_creds, mock_client
@@ -445,7 +445,7 @@ def _mock_meta_ads_context():
 
 @pytest.mark.unit
 class TestLeadFormsMcpHandlers:
-    """Lead Ads系MCPハンドラーテスト"""
+    """Lead Ads MCP handler tests."""
 
     async def test_lead_forms_list(self) -> None:
         mod = _import_meta_ads_tools()
@@ -575,7 +575,7 @@ class TestLeadFormsMcpHandlers:
         assert parsed[0]["id"] == "lead_2"
 
     async def test_lead_forms_missing_page_id(self) -> None:
-        """page_id欠損でValueErrorが発生"""
+        """Raises ValueError when page_id is missing."""
         mod = _import_meta_ads_tools()
         handlers = _import_handlers()
         creds, client = _mock_meta_ads_context()
@@ -589,7 +589,7 @@ class TestLeadFormsMcpHandlers:
                 )
 
     async def test_leads_no_credentials(self) -> None:
-        """認証情報なしでエラーテキストを返す"""
+        """Returns error text when no credentials are present."""
         mod = _import_meta_ads_tools()
         handlers = _import_handlers()
         with patch.object(handlers, "load_meta_ads_credentials", return_value=None):
@@ -603,7 +603,7 @@ class TestLeadFormsMcpHandlers:
 
 @pytest.mark.unit
 class TestLeadAdsToolDefinitions:
-    """Lead Adsツール定義の検証"""
+    """Verify Lead Ads tool definitions."""
 
     @pytest.mark.parametrize(
         "tool_name,expected_required",
@@ -626,14 +626,14 @@ class TestLeadAdsToolDefinitions:
     def test_required_fields(
         self, tool_name: str, expected_required: list[str]
     ) -> None:
-        """各ツールのrequiredフィールドが正しいこと"""
+        """Each tool's required field list is correct."""
         mod = _import_meta_ads_tools()
         tool = next((t for t in mod.TOOLS if t.name == tool_name), None)
-        assert tool is not None, f"ツール {tool_name} が見つかりません"
+        assert tool is not None, f"Tool {tool_name} not found"
         assert set(tool.inputSchema["required"]) == set(expected_required)
 
     def test_all_lead_tools_exist(self) -> None:
-        """8つのLead Adsツールがすべて登録されていること"""
+        """All 8 Lead Ads tools are registered."""
         mod = _import_meta_ads_tools()
         tool_names = {t.name for t in mod.TOOLS}
         expected = {
@@ -650,7 +650,7 @@ class TestLeadAdsToolDefinitions:
 
 
 # ===========================================================================
-# update_lead_form — フォームステータス変更 (PR 2)
+# update_lead_form - change form status (PR 2)
 # ===========================================================================
 
 
@@ -662,7 +662,7 @@ class TestUpdateLeadForm:
 
     @pytest.mark.asyncio
     async def test_update_lead_form_archived(self, client: LeadsMixin) -> None:
-        """status="ARCHIVED" を POST /{form_id} に送る"""
+        """Send status="ARCHIVED" via POST /{form_id}."""
         await client.update_lead_form("form_1", status="ARCHIVED")
         client._post.assert_called_once()
         call_args = client._post.call_args
@@ -671,7 +671,7 @@ class TestUpdateLeadForm:
 
     @pytest.mark.asyncio
     async def test_update_lead_form_active(self, client: LeadsMixin) -> None:
-        """status="ACTIVE" でフォームを復活できること"""
+        """Can re-activate a form by setting status="ACTIVE"."""
         await client.update_lead_form("form_1", status="ACTIVE")
         call_args = client._post.call_args
         assert call_args[0][1] == {"status": "ACTIVE"}
@@ -680,24 +680,24 @@ class TestUpdateLeadForm:
     async def test_update_lead_form_rejects_invalid_status(
         self, client: LeadsMixin
     ) -> None:
-        """Meta が許す status 値以外は ValueError で早期に弾く
+        """Reject status values Meta does not allow with an early ValueError.
 
-        サーバラウンドトリップして 400 を見るより、helper 段階で型エラーに
-        するほうがオペレーター視点でデバッグしやすい。
+        Failing at the helper layer is easier for operators to debug than
+        making a server round-trip just to see a 400.
         """
         with pytest.raises(ValueError) as excinfo:
             await client.update_lead_form("form_1", status="DELETED")
         assert "status" in str(excinfo.value)
-        # API call は走らない
+        # The API call must not run.
         client._post.assert_not_called()
 
     def test_valid_statuses_pinned(self) -> None:
-        """validation の根拠となる定数が ARCHIVED / ACTIVE の 2 値であること"""
+        """The validation constant is exactly the two values {ARCHIVED, ACTIVE}."""
         assert frozenset({"ACTIVE", "ARCHIVED"}) == _VALID_FORM_STATUSES
 
 
 # ===========================================================================
-# duplicate_lead_form — フォーム複製 (PR 2)
+# duplicate_lead_form - duplicate form (PR 2)
 # ===========================================================================
 
 
@@ -711,8 +711,8 @@ class TestDuplicateLeadForm:
     async def test_duplicate_lead_form_fetches_source_then_creates(
         self, client: LeadsMixin
     ) -> None:
-        """source form を get_lead_form で取得 → page_id 経由で
-        leadgen_forms に POST する"""
+        """Fetch the source form via get_lead_form, then POST to
+        leadgen_forms via page_id."""
         source = {
             "id": "form_1",
             "name": "原本",
@@ -723,7 +723,7 @@ class TestDuplicateLeadForm:
                 {"type": "EMAIL"},
             ],
             "follow_up_action_url": "https://example.com/thanks",
-            # privacy_policy はネストされた dict として返ってくる
+            # privacy_policy is returned as a nested dict.
             "privacy_policy": {"url": "https://example.com/policy"},
         }
         client._get = AsyncMock(return_value=source)
@@ -741,16 +741,16 @@ class TestDuplicateLeadForm:
         post_data = client._post.call_args[0][1]
         assert post_path == "/page_123/leadgen_forms"
         assert post_data["name"] == "複製"
-        # questions は JSON エンコードされて渡る
+        # questions is passed JSON-encoded.
         assert json.loads(post_data["questions"]) == [
             {"type": "FULL_NAME"},
             {"type": "EMAIL"},
         ]
-        # privacy_policy.url が抜き出されて privacy_policy={"url": ...} に再構築される
+        # privacy_policy.url is extracted and re-emitted as privacy_policy={"url": ...}.
         assert json.loads(post_data["privacy_policy"]) == {
             "url": "https://example.com/policy"
         }
-        # follow_up_action_url / locale は preserved
+        # follow_up_action_url / locale are preserved.
         assert post_data["follow_up_action_url"] == "https://example.com/thanks"
         assert post_data["locale"] == "ja_JP"
 
@@ -758,7 +758,7 @@ class TestDuplicateLeadForm:
     async def test_duplicate_lead_form_handles_missing_optional_fields(
         self, client: LeadsMixin
     ) -> None:
-        """source に follow_up_action_url / locale が無い場合も動く"""
+        """Works even when source omits follow_up_action_url / locale."""
         source = {
             "id": "form_1",
             "name": "原本",
@@ -771,7 +771,7 @@ class TestDuplicateLeadForm:
         await client.duplicate_lead_form("form_1", page_id="page_123", new_name="Copy")
 
         post_data = client._post.call_args[0][1]
-        # 任意フィールドは追加されない
+        # Optional fields are not added.
         assert "follow_up_action_url" not in post_data
         assert "locale" not in post_data
 
@@ -779,7 +779,7 @@ class TestDuplicateLeadForm:
     async def test_duplicate_lead_form_accepts_string_privacy_policy_url(
         self, client: LeadsMixin
     ) -> None:
-        """旧形式で privacy_policy_url 文字列が返ってくるケースも吸収する"""
+        """Also handles the legacy form that returns a privacy_policy_url string."""
         source = {
             "id": "form_1",
             "name": "原本",
@@ -800,7 +800,7 @@ class TestDuplicateLeadForm:
     async def test_duplicate_lead_form_uses_new_name_not_source_name(
         self, client: LeadsMixin
     ) -> None:
-        """新しい name で複製されること (source の name は使わない)"""
+        """The duplicate uses the new name (not the source's name)."""
         source = {
             "id": "form_1",
             "name": "オリジナル",
@@ -821,11 +821,10 @@ class TestDuplicateLeadForm:
     async def test_duplicate_lead_form_missing_privacy_policy_raises(
         self, client: LeadsMixin
     ) -> None:
-        """privacy_policy も privacy_policy_url も無い場合は ValueError
+        """Raises ValueError when neither privacy_policy nor privacy_policy_url is present.
 
-        Meta は lead form 作成時に privacy_policy.url を必須としているので、
-        source から取れなかったら早期にエラーにする (Meta から 400 を返さ
-        れる前に弾く)。
+        Meta requires privacy_policy.url when creating a lead form, so if the
+        source has none, error out early (before Meta returns a 400).
         """
         source = {
             "id": "form_1",
@@ -844,10 +843,10 @@ class TestDuplicateLeadForm:
     async def test_duplicate_lead_form_empty_privacy_url_raises(
         self, client: LeadsMixin
     ) -> None:
-        """privacy_policy.url が空文字 / 欠落の場合も同じ ValueError 経路を通る
+        """An empty / missing privacy_policy.url goes through the same ValueError path.
 
-        Meta は url が空のままだと 400 を返すので、helper 段階で拾って
-        オペレーターに即座に分かるエラーにする。
+        Meta returns 400 if url is empty, so we catch it at the helper layer
+        and surface an immediately recognisable error to the operator.
         """
         source = {
             "id": "form_1",
@@ -867,8 +866,8 @@ class TestDuplicateLeadForm:
     async def test_duplicate_lead_form_link_text_only_privacy_raises(
         self, client: LeadsMixin
     ) -> None:
-        """privacy_policy dict が link_text だけで url を持たないケースも
-        ValueError (Meta は url 必須)
+        """A privacy_policy dict that has only link_text and no url also raises
+        ValueError (Meta requires url).
         """
         source = {
             "id": "form_1",
@@ -1006,8 +1005,8 @@ class TestCreateLeadFormAdvanced:
     async def test_advanced_kwargs_all_omitted_keeps_backcompat_shape(
         self, client: LeadsMixin
     ) -> None:
-        """新しい optional kwargs を全て省略しても従来の payload と一致
-        — 既存 caller を破壊しないことを ABI レベルで pin する"""
+        """Omitting every new optional kwarg yields a payload identical to the
+        legacy one — pins the ABI to avoid breaking existing callers."""
         await client.create_lead_form(
             page_id="page_123",
             name="basic",
@@ -1015,7 +1014,7 @@ class TestCreateLeadFormAdvanced:
             privacy_policy_url="https://example.com/policy",
         )
         data = client._post.call_args[0][1]
-        # 新フィールドは送られない
+        # The new fields are not sent.
         assert "context_card" not in data
         assert "thank_you_page" not in data
         assert "is_higher_intent" not in data
@@ -1025,7 +1024,7 @@ class TestCreateLeadFormAdvanced:
     async def test_context_card_serialised_into_payload(
         self, client: LeadsMixin
     ) -> None:
-        """intro 画面の構成情報が JSON エンコードされて context_card に入る"""
+        """The intro-screen config is JSON-encoded into context_card."""
         card = {
             "title": "資料請求はこちら",
             "content": "60秒で完了します。",
@@ -1046,7 +1045,7 @@ class TestCreateLeadFormAdvanced:
     async def test_thank_you_page_serialised_into_payload(
         self, client: LeadsMixin
     ) -> None:
-        """完了画面の構成情報が JSON エンコードされて thank_you_page に入る"""
+        """The thank-you-screen config is JSON-encoded into thank_you_page."""
         page = {
             "title": "ありがとうございます",
             "body": "担当者から連絡します。",
@@ -1068,9 +1067,10 @@ class TestCreateLeadFormAdvanced:
     async def test_is_higher_intent_true_added_as_boolean(
         self, client: LeadsMixin
     ) -> None:
-        """higher-intent は 3-step (入力→確認→送信) に切り替える bool flag
+        """higher-intent is a boolean flag switching to a 3-step form
+        (input → confirm → submit).
 
-        Meta API は文字列ではなく真偽値を期待する。
+        The Meta API expects a boolean, not a string.
         """
         await client.create_lead_form(
             page_id="page_123",
@@ -1086,8 +1086,8 @@ class TestCreateLeadFormAdvanced:
     async def test_is_higher_intent_false_default_not_sent(
         self, client: LeadsMixin
     ) -> None:
-        """デフォルト (False) は payload に出ない — Meta の標準 = False と
-        一致するので、明示的に送る必要はない"""
+        """The default (False) is omitted from the payload — Meta's default is also
+        False, so there is no need to send it explicitly."""
         await client.create_lead_form(
             page_id="page_123",
             name="standard form",
@@ -1101,7 +1101,7 @@ class TestCreateLeadFormAdvanced:
     async def test_conditional_questions_choices_serialised(
         self, client: LeadsMixin
     ) -> None:
-        """conditional question 分岐情報は JSON エンコードされて送られる"""
+        """Conditional-question branch info is JSON-encoded before sending."""
         choices = [
             {
                 "question": "predefined",
@@ -1135,8 +1135,8 @@ class TestExportLeadsToCsv:
     async def test_writes_csv_header_from_form_questions(
         self, client: LeadsMixin, tmp_path: pytest.TempPathFactory
     ) -> None:
-        """CSV 1 行目は form の questions の順序に従う — operator が
-        export を何度走らせても列順が安定する"""
+        """The first CSV row follows the form's questions order — the column
+        order remains stable across repeated exports."""
         from pathlib import Path
 
         form = {
@@ -1168,10 +1168,10 @@ class TestExportLeadsToCsv:
 
         rows = out.read_text(encoding="utf-8").splitlines()
         header = rows[0].split(",")
-        # id / created_time + 質問キー
+        # id / created_time + question keys
         assert header[:2] == ["id", "created_time"]
         assert set(header[2:]) == {"full_name", "email", "phone_number"}
-        # 列順は form の question 順
+        # Column order matches the form's question order.
         assert header[2:] == ["full_name", "email", "phone_number"]
 
     @pytest.mark.asyncio
@@ -1234,7 +1234,7 @@ class TestExportLeadsToCsv:
         tmp_path: pytest.TempPathFactory,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """lead の field_data の値は log 出力に絶対現れない"""
+        """lead.field_data values must never appear in log output."""
         from pathlib import Path
         import logging
 
@@ -1264,7 +1264,7 @@ class TestExportLeadsToCsv:
     async def test_csv_field_order_override(
         self, client: LeadsMixin, tmp_path: pytest.TempPathFactory
     ) -> None:
-        """caller が field_order を明示したら form の question 順より優先する"""
+        """When the caller specifies field_order, it takes priority over the form's question order."""
         from pathlib import Path
 
         form = {
@@ -1298,7 +1298,7 @@ class TestExportLeadsToCsv:
     async def test_csv_handles_missing_field_data(
         self, client: LeadsMixin, tmp_path: pytest.TempPathFactory
     ) -> None:
-        """lead が一部 field を持たない場合は空セルにする (raise しない)"""
+        """When a lead is missing some fields, the cells are blank (do not raise)."""
         from pathlib import Path
 
         form = {
@@ -1314,7 +1314,7 @@ class TestExportLeadsToCsv:
                 "id": "lead_1",
                 "created_time": "2026-01-01T00:00:00+0000",
                 "field_data": [
-                    # full_name 欠落
+                    # full_name missing
                     {"name": "email", "values": ["a@example.com"]},
                 ],
             },
@@ -1325,7 +1325,7 @@ class TestExportLeadsToCsv:
         count = await client.export_leads_to_csv("form_1", out)
         assert count == 1
         rows = out.read_text(encoding="utf-8").splitlines()
-        # 欠落セルは空 — 値そのものを assert するため csv パーサで読む
+        # Missing cells are blank — use a csv parser to assert the exact value.
         import csv
 
         with open(out, encoding="utf-8") as f:
@@ -1381,9 +1381,9 @@ class TestExportLeadsToCsv:
         client: LeadsMixin,
         tmp_path: pytest.TempPathFactory,
     ) -> None:
-        """値が ``=``, ``+``, ``-``, ``@``, タブ, CR で始まると
-        spreadsheet で formula として実行される (CSV injection)。
-        helper は単一引用符を先頭に付けて無害化する。"""
+        """Values starting with ``=``, ``+``, ``-``, ``@``, tab, or CR are executed
+        as a formula by spreadsheets (CSV injection); the helper neutralises
+        them by prefixing a single quote."""
         from pathlib import Path
 
         form = {
@@ -1425,8 +1425,8 @@ class TestExportLeadsToCsv:
         client: LeadsMixin,
         tmp_path: pytest.TempPathFactory,
     ) -> None:
-        """multi-select の値は ``" | "`` で結合 — 値自体に comma が
-        含まれても spreadsheet 上で意味が壊れない"""
+        """multi-select values are joined with ``" | "`` — even if a value itself
+        contains a comma, the spreadsheet semantics stay intact."""
         from pathlib import Path
 
         form = {
@@ -1463,7 +1463,7 @@ class TestExportLeadsToCsv:
         client: LeadsMixin,
         tmp_path: pytest.TempPathFactory,
     ) -> None:
-        """1 ページに収まらない件数の lead も全件取得する"""
+        """Fetches every lead even when the result spans multiple pages."""
         from pathlib import Path
 
         form = {
@@ -1513,8 +1513,8 @@ class TestExportLeadsToCsv:
             "u1@example.com",
             "u2@example.com",
         }
-        # 2nd & 3rd call は paging.next の URL を path にして呼ぶ —
-        # 4 回目以降は呼ばれない (= ループ終了が正常)
+        # 2nd & 3rd calls use the paging.next URL as the path —
+        # the 4th call must not happen (= loop termination is normal).
         assert client._get.await_count == 3
 
     @pytest.mark.asyncio
@@ -1561,10 +1561,10 @@ class TestExportLeadsToCsv:
         client: LeadsMixin,
         tmp_path: pytest.TempPathFactory,
     ) -> None:
-        """``paging.next`` は絶対 URL だが ``_get`` は BASE_URL を必ず
-        前置するため、絶対 URL を path に渡すと URL が二重連結されて
-        404 になる。helper は ``after`` cursor だけ抜き出して相対 path
-        で再呼び出しすべきこと。
+        """``paging.next`` is an absolute URL, but ``_get`` always prepends
+        BASE_URL — passing the absolute URL would double-concatenate into a
+        404. The helper must extract only the ``after`` cursor and re-call
+        with a relative path.
         """
         from pathlib import Path
 
@@ -1597,12 +1597,12 @@ class TestExportLeadsToCsv:
         out: Path = tmp_path / "out.csv"  # type: ignore[assignment]
         await client.export_leads_to_csv("form_1", out)
 
-        # 2 回目の lead fetch (= 3 番目の _get 呼び出し) は
-        # 相対 path を維持し、after cursor だけ params に渡す。
+        # The 2nd lead fetch (= 3rd _get call) keeps the relative
+        # path and only passes the after cursor in params.
         third_call = client._get.await_args_list[2]
         third_path, third_params = third_call.args[0], third_call.args[1]
         assert third_path == "/form_1/leads"
         assert third_params.get("after") == "CURSOR_ABC"
-        # 既存の fields / limit も保持される
+        # The existing fields / limit are also preserved.
         assert "fields" in third_params
         assert third_params.get("limit") == 1000

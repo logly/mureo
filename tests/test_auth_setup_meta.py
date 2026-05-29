@@ -1,4 +1,4 @@
-"""Meta Ads OAuthフロー・セットアップウィザードのテスト（TDD: RED -> GREEN -> IMPROVE）"""
+"""Tests for the Meta Ads OAuth flow and setup wizard (TDD: RED -> GREEN -> IMPROVE)."""
 
 from __future__ import annotations
 
@@ -22,20 +22,20 @@ from mureo.auth_setup import (
 )
 
 # ---------------------------------------------------------------------------
-# 定数
+# Constants
 # ---------------------------------------------------------------------------
 
 _GRAPH_API_BASE = "https://graph.facebook.com/v21.0"
 
 
 # ---------------------------------------------------------------------------
-# 1. 認証URL生成
+# 1. Build the authorization URL
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_generate_meta_auth_url() -> None:
-    """正しいFacebook認証URLが生成されること"""
+    """The correct Facebook authorization URL is generated."""
     url = _generate_meta_auth_url(app_id="123456", port=8080)
 
     assert "https://www.facebook.com/v21.0/dialog/oauth" in url
@@ -50,7 +50,7 @@ def test_generate_meta_auth_url() -> None:
 
 @pytest.mark.unit
 def test_generate_meta_auth_url_different_port() -> None:
-    """異なるポート番号で認証URLが生成されること"""
+    """An authorization URL is generated for different port numbers."""
     url = _generate_meta_auth_url(app_id="999", port=3000)
 
     assert "client_id=999" in url
@@ -58,13 +58,13 @@ def test_generate_meta_auth_url_different_port() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2. Code -> Short-Lived Token交換
+# 2. Code -> Short-Lived Token exchange
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 async def test_exchange_code_for_short_token() -> None:
-    """codeからshort-lived tokenが取得できること（HTTPモック）"""
+    """Can obtain a short-lived token from the code (HTTP mocked)."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
@@ -98,7 +98,7 @@ async def test_exchange_code_for_short_token() -> None:
 
 @pytest.mark.unit
 async def test_exchange_code_for_short_token_error() -> None:
-    """Token交換失敗時にRuntimeErrorが発生すること"""
+    """Raises RuntimeError when token exchange fails."""
     mock_response = MagicMock()
     mock_response.status_code = 400
     mock_response.json.return_value = {
@@ -127,13 +127,13 @@ async def test_exchange_code_for_short_token_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 3. Short -> Long-Lived Token変換
+# 3. Short -> Long-Lived Token conversion
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 async def test_exchange_short_for_long_token() -> None:
-    """short -> long-livedトークン変換（HTTPモック）"""
+    """Short -> long-lived token conversion (HTTP mocked)."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
@@ -163,7 +163,7 @@ async def test_exchange_short_for_long_token() -> None:
 
 @pytest.mark.unit
 async def test_exchange_short_for_long_token_error() -> None:
-    """Long-Lived Token変換失敗時にRuntimeErrorが発生すること"""
+    """Raises RuntimeError when long-lived token conversion fails."""
     mock_response = MagicMock()
     mock_response.status_code = 400
     mock_response.json.return_value = {
@@ -187,13 +187,13 @@ async def test_exchange_short_for_long_token_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 4. 広告アカウント一覧取得
+# 4. List ad accounts
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 async def test_list_meta_ad_accounts() -> None:
-    """広告アカウント一覧取得（HTTPモック）"""
+    """Fetch the ad-account list (HTTP mocked)."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
@@ -218,7 +218,7 @@ async def test_list_meta_ad_accounts() -> None:
     assert accounts[0]["name"] == "Test Account 1"
     assert accounts[1]["id"] == "act_222"
 
-    # APIリクエストの検証
+    # Verify the API request.
     mock_client.get.assert_called_once()
     call_args = mock_client.get.call_args
     url = call_args[0][0] if call_args[0] else call_args[1].get("url", "")
@@ -227,7 +227,7 @@ async def test_list_meta_ad_accounts() -> None:
 
 @pytest.mark.unit
 async def test_list_meta_ad_accounts_empty() -> None:
-    """広告アカウントが0件の場合"""
+    """When there are zero ad accounts."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {"data": []}
@@ -247,7 +247,7 @@ async def test_list_meta_ad_accounts_empty() -> None:
 
 @pytest.mark.unit
 async def test_list_meta_ad_accounts_error() -> None:
-    """広告アカウント一覧取得失敗時にRuntimeErrorが発生すること"""
+    """Raises RuntimeError when fetching the ad-account list fails."""
     mock_response = MagicMock()
     mock_response.status_code = 401
     mock_response.json.return_value = {
@@ -269,22 +269,22 @@ async def test_list_meta_ad_accounts_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5. セットアップ全体フロー
+# 5. Full setup flow
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 async def test_setup_meta_ads_flow(tmp_path: Path) -> None:
-    """セットアップ全体フロー（input/OAuth/APIすべてモック）"""
+    """Complete setup flow (input / OAuth / API all mocked)."""
     credentials_path = tmp_path / "credentials.json"
 
-    # run_meta_oauthのモック
+    # Mock run_meta_oauth.
     mock_oauth_result = MetaOAuthResult(
         access_token="long-lived-token-xyz",
         expires_in=5184000,
     )
 
-    # 広告アカウント一覧のモック
+    # Mock the ad-account list.
     mock_accounts = [
         {"id": "act_111", "name": "Test Account 1", "account_status": 1},
         {"id": "act_222", "name": "Test Account 2", "account_status": 1},
@@ -310,13 +310,13 @@ async def test_setup_meta_ads_flow(tmp_path: Path) -> None:
     assert result.app_id == "my-app-id"
     assert result.app_secret == "my-app-secret"
 
-    # OAuthが呼ばれたことを検証
+    # Verify OAuth was called.
     mock_oauth.assert_called_once_with(
         app_id="my-app-id",
         app_secret="my-app-secret",
     )
 
-    # 広告アカウント一覧が呼ばれたことを検証
+    # Verify the ad-account list was fetched.
     mock_list_accounts.assert_called_once_with(
         access_token="long-lived-token-xyz",
     )
@@ -324,7 +324,7 @@ async def test_setup_meta_ads_flow(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 async def test_setup_meta_ads_single_account(tmp_path: Path) -> None:
-    """広告アカウントが1件の場合は自動選択"""
+    """A single ad account is auto-selected."""
     credentials_path = tmp_path / "credentials.json"
 
     mock_oauth_result = MetaOAuthResult(
@@ -354,13 +354,13 @@ async def test_setup_meta_ads_single_account(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 6. 認証情報の保存
+# 6. Save credentials
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 async def test_save_credentials_meta(tmp_path: Path) -> None:
-    """Meta Ads認証情報がcredentials.jsonに保存されること"""
+    """Meta Ads credentials are saved into credentials.json."""
     credentials_path = tmp_path / "credentials.json"
 
     mock_oauth_result = MetaOAuthResult(
@@ -387,7 +387,7 @@ async def test_save_credentials_meta(tmp_path: Path) -> None:
 
         await setup_meta_ads(credentials_path=credentials_path)
 
-    # ファイルが作成されたことを確認
+    # Verify the file was created.
     assert credentials_path.exists()
 
     data = json.loads(credentials_path.read_text(encoding="utf-8"))
@@ -400,10 +400,10 @@ async def test_save_credentials_meta(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 async def test_save_credentials_meta_preserves_existing(tmp_path: Path) -> None:
-    """既存のGoogle Ads認証情報を上書きせずMeta Ads情報を追加すること"""
+    """Add Meta Ads info without overwriting existing Google Ads credentials."""
     credentials_path = tmp_path / "credentials.json"
 
-    # 既存のGoogle Ads認証情報
+    # Existing Google Ads credentials.
     existing_data = {
         "google_ads": {
             "developer_token": "existing-dev-token",
@@ -438,21 +438,21 @@ async def test_save_credentials_meta_preserves_existing(tmp_path: Path) -> None:
 
     data = json.loads(credentials_path.read_text(encoding="utf-8"))
 
-    # 既存のGoogle Ads情報が残っていること
+    # Existing Google Ads info should remain.
     assert data["google_ads"]["developer_token"] == "existing-dev-token"
-    # Meta Ads情報が追加されていること
+    # Meta Ads info should be added.
     assert data["meta_ads"]["access_token"] == "new-meta-token"
     assert data["meta_ads"]["account_id"] == "act_777"
 
 
 # ---------------------------------------------------------------------------
-# 7. MetaOAuthResult のイミュータビリティ
+# 7. MetaOAuthResult immutability
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_meta_oauth_result_immutable() -> None:
-    """MetaOAuthResultがfrozenであること"""
+    """MetaOAuthResult is frozen."""
     import dataclasses
 
     result = MetaOAuthResult(access_token="tok", expires_in=3600)
@@ -461,14 +461,14 @@ def test_meta_oauth_result_immutable() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 8. run_meta_oauth の統合テスト（ローカルサーバー＋トークン交換）
+# 8. run_meta_oauth integration test (local server + token exchange)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_run_meta_oauth() -> None:
-    """run_meta_oauthがOAuthCallbackServerを使い、OAuthフローを完了すること"""
+    """run_meta_oauth uses OAuthCallbackServer and completes the OAuth flow."""
     mock_long_result = MetaOAuthResult(
         access_token="final-long-token",
         expires_in=5184000,
@@ -501,12 +501,12 @@ async def test_run_meta_oauth() -> None:
     assert result.access_token == "final-long-token"
     assert result.expires_in == 5184000
 
-    # ブラウザが開かれたことを検証
+    # Verify the browser was opened.
     mock_browser.assert_called_once()
     browser_url = mock_browser.call_args[0][0]
     assert "test-app" in browser_url
 
-    # Short-Lived Token交換が呼ばれたことを検証
+    # Verify the short-lived token exchange was called.
     mock_short.assert_called_once_with(
         code="auth-code-received",
         app_id="test-app",
@@ -514,7 +514,7 @@ async def test_run_meta_oauth() -> None:
         redirect_uri="http://localhost:9999/callback",
     )
 
-    # Long-Lived Token変換が呼ばれたことを検証
+    # Verify the long-lived token conversion was called.
     mock_long.assert_called_once_with(
         short_token="short-token-from-code",
         app_id="test-app",
@@ -523,13 +523,13 @@ async def test_run_meta_oauth() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 9. Meta OAuth stateパラメータ（CSRF対策: CRITICAL-1）
+# 9. Meta OAuth state parameter (CSRF protection: CRITICAL-1)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_meta_auth_url_contains_state() -> None:
-    """Meta認証URLにstateパラメータが含まれること"""
+    """The Meta authorization URL includes the state parameter."""
     url = _generate_meta_auth_url(app_id="123456", port=8080, state="meta-state-abc")
     assert "state=meta-state-abc" in url
 
@@ -537,7 +537,7 @@ def test_meta_auth_url_contains_state() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_run_meta_oauth_uses_state() -> None:
-    """run_meta_oauthがstateパラメータを生成・検証すること"""
+    """run_meta_oauth generates and validates the state parameter."""
     mock_long_result = MetaOAuthResult(
         access_token="final-long-token",
         expires_in=5184000,
@@ -569,25 +569,25 @@ async def test_run_meta_oauth_uses_state() -> None:
 
     assert result.access_token == "final-long-token"
 
-    # OAuthCallbackServerにexpected_stateが渡されていること
+    # expected_state should be passed to OAuthCallbackServer.
     server_call_kwargs = mock_server_cls.call_args[1]
     assert server_call_kwargs.get("expected_state") == "meta-state-xyz"
 
-    # ブラウザURLにstateが含まれていること
+    # The browser URL should include state.
     browser_url = mock_browser.call_args[0][0]
     assert "state=meta-state-xyz" in browser_url
 
 
 # ---------------------------------------------------------------------------
-# 10. Meta OAuthフロー実行順序（CRITICAL-2）
+# 10. Meta OAuth flow execution order (CRITICAL-2)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_meta_oauth_flow_order() -> None:
-    """run_meta_oauthがサーバー起動→ブラウザ→コールバック待ちの順序で実行すること
-    （_start_callback_serverのブロッキング問題が修正されていること）"""
+    """run_meta_oauth runs in the order server-start → browser → wait-for-callback
+    (the _start_callback_server blocking issue is fixed)."""
     mock_long_result = MetaOAuthResult(
         access_token="ordered-token",
         expires_in=5184000,
@@ -626,21 +626,21 @@ async def test_meta_oauth_flow_order() -> None:
 
         await run_meta_oauth(app_id="app", app_secret="secret")
 
-    # ブラウザが開かれた後にwait_for_callbackが呼ばれるべき
-    # （OAuthCallbackServerを使う構造になっていること = _start_callback_serverのブロッキング問題なし）
+    # wait_for_callback should be called after the browser is opened.
+    # (i.e. the design uses OAuthCallbackServer = no _start_callback_server blocking issue).
     assert "browser_open" in call_order
-    # サーバーが別スレッドで起動されているため、wait_for_callbackはスレッド内で実行
+    # The server starts on a separate thread, so wait_for_callback runs inside that thread.
 
 
 # ---------------------------------------------------------------------------
-# 11. Meta側入力バリデーション（HIGH-1）
+# 11. Meta-side input validation (HIGH-1)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_setup_meta_ads_invalid_account_choice(tmp_path: Path) -> None:
-    """アカウント選択で無効な入力がされた場合にエラーにならないこと"""
+    """An invalid input during account selection must not raise."""
     credentials_path = tmp_path / "credentials.json"
 
     mock_oauth_result = MetaOAuthResult(
@@ -668,7 +668,7 @@ async def test_setup_meta_ads_invalid_account_choice(tmp_path: Path) -> None:
         mock_oauth.return_value = mock_oauth_result
         mock_list_accounts.return_value = mock_accounts
 
-        # ValueErrorが発生せずに完了すること（try/exceptが追加されていること）
+        # Should complete without ValueError (try/except has been added).
         result = await setup_meta_ads(credentials_path=credentials_path)
 
     assert result.access_token == "token-abc"
@@ -677,7 +677,7 @@ async def test_setup_meta_ads_invalid_account_choice(tmp_path: Path) -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_setup_meta_ads_out_of_range_choice(tmp_path: Path) -> None:
-    """アカウント選択で範囲外の数値が入力された場合"""
+    """When the account-selection number is out of range."""
     credentials_path = tmp_path / "credentials.json"
 
     mock_oauth_result = MetaOAuthResult(
@@ -689,7 +689,7 @@ async def test_setup_meta_ads_out_of_range_choice(tmp_path: Path) -> None:
         {"id": "act_111", "name": "Account 1", "account_status": 1},
     ]
 
-    # 1回目: 範囲外(99)、2回目: 有効入力(1)
+    # 1st call: out of range (99); 2nd call: valid input (1).
     with (
         patch(
             "mureo.auth_setup.input_func",
@@ -710,7 +710,7 @@ async def test_setup_meta_ads_out_of_range_choice(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 12. Meta側ファイルパーミッション（HIGH-2）
+# 12. Meta-side file permissions (HIGH-2)
 # ---------------------------------------------------------------------------
 
 
@@ -721,7 +721,7 @@ async def test_setup_meta_ads_out_of_range_choice(tmp_path: Path) -> None:
     reason="POSIX 0o600; Windows perms are documented best-effort (NTFS ACL)",
 )
 async def test_setup_meta_ads_file_permissions(tmp_path: Path) -> None:
-    """Meta Ads認証情報保存時にファイルパーミッションが0600になること"""
+    """File permissions are 0600 when saving Meta Ads credentials."""
     credentials_path = tmp_path / "credentials.json"
 
     mock_oauth_result = MetaOAuthResult(
@@ -751,14 +751,14 @@ async def test_setup_meta_ads_file_permissions(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 13. コールバックサーバー統一（HIGH-3）
+# 13. Unified callback server (HIGH-3)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_meta_oauth_uses_unified_callback_server() -> None:
-    """Meta OAuthフローがOAuthCallbackServer（統一サーバー）を使用すること"""
+    """The Meta OAuth flow uses OAuthCallbackServer (the unified server)."""
     mock_long_result = MetaOAuthResult(
         access_token="unified-token",
         expires_in=5184000,
@@ -788,7 +788,7 @@ async def test_meta_oauth_uses_unified_callback_server() -> None:
 
         await run_meta_oauth(app_id="app", app_secret="secret")
 
-    # OAuthCallbackServerが使用されていること（_start_callback_serverではない）
+    # OAuthCallbackServer should be used (not _start_callback_server).
     mock_server_cls.assert_called_once()
 
 
@@ -800,7 +800,7 @@ async def test_meta_oauth_uses_unified_callback_server() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_meta_short_token_exchange_uses_timeout() -> None:
-    """Meta Short-Lived Token交換でhttpxにtimeoutが設定されること"""
+    """A timeout is set on httpx during Meta short-lived-token exchange."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {"access_token": "short-tok"}
@@ -827,7 +827,7 @@ async def test_meta_short_token_exchange_uses_timeout() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_meta_long_token_exchange_uses_timeout() -> None:
-    """Meta Long-Lived Token変換でhttpxにtimeoutが設定されること"""
+    """A timeout is set on httpx during Meta long-lived-token conversion."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
@@ -856,7 +856,7 @@ async def test_meta_long_token_exchange_uses_timeout() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_meta_ad_accounts_uses_timeout() -> None:
-    """広告アカウント一覧取得でhttpxにtimeoutが設定されること"""
+    """A timeout is set on httpx during ad-account list fetching."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {"data": []}
@@ -876,14 +876,14 @@ async def test_meta_ad_accounts_uses_timeout() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 15. input_func統一（SUGGESTION）
+# 15. Unified input_func (SUGGESTION)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_setup_meta_ads_uses_input_func(tmp_path: Path) -> None:
-    """setup_meta_adsがinput_func（テスト差し替え可能）を使用すること"""
+    """setup_meta_ads uses input_func (which is test-swappable)."""
     credentials_path = tmp_path / "credentials.json"
 
     mock_oauth_result = MetaOAuthResult(
@@ -908,5 +908,5 @@ async def test_setup_meta_ads_uses_input_func(tmp_path: Path) -> None:
 
         await setup_meta_ads(credentials_path=credentials_path)
 
-    # input_funcが呼ばれていること（inputの直接呼び出しではない）
+    # input_func should be called (not the direct input call).
     assert mock_input.call_count >= 2

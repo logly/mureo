@@ -1,4 +1,4 @@
-"""認証情報の読み込みモジュールのテスト（TDD: RED → GREEN → IMPROVE）"""
+"""Tests for the credential loading module (TDD: RED -> GREEN -> IMPROVE)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from mureo.auth import (
 )
 
 # ---------------------------------------------------------------------------
-# フィクスチャ
+# Fixtures
 # ---------------------------------------------------------------------------
 
 SAMPLE_CREDENTIALS = {
@@ -41,7 +41,7 @@ SAMPLE_CREDENTIALS = {
 
 @pytest.fixture()
 def credentials_file(tmp_path: Path) -> Path:
-    """一時ディレクトリにcredentials.jsonを作成する"""
+    """Create a credentials.json in a temporary directory."""
     cred_path = tmp_path / "credentials.json"
     cred_path.write_text(json.dumps(SAMPLE_CREDENTIALS), encoding="utf-8")
     return cred_path
@@ -49,7 +49,7 @@ def credentials_file(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def google_only_credentials_file(tmp_path: Path) -> Path:
-    """Google Adsのみのcredentials.json"""
+    """credentials.json containing only the Google Ads section."""
     cred_path = tmp_path / "credentials.json"
     data = {"google_ads": SAMPLE_CREDENTIALS["google_ads"]}
     cred_path.write_text(json.dumps(data), encoding="utf-8")
@@ -58,7 +58,7 @@ def google_only_credentials_file(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def meta_only_credentials_file(tmp_path: Path) -> Path:
-    """Meta Adsのみのcredentials.json"""
+    """credentials.json containing only the Meta Ads section."""
     cred_path = tmp_path / "credentials.json"
     data = {"meta_ads": SAMPLE_CREDENTIALS["meta_ads"]}
     cred_path.write_text(json.dumps(data), encoding="utf-8")
@@ -66,7 +66,7 @@ def meta_only_credentials_file(tmp_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# 1. ファイルからGoogle Ads認証情報を読み込む
+# 1. Load Google Ads credentials from a file
 # ---------------------------------------------------------------------------
 
 
@@ -84,7 +84,7 @@ def test_load_google_ads_credentials_from_file(credentials_file: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2. ファイルからMeta Ads認証情報を読み込む
+# 2. Load Meta Ads credentials from a file
 # ---------------------------------------------------------------------------
 
 
@@ -100,7 +100,7 @@ def test_load_meta_ads_credentials_from_file(credentials_file: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 3. ファイルが存在しない場合 → None
+# 3. Missing file -> None
 # ---------------------------------------------------------------------------
 
 
@@ -115,7 +115,7 @@ def test_load_credentials_file_not_found(tmp_path: Path) -> None:
 def test_load_google_ads_credentials_file_not_found(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ファイルなし + 環境変数もなし → None"""
+    """No file + no environment variables -> None."""
     monkeypatch.delenv("GOOGLE_ADS_DEVELOPER_TOKEN", raising=False)
     monkeypatch.delenv("GOOGLE_ADS_CLIENT_ID", raising=False)
     monkeypatch.delenv("GOOGLE_ADS_CLIENT_SECRET", raising=False)
@@ -131,7 +131,7 @@ def test_load_google_ads_credentials_file_not_found(
 def test_load_meta_ads_credentials_file_not_found(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ファイルなし + 環境変数もなし → None"""
+    """No file + no environment variables -> None."""
     monkeypatch.delenv("META_ADS_ACCESS_TOKEN", raising=False)
     monkeypatch.delenv("META_ADS_APP_ID", raising=False)
     monkeypatch.delenv("META_ADS_APP_SECRET", raising=False)
@@ -142,7 +142,7 @@ def test_load_meta_ads_credentials_file_not_found(
 
 
 # ---------------------------------------------------------------------------
-# 4. 環境変数フォールバック — Google Ads
+# 4. Environment-variable fallback - Google Ads
 # ---------------------------------------------------------------------------
 
 
@@ -171,7 +171,7 @@ def test_load_google_ads_credentials_from_env(
 def test_load_google_ads_credentials_from_env_without_login_customer_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """login_customer_idは省略可能"""
+    """login_customer_id is optional."""
     nonexistent = tmp_path / "nonexistent.json"
     monkeypatch.setenv("GOOGLE_ADS_DEVELOPER_TOKEN", "env-dev-token")
     monkeypatch.setenv("GOOGLE_ADS_CLIENT_ID", "env-client-id")
@@ -186,7 +186,7 @@ def test_load_google_ads_credentials_from_env_without_login_customer_id(
 
 
 # ---------------------------------------------------------------------------
-# 5. 環境変数フォールバック — Meta Ads
+# 5. Environment-variable fallback - Meta Ads
 # ---------------------------------------------------------------------------
 
 
@@ -211,7 +211,7 @@ def test_load_meta_ads_credentials_from_env(
 def test_load_meta_ads_credentials_from_env_minimal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """app_id/app_secretは省略可能"""
+    """app_id and app_secret are optional."""
     nonexistent = tmp_path / "nonexistent.json"
     monkeypatch.setenv("META_ADS_ACCESS_TOKEN", "env-meta-token")
     monkeypatch.delenv("META_ADS_APP_ID", raising=False)
@@ -226,7 +226,7 @@ def test_load_meta_ads_credentials_from_env_minimal(
 
 
 # ---------------------------------------------------------------------------
-# 6. ファイルも環境変数もない → None
+# 6. No file and no environment variables -> None
 # ---------------------------------------------------------------------------
 
 
@@ -259,7 +259,7 @@ def test_load_meta_ads_credentials_missing(
 
 
 # ---------------------------------------------------------------------------
-# 7. frozen=True のイミュータビリティ確認
+# 7. Verify frozen=True immutability
 # ---------------------------------------------------------------------------
 
 
@@ -376,7 +376,7 @@ def test_create_meta_ads_client() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 10. 不正なJSON
+# 10. Invalid JSON
 # ---------------------------------------------------------------------------
 
 
@@ -393,7 +393,7 @@ def test_load_credentials_invalid_json(tmp_path: Path) -> None:
 def test_load_google_ads_credentials_invalid_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """不正JSONファイル + 環境変数なし → None"""
+    """Invalid JSON file + no environment variables -> None."""
     monkeypatch.delenv("GOOGLE_ADS_DEVELOPER_TOKEN", raising=False)
     monkeypatch.delenv("GOOGLE_ADS_CLIENT_ID", raising=False)
     monkeypatch.delenv("GOOGLE_ADS_CLIENT_SECRET", raising=False)
@@ -407,7 +407,7 @@ def test_load_google_ads_credentials_invalid_json(
 
 
 # ---------------------------------------------------------------------------
-# 11. ファイル優先（ファイルと環境変数の両方がある場合はファイルを優先）
+# 11. File takes precedence (file wins when both file and env vars exist)
 # ---------------------------------------------------------------------------
 
 
@@ -424,7 +424,7 @@ def test_file_takes_precedence_over_env(
 
 
 # ---------------------------------------------------------------------------
-# 12. Google Adsキーがないファイル → 環境変数フォールバック
+# 12. File missing google_ads key -> fall back to environment variables
 # ---------------------------------------------------------------------------
 
 
@@ -432,7 +432,7 @@ def test_file_takes_precedence_over_env(
 def test_load_google_ads_from_file_without_google_key(
     meta_only_credentials_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ファイルにgoogle_adsキーがない場合、環境変数にフォールバック"""
+    """When the file lacks a google_ads key, fall back to env vars."""
     monkeypatch.setenv("GOOGLE_ADS_DEVELOPER_TOKEN", "env-dev")
     monkeypatch.setenv("GOOGLE_ADS_CLIENT_ID", "env-cid")
     monkeypatch.setenv("GOOGLE_ADS_CLIENT_SECRET", "env-csec")
@@ -448,7 +448,7 @@ def test_load_google_ads_from_file_without_google_key(
 def test_load_meta_ads_from_file_without_meta_key(
     google_only_credentials_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ファイルにmeta_adsキーがない場合、環境変数にフォールバック"""
+    """When the file lacks a meta_ads key, fall back to env vars."""
     monkeypatch.setenv("META_ADS_ACCESS_TOKEN", "env-meta-tok")
 
     creds = load_meta_ads_credentials(path=google_only_credentials_file)
@@ -458,7 +458,7 @@ def test_load_meta_ads_from_file_without_meta_key(
 
 
 # ---------------------------------------------------------------------------
-# 13. load_credentials — 正常読み込み
+# 13. load_credentials - successful load
 # ---------------------------------------------------------------------------
 
 
@@ -471,7 +471,7 @@ def test_load_credentials_success(credentials_file: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 14. デフォルトパス（~/.mureo/credentials.json）
+# 14. Default path (~/.mureo/credentials.json)
 # ---------------------------------------------------------------------------
 
 
@@ -479,14 +479,14 @@ def test_load_credentials_success(credentials_file: Path) -> None:
 def test_load_credentials_default_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """デフォルトパスは ~/.mureo/credentials.json"""
+    """Default path is ~/.mureo/credentials.json."""
     mureo_dir = tmp_path / ".mureo"
     mureo_dir.mkdir()
     cred_path = mureo_dir / "credentials.json"
     cred_path.write_text(json.dumps(SAMPLE_CREDENTIALS), encoding="utf-8")
 
     monkeypatch.setenv("HOME", str(tmp_path))
-    # Windowsも考慮して Path.home() をモック
+    # Mock Path.home() to keep Windows behavior consistent.
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
 
     data = load_credentials()

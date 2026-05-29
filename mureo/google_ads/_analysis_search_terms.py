@@ -543,7 +543,7 @@ class _SearchTermsAnalysisMixin:
         is_registered = term_text.lower() in keyword_texts
         is_new = term_text.lower() not in prev_term_set
 
-        # Rule 1: CV>=2 & 未登録 → add EXACT (score=90)
+        # Rule 1: CV>=2 & not registered → add EXACT (score=90)
         if conversions >= 2 and not is_registered:
             add_candidates.append(
                 _build_add_candidate(
@@ -559,7 +559,7 @@ class _SearchTermsAnalysisMixin:
             )
             return
 
-        # Rule 2: CV=1 & CPA<=目標CPA & 未登録 → add EXACT (score=70)
+        # Rule 2: CV=1 & CPA <= target CPA & not registered → add EXACT (score=70)
         if conversions == 1 and not is_registered and resolved_cpa is not None:
             cpa = cost
             if cpa <= resolved_cpa:
@@ -572,12 +572,12 @@ class _SearchTermsAnalysisMixin:
                         ctr,
                         "EXACT",
                         70,
-                        f"CV1件、CPA ¥{cpa:,.0f} ≤ 目標CPA ¥{resolved_cpa:,.0f}",
+                        f"1 conversion, CPA ¥{cpa:,.0f} <= target CPA ¥{resolved_cpa:,.0f}",
                     )
                 )
                 return
 
-        # Rule 3: CV=0 & Click>=20 & CTR>=3% & 未登録 → add PHRASE (score=50)
+        # Rule 3: CV=0 & Click>=20 & CTR>=3% & not registered → add PHRASE (score=50)
         if conversions == 0 and clicks >= 20 and ctr >= 0.03 and not is_registered:
             add_candidates.append(
                 _build_add_candidate(

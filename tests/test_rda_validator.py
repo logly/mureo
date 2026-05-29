@@ -1,7 +1,7 @@
-"""RDA (Responsive Display Ad) バリデータのテスト
+"""Tests for the RDA (Responsive Display Ad) validator.
 
-_rda_validator.py の純粋な検証ロジックをテストする。
-DB/API 不要でテスト可能。
+Exercises the pure validation logic in _rda_validator.py.
+Runs without a database or external API.
 """
 
 from __future__ import annotations
@@ -128,7 +128,7 @@ class TestIsValidUrl:
 
 
 # ---------------------------------------------------------------------------
-# 正常系
+# Happy path
 # ---------------------------------------------------------------------------
 
 
@@ -188,7 +188,7 @@ class TestValidateRdaInputs正常系:
 
 
 # ---------------------------------------------------------------------------
-# 見出しのバリデーション
+# Headline validation
 # ---------------------------------------------------------------------------
 
 
@@ -219,19 +219,19 @@ class TestHeadlinesValidation:
             )
         assert len(result.headlines) == 5
         assert result.headlines == ("H1", "H2", "H3", "H4", "H5")
-        # 切り詰めログが出ていること
+        # The truncation log should be emitted.
         assert any("Truncating RDA headlines" in r.message for r in caplog.records)
 
     def test_30文字幅超過の見出しはエラー(self) -> None:
         args = _base_args()
-        # 31半角文字 = 31 width
+        # 31 half-width chars = 31 width
         too_long = "a" * 31
         with pytest.raises(ValueError, match="Headline.*exceeds.*30"):
             validate_rda_inputs(headlines=[too_long], **args)
 
     def test_全角で30文字幅超過の見出しはエラー(self) -> None:
         args = _base_args()
-        # 全角16文字 = 32 width
+        # 16 full-width chars = 32 width
         too_long_jp = "あ" * 16
         with pytest.raises(ValueError, match="Headline.*exceeds.*30"):
             validate_rda_inputs(headlines=[too_long_jp], **args)
@@ -253,12 +253,12 @@ class TestHeadlinesValidation:
         very_long = "a" * 200
         with pytest.raises(ValueError) as exc_info:
             validate_rda_inputs(headlines=[very_long], **args)
-        # 省略されているのでエラーメッセージは200文字よりずっと短い
+        # The error message is truncated, so it's much shorter than 200 chars.
         assert len(str(exc_info.value)) < 200
 
 
 # ---------------------------------------------------------------------------
-# 長い見出しのバリデーション
+# Long headline validation
 # ---------------------------------------------------------------------------
 
 
@@ -294,7 +294,7 @@ class TestLongHeadlineValidation:
 
 
 # ---------------------------------------------------------------------------
-# 説明文のバリデーション
+# Description validation
 # ---------------------------------------------------------------------------
 
 
@@ -334,7 +334,7 @@ class TestDescriptionsValidation:
 
 
 # ---------------------------------------------------------------------------
-# ビジネス名のバリデーション
+# Business name validation
 # ---------------------------------------------------------------------------
 
 
@@ -370,7 +370,7 @@ class TestBusinessNameValidation:
 
 
 # ---------------------------------------------------------------------------
-# 画像アセットのバリデーション
+# Image asset validation
 # ---------------------------------------------------------------------------
 
 
@@ -446,7 +446,7 @@ class TestImageAssetsValidation:
 
 
 # ---------------------------------------------------------------------------
-# Final URL のバリデーション
+# Final URL validation
 # ---------------------------------------------------------------------------
 
 

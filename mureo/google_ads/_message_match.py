@@ -77,6 +77,11 @@ class MessageMatchEvaluator:
     LLM evaluation should be done on the Managed side.
     """
 
+    # Japanese-language LLM prompt template. mureo's message-match
+    # evaluator operates on Japanese ad copy and Japanese landing pages,
+    # and the LLM is instructed to reason and respond in Japanese;
+    # translating the prompt would change evaluation behavior and break
+    # the JSON-schema parser below.
     _EVAL_PROMPT = """\
 あなたは広告文とランディングページの「メッセージマッチ」を評価する専門家です。
 
@@ -138,7 +143,7 @@ JSON のみを出力してください。"""
     @staticmethod
     def parse_response(content: str) -> MessageMatchResult:
         """Parse LLM response."""
-        # JSONブロックを抽出
+        # Extract the JSON block from the LLM response.
         text = content.strip()
         if "```json" in text:
             text = text.split("```json", 1)[1].split("```", 1)[0].strip()

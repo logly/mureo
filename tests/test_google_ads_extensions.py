@@ -1,7 +1,7 @@
-"""Google Ads _extensions.py ユニットテスト
+"""Unit tests for Google Ads _extensions.py.
 
-_ExtensionsMixin の各メソッドをモックベースでテストする。
-_search / _get_service / _client をモックし、外部API呼び出しを排除。
+Mock-based tests for each method on _ExtensionsMixin.
+Mocks _search / _get_service / _client to eliminate any external API calls.
 """
 
 from __future__ import annotations
@@ -23,12 +23,12 @@ from mureo.google_ads._extensions import (
 
 
 # ---------------------------------------------------------------------------
-# テスト用のモッククライアントクラス
+# Mock client class for tests
 # ---------------------------------------------------------------------------
 
 
 class _MockExtensionsClient(_ExtensionsMixin):
-    """_ExtensionsMixin をテスト可能にするモッククラス"""
+    """Mock class that makes _ExtensionsMixin testable."""
 
     def __init__(self) -> None:
         self._customer_id = "1234567890"
@@ -58,7 +58,7 @@ class _MockExtensionsClient(_ExtensionsMixin):
 
 
 # ---------------------------------------------------------------------------
-# _normalize_device_type テスト
+# _normalize_device_type tests
 # ---------------------------------------------------------------------------
 
 
@@ -88,7 +88,7 @@ class TestNormalizeDeviceType:
 
 
 # ---------------------------------------------------------------------------
-# list_sitelinks テスト
+# list_sitelinks tests
 # ---------------------------------------------------------------------------
 
 
@@ -102,9 +102,9 @@ class TestListSitelinks:
     async def test_returns_campaign_and_account_sitelinks(
         self, client: _MockExtensionsClient
     ) -> None:
-        """キャンペーンレベルとアカウントレベルのサイトリンクを統合して返す"""
+        """Returns campaign-level and account-level sitelinks merged together."""
         campaign_row = MagicMock()
-        # map_sitelink が呼ばれるので、パッチする
+        # map_sitelink is called, so patch it.
         with patch("mureo.google_ads._extensions_sitelinks.map_sitelink") as mock_map:
             mock_map.side_effect = [
                 {"id": "1", "link_text": "Link1"},
@@ -112,8 +112,8 @@ class TestListSitelinks:
             ]
             client._search = AsyncMock(
                 side_effect=[
-                    [campaign_row],  # キャンペーンレベル
-                    [MagicMock()],  # アカウントレベル
+                    [campaign_row],  # campaign-level
+                    [MagicMock()],  # account-level
                 ]
             )
             result = await client.list_sitelinks("123")
@@ -124,11 +124,11 @@ class TestListSitelinks:
 
     @pytest.mark.asyncio
     async def test_dedup_by_id(self, client: _MockExtensionsClient) -> None:
-        """同一IDのサイトリンクは重複排除される"""
+        """Sitelinks with the same ID are deduplicated."""
         with patch("mureo.google_ads._extensions_sitelinks.map_sitelink") as mock_map:
             mock_map.side_effect = [
                 {"id": "1", "link_text": "Link1"},
-                {"id": "1", "link_text": "Link1dup"},  # 同じID
+                {"id": "1", "link_text": "Link1dup"},  # same ID
             ]
             client._search = AsyncMock(
                 side_effect=[
@@ -144,7 +144,7 @@ class TestListSitelinks:
     async def test_account_level_failure_graceful(
         self, client: _MockExtensionsClient
     ) -> None:
-        """アカウントレベルの取得に失敗してもキャンペーンレベルは返る"""
+        """Campaign-level sitelinks are returned even when account-level fetch fails."""
         with patch("mureo.google_ads._extensions_sitelinks.map_sitelink") as mock_map:
             mock_map.return_value = {"id": "1", "link_text": "Link1"}
             client._search = AsyncMock(
@@ -160,7 +160,7 @@ class TestListSitelinks:
 
 
 # ---------------------------------------------------------------------------
-# create_sitelink テスト
+# create_sitelink tests
 # ---------------------------------------------------------------------------
 
 
@@ -172,7 +172,7 @@ class TestCreateSitelink:
 
     @pytest.mark.asyncio
     async def test_max_sitelinks_exceeded(self, client: _MockExtensionsClient) -> None:
-        """上限超過時はバリデーションエラーを返す"""
+        """Returns a validation error when over the limit."""
         with patch.object(client, "list_sitelinks", new_callable=AsyncMock) as mock_ls:
             mock_ls.return_value = [
                 {"id": str(i), "level": "campaign"} for i in range(20)
@@ -189,7 +189,7 @@ class TestCreateSitelink:
 
 
 # ---------------------------------------------------------------------------
-# list_callouts テスト
+# list_callouts tests
 # ---------------------------------------------------------------------------
 
 
@@ -211,7 +211,7 @@ class TestListCallouts:
 
 
 # ---------------------------------------------------------------------------
-# create_callout テスト
+# create_callout tests
 # ---------------------------------------------------------------------------
 
 
@@ -223,7 +223,7 @@ class TestCreateCallout:
 
     @pytest.mark.asyncio
     async def test_max_callouts_exceeded(self, client: _MockExtensionsClient) -> None:
-        """上限超過時はバリデーションエラーを返す"""
+        """Returns a validation error when over the limit."""
         with patch.object(client, "list_callouts", new_callable=AsyncMock) as mock_lc:
             mock_lc.return_value = [{"id": str(i)} for i in range(20)]
             result = await client.create_callout(
@@ -237,7 +237,7 @@ class TestCreateCallout:
 
 
 # ---------------------------------------------------------------------------
-# list_conversion_actions テスト
+# list_conversion_actions tests
 # ---------------------------------------------------------------------------
 
 
@@ -262,7 +262,7 @@ class TestListConversionActions:
 
 
 # ---------------------------------------------------------------------------
-# create_conversion_action バリデーションテスト
+# create_conversion_action validation tests
 # ---------------------------------------------------------------------------
 
 
@@ -320,7 +320,7 @@ class TestCreateConversionActionValidation:
 
 
 # ---------------------------------------------------------------------------
-# update_conversion_action バリデーションテスト
+# update_conversion_action validation tests
 # ---------------------------------------------------------------------------
 
 
@@ -357,7 +357,7 @@ class TestUpdateConversionActionValidation:
 
 
 # ---------------------------------------------------------------------------
-# get_conversion_action テスト
+# get_conversion_action tests
 # ---------------------------------------------------------------------------
 
 
@@ -387,7 +387,7 @@ class TestGetConversionAction:
 
 
 # ---------------------------------------------------------------------------
-# get_conversion_action_tag テスト
+# get_conversion_action_tag tests
 # ---------------------------------------------------------------------------
 
 
@@ -418,7 +418,7 @@ class TestGetConversionActionTag:
 
 
 # ---------------------------------------------------------------------------
-# list_recommendations テスト
+# list_recommendations tests
 # ---------------------------------------------------------------------------
 
 
@@ -447,7 +447,7 @@ class TestListRecommendations:
 
 
 # ---------------------------------------------------------------------------
-# get_device_targeting テスト
+# get_device_targeting tests
 # ---------------------------------------------------------------------------
 
 
@@ -459,20 +459,20 @@ class TestGetDeviceTargeting:
 
     @pytest.mark.asyncio
     async def test_all_devices_returned(self, client: _MockExtensionsClient) -> None:
-        """criterionが無くても3デバイスが常に返る"""
+        """All three device types are always returned even when no criterion exists."""
         client._search = AsyncMock(return_value=[])
         result = await client.get_device_targeting("123")
         assert len(result) == 3
         device_types = {r["device_type"] for r in result}
         assert device_types == {"DESKTOP", "MOBILE", "TABLET"}
-        # デフォルトは有効
+        # Default is enabled.
         for r in result:
             assert r["enabled"] is True
             assert r["criterion_id"] is None
 
     @pytest.mark.asyncio
     async def test_disabled_device(self, client: _MockExtensionsClient) -> None:
-        """bid_modifier=0.0 のデバイスは無効と判定される"""
+        """A device with bid_modifier=0.0 is classified as disabled."""
         mock_row = MagicMock()
         mock_row.campaign_criterion.device.type_ = 4  # DESKTOP
         mock_row.campaign_criterion.bid_modifier = 0.0
@@ -486,7 +486,7 @@ class TestGetDeviceTargeting:
 
 
 # ---------------------------------------------------------------------------
-# set_device_targeting バリデーションテスト
+# set_device_targeting validation tests
 # ---------------------------------------------------------------------------
 
 
@@ -518,7 +518,7 @@ class TestSetDeviceTargetingValidation:
 
 
 # ---------------------------------------------------------------------------
-# get_bid_adjustments テスト
+# get_bid_adjustments tests
 # ---------------------------------------------------------------------------
 
 
@@ -550,7 +550,7 @@ class TestGetBidAdjustments:
 
 
 # ---------------------------------------------------------------------------
-# update_bid_adjustment バリデーションテスト
+# update_bid_adjustment validation tests
 # ---------------------------------------------------------------------------
 
 
@@ -584,7 +584,7 @@ class TestUpdateBidAdjustmentValidation:
 
 
 # ---------------------------------------------------------------------------
-# list_change_history テスト
+# list_change_history tests
 # ---------------------------------------------------------------------------
 
 
@@ -596,7 +596,7 @@ class TestListChangeHistory:
 
     @pytest.mark.asyncio
     async def test_default_date_range(self, client: _MockExtensionsClient) -> None:
-        """日付未指定時はデフォルトの14日間で検索される"""
+        """Without a date, the default 14-day window is used."""
         mock_row = MagicMock()
         client._search = AsyncMock(return_value=[mock_row])
         with patch(
@@ -616,7 +616,7 @@ class TestListChangeHistory:
 
 
 # ---------------------------------------------------------------------------
-# list_location_targeting テスト
+# list_location_targeting tests
 # ---------------------------------------------------------------------------
 
 
@@ -648,7 +648,7 @@ class TestListLocationTargeting:
 
 
 # ---------------------------------------------------------------------------
-# list_schedule_targeting テスト
+# list_schedule_targeting tests
 # ---------------------------------------------------------------------------
 
 
@@ -678,7 +678,7 @@ class TestListScheduleTargeting:
 
 
 # ---------------------------------------------------------------------------
-# get_conversion_performance テスト
+# get_conversion_performance tests
 # ---------------------------------------------------------------------------
 
 
@@ -710,9 +710,9 @@ class TestGetConversionPerformance:
 
         cost_row = MagicMock()
         cost_row.campaign.id = 1
-        cost_row.metrics.cost_micros = 10_000_000_000  # 10,000円
+        cost_row.metrics.cost_micros = 10_000_000_000  # 10,000 JPY
 
-        # 1回目: CV別、2回目: コスト、3回目: LP別
+        # 1st call: per-CV; 2nd: cost; 3rd: per-LP.
         client._search = AsyncMock(
             side_effect=[
                 [cv_row],
@@ -727,7 +727,7 @@ class TestGetConversionPerformance:
 
     @pytest.mark.asyncio
     async def test_with_campaign_id_filter(self, client: _MockExtensionsClient) -> None:
-        """campaign_id指定時のフィルタリング"""
+        """Filtering when campaign_id is provided."""
         client._search = AsyncMock(return_value=[])
         result = await client.get_conversion_performance(campaign_id="456")
         assert result["campaign_id"] == "456"
@@ -737,7 +737,7 @@ class TestGetConversionPerformance:
     async def test_cost_query_failure_fallback(
         self, client: _MockExtensionsClient
     ) -> None:
-        """コスト取得失敗時にCPAは0で返却される"""
+        """When cost fetch fails, CPA is returned as 0."""
         cv_row = MagicMock()
         cv_row.campaign.id = 1
         cv_row.campaign.name = "Campaign A"
@@ -748,8 +748,8 @@ class TestGetConversionPerformance:
 
         client._search = AsyncMock(
             side_effect=[
-                [cv_row],  # CV別
-                RuntimeError("fail"),  # コスト取得失敗
+                [cv_row],  # per-CV
+                RuntimeError("fail"),  # cost fetch failure
                 [],  # LP
             ]
         )
@@ -761,7 +761,7 @@ class TestGetConversionPerformance:
     async def test_lp_query_failure_graceful(
         self, client: _MockExtensionsClient
     ) -> None:
-        """LP別CV取得失敗時も正常に返却される"""
+        """Returns normally even when per-LP CV fetch fails."""
         cv_row = MagicMock()
         cv_row.campaign.id = 1
         cv_row.campaign.name = "Campaign A"
@@ -778,7 +778,7 @@ class TestGetConversionPerformance:
             side_effect=[
                 [cv_row],
                 [cost_row],
-                RuntimeError("lp fail"),  # LP取得失敗
+                RuntimeError("lp fail"),  # LP fetch failure
             ]
         )
         result = await client.get_conversion_performance()
@@ -787,7 +787,7 @@ class TestGetConversionPerformance:
 
     @pytest.mark.asyncio
     async def test_with_lp_data(self, client: _MockExtensionsClient) -> None:
-        """LP別CVデータが正しく返る"""
+        """Per-LP CV data is returned correctly."""
         cv_row = MagicMock()
         cv_row.campaign.id = 1
         cv_row.campaign.name = "Campaign A"
@@ -824,7 +824,7 @@ class TestGetConversionPerformance:
     async def test_date_range_tracking_in_summary(
         self, client: _MockExtensionsClient
     ) -> None:
-        """複数日のデータでfirst_date/last_dateが正しく設定される"""
+        """For multi-day data, first_date / last_date are set correctly."""
         rows = []
         for d in ["2024-01-02", "2024-01-01", "2024-01-03"]:
             row = MagicMock()
@@ -851,7 +851,7 @@ class TestGetConversionPerformance:
 
 
 # ---------------------------------------------------------------------------
-# create_callout 正常系テスト
+# create_callout happy-path tests
 # ---------------------------------------------------------------------------
 
 
@@ -863,7 +863,7 @@ class TestCreateCalloutSuccess:
 
     @pytest.mark.asyncio
     async def test_create_callout_success(self, client: _MockExtensionsClient) -> None:
-        """コールアウト作成が正常に完了する"""
+        """Callout creation completes successfully."""
         with patch.object(client, "list_callouts", new_callable=AsyncMock) as mock_lc:
             mock_lc.return_value = [{"id": str(i)} for i in range(5)]
 
@@ -905,7 +905,7 @@ class TestCreateCalloutSuccess:
 
 
 # ---------------------------------------------------------------------------
-# remove_callout 正常系テスト
+# remove_callout happy-path tests
 # ---------------------------------------------------------------------------
 
 
@@ -917,7 +917,7 @@ class TestRemoveCallout:
 
     @pytest.mark.asyncio
     async def test_remove_callout_success(self, client: _MockExtensionsClient) -> None:
-        """コールアウト削除が正常に完了する"""
+        """Callout removal completes successfully."""
         ca_service = MagicMock()
         response = MagicMock()
         response.results = [MagicMock(resource_name="customers/123/campaignAssets/del")]
@@ -945,7 +945,7 @@ class TestRemoveCallout:
     async def test_remove_callout_invalid_campaign_id(
         self, client: _MockExtensionsClient
     ) -> None:
-        """無効なcampaign_idでバリデーションエラー"""
+        """Invalid campaign_id triggers a validation error."""
         with pytest.raises(ValueError, match="Invalid"):
             await client.remove_callout(
                 {
@@ -958,7 +958,7 @@ class TestRemoveCallout:
     async def test_remove_callout_invalid_asset_id(
         self, client: _MockExtensionsClient
     ) -> None:
-        """無効なasset_idでバリデーションエラー"""
+        """Invalid asset_id triggers a validation error."""
         with pytest.raises(ValueError, match="Invalid"):
             await client.remove_callout(
                 {
@@ -969,7 +969,7 @@ class TestRemoveCallout:
 
 
 # ---------------------------------------------------------------------------
-# create_sitelink 正常系テスト
+# create_sitelink happy-path tests
 # ---------------------------------------------------------------------------
 
 
@@ -981,7 +981,7 @@ class TestCreateSitelinkSuccess:
 
     @pytest.mark.asyncio
     async def test_create_sitelink_success(self, client: _MockExtensionsClient) -> None:
-        """サイトリンク作成が正常に完了する"""
+        """Sitelink creation completes successfully."""
         with patch.object(client, "list_sitelinks", new_callable=AsyncMock) as mock_ls:
             mock_ls.return_value = [
                 {"id": str(i), "level": "campaign"} for i in range(5)
@@ -1026,7 +1026,7 @@ class TestCreateSitelinkSuccess:
     async def test_create_sitelink_with_descriptions(
         self, client: _MockExtensionsClient
     ) -> None:
-        """description1/description2を含むサイトリンク作成"""
+        """Create a sitelink including description1/description2."""
         with patch.object(client, "list_sitelinks", new_callable=AsyncMock) as mock_ls:
             mock_ls.return_value = []
 
@@ -1066,7 +1066,7 @@ class TestCreateSitelinkSuccess:
             )
 
         assert result["resource_name"] == "customers/123/assets/789"
-        # description1/description2がセットされたことを確認
+        # Verify description1/description2 were set.
         asset_op.create.sitelink_asset.description1 = "Learn more"
         asset_op.create.sitelink_asset.description2 = "About our company"
 
@@ -1074,9 +1074,9 @@ class TestCreateSitelinkSuccess:
     async def test_create_sitelink_account_level_not_counted(
         self, client: _MockExtensionsClient
     ) -> None:
-        """アカウントレベルのサイトリンクは上限カウントに含まれない"""
+        """Account-level sitelinks do not count toward the limit."""
         with patch.object(client, "list_sitelinks", new_callable=AsyncMock) as mock_ls:
-            # 19件キャンペーン + 5件アカウント = 24件だが、キャンペーンレベルは19なので作成可能
+            # 19 campaign-level + 5 account-level = 24 total, but campaign-level is 19, so creation is allowed.
             mock_ls.return_value = [
                 {"id": str(i), "level": "campaign"} for i in range(19)
             ] + [{"id": str(i + 100), "level": "account"} for i in range(5)]
@@ -1118,7 +1118,7 @@ class TestCreateSitelinkSuccess:
 
 
 # ---------------------------------------------------------------------------
-# remove_sitelink 正常系テスト
+# remove_sitelink happy-path tests
 # ---------------------------------------------------------------------------
 
 
@@ -1130,7 +1130,7 @@ class TestRemoveSitelink:
 
     @pytest.mark.asyncio
     async def test_remove_sitelink_success(self, client: _MockExtensionsClient) -> None:
-        """サイトリンク削除が正常に完了する"""
+        """Sitelink removal completes successfully."""
         ca_service = MagicMock()
         response = MagicMock()
         response.results = [MagicMock(resource_name="customers/123/campaignAssets/del")]
@@ -1158,7 +1158,7 @@ class TestRemoveSitelink:
     async def test_remove_sitelink_invalid_ids(
         self, client: _MockExtensionsClient
     ) -> None:
-        """無効なIDでバリデーションエラー"""
+        """Invalid ID triggers a validation error."""
         with pytest.raises(ValueError, match="Invalid"):
             await client.remove_sitelink(
                 {
@@ -1169,7 +1169,7 @@ class TestRemoveSitelink:
 
 
 # ---------------------------------------------------------------------------
-# create_conversion_action 正常系テスト
+# create_conversion_action happy-path tests
 # ---------------------------------------------------------------------------
 
 
@@ -1181,7 +1181,7 @@ class TestCreateConversionActionSuccess:
 
     @pytest.mark.asyncio
     async def test_create_basic(self, client: _MockExtensionsClient) -> None:
-        """基本的なコンバージョンアクション作成"""
+        """Basic conversion-action creation."""
         ca_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1203,7 +1203,7 @@ class TestCreateConversionActionSuccess:
     async def test_create_with_value_settings(
         self, client: _MockExtensionsClient
     ) -> None:
-        """value_settings付きコンバージョンアクション作成"""
+        """Conversion-action creation with value_settings."""
         ca_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1233,7 +1233,7 @@ class TestCreateConversionActionSuccess:
 
 
 # ---------------------------------------------------------------------------
-# update_conversion_action 正常系テスト
+# update_conversion_action happy-path tests
 # ---------------------------------------------------------------------------
 
 
@@ -1245,7 +1245,7 @@ class TestUpdateConversionActionSuccess:
 
     @pytest.mark.asyncio
     async def test_update_name(self, client: _MockExtensionsClient) -> None:
-        """名前の更新"""
+        """Update the name."""
         ca_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1273,7 +1273,7 @@ class TestUpdateConversionActionSuccess:
 
     @pytest.mark.asyncio
     async def test_update_multiple_fields(self, client: _MockExtensionsClient) -> None:
-        """複数フィールド同時更新"""
+        """Update multiple fields at once."""
         ca_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1309,7 +1309,7 @@ class TestUpdateConversionActionSuccess:
 
     @pytest.mark.asyncio
     async def test_update_long_name_raises(self, client: _MockExtensionsClient) -> None:
-        """更新時のname長チェック"""
+        """Name length check during update."""
         with pytest.raises(ValueError, match="256 characters"):
             await client.update_conversion_action(
                 {
@@ -1322,7 +1322,7 @@ class TestUpdateConversionActionSuccess:
     async def test_update_lookback_window_out_of_range(
         self, client: _MockExtensionsClient
     ) -> None:
-        """更新時のlookback windowバリデーション"""
+        """Lookback window validation during update."""
         with pytest.raises(ValueError, match="1.+90"):
             await client.update_conversion_action(
                 {
@@ -1335,7 +1335,7 @@ class TestUpdateConversionActionSuccess:
     async def test_update_view_through_out_of_range(
         self, client: _MockExtensionsClient
     ) -> None:
-        """更新時のview_through_lookback_window_daysバリデーション"""
+        """view_through_lookback_window_days validation during update."""
         with pytest.raises(ValueError, match="1.+30"):
             await client.update_conversion_action(
                 {
@@ -1346,7 +1346,7 @@ class TestUpdateConversionActionSuccess:
 
 
 # ---------------------------------------------------------------------------
-# remove_conversion_action 正常系テスト
+# remove_conversion_action happy-path tests
 # ---------------------------------------------------------------------------
 
 
@@ -1358,7 +1358,7 @@ class TestRemoveConversionAction:
 
     @pytest.mark.asyncio
     async def test_remove_success(self, client: _MockExtensionsClient) -> None:
-        """コンバージョンアクション削除が正常に完了する"""
+        """Conversion-action removal completes successfully."""
         ca_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1381,13 +1381,13 @@ class TestRemoveConversionAction:
 
     @pytest.mark.asyncio
     async def test_remove_invalid_id(self, client: _MockExtensionsClient) -> None:
-        """無効なIDでバリデーションエラー"""
+        """Invalid ID triggers a validation error."""
         with pytest.raises(ValueError, match="Invalid"):
             await client.remove_conversion_action({"conversion_action_id": "abc"})
 
 
 # ---------------------------------------------------------------------------
-# set_device_targeting 正常系テスト
+# set_device_targeting happy-path tests
 # ---------------------------------------------------------------------------
 
 
@@ -1403,8 +1403,8 @@ class TestSetDeviceTargetingSuccess:
     async def test_set_devices_update_existing(
         self, client: _MockExtensionsClient
     ) -> None:
-        """既存criterionのbid_modifierを更新"""
-        # 既存のDESKTOP criterionがある
+        """Update bid_modifier on an existing criterion."""
+        # An existing DESKTOP criterion is present.
         mock_row = MagicMock()
         mock_row.campaign_criterion.device.type_ = 4  # DESKTOP
         mock_row.campaign_criterion.bid_modifier = 1.0
@@ -1442,7 +1442,7 @@ class TestSetDeviceTargetingSuccess:
 
     @pytest.mark.asyncio
     async def test_set_devices_create_new(self, client: _MockExtensionsClient) -> None:
-        """criterionが存在しない場合は新規作成"""
+        """Create a new criterion when one does not exist."""
         client._search = AsyncMock(return_value=[])
 
         cc_service = MagicMock()
@@ -1468,13 +1468,13 @@ class TestSetDeviceTargetingSuccess:
             }
         )
         assert "MOBILE" in result["enabled_devices"]
-        assert len(result["updated"]) == 3  # 3デバイス分のmutate
+        assert len(result["updated"]) == 3  # mutate for all 3 device types
 
     @pytest.mark.asyncio
     async def test_set_devices_partial_failure(
         self, client: _MockExtensionsClient
     ) -> None:
-        """一部デバイスの設定失敗時にerrorsを含むが結果は返す"""
+        """When some devices fail, errors are included but a result is still returned."""
         client._search = AsyncMock(return_value=[])
 
         cc_service = MagicMock()
@@ -1516,7 +1516,7 @@ class TestSetDeviceTargetingSuccess:
     async def test_set_devices_all_fail_raises(
         self, client: _MockExtensionsClient
     ) -> None:
-        """全デバイスの設定失敗時にValueErrorを送出"""
+        """Raise ValueError when configuration fails for every device."""
         client._search = AsyncMock(return_value=[])
 
         cc_service = MagicMock()
@@ -1543,7 +1543,7 @@ class TestSetDeviceTargetingSuccess:
 
 
 # ---------------------------------------------------------------------------
-# update_bid_adjustment 正常系テスト
+# update_bid_adjustment happy-path tests
 # ---------------------------------------------------------------------------
 
 
@@ -1555,7 +1555,7 @@ class TestUpdateBidAdjustmentSuccess:
 
     @pytest.mark.asyncio
     async def test_update_success(self, client: _MockExtensionsClient) -> None:
-        """入札調整率の更新が正常に完了する"""
+        """Bid-adjustment update completes successfully."""
         cc_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1584,7 +1584,7 @@ class TestUpdateBidAdjustmentSuccess:
 
 
 # ---------------------------------------------------------------------------
-# update_location_targeting 正常系テスト
+# update_location_targeting happy-path tests
 # ---------------------------------------------------------------------------
 
 
@@ -1596,7 +1596,7 @@ class TestUpdateLocationTargeting:
 
     @pytest.mark.asyncio
     async def test_add_locations(self, client: _MockExtensionsClient) -> None:
-        """地域ターゲティングの追加"""
+        """Add geo targeting."""
         cc_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1628,7 +1628,7 @@ class TestUpdateLocationTargeting:
     async def test_add_locations_with_full_path(
         self, client: _MockExtensionsClient
     ) -> None:
-        """geoTargetConstants/ID形式での追加"""
+        """Add via the geoTargetConstants/ID format."""
         cc_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1654,7 +1654,7 @@ class TestUpdateLocationTargeting:
 
     @pytest.mark.asyncio
     async def test_remove_locations(self, client: _MockExtensionsClient) -> None:
-        """地域ターゲティングの削除"""
+        """Remove geo targeting."""
         cc_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1684,7 +1684,7 @@ class TestUpdateLocationTargeting:
     async def test_add_and_remove_locations(
         self, client: _MockExtensionsClient
     ) -> None:
-        """追加と削除の同時操作"""
+        """Add and remove in a single operation."""
         cc_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1715,7 +1715,7 @@ class TestUpdateLocationTargeting:
 
 
 # ---------------------------------------------------------------------------
-# update_schedule_targeting 正常系テスト
+# update_schedule_targeting happy-path tests
 # ---------------------------------------------------------------------------
 
 
@@ -1727,7 +1727,7 @@ class TestUpdateScheduleTargeting:
 
     @pytest.mark.asyncio
     async def test_add_schedules(self, client: _MockExtensionsClient) -> None:
-        """広告スケジュールの追加"""
+        """Add an ad schedule."""
         cc_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1757,7 +1757,7 @@ class TestUpdateScheduleTargeting:
 
     @pytest.mark.asyncio
     async def test_remove_schedules(self, client: _MockExtensionsClient) -> None:
-        """広告スケジュールの削除"""
+        """Remove an ad schedule."""
         cc_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1787,7 +1787,7 @@ class TestUpdateScheduleTargeting:
     async def test_add_schedule_default_hours(
         self, client: _MockExtensionsClient
     ) -> None:
-        """start_hour/end_hour未指定時のデフォルト値"""
+        """Default values when start_hour/end_hour are unspecified."""
         cc_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1809,7 +1809,7 @@ class TestUpdateScheduleTargeting:
             {
                 "campaign_id": "456",
                 "add_schedules": [
-                    {"day": "TUESDAY"},  # start_hour/end_hour省略
+                    {"day": "TUESDAY"},  # start_hour/end_hour omitted
                 ],
             }
         )
@@ -1817,7 +1817,7 @@ class TestUpdateScheduleTargeting:
 
 
 # ---------------------------------------------------------------------------
-# apply_recommendation テスト
+# apply_recommendation tests
 # ---------------------------------------------------------------------------
 
 
@@ -1829,7 +1829,7 @@ class TestApplyRecommendation:
 
     @pytest.mark.asyncio
     async def test_apply_success(self, client: _MockExtensionsClient) -> None:
-        """推奨事項適用が正常に完了する"""
+        """Applying a recommendation completes successfully."""
         rec_service = MagicMock()
         response = MagicMock()
         response.results = [
@@ -1851,7 +1851,7 @@ class TestApplyRecommendation:
 
 
 # ---------------------------------------------------------------------------
-# list_recommendations フィルタテスト
+# list_recommendations filter tests
 # ---------------------------------------------------------------------------
 
 
@@ -1865,17 +1865,17 @@ class TestListRecommendationsFilters:
     async def test_with_recommendation_type_filter(
         self, client: _MockExtensionsClient
     ) -> None:
-        """recommendation_type指定時のフィルタリング"""
+        """Filtering when recommendation_type is provided."""
         client._search = AsyncMock(return_value=[])
         result = await client.list_recommendations(recommendation_type="KEYWORD")
         assert result == []
-        # _searchが呼ばれたクエリにKEYWORDが含まれているか確認
+        # Check that the query passed to _search contains KEYWORD.
         call_args = client._search.call_args[0][0]
         assert "KEYWORD" in call_args
 
     @pytest.mark.asyncio
     async def test_with_both_filters(self, client: _MockExtensionsClient) -> None:
-        """campaign_idとrecommendation_type両方指定"""
+        """Both campaign_id and recommendation_type provided."""
         client._search = AsyncMock(return_value=[])
         result = await client.list_recommendations(
             campaign_id="123", recommendation_type="KEYWORD"
@@ -1887,7 +1887,7 @@ class TestListRecommendationsFilters:
 
 
 # ---------------------------------------------------------------------------
-# list_location_targeting bid_modifier=None テスト
+# list_location_targeting bid_modifier=None tests
 # ---------------------------------------------------------------------------
 
 
@@ -1899,7 +1899,7 @@ class TestListLocationTargetingBidModifier:
 
     @pytest.mark.asyncio
     async def test_bid_modifier_none(self, client: _MockExtensionsClient) -> None:
-        """bid_modifierが未設定の場合はNoneを返す"""
+        """Returns None when bid_modifier is unset."""
         mock_row = MagicMock()
         mock_row.campaign_criterion.criterion_id = "1"
         mock_row.campaign_criterion.location.geo_target_constant = (
@@ -1913,7 +1913,7 @@ class TestListLocationTargetingBidModifier:
 
 
 # ---------------------------------------------------------------------------
-# list_schedule_targeting bid_modifier=None テスト
+# list_schedule_targeting bid_modifier=None tests
 # ---------------------------------------------------------------------------
 
 
@@ -1925,7 +1925,7 @@ class TestListScheduleTargetingBidModifier:
 
     @pytest.mark.asyncio
     async def test_bid_modifier_none(self, client: _MockExtensionsClient) -> None:
-        """bid_modifierが未設定の場合はNoneを返す"""
+        """Returns None when bid_modifier is unset."""
         mock_row = MagicMock()
         mock_row.campaign_criterion.criterion_id = "1"
         mock_row.campaign_criterion.ad_schedule.day_of_week = "MONDAY"
@@ -1941,7 +1941,7 @@ class TestListScheduleTargetingBidModifier:
 
 
 # ---------------------------------------------------------------------------
-# get_bid_adjustments type_/type 互換性テスト
+# get_bid_adjustments type_/type compatibility tests
 # ---------------------------------------------------------------------------
 
 
@@ -1953,11 +1953,11 @@ class TestGetBidAdjustmentsCompat:
 
     @pytest.mark.asyncio
     async def test_type_attribute_fallback(self, client: _MockExtensionsClient) -> None:
-        """type_がない場合typeにフォールバックする"""
+        """Falls back to `type` when `type_` is missing."""
         mock_row = MagicMock(spec=["campaign_criterion"])
         mock_row.campaign_criterion = MagicMock()
         mock_row.campaign_criterion.criterion_id = "1"
-        # type_を持たない（specでtype_を除外）
+        # No type_ attribute (excluded via spec).
         del mock_row.campaign_criterion.type_
         mock_row.campaign_criterion.type = "DEVICE"
         mock_row.campaign_criterion.bid_modifier = 1.2

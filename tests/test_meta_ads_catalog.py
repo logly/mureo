@@ -1,6 +1,6 @@
-"""Meta Ads 商品カタログ & DPA ユニットテスト
+"""Unit tests for Meta Ads product catalogs and DPA.
 
-CatalogMixin を _get/_post/_delete をモックしてテストする。
+Tests CatalogMixin with _get / _post / _delete mocked.
 """
 
 from __future__ import annotations
@@ -13,12 +13,12 @@ from mureo.meta_ads._catalog import CatalogMixin
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー: CatalogMixin をテスト可能にするモッククラス
+# Helpers: mock class wrapping CatalogMixin for test isolation
 # ---------------------------------------------------------------------------
 
 
 def _make_catalog_client() -> CatalogMixin:
-    """Mixinにモック _get/_post/_delete/_ad_account_id を付与したインスタンスを生成"""
+    """Build a CatalogMixin instance with mocked _get/_post/_delete/_ad_account_id."""
 
     class MockClient(CatalogMixin):
         def __init__(self) -> None:
@@ -31,7 +31,7 @@ def _make_catalog_client() -> CatalogMixin:
 
 
 # ===========================================================================
-# CatalogMixin テスト
+# CatalogMixin tests
 # ===========================================================================
 
 
@@ -41,11 +41,11 @@ class TestCatalogMixin:
     def client(self) -> CatalogMixin:
         return _make_catalog_client()
 
-    # --- カタログ管理 ---
+    # --- Catalog management ---
 
     @pytest.mark.asyncio
     async def test_list_catalogs(self, client: CatalogMixin) -> None:
-        """カタログ一覧を取得できること"""
+        """Can list catalogs."""
         client._get = AsyncMock(
             return_value={
                 "data": [
@@ -63,7 +63,7 @@ class TestCatalogMixin:
 
     @pytest.mark.asyncio
     async def test_create_catalog(self, client: CatalogMixin) -> None:
-        """カタログを作成できること"""
+        """Can create a catalog."""
         client._post = AsyncMock(return_value={"id": "catalog_new"})
         result = await client.create_catalog("biz_001", "新カタログ")
         assert result["id"] == "catalog_new"
@@ -75,7 +75,7 @@ class TestCatalogMixin:
 
     @pytest.mark.asyncio
     async def test_get_catalog(self, client: CatalogMixin) -> None:
-        """カタログ詳細を取得できること"""
+        """Can fetch catalog details."""
         client._get = AsyncMock(
             return_value={"id": "catalog_1", "name": "ECカタログ", "product_count": 150}
         )
@@ -88,7 +88,7 @@ class TestCatalogMixin:
 
     @pytest.mark.asyncio
     async def test_delete_catalog(self, client: CatalogMixin) -> None:
-        """カタログを削除できること"""
+        """Can delete a catalog."""
         client._delete = AsyncMock(return_value={"success": True})
         result = await client.delete_catalog("catalog_1")
         assert result["success"] is True
@@ -96,11 +96,11 @@ class TestCatalogMixin:
         call_args = client._delete.call_args
         assert "/catalog_1" in call_args[0][0]
 
-    # --- 商品管理 ---
+    # --- Product management ---
 
     @pytest.mark.asyncio
     async def test_list_products(self, client: CatalogMixin) -> None:
-        """商品一覧を取得できること"""
+        """Can list products."""
         client._get = AsyncMock(
             return_value={
                 "data": [
@@ -120,7 +120,7 @@ class TestCatalogMixin:
 
     @pytest.mark.asyncio
     async def test_list_products_custom_limit(self, client: CatalogMixin) -> None:
-        """商品一覧をカスタムlimitで取得できること"""
+        """Can list products with a custom limit."""
         client._get = AsyncMock(return_value={"data": []})
         await client.list_products("catalog_1", limit=10)
         call_args = client._get.call_args
@@ -129,7 +129,7 @@ class TestCatalogMixin:
 
     @pytest.mark.asyncio
     async def test_add_product(self, client: CatalogMixin) -> None:
-        """商品を追加できること"""
+        """Can add a product."""
         product_data = {
             "retailer_id": "SKU-001",
             "name": "サンプル商品",
@@ -154,7 +154,7 @@ class TestCatalogMixin:
 
     @pytest.mark.asyncio
     async def test_get_product(self, client: CatalogMixin) -> None:
-        """商品詳細を取得できること"""
+        """Can fetch product details."""
         client._get = AsyncMock(
             return_value={
                 "id": "prod_1",
@@ -171,7 +171,7 @@ class TestCatalogMixin:
 
     @pytest.mark.asyncio
     async def test_update_product(self, client: CatalogMixin) -> None:
-        """商品を更新できること"""
+        """Can update a product."""
         updates = {"name": "更新商品", "price": "2000 JPY"}
         client._post = AsyncMock(return_value={"success": True})
         result = await client.update_product("prod_1", updates)
@@ -185,7 +185,7 @@ class TestCatalogMixin:
 
     @pytest.mark.asyncio
     async def test_delete_product(self, client: CatalogMixin) -> None:
-        """商品を削除できること"""
+        """Can delete a product."""
         client._delete = AsyncMock(return_value={"success": True})
         result = await client.delete_product("prod_1")
         assert result["success"] is True
@@ -193,11 +193,11 @@ class TestCatalogMixin:
         call_args = client._delete.call_args
         assert "/prod_1" in call_args[0][0]
 
-    # --- フィード管理 ---
+    # --- Feed management ---
 
     @pytest.mark.asyncio
     async def test_list_product_feeds(self, client: CatalogMixin) -> None:
-        """フィード一覧を取得できること"""
+        """Can list product feeds."""
         client._get = AsyncMock(
             return_value={
                 "data": [
@@ -214,7 +214,7 @@ class TestCatalogMixin:
 
     @pytest.mark.asyncio
     async def test_create_product_feed(self, client: CatalogMixin) -> None:
-        """フィードを作成できること"""
+        """Can create a product feed."""
         client._post = AsyncMock(return_value={"id": "feed_new"})
         result = await client.create_product_feed(
             "catalog_1",
@@ -231,11 +231,11 @@ class TestCatalogMixin:
         assert data["schedule"]["url"] == "https://example.com/feed.xml"
         assert data["schedule"]["interval"] == "DAILY"
 
-    # --- エラーケース ---
+    # --- Error cases ---
 
     @pytest.mark.asyncio
     async def test_api_error(self, client: CatalogMixin) -> None:
-        """APIエラー時にRuntimeErrorが送出されること"""
+        """RuntimeError is raised on API errors."""
         client._get = AsyncMock(
             side_effect=RuntimeError(
                 "Meta API リクエストに失敗しました (status=400, path=/biz_001/owned_product_catalogs)"

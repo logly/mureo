@@ -1,7 +1,7 @@
-"""Google Ads _ads.py テスト
+"""Tests for Google Ads _ads.py.
 
-_AdsMixin の list_ads, get_ad_policy_details, create_ad, update_ad,
-update_ad_status, _validate_and_prepare_rsa, _build_ad_strength_result のテスト。
+Covers _AdsMixin's list_ads, get_ad_policy_details, create_ad, update_ad,
+update_ad_status, _validate_and_prepare_rsa, and _build_ad_strength_result.
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ from mureo.google_ads.client import GoogleAdsApiClient
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー
+# Helpers
 # ---------------------------------------------------------------------------
 
 
 def _make_client() -> GoogleAdsApiClient:
-    """テスト用クライアント"""
+    """Client used for tests."""
     creds = MagicMock()
     with patch("mureo.google_ads.client.GoogleAdsClient") as mock_gads:
         mock_gads.return_value = MagicMock()
@@ -64,7 +64,7 @@ def _make_ad_row(
     headlines: list[str] | None = None,
     descriptions: list[str] | None = None,
 ) -> MagicMock:
-    """広告一覧行のモック"""
+    """Mock row for an ad listing."""
     row = MagicMock()
     row.ad_group_ad.ad.id = ad_id
     row.ad_group_ad.ad.name = f"Ad {ad_id}"
@@ -77,7 +77,7 @@ def _make_ad_row(
     row.campaign.name = "テストキャンペーン"
     row.campaign.status = 2
 
-    # RSA見出し・説明文
+    # RSA headlines / descriptions
     if headlines is None:
         headlines = ["見出し1", "見出し2", "見出し3"]
     if descriptions is None:
@@ -97,7 +97,7 @@ def _make_ad_row(
     row.ad_group_ad.ad.responsive_search_ad.headlines = hl_assets
     row.ad_group_ad.ad.responsive_search_ad.descriptions = desc_assets
 
-    # ポリシーサマリー
+    # Policy summary
     ps = MagicMock()
     ps.review_status = 3  # REVIEWED
     ps.approval_status = 4  # APPROVED
@@ -238,20 +238,20 @@ class TestListAds:
     @pytest.mark.asyncio
     async def test_RSA以外のタイプ_見出し空(self) -> None:
         client = _make_client()
-        row = _make_ad_row(ad_type=3)  # EXPANDED_TEXT_AD等
+        row = _make_ad_row(ad_type=3)  # e.g. EXPANDED_TEXT_AD
 
         with patch.object(client, "_search", return_value=[row]):
             result = await client.list_ads()
 
-        # RSA以外では headlines/descriptions は空リスト
-        # (map_ad_typeが"RESPONSIVE_SEARCH_AD"を返さないため)
+        # For non-RSA ads, headlines/descriptions are empty lists
+        # (because map_ad_type does not return "RESPONSIVE_SEARCH_AD").
         assert isinstance(result[0]["headlines"], list)
 
     @pytest.mark.asyncio
     async def test_RDAのheadlines_long_headline_descriptions_business_nameを返す(
         self,
     ) -> None:
-        """list_ads が RESPONSIVE_DISPLAY_AD のテキストフィールドを返すこと。"""
+        """list_ads returns RESPONSIVE_DISPLAY_AD text fields."""
         client = _make_client()
 
         row = MagicMock()
@@ -310,7 +310,7 @@ class TestListAds:
         assert ad["long_headline"] == "長い見出しサンプル"
         assert ad["business_name"] == "Acme"
         assert ad["marketing_images"] == ["customers/1/assets/777"]
-        # 空の画像リストが正しく空配列として返ること
+        # An empty image list should be returned as an empty array.
         assert ad["square_marketing_images"] == []
         assert ad["logo_images"] == []
 
@@ -450,16 +450,16 @@ class TestCreateAd:
 
 @pytest.mark.unit
 class TestCreateDisplayAd:
-    """Responsive Display Ad (RDA) 作成のテスト。
+    """Tests for creating Responsive Display Ads (RDA).
 
-    `_verify_ad_group_is_display` はネットワーク呼び出しを伴うため
-    多くのテストで no-op に差し替える。事前チェック自体のテストは
-    `TestVerifyAdGroupIsDisplay` クラスで個別に行う。
+    Because `_verify_ad_group_is_display` makes a network call, most
+    tests stub it to a no-op. Tests for the pre-check itself live in the
+    `TestVerifyAdGroupIsDisplay` class.
     """
 
     @staticmethod
     def _setup_mocks(client) -> tuple[MagicMock, MagicMock]:
-        """テスト用に AdGroupAdService と op を組み立てる。"""
+        """Build an AdGroupAdService and op for tests."""
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/adGroupAds/100~999"
         mock_response = MagicMock()
@@ -467,7 +467,7 @@ class TestCreateDisplayAd:
         mock_service = MagicMock()
         mock_service.mutate_ad_group_ads.return_value = mock_response
         client._client.get_service.return_value = mock_service
-        # get_type が呼ばれるたびに新しい MagicMock を返す
+        # Return a new MagicMock each time get_type is called.
         client._client.get_type.side_effect = lambda *_args, **_kwargs: MagicMock()
         client._client.enums = MagicMock()
         return mock_service, mock_result
@@ -478,7 +478,7 @@ class TestCreateDisplayAd:
 
     @pytest.mark.asyncio
     async def test_正常_ファイルパスから画像をアップロードして作成(self) -> None:
-        """マーケティング画像・正方形画像のファイルパスから RDA を作成する。"""
+        """Create an RDA from marketing-image and square-image file paths."""
         client = _make_client()
         self._setup_mocks(client)
 
@@ -550,21 +550,21 @@ class TestCreateDisplayAd:
                 }
             )
         assert "resource_name" in result
-        # 4枚すべて、この順序でアップロードされること
+        # All 4 images should be uploaded in this order.
         assert upload_calls == [
             "/tmp/m1.jpg",
             "/tmp/m2.jpg",
             "/tmp/s1.jpg",
             "/tmp/logo1.png",
         ]
-        # uploaded_assets でカテゴリ別に振り分けられていること
+        # uploaded_assets should be bucketed by category.
         assert len(result["uploaded_assets"]["marketing"]) == 2
         assert len(result["uploaded_assets"]["square_marketing"]) == 1
         assert len(result["uploaded_assets"]["logo"]) == 1
 
     @pytest.mark.asyncio
     async def test_見出し空でエラー_アップロード前に失敗(self) -> None:
-        """テキストバリデーション失敗時はアップロードが起きないこと。"""
+        """No upload occurs when text validation fails."""
         client = _make_client()
 
         upload_calls: list[str] = []
@@ -619,7 +619,7 @@ class TestCreateDisplayAd:
         from mureo.google_ads._ads_display import RDAUploadError
 
         client = _make_client()
-        # mutate で例外発生
+        # An exception is raised during mutate.
         exc = _make_google_ads_exception("作成失敗")
         mock_service = MagicMock()
         mock_service.mutate_ad_group_ads.side_effect = exc
@@ -653,7 +653,7 @@ class TestCreateDisplayAd:
                         "final_url": "https://example.com",
                     }
                 )
-        # アップロード済みアセットが orphaned_assets に含まれること
+        # Uploaded assets should appear in orphaned_assets.
         orphans = exc_info.value.orphaned_assets
         assert "customers/123/assets/tmp/m.jpg" in " ".join(orphans) or any(
             "/tmp/m.jpg" in o for o in orphans
@@ -662,7 +662,7 @@ class TestCreateDisplayAd:
 
     @pytest.mark.asyncio
     async def test_部分アップロード失敗時もオーファンアセットを報告(self) -> None:
-        """1枚目のアップロード後、2枚目で失敗した場合に1枚目が報告されること。"""
+        """After uploading image #1, if image #2 fails, image #1 is still reported."""
         from mureo.google_ads._ads_display import RDAUploadError
 
         client = _make_client()
@@ -699,17 +699,17 @@ class TestCreateDisplayAd:
                         "final_url": "https://example.com",
                     }
                 )
-        # 1枚目だけアップロードされた状態でエラーになっていること
+        # The error should fire with only image #1 uploaded.
         assert len(exc_info.value.orphaned_assets) == 1
         assert "/tmp/m1.jpg" in exc_info.value.orphaned_assets[0]
 
     @pytest.mark.asyncio
     async def test_long_headlineが正しくprotoに設定される(self) -> None:
-        """long_headline は composite proto field なので .text に直接設定すること。"""
+        """long_headline is a composite proto field; assign directly to .text."""
         client = _make_client()
         captured_long_headline_text = {}
 
-        # ad オブジェクトの参照を保持する仕組み
+        # Keep a reference to the ad object.
         ad_capture = MagicMock()
 
         def get_type_side_effect(name: str) -> Any:
@@ -730,7 +730,7 @@ class TestCreateDisplayAd:
         async def mock_upload(file_path: str, name: str | None = None) -> dict:
             return {"resource_name": f"customers/123/assets/{file_path}", "id": "x"}
 
-        # long_headline.text への代入を検知
+        # Detect assignments to long_headline.text.
         original_set = ad_capture.responsive_display_ad
 
         def capture_long_headline(value: str) -> None:
@@ -771,13 +771,13 @@ class TestCreateDisplayAd:
 
 
 # ---------------------------------------------------------------------------
-# create_display_ad の事前チェック (M5)
+# create_display_ad pre-check (M5)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestVerifyAdGroupIsDisplay:
-    """`_verify_ad_group_is_display` 自体のテスト。"""
+    """Tests for `_verify_ad_group_is_display` itself."""
 
     @pytest.mark.asyncio
     async def test_DISPLAYアカウントなら成功(self) -> None:
@@ -882,10 +882,10 @@ class TestUpdateAd:
 
     @pytest.mark.asyncio
     async def test_RDAに対して明確なエラーを返す(self) -> None:
-        """update_ad は RSA のみ対応。RDA を渡したら明確にエラーを返す。"""
+        """update_ad supports RSA only; passing an RDA returns a clear error."""
         client = _make_client()
 
-        # GAQL pre-check でこの広告は RDA だと返す
+        # The GAQL pre-check reports this ad as an RDA.
         rda_row = MagicMock()
         rda_row.ad_group_ad.ad.type_ = 19  # RESPONSIVE_DISPLAY_AD
 
@@ -902,7 +902,7 @@ class TestUpdateAd:
 
     @pytest.mark.asyncio
     async def test_存在しないad_idでエラー(self) -> None:
-        """pre-check で該当の広告が見つからない場合は明確なエラーを返す。"""
+        """When the pre-check cannot find the ad, return a clear error."""
         client = _make_client()
 
         with patch.object(client, "_search", return_value=[]):
@@ -942,7 +942,7 @@ class TestUpdateAdStatus:
     @pytest.mark.asyncio
     async def test_ENABLED_RSA上限超過(self) -> None:
         client = _make_client()
-        # list_adsが3件の有効RSAを返す
+        # list_ads returns 3 enabled RSAs.
         existing_ads = [
             {"id": "2", "status": "ENABLED", "type": "RESPONSIVE_SEARCH_AD"},
             {"id": "3", "status": "ENABLED", "type": "RESPONSIVE_SEARCH_AD"},
@@ -954,13 +954,13 @@ class TestUpdateAdStatus:
             client._client.enums = MagicMock()
 
             result = await client.update_ad_status("100", "1", "ENABLED")
-            # list_adsがlistを返す→isinstance(ads_data, dict)はFalse→ads=[]
-            # RSA上限チェックはスキップされ、正常にmutateが実行される
+            # list_ads returns a list → isinstance(ads_data, dict) is False → ads=[]
+            # The RSA-limit check is skipped and mutate runs normally.
             assert "resource_name" in result or "error" in result
 
     @pytest.mark.asyncio
     async def test_ENABLED_RSA上限チェック失敗時は続行(self) -> None:
-        """list_adsが例外を投げてもステータス変更は続行"""
+        """Status change proceeds even when list_ads raises."""
         client = _make_client()
         mock_result = MagicMock()
         mock_result.resource_name = "customers/123/adGroupAds/100~1"
@@ -1003,13 +1003,13 @@ class TestUpdateAdStatus:
 
     @pytest.mark.asyncio
     async def test_DISPLAY広告のenableはRSA上限チェックを無視する(self) -> None:
-        """RSA上限の判定はRESPONSIVE_SEARCH_AD型のみ対象。
+        """The RSA-limit check applies only to the RESPONSIVE_SEARCH_AD type.
 
-        RDAばかりが3件以上ある広告グループでDISPLAY広告をenableに
-        変更しても上限エラーにならない。
+        Enabling a DISPLAY ad in an ad group that already has 3 or more
+        RDAs must not raise the RSA-limit error.
         """
         client = _make_client()
-        # RDA だけ4件存在する状態
+        # State: 4 RDAs and no other ad types.
         existing_ads = {
             "ads": [
                 {"id": "10", "status": "ENABLED", "type": "RESPONSIVE_DISPLAY_AD"},
@@ -1030,5 +1030,5 @@ class TestUpdateAdStatus:
 
         with patch.object(client, "list_ads", return_value=existing_ads):
             result = await client.update_ad_status("100", "14", "ENABLED")
-        # RSA上限エラーで弾かれず、正常にmutateが実行されること
+        # The RSA-limit error must not fire; mutate should run normally.
         assert result["resource_name"] == "customers/123/adGroupAds/100~14"

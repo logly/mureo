@@ -2,13 +2,13 @@
 // Surfaces installed providers, basic-setup parts, host, and the env-
 // var form. Listens for `mureo:route_changed` to toggle visibility.
 //
-// Per-row [削除] buttons: each installed basic-setup row gets a delete
+// Per-row [Remove] buttons: each installed basic-setup row gets a delete
 // button that confirms via MUREO.confirmAction, POSTs to the matching
 // backend route, then re-fetches /api/status and re-renders. Errors
 // surface via MUREO.toast — never an unhandled exception, never a stack
 // trace in the DOM.
 //
-// [全削除] button: double-confirm bulk clear. Posts to
+// [Clear All] button: double-confirm bulk clear. Posts to
 // /api/setup/basic/clear which intentionally does NOT touch
 // ~/.mureo/credentials.json (per CTO decision #3, surfaced in the
 // second confirmation dialog).

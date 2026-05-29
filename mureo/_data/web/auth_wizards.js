@@ -471,7 +471,7 @@
       wrap.appendChild(desc);
     }
 
-    // Input-based slots (e.g. GA4) need an explicit "完了 / Done" button
+    // Input-based slots (e.g. GA4) need an explicit "Done" button
     // gated by the inputs being filled. OAuth-only slots auto-advance
     // on pollOAuth success — no inner Next button.
     let doneBtn = null;

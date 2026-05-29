@@ -1,6 +1,6 @@
-"""Meta Ads Split Test (A/Bテスト) ユニットテスト
+"""Unit tests for Meta Ads Split Tests (A/B tests).
 
-SplitTestMixinの全メソッドをモックベースでテストする。
+Mock-based coverage of every method on SplitTestMixin.
 """
 
 from __future__ import annotations
@@ -13,12 +13,12 @@ from mureo.meta_ads._split_test import SplitTestMixin
 
 
 # ---------------------------------------------------------------------------
-# ヘルパー: Mixinをテスト可能にするモッククラス
+# Helpers: mock class wrapping the Mixin for test isolation
 # ---------------------------------------------------------------------------
 
 
 def _make_mock_client() -> SplitTestMixin:
-    """SplitTestMixinにモック _get/_post を付与したインスタンスを生成"""
+    """Build a SplitTestMixin instance with mocked _get/_post."""
 
     class MockClient(SplitTestMixin):
         def __init__(self) -> None:
@@ -30,7 +30,7 @@ def _make_mock_client() -> SplitTestMixin:
 
 
 # ===========================================================================
-# SplitTestMixin テスト
+# SplitTestMixin tests
 # ===========================================================================
 
 
@@ -45,7 +45,7 @@ class TestSplitTestMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_list_split_tests(self, client: SplitTestMixin) -> None:
-        """スプリットテスト一覧を取得できること"""
+        """Can list split tests."""
         client._get = AsyncMock(
             return_value={
                 "data": [
@@ -66,7 +66,7 @@ class TestSplitTestMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_get_split_test(self, client: SplitTestMixin) -> None:
-        """スプリットテスト詳細を取得できること"""
+        """Can fetch split-test details."""
         client._get = AsyncMock(
             return_value={
                 "id": "study_001",
@@ -88,7 +88,7 @@ class TestSplitTestMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_create_split_test(self, client: SplitTestMixin) -> None:
-        """スプリットテストをデフォルト信頼度(95)で作成できること"""
+        """Can create a split test with the default confidence level (95)."""
         client._post = AsyncMock(return_value={"id": "study_new"})
         cells = [
             {"name": "Control", "adsets": ["adset_1"]},
@@ -117,7 +117,7 @@ class TestSplitTestMixin:
     async def test_create_split_test_custom_confidence(
         self, client: SplitTestMixin
     ) -> None:
-        """カスタム信頼度でスプリットテストを作成できること"""
+        """Can create a split test with a custom confidence level."""
         client._post = AsyncMock(return_value={"id": "study_custom"})
         cells = [
             {"name": "A", "adsets": ["adset_a"]},
@@ -142,7 +142,7 @@ class TestSplitTestMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_end_split_test(self, client: SplitTestMixin) -> None:
-        """スプリットテストを終了できること"""
+        """Can end a split test."""
         client._post = AsyncMock(return_value={"success": True})
         result = await client.end_split_test("study_001")
         assert result["success"] is True
@@ -155,7 +155,7 @@ class TestSplitTestMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_list_split_tests_empty(self, client: SplitTestMixin) -> None:
-        """スプリットテストがない場合に空リストを返すこと"""
+        """Returns an empty list when there are no split tests."""
         client._get = AsyncMock(return_value={"data": []})
         result = await client.list_split_tests()
         assert result == []
@@ -165,7 +165,7 @@ class TestSplitTestMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_api_error(self, client: SplitTestMixin) -> None:
-        """APIエラー時にRuntimeErrorが伝播すること"""
+        """API errors propagate as RuntimeError."""
         client._get = AsyncMock(side_effect=RuntimeError("Meta API request failed"))
         with pytest.raises(RuntimeError, match="Meta API"):
             await client.list_split_tests()
@@ -177,7 +177,7 @@ class TestSplitTestMixin:
     async def test_create_split_test_invalid_confidence(
         self, client: SplitTestMixin
     ) -> None:
-        """無効なconfidence_levelでValueErrorが発生すること"""
+        """Raises ValueError for an invalid confidence_level."""
         cells = [
             {"name": "A", "adsets": ["adset_a"]},
             {"name": "B", "adsets": ["adset_b"]},
@@ -198,7 +198,7 @@ class TestSplitTestMixin:
     # -----------------------------------------------------------------------
     @pytest.mark.asyncio
     async def test_get_split_test_with_results(self, client: SplitTestMixin) -> None:
-        """結果付きスプリットテスト詳細を取得できること"""
+        """Can fetch split-test details that include results."""
         client._get = AsyncMock(
             return_value={
                 "id": "study_001",

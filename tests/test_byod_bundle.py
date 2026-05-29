@@ -647,7 +647,7 @@ def test_meta_adapter_recognizes_japanese_headers(tmp_path, byod_root):
 
 
 def test_meta_adapter_pivot_subtotal_rows_skipped(tmp_path, byod_root):
-    """Reports → ピボット exports include subtotal rows where the date
+    """Reports → Pivot exports include subtotal rows where the date
     cell reads ``All`` (or is blank). These must be skipped so summed
     metrics aren't double-counted by the campaign-rollup grain."""
     from mureo.byod.bundle import import_bundle

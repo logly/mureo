@@ -1,7 +1,7 @@
-"""Google Ads _creative.py ユニットテスト
+"""Unit tests for Google Ads _creative.py.
 
-_CreativeMixin の analyze_landing_page / research_creative /
-ヘルパーメソッドをモックベースでテストする。
+Mock-based tests for _CreativeMixin's analyze_landing_page /
+research_creative and helper methods.
 """
 
 from __future__ import annotations
@@ -14,12 +14,12 @@ from mureo.google_ads._creative import _CreativeMixin
 
 
 # ---------------------------------------------------------------------------
-# テスト用のモッククライアントクラス
+# Mock client class for tests
 # ---------------------------------------------------------------------------
 
 
 class _MockCreativeClient(_CreativeMixin):
-    """_CreativeMixin をテスト可能にするモッククラス"""
+    """Mock class that makes _CreativeMixin testable."""
 
     def __init__(self) -> None:
         self._customer_id = "1234567890"
@@ -29,7 +29,7 @@ class _MockCreativeClient(_CreativeMixin):
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str:
         if not value or not value.isdigit():
-            raise ValueError(f"{field_name} は数値文字列である必要があります: {value}")
+            raise ValueError(f"{field_name} must be a numeric string: {value}")
         return value
 
     def _get_service(self, service_name: str):
@@ -46,7 +46,7 @@ class _MockCreativeClient(_CreativeMixin):
 
 
 # ---------------------------------------------------------------------------
-# analyze_landing_page テスト
+# analyze_landing_page tests
 # ---------------------------------------------------------------------------
 
 
@@ -93,7 +93,7 @@ class TestAnalyzeLandingPage:
 
 
 # ---------------------------------------------------------------------------
-# _generate_seed_keywords テスト
+# _generate_seed_keywords tests
 # ---------------------------------------------------------------------------
 
 
@@ -134,7 +134,7 @@ class TestGenerateSeedKeywords:
 
 
 # ---------------------------------------------------------------------------
-# _build_context_summary テスト
+# _build_context_summary tests
 # ---------------------------------------------------------------------------
 
 
@@ -216,7 +216,7 @@ class TestBuildContextSummary:
 
 
 # ---------------------------------------------------------------------------
-# _extract_search_term_insights テスト
+# _extract_search_term_insights tests
 # ---------------------------------------------------------------------------
 
 
@@ -241,11 +241,11 @@ class TestExtractSearchTermInsights:
         result = await client._extract_search_term_insights("123", None)
         assert result["total_terms"] == 3
         assert len(result["high_cv_terms"]) == 2  # a, c
-        assert result["high_cv_terms"][0]["search_term"] == "a"  # CV降順
+        assert result["high_cv_terms"][0]["search_term"] == "a"  # sorted by CV desc
 
 
 # ---------------------------------------------------------------------------
-# research_creative テスト
+# research_creative tests
 # ---------------------------------------------------------------------------
 
 
@@ -257,7 +257,7 @@ class TestResearchCreative:
 
     @pytest.mark.asyncio
     async def test_full_flow(self, client: _MockCreativeClient) -> None:
-        """全ステップが正常に実行される"""
+        """All steps run successfully."""
         with patch.object(
             client, "analyze_landing_page", new_callable=AsyncMock
         ) as mock_lp:
@@ -287,7 +287,7 @@ class TestResearchCreative:
 
     @pytest.mark.asyncio
     async def test_partial_failure_handled(self, client: _MockCreativeClient) -> None:
-        """一部のステップが失敗しても他は実行される"""
+        """The remaining steps still run when some steps fail."""
         with patch.object(
             client, "analyze_landing_page", new_callable=AsyncMock
         ) as mock_lp:
@@ -302,12 +302,12 @@ class TestResearchCreative:
                     url="https://example.com",
                 )
 
-        assert result["existing_ads"] == "取得失敗"
+        assert result["existing_ads"] == "fetch_failed"
         assert "lp_analysis" in result
 
     @pytest.mark.asyncio
     async def test_with_ad_group_id(self, client: _MockCreativeClient) -> None:
-        """ad_group_id指定時にバリデーションされる（行85）"""
+        """When ad_group_id is provided, it is validated (line 85)."""
         with patch.object(
             client, "analyze_landing_page", new_callable=AsyncMock
         ) as mock_lp:
@@ -337,7 +337,7 @@ class TestResearchCreative:
     async def test_search_term_insights_failure(
         self, client: _MockCreativeClient
     ) -> None:
-        """検索語句インサイト失敗時のフォールバック（行110-112）"""
+        """Fallback when search-term insights fail (lines 110-112)."""
         with patch.object(
             client, "analyze_landing_page", new_callable=AsyncMock
         ) as mock_lp:
@@ -356,13 +356,13 @@ class TestResearchCreative:
                         url="https://example.com",
                     )
 
-        assert result["search_term_insights"] == "取得失敗"
+        assert result["search_term_insights"] == "fetch_failed"
 
     @pytest.mark.asyncio
     async def test_keyword_suggestions_failure(
         self, client: _MockCreativeClient
     ) -> None:
-        """キーワード提案失敗時のフォールバック（行121-123）"""
+        """Fallback when keyword suggestion fails (lines 121-123)."""
         with patch.object(
             client, "analyze_landing_page", new_callable=AsyncMock
         ) as mock_lp:
@@ -388,11 +388,11 @@ class TestResearchCreative:
                         url="https://example.com",
                     )
 
-        assert result["keyword_suggestions"] == "取得失敗"
+        assert result["keyword_suggestions"] == "fetch_failed"
 
     @pytest.mark.asyncio
     async def test_existing_keywords_failure(self, client: _MockCreativeClient) -> None:
-        """既存キーワード失敗時のフォールバック（行130-132）"""
+        """Fallback when existing-keyword lookup fails (lines 130-132)."""
         with patch.object(
             client, "analyze_landing_page", new_callable=AsyncMock
         ) as mock_lp:
@@ -418,17 +418,17 @@ class TestResearchCreative:
                         url="https://example.com",
                     )
 
-        assert result["existing_keywords"] == "取得失敗"
+        assert result["existing_keywords"] == "fetch_failed"
 
     @pytest.mark.asyncio
     async def test_empty_seeds_no_suggestions(
         self, client: _MockCreativeClient
     ) -> None:
-        """LP解析でシードが空の場合、キーワード提案は空リスト"""
+        """When LP analysis yields empty seeds, keyword suggestions are an empty list."""
         with patch.object(
             client, "analyze_landing_page", new_callable=AsyncMock
         ) as mock_lp:
-            mock_lp.return_value = {"error": "no data"}  # title/h1なし
+            mock_lp.return_value = {"error": "no data"}  # no title/h1
             with patch.object(
                 client, "_fetch_existing_ads", new_callable=AsyncMock
             ) as mock_ads:
@@ -451,7 +451,7 @@ class TestResearchCreative:
 
 
 # ---------------------------------------------------------------------------
-# _fetch_existing_ads テスト
+# _fetch_existing_ads tests
 # ---------------------------------------------------------------------------
 
 
@@ -463,7 +463,7 @@ class TestFetchExistingAds:
 
     @pytest.mark.asyncio
     async def test_with_ad_group_id(self, client: _MockCreativeClient) -> None:
-        """ad_group_id指定時にクエリに含まれる（行169-170）"""
+        """When ad_group_id is provided, it is included in the query (lines 169-170)."""
         row = MagicMock()
         rsa = row.ad_group_ad.ad.responsive_search_ad
         h = MagicMock()
@@ -487,7 +487,7 @@ class TestFetchExistingAds:
 
     @pytest.mark.asyncio
     async def test_without_ad_group_id(self, client: _MockCreativeClient) -> None:
-        """ad_group_idなしの場合（行150-190）"""
+        """Without ad_group_id (lines 150-190)."""
         client._search = AsyncMock(return_value=[])
 
         ads = await client._fetch_existing_ads("123", None)
@@ -495,7 +495,7 @@ class TestFetchExistingAds:
 
     @pytest.mark.asyncio
     async def test_rsa_no_headlines(self, client: _MockCreativeClient) -> None:
-        """RSA広告にheadlinesがない場合"""
+        """When the RSA ad has no headlines."""
         row = MagicMock()
         rsa = row.ad_group_ad.ad.responsive_search_ad
         rsa.headlines = None
@@ -516,7 +516,7 @@ class TestFetchExistingAds:
 
 
 # ---------------------------------------------------------------------------
-# _extract_search_term_insights with ad_group_id テスト
+# _extract_search_term_insights with ad_group_id tests
 # ---------------------------------------------------------------------------
 
 
@@ -528,7 +528,7 @@ class TestExtractSearchTermInsightsAdditional:
 
     @pytest.mark.asyncio
     async def test_with_ad_group_id(self, client: _MockCreativeClient) -> None:
-        """ad_group_id指定時にkwargsに含まれる（行200）"""
+        """When ad_group_id is provided, it is included in kwargs (line 200)."""
         client.get_search_terms_report = AsyncMock(return_value=[])
 
         result = await client._extract_search_term_insights("123", "456")

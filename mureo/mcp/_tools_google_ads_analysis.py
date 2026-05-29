@@ -735,7 +735,7 @@ TOOLS: list[Tool] = [
             "output for up to 5 seeds derived from LP title + h1 + "
             "meta_description), existing_keywords (list_keywords "
             "output), context_summary (string)}. Any failing sub-step "
-            "is replaced with the literal string '取得失敗' so the "
+            "is replaced with the literal string 'fetch_failed' so the "
             "envelope never raises. Side effect: one outbound LP fetch "
             "(same SSRF policy as google_ads_landing_page_analyze) plus "
             "several GAQL queries. For just the LP use "

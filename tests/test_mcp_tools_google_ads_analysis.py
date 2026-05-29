@@ -1,8 +1,8 @@
-"""Google Ads MCP分析・監視ツール ハンドラーテスト
+"""Tests for the Google Ads MCP analysis and monitoring tool handlers.
 
-パフォーマンス分析、予算分析、オークション分析、RSA分析、
-BtoB最適化、クリエイティブ、監視、キャプチャ、および追加の
-キャンペーン/予算/キーワード/広告ハンドラーの検証。
+Verifies performance analysis, budget analysis, auction analysis, RSA
+analysis, B2B optimization, creative, monitoring, screenshot capture,
+and the additional campaign / budget / keyword / ad handlers.
 """
 
 from __future__ import annotations
@@ -26,20 +26,20 @@ def _import_handlers():
 
 
 def _mock_google_ads_context():
-    """Google Ads認証情報とクライアントのモックを返す"""
+    """Return mocks for Google Ads credentials and the API client."""
     mock_client = AsyncMock()
     mock_creds = MagicMock()
     return mock_creds, mock_client
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — キャンペーン・予算（追加分）
+# Handler tests — campaigns / budget (additional)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsBudgetCreateAndAccountsHandlers:
-    """予算作成・アカウント一覧・ネットワーク/広告パフォーマンスレポートのテスト"""
+    """Tests for budget creation, account listing, and network/ad performance reports."""
 
     async def test_budget_create(self) -> None:
         mod = _import_google_ads_tools()
@@ -119,13 +119,13 @@ class TestGoogleAdsBudgetCreateAndAccountsHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — キーワード（追加分）
+# Handler tests — keywords (additional)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsKeywordExtendedHandlers:
-    """キーワード追加ハンドラーテスト"""
+    """Keyword-addition handler tests."""
 
     async def test_keywords_pause(self) -> None:
         mod = _import_google_ads_tools()
@@ -268,13 +268,13 @@ class TestGoogleAdsKeywordExtendedHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — 広告（追加分）
+# Handler tests — ads (additional)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsAdExtendedHandlers:
-    """広告追加ハンドラーテスト"""
+    """Ad-addition handler tests."""
 
     async def test_ads_policy_details(self) -> None:
         mod = _import_google_ads_tools()
@@ -297,13 +297,13 @@ class TestGoogleAdsAdExtendedHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — パフォーマンス分析
+# Handler tests — performance analysis
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsPerformanceAnalysisHandlers:
-    """パフォーマンス分析系ハンドラーテスト"""
+    """Performance-analysis handler tests."""
 
     async def test_performance_analyze(self) -> None:
         mod = _import_google_ads_tools()
@@ -383,13 +383,13 @@ class TestGoogleAdsPerformanceAnalysisHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — 予算分析
+# Handler tests — budget analysis
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsBudgetAnalysisHandlers:
-    """予算分析系ハンドラーテスト"""
+    """Budget-analysis handler tests."""
 
     async def test_budget_efficiency(self) -> None:
         mod = _import_google_ads_tools()
@@ -431,13 +431,13 @@ class TestGoogleAdsBudgetAnalysisHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — オークション分析
+# Handler tests — auction analysis
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsAuctionInsightsGetHandler:
-    """オークション分析（get）ハンドラーテスト"""
+    """Auction-analysis (get) handler tests."""
 
     async def test_auction_insights_get(self) -> None:
         mod = _import_google_ads_tools()
@@ -460,13 +460,13 @@ class TestGoogleAdsAuctionInsightsGetHandler:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — RSA分析
+# Handler tests — RSA analysis
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsRsaAssetsHandlers:
-    """RSA分析系ハンドラーテスト"""
+    """RSA-analysis handler tests."""
 
     async def test_rsa_assets_analyze(self) -> None:
         mod = _import_google_ads_tools()
@@ -508,13 +508,13 @@ class TestGoogleAdsRsaAssetsHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — BtoB
+# Handler tests — BtoB
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsBtoBHandlers:
-    """BtoB最適化ハンドラーテスト"""
+    """BtoB optimization handler tests."""
 
     async def test_btob_optimizations(self) -> None:
         mod = _import_google_ads_tools()
@@ -537,13 +537,13 @@ class TestGoogleAdsBtoBHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — クリエイティブ
+# Handler tests — creatives
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsCreativeHandlers:
-    """クリエイティブ系ハンドラーテスト"""
+    """Creative-related handler tests."""
 
     async def test_landing_page_analyze(self) -> None:
         mod = _import_google_ads_tools()
@@ -589,13 +589,13 @@ class TestGoogleAdsCreativeHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — 監視
+# Handler tests — monitoring
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsMonitoringHandlers:
-    """監視系ハンドラーテスト"""
+    """Monitoring handler tests."""
 
     async def test_delivery_goal_evaluate(self) -> None:
         mod = _import_google_ads_tools()
@@ -675,13 +675,13 @@ class TestGoogleAdsMonitoringHandlers:
 
 
 # ---------------------------------------------------------------------------
-# ハンドラーテスト — キャプチャ
+# Handler tests — capture
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestGoogleAdsCaptureHandlers:
-    """キャプチャ系ハンドラーテスト"""
+    """Capture handler tests."""
 
     async def test_capture_screenshot(self) -> None:
         mod = _import_google_ads_tools()

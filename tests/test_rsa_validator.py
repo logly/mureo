@@ -1,7 +1,7 @@
-"""RSA validator テスト
+"""Tests for the RSA validator.
 
-_rsa_validator.pyの純粋な検証ロジックをテストする。
-DB/API不要でテスト可能。
+Exercises the pure validation logic in _rsa_validator.py.
+Runs without a database or external API.
 """
 
 from __future__ import annotations
@@ -182,7 +182,7 @@ class TestValidateRsaTexts:
         assert any("duplicate" in w for w in result.warnings)
 
     def test_文字幅超過でValueError(self) -> None:
-        long_headline = "あ" * 20  # 全角20文字 = 幅40 > 30
+        long_headline = "あ" * 20  # 20 full-width chars = width 40 > 30
         with pytest.raises(ValueError, match="character limit"):
             validate_rsa_texts(
                 headlines=[long_headline],
