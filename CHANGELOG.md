@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.18] - 2026-05-29
+
+### Added — `mureo_learning_insights_get` MCP tool closes the `/learn` read-side gap
+
+`/learn` (in v0.8.0) has been writing insights to `~/.claude/skills/_mureo-pro-diagnosis/SKILL.md` via the `FilesystemKnowledgeStore`, but the diagnostic workflows that the docstring claimed would consume those insights (`/daily-check`, `/rescue`, `/budget-rebalance`, etc.) had no read path. The saved Markdown sat on disk, available to Claude Code's general skill discovery but never explicitly consulted by the workflows. This release closes that read-side gap.
+
+A new MCP tool, `mureo_learning_insights_get`, returns the operator-tier knowledge base verbatim by calling `KnowledgeStore.read_operator_knowledge()`. The tool takes no arguments — its job is to surface every saved insight so the agent treats them as authoritative practitioner know-how. An empty knowledge base (no file, or only the YAML-frontmatter scaffold) returns a guidance string rather than a blank payload, so the agent neither quotes an empty section into its analysis nor mistakes the scaffold header for content.
+
+Seven diagnostic skills (`daily-check`, `rescue`, `budget-rebalance`, `creative-refresh`, `goal-review`, `competitive-scan`, `search-term-cleanup`) gain a "Before you start" paragraph at the top of their Steps section instructing the agent to call `mureo_learning_insights_get` first and treat the returned Markdown as authoritative context.
+
+The tool defers entirely to the runtime context's `KnowledgeStore`, so an alternate backend registered via the `mureo.runtime_context_factory` entry-point group works transparently. This sets up the federation work in v0.9.19 (umbrella [#161](https://github.com/logly/mureo/issues/161), PR B [#163](https://github.com/logly/mureo/issues/163)), which will let mureo aggregate insights from external MCP servers alongside the local file.
+
+Closes [#162](https://github.com/logly/mureo/issues/162) (part 1 of 2 of umbrella [#161](https://github.com/logly/mureo/issues/161)).
+
 ## [0.9.17] - 2026-05-29
 
 ### Added — Meta Instant Form: gap-closure patch

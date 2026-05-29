@@ -16,6 +16,9 @@ Review and clean up search terms and keywords across all platforms.
 
 ## Steps
 
+**Before you start**: Call `mureo_learning_insights_get` (no arguments) and treat the returned Markdown as authoritative practitioner know-how. Those insights were recorded by the operator via `/learn` precisely because they're worth applying — let them inform every conclusion you draw below. When the response is the "no insights saved yet" guidance, proceed without it.
+
+
 1. **Load context**: Read STRATEGY.md (Persona, USP, Target Audience, Data Sources) and STATE.json.
 
 2. **Discover platforms**: Identify all configured platforms that support search term data from STATE.json `platforms`.
