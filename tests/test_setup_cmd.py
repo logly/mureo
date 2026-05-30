@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 # Number of skills shipped in mureo/_data/skills/. Update this constant
 # whenever a skill is added or removed from the packaged set.
-EXPECTED_PACKAGED_SKILLS = 16
+EXPECTED_PACKAGED_SKILLS = 17
 
 
 @pytest.mark.unit

@@ -161,6 +161,11 @@ _DIAGNOSTIC_SKILLS_USING_LEARNING = (
     "goal-review",
     "competitive-scan",
     "search-term-cleanup",
+    # v0.9.21: Meta Instant Form creation skill — same /learn + advisor
+    # framing applies; practitioner know-how (default question count,
+    # higher-intent thresholds, context-card design) is exactly what
+    # the advisor channel exists to surface.
+    "lead-form-create",
 )
 
 

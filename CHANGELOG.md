@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.21] - 2026-05-30
+
+### Added — `lead-form-create` skill closes the Instant Form interview-then-create gap
+
+Real-user feedback on the v0.9.14–0.9.17 Instant Form rollout: when an operator says "create a form", they want the agent to **ask the required conditions one question at a time, then build the form** — not silently autofill defaults and not dump every possible parameter in a single wall-of-text prompt. The Instant Form tools (`meta_ads_lead_forms_create`, `_list`, `_get`, `_update`, `_duplicate`, `meta_ads_creatives_create_lead`) already shipped, but no skill orchestrated the interview, so neither failure mode had a fix.
+
+This release adds a new skill `lead-form-create` (canonical `skills/lead-form-create/SKILL.md` + packaged `mureo/_data/skills/lead-form-create/SKILL.md`) that drives a one-question-at-a-time interview mapped to the `meta_ads_lead_forms_create` API, confirms the collected payload, then mutates. The skill instructs the agent to:
+
+1. **Discover the Facebook Page** via the available Page-listing helper.
+2. **Form name** with a sensible default drawn from STRATEGY.md / Persona.
+3. **Lead questions to collect** — standard types (`FULL_NAME`, `EMAIL`, `PHONE_NUMBER`, …) with a "name + email + phone" default, plus custom-question walkthrough. Warns when the list grows beyond ~3 standard questions because each added field reduces submission rate.
+4. **Privacy policy URL** with explicit `https://` validation (Meta rejects non-HTTPS).
+5. **Intro card (`context_card`) yes/no** — if yes, collect title, body, style, and an **explicit cover-image step**. The image step covers BOTH paths: `meta_ads_creatives_upload_image` for new uploads (capturing `image_hash` for `cover_photo_id`) AND reuse-existing via `meta_ads_get_ad_images`. The operator's feedback specifically asked the agent to surface the image question.
+6. **Thank-you page customisation yes/no** — full custom completion screen (`title`, `body`, `button_type`, `website_url`, `button_text`) or Meta's default confirmation.
+7. **Higher-intent (3-step) mode yes/no** — with the volume-vs-quality trade-off explained in one sentence so the agent can quote it instead of guessing.
+8. **Locale** — Page primary vs override (`ja_JP` etc.).
+
+Before calling `meta_ads_lead_forms_create`, the skill **forces a confirmation gate**: summarise the full payload as a bulleted list, ask for explicit go-ahead, then mutate. After success, the skill points the user at the natural next step — `meta_ads_creatives_create_lead` — without trying to build the creative itself (that belongs to a separate flow).
+
+The skill ships with the standard `mureo_learning_insights_get` "Before you start" line (v0.9.18) and the `mureo_consult_advisor` "Also call" line with anti-corruption framing (v0.9.20). Instant Form best practices (default question count, higher-intent thresholds, context-card design) are exactly the kind of practitioner know-how the advisor channel exists to surface, so the embedding is particularly valuable here.
+
+`test_packaged_skills_match_canonical_byte_for_byte` and `test_canonical_skills_not_unexpectedly_richer` automatically pick up the new skill; `lead-form-create` is added to `_DIAGNOSTIC_SKILLS_USING_LEARNING` so the v0.9.20 invariants are enforced; and a new test file `tests/test_lead_form_create_skill.py` pins the eight load-bearing properties of the skill body: tool reference, "one question at a time" directive, image step with both upload and reuse, privacy-URL `https://` validation, confirmation gate, post-create next-step suggestion, and explicit higher-intent trade-off coverage.
+
+No tool / handler / code-path changes — purely a new skill prompt. Existing operators see the new skill automatically discovered alongside the other 14 skills.
+
+Closes [#170](https://github.com/logly/mureo/issues/170).
+
 ## [0.9.20] - 2026-05-30
 
 ### Changed — `mureo_consult_advisor` reframed as primary practitioner-knowledge channel + embedded in 7 diagnostic skills
