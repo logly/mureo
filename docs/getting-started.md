@@ -268,7 +268,7 @@ Skill availability by host:
 
 | Host | Skill triggering | Notes |
 |---|---|---|
-| Claude Code | `/daily-check`, `/budget-rebalance`, … | All 10 operational skills + 6 foundation skills available locally |
+| Claude Code | `/daily-check`, `/budget-rebalance`, … | All 11 operational skills + 6 foundation skills available locally |
 | Claude Desktop chat | natural language ("run a daily check") | Skills must be registered to claude.ai (manual upload or marketplace) |
 | Cowork | natural language | Same registration story as chat |
 
@@ -279,7 +279,7 @@ Skill availability by host:
 > Until [Anthropic Skills marketplace](https://github.com/anthropics/claude-plugins-official) lists mureo, Desktop / Cowork users can register skills manually:
 
 1. Open claude.ai → **Skills** management page.
-2. For each operational skill, upload the SKILL.md file from `mureo/_data/skills/<name>/SKILL.md` (10 files: `daily-check`, `budget-rebalance`, `search-term-cleanup`, `creative-refresh`, `rescue`, `goal-review`, `weekly-report`, `competitive-scan`, `onboard`, `sync-state`).
+2. For each operational skill, upload the SKILL.md file from `mureo/_data/skills/<name>/SKILL.md` (11 files: `daily-check`, `budget-rebalance`, `search-term-cleanup`, `creative-refresh`, `lead-form-create`, `rescue`, `goal-review`, `weekly-report`, `competitive-scan`, `onboard`, `sync-state`).
 3. Foundation skills (the `_mureo-*` ones) are referenced via PREREQUISITE — uploading them is optional but recommended; they reduce the chance the agent misroutes a tool call.
 4. Restart Claude Desktop.
 

@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 173 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 170 advertising and SEO operation tools across Google Ads, Meta Ads, and Search Console, plus 2 rollback tools and 1 cross-platform anomaly-detection tool. Any MCP-compatible client can connect and call these tools over stdio.
+mureo exposes 185 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 170 advertising and SEO operation tools across Google Ads, Meta Ads, and Search Console, 2 rollback tools, 1 cross-platform anomaly-detection tool, 5 mureo-context tools (strategy / state), 1 analytics-registry tool, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 4 other tools across the surface, and 1 reserved for plugin shadowing. Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
 
 ## Starting the Server
 
