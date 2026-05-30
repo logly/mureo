@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.22] - 2026-05-30
+
+### Docs — drift fixes after v0.9.18–v0.9.21 (no code path or schema changes)
+
+A parallel English + Japanese documentation audit after v0.9.21 surfaced six drift sites accumulated across the v0.9.18 (`mureo_learning_insights_get`), v0.9.19 (`mureo_consult_advisor` + insight federation), v0.9.20 (consult-advisor reframe + skill embedding), and v0.9.21 (`lead-form-create` skill) rollouts. This release applies the corrections in one go so the README and key reference docs reflect the shipped surface again.
+
+**README.md** — workflow-commands table gains `/lead-form-create` (between `/creative-refresh` and `/budget-rebalance`); a new paragraph in the *Learnable operational know-how* section describes external advisor MCP federation via `~/.mureo/insight_sources.json` and `mureo_consult_advisor`, with a link to `docs/insight-federation.md`.
+
+**README.ja.md** — same additions mirrored in Japanese: workflow table gains `/lead-form-create`, and the ナレッジベース section gains an advisor-federation paragraph linking to `docs/insight-federation.ja.md`.
+
+**docs/mcp-server.md** — opening tool count corrected from `173` to `185`, with an explicit per-family breakdown and a maintenance note to re-check against the `test_list_tools_returns_all_tools` pin when MCP tools are added or removed.
+
+**docs/architecture.md** — `.claude/commands/` enumeration gains `lead-form-create.md` so the architectural map matches what `mureo setup claude-code` installs.
+
+**docs/getting-started.md** + **docs/getting-started.ja.md** — operational-skill count bumped 10 → 11 in both the host-comparison table and the manual claude.ai upload list; `lead-form-create` added between `creative-refresh` and `rescue` in the upload sequence.
+
+No tool / handler / schema changes — purely documentation. The packaged-skill parity test (`test_packaged_skills_match_canonical_byte_for_byte`), version-pin tests, and the v0.9.21 tool / skill counts (`EXPECTED_PACKAGED_SKILLS = 17`, `test_list_tools_returns_all_tools` at 185) all stay green.
+
+Closes [#172](https://github.com/logly/mureo/issues/172).
+
 ## [0.9.21] - 2026-05-30
 
 ### Added — `lead-form-create` skill closes the Instant Form interview-then-create gap

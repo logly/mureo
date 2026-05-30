@@ -173,6 +173,8 @@ Agent: Saved. I'll flag this as seasonal next time.
 → Every future /daily-check and /rescue will factor this in.
 ```
 
+Beyond your own `/learn` history, mureo can also consult **external advisor MCP servers** — consulting firms, industry trade groups, OSS communities, or internal team wikis can stand up a vector-search MCP server that holds practitioner know-how (platform quirks, industry CPA / CTR benchmarks, post-cutoff platform updates) the LLM does not carry. Configure them in `~/.mureo/insight_sources.json` and the agent calls `mureo_consult_advisor` from any diagnostic skill to pull the matching fragments. The advisor keeps the corpus; mureo passes a context-rich query and receives only the top-k snippets. See [`docs/insight-federation.md`](docs/insight-federation.md) for the operator setup and the server-author spec.
+
 ### Security by design
 
 Marketing accounts are a high-value target. mureo is built with defense-in-depth for AI-driven operations:
@@ -211,6 +213,7 @@ See [SECURITY.md](SECURITY.md) for the full threat model and vulnerability repor
 | `/rescue` | Emergency performance fix: platform-side vs site-side root cause diagnosis |
 | `/search-term-cleanup` | Keyword hygiene with paid/organic overlap elimination |
 | `/creative-refresh` | Multi-platform ad copy refresh using your Persona, USP, and organic keyword data |
+| `/lead-form-create` | One-question-at-a-time interview that builds a Meta Instant Form (Lead Ad form) and surfaces the cover-image step explicitly |
 | `/budget-rebalance` | Cross-platform budget optimization informed by organic coverage |
 | `/competitive-scan` | Paid + organic competitive landscape analysis |
 | `/goal-review` | Multi-source goal progress evaluation with operation mode recommendations |

@@ -166,6 +166,7 @@ mureo/
 ├── rescue.md                    # Emergency performance rescue
 ├── search-term-cleanup.md       # Strategy-aligned search term hygiene
 ├── creative-refresh.md          # Persona/USP-driven ad copy refresh
+├── lead-form-create.md          # Interview-then-create Meta Instant Form (Lead Ad form)
 ├── budget-rebalance.md          # Mode-guided budget reallocation
 ├── competitive-scan.md          # Auction analysis with Market Context
 ├── sync-state.md                # Manual STATE.json synchronization
