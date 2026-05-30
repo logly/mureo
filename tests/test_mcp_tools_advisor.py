@@ -49,6 +49,28 @@ class TestConsultAdvisorToolDefinition:
         assert "campaign_id" in schema["properties"]
         assert "campaign_id" not in schema.get("required", [])
 
+    def test_description_does_not_frame_as_second_opinion(self) -> None:
+        """v0.9.20 reframe: the tool is the primary external channel
+        for practitioner know-how the LLM lacks, NOT a 'second
+        opinion' to Claude's first opinion. The 'second opinion'
+        wording in v0.9.19 caused under-invocation; this test pins
+        the corrected framing against regression."""
+        mod = _import_learning_tools()
+        tool = next(t for t in mod.TOOLS if t.name == "mureo_consult_advisor")
+        desc_lower = tool.description.lower()
+        assert "second opinion" not in desc_lower
+        assert "primary" in desc_lower or "practitioner know-how" in desc_lower
+
+    def test_description_encourages_early_invocation(self) -> None:
+        """The agent should call the tool proactively during reasoning,
+        not just when /learn history is thin. Pin a 'call early'
+        signal so future edits don't slip back to the conservative
+        framing."""
+        mod = _import_learning_tools()
+        tool = next(t for t in mod.TOOLS if t.name == "mureo_consult_advisor")
+        desc_lower = tool.description.lower()
+        assert "early" in desc_lower or "proactively" in desc_lower
+
     def test_existing_learning_insights_tool_unchanged(self) -> None:
         """Adding the new tool must not regress the v0.9.18 tool's
         public shape."""
