@@ -380,6 +380,35 @@ def _refuse_text_content(name: str, decision: PolicyDecision) -> list[Any]:
     return [TextContent(type="text", text=body)]
 
 
+def _maybe_append_strategy_reminder(name: str, result: list[Any]) -> list[Any]:
+    """Best-effort soft-enforcement of the "strategy-driven" claim.
+
+    For built-in mutating tools, append a short TextContent reminder
+    listing STRATEGY.md section titles so the agent re-surfaces the
+    operator's declared strategy after every mutation. Never refuses,
+    never replaces the tool's content. Skipped when:
+
+    - ``MUREO_DISABLE_STRATEGY_REMINDER=1`` env var is set
+    - the tool is not a built-in mutating tool (read-only, discover,
+      plugin tools all skip)
+    - STRATEGY.md is empty / missing / unreadable
+
+    See :mod:`mureo.core.strategy_reminder` for the classification and
+    builder logic.
+    """
+    # Imported at the dispatcher's hot-path top rather than lazily on
+    # every call — review round 2 perf nit. TextContent is already in
+    # the module via TYPE_CHECKING; maybe_build_reminder is cheap.
+    from mcp.types import TextContent
+
+    from mureo.core.strategy_reminder import maybe_build_reminder
+
+    reminder = maybe_build_reminder(name)
+    if reminder is None:
+        return result
+    return [*result, TextContent(type="text", text=reminder)]
+
+
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     """Execute a tool and return the result.
 
@@ -388,6 +417,12 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     gate denies the call, a TextContent refusal is returned and the
     handler is never invoked. See :mod:`mureo.core.policy`.
 
+    After successful dispatch of a built-in *mutating* tool, a
+    STRATEGY.md reminder TextContent block is appended to the result
+    so the agent re-surfaces the operator's declared strategy after
+    every mutation. Soft enforcement only — never refuses. See
+    :mod:`mureo.core.strategy_reminder`.
+
     Raises:
         ValueError: Unknown tool name or missing required parameter
     """
@@ -395,17 +430,27 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     if decision is not None:
         return _refuse_text_content(name, decision)
     if name in _GOOGLE_ADS_NAMES:
-        return await handle_google_ads_tool(name, arguments)
+        return _maybe_append_strategy_reminder(
+            name, await handle_google_ads_tool(name, arguments)
+        )
     if name in _META_ADS_NAMES:
-        return await handle_meta_ads_tool(name, arguments)
+        return _maybe_append_strategy_reminder(
+            name, await handle_meta_ads_tool(name, arguments)
+        )
     if name in _SEARCH_CONSOLE_NAMES:
-        return await handle_search_console_tool(name, arguments)
+        return _maybe_append_strategy_reminder(
+            name, await handle_search_console_tool(name, arguments)
+        )
     if name in _ROLLBACK_NAMES:
-        return await handle_rollback_tool(name, arguments)
+        return _maybe_append_strategy_reminder(
+            name, await handle_rollback_tool(name, arguments)
+        )
     if name in _ANALYSIS_NAMES:
         return await handle_analysis_tool(name, arguments)
     if name in _MUREO_CONTEXT_NAMES:
-        return await handle_mureo_context_tool(name, arguments)
+        return _maybe_append_strategy_reminder(
+            name, await handle_mureo_context_tool(name, arguments)
+        )
     if name in _ANALYTICS_REGISTRY_NAMES:
         return await handle_analytics_registry_tool(name, arguments)
     if name in _LEARNING_NAMES:

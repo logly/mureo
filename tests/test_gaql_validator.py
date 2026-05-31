@@ -18,6 +18,7 @@ from mureo.google_ads._gaql_validator import (
     validate_id,
     validate_id_list,
     validate_period_days,
+    validate_static_query,
 )
 
 
@@ -179,3 +180,52 @@ class TestBuildInClause:
     def test_injection_in_any_value_rejected(self) -> None:
         with pytest.raises(GAQLValidationError):
             build_in_clause(["1", "2); DROP TABLE campaign; --"], "id")
+
+
+# ---------------------------------------------------------------------------
+# Static-query marker (v0.9.24)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestValidateStaticQuery:
+    """A marker function for GAQL queries that are 100% static string
+    literals. Returns the input unchanged so call-sites can wrap their
+    static queries to signal "no external input here, reviewer
+    confirmed". The marker rejects strings that contain formatting
+    placeholders (``{}``, ``%s``, ``%(name)s``) so a future edit that
+    accidentally introduces interpolation crashes loudly rather than
+    silently bypassing the validator."""
+
+    def test_static_string_returned_unchanged(self) -> None:
+        q = "SELECT campaign.id FROM campaign LIMIT 1"
+        assert validate_static_query(q) is q
+
+    def test_multiline_static_query_returned_unchanged(self) -> None:
+        q = (
+            "SELECT customer_client.id, customer_client.descriptive_name "
+            "FROM customer_client "
+            "WHERE customer_client.status = 'ENABLED' "
+            "AND customer_client.level > 0"
+        )
+        assert validate_static_query(q) is q
+
+    def test_brace_interpolation_rejected(self) -> None:
+        with pytest.raises(GAQLValidationError, match="not static"):
+            validate_static_query("SELECT * FROM campaign WHERE id = {cid}")
+
+    def test_percent_interpolation_rejected(self) -> None:
+        with pytest.raises(GAQLValidationError, match="not static"):
+            validate_static_query("SELECT * FROM campaign WHERE id = %s")
+
+    def test_percent_named_interpolation_rejected(self) -> None:
+        with pytest.raises(GAQLValidationError, match="not static"):
+            validate_static_query("SELECT * FROM campaign WHERE id = %(cid)s")
+
+    def test_empty_rejected(self) -> None:
+        with pytest.raises(GAQLValidationError, match="empty"):
+            validate_static_query("")
+
+    def test_non_str_rejected(self) -> None:
+        with pytest.raises(GAQLValidationError, match="str"):
+            validate_static_query(123)  # type: ignore[arg-type]

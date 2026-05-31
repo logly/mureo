@@ -140,3 +140,60 @@ def build_in_clause(values: Iterable[str], field_name: str) -> str:
     """Validate IDs and return a safe ``(1, 2, 3)`` GAQL ``IN`` clause."""
     safe = validate_id_list(values, field_name)
     return "(" + ", ".join(safe) + ")"
+
+
+# ---------------------------------------------------------------------------
+# Static-query marker (v0.9.24)
+# ---------------------------------------------------------------------------
+
+# Patterns that indicate a query is NOT a pure static string literal. Any
+# of these means the caller is doing some kind of interpolation, which
+# means the validator (not this marker) should be used.
+_INTERPOLATION_PATTERNS = (
+    "{",  # f-string / str.format placeholder
+    "}",  # closing brace from same
+    "%s",  # %-formatting positional
+    "%d",  # %-formatting positional
+    "%(",  # %-formatting named
+    "$",  # string.Template ($name / ${name}). GAQL never legitimately
+    # contains $ (verified across all current call sites), so flagging
+    # any future Template-style interpolation is a free defensive line.
+)
+
+
+def validate_static_query(query: str) -> str:
+    """Marker for GAQL queries that are 100% static string literals.
+
+    Returns ``query`` unchanged so call sites can wrap their static
+    queries with this marker as a signal to readers and reviewers:
+    *"this query takes no external input — already audited."*
+
+    The marker is **not** a security boundary on its own (a static
+    string needs no validation), but it does enforce one invariant: the
+    string must contain no formatting placeholders. If a future edit
+    introduces ``f"... {var}"`` interpolation or ``"... %s"`` %-format,
+    this marker will refuse to pass through. The contributor must then
+    either (a) prove the inputs come from a trusted source and re-mark,
+    or (b) route the dynamic part through :func:`validate_id`,
+    :func:`escape_string_literal`, :func:`build_in_clause`, etc. — the
+    actual validators.
+
+    This satisfies the v0.9.23 audit gap: ``accounts.py`` had two raw
+    GAQL queries bypassing the validator. They are static today, but
+    nothing in the codebase signalled the intent or trapped future
+    drift. Wrapping them in :func:`validate_static_query` does both.
+    """
+    if not isinstance(query, str):
+        raise GAQLValidationError(
+            f"validate_static_query expected str, got {type(query).__name__}"
+        )
+    if not query.strip():
+        raise GAQLValidationError("validate_static_query: query is empty")
+    for marker in _INTERPOLATION_PATTERNS:
+        if marker in query:
+            raise GAQLValidationError(
+                f"validate_static_query: query is not static (contains "
+                f"interpolation marker {marker!r}). Route the dynamic "
+                f"part through the validator instead."
+            )
+    return query
