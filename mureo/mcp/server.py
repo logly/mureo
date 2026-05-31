@@ -38,6 +38,7 @@ from mcp.server.stdio import stdio_server
 if TYPE_CHECKING:
     from mcp.types import Tool
 
+    from mureo.core.policy import PolicyDecision, PolicyGate
     from mureo.mcp.tool_provider import MCPToolProvider
 
 from mureo.mcp.plugin_audit import record_plugin_call
@@ -267,12 +268,132 @@ async def handle_list_tools() -> list[Any]:
     return list(_ALL_TOOLS)
 
 
+def _policy_gate_entry_points() -> tuple[Any, ...]:
+    """Return the entry points registered under
+    ``mureo.policy_gates``. Isolated so the unit tests can patch this
+    without monkeypatching ``importlib.metadata``."""
+    from importlib.metadata import entry_points
+
+    from mureo.core.policy import POLICY_GATES_ENTRY_POINT_GROUP
+
+    try:
+        eps = entry_points(group=POLICY_GATES_ENTRY_POINT_GROUP)
+    except Exception as exc:  # noqa: BLE001
+        # importlib.metadata blowing up is rare but possible on weird
+        # environments (unusual install layout, corrupted metadata).
+        # Log so operators have a signal rather than silently treating
+        # the situation as "no gates registered".
+        logger.warning(
+            "policy gates: importlib.metadata.entry_points failed (%s); "
+            "treating as zero gates registered",
+            exc,
+        )
+        return ()
+    return tuple(eps)
+
+
+def _load_policy_gates() -> tuple[PolicyGate, ...]:
+    """Load and instantiate every gate declared under the
+    ``mureo.policy_gates`` entry-point group.
+
+    Per-entry-point exception isolation: a broken third-party
+    package (partial install, import error) MUST NOT take mureo
+    offline. The failing entry is dropped with a WARNING and the
+    rest still load.
+    """
+    gates: list[PolicyGate] = []
+    for ep in _policy_gate_entry_points():
+        try:
+            cls = ep.load()
+            instance = cls()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "policy gate '%s' failed to load (%s); skipping",
+                getattr(ep, "name", "?"),
+                exc,
+            )
+            continue
+        gates.append(instance)
+    return tuple(gates)
+
+
+def _evaluate_policy_gates(
+    name: str, arguments: dict[str, Any]
+) -> PolicyDecision | None:
+    """Run every registered gate. Returns the first deny decision, or
+    ``None`` if every gate allowed (or abstained on exception).
+
+    Calls :func:`_load_policy_gates` on every dispatch rather than
+    caching at module-import time so a (rare) at-runtime
+    install/uninstall of a third-party gate is picked up without a
+    server restart. ``importlib.metadata.entry_points`` is itself
+    cached internally, so the per-call cost is microseconds.
+    """
+    # Lazy-imported so the type is available for the isinstance guard
+    # without re-introducing the runtime import at module top (it lives
+    # under TYPE_CHECKING for the rest of this module).
+    from mureo.core.policy import PolicyDecision as _PolicyDecision
+
+    for gate in _load_policy_gates():
+        try:
+            decision = gate.evaluate(name, arguments)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "policy gate %r raised on '%s' (%s); abstain",
+                type(gate).__name__,
+                name,
+                exc,
+            )
+            continue
+        # Protocol violation guard: a buggy gate that returns None /
+        # True / a tuple / dict / etc. would crash the dispatcher
+        # downstream (AttributeError on `.allowed` or `.reason`).
+        # Treat any non-PolicyDecision return as a buggy abstain so
+        # one broken gate cannot take mureo offline — the exact same
+        # discipline as the per-call exception isolation above.
+        if not isinstance(decision, _PolicyDecision):
+            logger.warning(
+                "policy gate %r returned %r (not PolicyDecision) on '%s'; " "abstain",
+                type(gate).__name__,
+                type(decision).__name__,
+                name,
+            )
+            continue
+        if not decision.allowed:
+            return decision
+    return None
+
+
+def _refuse_text_content(name: str, decision: PolicyDecision) -> list[Any]:
+    """Build the TextContent payload returned to the agent when a
+    policy gate refuses a tool call. Kept here so the message format
+    has one source of truth.
+    """
+    from mcp.types import TextContent
+
+    reason = decision.reason.strip() or "(no reason provided by the policy gate)"
+    body = (
+        f"Tool call refused by policy gate.\n"
+        f"  Tool: {name}\n"
+        f"  Reason: {reason}\n"
+    )
+    return [TextContent(type="text", text=body)]
+
+
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     """Execute a tool and return the result.
+
+    Before dispatch, every gate registered under the
+    ``mureo.policy_gates`` entry-point group is consulted. If any
+    gate denies the call, a TextContent refusal is returned and the
+    handler is never invoked. See :mod:`mureo.core.policy`.
 
     Raises:
         ValueError: Unknown tool name or missing required parameter
     """
+    decision = _evaluate_policy_gates(name, arguments)
+    if decision is not None:
+        return _refuse_text_content(name, decision)
     if name in _GOOGLE_ADS_NAMES:
         return await handle_google_ads_tool(name, arguments)
     if name in _META_ADS_NAMES:

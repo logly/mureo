@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.23] - 2026-05-31
+
+### Added — `mureo.core.policy.PolicyGate` extension point + `mureo.policy_gates` entry-point group
+
+mureo OSS gains a small generic policy-gate extension point. Third-party packages (for example `mureo-agency`, which is building a paid read-only mode that blocks ad-platform mutations) can register a `PolicyGate` implementation against the new `mureo.policy_gates` entry-point group, and mureo's MCP server consults every registered gate before dispatching each tool call. mureo OSS itself ships **zero gates**, so the default behaviour is byte-identical to v0.9.22 — every call dispatches normally with zero policy overhead.
+
+The OSS surface is intentionally tiny: a `PolicyGate` Protocol, a `PolicyDecision` frozen dataclass, and the dispatcher integration. The policy logic — what to allow, what to block, how to detect read-only-safe tools on external MCPs, the bundled catalog of safe tools per provider, the CLI surface, the `~/.mureo/config.json` schema — all lives outside OSS, in the third-party package. This keeps mureo focused on being the orchestration layer and lets commercial / agency extensions differentiate without forking.
+
+**New module `mureo/core/policy.py`**
+
+```python
+from typing import Any, Protocol, runtime_checkable
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class PolicyDecision:
+    allowed: bool
+    reason: str = ""  # surfaced verbatim to the agent when allowed=False
+
+@runtime_checkable
+class PolicyGate(Protocol):
+    def evaluate(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> PolicyDecision: ...
+```
+
+**Registration via the entry-point group `mureo.policy_gates`**
+
+```toml
+[project.entry-points."mureo.policy_gates"]
+read_only = "mureo_agency.policy:ReadOnlyGate"
+```
+
+**Dispatcher integration in `mureo/mcp/server.py`**
+
+`handle_call_tool` calls `_evaluate_policy_gates(name, arguments)` before any per-family dispatch. The helper iterates every registered gate; if any returns `allowed=False`, the dispatcher returns a `TextContent` refusal that surfaces the gate's `reason` verbatim to the agent and the per-family handler is never invoked. If a gate raises any `Exception`, the dispatcher treats it as **abstain** (allow this gate; consult the next one) and logs a WARNING — a broken third-party gate cannot take mureo offline. Subsequent gates are still consulted, so a deny from a later gate still blocks the call.
+
+`_load_policy_gates` is called per dispatch rather than cached at module-import time so a (rare) at-runtime install/uninstall of a third-party gate is picked up without a server restart. `importlib.metadata.entry_points` is itself cached internally, so the per-call cost is microseconds. Per-entry-point exception isolation: a broken third-party package (partial install, import error) drops with a WARNING and the rest still load.
+
+**ABI stability**
+
+`docs/ABI-stability.md` §6 adds the fourth entry-point group (`mureo.policy_gates`) alongside the existing `mureo.providers` / `mureo.skills` / `mureo.analytics` groups. mureo MAY add fields to `PolicyDecision` over time but MUST NOT remove or rename existing ones; third-party gates SHOULD construct `PolicyDecision` with keyword arguments only.
+
+**Tests (13 new in `tests/test_policy_gate.py`)**
+
+- Protocol + dataclass shape pins (`PolicyDecision` frozen, default `reason` empty, `PolicyGate` runtime-checkable, non-gate objects fail the protocol check).
+- Dispatcher integration: no gates → dispatched as today; single allowing gate → dispatched; single denying gate → refused with reason surfaced; two gates any deny → refused; gate exception isolated and logged; subsequent gate after one raises still consulted.
+- Entry-point discovery: no entry points → empty tuple; entry point returning a gate class → instantiated and isinstance-checked against the Protocol; entry-point load failure isolated with WARNING.
+
+**What this enables**
+
+The matching `mureo-agency` issue ([logly/mureo-agency#6](https://github.com/logly/mureo-agency/issues/6)) builds the actual read-only mode on top of this hook: a `ReadOnlyGate` for mureo's own MCP tool surface (using the existing `mureo.mcp.plugin_semantics.derive_semantics` to identify mutating calls, with `rollback_apply` / `rollback_plan_get` exempted), a bundled catalog of read-only tools for four initial providers (Google Ads / Meta Ads / GA4 / Amazon Ads official MCPs), a `PreToolUse` Claude Code hook that screens calls to *external* MCPs (since mureo cannot intercept those from its own dispatcher), and the `mureo-agency readonly enable/disable/status` CLI. Detection on external MCPs prefers the MCP `annotations.readOnlyHint` standard field over name heuristics, falling back to the bundled catalog and then to a user override file; unknown tools are refused fail-closed.
+
+OSS users who do not install `mureo-agency` see no behaviour change.
+
+Closes [#174](https://github.com/logly/mureo/issues/174).
+
 ## [0.9.22] - 2026-05-30
 
 ### Docs — drift fixes after v0.9.18–v0.9.21 (no code path or schema changes)
