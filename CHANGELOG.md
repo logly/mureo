@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.24] - 2026-06-01
+
+### Added — strategy-reminder injection + GAQL static-query marker (audit-driven hardening)
+
+The post-v0.9.23 honest audit of mureo's six advertised strengths surfaced two gaps where the claim outran the implementation. This release closes both with the minimum, least-invasive changes that genuinely move each claim from "partially implemented" toward "fully implemented" — without changing any tool shape, schema, or user-facing behaviour.
+
+#### Strategy-driven enforcement (claim 1: 戦略起点)
+
+The audit found that "every decision references STRATEGY.md" was prompt-convention only — the diagnostic skill prompts instruct the agent to read STRATEGY.md at workflow start, but MCP tool handlers themselves never consult it. If the agent forgets, drifts, or is interrupted between calls, nothing in the codebase re-surfaces the strategy.
+
+This release closes that gap with **soft enforcement via dispatcher-injected reminders**. After a built-in mutating tool dispatches successfully, `handle_call_tool` in `mureo/mcp/server.py` appends a short TextContent reminder to the result that lists the STRATEGY.md section titles the operator has declared. The agent re-sees them after every mutation, lowering drift risk across multi-step workflows.
+
+The reminder is **soft** — never refuses any operation, never replaces tool content, only appends. Format:
+
+```
+(STRATEGY reminder: this is a mutating operation. Verify your action
+aligns with the STRATEGY.md sections you've already read at the start
+of this workflow:
+  - [goal] Q2 CPA target
+  - [persona] B2B SaaS marketers
+  - [mode] Conservative
+If your action conflicts with any of these, stop and ask the operator
+before proceeding to the next mutating call.)
+```
+
+Section titles only — never the full content — so the context cost is bounded (one short paragraph regardless of STRATEGY.md size). Capped at 20 sections with an explicit `+N more` indicator when truncated so the cap is observable to the agent.
+
+**New module `mureo/core/strategy_reminder.py`** ships three pieces:
+
+- `is_mutating_builtin_tool(name: str) -> bool` — explicit suffix-based classifier against a curated set covering CRUD verbs (`_create` / `_update` / `_delete` / `_remove` / `_pause` / `_enable` / `_disable` / `_add` / `_apply` / `_submit` / `_upload` / `_send` / `_set` / `_tag` / `_boost` / `_activate` / `_revoke` / `_append`) plus compound suffixes for real tool names (`_create_lookalike` / `_send_purchase` / `_upload_image` / `_update_status` / `_add_to_ad_group` etc.) plus individual explicit entries (`rollback_apply`). Plugin tools (`mcp__...`) and unknown tool names default to NOT mutating so the reminder never fires spuriously.
+- `build_reminder_text(entries: list[StrategyEntry]) -> str | None` — pure render function; returns `None` when the strategy is empty.
+- `maybe_build_reminder(tool_name: str) -> str | None` — orchestrator: opt-out env var check, classification, state read, render. Exception-safe — a corrupted STATE.json, missing strategy file, or any other failure is logged at DEBUG and the reminder is skipped silently. A broken reminder MUST NEVER break a mutating tool dispatch.
+
+**Opt-out** via env var `MUREO_DISABLE_STRATEGY_REMINDER=1` (exact-string `"1"`, matching the established `MUREO_DISABLE_*` pattern in `mureo/mcp/server.py`). Default is enabled.
+
+**Dispatcher integration** in `mureo/mcp/server.py` wraps each per-family dispatch branch that ships mutating tools (Google Ads / Meta Ads / Search Console / Rollback / Mureo Context) with `_maybe_append_strategy_reminder(name, await handle_*_tool(...))`. Analysis / analytics-registry / learning branches stay untouched — they ship no mutating tools today, so the wrapper would always be a no-op.
+
+**Out of scope for v0.9.24** — *hard* enforcement (refuse mutating calls that violate declared constraints) would require a schema addition to STRATEGY.md (structured fields like `max_daily_budget`, `target_cpa`) and an opt-in PolicyGate built on the v0.9.23 extension point. Tracked separately; not in this release.
+
+23 new tests in `tests/test_strategy_reminder.py` pin: the classifier against 22 mutating + 17 read-only representative tool names plus unknown / plugin namespace; the builder against empty / titles-only-no-content / 100-section truncation; the dispatcher integration against mutating-with-strategy / read-only-no-reminder / missing-strategy-silent / env-var-opt-out / state-read-failure-graceful.
+
+#### GAQL static-query marker (claim 2c: GAQL guard universality)
+
+The audit found that `mureo/google_ads/accounts.py` had two raw GAQL queries (lines 137 and 159) that bypassed the `_gaql_validator` module. No security gap today — the queries are 100% static string literals — but the pattern was fragile if the code ever evolves.
+
+This release adds **`validate_static_query(query: str) -> str`** to `mureo/google_ads/_gaql_validator.py`: a marker function that returns the input unchanged, signalling "this query takes no external input — already audited". It enforces one invariant: the string must contain no formatting placeholders (`{}`, `%s`, `%(name)s`). If a future edit introduces interpolation, the marker raises `GAQLValidationError` immediately rather than silently bypassing the validator.
+
+The two raw queries in `mureo/google_ads/accounts.py` (own-account name+manager fetch, and MCC child-account traversal) are now wrapped with `validate_static_query(...)`. Animation is functionally identical; the wrap is purely a signal to readers, reviewers, and future contributors.
+
+7 new tests in `tests/test_gaql_validator.py::TestValidateStaticQuery` pin: static string returned unchanged (identity); multiline static query returned unchanged; brace / `%s` / `%(name)s` interpolation rejected with `"not static"` message; empty rejected; non-`str` rejected.
+
+#### Behaviour change summary
+
+- Mutating tool calls with a populated `STRATEGY.md` now return one extra TextContent block (the reminder). Existing agents are unaffected — the reminder is appended after the original content, never replaces it.
+- Mutating tool calls without STRATEGY.md, with the opt-out env var set, or where the state read fails see no change.
+- Read-only tool calls (analysis, list, get, report, audit, ...) see no change.
+- GAQL behaviour is unchanged — the marker is identity for static inputs.
+
+No tool / handler / schema / skill prompt changes.
+
+Closes the v0.9.23 audit gaps for claims 1 (戦略起点) and 2c (GAQL universal coverage). Claims 4 (audit), 5 (local), 6 (/learn) are unchanged — they were already fully implemented per the audit. Claim 3 (GA4) is a docs gap (the platform is delegated to an external MCP, not a native mureo surface) and is tracked separately.
+
 ## [0.9.23] - 2026-05-31
 
 ### Added — `mureo.core.policy.PolicyGate` extension point + `mureo.policy_gates` entry-point group

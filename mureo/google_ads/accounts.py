@@ -27,6 +27,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.google_ads._gaql_validator import validate_static_query
+
 if TYPE_CHECKING:
     from mureo.auth import GoogleAdsCredentials
 
@@ -134,7 +136,7 @@ async def list_accessible_accounts(
         name = customer_id
         is_manager = False
         try:
-            query = (
+            query = validate_static_query(
                 "SELECT customer.descriptive_name, customer.manager "
                 "FROM customer LIMIT 1"
             )
@@ -156,7 +158,7 @@ async def list_accessible_accounts(
         # Step 3: Traverse child accounts under this MCC. Same client
         # already has ``login_customer_id`` set to the MCC.
         try:
-            child_query = (
+            child_query = validate_static_query(
                 "SELECT "
                 "  customer_client.id, "
                 "  customer_client.descriptive_name, "
