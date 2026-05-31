@@ -318,19 +318,57 @@ boundary. This is permanent.
 
 ## 6. Entry-point group names
 
-Three group names are part of the ABI:
+Four group names are part of the ABI:
 
 | Constant | Value | Iterated by |
 |---|---|---|
 | `PROVIDERS_ENTRY_POINT_GROUP` | `"mureo.providers"` | `Registry.discover` |
 | `SKILLS_ENTRY_POINT_GROUP` | `"mureo.skills"` | `discover_skills` |
 | `ANALYTICS_ENTRY_POINT_GROUP` | `"mureo.analytics"` | `AnalyticsRegistry.discover` |
+| (literal) | `"mureo.policy_gates"` | `mureo.mcp.server._load_policy_gates` |
 
 `PROVIDERS_…` / `SKILLS_…` are exported from
 `mureo.core.providers.registry` (re-exported from
 `mureo.core.skills`); `ANALYTICS_…` is exported from
-`mureo.analytics`. Renaming any of these groups is a breaking
-change — every plugin's `pyproject.toml` would have to change.
+`mureo.analytics`. The `mureo.policy_gates` literal is documented
+here (no exported constant) because policy gates are loaded by the
+MCP server itself rather than by a third-party-facing registry.
+Renaming any of these groups is a breaking change — every plugin's
+`pyproject.toml` would have to change.
+
+### `mureo.policy_gates` (added in v0.9.23)
+
+Third-party packages register a `PolicyGate` implementation against
+this group to participate in mureo's pre-dispatch policy chain. The
+contract:
+
+- `mureo.core.policy.PolicyGate` Protocol (`runtime_checkable`,
+  single method `evaluate(tool_name, arguments) -> PolicyDecision`).
+- `mureo.core.policy.PolicyDecision` frozen dataclass
+  (`allowed: bool`, `reason: str = ""`).
+- The MCP server consults every registered gate before dispatching
+  each tool call. If any gate returns `allowed=False`, the call is
+  refused and the reason surfaces verbatim to the agent. A gate
+  that raises any `Exception` is treated as **abstain** (allow this
+  gate; consult the next) and logged at WARNING — a broken
+  third-party gate cannot take mureo offline.
+- mureo MAY add fields to `PolicyDecision` over time but MUST NOT
+  remove or rename existing ones. Implementations SHOULD construct
+  it with keyword arguments only.
+- Gate evaluation order is **unspecified**; gates MUST NOT depend
+  on each other or on a particular ordering — any single deny
+  blocks the call regardless of position in the chain.
+- A buggy gate that returns any type other than `PolicyDecision`
+  (e.g. `None`, `True`, a tuple) is treated as **abstain** + logged
+  WARNING, identical to the per-call exception isolation. This
+  keeps a buggy third-party gate from taking mureo offline.
+- The dispatcher's refusal payload deliberately echoes the tool
+  name and the gate's `reason` but **not** the `arguments` dict —
+  arguments routinely contain account IDs, budget figures, or
+  credentials, and the agent already has them. Do not put secrets
+  in `reason`; that is the only field surfaced.
+- The default behaviour with zero gates registered is byte-
+  identical to v0.9.22: every call dispatches normally.
 
 The three groups are independent: a package may register against any
 subset (provider only, analytics only, both, etc.) — the discovery
