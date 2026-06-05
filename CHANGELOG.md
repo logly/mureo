@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.25] - 2026-06-06
+
+### Added — `mureo upgrade [--all]` for pipx venv-aware plugin upgrades (#177, #178)
+
+Operators installing mureo via `pipx install mureo` and extending it with
+third-party packages (via `mureo.providers` / `mureo.policy_gates` /
+`mureo.web_extensions` entry-point groups, typically registered through
+`pipx inject` or `pip install` into the same venv) hit a UX gap: there
+was no single command for keeping the whole stack fresh.
+
+- `pipx upgrade mureo` only upgrades the primary venv package; injected
+  plugins are silently left behind.
+- `pipx upgrade <plugin>` fails because plugins do not have a same-named
+  venv (pipx expects `~/.local/pipx/venvs/<plugin>/`).
+- `pipx inject mureo <pkg> --force` triggers a known pipx 1.11
+  "looks like a path" bug whenever `cwd` contains a `mureo` directory,
+  so operators cannot reliably use it as an upgrade path.
+
+`mureo upgrade` closes this gap with a single top-level subcommand that
+operates on `sys.executable` — the venv currently running the CLI —
+independent of `cwd`, `PATH`, and `PYTHONPATH`.
+
+#### Usage
+
+```
+mureo upgrade                    # upgrade mureo itself
+mureo upgrade <pkg>              # upgrade a same-venv package
+mureo upgrade <pkg>==<version>   # version-pinned upgrade
+mureo upgrade --all              # mureo + every installed mureo-* in one pip call
+mureo upgrade --dry-run          # print the pip command without invoking it
+```
+
+#### Safety properties
+
+- **Argument-injection guard.** Package specs are validated against a
+  PEP 503 regex (optionally followed by a single `==<version>` pin) and
+  pip is always invoked with a `--` sentinel. Hostile inputs such as
+  `-r/etc/passwd`, `--index-url=http://attacker/`, `pkg @ git+https://…`,
+  PEP 508 markers, and extras are rejected at the boundary; pip's
+  option parser never sees them.
+- **Squatter-resistant discovery.** `--all` walks
+  `importlib.metadata.distributions()`, normalises every name per
+  PEP 503, and accepts only `mureo` exact match or `mureo-<rest>`.
+  Prefix squatters like `mureology` or `mureoextras` are excluded by
+  construction.
+- **Same-venv guarantee.** Every pip / ensurepip invocation uses
+  `sys.executable`, so the command can never accidentally upgrade a
+  globally-installed mureo or a sibling venv.
+- **Targeted `ensurepip` fallback.** Only the literal
+  `No module named pip` failure of `python -m pip --version` triggers
+  an `ensurepip --upgrade` bootstrap; every other failure is surfaced
+  verbatim so permission / network / disk errors are never silently
+  bypassed. After a successful bootstrap, pip availability is
+  re-probed to produce a clear diagnostic for half-broken venvs.
+- **Atomic resolution under `--all`.** A single `pip install --upgrade`
+  invocation is issued with every target so pip's resolver sees the
+  full set together.
+- **Exit-code transparency.** pip's exit code is propagated as the CLI
+  exit code, enabling automation scripts to retry or branch.
+
+#### Why ship this in OSS rather than per-plugin
+
+Each plugin author could in principle ship its own `<plugin> upgrade`
+command, but that path produces duplicated code per plugin and forces
+operators to remember a different command for each one. Centralising
+the logic in OSS — which already owns `mureo install-desktop` and
+`mureo configure`, both also venv-aware top-level commands — keeps the
+mental model simple: `mureo upgrade --all` is the only command an
+operator needs.
+
 ## [0.9.24] - 2026-06-01
 
 ### Added — strategy-reminder injection + GAQL static-query marker (audit-driven hardening)
