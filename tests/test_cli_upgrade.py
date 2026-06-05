@@ -71,9 +71,7 @@ def fake_distributions(monkeypatch: pytest.MonkeyPatch) -> Any:
     def _distributions() -> list[_FakeDist]:
         return state["dists"]
 
-    monkeypatch.setattr(
-        "mureo.cli.upgrade_cmd.metadata.distributions", _distributions
-    )
+    monkeypatch.setattr("mureo.cli.upgrade_cmd.metadata.distributions", _distributions)
     return _set
 
 
@@ -85,7 +83,9 @@ def fake_pip(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     Tests override ``return_value`` or ``side_effect`` to drive scenarios.
     """
 
-    def _default(cmd: list[str], *_: Any, **__: Any) -> subprocess.CompletedProcess[str]:
+    def _default(
+        cmd: list[str], *_: Any, **__: Any
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
 
     mock = MagicMock(side_effect=_default)
@@ -102,9 +102,7 @@ def test_upgrade_default_upgrades_mureo_self(fake_pip: MagicMock) -> None:
     result = _runner().invoke(_app(), ["upgrade"])
 
     assert result.exit_code == 0, result.stderr
-    install_calls = [
-        c for c in fake_pip.call_args_list if "install" in c.args[0]
-    ]
+    install_calls = [c for c in fake_pip.call_args_list if "install" in c.args[0]]
     assert len(install_calls) == 1
     cmd = install_calls[0].args[0]
     assert cmd[:3] == [sys.executable, "-m", "pip"]
@@ -173,10 +171,10 @@ def test_upgrade_all_invokes_pip_once_for_atomic_resolution(
 
     _runner().invoke(_app(), ["upgrade", "--all"])
 
-    install_calls = [
-        c for c in fake_pip.call_args_list if "install" in c.args[0]
-    ]
-    assert len(install_calls) == 1, "pip must be called once so resolver sees the full set"
+    install_calls = [c for c in fake_pip.call_args_list if "install" in c.args[0]]
+    assert (
+        len(install_calls) == 1
+    ), "pip must be called once so resolver sees the full set"
 
 
 # ---------------------------------------------------------------------------
@@ -203,9 +201,7 @@ def test_upgrade_rejects_hostile_package_specs(
     result = _runner().invoke(_app(), ["upgrade", hostile])
 
     assert result.exit_code != 0
-    install_calls = [
-        c for c in fake_pip.call_args_list if "install" in c.args[0]
-    ]
+    install_calls = [c for c in fake_pip.call_args_list if "install" in c.args[0]]
     assert install_calls == [], "pip must not be invoked for hostile input"
 
 
@@ -218,9 +214,7 @@ def test_upgrade_dry_run_does_not_invoke_pip_install(fake_pip: MagicMock) -> Non
     result = _runner().invoke(_app(), ["upgrade", "--dry-run"])
 
     assert result.exit_code == 0, result.stderr
-    install_calls = [
-        c for c in fake_pip.call_args_list if "install" in c.args[0]
-    ]
+    install_calls = [c for c in fake_pip.call_args_list if "install" in c.args[0]]
     assert install_calls == []
     assert "pip" in result.stdout
     assert "install" in result.stdout
@@ -237,7 +231,9 @@ def test_upgrade_bootstraps_pip_when_missing(fake_pip: MagicMock) -> None:
     calls: list[list[str]] = []
     state = {"bootstrapped": False}
 
-    def _side_effect(cmd: list[str], *_: Any, **__: Any) -> subprocess.CompletedProcess[str]:
+    def _side_effect(
+        cmd: list[str], *_: Any, **__: Any
+    ) -> subprocess.CompletedProcess[str]:
         calls.append(cmd)
         if cmd[-2:] == ["pip", "--version"]:
             if state["bootstrapped"]:
@@ -271,7 +267,9 @@ def test_upgrade_bootstraps_pip_when_missing(fake_pip: MagicMock) -> None:
 def test_upgrade_does_not_bootstrap_on_other_pip_errors(fake_pip: MagicMock) -> None:
     calls: list[list[str]] = []
 
-    def _side_effect(cmd: list[str], *_: Any, **__: Any) -> subprocess.CompletedProcess[str]:
+    def _side_effect(
+        cmd: list[str], *_: Any, **__: Any
+    ) -> subprocess.CompletedProcess[str]:
         calls.append(cmd)
         if cmd[-2:] == ["pip", "--version"]:
             return subprocess.CompletedProcess(
@@ -297,9 +295,13 @@ def test_upgrade_does_not_bootstrap_on_other_pip_errors(fake_pip: MagicMock) -> 
 
 
 def test_upgrade_propagates_pip_exit_code(fake_pip: MagicMock) -> None:
-    def _side_effect(cmd: list[str], *_: Any, **__: Any) -> subprocess.CompletedProcess[str]:
+    def _side_effect(
+        cmd: list[str], *_: Any, **__: Any
+    ) -> subprocess.CompletedProcess[str]:
         if "install" in cmd:
-            return subprocess.CompletedProcess(cmd, returncode=42, stdout="", stderr="boom")
+            return subprocess.CompletedProcess(
+                cmd, returncode=42, stdout="", stderr="boom"
+            )
         return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
 
     fake_pip.side_effect = _side_effect
@@ -318,9 +320,7 @@ def test_upgrade_rejects_all_with_explicit_packages(fake_pip: MagicMock) -> None
     result = _runner().invoke(_app(), ["upgrade", "--all", "mureo-foo"])
 
     assert result.exit_code != 0
-    install_calls = [
-        c for c in fake_pip.call_args_list if "install" in c.args[0]
-    ]
+    install_calls = [c for c in fake_pip.call_args_list if "install" in c.args[0]]
     assert install_calls == []
 
 
@@ -379,9 +379,7 @@ def test_upgrade_rejects_double_equals(fake_pip: MagicMock) -> None:
     result = _runner().invoke(_app(), ["upgrade", "mureo==1.0==2.0"])
 
     assert result.exit_code != 0
-    install_calls = [
-        c for c in fake_pip.call_args_list if "install" in c.args[0]
-    ]
+    install_calls = [c for c in fake_pip.call_args_list if "install" in c.args[0]]
     assert install_calls == []
 
 
@@ -395,9 +393,9 @@ def test_upgrade_always_targets_sys_executable(fake_pip: MagicMock) -> None:
 
     for call in fake_pip.call_args_list:
         cmd = call.args[0]
-        assert cmd[0] == sys.executable, (
-            f"command must start with sys.executable, got {cmd!r}"
-        )
+        assert (
+            cmd[0] == sys.executable
+        ), f"command must start with sys.executable, got {cmd!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -410,7 +408,9 @@ def test_upgrade_aborts_if_pip_still_missing_after_bootstrap(
 ) -> None:
     calls: list[list[str]] = []
 
-    def _side_effect(cmd: list[str], *_: Any, **__: Any) -> subprocess.CompletedProcess[str]:
+    def _side_effect(
+        cmd: list[str], *_: Any, **__: Any
+    ) -> subprocess.CompletedProcess[str]:
         calls.append(cmd)
         if cmd[-2:] == ["pip", "--version"]:
             return subprocess.CompletedProcess(
@@ -426,19 +426,23 @@ def test_upgrade_aborts_if_pip_still_missing_after_bootstrap(
 
     assert result.exit_code != 0
     install_calls = [c for c in calls if "install" in c and "ensurepip" not in c]
-    assert install_calls == [], (
-        "must not attempt `pip install` if pip is still broken post-bootstrap"
-    )
+    assert (
+        install_calls == []
+    ), "must not attempt `pip install` if pip is still broken post-bootstrap"
 
 
 def test_upgrade_propagates_ensurepip_failure(fake_pip: MagicMock) -> None:
-    def _side_effect(cmd: list[str], *_: Any, **__: Any) -> subprocess.CompletedProcess[str]:
+    def _side_effect(
+        cmd: list[str], *_: Any, **__: Any
+    ) -> subprocess.CompletedProcess[str]:
         if cmd[-2:] == ["pip", "--version"]:
             return subprocess.CompletedProcess(
                 cmd, returncode=1, stdout="", stderr="No module named pip\n"
             )
         if "ensurepip" in cmd:
-            return subprocess.CompletedProcess(cmd, returncode=7, stdout="", stderr="boom")
+            return subprocess.CompletedProcess(
+                cmd, returncode=7, stdout="", stderr="boom"
+            )
         return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
 
     fake_pip.side_effect = _side_effect

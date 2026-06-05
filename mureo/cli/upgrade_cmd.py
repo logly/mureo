@@ -256,9 +256,7 @@ def upgrade(
                 )
                 raise typer.Exit(code=1)
         else:
-            typer.echo(
-                f"`python -m pip --version` failed:\n{stderr}", err=True
-            )
+            typer.echo(f"`python -m pip --version` failed:\n{stderr}", err=True)
             raise typer.Exit(code=1)
 
     rc = _run_pip_install(targets)
