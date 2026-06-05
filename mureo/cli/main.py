@@ -17,6 +17,7 @@ from mureo.cli.learn_cmd import learn_app
 from mureo.cli.providers_cmd import providers_app
 from mureo.cli.rollback_cmd import rollback_app
 from mureo.cli.setup_cmd import setup_app
+from mureo.cli.upgrade_cmd import upgrade_app
 
 app = typer.Typer(
     name="mureo",
@@ -33,6 +34,7 @@ app.add_typer(demo_app)
 app.add_typer(providers_app)
 app.add_typer(configure_app)
 app.add_typer(learn_app)
+app.add_typer(upgrade_app)
 
 if __name__ == "__main__":
     app()
