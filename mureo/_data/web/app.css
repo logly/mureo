@@ -759,14 +759,60 @@ input[type="checkbox"] {
    so credential boundaries are scannable instead of a flat hairline list.
    Both the Official MCP providers list and the Plugin credentials list
    participate; child notes (e.g. dashboard-provider-hosted-note) fall
-   inside the same boundary as the desired grouping. */
+   inside the same boundary as the desired grouping.
+   The thin hairline alone is too subtle against ``--paper``, so a soft
+   1px inset shadow + bottom-edge shadow lift the card off the section
+   background enough to scan boundaries at a glance without breaking
+   the dark-mode palette (both colors derive from ``--ink`` at low
+   alpha). */
 [data-dashboard-providers-list] > li,
 [data-dashboard-plugin-credentials-list] > * {
-  border: 1px solid var(--rule);
+  /* Borders use ink-at-low-alpha instead of ``--hairline`` because the
+     warmer hairline (#e4e3df) reads as the same value as the cream
+     ``--paper`` page on some displays. ``rgba(20,22,26,0.14)`` is a
+     true neutral-grey at ~14% opacity — sits between hairline and the
+     section text, unmistakable against either cream or pure white. */
+  border: 1px solid rgba(20, 22, 26, 0.14);
   border-radius: var(--r-md);
-  padding: 12px 14px;
+  padding: 12px 14px 12px 18px;
   margin-bottom: 10px;
-  background: var(--paper);
+  /* Lightly tinted cool off-white separates each card from the warm
+     paper background without going pure white (which can read as
+     indistinguishable on warm-temperature monitors). The dark-mode
+     pair uses ``--surface`` directly — the LAB lightness gap there is
+     already large. */
+  background: #fbfcfd;
+  box-shadow: 0 1px 3px rgba(20, 22, 26, 0.10), 0 1px 1px rgba(20, 22, 26, 0.06);
+  /* Reserved for the platform-tinted left-accent stripe below. */
+  border-left-width: 4px;
+  border-left-style: solid;
+  border-left-color: rgba(20, 22, 26, 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-dashboard-providers-list] > li,
+  [data-dashboard-plugin-credentials-list] > * {
+    background: var(--surface);
+    border-color: rgba(236, 237, 240, 0.12);
+    border-left-color: rgba(236, 237, 240, 0.12);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.2);
+  }
+}
+
+/* Per-platform accent — left edge color identifies the provider at a
+   glance. Brand colors come from each platform's own brand guidelines
+   (Google blue, Meta blue, GA4 orange). Plugin-credentials cards
+   inherit the neutral default. */
+[data-dashboard-providers-list] > li[data-platform="google-ads-official"] {
+  border-left-color: #4285f4;
+}
+
+[data-dashboard-providers-list] > li[data-platform="meta-ads-official"] {
+  border-left-color: #1877f2;
+}
+
+[data-dashboard-providers-list] > li[data-platform="ga4-official"] {
+  border-left-color: #f9ab00;
 }
 
 /* Providers list rows are <li>; preserve the legacy flex layout
@@ -793,12 +839,32 @@ input[type="checkbox"] {
    override never targeted it — but we keep the margin-reset for both
    for visual consistency at the bottom of each list.) */
 [data-dashboard-providers-list] > li:last-child {
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--hairline);
 }
 
 [data-dashboard-providers-list] > li:last-child,
 [data-dashboard-plugin-credentials-list] > *:last-child {
   margin-bottom: 0;
+}
+
+/* #183/#184 — generic hint typography. Third-party plugin extensions
+   render field hints as ``<small class="hint">`` (legacy convention
+   shared across the agency-clients / agency-dashboard plugins) and
+   mureo's own plugin-credentials form uses ``.field-hint``. Without a
+   block declaration the small flows inline with the next sibling
+   ``<label>`` heading, producing run-on text like
+   ``…short-lived access tokens.Client Secret *``. Forcing block +
+   adding margin/typography fixes the layout for every consumer in one
+   place. */
+.hint,
+.field-hint,
+label > small {
+  display: block;
+  margin-top: 4px;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .app-toast {

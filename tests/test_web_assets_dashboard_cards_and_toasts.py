@@ -63,8 +63,9 @@ def test_dashboard_card_rule_carries_border_radius_padding() -> None:
     )
     block_start = css.index(marker)
     # Read a window large enough to hold the rule body (comment +
-    # selectors + four declarations).
-    window = css[block_start : block_start + 900]
+    # selectors + the full declaration block, which has grown over time
+    # with explanatory comments).
+    window = css[block_start : block_start + 2400]
     assert "border:" in window
     assert "border-radius:" in window
     assert "padding:" in window

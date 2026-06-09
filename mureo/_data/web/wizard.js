@@ -292,7 +292,7 @@
         await MUREO.loadStatus();
         render();
       } else {
-        MUREO.toast("Setup failed");
+        MUREO.toast(MUREO.t("app.toast_setup_failed"), "error");
       }
     });
     wrap.querySelector("[data-advanced-skip]").addEventListener("click", function () {

@@ -223,6 +223,11 @@
       "ga4-official",
     ].forEach(function (pid) {
       const li = document.createElement("li");
+      // Tag the row with its provider id so CSS can apply a
+      // platform-tinted left-accent stripe (Google blue / Meta blue /
+      // GA4 orange). The data attribute is also a stable hook for
+      // future per-platform UI (icons, links, etc.). See #183 review.
+      li.dataset.platform = pid;
       const isHosted = HOSTED_PROVIDER_IDS.indexOf(pid) !== -1;
       // Hosted providers are "installed" ⇔ their account-level Connector
       // is Connected (mureo never registers them in the config file).
@@ -256,7 +261,7 @@
             await MUREO.loadStatus();
             renderAll();
           } else {
-            MUREO.toast("Operation failed", "error");
+            MUREO.toast(MUREO.t("app.toast_operation_failed"), "error");
           }
         });
         li.appendChild(removeBtn);
@@ -381,12 +386,12 @@
       });
       if (res.ok) {
         form.querySelector('[name="env_value"]').value = "";
-        MUREO.toast("Saved.", "success");
+        MUREO.toast(MUREO.t("app.toast_saved"), "success");
         // Refresh to surface the freshly-saved value preview.
         await MUREO.loadStatus();
         renderEnvVarsSection(MUREO.state.status);
       } else {
-        MUREO.toast("Save failed.", "error");
+        MUREO.toast(MUREO.t("app.toast_save_failed"), "error");
       }
     });
   }
