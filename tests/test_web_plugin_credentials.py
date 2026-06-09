@@ -186,6 +186,219 @@ def test_list_includes_full_field_metadata(
 
 
 @pytest.mark.unit
+def test_account_credential_field_has_empty_i18n_dicts_by_default() -> None:
+    """Backwards compatibility for plugins that don't declare i18n.
+
+    Plugins that predate locale support keep working unchanged — the
+    new ``display_name_i18n`` / ``description_i18n`` attributes default
+    to empty mappings, so the fallback chain (i18n[locale] →
+    i18n["en"] → display_name) lands on the legacy single-string
+    value when no translation is declared.
+    """
+    f = AccountCredentialField(key="api_key", display_name="API Key")
+    assert f.display_name_i18n == {}
+    assert f.description_i18n == {}
+
+
+@pytest.mark.unit
+def test_list_uses_locale_when_field_declares_i18n(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``locale="ja"`` resolves to the JA entry declared by the plugin."""
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "lineyahoo_ads",
+                display_name="LINE/Yahoo! Ads",
+                fields=(
+                    AccountCredentialField(
+                        key="business_id",
+                        display_name="Business ID",
+                        description="Yahoo! JAPAN Business ID.",
+                        display_name_i18n={"ja": "ビジネス ID"},
+                        description_i18n={"ja": "Yahoo! JAPAN ビジネス ID。"},
+                    ),
+                ),
+            )
+        ],
+    )
+
+    [entry] = list_plugin_credential_fields(locale="ja")
+    [field] = entry["fields"]
+    assert field["display_name"] == "ビジネス ID"
+    assert field["description"] == "Yahoo! JAPAN ビジネス ID。"
+
+
+@pytest.mark.unit
+def test_list_falls_back_to_en_when_requested_locale_not_declared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unknown locale falls back to ``en`` if declared, then ``display_name``."""
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "demo_ads",
+                fields=(
+                    AccountCredentialField(
+                        key="api_key",
+                        display_name="API Key",
+                        description="Per-account API key.",
+                        # JA omitted; EN declared explicitly.
+                        display_name_i18n={"en": "API Key (EN)"},
+                        description_i18n={"en": "Per-account API key. (EN)"},
+                    ),
+                ),
+            )
+        ],
+    )
+
+    [entry] = list_plugin_credential_fields(locale="ja")
+    [field] = entry["fields"]
+    assert field["display_name"] == "API Key (EN)"
+    assert field["description"] == "Per-account API key. (EN)"
+
+
+@pytest.mark.unit
+def test_list_falls_back_to_display_name_when_no_i18n_declared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When neither locale nor ``en`` i18n is declared, the bare
+    ``display_name`` / ``description`` strings come through."""
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "demo_ads",
+                fields=(
+                    AccountCredentialField(
+                        key="api_key",
+                        display_name="API Key",
+                        description="Per-account API key.",
+                    ),
+                ),
+            )
+        ],
+    )
+
+    [entry] = list_plugin_credential_fields(locale="ja")
+    [field] = entry["fields"]
+    assert field["display_name"] == "API Key"
+    assert field["description"] == "Per-account API key."
+
+
+@pytest.mark.unit
+def test_list_locale_en_with_only_ja_declared_returns_display_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``locale="en"`` + only ``display_name_i18n={"ja": "..."}`` must
+    NOT leak the JA entry into the EN locale. The chain is
+    ``i18n[locale] → i18n["en"] → display_name`` — with no ``"en"``
+    declared either, the bare ``display_name`` wins.
+    """
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "demo_ads",
+                fields=(
+                    AccountCredentialField(
+                        key="api_key",
+                        display_name="API Key",
+                        description="Per-account API key.",
+                        display_name_i18n={"ja": "API キー"},
+                        description_i18n={"ja": "アカウント単位の API キー。"},
+                    ),
+                ),
+            )
+        ],
+    )
+
+    [entry] = list_plugin_credential_fields(locale="en")
+    [field] = entry["fields"]
+    assert field["display_name"] == "API Key"
+    assert field["description"] == "Per-account API key."
+
+
+@pytest.mark.unit
+def test_list_empty_string_i18n_entry_falls_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty-string i18n entry must be treated as "not declared",
+    not "render an empty label". A mistakenly-empty translation should
+    fall through to the next layer (``en`` → ``display_name``) rather
+    than blank the form. Regression guard against a refactor that
+    flips the truthiness check to ``is not None``.
+    """
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "demo_ads",
+                fields=(
+                    AccountCredentialField(
+                        key="api_key",
+                        display_name="API Key",
+                        description="Per-account API key.",
+                        display_name_i18n={"ja": "", "en": "API Key (EN)"},
+                        description_i18n={"ja": ""},
+                    ),
+                ),
+            )
+        ],
+    )
+
+    [entry] = list_plugin_credential_fields(locale="ja")
+    [field] = entry["fields"]
+    # Empty JA → falls through to EN-declared entry.
+    assert field["display_name"] == "API Key (EN)"
+    # Empty JA + no EN declared → falls through to bare description.
+    assert field["description"] == "Per-account API key."
+
+
+@pytest.mark.unit
+def test_list_default_locale_is_en(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Calling without a locale keeps the pre-#186 behaviour: EN."""
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "demo_ads",
+                fields=(
+                    AccountCredentialField(
+                        key="api_key",
+                        display_name="API Key",
+                        display_name_i18n={
+                            "en": "API Key (EN)",
+                            "ja": "API キー",
+                        },
+                    ),
+                ),
+            )
+        ],
+    )
+
+    [entry] = list_plugin_credential_fields()
+    [field] = entry["fields"]
+    assert field["display_name"] == "API Key (EN)"
+
+
+@pytest.mark.unit
 def test_list_sorts_providers_alphabetically_by_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -22,7 +22,11 @@ behaviour and never reads or writes a value. Storage policy
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 @dataclass(frozen=True)
@@ -35,7 +39,9 @@ class AccountCredentialField:
             the provider's public ABI — renaming the key after
             release breaks any operator config that referenced it.
         display_name: Human-readable label for CLI prompts and
-            wizard forms (e.g., ``"Customer ID"``).
+            wizard forms (e.g., ``"Customer ID"``). Used as the
+            fallback when no ``display_name_i18n`` entry resolves
+            for the active locale — see the ``*_i18n`` attributes.
         placeholder: Example value shown as a form-input placeholder
             (e.g., ``"123-456-7890"``). Never used as a default —
             tooling that auto-applies the placeholder would surprise
@@ -45,8 +51,9 @@ class AccountCredentialField:
             missing value. Default: ``False``.
         description: One-line operator-facing hint pointing at where
             the value comes from (e.g., ``"From Google Ads UI >
-            Settings > Account details > Customer ID"``).
-            Default: ``""``.
+            Settings > Account details > Customer ID"``). Used as
+            the fallback when no ``description_i18n`` entry resolves
+            for the active locale. Default: ``""``.
         secret: ``True`` when the field carries a secret value (API
             key, per-account OAuth token, etc.) rather than a public
             identifier (``customer_id``, ``ad_account_id``, …). Like
@@ -61,10 +68,26 @@ class AccountCredentialField:
             leave secret material (refresh tokens, system user
             tokens) in the operator-shared ``SecretStore`` layer
             rather than declaring it here.
+        display_name_i18n: Optional locale → label mapping (BCP-47
+            language codes; mureo's configure UI currently switches
+            between ``"en"`` and ``"ja"``). The consumer resolves the
+            label via ``i18n[locale] → i18n["en"] → display_name`` so
+            a plugin can supply only the locales it has translated.
+            Default: empty ``dict`` (pre-#186 behaviour — the bare
+            ``display_name`` is used in every locale).
+        description_i18n: Same shape and fallback chain as
+            ``display_name_i18n``, applied to the hint text.
 
     The dataclass is JSON-friendly: ``dataclasses.asdict(field)``
-    returns a plain ``dict`` of primitive ``str`` / ``bool`` values
-    suitable for serialising over HTTP / writing to a config file.
+    returns a plain ``dict`` of primitive ``str`` / ``bool`` / dict
+    values suitable for serialising over HTTP / writing to a config
+    file.
+
+    The ``*_i18n`` attributes were added in #186 so plugins shipping
+    to non-English audiences (Yahoo! JAPAN Ads, LINE Ads, ...) can
+    keep their translation strings in their own package without
+    forking mureo. The translation tables are plugin-owned by design
+    — mureo itself never ships strings for plugin-declared fields.
     """
 
     key: str
@@ -73,6 +96,8 @@ class AccountCredentialField:
     required: bool = False
     description: str = ""
     secret: bool = False
+    display_name_i18n: Mapping[str, str] = field(default_factory=dict)
+    description_i18n: Mapping[str, str] = field(default_factory=dict)
 
 
 __all__ = ["AccountCredentialField"]

@@ -284,7 +284,17 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             send_json(self, byod_status().as_dict())
             return
         if path == "/api/credentials/plugins":
-            send_json(self, {"plugins": list_plugin_credential_fields()})
+            # Forward the session locale so plugin-declared
+            # ``display_name_i18n`` / ``description_i18n`` entries are
+            # resolved against the operator's active locale (#186).
+            send_json(
+                self,
+                {
+                    "plugins": list_plugin_credential_fields(
+                        locale=self.wizard.session.locale,
+                    )
+                },
+            )
             return
         match = _OAUTH_PROVIDER_RE.match(path)
         if match is not None and match.group("verb") == "status":

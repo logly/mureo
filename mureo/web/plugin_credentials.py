@@ -33,6 +33,8 @@ from mureo.core.providers import default_registry, get_account_credential_fields
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from mureo.core.providers.credentials import AccountCredentialField
 
 logger = logging.getLogger(__name__)
@@ -62,8 +64,20 @@ class RequiredFieldMissingError(PluginCredentialsError):
     """
 
 
-def list_plugin_credential_fields() -> list[dict[str, Any]]:
+def list_plugin_credential_fields(
+    locale: str = "en",
+) -> list[dict[str, Any]]:
     """Enumerate providers that declare per-account credential fields.
+
+    Args:
+        locale: BCP-47 language code used to resolve plugin-supplied
+            ``display_name_i18n`` / ``description_i18n`` entries on
+            each field. The fallback chain is
+            ``i18n[locale] → i18n["en"] → display_name`` (and the
+            equivalent for description), so a plugin may ship only
+            the locales it has translated. Defaults to ``"en"`` —
+            matches pre-#186 behaviour for callers that don't yet
+            pass a locale.
 
     Returns:
         A list of provider descriptors sorted alphabetically by
@@ -85,6 +99,8 @@ def list_plugin_credential_fields() -> list[dict[str, Any]]:
                 ],
             }
 
+        ``display_name`` and ``description`` on each field are the
+        locale-resolved strings; the ``key`` is locale-independent.
         Providers without declared fields are skipped — they have
         nothing for the operator to fill in.
     """
@@ -97,7 +113,7 @@ def list_plugin_credential_fields() -> list[dict[str, Any]]:
             {
                 "provider_name": entry.name,
                 "display_name": entry.display_name,
-                "fields": [_field_to_dict(f) for f in fields],
+                "fields": [_field_to_dict(f, locale) for f in fields],
             }
         )
     return result
@@ -204,22 +220,56 @@ def save_plugin_credentials(
     return {"merged": merged, "accepted_keys": accepted_keys}
 
 
-def _field_to_dict(field: AccountCredentialField) -> dict[str, Any]:
+def _field_to_dict(field: AccountCredentialField, locale: str) -> dict[str, Any]:
     """Convert one ``AccountCredentialField`` to its JSON payload shape.
+
+    Args:
+        field: The plugin-declared field.
+        locale: BCP-47 language code used for the ``display_name`` /
+            ``description`` lookup chain. Resolution order:
+            ``i18n[locale]`` → ``i18n["en"]`` → the bare
+            ``field.display_name`` / ``field.description``. A plugin
+            that ships only English keeps working unchanged because
+            both ``*_i18n`` mappings default to ``{}`` so the chain
+            collapses to the bare attribute on every locale.
 
     We do not use :func:`dataclasses.asdict` here so the wire-level
     shape is pinned by this module — a future ``AccountCredentialField``
-    field gets a deliberate decision about whether the UI should see
-    it.
+    attribute gets a deliberate decision about whether the UI should
+    see it.
     """
     return {
         "key": field.key,
-        "display_name": field.display_name,
+        "display_name": _resolve_localized(
+            field.display_name_i18n, field.display_name, locale
+        ),
         "placeholder": field.placeholder,
         "required": field.required,
         "secret": field.secret,
-        "description": field.description,
+        "description": _resolve_localized(
+            field.description_i18n, field.description, locale
+        ),
     }
+
+
+def _resolve_localized(i18n: Mapping[str, str], fallback: str, locale: str) -> str:
+    """Return ``i18n[locale]`` if present, else ``i18n["en"]``, else fallback.
+
+    Empty-string entries are treated as "not declared" so a plugin
+    cannot accidentally erase a label by shipping an empty JA entry —
+    the chain falls through to the next layer instead. ``en`` is
+    privileged as the universal fallback because the configure UI
+    defaults to it and every existing in-tree provider already ships
+    English copy as ``display_name`` / ``description``.
+    """
+    candidate = i18n.get(locale)
+    if candidate:
+        return candidate
+    if locale != "en":
+        en_candidate = i18n.get("en")
+        if en_candidate:
+            return en_candidate
+    return fallback
 
 
 __all__ = [

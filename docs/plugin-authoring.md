@@ -307,11 +307,40 @@ class MyAdsProvider:
 | Field | Default | Notes |
 |---|---|---|
 | `key` | (required) | Stable snake_case identifier used in credential storage. Treat as part of your public ABI — renaming after release breaks operator config. |
-| `display_name` | (required) | Human-readable label for CLI prompts / wizard forms. |
+| `display_name` | (required) | Human-readable label for CLI prompts / wizard forms. Used as the fallback when no `display_name_i18n` entry resolves for the active locale. |
 | `placeholder` | `""` | Example value shown in form inputs (never used as a default — auto-applying would surprise operators). |
 | `required` | `False` | When `True`, tooling may warn or block on a missing value. |
-| `description` | `""` | One-line operator-facing hint pointing at where the value comes from. |
+| `description` | `""` | One-line operator-facing hint pointing at where the value comes from. Used as the fallback when no `description_i18n` entry resolves. |
 | `secret` | `False` | When `True`, consumers render a masked input and may pick tighter storage permissions. Use only when the per-account slice itself is sensitive (e.g. a per-account API key). See "Secret per-account fields" below. |
+| `display_name_i18n` | `{}` | Optional `{locale: label}` map (BCP-47 codes). Resolved via `i18n[locale] → i18n["en"] → display_name`. Empty-string entries fall through to the next layer. Ship only the locales you have translated. See "Localised labels" below. |
+| `description_i18n` | `{}` | Same shape and fallback chain as `display_name_i18n`, applied to the hint text. |
+
+#### Localised labels (`*_i18n`)
+
+The configure UI carries an active locale per session (`en` / `ja`
+today; the lookup is BCP-47 so future locales drop in). Each plugin
+ships its own translation strings — mureo's OSS never ships
+non-English copy for plugin-declared fields. The resolution chain is
+`i18n[locale] → i18n["en"] → display_name` (and the equivalent for
+description); an empty-string entry is treated as "not declared" so a
+mistakenly-empty translation cannot blank the label.
+
+```python
+account_credential_fields = (
+    AccountCredentialField(
+        key="business_id",
+        display_name="Business ID",                          # universal fallback
+        description="Yahoo! JAPAN Business ID.",
+        required=True,
+        display_name_i18n={"ja": "ビジネス ID"},               # per-locale label
+        description_i18n={"ja": "Yahoo! JAPAN ビジネス ID。"},  # per-locale hint
+    ),
+)
+```
+
+A plugin that ships only English (no `*_i18n` declared) keeps working
+unchanged — both maps default to `{}` and every locale falls through
+to the bare `display_name` / `description` strings.
 
 The accessor `mureo.core.providers.get_account_credential_fields(provider)`
 reads the attribute defensively (returns `()` when absent) and
