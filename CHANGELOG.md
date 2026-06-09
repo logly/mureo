@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.26] - 2026-06-09
+
+### Fixed — `mureo configure` Meta ad-account dropdown now lists every account under a Business Manager (#181)
+
+The configure UI's Meta ad-account picker silently truncated to the
+first 25 accounts under any Business Manager because
+`list_meta_ad_accounts` in `mureo/meta_ads/accounts.py` called
+`GET /me/adaccounts` once and returned the first page verbatim.
+Operators with mid-sized BM portfolios (26+ accounts) could not select
+the account they actually wanted to connect — it never appeared in the
+dropdown.
+
+This release walks `paging.next` until exhausted (with `limit=100` on
+the first request to minimise round-trips) and concatenates every page
+in cursor order. A 50-page hard cap stops a buggy Graph response from
+spinning the configure UI forever; the cap path logs a warning so the
+gap is visible to operators.
+
+Two defence-in-depth additions land alongside the pagination fix:
+
+- **Host pinning on `paging.next`.** Refuse to follow any URL whose
+  host is not `graph.facebook.com` or whose scheme is not `https`.
+  From page 2 onward the access token lives inside the cursor URL
+  itself, so a tampered response (broken TLS pinning, proxy mis-route)
+  could otherwise exfiltrate it.
+- **Token redaction in `RuntimeError`.** Scrub the access token out
+  of the wrapped exception message and break the exception chain with
+  `raise ... from None`, so `httpx.HTTPStatusError` (whose `__str__`
+  embeds the full request URL) cannot leak the token into operator
+  logs or UI error surfaces on a mid-walk failure.
+
+No public surface change — `list_meta_ad_accounts(access_token)
+-> list[dict[str, Any]]` is unchanged. Operators see the fix
+immediately after upgrading to 0.9.26 the next time they run
+`mureo configure`.
+
 ## [0.9.25] - 2026-06-06
 
 ### Added — `mureo upgrade [--all]` for pipx venv-aware plugin upgrades (#177, #178)
