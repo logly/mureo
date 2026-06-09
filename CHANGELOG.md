@@ -7,6 +7,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.27] - 2026-06-09
+
+### Added — `configure` UI quality + locale-aware plugin credential fields (#183, #184, #186)
+
+Three operator-experience improvements bundled in one release. None
+change the MCP tool surface; every change is in the `mureo configure`
+local-only web UI and its plugin-extension contract.
+
+#### Dashboard provider rows render as cards (#183)
+
+The Dashboard tab's "Official MCP providers" list and "Plugin
+credentials" list used to render as a flat hairline-separated list,
+making credential boundaries hard to scan once two or three
+platforms were configured. Each row now renders as its own card —
+1 px border, soft drop shadow, light off-white background that
+lifts off the warm `--paper` page colour, and a 4 px left-accent
+stripe coloured per platform (Google blue, Meta blue, GA4 orange).
+Hosted-provider sub-notes fall naturally inside the same card.
+A new dark-mode media query mirrors the lift with the `--surface`
+token against `--paper`. CSS-only — no JS, no HTML markup changes
+for built-in lists.
+
+Generic `.hint` / `.field-hint` / `label > small` block
+typography also lands so plugin-supplied field descriptions no
+longer flow inline with the next `<label>` heading (the run-on
+text reported in the agency-clients plugin tab).
+
+#### Color-coded toast errors + audit pass (#184)
+
+`MUREO.toast(message)` now accepts an optional `kind` (`"info"` /
+`"success"` / `"error"`) that maps to an `is-<kind>` CSS class for
+color-coded pills. Backwards compatible — every existing single-arg
+caller still works and defaults to the info pill.
+
+`.app-toast.is-success` (green) and `.app-toast.is-error` (red)
+tints land alongside, both passing WCAG AA contrast against white
+text.
+
+Nine previously-toast-less inline failure paths now also fire a
+toast so an operator scrolled to the bottom of a long Dashboard
+always sees the result:
+
+- `auth_wizards.js`: connector finalize, env-var save (×2), OAuth
+  start, OAuth poll.
+- `dashboard.js`: demo init (×2), BYOD import (×2).
+
+The inline status node is kept alongside every new toast call for
+accessibility and scroll-anchored context; the toast adds the
+scroll-resistant surface.
+
+Existing single-arg `MUREO.toast()` calls across `dashboard.js`
+(remove/save/picker/clear/plugin-credentials, ~15 sites) gain the
+right `"error"` / `"success"` kind so red and green are consistent
+across the whole UI.
+
+Four hardcoded English toast strings (`"Setup failed"`,
+`"Operation failed"`, `"Saved."`, `"Save failed."`) move to new
+`app.toast_*` i18n keys with EN + JA translations.
+
+#### Locale-aware plugin credential fields (#186)
+
+`AccountCredentialField` gains two optional dataclass attributes
+that mirror the pattern already used for web-extension menu names:
+
+```python
+display_name_i18n: Mapping[str, str] = field(default_factory=dict)
+description_i18n:  Mapping[str, str] = field(default_factory=dict)
+```
+
+Both default to empty dicts, so plugins that ship only English
+labels keep working unchanged.
+
+`list_plugin_credential_fields(locale: str = "en")` now resolves
+each label via the chain
+`i18n[locale] → i18n["en"] → display_name` (and the equivalent for
+description). Empty-string entries are treated as "not declared"
+so a mistakenly-empty translation cannot blank the label.
+
+`GET /api/credentials/plugins` forwards
+`self.wizard.session.locale` (the existing session attribute,
+allow-listed to `{"en", "ja"}` at the setter). Wire shape is
+unchanged — only the strings inside `display_name` / `description`
+are now locale-resolved.
+
+OSS-side hook only. Translation strings are owned by each plugin;
+mureo never ships strings for plugin-declared fields. `docs/
+plugin-authoring.md` documents the new attributes with a JA
+example mirroring the extension-tab i18n pattern.
+
+#### Backwards compatibility
+
+- Every change is additive. No public API removed, no signature
+  change beyond optional kwargs / dataclass attributes.
+- `mureo upgrade [--all]` (shipped in 0.9.25) is the recommended
+  upgrade path for pipx and pip operators alike.
+
 ## [0.9.26] - 2026-06-09
 
 ### Fixed — `mureo configure` Meta ad-account dropdown now lists every account under a Business Manager (#181)
