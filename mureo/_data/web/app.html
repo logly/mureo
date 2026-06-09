@@ -205,6 +205,10 @@
       </div>
     </section>
 
+    <!-- TODO: when SR support lands, add aria-live="polite" here.
+         Inline status nodes in auth_wizards.js / dashboard.js share
+         the same message string; aria-atomic or scoping is required
+         to avoid double-announce. See #184 review notes. -->
     <div class="app-toast" data-toast hidden></div>
   </main>
 

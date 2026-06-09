@@ -161,11 +161,11 @@
       try {
         res = await MUREO.postJson(row.removeUrl, {});
       } catch (_err) {
-        MUREO.toast(MUREO.t("dashboard.remove_failed"));
+        MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
         return;
       }
       if (!res || !res.ok) {
-        MUREO.toast(MUREO.t("dashboard.remove_failed"));
+        MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
         return;
       }
       await MUREO.loadStatus();
@@ -256,7 +256,7 @@
             await MUREO.loadStatus();
             renderAll();
           } else {
-            MUREO.toast("Operation failed");
+            MUREO.toast("Operation failed", "error");
           }
         });
         li.appendChild(removeBtn);
@@ -318,7 +318,7 @@
           );
           const body = res && res.body;
           if (res.ok && body && (body.status === "ok" || body.status === "noop")) {
-            MUREO.toast(MUREO.t("dashboard.tooluse_restart_note"));
+            MUREO.toast(MUREO.t("dashboard.tooluse_restart_note"), "success");
             await MUREO.loadStatus();
             renderAll();
             return;
@@ -332,7 +332,7 @@
               : detail === "no_mureo_block"
               ? "dashboard.tooluse_err_no_mureo_block"
               : "dashboard.tooluse_err_generic";
-          MUREO.toast(MUREO.t(errKey));
+          MUREO.toast(MUREO.t(errKey), "error");
         });
         tg.appendChild(tBtn);
         li.appendChild(tg);
@@ -381,12 +381,12 @@
       });
       if (res.ok) {
         form.querySelector('[name="env_value"]').value = "";
-        MUREO.toast("Saved.");
+        MUREO.toast("Saved.", "success");
         // Refresh to surface the freshly-saved value preview.
         await MUREO.loadStatus();
         renderEnvVarsSection(MUREO.state.status);
       } else {
-        MUREO.toast("Save failed.");
+        MUREO.toast("Save failed.", "error");
       }
     });
   }
@@ -442,16 +442,16 @@
     try {
       res = await MUREO.postJson("/api/setup/basic/clear", {});
     } catch (_err) {
-      MUREO.toast(MUREO.t("dashboard.remove_failed"));
+      MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
       return;
     }
     if (!res || !res.ok) {
-      MUREO.toast(MUREO.t("dashboard.remove_failed"));
+      MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
       return;
     }
     await MUREO.loadStatus();
     renderAll();
-    MUREO.toast(MUREO.t("dashboard.clear_all_success"));
+    MUREO.toast(MUREO.t("dashboard.clear_all_success"), "success");
   }
 
   function wireBulkClearButton() {
@@ -517,24 +517,27 @@
           skip_import: false,
         });
       } catch (_err) {
-        if (resultNode) {
-          resultNode.textContent = MUREO.t("dashboard.demo_failed", {
-            detail: "network",
-          });
-        }
+        const msg = MUREO.t("dashboard.demo_failed", { detail: "network" });
+        if (resultNode) resultNode.textContent = msg;
+        // Inline result stays for scroll-anchored context; toast is the
+        // scroll-resistant surface for operators scrolled to the bottom
+        // of a long Dashboard (#184).
+        MUREO.toast(msg, "error");
         return;
       }
       const data = (res && res.body) || {};
       if (res && res.ok && data.status === "ok") {
-        if (resultNode) {
-          resultNode.textContent = MUREO.t("dashboard.demo_success", {
-            path: data.created_path || target,
-          });
-        }
-      } else if (resultNode) {
-        resultNode.textContent = MUREO.t("dashboard.demo_failed", {
+        const msg = MUREO.t("dashboard.demo_success", {
+          path: data.created_path || target,
+        });
+        if (resultNode) resultNode.textContent = msg;
+        MUREO.toast(msg, "success");
+      } else {
+        const msg = MUREO.t("dashboard.demo_failed", {
           detail: (data && data.detail) || "error",
         });
+        if (resultNode) resultNode.textContent = msg;
+        MUREO.toast(msg, "error");
       }
     });
   }
@@ -548,7 +551,7 @@
       try {
         res = await MUREO.postJson(endpoint, body);
       } catch (_err) {
-        MUREO.toast(MUREO.t("dashboard.picker_error"));
+        MUREO.toast(MUREO.t("dashboard.picker_error"), "error");
         return;
       }
       const data = (res && res.body) || {};
@@ -557,7 +560,7 @@
       } else if (data.status === "cancelled") {
         return;
       } else {
-        MUREO.toast(MUREO.t("dashboard.picker_error"));
+        MUREO.toast(MUREO.t("dashboard.picker_error"), "error");
       }
     });
   }
@@ -605,14 +608,14 @@
           meta_ads: platform === "meta_ads",
         });
       } catch (_err) {
-        MUREO.toast(MUREO.t("dashboard.byod_remove_failed"));
+        MUREO.toast(MUREO.t("dashboard.byod_remove_failed"), "error");
         return;
       }
       const data = (res && res.body) || {};
       if (res && res.ok && data.status !== "error") {
         await renderByodStatus();
       } else {
-        MUREO.toast(MUREO.t("dashboard.byod_remove_failed"));
+        MUREO.toast(MUREO.t("dashboard.byod_remove_failed"), "error");
       }
     });
     return btn;
@@ -687,23 +690,25 @@
           replace: replaceNode ? replaceNode.checked : false,
         });
       } catch (_err) {
-        if (resultNode) {
-          resultNode.textContent = MUREO.t("dashboard.byod_import_failed", {
-            detail: "network",
-          });
-        }
+        const msg = MUREO.t("dashboard.byod_import_failed", {
+          detail: "network",
+        });
+        if (resultNode) resultNode.textContent = msg;
+        MUREO.toast(msg, "error");
         return;
       }
       const data = (res && res.body) || {};
       if (res && res.ok && data.status === "ok") {
-        if (resultNode) {
-          resultNode.textContent = MUREO.t("dashboard.byod_import_success");
-        }
+        const msg = MUREO.t("dashboard.byod_import_success");
+        if (resultNode) resultNode.textContent = msg;
+        MUREO.toast(msg, "success");
         await renderByodStatus();
-      } else if (resultNode) {
-        resultNode.textContent = MUREO.t("dashboard.byod_import_failed", {
+      } else {
+        const msg = MUREO.t("dashboard.byod_import_failed", {
           detail: (data && data.detail) || "error",
         });
+        if (resultNode) resultNode.textContent = msg;
+        MUREO.toast(msg, "error");
       }
     });
   }
@@ -721,15 +726,15 @@
     try {
       res = await MUREO.postJson("/api/byod/clear", {});
     } catch (_err) {
-      MUREO.toast(MUREO.t("dashboard.byod_clear_failed"));
+      MUREO.toast(MUREO.t("dashboard.byod_clear_failed"), "error");
       return;
     }
     const data = (res && res.body) || {};
     if (res && res.ok && data.status !== "error") {
-      MUREO.toast(MUREO.t("dashboard.byod_clear_success"));
+      MUREO.toast(MUREO.t("dashboard.byod_clear_success"), "success");
       await renderByodStatus();
     } else {
-      MUREO.toast(MUREO.t("dashboard.byod_clear_failed"));
+      MUREO.toast(MUREO.t("dashboard.byod_clear_failed"), "error");
     }
   }
 
@@ -818,7 +823,7 @@
             await MUREO.loadStatus();
             renderAll();
           } else {
-            MUREO.toast(MUREO.t("dashboard.remove_failed"));
+            MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
           }
         });
         li.appendChild(btn);
@@ -960,13 +965,13 @@
         values: values,
       });
     } catch (_e) {
-      MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"));
+      MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"), "error");
       return;
     }
     // ``postJson`` returns ``{ok, status: <HTTP code>, body}`` — the
     // server's logical ``"ok"`` envelope lives inside ``body.status``.
     if (res && res.ok && res.body && res.body.status === "ok") {
-      MUREO.toast(MUREO.t("dashboard.plugin_credentials_saved"));
+      MUREO.toast(MUREO.t("dashboard.plugin_credentials_saved"), "success");
       // Clear secret inputs so the next view starts from the "keep
       // existing" baseline rather than the just-typed plain text.
       Array.from(form.querySelectorAll('input[type="password"]')).forEach(
@@ -975,7 +980,7 @@
         }
       );
     } else {
-      MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"));
+      MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"), "error");
     }
   }
 

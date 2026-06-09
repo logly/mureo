@@ -152,7 +152,11 @@
         } catch (_e) {
           finalizeBtn.disabled = false;
           affirmBtn.disabled = false;
-          fStatus.textContent = MUREO.t("connector.finalize_failed");
+          const msg = MUREO.t("connector.finalize_failed");
+          fStatus.textContent = msg;
+          // Inline status stays for accessibility / scroll-anchored
+          // context; the toast is the scroll-resistant surface (#184).
+          MUREO.toast(msg, "error");
           return;
         }
         finalizeBtn.disabled = false;
@@ -524,13 +528,17 @@
               value: values[spec.name],
             });
             if (!res.ok) {
-              status.textContent = MUREO.t("wizard.auth.save_failed");
+              const msg = MUREO.t("wizard.auth.save_failed");
+              status.textContent = msg;
+              MUREO.toast(msg, "error");
               doneBtn.disabled = false;
               return;
             }
           }
         } catch (_e) {
-          status.textContent = MUREO.t("wizard.auth.save_failed");
+          const msg = MUREO.t("wizard.auth.save_failed");
+          status.textContent = msg;
+          MUREO.toast(msg, "error");
           doneBtn.disabled = false;
           return;
         }
@@ -561,7 +569,9 @@
             onAllDone();
           });
         } else {
-          status.textContent = MUREO.t("wizard.auth.oauth_failed");
+          const msg = MUREO.t("wizard.auth.oauth_failed");
+          status.textContent = msg;
+          MUREO.toast(msg, "error");
           btn.disabled = false;
         }
       });
@@ -586,7 +596,9 @@
             cancelled = true;
             onFinished();
           } else if (data && data.error) {
-            statusNode.textContent = MUREO.t("wizard.auth.oauth_failed");
+            const msg = MUREO.t("wizard.auth.oauth_failed");
+            statusNode.textContent = msg;
+            MUREO.toast(msg, "error");
             cancelled = true;
           } else {
             setTimeout(tick, 750);

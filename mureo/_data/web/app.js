@@ -126,10 +126,19 @@
     return { ok: res.ok, status: res.status, body: body };
   }
 
-  function toast(message) {
+  function toast(message, kind) {
+    // ``kind`` is optional and accepts ``"info"`` (default), ``"success"``,
+    // or ``"error"`` — translated to a ``is-<kind>`` CSS class so app.css
+    // can color-code the pill. Existing single-arg callers stay valid;
+    // the absence of ``is-error`` / ``is-success`` falls through to the
+    // default dark-pill style. See issue #184.
     const node = document.querySelector("[data-toast]");
     if (!node) return;
     node.textContent = message;
+    node.classList.remove("is-info", "is-success", "is-error");
+    const safeKind =
+      kind === "success" || kind === "error" || kind === "info" ? kind : "info";
+    node.classList.add("is-" + safeKind);
     node.hidden = false;
     setTimeout(function () {
       node.hidden = true;

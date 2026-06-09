@@ -755,6 +755,52 @@ input[type="checkbox"] {
   border-bottom: 0;
 }
 
+/* #183 dashboard provider card — give each platform row its own boundary
+   so credential boundaries are scannable instead of a flat hairline list.
+   Both the Official MCP providers list and the Plugin credentials list
+   participate; child notes (e.g. dashboard-provider-hosted-note) fall
+   inside the same boundary as the desired grouping. */
+[data-dashboard-providers-list] > li,
+[data-dashboard-plugin-credentials-list] > * {
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--paper);
+}
+
+/* Providers list rows are <li>; preserve the legacy flex layout
+   (label-left / Remove-button-right) inherited from
+   .dashboard-section li so the Remove button stays right-aligned
+   inside the card. The existing
+   ``.dashboard-provider-hosted-note { flex-basis: 100% }`` rule keeps
+   wrapping the hosted note onto a second line inside the card. */
+[data-dashboard-providers-list] > li {
+  flex-wrap: wrap;
+}
+
+/* Plugin credentials children are <details> blocks (see
+   dashboard.js render path); flex would collapse the disclosure
+   triangle row. Block is the right default here. */
+[data-dashboard-plugin-credentials-list] > * {
+  display: block;
+}
+
+/* The legacy ``.dashboard-section li:last-child { border-bottom: 0 }``
+   would otherwise clear our card's bottom border; restore it
+   explicitly so every card carries all four sides. (The plugin
+   credentials list contains <details>, not <li>, so the legacy
+   override never targeted it — but we keep the margin-reset for both
+   for visual consistency at the bottom of each list.) */
+[data-dashboard-providers-list] > li:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+
+[data-dashboard-providers-list] > li:last-child,
+[data-dashboard-plugin-credentials-list] > *:last-child {
+  margin-bottom: 0;
+}
+
 .app-toast {
   position: fixed;
   bottom: 26px;
@@ -772,6 +818,20 @@ input[type="checkbox"] {
 
 .app-toast[hidden] {
   display: none;
+}
+
+/* #184 toast kinds — color-code success vs error so an operator who
+   triggered an action from the bottom of a long Dashboard can tell at
+   a glance whether the result was good or bad. Default (.is-info or
+   no kind) keeps the existing dark pill. */
+.app-toast.is-success {
+  background: #1f7a3f;
+  color: #ffffff;
+}
+
+.app-toast.is-error {
+  background: #b3261e;
+  color: #ffffff;
 }
 
 @keyframes toastIn {
