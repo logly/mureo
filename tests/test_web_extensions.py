@@ -19,12 +19,13 @@ Coverage:
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterator
 from dataclasses import FrozenInstanceError
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # ---------------------------------------------------------------------------
 # Type-shape tests
@@ -231,9 +232,7 @@ class _FakeEP:
         return self._target
 
 
-def _patch_entry_points(
-    monkeypatch: pytest.MonkeyPatch, eps: list[_FakeEP]
-) -> None:
+def _patch_entry_points(monkeypatch: pytest.MonkeyPatch, eps: list[_FakeEP]) -> None:
     def fake_entry_points(*, group: str) -> list[_FakeEP]:
         assert group == "mureo.web_extensions"
         return eps
@@ -377,7 +376,7 @@ def test_discover_isolates_routes_call_failure(
 def test_discover_isolates_view_call_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from mureo.web.extensions import WebExtensionWarning, discover_web_extensions
+    from mureo.web.extensions import discover_web_extensions
 
     _patch_entry_points(
         monkeypatch,
@@ -683,6 +682,236 @@ def test_discover_skips_extension_with_none_display_name_i18n(
     assert [e.name for e in entries] == ["demo"]
     assert any(
         issubclass(w.category, WebExtensionWarning) and "none-i18n" in str(w.message)
+        for w in caught
+    )
+
+
+# ---------------------------------------------------------------------------
+# #189 — surface overrides: hidden_builtin_tabs / replaces_landing
+# ---------------------------------------------------------------------------
+
+
+def _make_view_extension(
+    ext_name: str,
+    *,
+    hidden_tabs: Any = None,
+    replaces: Any = None,
+    with_view: bool = True,
+) -> type:
+    """Build a synthetic extension class with optional override attrs."""
+    from mureo.web.extensions import ViewContribution
+
+    class _Ext:
+        name = ext_name
+        display_name = ext_name.title()
+
+        def routes(self) -> tuple[Any, ...]:
+            return ()
+
+        def view(self) -> Any:
+            if with_view:
+                return ViewContribution(html_fragment="<p>x</p>")
+            return None
+
+    if hidden_tabs is not None:
+        _Ext.hidden_builtin_tabs = hidden_tabs  # type: ignore[attr-defined]
+    if replaces is not None:
+        _Ext.replaces_landing = replaces  # type: ignore[attr-defined]
+    return _Ext
+
+
+@pytest.mark.unit
+def test_web_extension_entry_defaults_surface_overrides() -> None:
+    """Existing callers constructing ``WebExtensionEntry`` without the
+    new #189 fields must keep working — both attributes default to the
+    no-op values."""
+    from mureo.web.extensions import WebExtensionEntry
+
+    entry = WebExtensionEntry(
+        name="legacy",
+        display_name="Legacy",
+        routes=(),
+        view=None,
+        source_distribution=None,
+    )
+    assert entry.hidden_builtin_tabs == ()
+    assert entry.replaces_landing is False
+
+
+@pytest.mark.unit
+def test_discover_defaults_missing_surface_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pre-#189 extensions (no override attrs declared) load unchanged."""
+    from mureo.web.extensions import discover_web_extensions
+
+    _patch_entry_points(monkeypatch, [_FakeEP("demo", _DemoExtension)])
+    [entry] = discover_web_extensions()
+    assert entry.hidden_builtin_tabs == ()
+    assert entry.replaces_landing is False
+
+
+@pytest.mark.unit
+def test_discover_picks_up_hidden_builtin_tabs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import discover_web_extensions
+
+    ext = _make_view_extension("full-surface", hidden_tabs=("setup", "demo"))
+    _patch_entry_points(monkeypatch, [_FakeEP("full-surface", ext)])
+    [entry] = discover_web_extensions()
+    assert entry.hidden_builtin_tabs == ("setup", "demo")
+
+
+@pytest.mark.unit
+def test_discover_drops_unknown_hidden_tab_keys_with_warning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unknown keys are soft-dropped (extension survives) — matches the
+    issue's stated soft-fail discipline for value-level problems."""
+    from mureo.web.extensions import WebExtensionWarning, discover_web_extensions
+
+    ext = _make_view_extension("squatter", hidden_tabs=("setup", "bogus-tab"))
+    _patch_entry_points(monkeypatch, [_FakeEP("squatter", ext)])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        [entry] = discover_web_extensions()
+    assert entry.hidden_builtin_tabs == ("setup",)
+    assert any(
+        issubclass(w.category, WebExtensionWarning) and "bogus-tab" in str(w.message)
+        for w in caught
+    )
+
+
+@pytest.mark.unit
+def test_discover_dedupes_hidden_tab_keys_preserving_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import discover_web_extensions
+
+    ext = _make_view_extension("dup", hidden_tabs=("danger", "setup", "danger"))
+    _patch_entry_points(monkeypatch, [_FakeEP("dup", ext)])
+    [entry] = discover_web_extensions()
+    assert entry.hidden_builtin_tabs == ("danger", "setup")
+
+
+@pytest.mark.unit
+def test_discover_skips_extension_with_non_tuple_hidden_tabs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Type-level problems are packaging bugs — the whole extension is
+    skipped, mirroring the ``display_name_i18n`` type discipline."""
+    from mureo.web.extensions import WebExtensionWarning, discover_web_extensions
+
+    ext = _make_view_extension("list-tabs", hidden_tabs=["setup"])  # list, not tuple
+    _patch_entry_points(
+        monkeypatch, [_FakeEP("list-tabs", ext), _FakeEP("demo", _DemoExtension)]
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        entries = discover_web_extensions()
+    assert [e.name for e in entries] == ["demo"]
+    assert any(
+        issubclass(w.category, WebExtensionWarning) and "list-tabs" in str(w.message)
+        for w in caught
+    )
+
+
+@pytest.mark.unit
+def test_discover_skips_extension_with_non_str_hidden_tab_element(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import WebExtensionWarning, discover_web_extensions
+
+    ext = _make_view_extension("int-tab", hidden_tabs=(1,))
+    _patch_entry_points(
+        monkeypatch, [_FakeEP("int-tab", ext), _FakeEP("demo", _DemoExtension)]
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        entries = discover_web_extensions()
+    assert [e.name for e in entries] == ["demo"]
+    assert any(
+        issubclass(w.category, WebExtensionWarning) and "int-tab" in str(w.message)
+        for w in caught
+    )
+
+
+@pytest.mark.unit
+def test_discover_picks_up_replaces_landing_with_view(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import discover_web_extensions
+
+    ext = _make_view_extension("landing-owner", replaces=True, with_view=True)
+    _patch_entry_points(monkeypatch, [_FakeEP("landing-owner", ext)])
+    [entry] = discover_web_extensions()
+    assert entry.replaces_landing is True
+
+
+@pytest.mark.unit
+def test_discover_downgrades_replaces_landing_without_view(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``replaces_landing=True`` with no ``view()`` leaves the operator
+    nowhere to land — the flag is downgraded (extension survives)."""
+    from mureo.web.extensions import WebExtensionWarning, discover_web_extensions
+
+    ext = _make_view_extension("headless", replaces=True, with_view=False)
+    _patch_entry_points(monkeypatch, [_FakeEP("headless", ext)])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        [entry] = discover_web_extensions()
+    assert entry.replaces_landing is False
+    assert any(
+        issubclass(w.category, WebExtensionWarning) and "headless" in str(w.message)
+        for w in caught
+    )
+
+
+@pytest.mark.unit
+def test_discover_skips_extension_with_non_bool_replaces_landing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import WebExtensionWarning, discover_web_extensions
+
+    ext = _make_view_extension("stringy", replaces="yes")
+    _patch_entry_points(
+        monkeypatch, [_FakeEP("stringy", ext), _FakeEP("demo", _DemoExtension)]
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        entries = discover_web_extensions()
+    assert [e.name for e in entries] == ["demo"]
+    assert any(
+        issubclass(w.category, WebExtensionWarning) and "stringy" in str(w.message)
+        for w in caught
+    )
+
+
+@pytest.mark.unit
+def test_discover_first_replaces_landing_wins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two installed extensions both claiming the landing: first
+    discovered keeps the flag; the second is downgraded with a warning
+    (mirrors the duplicate-name discipline)."""
+    from mureo.web.extensions import WebExtensionWarning, discover_web_extensions
+
+    first = _make_view_extension("first-owner", replaces=True, with_view=True)
+    second = _make_view_extension("second-owner", replaces=True, with_view=True)
+    _patch_entry_points(
+        monkeypatch,
+        [_FakeEP("first-owner", first), _FakeEP("second-owner", second)],
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        entries = discover_web_extensions()
+    by_name = {e.name: e for e in entries}
+    assert by_name["first-owner"].replaces_landing is True
+    assert by_name["second-owner"].replaces_landing is False
+    assert any(
+        issubclass(w.category, WebExtensionWarning) and "second-owner" in str(w.message)
         for w in caught
     )
 

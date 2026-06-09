@@ -1568,6 +1568,55 @@ falsy entries and falls through to the next candidate. If you want
 to ship an intentionally blank label, render an explicit zero-width
 character (e.g. `"​"`) instead of `""`.
 
+### Taking over built-in surfaces (full-surface plugins)
+
+Most extensions *add* a tab next to the built-in ones. A plugin that
+supplies a complete alternative operator experience — its own setup
+flow, credential model, and dashboard — can additionally declare two
+optional class attributes (both read via `getattr`; pre-feature
+extensions keep loading unchanged):
+
+```python
+class MyExtension:
+    name = "acme-suite"
+    display_name = "Acme Suite"
+    # Hide the built-in tabs this plugin supersedes. Valid keys:
+    # "setup", "demo", "byod", "danger".
+    hidden_builtin_tabs = ("setup", "demo")
+    # Skip the built-in landing; the operator lands on this
+    # extension's view directly. Requires a non-None view().
+    replaces_landing = True
+    # ...routes() / view() unchanged
+```
+
+Validation discipline (mirrors `display_name_i18n`):
+
+- **Type-level problems are packaging bugs** — a non-tuple
+  `hidden_builtin_tabs`, a non-`str` element, or a non-`bool`
+  `replaces_landing` skips the whole extension at discovery with a
+  `WebExtensionWarning`.
+- **Value-level problems are soft** — an unknown tab key is dropped
+  with a warning (the extension survives); `replaces_landing=True`
+  without a `view()` is downgraded to `False` with a warning (there
+  would be nowhere for the operator to land).
+- **At most one landing owner** — when several installed extensions
+  set `replaces_landing=True`, the first-discovered one wins and the
+  rest are downgraded with a warning (mirrors the duplicate-name
+  discipline).
+
+Renderer behaviour: hidden tabs disappear from the dashboard nav and
+their panes are never shown; if a hidden tab would have been the
+default selection (Setup), the landing-owning extension's tab — or,
+absent one, the first extension tab — is selected instead. A headless
+extension that hides tabs without shipping any view falls back to the
+first still-visible built-in tab, so the pane is never orphaned; if
+you hide Setup you should normally ship a `view()` for the operator
+to land on. With `replaces_landing`, the built-in landing is skipped
+on first load and the operator is taken straight to the dashboard
+with your view active. Both attributes ride `/api/extensions` as
+`hidden_builtin_tabs` (list) and `replaces_landing` (bool) — always
+present, no existence check needed client-side.
+
 ### `pyproject.toml`
 
 ```toml

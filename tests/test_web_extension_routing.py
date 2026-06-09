@@ -46,27 +46,21 @@ if TYPE_CHECKING:
 _recorded_calls: list[tuple[str, dict[str, Any]]] = []
 
 
-def _record_ping(
-    _req: BaseHTTPRequestHandler, payload: dict[str, Any]
-) -> None:
+def _record_ping(_req: BaseHTTPRequestHandler, payload: dict[str, Any]) -> None:
     from mureo.web._helpers import send_json
 
     _recorded_calls.append(("ping", dict(payload)))
     send_json(_req, {"echo": payload})
 
 
-def _record_save(
-    _req: BaseHTTPRequestHandler, payload: dict[str, Any]
-) -> None:
+def _record_save(_req: BaseHTTPRequestHandler, payload: dict[str, Any]) -> None:
     from mureo.web._helpers import send_json
 
     _recorded_calls.append(("save", dict(payload)))
     send_json(_req, {"saved": True, "received": payload})
 
 
-def _record_explode(
-    _req: BaseHTTPRequestHandler, _payload: dict[str, Any]
-) -> None:
+def _record_explode(_req: BaseHTTPRequestHandler, _payload: dict[str, Any]) -> None:
     raise RuntimeError("handler exploded")
 
 
@@ -82,7 +76,7 @@ def _make_entry() -> WebExtensionEntry:
             ),
         ),
         view=ViewContribution(
-            html_fragment='<section><h2 data-demo>Demo</h2></section>',
+            html_fragment="<section><h2 data-demo>Demo</h2></section>",
             scripts=(
                 StaticAsset(
                     filename="demo.js",
@@ -209,9 +203,49 @@ def test_extensions_index_lists_registered(
     assert item["name"] == "demo"
     assert item["display_name"] == "Demo extension"
     assert item["display_name_i18n"] == {}
+    # #189 — surface-override keys are always present (no-op defaults)
+    # so the renderer never needs an existence check.
+    assert item["hidden_builtin_tabs"] == []
+    assert item["replaces_landing"] is False
     assert item["view"]["html_fragment"].startswith("<section")
     assert item["view"]["scripts"] == ["demo.js"]
     assert item["view"]["styles"] == ["demo.css"]
+
+
+@pytest.mark.unit
+def test_extensions_index_includes_surface_overrides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#189 — ``hidden_builtin_tabs`` / ``replaces_landing`` ride the
+    index payload so ``extensions.js`` can hide built-in tabs and skip
+    the landing for full-surface plugins."""
+    override_entry = WebExtensionEntry(
+        name="full-surface",
+        display_name="Full surface",
+        routes=(),
+        view=ViewContribution(html_fragment="<p>fs</p>"),
+        source_distribution=None,
+        hidden_builtin_tabs=("setup", "demo"),
+        replaces_landing=True,
+    )
+    monkeypatch.setattr("mureo.web.extensions._cached_entries", (override_entry,))
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    (home / ".claude" / "commands").mkdir()
+    (home / ".mureo").mkdir()
+    wiz = ConfigureWizard(home=home)
+    t = threading.Thread(target=wiz.serve, daemon=True)
+    t.start()
+    wiz.wait_until_ready(timeout=5.0)
+    try:
+        resp = _get(wiz, "/api/extensions")
+        payload = json.loads(resp.read().decode())
+        assert payload[0]["hidden_builtin_tabs"] == ["setup", "demo"]
+        assert payload[0]["replaces_landing"] is True
+    finally:
+        wiz.shutdown()
+        t.join(timeout=2.0)
 
 
 @pytest.mark.unit
@@ -277,6 +311,8 @@ def test_extensions_index_view_null_when_extension_has_no_view(
                 "name": "nogui",
                 "display_name": "No GUI",
                 "display_name_i18n": {},
+                "hidden_builtin_tabs": [],
+                "replaces_landing": False,
                 "view": None,
             }
         ]
@@ -369,9 +405,7 @@ def test_get_extension_handler_exception_returns_500(
 def test_post_extension_route_dispatches_with_csrf(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
-    resp = _post(
-        wizard_with_extensions, "/api/ext/demo/save", {"key": "value"}
-    )
+    resp = _post(wizard_with_extensions, "/api/ext/demo/save", {"key": "value"})
     assert resp.status == 200
     body = json.loads(resp.read().decode())
     assert body == {"saved": True, "received": {"key": "value"}}
@@ -382,9 +416,7 @@ def test_post_extension_route_rejects_missing_csrf(
     wizard_with_extensions: ConfigureWizard,
 ) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
-        _post(
-            wizard_with_extensions, "/api/ext/demo/save", {"key": "v"}, csrf=None
-        )
+        _post(wizard_with_extensions, "/api/ext/demo/save", {"key": "v"}, csrf=None)
     assert exc.value.code == 403
 
 

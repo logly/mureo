@@ -48,6 +48,7 @@ deployments should opt into
 
 from __future__ import annotations
 
+import dataclasses
 import re
 import warnings
 from collections.abc import Mapping
@@ -94,6 +95,13 @@ SUBPATH_PATTERN: Final[str] = r"(?:/[A-Za-z0-9_-]+)+"
 _NAME_RE: Final[re.Pattern[str]] = re.compile(rf"^{NAME_PATTERN}$")
 _FILENAME_RE: Final[re.Pattern[str]] = re.compile(rf"^{FILENAME_PATTERN}$")
 _SUBPATH_RE: Final[re.Pattern[str]] = re.compile(rf"^{SUBPATH_PATTERN}$")
+
+#: Stable identifiers of the built-in dashboard tabs an extension may
+#: hide via ``hidden_builtin_tabs`` (#189). These are the
+#: ``data-dashboard-nav`` / ``data-dashboard-group`` attribute values
+#: hardcoded in ``mureo/_data/web/app.html`` — extending this tuple
+#: requires a matching markup change there.
+BUILTIN_DASHBOARD_TABS: Final[tuple[str, ...]] = ("setup", "demo", "byod", "danger")
 
 #: Inline-executable patterns banned in ``html_fragment``. The
 #: configure-UI CSP forbids ``unsafe-inline`` so these would not
@@ -238,7 +246,7 @@ class WebExtension(Protocol):
     skip the extension (with :class:`WebExtensionWarning`) without
     affecting other extensions or the configure server.
 
-    Optional class attribute (read via :func:`getattr` so the Protocol
+    Optional class attributes (read via :func:`getattr` so the Protocol
     itself stays backward-compatible):
 
     * ``display_name_i18n: Mapping[str, str]`` — per-locale labels
@@ -248,6 +256,20 @@ class WebExtension(Protocol):
       ``display_name_i18n["en"]``, then to ``display_name``.
       Extensions that do not declare it behave exactly as before —
       ``display_name`` is shown unchanged in every locale.
+    * ``hidden_builtin_tabs: tuple[str, ...]`` — built-in dashboard
+      tabs (subset of :data:`BUILTIN_DASHBOARD_TABS`) this extension
+      supersedes. The renderer hides the matching nav items + panes;
+      the extension's own tab becomes the default selection when a
+      hidden tab would have been the default. Unknown keys are
+      dropped with a :class:`WebExtensionWarning`; a non-tuple value
+      skips the extension. Added in #189 for full-surface plugins.
+    * ``replaces_landing: bool`` — when ``True`` and the extension
+      supplies a ``view()``, the renderer skips the built-in landing
+      and shows the extension's view directly on first load.
+      ``True`` without a view is downgraded to ``False`` with a
+      :class:`WebExtensionWarning`. When several installed
+      extensions claim the landing the first-discovered one wins
+      (later claims are downgraded with a warning). Added in #189.
     """
 
     @property
@@ -278,6 +300,12 @@ class WebExtensionEntry:
     view: ViewContribution | None
     source_distribution: str | None
     display_name_i18n: Mapping[str, str] = field(default_factory=dict)
+    # #189 — surface overrides for full-surface plugins. Both default
+    # to the no-op values so entries constructed before the feature
+    # existed (and every additive-only plugin) behave exactly as
+    # before.
+    hidden_builtin_tabs: tuple[str, ...] = ()
+    replaces_landing: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +346,7 @@ def discover_web_extensions() -> tuple[WebExtensionEntry, ...]:
         return _cached_entries
 
     by_name: dict[str, WebExtensionEntry] = {}
+    landing_owner: str | None = None
     for ep in entry_points(group=WEB_EXTENSIONS_ENTRY_POINT_GROUP):
         entry = _load_entry_point(ep)
         if entry is None:
@@ -331,6 +360,21 @@ def discover_web_extensions() -> tuple[WebExtensionEntry, ...]:
                 stacklevel=2,
             )
             continue
+        # #189 — at most one installed extension may own the landing.
+        # First-discovered wins; later claims are downgraded with a
+        # warning (mirrors the duplicate-name discipline above).
+        if entry.replaces_landing:
+            if landing_owner is None:
+                landing_owner = entry.name
+            else:
+                warnings.warn(
+                    f"web extension {entry.name!r} sets "
+                    f"replaces_landing=True but {landing_owner!r} already "
+                    f"owns the landing (first discovered wins); downgraded",
+                    WebExtensionWarning,
+                    stacklevel=2,
+                )
+                entry = dataclasses.replace(entry, replaces_landing=False)
         by_name[entry.name] = entry
 
     _cached_entries = tuple(by_name.values())
@@ -419,6 +463,51 @@ def _load_entry_point(ep: Any) -> WebExtensionEntry | None:
                     f"got {type(value).__name__} for key {key!r}"
                 )
             i18n_normalised[key] = value
+        # #189 — surface overrides. Type-level problems (wrong container
+        # type, non-str element, non-bool flag) are packaging bugs and
+        # skip the whole extension via the surrounding try/except —
+        # mirroring the ``display_name_i18n`` discipline. Value-level
+        # problems (unknown tab key, landing claim without a view) are
+        # soft: warn + drop / downgrade, keep the extension.
+        hidden_raw = getattr(extension, "hidden_builtin_tabs", ())
+        if not isinstance(hidden_raw, tuple):
+            raise TypeError(
+                f"hidden_builtin_tabs must be tuple[str, ...], "
+                f"got {type(hidden_raw).__name__}"
+            )
+        hidden_tabs: list[str] = []
+        for tab in hidden_raw:
+            if not isinstance(tab, str):
+                raise TypeError(
+                    f"hidden_builtin_tabs elements must be str, "
+                    f"got {type(tab).__name__}"
+                )
+            if tab not in BUILTIN_DASHBOARD_TABS:
+                warnings.warn(
+                    f"web extension {name!r} lists unknown built-in tab "
+                    f"{tab!r} in hidden_builtin_tabs (known: "
+                    f"{BUILTIN_DASHBOARD_TABS}); key dropped",
+                    WebExtensionWarning,
+                    stacklevel=3,
+                )
+                continue
+            if tab not in hidden_tabs:
+                hidden_tabs.append(tab)
+        replaces_landing = getattr(extension, "replaces_landing", False)
+        if not isinstance(replaces_landing, bool):
+            raise TypeError(
+                f"replaces_landing must be bool, "
+                f"got {type(replaces_landing).__name__}"
+            )
+        if replaces_landing and view_value is None:
+            warnings.warn(
+                f"web extension {name!r} sets replaces_landing=True but "
+                f"supplies no view() — the operator would have nowhere "
+                f"to land; downgraded to False",
+                WebExtensionWarning,
+                stacklevel=3,
+            )
+            replaces_landing = False
     except Exception as exc:  # noqa: BLE001 — per-plugin fault isolation
         warnings.warn(
             f"failed to load web extension {ep_name!r}: {exc!r}",
@@ -434,6 +523,8 @@ def _load_entry_point(ep: Any) -> WebExtensionEntry | None:
         view=view_value,
         source_distribution=_resolve_source(ep),
         display_name_i18n=i18n_normalised,
+        hidden_builtin_tabs=tuple(hidden_tabs),
+        replaces_landing=replaces_landing,
     )
 
 
@@ -453,6 +544,7 @@ def _resolve_source(ep: Any) -> str | None:
 
 
 __all__ = [
+    "BUILTIN_DASHBOARD_TABS",
     "FILENAME_PATTERN",
     "NAME_PATTERN",
     "RouteContribution",

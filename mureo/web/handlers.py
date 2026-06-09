@@ -693,6 +693,11 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 # extension may share the same mapping object across
                 # multiple discovery calls within a process.
                 "display_name_i18n": dict(entry.display_name_i18n),
+                # #189 — surface overrides. Always present (no-op
+                # defaults) so extensions.js never needs an existence
+                # check before reading them.
+                "hidden_builtin_tabs": list(entry.hidden_builtin_tabs),
+                "replaces_landing": entry.replaces_landing,
             }
             if entry.view is None:
                 item["view"] = None
