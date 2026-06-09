@@ -246,6 +246,242 @@ async def test_list_meta_ad_accounts_empty() -> None:
 
 
 @pytest.mark.unit
+async def test_list_meta_ad_accounts_follows_paging_next_until_exhausted() -> None:
+    """When the Graph API splits the response across multiple pages,
+    every page must be fetched and concatenated. Regression test for
+    the original "only 25 BM accounts ever showed up" bug.
+    """
+    page1 = MagicMock()
+    page1.status_code = 200
+    page1.json.return_value = {
+        "data": [
+            {"id": f"act_{i}", "name": f"A{i}", "account_status": 1} for i in range(100)
+        ],
+        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=cur1"},
+    }
+    page1.raise_for_status = MagicMock()
+
+    page2 = MagicMock()
+    page2.status_code = 200
+    page2.json.return_value = {
+        "data": [
+            {"id": f"act_{i}", "name": f"A{i}", "account_status": 1}
+            for i in range(100, 175)
+        ],
+        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=cur2"},
+    }
+    page2.raise_for_status = MagicMock()
+
+    # Terminal page: no ``paging.next`` cursor → walk stops.
+    page3 = MagicMock()
+    page3.status_code = 200
+    page3.json.return_value = {
+        "data": [
+            {"id": f"act_{i}", "name": f"A{i}", "account_status": 1}
+            for i in range(175, 230)
+        ],
+        "paging": {},
+    }
+    page3.raise_for_status = MagicMock()
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[page1, page2, page3])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="bm-token")
+
+    assert len(accounts) == 230, "every page must be appended"
+    # Three calls: one per page.
+    assert mock_client.get.call_count == 3
+    # Order preserved (page1 → page2 → page3).
+    assert accounts[0]["id"] == "act_0"
+    assert accounts[100]["id"] == "act_100"
+    assert accounts[-1]["id"] == "act_229"
+
+    # Cursor-shape guarantees: the first call MUST send our params dict
+    # (with access_token + limit); subsequent calls MUST follow the
+    # Graph-supplied ``paging.next`` URL verbatim and pass ``params=None``
+    # so the cursor is not corrupted by re-encoding.
+    calls = mock_client.get.call_args_list
+    assert calls[0].args[0].endswith("/me/adaccounts")
+    assert calls[0].kwargs["params"]["access_token"] == "bm-token"
+    assert calls[0].kwargs["params"]["limit"] >= 100
+    assert calls[1].args[0] == (
+        "https://graph.facebook.com/v21.0/me/adaccounts?after=cur1"
+    )
+    assert calls[1].kwargs.get("params") is None
+    assert calls[2].args[0] == (
+        "https://graph.facebook.com/v21.0/me/adaccounts?after=cur2"
+    )
+    assert calls[2].kwargs.get("params") is None
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_refuses_non_graph_paging_next() -> None:
+    """If the response body is tampered with and ``paging.next`` points
+    at a non-Graph host, the walker must refuse to follow it (otherwise
+    the access token — which lives in the cursor URL from page 2
+    onward — would be leaked to whoever supplied the URL).
+    """
+    import logging
+
+    page1 = MagicMock()
+    page1.status_code = 200
+    page1.json.return_value = {
+        "data": [{"id": "act_1", "name": "A1", "account_status": 1}],
+        "paging": {"next": "https://attacker.example/steal?access_token=tok"},
+    }
+    page1.raise_for_status = MagicMock()
+
+    with (
+        patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls,
+        patch.object(logging.getLogger("mureo.meta_ads.accounts"), "warning") as warn,
+    ):
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=page1)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="tok")
+
+    # Only the trusted first page is returned — the attacker URL is not
+    # followed, so the dropdown silently truncates rather than leaking.
+    assert accounts == [{"id": "act_1", "name": "A1", "account_status": 1}]
+    assert mock_client.get.call_count == 1
+    # The truncation must be visible in operator logs.
+    assert warn.called
+    assert "non-Graph" in warn.call_args.args[0]
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_mid_walk_failure_discards_partial_and_redacts() -> (
+    None
+):
+    """If page 1 succeeds and page 2 returns non-2xx, the walker must
+    (a) raise ``RuntimeError`` (not return partial data) and
+    (b) scrub the access token from the error message — the token
+    lives inside the page-2 cursor URL and httpx's ``HTTPStatusError``
+    embeds the full URL in its ``str()``.
+    """
+    page1 = MagicMock()
+    page1.status_code = 200
+    page1.json.return_value = {
+        "data": [{"id": "act_1", "name": "A1", "account_status": 1}],
+        "paging": {
+            "next": (
+                "https://graph.facebook.com/v21.0/me/adaccounts"
+                "?after=cur&access_token=SECRET-TOKEN-XYZ"
+            )
+        },
+    }
+    page1.raise_for_status = MagicMock()
+
+    page2 = MagicMock()
+    page2.status_code = 401
+    page2.json.return_value = {"error": {"message": "Token expired"}}
+    page2.raise_for_status = MagicMock(
+        side_effect=Exception(
+            "Client error '401 Unauthorized' for url "
+            "'https://graph.facebook.com/v21.0/me/adaccounts"
+            "?after=cur&access_token=SECRET-TOKEN-XYZ'"
+        )
+    )
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[page1, page2])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        with pytest.raises(RuntimeError) as excinfo:
+            await list_meta_ad_accounts(access_token="SECRET-TOKEN-XYZ")
+
+    # Partial accounts MUST NOT be returned on mid-walk failure — caller
+    # gets the error, not a half-filled list.
+    msg = str(excinfo.value)
+    assert (
+        "SECRET-TOKEN-XYZ" not in msg
+    ), "access token must not leak into error message"
+    assert "***REDACTED***" in msg
+    # Chain is broken with ``from None`` so the original exception's
+    # ``__cause__`` (which carries the unscrubbed URL) is not surfaced.
+    assert excinfo.value.__cause__ is None
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_requests_large_page_size() -> None:
+    """Default Graph API page size is 25 — we ask for the safe maximum
+    so a single page covers most BMs and pagination only kicks in for
+    truly large portfolios.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"data": [], "paging": {}}
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        await list_meta_ad_accounts(access_token="tok")
+
+    call_kwargs = mock_client.get.call_args.kwargs
+    params = call_kwargs.get("params") or {}
+    assert (
+        int(params.get("limit", 0)) >= 100
+    ), "first request must ask for at least 100 accounts per page"
+
+
+@pytest.mark.unit
+async def test_list_meta_ad_accounts_caps_page_walk() -> None:
+    """A buggy Graph API response that always returns a ``next``
+    cursor must NOT spin the configure UI forever; the walker stops
+    at the documented cap and warns so the gap is visible.
+    """
+    import logging
+
+    from mureo.meta_ads.accounts import _MAX_PAGES
+
+    looping_page = MagicMock()
+    looping_page.status_code = 200
+    looping_page.json.return_value = {
+        "data": [{"id": "act_x", "name": "X", "account_status": 1}],
+        "paging": {"next": "https://graph.facebook.com/v21.0/me/adaccounts?after=loop"},
+    }
+    looping_page.raise_for_status = MagicMock()
+
+    with (
+        patch("mureo.meta_ads.accounts.httpx.AsyncClient") as mock_client_cls,
+        patch.object(logging.getLogger("mureo.meta_ads.accounts"), "warning") as warn,
+    ):
+        mock_client = AsyncMock()
+        # Always return the same looping page — if the walker had no
+        # cap it would hang the configure UI thread.
+        mock_client.get = AsyncMock(return_value=looping_page)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        accounts = await list_meta_ad_accounts(access_token="tok")
+
+    # Exact equality locks in the documented contract — a future change
+    # that silently drops the cap to 1 would be caught here.
+    assert mock_client.get.call_count == _MAX_PAGES
+    assert len(accounts) == _MAX_PAGES
+    # Operators must see a warning when the cap truncated the list.
+    assert warn.called
+    assert "cap" in warn.call_args.args[0]
+
+
+@pytest.mark.unit
 async def test_list_meta_ad_accounts_error() -> None:
     """Raises RuntimeError when fetching the ad-account list fails."""
     mock_response = MagicMock()
