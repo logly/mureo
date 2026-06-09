@@ -7,6 +7,7 @@ Meta Ads: App ID/Secret input -> Browser OAuth -> Long-Lived Token retrieval -> 
 
 from __future__ import annotations
 
+import contextlib
 import html
 import http.server
 import json
@@ -18,6 +19,11 @@ import sys
 import threading
 import urllib.parse
 import webbrowser
+
+try:
+    import termios
+except ImportError:  # pragma: no cover - Windows (Unix-only stdlib)
+    termios = None  # type: ignore[assignment]
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -53,6 +59,67 @@ _SEARCH_CONSOLE_SCOPE = "https://www.googleapis.com/auth/webmasters"
 _GOOGLE_SCOPES = [_GOOGLE_ADS_SCOPE, _SEARCH_CONSOLE_SCOPE]
 
 
+def _terminal_fd() -> int | None:
+    """Resolve the controlling-terminal fd, or ``None`` for non-TTY.
+
+    Wraps ``sys.stdin.fileno()`` so the lookup itself does not raise
+    under pytest (the test harness replaces stdin with a pseudo-file
+    whose ``fileno()`` raises ``UnsupportedOperation``) or in any
+    other context where stdin is not a real file descriptor.
+    """
+    try:
+        return sys.stdin.fileno()
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def _capture_terminal_state(fd: int | None) -> Any | None:
+    """Snapshot the current terminal attributes for later restore.
+
+    Returns the result of ``termios.tcgetattr(fd)`` on success, or
+    ``None`` when stdin is not a TTY (pipe / redirect / CI / Windows /
+    pytest's stdin replacement). The ``None`` return signals the
+    matching ``_restore_terminal_state`` call to skip the restore —
+    the snapshot would not have been meaningful, and ``tcsetattr`` on
+    a non-TTY would itself raise.
+
+    See #190 — ``simple_term_menu.TerminalMenu.show()`` flips the
+    terminal into cbreak (no ``ICANON`` / ``ECHO`` / ``ISIG``) and on
+    any non-normal exit can leave it that way. mureo wraps every
+    ``show()`` call in a ``try/finally`` that pairs this helper with
+    ``_restore_terminal_state`` so the shell session always recovers,
+    even when the operator cancels the menu or ``show()`` raises.
+    """
+    if termios is None or fd is None:
+        return None
+    try:
+        return termios.tcgetattr(fd)
+    except (termios.error, OSError, ValueError):
+        return None
+
+
+def _restore_terminal_state(fd: int | None, state: Any | None) -> None:
+    """Re-apply a snapshot captured by ``_capture_terminal_state``.
+
+    No-op when ``state`` is ``None`` (matches the
+    ``_capture_terminal_state`` contract for non-TTY input). Errors
+    from ``tcsetattr`` are swallowed — the restore is best-effort,
+    not a hard requirement, and a failure here should not crash the
+    surrounding CLI flow.
+
+    Uses ``TCSADRAIN`` so any pending output drains before the mode
+    flip; this avoids the cosmetic glitch where a trailing menu
+    redraw can race the restore and leave stray escape codes visible
+    in the next prompt.
+    """
+    if state is None or termios is None or fd is None:
+        return
+    # Best-effort restore — a ``tcsetattr`` failure here should not
+    # crash the surrounding CLI flow. See #190.
+    with contextlib.suppress(termios.error, OSError, ValueError, AttributeError):
+        termios.tcsetattr(fd, termios.TCSADRAIN, state)
+
+
 def _select_account(
     accounts: list[dict[str, Any]],
     *,
@@ -74,8 +141,22 @@ def _select_account(
     try:
         from simple_term_menu import TerminalMenu
 
-        menu = TerminalMenu(labels, title="Select with ↑↓ and press Enter to confirm:")
-        idx = menu.show()
+        # #190 — wrap ``TerminalMenu.show()`` in try/finally with an
+        # explicit terminal-state save/restore. ``show()`` puts the
+        # terminal into cbreak (no ICANON / ECHO / ISIG) and on any
+        # non-normal exit (operator Esc, internal exception,
+        # KeyboardInterrupt) the restore may silently fail — every
+        # subsequent program in the same shell session would then drop
+        # echo and SIGINT.
+        fd = _terminal_fd()
+        old_attrs = _capture_terminal_state(fd)
+        try:
+            menu = TerminalMenu(
+                labels, title="Select with ↑↓ and press Enter to confirm:"
+            )
+            idx = menu.show()
+        finally:
+            _restore_terminal_state(fd, old_attrs)
         if idx is None:
             print("Selection cancelled. You can configure it later.")
             return None
@@ -558,10 +639,16 @@ def setup_mcp_config() -> None:
             "This directory (.mcp.json) — This project only",
             "Skip (configure manually)",
         ]
-        menu = TerminalMenu(
-            options, title="Where should the MCP configuration be placed?"
-        )
-        idx = menu.show()
+        # See _select_account for the rationale — same #190 fix.
+        fd = _terminal_fd()
+        old_attrs = _capture_terminal_state(fd)
+        try:
+            menu = TerminalMenu(
+                options, title="Where should the MCP configuration be placed?"
+            )
+            idx = menu.show()
+        finally:
+            _restore_terminal_state(fd, old_attrs)
         if idx is None or idx == 2:
             print("MCP configuration skipped.")
             return
