@@ -25,27 +25,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Windows test shim mirrors test_auth_setup.py: ``simple_term_menu``
-# itself fails to import on Windows, so the module-level fallback path
-# is what runs there in production. Stub the package so the
-# ``patch("simple_term_menu.TerminalMenu", ...)`` calls below can
-# resolve.
-if sys.platform == "win32":  # pragma: no cover - Windows CI only
-    import types as _types
-
-    try:
-        import simple_term_menu as _stm_real  # noqa: F401
-    except Exception:
-        _stm_stub = _types.ModuleType("simple_term_menu")
-
-        class _StubTerminalMenu:
-            def __init__(self, *a: object, **k: object) -> None: ...
-
-            def show(self) -> None:
-                return None
-
-        _stm_stub.TerminalMenu = _StubTerminalMenu  # type: ignore[attr-defined]
-        sys.modules["simple_term_menu"] = _stm_stub
+# ``termios`` is Unix-only and the entire restore mechanism this module
+# exercises does not apply on Windows — mureo's production code on
+# Windows takes the ``(ImportError, NotImplementedError)`` fallback
+# path through ``simple_term_menu`` (its own ``termios`` import fails
+# first), so there is nothing to restore and nothing to test.
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="termios save/restore is Unix-only — Windows takes the no-menu fallback path",
+)
 
 
 _SENTINEL_OLD_ATTRS = ["iflag", "oflag", "cflag", "lflag", 0, 0, [b"\x00"] * 32]
