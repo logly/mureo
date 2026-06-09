@@ -105,7 +105,14 @@ def test_asdict_is_json_friendly() -> None:
         "required": True,
         "description": "hint",
         "secret": False,
+        # #186: the optional i18n maps default to empty dicts so a
+        # plugin that does not ship translations stays
+        # forwards-compatible with the locale-aware list payload.
+        "display_name_i18n": {},
+        "description_i18n": {},
     }
-    # Verify no exotic types slipped in.
+    # Verify no exotic types slipped in. The i18n maps are plain
+    # ``dict[str, str]`` so a JSON serialiser handles them without
+    # a custom encoder.
     for value in payload.values():
-        assert isinstance(value, (str, bool))
+        assert isinstance(value, (str, bool, dict))

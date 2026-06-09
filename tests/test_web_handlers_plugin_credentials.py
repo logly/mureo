@@ -182,6 +182,43 @@ def test_get_lists_plugins_with_declared_fields(
 
 
 @pytest.mark.unit
+def test_get_uses_session_locale_for_field_labels(
+    wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The handler must forward ``session.locale`` into the registry
+    walk so plugin-declared ``display_name_i18n`` / ``description_i18n``
+    entries are resolved against the active operator locale (#186).
+    """
+    monkeypatch.setattr(
+        default_registry,
+        "_entries",
+        {
+            "lineyahoo_ads": _entry(
+                "lineyahoo_ads",
+                display_name="LINE/Yahoo! Ads",
+                fields=(
+                    AccountCredentialField(
+                        key="business_id",
+                        display_name="Business ID",
+                        description="Yahoo! JAPAN Business ID.",
+                        display_name_i18n={"ja": "ビジネス ID"},
+                        description_i18n={"ja": "Yahoo! JAPAN ビジネス ID。"},
+                    ),
+                ),
+            )
+        },
+    )
+    wizard.session.set_locale("ja")
+
+    resp = _get(wizard, "/api/credentials/plugins")
+    body = json.loads(resp.read())
+    [plugin] = body["plugins"]
+    [field] = plugin["fields"]
+    assert field["display_name"] == "ビジネス ID"
+    assert field["description"] == "Yahoo! JAPAN ビジネス ID。"
+
+
+@pytest.mark.unit
 def test_get_returns_empty_list_when_no_plugins(
     wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
 ) -> None:
