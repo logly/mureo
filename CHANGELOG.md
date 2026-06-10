@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.28] - 2026-06-10
+
+Configure-UI extensibility plus multi-account / `RuntimeContext` polish.
+As with 0.9.27, none of these change the MCP tool surface — every
+change is in the `mureo configure` local-only web UI, its OAuth wizard,
+or the `RuntimeContext` extension contract that third-party backends
+plug into. Standalone OSS behavior is unchanged across the board.
+
+### Added
+
+#### Skippable OAuth account-picker for multi-account backends (#198)
+
+A `SecretStore` can advertise an optional `multi_account_auth: bool`
+capability. When set, the `mureo configure` OAuth flow persists only
+the operator-shared credentials (Google `developer_token` + OAuth
+client, or the Meta app creds/token) and skips the per-account picker,
+redirecting straight to `/done`; the per-client `customer_id` /
+`account_id` are supplied out of band. Default (standalone OSS): the
+capability is absent, so the picker is shown exactly as before. The
+capability is resolved behind a `home is None` gate so a sandboxed
+wizard can never inherit a real backend's behavior.
+
+#### Skippable platform-selection wizard step (#193)
+
+The platform-selection step in `mureo configure` can now be skipped,
+matching the skippable-step affordance already offered elsewhere in
+the wizard.
+
+#### WebExtension surface overrides (#189)
+
+A registered web extension can now declare `hidden_builtin_tabs` and
+`replaces_landing`, letting a third-party surface hide built-in
+configure tabs and substitute its own landing view.
+
+### Fixed
+
+#### configure-UI credentials path follows the active RuntimeContext (#194, #195, #196)
+
+The configure web layer hard-coded `~/.mureo/credentials.json` for
+every credential write and its own status read, while the MCP runtime
+reads through the pluggable `SecretStore`. A `runtime_context_factory`
+that relocated the store therefore produced a silent split-brain — the
+wizard wrote one place, the runtime read another. The wizard now
+resolves its credentials path from the active `RuntimeContext`
+(protocol-based, via an optional `credentials_write_path` the store can
+advertise, rather than type-sniffing), gated so that an
+explicitly-injected `home` stays sandboxed and can never reach the
+process-global factory — closing a path by which a test or alternate-
+home wizard could clobber the operator's real credentials.
+
+#### Terminal state restored around the TerminalMenu picker (#190)
+
+`TerminalMenu.show()` could leave the terminal in an altered state on
+some exits; the CLI now saves and restores terminal state around the
+menu so the shell is returned clean.
+
 ## [0.9.27] - 2026-06-09
 
 ### Added — `configure` UI quality + locale-aware plugin credential fields (#183, #184, #186)
