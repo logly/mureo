@@ -206,3 +206,42 @@ def reset_runtime_context() -> None:
     callers should not need this — a process has one workspace."""
     global _cached_context
     _cached_context = None
+
+
+def runtime_credentials_path(default: Path) -> Path:
+    """Return the credentials path the active ``RuntimeContext`` uses.
+
+    Bridges the path-based configure-UI write functions (which take a
+    ``credentials_path: Path``) to the pluggable ``SecretStore`` the MCP
+    runtime reads from, so an alternate backend registered via
+    :data:`RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP` is honored on
+    *write* — not only on *read* (#194).
+
+    Resolution:
+
+    - **No factory registered** → return ``default`` unchanged. This
+      keeps single-backend installs on their existing location AND
+      preserves a test- or caller-injected ``home`` (the default
+      :class:`RuntimeContext`'s :class:`FilesystemSecretStore` resolves
+      against the real ``Path.home()``, which must NOT override an
+      injected path). The gate is on entry-point *presence*, not on the
+      resolved path, precisely to avoid that real-home fall-through.
+    - **Factory registered, filesystem-backed store** → return the
+      store's ``path`` so the write side matches the read side.
+    - **Factory registered, non-filesystem store** → return ``default``.
+      A ``credentials_path: Path`` cannot represent a non-filesystem
+      backend; the path-based write functions stay on the host default
+      (the honest ceiling of that API — a full ``SecretStore``-threaded
+      write path is a separate, larger change).
+
+    A registered-but-broken factory surfaces its
+    :class:`RuntimeContextFactoryError` here, mirroring the read path's
+    behavior — a packaging mistake is made visible rather than hidden
+    behind a silent fall-back to the default location.
+    """
+    if not list(entry_points(group=RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP)):
+        return default
+    store = get_runtime_context().secret_store
+    if isinstance(store, FilesystemSecretStore):
+        return store.path
+    return default

@@ -9,6 +9,7 @@ outlive the parent process.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import http.server
 import logging
 import signal
@@ -18,6 +19,7 @@ import webbrowser
 from importlib import resources
 from pathlib import Path
 
+from mureo.core.runtime_context import runtime_credentials_path
 from mureo.web.extensions import discover_web_extensions
 from mureo.web.handlers import ConfigureHandler
 from mureo.web.host_paths import HostPaths, get_host_paths
@@ -73,6 +75,7 @@ class ConfigureWizard:
         self._host_paths: HostPaths = get_host_paths(self.session.host, home=home)
         self._commands_path_override = commands_path
         self._apply_commands_override()
+        self._apply_credentials_override()
         self.oauth_bridge = OAuthBridge()
         # Discover third-party extensions once at wizard construction.
         # ``discover_web_extensions`` caches internally, so this call
@@ -110,6 +113,7 @@ class ConfigureWizard:
         self.session.set_host(host)
         self._host_paths = get_host_paths(self.session.host, home=self.home)
         self._apply_commands_override()
+        self._apply_credentials_override()
 
     def mark_oauth_complete(
         self, provider: str, *, success: bool, error: str | None = None
@@ -170,6 +174,27 @@ class ConfigureWizard:
             commands_dir=self._commands_path_override,
             credentials_path=self._host_paths.credentials_path,
             mcp_registry_path=self._host_paths.mcp_registry_path,
+        )
+
+    def _apply_credentials_override(self) -> None:
+        """Align the configure-UI credentials path with the active
+        RuntimeContext (#194).
+
+        Every web write site (OAuth, env-var, provider install, plugin
+        credentials, credential removal) and the status read share
+        ``host_paths.credentials_path``. Resolving that one value from
+        :func:`runtime_credentials_path` makes the whole web layer write
+        to — and read from — the same location the MCP runtime reads
+        from, so a ``mureo.runtime_context_factory`` that relocates the
+        ``SecretStore`` is no longer bypassed on write. A no-op (keeps
+        the host default) when no factory is registered, so single-
+        backend installs and the test-injected ``home`` are unaffected.
+        """
+        resolved = runtime_credentials_path(self._host_paths.credentials_path)
+        if resolved == self._host_paths.credentials_path:
+            return
+        self._host_paths = dataclasses.replace(
+            self._host_paths, credentials_path=resolved
         )
 
 
