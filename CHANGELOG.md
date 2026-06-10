@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.29] - 2026-06-11
+
+Plugin OAuth onboarding plus two credential/state correctness fixes
+surfaced while integrating the multi-account / agency layering.
+
+### Added
+
+#### Generic per-account OAuth (authorization-code) wizard for plugins (#201)
+
+A third-party provider whose per-account secret is obtained through the
+OAuth2 authorization-code grant (Yahoo! JAPAN Ads first) can now declare
+an `AccountOAuthConfig` on its provider class. `mureo configure` then
+offers an **Authenticate** button that runs the consent flow in the
+browser, exchanges the returned code at the provider's token endpoint,
+and saves the resulting `refresh_token` into the named field — instead
+of the operator pasting a `refresh_token` by hand. Same "OSS =
+mechanism, plugin = values" split as #186: the plugin declares the OAuth
+metadata, OSS runs the flow (a parallel, library-agnostic flow that
+reuses the bridge / callback-server / status-poll machinery without
+touching the Google/Meta onboarding path). Client id/secret come from
+existing saved plugin fields; secrets are never logged, the token
+exchange is `https`-only, and the callback enforces the host + `state`
+guards before any exchange. Providers without `account_oauth` keep
+manual entry exactly as before.
+
+### Fixed
+
+#### Meta per-account override silently ignored (#202)
+
+The Meta adapter declared its per-account credential field as
+`ad_account_id`, but `load_meta_ads_credentials` reads `account_id`
+(and the configure wizard persists `account_id`). The names disagreed,
+so a per-account override supplied under the declared field name was
+silently dropped — the loader kept reading `account_id` from the
+operator-shared base and connected to the wrong ad account (hit in
+production with agency shared-base layering). The declared key is now
+`account_id`, so the declaration, the wizard output, and the loader all
+agree and per-account overrides take effect.
+
+#### STATE.json renders clients as inactive after campaign upsert
+
+`mureo_state_upsert_campaign` only wrote the legacy v1 flat `campaigns`
+list and never stamped `last_synced_at`, leaving the v2 `platforms`
+section (with its required `account_id`) empty — so a client populated
+purely through the tool rendered as "not yet bootstrapped" / inactive
+even though campaigns existed. The tool now requires `platform` +
+`account_id` and populates `platforms[platform]` (account id + the
+campaign), stamps `last_synced_at`, and keeps the v1 flat list in
+lockstep for backward-compatible readers.
+
 ## [0.9.28] - 2026-06-10
 
 Configure-UI extensibility plus multi-account / `RuntimeContext` polish.
