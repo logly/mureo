@@ -85,12 +85,15 @@
     "completed",
   ];
 
-  const STEPS_WITHOUT_SKIP = new Set([
-    "host",
-    "basic",
-    "platforms",
-    "completed",
-  ]);
+  // Steps where the shared footer Skip button is hidden. ``platforms``
+  // is intentionally absent: its Next button is gated on at least one
+  // platform being selected, so an operator who wants to defer platform
+  // setup needs Skip to leave the step (Skip → gotoNext → with no
+  // platforms selected the provider/auth steps drop out and the wizard
+  // lands on ``completed``). ``host`` requires a host choice, ``basic``
+  // has its own inline advanced-skip link, and ``completed`` is
+  // terminal — all keep their no-skip status.
+  const STEPS_WITHOUT_SKIP = new Set(["host", "basic", "completed"]);
 
   function hasGoogleOrMetaPlatform() {
     return STATE.platforms.google_ads || STATE.platforms.meta_ads;
