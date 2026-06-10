@@ -52,8 +52,17 @@ class ConfigureSession:
         if host in SUPPORTED_HOSTS:
             self.host = host
 
-    def mark_oauth_pending(self, provider: str) -> None:
-        if provider not in OAUTH_PROVIDERS:
+    def mark_oauth_pending(self, provider: str, *, allow_dynamic: bool = False) -> None:
+        """Mark ``provider`` as having an in-flight OAuth handoff.
+
+        The built-in ``google`` / ``meta`` providers are pre-registered.
+        ``allow_dynamic=True`` registers a previously-unknown provider on
+        the fly — used by the generic plugin OAuth flow (#201), where the
+        provider is the plugin's registry name (already validated against
+        the registry by the caller). Without it an unknown provider still
+        raises, so a stale UI cannot register arbitrary keys.
+        """
+        if provider not in self.oauth_status and not allow_dynamic:
             raise ValueError(f"unknown provider: {provider}")
         with self._lock:
             self.oauth_status[provider] = OAuthState(
@@ -63,7 +72,11 @@ class ConfigureSession:
     def mark_oauth_complete(
         self, provider: str, *, success: bool, error: str | None = None
     ) -> None:
-        if provider not in OAUTH_PROVIDERS:
+        # Membership in ``oauth_status`` (not the static OAUTH_PROVIDERS
+        # tuple) so a plugin provider registered via
+        # ``mark_oauth_pending(allow_dynamic=True)`` can be completed,
+        # while a never-registered provider still raises.
+        if provider not in self.oauth_status:
             raise ValueError(f"unknown provider: {provider}")
         with self._lock:
             self.oauth_status[provider] = OAuthState(
@@ -71,7 +84,7 @@ class ConfigureSession:
             )
 
     def get_oauth_status(self, provider: str) -> dict[str, Any]:
-        if provider not in OAUTH_PROVIDERS:
+        if provider not in self.oauth_status:
             raise ValueError(f"unknown provider: {provider}")
         with self._lock:
             state = self.oauth_status[provider]

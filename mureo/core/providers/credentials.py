@@ -100,4 +100,59 @@ class AccountCredentialField:
     description_i18n: Mapping[str, str] = field(default_factory=dict)
 
 
-__all__ = ["AccountCredentialField"]
+@dataclass(frozen=True)
+class AccountOAuthConfig:
+    """Declarative OAuth2 authorization-code metadata for a provider (#201).
+
+    A provider whose per-account secret is obtained through an OAuth2
+    *authorization-code* consent flow (e.g. Yahoo! JAPAN Ads, whose
+    ``refresh_token`` is issued by
+    ``https://biz-oauth.yahoo.co.jp/oauth/v1/...``) declares this on the
+    class as ``account_oauth``. mureo's configure UI then offers an
+    "Authenticate" action that runs the consent in the browser, exchanges
+    the returned code at :attr:`token_url`, and stores the resulting
+    ``refresh_token`` in the field named by :attr:`target_field`. The
+    plugin's runtime adapter consumes that token with
+    ``grant_type=refresh_token`` exactly as before.
+
+    Like :class:`AccountCredentialField` this is **declarative metadata
+    only** — it carries no behaviour and holds no secret values. The
+    three ``*_field`` attributes name keys of the provider's own
+    :class:`AccountCredentialField` list, keeping the OSS layer free of
+    plugin-specific values ("OSS = mechanism, plugin = values", as #186).
+
+    Attributes:
+        authorize_url: The provider's OAuth2 authorization endpoint. The
+            operator's browser is sent here (with ``response_type=code``,
+            ``client_id``, ``redirect_uri``, ``scope`` and ``state``
+            appended) to grant consent. Must be an ``https://`` URL.
+        token_url: The provider's token endpoint. The configure server
+            POSTs the returned authorization ``code`` here with
+            ``grant_type=authorization_code`` to obtain the
+            ``refresh_token``. Must be an ``https://`` URL.
+        client_id_field: ``key`` of the declared
+            :class:`AccountCredentialField` holding the OAuth client id.
+        client_secret_field: ``key`` of the declared field holding the
+            OAuth client secret (typically ``secret=True``).
+        target_field: ``key`` of the declared field that receives the
+            obtained ``refresh_token`` (typically ``secret=True``).
+        scopes: OAuth scopes requested at the authorize step. Default:
+            empty tuple (no explicit scope parameter sent).
+        callback_path: Path the provider redirects back to on the local
+            loopback callback server. Default ``"/oauth/callback"``; the
+            ephemeral port is chosen at runtime, mirroring the loopback
+            redirect flow Google's wizard already uses. A provider that
+            pins an exact redirect URI must register a loopback URI that
+            allows a variable port.
+    """
+
+    authorize_url: str
+    token_url: str
+    client_id_field: str
+    client_secret_field: str
+    target_field: str
+    scopes: tuple[str, ...] = ()
+    callback_path: str = "/oauth/callback"
+
+
+__all__ = ["AccountCredentialField", "AccountOAuthConfig"]

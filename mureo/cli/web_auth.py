@@ -55,6 +55,8 @@ from mureo.auth_setup import (
     list_meta_ad_accounts,
     save_credentials,
 )
+from mureo.core.secret_store import FilesystemSecretStore
+from mureo.oauth_authcode import OAuthExchangeError, exchange_authorization_code
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -511,6 +513,8 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             self._handle_meta_callback(parsed.query)
         elif path == "/meta-ads/select-account":
             self._handle_meta_account_pick_page()
+        elif path == "/oauth/callback":
+            self._handle_plugin_oauth_callback(parsed.query)
         elif path == "/done":
             self.server.wizard.mark_completed()
             self._send_html(render_done_page(self.server.wizard.session.locale))
@@ -1085,6 +1089,87 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Location", "/done")
         self.end_headers()
 
+    # --- generic plugin OAuth (authorization-code) ----------------------
+
+    def _handle_plugin_oauth_callback(self, query: str) -> None:
+        """Complete a generic plugin authorization-code flow (#201).
+
+        Mirrors the Google/Meta callbacks but is provider-neutral: the
+        flow parameters come from the :class:`PluginOAuthSpec` the bridge
+        pinned at wizard construction, the token is exchanged via the
+        library-agnostic :func:`exchange_authorization_code`, and the
+        resulting ``refresh_token`` is merge-saved into the provider's
+        own ``credentials.json`` section (preserving the client id/secret
+        already stored there). Same guards as the built-in flows: DNS-
+        rebinding host check, then constant-time ``state`` comparison
+        before any token is requested.
+        """
+        if not self._host_header_ok():
+            self.send_error(403, "Host header not allowed (DNS rebinding guard)")
+            return
+        spec = self.server.wizard.plugin_oauth
+        if spec is None:
+            self.send_error(404, "No plugin OAuth flow in progress")
+            return
+
+        params = urllib.parse.parse_qs(query)
+        code = params.get("code", [""])[0]
+        returned_state = params.get("state", [""])[0]
+        oauth_error = params.get("error", [""])[0]
+
+        if oauth_error:
+            self._send_html(
+                render_error(
+                    f"Authorization was cancelled or refused (error: "
+                    f"{oauth_error}). Return to the configure tab and retry."
+                ),
+                status=400,
+            )
+            return
+
+        if not code:
+            self.send_error(400, "Missing authorization code")
+            return
+
+        if not spec.state or not _secrets.compare_digest(returned_state, spec.state):
+            logger.warning("Plugin OAuth state mismatch on callback")
+            self.send_error(403, "OAuth state mismatch -- possible CSRF or link reuse")
+            return
+
+        try:
+            result = exchange_authorization_code(
+                token_url=spec.token_url,
+                code=code,
+                client_id=spec.client_id,
+                client_secret=spec.client_secret,
+                redirect_uri=spec.redirect_uri,
+            )
+        except OAuthExchangeError:
+            # Message-free log: the helper already guarantees no secret is
+            # surfaced; we add only the provider name for triage.
+            logger.warning(
+                "Plugin OAuth token exchange failed for provider %s", spec.provider
+            )
+            self._send_html(
+                render_error(
+                    "The provider rejected the authorization. "
+                    "Re-open the configure tab and retry."
+                ),
+                status=400,
+            )
+            return
+
+        # Merge into the provider's section so the client id/secret the
+        # operator already saved survive alongside the new refresh token.
+        store = FilesystemSecretStore(path=self.server.wizard.credentials_path)
+        merged = dict(store.load(spec.provider))
+        merged[spec.target_field] = result.refresh_token
+        store.save(spec.provider, merged)
+
+        self.send_response(302)
+        self.send_header("Location", "/done")
+        self.end_headers()
+
     # --- helpers ---------------------------------------------------------
 
     def _host_header_ok(self) -> bool:
@@ -1159,6 +1244,28 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class PluginOAuthSpec:
+    """Parameters for one generic plugin authorization-code flow (#201).
+
+    Constructed by :meth:`mureo.web.oauth_bridge.OAuthBridge.start_plugin_oauth`
+    from the provider's :class:`~mureo.core.providers.AccountOAuthConfig`
+    plus the client id/secret the operator already saved, and handed to the
+    spawned :class:`WebAuthWizard`. ``provider`` is the registry name, which
+    is also the ``credentials.json`` section key the obtained token is
+    merge-saved under; ``state`` is the CSRF nonce echoed back on the
+    provider's redirect.
+    """
+
+    provider: str
+    target_field: str
+    token_url: str
+    client_id: str
+    client_secret: str
+    redirect_uri: str
+    state: str
+
+
 class WebAuthWizard:
     """Browser-driven OAuth wizard."""
 
@@ -1168,9 +1275,16 @@ class WebAuthWizard:
         bind_host: str = "127.0.0.1",
         credentials_path: Path | None = None,
         multi_account_auth: bool = False,
+        plugin_oauth: PluginOAuthSpec | None = None,
     ) -> None:
         self._bind_host = bind_host
         self.credentials_path = credentials_path
+        # When set, the wizard serves the generic ``/oauth/callback`` route
+        # for a third-party plugin authorization-code flow instead of the
+        # built-in Google/Meta forms (#201). The Google/Meta routes remain
+        # registered but unused — the bridge hands the browser the external
+        # provider's authorize URL directly, so only the callback is hit.
+        self.plugin_oauth = plugin_oauth
         # When set, the OAuth callbacks persist only the operator-shared
         # credentials and skip the per-account picker (#198). Threaded in
         # by the caller (the configure-UI bridge resolves it from the

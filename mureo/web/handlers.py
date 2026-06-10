@@ -45,6 +45,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Any
 
+from mureo.core.providers import default_registry, get_account_oauth_config
 from mureo.core.runtime_context import runtime_multi_account_auth
 from mureo.core.secret_store import FilesystemSecretStore
 from mureo.web._helpers import (
@@ -138,6 +139,13 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
 # Regex on path: /api/oauth/<provider>/status or /start
 _OAUTH_PROVIDER_RE = re.compile(
     r"^/api/oauth/(?P<provider>[a-z_]+)/(?P<verb>status|start)$"
+)
+
+# #201 — generic plugin authorization-code OAuth. Separate from the
+# built-in ``/api/oauth/...`` path so the Google/Meta onboarding flow is
+# untouched. ``provider`` is a snake_case registry name.
+_PLUGIN_OAUTH_RE = re.compile(
+    r"^/api/credentials/plugins/(?P<provider>[a-z0-9_]+)/oauth/(?P<verb>start|status)$"
 )
 
 # Third-party web-extension dispatch (see ``mureo.web.extensions``).
@@ -301,6 +309,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if match is not None and match.group("verb") == "status":
             self._serve_oauth_status(match.group("provider"))
             return
+        plugin_oauth_match = _PLUGIN_OAUTH_RE.match(path)
+        if plugin_oauth_match is not None and (
+            plugin_oauth_match.group("verb") == "status"
+        ):
+            self._serve_plugin_oauth_status(plugin_oauth_match.group("provider"))
+            return
         ext_api_match = _EXTENSION_API_RE.match(path)
         if ext_api_match is not None:
             self._dispatch_extension_get(
@@ -334,6 +348,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         match = _OAUTH_PROVIDER_RE.match(path)
         if match is not None and match.group("verb") == "start":
             self._post_oauth_start(match.group("provider"), payload)
+            return
+        plugin_oauth_match = _PLUGIN_OAUTH_RE.match(path)
+        if plugin_oauth_match is not None and (
+            plugin_oauth_match.group("verb") == "start"
+        ):
+            self._post_plugin_oauth_start(plugin_oauth_match.group("provider"))
             return
         ext_api_match = _EXTENSION_API_RE.match(path)
         if ext_api_match is not None:
@@ -684,6 +704,69 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             send_error_json(self, 400, "unknown_provider")
             return
         send_json(self, result.as_dict())
+
+    # ------------------------------------------------------------------
+    # Generic plugin OAuth (authorization-code) — #201
+    # ------------------------------------------------------------------
+    def _post_plugin_oauth_start(self, provider: str) -> None:
+        """Begin a plugin's authorization-code consent flow.
+
+        The plugin must be registered and declare an
+        :class:`~mureo.core.providers.AccountOAuthConfig`. The client
+        id/secret the operator already saved (via the plugin-credentials
+        form) are loaded from the same store the save path wrote to; if
+        either is absent we return ``400 client_credentials_missing`` so
+        the UI can prompt the operator to save them first. On success the
+        bridge returns the external provider consent URL.
+        """
+        if provider not in default_registry:
+            send_error_json(self, 404, "unknown_provider")
+            return
+        entry = default_registry.get(provider)
+        try:
+            oauth_config = get_account_oauth_config(entry.provider_class)
+        except (TypeError, ValueError):
+            # Malformed plugin declaration — fail clean, not 500.
+            send_error_json(self, 400, "invalid_oauth_config")
+            return
+        if oauth_config is None:
+            send_error_json(self, 404, "oauth_not_supported")
+            return
+
+        store = FilesystemSecretStore(path=self.wizard.host_paths.credentials_path)
+        saved = store.load(provider)
+        client_id = str(saved.get(oauth_config.client_id_field, "") or "")
+        client_secret = str(saved.get(oauth_config.client_secret_field, "") or "")
+        if not client_id or not client_secret:
+            send_error_json(self, 400, "client_credentials_missing")
+            return
+
+        self.wizard.session.mark_oauth_pending(provider, allow_dynamic=True)
+        result = self.wizard.oauth_bridge.start_plugin_oauth(
+            provider=provider,
+            configure_wizard=self.wizard,
+            oauth_config=oauth_config,
+            client_id=client_id,
+            client_secret=client_secret,
+            credentials_path=self.wizard.host_paths.credentials_path,
+        )
+        send_json(self, result.as_dict())
+
+    def _serve_plugin_oauth_status(self, provider: str) -> None:
+        """Report a plugin OAuth flow's status (reuses the session store).
+
+        Returns an idle snapshot when the provider is valid but no flow
+        has started yet (e.g. the UI polls after a page reload), so the
+        poller never sees a 5xx.
+        """
+        if provider not in default_registry:
+            send_error_json(self, 404, "unknown_provider")
+            return
+        try:
+            status = self.wizard.session.get_oauth_status(provider)
+        except ValueError:
+            status = {"pending": False, "success": False, "error": None}
+        send_json(self, status)
 
     # ------------------------------------------------------------------
     # Extension dispatch

@@ -29,7 +29,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from mureo.core.providers import default_registry, get_account_credential_fields
+from mureo.core.providers import (
+    default_registry,
+    get_account_credential_fields,
+    get_account_oauth_config,
+)
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
 
 if TYPE_CHECKING:
@@ -114,9 +118,31 @@ def list_plugin_credential_fields(
                 "provider_name": entry.name,
                 "display_name": entry.display_name,
                 "fields": [_field_to_dict(f, locale) for f in fields],
+                # OAuth descriptor (#201) — field *keys* only, never
+                # secret values; ``None`` for manual-entry providers so
+                # the UI shows no Authenticate button (regression-free).
+                "oauth": _oauth_to_dict(entry.provider_class),
             }
         )
     return result
+
+
+def _oauth_to_dict(provider_class: type) -> dict[str, str] | None:
+    """Return the provider's OAuth field-key mapping, or ``None``.
+
+    Exposes only the three ``*_field`` key names so the configure UI can
+    render an Authenticate button next to the target field and know which
+    fields must be saved first. The endpoints (``authorize_url`` /
+    ``token_url``) and any secret values stay server-side.
+    """
+    config = get_account_oauth_config(provider_class)
+    if config is None:
+        return None
+    return {
+        "target_field": config.target_field,
+        "client_id_field": config.client_id_field,
+        "client_secret_field": config.client_secret_field,
+    }
 
 
 def save_plugin_credentials(

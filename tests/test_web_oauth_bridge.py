@@ -20,6 +20,7 @@ from mureo.web.oauth_bridge import (
     OAuthBridge,
     OAuthHandoffResult,
     _credentials_present_for,
+    _plugin_credentials_present,
 )
 
 if TYPE_CHECKING:
@@ -416,3 +417,85 @@ class TestNoRealSubprocessOrSocket:
             bridge.start(provider="google", configure_wizard=fake_configure_wizard)
             mock_cls.assert_called_once()
         bridge.cancel_all()
+
+
+# ---------------------------------------------------------------------------
+# #201 — generic plugin authorization-code flow
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestPluginCredentialsPresent:
+    def test_true_when_target_field_set(self, tmp_path: Path) -> None:
+        path = tmp_path / "creds.json"
+        path.write_text(json.dumps({"yahoo_ads": {"refresh_token": "RT"}}))
+        assert _plugin_credentials_present("yahoo_ads", "refresh_token", path) is True
+
+    def test_false_when_target_field_absent(self, tmp_path: Path) -> None:
+        path = tmp_path / "creds.json"
+        path.write_text(json.dumps({"yahoo_ads": {"client_id": "CID"}}))
+        assert _plugin_credentials_present("yahoo_ads", "refresh_token", path) is False
+
+    def test_false_when_file_missing(self, tmp_path: Path) -> None:
+        assert (
+            _plugin_credentials_present(
+                "yahoo_ads", "refresh_token", tmp_path / "nope.json"
+            )
+            is False
+        )
+
+
+@pytest.mark.unit
+class TestStartPluginOAuth:
+    def _config(self) -> Any:
+        from mureo.core.providers import AccountOAuthConfig
+
+        return AccountOAuthConfig(
+            authorize_url="https://biz-oauth.yahoo.co.jp/oauth/v1/authorize",
+            token_url="https://biz-oauth.yahoo.co.jp/oauth/v1/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            scopes=("scopeA",),
+        )
+
+    def test_builds_external_consent_url_and_pins_spec(
+        self,
+        patched_wizard_class: Any,
+        fake_configure_wizard: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        bridge = OAuthBridge()
+        try:
+            result = bridge.start_plugin_oauth(
+                provider="yahoo_ads",
+                configure_wizard=fake_configure_wizard,
+                oauth_config=self._config(),
+                client_id="CID",
+                client_secret="SECRET",
+                credentials_path=tmp_path / "creds.json",
+            )
+            assert result.provider == "yahoo_ads"
+            # The handed-off URL is the EXTERNAL provider authorize URL,
+            # not a mureo wizard form.
+            assert result.url is not None
+            assert result.url.startswith(
+                "https://biz-oauth.yahoo.co.jp/oauth/v1/authorize?"
+            )
+            assert "client_id=CID" in result.url
+            assert "response_type=code" in result.url
+            assert "scope=scopeA" in result.url
+
+            wizard = patched_wizard_class.instances[0]
+            spec = wizard.plugin_oauth
+            assert spec.provider == "yahoo_ads"
+            assert spec.target_field == "refresh_token"
+            assert spec.token_url == "https://biz-oauth.yahoo.co.jp/oauth/v1/token"
+            assert spec.client_id == "CID"
+            assert spec.client_secret == "SECRET"
+            assert spec.redirect_uri.endswith("/oauth/callback")
+            assert spec.state  # non-empty CSRF nonce
+            # The same state is echoed into the consent URL.
+            assert f"state={spec.state}" in result.url
+        finally:
+            bridge.cancel("yahoo_ads")

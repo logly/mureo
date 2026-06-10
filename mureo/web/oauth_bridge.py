@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import secrets
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from mureo.oauth_authcode import build_authorization_code_url
 from mureo.web._helpers import read_json_safe
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from mureo.cli.web_auth import WebAuthWizard
+    from mureo.core.providers import AccountOAuthConfig
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +77,24 @@ def _credentials_present_for(provider: str, credentials_path: Path | None) -> bo
             return False
         return bool(section.get("access_token"))
     return False
+
+
+def _plugin_credentials_present(
+    provider: str, target_field: str, credentials_path: Path | None
+) -> bool:
+    """Success marker for a generic plugin OAuth flow (#201).
+
+    The wizard merge-saves the obtained ``refresh_token`` under the
+    provider's registry name (the ``credentials.json`` section key); the
+    flow succeeded once that section carries a truthy ``target_field``.
+    """
+    if credentials_path is None or not credentials_path.exists():
+        return False
+    payload = read_json_safe(credentials_path)
+    section = payload.get(provider)
+    if not isinstance(section, dict):
+        return False
+    return bool(section.get(target_field))
 
 
 class OAuthBridge:
@@ -145,6 +167,87 @@ class OAuthBridge:
         watcher.start()
         return OAuthHandoffResult(url=consent_url, state="pending", provider=provider)
 
+    def start_plugin_oauth(
+        self,
+        *,
+        provider: str,
+        configure_wizard: Any,
+        oauth_config: AccountOAuthConfig,
+        client_id: str,
+        client_secret: str,
+        credentials_path: Path | None = None,
+    ) -> OAuthHandoffResult:
+        """Run a generic plugin authorization-code flow (#201).
+
+        Unlike :meth:`start` (which hands the browser a mureo wizard form
+        that then redirects to Google/Meta), the client id/secret are
+        already saved, so this builds the **external** provider authorize
+        URL directly and the spawned wizard only serves the
+        ``/oauth/callback`` route. The ``state`` nonce and the
+        ephemeral-port ``redirect_uri`` are pinned onto the wizard *after*
+        it binds (so the redirect URI carries the real port) but before
+        the consent URL is returned — i.e. before any callback can arrive.
+
+        ``provider`` is the registry name, used both as the bridge's
+        bookkeeping key and as the ``credentials.json`` section the
+        obtained ``refresh_token`` lands in.
+        """
+        self.cancel(provider)
+
+        from mureo.cli.web_auth import PluginOAuthSpec, WebAuthWizard
+
+        wizard = WebAuthWizard(credentials_path=credentials_path)
+        thread = threading.Thread(target=wizard.serve, daemon=True)
+        thread.start()
+        try:
+            wizard.wait_until_ready(timeout=5.0)
+        except TimeoutError:
+            with contextlib.suppress(Exception):
+                wizard.shutdown()
+            logger.warning("Plugin OAuth bridge bind timed out for %s", provider)
+            return OAuthHandoffResult(url=None, state="pending", provider=provider)
+
+        redirect_uri = f"http://127.0.0.1:{wizard.port}{oauth_config.callback_path}"
+        state = secrets.token_urlsafe(32)
+        # Pin the flow parameters now that the port is known; the callback
+        # (which cannot fire until the operator visits the consent URL
+        # below) reads them off the wizard.
+        wizard.plugin_oauth = PluginOAuthSpec(
+            provider=provider,
+            target_field=oauth_config.target_field,
+            token_url=oauth_config.token_url,
+            client_id=client_id,
+            client_secret=client_secret,
+            redirect_uri=redirect_uri,
+            state=state,
+        )
+        consent_url = build_authorization_code_url(
+            authorize_url=oauth_config.authorize_url,
+            client_id=client_id,
+            redirect_uri=redirect_uri,
+            scopes=oauth_config.scopes,
+            state=state,
+        )
+
+        target_field = oauth_config.target_field
+        watcher = threading.Thread(
+            target=self._watch_handoff,
+            args=(provider, wizard, configure_wizard, credentials_path),
+            kwargs={
+                "credentials_check": lambda: _plugin_credentials_present(
+                    provider, target_field, credentials_path
+                )
+            },
+            daemon=True,
+            name=f"oauth-bridge-watch-{provider}",
+        )
+        with self._lock:
+            self._active[provider] = _ActiveHandoff(
+                wizard=wizard, thread=thread, watcher=watcher
+            )
+        watcher.start()
+        return OAuthHandoffResult(url=consent_url, state="pending", provider=provider)
+
     def cancel(self, provider: str) -> None:
         """Tear down any in-flight wizard for ``provider``."""
         with self._lock:
@@ -167,15 +270,28 @@ class OAuthBridge:
         wizard: WebAuthWizard,
         configure_wizard: Any,
         credentials_path: Path | None,
+        credentials_check: Callable[[], bool] | None = None,
     ) -> None:
-        """Poll wizard.completed and surface the result to the configure UI."""
+        """Poll wizard.completed and surface the result to the configure UI.
+
+        ``credentials_check`` overrides how success is detected once the
+        wizard reports completion. The built-in Google/Meta flows leave it
+        ``None`` and fall back to :func:`_credentials_present_for` (which
+        knows the ``google_ads`` / ``meta_ads`` success markers); the
+        generic plugin flow (#201) passes a closure that checks the
+        provider's own ``target_field`` instead.
+        """
         deadline = time.monotonic() + _HANDOFF_DEADLINE_SECONDS
         success: bool = False
         error: str | None = None
         try:
             while time.monotonic() < deadline:
                 if wizard.completed:
-                    success = _credentials_present_for(provider, credentials_path)
+                    success = (
+                        credentials_check()
+                        if credentials_check is not None
+                        else _credentials_present_for(provider, credentials_path)
+                    )
                     if not success:
                         error = "credentials_not_written"
                     break

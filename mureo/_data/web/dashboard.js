@@ -950,6 +950,25 @@
     submit.textContent = MUREO.t("dashboard.plugin_credentials_save");
     form.appendChild(submit);
 
+    // #201 — a provider whose secret is obtained via OAuth declares an
+    // ``oauth`` block ({target_field, client_id_field, client_secret_field}).
+    // Render an Authenticate button that runs the consent flow and fills
+    // the target field automatically. Providers without it (the default)
+    // keep manual entry only — no button, no behaviour change.
+    if (plugin.oauth) {
+      const authBtn = document.createElement("button");
+      authBtn.type = "button";
+      authBtn.className = "btn btn-secondary";
+      authBtn.textContent = MUREO.t("dashboard.plugin_oauth_authenticate");
+      const status = document.createElement("span");
+      status.className = "plugin-oauth-status muted";
+      authBtn.addEventListener("click", function () {
+        startPluginOAuth(plugin.provider_name, authBtn, status);
+      });
+      form.appendChild(authBtn);
+      form.appendChild(status);
+    }
+
     form.addEventListener("submit", function (evt) {
       evt.preventDefault();
       const values = {};
@@ -960,6 +979,66 @@
     });
     wrap.appendChild(form);
     return wrap;
+  }
+
+  // #201 — start a plugin's generic authorization-code OAuth flow. The
+  // server loads the already-saved client id/secret, returns the external
+  // provider consent URL; we open it in a new tab and poll for completion.
+  async function startPluginOAuth(providerName, btn, statusNode) {
+    btn.disabled = true;
+    statusNode.textContent = MUREO.t("dashboard.plugin_oauth_connecting");
+    const base =
+      "/api/credentials/plugins/" + encodeURIComponent(providerName) + "/oauth";
+    let res;
+    try {
+      res = await MUREO.postJson(base + "/start", {});
+    } catch (_e) {
+      res = null;
+    }
+    if (!res || !res.ok || !res.body || !res.body.url) {
+      btn.disabled = false;
+      statusNode.textContent = "";
+      const err = res && res.body && res.body.error;
+      const key =
+        err === "client_credentials_missing"
+          ? "dashboard.plugin_oauth_save_client_first"
+          : "dashboard.plugin_oauth_failed";
+      MUREO.toast(MUREO.t(key), "error");
+      return;
+    }
+    window.open(res.body.url, "_blank", "noopener");
+    pollPluginOAuth(base + "/status", btn, statusNode);
+  }
+
+  function pollPluginOAuth(statusUrl, btn, statusNode) {
+    const deadline = Date.now() + 5 * 60 * 1000;
+    const timer = setInterval(async function () {
+      if (Date.now() > deadline) {
+        clearInterval(timer);
+        btn.disabled = false;
+        statusNode.textContent = "";
+        return;
+      }
+      let data;
+      try {
+        const res = await fetch(statusUrl, { credentials: "same-origin" });
+        if (!res.ok) return;
+        data = await res.json();
+      } catch (_e) {
+        return;
+      }
+      if (data.success) {
+        clearInterval(timer);
+        btn.disabled = false;
+        statusNode.textContent = MUREO.t("dashboard.plugin_oauth_connected");
+        MUREO.toast(MUREO.t("dashboard.plugin_oauth_connected"), "success");
+      } else if (data.error) {
+        clearInterval(timer);
+        btn.disabled = false;
+        statusNode.textContent = "";
+        MUREO.toast(MUREO.t("dashboard.plugin_oauth_failed"), "error");
+      }
+    }, 1500);
   }
 
   async function submitPluginCredentials(providerName, values, form) {

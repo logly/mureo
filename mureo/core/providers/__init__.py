@@ -23,7 +23,10 @@ from mureo.core.providers.capabilities import (
     parse_capabilities,
     parse_capability,
 )
-from mureo.core.providers.credentials import AccountCredentialField
+from mureo.core.providers.credentials import (
+    AccountCredentialField,
+    AccountOAuthConfig,
+)
 from mureo.core.providers.extension import ExtensionProvider
 from mureo.core.providers.keyword import KeywordProvider
 from mureo.core.providers.models import (
@@ -61,6 +64,7 @@ from mureo.core.providers.registry import (
     default_registry,
     discover_providers,
     get_account_credential_fields,
+    get_account_oauth_config,
     get_provider,
     list_providers_by_capability,
     register_provider_class,
@@ -71,6 +75,7 @@ __all__ = [
     "PROVIDERS_ENTRY_POINT_GROUP",
     "SKILLS_ENTRY_POINT_GROUP",
     "AccountCredentialField",
+    "AccountOAuthConfig",
     "Ad",
     "AdStatus",
     "Audience",
@@ -107,6 +112,7 @@ __all__ = [
     "default_registry",
     "discover_providers",
     "get_account_credential_fields",
+    "get_account_oauth_config",
     "get_provider",
     "list_providers_by_capability",
     "parse_capabilities",

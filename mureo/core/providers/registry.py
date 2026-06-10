@@ -86,7 +86,10 @@ from mureo.core.providers.base import (
     validate_provider_name,
 )
 from mureo.core.providers.capabilities import Capability
-from mureo.core.providers.credentials import AccountCredentialField
+from mureo.core.providers.credentials import (
+    AccountCredentialField,
+    AccountOAuthConfig,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -598,6 +601,58 @@ def get_account_credential_fields(
     return cast("tuple[AccountCredentialField, ...]", fields)
 
 
+def get_account_oauth_config(provider: object) -> AccountOAuthConfig | None:
+    """Return ``provider.account_oauth`` defensively (#201).
+
+    The attribute is **optional**: providers without an OAuth2
+    authorization-code flow (the overwhelming majority, including every
+    OSS-shipped adapter, which keep operator-shared OAuth in the
+    ``SecretStore`` layer) simply do not declare it, and ``None`` is
+    returned so the configure UI renders manual entry exactly as before.
+
+    When declared, the value must be an :class:`AccountOAuthConfig`
+    (``TypeError`` otherwise) and its three ``*_field`` references must
+    name keys of the provider's own ``account_credential_fields``
+    (``ValueError`` otherwise). Both checks fail loudly at this boundary
+    — a mis-typed declaration or a typo'd field name would otherwise
+    surface only as a dead "Authenticate" button or a credential written
+    under a key nothing reads.
+
+    Args:
+        provider: The provider instance to introspect. Uses
+            :func:`getattr` only; never instantiates anything.
+
+    Returns:
+        The declared :class:`AccountOAuthConfig`, or ``None`` when the
+        attribute is absent.
+
+    Raises:
+        TypeError: ``account_oauth`` is present but not an
+            :class:`AccountOAuthConfig`.
+        ValueError: A ``*_field`` reference does not name a declared
+            ``account_credential_fields`` key.
+    """
+    raw_name = getattr(provider, "name", None)
+    identity = raw_name if isinstance(raw_name, str) and raw_name else repr(provider)
+    config = getattr(provider, "account_oauth", None)
+    if config is None:
+        return None
+    if not isinstance(config, AccountOAuthConfig):
+        raise TypeError(
+            f"{identity}.account_oauth must be an AccountOAuthConfig, "
+            f"got {type(config).__name__}"
+        )
+    declared_keys = {f.key for f in get_account_credential_fields(provider)}
+    for attr in ("client_id_field", "client_secret_field", "target_field"):
+        ref = getattr(config, attr)
+        if ref not in declared_keys:
+            raise ValueError(
+                f"{identity}.account_oauth.{attr}={ref!r} does not name a "
+                f"declared account_credential_fields key"
+            )
+    return config
+
+
 __all__ = [
     "PROVIDERS_ENTRY_POINT_GROUP",
     "SKILLS_ENTRY_POINT_GROUP",
@@ -608,6 +663,7 @@ __all__ = [
     "default_registry",
     "discover_providers",
     "get_account_credential_fields",
+    "get_account_oauth_config",
     "get_provider",
     "list_providers_by_capability",
     "register_provider_class",
