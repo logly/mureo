@@ -226,22 +226,25 @@ async def test_upsert_campaign_creates_when_missing(cwd_to_tmp) -> None:
         "campaign_name": "Generic",
         "status": "ENABLED",
         "daily_budget": 5000,
+        "platform": "google_ads",
+        "account_id": "act_123",
     }
     result = await mod.handle_tool(
         "mureo_state_upsert_campaign", {"campaign": campaign}
     )
     payload = json.loads(result[0].text)
-    # Either v1 (root campaigns) or v2 (platforms) shape is acceptable
-    # depending on how the underlying upsert helper reconciles.
-    flat = list(payload.get("campaigns", []))
+    # The v2 platforms section must carry the required account_id and the
+    # campaign, and last_synced_at must be stamped, or the client renders
+    # as inactive.
     plats = payload.get("platforms") or {}
+    assert plats["google_ads"]["account_id"] == "act_123"
     found_in_platforms = any(
         c["campaign_id"] == "camp_xyz"
         for plat in plats.values()
         for c in plat.get("campaigns", [])
     )
-    found_in_flat = any(c["campaign_id"] == "camp_xyz" for c in flat)
-    assert found_in_flat or found_in_platforms
+    assert found_in_platforms
+    assert payload.get("last_synced_at")
 
 
 async def test_upsert_campaign_updates_existing(cwd_to_tmp) -> None:
@@ -253,6 +256,8 @@ async def test_upsert_campaign_updates_existing(cwd_to_tmp) -> None:
         "campaign_name": "Generic",
         "status": "ENABLED",
         "daily_budget": 5000,
+        "platform": "google_ads",
+        "account_id": "act_123",
     }
     await mod.handle_tool("mureo_state_upsert_campaign", {"campaign": initial_campaign})
 
@@ -261,6 +266,8 @@ async def test_upsert_campaign_updates_existing(cwd_to_tmp) -> None:
         "campaign_name": "Generic",
         "status": "PAUSED",
         "daily_budget": 8000,
+        "platform": "google_ads",
+        "account_id": "act_123",
     }
     result = await mod.handle_tool("mureo_state_upsert_campaign", {"campaign": updated})
     payload = json.loads(result[0].text)
@@ -271,9 +278,16 @@ async def test_upsert_campaign_updates_existing(cwd_to_tmp) -> None:
         c for plat in plats.values() for c in plat.get("campaigns", [])
     ]
     matches = [c for c in all_snaps if c["campaign_id"] == "camp_xyz"]
-    assert len(matches) == 1, f"expected exactly one snapshot, got {len(matches)}"
-    assert matches[0]["status"] == "PAUSED"
-    assert matches[0]["daily_budget"] == 8000
+    # In-place replacement: every surviving snapshot reflects the update —
+    # no stale ENABLED/5000 copy lingers in either the v1 flat list or the
+    # v2 platforms section (which are dual-written in lockstep).
+    assert matches, "campaign should be present"
+    assert all(c["status"] == "PAUSED" and c["daily_budget"] == 8000 for c in matches)
+    # And neither shape holds a duplicate of the same id.
+    assert [c["campaign_id"] for c in flat].count("camp_xyz") <= 1
+    for plat in plats.values():
+        ids = [c["campaign_id"] for c in plat.get("campaigns", [])]
+        assert ids.count("camp_xyz") <= 1
 
 
 # ---------------------------------------------------------------------------
@@ -292,9 +306,7 @@ async def test_path_argument_refuses_traversal(cwd_to_tmp) -> None:
     ``Path.cwd()`` at construction), so this test exercises the
     workspace boundary while CWD is ``cwd_to_tmp``."""
     mod = _import_tools()
-    with pytest.raises(
-        ValueError, match="Refusing to read/write outside workspace"
-    ):
+    with pytest.raises(ValueError, match="Refusing to read/write outside workspace"):
         await mod.handle_tool("mureo_strategy_get", {"path": "/etc/passwd"})
 
 

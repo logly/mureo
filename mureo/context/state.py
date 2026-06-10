@@ -7,6 +7,7 @@ import copy
 import json
 import os
 import tempfile
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -210,30 +211,83 @@ def write_state_file(path: Path, doc: StateDocument) -> None:
     _atomic_write(path, text)
 
 
-def upsert_campaign(path: Path, campaign: CampaignSnapshot) -> StateDocument:
-    """Upsert a campaign (update if exists, add if not).
+def _now_iso() -> str:
+    """Current time as a timezone-aware ISO 8601 UTC string."""
+    return datetime.now(timezone.utc).isoformat()
 
-    Returns:
-        Updated StateDocument
-    """
-    doc = read_state_file(path)
+
+def _upsert_into(
+    campaigns: tuple[CampaignSnapshot, ...], campaign: CampaignSnapshot
+) -> tuple[CampaignSnapshot, ...]:
+    """Return ``campaigns`` with ``campaign`` replacing any same-id entry
+    (or appended when new), preserving order."""
+    result: list[CampaignSnapshot] = []
     found = False
-    new_campaigns: list[CampaignSnapshot] = []
-    for c in doc.campaigns:
+    for c in campaigns:
         if c.campaign_id == campaign.campaign_id:
-            new_campaigns.append(campaign)
+            result.append(campaign)
             found = True
         else:
-            new_campaigns.append(c)
+            result.append(c)
     if not found:
-        new_campaigns.append(campaign)
+        result.append(campaign)
+    return tuple(result)
+
+
+def upsert_campaign(
+    path: Path,
+    campaign: CampaignSnapshot,
+    *,
+    platform: str,
+    account_id: str,
+) -> StateDocument:
+    """Upsert a campaign into STATE.json under its platform.
+
+    Writes the v2 ``platforms[platform]`` section — the schema the
+    dashboard reads — with the **required** ``account_id`` and the
+    campaign, and stamps ``last_synced_at`` to now. Without these the
+    document is schema-incomplete and the client renders as "not yet
+    bootstrapped" / inactive even though campaigns exist.
+
+    The legacy v1 flat ``campaigns`` list is updated in lockstep so
+    readers still on the v1 shape keep working (the field is retained
+    for backward compatibility — see :class:`StateDocument`).
+
+    Args:
+        path: STATE.json location.
+        campaign: The campaign snapshot to insert or update.
+        platform: Platform key the campaign belongs to (e.g.
+            ``"google_ads"``, ``"meta_ads"``) — the ``platforms`` dict key.
+        account_id: The platform account id (Google ``customer_id`` /
+            Meta ``act_*``). Always written onto the platform entry so a
+            per-account override is never silently dropped.
+
+    Returns:
+        The updated :class:`StateDocument`.
+    """
+    doc = read_state_file(path)
+
+    # v1 flat list — preserved for backward compatibility.
+    flat_campaigns = _upsert_into(doc.campaigns, campaign)
+
+    # v2 per-platform — the shape the dashboard reads. Ensure the platform
+    # entry exists, carries the (required) account_id, and holds the
+    # campaign.
+    platforms = dict(doc.platforms) if doc.platforms else {}
+    existing = platforms.get(platform)
+    platforms[platform] = PlatformState(
+        account_id=account_id,
+        campaigns=_upsert_into(
+            existing.campaigns if existing is not None else (), campaign
+        ),
+    )
 
     new_doc = StateDocument(
         version=doc.version,
-        last_synced_at=doc.last_synced_at,
+        last_synced_at=_now_iso(),
         customer_id=doc.customer_id,
-        campaigns=tuple(new_campaigns),
-        platforms=doc.platforms,
+        campaigns=flat_campaigns,
+        platforms=platforms,
         action_log=doc.action_log,
     )
     write_state_file(path, new_doc)

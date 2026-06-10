@@ -199,15 +199,27 @@ class TestStateFile:
             status="PAUSED",
             daily_budget=10000.0,
         )
-        new_doc = upsert_campaign(fp, updated)
+        new_doc = upsert_campaign(
+            fp, updated, platform="google_ads", account_id="123-456-7890"
+        )
         assert len(new_doc.campaigns) == 1
         assert new_doc.campaigns[0].campaign_name == "New Name"
         assert new_doc.campaigns[0].status == "PAUSED"
         assert new_doc.campaigns[0].daily_budget == 10000.0
 
+        # v2 platforms section is populated with the required account_id +
+        # the campaign, and last_synced_at is stamped (without these the
+        # dashboard renders the client as inactive).
+        assert new_doc.platforms is not None
+        assert new_doc.platforms["google_ads"].account_id == "123-456-7890"
+        assert new_doc.platforms["google_ads"].campaigns[0].campaign_name == "New Name"
+        assert new_doc.last_synced_at is not None
+
         # Verify persisted to file
         reloaded = read_state_file(fp)
         assert reloaded.campaigns[0].campaign_name == "New Name"
+        assert reloaded.platforms["google_ads"].account_id == "123-456-7890"
+        assert reloaded.last_synced_at is not None
 
     @pytest.mark.unit
     def test_upsert_campaign_new(self, tmp_path: Path) -> None:
@@ -229,10 +241,16 @@ class TestStateFile:
             campaign_name="New Campaign",
             status="ENABLED",
         )
-        new_doc = upsert_campaign(fp, new_campaign)
+        new_doc = upsert_campaign(
+            fp, new_campaign, platform="google_ads", account_id="123-456-7890"
+        )
         assert len(new_doc.campaigns) == 2
         assert new_doc.campaigns[0].campaign_id == "1"
         assert new_doc.campaigns[1].campaign_id == "2"
+        # New campaign lands under the platform with its account_id.
+        assert new_doc.platforms["google_ads"].account_id == "123-456-7890"
+        assert new_doc.platforms["google_ads"].campaigns[0].campaign_id == "2"
+        assert new_doc.last_synced_at is not None
 
     @pytest.mark.unit
     def test_get_campaign(self) -> None:
