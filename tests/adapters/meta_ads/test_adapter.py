@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 from datetime import date
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock
@@ -254,11 +255,13 @@ def test_capabilities_match_exact_expected_set() -> None:
 
 
 @pytest.mark.unit
-def test_account_credential_fields_declared_for_ad_account_id() -> None:
-    """Meta Ads is per-account-identified by ``ad_account_id`` (the
-    ``act_*`` form Meta Ads Manager exposes). The declarative field
-    lets generic introspection tooling render setup prompts without
-    hardcoding per-provider knowledge."""
+def test_account_credential_fields_declared_for_account_id() -> None:
+    """Meta Ads is per-account-identified by its ad account id (the
+    ``act_*`` form Meta Ads Manager exposes). The declared field key is
+    ``account_id`` — the same key ``load_meta_ads_credentials`` reads
+    (#202); a mismatch silently ignores per-account overrides. The
+    declarative field lets generic introspection tooling render setup
+    prompts without hardcoding per-provider knowledge."""
     from mureo.core.providers.credentials import AccountCredentialField
 
     fields = MetaAdsAdapter.account_credential_fields  # type: ignore[attr-defined]
@@ -266,10 +269,37 @@ def test_account_credential_fields_declared_for_ad_account_id() -> None:
     assert len(fields) == 1
     field = fields[0]
     assert isinstance(field, AccountCredentialField)
-    assert field.key == "ad_account_id"
+    assert field.key == "account_id"
     assert field.required is True
     # Placeholder hint carries the canonical ``act_`` prefix.
     assert field.placeholder.startswith("act_")
+
+
+@pytest.mark.unit
+def test_declared_account_field_key_is_read_by_loader(tmp_path: Any) -> None:
+    """Regression for #202: a value stored under the *declared*
+    per-account field key must be picked up by
+    ``load_meta_ads_credentials``. If the declaration and the loader
+    disagree on the key (the original ``ad_account_id`` vs ``account_id``
+    bug), an operator-supplied per-account override is silently dropped
+    and the connection falls back to the shared/default account."""
+    from mureo.auth import load_meta_ads_credentials
+
+    declared_key = MetaAdsAdapter.account_credential_fields[0].key  # type: ignore[attr-defined]
+    creds_path = tmp_path / "credentials.json"
+    creds_path.write_text(
+        json.dumps(
+            {
+                "meta_ads": {
+                    "access_token": "TOKEN",
+                    declared_key: "act_PERCLIENT",
+                }
+            }
+        )
+    )
+    loaded = load_meta_ads_credentials(creds_path)
+    assert loaded is not None
+    assert loaded.account_id == "act_PERCLIENT"
 
 
 @pytest.mark.unit
