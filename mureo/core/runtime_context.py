@@ -258,3 +258,40 @@ def runtime_credentials_path(default: Path) -> Path:
     if isinstance(store, FilesystemSecretStore):
         return store.path
     return default
+
+
+def runtime_multi_account_auth() -> bool:
+    """Return whether the active ``SecretStore`` is a multi-account backend.
+
+    A backend whose credentials are operator-shared across many client
+    accounts (e.g. an agency plugin: one Google ``developer_token`` +
+    OAuth client, one Meta app, serving N clients whose
+    ``customer_id`` / ``account_id`` are supplied per-request out of
+    band) advertises this by exposing ``multi_account_auth = True`` on
+    its store. The configure-UI OAuth flow then persists only the
+    shared credentials and skips the per-account picker (#198).
+
+    Resolution mirrors :func:`runtime_credentials_path`:
+
+    - **No factory registered** → ``False``. Single-backend OSS installs
+      (and any test- or caller-injected ``home``) keep the standalone
+      behavior — the picker is shown. The gate is on entry-point
+      *presence* so the default :class:`RuntimeContext` (whose
+      :class:`FilesystemSecretStore` never declares the capability) is
+      never even consulted.
+    - **Store declares ``multi_account_auth``** → the value, accepted
+      only when it is exactly ``True`` (read defensively via
+      :func:`getattr`). A truthy-but-not-``True`` declaration from a
+      mis-typed store must not silently suppress the picker, so
+      ``"yes"`` / ``1`` / a non-empty list all resolve to ``False``.
+    - **Otherwise** → ``False``.
+
+    A registered-but-broken factory surfaces its
+    :class:`RuntimeContextFactoryError` here, mirroring the read path —
+    a packaging mistake is made visible rather than hidden behind a
+    silent fall-back to the picker.
+    """
+    if not list(entry_points(group=RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP)):
+        return False
+    store = get_runtime_context().secret_store
+    return getattr(store, "multi_account_auth", False) is True

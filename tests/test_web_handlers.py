@@ -797,6 +797,60 @@ class TestPostOauthStart:
                 _post(wizard, "/api/oauth/google/start", {})
             assert exc.value.code == 400
 
+    def test_multi_account_suppressed_when_home_injected(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """SAFETY (#195/#198): a home-injected wizard must NEVER enable
+        multi-account auth, even when the process-global factory
+        advertises it — that factory's store lives outside the injected
+        sandbox (in dev/CI it resolves against the operator's real
+        ~/.mureo). The ``home is None`` gate forces the flag to ``False``
+        so a sandboxed wizard cannot inherit real-backend behavior."""
+        fake_result = MagicMock()
+        fake_result.as_dict.return_value = {"state": "pending", "provider": "google"}
+        with (
+            patch("mureo.web.handlers.runtime_multi_account_auth", return_value=True),
+            patch.object(
+                wizard.oauth_bridge, "start", return_value=fake_result
+            ) as mock_start,
+        ):
+            _post(wizard, "/api/oauth/google/start", {})
+        assert mock_start.call_args.kwargs["multi_account_auth"] is False
+
+    def test_multi_account_forwarded_when_home_none(self, tmp_path: Path) -> None:
+        """Production path (``home is None``): the handler resolves the
+        multi-account capability and forwards it to the bridge.
+        ``runtime_credentials_path`` is patched to a tmp sentinel so
+        constructing the home=None wizard never resolves the real factory
+        or touches the operator's ~/.mureo."""
+        sentinel = tmp_path / "runtime" / "credentials.json"
+        with patch(
+            "mureo.web.server.runtime_credentials_path", lambda _default: sentinel
+        ):
+            wiz = ConfigureWizard(home=None)
+        thread = threading.Thread(target=wiz.serve, daemon=True)
+        thread.start()
+        wiz.wait_until_ready(timeout=5.0)
+        try:
+            fake_result = MagicMock()
+            fake_result.as_dict.return_value = {
+                "state": "pending",
+                "provider": "google",
+            }
+            with (
+                patch(
+                    "mureo.web.handlers.runtime_multi_account_auth", return_value=True
+                ),
+                patch.object(
+                    wiz.oauth_bridge, "start", return_value=fake_result
+                ) as mock_start,
+            ):
+                _post(wiz, "/api/oauth/google/start", {})
+            assert mock_start.call_args.kwargs["multi_account_auth"] is True
+        finally:
+            wiz.shutdown()
+            thread.join(timeout=2.0)
+
 
 # ---------------------------------------------------------------------------
 # Dashboard uninstall routes (planner HANDOFF

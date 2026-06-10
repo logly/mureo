@@ -725,6 +725,21 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             client_secret=sess.google_client_secret or "",
             refresh_token=refresh_token,
         )
+        if self.server.wizard.multi_account_auth:
+            # Multi-account backend (#198): the developer_token + OAuth
+            # client are operator-shared; the per-client ``customer_id``
+            # is supplied out of band. Persist the shared credentials and
+            # skip the account probe + picker entirely — going straight
+            # to /done without ever calling the Google Ads API.
+            save_credentials(
+                path=self.server.wizard.credentials_path,
+                google=probe_creds,
+            )
+            sess.clear_secrets()
+            self.send_response(302)
+            self.send_header("Location", "/done")
+            self.end_headers()
+            return
         try:
             accounts = _run_async(list_accessible_accounts(probe_creds))
         except Exception as exc:  # noqa: BLE001
@@ -956,6 +971,25 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             return
 
         access_token = result.access_token
+        if self.server.wizard.multi_account_auth:
+            # Multi-account backend (#198): the app creds + token are
+            # operator-shared; the per-client ``account_id`` is supplied
+            # out of band. Persist the shared credentials and skip the
+            # account probe + picker entirely.
+            creds = MetaAdsCredentials(
+                access_token=access_token,
+                app_id=sess.meta_app_id,
+                app_secret=sess.meta_app_secret or "",
+            )
+            save_credentials(
+                path=self.server.wizard.credentials_path,
+                meta=creds,
+            )
+            sess.clear_secrets()
+            self.send_response(302)
+            self.send_header("Location", "/done")
+            self.end_headers()
+            return
         try:
             accounts = _run_async(list_meta_ad_accounts(access_token))
         except Exception as exc:  # noqa: BLE001
@@ -1133,9 +1167,16 @@ class WebAuthWizard:
         *,
         bind_host: str = "127.0.0.1",
         credentials_path: Path | None = None,
+        multi_account_auth: bool = False,
     ) -> None:
         self._bind_host = bind_host
         self.credentials_path = credentials_path
+        # When set, the OAuth callbacks persist only the operator-shared
+        # credentials and skip the per-account picker (#198). Threaded in
+        # by the caller (the configure-UI bridge resolves it from the
+        # active RuntimeContext) rather than read from process globals
+        # here, so standalone WebAuthWizard use stays single-account.
+        self.multi_account_auth = multi_account_auth
         self.session = WizardSession()
         self.completed = False
 

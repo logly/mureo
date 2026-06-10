@@ -68,11 +68,13 @@ class _FakeWizard:
         port: int = 12345,
         completed: bool = False,
         ready_timeout: bool = False,
+        multi_account_auth: bool = False,
     ) -> None:
         self.credentials_path = credentials_path
         self.port = port
         self.completed = completed
         self._ready_timeout = ready_timeout
+        self.multi_account_auth = multi_account_auth
         self.shutdown_called = False
         self.serve_called = False
 

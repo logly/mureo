@@ -67,6 +67,18 @@ class SecretStore(Protocol):
       to a concrete class (#196). Omit it (or return ``None``) for
       non-filesystem backends; the path-based write helpers then stay on
       the host default.
+
+    - ``multi_account_auth: bool`` — set ``True`` to mark the store as a
+      multi-account backend whose OAuth credentials are operator-shared
+      across many client accounts (e.g. an agency plugin: one Google
+      ``developer_token`` + OAuth client, one Meta app, serving N
+      clients whose ``customer_id`` / ``account_id`` are supplied
+      per-request out of band). The ``mureo configure`` OAuth flow then
+      persists only the shared credentials and skips the per-account
+      picker, redirecting straight to ``/done`` (#198). Honored only
+      when exactly ``True`` (see
+      :func:`mureo.core.runtime_context.runtime_multi_account_auth`);
+      omit it for single-account stores so the picker is shown as today.
     """
 
     def load(self, key: str) -> dict[str, Any]: ...

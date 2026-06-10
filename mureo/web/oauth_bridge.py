@@ -89,6 +89,7 @@ class OAuthBridge:
         configure_wizard: Any,
         credentials_path: Path | None = None,
         locale: str = "en",
+        multi_account_auth: bool = False,
     ) -> OAuthHandoffResult:
         """Spawn a wizard for ``provider`` and return the consent URL.
 
@@ -96,6 +97,14 @@ class OAuthBridge:
         per-platform form via a ``?locale=`` query string so the legacy
         wizard (English-only HTML) can switch its inline strings to
         Japanese when the operator picked JA in the configure UI.
+
+        ``multi_account_auth`` is threaded through to the spawned
+        ``WebAuthWizard`` so a multi-account backend persists only the
+        operator-shared credentials and skips the per-account picker
+        (#198). The caller (``ConfigureHandler``) resolves it from the
+        active ``RuntimeContext`` behind a ``home is None`` gate, so this
+        bridge stays oblivious to process globals and defaults to the
+        standalone single-account behavior.
         """
         if provider not in _PROVIDER_TO_PATH:
             raise ValueError(f"unknown provider: {provider!r}")
@@ -104,7 +113,10 @@ class OAuthBridge:
 
         from mureo.cli.web_auth import WebAuthWizard
 
-        wizard = WebAuthWizard(credentials_path=credentials_path)
+        wizard = WebAuthWizard(
+            credentials_path=credentials_path,
+            multi_account_auth=multi_account_auth,
+        )
         thread = threading.Thread(target=wizard.serve, daemon=True)
         thread.start()
         try:

@@ -45,6 +45,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Any
 
+from mureo.core.runtime_context import runtime_multi_account_auth
 from mureo.core.secret_store import FilesystemSecretStore
 from mureo.web._helpers import (
     compare_csrf,
@@ -660,12 +661,24 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             send_error_json(self, 404, "unknown_provider")
             return
         self.wizard.session.mark_oauth_pending(provider)
+        # A multi-account backend (#198) persists only the operator-
+        # shared credentials and skips the per-account picker. Resolve
+        # the capability from the active RuntimeContext, but ONLY in
+        # production (home is None). An injected ``home`` sandboxes the
+        # wizard; the process-global factory's store lives outside that
+        # sandbox (in dev/CI a third-party factory resolves against the
+        # operator's real ~/.mureo), so consulting it under an injected
+        # home would let test wizards inherit real-backend behavior —
+        # the same #195 escape the credentials-path override guards
+        # against.
+        multi_account = self.wizard.home is None and runtime_multi_account_auth()
         try:
             result = self.wizard.oauth_bridge.start(
                 provider=provider,
                 configure_wizard=self.wizard,
                 credentials_path=self.wizard.host_paths.credentials_path,
                 locale=self.wizard.session.locale,
+                multi_account_auth=multi_account,
             )
         except ValueError:
             send_error_json(self, 400, "unknown_provider")
