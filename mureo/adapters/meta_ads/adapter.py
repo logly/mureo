@@ -139,11 +139,19 @@ class MetaAdsAdapter:
     # Per-account credential the operator must supply for Meta Ads.
     # Token-level material (the System User access token / app id /
     # app secret) is operator-shared in the common Business Manager
-    # setup and lives outside this declaration; ``ad_account_id`` is
+    # setup and lives outside this declaration; the ad account id is
     # the only field that varies per account.
+    #
+    # The key is ``account_id`` — deliberately matching the credential
+    # dict key ``load_meta_ads_credentials`` reads (``mureo.auth``) and
+    # the key the configure wizard persists. They must agree, or a
+    # per-account override supplied under this field name is silently
+    # ignored and the connection falls back to the shared/default
+    # account (#202). The internal ``MetaAdsApiClient(ad_account_id=…)``
+    # parameter keeps its own name; only this credential key is aligned.
     account_credential_fields: tuple[AccountCredentialField, ...] = (
         AccountCredentialField(
-            key="ad_account_id",
+            key="account_id",
             display_name="Ad Account ID",
             placeholder="act_1234567890",
             required=True,

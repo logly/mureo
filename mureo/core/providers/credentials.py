@@ -2,7 +2,7 @@
 
 A provider (built-in or third-party) often needs identifiers that
 vary per platform account — Google Ads ``customer_id``, Meta Ads
-``ad_account_id``, an analytics product's ``advertiser_id``. These
+``account_id``, an analytics product's ``advertiser_id``. These
 are distinct from operator-shared OAuth credentials (developer
 tokens, refresh tokens) which typically apply to every account on
 the same platform.
@@ -56,7 +56,7 @@ class AccountCredentialField:
             for the active locale. Default: ``""``.
         secret: ``True`` when the field carries a secret value (API
             key, per-account OAuth token, etc.) rather than a public
-            identifier (``customer_id``, ``ad_account_id``, …). Like
+            identifier (``customer_id``, ``account_id``, …). Like
             the other attributes this flag is declarative metadata
             only — mureo itself does not redact or remask the value.
             Consumers — configure wizards, third-party setup UIs —
