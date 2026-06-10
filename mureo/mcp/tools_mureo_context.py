@@ -65,14 +65,31 @@ _ACTION_LOG_ENTRY_PROPERTY = {
 _CAMPAIGN_PROPERTY = {
     "type": "object",
     "description": (
-        "A CampaignSnapshot for STATE.json. Required: campaign_id, "
-        "campaign_name, status. Optional fields mirror the snapshot "
+        "A CampaignSnapshot for STATE.json plus its platform context. "
+        "Required: campaign_id, campaign_name, status, platform, "
+        "account_id. The platform + account_id populate the per-platform "
+        "``platforms`` section the dashboard reads (omit them and the "
+        "client renders as inactive). Optional fields mirror the snapshot "
         "schema in docs/strategy-context.md."
     ),
     "properties": {
         "campaign_id": {"type": "string"},
         "campaign_name": {"type": "string"},
         "status": {"type": "string"},
+        "platform": {
+            "type": "string",
+            "description": (
+                "Platform key this campaign belongs to, e.g. "
+                "``google_ads`` / ``meta_ads``."
+            ),
+        },
+        "account_id": {
+            "type": "string",
+            "description": (
+                "Platform account id (Google ``customer_id`` / Meta "
+                "``act_*``) written onto the platform entry."
+            ),
+        },
         "bidding_strategy_type": {"type": "string"},
         "bidding_details": {"type": "object"},
         "daily_budget": {"type": "number"},
@@ -80,7 +97,13 @@ _CAMPAIGN_PROPERTY = {
         "campaign_goal": {"type": "string"},
         "notes": {"type": "string"},
     },
-    "required": ["campaign_id", "campaign_name", "status"],
+    "required": [
+        "campaign_id",
+        "campaign_name",
+        "status",
+        "platform",
+        "account_id",
+    ],
 }
 
 

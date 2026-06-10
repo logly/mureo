@@ -185,6 +185,12 @@ async def handle_state_upsert_campaign(
     raw = _require(arguments, "campaign")
     if not isinstance(raw, dict):
         raise ValueError("campaign must be an object")
+    # Platform context is required so the v2 ``platforms`` section (the
+    # shape the dashboard reads) is always populated with the account id;
+    # without it a per-account override is silently dropped and the
+    # client renders as inactive.
+    platform = _require(raw, "platform")
+    account_id = _require(raw, "account_id")
     device_targeting = (
         tuple(raw["device_targeting"]) if raw.get("device_targeting") else None
     )
@@ -201,7 +207,7 @@ async def handle_state_upsert_campaign(
     )
     path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
     try:
-        doc = upsert_campaign(path, campaign)
+        doc = upsert_campaign(path, campaign, platform=platform, account_id=account_id)
     except ContextFileError as exc:
         # Surface as ValueError so the MCP dispatcher's standard error
         # path translates this into a clean tool-error response rather
