@@ -178,7 +178,7 @@ class ConfigureWizard:
 
     def _apply_credentials_override(self) -> None:
         """Align the configure-UI credentials path with the active
-        RuntimeContext (#194).
+        RuntimeContext when running against the real home (#194).
 
         Every web write site (OAuth, env-var, provider install, plugin
         credentials, credential removal) and the status read share
@@ -186,10 +186,23 @@ class ConfigureWizard:
         :func:`runtime_credentials_path` makes the whole web layer write
         to — and read from — the same location the MCP runtime reads
         from, so a ``mureo.runtime_context_factory`` that relocates the
-        ``SecretStore`` is no longer bypassed on write. A no-op (keeps
-        the host default) when no factory is registered, so single-
-        backend installs and the test-injected ``home`` are unaffected.
+        ``SecretStore`` is no longer bypassed on write.
+
+        Gated on ``home is None`` (production). An explicitly-injected
+        ``home`` means the caller — tests, or alternate-home tooling —
+        wants a self-contained path bundle rooted at that home. The
+        process-global runtime-context factory is resolved from entry
+        points and its paths live OUTSIDE that sandbox (in dev/CI a
+        third-party factory such as ``mureo-agency`` resolves against the
+        operator's real ``~/.mureo``), so consulting it here would let a
+        configure-UI write escape the injected home and clobber real
+        credentials. Production ``mureo configure`` always runs with
+        ``home=None`` and so still honors the factory. The factory's path
+        is resolved by :func:`runtime_credentials_path`, unit-tested
+        directly; this method only decides *whether* to apply it.
         """
+        if self.home is not None:
+            return
         resolved = runtime_credentials_path(self._host_paths.credentials_path)
         if resolved == self._host_paths.credentials_path:
             return

@@ -52,6 +52,21 @@ class SecretStore(Protocol):
       should overwrite existing entries.
     - ``delete(key)`` removes ``key`` from the store. It must be idempotent
       and not raise on missing keys.
+
+    Optional capability (read defensively via :func:`getattr`, so existing
+    stores need no change):
+
+    - ``credentials_write_path: Path`` — the single filesystem path the
+      store's writes actually land in. A filesystem-backed store that is
+      not a :class:`FilesystemSecretStore` instance (e.g. a composite that
+      layers an override file over a shared base) declares this so the
+      configure-UI write path
+      (:func:`mureo.core.runtime_context.runtime_credentials_path`) can
+      target the same file the runtime reads from — closing the #194
+      split-brain for non-default backends without coupling the resolver
+      to a concrete class (#196). Omit it (or return ``None``) for
+      non-filesystem backends; the path-based write helpers then stay on
+      the host default.
     """
 
     def load(self, key: str) -> dict[str, Any]: ...

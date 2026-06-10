@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from importlib.metadata import entry_points
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from mureo.core.knowledge_store import FilesystemKnowledgeStore, KnowledgeStore
@@ -32,8 +33,6 @@ from mureo.core.state_store import FilesystemStateStore, StateStore
 from mureo.core.throttle_store import ProcessLocalThrottleStore, ThrottleStore
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from mureo.throttle import ThrottleConfig
 
 
@@ -217,7 +216,7 @@ def runtime_credentials_path(default: Path) -> Path:
     :data:`RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP` is honored on
     *write* — not only on *read* (#194).
 
-    Resolution:
+    Resolution (in order):
 
     - **No factory registered** → return ``default`` unchanged. This
       keeps single-backend installs on their existing location AND
@@ -226,9 +225,20 @@ def runtime_credentials_path(default: Path) -> Path:
       against the real ``Path.home()``, which must NOT override an
       injected path). The gate is on entry-point *presence*, not on the
       resolved path, precisely to avoid that real-home fall-through.
-    - **Factory registered, filesystem-backed store** → return the
-      store's ``path`` so the write side matches the read side.
-    - **Factory registered, non-filesystem store** → return ``default``.
+    - **Store declares ``credentials_write_path``** → return it. Any
+      ``SecretStore`` may advertise the filesystem path its writes land
+      in via an optional ``credentials_write_path: Path`` attribute
+      (read defensively via :func:`getattr`). This is the protocol-based
+      hook (#196): a filesystem-backed store that is not literally a
+      :class:`FilesystemSecretStore` instance — e.g. a composite that
+      layers an override file over a shared base — can still steer the
+      configure-UI write path to where it actually persists. A non-
+      ``Path`` declaration is ignored (a mis-typed store must not feed a
+      bogus value to the path-based write functions).
+    - **Built-in :class:`FilesystemSecretStore`** → return the store's
+      ``path``. Back-compat fallback for the concrete default store,
+      which does not declare ``credentials_write_path``.
+    - **Otherwise (non-filesystem / undeclared)** → return ``default``.
       A ``credentials_path: Path`` cannot represent a non-filesystem
       backend; the path-based write functions stay on the host default
       (the honest ceiling of that API — a full ``SecretStore``-threaded
@@ -242,6 +252,9 @@ def runtime_credentials_path(default: Path) -> Path:
     if not list(entry_points(group=RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP)):
         return default
     store = get_runtime_context().secret_store
+    declared = getattr(store, "credentials_write_path", None)
+    if isinstance(declared, Path):
+        return declared
     if isinstance(store, FilesystemSecretStore):
         return store.path
     return default

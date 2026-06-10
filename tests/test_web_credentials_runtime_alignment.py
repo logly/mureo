@@ -134,6 +134,94 @@ def test_runtime_credentials_path_default_for_non_filesystem_store(
 
 
 # ---------------------------------------------------------------------------
+# #196 — protocol-based resolution: a store advertises its own write path
+# via ``credentials_write_path`` rather than being type-sniffed.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_runtime_credentials_path_honors_declared_write_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A filesystem-backed store that is NOT a ``FilesystemSecretStore``
+    instance — e.g. a composite layering an override file over a shared
+    base — advertises its real write target via ``credentials_write_path``.
+    The resolver must return it instead of falling through to ``default``
+    (which reintroduced the #194 split-brain for such backends)."""
+    write_target = tmp_path / "base" / "shared-creds.json"
+
+    class _LayeredSecretStore:
+        """Reads merge override + base; writes land in ``base``."""
+
+        credentials_write_path = write_target
+
+        def load(self, key: str) -> dict[str, Any]:
+            return {}
+
+        def save(self, key: str, value: dict[str, Any]) -> None:
+            return None
+
+        def delete(self, key: str) -> None:
+            return None
+
+    base = default_runtime_context()
+    ctx = dataclasses.replace(base, secret_store=_LayeredSecretStore())
+    _patch_entry_points(monkeypatch, [_FakeEP("layered", lambda: ctx)])
+    default = tmp_path / "home" / ".mureo" / "credentials.json"
+    assert runtime_credentials_path(default) == write_target
+
+
+@pytest.mark.unit
+def test_runtime_credentials_path_ignores_non_path_declaration(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A ``credentials_write_path`` that is not a ``Path`` (e.g. a bare
+    string from a mis-typed store) must NOT be trusted — the resolver
+    falls through rather than passing a non-Path to the path-based write
+    functions."""
+
+    class _BadDeclaration:
+        credentials_write_path = "/etc/passwd"  # str, not Path
+
+        def load(self, key: str) -> dict[str, Any]:
+            return {}
+
+        def save(self, key: str, value: dict[str, Any]) -> None:
+            return None
+
+        def delete(self, key: str) -> None:
+            return None
+
+    base = default_runtime_context()
+    ctx = dataclasses.replace(base, secret_store=_BadDeclaration())
+    _patch_entry_points(monkeypatch, [_FakeEP("bad", lambda: ctx)])
+    default = tmp_path / "home" / ".mureo" / "credentials.json"
+    assert runtime_credentials_path(default) == default
+
+
+@pytest.mark.unit
+def test_runtime_credentials_path_declared_path_wins_over_isinstance(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When a store BOTH is a ``FilesystemSecretStore`` AND declares a
+    different ``credentials_write_path``, the declared capability wins
+    (branch 1 precedes the concrete-type fallback)."""
+    from mureo.core.secret_store import FilesystemSecretStore
+
+    declared = tmp_path / "declared" / "creds.json"
+
+    class _DeclaringFsStore(FilesystemSecretStore):
+        credentials_write_path = declared
+
+    base = default_runtime_context()
+    store = _DeclaringFsStore(path=tmp_path / "concrete" / "creds.json")
+    ctx = dataclasses.replace(base, secret_store=store)
+    _patch_entry_points(monkeypatch, [_FakeEP("dual", lambda: ctx)])
+    default = tmp_path / "home" / ".mureo" / "credentials.json"
+    assert runtime_credentials_path(default) == declared
+
+
+# ---------------------------------------------------------------------------
 # ConfigureWizard wiring
 # ---------------------------------------------------------------------------
 
@@ -160,12 +248,15 @@ def test_wizard_credentials_path_defaults_to_host_default(
 
 
 @pytest.mark.unit
-def test_wizard_credentials_path_follows_factory(
+def test_wizard_ignores_factory_when_home_is_injected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A registered FS-backed factory relocates the wizard's credentials
-    path, so every web write site + the status read align with the MCP
-    runtime (#194)."""
+    """SAFETY: an explicitly-injected ``home`` sandboxes the wizard. Even
+    with a factory registered, the wizard MUST keep its injected-home
+    default and never reach the process-global factory (whose paths live
+    outside the sandbox — in dev/CI that is the operator's real
+    ``~/.mureo/credentials.json``). Regression guard for the #195
+    home-injection escape that let tests clobber real credentials."""
     custom = tmp_path / "alt" / "creds.json"
     _patch_entry_points(
         monkeypatch,
@@ -173,15 +264,15 @@ def test_wizard_credentials_path_follows_factory(
     )
     home = _make_home(tmp_path)
     wiz = ConfigureWizard(home=home)
-    assert wiz.host_paths.credentials_path == custom
+    assert wiz.host_paths.credentials_path == home / ".mureo" / "credentials.json"
 
 
 @pytest.mark.unit
-def test_wizard_set_host_preserves_factory_credentials_path(
+def test_wizard_set_host_keeps_injected_home_under_factory(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Switching the host recomputes the path bundle but must re-apply
-    the runtime-context override, not revert to the host default."""
+    """Switching the host recomputes the path bundle but must stay
+    sandboxed under the injected home, not leak to the factory path."""
     custom = tmp_path / "alt" / "creds.json"
     _patch_entry_points(
         monkeypatch,
@@ -190,4 +281,21 @@ def test_wizard_set_host_preserves_factory_credentials_path(
     home = _make_home(tmp_path)
     wiz = ConfigureWizard(home=home)
     wiz.set_host("claude-desktop")
-    assert wiz.host_paths.credentials_path == custom
+    assert wiz.host_paths.credentials_path == home / ".mureo" / "credentials.json"
+
+
+@pytest.mark.unit
+def test_wizard_applies_override_only_when_home_is_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Production path: with ``home=None`` the wizard applies the
+    runtime-context override. ``runtime_credentials_path`` is patched to
+    a tmp sentinel so the test never resolves the real factory or touches
+    the operator's real ``~/.mureo`` (constructing the wizard only builds
+    Path objects — no credential I/O)."""
+    sentinel = tmp_path / "runtime" / "creds.json"
+    monkeypatch.setattr(
+        "mureo.web.server.runtime_credentials_path", lambda _default: sentinel
+    )
+    wiz = ConfigureWizard(home=None)
+    assert wiz.host_paths.credentials_path == sentinel
