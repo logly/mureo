@@ -196,6 +196,22 @@ class TestRunConfigureWizardCli:
         mock_open.assert_not_called()
         assert elapsed < 5.0
 
+    def test_forces_cooked_mode_before_waiting(self, home_dir: Path) -> None:
+        """#227: before blocking on the stop event, the wizard normalises
+        the TTY to cooked mode so Ctrl+C delivers SIGINT (its stop signal)
+        even if a prior step leaked raw mode — otherwise the operator is
+        stranded with a dead terminal."""
+        with (
+            patch("mureo.web.server.webbrowser.open"),
+            patch("mureo.web.server.force_cooked_mode") as mock_cooked,
+        ):
+            run_configure_wizard(
+                home=home_dir,
+                open_browser=False,
+                timeout_seconds=0.2,
+            )
+        mock_cooked.assert_called_once()
+
     def test_opens_browser_when_requested(self, home_dir: Path) -> None:
         with patch("mureo.web.server.webbrowser.open") as mock_open:
             run_configure_wizard(
