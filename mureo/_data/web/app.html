@@ -79,6 +79,11 @@
                  data-i18n="dashboard.nav_byod">BYOD</a>
             </li>
             <li>
+              <a href="#" class="dashboard-nav-item" data-dashboard-nav="about"
+                 role="button" tabindex="0"
+                 data-i18n="dashboard.nav_about">About mureo</a>
+            </li>
+            <li>
               <a href="#" class="dashboard-nav-item" data-dashboard-nav="danger"
                  role="button" tabindex="0"
                  data-i18n="dashboard.nav_danger">Danger Zone</a>
@@ -191,6 +196,29 @@
               <button type="button" class="btn btn-primary" data-byod-import data-i18n="dashboard.byod_import">Import ad data file</button>
               <p class="dashboard-byod-result" data-byod-result></p>
               <button type="button" class="btn btn-danger" data-byod-clear data-i18n="dashboard.byod_clear">Clear all BYOD data</button>
+            </div>
+          </div>
+
+          <div class="dashboard-group" data-dashboard-group="about" hidden>
+            <div class="dashboard-section" data-dashboard-about>
+              <h2 data-i18n="dashboard.about_title">About mureo</h2>
+              <!-- Same wordmark pair as the header: CSS swaps the
+                   light/dark variant via prefers-color-scheme. -->
+              <p class="dashboard-about-logo">
+                <img class="app-logo app-logo-light" src="/static/logo.png" alt="mureo" width="413" height="63" />
+                <img class="app-logo app-logo-dark" src="/static/logo-dark.png" alt="mureo" width="413" height="63" />
+              </p>
+              <p data-dashboard-about-version></p>
+              <p data-i18n="dashboard.about_packages_desc">Installed mureo packages (core and extensions).</p>
+              <table class="dashboard-about-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="dashboard.about_col_package">Package</th>
+                    <th data-i18n="dashboard.about_col_version">Version</th>
+                  </tr>
+                </thead>
+                <tbody data-about-packages-body></tbody>
+              </table>
             </div>
           </div>
 

@@ -166,6 +166,50 @@ class TestServeStatus:
 
 
 @pytest.mark.unit
+class TestServeAbout:
+    """#229 — ``GET /api/about`` returns the version/package payload."""
+
+    def test_about_returns_documented_shape(self, wizard: ConfigureWizard) -> None:
+        fake_info = {
+            "mureo": {"name": "mureo", "version": "9.9.9"},
+            "packages": [
+                {"name": "mureo", "version": "9.9.9"},
+                {"name": "mureo-agency", "version": "0.1.12"},
+            ],
+        }
+        with patch(
+            "mureo.web.handlers.collect_about_info", return_value=fake_info
+        ) as mock_collect:
+            resp = _get(wizard, "/api/about")
+        assert resp.status == 200
+        assert resp.headers["Content-Type"].startswith("application/json")
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == fake_info
+        mock_collect.assert_called_once()
+
+    def test_about_unmocked_lists_mureo(self, wizard: ConfigureWizard) -> None:
+        """Smoke test against the real collector: mureo is always present.
+
+        Deliberately tolerant of extra rows — the machine running the
+        suite may have real mureo plugins installed.
+        """
+        resp = _get(wizard, "/api/about")
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["mureo"]["name"] == "mureo"
+        names = [pkg["name"] for pkg in body["packages"]]
+        assert "mureo" in names
+        assert names == sorted(names)
+
+    def test_about_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        """Same Host-header gate as every other GET endpoint."""
+        req = urllib.request.Request(_url(wizard, "/api/about"))
+        req.add_header("Host", "attacker.example.com")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
 class TestOauthStatusGet:
     def test_known_provider_returns_status(self, wizard: ConfigureWizard) -> None:
         resp = _get(wizard, "/api/oauth/google/status")
