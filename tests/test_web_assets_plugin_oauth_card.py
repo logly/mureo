@@ -63,3 +63,13 @@ def test_dashboard_surfaces_new_oauth_error_keys() -> None:
     js = _read("dashboard.js")
     assert "dashboard.plugin_oauth_callback_invalid" in js
     assert "dashboard.plugin_oauth_port_unavailable" in js
+
+
+@pytest.mark.unit
+def test_dashboard_callback_url_prefill_consults_provider_default() -> None:
+    """#220: the callback URL input pre-fill consults the provider-declared
+    ``default_callback_url`` (between the saved value and the generic
+    fallback), so a provider with a fixed redirect_uri pre-fills the exact
+    URL the operator must register."""
+    js = _read("dashboard.js")
+    assert "default_callback_url" in js

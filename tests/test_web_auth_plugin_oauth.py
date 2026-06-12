@@ -286,3 +286,71 @@ def test_authsave_failure_persists_nothing(authsave_wizard: Any) -> None:
 
     path = authsave_wizard.credentials_path
     assert not path.exists() or "yahoo_ads" not in json.loads(path.read_text())
+
+
+# ---------------------------------------------------------------------------
+# token_auth_style — the callback exchange honours the provider's declared
+# token-endpoint client-auth style (Yahoo! JAPAN biz-oauth needs "body").
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def body_auth_wizard(tmp_path: Path) -> Iterator[Any]:
+    creds_path = tmp_path / ".mureo" / "credentials.json"
+    creds_path.parent.mkdir(parents=True)
+    spec = PluginOAuthSpec(
+        provider="yahoo_ads",
+        target_field="refresh_token",
+        token_url="https://biz-oauth.yahoo.co.jp/oauth/v1/token",
+        client_id="CID",
+        client_secret="SECRET",
+        redirect_uri="http://127.0.0.1:8765/oauth/callback",
+        state="state-xyz",
+        token_auth_style="body",
+    )
+    wiz = WebAuthWizard(credentials_path=creds_path, plugin_oauth=spec)
+    thread = threading.Thread(target=wiz.serve, daemon=True)
+    thread.start()
+    wiz.wait_until_ready(timeout=2.0)
+    try:
+        yield wiz
+    finally:
+        wiz.shutdown()
+        thread.join(timeout=2.0)
+
+
+@pytest.mark.unit
+def test_plugin_callback_passes_declared_token_auth_style(
+    body_auth_wizard: Any,
+) -> None:
+    """The exchange is called with ``client_auth`` taken from the spec's
+    ``token_auth_style`` so a body-style provider authenticates correctly."""
+    from mureo.oauth_authcode import AuthCodeResult
+
+    with patch(
+        "mureo.cli.web_auth.exchange_authorization_code",
+        return_value=AuthCodeResult(refresh_token="RT", access_token="AT"),
+    ) as mock_exchange:
+        opener = urllib.request.build_opener(_NoRedirect())
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            opener.open(
+                _url(body_auth_wizard, "/oauth/callback?code=AC&state=state-xyz"),
+                timeout=2.0,
+            )
+        assert exc.value.code == 302
+    assert mock_exchange.call_args.kwargs["client_auth"] == "body"
+
+
+@pytest.mark.unit
+def test_default_spec_token_auth_style_is_basic() -> None:
+    """A spec built without the field defaults to Basic (regression)."""
+    spec = PluginOAuthSpec(
+        provider="p",
+        target_field="refresh_token",
+        token_url="https://a.test/token",
+        client_id="c",
+        client_secret="s",
+        redirect_uri="http://127.0.0.1:1/oauth/callback",
+        state="x",
+    )
+    assert spec.token_auth_style == "basic"

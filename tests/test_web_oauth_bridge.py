@@ -479,6 +479,42 @@ class TestStartPluginOAuth:
 
     _CALLBACK_URL = "http://127.0.0.1:8765/oauth/callback"
 
+    def test_threads_body_token_auth_style(
+        self,
+        patched_wizard_class: Any,
+        fake_configure_wizard: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """A provider declaring ``token_auth_style='body'`` (Yahoo! JAPAN)
+        has it pinned onto the spec so the callback exchange sends the
+        client creds in the form body, not an Authorization header."""
+        from mureo.core.providers import AccountOAuthConfig
+
+        config = AccountOAuthConfig(
+            authorize_url="https://biz-oauth.yahoo.co.jp/oauth/v1/authorize",
+            token_url="https://biz-oauth.yahoo.co.jp/oauth/v1/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            scopes=("scopeA",),
+            token_auth_style="body",
+        )
+        bridge = OAuthBridge()
+        try:
+            bridge.start_plugin_oauth(
+                provider="yahoo_ads",
+                configure_wizard=fake_configure_wizard,
+                oauth_config=config,
+                client_id="CID",
+                client_secret="SECRET",
+                callback_url=self._CALLBACK_URL,
+                credentials_path=tmp_path / "creds.json",
+            )
+            spec = patched_wizard_class.instances[0].plugin_oauth
+            assert spec.token_auth_style == "body"
+        finally:
+            bridge.cancel("yahoo_ads")
+
     def test_builds_external_consent_url_and_pins_spec(
         self,
         patched_wizard_class: Any,
@@ -529,6 +565,8 @@ class TestStartPluginOAuth:
             # #217: the operator's form values ride along for atomic save.
             assert spec.persist_values["client_id"] == "CID"
             assert spec.persist_values["oauth_callback_url"] == self._CALLBACK_URL
+            # Token-endpoint auth style defaults to Basic (regression).
+            assert spec.token_auth_style == "basic"
             assert spec.state  # non-empty CSRF nonce
             # The same state + redirect_uri are echoed into the consent URL.
             assert f"state={spec.state}" in result.url

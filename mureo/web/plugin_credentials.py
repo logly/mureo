@@ -153,15 +153,27 @@ def _oauth_to_dict(provider_class: type) -> dict[str, str] | None:
     render an Authenticate button next to the target field and know which
     fields must be saved first. The endpoints (``authorize_url`` /
     ``token_url``) and any secret values stay server-side.
+
+    A provider that declares a fixed ``callback_port`` (#220) additionally
+    gets a ``default_callback_url`` — the canonical
+    ``http://127.0.0.1:<port><path>`` the dashboard pre-fills so the
+    operator registers the exact loopback redirect URI the provider's
+    OAuth server requires. Omitted entirely when no port is declared (the
+    #216 default), keeping the block to its original three keys.
     """
     config = get_account_oauth_config(provider_class)
     if config is None:
         return None
-    return {
+    block = {
         "target_field": config.target_field,
         "client_id_field": config.client_id_field,
         "client_secret_field": config.client_secret_field,
     }
+    if config.callback_port is not None:
+        block["default_callback_url"] = (
+            f"http://127.0.0.1:{config.callback_port}{config.callback_path}"
+        )
+    return block
 
 
 def save_plugin_credentials(

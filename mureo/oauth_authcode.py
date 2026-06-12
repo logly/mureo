@@ -136,14 +136,23 @@ def exchange_authorization_code(
     client_id: str,
     client_secret: str,
     redirect_uri: str,
+    client_auth: str = "basic",
 ) -> AuthCodeResult:
     """Exchange an authorization ``code`` for a ``refresh_token``.
 
     POSTs ``grant_type=authorization_code`` (form-encoded) to
-    ``token_url`` with HTTP Basic client authentication. Raises
-    :class:`OAuthExchangeError` on any transport/HTTP failure or when the
-    response carries no ``refresh_token`` (the whole point of the flow —
-    an access token alone cannot be persisted for later refresh).
+    ``token_url``. Client authentication follows ``client_auth``:
+
+    - ``"basic"`` (default, RFC 6749 §2.3.1) — client id/secret in the
+      HTTP ``Authorization`` header; the scheme Google and most providers
+      expect.
+    - ``"body"`` — client id/secret in the form body (RFC 6749 §2.3.1's
+      alternative). Required by providers that reject Basic, e.g. Yahoo!
+      JAPAN biz-oauth.
+
+    Raises :class:`OAuthExchangeError` on any transport/HTTP failure or
+    when the response carries no ``refresh_token`` (the whole point of the
+    flow — an access token alone cannot be persisted for later refresh).
 
     The exception message never includes the code, secret, or token; only
     the failure class is surfaced so a stack trace cannot leak material.
@@ -154,11 +163,22 @@ def exchange_authorization_code(
         "code": code,
         "redirect_uri": redirect_uri,
     }
+    # Pick the client-auth transport: Basic header (default) or in-body
+    # credentials (Yahoo! JAPAN biz-oauth rejects Basic). httpx's ``auth``
+    # parameter has no typed ``None``, so for body style we omit it entirely
+    # (the client configures no auth, so nothing is sent).
+    basic_auth: tuple[str, str] | None = None
+    if client_auth == "body":
+        body["client_id"] = client_id
+        body["client_secret"] = client_secret
+    else:
+        basic_auth = (client_id, client_secret)
     try:
         with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
-            response = client.post(
-                token_url, data=body, auth=(client_id, client_secret)
-            )
+            if basic_auth is None:
+                response = client.post(token_url, data=body)
+            else:
+                response = client.post(token_url, data=body, auth=basic_auth)
             response.raise_for_status()
             payload = response.json()
     except httpx.HTTPError as exc:
