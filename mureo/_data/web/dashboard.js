@@ -877,6 +877,13 @@
     renderByodStatus();
   }
 
+  // #223: monotonic render generation. renderPluginCredentials is async
+  // (clear → await fetch → append); during init renderAll() runs twice, so
+  // two calls can interleave and BOTH append, rendering every card twice.
+  // Each call captures its generation and bails if a newer render started
+  // while it awaited — so only the latest result ever clears + appends.
+  let pluginRenderSeq = 0;
+
   // Plugin credentials section — one collapsible form per provider
   // declaring AccountCredentialField entries. Fetches once per render
   // call. secret=True fields render as type="password" and submit
@@ -886,7 +893,7 @@
       "[data-dashboard-plugin-credentials-list]"
     );
     if (!container) return;
-    container.textContent = "";
+    const seq = ++pluginRenderSeq;
     let plugins = [];
     try {
       const res = await fetch("/api/credentials/plugins", { credentials: "same-origin" });
@@ -898,6 +905,12 @@
       // sections continue to function.
       return;
     }
+    // A newer render superseded us while we awaited — drop this stale
+    // result so concurrent renders can't both append (#223).
+    if (seq !== pluginRenderSeq) return;
+    // Clear AFTER the await, immediately before appending, so the section
+    // is never emptied by a render that then bails on the guard above.
+    container.textContent = "";
     if (plugins.length === 0) {
       const empty = document.createElement("p");
       empty.className = "muted";
@@ -951,11 +964,17 @@
     // Safari/Chrome on password inputs.
     input.autocomplete = field.secret ? "new-password" : "off";
     if (field.secret) {
-      input.placeholder = MUREO.t(
-        "dashboard.plugin_credentials_secret_placeholder"
-      );
-    } else if (field.placeholder) {
-      input.placeholder = field.placeholder;
+      // #224: a secret value never round-trips to the browser — pre-fill
+      // only the placeholder. A *configured* secret shows the
+      // leave-blank-to-keep hint; an unset one shows its own placeholder.
+      input.placeholder = field.configured
+        ? MUREO.t("dashboard.plugin_credentials_secret_placeholder")
+        : field.placeholder || "";
+    } else {
+      // #224: pre-fill the stored non-secret value (e.g. base_account_id)
+      // so a restart shows the current config instead of a blank form.
+      if (field.value) input.value = field.value;
+      if (field.placeholder) input.placeholder = field.placeholder;
     }
     label.appendChild(input);
     if (field.description) {
