@@ -26,6 +26,7 @@ from mureo.oauth_authcode import (
     OAuthExchangeError,
     build_authorization_code_url,
     exchange_authorization_code,
+    parse_loopback_callback_url,
 )
 
 # ---------------------------------------------------------------------------
@@ -190,3 +191,47 @@ def test_exchange_never_logs_secrets(
     assert "SENSITIVE_CODE" not in caplog.text
     assert "RT-xyz" not in caplog.text
     assert blob  # silence "unused" — the b64 line documents what we guard.
+
+
+# ---------------------------------------------------------------------------
+# parse_loopback_callback_url (#216) — operator-supplied callback URL
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        (
+            "http://127.0.0.1:8765/oauth/callback",
+            ("127.0.0.1", 8765, "/oauth/callback"),
+        ),
+        (
+            "http://localhost:5000/oauth/callback",
+            ("localhost", 5000, "/oauth/callback"),
+        ),
+    ],
+)
+def test_parse_loopback_callback_url_accepts(
+    url: str, expected: tuple[str, int, str]
+) -> None:
+    assert parse_loopback_callback_url(url) == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "url",
+    [
+        "",
+        "http://example.com:8765/oauth/callback",  # non-loopback host
+        "http://10.0.0.5:8765/oauth/callback",  # non-loopback host
+        "https://127.0.0.1:8765/oauth/callback",  # https not serveable here
+        "http://127.0.0.1/oauth/callback",  # no explicit port
+        "http://127.0.0.1:8765",  # no path
+        "http://127.0.0.1:notaport/oauth/callback",  # invalid port
+        "ftp://127.0.0.1:8765/oauth/callback",  # wrong scheme
+    ],
+)
+def test_parse_loopback_callback_url_rejects(url: str) -> None:
+    with pytest.raises(ValueError):  # noqa: PT011 - message is exercised in UI
+        parse_loopback_callback_url(url)

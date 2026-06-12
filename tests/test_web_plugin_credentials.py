@@ -17,7 +17,7 @@ This module bridges the registered providers' declarative
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -42,8 +42,14 @@ def _make_class(
     *,
     fields: tuple[AccountCredentialField, ...] = (),
     display_name: str | None = None,
+    oauth: Any = None,
 ) -> type:
-    """Build a minimal provider class with the requested credential fields."""
+    """Build a minimal provider class with the requested credential fields.
+
+    ``oauth`` (an ``AccountOAuthConfig``) is attached as
+    ``account_oauth`` only when supplied, so a manual-entry provider keeps
+    no such attribute (``get_account_oauth_config`` → ``None``).
+    """
 
     class _Fake:
         pass
@@ -52,6 +58,8 @@ def _make_class(
     _Fake.display_name = display_name or name  # type: ignore[attr-defined]
     _Fake.capabilities = frozenset()  # type: ignore[attr-defined]
     _Fake.account_credential_fields = fields  # type: ignore[attr-defined]
+    if oauth is not None:
+        _Fake.account_oauth = oauth  # type: ignore[attr-defined]
     return _Fake
 
 
@@ -73,8 +81,9 @@ def _entry(
     *,
     fields: tuple[AccountCredentialField, ...] = (),
     display_name: str | None = None,
+    oauth: Any = None,
 ) -> ProviderEntry:
-    cls = _make_class(name, fields=fields, display_name=display_name)
+    cls = _make_class(name, fields=fields, display_name=display_name, oauth=oauth)
     return ProviderEntry(
         name=name,
         display_name=display_name or name,
@@ -857,3 +866,92 @@ def test_save_does_not_log_secret_values(
 
     log_text = "\n".join(rec.getMessage() for rec in caplog.records)
     assert sentinel not in log_text
+
+
+# ---------------------------------------------------------------------------
+# #217 — an account_oauth provider's target_field is acquired via
+# Authenticate, never typed into Save, so it must not be required-enforced
+# here (else first-time setup deadlocks: Save wants the token, Authenticate
+# wants Save). Defense-in-depth in save_plugin_credentials, UI-independent.
+# ---------------------------------------------------------------------------
+
+
+def _yahoo_oauth() -> Any:
+    from mureo.core.providers import AccountOAuthConfig
+
+    return AccountOAuthConfig(
+        authorize_url="https://biz-oauth.yahoo.co.jp/oauth/v1/authorize",
+        token_url="https://biz-oauth.yahoo.co.jp/oauth/v1/token",
+        client_id_field="client_id",
+        client_secret_field="client_secret",
+        target_field="refresh_token",
+        scopes=("scopeA",),
+    )
+
+
+def _yahoo_fields() -> tuple[AccountCredentialField, ...]:
+    return (
+        AccountCredentialField(key="client_id", display_name="Client ID"),
+        AccountCredentialField(key="client_secret", display_name="Secret", secret=True),
+        # The OAuth target — declared required (the plugin needs it at
+        # runtime) but obtained via Authenticate, not the Save form.
+        AccountCredentialField(
+            key="refresh_token",
+            display_name="Refresh token",
+            required=True,
+            secret=True,
+        ),
+    )
+
+
+@pytest.mark.unit
+def test_save_does_not_require_oauth_target_field(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Saving client creds without the (required) OAuth target_field on an
+    empty store must NOT raise — the token comes from Authenticate."""
+    from mureo.web.plugin_credentials import save_plugin_credentials
+
+    _register(
+        monkeypatch,
+        [_entry("yahoo_ads", fields=_yahoo_fields(), oauth=_yahoo_oauth())],
+    )
+    store = _store(tmp_path)
+    result = save_plugin_credentials(
+        "yahoo_ads",
+        {"client_id": "CID", "client_secret": "SECRET"},
+        secret_store=store,
+    )
+    assert store.load("yahoo_ads") == {"client_id": "CID", "client_secret": "SECRET"}
+    # The token field is not persisted as a blank, and no error was raised.
+    assert "refresh_token" not in result["merged"]
+
+
+@pytest.mark.unit
+def test_save_still_requires_non_oauth_required_field(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The exemption is scoped to the OAuth target_field only — a *different*
+    required field on the same provider is still enforced."""
+    from mureo.web.plugin_credentials import (
+        RequiredFieldMissingError,
+        save_plugin_credentials,
+    )
+
+    fields = (
+        *_yahoo_fields(),
+        AccountCredentialField(
+            key="base_account_id", display_name="Base account", required=True
+        ),
+    )
+    _register(
+        monkeypatch,
+        [_entry("yahoo_ads", fields=fields, oauth=_yahoo_oauth())],
+    )
+    store = _store(tmp_path)
+    with pytest.raises(RequiredFieldMissingError):
+        save_plugin_credentials(
+            "yahoo_ads",
+            {"client_id": "CID", "client_secret": "SECRET"},
+            secret_store=store,
+        )

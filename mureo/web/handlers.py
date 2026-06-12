@@ -52,6 +52,7 @@ from mureo.core.runtime_context import (
     runtime_ui_plugin_credential_fields,
 )
 from mureo.core.secret_store import FilesystemSecretStore
+from mureo.oauth_authcode import parse_loopback_callback_url
 from mureo.web._helpers import (
     compare_csrf,
     host_header_ok,
@@ -151,6 +152,11 @@ _OAUTH_PROVIDER_RE = re.compile(
 _PLUGIN_OAUTH_RE = re.compile(
     r"^/api/credentials/plugins/(?P<provider>[a-z0-9_]+)/oauth/(?P<verb>start|status)$"
 )
+
+# #216 — the form key the dashboard's Authenticate card submits carrying
+# the operator-registered loopback callback URL. Non-secret, so it is also
+# persisted (for re-auth pre-fill). The dashboard input key must match.
+_OAUTH_CALLBACK_URL_KEY = "oauth_callback_url"
 
 # Third-party web-extension dispatch (see ``mureo.web.extensions``).
 # Path components reuse the bare patterns exported by
@@ -301,15 +307,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             # ``display_name_i18n`` / ``description_i18n`` entries are
             # resolved against the operator's active locale (#186). The
             # field scope (#207) is home-gated — see _resolve_field_scope.
-            send_json(
-                self,
-                {
-                    "plugins": list_plugin_credential_fields(
-                        locale=self.wizard.session.locale,
-                        field_scope=self._resolve_field_scope(),
-                    )
-                },
+            plugins = list_plugin_credential_fields(
+                locale=self.wizard.session.locale,
+                field_scope=self._resolve_field_scope(),
             )
+            self._inject_saved_oauth_callback_urls(plugins)
+            send_json(self, {"plugins": plugins})
             return
         match = _OAUTH_PROVIDER_RE.match(path)
         if match is not None and match.group("verb") == "status":
@@ -359,7 +362,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if plugin_oauth_match is not None and (
             plugin_oauth_match.group("verb") == "start"
         ):
-            self._post_plugin_oauth_start(plugin_oauth_match.group("provider"))
+            self._post_plugin_oauth_start(plugin_oauth_match.group("provider"), payload)
             return
         ext_api_match = _EXTENSION_API_RE.match(path)
         if ext_api_match is not None:
@@ -480,6 +483,24 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     def _post_setup_basic_clear(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         envelope = clear_all_setup(home=self.wizard.home, host=self.wizard.session.host)
         send_json(self, envelope)
+
+    def _inject_saved_oauth_callback_urls(self, plugins: list[dict[str, Any]]) -> None:
+        """Surface each OAuth provider's saved (non-secret) callback URL so
+        the dashboard can pre-fill it on re-auth instead of resetting to the
+        well-known default (#216).
+
+        Only the ``oauth_callback_url`` field is copied — never a secret —
+        and only for providers that declare an ``oauth`` block. Manual-entry
+        providers are left untouched (no key added).
+        """
+        store = FilesystemSecretStore(path=self.wizard.host_paths.credentials_path)
+        for plugin in plugins:
+            if not plugin.get("oauth"):
+                continue
+            saved = store.load(plugin["provider_name"])
+            url = saved.get(_OAUTH_CALLBACK_URL_KEY)
+            if isinstance(url, str) and url:
+                plugin["oauth_callback_url"] = url
 
     def _resolve_field_scope(self) -> Mapping[str, Collection[str]] | None:
         """Resolve the per-provider credential-field scope (#207/#211).
@@ -749,16 +770,23 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
     # Generic plugin OAuth (authorization-code) — #201
     # ------------------------------------------------------------------
-    def _post_plugin_oauth_start(self, provider: str) -> None:
-        """Begin a plugin's authorization-code consent flow.
+    def _post_plugin_oauth_start(self, provider: str, payload: dict[str, Any]) -> None:
+        """Begin a plugin's authorization-code consent flow (#201/#216/#217).
 
-        The plugin must be registered and declare an
-        :class:`~mureo.core.providers.AccountOAuthConfig`. The client
-        id/secret the operator already saved (via the plugin-credentials
-        form) are loaded from the same store the save path wrote to; if
-        either is absent we return ``400 client_credentials_missing`` so
-        the UI can prompt the operator to save them first. On success the
-        bridge returns the external provider consent URL.
+        Authenticate-IS-save (#217): an ``account_oauth`` provider's
+        ``target_field`` is ``required``, so a prior Save would deadlock
+        (no token to save yet). Instead the operator's **current form
+        values** arrive in the POST body and the client id/secret are read
+        from them by the oauth config's field keys — not loaded from disk.
+        Missing either → ``400 client_credentials_missing``.
+
+        The operator-registered loopback callback URL (#216) rides in under
+        ``oauth_callback_url``; an invalid/non-loopback value →
+        ``400 callback_url_invalid``. The submitted values (restricted to
+        the provider's declared field keys, minus the still-empty
+        ``target_field``) plus the callback URL become ``persist_values``
+        so the bridge's callback writes them atomically with the obtained
+        token — nothing is on disk until consent succeeds.
         """
         if provider not in default_registry:
             send_error_json(self, 404, "unknown_provider")
@@ -774,13 +802,43 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             send_error_json(self, 404, "oauth_not_supported")
             return
 
-        store = FilesystemSecretStore(path=self.wizard.host_paths.credentials_path)
-        saved = store.load(provider)
-        client_id = str(saved.get(oauth_config.client_id_field, "") or "")
-        client_secret = str(saved.get(oauth_config.client_secret_field, "") or "")
+        raw_values = payload.get("values", {})
+        if not isinstance(raw_values, dict):
+            send_error_json(self, 400, "invalid_values")
+            return
+        # Strip at intake: credential values (ids, secrets, callback URL)
+        # never carry meaningful surrounding whitespace, and a stray space
+        # would break both the token exchange and the persisted copy.
+        values = {
+            str(k): str(v).strip() for k, v in raw_values.items() if v is not None
+        }
+
+        client_id = values.get(oauth_config.client_id_field, "")
+        client_secret = values.get(oauth_config.client_secret_field, "")
         if not client_id or not client_secret:
             send_error_json(self, 400, "client_credentials_missing")
             return
+
+        callback_url = values.get(_OAUTH_CALLBACK_URL_KEY, "")
+        try:
+            parse_loopback_callback_url(callback_url)
+        except ValueError:
+            send_error_json(self, 400, "callback_url_invalid")
+            return
+
+        # Persist only the provider's declared field keys (an attacker-
+        # crafted extra key can't sneak onto disk), minus the still-empty
+        # target_field, plus the non-secret callback URL for re-auth.
+        declared = {
+            f.key
+            for f in getattr(entry.provider_class, "account_credential_fields", ())
+        }
+        persist_values = {
+            k: v
+            for k, v in values.items()
+            if k in declared and k != oauth_config.target_field
+        }
+        persist_values[_OAUTH_CALLBACK_URL_KEY] = callback_url
 
         self.wizard.session.mark_oauth_pending(provider, allow_dynamic=True)
         result = self.wizard.oauth_bridge.start_plugin_oauth(
@@ -789,6 +847,8 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             oauth_config=oauth_config,
             client_id=client_id,
             client_secret=client_secret,
+            callback_url=callback_url,
+            persist_values=persist_values,
             credentials_path=self.wizard.host_paths.credentials_path,
         )
         send_json(self, result.as_dict())

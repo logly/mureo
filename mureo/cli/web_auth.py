@@ -513,7 +513,13 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             self._handle_meta_callback(parsed.query)
         elif path == "/meta-ads/select-account":
             self._handle_meta_account_pick_page()
-        elif path == "/oauth/callback":
+        elif path == "/oauth/callback" or (
+            self.server.wizard.plugin_oauth is not None
+            and path == self.server.wizard.plugin_oauth.callback_path
+        ):
+            # The operator may register a non-default loopback callback
+            # path (#216); serve it as well as the built-in route (which
+            # stays matched so a stale link yields the helpful 404 below).
             self._handle_plugin_oauth_callback(parsed.query)
         elif path == "/done":
             self.server.wizard.mark_completed()
@@ -1159,10 +1165,17 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             )
             return
 
-        # Merge into the provider's section so the client id/secret the
-        # operator already saved survive alongside the new refresh token.
+        # Persist atomically in one write (#217): start from whatever is
+        # already on disk, layer the operator's submitted form values
+        # (client id/secret, callback URL, non-OAuth fields), then the
+        # obtained token last so it can never be clobbered. With
+        # Authenticate-is-save there may be *nothing* on disk yet — the
+        # form values and token land together, so first-time setup needs
+        # no prior Save. ``persist_values`` is empty in the #201 path, so
+        # that flow's merge-only behaviour is unchanged.
         store = FilesystemSecretStore(path=self.server.wizard.credentials_path)
         merged = dict(store.load(spec.provider))
+        merged.update(spec.persist_values)
         merged[spec.target_field] = result.refresh_token
         store.save(spec.provider, merged)
 
@@ -1255,6 +1268,16 @@ class PluginOAuthSpec:
     is also the ``credentials.json`` section key the obtained token is
     merge-saved under; ``state`` is the CSRF nonce echoed back on the
     provider's redirect.
+
+    ``callback_path`` is the path component of the operator-supplied
+    loopback callback URL (#216); the wizard serves *this* route instead of
+    the built-in ``/oauth/callback`` so the redirect_uri matches the one
+    pre-registered in the provider's console exactly. ``persist_values``
+    holds the operator's submitted form values (client id/secret, callback
+    URL, any non-OAuth field) that are written **atomically with** the
+    obtained token in a single section, so first-time setup needs no prior
+    Save (#217). Both default to the #201 behaviour (the standard callback
+    path; persist only the token), keeping standalone construction valid.
     """
 
     provider: str
@@ -1264,6 +1287,8 @@ class PluginOAuthSpec:
     client_secret: str
     redirect_uri: str
     state: str
+    callback_path: str = "/oauth/callback"
+    persist_values: dict[str, str] = field(default_factory=dict)
 
 
 class WebAuthWizard:
@@ -1273,11 +1298,21 @@ class WebAuthWizard:
         self,
         *,
         bind_host: str = "127.0.0.1",
+        bind_port: int = 0,
         credentials_path: Path | None = None,
         multi_account_auth: bool = False,
         plugin_oauth: PluginOAuthSpec | None = None,
     ) -> None:
         self._bind_host = bind_host
+        # 0 = ephemeral (the default, preserving Google/Meta + standalone
+        # use). The plugin-OAuth bridge passes the port from the operator's
+        # registered loopback callback URL so the redirect_uri matches on
+        # every run (#216).
+        self._bind_port = bind_port
+        # Set by serve() when binding fails (e.g. the operator-chosen port
+        # is already in use). The bridge checks this after wait_until_ready
+        # to report a clean error instead of a 5s timeout (#216).
+        self.bind_error: OSError | None = None
         self.credentials_path = credentials_path
         # When set, the wizard serves the generic ``/oauth/callback`` route
         # for a third-party plugin authorization-code flow instead of the
@@ -1308,8 +1343,21 @@ class WebAuthWizard:
         return f"http://{self._bind_host}:{self.port}/"
 
     def serve(self) -> None:
-        """Block and serve requests until :meth:`shutdown` is called."""
-        with _WizardServer((self._bind_host, 0), _WizardHandler) as server:
+        """Block and serve requests until :meth:`shutdown` is called.
+
+        Binds on ``bind_port`` (0 = ephemeral). A bind failure — the
+        operator's chosen loopback port is already in use (#216) — is
+        captured on :attr:`bind_error` and the ready event is set anyway,
+        so a caller blocked in :meth:`wait_until_ready` wakes immediately
+        with a clear error instead of waiting out the timeout.
+        """
+        try:
+            server = _WizardServer((self._bind_host, self._bind_port), _WizardHandler)
+        except OSError as exc:
+            self.bind_error = exc
+            self._ready.set()
+            return
+        with server:
             server.wizard = self
             self._server = server
             self._ready.set()

@@ -135,3 +135,154 @@ def test_plugin_callback_exchange_failure_renders_error(plugin_wizard: Any) -> N
 
     saved = json.loads(plugin_wizard.credentials_path.read_text())
     assert "refresh_token" not in saved["yahoo_ads"]
+
+
+# ---------------------------------------------------------------------------
+# #216 — operator-supplied loopback callback URL: bind_port / bind_error
+# ---------------------------------------------------------------------------
+
+
+def _free_port() -> int:
+    """Probe a currently-free loopback port, then release it."""
+    import socket
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+    finally:
+        probe.close()
+
+
+@pytest.mark.unit
+def test_default_wizard_bind_error_is_none() -> None:
+    assert WebAuthWizard().bind_error is None
+
+
+@pytest.mark.unit
+def test_wizard_binds_requested_port() -> None:
+    """``bind_port`` makes the wizard listen on that exact port so the
+    operator-registered loopback redirect_uri (#216) — which encodes a
+    fixed port — resolves on every run instead of a fresh ephemeral one."""
+    port = _free_port()
+    wiz = WebAuthWizard(bind_port=port)
+    thread = threading.Thread(target=wiz.serve, daemon=True)
+    thread.start()
+    try:
+        wiz.wait_until_ready(timeout=2.0)
+        assert wiz.bind_error is None
+        assert wiz.port == port
+    finally:
+        wiz.shutdown()
+        thread.join(timeout=2.0)
+
+
+@pytest.mark.unit
+def test_wizard_bind_error_when_port_in_use() -> None:
+    """A port already held by an active listener surfaces as
+    ``bind_error`` (and ``wait_until_ready`` returns promptly rather than
+    timing out) so the bridge reports a clean 'port unavailable' (#216)."""
+    import socket
+
+    held = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    held.bind(("127.0.0.1", 0))
+    held.listen(1)
+    port = int(held.getsockname()[1])
+    try:
+        wiz = WebAuthWizard(bind_port=port)
+        thread = threading.Thread(target=wiz.serve, daemon=True)
+        thread.start()
+        wiz.wait_until_ready(timeout=2.0)  # prompt return, not a timeout
+        assert isinstance(wiz.bind_error, OSError)
+        thread.join(timeout=2.0)
+    finally:
+        held.close()
+
+
+# ---------------------------------------------------------------------------
+# #217 — Authenticate IS save: persist_values + token in one atomic write,
+# served at the operator-chosen callback_path (#216).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def authsave_wizard(tmp_path: Path) -> Iterator[Any]:
+    """A plugin wizard whose spec carries #217 ``persist_values`` and a
+    non-default #216 ``callback_path`` — nothing is on disk beforehand."""
+    creds_path = tmp_path / ".mureo" / "credentials.json"
+    creds_path.parent.mkdir(parents=True)
+    # No pre-seed: Authenticate-is-save means the operator's form values
+    # arrive together with the token in a single write (#217).
+    spec = PluginOAuthSpec(
+        provider="yahoo_ads",
+        target_field="refresh_token",
+        token_url="https://biz-oauth.yahoo.co.jp/oauth/v1/token",
+        client_id="CID",
+        client_secret="SECRET",
+        redirect_uri="http://127.0.0.1:8765/cb",
+        state="state-xyz",
+        callback_path="/cb",
+        persist_values={
+            "client_id": "CID",
+            "client_secret": "SECRET",
+            "base_account_id": "ACC-1",
+        },
+    )
+    wiz = WebAuthWizard(credentials_path=creds_path, plugin_oauth=spec)
+    thread = threading.Thread(target=wiz.serve, daemon=True)
+    thread.start()
+    wiz.wait_until_ready(timeout=2.0)
+    try:
+        yield wiz
+    finally:
+        wiz.shutdown()
+        thread.join(timeout=2.0)
+
+
+@pytest.mark.unit
+def test_authsave_persists_values_and_token_atomically(authsave_wizard: Any) -> None:
+    """A successful callback at the operator's ``callback_path`` writes the
+    submitted form values AND the obtained token into one section, with no
+    prior save on disk (#216 path + #217 atomic persist)."""
+    from mureo.oauth_authcode import AuthCodeResult
+
+    with patch(
+        "mureo.cli.web_auth.exchange_authorization_code",
+        return_value=AuthCodeResult(refresh_token="RT-new", access_token="AT"),
+    ):
+        opener = urllib.request.build_opener(_NoRedirect())
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            opener.open(
+                _url(authsave_wizard, "/cb?code=AC&state=state-xyz"),
+                timeout=2.0,
+            )
+        assert exc.value.code == 302
+        assert exc.value.headers.get("Location", "") == "/done"
+
+    saved = json.loads(authsave_wizard.credentials_path.read_text())["yahoo_ads"]
+    assert saved["refresh_token"] == "RT-new"
+    assert saved["client_id"] == "CID"
+    assert saved["client_secret"] == "SECRET"
+    assert saved["base_account_id"] == "ACC-1"
+
+
+@pytest.mark.unit
+def test_authsave_failure_persists_nothing(authsave_wizard: Any) -> None:
+    """On exchange failure neither the form values nor a token are written
+    — abandoning consent leaves disk untouched (#217)."""
+    from mureo.oauth_authcode import OAuthExchangeError
+
+    with patch(
+        "mureo.cli.web_auth.exchange_authorization_code",
+        side_effect=OAuthExchangeError("nope"),
+    ):
+        opener = urllib.request.build_opener(_NoRedirect())
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            opener.open(
+                _url(authsave_wizard, "/cb?code=AC&state=state-xyz"),
+                timeout=2.0,
+            )
+        assert exc.value.code == 400
+
+    path = authsave_wizard.credentials_path
+    assert not path.exists() or "yahoo_ads" not in json.loads(path.read_text())
