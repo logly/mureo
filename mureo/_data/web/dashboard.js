@@ -179,7 +179,12 @@
     if (!list) return;
     while (list.firstChild) list.removeChild(list.firstChild);
     const parts = (status && status.setup_parts) || {};
+    // #222: a multi-account backend never registers the bare `mureo` MCP
+    // entry (per-client `mureo-<slug>` entries are the correct wiring), so
+    // the MCP row must not render here either.
+    const suppressMcp = Boolean(status && status.multi_account_auth);
     BASIC_ROWS.forEach(function (row) {
+      if (suppressMcp && row.key === "mureo_mcp") return;
       const li = document.createElement("li");
       const installed = parts[row.key] === true;
       const labelSpan = document.createElement("span");

@@ -371,11 +371,26 @@ def install_workflow_skills(
 
 
 def install_basic_setup(
-    home: Path | None = None, host: str = _HOST_CODE
+    home: Path | None = None,
+    host: str = _HOST_CODE,
+    *,
+    skip_mcp_registration: bool = False,
 ) -> dict[str, Any]:
-    """Run all three basic-setup parts in order, forwarding ``host``."""
+    """Run all three basic-setup parts in order, forwarding ``host``.
+
+    ``skip_mcp_registration`` (#222): when ``True`` the bare ``mureo`` MCP
+    entry is NOT written — a multi-account backend wires per-client
+    ``mureo-<slug>`` entries instead, and the bare entry (``cwd=/``, no
+    tenant) is actively harmful. The MCP part reports ``skipped`` and the
+    hook + skills parts run unchanged. The caller (the handler) decides
+    this behind the ``home is None`` gate, so this stays a pure function.
+    """
+    if skip_mcp_registration:
+        mcp = ActionResult(status="skipped", detail="multi_account_auth")
+    else:
+        mcp = install_mureo_mcp(home=home, host=host)
     return {
-        PART_MCP: install_mureo_mcp(home=home, host=host).as_dict(),
+        PART_MCP: mcp.as_dict(),
         PART_HOOK: install_auth_hook(home=home, host=host).as_dict(),
         PART_SKILLS: install_workflow_skills(home=home, host=host).as_dict(),
     }
