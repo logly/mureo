@@ -725,6 +725,33 @@ class TestPostCredentialsRemove:
             "meta_ads": {"access_token": "Y"}
         }
 
+
+@pytest.mark.unit
+class TestPostShutdown:
+    def test_materializes_empty_credentials_file(self, wizard: ConfigureWizard) -> None:
+        """#210: finishing the wizard writes an empty credentials file at
+        the runtime write path so the filesystem records 'setup completed'
+        even when every platform was skipped (no OAuth ran)."""
+        creds = wizard.host_paths.credentials_path
+        assert not creds.exists()
+        resp = _post(wizard, "/api/shutdown", {})
+        assert json.loads(resp.read().decode("utf-8")) == {"status": "stopping"}
+        assert creds.exists()
+        assert json.loads(creds.read_text(encoding="utf-8")) == {}
+
+    def test_does_not_clobber_existing_credentials(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        creds = wizard.host_paths.credentials_path
+        creds.parent.mkdir(parents=True, exist_ok=True)
+        creds.write_text(
+            json.dumps({"meta_ads": {"access_token": "Y"}}), encoding="utf-8"
+        )
+        _post(wizard, "/api/shutdown", {})
+        assert json.loads(creds.read_text(encoding="utf-8")) == {
+            "meta_ads": {"access_token": "Y"}
+        }
+
     def test_disallowed_section_returns_400(self, wizard: ConfigureWizard) -> None:
         with pytest.raises(urllib.error.HTTPError) as exc:
             _post(
