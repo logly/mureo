@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import threading
+import urllib.error
 import urllib.request
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
@@ -34,7 +35,12 @@ from mureo.core.runtime_context import (
     reset_runtime_context,
     runtime_ui_plugin_credential_fields,
 )
-from mureo.web.plugin_credentials import list_plugin_credential_fields
+from mureo.core.secret_store import FilesystemSecretStore
+from mureo.web.plugin_credentials import (
+    RequiredFieldMissingError,
+    list_plugin_credential_fields,
+    save_plugin_credentials,
+)
 from mureo.web.server import ConfigureWizard
 
 if TYPE_CHECKING:
@@ -260,3 +266,145 @@ def test_handler_suppresses_scope_when_home_injected(
         "client_secret",
         "account_id",
     ]
+
+
+# ---------------------------------------------------------------------------
+# #211 — save-side: required-validation is scope-aware (default unchanged)
+# ---------------------------------------------------------------------------
+
+
+def _line_provider() -> ProviderEntry:
+    class _Line:
+        name = "line_ads"
+        display_name = "LINE Ads"
+        capabilities = frozenset()
+        account_credential_fields = (
+            AccountCredentialField(
+                key="access_key", display_name="Access Key", required=True, secret=True
+            ),
+            AccountCredentialField(
+                key="secret_key", display_name="Secret Key", required=True, secret=True
+            ),
+            AccountCredentialField(
+                key="adaccount_id", display_name="Ad Account ID", required=True
+            ),
+        )
+
+    return ProviderEntry(
+        name="line_ads",
+        display_name="LINE Ads",
+        capabilities=frozenset(),
+        provider_class=_Line,
+        source_distribution=None,
+    )
+
+
+@pytest.fixture
+def line_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(default_registry, "_entries", {"line_ads": _line_provider()})
+
+
+@pytest.mark.unit
+def test_save_unscoped_enforces_all_required(
+    line_provider: None, tmp_path: Path
+) -> None:
+    """Default (no field_scope): the per-account ``adaccount_id`` required
+    field is enforced — this is the #211 bug for scoped installs and the
+    correct behavior for standalone OSS."""
+    store = FilesystemSecretStore(path=tmp_path / "credentials.json")
+    with pytest.raises(RequiredFieldMissingError, match="adaccount_id"):
+        save_plugin_credentials(
+            "line_ads",
+            {"access_key": "AK", "secret_key": "SK"},
+            secret_store=store,
+        )
+
+
+@pytest.mark.unit
+def test_save_scoped_out_required_not_enforced(
+    line_provider: None, tmp_path: Path
+) -> None:
+    """With the provider scoped to auth-only, the scoped-out
+    ``adaccount_id`` required field is not enforced → the save succeeds."""
+    store = FilesystemSecretStore(path=tmp_path / "credentials.json")
+    scope = {"line_ads": frozenset({"access_key", "secret_key"})}
+    result = save_plugin_credentials(
+        "line_ads",
+        {"access_key": "AK", "secret_key": "SK"},
+        secret_store=store,
+        field_scope=scope,
+    )
+    assert set(result["accepted_keys"]) == {"access_key", "secret_key"}
+    saved = store.load("line_ads")
+    assert saved == {"access_key": "AK", "secret_key": "SK"}
+    assert "adaccount_id" not in saved
+
+
+@pytest.mark.unit
+def test_save_scoped_in_required_still_enforced(
+    line_provider: None, tmp_path: Path
+) -> None:
+    """A required field that IS in scope is still enforced — a blank
+    scoped-in secret with no stored value fails."""
+    store = FilesystemSecretStore(path=tmp_path / "credentials.json")
+    scope = {"line_ads": frozenset({"access_key", "secret_key"})}
+    with pytest.raises(RequiredFieldMissingError, match="access_key"):
+        save_plugin_credentials(
+            "line_ads",
+            {"access_key": "", "secret_key": "SK"},
+            secret_store=store,
+            field_scope=scope,
+        )
+
+
+@pytest.fixture
+def line_home_wizard(tmp_path: Path, line_provider: None) -> Iterator[ConfigureWizard]:
+    home = tmp_path / "home"
+    for sub in ("", ".claude", ".claude/commands", ".mureo"):
+        (home / sub).mkdir(parents=True, exist_ok=True)
+    wiz = ConfigureWizard(home=home)
+    thread = threading.Thread(target=wiz.serve, daemon=True)
+    thread.start()
+    wiz.wait_until_ready(timeout=5.0)
+    try:
+        yield wiz
+    finally:
+        wiz.shutdown()
+        thread.join(timeout=2.0)
+
+
+def _post(wiz: ConfigureWizard, path: str, payload: dict[str, Any]) -> Any:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{wiz.port}{path}",
+        data=json.dumps(payload).encode(),
+        method="POST",
+    )
+    req.add_header("Content-Type", "application/json")
+    req.add_header("X-CSRF-Token", wiz.session.csrf_token)
+    return urllib.request.urlopen(req, timeout=2.0)
+
+
+@pytest.mark.unit
+def test_save_handler_suppresses_scope_when_home_injected(
+    line_home_wizard: ConfigureWizard,
+) -> None:
+    """SAFETY (#195/#207/#211): a home-injected wizard must NOT apply a
+    process-global factory's scope, so required validation stays full — a
+    payload missing the per-account required field is rejected."""
+    scope = {"line_ads": frozenset({"access_key", "secret_key"})}
+    with (
+        patch(
+            "mureo.web.handlers.runtime_ui_plugin_credential_fields", return_value=scope
+        ),
+        pytest.raises(urllib.error.HTTPError) as exc,
+    ):
+        _post(
+            line_home_wizard,
+            "/api/credentials/plugins/save",
+            {
+                "provider_name": "line_ads",
+                "values": {"access_key": "AK", "secret_key": "SK"},
+            },
+        )
+    assert exc.value.code == 400
+    assert json.loads(exc.value.read())["error"] == "required_field_missing"

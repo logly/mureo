@@ -102,7 +102,7 @@ from mureo.web.setup_actions import (
 from mureo.web.status_collector import collect_status
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Collection, Mapping
 
     from mureo.web.extensions import (
         RouteContribution,
@@ -298,29 +298,14 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if path == "/api/credentials/plugins":
             # Forward the session locale so plugin-declared
             # ``display_name_i18n`` / ``description_i18n`` entries are
-            # resolved against the operator's active locale (#186).
-            #
-            # A multi-account backend may scope which fields render via
-            # the store's ``ui_plugin_credential_fields`` capability
-            # (#207). Resolve it ONLY in production (home is None): an
-            # injected home sandboxes the wizard, and the process-global
-            # factory's store lives outside that sandbox (the dev/CI
-            # agency factory resolves against the operator's real
-            # ~/.mureo), so consulting it under an injected home would let
-            # a sandboxed/test wizard inherit a real backend's scoping —
-            # the same #195 gate the credentials-path / multi-account
-            # resolution use.
-            field_scope = (
-                None
-                if self.wizard.home is not None
-                else runtime_ui_plugin_credential_fields()
-            )
+            # resolved against the operator's active locale (#186). The
+            # field scope (#207) is home-gated — see _resolve_field_scope.
             send_json(
                 self,
                 {
                     "plugins": list_plugin_credential_fields(
                         locale=self.wizard.session.locale,
-                        field_scope=field_scope,
+                        field_scope=self._resolve_field_scope(),
                     )
                 },
             )
@@ -495,6 +480,25 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         envelope = clear_all_setup(home=self.wizard.home, host=self.wizard.session.host)
         send_json(self, envelope)
 
+    def _resolve_field_scope(self) -> Mapping[str, Collection[str]] | None:
+        """Resolve the per-provider credential-field scope (#207/#211).
+
+        A multi-account backend may scope which fields the dashboard
+        renders / required-validates via the store's
+        ``ui_plugin_credential_fields`` capability. Resolve it ONLY in
+        production (``home is None``): an injected ``home`` sandboxes the
+        wizard, and the process-global factory's store lives outside that
+        sandbox (the dev/CI agency factory resolves against the operator's
+        real ~/.mureo), so consulting it under an injected home would let a
+        sandboxed/test wizard inherit a real backend's scoping — the same
+        #195 gate the credentials-path / multi-account resolution use.
+        Both the list (#207) and save (#211) sides read this one value so
+        they never diverge.
+        """
+        if self.wizard.home is not None:
+            return None
+        return runtime_ui_plugin_credential_fields()
+
     def _post_plugin_credentials_save(self, payload: dict[str, Any]) -> None:
         """Persist one plugin provider's per-account credential values.
 
@@ -513,7 +517,10 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         store = FilesystemSecretStore(path=self.wizard.host_paths.credentials_path)
         try:
             result = save_plugin_credentials(
-                provider_name, raw_values, secret_store=store
+                provider_name,
+                raw_values,
+                secret_store=store,
+                field_scope=self._resolve_field_scope(),
             )
         except UnknownProviderError:
             send_error_json(self, 400, "unknown_provider")

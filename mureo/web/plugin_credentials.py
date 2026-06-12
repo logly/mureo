@@ -169,6 +169,7 @@ def save_plugin_credentials(
     values: dict[str, Any],
     *,
     secret_store: SecretStore | None = None,
+    field_scope: Mapping[str, Collection[str]] | None = None,
 ) -> dict[str, Any]:
     """Persist one provider's per-account credential values.
 
@@ -182,6 +183,17 @@ def save_plugin_credentials(
         secret_store: Persistence backend. Defaults to a fresh
             :class:`FilesystemSecretStore` pointing at
             ``~/.mureo/credentials.json``.
+        field_scope: Optional per-provider allow-list of field keys in
+            this surface's jurisdiction — the save-side mirror of #207's
+            list filtering (#211). When the provider is **present** in the
+            mapping, ``required=True`` is enforced only for fields whose
+            key is **listed**; a per-account required field the backend
+            scoped out of the dashboard (and supplies through its own
+            per-client flow) is not enforced here, so a scoped form can
+            actually save. ``None`` / provider absent → every declared
+            required field is enforced, exactly as before. Resolved by the
+            handler from the same ``ui_plugin_credential_fields``
+            capability used for listing, behind the ``home is None`` gate.
 
     Returns:
         A response envelope ``{"merged": <dict>, "accepted_keys":
@@ -207,6 +219,13 @@ def save_plugin_credentials(
     declared = get_account_credential_fields(entry.provider_class)
     declared_by_key: dict[str, AccountCredentialField] = {f.key: f for f in declared}
 
+    # Fields in this surface's jurisdiction for required-enforcement
+    # (#211). ``None`` means "no scoping" (standalone OSS, or the provider
+    # is not in the mapping) → enforce every declared required field. A
+    # set means enforce ``required`` only for the listed keys; the rest
+    # are supplied by the backend's own per-client flow.
+    scoped = field_scope.get(provider_name) if field_scope is not None else None
+
     # Validate the value type before reading the existing store — a bad
     # payload should not even cause a read.
     for key, value in values.items():
@@ -223,11 +242,15 @@ def save_plugin_credentials(
     accepted_keys: list[str] = []
     for field in declared:
         supplied = values.get(field.key)
+        # Scope-aware required-ness (#211): a field the active backend
+        # scoped OUT of this surface is not enforced here, so a scoped
+        # form (which never renders it) can still save.
+        required = field.required and (scoped is None or field.key in scoped)
         if supplied is None:
             # Absent from payload. Required fields without an existing
             # stored value are an error; otherwise the field is left
             # untouched.
-            if field.required and field.key not in existing:
+            if required and field.key not in existing:
                 raise RequiredFieldMissingError(
                     f"required field missing: {provider_name}.{field.key}"
                 )
@@ -236,13 +259,13 @@ def save_plugin_credentials(
             # Blank secret = "keep existing". Only OK when there is an
             # existing value to keep; otherwise the operator submitted
             # a fresh form with a blank required field.
-            if field.required and field.key not in existing:
+            if required and field.key not in existing:
                 raise RequiredFieldMissingError(
                     f"required secret field has no value to keep: "
                     f"{provider_name}.{field.key}"
                 )
             continue
-        if field.required and not field.secret and supplied == "":
+        if required and not field.secret and supplied == "":
             # Blank non-secret required field is taken literally as
             # "clear" — refuse so the operator does not silently land
             # in a state the plugin will reject at runtime.
