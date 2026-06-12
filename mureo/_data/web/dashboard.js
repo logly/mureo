@@ -865,6 +865,43 @@
     }
   }
 
+  // #229 — About tab: mureo version + every installed package that
+  // contributes to mureo's plugin entry-point groups. Read-only; the
+  // server payload carries only distribution names and versions.
+  // Silent failure like renderByodStatus — the section is non-critical.
+  async function renderAbout() {
+    const versionNode = document.querySelector(
+      "[data-dashboard-about-version]"
+    );
+    const tbody = document.querySelector("[data-about-packages-body]");
+    if (!versionNode || !tbody) return;
+    let body;
+    try {
+      const res = await fetch("/api/about");
+      if (!res.ok) return;
+      body = await res.json();
+    } catch (_err) {
+      return;
+    }
+    const mureoVersion =
+      body && body.mureo && body.mureo.version ? body.mureo.version : "";
+    versionNode.textContent = mureoVersion
+      ? MUREO.t("dashboard.about_version", { version: mureoVersion })
+      : "";
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+    if (!body || !Array.isArray(body.packages)) return;
+    body.packages.forEach(function (pkg) {
+      const tr = document.createElement("tr");
+      const nameCell = document.createElement("td");
+      nameCell.textContent = pkg && pkg.name ? pkg.name : "";
+      const versionCell = document.createElement("td");
+      versionCell.textContent = pkg && pkg.version ? pkg.version : "";
+      tr.appendChild(nameCell);
+      tr.appendChild(versionCell);
+      tbody.appendChild(tr);
+    });
+  }
+
   function renderAll() {
     const status = MUREO.state.status;
     renderHostSection(status);
@@ -875,6 +912,7 @@
     renderEnvVarsSection(status);
     loadDemoScenarios();
     renderByodStatus();
+    renderAbout();
   }
 
   // #223: monotonic render generation. renderPluginCredentials is async

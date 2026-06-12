@@ -11,6 +11,7 @@ Routes
 ``GET  /static/<file>``          → bundled ``mureo/_data/web/<file>``
 ``GET  /api/status``             → status_collector snapshot
 ``GET  /api/csrf``               → ``{"csrf_token": "..."}``
+``GET  /api/about``              → mureo + extension package versions
 ``GET  /api/oauth/<p>/status``   → per-provider OAuth flags
 ``POST /api/locale``             → set session locale (en|ja)
 ``POST /api/host``               → set Claude application host
@@ -62,6 +63,7 @@ from mureo.web._helpers import (
     send_error_json,
     send_json,
 )
+from mureo.web.about import collect_about_info
 from mureo.web.byod_actions import (
     byod_clear,
     byod_import,
@@ -292,6 +294,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/csrf":
             self._serve_csrf()
+            return
+        if path == "/api/about":
+            # #229 — version/package info for the About tab. Read-only,
+            # no secrets, so the Host-header gate alone suffices (same
+            # as every other GET JSON endpoint).
+            send_json(self, collect_about_info())
             return
         if path == "/api/extensions":
             self._serve_extensions_index()
