@@ -10,6 +10,7 @@ so nothing here depends on what is actually installed.
 from __future__ import annotations
 
 import json
+import re
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from typing import Any
@@ -272,6 +273,22 @@ class TestAboutAssets:
     def test_dashboard_js_fetches_about_endpoint(self) -> None:
         js = (_WEB / "dashboard.js").read_text(encoding="utf-8")
         assert "/api/about" in js
+
+    def test_about_is_the_last_static_nav_item(self) -> None:
+        """The About tab must sit at the very bottom of the dashboard
+        nav — below Danger Zone in the static markup."""
+        html = (_WEB / "app.html").read_text(encoding="utf-8")
+        nav_keys = re.findall(r'data-dashboard-nav="([^"]+)"', html)
+        assert nav_keys, "no dashboard nav items found"
+        assert nav_keys[-1] == "about"
+
+    def test_extension_tabs_are_inserted_before_about(self) -> None:
+        """Extension nav items must be inserted BEFORE the About item
+        (not appended at the end of the list), so About stays the last
+        tab even when plugins such as the agency extension add tabs."""
+        js = (_WEB / "extensions.js").read_text(encoding="utf-8")
+        assert 'data-dashboard-nav="about"' in js
+        assert "insertBefore" in js
 
     def test_i18n_has_about_keys_in_both_locales(self) -> None:
         catalog = json.loads((_WEB / "i18n.json").read_text(encoding="utf-8"))
