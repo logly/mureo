@@ -315,3 +315,28 @@ class TestMureoDisableState:
             "meta_ads": False,
             "ga4": False,
         }
+
+
+@pytest.mark.unit
+class TestMultiAccountAuthFlag:
+    """#222 — the snapshot carries a ``multi_account_auth`` flag so the UI
+    can suppress the bare-``mureo`` MCP registration. The handler computes
+    it behind the ``home is None`` gate; ``collect_status`` just relays it.
+    """
+
+    def test_default_is_false(self, tmp_path: Path) -> None:
+        snap = collect_status(
+            "claude-code", home=_build_home(tmp_path), paths=_paths(tmp_path)
+        )
+        assert snap.multi_account_auth is False
+        assert snap.as_dict()["multi_account_auth"] is False
+
+    def test_flag_propagates_to_snapshot(self, tmp_path: Path) -> None:
+        snap = collect_status(
+            "claude-code",
+            home=_build_home(tmp_path),
+            paths=_paths(tmp_path),
+            multi_account_auth=True,
+        )
+        assert snap.multi_account_auth is True
+        assert snap.as_dict()["multi_account_auth"] is True

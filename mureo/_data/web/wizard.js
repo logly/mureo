@@ -198,7 +198,11 @@
   function deriveCompletion(status) {
     if (!status) return false;
     const parts = status.setup_parts || {};
-    return Boolean(parts.mureo_mcp && parts.auth_hook && parts.skills);
+    // #222: a multi-account backend never registers the bare `mureo` MCP
+    // entry (per-client entries are the correct wiring), so it is not a
+    // completion requirement there.
+    const mcpOk = status.multi_account_auth || Boolean(parts.mureo_mcp);
+    return Boolean(mcpOk && parts.auth_hook && parts.skills);
   }
 
   function hydrateStateFromStatus(status) {
@@ -274,11 +278,17 @@
     if (STATE.host === "claude-desktop") {
       authHookLabel += " " + MUREO.t("wizard.basic.auth_hook_desktop_na");
     }
+    // #222: a multi-account backend wires per-client `mureo-<slug>` entries
+    // instead of the bare `mureo` MCP, so the registration pill must not
+    // render (the backend skips the write too).
+    const mcpRow = status.multi_account_auth
+      ? ""
+      : '<li>' + pill(parts.mureo_mcp, MUREO.t("wizard.basic.mureo_mcp")) + "</li>";
     wrap.innerHTML =
       '<h2>' + MUREO.t("wizard.basic.title") + "</h2>" +
       '<p>' + MUREO.t("wizard.basic.desc") + "</p>" +
       '<ul class="wizard-basic-parts">' +
-      '<li>' + pill(parts.mureo_mcp, MUREO.t("wizard.basic.mureo_mcp")) + "</li>" +
+      mcpRow +
       '<li>' + pill(parts.auth_hook, authHookLabel) + "</li>" +
       '<li>' + pill(parts.skills, MUREO.t("wizard.basic.skills")) + "</li>" +
       "</ul>" +

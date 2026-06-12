@@ -648,3 +648,76 @@ class TestHostParamSignatures:
             )
 
         assert isinstance(result, dict)
+
+
+# ---------------------------------------------------------------------------
+# install_basic_setup — #222 skip the bare mureo MCP registration for a
+# multi-account backend (per-client entries are the correct wiring).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestInstallBasicSetupSkipMcp:
+    def test_skip_mcp_registration_skips_only_mcp(self, tmp_path: Path) -> None:
+        """``skip_mcp_registration=True`` returns a ``skipped`` MCP part and
+        never calls ``install_mureo_mcp`` — hook + skills still run."""
+        from mureo.web import setup_actions
+        from mureo.web.setup_actions import (
+            PART_HOOK,
+            PART_MCP,
+            PART_SKILLS,
+            install_basic_setup,
+        )
+
+        with (
+            patch.object(setup_actions, "install_mureo_mcp") as mock_mcp,
+            patch.object(
+                setup_actions,
+                "install_auth_hook",
+                return_value=ActionResult(status="ok"),
+            ) as mock_hook,
+            patch.object(
+                setup_actions,
+                "install_workflow_skills",
+                return_value=ActionResult(status="ok"),
+            ) as mock_skills,
+        ):
+            result = install_basic_setup(home=tmp_path, skip_mcp_registration=True)
+
+        mock_mcp.assert_not_called()
+        mock_hook.assert_called_once()
+        mock_skills.assert_called_once()
+        assert result[PART_MCP] == {
+            "status": "skipped",
+            "detail": "multi_account_auth",
+        }
+        assert result[PART_HOOK]["status"] == "ok"
+        assert result[PART_SKILLS]["status"] == "ok"
+
+    def test_default_installs_mcp(self, tmp_path: Path) -> None:
+        """Default (``skip_mcp_registration=False``) installs the MCP part as
+        before — regression guard for standalone OSS."""
+        from mureo.web import setup_actions
+        from mureo.web.setup_actions import PART_MCP, install_basic_setup
+
+        with (
+            patch.object(
+                setup_actions,
+                "install_mureo_mcp",
+                return_value=ActionResult(status="ok", detail="x"),
+            ) as mock_mcp,
+            patch.object(
+                setup_actions,
+                "install_auth_hook",
+                return_value=ActionResult(status="ok"),
+            ),
+            patch.object(
+                setup_actions,
+                "install_workflow_skills",
+                return_value=ActionResult(status="ok"),
+            ),
+        ):
+            result = install_basic_setup(home=tmp_path)
+
+        mock_mcp.assert_called_once()
+        assert result[PART_MCP]["status"] == "ok"

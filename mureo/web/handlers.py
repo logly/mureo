@@ -407,7 +407,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
 
     def _serve_status(self) -> None:
         snapshot = collect_status(
-            self.wizard.session.host, paths=self.wizard.host_paths
+            self.wizard.session.host,
+            paths=self.wizard.host_paths,
+            multi_account_auth=self._multi_account_active(),
         )
         send_json(self, snapshot.as_dict())
 
@@ -460,7 +462,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
 
     def _post_setup_basic(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         result = install_basic_setup(
-            home=self.wizard.home, host=self.wizard.session.host
+            home=self.wizard.home,
+            host=self.wizard.session.host,
+            # #222: a multi-account backend must not get the bare `mureo`
+            # entry (per-client `mureo-<slug>` entries are the only correct
+            # wiring). Same production gate as the account-picker skip.
+            skip_mcp_registration=self._multi_account_active(),
         )
         send_json(self, result)
 
@@ -501,6 +508,21 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             url = saved.get(_OAUTH_CALLBACK_URL_KEY)
             if isinstance(url, str) and url:
                 plugin["oauth_callback_url"] = url
+
+    def _multi_account_active(self) -> bool:
+        """True ⇔ a multi-account backend is active in production (#198/#222).
+
+        The single ``home is None and runtime_multi_account_auth()`` gate
+        shared by the account-picker skip (#198), the status flag, and the
+        MCP-registration skip (#222). Resolve the capability ONLY when
+        ``home is None`` (production): an injected ``home`` sandboxes the
+        wizard, and the process-global factory's store lives outside that
+        sandbox (in dev/CI a third-party factory resolves against the
+        operator's real ~/.mureo), so consulting it under an injected home
+        would let a sandboxed/test wizard inherit real-backend behaviour —
+        the #195 escape the credentials-path / field-scope gates guard.
+        """
+        return self.wizard.home is None and runtime_multi_account_auth()
 
     def _resolve_field_scope(self) -> Mapping[str, Collection[str]] | None:
         """Resolve the per-provider credential-field scope (#207/#211).
@@ -743,17 +765,11 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             send_error_json(self, 404, "unknown_provider")
             return
         self.wizard.session.mark_oauth_pending(provider)
-        # A multi-account backend (#198) persists only the operator-
-        # shared credentials and skips the per-account picker. Resolve
-        # the capability from the active RuntimeContext, but ONLY in
-        # production (home is None). An injected ``home`` sandboxes the
-        # wizard; the process-global factory's store lives outside that
-        # sandbox (in dev/CI a third-party factory resolves against the
-        # operator's real ~/.mureo), so consulting it under an injected
-        # home would let test wizards inherit real-backend behavior —
-        # the same #195 escape the credentials-path override guards
-        # against.
-        multi_account = self.wizard.home is None and runtime_multi_account_auth()
+        # A multi-account backend (#198) persists only the operator-shared
+        # credentials and skips the per-account picker. Same production gate
+        # as the status flag / MCP-registration skip — see
+        # _multi_account_active for the home-is-None rationale.
+        multi_account = self._multi_account_active()
         try:
             result = self.wizard.oauth_bridge.start(
                 provider=provider,

@@ -63,6 +63,13 @@ class StatusSnapshot:
     # (mureo-native tools for that platform are stepped aside so the
     # official MCP is the single source). Drives the dashboard toggle.
     mureo_disable: dict[str, bool]
+    # #222: True ⇔ the active store declares ``multi_account_auth`` (a
+    # multi-account backend). The configure UI uses it to suppress the
+    # bare-``mureo`` MCP registration (the backend writes per-client
+    # ``mureo-<slug>`` entries instead). Computed by the handler behind the
+    # ``home is None`` gate and relayed through here; defaults False so
+    # standalone OSS and direct callers are unchanged.
+    multi_account_auth: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -74,6 +81,7 @@ class StatusSnapshot:
             "env_vars": {k: dict(v) for k, v in self.env_vars.items()},
             "legacy_commands_present": self.legacy_commands_present,
             "mureo_disable": dict(self.mureo_disable),
+            "multi_account_auth": self.multi_account_auth,
         }
 
 
@@ -202,8 +210,14 @@ def collect_status(
     *,
     home: Path | None = None,
     paths: HostPaths | None = None,
+    multi_account_auth: bool = False,
 ) -> StatusSnapshot:
-    """Build a status snapshot for ``host``."""
+    """Build a status snapshot for ``host``.
+
+    ``multi_account_auth`` (#222) is relayed verbatim onto the snapshot —
+    the caller (the handler) computes it behind the ``home is None`` gate,
+    so this stays a pure filesystem read with no runtime-context coupling.
+    """
     resolved = paths if paths is not None else get_host_paths(host, home)
     setup_parts = read_setup_state(home)
     providers = _detect_installed_providers(resolved.mcp_registry_path)
@@ -221,4 +235,5 @@ def collect_status(
         env_vars=env_vars,
         legacy_commands_present=legacy,
         mureo_disable=mureo_disable,
+        multi_account_auth=multi_account_auth,
     )

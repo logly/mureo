@@ -282,6 +282,91 @@ class TestPostSetupBasic:
         mock_install.assert_called_once()
 
 
+@pytest.mark.unit
+class TestSetupBasicMultiAccountGate:
+    """#222 — a multi-account backend must not get the bare ``mureo`` MCP
+    entry. Mirrors the #198 account-picker gate: resolve the capability
+    ONLY in production (``home is None``); a home-injected (sandboxed)
+    wizard must never consult the process-global factory."""
+
+    def test_skip_mcp_false_when_home_injected(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        with (
+            patch(
+                "mureo.web.handlers.runtime_multi_account_auth", return_value=True
+            ),
+            patch(
+                "mureo.web.handlers.install_basic_setup",
+                return_value={"mureo_mcp": {"status": "ok"}},
+            ) as mock_install,
+        ):
+            _post(wizard, "/api/setup/basic", {})
+        assert mock_install.call_args.kwargs["skip_mcp_registration"] is False
+
+    def test_skip_mcp_true_when_home_none(self, tmp_path: Path) -> None:
+        sentinel = tmp_path / "runtime" / "credentials.json"
+        with patch(
+            "mureo.web.server.runtime_credentials_path", lambda _default: sentinel
+        ):
+            wiz = ConfigureWizard(home=None)
+        thread = threading.Thread(target=wiz.serve, daemon=True)
+        thread.start()
+        wiz.wait_until_ready(timeout=5.0)
+        try:
+            with (
+                patch(
+                    "mureo.web.handlers.runtime_multi_account_auth",
+                    return_value=True,
+                ),
+                patch(
+                    "mureo.web.handlers.install_basic_setup",
+                    return_value={"mureo_mcp": {"status": "skipped"}},
+                ) as mock_install,
+            ):
+                _post(wiz, "/api/setup/basic", {})
+            assert mock_install.call_args.kwargs["skip_mcp_registration"] is True
+        finally:
+            wiz.shutdown()
+            thread.join(timeout=2.0)
+
+
+@pytest.mark.unit
+class TestServeStatusMultiAccount:
+    """#222 — ``GET /api/status`` surfaces ``multi_account_auth`` behind the
+    same ``home is None`` gate so the UI can suppress the MCP section."""
+
+    def test_status_false_when_home_injected(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        with patch(
+            "mureo.web.handlers.runtime_multi_account_auth", return_value=True
+        ):
+            resp = _get(wizard, "/api/status")
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["multi_account_auth"] is False
+
+    def test_status_true_when_home_none(self, tmp_path: Path) -> None:
+        sentinel = tmp_path / "runtime" / "credentials.json"
+        with patch(
+            "mureo.web.server.runtime_credentials_path", lambda _default: sentinel
+        ):
+            wiz = ConfigureWizard(home=None)
+        thread = threading.Thread(target=wiz.serve, daemon=True)
+        thread.start()
+        wiz.wait_until_ready(timeout=5.0)
+        try:
+            with patch(
+                "mureo.web.handlers.runtime_multi_account_auth", return_value=True
+            ):
+                resp = _get(wiz, "/api/status")
+            body = json.loads(resp.read().decode("utf-8"))
+            assert body["multi_account_auth"] is True
+        finally:
+            wiz.shutdown()
+            thread.join(timeout=2.0)
+
+
 # ---------------------------------------------------------------------------
 # Session-host propagation into setup_actions (planner HANDOFF
 # feat-web-config-ui-phase1-desktop-host.md, Q5). The 5 setup handler
