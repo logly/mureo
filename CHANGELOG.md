@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.32] - 2026-06-13
+
+Plugin OAuth flexibility for stricter providers, an "About mureo" menu
+in configure, and the definitive fix for the dead-terminal Ctrl+C
+problem during configure sessions.
+
+### Added
+
+#### Provider callback port + token-endpoint auth style for plugin OAuth (#220, #221)
+
+Plugins can now declare the loopback callback port their provider
+pre-registered and the token-endpoint authentication style the provider
+expects, so authorization-code flows work with consoles that pin both.
+
+#### Skip bare mureo MCP registration for multi-account backends (#222, #225)
+
+On agency installs driven by a multi-account backend, configure no
+longer registers the bare `mureo` MCP entry the backend supersedes.
+
+#### "About mureo" menu in configure (#229, #232, #233)
+
+A read-only About tab shows the mureo logo, the installed mureo version,
+and every installed extension package (bridges/agency) with its version.
+Discovery is entry-point based (`mureo.providers`,
+`mureo.runtime_context_factory`, `mureo.web_extensions`), deduplicated by
+distribution and fault-isolated per entry point, so plugins appear
+automatically and one broken plugin never breaks the endpoint
+(`GET /api/about`, Host-gated, names+versions only). The tab is pinned
+as the last nav item — extension tabs slot in above it (#233).
+
+### Fixed
+
+#### Ctrl+C dead terminal during configure (#227, #230, #234)
+
+An interactive arrow-key menu leaking raw mode (`ISIG`/`ICANON`/`ECHO`
+cleared) left `mureo configure` stranded: Ctrl+C never became SIGINT and
+typing had no echo for the full timeout. The wait now forces cooked mode
+before blocking (#230) and re-asserts it every second while waiting
+(#234), so a leak from plugin code running mid-session — which a
+one-shot fix cannot recover from — self-heals within a tick. No-op on
+non-TTY stdin; never clears terminal bits.
+
+#### macOS picker prompts follow the configure locale (#228, #231)
+
+The native folder/file picker prompts were hardcoded English. They are
+now locale-keyed baked constants (en/ja) selected by the server-side
+session locale — never by anything in the request body — preserving the
+zero-injection AppleScript design. Dialog chrome (buttons, New Folder)
+still follows the macOS system language, which is outside mureo's
+control.
+
+#### Plugin-credentials card race + pre-fill (#223, #224, #226)
+
+Two concurrent status refreshes could render the plugin-credentials
+card twice, and saved non-secret values were not pre-filled on re-open.
+The render is now deduplicated and current values pre-fill the form.
+
 ## [0.9.31] - 2026-06-12
 
 Plugin OAuth onboarding reaches first-run usability — the two blockers
