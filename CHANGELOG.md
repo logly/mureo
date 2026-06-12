@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.31] - 2026-06-12
+
+Plugin OAuth onboarding reaches first-run usability — the two blockers
+found while verifying Yahoo! JAPAN Ads on an agency install — plus the
+configure correctness/UI fixes that landed alongside.
+
+### Added
+
+#### Operator-supplied loopback callback URL for plugin OAuth (#216)
+
+Most providers (Yahoo biz-oauth included) only accept a `redirect_uri`
+that **exactly matches** one pre-registered in their developer console.
+The bridge built the `redirect_uri` from the configure server's
+*ephemeral* port, which changes every `mureo configure` run and can never
+be registered — so consent failed 100%. The OAuth card now takes the
+loopback callback URL the operator registered; the wizard binds *that*
+port and sends the URL **verbatim** as the `redirect_uri`. The value is
+validated as loopback-only (`http`, `127.0.0.1`/`localhost`, an explicit
+port, a path), a port already in use surfaces as a clear
+`callback_port_unavailable` instead of a hang, and the saved URL is
+pre-filled on re-auth.
+
+#### Authenticate-is-save for plugin OAuth providers (#217)
+
+An `account_oauth` provider's `target_field` (`refresh_token`) is
+`required`, so **Save** rejected the form (no token yet) while
+**Authenticate** expected the client id/secret saved first — first-time
+setup deadlocked. For OAuth providers, **Authenticate now *is* save**: a
+single action takes the submitted form values, runs the consent flow, and
+persists the values together with the obtained token in one atomic write
+(nothing is written if consent is abandoned). The card drops the Save
+button, shows the token field as a read-only status row, and exempts the
+OAuth `target_field` from required-validation (defense in depth,
+regardless of UI).
+
+#### Scope-aware required-validation for plugin credentials (#211)
+
+`save_plugin_credentials` now mirrors #207's field scoping on the save
+side: when a multi-account backend scopes a per-account field out of the
+dashboard, that field is no longer required-enforced here, so a scoped
+form can actually save. Standalone installs (no scoping) enforce every
+declared required field exactly as before.
+
+#### Materialize the credentials file at the runtime path on wizard completion (#210)
+
+On wizard completion the credentials file is now created (empty) at the
+active runtime path if absent, so a backend that resolves credentials
+from a `runtime_credentials_path` finds the file in place instead of
+racing the first write.
+
+### Fixed
+
+#### Dashboard toasts now render above page content (#214)
+
+The toast overlay lived inside `<main>`, so on a long Dashboard a toast
+triggered after scrolling could render off-screen. It now sits at
+body level and is visible regardless of scroll position.
+
 ## [0.9.30] - 2026-06-12
 
 ### Added
