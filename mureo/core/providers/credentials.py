@@ -141,9 +141,19 @@ class AccountOAuthConfig:
         callback_path: Path the provider redirects back to on the local
             loopback callback server. Default ``"/oauth/callback"``; the
             ephemeral port is chosen at runtime, mirroring the loopback
-            redirect flow Google's wizard already uses. A provider that
-            pins an exact redirect URI must register a loopback URI that
-            allows a variable port.
+            redirect flow Google's wizard already uses.
+        callback_port: Fixed loopback port the provider's redirect_uri is
+            registered on (#220). ``None`` (the default) keeps the
+            operator-supplied / ephemeral behaviour (#216). A provider
+            whose OAuth server requires the ``redirect_uri`` to match a
+            **pre-registered** value exactly (Yahoo! JAPAN Ads, whose port
+            cannot vary) declares the canonical port here; the configure UI
+            pre-fills the callback URL as
+            ``http://127.0.0.1:<callback_port><callback_path>`` so the
+            operator registers — and the wizard binds — that exact URL. It
+            is a *default* the operator can still override, not an
+            authority: the bind + verbatim redirect_uri path (#216) is
+            unchanged.
     """
 
     authorize_url: str
@@ -153,6 +163,7 @@ class AccountOAuthConfig:
     target_field: str
     scopes: tuple[str, ...] = ()
     callback_path: str = "/oauth/callback"
+    callback_port: int | None = None
 
 
 __all__ = ["AccountCredentialField", "AccountOAuthConfig"]

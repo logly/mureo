@@ -955,3 +955,64 @@ def test_save_still_requires_non_oauth_required_field(
             {"client_id": "CID", "client_secret": "SECRET"},
             secret_store=store,
         )
+
+
+# ---------------------------------------------------------------------------
+# #220 — a provider that declares a fixed callback_port surfaces the
+# canonical loopback callback URL in its oauth block, so the dashboard
+# pre-fills the exact URL the operator must register provider-side.
+# ---------------------------------------------------------------------------
+
+
+def _yahoo_oauth_with_port(port: int) -> Any:
+    from mureo.core.providers import AccountOAuthConfig
+
+    return AccountOAuthConfig(
+        authorize_url="https://biz-oauth.yahoo.co.jp/oauth/v1/authorize",
+        token_url="https://biz-oauth.yahoo.co.jp/oauth/v1/token",
+        client_id_field="client_id",
+        client_secret_field="client_secret",
+        target_field="refresh_token",
+        scopes=("scopeA",),
+        callback_port=port,
+    )
+
+
+@pytest.mark.unit
+def test_list_oauth_block_includes_default_callback_url_when_port_declared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "yahoo_ads",
+                fields=_yahoo_fields(),
+                oauth=_yahoo_oauth_with_port(8765),
+            )
+        ],
+    )
+    [plugin] = list_plugin_credential_fields()
+    assert (
+        plugin["oauth"]["default_callback_url"]
+        == "http://127.0.0.1:8765/oauth/callback"
+    )
+
+
+@pytest.mark.unit
+def test_list_oauth_block_omits_default_callback_url_without_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider without callback_port (the #216 default) carries no
+    default_callback_url — the dashboard uses its generic fallback. The
+    oauth block keeps its original three keys."""
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [_entry("yahoo_ads", fields=_yahoo_fields(), oauth=_yahoo_oauth())],
+    )
+    [plugin] = list_plugin_credential_fields()
+    assert "default_callback_url" not in plugin["oauth"]

@@ -75,6 +75,26 @@ def test_config_defaults() -> None:
     )
     assert cfg.scopes == ()
     assert cfg.callback_path == "/oauth/callback"
+    # #220 — no fixed port by default (loopback uses an ephemeral port /
+    # the operator-supplied callback URL, #216). Backward compatible.
+    assert cfg.callback_port is None
+
+
+@pytest.mark.unit
+def test_config_accepts_fixed_callback_port() -> None:
+    """#220 — a provider that requires an exact redirect_uri (Yahoo! JAPAN)
+    declares the canonical loopback port; the configure UI pre-fills the
+    callback URL from it so the operator registers the right value."""
+    cfg = AccountOAuthConfig(
+        authorize_url="https://a.test/authorize",
+        token_url="https://a.test/token",
+        client_id_field="client_id",
+        client_secret_field="client_secret",
+        target_field="refresh_token",
+        callback_port=8765,
+    )
+    assert cfg.callback_port == 8765
+    assert cfg.callback_path == "/oauth/callback"
 
 
 @pytest.mark.unit

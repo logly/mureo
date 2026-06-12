@@ -976,8 +976,13 @@
     cbInput.name = "oauth_callback_url";
     cbInput.type = "text";
     cbInput.autocomplete = "off";
+    // Pre-fill priority: the operator's saved URL, then the provider's
+    // declared canonical port (#220 — Yahoo et al. that pin an exact
+    // redirect_uri), then a generic loopback default.
     cbInput.value =
-      plugin.oauth_callback_url || "http://127.0.0.1:8765/oauth/callback";
+      plugin.oauth_callback_url ||
+      (plugin.oauth && plugin.oauth.default_callback_url) ||
+      "http://127.0.0.1:8765/oauth/callback";
     cbLabel.appendChild(cbInput);
     const cbHint = document.createElement("small");
     cbHint.className = "field-hint";
