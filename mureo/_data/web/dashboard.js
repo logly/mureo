@@ -906,6 +906,119 @@
     });
   }
 
+  // Collect ``{name: value}`` from every input in a plugin form. Shared by
+  // the manual-save and Authenticate-is-save submit paths.
+  function gatherFormValues(form) {
+    const values = {};
+    Array.from(form.querySelectorAll("input")).forEach(function (input) {
+      values[input.name] = input.value;
+    });
+    return values;
+  }
+
+  // #217 — read-only status row for an OAuth-obtained target field (the
+  // refresh token is acquired via consent, never typed).
+  function appendOAuthTargetStatus(form, field) {
+    const row = document.createElement("p");
+    row.className = "plugin-oauth-target muted";
+    const rowLabel = document.createElement("span");
+    rowLabel.textContent = field.display_name + ": ";
+    const rowValue = document.createElement("span");
+    rowValue.setAttribute("data-oauth-target-status", "");
+    rowValue.textContent = MUREO.t("dashboard.plugin_oauth_target_unset");
+    row.appendChild(rowLabel);
+    row.appendChild(rowValue);
+    form.appendChild(row);
+  }
+
+  // One editable credential input (text or masked secret) + optional hint.
+  function appendCredentialInput(form, field) {
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = field.display_name;
+    if (field.required) labelText.textContent += " *";
+    label.appendChild(labelText);
+    const input = document.createElement("input");
+    input.name = field.key;
+    input.type = field.secret ? "password" : "text";
+    // ``new-password`` defeats browser autofill of saved site passwords
+    // into the per-account credential input — ``off`` is ignored by
+    // Safari/Chrome on password inputs.
+    input.autocomplete = field.secret ? "new-password" : "off";
+    if (field.secret) {
+      input.placeholder = MUREO.t(
+        "dashboard.plugin_credentials_secret_placeholder"
+      );
+    } else if (field.placeholder) {
+      input.placeholder = field.placeholder;
+    }
+    label.appendChild(input);
+    if (field.description) {
+      const hint = document.createElement("small");
+      hint.className = "field-hint";
+      hint.textContent = field.description;
+      label.appendChild(hint);
+    }
+    form.appendChild(label);
+  }
+
+  // #216/#217 — OAuth card controls: the operator-supplied loopback
+  // callback URL input + a single Authenticate-IS-save submit (no Save).
+  function appendOAuthControls(form, plugin) {
+    // Pre-fill the saved callback URL (surfaced by the list endpoint) or a
+    // shown well-known default; the operator must register this exact URL
+    // provider-side.
+    const cbLabel = document.createElement("label");
+    const cbText = document.createElement("span");
+    cbText.textContent = MUREO.t("dashboard.plugin_oauth_callback_label");
+    cbLabel.appendChild(cbText);
+    const cbInput = document.createElement("input");
+    cbInput.name = "oauth_callback_url";
+    cbInput.type = "text";
+    cbInput.autocomplete = "off";
+    cbInput.value =
+      plugin.oauth_callback_url || "http://127.0.0.1:8765/oauth/callback";
+    cbLabel.appendChild(cbInput);
+    const cbHint = document.createElement("small");
+    cbHint.className = "field-hint";
+    cbHint.textContent = MUREO.t("dashboard.plugin_oauth_callback_hint");
+    cbLabel.appendChild(cbHint);
+    form.appendChild(cbLabel);
+
+    const authBtn = document.createElement("button");
+    authBtn.type = "submit";
+    authBtn.className = "btn btn-primary";
+    authBtn.textContent = MUREO.t("dashboard.plugin_oauth_authenticate");
+    form.appendChild(authBtn);
+    const status = document.createElement("span");
+    status.className = "plugin-oauth-status muted";
+    form.appendChild(status);
+
+    form.addEventListener("submit", function (evt) {
+      evt.preventDefault();
+      startPluginOAuth(
+        plugin.provider_name,
+        authBtn,
+        status,
+        gatherFormValues(form)
+      );
+    });
+  }
+
+  // Manual-entry provider (#201): a Save button that persists every field.
+  function appendManualSave(form, plugin) {
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.className = "btn btn-primary";
+    submit.textContent = MUREO.t("dashboard.plugin_credentials_save");
+    form.appendChild(submit);
+
+    form.addEventListener("submit", function (evt) {
+      evt.preventDefault();
+      submitPluginCredentials(plugin.provider_name, gatherFormValues(form), form);
+    });
+  }
+
   function buildPluginCredentialsForm(plugin) {
     const wrap = document.createElement("details");
     wrap.className = "plugin-credentials-form";
@@ -913,101 +1026,71 @@
     summary.textContent = plugin.display_name;
     wrap.appendChild(summary);
 
+    // ``oauth`` block ({target_field, client_id_field, client_secret_field})
+    // is present only for a provider whose secret is obtained via the
+    // authorization-code flow (#201). For those providers the card is
+    // Authenticate-IS-save (#217): no Save button, the target_field is a
+    // read-only status row, and the operator supplies the loopback callback
+    // URL they registered (#216). Providers without it keep manual Save +
+    // entry, unchanged.
+    const oauth = plugin.oauth;
     const form = document.createElement("form");
     plugin.fields.forEach(function (field) {
-      const label = document.createElement("label");
-      const labelText = document.createElement("span");
-      labelText.textContent = field.display_name;
-      if (field.required) labelText.textContent += " *";
-      label.appendChild(labelText);
-      const input = document.createElement("input");
-      input.name = field.key;
-      input.type = field.secret ? "password" : "text";
-      // ``new-password`` defeats browser autofill of saved site
-      // passwords into the per-account credential input — ``off`` is
-      // ignored by Safari/Chrome on password inputs.
-      input.autocomplete = field.secret ? "new-password" : "off";
-      if (field.secret) {
-        input.placeholder = MUREO.t(
-          "dashboard.plugin_credentials_secret_placeholder"
-        );
-      } else if (field.placeholder) {
-        input.placeholder = field.placeholder;
+      if (oauth && field.key === oauth.target_field) {
+        appendOAuthTargetStatus(form, field);
+      } else {
+        appendCredentialInput(form, field);
       }
-      label.appendChild(input);
-      if (field.description) {
-        const hint = document.createElement("small");
-        hint.className = "field-hint";
-        hint.textContent = field.description;
-        label.appendChild(hint);
-      }
-      form.appendChild(label);
     });
-
-    const submit = document.createElement("button");
-    submit.type = "submit";
-    submit.className = "btn btn-primary";
-    submit.textContent = MUREO.t("dashboard.plugin_credentials_save");
-    form.appendChild(submit);
-
-    // #201 — a provider whose secret is obtained via OAuth declares an
-    // ``oauth`` block ({target_field, client_id_field, client_secret_field}).
-    // Render an Authenticate button that runs the consent flow and fills
-    // the target field automatically. Providers without it (the default)
-    // keep manual entry only — no button, no behaviour change.
-    if (plugin.oauth) {
-      const authBtn = document.createElement("button");
-      authBtn.type = "button";
-      authBtn.className = "btn btn-secondary";
-      authBtn.textContent = MUREO.t("dashboard.plugin_oauth_authenticate");
-      const status = document.createElement("span");
-      status.className = "plugin-oauth-status muted";
-      authBtn.addEventListener("click", function () {
-        startPluginOAuth(plugin.provider_name, authBtn, status);
-      });
-      form.appendChild(authBtn);
-      form.appendChild(status);
+    if (oauth) {
+      appendOAuthControls(form, plugin);
+    } else {
+      appendManualSave(form, plugin);
     }
-
-    form.addEventListener("submit", function (evt) {
-      evt.preventDefault();
-      const values = {};
-      Array.from(form.querySelectorAll("input")).forEach(function (input) {
-        values[input.name] = input.value;
-      });
-      submitPluginCredentials(plugin.provider_name, values, form);
-    });
     wrap.appendChild(form);
     return wrap;
   }
 
-  // #201 — start a plugin's generic authorization-code OAuth flow. The
-  // server loads the already-saved client id/secret, returns the external
-  // provider consent URL; we open it in a new tab and poll for completion.
-  async function startPluginOAuth(providerName, btn, statusNode) {
+  // #201/#216/#217 — start a plugin's authorization-code OAuth flow.
+  // Authenticate IS save: the operator's current form values (client
+  // id/secret + the registered loopback callback URL + any non-OAuth
+  // field) are POSTed; the server validates the callback URL, binds its
+  // port, and returns the external provider consent URL. We open it in a
+  // new tab and poll for completion; on success the bridge persists the
+  // form values together with the obtained token.
+  async function startPluginOAuth(providerName, btn, statusNode, values) {
     btn.disabled = true;
     statusNode.textContent = MUREO.t("dashboard.plugin_oauth_connecting");
     const base =
       "/api/credentials/plugins/" + encodeURIComponent(providerName) + "/oauth";
     let res;
     try {
-      res = await MUREO.postJson(base + "/start", {});
+      res = await MUREO.postJson(base + "/start", { values: values || {} });
     } catch (_e) {
       res = null;
     }
     if (!res || !res.ok || !res.body || !res.body.url) {
       btn.disabled = false;
       statusNode.textContent = "";
-      const err = res && res.body && res.body.error;
-      const key =
-        err === "client_credentials_missing"
-          ? "dashboard.plugin_oauth_save_client_first"
-          : "dashboard.plugin_oauth_failed";
-      MUREO.toast(MUREO.t(key), "error");
+      MUREO.toast(MUREO.t(oauthStartErrorKey(res)), "error");
       return;
     }
     window.open(res.body.url, "_blank", "noopener");
     pollPluginOAuth(base + "/status", btn, statusNode);
+  }
+
+  // Map a failed /oauth/start response to the most specific toast string
+  // so the operator knows whether to save the client creds, fix the
+  // callback URL (#216), or free the port — not just "failed".
+  function oauthStartErrorKey(res) {
+    const err = res && res.body && res.body.error;
+    if (err === "client_credentials_missing")
+      return "dashboard.plugin_oauth_save_client_first";
+    if (err === "callback_url_invalid")
+      return "dashboard.plugin_oauth_callback_invalid";
+    if (err === "callback_port_unavailable")
+      return "dashboard.plugin_oauth_port_unavailable";
+    return "dashboard.plugin_oauth_failed";
   }
 
   function pollPluginOAuth(statusUrl, btn, statusNode) {

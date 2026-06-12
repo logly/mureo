@@ -59,6 +59,49 @@ def _require_https(url: str, label: str) -> None:
         raise ValueError(f"{label} must be an https:// URL, got {parsed.scheme!r}")
 
 
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost"})
+
+
+def parse_loopback_callback_url(url: str) -> tuple[str, int, str]:
+    """Validate an operator-supplied OAuth callback URL → ``(host, port, path)``.
+
+    The configure server binds a temporary listener on the URL's port to
+    receive the authorization code, and sends this exact URL as the
+    ``redirect_uri`` (so it must match what the operator pre-registered in
+    the provider's console — #216). The URL must therefore be a
+    **loopback** ``http://`` URL with an explicit port and a path:
+
+    - scheme ``http`` — the local listener is plaintext (no TLS on
+      loopback) and an ``https`` callback cannot be served here;
+    - host ``127.0.0.1`` or ``localhost`` — configure cannot receive a
+      non-loopback callback, and forwarding a code elsewhere is unsafe;
+    - an explicit port (the port the listener binds);
+    - a non-empty path (the route the provider redirects to).
+
+    Raises:
+        ValueError: not a loopback http URL with an explicit port and
+            path. The message is safe to surface to the operator.
+    """
+    if not url or any(c in url for c in "\r\n\t") or url.strip() != url:
+        raise ValueError("callback URL is empty or contains illegal characters")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "http":
+        raise ValueError("callback URL must be http:// (loopback only)")
+    if parsed.hostname not in _LOOPBACK_HOSTS:
+        raise ValueError(
+            "callback URL host must be 127.0.0.1 or localhost (loopback only)"
+        )
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("callback URL has an invalid port") from exc
+    if port is None:
+        raise ValueError("callback URL must include an explicit port")
+    if not parsed.path:
+        raise ValueError("callback URL must include a path (e.g. /oauth/callback)")
+    return parsed.hostname, port, parsed.path
+
+
 def build_authorization_code_url(
     *,
     authorize_url: str,
@@ -141,4 +184,5 @@ __all__ = [
     "OAuthExchangeError",
     "build_authorization_code_url",
     "exchange_authorization_code",
+    "parse_loopback_callback_url",
 ]

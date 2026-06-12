@@ -10,7 +10,10 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from mureo.oauth_authcode import build_authorization_code_url
+from mureo.oauth_authcode import (
+    build_authorization_code_url,
+    parse_loopback_callback_url,
+)
 from mureo.web._helpers import read_json_safe
 
 if TYPE_CHECKING:
@@ -36,11 +39,18 @@ _POLL_INTERVAL_SECONDS = 0.25
 
 @dataclass(frozen=True)
 class OAuthHandoffResult:
-    """JSON-friendly payload returned by ``OAuthBridge.start``."""
+    """JSON-friendly payload returned by ``OAuthBridge.start``.
+
+    ``error`` carries a stable machine code for a pre-consent failure
+    (#216) — ``callback_url_invalid`` / ``callback_port_unavailable`` /
+    ``bind_timeout`` — so the dashboard can toast the specific reason
+    instead of a generic failure. ``None`` on the happy path.
+    """
 
     url: str | None
     state: str = "pending"
     provider: str = ""
+    error: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -48,6 +58,7 @@ class OAuthHandoffResult:
             "redirect_url": self.url,
             "state": self.state,
             "provider": self.provider,
+            "error": self.error,
         }
 
 
@@ -175,18 +186,28 @@ class OAuthBridge:
         oauth_config: AccountOAuthConfig,
         client_id: str,
         client_secret: str,
+        callback_url: str,
+        persist_values: dict[str, str] | None = None,
         credentials_path: Path | None = None,
     ) -> OAuthHandoffResult:
-        """Run a generic plugin authorization-code flow (#201).
+        """Run a generic plugin authorization-code flow (#201/#216/#217).
 
         Unlike :meth:`start` (which hands the browser a mureo wizard form
-        that then redirects to Google/Meta), the client id/secret are
-        already saved, so this builds the **external** provider authorize
-        URL directly and the spawned wizard only serves the
-        ``/oauth/callback`` route. The ``state`` nonce and the
-        ephemeral-port ``redirect_uri`` are pinned onto the wizard *after*
-        it binds (so the redirect URI carries the real port) but before
-        the consent URL is returned — i.e. before any callback can arrive.
+        that then redirects to Google/Meta), this builds the **external**
+        provider authorize URL directly and the spawned wizard only serves
+        the operator-supplied callback route.
+
+        ``callback_url`` is the loopback URL the operator pre-registered in
+        the provider's developer console (#216). Most providers require the
+        ``redirect_uri`` to match a registered value **exactly**, so a
+        fresh ephemeral port every run can never be registered — instead
+        the wizard binds *that* URL's port and the URL is sent verbatim as
+        the ``redirect_uri``. Validation is loopback-only.
+
+        ``persist_values`` (#217) are the operator's submitted form values
+        (client id/secret, callback URL, any non-OAuth field); the callback
+        writes them atomically with the obtained token in one section, so
+        first-time setup needs no prior Save.
 
         ``provider`` is the registry name, used both as the bridge's
         bookkeeping key and as the ``credentials.json`` section the
@@ -194,9 +215,22 @@ class OAuthBridge:
         """
         self.cancel(provider)
 
+        # Validate the operator URL BEFORE spawning anything — a bad URL is
+        # a clean error, not socket churn (#216).
+        try:
+            _host, port, callback_path = parse_loopback_callback_url(callback_url)
+        except ValueError:
+            logger.warning("Plugin OAuth callback URL invalid for %s", provider)
+            return OAuthHandoffResult(
+                url=None,
+                state="pending",
+                provider=provider,
+                error="callback_url_invalid",
+            )
+
         from mureo.cli.web_auth import PluginOAuthSpec, WebAuthWizard
 
-        wizard = WebAuthWizard(credentials_path=credentials_path)
+        wizard = WebAuthWizard(credentials_path=credentials_path, bind_port=port)
         thread = threading.Thread(target=wizard.serve, daemon=True)
         thread.start()
         try:
@@ -205,13 +239,31 @@ class OAuthBridge:
             with contextlib.suppress(Exception):
                 wizard.shutdown()
             logger.warning("Plugin OAuth bridge bind timed out for %s", provider)
-            return OAuthHandoffResult(url=None, state="pending", provider=provider)
+            return OAuthHandoffResult(
+                url=None, state="pending", provider=provider, error="bind_timeout"
+            )
 
-        redirect_uri = f"http://127.0.0.1:{wizard.port}{oauth_config.callback_path}"
+        if wizard.bind_error is not None:
+            # The operator's registered port is already in use — surface a
+            # clean code so the dashboard can tell them to free it (#216).
+            with contextlib.suppress(Exception):
+                wizard.shutdown()
+            logger.warning(
+                "Plugin OAuth callback port %s unavailable for %s", port, provider
+            )
+            return OAuthHandoffResult(
+                url=None,
+                state="pending",
+                provider=provider,
+                error="callback_port_unavailable",
+            )
+
+        # redirect_uri is the operator URL VERBATIM (exact match with what
+        # was pre-registered); callback_path tells the wizard which route
+        # to serve. The callback cannot fire until the operator visits the
+        # consent URL below, so pinning the spec now is race-free.
+        redirect_uri = callback_url
         state = secrets.token_urlsafe(32)
-        # Pin the flow parameters now that the port is known; the callback
-        # (which cannot fire until the operator visits the consent URL
-        # below) reads them off the wizard.
         wizard.plugin_oauth = PluginOAuthSpec(
             provider=provider,
             target_field=oauth_config.target_field,
@@ -220,6 +272,8 @@ class OAuthBridge:
             client_secret=client_secret,
             redirect_uri=redirect_uri,
             state=state,
+            callback_path=callback_path,
+            persist_values=dict(persist_values or {}),
         )
         consent_url = build_authorization_code_url(
             authorize_url=oauth_config.authorize_url,

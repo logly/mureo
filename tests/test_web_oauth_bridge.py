@@ -43,7 +43,18 @@ class TestOAuthHandoffResult:
             "redirect_url": "https://x/oauth",
             "state": "pending",
             "provider": "google",
+            "error": None,
         }
+
+    def test_as_dict_surfaces_error(self) -> None:
+        """A bind/validation failure (#216) travels to the client as an
+        ``error`` code so the dashboard can toast the specific reason."""
+        result = OAuthHandoffResult(
+            url=None, provider="yahoo_ads", error="callback_url_invalid"
+        )
+        out = result.as_dict()
+        assert out["error"] == "callback_url_invalid"
+        assert out["url"] is None
 
     def test_is_frozen(self) -> None:
         import dataclasses
@@ -66,18 +77,25 @@ class _FakeWizard:
         self,
         *,
         credentials_path: Path | None = None,
+        bind_port: int = 0,
         port: int = 12345,
         completed: bool = False,
         ready_timeout: bool = False,
+        bind_error: Exception | None = None,
         multi_account_auth: bool = False,
     ) -> None:
         self.credentials_path = credentials_path
+        self.bind_port = bind_port
         self.port = port
         self.completed = completed
         self._ready_timeout = ready_timeout
+        # Mirrors WebAuthWizard.bind_error: set by the bridge's bind path
+        # (#216) when the operator-chosen port is unavailable.
+        self.bind_error = bind_error
         self.multi_account_auth = multi_account_auth
         self.shutdown_called = False
         self.serve_called = False
+        self.plugin_oauth: Any = None
 
     def serve(self) -> None:
         self.serve_called = True
@@ -459,6 +477,8 @@ class TestStartPluginOAuth:
             scopes=("scopeA",),
         )
 
+    _CALLBACK_URL = "http://127.0.0.1:8765/oauth/callback"
+
     def test_builds_external_consent_url_and_pins_spec(
         self,
         patched_wizard_class: Any,
@@ -473,9 +493,16 @@ class TestStartPluginOAuth:
                 oauth_config=self._config(),
                 client_id="CID",
                 client_secret="SECRET",
+                callback_url=self._CALLBACK_URL,
+                persist_values={
+                    "client_id": "CID",
+                    "client_secret": "SECRET",
+                    "oauth_callback_url": self._CALLBACK_URL,
+                },
                 credentials_path=tmp_path / "creds.json",
             )
             assert result.provider == "yahoo_ads"
+            assert result.error is None
             # The handed-off URL is the EXTERNAL provider authorize URL,
             # not a mureo wizard form.
             assert result.url is not None
@@ -487,15 +514,74 @@ class TestStartPluginOAuth:
             assert "scope=scopeA" in result.url
 
             wizard = patched_wizard_class.instances[0]
+            # #216: the wizard binds the operator-registered port.
+            assert wizard.bind_port == 8765
             spec = wizard.plugin_oauth
             assert spec.provider == "yahoo_ads"
             assert spec.target_field == "refresh_token"
             assert spec.token_url == "https://biz-oauth.yahoo.co.jp/oauth/v1/token"
             assert spec.client_id == "CID"
             assert spec.client_secret == "SECRET"
-            assert spec.redirect_uri.endswith("/oauth/callback")
+            # #216: redirect_uri is the operator URL VERBATIM (exact match
+            # with what was pre-registered), and callback_path is its path.
+            assert spec.redirect_uri == self._CALLBACK_URL
+            assert spec.callback_path == "/oauth/callback"
+            # #217: the operator's form values ride along for atomic save.
+            assert spec.persist_values["client_id"] == "CID"
+            assert spec.persist_values["oauth_callback_url"] == self._CALLBACK_URL
             assert spec.state  # non-empty CSRF nonce
-            # The same state is echoed into the consent URL.
+            # The same state + redirect_uri are echoed into the consent URL.
             assert f"state={spec.state}" in result.url
+            assert "redirect_uri=http%3A%2F%2F127.0.0.1%3A8765" in result.url
         finally:
             bridge.cancel("yahoo_ads")
+
+    def test_invalid_callback_url_returns_error_without_spawning(
+        self,
+        patched_wizard_class: Any,
+        fake_configure_wizard: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """A non-loopback / malformed callback URL (#216) is rejected
+        before any wizard is spawned — clean error, no socket churn."""
+        bridge = OAuthBridge()
+        result = bridge.start_plugin_oauth(
+            provider="yahoo_ads",
+            configure_wizard=fake_configure_wizard,
+            oauth_config=self._config(),
+            client_id="CID",
+            client_secret="SECRET",
+            callback_url="http://example.com:8765/oauth/callback",
+            credentials_path=tmp_path / "creds.json",
+        )
+        assert result.url is None
+        assert result.error == "callback_url_invalid"
+        assert patched_wizard_class.instances == []
+
+    def test_port_unavailable_returns_error(
+        self,
+        fake_configure_wizard: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """If the operator's port is already in use, the wizard reports
+        ``bind_error`` and the bridge surfaces ``callback_port_unavailable``
+        rather than handing out a dead consent URL (#216)."""
+
+        def _factory(**kwargs: Any) -> _FakeWizard:
+            w = _FakeWizard(**kwargs)
+            w.bind_error = OSError("address already in use")
+            return w
+
+        bridge = OAuthBridge()
+        with patch("mureo.cli.web_auth.WebAuthWizard", side_effect=_factory):
+            result = bridge.start_plugin_oauth(
+                provider="yahoo_ads",
+                configure_wizard=fake_configure_wizard,
+                oauth_config=self._config(),
+                client_id="CID",
+                client_secret="SECRET",
+                callback_url=self._CALLBACK_URL,
+                credentials_path=tmp_path / "creds.json",
+            )
+        assert result.url is None
+        assert result.error == "callback_port_unavailable"

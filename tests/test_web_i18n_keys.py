@@ -97,3 +97,34 @@ class TestConfirmHostFixKeysParity:
         data = _load_i18n()
         assert "verified" in data["en"]["connector.finalize_manual"].lower()
         assert "確認" in data["ja"]["connector.finalize_manual"]
+
+
+@pytest.mark.unit
+class TestPluginOAuthCallbackKeysParity:
+    """EN/JA parity for the #216/#217 plugin-OAuth card keys: the operator
+    callback-URL label + hint, the read-only target status, and the two
+    specific bind/validation error strings (no JS harness — asserted
+    against bundled i18n.json directly)."""
+
+    _KEYS = (
+        "dashboard.plugin_oauth_callback_label",
+        "dashboard.plugin_oauth_callback_hint",
+        "dashboard.plugin_oauth_target_unset",
+        "dashboard.plugin_oauth_callback_invalid",
+        "dashboard.plugin_oauth_port_unavailable",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            assert data["en"][key] != data["ja"][key], f"{key} not localized"

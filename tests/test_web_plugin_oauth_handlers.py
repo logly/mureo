@@ -109,19 +109,28 @@ def _get(wiz: ConfigureWizard, path: str) -> HTTPResponse:
     return urllib.request.urlopen(_url(wiz, path), timeout=2.0)
 
 
-def _post(wiz: ConfigureWizard, path: str) -> HTTPResponse:
-    req = urllib.request.Request(_url(wiz, path), data=b"{}", method="POST")
+def _post(wiz: ConfigureWizard, path: str, payload: dict | None = None) -> HTTPResponse:
+    body = json.dumps(payload if payload is not None else {}).encode("utf-8")
+    req = urllib.request.Request(_url(wiz, path), data=body, method="POST")
     req.add_header("Content-Type", "application/json")
     req.add_header("X-CSRF-Token", wiz.session.csrf_token)
     return urllib.request.urlopen(req, timeout=2.0)
 
 
-def _seed_client_creds(wiz: ConfigureWizard) -> None:
-    path = wiz.host_paths.credentials_path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"yahoo_ads": {"client_id": "CID", "client_secret": "SECRET"}})
-    )
+_CALLBACK_URL = "http://127.0.0.1:8765/oauth/callback"
+
+
+def _authenticate_payload() -> dict:
+    """Form values a dashboard Authenticate click submits (#217): client
+    creds + the operator-registered loopback callback URL (#216), with no
+    prior Save on disk."""
+    return {
+        "values": {
+            "client_id": "CID",
+            "client_secret": "SECRET",
+            "oauth_callback_url": _CALLBACK_URL,
+        }
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +153,30 @@ def test_plugin_list_exposes_oauth_block(wizard: ConfigureWizard) -> None:
     assert "authorize_url" not in json.dumps(by_name["yahoo_ads"]["oauth"])
 
 
+@pytest.mark.unit
+def test_plugin_list_surfaces_saved_callback_url(wizard: ConfigureWizard) -> None:
+    """#216: a previously-saved (non-secret) ``oauth_callback_url`` is
+    surfaced in the list payload so the dashboard can pre-fill it on
+    re-auth instead of resetting to the well-known default."""
+    path = wizard.host_paths.credentials_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "yahoo_ads": {
+                    "client_id": "CID",
+                    "oauth_callback_url": "http://127.0.0.1:9000/cb",
+                }
+            }
+        )
+    )
+    body = json.loads(_get(wizard, "/api/credentials/plugins").read())
+    by_name = {p["provider_name"]: p for p in body["plugins"]}
+    assert by_name["yahoo_ads"]["oauth_callback_url"] == "http://127.0.0.1:9000/cb"
+    # Manual provider never gets the key.
+    assert "oauth_callback_url" not in by_name["demo_ads"]
+
+
 # ---------------------------------------------------------------------------
 # POST …/oauth/start
 # ---------------------------------------------------------------------------
@@ -151,6 +184,8 @@ def test_plugin_list_exposes_oauth_block(wizard: ConfigureWizard) -> None:
 
 @pytest.mark.unit
 def test_start_400_when_client_credentials_missing(wizard: ConfigureWizard) -> None:
+    # No form values submitted → no client id/secret → 400 (#217: creds
+    # come from the request body, not disk).
     with pytest.raises(urllib.error.HTTPError) as exc:
         _post(wizard, "/api/credentials/plugins/yahoo_ads/oauth/start")
     assert exc.value.code == 400
@@ -158,24 +193,62 @@ def test_start_400_when_client_credentials_missing(wizard: ConfigureWizard) -> N
 
 
 @pytest.mark.unit
-def test_start_success_returns_consent_url(wizard: ConfigureWizard) -> None:
-    _seed_client_creds(wizard)
+def test_start_success_uses_form_values_no_prior_save(
+    wizard: ConfigureWizard,
+) -> None:
+    """#217: Authenticate succeeds with the submitted form values and NO
+    prior Save on disk; the bridge receives the client creds, the operator
+    callback URL (#216), and persist_values for the atomic write."""
     fake = OAuthHandoffResult(
         url="https://biz-oauth.yahoo.co.jp/oauth/v1/authorize?x=1",
         state="pending",
         provider="yahoo_ads",
     )
+    # Nothing on disk — the credentials file does not exist yet.
+    assert not wizard.host_paths.credentials_path.exists()
     with patch.object(
         wizard.oauth_bridge, "start_plugin_oauth", return_value=fake
     ) as mock_start:
-        resp = _post(wizard, "/api/credentials/plugins/yahoo_ads/oauth/start")
+        resp = _post(
+            wizard,
+            "/api/credentials/plugins/yahoo_ads/oauth/start",
+            _authenticate_payload(),
+        )
         body = json.loads(resp.read())
     assert body["url"].startswith("https://biz-oauth.yahoo.co.jp/oauth/v1/authorize")
     kwargs = mock_start.call_args.kwargs
     assert kwargs["provider"] == "yahoo_ads"
     assert kwargs["client_id"] == "CID"
     assert kwargs["client_secret"] == "SECRET"
+    assert kwargs["callback_url"] == _CALLBACK_URL
     assert kwargs["oauth_config"].target_field == "refresh_token"
+    # persist_values carries the operator's values (restricted to declared
+    # field keys) + the callback URL, for the bridge's atomic save.
+    persist = kwargs["persist_values"]
+    assert persist["client_id"] == "CID"
+    assert persist["client_secret"] == "SECRET"
+    assert persist["oauth_callback_url"] == _CALLBACK_URL
+    # The required-but-unfilled target_field is never persisted as blank.
+    assert "refresh_token" not in persist
+
+
+@pytest.mark.unit
+def test_start_400_when_callback_url_invalid(wizard: ConfigureWizard) -> None:
+    """A non-loopback / missing callback URL (#216) is rejected with a
+    specific code before the bridge is touched."""
+    payload = {
+        "values": {
+            "client_id": "CID",
+            "client_secret": "SECRET",
+            "oauth_callback_url": "https://example.com/oauth/callback",
+        }
+    }
+    with patch.object(wizard.oauth_bridge, "start_plugin_oauth") as mock_start:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, "/api/credentials/plugins/yahoo_ads/oauth/start", payload)
+    assert exc.value.code == 400
+    assert json.loads(exc.value.read())["error"] == "callback_url_invalid"
+    mock_start.assert_not_called()
 
 
 @pytest.mark.unit

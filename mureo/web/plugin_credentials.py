@@ -226,6 +226,17 @@ def save_plugin_credentials(
     # are supplied by the backend's own per-client flow.
     scoped = field_scope.get(provider_name) if field_scope is not None else None
 
+    # The OAuth target_field (#217) is acquired via the Authenticate flow,
+    # never typed into the Save form, so it must not be required-enforced
+    # here — otherwise first-time setup deadlocks (Save wants the token,
+    # Authenticate wants Save). Exempt it regardless of UI (defense in
+    # depth). A malformed oauth declaration is treated as "no oauth".
+    try:
+        oauth_config = get_account_oauth_config(entry.provider_class)
+    except (TypeError, ValueError):
+        oauth_config = None
+    oauth_target_field = oauth_config.target_field if oauth_config is not None else None
+
     # Validate the value type before reading the existing store — a bad
     # payload should not even cause a read.
     for key, value in values.items():
@@ -242,10 +253,15 @@ def save_plugin_credentials(
     accepted_keys: list[str] = []
     for field in declared:
         supplied = values.get(field.key)
-        # Scope-aware required-ness (#211): a field the active backend
-        # scoped OUT of this surface is not enforced here, so a scoped
-        # form (which never renders it) can still save.
-        required = field.required and (scoped is None or field.key in scoped)
+        # Scope-aware required-ness (#211) + OAuth-target exemption (#217):
+        # a field scoped OUT of this surface, or the OAuth target_field
+        # (obtained via Authenticate, not Save), is not enforced here so a
+        # scoped/OAuth form can still save.
+        required = (
+            field.required
+            and field.key != oauth_target_field
+            and (scoped is None or field.key in scoped)
+        )
         if supplied is None:
             # Absent from payload. Required fields without an existing
             # stored value are an error; otherwise the field is left
