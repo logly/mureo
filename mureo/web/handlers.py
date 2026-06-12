@@ -771,13 +771,19 @@ class ConfigureHandler(BaseHTTPRequestHandler):
 
     def _post_pick_directory(self, payload: dict[str, Any]) -> None:
         title = str(payload.get("title", "Select a folder"))
-        send_json(self, pick_directory(title=title).as_dict())
+        # #228: the macOS prompt is keyed by the SESSION locale — never
+        # by anything in the request body (zero-injection design).
+        locale = self.wizard.session.locale
+        send_json(self, pick_directory(title=title, locale=locale).as_dict())
 
     def _post_pick_file(self, payload: dict[str, Any]) -> None:
         title = str(payload.get("title", "Select a file"))
         kind = str(payload.get("kind", "xlsx"))
         patterns = ("*.xlsx", "*.xlsm") if kind == "xlsx" else ("*.*",)
-        send_json(self, pick_file(title=title, patterns=patterns).as_dict())
+        locale = self.wizard.session.locale
+        send_json(
+            self, pick_file(title=title, patterns=patterns, locale=locale).as_dict()
+        )
 
     def _post_oauth_start(
         self, provider: str, payload: dict[str, Any]

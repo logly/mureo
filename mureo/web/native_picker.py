@@ -32,10 +32,11 @@ The subprocess argv is always a FIXED list, ``shell=False``, with a
   The client-supplied ``title``/``patterns`` reach the child ONLY as
   discrete trailing argv elements (read via ``sys.argv`` in the child)
   and are never shell-interpolated into ``_SCRIPT``.
-* darwin: the AppleScript body is a module-level CONSTANT with a baked-in
-  generic prompt. The client ``title`` is **ignored** and the file-type
-  list is the hardcoded ``{"xlsx", "xlsm"}`` set — nothing client-supplied
-  is ever concatenated/interpolated into the AppleScript, so a hostile
+* darwin: the AppleScript body is one of the module-level CONSTANTS with
+  a baked-in prompt, selected by the server-side session locale (en/ja,
+  #228). The client ``title`` is **ignored** and the file-type list is
+  the hardcoded ``{"xlsx", "xlsm"}`` set — nothing client-supplied is
+  ever concatenated/interpolated into the AppleScript, so a hostile
   title cannot execute AppleScript or shell.
 
 The returned path is convenience only — callers still run it through the
@@ -60,13 +61,25 @@ _OSASCRIPT = "osascript"
 _MACOS_CANCEL_CODE = "-128"
 _MACOS_CANCEL_TEXT = "User canceled"
 
-# Baked-in generic prompts: NO client value is interpolated (zero AppleScript
-# / shell injection surface). Hardcoded xlsx/xlsm type list for file mode.
-_MACOS_DIR_SCRIPT = 'POSIX path of (choose folder with prompt "Select a folder")'
-_MACOS_FILE_SCRIPT = (
-    'POSIX path of (choose file with prompt "Select a file" '
-    'of type {"xlsx", "xlsm"})'
-)
+# Baked-in prompts, one constant per supported configure-UI locale
+# (#228): NO client value is ever interpolated (zero AppleScript / shell
+# injection surface) — the catalog is keyed by the SERVER-side session
+# locale, never by anything in the request body. Hardcoded xlsx/xlsm
+# type list for file mode. ``en`` is the fallback for unknown locales.
+_MACOS_DIR_SCRIPTS: dict[str, str] = {
+    "en": 'POSIX path of (choose folder with prompt "Select a folder")',
+    "ja": 'POSIX path of (choose folder with prompt "フォルダを選択してください")',
+}
+_MACOS_FILE_SCRIPTS: dict[str, str] = {
+    "en": (
+        'POSIX path of (choose file with prompt "Select a file" '
+        'of type {"xlsx", "xlsm"})'
+    ),
+    "ja": (
+        'POSIX path of (choose file with prompt "ファイルを選択してください" '
+        'of type {"xlsx", "xlsm"})'
+    ),
+}
 
 # Module-level CONSTANT (non-darwin path). Read mode/title/patterns from
 # sys.argv only; nothing is ever interpolated into this string.
@@ -181,15 +194,26 @@ def _run_macos(applescript: str) -> PickResult:
     return PickResult(status="ok", path=chosen, detail=None)
 
 
-def pick_directory(title: str) -> PickResult:
-    """Open a native folder picker; return the chosen absolute path."""
+def pick_directory(title: str, *, locale: str = "en") -> PickResult:
+    """Open a native folder picker; return the chosen absolute path.
+
+    ``locale`` selects the baked-in macOS prompt (#228) and must come
+    from the server-side session, never the request body; unknown
+    values fall back to ``en``. Non-darwin ignores it (the localized
+    client ``title`` is shown instead).
+    """
     if _is_macos():
-        return _run_macos(_MACOS_DIR_SCRIPT)
+        return _run_macos(_MACOS_DIR_SCRIPTS.get(locale, _MACOS_DIR_SCRIPTS["en"]))
     return _run([sys.executable, "-c", _SCRIPT, "dir", title])
 
 
-def pick_file(title: str, patterns: tuple[str, ...]) -> PickResult:
-    """Open a native file picker filtered by ``patterns`` (e.g. xlsx)."""
+def pick_file(
+    title: str, patterns: tuple[str, ...], *, locale: str = "en"
+) -> PickResult:
+    """Open a native file picker filtered by ``patterns`` (e.g. xlsx).
+
+    ``locale`` behaves exactly as in :func:`pick_directory`.
+    """
     if _is_macos():
-        return _run_macos(_MACOS_FILE_SCRIPT)
+        return _run_macos(_MACOS_FILE_SCRIPTS.get(locale, _MACOS_FILE_SCRIPTS["en"]))
     return _run([sys.executable, "-c", _SCRIPT, "file", title, *patterns])

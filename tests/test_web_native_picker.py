@@ -461,3 +461,97 @@ class TestMacOSInvocationShapeAndInjection:
         assert "do shell script" not in script
         assert "xlsx" in script
         assert "xlsm" in script
+
+
+# ---------------------------------------------------------------------------
+# darwin locale-keyed baked prompts (#228) — the prompt catalog grows to
+# en/ja, selected by the SERVER-side session locale, never from the
+# request body. Every prompt stays a hardcoded constant: no client value
+# is ever interpolated, so the zero-injection posture is unchanged.
+# ---------------------------------------------------------------------------
+
+
+def _applescript_of(mock_run: MagicMock) -> str:
+    argv = mock_run.call_args.args[0]
+    return str(argv[argv.index("-e") + 1])
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("darwin")
+class TestMacOSLocaleKeyedPrompts:
+    def test_default_locale_dir_prompt_is_english(self) -> None:
+        mock_run = MagicMock(return_value=_completed(stdout="/a"))
+        with patch("mureo.web.native_picker.subprocess.run", mock_run):
+            native_picker.pick_directory(title="ignored")
+        assert "Select a folder" in _applescript_of(mock_run)
+
+    def test_ja_locale_dir_prompt_is_japanese(self) -> None:
+        mock_run = MagicMock(return_value=_completed(stdout="/a"))
+        with patch("mureo.web.native_picker.subprocess.run", mock_run):
+            native_picker.pick_directory(title="ignored", locale="ja")
+        script = _applescript_of(mock_run)
+        assert "フォルダを選択してください" in script
+        assert "Select a folder" not in script
+
+    def test_default_locale_file_prompt_is_english(self) -> None:
+        mock_run = MagicMock(return_value=_completed(stdout="/a"))
+        with patch("mureo.web.native_picker.subprocess.run", mock_run):
+            native_picker.pick_file(title="ignored", patterns=("*.xlsx",))
+        assert "Select a file" in _applescript_of(mock_run)
+
+    def test_ja_locale_file_prompt_is_japanese_and_keeps_type_list(self) -> None:
+        mock_run = MagicMock(return_value=_completed(stdout="/a"))
+        with patch("mureo.web.native_picker.subprocess.run", mock_run):
+            native_picker.pick_file(title="ignored", patterns=("*.xlsx",), locale="ja")
+        script = _applescript_of(mock_run)
+        assert "ファイルを選択してください" in script
+        assert "xlsx" in script
+        assert "xlsm" in script
+
+    def test_unknown_locale_falls_back_to_english(self) -> None:
+        mock_run = MagicMock(return_value=_completed(stdout="/a"))
+        with patch("mureo.web.native_picker.subprocess.run", mock_run):
+            native_picker.pick_directory(title="ignored", locale="fr")
+        assert "Select a folder" in _applescript_of(mock_run)
+
+    def test_ja_script_is_constant_regardless_of_title(self) -> None:
+        """Per-locale prompts stay baked constants — the osascript body
+        must be byte-identical across calls whatever the client title."""
+        mock_run = MagicMock(return_value=_completed(stdout="/a"))
+        with patch("mureo.web.native_picker.subprocess.run", mock_run):
+            native_picker.pick_directory(title="alpha", locale="ja")
+            native_picker.pick_directory(title="beta-DIFFERENT", locale="ja")
+        first = mock_run.call_args_list[0].args[0]
+        second = mock_run.call_args_list[1].args[0]
+        assert first[first.index("-e") + 1] == second[second.index("-e") + 1]
+
+    def test_hostile_title_never_reaches_ja_applescript(self) -> None:
+        evil = '" & (do shell script "id") & "'
+        mock_run = MagicMock(return_value=_completed(stdout="/a"))
+        with patch("mureo.web.native_picker.subprocess.run", mock_run):
+            native_picker.pick_directory(title=evil, locale="ja")
+            native_picker.pick_file(title=evil, patterns=("*.xlsx",), locale="ja")
+        for call in mock_run.call_args_list:
+            joined = " ".join(str(a) for a in call.args[0])
+            assert evil not in joined
+            assert "do shell script" not in joined
+
+    def test_prompt_catalogs_cover_exactly_en_and_ja(self) -> None:
+        """Both catalogs carry the same locale set as the configure UI
+        (en/ja); ``en`` must exist as the fallback key."""
+        assert set(native_picker._MACOS_DIR_SCRIPTS) == {"en", "ja"}
+        assert set(native_picker._MACOS_FILE_SCRIPTS) == {"en", "ja"}
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("non_darwin")
+class TestLocaleKwargNonDarwin:
+    def test_locale_kwarg_accepted_and_title_still_forwarded(self) -> None:
+        """Non-darwin keeps the tkinter path: ``locale`` is accepted (the
+        callers pass it unconditionally) but the localized client title
+        still travels as a discrete argv element."""
+        mock_run = MagicMock(return_value=_completed(stdout="/a"))
+        with patch("mureo.web.native_picker.subprocess.run", mock_run):
+            result = native_picker.pick_directory(title="フォルダを選択", locale="ja")
+        assert result.status == "ok"
+        assert "フォルダを選択" in mock_run.call_args.args[0]
