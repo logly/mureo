@@ -46,7 +46,10 @@ from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Any
 
 from mureo.core.providers import default_registry, get_account_oauth_config
-from mureo.core.runtime_context import runtime_multi_account_auth
+from mureo.core.runtime_context import (
+    runtime_multi_account_auth,
+    runtime_ui_plugin_credential_fields,
+)
 from mureo.core.secret_store import FilesystemSecretStore
 from mureo.web._helpers import (
     compare_csrf,
@@ -296,11 +299,28 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             # Forward the session locale so plugin-declared
             # ``display_name_i18n`` / ``description_i18n`` entries are
             # resolved against the operator's active locale (#186).
+            #
+            # A multi-account backend may scope which fields render via
+            # the store's ``ui_plugin_credential_fields`` capability
+            # (#207). Resolve it ONLY in production (home is None): an
+            # injected home sandboxes the wizard, and the process-global
+            # factory's store lives outside that sandbox (the dev/CI
+            # agency factory resolves against the operator's real
+            # ~/.mureo), so consulting it under an injected home would let
+            # a sandboxed/test wizard inherit a real backend's scoping —
+            # the same #195 gate the credentials-path / multi-account
+            # resolution use.
+            field_scope = (
+                None
+                if self.wizard.home is not None
+                else runtime_ui_plugin_credential_fields()
+            )
             send_json(
                 self,
                 {
                     "plugins": list_plugin_credential_fields(
                         locale=self.wizard.session.locale,
+                        field_scope=field_scope,
                     )
                 },
             )

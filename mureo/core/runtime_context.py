@@ -22,6 +22,7 @@ strings are rejected at construction time.
 
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -295,3 +296,52 @@ def runtime_multi_account_auth() -> bool:
         return False
     store = get_runtime_context().secret_store
     return getattr(store, "multi_account_auth", False) is True
+
+
+def runtime_ui_plugin_credential_fields() -> dict[str, frozenset[str]] | None:
+    """Return a per-provider allow-list of credential-field keys the
+    dashboard "Plugin credentials" section should render, or ``None``.
+
+    A multi-account backend whose per-account ids live in per-client
+    config (not the operator-shared credential store) advertises this so
+    the dashboard shows only operator-shared auth fields and stops
+    offering a second, competing input for an account id that belongs on
+    the backend's own per-client form — the failure mode behind the #202
+    incident (a stale shared ``account_id`` hijacking a client). It joins
+    the same store-capability family as :func:`runtime_credentials_path`
+    (#196) and :func:`runtime_multi_account_auth` (#198).
+
+    Resolution:
+
+    - **No factory registered** → ``None``. Standalone OSS / default
+      stores keep rendering every declared field (account ids included);
+      the gate is on entry-point *presence* so the default store is never
+      consulted.
+    - **Store declares ``ui_plugin_credential_fields``** as a
+      :class:`~collections.abc.Mapping` → a normalized
+      ``{provider: frozenset(keys)}`` dict. Each value must be a non-str
+      collection of keys; malformed entries are skipped.
+    - **Not a Mapping / empty after normalization / attribute absent** →
+      ``None``. A mis-typed declaration must NOT silently hide fields
+      (defensive, mirroring #198's strict ``is True``), so anything the
+      resolver cannot trust collapses to "no scoping".
+
+    Consumers (the dashboard list builder) treat a returned mapping as:
+    providers present → render only the listed keys (drop the card when
+    none remain); providers absent → keep all fields (so an unknown
+    future plugin stays fully usable).
+    """
+    if not list(entry_points(group=RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP)):
+        return None
+    store = get_runtime_context().secret_store
+    declared = getattr(store, "ui_plugin_credential_fields", None)
+    if not isinstance(declared, Mapping):
+        return None
+    scoped: dict[str, frozenset[str]] = {}
+    for provider, keys in declared.items():
+        if not isinstance(provider, str):
+            continue
+        if isinstance(keys, (str, bytes)) or not isinstance(keys, Collection):
+            continue
+        scoped[provider] = frozenset(str(k) for k in keys)
+    return scoped or None

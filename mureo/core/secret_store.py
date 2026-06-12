@@ -79,6 +79,19 @@ class SecretStore(Protocol):
       when exactly ``True`` (see
       :func:`mureo.core.runtime_context.runtime_multi_account_auth`);
       omit it for single-account stores so the picker is shown as today.
+
+    - ``ui_plugin_credential_fields: Mapping[str, Collection[str]]`` —
+      a per-provider allow-list of the credential-field keys the
+      configure dashboard's "Plugin credentials" section should render
+      (e.g. ``{"yahoo_ads": {"client_id", "client_secret",
+      "refresh_token"}}``). A multi-account backend uses it to surface
+      only operator-shared auth fields and hide per-account ids that
+      belong on its own per-client form (#207). Providers absent from
+      the mapping keep all their fields. Read defensively (only a
+      ``Mapping`` is honored) via
+      :func:`mureo.core.runtime_context.runtime_ui_plugin_credential_fields`;
+      omit it for single-account stores so every declared field renders
+      as today.
     """
 
     def load(self, key: str) -> dict[str, Any]: ...

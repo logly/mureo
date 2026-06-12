@@ -37,7 +37,7 @@ from mureo.core.providers import (
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Collection, Mapping
 
     from mureo.core.providers.credentials import AccountCredentialField
 
@@ -70,6 +70,8 @@ class RequiredFieldMissingError(PluginCredentialsError):
 
 def list_plugin_credential_fields(
     locale: str = "en",
+    *,
+    field_scope: Mapping[str, Collection[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Enumerate providers that declare per-account credential fields.
 
@@ -82,6 +84,16 @@ def list_plugin_credential_fields(
             the locales it has translated. Defaults to ``"en"`` —
             matches pre-#186 behaviour for callers that don't yet
             pass a locale.
+        field_scope: Optional per-provider allow-list of field keys to
+            render (#207). ``None`` (the standalone-OSS default) renders
+            every declared field. When a mapping is supplied, a provider
+            **present** in it shows only the listed keys (and is dropped
+            entirely if none of its declared fields match); a provider
+            **absent** from it keeps all its fields. Resolved by the
+            handler from the active store's ``ui_plugin_credential_fields``
+            capability behind a ``home is None`` gate, so a multi-account
+            backend can hide per-account ids that live on its own
+            per-client form.
 
     Returns:
         A list of provider descriptors sorted alphabetically by
@@ -113,6 +125,13 @@ def list_plugin_credential_fields(
         fields = get_account_credential_fields(entry.provider_class)
         if not fields:
             continue
+        if field_scope is not None and entry.name in field_scope:
+            allowed = field_scope[entry.name]
+            fields = tuple(f for f in fields if f.key in allowed)
+            if not fields:
+                # Every declared field was scoped out — drop the card so
+                # the section shows no empty provider block.
+                continue
         result.append(
             {
                 "provider_name": entry.name,
