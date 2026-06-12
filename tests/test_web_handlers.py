@@ -333,13 +333,9 @@ class TestSetupBasicMultiAccountGate:
     ONLY in production (``home is None``); a home-injected (sandboxed)
     wizard must never consult the process-global factory."""
 
-    def test_skip_mcp_false_when_home_injected(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_skip_mcp_false_when_home_injected(self, wizard: ConfigureWizard) -> None:
         with (
-            patch(
-                "mureo.web.handlers.runtime_multi_account_auth", return_value=True
-            ),
+            patch("mureo.web.handlers.runtime_multi_account_auth", return_value=True),
             patch(
                 "mureo.web.handlers.install_basic_setup",
                 return_value={"mureo_mcp": {"status": "ok"}},
@@ -380,12 +376,8 @@ class TestServeStatusMultiAccount:
     """#222 — ``GET /api/status`` surfaces ``multi_account_auth`` behind the
     same ``home is None`` gate so the UI can suppress the MCP section."""
 
-    def test_status_false_when_home_injected(
-        self, wizard: ConfigureWizard
-    ) -> None:
-        with patch(
-            "mureo.web.handlers.runtime_multi_account_auth", return_value=True
-        ):
+    def test_status_false_when_home_injected(self, wizard: ConfigureWizard) -> None:
+        with patch("mureo.web.handlers.runtime_multi_account_auth", return_value=True):
             resp = _get(wizard, "/api/status")
         body = json.loads(resp.read().decode("utf-8"))
         assert body["multi_account_auth"] is False
@@ -1657,6 +1649,28 @@ class TestPostPickDirectory:
         body = json.loads(resp.read().decode("utf-8"))
         assert body["status"] == "cancelled"
 
+    def test_forwards_session_locale(self, wizard: ConfigureWizard) -> None:
+        """#228 — the macOS prompt is keyed by the SERVER-side session
+        locale, so the route must forward it to the picker."""
+        wizard.session.set_locale("ja")
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "cancelled", "path": None}
+        with patch("mureo.web.handlers.pick_directory", return_value=fake) as mock_pick:
+            _post(wizard, self.ROUTE, {"title": "t"})
+        assert mock_pick.call_args.kwargs["locale"] == "ja"
+
+    def test_request_body_locale_cannot_override_session(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """A ``locale`` field smuggled into the request body must NOT
+        influence the prompt — only the session locale may."""
+        wizard.session.set_locale("en")
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "cancelled", "path": None}
+        with patch("mureo.web.handlers.pick_directory", return_value=fake) as mock_pick:
+            _post(wizard, self.ROUTE, {"title": "t", "locale": "ja"})
+        assert mock_pick.call_args.kwargs["locale"] == "en"
+
     def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
         """tkinter-unavailable degrades to an error envelope (UI falls
         back to manual entry), never a 500."""
@@ -1733,6 +1747,28 @@ class TestPostPickFile:
             resp = _post(wizard, self.ROUTE, {"kind": "xlsx"})
         body = json.loads(resp.read().decode("utf-8"))
         assert body["status"] == "cancelled"
+
+    def test_forwards_session_locale(self, wizard: ConfigureWizard) -> None:
+        """#228 — same server-side locale forwarding as the directory
+        route."""
+        wizard.session.set_locale("ja")
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "cancelled", "path": None}
+        with patch("mureo.web.handlers.pick_file", return_value=fake) as mock_pick:
+            _post(wizard, self.ROUTE, {"kind": "xlsx"})
+        assert mock_pick.call_args.kwargs["locale"] == "ja"
+
+    def test_request_body_locale_cannot_override_session(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """Same smuggling guard as the directory route — the file route
+        parses extra body fields (``kind``), so pin it independently."""
+        wizard.session.set_locale("en")
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "cancelled", "path": None}
+        with patch("mureo.web.handlers.pick_file", return_value=fake) as mock_pick:
+            _post(wizard, self.ROUTE, {"kind": "xlsx", "locale": "ja"})
+        assert mock_pick.call_args.kwargs["locale"] == "en"
 
     def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
