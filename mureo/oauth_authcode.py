@@ -164,17 +164,21 @@ def exchange_authorization_code(
         "redirect_uri": redirect_uri,
     }
     # Pick the client-auth transport: Basic header (default) or in-body
-    # credentials (Yahoo! JAPAN biz-oauth rejects Basic).
-    auth: tuple[str, str] | None
+    # credentials (Yahoo! JAPAN biz-oauth rejects Basic). httpx's ``auth``
+    # parameter has no typed ``None``, so for body style we omit it entirely
+    # (the client configures no auth, so nothing is sent).
+    basic_auth: tuple[str, str] | None = None
     if client_auth == "body":
         body["client_id"] = client_id
         body["client_secret"] = client_secret
-        auth = None
     else:
-        auth = (client_id, client_secret)
+        basic_auth = (client_id, client_secret)
     try:
         with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
-            response = client.post(token_url, data=body, auth=auth)
+            if basic_auth is None:
+                response = client.post(token_url, data=body)
+            else:
+                response = client.post(token_url, data=body, auth=basic_auth)
             response.raise_for_status()
             payload = response.json()
     except httpx.HTTPError as exc:
