@@ -20,6 +20,7 @@ from importlib import resources
 from pathlib import Path
 
 from mureo.core.runtime_context import runtime_credentials_path
+from mureo.core.terminal import force_cooked_mode, terminal_fd
 from mureo.web.extensions import discover_web_extensions
 from mureo.web.handlers import ConfigureHandler
 from mureo.web.host_paths import HostPaths, get_host_paths
@@ -247,6 +248,13 @@ def run_configure_wizard(
         for sig in (signal.SIGINT, signal.SIGTERM):
             with contextlib.suppress(ValueError, OSError):
                 prev_handlers.append((sig, signal.signal(sig, _on_signal)))
+        # #227: a prior step (a leaked arrow-key menu in a third-party
+        # backend, or an earlier CLI command) can leave the TTY in raw mode
+        # with ISIG off — Ctrl+C then never generates SIGINT, so _on_signal
+        # never fires and the operator is stranded with a dead terminal
+        # (no echo) for the full timeout. Force cooked mode before blocking
+        # so Ctrl+C reliably delivers the stop signal. No-op on a non-TTY.
+        force_cooked_mode(terminal_fd())
         wizard.stop_event.wait(timeout=timeout_seconds)
     except KeyboardInterrupt:
         # Belt-and-braces: if a KeyboardInterrupt still surfaces (e.g.
