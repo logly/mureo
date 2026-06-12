@@ -205,11 +205,6 @@
       </div>
     </section>
 
-    <!-- TODO: when SR support lands, add aria-live="polite" here.
-         Inline status nodes in auth_wizards.js / dashboard.js share
-         the same message string; aria-atomic or scoping is required
-         to avoid double-announce. See #184 review notes. -->
-    <div class="app-toast" data-toast hidden></div>
   </main>
 
   <dialog data-confirm-dialog>
@@ -226,5 +221,17 @@
   <script src="/static/auth_wizards.js"></script>
   <script src="/static/dashboard.js"></script>
   <script src="/static/extensions.js"></script>
+
+  <!-- Toast overlay (#214): MUST be a body-level sibling, NOT inside
+       <main class="app-main">. .app-main carries a filled `rise`
+       transform animation, and a transformed ancestor becomes the
+       containing block for position:fixed descendants — a toast inside
+       <main> anchors to the bottom of the tall main element (~1700px
+       below the viewport on the dashboard) instead of the screen.
+       TODO: when SR support lands, add aria-live="polite" here. Inline
+       status nodes in auth_wizards.js / dashboard.js share the same
+       message string; aria-atomic or scoping is required to avoid
+       double-announce. See #184 review notes. -->
+  <div class="app-toast" data-toast hidden></div>
 </body>
 </html>
