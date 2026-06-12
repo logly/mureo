@@ -312,6 +312,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 field_scope=self._resolve_field_scope(),
             )
             self._inject_saved_oauth_callback_urls(plugins)
+            self._inject_plugin_field_state(plugins)
             send_json(self, {"plugins": plugins})
             return
         match = _OAUTH_PROVIDER_RE.match(path)
@@ -508,6 +509,26 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             url = saved.get(_OAUTH_CALLBACK_URL_KEY)
             if isinstance(url, str) and url:
                 plugin["oauth_callback_url"] = url
+
+    def _inject_plugin_field_state(self, plugins: list[dict[str, Any]]) -> None:
+        """Annotate each declared field with its stored state for pre-fill
+        after a configure restart (#224).
+
+        Per field: ``configured`` (a truthy value is stored) is always set;
+        a **non-secret** field additionally gets ``value`` (the stored value
+        verbatim, e.g. ``base_account_id`` / ``oauth_callback_url``). A
+        **secret** field NEVER ships its value — only the boolean — so a
+        secret never round-trips into the browser. The save side's
+        blank-keeps-stored contract is unchanged.
+        """
+        store = FilesystemSecretStore(path=self.wizard.host_paths.credentials_path)
+        for plugin in plugins:
+            saved = store.load(plugin["provider_name"])
+            for field in plugin.get("fields", []):
+                stored = saved.get(field["key"])
+                field["configured"] = bool(stored)
+                if field["configured"] and not field.get("secret"):
+                    field["value"] = str(stored)
 
     def _multi_account_active(self) -> bool:
         """True ⇔ a multi-account backend is active in production (#198/#222).

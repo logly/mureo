@@ -177,6 +177,36 @@ def test_plugin_list_surfaces_saved_callback_url(wizard: ConfigureWizard) -> Non
     assert "oauth_callback_url" not in by_name["demo_ads"]
 
 
+@pytest.mark.unit
+def test_plugin_list_surfaces_field_current_state(wizard: ConfigureWizard) -> None:
+    """#224: each declared field carries a ``configured`` flag; a non-secret
+    field also ships its stored value verbatim for pre-fill, while a secret
+    field NEVER ships its value (only the flag)."""
+    path = wizard.host_paths.credentials_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"yahoo_ads": {"client_id": "CID", "client_secret": "SECRET"}})
+    )
+    body = json.loads(_get(wizard, "/api/credentials/plugins").read())
+    fields = {
+        f["key"]: f
+        for p in body["plugins"]
+        if p["provider_name"] == "yahoo_ads"
+        for f in p["fields"]
+    }
+    # Non-secret, stored → configured + value verbatim.
+    assert fields["client_id"]["configured"] is True
+    assert fields["client_id"]["value"] == "CID"
+    # Secret, stored → configured True but NO value shipped to the browser.
+    assert fields["client_secret"]["configured"] is True
+    assert "value" not in fields["client_secret"]
+    # Unset field → not configured, no value.
+    assert fields["refresh_token"]["configured"] is False
+    assert "value" not in fields["refresh_token"]
+    # Defense in depth: the secret value never appears anywhere in payload.
+    assert "SECRET" not in json.dumps(body)
+
+
 # ---------------------------------------------------------------------------
 # POST …/oauth/start
 # ---------------------------------------------------------------------------
