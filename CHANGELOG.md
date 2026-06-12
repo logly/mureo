@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.30] - 2026-06-12
+
+### Added
+
+#### Scope dashboard plugin-credential fields via a store capability (#207)
+
+The configure dashboard's "Plugin credentials" section renders every
+`AccountCredentialField` a plugin declares — operator-shared auth and
+per-account ids alike. For a standalone single-account install that is
+correct and stays the default. For a multi-account backend (an agency
+whose operator-shared auth serves N clients, each with its own account
+id in per-client config), the account-id inputs there land in the
+operator-shared store and leak as a default into every client's runtime —
+the failure mode behind the 0.9.29 Meta `account_id` incident.
+
+The active `SecretStore` can now advertise an optional
+`ui_plugin_credential_fields: Mapping[str, Collection[str]]` capability —
+a per-provider allow-list of the field keys the section should render
+(joining the same store-capability family as `credentials_write_path`
+and `multi_account_auth`). A provider present in the mapping shows only
+the listed keys (its card is dropped if none remain); a provider absent
+keeps all fields. Only a `Mapping` is honored — a mis-typed declaration
+must not silently hide fields — and the capability is resolved behind a
+`home is None` gate so a sandboxed wizard never inherits a process-global
+factory's scoping. Capability absent (standalone OSS, default stores) →
+byte-identical behavior; account ids stay configurable in the dashboard.
+
 ## [0.9.29] - 2026-06-11
 
 Plugin OAuth onboarding plus two credential/state correctness fixes
