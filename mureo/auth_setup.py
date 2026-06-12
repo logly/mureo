@@ -32,6 +32,11 @@ import httpx
 from google_auth_oauthlib.flow import Flow, InstalledAppFlow
 
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
+
+# Private alias so existing call sites and test monkeypatches of
+# ``mureo.auth_setup._terminal_fd`` keep working now that the canonical
+# implementation lives in :mod:`mureo.core.terminal` (#227 follow-up).
+from mureo.core.terminal import terminal_fd as _terminal_fd
 from mureo.fsutil import secure_chmod
 
 # Backward-compat re-exports of the platform-level account-discovery
@@ -57,20 +62,6 @@ logger = logging.getLogger(__name__)
 _GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
 _SEARCH_CONSOLE_SCOPE = "https://www.googleapis.com/auth/webmasters"
 _GOOGLE_SCOPES = [_GOOGLE_ADS_SCOPE, _SEARCH_CONSOLE_SCOPE]
-
-
-def _terminal_fd() -> int | None:
-    """Resolve the controlling-terminal fd, or ``None`` for non-TTY.
-
-    Wraps ``sys.stdin.fileno()`` so the lookup itself does not raise
-    under pytest (the test harness replaces stdin with a pseudo-file
-    whose ``fileno()`` raises ``UnsupportedOperation``) or in any
-    other context where stdin is not a real file descriptor.
-    """
-    try:
-        return sys.stdin.fileno()
-    except (OSError, ValueError, AttributeError):
-        return None
 
 
 def _capture_terminal_state(fd: int | None) -> Any | None:
