@@ -2,8 +2,9 @@
 // server (see ``mureo.web.extensions``) as additional dashboard tabs.
 //
 // Each extension with a non-null ``view`` becomes:
-//   * one ``<li><a data-dashboard-nav="ext-<name>">…</a></li>`` appended
-//     to the dashboard nav, sitting after the built-in tabs
+//   * one ``<li><a data-dashboard-nav="ext-<name>">…</a></li>`` inserted
+//     into the dashboard nav after the built-in tabs but BEFORE the
+//     "About mureo" item, which always stays the last tab
 //   * one ``<div class="dashboard-group" data-dashboard-group="ext-<name>"
 //     hidden></div>`` appended to the dashboard pane, populated lazily
 //     on first selection
@@ -175,7 +176,15 @@
       }
     });
     li.appendChild(a);
-    nav.appendChild(li);
+    // Keep "About mureo" pinned as the last tab: extension tabs slot in
+    // before it, however many plugins register one.
+    const aboutAnchor = nav.querySelector('[data-dashboard-nav="about"]');
+    const aboutItem = aboutAnchor ? aboutAnchor.closest("li") : null;
+    if (aboutItem) {
+      nav.insertBefore(li, aboutItem);
+    } else {
+      nav.appendChild(li);
+    }
 
     const group = document.createElement("div");
     group.className = "dashboard-group";
