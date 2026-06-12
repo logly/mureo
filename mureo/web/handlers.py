@@ -39,6 +39,7 @@ Routes
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 import urllib.parse
@@ -688,6 +689,19 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         then signal — the response still flushes because the daemon
         request thread outlives ``serve_forever`` returning.
         """
+        # #210: materialize the credentials file at the runtime write
+        # path BEFORE replying so the filesystem records "setup completed"
+        # even when every platform was skipped (no OAuth ran) — a missing
+        # file otherwise reads as "setup never ran" to diagnostic tooling.
+        # ``host_paths.credentials_path`` is already the runtime-resolved
+        # path (#195/#196) behind the home gate, so this serves both
+        # standalone and agency installs and never escapes an injected
+        # home. Best-effort: a write failure must not block freeing the
+        # terminal. ``ensure_exists`` never touches an existing file.
+        with contextlib.suppress(Exception):
+            FilesystemSecretStore(
+                path=self.wizard.host_paths.credentials_path
+            ).ensure_exists()
         send_json(self, {"status": "stopping"})
         self.wizard.request_stop()
 
