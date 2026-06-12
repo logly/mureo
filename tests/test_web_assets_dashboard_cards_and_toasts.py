@@ -133,3 +133,27 @@ def test_auth_wizard_error_sites_also_toast() -> None:
         'every wizard error toast must pass kind="error" — count '
         "below the expected sites suggests a typo or missing kind"
     )
+
+
+# ---------------------------------------------------------------------------
+# #214 — the toast overlay must live OUTSIDE <main class="app-main">
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_toast_node_lives_outside_main() -> None:
+    """``.app-main`` carries a filled ``rise`` transform animation, and a
+    transformed ancestor becomes the containing block for
+    ``position: fixed`` descendants. A toast inside ``<main>`` therefore
+    anchors to the bottom of the (tall) main element — ~1700px below the
+    viewport on the dashboard — instead of the screen, making every
+    dashboard toast invisible (#214). The overlay must be a body-level
+    sibling, after ``</main>``.
+    """
+    html = _read("app.html")
+    assert "data-toast" in html, "toast node missing from app.html"
+    assert html.index("</main>") < html.index("data-toast"), (
+        "the [data-toast] overlay must live OUTSIDE <main class='app-main'> "
+        "(after </main>) — a transformed ancestor hijacks position:fixed. "
+        "See #214."
+    )
