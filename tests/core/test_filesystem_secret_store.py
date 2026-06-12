@@ -103,7 +103,9 @@ def test_corrupt_file_returns_empty_on_load(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_default_path_resolves_under_dot_mureo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_default_path_resolves_under_dot_mureo(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Patches ``Path.home`` directly so the test is Windows-safe — see
     ``test_runtime_context.test_default_factory_no_args_uses_legacy_paths``
     for the rationale."""
@@ -132,3 +134,32 @@ def test_save_strips_non_dict_root(tmp_path: Path) -> None:
     store = FilesystemSecretStore(path=path)
     store.save("google_ads", {"developer_token": "abc"})
     assert store.load("google_ads") == {"developer_token": "abc"}
+
+
+# ---------------------------------------------------------------------------
+# ensure_exists — materialize an empty file so "configured nothing" is
+# distinguishable from "setup never ran" (#210)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_ensure_exists_creates_empty_file_when_absent(tmp_path: Path) -> None:
+    path = tmp_path / ".mureo" / "credentials.json"
+    store = FilesystemSecretStore(path=path)
+    created = store.ensure_exists()
+    assert created is True
+    assert path.exists()
+    assert json.loads(path.read_text(encoding="utf-8")) == {}
+    if os.name == "posix":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+@pytest.mark.unit
+def test_ensure_exists_noop_when_present(tmp_path: Path) -> None:
+    path = tmp_path / "credentials.json"
+    store = FilesystemSecretStore(path=path)
+    store.save("meta_ads", {"access_token": "X"})
+    created = store.ensure_exists()
+    assert created is False
+    # Existing content is never touched.
+    assert store.load("meta_ads") == {"access_token": "X"}

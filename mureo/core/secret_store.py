@@ -141,6 +141,26 @@ class FilesystemSecretStore:
             del data[key]
             self._write_root(data)
 
+    def ensure_exists(self) -> bool:
+        """Materialize an empty credentials file (``{}``) if absent.
+
+        Uses the same atomic-write + ``0o600`` machinery as :meth:`save`.
+        Returns ``True`` when a file was created, ``False`` when one
+        already existed (its contents are never touched).
+
+        Lets a caller record "setup completed" on disk even when no
+        credentials were registered — distinguishing "configured nothing
+        yet" (``{}``) from "setup never ran" (no file) for diagnostic
+        tooling that keys off file presence (#210). The
+        missing-equals-empty load contract means ``{}`` is
+        runtime-indistinguishable from no file, so this changes the
+        diagnostic signal only, not behaviour.
+        """
+        if self.path.exists():
+            return False
+        self._write_root({})
+        return True
+
     # ------------------------------------------------------------------
 
     def _read_root(self) -> dict[str, Any]:
