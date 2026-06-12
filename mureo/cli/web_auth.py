@@ -1149,6 +1149,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
                 client_id=spec.client_id,
                 client_secret=spec.client_secret,
                 redirect_uri=spec.redirect_uri,
+                client_auth=spec.token_auth_style,
             )
         except OAuthExchangeError:
             # Message-free log: the helper already guarantees no secret is
@@ -1289,6 +1290,10 @@ class PluginOAuthSpec:
     state: str
     callback_path: str = "/oauth/callback"
     persist_values: dict[str, str] = field(default_factory=dict)
+    # Token-endpoint client-auth style passed to ``exchange_authorization_code``
+    # (#201 follow-up): ``"basic"`` (default) or ``"body"`` for providers that
+    # reject HTTP Basic, e.g. Yahoo! JAPAN biz-oauth.
+    token_auth_style: str = "basic"
 
 
 class WebAuthWizard:

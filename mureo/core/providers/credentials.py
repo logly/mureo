@@ -154,6 +154,12 @@ class AccountOAuthConfig:
             is a *default* the operator can still override, not an
             authority: the bind + verbatim redirect_uri path (#216) is
             unchanged.
+        token_auth_style: How the client id/secret are presented at the
+            token endpoint. ``"basic"`` (default) sends them in the HTTP
+            ``Authorization`` header (RFC 6749 §2.3.1, what Google and most
+            providers expect); ``"body"`` sends them in the form body for
+            providers that reject Basic — Yahoo! JAPAN biz-oauth requires
+            this. Declarative only; the OSS exchange (#201) honours it.
     """
 
     authorize_url: str
@@ -164,6 +170,7 @@ class AccountOAuthConfig:
     scopes: tuple[str, ...] = ()
     callback_path: str = "/oauth/callback"
     callback_port: int | None = None
+    token_auth_style: str = "basic"
 
 
 __all__ = ["AccountCredentialField", "AccountOAuthConfig"]

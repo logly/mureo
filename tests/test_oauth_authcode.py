@@ -130,6 +130,50 @@ def test_exchange_returns_refresh_token(monkeypatch: pytest.MonkeyPatch) -> None
     assert body["grant_type"] == "authorization_code"
     assert body["code"] == "AUTHCODE"
     assert body["redirect_uri"] == "http://127.0.0.1:5151/oauth/callback"
+    # Default is Basic: credentials must NOT also be duplicated into the body.
+    assert "client_id" not in body
+    assert "client_secret" not in body
+
+
+@pytest.mark.unit
+def test_exchange_basic_is_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``client_auth='basic'`` (the default) keeps the Authorization-header
+    scheme — regression guard for Google / existing providers."""
+    monkeypatch.setattr("mureo.oauth_authcode.httpx.Client", _FakeClient)
+    exchange_authorization_code(
+        token_url="https://a.test/token",
+        code="AC",
+        client_id="CID",
+        client_secret="SECRET",
+        redirect_uri="http://127.0.0.1:1/oauth/callback",
+        client_auth="basic",
+    )
+    assert _FakeClient.last_call["auth"] == ("CID", "SECRET")
+    assert "client_id" not in _FakeClient.last_call["data"]
+
+
+@pytest.mark.unit
+def test_exchange_body_style_puts_creds_in_form(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``client_auth='body'`` (Yahoo! JAPAN biz-oauth) sends client_id +
+    client_secret in the form body and NO HTTP Basic auth header."""
+    monkeypatch.setattr("mureo.oauth_authcode.httpx.Client", _FakeClient)
+    result = exchange_authorization_code(
+        token_url="https://biz-oauth.yahoo.co.jp/oauth/v1/token",
+        code="AUTHCODE",
+        client_id="CID",
+        client_secret="SECRET",
+        redirect_uri="http://127.0.0.1:5151/oauth/callback",
+        client_auth="body",
+    )
+    assert result.refresh_token == "RT-xyz"
+    # No Authorization header (Yahoo rejects Basic).
+    assert _FakeClient.last_call["auth"] is None
+    body = _FakeClient.last_call["data"]
+    assert body["client_id"] == "CID"
+    assert body["client_secret"] == "SECRET"
+    assert body["grant_type"] == "authorization_code"
 
 
 @pytest.mark.unit

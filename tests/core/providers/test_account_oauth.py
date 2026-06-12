@@ -78,6 +78,24 @@ def test_config_defaults() -> None:
     # #220 — no fixed port by default (loopback uses an ephemeral port /
     # the operator-supplied callback URL, #216). Backward compatible.
     assert cfg.callback_port is None
+    # Token-endpoint client auth defaults to HTTP Basic (Google et al.).
+    assert cfg.token_auth_style == "basic"
+
+
+@pytest.mark.unit
+def test_config_accepts_body_token_auth_style() -> None:
+    """A provider whose token endpoint rejects HTTP Basic (Yahoo! JAPAN
+    biz-oauth) declares ``token_auth_style="body"`` so the client id/secret
+    travel in the form body instead of the Authorization header."""
+    cfg = AccountOAuthConfig(
+        authorize_url="https://a.test/authorize",
+        token_url="https://a.test/token",
+        client_id_field="client_id",
+        client_secret_field="client_secret",
+        target_field="refresh_token",
+        token_auth_style="body",
+    )
+    assert cfg.token_auth_style == "body"
 
 
 @pytest.mark.unit
