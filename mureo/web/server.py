@@ -15,6 +15,7 @@ import logging
 import signal
 import socketserver
 import threading
+import time
 import webbrowser
 from importlib import resources
 from pathlib import Path
@@ -28,6 +29,12 @@ from mureo.web.oauth_bridge import OAuthBridge
 from mureo.web.session import ConfigureSession
 
 logger = logging.getLogger(__name__)
+
+# #227: how often the configure wait loop re-asserts cooked mode on the
+# controlling TTY. A leaked raw mode mid-session is healed within one
+# tick; the tcgetattr/tcsetattr pair costs microseconds, so a 1s cadence
+# is imperceptible. Tests shrink this to exercise the loop quickly.
+_COOKED_REASSERT_SECONDS = 1.0
 
 
 def _resolve_static_dir() -> Path:
@@ -253,9 +260,20 @@ def run_configure_wizard(
         # with ISIG off — Ctrl+C then never generates SIGINT, so _on_signal
         # never fires and the operator is stranded with a dead terminal
         # (no echo) for the full timeout. Force cooked mode before blocking
-        # so Ctrl+C reliably delivers the stop signal. No-op on a non-TTY.
-        force_cooked_mode(terminal_fd())
-        wizard.stop_event.wait(timeout=timeout_seconds)
+        # so Ctrl+C reliably delivers the stop signal, and RE-assert it on
+        # every tick: a configure action handled on the HTTP thread can
+        # run plugin code that re-flips the TTY to raw while we are
+        # already blocked here, which a one-shot fix cannot recover from.
+        # No-op on a non-TTY either way.
+        fd = terminal_fd()
+        force_cooked_mode(fd)
+        deadline = time.monotonic() + timeout_seconds
+        while not wizard.stop_event.is_set():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            wizard.stop_event.wait(timeout=min(_COOKED_REASSERT_SECONDS, remaining))
+            force_cooked_mode(fd)
     except KeyboardInterrupt:
         # Belt-and-braces: if a KeyboardInterrupt still surfaces (e.g.
         # the handler could not be installed), treat it as a stop.

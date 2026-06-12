@@ -210,7 +210,29 @@ class TestRunConfigureWizardCli:
                 open_browser=False,
                 timeout_seconds=0.2,
             )
-        mock_cooked.assert_called_once()
+        assert mock_cooked.call_count >= 1
+
+    def test_reasserts_cooked_mode_during_wait(
+        self, home_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#227 follow-up: a server-side action (a leaked menu in a
+        third-party backend) can re-flip the TTY to raw *while* the main
+        thread is already blocked on the stop event — a one-shot pre-wait
+        fix cannot recover Ctrl+C then. The wait must re-assert cooked
+        mode on every tick so a mid-session leak self-heals."""
+        monkeypatch.setattr("mureo.web.server._COOKED_REASSERT_SECONDS", 0.05)
+        with (
+            patch("mureo.web.server.webbrowser.open"),
+            patch("mureo.web.server.force_cooked_mode") as mock_cooked,
+        ):
+            run_configure_wizard(
+                home=home_dir,
+                open_browser=False,
+                timeout_seconds=0.4,
+            )
+        # Initial assert plus one per ~0.05s tick over a 0.4s wait; allow
+        # generous scheduling slack but require clearly more than one-shot.
+        assert mock_cooked.call_count >= 4
 
     def test_opens_browser_when_requested(self, home_dir: Path) -> None:
         with patch("mureo.web.server.webbrowser.open") as mock_open:
