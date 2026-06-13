@@ -242,8 +242,9 @@ def get_update_status() -> dict[str, Any]:
     now = time.monotonic()
     with _cache_lock:
         cached = _cached_result
-        fresh = cached is not None and (now - _cached_at_monotonic) < _ttl_for(cached)
-        if fresh:
+        # Inline ``cached is not None`` (rather than via a ``fresh`` flag) so the
+        # type checker narrows ``cached`` to a dict in the return below.
+        if cached is not None and (now - _cached_at_monotonic) < _ttl_for(cached):
             return dict(cached)
         start_refresh = not _refresh_in_progress
         if start_refresh:
