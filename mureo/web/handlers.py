@@ -12,6 +12,8 @@ Routes
 ``GET  /api/status``             → status_collector snapshot
 ``GET  /api/csrf``               → ``{"csrf_token": "..."}``
 ``GET  /api/about``              → mureo + extension package versions
+``GET  /api/updates``            → available mureo/plugin updates (pip)
+``POST /api/upgrade``            → upgrade mureo + plugins (server-derived)
 ``GET  /api/oauth/<p>/status``   → per-provider OAuth flags
 ``POST /api/locale``             → set session locale (en|ja)
 ``POST /api/host``               → set Claude application host
@@ -105,6 +107,8 @@ from mureo.web.setup_actions import (
     set_native_preference,
 )
 from mureo.web.status_collector import collect_status
+from mureo.web.upgrade_action import run_upgrade_all
+from mureo.web.version_check import check_for_updates
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping
@@ -322,6 +326,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 {"app": PING_APP_NAME, "version": mureo_version},
             )
             return
+        if path == "/api/updates":
+            # #239 — available mureo/plugin updates (pip-derived). Read-
+            # only and fault-isolated (never raises), so the Host-header
+            # gate alone suffices like every other GET JSON endpoint.
+            send_json(self, check_for_updates())
+            return
         if path == "/api/extensions":
             self._serve_extensions_index()
             return
@@ -520,6 +530,18 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     def _post_setup_basic_clear(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         envelope = clear_all_setup(home=self.wizard.home, host=self.wizard.session.host)
         send_json(self, envelope)
+
+    def _post_upgrade(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
+        """#239 — upgrade mureo + every installed ``mureo-*`` plugin.
+
+        The target list is SERVER-derived (``_discover_all_mureo_packages``
+        inside ``run_upgrade_all``) — the request body is deliberately
+        NOT read for packages, so a stale/hostile client can never inject
+        an arbitrary package or pip flag onto the install command. The
+        running server is still on the old code afterwards, so the UI
+        prompts the operator to restart ``mureo configure``.
+        """
+        send_json(self, run_upgrade_all())
 
     def _inject_saved_oauth_callback_urls(self, plugins: list[dict[str, Any]]) -> None:
         """Surface each OAuth provider's saved (non-secret) callback URL so
@@ -1058,6 +1080,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/host": _post_host,
         "/api/setup/basic": _post_setup_basic,
         "/api/setup/basic/clear": _post_setup_basic_clear,
+        "/api/upgrade": _post_upgrade,
         "/api/setup/mcp/remove": _post_setup_mcp_remove,
         "/api/setup/hook/remove": _post_setup_hook_remove,
         "/api/setup/skills/remove": _post_setup_skills_remove,
