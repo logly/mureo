@@ -992,38 +992,118 @@
     };
   }
 
-  async function renderUpdates() {
-    const area = document.querySelector("[data-about-updates]");
+  function setSummary(node, key) {
+    node.textContent = MUREO.t(key);
+    node.setAttribute("data-i18n", key);
+  }
+
+  // Apply an /api/updates envelope to the About update area, handling every
+  // status: checking (a check is in flight), error (couldn't check), and ok
+  // (up-to-date vs updates available). Extracted so the passive render and the
+  // manual "check now" poll share one code path.
+  function applyUpdatesBody(body) {
     const summary = document.querySelector("[data-about-updates-summary]");
     const list = document.querySelector("[data-about-updates-list]");
     const button = document.querySelector("[data-about-update-button]");
-    if (!area || !summary || !list || !button) return;
-    let body;
-    try {
-      const res = await fetch("/api/updates");
-      if (!res.ok) return;
-      body = await res.json();
-    } catch (_err) {
+    if (!summary || !list || !button) return;
+    if (!body || !body.status) return;
+    if (body.status === "checking") {
+      setSummary(summary, "dashboard.about_update_checking");
       return;
     }
-    if (!body || body.status !== "ok") return;
-    const outdated = Array.isArray(body.packages) ? body.packages : [];
-    area.hidden = false;
-    while (list.firstChild) list.removeChild(list.firstChild);
-    if (!body.any_update || outdated.length === 0) {
-      summary.textContent = MUREO.t("dashboard.about_up_to_date");
-      summary.setAttribute("data-i18n", "dashboard.about_up_to_date");
+    if (body.status !== "ok") {
+      setSummary(summary, "dashboard.about_update_check_failed");
       button.hidden = true;
       return;
     }
-    summary.textContent = MUREO.t("dashboard.about_update_available");
-    summary.setAttribute("data-i18n", "dashboard.about_update_available");
+    const outdated = Array.isArray(body.packages) ? body.packages : [];
+    while (list.firstChild) list.removeChild(list.firstChild);
+    if (!body.any_update || outdated.length === 0) {
+      setSummary(summary, "dashboard.about_up_to_date");
+      button.hidden = true;
+      return;
+    }
+    setSummary(summary, "dashboard.about_update_available");
     outdated.forEach(function (pkg) {
       list.appendChild(buildUpdateRow(pkg));
     });
     button.hidden = false;
     setAboutNavBadge();
     wireUpdateConfirm(outdated);
+  }
+
+  function sleep(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  // Wire the always-visible "check for updates" button. Idempotent (onclick,
+  // not addEventListener) so repeated renders never stack handlers.
+  let checkInProgress = false;
+  function wireCheckButton() {
+    const btn = document.querySelector("[data-about-check-button]");
+    if (!btn) return;
+    btn.onclick = function () {
+      runCheckNow();
+    };
+  }
+
+  // POST /api/updates/refresh to drop the cache and start a fresh pip check,
+  // then poll GET /api/updates until the status settles. The check runs in a
+  // background thread server-side and can take up to the pip timeout, so the
+  // poll deadline comfortably exceeds it.
+  async function runCheckNow() {
+    if (checkInProgress) return;
+    const btn = document.querySelector("[data-about-check-button]");
+    const summary = document.querySelector("[data-about-updates-summary]");
+    checkInProgress = true;
+    if (btn) btn.disabled = true;
+    if (summary) setSummary(summary, "dashboard.about_update_checking");
+    try {
+      await MUREO.postJson("/api/updates/refresh", {});
+    } catch (_err) {
+      // Even if the trigger POST fails, poll the cache: a periodic refresh
+      // may already be in flight.
+    }
+    let body = null;
+    const deadline = Date.now() + 75000;
+    while (Date.now() < deadline) {
+      await sleep(1500);
+      try {
+        const res = await fetch("/api/updates");
+        body = res.ok ? await res.json() : null;
+      } catch (_e) {
+        body = null;
+      }
+      if (body && body.status && body.status !== "checking") break;
+    }
+    if (!body || body.status === "checking") {
+      // Poll exhausted without the check settling — don't leave a stuck
+      // "Checking…"; surface that it couldn't complete.
+      if (summary) setSummary(summary, "dashboard.about_update_check_failed");
+    } else {
+      applyUpdatesBody(body);
+    }
+    checkInProgress = false;
+    if (btn) btn.disabled = false;
+  }
+
+  async function renderUpdates() {
+    const area = document.querySelector("[data-about-updates]");
+    if (!area) return;
+    // Always reveal the area so the "check for updates" button is available,
+    // even when everything is up to date or the last check errored / was cold.
+    area.hidden = false;
+    wireCheckButton();
+    let body = null;
+    try {
+      const res = await fetch("/api/updates");
+      body = res.ok ? await res.json() : null;
+    } catch (_err) {
+      body = null;
+    }
+    applyUpdatesBody(body);
   }
 
   function renderAll() {

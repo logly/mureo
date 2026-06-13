@@ -381,6 +381,28 @@ def stop_periodic_update_check() -> None:
         worker.join(timeout=2.0)
 
 
+def request_update_refresh() -> dict[str, Any]:
+    """Invalidate the cache and kick off a fresh check; return immediately.
+
+    Backs the About tab's "check for updates" button (#246). Drops the cached
+    envelope so the next :func:`get_update_status` treats the cache as cold —
+    starting a background refresh and returning the ``checking`` placeholder.
+    Never blocks on pip; the client polls ``GET /api/updates`` until the status
+    settles.
+
+    Best-effort freshness: if a refresh is already in flight when this is
+    called, the single-flight gate reuses that run rather than forcing a brand
+    new one — the operator still gets a current result, just not a guaranteed
+    brand-new pip invocation.
+    """
+
+    global _cached_result, _cached_at_monotonic
+    with _cache_lock:
+        _cached_result = None
+        _cached_at_monotonic = 0.0
+    return get_update_status()
+
+
 def _reset_update_cache() -> None:
     """Test-only: stop polling and clear cached state between cases."""
 
@@ -397,6 +419,7 @@ def _reset_update_cache() -> None:
 __all__ = [
     "check_for_updates",
     "get_update_status",
+    "request_update_refresh",
     "start_periodic_update_check",
     "stop_periodic_update_check",
 ]
