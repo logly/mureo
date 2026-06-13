@@ -42,6 +42,7 @@ def _make_class(
     *,
     fields: tuple[AccountCredentialField, ...] = (),
     display_name: str | None = None,
+    display_name_i18n: dict[str, str] | None = None,
     oauth: Any = None,
 ) -> type:
     """Build a minimal provider class with the requested credential fields.
@@ -49,6 +50,9 @@ def _make_class(
     ``oauth`` (an ``AccountOAuthConfig``) is attached as
     ``account_oauth`` only when supplied, so a manual-entry provider keeps
     no such attribute (``get_account_oauth_config`` → ``None``).
+    ``display_name_i18n`` (#236) is attached only when supplied, so a
+    provider that omits it keeps no such attribute (heading falls back to
+    ``display_name``).
     """
 
     class _Fake:
@@ -58,6 +62,8 @@ def _make_class(
     _Fake.display_name = display_name or name  # type: ignore[attr-defined]
     _Fake.capabilities = frozenset()  # type: ignore[attr-defined]
     _Fake.account_credential_fields = fields  # type: ignore[attr-defined]
+    if display_name_i18n is not None:
+        _Fake.display_name_i18n = display_name_i18n  # type: ignore[attr-defined]
     if oauth is not None:
         _Fake.account_oauth = oauth  # type: ignore[attr-defined]
     return _Fake
@@ -81,9 +87,16 @@ def _entry(
     *,
     fields: tuple[AccountCredentialField, ...] = (),
     display_name: str | None = None,
+    display_name_i18n: dict[str, str] | None = None,
     oauth: Any = None,
 ) -> ProviderEntry:
-    cls = _make_class(name, fields=fields, display_name=display_name, oauth=oauth)
+    cls = _make_class(
+        name,
+        fields=fields,
+        display_name=display_name,
+        display_name_i18n=display_name_i18n,
+        oauth=oauth,
+    )
     return ProviderEntry(
         name=name,
         display_name=display_name or name,
@@ -132,6 +145,97 @@ def test_list_skips_providers_without_account_credential_fields(
     result = list_plugin_credential_fields()
     names = [r["provider_name"] for r in result]
     assert names == ["with_fields"]
+
+
+@pytest.mark.unit
+def test_heading_localized_when_provider_declares_display_name_i18n(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#236 — a provider declaring ``display_name_i18n`` gets a locale-
+    resolved section heading (same fallback as field labels, #186)."""
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "yahoo_search",
+                display_name="Yahoo! JAPAN Ads (Search)",
+                display_name_i18n={"ja": "Yahoo! JAPAN 広告（検索）"},
+                fields=(
+                    AccountCredentialField(key="account_id", display_name="Account ID"),
+                ),
+            ),
+        ],
+    )
+
+    ja = list_plugin_credential_fields(locale="ja")
+    assert ja[0]["display_name"] == "Yahoo! JAPAN 広告（検索）"
+    en = list_plugin_credential_fields(locale="en")
+    assert en[0]["display_name"] == "Yahoo! JAPAN Ads (Search)"
+
+
+@pytest.mark.unit
+def test_heading_falls_back_to_display_name_without_i18n(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider that omits ``display_name_i18n`` keeps the bare
+    ``display_name`` in every locale (regression-free)."""
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "plain",
+                display_name="Plain Ads",
+                fields=(
+                    AccountCredentialField(key="account_id", display_name="Account ID"),
+                ),
+            ),
+        ],
+    )
+
+    assert list_plugin_credential_fields(locale="ja")[0]["display_name"] == "Plain Ads"
+    assert list_plugin_credential_fields(locale="en")[0]["display_name"] == "Plain Ads"
+
+
+@pytest.mark.unit
+def test_heading_unknown_locale_falls_back_to_en_then_display_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unknown locale resolves ``i18n['en']`` if present, else the bare
+    ``display_name`` — matching the field-label fallback chain (#186)."""
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "with_en",
+                display_name="Bare",
+                display_name_i18n={"en": "English Heading"},
+                fields=(
+                    AccountCredentialField(key="account_id", display_name="Account ID"),
+                ),
+            ),
+            _entry(
+                "ja_only",
+                display_name="Bare JA-only",
+                display_name_i18n={"ja": "日本語のみ"},
+                fields=(
+                    AccountCredentialField(key="account_id", display_name="Account ID"),
+                ),
+            ),
+        ],
+    )
+
+    result = {
+        r["provider_name"]: r["display_name"]
+        for r in list_plugin_credential_fields(locale="fr")
+    }
+    assert result["with_en"] == "English Heading"
+    assert result["ja_only"] == "Bare JA-only"
 
 
 @pytest.mark.unit

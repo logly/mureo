@@ -99,6 +99,16 @@ class BaseProvider(Protocol):
       the attribute behave as before — tooling assumes "no
       per-account fields" (operator-shared credentials are the entire
       credential set).
+
+    * ``display_name_i18n: Mapping[str, str]`` — optional BCP-47 →
+      localized heading map for the provider's configure section title
+      (#236). The configure UI resolves the section heading as
+      ``i18n[locale] → i18n["en"] → display_name`` (the same fallback
+      chain as the per-field ``display_name_i18n`` from #186). Providers
+      that omit it keep the bare ``display_name`` in every locale, so
+      this is fully backward-compatible. Example: a Yahoo! JAPAN Ads
+      bridge can show ``Yahoo! JAPAN 広告（検索）`` under a ``ja`` locale
+      while keeping ``Yahoo! JAPAN Ads (Search)`` as the ``en`` default.
     """
 
     name: str
