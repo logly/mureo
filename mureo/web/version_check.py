@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import os
 import subprocess
 import sys
 import threading
@@ -61,6 +63,17 @@ _CHECKING_RESULT: Final[dict[str, Any]] = {
     "any_update": False,
     "packages": [],
 }
+
+#: Env override for the always-on service's background poll cadence, in
+#: seconds. ``0`` or negative disables periodic polling; unset uses the
+#: default. A wide cadence is fine — the index moves at most a few times a day.
+_POLL_INTERVAL_ENV: Final[str] = "MUREO_UPDATE_CHECK_INTERVAL_SECONDS"
+
+#: Default poll cadence: every 6h, aligned with ``_OK_TTL_SECONDS`` so the
+#: cache is kept warm. At the exact tick/expiry boundary a UI hit may still
+#: land on a momentarily-stale entry — the lazy refresh in ``get_update_status``
+#: covers that window.
+_DEFAULT_POLL_INTERVAL_SECONDS: Final[int] = 6 * 60 * 60
 
 
 def _error_result() -> dict[str, Any]:
@@ -200,6 +213,22 @@ def _refresh_updates() -> None:
         _refresh_in_progress = False
 
 
+def _refresh_if_idle() -> None:
+    """Run the check inline now, unless one is already in flight.
+
+    Used by the periodic poller: it owns a daemon thread to block in, so it
+    refreshes on that thread rather than spawning another worker. Honours the
+    same single-flight gate as the lazy path so the two never double-run.
+    """
+
+    global _refresh_in_progress
+    with _cache_lock:
+        if _refresh_in_progress:
+            return
+        _refresh_in_progress = True
+    _refresh_updates()  # clears _refresh_in_progress when done
+
+
 def get_update_status() -> dict[str, Any]:
     """Non-blocking accessor for ``GET /api/updates``.
 
@@ -241,11 +270,122 @@ def get_update_status() -> dict[str, Any]:
     return dict(cached) if cached is not None else dict(_CHECKING_RESULT)
 
 
+# --- Periodic poll (always-on service) ---------------------------------------
+#
+# When `mureo configure` runs as a long-lived service (`--serve` / launchd /
+# systemd), nothing opens the UI to trigger the lazy check. This poller warms
+# the cache on a wide cadence so an operator who opens the dashboard later sees
+# an up-to-date badge immediately, without the request ever touching pip.
+
+# Each launch gets its OWN stop event, captured at start and passed into the
+# loop, so a stop/start race can never make a new poller exit early or leave an
+# old one running (a single module-level event would alias across generations).
+_poll_lock = threading.Lock()
+_poll_thread: threading.Thread | None = None
+_poll_stop: threading.Event | None = None
+
+
+def _resolve_poll_interval(explicit: float | None) -> float:
+    """Interval in seconds: explicit arg → env → default.
+
+    A non-finite env value (``nan`` / ``inf``) is treated as invalid so it can
+    never produce a degenerate ``Event.wait()`` timeout.
+    """
+
+    if explicit is not None:
+        return explicit
+    raw = os.environ.get(_POLL_INTERVAL_ENV)
+    if raw is None or not raw.strip():
+        return _DEFAULT_POLL_INTERVAL_SECONDS
+    try:
+        value = float(raw)
+        if not math.isfinite(value):
+            raise ValueError(raw)
+    except ValueError:
+        logger.warning(
+            "invalid %s=%r; using default %ss",
+            _POLL_INTERVAL_ENV,
+            raw,
+            _DEFAULT_POLL_INTERVAL_SECONDS,
+        )
+        return _DEFAULT_POLL_INTERVAL_SECONDS
+    return value
+
+
+def _poll_loop(interval: float, stop_event: threading.Event) -> None:
+    """Warm the cache now, then once per ``interval`` until ``stop_event``."""
+
+    while True:
+        _refresh_if_idle()
+        if stop_event.wait(interval):
+            return
+
+
+def start_periodic_update_check(interval_seconds: float | None = None) -> bool:
+    """Start the always-on service's background update poll (#244).
+
+    Idempotent — safe to call once per service launch. Returns ``True`` when a
+    poller thread was started, ``False`` when polling is disabled
+    (``interval <= 0``) or one is already running. Interval resolves from
+    ``interval_seconds`` → ``$MUREO_UPDATE_CHECK_INTERVAL_SECONDS`` →
+    ``_DEFAULT_POLL_INTERVAL_SECONDS``.
+    """
+
+    global _poll_thread, _poll_stop
+    interval = _resolve_poll_interval(interval_seconds)
+    if interval <= 0:
+        logger.info("periodic update check disabled (interval=%s)", interval)
+        return False
+    with _poll_lock:
+        if _poll_thread is not None and _poll_thread.is_alive():
+            return False
+        stop_event = threading.Event()
+        worker = threading.Thread(
+            target=_poll_loop,
+            args=(interval, stop_event),
+            name="mureo-update-poll",
+            daemon=True,
+        )
+        _poll_thread = worker
+        _poll_stop = stop_event
+    try:
+        worker.start()
+    except RuntimeError:
+        with _poll_lock:
+            _poll_thread = None
+            _poll_stop = None
+        logger.warning("could not start periodic update check")
+        return False
+    logger.debug("periodic update check started (every %ss)", interval)
+    return True
+
+
+def stop_periodic_update_check() -> None:
+    """Stop the background poll (service shutdown). No-op if not running.
+
+    The join is best-effort (the worker may be mid-pip, up to the pip timeout):
+    ``daemon=True`` is what actually guarantees no shutdown block, so a slow
+    worker is reaped at interpreter exit rather than blocking the caller.
+    """
+
+    global _poll_thread, _poll_stop
+    with _poll_lock:
+        worker = _poll_thread
+        stop_event = _poll_stop
+        _poll_thread = None
+        _poll_stop = None
+    if stop_event is not None:
+        stop_event.set()
+    if worker is not None:
+        worker.join(timeout=2.0)
+
+
 def _reset_update_cache() -> None:
-    """Test-only: clear cached state between cases (module globals persist)."""
+    """Test-only: stop polling and clear cached state between cases."""
 
     global _cached_result, _cached_at_monotonic, _refresh_in_progress
     global _refresh_thread
+    stop_periodic_update_check()
     with _cache_lock:
         _cached_result = None
         _cached_at_monotonic = 0.0
@@ -253,4 +393,9 @@ def _reset_update_cache() -> None:
         _refresh_thread = None
 
 
-__all__ = ["check_for_updates", "get_update_status"]
+__all__ = [
+    "check_for_updates",
+    "get_update_status",
+    "start_periodic_update_check",
+    "stop_periodic_update_check",
+]

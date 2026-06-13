@@ -44,6 +44,15 @@ def home_dir(tmp_path: Path) -> Path:
     return home
 
 
+@pytest.fixture(autouse=True)
+def _no_update_poll(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Serve mode (#244) starts a background update poller; disable it here so
+    these serve tests never spawn a real ``pip`` subprocess / network call.
+    Interval ``0`` is the documented off-switch."""
+
+    monkeypatch.setenv("MUREO_UPDATE_CHECK_INTERVAL_SECONDS", "0")
+
+
 @pytest.mark.unit
 class TestConfigureServeFlagWiring:
     """``--serve`` maps to the headless contract at the CLI boundary."""

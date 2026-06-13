@@ -28,6 +28,10 @@ from mureo.web.host_paths import HostPaths, get_host_paths
 from mureo.web.instance import probe_mureo_instance, write_state_file
 from mureo.web.oauth_bridge import OAuthBridge
 from mureo.web.session import ConfigureSession
+from mureo.web.version_check import (
+    start_periodic_update_check,
+    stop_periodic_update_check,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -333,6 +337,12 @@ def run_configure_wizard(
         with contextlib.suppress(Exception):
             webbrowser.open(url)
 
+    # #244: only the always-on service (``serve_forever``) polls for updates
+    # in the background. A short-lived interactive launch relies on the lazy
+    # check that fires when the UI is opened, so it never spawns a poller.
+    if serve_forever:
+        start_periodic_update_check()
+
     # Stop the moment the user finishes (UI POSTs /api/shutdown ->
     # request_stop), presses Ctrl+C (SIGINT) or the process is asked to
     # terminate (SIGTERM); fall back to timeout_seconds as a hard cap.
@@ -384,6 +394,8 @@ def run_configure_wizard(
         # the handler could not be installed), treat it as a stop.
         pass
     finally:
+        if serve_forever:
+            stop_periodic_update_check()
         for signum, prev in prev_handlers:
             with contextlib.suppress(ValueError, OSError):
                 signal.signal(signum, prev)  # type: ignore[arg-type]

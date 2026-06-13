@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 from typing import Any
 from unittest.mock import patch
 
@@ -23,6 +24,8 @@ from mureo.web.version_check import (
     _reset_update_cache,
     check_for_updates,
     get_update_status,
+    start_periodic_update_check,
+    stop_periodic_update_check,
 )
 
 
@@ -360,3 +363,110 @@ class TestGetUpdateStatus:
             release.set()
             _join_refresh()
         assert calls == ["ran"]  # single-flight held: exactly one pip run
+
+
+@pytest.mark.unit
+class TestPeriodicUpdateCheck:
+    """The always-on service's background poll that warms the cache (#244)."""
+
+    _OK: Any = {"status": "ok", "any_update": False, "packages": []}
+
+    def test_interval_resolves_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MUREO_UPDATE_CHECK_INTERVAL_SECONDS", "120")
+        assert version_check._resolve_poll_interval(None) == 120.0
+
+    def test_explicit_interval_overrides_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MUREO_UPDATE_CHECK_INTERVAL_SECONDS", "120")
+        assert version_check._resolve_poll_interval(30) == 30.0
+
+    def test_invalid_env_falls_back_to_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MUREO_UPDATE_CHECK_INTERVAL_SECONDS", "not-a-number")
+        assert (
+            version_check._resolve_poll_interval(None)
+            == version_check._DEFAULT_POLL_INTERVAL_SECONDS
+        )
+
+    def test_unset_env_uses_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("MUREO_UPDATE_CHECK_INTERVAL_SECONDS", raising=False)
+        assert (
+            version_check._resolve_poll_interval(None)
+            == version_check._DEFAULT_POLL_INTERVAL_SECONDS
+        )
+
+    def test_zero_interval_disables_polling(self) -> None:
+        """``interval <= 0`` is the documented "off" switch."""
+        assert start_periodic_update_check(interval_seconds=0) is False
+        assert version_check._poll_thread is None
+
+    def test_env_zero_disables_polling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MUREO_UPDATE_CHECK_INTERVAL_SECONDS", "0")
+        assert start_periodic_update_check() is False
+        assert version_check._poll_thread is None
+
+    def test_start_warms_cache_immediately(self) -> None:
+        """The poll runs once on start so the UI shows fresh data right away."""
+        ran = threading.Event()
+        payload = {
+            "status": "ok",
+            "any_update": True,
+            "packages": [{"name": "mureo", "installed": "0.9.31", "latest": "0.9.32"}],
+        }
+
+        def _check() -> dict[str, Any]:
+            ran.set()
+            return payload
+
+        with patch("mureo.web.version_check.check_for_updates", side_effect=_check):
+            assert start_periodic_update_check(interval_seconds=3600) is True
+            assert ran.wait(5.0)
+            # stop() joins the worker, so the immediate refresh has stored its
+            # result by the time it returns.
+            stop_periodic_update_check()
+            assert get_update_status() == payload
+
+    def test_start_is_idempotent(self) -> None:
+        """A second start while one runs is a no-op (single-instance reuse)."""
+        with patch(
+            "mureo.web.version_check.check_for_updates", return_value=self._OK
+        ):
+            assert start_periodic_update_check(interval_seconds=3600) is True
+            assert start_periodic_update_check(interval_seconds=3600) is False
+            stop_periodic_update_check()
+
+    def test_stop_is_safe_when_not_running(self) -> None:
+        stop_periodic_update_check()  # must not raise
+        assert version_check._poll_thread is None
+
+    def test_restart_after_stop_launches_fresh_poller(self) -> None:
+        """start → stop → start must work (each launch gets its own event)."""
+        with patch(
+            "mureo.web.version_check.check_for_updates", return_value=self._OK
+        ):
+            assert start_periodic_update_check(interval_seconds=3600) is True
+            stop_periodic_update_check()
+            assert version_check._poll_thread is None
+            # A clean stop must not wedge the next launch.
+            assert start_periodic_update_check(interval_seconds=3600) is True
+            stop_periodic_update_check()
+
+    def test_refresh_if_idle_skips_when_a_refresh_is_in_flight(self) -> None:
+        """The poll tick yields to an in-flight lazy refresh (no double run)."""
+        calls: list[int] = []
+        with version_check._cache_lock:
+            version_check._refresh_in_progress = True
+        try:
+            with patch(
+                "mureo.web.version_check.check_for_updates",
+                side_effect=lambda: calls.append(1) or self._OK,
+            ):
+                version_check._refresh_if_idle()
+            assert calls == []
+        finally:
+            with version_check._cache_lock:
+                version_check._refresh_in_progress = False
