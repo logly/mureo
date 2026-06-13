@@ -984,6 +984,15 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
     transform 0.12s var(--ease), box-shadow 0.15s var(--ease);
 }
 
+/* The `hidden` attribute must win over `.btn`'s `display: inline-flex`:
+   author styles override the UA `[hidden] { display: none }`, so without
+   this a `.btn` toggled via `hidden` (e.g. the About "Update all" button,
+   revealed only when an update exists) would stay visible. Mirrors the
+   targeted `.dashboard-group[hidden]` / `.app-toast[hidden]` rules. */
+.btn[hidden] {
+  display: none;
+}
+
 .btn:hover {
   background: var(--surface-2);
   border-color: var(--ink-soft);
