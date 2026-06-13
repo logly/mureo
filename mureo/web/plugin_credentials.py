@@ -27,6 +27,7 @@ sensitive, and the configure-UI layer honours it.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from mureo.core.providers import (
@@ -37,7 +38,7 @@ from mureo.core.providers import (
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Mapping
+    from collections.abc import Collection
 
     from mureo.core.providers.credentials import AccountCredentialField
 
@@ -135,7 +136,14 @@ def list_plugin_credential_fields(
         result.append(
             {
                 "provider_name": entry.name,
-                "display_name": entry.display_name,
+                # #236 — locale-resolve the section heading from an optional
+                # provider-declared ``display_name_i18n`` (read defensively;
+                # plugins that omit it keep the bare ``display_name`` in
+                # every locale). Same fallback chain as field labels (#186):
+                # ``i18n[locale] → i18n['en'] → display_name``.
+                "display_name": _resolve_localized(
+                    _heading_i18n(entry.provider_class), entry.display_name, locale
+                ),
                 "fields": [_field_to_dict(f, locale) for f in fields],
                 # OAuth descriptor (#201) — field *keys* only, never
                 # secret values; ``None`` for manual-entry providers so
@@ -346,6 +354,19 @@ def _field_to_dict(field: AccountCredentialField, locale: str) -> dict[str, Any]
             field.description_i18n, field.description, locale
         ),
     }
+
+
+def _heading_i18n(provider_class: type) -> Mapping[str, str]:
+    """Return a provider's optional ``display_name_i18n`` map (#236).
+
+    Read defensively via ``getattr`` so the provider Protocol body stays
+    stable (same convention as ``account_credential_fields``). A provider
+    that omits the attribute — or declares a non-Mapping by mistake —
+    yields an empty map, so :func:`_resolve_localized` falls straight
+    through to the bare ``display_name``.
+    """
+    candidate = getattr(provider_class, "display_name_i18n", None)
+    return candidate if isinstance(candidate, Mapping) else {}
 
 
 def _resolve_localized(i18n: Mapping[str, str], fallback: str, locale: str) -> str:
