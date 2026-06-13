@@ -87,9 +87,7 @@ def _run_pip_outdated() -> str | None:
     except subprocess.TimeoutExpired:
         # Expected on a slow / unreachable index — not a bug. Log one line,
         # not a multi-line traceback that scares the operator on the console.
-        logger.warning(
-            "pip list --outdated timed out after %ss", _PIP_TIMEOUT_SECONDS
-        )
+        logger.warning("pip list --outdated timed out after %ss", _PIP_TIMEOUT_SECONDS)
         return None
     except OSError as exc:
         logger.warning("pip list --outdated could not run: %s", exc)
