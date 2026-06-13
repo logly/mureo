@@ -25,6 +25,15 @@ def configure(
         "--no-browser",
         help="Do not automatically open a browser tab.",
     ),
+    serve: bool = typer.Option(
+        False,
+        "--serve",
+        help=(
+            "Run headless as a long-lived daemon: no browser, no auto-stop "
+            "timeout, no terminal interaction. Serves until SIGTERM/SIGINT. "
+            "Used by the auto-start service (`mureo service install`)."
+        ),
+    ),
     port: int = typer.Option(
         DEFAULT_CONFIGURE_PORT,
         "--port",
@@ -40,7 +49,7 @@ def configure(
         help=(
             "Hard cap: auto-stop after this many seconds even if you "
             "never finish. Normally it exits the moment you finish in "
-            "the browser or press Ctrl+C."
+            "the browser or press Ctrl+C. Ignored under --serve."
         ),
     ),
 ) -> None:
@@ -50,7 +59,27 @@ def configure(
     configure server is already running on that port, it is re-opened
     instead of starting a second one (single-instance reuse); a foreign
     occupant triggers an automatic fallback to a free port.
+
+    With ``--serve`` the command runs headless: no browser is opened, the
+    auto-stop timeout is removed (it serves until SIGTERM/SIGINT), and no
+    interactive terminal handling is required. This is the mode the
+    auto-start service (``mureo service install``) launches.
     """
+    if serve:
+        # Headless daemon contract: never open a browser, never cap the
+        # lifetime (``timeout_seconds=None`` → serve until a stop signal).
+        typer.echo(
+            "Starting mureo configuration daemon on "
+            f"127.0.0.1:{port} (loopback only, headless)..."
+        )
+        run_configure_wizard(
+            open_browser=False,
+            timeout_seconds=None,
+            preferred_port=port,
+        )
+        typer.echo("Configure daemon stopped.")
+        return
+
     typer.echo("Starting mureo configuration UI on 127.0.0.1 (loopback only)...")
     reused = run_configure_wizard(
         open_browser=not no_browser,

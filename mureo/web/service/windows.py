@@ -1,0 +1,135 @@
+"""Windows Task Scheduler backend for ``mureo service`` (#241 Phase 2).
+
+Registers the headless configure daemon as an on-logon Scheduled Task
+named ``MureoConfigure`` (per-user, no admin) via ``schtasks``. A
+Scheduled Task is more robust than a Startup-folder shortcut: it survives
+profile churn and restarts cleanly. ``schtasks /Create ... /SC ONLOGON
+/F`` registers (``/F`` overwrites, so re-install is idempotent),
+``schtasks /Run`` starts it now, and ``schtasks /Delete ... /F`` removes
+it. Installed-ness is queried with ``schtasks /Query``.
+
+All ``subprocess`` calls use a fixed argv with ``shell=False`` and only
+reference the user's own ``sys.executable`` and an int port. Every failure
+path (missing ``schtasks``, nonzero exit) returns a structured result
+rather than raising.
+"""
+
+from __future__ import annotations
+
+import logging
+import subprocess
+from typing import TYPE_CHECKING
+
+from mureo.web.instance import probe_mureo_instance
+from mureo.web.service import (
+    SERVICE_BIND_HOST,
+    SERVICE_PORT,
+    OpResult,
+    StatusResult,
+    dashboard_url,
+)
+from mureo.web.service._common import service_command
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+#: Scheduled Task name registered with the per-user Task Scheduler.
+TASK_NAME = "MureoConfigure"
+
+
+def task_run_command(*, port: int = SERVICE_PORT) -> str:
+    """Return the ``/TR`` command string: ``<py> -m mureo configure --serve``."""
+    return service_command(port=port)
+
+
+def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run ``argv`` with a fixed list and ``shell=False`` (never a string)."""
+    return subprocess.run(  # noqa: S603 — fixed argv, shell=False
+        argv, capture_output=True, text=True, shell=False, check=False
+    )
+
+
+def _task_exists() -> bool:
+    """Return ``True`` iff ``schtasks /Query`` finds the task (exit 0)."""
+    try:
+        proc = _run(["schtasks", "/Query", "/TN", TASK_NAME])
+    except (FileNotFoundError, OSError):
+        return False
+    return proc.returncode == 0
+
+
+def install(*, home: Path | None = None, port: int = SERVICE_PORT) -> OpResult:
+    """Create the on-logon task and run it now. Idempotent (``/F``).
+
+    ``home`` is accepted and ignored for signature parity with the
+    file-writing backends (launchd/systemd) — Task Scheduler stores the
+    task itself, so there is no unit file under a home dir to place.
+    """
+    create = [
+        "schtasks",
+        "/Create",
+        "/TN",
+        TASK_NAME,
+        "/TR",
+        task_run_command(port=port),
+        "/SC",
+        "ONLOGON",
+        "/F",
+    ]
+    try:
+        proc = _run(create)
+        if proc.returncode != 0:
+            return OpResult(
+                ok=False, message=(proc.stderr or proc.stdout or "").strip()
+            )
+        # Start immediately so the user need not log out / in.
+        _run(["schtasks", "/Run", "/TN", TASK_NAME])
+    except FileNotFoundError:
+        return OpResult(ok=False, message="schtasks not found on PATH")
+    except OSError as exc:  # pragma: no cover - defensive
+        return OpResult(ok=False, message=str(exc))
+    return OpResult(ok=True, message="task created")
+
+
+def uninstall(*, home: Path | None = None) -> OpResult:
+    """Delete the task. Clean no-op when the task does not exist.
+
+    Queries ``schtasks`` directly (rather than via the error-swallowing
+    :func:`_task_exists`) so a missing ``schtasks`` binary surfaces as a
+    structured error instead of being mistaken for "task absent".
+    """
+    try:
+        query = _run(["schtasks", "/Query", "/TN", TASK_NAME])
+        if query.returncode != 0:
+            # Task not registered → clean no-op.
+            return OpResult(ok=True, message="not installed (nothing to remove)")
+        proc = _run(["schtasks", "/Delete", "/TN", TASK_NAME, "/F"])
+        if proc.returncode != 0:
+            return OpResult(
+                ok=False, message=(proc.stderr or proc.stdout or "").strip()
+            )
+    except FileNotFoundError:
+        return OpResult(ok=False, message="schtasks not found on PATH")
+    except OSError as exc:  # pragma: no cover - defensive
+        return OpResult(ok=False, message=str(exc))
+    return OpResult(ok=True, message="removed")
+
+
+def status(*, home: Path | None = None, port: int = SERVICE_PORT) -> StatusResult:
+    """Report installed (task exists) and running (``/api/ping``) state."""
+    installed = _task_exists()
+    running = probe_mureo_instance(SERVICE_BIND_HOST, port)
+    return StatusResult(
+        installed=installed, running=running, url=dashboard_url(port=port)
+    )
+
+
+__all__ = [
+    "TASK_NAME",
+    "install",
+    "status",
+    "task_run_command",
+    "uninstall",
+]
