@@ -22,7 +22,13 @@ from pathlib import Path
 
 from mureo.core.runtime_context import runtime_credentials_path
 from mureo.core.terminal import force_cooked_mode, terminal_fd
-from mureo.web.extensions import discover_web_extensions
+from mureo.web.extensions import (
+    ServeContext,
+    WebExtensionEntry,
+    discover_web_extensions,
+    start_serve_lifecycles,
+    stop_serve_lifecycles,
+)
 from mureo.web.handlers import ConfigureHandler
 from mureo.web.host_paths import HostPaths, get_host_paths
 from mureo.web.instance import probe_mureo_instance, write_state_file
@@ -340,8 +346,26 @@ def run_configure_wizard(
     # #244: only the always-on service (``serve_forever``) polls for updates
     # in the background. A short-lived interactive launch relies on the lazy
     # check that fires when the UI is opened, so it never spawns a poller.
+    #
+    # #249: the same guard governs extension lifecycle hooks — only the
+    # always-on daemon lets extensions run background jobs. The server is
+    # already serving (``wait_until_ready`` returned), so a hook may safely
+    # call its own routes. ``started_extensions`` is filled only here and
+    # consumed in ``finally`` for the symmetric stop.
+    started_extensions: tuple[WebExtensionEntry, ...] = ()
     if serve_forever:
         start_periodic_update_check()
+        # Hooks run synchronously here — before the SIGINT/SIGTERM
+        # handlers below — and sequentially across extensions, so a
+        # well-behaved hook returns promptly and offloads ongoing work to
+        # its own thread (see the WebExtension docstring). Faults are
+        # isolated inside ``start_serve_lifecycles``.
+        serve_ctx = ServeContext(
+            stop_event=wizard.stop_event,
+            request_stop=wizard.request_stop,
+            home=wizard.home if wizard.home is not None else Path.home(),
+        )
+        started_extensions = start_serve_lifecycles(wizard.extensions, serve_ctx)
 
     # Stop the moment the user finishes (UI POSTs /api/shutdown ->
     # request_stop), presses Ctrl+C (SIGINT) or the process is asked to
@@ -395,6 +419,10 @@ def run_configure_wizard(
         pass
     finally:
         if serve_forever:
+            # Reverse of startup: stop extension jobs first, then the
+            # update poller. ``stop_serve_lifecycles`` stops only the
+            # extensions whose ``on_serve_start`` actually ran.
+            stop_serve_lifecycles(started_extensions)
             stop_periodic_update_check()
         for signum, prev in prev_handlers:
             with contextlib.suppress(ValueError, OSError):
