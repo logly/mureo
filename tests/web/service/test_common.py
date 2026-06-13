@@ -22,6 +22,10 @@ class TestServiceArgv:
         assert argv[1:] == ("-m", "mureo", "configure", "--serve", "--port", "7613")
 
     def test_port_is_coerced_to_str(self) -> None:
+        # Pass a bool (an int subclass that is NOT already its str form) so
+        # the assertion exercises the str(int(...)) coercion rather than a
+        # value that would pass even as a no-op.
+        assert service_argv(port=True)[-1] == "1"
         assert service_argv(port=7613)[-1] == "7613"
 
 

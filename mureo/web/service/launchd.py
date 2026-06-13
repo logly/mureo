@@ -80,9 +80,23 @@ def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _current_uid() -> int:
+    """Return the POSIX uid, or ``0`` where ``os.getuid`` is absent.
+
+    launchd only ever runs on macOS, but the backend is imported and
+    unit-tested (with ``launchctl`` mocked) on every platform — including
+    Windows, where ``os.getuid`` does not exist. Falling back to ``0``
+    keeps the code importable/testable cross-platform; the value only
+    feeds the ``gui/<uid>`` launchctl domain, which is never reached off
+    macOS at runtime.
+    """
+    getuid = getattr(os, "getuid", None)
+    return getuid() if getuid is not None else 0
+
+
 def _load(path: Path) -> OpResult:
     """Bootstrap the agent now via ``launchctl`` (modern then fallback)."""
-    uid = os.getuid()
+    uid = _current_uid()
     bootstrap = ["launchctl", "bootstrap", f"gui/{uid}", str(path)]
     try:
         proc = _run(bootstrap)
@@ -102,7 +116,7 @@ def _load(path: Path) -> OpResult:
 
 def _unload(path: Path) -> None:
     """Bootout the agent now (best-effort; ignore already-stopped)."""
-    uid = os.getuid()
+    uid = _current_uid()
     try:
         proc = _run(["launchctl", "bootout", f"gui/{uid}/{LABEL}"])
         if proc.returncode != 0:

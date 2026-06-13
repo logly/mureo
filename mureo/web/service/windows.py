@@ -61,7 +61,12 @@ def _task_exists() -> bool:
 
 
 def install(*, home: Path | None = None, port: int = SERVICE_PORT) -> OpResult:
-    """Create the on-logon task and run it now. Idempotent (``/F``)."""
+    """Create the on-logon task and run it now. Idempotent (``/F``).
+
+    ``home`` is accepted and ignored for signature parity with the
+    file-writing backends (launchd/systemd) — Task Scheduler stores the
+    task itself, so there is no unit file under a home dir to place.
+    """
     create = [
         "schtasks",
         "/Create",
