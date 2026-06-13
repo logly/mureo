@@ -215,16 +215,17 @@
                    hidden until the background check returns a result. -->
               <div class="dashboard-about-updates" data-about-updates hidden>
                 <p data-about-updates-summary></p>
-                <!-- #246 — manual "check now". Always visible so the operator
-                     can force a fresh check (the result is otherwise cached /
-                     polled on a wide cadence by the always-on service). -->
-                <button type="button" class="btn btn-secondary"
-                        data-about-check-button
-                        data-i18n="dashboard.about_check_button">Check for updates</button>
                 <ul data-about-updates-list></ul>
-                <button type="button" class="btn btn-primary"
-                        data-about-update-button hidden
-                        data-i18n="dashboard.about_update_button">Update all</button>
+                <!-- #246 — action row: manual "check now" (always visible) and
+                     "update all" (shown only when updates exist), side by side. -->
+                <div class="dashboard-about-update-actions">
+                  <button type="button" class="btn btn-secondary"
+                          data-about-check-button
+                          data-i18n="dashboard.about_check_button">Check for updates</button>
+                  <button type="button" class="btn btn-primary"
+                          data-about-update-button hidden
+                          data-i18n="dashboard.about_update_button">Update all</button>
+                </div>
                 <!-- In-page confirm panel (no native window.confirm).
                      Lists the packages, then Upgrade / Cancel. -->
                 <div class="dashboard-about-update-confirm" data-about-update-confirm hidden>

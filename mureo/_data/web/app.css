@@ -1211,6 +1211,17 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-weight: 600;
 }
 
+/* #246 — "Check for updates" + "Update all" sit on one row. "Update all"
+   is hidden until an update exists, so on a fresh check only the check
+   button shows (left-aligned); wrap keeps it tidy on narrow widths. */
+.dashboard-about-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .dashboard-about-update-status {
   margin-top: 10px;
 }
