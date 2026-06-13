@@ -210,6 +210,47 @@ class TestServeAbout:
 
 
 @pytest.mark.unit
+class TestPingGet:
+    """``GET /api/ping`` — #241 single-instance probe endpoint.
+
+    Unauthenticated (no CSRF — it is a GET), Host-gated like every other
+    GET, and exposes only the app name + mureo version. No secrets, no
+    paths: a second ``mureo configure`` launch hits it to tell our own
+    server apart from a foreign process that grabbed the port.
+    """
+
+    def test_ping_returns_app_signature_and_version(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        from mureo import __version__ as expected_version
+
+        resp = _get(wizard, "/api/ping")
+        assert resp.status == 200
+        assert resp.headers["Content-Type"].startswith("application/json")
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"app": "mureo-configure", "version": expected_version}
+
+    def test_ping_exposes_only_app_and_version(self, wizard: ConfigureWizard) -> None:
+        """Security: the body carries exactly two keys — no secrets/paths."""
+        resp = _get(wizard, "/api/ping")
+        body = json.loads(resp.read().decode("utf-8"))
+        assert set(body.keys()) == {"app", "version"}
+
+    def test_ping_requires_no_csrf(self, wizard: ConfigureWizard) -> None:
+        """It is a GET, so no CSRF token is ever supplied — must still 200."""
+        resp = _get(wizard, "/api/ping")
+        assert resp.status == 200
+
+    def test_ping_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        """Same Host-header gate as every other GET endpoint."""
+        req = urllib.request.Request(_url(wizard, "/api/ping"))
+        req.add_header("Host", "attacker.example.com")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
 class TestOauthStatusGet:
     def test_known_provider_returns_status(self, wizard: ConfigureWizard) -> None:
         resp = _get(wizard, "/api/oauth/google/status")

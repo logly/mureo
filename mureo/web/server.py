@@ -25,10 +25,21 @@ from mureo.core.terminal import force_cooked_mode, terminal_fd
 from mureo.web.extensions import discover_web_extensions
 from mureo.web.handlers import ConfigureHandler
 from mureo.web.host_paths import HostPaths, get_host_paths
+from mureo.web.instance import probe_mureo_instance, write_state_file
 from mureo.web.oauth_bridge import OAuthBridge
 from mureo.web.session import ConfigureSession
 
 logger = logging.getLogger(__name__)
+
+# #241 — fixed default port for `mureo configure`. Chosen high in the
+# IANA dynamic/private range (49152-65535-ish neighbourhood) and not
+# registered to any common service, so a fresh machine almost always
+# finds it free → a stable, bookmarkable ``http://127.0.0.1:7613/``.
+# When it IS taken, the bind logic falls back to an ephemeral port (and
+# single-instance reuse re-opens an already-running mureo), so the fixed
+# value is a convenience default, never a hard requirement. 7613 spells
+# "MURO" on a phone keypad (6-8-7-6 ≈ m-u-r-o) — a small mnemonic.
+DEFAULT_CONFIGURE_PORT = 7613
 
 # #227: how often the configure wait loop re-asserts cooked mode on the
 # controlling TTY. A leaked raw mode mid-session is healed within one
@@ -129,17 +140,62 @@ class ConfigureWizard:
         """Update the session OAuth status (called by the bridge watcher)."""
         self.session.mark_oauth_complete(provider, success=success, error=error)
 
-    def serve(self) -> None:
-        """Block and serve until ``shutdown()`` is called."""
-        with _ConfigureServer((self._bind_host, 0), ConfigureHandler) as server:
+    def _bind_server(self, preferred_port: int) -> _ConfigureServer:
+        """Bind ``_ConfigureServer`` with fixed-port + ephemeral fallback.
+
+        ``preferred_port == 0`` is the pure-ephemeral path (existing
+        behaviour). A non-zero preferred port is attempted first; on an
+        :class:`OSError` (typically ``EADDRINUSE`` — the port is held by
+        a foreign process) the bind degrades to an ephemeral port so a
+        collision can never crash startup. The returned server is bound
+        but not yet serving.
+        """
+        if preferred_port != 0:
+            try:
+                return _ConfigureServer(
+                    (self._bind_host, preferred_port), ConfigureHandler
+                )
+            except OSError:
+                logger.info(
+                    "configure port %d busy; falling back to an ephemeral port",
+                    preferred_port,
+                )
+        return _ConfigureServer((self._bind_host, 0), ConfigureHandler)
+
+    def serve(self, preferred_port: int = 0) -> None:
+        """Block and serve until ``shutdown()`` is called.
+
+        ``preferred_port`` defaults to ``0`` (ephemeral) so existing
+        callers and test fixtures are unchanged. A non-zero value asks
+        for that fixed port with a graceful ephemeral fallback on
+        collision — see :meth:`_bind_server`.
+        """
+        with self._bind_server(preferred_port) as server:
             server.wizard = self
             self._server = server
+            self._persist_state()
             self._ready.set()
             try:
                 server.serve_forever(poll_interval=0.1)
             finally:
                 with self._lock:
                     self._server = None
+
+    def _persist_state(self) -> None:
+        """Best-effort: record the actually-bound port for ``mureo open``.
+
+        Writes ``<home>/.mureo/configure.json`` honouring an injected
+        ``home`` (tests) and falling back to ``Path.home()`` in
+        production. A write failure is swallowed inside
+        :func:`write_state_file` — persisting the port must never crash
+        ``configure``.
+        """
+        home = self.home if self.home is not None else Path.home()
+        # ``write_state_file`` is already best-effort, but guard the call
+        # site too so an unexpected failure (e.g. a patched/raising
+        # resolver) can never tear down the serving thread.
+        with contextlib.suppress(Exception):
+            write_state_file(home, port=self.port, url=self.home_url())
 
     def wait_until_ready(self, timeout: float = 5.0) -> None:
         if not self._ready.wait(timeout=timeout):
@@ -225,10 +281,38 @@ def run_configure_wizard(
     open_browser: bool = True,
     timeout_seconds: float = 600.0,
     commands_path: Path | None = None,
-) -> None:
-    """CLI entry point: spin the wizard, open the browser, wait."""
+    preferred_port: int = 0,
+    bind_host: str = "127.0.0.1",
+) -> bool:
+    """CLI entry point: spin the wizard, open the browser, wait.
+
+    ``preferred_port`` (#241): when non-zero, the server tries that fixed
+    port for a stable, bookmarkable URL. BEFORE starting, if the port is
+    already serving *our* instance (verified via the ``/api/ping`` probe)
+    we do NOT double-start — we just open the browser at the existing URL
+    and return (single-instance reuse). A foreign occupant proceeds to a
+    normal start where :meth:`ConfigureWizard.serve` falls back to an
+    ephemeral port. ``0`` (the default) keeps pure-ephemeral behaviour.
+
+    Returns ``True`` when it reused an already-running instance (no server
+    was started), ``False`` when it started and ran its own server. The
+    CLI uses this to print the right "already running" vs "stopped"
+    message.
+    """
+    if preferred_port != 0 and probe_mureo_instance(bind_host, preferred_port):
+        # Single-instance reuse: a mureo configure server already answers
+        # the fixed port. Re-open it instead of starting a second server.
+        url = f"http://{bind_host}:{preferred_port}/"
+        logger.info("mureo configure already running at %s — opening it", url)
+        if open_browser:
+            with contextlib.suppress(Exception):
+                webbrowser.open(url)
+        return True
+
     wizard = ConfigureWizard(home=home, commands_path=commands_path)
-    thread = threading.Thread(target=wizard.serve, daemon=True)
+    thread = threading.Thread(
+        target=wizard.serve, kwargs={"preferred_port": preferred_port}, daemon=True
+    )
     thread.start()
     wizard.wait_until_ready()
 
@@ -284,3 +368,4 @@ def run_configure_wizard(
                 signal.signal(signum, prev)  # type: ignore[arg-type]
         wizard.shutdown()
         thread.join(timeout=2.0)
+    return False

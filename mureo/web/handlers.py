@@ -81,6 +81,7 @@ from mureo.web.extensions import (
     NAME_PATTERN,
     SUBPATH_PATTERN,
 )
+from mureo.web.instance import PING_APP_NAME
 from mureo.web.legacy_commands import remove_legacy_commands
 from mureo.web.native_picker import pick_directory, pick_file
 from mureo.web.plugin_credentials import (
@@ -116,6 +117,15 @@ if TYPE_CHECKING:
     from mureo.web.server import ConfigureWizard
 
 logger = logging.getLogger(__name__)
+
+# #241 — the installed mureo version reported by ``GET /api/ping``. Read
+# once at import from the package's ``__version__`` (no ``importlib.metadata``
+# round-trip per request); the ping body carries only this string + the app
+# name, nothing environment-specific.
+try:
+    from mureo import __version__ as mureo_version
+except Exception:  # noqa: BLE001 — never let a version lookup break import
+    mureo_version = "unknown"
 
 
 _STATIC_CONTENT_TYPES: dict[str, str] = {
@@ -300,6 +310,17 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             # no secrets, so the Host-header gate alone suffices (same
             # as every other GET JSON endpoint).
             send_json(self, collect_about_info())
+            return
+        if path == "/api/ping":
+            # #241 — single-instance probe. A second `mureo configure`
+            # launch hits this to tell our own running server apart from
+            # a foreign process that merely grabbed the port. Read-only,
+            # exposes only the app name + version (NO secrets, NO paths),
+            # so the Host-header gate alone suffices like every other GET.
+            send_json(
+                self,
+                {"app": PING_APP_NAME, "version": mureo_version},
+            )
             return
         if path == "/api/extensions":
             self._serve_extensions_index()
