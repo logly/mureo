@@ -279,7 +279,7 @@ def run_configure_wizard(
     *,
     home: Path | None = None,
     open_browser: bool = True,
-    timeout_seconds: float = 600.0,
+    timeout_seconds: float | None = 600.0,
     commands_path: Path | None = None,
     preferred_port: int = 0,
     bind_host: str = "127.0.0.1",
@@ -294,17 +294,28 @@ def run_configure_wizard(
     normal start where :meth:`ConfigureWizard.serve` falls back to an
     ephemeral port. ``0`` (the default) keeps pure-ephemeral behaviour.
 
+    ``timeout_seconds`` (#241 Phase 2 — headless serve): the interactive
+    default ``600.0`` auto-stops the wait loop after ten minutes. Passing
+    ``None`` removes the cap entirely, so the server runs indefinitely
+    until SIGTERM/SIGINT (or ``request_stop``) — the mode the auto-start
+    service uses. ``None`` is the daemon signal throughout: with it the
+    function skips opening a browser even on reuse (the service IS the
+    instance) and serves headless.
+
     Returns ``True`` when it reused an already-running instance (no server
     was started), ``False`` when it started and ran its own server. The
     CLI uses this to print the right "already running" vs "stopped"
     message.
     """
+    serve_forever = timeout_seconds is None
     if preferred_port != 0 and probe_mureo_instance(bind_host, preferred_port):
         # Single-instance reuse: a mureo configure server already answers
-        # the fixed port. Re-open it instead of starting a second server.
+        # the fixed port. In headless serve mode (``serve_forever``) the
+        # service IS the instance — if one already runs, just exit 0
+        # quietly without touching a browser. Otherwise re-open it.
         url = f"http://{bind_host}:{preferred_port}/"
-        logger.info("mureo configure already running at %s — opening it", url)
-        if open_browser:
+        logger.info("mureo configure already running at %s", url)
+        if open_browser and not serve_forever:
             with contextlib.suppress(Exception):
                 webbrowser.open(url)
         return True
@@ -351,12 +362,22 @@ def run_configure_wizard(
         # No-op on a non-TTY either way.
         fd = terminal_fd()
         force_cooked_mode(fd)
-        deadline = time.monotonic() + timeout_seconds
+        # ``timeout_seconds is None`` (headless serve) means no deadline:
+        # block until ``request_stop`` (SIGTERM/SIGINT) with no hard cap.
+        # ``terminal_fd``/``force_cooked_mode`` are no-ops on a non-TTY, so
+        # the daemon never depends on a terminal.
+        deadline = (
+            None if timeout_seconds is None else time.monotonic() + timeout_seconds
+        )
         while not wizard.stop_event.is_set():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            wizard.stop_event.wait(timeout=min(_COOKED_REASSERT_SECONDS, remaining))
+            if deadline is None:
+                wait_for = _COOKED_REASSERT_SECONDS
+            else:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                wait_for = min(_COOKED_REASSERT_SECONDS, remaining)
+            wizard.stop_event.wait(timeout=wait_for)
             force_cooked_mode(fd)
     except KeyboardInterrupt:
         # Belt-and-braces: if a KeyboardInterrupt still surfaces (e.g.
