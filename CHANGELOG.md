@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-14
+
+Always-on lifecycle hooks for web extensions, plus a fix for the About
+tab's update checker.
+
+### Added
+
+#### WebExtension lifecycle hooks (#249)
+
+`WebExtension` may now declare optional `on_serve_start(ctx)` /
+`on_serve_stop()` hooks, invoked **only** by the always-on daemon
+(`mureo configure --serve`) and never by a short-lived interactive
+launch — mirroring the "only the always-on service runs background jobs"
+guard. An extension can use them to start and stop a self-managed
+background job (e.g. periodic health checks, proactive notifications)
+that rides the daemon's lifecycle. The hooks are captured at discovery,
+fault-isolated per extension, and fully backward compatible (an extension
+declaring neither behaves exactly as before). A new `ServeContext`
+carries a stop `threading.Event`, a `request_stop` callback, and the
+resolved home path.
+
+### Fixed
+
+#### About-tab update check (#251)
+
+The passive dashboard load now polls until the background update check
+settles, so "Checking for updates…" no longer stays on screen forever
+when the cache is cold (previously only the manual button polled). The
+"Update all" button is now hidden unless an update is actually available
+— a new `.btn[hidden]` rule lets the `hidden` attribute win over the
+button's `display`, which had been keeping it visible regardless.
+
 ## [0.9.33] - 2026-06-13
 
 Self-service updates and always-on operation for configure: a fixed
