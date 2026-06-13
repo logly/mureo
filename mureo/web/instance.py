@@ -134,6 +134,10 @@ def read_state_file(home: Path) -> dict[str, Any] | None:
     port = payload.get("port")
     if not isinstance(url, str) or not url:
         return None
+    # Narrow before ``int()`` so mypy is satisfied and a ``None``/list/etc.
+    # port from a hand-edited file degrades to ``None`` rather than raising.
+    if not isinstance(port, (int, str)):
+        return None
     try:
         payload["port"] = int(port)
     except (TypeError, ValueError):
