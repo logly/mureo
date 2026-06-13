@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.33] - 2026-06-13
+
+Self-service updates and always-on operation for configure: a fixed
+default port with single-instance reuse, OS-level service auto-start, a
+headless `--serve` mode, and an About-tab update checker with one-click
+upgrade — plus localized provider credential headings.
+
+### Added
+
+#### Fixed default port + single-instance reuse + `mureo open` (#241, #242)
+
+`mureo configure` now binds a fixed default port with a fallback when it
+is taken, reuses a single running instance instead of spawning a second
+server, and adds `mureo open` to surface the already-running configure UI.
+
+#### `mureo service` auto-start + headless `--serve` mode (#241, #243)
+
+A new `mureo service` command registers configure as an always-on
+service via the native OS mechanism (launchd / systemd / Task
+Scheduler), and a `--serve` headless mode runs the server without
+opening a browser session.
+
+#### Surface available updates + one-click upgrade (#239, #240, #245, #246, #247)
+
+The About tab now checks for available mureo and plugin updates and
+offers a one-click upgrade. Update polling is non-blocking — `/api/updates`
+returns immediately and the always-on service refreshes the result on a
+periodic poll (#245). A "Check for updates" button triggers an on-demand
+check (#246), laid out in one row with the update-all button (#247).
+
+#### Localized provider credential section headings (#236, #244)
+
+Provider credential section headings in configure are now localized via
+`display_name_i18n`, matching the locale already applied to the field
+labels.
+
+### Fixed
+
+#### Japanese translations for built-in account credential labels (#237, #238)
+
+The built-in Google Ads and Meta Ads account credential field labels
+were English-only; they now carry Japanese translations.
+
 ## [0.9.32] - 2026-06-13
 
 Plugin OAuth flexibility for stricter providers, an "About mureo" menu
