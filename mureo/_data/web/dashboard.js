@@ -902,6 +902,130 @@
     });
   }
 
+  // #239 — background update check. Runs on dashboard load WITHOUT
+  // blocking render: the menu shows immediately, and only once pip
+  // reports ≥1 outdated mureo/plugin does the About nav item gain a red
+  // indicator and the About tab populate its update area. Silent failure
+  // like renderAbout — a degraded/errored check simply shows nothing.
+
+  // Append a red "update available" badge to the About nav item (once).
+  function setAboutNavBadge() {
+    const navItem = document.querySelector('[data-dashboard-nav="about"]');
+    if (!navItem) return;
+    if (navItem.querySelector(".nav-badge-update")) return;
+    const badge = document.createElement("span");
+    badge.className = "nav-badge-update";
+    badge.setAttribute("data-i18n", "dashboard.about_update_badge");
+    badge.setAttribute("aria-label", MUREO.t("dashboard.about_update_badge"));
+    badge.title = MUREO.t("dashboard.about_update_badge");
+    badge.textContent = "●";
+    navItem.appendChild(badge);
+  }
+
+  // Render one "name: installed → latest" list item (outdated → red).
+  // textContent only — never innerHTML — so package names can't inject markup.
+  function buildUpdateRow(pkg) {
+    const li = document.createElement("li");
+    li.className = "about-update-outdated";
+    li.textContent = MUREO.t("dashboard.about_update_row", {
+      name: pkg && pkg.name ? pkg.name : "",
+      installed: pkg && pkg.installed ? pkg.installed : "",
+      latest: pkg && pkg.latest ? pkg.latest : "",
+    });
+    return li;
+  }
+
+  // Show the in-page status line (running / done / failed). No native dialog.
+  function setUpdateStatus(messageKey) {
+    const node = document.querySelector("[data-about-update-status]");
+    if (!node) return;
+    node.textContent = MUREO.t(messageKey);
+    node.setAttribute("data-i18n", messageKey);
+    node.hidden = false;
+  }
+
+  // POST /api/upgrade (CSRF via MUREO.postJson) after the in-page confirm.
+  // The server derives the package list itself — we send an empty body.
+  async function runUpgrade() {
+    const button = document.querySelector("[data-about-update-button]");
+    const confirmPanel = document.querySelector("[data-about-update-confirm]");
+    if (confirmPanel) confirmPanel.hidden = true;
+    if (button) button.disabled = true;
+    setUpdateStatus("dashboard.about_update_running");
+    let res;
+    try {
+      res = await MUREO.postJson("/api/upgrade", {});
+    } catch (_err) {
+      setUpdateStatus("dashboard.about_update_failed");
+      if (button) button.disabled = false;
+      return;
+    }
+    const ok = res && res.ok && res.body && res.body.status === "ok";
+    setUpdateStatus(
+      ok ? "dashboard.about_update_done_restart" : "dashboard.about_update_failed"
+    );
+    if (button) button.hidden = true;
+  }
+
+  // Toggle the in-page confirm panel that lists the packages to upgrade.
+  function wireUpdateConfirm(outdated) {
+    const button = document.querySelector("[data-about-update-button]");
+    const confirmPanel = document.querySelector("[data-about-update-confirm]");
+    const confirmList = document.querySelector(
+      "[data-about-update-confirm-list]"
+    );
+    const yesBtn = document.querySelector("[data-about-update-confirm-yes]");
+    const cancelBtn = document.querySelector("[data-about-update-cancel]");
+    if (!button || !confirmPanel || !confirmList || !yesBtn || !cancelBtn) return;
+    while (confirmList.firstChild) confirmList.removeChild(confirmList.firstChild);
+    outdated.forEach(function (pkg) {
+      confirmList.appendChild(buildUpdateRow(pkg));
+    });
+    button.onclick = function () {
+      confirmPanel.hidden = false;
+    };
+    yesBtn.onclick = function () {
+      runUpgrade();
+    };
+    cancelBtn.onclick = function () {
+      confirmPanel.hidden = true;
+    };
+  }
+
+  async function renderUpdates() {
+    const area = document.querySelector("[data-about-updates]");
+    const summary = document.querySelector("[data-about-updates-summary]");
+    const list = document.querySelector("[data-about-updates-list]");
+    const button = document.querySelector("[data-about-update-button]");
+    if (!area || !summary || !list || !button) return;
+    let body;
+    try {
+      const res = await fetch("/api/updates");
+      if (!res.ok) return;
+      body = await res.json();
+    } catch (_err) {
+      return;
+    }
+    if (!body || body.status !== "ok") return;
+    const outdated = Array.isArray(body.packages) ? body.packages : [];
+    area.hidden = false;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    if (!body.any_update || outdated.length === 0) {
+      summary.textContent = MUREO.t("dashboard.about_up_to_date");
+      summary.setAttribute("data-i18n", "dashboard.about_up_to_date");
+      button.hidden = true;
+      return;
+    }
+    summary.textContent = MUREO.t("dashboard.about_update_available");
+    summary.setAttribute("data-i18n", "dashboard.about_update_available");
+    outdated.forEach(function (pkg) {
+      list.appendChild(buildUpdateRow(pkg));
+    });
+    button.hidden = false;
+    setAboutNavBadge();
+    wireUpdateConfirm(outdated);
+  }
+
   function renderAll() {
     const status = MUREO.state.status;
     renderHostSection(status);
@@ -913,6 +1037,7 @@
     loadDemoScenarios();
     renderByodStatus();
     renderAbout();
+    renderUpdates();
   }
 
   // #223: monotonic render generation. renderPluginCredentials is async

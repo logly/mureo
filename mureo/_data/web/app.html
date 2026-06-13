@@ -209,6 +209,31 @@
                 <img class="app-logo app-logo-dark" src="/static/logo-dark.png" alt="mureo" width="413" height="63" />
               </p>
               <p data-dashboard-about-version></p>
+
+              <!-- #239 — available mureo/plugin updates + one-click
+                   upgrade. Populated by dashboard.js renderUpdates();
+                   hidden until the background check returns a result. -->
+              <div class="dashboard-about-updates" data-about-updates hidden>
+                <p data-about-updates-summary></p>
+                <ul data-about-updates-list></ul>
+                <button type="button" class="btn btn-primary"
+                        data-about-update-button hidden
+                        data-i18n="dashboard.about_update_button">Update all</button>
+                <!-- In-page confirm panel (no native window.confirm).
+                     Lists the packages, then Upgrade / Cancel. -->
+                <div class="dashboard-about-update-confirm" data-about-update-confirm hidden>
+                  <p data-i18n="dashboard.about_update_confirm">Upgrade these packages now?</p>
+                  <ul data-about-update-confirm-list></ul>
+                  <button type="button" class="btn btn-primary"
+                          data-about-update-confirm-yes
+                          data-i18n="dashboard.about_update_confirm_yes">Upgrade now</button>
+                  <button type="button" class="btn btn-secondary"
+                          data-about-update-cancel
+                          data-i18n="dashboard.about_update_cancel">Cancel</button>
+                </div>
+                <p class="dashboard-about-update-status" data-about-update-status hidden></p>
+              </div>
+
               <p data-i18n="dashboard.about_packages_desc">Installed mureo packages (core and extensions).</p>
               <table class="dashboard-about-table">
                 <thead>

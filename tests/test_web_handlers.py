@@ -1978,3 +1978,146 @@ class TestNativeToggleHostResolution:
             )
         assert mock.call_args.kwargs["host"] == "claude-desktop"
         assert wizard.session.host == "claude-desktop"
+
+
+# ---------------------------------------------------------------------------
+# Update-availability + one-click upgrade (#239). 2 new endpoints:
+#   GET  /api/updates    (Host-gated only, no CSRF for GET) -> check_for_updates
+#   POST /api/upgrade    (CSRF + Host gated)                -> run_upgrade_all
+# The version_check / upgrade_action wrappers are tested in
+# test_web_version_check.py / test_web_upgrade_action.py; here we pin only
+# the route layer (dispatch, gating, JSON shape). Both wrappers are mocked
+# at the handler's imported symbol so no real pip subprocess ever runs.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestServeUpdates:
+    """``GET /api/updates`` returns the update-availability payload."""
+
+    ROUTE = "/api/updates"
+
+    def test_returns_documented_shape(self, wizard: ConfigureWizard) -> None:
+        fake_result = {
+            "status": "ok",
+            "any_update": True,
+            "packages": [
+                {"name": "mureo", "installed": "0.9.31", "latest": "0.9.32"},
+            ],
+        }
+        with patch(
+            "mureo.web.handlers.check_for_updates", return_value=fake_result
+        ) as mock_check:
+            resp = _get(wizard, self.ROUTE)
+        assert resp.status == 200
+        assert resp.headers["Content-Type"].startswith("application/json")
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == fake_result
+        mock_check.assert_called_once()
+
+    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
+        """A degraded pip check is a normal outcome, never a 500."""
+        fake_result = {"status": "error", "any_update": False, "packages": []}
+        with patch("mureo.web.handlers.check_for_updates", return_value=fake_result):
+            resp = _get(wizard, self.ROUTE)
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "error"
+        assert body["any_update"] is False
+
+    def test_get_does_not_require_csrf(self, wizard: ConfigureWizard) -> None:
+        fake_result = {"status": "ok", "any_update": False, "packages": []}
+        with patch("mureo.web.handlers.check_for_updates", return_value=fake_result):
+            resp = _get(wizard, self.ROUTE)
+        assert resp.status == 200
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        req = urllib.request.Request(_url(wizard, self.ROUTE))
+        req.add_header("Host", "attacker.example.com")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestPostUpgrade:
+    """``POST /api/upgrade`` dispatches to ``run_upgrade_all`` (server-
+    derived targets only — the request body is never read for packages)."""
+
+    ROUTE = "/api/upgrade"
+
+    def test_dispatches_to_run_upgrade_all(self, wizard: ConfigureWizard) -> None:
+        fake_result = {
+            "status": "ok",
+            "returncode": 0,
+            "packages": ["mureo", "mureo-agency"],
+            "output": "Successfully installed",
+        }
+        with patch(
+            "mureo.web.handlers.run_upgrade_all", return_value=fake_result
+        ) as mock_upgrade:
+            resp = _post(wizard, self.ROUTE, {})
+        assert resp.status == 200
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == fake_result
+        mock_upgrade.assert_called_once()
+
+    def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
+        fake_result = {
+            "status": "error",
+            "returncode": 1,
+            "packages": ["mureo"],
+            "output": "Could not find a version",
+        }
+        with patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "error"
+
+    def test_request_body_packages_are_ignored(self, wizard: ConfigureWizard) -> None:
+        """A package list smuggled into the body must never reach the
+        upgrade action — targets are server-derived only."""
+        fake_result = {
+            "status": "ok",
+            "returncode": 0,
+            "packages": ["mureo"],
+            "output": "",
+        }
+        with patch(
+            "mureo.web.handlers.run_upgrade_all", return_value=fake_result
+        ) as mock_upgrade:
+            _post(wizard, self.ROUTE, {"packages": ["evil-package", "--index-url=x"]})
+        # The wrapper takes no package argument at all.
+        assert mock_upgrade.call_args.args == ()
+        assert mock_upgrade.call_args.kwargs == {}
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403
+
+    def test_rejects_wrong_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf="not-the-real-token")
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        try:
+            urllib.request.urlopen(req, timeout=2.0)
+            raise AssertionError("spoofed Host was not rejected")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 403
+        except (ConnectionError, urllib.error.URLError) as exc:
+            # Windows: the server closes the socket on host rejection
+            # before the 403 body is read, surfacing as
+            # ConnectionAbortedError (WinError 10053) rather than an
+            # HTTPError. The request was still rejected — accept that
+            # on win32 only; POSIX must still see a clean 403.
+            if sys.platform != "win32":
+                raise AssertionError(
+                    f"expected HTTP 403, got {type(exc).__name__}: {exc}"
+                ) from exc

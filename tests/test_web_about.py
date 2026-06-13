@@ -303,3 +303,64 @@ class TestAboutAssets:
                 assert key in catalog[locale], f"{locale} missing {key}"
         assert catalog["en"]["dashboard.about_title"] == "About mureo"
         assert catalog["ja"]["dashboard.about_title"] == "mureoについて"
+
+
+@pytest.mark.unit
+class TestUpdateAssets:
+    """#239 — static-content guards for the About-tab update + one-click
+    upgrade wiring (same discipline as ``TestAboutAssets``)."""
+
+    def test_app_html_has_update_section_and_button(self) -> None:
+        """The About group hosts the update area + the Update button."""
+        html = (_WEB / "app.html").read_text(encoding="utf-8")
+        assert "data-about-updates" in html
+        assert "data-about-update-button" in html
+
+    def test_app_html_has_update_nav_badge_anchor(self) -> None:
+        """The About nav item is the anchor the red indicator attaches to."""
+        html = (_WEB / "app.html").read_text(encoding="utf-8")
+        assert 'data-dashboard-nav="about"' in html
+
+    def test_dashboard_js_fetches_updates_endpoint(self) -> None:
+        js = (_WEB / "dashboard.js").read_text(encoding="utf-8")
+        assert "/api/updates" in js
+
+    def test_dashboard_js_posts_upgrade_endpoint(self) -> None:
+        js = (_WEB / "dashboard.js").read_text(encoding="utf-8")
+        assert "/api/upgrade" in js
+
+    def test_dashboard_js_adds_update_nav_badge(self) -> None:
+        """The red indicator is wired to the About nav item."""
+        js = (_WEB / "dashboard.js").read_text(encoding="utf-8")
+        assert "nav-badge-update" in js
+        assert '[data-dashboard-nav="about"]' in js
+
+    def test_dashboard_js_uses_in_page_confirm_not_native_dialog(self) -> None:
+        """The upgrade flow must NOT trigger a native ``window.confirm`` /
+        ``MUREO.confirmAction`` dialog — it renders an in-page confirm
+        panel instead (project rule). Pin the confirm-panel hook exists."""
+        js = (_WEB / "dashboard.js").read_text(encoding="utf-8")
+        assert "data-about-update-confirm" in js
+
+    def test_i18n_has_update_keys_in_both_locales(self) -> None:
+        catalog = json.loads((_WEB / "i18n.json").read_text(encoding="utf-8"))
+        for locale in ("en", "ja"):
+            for key in (
+                "dashboard.about_update_available",
+                "dashboard.about_update_button",
+                "dashboard.about_update_confirm",
+                "dashboard.about_update_confirm_yes",
+                "dashboard.about_update_cancel",
+                "dashboard.about_update_running",
+                "dashboard.about_update_done_restart",
+                "dashboard.about_update_failed",
+                "dashboard.about_up_to_date",
+                "dashboard.about_update_badge",
+                "dashboard.about_update_row",
+            ):
+                assert key in catalog[locale], f"{locale} missing {key}"
+        # ja must be natural Japanese (not the en string echoed back).
+        assert (
+            catalog["ja"]["dashboard.about_update_button"]
+            != catalog["en"]["dashboard.about_update_button"]
+        )
