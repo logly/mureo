@@ -1040,7 +1040,6 @@
 
   // Wire the always-visible "check for updates" button. Idempotent (onclick,
   // not addEventListener) so repeated renders never stack handlers.
-  let checkInProgress = false;
   function wireCheckButton() {
     const btn = document.querySelector("[data-about-check-button]");
     if (!btn) return;
@@ -1049,44 +1048,70 @@
     };
   }
 
-  // POST /api/updates/refresh to drop the cache and start a fresh pip check,
-  // then poll GET /api/updates until the status settles. The check runs in a
-  // background thread server-side and can take up to the pip timeout, so the
-  // poll deadline comfortably exceeds it.
-  async function runCheckNow() {
-    if (checkInProgress) return;
-    const btn = document.querySelector("[data-about-check-button]");
+  // Poll GET /api/updates until the status settles (no longer "checking") or
+  // the deadline passes, then apply the result. The check runs server-side on
+  // a background thread and can take up to the pip timeout, so the deadline
+  // comfortably exceeds it. ``updatePollActive`` coalesces callers so the
+  // passive load (when the first fetch is still mid-check) and the manual
+  // "check now" button share ONE poll instead of stacking two — and a double
+  // renderAll() (#223) cannot start a second loop.
+  // Poll cadence for the background update check. The server runs pip on a
+  // worker thread (bounded by its own ~60s pip timeout), so a 75s deadline
+  // comfortably outlasts it; 1.5s between polls keeps the UI responsive
+  // without hammering the endpoint.
+  const UPDATE_POLL_DEADLINE_MS = 75000;
+  const UPDATE_POLL_INTERVAL_MS = 1500;
+  let updatePollActive = false;
+  async function pollUpdatesUntilSettled() {
+    if (updatePollActive) return;
+    updatePollActive = true;
     const summary = document.querySelector("[data-about-updates-summary]");
-    checkInProgress = true;
-    if (btn) btn.disabled = true;
-    if (summary) setSummary(summary, "dashboard.about_update_checking");
     try {
-      await MUREO.postJson("/api/updates/refresh", {});
-    } catch (_err) {
-      // Even if the trigger POST fails, poll the cache: a periodic refresh
-      // may already be in flight.
-    }
-    let body = null;
-    const deadline = Date.now() + 75000;
-    while (Date.now() < deadline) {
-      await sleep(1500);
-      try {
-        const res = await fetch("/api/updates");
-        body = res.ok ? await res.json() : null;
-      } catch (_e) {
-        body = null;
+      if (summary) setSummary(summary, "dashboard.about_update_checking");
+      let body = null;
+      const deadline = Date.now() + UPDATE_POLL_DEADLINE_MS;
+      while (Date.now() < deadline) {
+        await sleep(UPDATE_POLL_INTERVAL_MS);
+        try {
+          const res = await fetch("/api/updates");
+          body = res.ok ? await res.json() : null;
+        } catch (_e) {
+          body = null;
+        }
+        if (body && body.status && body.status !== "checking") break;
       }
-      if (body && body.status && body.status !== "checking") break;
+      if (!body || body.status === "checking") {
+        // Poll exhausted without the check settling — don't leave a stuck
+        // "Checking…"; surface that it couldn't complete.
+        if (summary) setSummary(summary, "dashboard.about_update_check_failed");
+      } else {
+        applyUpdatesBody(body);
+      }
+    } finally {
+      // Always clear the guard — even if a render/DOM op throws — so the
+      // feature can never wedge itself permanently.
+      updatePollActive = false;
     }
-    if (!body || body.status === "checking") {
-      // Poll exhausted without the check settling — don't leave a stuck
-      // "Checking…"; surface that it couldn't complete.
-      if (summary) setSummary(summary, "dashboard.about_update_check_failed");
-    } else {
-      applyUpdatesBody(body);
+  }
+
+  // POST /api/updates/refresh to drop the cache and start a fresh pip check,
+  // then poll until the status settles.
+  async function runCheckNow() {
+    if (updatePollActive) return;
+    const btn = document.querySelector("[data-about-check-button]");
+    if (btn) btn.disabled = true;
+    try {
+      try {
+        await MUREO.postJson("/api/updates/refresh", {});
+      } catch (_err) {
+        // Even if the trigger POST fails, poll the cache: a periodic refresh
+        // may already be in flight.
+      }
+      await pollUpdatesUntilSettled();
+    } finally {
+      // Re-enable the button no matter how the poll ends.
+      if (btn) btn.disabled = false;
     }
-    checkInProgress = false;
-    if (btn) btn.disabled = false;
   }
 
   async function renderUpdates() {
@@ -1102,6 +1127,16 @@
       body = res.ok ? await res.json() : null;
     } catch (_err) {
       body = null;
+    }
+    // A cold/stale cache answers "checking" while the background pip check
+    // runs (the server starts it on this very fetch). The passive load must
+    // then poll until it settles — otherwise the summary is stuck on
+    // "Checking…" forever, since only the manual button used to poll. Fire it
+    // without awaiting so renderAll() is not blocked; it repaints the DOM when
+    // the check completes.
+    if (body && body.status === "checking") {
+      pollUpdatesUntilSettled();
+      return;
     }
     applyUpdatesBody(body);
   }
