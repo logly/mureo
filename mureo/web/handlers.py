@@ -108,7 +108,7 @@ from mureo.web.setup_actions import (
 )
 from mureo.web.status_collector import collect_status
 from mureo.web.upgrade_action import run_upgrade_all
-from mureo.web.version_check import check_for_updates
+from mureo.web.version_check import get_update_status
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping
@@ -330,7 +330,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             # #239 — available mureo/plugin updates (pip-derived). Read-
             # only and fault-isolated (never raises), so the Host-header
             # gate alone suffices like every other GET JSON endpoint.
-            send_json(self, check_for_updates())
+            # Non-blocking: the slow pip check runs in a daemon thread and
+            # its result is cached, so this handler never blocks (#244).
+            send_json(self, get_update_status())
             return
         if path == "/api/extensions":
             self._serve_extensions_index()

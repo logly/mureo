@@ -2023,7 +2023,7 @@ class TestNativeToggleHostResolution:
 
 # ---------------------------------------------------------------------------
 # Update-availability + one-click upgrade (#239). 2 new endpoints:
-#   GET  /api/updates    (Host-gated only, no CSRF for GET) -> check_for_updates
+#   GET  /api/updates    (Host-gated only, no CSRF for GET) -> get_update_status
 #   POST /api/upgrade    (CSRF + Host gated)                -> run_upgrade_all
 # The version_check / upgrade_action wrappers are tested in
 # test_web_version_check.py / test_web_upgrade_action.py; here we pin only
@@ -2047,7 +2047,7 @@ class TestServeUpdates:
             ],
         }
         with patch(
-            "mureo.web.handlers.check_for_updates", return_value=fake_result
+            "mureo.web.handlers.get_update_status", return_value=fake_result
         ) as mock_check:
             resp = _get(wizard, self.ROUTE)
         assert resp.status == 200
@@ -2059,7 +2059,7 @@ class TestServeUpdates:
     def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
         """A degraded pip check is a normal outcome, never a 500."""
         fake_result = {"status": "error", "any_update": False, "packages": []}
-        with patch("mureo.web.handlers.check_for_updates", return_value=fake_result):
+        with patch("mureo.web.handlers.get_update_status", return_value=fake_result):
             resp = _get(wizard, self.ROUTE)
         body = json.loads(resp.read().decode("utf-8"))
         assert body["status"] == "error"
@@ -2067,7 +2067,7 @@ class TestServeUpdates:
 
     def test_get_does_not_require_csrf(self, wizard: ConfigureWizard) -> None:
         fake_result = {"status": "ok", "any_update": False, "packages": []}
-        with patch("mureo.web.handlers.check_for_updates", return_value=fake_result):
+        with patch("mureo.web.handlers.get_update_status", return_value=fake_result):
             resp = _get(wizard, self.ROUTE)
         assert resp.status == 200
 
