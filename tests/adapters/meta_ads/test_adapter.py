@@ -1176,3 +1176,15 @@ def test_adapter_does_not_advertise_keyword_or_extension_methods(
         assert not hasattr(
             adapter, method_name
         ), f"{method_name} must NOT be defined (Meta has no counterpart)"
+
+
+def test_account_credential_fields_carry_ja_translations() -> None:
+    """#237: the built-in ``account_id`` field must localize in the
+    Japanese configure UI exactly like plugin-declared fields do."""
+    fields = MetaAdsAdapter.account_credential_fields  # type: ignore[attr-defined]
+    by_key = {f.key: f for f in fields}
+
+    account = by_key["account_id"]
+    assert account.display_name_i18n["ja"] == "広告アカウント ID"
+    assert account.display_name == "Ad Account ID"
+    assert account.description_i18n["ja"]

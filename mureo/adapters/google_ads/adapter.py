@@ -134,6 +134,16 @@ class GoogleAdsAdapter:
                 "10-digit Google Ads customer ID (with or without dashes). "
                 "Find it in the Google Ads UI top-right corner."
             ),
+            # #237: ja translations via the #186 i18n hooks, same as
+            # plugin-declared fields. ``display_name`` stays the en
+            # fallback in the resolution chain.
+            display_name_i18n={"ja": "カスタマー ID"},
+            description_i18n={
+                "ja": (
+                    "10 桁の Google 広告カスタマー ID（ダッシュ有無は問いません）。"
+                    "Google 広告の管理画面右上で確認できます。"
+                ),
+            },
         ),
         AccountCredentialField(
             key="login_customer_id",
@@ -149,6 +159,17 @@ class GoogleAdsAdapter:
                 "populated automatically from the ``parent_id`` field "
                 "returned by ``mureo.google_ads.list_accessible_accounts``."
             ),
+            display_name_i18n={"ja": "ログインカスタマー ID（MCC）"},
+            description_i18n={
+                "ja": (
+                    "このアカウントの Google Ads API 呼び出しで "
+                    "``login_customer_id`` に使う MCC（マネージャー）アカウントの "
+                    "ID。空欄の場合は運用全体の MCC 既定値を継承します。対象の "
+                    "``customer_id`` が既定とは異なる MCC 配下にある場合のみ設定"
+                    "してください（通常はアカウント一覧の ``parent_id`` から自動"
+                    "設定されます）。"
+                ),
+            },
         ),
     )
 
