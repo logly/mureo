@@ -1216,3 +1216,21 @@ def test_create_campaign_passes_amount_micros_directly(
     # No float ``amount`` fallback when micros are available — the two
     # keys are mutually exclusive per client contract.
     assert "amount" not in sent_params
+
+
+def test_account_credential_fields_carry_ja_translations() -> None:
+    """#237: the built-in fields must localize in the Japanese configure
+    UI exactly like plugin-declared fields do — via the #186 i18n hooks,
+    with ``display_name`` kept as the English fallback."""
+    fields = GoogleAdsAdapter.account_credential_fields  # type: ignore[attr-defined]
+    by_key = {f.key: f for f in fields}
+
+    customer = by_key["customer_id"]
+    assert customer.display_name_i18n["ja"] == "カスタマー ID"
+    assert customer.display_name == "Customer ID"
+    assert customer.description_i18n["ja"]
+
+    login = by_key["login_customer_id"]
+    assert login.display_name_i18n["ja"] == "ログインカスタマー ID（MCC）"
+    assert login.display_name == "Login Customer ID (MCC)"
+    assert login.description_i18n["ja"]

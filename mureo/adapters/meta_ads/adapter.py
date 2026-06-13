@@ -159,6 +159,15 @@ class MetaAdsAdapter:
                 "Meta ad account ID prefixed with ``act_``. "
                 "Find it in Meta Ads Manager > Account Settings."
             ),
+            # #237: ja translations via the #186 i18n hooks, same as
+            # plugin-declared fields.
+            display_name_i18n={"ja": "広告アカウント ID"},
+            description_i18n={
+                "ja": (
+                    "``act_`` で始まる Meta 広告アカウント ID。"
+                    "Meta 広告マネージャの「アカウント設定」で確認できます。"
+                ),
+            },
         ),
     )
 
