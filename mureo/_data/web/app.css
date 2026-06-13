@@ -1196,6 +1196,25 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-weight: 660;
 }
 
+/* #239 — red "update available" indicator on the About nav item, plus
+   the outdated package rows in the About tab's update area. */
+.nav-badge-update {
+  color: var(--danger);
+  font-weight: 660;
+  margin-left: 6px;
+  font-size: 0.85em;
+  line-height: 1;
+}
+
+.about-update-outdated {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.dashboard-about-update-status {
+  margin-top: 10px;
+}
+
 /* Native↔official tool toggle: breathing room from the explanatory
    note above, and space between the state text and the switch. */
 .dashboard-tooluse {
