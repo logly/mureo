@@ -24,6 +24,7 @@ from mureo.web.version_check import (
     _reset_update_cache,
     check_for_updates,
     get_update_status,
+    request_update_refresh,
     start_periodic_update_check,
     stop_periodic_update_check,
 )
@@ -363,6 +364,23 @@ class TestGetUpdateStatus:
             release.set()
             _join_refresh()
         assert calls == ["ran"]  # single-flight held: exactly one pip run
+
+    def test_request_update_refresh_drops_cache_and_rechecks(self) -> None:
+        """The "check now" button invalidates the cache and runs pip again."""
+        payload = {"status": "ok", "any_update": False, "packages": []}
+        with patch(
+            "mureo.web.version_check.check_for_updates", return_value=payload
+        ) as mock_check:
+            get_update_status()  # warm
+            _join_refresh()
+            assert get_update_status() == payload  # fresh cache, no recheck
+            # Force: drop the cache, return checking, trigger a fresh check.
+            assert request_update_refresh()["status"] == "checking"
+            _join_refresh()
+            assert get_update_status() == payload
+        # One warm + one forced recheck = two pip runs; the fresh-cache read in
+        # between must NOT have re-run it.
+        assert mock_check.call_count == 2
 
 
 @pytest.mark.unit

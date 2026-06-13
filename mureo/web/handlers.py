@@ -108,7 +108,7 @@ from mureo.web.setup_actions import (
 )
 from mureo.web.status_collector import collect_status
 from mureo.web.upgrade_action import run_upgrade_all
-from mureo.web.version_check import get_update_status
+from mureo.web.version_check import get_update_status, request_update_refresh
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping
@@ -544,6 +544,17 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         prompts the operator to restart ``mureo configure``.
         """
         send_json(self, run_upgrade_all())
+
+    def _post_check_updates(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
+        """#246 — force a fresh update check for the About "check now" button.
+
+        Invalidates the cached result and starts a background pip check,
+        returning immediately (``status="checking"`` on a cold cache). The
+        client then polls ``GET /api/updates`` until the status settles.
+        Server-derived, read-only, fault-isolated like ``/api/updates``; the
+        body is ignored. CSRF + Host gated like every other POST.
+        """
+        send_json(self, request_update_refresh())
 
     def _inject_saved_oauth_callback_urls(self, plugins: list[dict[str, Any]]) -> None:
         """Surface each OAuth provider's saved (non-secret) callback URL so
@@ -1083,6 +1094,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/setup/basic": _post_setup_basic,
         "/api/setup/basic/clear": _post_setup_basic_clear,
         "/api/upgrade": _post_upgrade,
+        "/api/updates/refresh": _post_check_updates,
         "/api/setup/mcp/remove": _post_setup_mcp_remove,
         "/api/setup/hook/remove": _post_setup_hook_remove,
         "/api/setup/skills/remove": _post_setup_skills_remove,

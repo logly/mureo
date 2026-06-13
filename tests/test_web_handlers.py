@@ -2162,3 +2162,33 @@ class TestPostUpgrade:
                 raise AssertionError(
                     f"expected HTTP 403, got {type(exc).__name__}: {exc}"
                 ) from exc
+
+
+@pytest.mark.unit
+class TestPostCheckUpdates:
+    """``POST /api/updates/refresh`` forces a fresh check (#246).
+
+    Route-layer only: ``request_update_refresh`` (cache invalidation + the
+    background pip check) is unit-tested in test_web_version_check.py; here we
+    pin dispatch, JSON shape, and CSRF gating.
+    """
+
+    ROUTE = "/api/updates/refresh"
+
+    def test_dispatches_to_request_update_refresh(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake_result = {"status": "checking", "any_update": False, "packages": []}
+        with patch(
+            "mureo.web.handlers.request_update_refresh", return_value=fake_result
+        ) as mock_refresh:
+            resp = _post(wizard, self.ROUTE, {})
+        assert resp.status == 200
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == fake_result
+        mock_refresh.assert_called_once()
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403

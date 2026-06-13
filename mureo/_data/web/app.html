@@ -215,6 +215,12 @@
                    hidden until the background check returns a result. -->
               <div class="dashboard-about-updates" data-about-updates hidden>
                 <p data-about-updates-summary></p>
+                <!-- #246 — manual "check now". Always visible so the operator
+                     can force a fresh check (the result is otherwise cached /
+                     polled on a wide cadence by the always-on service). -->
+                <button type="button" class="btn btn-secondary"
+                        data-about-check-button
+                        data-i18n="dashboard.about_check_button">Check for updates</button>
                 <ul data-about-updates-list></ul>
                 <button type="button" class="btn btn-primary"
                         data-about-update-button hidden
