@@ -64,8 +64,10 @@ from typing import (
 )
 
 if TYPE_CHECKING:
+    import threading
     from collections.abc import Callable
     from http.server import BaseHTTPRequestHandler
+    from pathlib import Path
 
 #: Entry-point group iterated by :func:`discover_web_extensions`.
 WEB_EXTENSIONS_ENTRY_POINT_GROUP: Final[str] = "mureo.web_extensions"
@@ -236,6 +238,27 @@ class ViewContribution:
             raise TypeError("ViewContribution.styles must be tuple[StaticAsset, ...]")
 
 
+@dataclass(frozen=True)
+class ServeContext:
+    """Context handed to :py:meth:`WebExtension.on_serve_start` by the
+    always-on daemon so an extension can run a clean background job (#249).
+
+    * ``stop_event`` — set when the daemon is shutting down. An extension's
+      own thread should ``wait()`` on it (never a bare ``sleep``) and exit
+      promptly when it fires.
+    * ``request_stop`` — ask the daemon itself to stop serving (the same
+      path ``/api/shutdown`` and SIGTERM use). Rarely needed; present so an
+      extension can trigger an orderly shutdown.
+    * ``home`` — the resolved home root (honours an injected ``home``, else
+      ``Path.home()``) so an extension reads its own state under
+      ``<home>/.mureo`` exactly as the rest of configure does.
+    """
+
+    stop_event: threading.Event
+    request_stop: Callable[[], None]
+    home: Path
+
+
 @runtime_checkable
 class WebExtension(Protocol):
     """Structural type a third-party web extension must satisfy.
@@ -270,6 +293,24 @@ class WebExtension(Protocol):
       :class:`WebExtensionWarning`. When several installed
       extensions claim the landing the first-discovered one wins
       (later claims are downgraded with a warning). Added in #189.
+    * ``on_serve_start(ctx: ServeContext) -> None`` and
+      ``on_serve_stop() -> None`` — lifecycle hooks invoked ONLY by the
+      always-on daemon (``mureo configure --serve``), never by a
+      short-lived interactive ``mureo configure`` (mirrors #244's "only
+      the always-on service runs background jobs"). ``on_serve_start``
+      fires once after the server is ready; ``on_serve_stop`` once at
+      shutdown. Use them to start/stop a self-managed background thread —
+      the extension owns its own scheduling, staggering, and backoff.
+      Both hooks run synchronously on the daemon's startup/shutdown path
+      (``on_serve_start`` BEFORE the SIGINT/SIGTERM handlers are
+      installed) and sequentially across extensions, so a hook MUST
+      return promptly: spawn a thread for any ongoing work and never
+      block in the hook body, or it will stall daemon startup/shutdown
+      and delay the other extensions. An extension that declares neither
+      behaves exactly as before. A hook
+      that raises is isolated as a :class:`WebExtensionWarning`, and an
+      extension whose ``on_serve_start`` raised does NOT receive
+      ``on_serve_stop``. Added in #249.
     """
 
     @property
@@ -306,6 +347,12 @@ class WebExtensionEntry:
     # before.
     hidden_builtin_tabs: tuple[str, ...] = ()
     replaces_landing: bool = False
+    # #249 — optional always-on lifecycle hooks, captured as bound
+    # callables during discovery (``None`` when the extension declares
+    # neither). Invoked only in ``serve_forever`` (daemon) mode by
+    # :func:`start_serve_lifecycles` / :func:`stop_serve_lifecycles`.
+    on_serve_start: Callable[[ServeContext], None] | None = None
+    on_serve_stop: Callable[[], None] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -508,6 +555,23 @@ def _load_entry_point(ep: Any) -> WebExtensionEntry | None:
                 stacklevel=3,
             )
             replaces_landing = False
+        # #249 — capture optional lifecycle hooks as bound callables.
+        # Read defensively (``getattr``) so the Protocol stays additive;
+        # a non-callable hook is a packaging bug and skips the whole
+        # extension via the surrounding try/except (mirroring the
+        # ``display_name_i18n`` type-level discipline).
+        on_serve_start = getattr(extension, "on_serve_start", None)
+        if on_serve_start is not None and not callable(on_serve_start):
+            raise TypeError(
+                f"on_serve_start must be callable, "
+                f"got {type(on_serve_start).__name__}"
+            )
+        on_serve_stop = getattr(extension, "on_serve_stop", None)
+        if on_serve_stop is not None and not callable(on_serve_stop):
+            raise TypeError(
+                f"on_serve_stop must be callable, "
+                f"got {type(on_serve_stop).__name__}"
+            )
     except Exception as exc:  # noqa: BLE001 — per-plugin fault isolation
         warnings.warn(
             f"failed to load web extension {ep_name!r}: {exc!r}",
@@ -525,6 +589,8 @@ def _load_entry_point(ep: Any) -> WebExtensionEntry | None:
         display_name_i18n=i18n_normalised,
         hidden_builtin_tabs=tuple(hidden_tabs),
         replaces_landing=replaces_landing,
+        on_serve_start=on_serve_start,
+        on_serve_stop=on_serve_stop,
     )
 
 
@@ -543,12 +609,76 @@ def _resolve_source(ep: Any) -> str | None:
     return name if isinstance(name, str) else None
 
 
+# ---------------------------------------------------------------------------
+# Always-on lifecycle (#249)
+# ---------------------------------------------------------------------------
+
+
+def start_serve_lifecycles(
+    entries: tuple[WebExtensionEntry, ...], ctx: ServeContext
+) -> tuple[WebExtensionEntry, ...]:
+    """Call ``on_serve_start(ctx)`` on every entry that declares it (#249).
+
+    Returns the entries whose hook ran without raising — only those get a
+    matching :func:`stop_serve_lifecycles` call later. A hook that raises
+    is isolated as a :class:`WebExtensionWarning` so one bad extension can
+    neither crash the daemon nor block the others' startup.
+
+    Intended for the always-on daemon (``serve_forever``) only; a
+    short-lived interactive launch never calls this. Hooks run
+    sequentially on the caller's thread, so a hook that blocks delays the
+    daemon's startup and the other extensions — extensions must return
+    promptly and offload ongoing work to their own thread.
+    """
+    started: list[WebExtensionEntry] = []
+    for entry in entries:
+        hook = entry.on_serve_start
+        if hook is None:
+            continue
+        try:
+            hook(ctx)
+        except Exception as exc:  # noqa: BLE001 — per-plugin fault isolation
+            warnings.warn(
+                f"web extension {entry.name!r} on_serve_start raised "
+                f"{exc!r}; skipped (it will not be stopped)",
+                WebExtensionWarning,
+                stacklevel=2,
+            )
+            continue
+        started.append(entry)
+    return tuple(started)
+
+
+def stop_serve_lifecycles(entries: tuple[WebExtensionEntry, ...]) -> None:
+    """Call ``on_serve_stop()`` on each entry, isolating faults (#249).
+
+    Pass the tuple returned by :func:`start_serve_lifecycles` so only
+    extensions whose ``on_serve_start`` succeeded are stopped. A hook that
+    raises is isolated as a :class:`WebExtensionWarning`; the remaining
+    extensions are still stopped.
+    """
+    for entry in entries:
+        hook = entry.on_serve_stop
+        if hook is None:
+            continue
+        try:
+            hook()
+        except Exception as exc:  # noqa: BLE001 — per-plugin fault isolation
+            warnings.warn(
+                f"web extension {entry.name!r} on_serve_stop raised "
+                f"{exc!r}; ignored",
+                WebExtensionWarning,
+                stacklevel=2,
+            )
+
+
 __all__ = [
     "BUILTIN_DASHBOARD_TABS",
     "FILENAME_PATTERN",
     "NAME_PATTERN",
     "RouteContribution",
     "SUBPATH_PATTERN",
+    "ServeContext",
     "StaticAsset",
     "ViewContribution",
     "WEB_EXTENSIONS_ENTRY_POINT_GROUP",
@@ -557,4 +687,6 @@ __all__ = [
     "WebExtensionWarning",
     "discover_web_extensions",
     "reset_web_extensions",
+    "start_serve_lifecycles",
+    "stop_serve_lifecycles",
 ]
