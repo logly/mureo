@@ -130,6 +130,54 @@ class TestInstall:
         assert result.ok is False
         assert result.message
 
+    def test_install_retries_until_job_sticks(self, home: Path) -> None:
+        """``launchctl bootout`` is async: a bootstrap can 'succeed' yet leave
+        nothing loaded. Install must re-bootstrap until the job is confirmed
+        loaded (regression for a re-install that silently killed the service)."""
+        print_calls = {"n": 0}
+
+        def fake_run(argv: list[str], **kwargs: object) -> object:
+            if "print" in argv:  # _is_loaded probe
+                print_calls["n"] += 1
+                # Not loaded on the first check; loaded after one retry.
+                return _ok() if print_calls["n"] >= 2 else _fail("could not find")
+            return _ok()  # bootout / bootstrap succeed
+
+        with (
+            patch.object(launchd.subprocess, "run", side_effect=fake_run),
+            patch.object(launchd.time, "sleep") as mock_sleep,
+        ):
+            result = launchd.install(home=home, port=7613)
+        assert result.ok is True
+        assert print_calls["n"] >= 2, "did not re-check after a non-sticking bootstrap"
+        mock_sleep.assert_called()  # it backed off before retrying
+
+    def test_install_does_not_retry_a_hard_bootstrap_failure(self, home: Path) -> None:
+        """A real bootstrap error returns immediately (no retry loop / sleep)."""
+        with (
+            patch.object(launchd.subprocess, "run", return_value=_fail("denied")),
+            patch.object(launchd.time, "sleep") as mock_sleep,
+        ):
+            result = launchd.install(home=home, port=7613)
+        assert result.ok is False
+        assert "denied" in (result.message or "")
+        mock_sleep.assert_not_called()
+
+    def test_install_fails_if_job_never_sticks(self, home: Path) -> None:
+        """If a bootstrap that returns 0 never actually loads, install exhausts
+        its retries and reports failure — not a false 'ok'."""
+
+        def fake_run(argv: list[str], **kwargs: object) -> object:
+            return _fail("could not find") if "print" in argv else _ok()
+
+        with (
+            patch.object(launchd.subprocess, "run", side_effect=fake_run),
+            patch.object(launchd.time, "sleep"),
+        ):
+            result = launchd.install(home=home, port=7613)
+        assert result.ok is False
+        assert "did not stay loaded" in (result.message or "")
+
 
 @pytest.mark.unit
 class TestUninstall:

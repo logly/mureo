@@ -20,6 +20,7 @@ import logging
 import os
 import plistlib
 import subprocess
+import time
 from pathlib import Path
 
 from mureo.web.instance import probe_mureo_instance
@@ -130,8 +131,30 @@ def _unload(path: Path) -> None:
         logger.debug("launchctl unload best-effort skip", exc_info=True)
 
 
+#: ``launchctl bootout`` is asynchronous: bootstrapping the new agent while the
+#: previous one is still tearing down races and can leave NOTHING loaded (the
+#: bootstrap returns 0 but the job never sticks). After bootstrap we confirm the
+#: job is actually loaded and re-try a few times if not.
+_BOOTSTRAP_RETRIES = 4
+_BOOTSTRAP_RETRY_SECONDS = 0.75
+
+
+def _is_loaded() -> bool:
+    """``True`` if the agent is currently registered with launchd."""
+    uid = _current_uid()
+    return _run(["launchctl", "print", f"gui/{uid}/{LABEL}"]).returncode == 0
+
+
 def install(*, home: Path | None = None, port: int = SERVICE_PORT) -> OpResult:
-    """Write the plist and bootstrap it now. Idempotent (overwrites)."""
+    """Write the plist and bootstrap it now. Idempotent (overwrites).
+
+    On a RE-install the previous agent is booted out first. Because
+    ``launchctl bootout`` is asynchronous, a single bootstrap can race the
+    teardown and silently leave the service unloaded — so a bootstrap that
+    "succeeds" but does not actually stick is dropped and re-tried a few
+    times. A hard bootstrap error (missing launchctl, permission denied) is
+    returned immediately — retrying would not help.
+    """
     path = plist_path(home)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -144,7 +167,22 @@ def install(*, home: Path | None = None, port: int = SERVICE_PORT) -> OpResult:
         return OpResult(ok=False, message=f"could not write plist: {exc}")
     # Re-install cleanly: drop any previous load before bootstrapping.
     _unload(path)
-    return _load(path)
+    result = _load(path)
+    for _ in range(_BOOTSTRAP_RETRIES):
+        if not result.ok:
+            return result  # a real bootstrap failure — retrying won't fix it
+        if _is_loaded():
+            return result  # bootstrapped AND stuck
+        # "Succeeded" but did not stick (still racing the async bootout):
+        # drop and re-bootstrap after a short pause.
+        time.sleep(_BOOTSTRAP_RETRY_SECONDS)
+        _unload(path)
+        result = _load(path)
+    # Out of retries — report failure rather than a false "ok" if the job
+    # still is not loaded.
+    if result.ok and _is_loaded():
+        return result
+    return OpResult(ok=False, message="service did not stay loaded after install")
 
 
 def uninstall(*, home: Path | None = None) -> OpResult:
