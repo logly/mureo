@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-06-14
+
+### Added
+
+#### Auto-restart the always-on service after a self-upgrade (#257)
+
+When mureo runs as an always-on service, a successful one-click "Update
+all" now restarts the daemon AUTOMATICALLY on the new code — no terminal,
+no manual restart. The dashboard shows "Restarting…", waits for the
+daemon to come back, and reloads itself; the operator does nothing.
+
+This applies ONLY under an auto-start supervisor: ``mureo service
+install`` stamps a marker into the launchd plist / systemd unit, and the
+daemon exits-to-restart so launchd ``KeepAlive`` / systemd
+``Restart=always`` relaunch it. A plain interactive ``mureo configure``
+(a terminal user) keeps the manual "restart" prompt, unchanged. Windows
+is excluded (Task Scheduler does not relaunch a clean exit).
+
+Existing always-on installs must re-run ``mureo service install`` once
+(idempotent) to gain the marker. The background update check still runs
+every 6h by default (``MUREO_UPDATE_CHECK_INTERVAL_SECONDS`` to tune).
+
 ## [0.10.2] - 2026-06-14
 
 ### Fixed
