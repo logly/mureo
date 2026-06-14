@@ -43,6 +43,7 @@ Routes
 from __future__ import annotations
 
 import contextlib
+import importlib
 import logging
 import re
 import urllib.parse
@@ -542,8 +543,21 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         an arbitrary package or pip flag onto the install command. The
         running server is still on the old code afterwards, so the UI
         prompts the operator to restart ``mureo configure``.
+
+        On success the on-disk dist metadata now reflects the new version,
+        so the cached "update available" result is stale. Invalidate it and
+        kick a fresh background check (``importlib.invalidate_caches`` lets
+        the still-running process read the just-replaced ``.dist-info``), so
+        the About badge / summary stop advertising the just-applied update.
+        The re-check's outdated verdict itself comes from a fresh
+        ``pip --dry-run`` subprocess (which never sees stale in-process
+        metadata); the in-process read only fills the displayed version.
         """
-        send_json(self, run_upgrade_all())
+        result = run_upgrade_all()
+        if result.get("status") == "ok":
+            importlib.invalidate_caches()
+            request_update_refresh()
+        send_json(self, result)
 
     def _post_check_updates(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         """#246 — force a fresh update check for the About "check now" button.

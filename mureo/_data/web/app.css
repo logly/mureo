@@ -1231,10 +1231,6 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   margin-top: 10px;
 }
 
-.dashboard-about-update-status {
-  margin-top: 10px;
-}
-
 /* Native↔official tool toggle: breathing room from the explanatory
    note above, and space between the state text and the switch. */
 .dashboard-tooluse {

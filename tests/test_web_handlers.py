@@ -2093,14 +2093,36 @@ class TestPostUpgrade:
             "packages": ["mureo", "mureo-agency"],
             "output": "Successfully installed",
         }
-        with patch(
-            "mureo.web.handlers.run_upgrade_all", return_value=fake_result
-        ) as mock_upgrade:
+        with (
+            patch(
+                "mureo.web.handlers.run_upgrade_all", return_value=fake_result
+            ) as mock_upgrade,
+            patch("mureo.web.handlers.request_update_refresh"),
+        ):
             resp = _post(wizard, self.ROUTE, {})
         assert resp.status == 200
         body = json.loads(resp.read().decode("utf-8"))
         assert body == fake_result
         mock_upgrade.assert_called_once()
+
+    def test_successful_upgrade_invalidates_update_cache(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """A successful upgrade drops the cached "update available" result and
+        kicks a fresh check, so the About badge / summary stop advertising the
+        just-applied update on the next page load."""
+        fake_result = {
+            "status": "ok",
+            "returncode": 0,
+            "packages": ["mureo"],
+            "output": "Successfully installed",
+        }
+        with (
+            patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result),
+            patch("mureo.web.handlers.request_update_refresh") as mock_refresh,
+        ):
+            _post(wizard, self.ROUTE, {})
+        mock_refresh.assert_called_once()
 
     def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
         fake_result = {
@@ -2109,10 +2131,34 @@ class TestPostUpgrade:
             "packages": ["mureo"],
             "output": "Could not find a version",
         }
-        with patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result):
+        with (
+            patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result),
+            patch("mureo.web.handlers.request_update_refresh") as mock_refresh,
+        ):
             resp = _post(wizard, self.ROUTE, {})
         body = json.loads(resp.read().decode("utf-8"))
         assert body["status"] == "error"
+        # A failed upgrade must NOT touch the update cache.
+        mock_refresh.assert_not_called()
+
+    def test_noop_upgrade_skips_cache_invalidation(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """No mureo dist discovered → ``noop``; the cache is left untouched
+        (only a genuine ``ok`` upgrade invalidates it)."""
+        fake_result = {
+            "status": "noop",
+            "returncode": 0,
+            "packages": [],
+            "output": "",
+        }
+        with (
+            patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result),
+            patch("mureo.web.handlers.request_update_refresh") as mock_refresh,
+        ):
+            resp = _post(wizard, self.ROUTE, {})
+        assert json.loads(resp.read().decode("utf-8"))["status"] == "noop"
+        mock_refresh.assert_not_called()
 
     def test_request_body_packages_are_ignored(self, wizard: ConfigureWizard) -> None:
         """A package list smuggled into the body must never reach the
@@ -2123,9 +2169,12 @@ class TestPostUpgrade:
             "packages": ["mureo"],
             "output": "",
         }
-        with patch(
-            "mureo.web.handlers.run_upgrade_all", return_value=fake_result
-        ) as mock_upgrade:
+        with (
+            patch(
+                "mureo.web.handlers.run_upgrade_all", return_value=fake_result
+            ) as mock_upgrade,
+            patch("mureo.web.handlers.request_update_refresh"),
+        ):
             _post(wizard, self.ROUTE, {"packages": ["evil-package", "--index-url=x"]})
         # The wrapper takes no package argument at all.
         assert mock_upgrade.call_args.args == ()
