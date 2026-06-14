@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-06-14
+
+### Fixed
+
+#### About-tab update check no longer times out (#253)
+
+The update check ran ``pip list --outdated``, which queries the package
+index for EVERY installed distribution; on a heavy venv (the Google Ads
+SDK and its dependency tree) it exceeded the 60s timeout and surfaced
+"could not check for updates". The query is now scoped to mureo and its
+``mureo-*`` plugins via ``pip install --dry-run --upgrade --no-deps
+--report -`` — a few seconds instead of a timeout — while still using pip
+so the operator's configured (possibly private) index is honored. A pip
+constraint that pins a package below the installed version can no longer
+be mis-reported as an available update. Adds ``packaging`` as a
+dependency.
+
 ## [0.10.0] - 2026-06-14
 
 Always-on lifecycle hooks for web extensions, plus a fix for the About
