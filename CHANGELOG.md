@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-06-14
+
+### Fixed
+
+#### Reliable `mureo service install` re-install (launchd) (#259)
+
+Re-installing the always-on service (the way to pick up the new
+auto-restart marker from #257) could leave the service DOWN, needing a
+second run. ``launchctl bootout`` is asynchronous, so the immediately
+following ``bootstrap`` raced the teardown and could silently load
+nothing. ``install`` now confirms via ``launchctl print`` that the job
+actually stuck and re-bootstraps a few times if not; a hard error
+returns immediately, and exhausting the retries reports failure rather
+than a false "ok".
+
 ## [0.10.3] - 2026-06-14
 
 ### Added
