@@ -335,12 +335,18 @@ class TestUpdateAssets:
         assert "nav-badge-update" in js
         assert '[data-dashboard-nav="about"]' in js
 
-    def test_dashboard_js_uses_in_page_confirm_not_native_dialog(self) -> None:
-        """The upgrade flow must NOT trigger a native ``window.confirm`` /
-        ``MUREO.confirmAction`` dialog — it renders an in-page confirm
-        panel instead (project rule). Pin the confirm-panel hook exists."""
+    def test_dashboard_js_upgrade_is_one_click_no_confirm_panel(self) -> None:
+        """ "Update all" upgrades DIRECTLY on click — the previous two-step
+        in-page confirm panel was removed for a one-click flow, and the
+        upgrade never triggers a native ``window.confirm`` dialog."""
         js = (_WEB / "dashboard.js").read_text(encoding="utf-8")
-        assert "data-about-update-confirm" in js
+        html = (_WEB / "app.html").read_text(encoding="utf-8")
+        assert "data-about-update-confirm" not in js
+        assert "data-about-update-confirm" not in html
+        assert "window.confirm" not in js
+        # The Update-all button wires straight to the upgrade.
+        start = js.index("function wireUpgradeButton")
+        assert "runUpgrade" in js[start : start + 300]
 
     def test_i18n_has_update_keys_in_both_locales(self) -> None:
         catalog = json.loads((_WEB / "i18n.json").read_text(encoding="utf-8"))
@@ -348,9 +354,6 @@ class TestUpdateAssets:
             for key in (
                 "dashboard.about_update_available",
                 "dashboard.about_update_button",
-                "dashboard.about_update_confirm",
-                "dashboard.about_update_confirm_yes",
-                "dashboard.about_update_cancel",
                 "dashboard.about_update_running",
                 "dashboard.about_update_done_restart",
                 "dashboard.about_update_failed",

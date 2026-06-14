@@ -217,7 +217,9 @@
                 <p data-about-updates-summary></p>
                 <ul data-about-updates-list></ul>
                 <!-- #246 — action row: manual "check now" (always visible) and
-                     "update all" (shown only when updates exist), side by side. -->
+                     "update all" (shown only when updates exist). "Update all"
+                     upgrades DIRECTLY on click; progress and the result appear
+                     in the summary line above (no second confirm step). -->
                 <div class="dashboard-about-update-actions">
                   <button type="button" class="btn btn-secondary"
                           data-about-check-button
@@ -226,19 +228,6 @@
                           data-about-update-button hidden
                           data-i18n="dashboard.about_update_button">Update all</button>
                 </div>
-                <!-- In-page confirm panel (no native window.confirm).
-                     Lists the packages, then Upgrade / Cancel. -->
-                <div class="dashboard-about-update-confirm" data-about-update-confirm hidden>
-                  <p data-i18n="dashboard.about_update_confirm">Upgrade these packages now?</p>
-                  <ul data-about-update-confirm-list></ul>
-                  <button type="button" class="btn btn-primary"
-                          data-about-update-confirm-yes
-                          data-i18n="dashboard.about_update_confirm_yes">Upgrade now</button>
-                  <button type="button" class="btn btn-secondary"
-                          data-about-update-cancel
-                          data-i18n="dashboard.about_update_cancel">Cancel</button>
-                </div>
-                <p class="dashboard-about-update-status" data-about-update-status hidden></p>
               </div>
 
               <p data-i18n="dashboard.about_packages_desc">Installed mureo packages (core and extensions).</p>

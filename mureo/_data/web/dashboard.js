@@ -922,6 +922,16 @@
     navItem.appendChild(badge);
   }
 
+  // Remove the red "update available" badge from the About nav item (if any).
+  // Called when a check reports up-to-date and after a successful upgrade, so
+  // the indicator never lingers once there is nothing left to update.
+  function removeAboutNavBadge() {
+    const navItem = document.querySelector('[data-dashboard-nav="about"]');
+    if (!navItem) return;
+    const badge = navItem.querySelector(".nav-badge-update");
+    if (badge) navItem.removeChild(badge);
+  }
+
   // Render one "name: installed → latest" list item (outdated → red).
   // textContent only — never innerHTML — so package names can't inject markup.
   function buildUpdateRow(pkg) {
@@ -935,60 +945,59 @@
     return li;
   }
 
-  // Show the in-page status line (running / done / failed). No native dialog.
-  function setUpdateStatus(messageKey) {
-    const node = document.querySelector("[data-about-update-status]");
-    if (!node) return;
-    node.textContent = MUREO.t(messageKey);
-    node.setAttribute("data-i18n", messageKey);
-    node.hidden = false;
-  }
-
-  // POST /api/upgrade (CSRF via MUREO.postJson) after the in-page confirm.
-  // The server derives the package list itself — we send an empty body.
+  // POST /api/upgrade (CSRF via MUREO.postJson). ONE click on "Update all"
+  // runs the upgrade directly — no second confirm step. The server derives
+  // the package list itself, so we send an empty body. Progress, success, and
+  // failure all surface in the SAME summary line that showed "Updates are
+  // available." so the operator sees the outcome where they were looking.
+  let upgradeInProgress = false;
   async function runUpgrade() {
+    if (upgradeInProgress) return;
     const button = document.querySelector("[data-about-update-button]");
-    const confirmPanel = document.querySelector("[data-about-update-confirm]");
-    if (confirmPanel) confirmPanel.hidden = true;
+    const summary = document.querySelector("[data-about-updates-summary]");
+    const list = document.querySelector("[data-about-updates-list]");
+    upgradeInProgress = true;
     if (button) button.disabled = true;
-    setUpdateStatus("dashboard.about_update_running");
+    if (summary) setSummary(summary, "dashboard.about_update_running");
     let res;
     try {
       res = await MUREO.postJson("/api/upgrade", {});
     } catch (_err) {
-      setUpdateStatus("dashboard.about_update_failed");
-      if (button) button.disabled = false;
-      return;
+      res = null;
     }
     const ok = res && res.ok && res.body && res.body.status === "ok";
-    setUpdateStatus(
-      ok ? "dashboard.about_update_done_restart" : "dashboard.about_update_failed"
-    );
-    if (button) button.hidden = true;
+    if (!ok) {
+      if (summary) setSummary(summary, "dashboard.about_update_failed");
+      if (button) button.disabled = false;
+      upgradeInProgress = false;
+      return;
+    }
+    // Success: the on-disk version is now upgraded. Show the done/restart
+    // message in the summary, drop the outdated list, the "Update all" button
+    // and the nav badge, and re-render the About header so the displayed
+    // version reflects the freshly-installed dist (the running process keeps
+    // the old code until a restart — that is what the message tells the user).
+    if (summary) setSummary(summary, "dashboard.about_update_done_restart");
+    if (list) {
+      while (list.firstChild) list.removeChild(list.firstChild);
+    }
+    if (button) {
+      button.hidden = true;
+      button.disabled = false;
+    }
+    removeAboutNavBadge();
+    renderAbout();
+    upgradeInProgress = false;
   }
 
-  // Toggle the in-page confirm panel that lists the packages to upgrade.
-  function wireUpdateConfirm(outdated) {
+  // Wire the "Update all" button to upgrade DIRECTLY on click (one step — no
+  // confirm panel). Idempotent (onclick, not addEventListener) so repeated
+  // renders never stack handlers.
+  function wireUpgradeButton() {
     const button = document.querySelector("[data-about-update-button]");
-    const confirmPanel = document.querySelector("[data-about-update-confirm]");
-    const confirmList = document.querySelector(
-      "[data-about-update-confirm-list]"
-    );
-    const yesBtn = document.querySelector("[data-about-update-confirm-yes]");
-    const cancelBtn = document.querySelector("[data-about-update-cancel]");
-    if (!button || !confirmPanel || !confirmList || !yesBtn || !cancelBtn) return;
-    while (confirmList.firstChild) confirmList.removeChild(confirmList.firstChild);
-    outdated.forEach(function (pkg) {
-      confirmList.appendChild(buildUpdateRow(pkg));
-    });
+    if (!button) return;
     button.onclick = function () {
-      confirmPanel.hidden = false;
-    };
-    yesBtn.onclick = function () {
       runUpgrade();
-    };
-    cancelBtn.onclick = function () {
-      confirmPanel.hidden = true;
     };
   }
 
@@ -1021,6 +1030,8 @@
     if (!body.any_update || outdated.length === 0) {
       setSummary(summary, "dashboard.about_up_to_date");
       button.hidden = true;
+      // Up to date now — clear any stale "update available" nav badge.
+      removeAboutNavBadge();
       return;
     }
     setSummary(summary, "dashboard.about_update_available");
@@ -1029,7 +1040,7 @@
     });
     button.hidden = false;
     setAboutNavBadge();
-    wireUpdateConfirm(outdated);
+    wireUpgradeButton();
   }
 
   function sleep(ms) {
