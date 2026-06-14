@@ -1,12 +1,12 @@
 """Update-availability check for ``mureo.web.version_check``.
 
-``check_for_updates`` shells out to ``python -m pip list --outdated
---format=json`` on ``sys.executable`` and FILTERS the result to mureo /
-``mureo-*`` packages (reusing the scope helpers from
-``mureo.cli.upgrade_cmd``). Every test patches ``subprocess.run`` at the
-module's imported symbol, so nothing here depends on what is actually
-installed in the venv running the suite, nor does anything reach the
-network.
+``check_for_updates`` discovers the installed mureo / ``mureo-*``
+distributions locally, then runs a SCOPED ``pip install --dry-run
+--upgrade --no-deps --report -`` over just those packages and maps the
+report's ``install`` list to the API envelope. The mapping tests patch
+``_installed_mureo_versions`` and ``_run_pip_report``; the subprocess
+fault-isolation tests patch ``subprocess.run``. Either way nothing here
+depends on what is actually installed in the venv, nor reaches the network.
 """
 
 from __future__ import annotations
@@ -57,27 +57,39 @@ def _completed(
     )
 
 
-def _outdated_json(*rows: dict[str, Any]) -> str:
-    """Serialise ``pip list --outdated --format=json`` rows."""
+def _report(*entries: dict[str, str]) -> dict[str, Any]:
+    """Build a ``pip install --report`` dict whose ``install`` list carries the
+    given ``{name, version}`` metadata entries (``version`` = the latest pip
+    would install)."""
 
-    return json.dumps(list(rows))
+    return {
+        "version": "1",
+        "install": [
+            {"metadata": {"name": e["name"], "version": e["version"]}} for e in entries
+        ],
+    }
 
 
 @pytest.mark.unit
 class TestCheckForUpdates:
+    """``check_for_updates`` maps pip's scoped report to the API envelope.
+
+    The pure mapping is exercised by mocking ``_installed_mureo_versions``
+    (the local metadata snapshot) and ``_run_pip_report`` (the scoped pip
+    call). Subprocess-level fault isolation lives in ``TestRunPipReport``.
+    """
+
     def test_surfaces_outdated_mureo_packages(self) -> None:
         """An outdated ``mureo-*`` package is reported with installed→latest."""
-        payload = _outdated_json(
-            {
-                "name": "mureo-agency",
-                "version": "0.1.0",
-                "latest_version": "0.2.0",
-                "latest_filetype": "wheel",
-            },
-        )
-        with patch(
-            "mureo.web.version_check.subprocess.run",
-            return_value=_completed(stdout=payload),
+        with (
+            patch(
+                "mureo.web.version_check._installed_mureo_versions",
+                return_value={"mureo-agency": "0.1.0"},
+            ),
+            patch(
+                "mureo.web.version_check._run_pip_report",
+                return_value=_report({"name": "mureo-agency", "version": "0.2.0"}),
+            ),
         ):
             result = check_for_updates()
         assert result["status"] == "ok"
@@ -86,31 +98,40 @@ class TestCheckForUpdates:
             {"name": "mureo-agency", "installed": "0.1.0", "latest": "0.2.0"}
         ]
 
+    def test_scopes_query_to_installed_mureo_packages(self) -> None:
+        """The pip call is scoped to the installed mureo packages (sorted) —
+        the whole point of the fix vs. ``pip list --outdated`` over the venv."""
+        captured: dict[str, Any] = {}
+
+        def _capture(packages: list[str]) -> dict[str, Any]:
+            captured["packages"] = packages
+            return _report()
+
+        with (
+            patch(
+                "mureo.web.version_check._installed_mureo_versions",
+                return_value={"mureo-agency": "0.1.0", "mureo": "0.10.0"},
+            ),
+            patch("mureo.web.version_check._run_pip_report", side_effect=_capture),
+        ):
+            check_for_updates()
+        assert captured["packages"] == ["mureo", "mureo-agency"]
+
     def test_filters_out_non_mureo_packages(self) -> None:
-        """Outdated packages that are not mureo / mureo-* are dropped."""
-        payload = _outdated_json(
-            {
-                "name": "requests",
-                "version": "2.0.0",
-                "latest_version": "2.31.0",
-                "latest_filetype": "wheel",
-            },
-            {
-                "name": "mureology",  # prefix squatter — must NOT match
-                "version": "1.0.0",
-                "latest_version": "2.0.0",
-                "latest_filetype": "wheel",
-            },
-            {
-                "name": "mureo-logly-bridge",
-                "version": "0.3.0",
-                "latest_version": "0.4.0",
-                "latest_filetype": "wheel",
-            },
-        )
-        with patch(
-            "mureo.web.version_check.subprocess.run",
-            return_value=_completed(stdout=payload),
+        """Report entries that are not mureo / mureo-* are dropped."""
+        with (
+            patch(
+                "mureo.web.version_check._installed_mureo_versions",
+                return_value={"mureo-logly-bridge": "0.3.0"},
+            ),
+            patch(
+                "mureo.web.version_check._run_pip_report",
+                return_value=_report(
+                    {"name": "requests", "version": "2.31.0"},
+                    {"name": "mureology", "version": "2.0.0"},  # prefix squatter
+                    {"name": "mureo-logly-bridge", "version": "0.4.0"},
+                ),
+            ),
         ):
             result = check_for_updates()
         assert result["status"] == "ok"
@@ -120,17 +141,15 @@ class TestCheckForUpdates:
 
     def test_mureo_itself_outdated_is_included(self) -> None:
         """The ``mureo`` core distribution is included when outdated."""
-        payload = _outdated_json(
-            {
-                "name": "mureo",
-                "version": "0.9.31",
-                "latest_version": "0.9.32",
-                "latest_filetype": "wheel",
-            },
-        )
-        with patch(
-            "mureo.web.version_check.subprocess.run",
-            return_value=_completed(stdout=payload),
+        with (
+            patch(
+                "mureo.web.version_check._installed_mureo_versions",
+                return_value={"mureo": "0.9.31"},
+            ),
+            patch(
+                "mureo.web.version_check._run_pip_report",
+                return_value=_report({"name": "mureo", "version": "0.9.32"}),
+            ),
         ):
             result = check_for_updates()
         assert result["any_update"] is True
@@ -139,126 +158,178 @@ class TestCheckForUpdates:
         ]
 
     def test_up_to_date_reports_no_update(self) -> None:
-        """An empty outdated list → ``ok`` with ``any_update`` false."""
-        with patch(
-            "mureo.web.version_check.subprocess.run",
-            return_value=_completed(stdout="[]"),
+        """An empty ``install`` list → ``ok`` with ``any_update`` false."""
+        with (
+            patch(
+                "mureo.web.version_check._installed_mureo_versions",
+                return_value={"mureo": "0.10.0"},
+            ),
+            patch("mureo.web.version_check._run_pip_report", return_value=_report()),
         ):
             result = check_for_updates()
         assert result["status"] == "ok"
         assert result["any_update"] is False
         assert result["packages"] == []
 
-    def test_only_non_mureo_outdated_reports_no_update(self) -> None:
-        """When every outdated row is non-mureo, ``any_update`` is false."""
-        payload = _outdated_json(
-            {
-                "name": "pip",
-                "version": "23.0",
-                "latest_version": "24.0",
-                "latest_filetype": "wheel",
-            },
-        )
-        with patch(
-            "mureo.web.version_check.subprocess.run",
-            return_value=_completed(stdout=payload),
+    def test_no_mureo_installed_reports_no_update_without_pip(self) -> None:
+        """No resolvable mureo distribution → ``ok`` empty, and pip is never run."""
+        with (
+            patch("mureo.web.version_check._installed_mureo_versions", return_value={}),
+            patch("mureo.web.version_check._run_pip_report") as mock_report,
         ):
             result = check_for_updates()
-        assert result["status"] == "ok"
-        assert result["any_update"] is False
-        assert result["packages"] == []
+        assert result == {"status": "ok", "any_update": False, "packages": []}
+        mock_report.assert_not_called()
 
-    def test_pip_nonzero_exit_degrades_to_error(self) -> None:
-        """A non-zero pip exit → ``error`` envelope, no raise, no update."""
-        with patch(
-            "mureo.web.version_check.subprocess.run",
-            return_value=_completed(returncode=1, stderr="boom"),
+    def test_pip_failure_degrades_to_error(self) -> None:
+        """When the scoped pip call fails (``None``), degrade to ``error``."""
+        with (
+            patch(
+                "mureo.web.version_check._installed_mureo_versions",
+                return_value={"mureo": "0.10.0"},
+            ),
+            patch("mureo.web.version_check._run_pip_report", return_value=None),
         ):
             result = check_for_updates()
         assert result["status"] == "error"
         assert result["any_update"] is False
         assert result["packages"] == []
 
-    def test_timeout_degrades_to_error(self) -> None:
-        """A subprocess timeout must degrade, never propagate."""
-        with patch(
-            "mureo.web.version_check.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="pip", timeout=60),
-        ):
-            result = check_for_updates()
-        assert result["status"] == "error"
-        assert result["any_update"] is False
-        assert result["packages"] == []
-
-    def test_unparseable_json_degrades_to_error(self) -> None:
-        """Garbage on stdout must not crash JSON parsing."""
-        with patch(
-            "mureo.web.version_check.subprocess.run",
-            return_value=_completed(stdout="not json at all"),
-        ):
-            result = check_for_updates()
-        assert result["status"] == "error"
-        assert result["any_update"] is False
-        assert result["packages"] == []
-
-    def test_subprocess_oserror_degrades_to_error(self) -> None:
-        """A missing interpreter / OS error must degrade, never raise."""
-        with patch(
-            "mureo.web.version_check.subprocess.run",
-            side_effect=OSError("no such executable"),
-        ):
-            result = check_for_updates()
-        assert result["status"] == "error"
-        assert result["any_update"] is False
-        assert result["packages"] == []
-
-    def test_non_list_json_payload_degrades_to_error(self) -> None:
-        """pip is documented to emit a JSON array; an object is malformed."""
-        with patch(
-            "mureo.web.version_check.subprocess.run",
-            return_value=_completed(stdout='{"name": "mureo"}'),
-        ):
-            result = check_for_updates()
-        assert result["status"] == "error"
-        assert result["any_update"] is False
-        assert result["packages"] == []
-
-    def test_malformed_row_is_skipped_not_fatal(self) -> None:
-        """A row missing required keys is dropped; valid rows still surface."""
-        payload = json.dumps(
-            [
-                {"name": "mureo-agency"},  # no version / latest_version
-                {
-                    "name": "mureo-logly-bridge",
-                    "version": "0.3.0",
-                    "latest_version": "0.4.0",
-                    "latest_filetype": "wheel",
-                },
-            ]
-        )
-        with patch(
-            "mureo.web.version_check.subprocess.run",
-            return_value=_completed(stdout=payload),
+    def test_malformed_entry_is_skipped_not_fatal(self) -> None:
+        """An ``install`` entry missing metadata is dropped; valid ones surface."""
+        report = {
+            "version": "1",
+            "install": [
+                {"metadata": {"name": "mureo-agency"}},  # no version
+                {"foo": "bar"},  # no metadata at all
+                {"metadata": {"name": "mureo-logly-bridge", "version": "0.4.0"}},
+            ],
+        }
+        with (
+            patch(
+                "mureo.web.version_check._installed_mureo_versions",
+                return_value={"mureo-agency": "0.1.0", "mureo-logly-bridge": "0.3.0"},
+            ),
+            patch("mureo.web.version_check._run_pip_report", return_value=report),
         ):
             result = check_for_updates()
         assert result["status"] == "ok"
         names = [pkg["name"] for pkg in result["packages"]]
         assert names == ["mureo-logly-bridge"]
 
-    def test_uses_sys_executable_pip_list_outdated_json(self) -> None:
-        """The command targets this venv's pip with the JSON outdated flags."""
+    def test_constraint_pinned_downgrade_is_not_an_update(self) -> None:
+        """``--upgrade`` can list a DOWNGRADE target when a pip constraint pins
+        the package below what is installed; that is NOT an available update."""
+        with (
+            patch(
+                "mureo.web.version_check._installed_mureo_versions",
+                return_value={"mureo": "0.10.0"},
+            ),
+            patch(
+                "mureo.web.version_check._run_pip_report",
+                return_value=_report({"name": "mureo", "version": "0.9.0"}),
+            ),
+        ):
+            result = check_for_updates()
+        assert result["status"] == "ok"
+        assert result["any_update"] is False
+        assert result["packages"] == []
+
+    def test_unparseable_index_version_is_dropped(self) -> None:
+        """A non-PEP 440 ``latest`` is dropped, never shown as a dubious update."""
+        with (
+            patch(
+                "mureo.web.version_check._installed_mureo_versions",
+                return_value={"mureo-agency": "0.1.0"},
+            ),
+            patch(
+                "mureo.web.version_check._run_pip_report",
+                return_value=_report(
+                    {"name": "mureo-agency", "version": "not-a-version"}
+                ),
+            ),
+        ):
+            result = check_for_updates()
+        assert result["any_update"] is False
+        assert result["packages"] == []
+
+
+@pytest.mark.unit
+class TestRunPipReport:
+    """Subprocess-level fault isolation and command shape of the scoped query."""
+
+    def test_success_returns_report_dict(self) -> None:
+        report_json = json.dumps({"version": "1", "install": []})
         with patch(
             "mureo.web.version_check.subprocess.run",
-            return_value=_completed(stdout="[]"),
+            return_value=_completed(stdout=report_json),
+        ):
+            assert version_check._run_pip_report(["mureo"]) == {
+                "version": "1",
+                "install": [],
+            }
+
+    def test_command_is_scoped_dry_run_for_given_packages(self) -> None:
+        with patch(
+            "mureo.web.version_check.subprocess.run",
+            return_value=_completed(stdout='{"install": []}'),
         ) as mock_run:
-            check_for_updates()
+            version_check._run_pip_report(["mureo", "mureo-agency"])
         args, kwargs = mock_run.call_args
         cmd = args[0]
-        assert cmd[1:] == ["-m", "pip", "list", "--outdated", "--format=json"]
+        assert cmd[1:10] == [
+            "-m",
+            "pip",
+            "install",
+            "--dry-run",
+            "--upgrade",
+            "--no-deps",
+            "--quiet",
+            "--report",
+            "-",
+        ]
+        # Packages follow the ``--`` sentinel so a name can never be read as a flag.
+        assert cmd[-3:] == ["--", "mureo", "mureo-agency"]
         assert kwargs["capture_output"] is True
         assert kwargs["text"] is True
         assert kwargs["check"] is False
         assert kwargs["timeout"] == 60
+
+    def test_nonzero_exit_returns_none(self) -> None:
+        with patch(
+            "mureo.web.version_check.subprocess.run",
+            return_value=_completed(returncode=1, stderr="boom"),
+        ):
+            assert version_check._run_pip_report(["mureo"]) is None
+
+    def test_timeout_returns_none(self) -> None:
+        with patch(
+            "mureo.web.version_check.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="pip", timeout=60),
+        ):
+            assert version_check._run_pip_report(["mureo"]) is None
+
+    def test_oserror_returns_none(self) -> None:
+        with patch(
+            "mureo.web.version_check.subprocess.run",
+            side_effect=OSError("no such executable"),
+        ):
+            assert version_check._run_pip_report(["mureo"]) is None
+
+    def test_unparseable_json_returns_none(self) -> None:
+        with patch(
+            "mureo.web.version_check.subprocess.run",
+            return_value=_completed(stdout="not json at all"),
+        ):
+            assert version_check._run_pip_report(["mureo"]) is None
+
+    def test_non_object_json_returns_none(self) -> None:
+        """pip's report is a JSON object; a bare array is malformed."""
+        with patch(
+            "mureo.web.version_check.subprocess.run",
+            return_value=_completed(stdout="[]"),
+        ):
+            assert version_check._run_pip_report(["mureo"]) is None
 
 
 @pytest.mark.unit
@@ -389,9 +460,7 @@ class TestPeriodicUpdateCheck:
 
     _OK: Any = {"status": "ok", "any_update": False, "packages": []}
 
-    def test_interval_resolves_from_env(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_interval_resolves_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("MUREO_UPDATE_CHECK_INTERVAL_SECONDS", "120")
         assert version_check._resolve_poll_interval(None) == 120.0
 
@@ -450,9 +519,7 @@ class TestPeriodicUpdateCheck:
 
     def test_start_is_idempotent(self) -> None:
         """A second start while one runs is a no-op (single-instance reuse)."""
-        with patch(
-            "mureo.web.version_check.check_for_updates", return_value=self._OK
-        ):
+        with patch("mureo.web.version_check.check_for_updates", return_value=self._OK):
             assert start_periodic_update_check(interval_seconds=3600) is True
             assert start_periodic_update_check(interval_seconds=3600) is False
             stop_periodic_update_check()
@@ -463,9 +530,7 @@ class TestPeriodicUpdateCheck:
 
     def test_restart_after_stop_launches_fresh_poller(self) -> None:
         """start → stop → start must work (each launch gets its own event)."""
-        with patch(
-            "mureo.web.version_check.check_for_updates", return_value=self._OK
-        ):
+        with patch("mureo.web.version_check.check_for_updates", return_value=self._OK):
             assert start_periodic_update_check(interval_seconds=3600) is True
             stop_periodic_update_check()
             assert version_check._poll_thread is None

@@ -45,6 +45,11 @@ dependencies = [
     # — re-implementing YAML escapes is a worse security surface than
     # the audited safe_load path.
     "pyyaml>=6.0,<7",
+    # packaging is used by mureo.web.version_check to PEP 440-compare an
+    # index version against the installed one, so a pip constraint that
+    # pins a package BELOW what is installed is never mis-reported as an
+    # available update. Ubiquitous, tiny, pure-Python; pinned <26 for room.
+    "packaging>=23.0,<26",
 ]
 
 [project.optional-dependencies]

@@ -1,28 +1,39 @@
 """Update-availability check for the configure UI's "About mureo" tab (#239).
 
 Surfaces whether a newer ``mureo`` or any installed ``mureo-*`` plugin is
-available so the operator can upgrade with one click. The check shells out
-to ``python -m pip list --outdated --format=json`` on ``sys.executable``
-and FILTERS the result to mureo / ``mureo-*`` packages.
+available so the operator can upgrade with one click. The check enumerates
+the installed mureo / ``mureo-*`` distributions locally, then shells out to
+a SCOPED ``python -m pip install --dry-run --upgrade --no-deps --report -``
+on ``sys.executable`` for just those packages and reads pip's JSON report.
+
+Why scoped: ``pip list --outdated`` queries the index for EVERY installed
+distribution, which on a heavy venv (e.g. the Google Ads SDK and its deps)
+routinely exceeds the timeout and surfaces "could not check for updates".
+Restricting the query to mureo + its plugins keeps it to a few seconds.
 
 Why pip (not a direct PyPI query): running pip respects the operator's
 configured package index, so private bridges (``mureo-logly-bridge``,
 ``mureo-agency`` — potentially on a private index, not public PyPI) are
-checked correctly, and it shares the exact venv / index resolution that
-``mureo upgrade --all`` uses. "Update available" and "the upgrade" are
-then consistent by construction — no hand-rolled PEP 440 comparison, no
-HTTP client of our own.
+checked correctly, and it shares the venv / index resolution that
+``mureo upgrade`` uses. A package lands in the report's ``install`` list
+when pip's resolver would change its version; we additionally require the
+index version to be strictly newer than the installed one (a pinning
+constraint can otherwise surface a downgrade), restoring parity with the
+old ``pip list --outdated``. ``--no-deps`` scopes the query to the named
+packages, so the check answers "is a newer mureo / plugin published?"
+rather than fully simulating ``mureo upgrade --all``'s dependency
+resolution — close enough for an availability badge, and far faster.
 
 Fault isolation: any pip failure (non-zero exit, timeout, network down,
 unparseable JSON, OS error) degrades to ``status="error"`` with
 ``any_update=False``. This function NEVER raises and NEVER produces a 500.
 
 Non-blocking accessor: HTTP handlers must call :func:`get_update_status`,
-NOT :func:`check_for_updates` directly. ``pip list --outdated`` reaches
+NOT :func:`check_for_updates` directly. The scoped pip check still reaches
 the configured index and can take up to ``_PIP_TIMEOUT_SECONDS`` on a slow
 or unreachable network. Running it inline on every request blocks the
 request thread for that long — and the configure UI fetches ``/api/updates``
-more than once per page load — so the slow check is run once in a daemon
+more than once per page load — so the check is run once in a daemon
 thread and its result cached; the handler returns instantly.
 """
 
@@ -36,9 +47,16 @@ import subprocess
 import sys
 import threading
 import time
+from importlib import metadata
 from typing import Any, Final
 
-from mureo.cli.upgrade_cmd import _canonicalise, _is_mureo_package
+from packaging.version import InvalidVersion, Version
+
+from mureo.cli.upgrade_cmd import (
+    _canonicalise,
+    _discover_all_mureo_packages,
+    _is_mureo_package,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +100,52 @@ def _error_result() -> dict[str, Any]:
     return {"status": "error", "any_update": False, "packages": []}
 
 
-def _run_pip_outdated() -> str | None:
-    """Return pip's ``--outdated --format=json`` stdout, or ``None``.
+def _installed_mureo_versions() -> dict[str, str]:
+    """``{canonical name: installed version}`` for installed mureo / ``mureo-*``
+    distributions.
 
-    ``None`` signals any failure mode (non-zero exit, timeout, OS error)
-    the caller must treat as "could not determine updates".
+    Resolved locally from installed metadata (no network). Reused both to
+    SCOPE the pip query below to just these packages and to fill the
+    ``installed`` field of each reported package.
     """
-    cmd = [sys.executable, "-m", "pip", "list", "--outdated", "--format=json"]
+    versions: dict[str, str] = {}
+    for name in _discover_all_mureo_packages():
+        try:
+            versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            continue
+    return versions
+
+
+def _run_pip_report(packages: list[str]) -> dict[str, Any] | None:
+    """Return pip's JSON install report for a scoped dry-run upgrade, or ``None``.
+
+    Runs ``pip install --dry-run --upgrade --no-deps --report -`` for ONLY the
+    given mureo packages. Scoping is what keeps this fast: ``pip list
+    --outdated`` queries the index for EVERY installed distribution (60s+ in a
+    heavy venv — the timeout operators hit), whereas this touches only mureo +
+    its plugins (~3s). ``--upgrade`` lets pip's own resolver decide what is
+    outdated — a package appears in the report's ``install`` list iff a newer
+    version is available — so "update available" stays consistent with
+    ``mureo upgrade`` and we never hand-roll a PEP 440 comparison.
+
+    ``None`` signals any failure mode (non-zero exit, timeout, OS error,
+    unparseable JSON) the caller must treat as "could not determine updates".
+    """
+    cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--dry-run",
+        "--upgrade",
+        "--no-deps",
+        "--quiet",
+        "--report",
+        "-",
+        "--",
+        *packages,
+    ]
     try:
         proc = subprocess.run(  # noqa: S603 — fixed argv, no shell, trusted exe
             cmd,
@@ -98,43 +155,71 @@ def _run_pip_outdated() -> str | None:
             timeout=_PIP_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired:
-        # Expected on a slow / unreachable index — not a bug. Log one line,
-        # not a multi-line traceback that scares the operator on the console.
-        logger.warning("pip list --outdated timed out after %ss", _PIP_TIMEOUT_SECONDS)
+        # Should not happen now the query is scoped, but keep the guard. Log one
+        # line, not a multi-line traceback that scares the operator on the console.
+        logger.warning("pip update check timed out after %ss", _PIP_TIMEOUT_SECONDS)
         return None
     except OSError as exc:
-        logger.warning("pip list --outdated could not run: %s", exc)
+        logger.warning("pip update check could not run: %s", exc)
         return None
     if proc.returncode != 0:
-        logger.warning(
-            "pip list --outdated exited %s: %s", proc.returncode, proc.stderr
-        )
+        logger.warning("pip update check exited %s: %s", proc.returncode, proc.stderr)
         return None
-    return proc.stdout
+    try:
+        report = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        logger.warning("pip update check produced unparseable JSON")
+        return None
+    if not isinstance(report, dict):
+        logger.warning("pip update check report was not a JSON object")
+        return None
+    return report
 
 
-def _row_to_package(row: Any) -> dict[str, str] | None:
-    """Map one pip ``--outdated`` JSON row to ``{name, installed, latest}``.
+def _outdated_from_report(
+    report: dict[str, Any], installed: dict[str, str]
+) -> list[dict[str, str]]:
+    """Map pip's report ``install`` list to outdated mureo packages.
 
-    Returns ``None`` for a non-mureo package or a row missing the required
-    keys (so one malformed entry never breaks the whole check).
+    Each entry pip would install/upgrade becomes ``{name, installed, latest}``
+    (canonical name; ``installed`` filled from the local metadata snapshot).
+    A non-mureo, malformed, or not-locally-installed entry is dropped so one
+    bad row never breaks the whole check.
     """
-    if not isinstance(row, dict):
-        return None
-    name = row.get("name")
-    installed = row.get("version")
-    latest = row.get("latest_version")
-    if not isinstance(name, str) or not name or not _is_mureo_package(name):
-        return None
-    if not isinstance(installed, str) or not isinstance(latest, str):
-        return None
-    if not installed or not latest:
-        return None
-    return {
-        "name": _canonicalise(name),
-        "installed": installed,
-        "latest": latest,
-    }
+    install = report.get("install")
+    if not isinstance(install, list):
+        return []
+    packages: list[dict[str, str]] = []
+    for item in install:
+        if not isinstance(item, dict):
+            continue
+        meta = item.get("metadata")
+        if not isinstance(meta, dict):
+            continue
+        name = meta.get("name")
+        latest = meta.get("version")
+        if not isinstance(name, str) or not name or not _is_mureo_package(name):
+            continue
+        if not isinstance(latest, str) or not latest:
+            continue
+        canonical = _canonicalise(name)
+        installed_version = installed.get(canonical)
+        if not installed_version:
+            continue
+        # ``--upgrade`` can also list a DOWNGRADE target when a pip constraint
+        # pins the package below what is installed; only a strictly newer
+        # version is an "update available" (parity with pip list --outdated).
+        # An unparseable version is dropped rather than shown as a dubious update.
+        try:
+            if Version(latest) <= Version(installed_version):
+                continue
+        except InvalidVersion:
+            continue
+        packages.append(
+            {"name": canonical, "installed": installed_version, "latest": latest}
+        )
+    packages.sort(key=lambda pkg: pkg["name"])
+    return packages
 
 
 def check_for_updates() -> dict[str, Any]:
@@ -154,20 +239,15 @@ def check_for_updates() -> dict[str, Any]:
     On any pip failure the envelope degrades to ``status="error"`` /
     ``any_update=False`` / empty ``packages`` — never an exception.
     """
-    stdout = _run_pip_outdated()
-    if stdout is None:
+    installed = _installed_mureo_versions()
+    if not installed:
+        # No mureo distribution is resolvable (highly unusual). Nothing to
+        # check rather than an error — there is genuinely nothing to upgrade.
+        return {"status": "ok", "any_update": False, "packages": []}
+    report = _run_pip_report(sorted(installed))
+    if report is None:
         return _error_result()
-    try:
-        rows = json.loads(stdout)
-    except json.JSONDecodeError:
-        logger.warning("pip list --outdated produced unparseable JSON")
-        return _error_result()
-    if not isinstance(rows, list):
-        logger.warning("pip list --outdated did not return a JSON array")
-        return _error_result()
-
-    packages = [pkg for pkg in (_row_to_package(row) for row in rows) if pkg]
-    packages.sort(key=lambda pkg: pkg["name"])
+    packages = _outdated_from_report(report, installed)
     return {
         "status": "ok",
         "any_update": bool(packages),
