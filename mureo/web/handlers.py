@@ -45,7 +45,10 @@ from __future__ import annotations
 import contextlib
 import importlib
 import logging
+import os
 import re
+import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Any
@@ -122,6 +125,47 @@ if TYPE_CHECKING:
     from mureo.web.server import ConfigureWizard
 
 logger = logging.getLogger(__name__)
+
+# After a successful self-upgrade the configure daemon, when it runs under an
+# auto-start supervisor (launchd ``KeepAlive`` / systemd ``Restart=always``),
+# exits so the supervisor relaunches it on the NEW code. The grace delay lets
+# the HTTP response reach the browser (which then polls ``/api/ping`` and
+# reloads); the ``os._exit`` backstop guarantees the process actually
+# terminates even if a stray non-daemon thread would otherwise keep it alive.
+_RESTART_RESPONSE_GRACE_SECONDS = 1.5
+_RESTART_HARD_EXIT_SECONDS = 3.0
+
+
+def _restart_runner(wizard: ConfigureWizard) -> None:
+    """Graceful stop → hard-exit backstop, run on a daemon thread.
+
+    Extracted (not a closure) so it is unit-testable with ``time.sleep`` /
+    ``os._exit`` patched. ``request_stop`` is best-effort: even if it raises,
+    the ``os._exit`` backstop still fires so the supervisor relaunches us.
+    """
+    time.sleep(_RESTART_RESPONSE_GRACE_SECONDS)
+    with contextlib.suppress(Exception):
+        wizard.request_stop()
+    time.sleep(_RESTART_HARD_EXIT_SECONDS)
+    logger.info("exiting for supervisor-managed restart after self-upgrade")
+    os._exit(0)
+
+
+def _request_service_restart(wizard: ConfigureWizard) -> None:
+    """Schedule a graceful exit-to-restart of the supervised daemon.
+
+    Spawns a daemon thread so the caller's request handler returns first
+    (the ``/api/upgrade`` response must flush before the server goes down).
+    Only call this when running under a supervisor — see
+    :func:`mureo.web.service.is_managed_service`.
+    """
+    threading.Thread(
+        target=_restart_runner,
+        args=(wizard,),
+        name="mureo-service-restart",
+        daemon=True,
+    ).start()
+
 
 # #241 — the installed mureo version reported by ``GET /api/ping``. Read
 # once at import from the package's ``__version__`` (no ``importlib.metadata``
@@ -541,8 +585,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         inside ``run_upgrade_all``) — the request body is deliberately
         NOT read for packages, so a stale/hostile client can never inject
         an arbitrary package or pip flag onto the install command. The
-        running server is still on the old code afterwards, so the UI
-        prompts the operator to restart ``mureo configure``.
+        running server is still on the old code afterwards. When running
+        under an auto-start supervisor (``is_managed_service``) the daemon
+        EXITS-to-RESTART so the supervisor relaunches it on the new code
+        automatically (``restarting=True`` tells the UI to wait + reload);
+        an interactive ``mureo configure`` has no supervisor, so it keeps
+        the manual "restart" prompt (``restarting=False``).
 
         On success the on-disk dist metadata now reflects the new version,
         so the cached "update available" result is stale. Invalidate it and
@@ -553,11 +601,22 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         ``pip --dry-run`` subprocess (which never sees stale in-process
         metadata); the in-process read only fills the displayed version.
         """
+        # Lazy import: ``mureo.web.service`` imports ``mureo.web.server``,
+        # which imports this module — a module-level import would cycle.
+        from mureo.web.service import is_managed_service
+
         result = run_upgrade_all()
+        restarting = False
         if result.get("status") == "ok":
             importlib.invalidate_caches()
             request_update_refresh()
+            restarting = is_managed_service()
+        result = {**result, "restarting": restarting}
         send_json(self, result)
+        # Schedule the restart AFTER the response is flushed so the client
+        # receives ``restarting=True`` and can poll for the daemon's return.
+        if restarting:
+            _request_service_restart(self.wizard)
 
     def _post_check_updates(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         """#246 — force a fresh update check for the About "check now" button.

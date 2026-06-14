@@ -2080,13 +2080,61 @@ class TestServeUpdates:
 
 
 @pytest.mark.unit
+class TestRestartRunner:
+    """The exit-to-restart runner: graceful stop then a hard os._exit backstop.
+
+    The danger code path (it calls ``os._exit``) is exercised directly with
+    ``time.sleep`` / ``os._exit`` patched so the suite never actually exits.
+    """
+
+    def test_stops_then_hard_exits(self) -> None:
+        from unittest.mock import MagicMock
+
+        import mureo.web.handlers as handlers_mod
+
+        wizard = MagicMock()
+        with (
+            patch("mureo.web.handlers.time.sleep"),
+            patch("mureo.web.handlers.os._exit") as mock_exit,
+        ):
+            handlers_mod._restart_runner(wizard)
+        wizard.request_stop.assert_called_once()
+        mock_exit.assert_called_once_with(0)
+
+    def test_hard_exits_even_if_request_stop_raises(self) -> None:
+        """``request_stop`` is best-effort; the supervisor must still get its
+        exit even when graceful shutdown throws."""
+        from unittest.mock import MagicMock
+
+        import mureo.web.handlers as handlers_mod
+
+        wizard = MagicMock()
+        wizard.request_stop.side_effect = RuntimeError("boom")
+        with (
+            patch("mureo.web.handlers.time.sleep"),
+            patch("mureo.web.handlers.os._exit") as mock_exit,
+        ):
+            handlers_mod._restart_runner(wizard)
+        mock_exit.assert_called_once_with(0)
+
+
+@pytest.mark.unit
 class TestPostUpgrade:
     """``POST /api/upgrade`` dispatches to ``run_upgrade_all`` (server-
     derived targets only — the request body is never read for packages)."""
 
     ROUTE = "/api/upgrade"
 
-    def test_dispatches_to_run_upgrade_all(self, wizard: ConfigureWizard) -> None:
+    @pytest.fixture(autouse=True)
+    def _no_real_restart(self) -> Any:
+        """Never let an upgrade test exit the process: stub the
+        exit-to-restart scheduler for the whole class."""
+        with patch("mureo.web.handlers._request_service_restart") as mock_restart:
+            yield mock_restart
+
+    def test_dispatches_to_run_upgrade_all(
+        self, wizard: ConfigureWizard, _no_real_restart: Any
+    ) -> None:
         fake_result = {
             "status": "ok",
             "returncode": 0,
@@ -2098,12 +2146,15 @@ class TestPostUpgrade:
                 "mureo.web.handlers.run_upgrade_all", return_value=fake_result
             ) as mock_upgrade,
             patch("mureo.web.handlers.request_update_refresh"),
+            patch("mureo.web.service.is_managed_service", return_value=False),
         ):
             resp = _post(wizard, self.ROUTE, {})
         assert resp.status == 200
         body = json.loads(resp.read().decode("utf-8"))
-        assert body == fake_result
+        # Interactive (unmanaged): no auto-restart; envelope gains restarting.
+        assert body == {**fake_result, "restarting": False}
         mock_upgrade.assert_called_once()
+        _no_real_restart.assert_not_called()
 
     def test_successful_upgrade_invalidates_update_cache(
         self, wizard: ConfigureWizard
@@ -2120,9 +2171,53 @@ class TestPostUpgrade:
         with (
             patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result),
             patch("mureo.web.handlers.request_update_refresh") as mock_refresh,
+            patch("mureo.web.service.is_managed_service", return_value=False),
         ):
             _post(wizard, self.ROUTE, {})
         mock_refresh.assert_called_once()
+
+    def test_managed_service_upgrade_auto_restarts(
+        self, wizard: ConfigureWizard, _no_real_restart: Any
+    ) -> None:
+        """Under an auto-start supervisor a successful upgrade returns
+        ``restarting=True`` and schedules the exit-to-restart, so the
+        supervisor relaunches the daemon on the new code with no user action."""
+        fake_result = {
+            "status": "ok",
+            "returncode": 0,
+            "packages": ["mureo"],
+            "output": "Successfully installed",
+        }
+        with (
+            patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result),
+            patch("mureo.web.handlers.request_update_refresh"),
+            patch("mureo.web.service.is_managed_service", return_value=True),
+        ):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["restarting"] is True
+        _no_real_restart.assert_called_once()
+
+    def test_unmanaged_upgrade_does_not_restart(
+        self, wizard: ConfigureWizard, _no_real_restart: Any
+    ) -> None:
+        """A plain interactive ``mureo configure`` (no supervisor) keeps the
+        manual prompt: ``restarting=False`` and no restart scheduled."""
+        fake_result = {
+            "status": "ok",
+            "returncode": 0,
+            "packages": ["mureo"],
+            "output": "Successfully installed",
+        }
+        with (
+            patch("mureo.web.handlers.run_upgrade_all", return_value=fake_result),
+            patch("mureo.web.handlers.request_update_refresh"),
+            patch("mureo.web.service.is_managed_service", return_value=False),
+        ):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["restarting"] is False
+        _no_real_restart.assert_not_called()
 
     def test_error_envelope_surfaces_as_200(self, wizard: ConfigureWizard) -> None:
         fake_result = {

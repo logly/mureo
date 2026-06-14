@@ -62,6 +62,11 @@ class TestUnitContent:
     def test_unit_restart_always(self, home: Path) -> None:
         assert "Restart=always" in systemd.build_unit(port=7613)
 
+    def test_unit_stamps_managed_service_env(self, home: Path) -> None:
+        """Marker so the daemon knows Restart=always will relaunch it and may
+        exit-to-restart after a self-upgrade."""
+        assert "Environment=MUREO_MANAGED_SERVICE=1" in systemd.build_unit(port=7613)
+
     def test_unit_wantedby_default_target(self, home: Path) -> None:
         assert "WantedBy=default.target" in systemd.build_unit(port=7613)
 

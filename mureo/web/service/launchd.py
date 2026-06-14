@@ -25,6 +25,7 @@ from pathlib import Path
 from mureo.web.instance import probe_mureo_instance
 from mureo.web.service import (
     SERVICE_BIND_HOST,
+    SERVICE_ENVIRONMENT,
     SERVICE_PORT,
     OpResult,
     StatusResult,
@@ -59,6 +60,9 @@ def build_plist(home: Path | None = None, *, port: int = SERVICE_PORT) -> bytes:
 
     ``RunAtLoad`` starts the daemon at login; ``KeepAlive`` restarts it if
     it exits; stdout/stderr are captured under ``~/.mureo`` for debugging.
+    ``EnvironmentVariables`` stamps the managed-service marker so the daemon
+    knows ``KeepAlive`` will relaunch it and may exit-to-restart after a
+    self-upgrade.
     """
     resolved = _home(home)
     out_path, err_path = _log_paths(resolved)
@@ -67,6 +71,7 @@ def build_plist(home: Path | None = None, *, port: int = SERVICE_PORT) -> bytes:
         "ProgramArguments": list(service_argv(port=port)),
         "RunAtLoad": True,
         "KeepAlive": True,
+        "EnvironmentVariables": dict(SERVICE_ENVIRONMENT),
         "StandardOutPath": str(out_path),
         "StandardErrorPath": str(err_path),
     }

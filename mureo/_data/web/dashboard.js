@@ -972,12 +972,8 @@
       upgradeInProgress = false;
       return;
     }
-    // Success: the on-disk version is now upgraded. Show the done/restart
-    // message in the summary, drop the outdated list, the "Update all" button
-    // and the nav badge, and re-render the About header so the displayed
-    // version reflects the freshly-installed dist (the running process keeps
-    // the old code until a restart — that is what the message tells the user).
-    if (summary) setSummary(summary, "dashboard.about_update_done_restart");
+    // Success: the on-disk version is now upgraded. Drop the outdated list,
+    // the "Update all" button, and the nav badge.
     if (list) {
       while (list.firstChild) list.removeChild(list.firstChild);
     }
@@ -986,8 +982,67 @@
       button.disabled = false;
     }
     removeAboutNavBadge();
+    if (res.body.restarting) {
+      // Always-on service: the daemon is restarting itself on the new code.
+      // Show "restarting…", wait for it to come back, then reload so both the
+      // UI and the running code are the new version — the operator does
+      // nothing.
+      if (summary) setSummary(summary, "dashboard.about_update_restarting");
+      upgradeInProgress = false;
+      pollServiceRestartThenReload(summary);
+      return;
+    }
+    // Interactive mode (no supervisor): keep the manual "restart" prompt and
+    // refresh the displayed (on-disk) version — the running process keeps the
+    // old code until the operator restarts, which the message tells them.
+    if (summary) setSummary(summary, "dashboard.about_update_done_restart");
     renderAbout();
     upgradeInProgress = false;
+  }
+
+  // Poll /api/ping until the daemon has clearly RESTARTED, then reload onto the
+  // new version. "Clearly restarted" = the reported version changed, OR we saw
+  // the server go DOWN and then come back UP (covers a plugin-only upgrade where
+  // the mureo version is unchanged). Gating on those signals — rather than the
+  // first 200 — avoids reloading onto the OLD process, which can still answer
+  // briefly while it shuts down. Falls back to the manual prompt after 60s.
+  async function pollServiceRestartThenReload(summary) {
+    let oldVersion = null;
+    try {
+      const r = await fetch("/api/ping", { cache: "no-store" });
+      if (r && r.ok) {
+        const b = await r.json().catch(function () {
+          return null;
+        });
+        oldVersion = b && b.version ? b.version : null;
+      }
+    } catch (_e) {
+      // Already down — fine, we'll detect the come-back-up below.
+    }
+    let sawDown = false;
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline) {
+      await sleep(1500);
+      try {
+        const res = await fetch("/api/ping", { cache: "no-store" });
+        if (res && res.ok) {
+          const body = await res.json().catch(function () {
+            return null;
+          });
+          const version = body && body.version ? body.version : null;
+          const versionChanged = oldVersion && version && version !== oldVersion;
+          if (versionChanged || sawDown) {
+            location.reload();
+            return;
+          }
+        } else {
+          sawDown = true;
+        }
+      } catch (_e) {
+        sawDown = true; // down mid-restart — a restart is happening
+      }
+    }
+    if (summary) setSummary(summary, "dashboard.about_update_done_restart");
   }
 
   // Wire the "Update all" button to upgrade DIRECTLY on click (one step — no

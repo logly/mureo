@@ -24,6 +24,7 @@ from pathlib import Path
 from mureo.web.instance import probe_mureo_instance
 from mureo.web.service import (
     SERVICE_BIND_HOST,
+    SERVICE_ENVIRONMENT,
     SERVICE_PORT,
     OpResult,
     StatusResult,
@@ -63,7 +64,12 @@ def build_unit(*, port: int = SERVICE_PORT) -> str:
         "[Service]\n"
         "Type=simple\n"
         f"ExecStart={exec_start}\n"
-        "Restart=always\n"
+        # Managed-service marker so the daemon knows Restart=always will
+        # relaunch it and may exit-to-restart after a self-upgrade.
+        + "".join(
+            f"Environment={key}={value}\n" for key, value in SERVICE_ENVIRONMENT.items()
+        )
+        + "Restart=always\n"
         "RestartSec=2\n"
         "\n"
         "[Install]\n"

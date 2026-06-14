@@ -76,6 +76,12 @@ class TestPlistContent:
         assert parsed["RunAtLoad"] is True
         assert parsed["KeepAlive"] is True
 
+    def test_plist_stamps_managed_service_env(self, home: Path) -> None:
+        """The managed-service marker tells the daemon ``KeepAlive`` will
+        relaunch it, so it may exit-to-restart after a self-upgrade."""
+        parsed = plistlib.loads(launchd.build_plist(home, port=7613))
+        assert parsed["EnvironmentVariables"]["MUREO_MANAGED_SERVICE"] == "1"
+
     def test_plist_redirects_stdout_and_stderr(self, home: Path) -> None:
         parsed = plistlib.loads(launchd.build_plist(home, port=7613))
         assert parsed["StandardOutPath"] == str(home / ".mureo" / "configure.log")

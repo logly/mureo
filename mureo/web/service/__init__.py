@@ -21,6 +21,7 @@ every backend, the status probe, and the printed URL agree.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from mureo.web.server import DEFAULT_CONFIGURE_PORT
@@ -30,6 +31,30 @@ SERVICE_BIND_HOST = "127.0.0.1"
 
 #: Default port the auto-start daemon serves on (shared with configure).
 SERVICE_PORT = DEFAULT_CONFIGURE_PORT
+
+#: Env var the install backends stamp into the launchd plist / systemd unit
+#: so the RUNNING daemon knows it is supervised (launchd ``KeepAlive`` /
+#: systemd ``Restart=always``). Only then may the server exit-to-restart
+#: after a self-upgrade — a plain interactive ``mureo configure`` has no
+#: supervisor, so exiting there would just kill the server (it keeps the
+#: manual "restart" prompt instead). NOT set on Windows: Task Scheduler does
+#: not relaunch a task that exits cleanly, so that path stays manual too.
+MANAGED_SERVICE_ENV = "MUREO_MANAGED_SERVICE"
+
+#: Environment the launchd / systemd backends inject into their unit so the
+#: marker above is present in the daemon's process environment.
+SERVICE_ENVIRONMENT: dict[str, str] = {MANAGED_SERVICE_ENV: "1"}
+
+
+def is_managed_service() -> bool:
+    """``True`` when this process runs under a mureo auto-start supervisor.
+
+    Read from the process environment (the marker is stamped into the
+    launchd plist / systemd unit by ``mureo service install``). The
+    configure server consults this before exiting-to-restart on a
+    self-upgrade: only safe when a supervisor will bring it back up.
+    """
+    return os.environ.get(MANAGED_SERVICE_ENV) == "1"
 
 
 @dataclass(frozen=True)
@@ -64,9 +89,12 @@ def dashboard_url(host: str = SERVICE_BIND_HOST, port: int = SERVICE_PORT) -> st
 
 
 __all__ = [
+    "MANAGED_SERVICE_ENV",
     "SERVICE_BIND_HOST",
+    "SERVICE_ENVIRONMENT",
     "SERVICE_PORT",
     "OpResult",
     "StatusResult",
     "dashboard_url",
+    "is_managed_service",
 ]

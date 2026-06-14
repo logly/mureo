@@ -355,6 +355,7 @@ class TestUpdateAssets:
                 "dashboard.about_update_available",
                 "dashboard.about_update_button",
                 "dashboard.about_update_running",
+                "dashboard.about_update_restarting",
                 "dashboard.about_update_done_restart",
                 "dashboard.about_update_failed",
                 "dashboard.about_up_to_date",
