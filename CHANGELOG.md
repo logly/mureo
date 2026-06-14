@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-06-14
+
+### Fixed
+
+#### About-tab one-click upgrade UX (#255)
+
+Three rough edges in the About tab's update / one-click-upgrade flow:
+
+- **One click upgrades.** "Update all" no longer opens a second in-page
+  confirm panel — clicking it runs the upgrade directly (still no native
+  dialog, targets still server-derived, double-click guarded).
+- **In-place result.** Progress / done / failed now appear in the SAME
+  summary line that showed "Updates are available." (instead of a separate
+  status line), and the About header re-renders on success so the displayed
+  version reflects the freshly-installed dist. The running process keeps the
+  old code until a restart, and the success message says so.
+- **No stale "update available."** A successful upgrade now invalidates the
+  cached update-check result and re-checks, and the red nav badge is cleared
+  on every up-to-date / post-upgrade path — so "Updates are available" and
+  the badge no longer linger after the upgrade is applied.
+
+The version check and "Update all" cover mureo plus every installed
+``mureo-*`` plugin (e.g. the agency and bridge packages), unchanged.
+
 ## [0.10.1] - 2026-06-14
 
 ### Fixed
