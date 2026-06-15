@@ -441,6 +441,7 @@ def _install_provider_code(
         from mureo.providers.installer import run_install
         from mureo.providers.mureo_env import (
             add_provider_and_disable_in_mureo,
+            unset_mureo_disable_env,
         )
 
         spec = get_provider(provider_id)
@@ -482,15 +483,30 @@ def _install_provider_code(
         )
 
     extra_env = _credential_env_for(spec, credentials_path)
+    platform = spec.coexists_with_mureo_platform
+    # Decision C (#102): only disable the overlapping mureo-native platform
+    # once the official provider is actually credentialed. The upstream
+    # official MCP reads its config ONLY from env vars, so a credential-less
+    # registration cannot authenticate; disabling native at the same time
+    # would strand the user with zero working tools for that platform
+    # (official dead AND native off). Without creds we register the provider,
+    # (re-)enable native, and signal that credentials are still needed.
     try:
-        if spec.coexists_with_mureo_platform is None:
-            add_provider_to_claude_settings(spec, extra_env=extra_env)
-        else:
+        if platform is not None and extra_env:
             add_provider_and_disable_in_mureo(spec, extra_env=extra_env)
+        else:
+            add_provider_to_claude_settings(spec, extra_env=extra_env)
+            if platform is not None:
+                # Clear any MUREO_DISABLE_<platform> a prior credentialed
+                # install left behind, so re-registering without creds never
+                # leaves the user with native off AND official unauthenticated.
+                unset_mureo_disable_env(platform)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider settings write failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
+    if platform is not None and not extra_env:
+        return ActionResult(status="needs_credentials", detail=spec.id)
     return ActionResult(status="ok", detail=spec.id)
 
 
