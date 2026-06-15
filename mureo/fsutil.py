@@ -18,12 +18,34 @@ security regression.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+try:  # POSIX advisory whole-file lock
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - exercised on Windows only
+    _fcntl = None  # type: ignore[assignment]
+
+try:  # Windows byte-range lock
+    import msvcrt as _msvcrt
+except ImportError:  # pragma: no cover - exercised on POSIX only
+    _msvcrt = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
 _OWNER_ONLY = 0o600
+
+#: Windows ``msvcrt.locking`` blocks ~10s then raises; retry a few rounds so a
+#: short critical section held just over that ceiling still serialises instead
+#: of erroring. POSIX ``flock`` blocks indefinitely and needs no retry.
+_WIN_LOCK_RETRIES = 6
+_WIN_LOCK_BACKOFF_S = 0.05
 
 
 def secure_fchmod(fd: int) -> None:
@@ -46,4 +68,66 @@ def secure_chmod(path: str | os.PathLike[str]) -> None:
         logger.debug("secure_chmod best-effort skip", exc_info=True)
 
 
-__all__ = ["secure_chmod", "secure_fchmod"]
+def _acquire_lock(fd: int) -> None:
+    """Block until an exclusive lock on ``fd`` is held (POSIX or Windows)."""
+    if _fcntl is not None:
+        _fcntl.flock(fd, _fcntl.LOCK_EX)
+        return
+    if _msvcrt is not None:  # pragma: no cover - Windows only
+        os.lseek(fd, 0, os.SEEK_SET)
+        for attempt in range(_WIN_LOCK_RETRIES):
+            try:
+                # ``LK_LOCK`` is msvcrt's *blocking* lock (retries internally
+                # for ~10s, then raises ``OSError``). There is no ``LK_LCK``.
+                _msvcrt.locking(fd, _msvcrt.LK_LOCK, 1)
+                return
+            except OSError:
+                if attempt == _WIN_LOCK_RETRIES - 1:
+                    raise
+                time.sleep(_WIN_LOCK_BACKOFF_S)
+    else:  # pragma: no cover - exotic platform with neither primitive
+        logger.warning("file_lock: no fcntl/msvcrt available; lock is a no-op")
+
+
+def _release_lock(fd: int) -> None:
+    """Release the lock held on ``fd``; best-effort (a failed unlock is freed
+    on the ``os.close`` that always follows)."""
+    try:
+        if _fcntl is not None:
+            _fcntl.flock(fd, _fcntl.LOCK_UN)
+        elif _msvcrt is not None:  # pragma: no cover - Windows only
+            os.lseek(fd, 0, os.SEEK_SET)
+            _msvcrt.locking(fd, _msvcrt.LK_UNLCK, 1)
+    except OSError:
+        logger.debug("file_lock release best-effort skip", exc_info=True)
+
+
+@contextlib.contextmanager
+def file_lock(lock_path: str | os.PathLike[str]) -> Iterator[None]:
+    """Hold an exclusive, cross-platform advisory lock on ``lock_path``.
+
+    Serialises a read-modify-write critical section across threads AND
+    processes — mureo's CLI, the MCP server, and the configure server can each
+    touch the same ``STATE.json``, so a thread-only or asyncio-only lock would
+    not be enough. POSIX uses ``fcntl.flock(LOCK_EX)``; Windows uses
+    ``msvcrt.locking(LK_LCK)`` on a one-byte region.
+
+    The lock is tied to the open file descriptor, so the OS releases it
+    automatically if the holder crashes — no stale ``.lock`` file can wedge a
+    later run. The sidecar is created ``0o600`` and left in place (an empty
+    lock file is cheap and avoids an unlink/recreate race). The lock degrades
+    to a no-op only on an exotic platform exposing neither primitive (logged at
+    WARNING), never on a supported OS.
+    """
+    fd = os.open(os.fspath(lock_path), os.O_RDWR | os.O_CREAT, _OWNER_ONLY)
+    try:
+        _acquire_lock(fd)
+        try:
+            yield
+        finally:
+            _release_lock(fd)
+    finally:
+        os.close(fd)
+
+
+__all__ = ["file_lock", "secure_chmod", "secure_fchmod"]

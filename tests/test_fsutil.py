@@ -12,12 +12,13 @@ from __future__ import annotations
 import os
 import stat
 import sys
-import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
-from mureo.fsutil import secure_chmod, secure_fchmod
+from mureo.fsutil import file_lock, secure_chmod, secure_fchmod
 
 # POSIX file-mode assertions: on Windows chmod cannot set 0o600 — the
 # helpers are best-effort there (the never-raise contract is verified
@@ -86,3 +87,66 @@ class TestSecureChmod:
 
     def test_missing_path_does_not_raise(self, tmp_path: Path) -> None:
         secure_chmod(tmp_path / "does-not-exist")  # OSError swallowed
+
+
+@pytest.mark.unit
+class TestFileLock:
+    def test_serialises_concurrent_critical_sections(self, tmp_path: Path) -> None:
+        """Two threads running a deliberately non-atomic read-modify-write of a
+        shared file never lose an update when the section is held under the
+        lock — the mutual-exclusion contract the STATE.json mutators rely on."""
+        lock = tmp_path / "counter.lock"
+        counter = tmp_path / "counter.txt"
+        counter.write_text("0", encoding="utf-8")
+
+        def bump(_: int) -> None:
+            with file_lock(lock):
+                value = int(counter.read_text(encoding="utf-8"))
+                time.sleep(0.002)  # widen the window an unguarded RMW would lose
+                counter.write_text(str(value + 1), encoding="utf-8")
+
+        rounds = 40
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(bump, range(rounds)))
+
+        assert int(counter.read_text(encoding="utf-8")) == rounds
+
+    def test_released_after_context_exit(self, tmp_path: Path) -> None:
+        """Sequential acquisitions of the same lock do not deadlock — the lock
+        is released on context exit."""
+        lock = tmp_path / "x.lock"
+        for _ in range(3):
+            with file_lock(lock):
+                pass
+
+    def test_creates_sidecar_file(self, tmp_path: Path) -> None:
+        lock = tmp_path / "s.lock"
+        assert not lock.exists()
+        with file_lock(lock):
+            assert lock.exists()
+
+    def test_windows_path_calls_msvcrt_blocking_lock(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The Windows branch must call ``msvcrt.locking`` with the real
+        blocking/unlock constants. Exercised on POSIX by faking ``msvcrt`` and
+        disabling ``fcntl`` — the only coverage of that branch, guarding
+        against constant typos (e.g. the non-existent ``LK_LCK``)."""
+        calls: list[tuple[int, int]] = []
+
+        class _FakeMsvcrt:
+            LK_LOCK = 1
+            LK_UNLCK = 0
+
+            def locking(self, _fd: int, mode: int, nbytes: int) -> None:
+                calls.append((mode, nbytes))
+
+        fake = _FakeMsvcrt()
+        monkeypatch.setattr("mureo.fsutil._fcntl", None)
+        monkeypatch.setattr("mureo.fsutil._msvcrt", fake)
+
+        with file_lock(tmp_path / "w.lock"):
+            pass
+
+        assert (fake.LK_LOCK, 1) in calls  # acquire used the blocking lock
+        assert (fake.LK_UNLCK, 1) in calls  # release used the unlock
