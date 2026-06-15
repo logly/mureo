@@ -126,6 +126,52 @@ def test_required_env_documents_credentials() -> None:
 
 
 @pytest.mark.unit
+def test_google_ads_required_env_is_adc_not_client_library() -> None:
+    """#102: ``google-ads-mcp`` authenticates via ADC, so the official
+    provider requires the developer token + a service-account path
+    (``GOOGLE_APPLICATION_CREDENTIALS``) — NOT the Client-Library trio,
+    which the upstream ignores. Declaring the trio as required made mureo
+    wrongly treat a client-library-only user as 'credentialed'."""
+    from mureo.providers.catalog import get_provider
+
+    google = get_provider("google-ads-official")
+
+    assert google.required_env == (
+        "GOOGLE_ADS_DEVELOPER_TOKEN",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+    )
+    # The Client-Library trio must NOT be required (upstream ignores it).
+    assert "GOOGLE_ADS_CLIENT_ID" not in google.required_env
+    assert "GOOGLE_ADS_CLIENT_SECRET" not in google.required_env
+    assert "GOOGLE_ADS_REFRESH_TOKEN" not in google.required_env
+
+
+@pytest.mark.unit
+def test_provider_spec_has_optional_env_default_empty() -> None:
+    """``ProviderSpec`` gains an ``optional_env`` tuple (emitted into the
+    upstream env when present, but NOT gated on). It defaults to ``()`` so
+    existing entries need no change."""
+    from mureo.providers.catalog import get_provider
+
+    meta = get_provider("meta-ads-official")
+    assert meta.optional_env == ()
+
+    ga4 = get_provider("ga4-official")
+    assert ga4.optional_env == ()
+
+
+@pytest.mark.unit
+def test_google_ads_optional_env_carries_login_customer_id() -> None:
+    """The optional ``GOOGLE_ADS_LOGIN_CUSTOMER_ID`` (MCC login id) is
+    emitted into the upstream env when set, but is not required to
+    consider the provider credentialed."""
+    from mureo.providers.catalog import get_provider
+
+    google = get_provider("google-ads-official")
+    assert google.optional_env == ("GOOGLE_ADS_LOGIN_CUSTOMER_ID",)
+
+
+@pytest.mark.unit
 def test_coexists_with_mureo_platform_correctly_set() -> None:
     """Every Phase 1 provider declares the mureo platform it overlaps with."""
     from mureo.providers.catalog import get_provider
