@@ -91,6 +91,20 @@ def _ok_install() -> InstallResult:
     return InstallResult(returncode=0, stdout="", stderr="", argv=[])
 
 
+def _google_creds(tmp_path: Path) -> Path:
+    """Write a synthetic credentials.json with a complete google_ads section
+    and return its path, so ``_credential_env_for`` resolves a non-empty
+    ``extra_env`` (the #102 decision-C gate that enables native auto-disable)."""
+    creds = tmp_path / ".mureo" / "credentials.json"
+    creds.parent.mkdir(parents=True, exist_ok=True)
+    creds.write_text(
+        '{"google_ads": {"developer_token": "DT", "client_id": "CID",'
+        ' "client_secret": "CS", "refresh_token": "RT"}}',
+        "utf-8",
+    )
+    return creds
+
+
 def _unfreeze(value: Any) -> Any:
     """Recursively convert MappingProxyType/tuple catalog blocks to plain
     dict/list so equality + json round-trips match the on-disk shape."""
@@ -144,9 +158,11 @@ class TestInstallProviderCodeHostUnchanged:
         """No ``host`` arg → today's path: ``run_install`` then
         ``add_provider_and_disable_in_mureo`` (every CATALOG provider
         sets ``coexists_with_mureo_platform``). Desktop writer NOT called,
-        Desktop config NOT created."""
+        Desktop config NOT created. Credentials are present, so native IS
+        disabled (the #102 decision-C gate is satisfied)."""
         from mureo.web import setup_actions
 
+        creds = _google_creds(tmp_path)
         cfg = _desktop_cfg(tmp_path)
         with (
             patch(
@@ -163,7 +179,7 @@ class TestInstallProviderCodeHostUnchanged:
                 setup_actions, "install_desktop_server_block", create=True
             ) as mock_desktop,
         ):
-            result = setup_actions.install_provider(_GOOGLE)
+            result = setup_actions.install_provider(_GOOGLE, credentials_path=creds)
 
         assert result.status == "ok"
         assert result.detail == _GOOGLE
@@ -175,9 +191,11 @@ class TestInstallProviderCodeHostUnchanged:
 
     def test_explicit_code_host_identical_to_default(self, tmp_path: Path) -> None:
         """``host="claude-code"`` is identical to the default — Code
-        writer invoked exactly as today, no Desktop file created."""
+        writer invoked exactly as today, no Desktop file created. Credentials
+        present, so native IS disabled."""
         from mureo.web import setup_actions
 
+        creds = _google_creds(tmp_path)
         cfg = _desktop_cfg(tmp_path)
         with (
             patch(
@@ -189,7 +207,7 @@ class TestInstallProviderCodeHostUnchanged:
             ) as mock_disable,
         ):
             result = setup_actions.install_provider(
-                _GOOGLE, host="claude-code", home=tmp_path
+                _GOOGLE, host="claude-code", home=tmp_path, credentials_path=creds
             )
 
         assert result.status == "ok"
@@ -348,14 +366,17 @@ class TestInstallProviderInjectsCredentialEnv:
         assert result.status == "manual_required"
         assert result.detail == _META
 
-    def test_code_host_missing_credentials_still_registers_bare(
+    def test_code_host_no_credentials_does_not_disable_native(
         self, tmp_path: Path
     ) -> None:
-        """No credentials.json yet → provider still registers (bare
-        block, pre-fix shape); no crash."""
+        """No credentials.json yet → register the official provider but DO
+        NOT disable mureo-native (#102 decision C). Disabling native for an
+        un-credentialed official server (which reads ONLY env vars) would
+        strand the user with zero working tools. The result signals
+        ``needs_credentials`` so the UI can guide the user."""
         from mureo.web import setup_actions
 
-        creds = tmp_path / ".mureo" / "credentials.json"
+        creds = tmp_path / ".mureo" / "credentials.json"  # never written
 
         with (
             patch(
@@ -363,14 +384,25 @@ class TestInstallProviderInjectsCredentialEnv:
                 return_value=_ok_install(),
             ),
             patch(
+                "mureo.providers.config_writer.add_provider_to_claude_settings"
+            ) as mock_add,
+            patch(
                 "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
             ) as mock_disable,
+            patch(
+                "mureo.providers.mureo_env.unset_mureo_disable_env"
+            ) as mock_unset,
         ):
             result = setup_actions.install_provider(_GOOGLE, credentials_path=creds)
 
-        assert result.status == "ok"
-        _, kwargs = mock_disable.call_args
-        assert not kwargs.get("extra_env")
+        assert result.status == "needs_credentials"
+        assert result.detail == _GOOGLE
+        # Provider registered (bare block), native NOT disabled.
+        mock_add.assert_called_once()
+        mock_disable.assert_not_called()
+        # Any stale MUREO_DISABLE from a prior credentialed install is cleared,
+        # so a re-install without creds never leaves native off (#102 dec. C).
+        mock_unset.assert_called_once_with("google_ads")
 
 
 # ---------------------------------------------------------------------------
