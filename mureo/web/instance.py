@@ -64,7 +64,9 @@ def probe_mureo_instance(
         # ``url`` is always a literal ``http://`` loopback probe — the scheme is
         # not user-controlled, so B310/S310's file:// / custom-scheme concern
         # does not apply. (``# noqa`` silences ruff; ``# nosec`` silences bandit.)
-        with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 # nosec B310
+        with urllib.request.urlopen(
+            url, timeout=timeout
+        ) as resp:  # noqa: S310 # nosec B310
             raw = resp.read()
     except Exception:  # noqa: BLE001 — a probe must never propagate failure
         logger.debug("probe_mureo_instance: %s unreachable", url, exc_info=True)
