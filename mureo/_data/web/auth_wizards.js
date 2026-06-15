@@ -11,6 +11,140 @@
   // ------------------------------------------------------------------
   // Provider install slots (Step: providers_install)
   // ------------------------------------------------------------------
+
+  // Re-sync wizard state from the authoritative /api/status after a
+  // successful install (the optimistic local flag alone left the row
+  // showing "✗ not registered" when status disagreed — issue #1), then
+  // advance. Shared by the first install and the needs_credentials retry.
+  async function finishInstall(state, providerId, onComplete) {
+    state.providerInstalled[providerId] = true;
+    await MUREO.loadStatus();
+    if (
+      window.MUREO_WIZARD &&
+      typeof window.MUREO_WIZARD.hydrateStateFromStatus === "function" &&
+      MUREO.state &&
+      MUREO.state.status
+    ) {
+      window.MUREO_WIZARD.hydrateStateFromStatus(MUREO.state.status);
+    }
+    onComplete();
+  }
+
+  // Inline recovery card shown when install returns `needs_credentials`
+  // (#102): the official server registered but cannot authenticate from
+  // env alone. Google Ads (ADC) needs a service-account JSON path — collect
+  // it, persist it into google_ads.service_account_path via the
+  // section-aware env-var writer, then re-run install. mureo-native is NOT
+  // disabled by the backend until the official server is credentialed, so
+  // the user keeps working throughout.
+  function renderNeedsCredentialsCard(platform, providerId, state, onComplete) {
+    const card = document.createElement("div");
+    card.className = "dashboard-provider-hosted-note";
+
+    const guidanceKey =
+      platform === "google_ads"
+        ? "wizard.providers_install.needs_credentials.google_ads"
+        : "wizard.providers_install.needs_credentials.generic";
+    const guidance = document.createElement("p");
+    guidance.textContent = MUREO.t(guidanceKey);
+    guidance.setAttribute("data-i18n", guidanceKey);
+    card.appendChild(guidance);
+
+    // Only Google Ads has an in-wizard credential to collect here (its ADC
+    // service-account path). Other providers collect their creds in the
+    // auth queue before install, so a generic message is enough.
+    if (platform !== "google_ads") {
+      return card;
+    }
+
+    const label = document.createElement("label");
+    label.style.display = "block";
+    label.textContent = MUREO.t("wizard.providers_install.sa_path_label");
+    label.setAttribute("data-i18n", "wizard.providers_install.sa_path_label");
+    const input = document.createElement("input");
+    input.type = "text";
+    label.appendChild(input);
+    card.appendChild(label);
+
+    const status = document.createElement("p");
+    status.className = "dashboard-provider-hosted-note";
+    status.hidden = true;
+    card.appendChild(status);
+
+    function setStatus(key) {
+      status.hidden = false;
+      status.textContent = MUREO.t(key);
+    }
+
+    const retryBtn = document.createElement("button");
+    retryBtn.type = "button";
+    retryBtn.className = "btn btn-primary";
+    retryBtn.textContent = MUREO.t("wizard.providers_install.save_retry");
+    retryBtn.setAttribute("data-i18n", "wizard.providers_install.save_retry");
+    retryBtn.disabled = true;
+    input.addEventListener("input", function () {
+      retryBtn.disabled = !input.value;
+    });
+
+    retryBtn.addEventListener("click", async function () {
+      retryBtn.disabled = true;
+      // 1) Persist the service-account path into
+      //    google_ads.service_account_path (section-aware write — the
+      //    shared GOOGLE_APPLICATION_CREDENTIALS name).
+      setStatus("wizard.auth.saving");
+      let saveRes;
+      try {
+        saveRes = await MUREO.postJson("/api/credentials/env-var", {
+          name: "GOOGLE_APPLICATION_CREDENTIALS",
+          value: input.value,
+          section: "google_ads",
+        });
+      } catch (_e) {
+        setStatus("wizard.auth.save_failed");
+        retryBtn.disabled = false;
+        return;
+      }
+      if (!saveRes.ok) {
+        setStatus("wizard.auth.save_failed");
+        retryBtn.disabled = false;
+        return;
+      }
+      // 2) Re-run install now that ADC creds are present.
+      setStatus("wizard.providers_install.installing");
+      let res;
+      try {
+        res = await MUREO.postJson("/api/providers/install", {
+          provider_id: providerId,
+        });
+      } catch (_e) {
+        const tmpl = MUREO.t("wizard.providers_install.failed");
+        status.hidden = false;
+        status.textContent = tmpl.replace("{detail}", "network_error");
+        retryBtn.disabled = false;
+        return;
+      }
+      if (res.ok && res.body && res.body.status === "ok") {
+        await finishInstall(state, providerId, onComplete);
+        return;
+      }
+      if (res.body && res.body.status === "needs_credentials") {
+        // Still short of full creds (e.g. the Developer Token is missing).
+        setStatus("wizard.providers_install.still_needs_credentials");
+      } else {
+        const tmpl = MUREO.t("wizard.providers_install.failed");
+        const detail = res.body
+          ? res.body.detail || res.body.status
+          : "request_failed";
+        status.hidden = false;
+        status.textContent = tmpl.replace("{detail}", detail);
+      }
+      retryBtn.disabled = false;
+    });
+
+    card.appendChild(retryBtn);
+    return card;
+  }
+
   function buildProviderInstallSlot(state, platform, onComplete) {
     const wrap = document.createElement("section");
     wrap.style.marginTop = "16px";
@@ -252,20 +386,18 @@
         }
         const st = res.body.status;
         if (st === "ok") {
-          // Re-sync wizard state from the authoritative /api/status
-          // (the optimistic local flag alone left the row showing
-          // "✗ not registered" when status disagreed — issue #1).
-          state.providerInstalled[providerId] = true;
-          await MUREO.loadStatus();
-          if (
-            window.MUREO_WIZARD &&
-            typeof window.MUREO_WIZARD.hydrateStateFromStatus === "function" &&
-            MUREO.state &&
-            MUREO.state.status
-          ) {
-            window.MUREO_WIZARD.hydrateStateFromStatus(MUREO.state.status);
-          }
-          onComplete();
+          await finishInstall(state, providerId, onComplete);
+        } else if (st === "needs_credentials") {
+          // The official server registered but cannot authenticate yet —
+          // it needs ADC credentials the wizard hasn't collected (Google
+          // Ads: a service-account JSON path). Surface an inline input +
+          // "Save & install" instead of a bare error. mureo-native stays
+          // ON (backend did not disable it), so the user is never stranded.
+          btn.remove();
+          statusLine.hidden = true;
+          wrap.appendChild(
+            renderNeedsCredentialsCard(platform, providerId, state, onComplete)
+          );
         } else if (st === "auth_required" || st === "manual_required") {
           // Defensive fallback: hosted (Meta) is short-circuited to the
           // connector card BEFORE this Install button is ever shown

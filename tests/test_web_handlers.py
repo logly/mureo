@@ -818,6 +818,40 @@ class TestPostEnvVar:
         assert "secret_token_xxx" not in json.dumps(body)
         mock_write.assert_called_once()
 
+    def test_section_passed_through_to_writer(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """#102 B2: an optional ``section`` routes a shared env name to the
+        right credentials.json section (Google Ads service-account path uses
+        the shared GOOGLE_APPLICATION_CREDENTIALS name but section google_ads)."""
+        with patch("mureo.web.handlers.write_credential_env_var") as mock_write:
+            resp = _post(
+                wizard,
+                "/api/credentials/env-var",
+                {
+                    "name": "GOOGLE_APPLICATION_CREDENTIALS",
+                    "value": "/p/ads-sa.json",
+                    "section": "google_ads",
+                },
+            )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {
+            "status": "ok",
+            "name": "GOOGLE_APPLICATION_CREDENTIALS",
+        }
+        assert mock_write.call_args.kwargs["section"] == "google_ads"
+
+    def test_omitted_section_passes_none(self, wizard: ConfigureWizard) -> None:
+        """No ``section`` in the payload → writer called with section=None
+        (canonical 1:1 binding, unchanged behaviour)."""
+        with patch("mureo.web.handlers.write_credential_env_var") as mock_write:
+            _post(
+                wizard,
+                "/api/credentials/env-var",
+                {"name": "GOOGLE_ADS_DEVELOPER_TOKEN", "value": "x"},
+            )
+        assert mock_write.call_args.kwargs["section"] is None
+
     def test_write_failure_value_error_returns_400(
         self, wizard: ConfigureWizard
     ) -> None:

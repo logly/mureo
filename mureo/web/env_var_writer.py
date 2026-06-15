@@ -160,29 +160,45 @@ def write_credential_env_var(
     name: str,
     value: str,
     *,
+    section: str | None = None,
     credentials_path: Path | None = None,
 ) -> None:
     """Persist one env var to ``credentials.json``.
 
-    Raises ``ValueError`` if ``name`` is not on the allow-list or
-    ``value`` is empty. The value is never logged.
+    ``section`` disambiguates env names SHARED across more than one section
+    (today only ADC's ``GOOGLE_APPLICATION_CREDENTIALS``): when given, the
+    value is written to that section's field via the section-aware resolver
+    (:func:`_resolve_field`), so the Google Ads wizard can persist a
+    service-account path into ``google_ads.service_account_path`` rather than
+    the canonical GA4 binding. When ``section`` is omitted the canonical 1:1
+    target is used (unchanged behaviour).
+
+    Raises ``ValueError`` if ``name`` is not on the allow-list, ``value`` is
+    empty, or ``name`` does not bind to ``section``. The value is never
+    logged.
     """
     if not is_allowed_env_var(name):
         raise ValueError(f"env var not allowed: {name!r}")
     if not value:
         raise ValueError("value must be non-empty")
 
-    target = _ENV_VAR_TO_FIELD[name]
+    if section is None:
+        target = _ENV_VAR_TO_FIELD[name]
+    else:
+        field = _resolve_field(name, section)
+        if field is None:
+            raise ValueError(f"env var {name!r} not valid for section {section!r}")
+        target = EnvVarTarget(section, field)
     path = _resolve_credentials_path(credentials_path)
     existing = read_json_safe(path)
 
     section_payload_raw = existing.get(target.section)
-    section: dict[str, Any] = (
+    section_payload: dict[str, Any] = (
         dict(section_payload_raw) if isinstance(section_payload_raw, dict) else {}
     )
-    section[target.field] = value
+    section_payload[target.field] = value
     merged: dict[str, Any] = dict(existing)
-    merged[target.section] = section
+    merged[target.section] = section_payload
 
     atomic_write_json(path, merged)
     # Log the field, not the value.

@@ -802,6 +802,11 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     def _post_env_var(self, payload: dict[str, Any]) -> None:
         name = str(payload.get("name", "")).strip()
         value = str(payload.get("value", ""))
+        # Optional section disambiguates env names shared across sections
+        # (ADC's GOOGLE_APPLICATION_CREDENTIALS). An unknown/mismatched
+        # section makes the writer raise ValueError -> 400, so the closed
+        # allow-list is preserved without extra validation here (#102 B2).
+        section = str(payload.get("section", "")).strip() or None
         if not is_allowed_env_var(name):
             send_error_json(self, 400, "env_var_not_allowed")
             return
@@ -810,7 +815,10 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         try:
             write_credential_env_var(
-                name, value, credentials_path=self.wizard.host_paths.credentials_path
+                name,
+                value,
+                section=section,
+                credentials_path=self.wizard.host_paths.credentials_path,
             )
         except ValueError:
             send_error_json(self, 400, "write_failed")
