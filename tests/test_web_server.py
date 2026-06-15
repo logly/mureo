@@ -583,6 +583,34 @@ class TestResolveStaticDir:
 
 
 @pytest.mark.unit
+class TestConfigureWizardProviderDiscovery:
+    """#268 — the configure/web path must trigger provider-registry
+    discovery so the Plugin-credentials section is populated. Discovery
+    is only otherwise run from the MCP startup path, leaving the web UI
+    serving ``/api/credentials/plugins`` against an empty registry."""
+
+    def test_init_triggers_provider_discovery(self, home_dir: Path) -> None:
+        """Constructing the wizard must call ``discover_providers`` exactly
+        as it already discovers web extensions — otherwise the registry
+        the Plugin-credentials endpoint iterates is never populated."""
+        with patch("mureo.web.server.discover_providers") as mock_discover:
+            ConfigureWizard(home=home_dir)
+        mock_discover.assert_called_once()
+
+    def test_init_survives_provider_discovery_failure(self, home_dir: Path) -> None:
+        """A broken plugin's discovery must not crash ``mureo configure``
+        startup — fault isolation mirrors the MCP server path. The wizard
+        is still fully constructed and serves."""
+        with patch(
+            "mureo.web.server.discover_providers",
+            side_effect=RuntimeError("broken plugin"),
+        ):
+            wiz = ConfigureWizard(home=home_dir)
+        assert wiz.session.csrf_token
+        assert isinstance(wiz.host_paths, HostPaths)
+
+
+@pytest.mark.unit
 class TestSecurityBindLoopbackOnly:
     def test_server_binds_to_loopback_only(
         self, served_wizard: ConfigureWizard

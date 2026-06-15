@@ -20,6 +20,7 @@ import webbrowser
 from importlib import resources
 from pathlib import Path
 
+from mureo.core.providers import discover_providers
 from mureo.core.runtime_context import runtime_credentials_path
 from mureo.core.terminal import force_cooked_mode, terminal_fd
 from mureo.web.extensions import (
@@ -111,11 +112,44 @@ class ConfigureWizard:
         # plus every subsequent call within the same process re-uses
         # the same tuple — see :mod:`mureo.web.extensions`.
         self.extensions = discover_web_extensions()
+        # #268 — also populate the *provider* registry here. Without it the
+        # configure UI's Plugin-credentials section is always empty:
+        # ``/api/credentials/plugins`` iterates ``default_registry``, which
+        # only the MCP startup path otherwise discovers. Idempotent +
+        # cached and fault-isolated — see ``_discover_providers_safely``.
+        self._discover_providers_safely()
 
         self._server: _ConfigureServer | None = None
         self._ready = threading.Event()
         self._stop = threading.Event()
         self._lock = threading.Lock()
+
+    @staticmethod
+    def _discover_providers_safely() -> None:
+        """Populate the provider registry, never raising on failure.
+
+        Mirrors ``mcp.tool_provider.collect_plugin_tools``: ``discover``
+        already isolates per-plugin faults, so the only way out here is a
+        wholesale failure (e.g. the underlying ``entry_points`` call
+        raising). Swallow it with a warning rather than aborting
+        ``mureo configure`` — an empty Plugin-credentials section degrades
+        gracefully; a crashed configure UI does not.
+
+        ``BaseException`` (not just ``Exception``) is caught for parity
+        with the MCP path: a plugin whose discovery hook raises
+        ``SystemExit`` must not tear down configure startup. Only
+        ``KeyboardInterrupt`` is honoured so Ctrl+C still works.
+        """
+        try:
+            discover_providers()
+        except KeyboardInterrupt:
+            raise
+        except BaseException:  # noqa: BLE001 — fault isolation boundary
+            logger.warning(
+                "provider discovery failed; the configure UI's plugin "
+                "credentials section may be empty",
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # Public surface
