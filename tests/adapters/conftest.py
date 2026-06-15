@@ -15,9 +15,12 @@ coroutine in its own scope, so it can never contaminate a subsequent test.
 from __future__ import annotations
 
 import gc
-from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 @pytest.fixture(autouse=True)
