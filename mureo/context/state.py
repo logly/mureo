@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 from mureo.context.errors import ContextFileError
@@ -20,6 +21,7 @@ from mureo.context.models import (
     PlatformState,
     StateDocument,
 )
+from mureo.fsutil import file_lock
 
 # Required campaign fields
 _CAMPAIGN_REQUIRED_FIELDS: tuple[str, ...] = (
@@ -211,6 +213,31 @@ def write_state_file(path: Path, doc: StateDocument) -> None:
     _atomic_write(path, text)
 
 
+def _state_lock_path(path: Path) -> Path:
+    """Sidecar lock file for ``path`` (e.g. ``STATE.json`` -> ``STATE.json.lock``)."""
+    return path.with_name(path.name + ".lock")
+
+
+def _locked_state_mutation(
+    path: Path, build: Callable[[StateDocument], StateDocument]
+) -> StateDocument:
+    """Run a read -> ``build`` -> write cycle as one critical section.
+
+    ``_atomic_write`` only makes the file *replace* atomic; the surrounding
+    read-modify-write is not. Holding the cross-process ``file_lock`` across
+    read + write serialises every STATE.json mutator, so two concurrent calls
+    (built-in <-> built-in, or built-in <-> plugin dispatch) can no longer
+    last-writer-wins away each other's changes — e.g. drop an action_log
+    entry (issue #115). ``build(doc)`` returns the new document to persist.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(_state_lock_path(path)):
+        doc = read_state_file(path)
+        new_doc = build(doc)
+        write_state_file(path, new_doc)
+    return new_doc
+
+
 def _now_iso() -> str:
     """Current time as a timezone-aware ISO 8601 UTC string."""
     return datetime.now(timezone.utc).isoformat()
@@ -265,33 +292,33 @@ def upsert_campaign(
     Returns:
         The updated :class:`StateDocument`.
     """
-    doc = read_state_file(path)
 
-    # v1 flat list — preserved for backward compatibility.
-    flat_campaigns = _upsert_into(doc.campaigns, campaign)
+    def _build(doc: StateDocument) -> StateDocument:
+        # v1 flat list — preserved for backward compatibility.
+        flat_campaigns = _upsert_into(doc.campaigns, campaign)
 
-    # v2 per-platform — the shape the dashboard reads. Ensure the platform
-    # entry exists, carries the (required) account_id, and holds the
-    # campaign.
-    platforms = dict(doc.platforms) if doc.platforms else {}
-    existing = platforms.get(platform)
-    platforms[platform] = PlatformState(
-        account_id=account_id,
-        campaigns=_upsert_into(
-            existing.campaigns if existing is not None else (), campaign
-        ),
-    )
+        # v2 per-platform — the shape the dashboard reads. Ensure the platform
+        # entry exists, carries the (required) account_id, and holds the
+        # campaign.
+        platforms = dict(doc.platforms) if doc.platforms else {}
+        existing = platforms.get(platform)
+        platforms[platform] = PlatformState(
+            account_id=account_id,
+            campaigns=_upsert_into(
+                existing.campaigns if existing is not None else (), campaign
+            ),
+        )
 
-    new_doc = StateDocument(
-        version=doc.version,
-        last_synced_at=_now_iso(),
-        customer_id=doc.customer_id,
-        campaigns=flat_campaigns,
-        platforms=platforms,
-        action_log=doc.action_log,
-    )
-    write_state_file(path, new_doc)
-    return new_doc
+        return StateDocument(
+            version=doc.version,
+            last_synced_at=_now_iso(),
+            customer_id=doc.customer_id,
+            campaigns=flat_campaigns,
+            platforms=platforms,
+            action_log=doc.action_log,
+        )
+
+    return _locked_state_mutation(path, _build)
 
 
 def append_action_log(path: Path, entry: ActionLogEntry) -> StateDocument:
@@ -302,18 +329,18 @@ def append_action_log(path: Path, entry: ActionLogEntry) -> StateDocument:
     Returns:
         Updated StateDocument
     """
-    doc = read_state_file(path)
-    new_log = (*doc.action_log, entry)
-    new_doc = StateDocument(
-        version=doc.version,
-        last_synced_at=doc.last_synced_at,
-        customer_id=doc.customer_id,
-        campaigns=doc.campaigns,
-        platforms=doc.platforms,
-        action_log=new_log,
-    )
-    write_state_file(path, new_doc)
-    return new_doc
+
+    def _build(doc: StateDocument) -> StateDocument:
+        return StateDocument(
+            version=doc.version,
+            last_synced_at=doc.last_synced_at,
+            customer_id=doc.customer_id,
+            campaigns=doc.campaigns,
+            platforms=doc.platforms,
+            action_log=(*doc.action_log, entry),
+        )
+
+    return _locked_state_mutation(path, _build)
 
 
 def get_campaign(doc: StateDocument, campaign_id: str) -> CampaignSnapshot | None:
