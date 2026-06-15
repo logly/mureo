@@ -92,14 +92,19 @@ def _ok_install() -> InstallResult:
 
 
 def _google_creds(tmp_path: Path) -> Path:
-    """Write a synthetic credentials.json with a complete google_ads section
-    and return its path, so ``_credential_env_for`` resolves a non-empty
-    ``extra_env`` (the #102 decision-C gate that enables native auto-disable)."""
+    """Write a synthetic credentials.json with FULLY-credentialed Google Ads
+    ADC config (#102 plan B) and return its path, so ``_credential_env_for``
+    resolves all of the provider's ``required_env`` and the native
+    auto-disable gate fires.
+
+    The upstream ``google-ads-mcp`` authenticates via ADC, so 'credentialed'
+    means the developer token + a service-account path
+    (``GOOGLE_APPLICATION_CREDENTIALS``), NOT the Client-Library trio."""
     creds = tmp_path / ".mureo" / "credentials.json"
     creds.parent.mkdir(parents=True, exist_ok=True)
     creds.write_text(
-        '{"google_ads": {"developer_token": "DT", "client_id": "CID",'
-        ' "client_secret": "CS", "refresh_token": "RT"}}',
+        '{"google_ads": {"developer_token": "DT",'
+        ' "service_account_path": "/p/ads-sa.json"}}',
         "utf-8",
     )
     return creds
@@ -255,20 +260,23 @@ class TestInstallProviderInjectsCredentialEnv:
         assert "credentials_path" in params
         assert params["credentials_path"].default is None
 
-    def test_code_host_injects_google_env_from_credentials(
+    def test_code_host_injects_adc_env_not_client_library_trio(
         self, tmp_path: Path
     ) -> None:
-        """The official Google Ads block is registered WITH the env the
-        upstream MCP needs, resolved from credentials.json — without this
-        it registers but cannot authenticate (the reported bug)."""
+        """#102 plan B: the official Google Ads block is registered with the
+        ADC env the upstream actually reads — dev token +
+        GOOGLE_APPLICATION_CREDENTIALS (service-account path) + optional
+        login customer id. The Client-Library trio (which the upstream
+        ignores) is NEVER injected, even when present in credentials.json."""
         from mureo.web import setup_actions
 
         creds = tmp_path / ".mureo" / "credentials.json"
         creds.parent.mkdir(parents=True, exist_ok=True)
         creds.write_text(
-            '{"google_ads": {"developer_token": "DT", "client_id": "CID",'
-            ' "client_secret": "CS", "refresh_token": "RT",'
-            ' "login_customer_id": "123"}}',
+            '{"google_ads": {"developer_token": "DT",'
+            ' "service_account_path": "/p/ads-sa.json",'
+            ' "login_customer_id": "123",'
+            ' "client_id": "CID", "client_secret": "CS", "refresh_token": "RT"}}',
             "utf-8",
         )
 
@@ -287,11 +295,53 @@ class TestInstallProviderInjectsCredentialEnv:
         _, kwargs = mock_disable.call_args
         assert kwargs["extra_env"] == {
             "GOOGLE_ADS_DEVELOPER_TOKEN": "DT",
-            "GOOGLE_ADS_CLIENT_ID": "CID",
-            "GOOGLE_ADS_CLIENT_SECRET": "CS",
-            "GOOGLE_ADS_REFRESH_TOKEN": "RT",
+            "GOOGLE_APPLICATION_CREDENTIALS": "/p/ads-sa.json",
             "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "123",
         }
+
+    def test_code_host_client_library_only_needs_credentials_no_disable(
+        self, tmp_path: Path
+    ) -> None:
+        """#102 plan B (the gate-tightening bug fix): a user with the
+        Client-Library trio + dev token but NO service-account path is NOT
+        credentialed for the official server (which authenticates via ADC).
+        Native must NOT be disabled (that would strand them — official can't
+        authenticate AND native off); the result is ``needs_credentials`` and
+        any stale MUREO_DISABLE is cleared. Only the dev token (the one
+        upstream-read value present) is injected into the bare block."""
+        from mureo.web import setup_actions
+
+        creds = tmp_path / ".mureo" / "credentials.json"
+        creds.parent.mkdir(parents=True, exist_ok=True)
+        creds.write_text(
+            '{"google_ads": {"developer_token": "DT", "client_id": "CID",'
+            ' "client_secret": "CS", "refresh_token": "RT"}}',
+            "utf-8",
+        )
+
+        with (
+            patch(
+                "mureo.providers.installer.run_install",
+                return_value=_ok_install(),
+            ),
+            patch(
+                "mureo.providers.config_writer.add_provider_to_claude_settings"
+            ) as mock_add,
+            patch(
+                "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
+            ) as mock_disable,
+            patch("mureo.providers.mureo_env.unset_mureo_disable_env") as mock_unset,
+        ):
+            result = setup_actions.install_provider(_GOOGLE, credentials_path=creds)
+
+        assert result.status == "needs_credentials"
+        assert result.detail == _GOOGLE
+        mock_disable.assert_not_called()
+        # Bare block written WITH the partial (dev-token-only) env, native on.
+        mock_add.assert_called_once()
+        _, kwargs = mock_add.call_args
+        assert kwargs["extra_env"] == {"GOOGLE_ADS_DEVELOPER_TOKEN": "DT"}
+        mock_unset.assert_called_once_with("google_ads")
 
     def test_code_host_injects_ga4_env_from_credentials(self, tmp_path: Path) -> None:
         """ga4-official is registered WITH GOOGLE_APPLICATION_CREDENTIALS
@@ -389,9 +439,7 @@ class TestInstallProviderInjectsCredentialEnv:
             patch(
                 "mureo.providers.mureo_env.add_provider_and_disable_in_mureo"
             ) as mock_disable,
-            patch(
-                "mureo.providers.mureo_env.unset_mureo_disable_env"
-            ) as mock_unset,
+            patch("mureo.providers.mureo_env.unset_mureo_disable_env") as mock_unset,
         ):
             result = setup_actions.install_provider(_GOOGLE, credentials_path=creds)
 
@@ -403,6 +451,59 @@ class TestInstallProviderInjectsCredentialEnv:
         # Any stale MUREO_DISABLE from a prior credentialed install is cleared,
         # so a re-install without creds never leaves native off (#102 dec. C).
         mock_unset.assert_called_once_with("google_ads")
+
+
+# ---------------------------------------------------------------------------
+# _is_credentialed — the native-disable gate (#102 plan B)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestIsCredentialedGate:
+    def test_all_required_present_is_credentialed(self) -> None:
+        from mureo.web.setup_actions import _is_credentialed
+
+        spec = get_provider(_GOOGLE)  # required: DEV_TOKEN + GAC
+        assert _is_credentialed(
+            spec,
+            {
+                "GOOGLE_ADS_DEVELOPER_TOKEN": "DT",
+                "GOOGLE_APPLICATION_CREDENTIALS": "/p/sa.json",
+            },
+        )
+
+    def test_missing_one_required_is_not_credentialed(self) -> None:
+        """The client-library-only case: dev token present but the ADC
+        service-account path missing → NOT credentialed (the core fix)."""
+        from mureo.web.setup_actions import _is_credentialed
+
+        spec = get_provider(_GOOGLE)
+        assert not _is_credentialed(spec, {"GOOGLE_ADS_DEVELOPER_TOKEN": "DT"})
+
+    def test_optional_env_is_not_required(self) -> None:
+        """A missing OPTIONAL name does not block credentialing."""
+        from mureo.web.setup_actions import _is_credentialed
+
+        spec = get_provider(_GOOGLE)
+        # No GOOGLE_ADS_LOGIN_CUSTOMER_ID (optional) → still credentialed.
+        assert _is_credentialed(
+            spec,
+            {
+                "GOOGLE_ADS_DEVELOPER_TOKEN": "DT",
+                "GOOGLE_APPLICATION_CREDENTIALS": "/p/sa.json",
+            },
+        )
+
+    def test_empty_required_env_is_not_vacuously_credentialed(self) -> None:
+        """No-strand invariant: a (hypothetical) overlapping provider with
+        NO declared required env must NOT be treated as credentialed — it
+        could never authenticate from env alone, so native must stay on.
+        Guards against ``all(())`` being vacuously True."""
+        from mureo.web.setup_actions import _is_credentialed
+
+        spec = replace(get_provider(_GOOGLE), required_env=(), optional_env=())
+        assert not _is_credentialed(spec, {})
+        assert not _is_credentialed(spec, {"ANYTHING": "X"})
 
 
 # ---------------------------------------------------------------------------

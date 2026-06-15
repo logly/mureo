@@ -15,9 +15,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mureo.web._helpers import atomic_write_json, read_json_safe
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -71,42 +74,64 @@ def get_env_var_target(name: str) -> EnvVarTarget | None:
     return _ENV_VAR_TO_FIELD.get(name)
 
 
-# Reverse of the closed allow-list: credentials.json section → list of
-# (env var name, field). Built once at import. Used to materialise the
-# ``env`` block an official upstream MCP needs (it reads ONLY env vars,
-# never mureo's credentials.json).
-_SECTION_TO_ENV_VARS: dict[str, tuple[tuple[str, str], ...]] = {}
-for _name, _target in _ENV_VAR_TO_FIELD.items():
-    _SECTION_TO_ENV_VARS.setdefault(_target.section, ())
-    _SECTION_TO_ENV_VARS[_target.section] += ((_name, _target.field),)
-del _name, _target
+# Section-aware field overrides for env var names SHARED across more than
+# one credentials.json section. The base ``_ENV_VAR_TO_FIELD`` table is 1:1
+# (one canonical target per name — the source of truth for the single-write
+# and status surfaces), but ADC's ``GOOGLE_APPLICATION_CREDENTIALS`` is read
+# by BOTH the ga4 and google_ads official MCPs, which each store a
+# service-account path under their own section. This overlay lets the
+# provider-env build path resolve the shared name against the SPECIFIC
+# provider's section instead of always GA4 (the canonical binding).
+_SECTION_FIELD_OVERRIDES: dict[tuple[str, str], str] = {
+    ("GOOGLE_APPLICATION_CREDENTIALS", "google_ads"): "service_account_path",
+}
 
 
-def build_credentials_env(
+def _resolve_field(env_name: str, section: str) -> str | None:
+    """Resolve the credentials.json field for ``env_name`` within ``section``.
+
+    Section-aware: a shared env name (see ``_SECTION_FIELD_OVERRIDES``) maps
+    to the requested section's field; otherwise the canonical 1:1 binding is
+    used, but only when its section matches. Returns ``None`` when
+    ``env_name`` does not bind to ``section`` — defensive, so a name is never
+    resolved against the wrong platform's section.
+    """
+    override = _SECTION_FIELD_OVERRIDES.get((env_name, section))
+    if override is not None:
+        return override
+    target = _ENV_VAR_TO_FIELD.get(env_name)
+    if target is not None and target.section == section:
+        return target.field
+    return None
+
+
+def build_provider_env(
+    env_names: Iterable[str],
     section: str,
     *,
     credentials_path: Path | None = None,
 ) -> dict[str, str]:
     """Build the ``env`` block an official MCP needs from credentials.json.
 
-    Reverse of :func:`write_credential_env_var`: for every entry in the
-    closed allow-list whose target section is ``section``, read the
-    field from ``credentials.json`` and emit ``{ENV_NAME: str(value)}``
-    for every PRESENT, NON-EMPTY value (ints coerced to ``str``; only
-    allow-listed fields are ever surfaced).
+    Driven by the EXACT env var names a provider declares (its catalog
+    ``required_env`` + ``optional_env``) rather than a blanket section dump,
+    so it emits ONLY what the upstream reads — e.g. ``google-ads-mcp``
+    authenticates via ADC and reads ``GOOGLE_ADS_DEVELOPER_TOKEN`` +
+    ``GOOGLE_APPLICATION_CREDENTIALS`` (+ optional
+    ``GOOGLE_ADS_LOGIN_CUSTOMER_ID``), never the Client-Library trio.
 
-    The official upstream MCPs (e.g. ``google-ads-mcp``) read their
-    config ONLY from environment variables — they cannot see mureo's
-    ``credentials.json`` — so injecting this into the registered
-    ``mcpServers[<id>].env`` block is what makes a freshly added official
-    provider actually usable.
+    For each name in ``env_names`` that binds to ``section`` (section-aware
+    resolution — see :func:`_resolve_field`), read the field from
+    ``credentials.json`` and emit ``{ENV_NAME: str(value)}`` for every
+    PRESENT, NON-EMPTY value (ints coerced to ``str``). Names that do not
+    bind to the section, empty/missing values, a missing section and a
+    missing file all yield nothing.
 
-    Returns ``{}`` when the file or the section is absent (the caller
-    then writes a bare block, exactly the pre-fix shape).
+    The official upstream MCPs read their config ONLY from environment
+    variables — they cannot see mureo's ``credentials.json`` — so injecting
+    this into the registered ``mcpServers[<id>].env`` block is what makes a
+    freshly added official provider actually usable.
     """
-    pairs = _SECTION_TO_ENV_VARS.get(section)
-    if not pairs:
-        return {}
     path = _resolve_credentials_path(credentials_path)
     existing = read_json_safe(path)
     section_data = existing.get(section)
@@ -114,7 +139,10 @@ def build_credentials_env(
         return {}
 
     env: dict[str, str] = {}
-    for env_name, field in pairs:
+    for env_name in env_names:
+        field = _resolve_field(env_name, section)
+        if field is None:
+            continue
         value = section_data.get(field)
         if value is None or value == "":
             continue

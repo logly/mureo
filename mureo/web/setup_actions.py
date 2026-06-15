@@ -412,15 +412,49 @@ def _credential_env_for(
     be wrong. Returns ``{}`` (caller writes the pre-fix bare block) for
     hosted entries, providers with no overlapping platform, or when no
     matching credentials exist yet.
+
+    The env is built from the provider's declared ``required_env`` +
+    ``optional_env`` (not a blanket section dump), so only the names the
+    upstream actually reads are injected — e.g. Google Ads' ADC env
+    (dev-token + ``GOOGLE_APPLICATION_CREDENTIALS`` + optional MCC login id),
+    never the Client-Library trio the upstream ignores (#102).
     """
     if spec.install_kind == "hosted_http":
         return {}
     section = spec.coexists_with_mureo_platform
     if not section:
         return {}
-    from mureo.web.env_var_writer import build_credentials_env
+    from mureo.web.env_var_writer import build_provider_env
 
-    return build_credentials_env(section, credentials_path=credentials_path)
+    return build_provider_env(
+        (*spec.required_env, *spec.optional_env),
+        section,
+        credentials_path=credentials_path,
+    )
+
+
+def _is_credentialed(spec: ProviderSpec, extra_env: Mapping[str, str]) -> bool:
+    """True when EVERY ``required_env`` name resolved to a stored value.
+
+    This is the #102 native-disable gate: mureo steps its native tools aside
+    only when the official server can actually authenticate. ``extra_env`` is
+    built from the provider's ``required_env`` + ``optional_env``, so a
+    required name is "credentialed" exactly when it is present in
+    ``extra_env``. A client-library-only Google Ads user (no
+    ``GOOGLE_APPLICATION_CREDENTIALS``) is therefore correctly NOT
+    credentialed — the old ``bool(extra_env)`` gate wrongly treated them as
+    credentialed and stranded them (native off, official unable to auth).
+
+    The ``bool(spec.required_env)`` guard keeps a provider with NO declared
+    required env from being vacuously "credentialed" (``all(())`` is True):
+    such a provider could never authenticate from env alone, so native must
+    stay on. Unreachable today (the only empty-``required_env`` entry is the
+    hosted Meta provider, which short-circuits before the gate) but it
+    preserves the no-strand invariant if a future provider changes that.
+    """
+    return bool(spec.required_env) and all(
+        name in extra_env for name in spec.required_env
+    )
 
 
 def _install_provider_code(
@@ -484,28 +518,32 @@ def _install_provider_code(
 
     extra_env = _credential_env_for(spec, credentials_path)
     platform = spec.coexists_with_mureo_platform
-    # Decision C (#102): only disable the overlapping mureo-native platform
-    # once the official provider is actually credentialed. The upstream
-    # official MCP reads its config ONLY from env vars, so a credential-less
-    # registration cannot authenticate; disabling native at the same time
-    # would strand the user with zero working tools for that platform
-    # (official dead AND native off). Without creds we register the provider,
-    # (re-)enable native, and signal that credentials are still needed.
+    # Decision C + plan B (#102): only disable the overlapping mureo-native
+    # platform once the official provider is actually credentialed — meaning
+    # ALL of its ``required_env`` resolved to a stored value, not merely that
+    # SOME google_ads env exists. The upstream MCP reads its config ONLY from
+    # env vars (Google Ads via ADC: dev-token + GOOGLE_APPLICATION_CREDENTIALS),
+    # so a partially-credentialed registration cannot authenticate; disabling
+    # native then would strand the user with zero working tools for that
+    # platform (official dead AND native off). When not fully credentialed we
+    # register the provider (with whatever partial env is present), (re-)enable
+    # native, and signal that credentials are still needed.
+    credentialed = platform is not None and _is_credentialed(spec, extra_env)
     try:
-        if platform is not None and extra_env:
+        if credentialed:
             add_provider_and_disable_in_mureo(spec, extra_env=extra_env)
         else:
             add_provider_to_claude_settings(spec, extra_env=extra_env)
             if platform is not None:
                 # Clear any MUREO_DISABLE_<platform> a prior credentialed
-                # install left behind, so re-registering without creds never
-                # leaves the user with native off AND official unauthenticated.
+                # install left behind, so re-registering without full creds
+                # never leaves native off AND official unauthenticated.
                 unset_mureo_disable_env(platform)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_provider settings write failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
-    if platform is not None and not extra_env:
+    if platform is not None and not credentialed:
         return ActionResult(status="needs_credentials", detail=spec.id)
     return ActionResult(status="ok", detail=spec.id)
 

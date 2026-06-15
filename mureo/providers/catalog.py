@@ -86,12 +86,18 @@ class ProviderSpec:
             ``Mapping`` (a read-only ``MappingProxyType`` in practice) so
             callers cannot mutate a shared catalog payload in place.
         required_env: tuple of environment variable names the user must
-            populate before the official server functions. Never logged or
-            printed with values.
+            populate before the official server functions. ALL must resolve
+            to a stored value for mureo to treat the provider as
+            credentialed (and only then step its native tools aside). Never
+            logged or printed with values.
         notes: short human note rendered alongside ``list``; may mention
             authentication caveats.
         coexists_with_mureo_platform: when non-None, mureo also serves this
             platform natively; the CLI emits a coexistence warning.
+        optional_env: tuple of environment variable names that are injected
+            into the upstream server's env block WHEN present, but are NOT
+            required to consider the provider credentialed (e.g. an MCC
+            login-customer-id). Defaults to the empty tuple.
     """
 
     id: str
@@ -102,6 +108,7 @@ class ProviderSpec:
     required_env: tuple[str, ...]
     notes: str
     coexists_with_mureo_platform: CoexistsPlatform | None
+    optional_env: tuple[str, ...] = ()
 
 
 CATALOG: tuple[ProviderSpec, ...] = (
@@ -131,18 +138,20 @@ CATALOG: tuple[ProviderSpec, ...] = (
         ),
         required_env=(
             "GOOGLE_ADS_DEVELOPER_TOKEN",
-            "GOOGLE_ADS_CLIENT_ID",
-            "GOOGLE_ADS_CLIENT_SECRET",
-            "GOOGLE_ADS_REFRESH_TOKEN",
+            "GOOGLE_APPLICATION_CREDENTIALS",
         ),
+        optional_env=("GOOGLE_ADS_LOGIN_CUSTOMER_ID",),
         notes=(
             "Installs the official Google Ads MCP from "
-            "github.com/googleads/google-ads-mcp via pipx. "
-            "Phase 1 uses Client Library config mode — env vars match "
-            "`mureo auth setup` output, so existing mureo users need no "
-            "additional credentials. OAuth Proxy and ADC modes are deferred "
-            "to Phase 2. Developer Token required "
-            "(see Google Cloud Console > Google Ads API)."
+            "github.com/googleads/google-ads-mcp via pipx. The upstream "
+            "authenticates via Application Default Credentials (ADC): set "
+            "`GOOGLE_APPLICATION_CREDENTIALS` to a Google Ads service-account "
+            "JSON (or run `gcloud auth application-default login`) and a "
+            "`GOOGLE_ADS_DEVELOPER_TOKEN` (Google Cloud Console > Google Ads "
+            "API). It does NOT read the Client-Library "
+            "client_id/secret/refresh_token. Optional "
+            "`GOOGLE_ADS_LOGIN_CUSTOMER_ID` for MCC access; a FastMCP OAuth "
+            "proxy is also supported upstream but not wired by mureo."
         ),
         coexists_with_mureo_platform="google_ads",
     ),
