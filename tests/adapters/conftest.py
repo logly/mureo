@@ -15,13 +15,21 @@ coroutine in its own scope, so it can never contaminate a subsequent test.
 from __future__ import annotations
 
 import gc
+from collections.abc import Iterator
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _flush_leaked_coroutines() -> object:
+def _flush_leaked_coroutines() -> Iterator[None]:
     """Force GC after each adapter test so a never-awaited AsyncMock coroutine
-    is closed in-scope rather than surviving into a later async test."""
+    is closed in-scope rather than surviving into a later async test.
+
+    Known source: ``test_calling_from_running_loop_raises_runtime_error`` (both
+    suites) calls the adapter inside ``asyncio.run(...)``; the adapter raises on
+    the running-loop check BEFORE awaiting the coroutine that ``AsyncMock``
+    already built, orphaning it. The guard also covers any future test that
+    reintroduces the same pattern.
+    """
     yield
     gc.collect()
