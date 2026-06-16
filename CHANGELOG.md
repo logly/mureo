@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.6] - 2026-06-17
+
 ### Added
 
 #### Instant Form cover photo: `meta_ads_pages_upload_photo` (#151)
@@ -22,6 +24,30 @@ work. Added a `meta_ads_pages_upload_photo` tool (and
 `photo_id` to use as `cover_photo_id`. This needs the new
 `pages_manage_posts` OAuth scope — existing tokens must re-run Meta auth to
 pick it up. The skill is corrected to the working flow.
+
+### Fixed
+
+#### Credential / STRATEGY.md writers no longer lose data on malformed or partial input (#276)
+
+Several writers failed *open* on a malformed existing file. The
+single-field credential writer and `save_credentials` reset a corrupt
+`credentials.json` to `{}` before writing — silently erasing every other
+provider's auth. They now refuse to overwrite a malformed file
+(`ConfigWriteError`), keep a `.bak` of the prior good file, and write
+atomically. `mureo_strategy_set` now rejects empty/whitespace markdown
+(it could wipe `STRATEGY.md` to a bare `# Strategy`), preserves
+unrecognized headings instead of dropping them, and keeps a timestamped
+backup before a full-replacement write.
+
+#### Budget/bid mutations validated; MCP dispatch enforces tool `inputSchema` (#277)
+
+Budget amounts were sent unvalidated. `update_budget` now rejects
+non-positive values and an absurd over-ceiling (catastrophe guard), and
+accepts `amount_micros` to avoid float rounding. The MCP dispatcher now
+runs a JSON Schema validation pass over every built-in tool's
+`inputSchema` before the handler, so declared bounds (e.g. budget/bid
+`minimum: 1`) are enforced server-side. Meta `daily_budget` /
+`lifetime_budget` / `bid_amount` are validated `> 0` in the handlers.
 
 ## [0.10.5] - 2026-06-16
 
