@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.5] - 2026-06-16
+
+### Changed
+
+#### Recommend mureo-native over the official MCP for Meta in the configure wizard (#271)
+
+The configure wizard's connection-choice step labelled Meta's official
+hosted MCP as "recommended" while leaving mureo-native unmarked. Verified
+against Meta's official AI Connectors announcement and Help Centre, the
+official Meta MCP lacks creative generation, audience / lookalike
+creation, Conversions API event sending, lead forms, split tests and
+automation rules — so mureo-native is the better default for Meta. The
+"recommended" marker now sits on the native option instead of the
+official one (en + ja). Google is unchanged.
+
+### Removed
+
+#### Configure wizard shutdown button (#271)
+
+The wizard's completed step offered a "Finish & free the terminal" button
+that POSTed ``/api/shutdown``. Now that the configure server can run as a
+resident daemon, a UI shutdown button is no longer appropriate, so it has
+been removed. The ``/api/shutdown`` endpoint and ``server.shutdown()`` are
+kept for the SIGINT/SIGTERM path and non-daemon launches.
+
+### Added
+
+#### mureo-native vs official-MCP comparison docs (#271)
+
+New ``docs/native-vs-official.md`` (and ``.ja.md``) comparing mureo-native
+tools with Google's and Meta's official MCP servers, with capability
+tables verified against the platforms' official documentation.
+
 ## [0.10.4] - 2026-06-14
 
 ### Fixed
