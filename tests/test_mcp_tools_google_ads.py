@@ -43,7 +43,9 @@ class TestGoogleAdsToolDefinitions:
         """Every tool name starts with google_ads_ (underscore-separated, per MCP spec)."""
         mod = _import_google_ads_tools()
         for tool in mod.TOOLS:
-            assert tool.name.startswith("google_ads_"), f"Invalid tool name: {tool.name}"
+            assert tool.name.startswith(
+                "google_ads_"
+            ), f"Invalid tool name: {tool.name}"
 
     def test_all_tools_have_input_schema(self) -> None:
         """Every tool defines an inputSchema."""
@@ -111,8 +113,10 @@ class TestGoogleAdsToolDefinitions:
             ),
             ("google_ads_budget_get", ["campaign_id"]),
             (
+                # amount / amount_micros moved to an anyOf (one-of) so either
+                # may satisfy the schema (#277); only budget_id is unconditional.
                 "google_ads_budget_update",
-                ["budget_id", "amount"],
+                ["budget_id"],
             ),
             ("google_ads_performance_report", []),
             ("google_ads_search_terms_report", []),

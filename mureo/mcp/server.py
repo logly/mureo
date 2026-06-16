@@ -32,6 +32,8 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
+import jsonschema
+from jsonschema import Draft202012Validator
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
@@ -153,6 +155,60 @@ _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
 )
 _ALL_TOOLS.extend(_PLUGIN_TOOLS)
 _PLUGIN_NAMES: frozenset[str] = frozenset(_PLUGIN_DISPATCH)
+
+
+# Pre-compiled JSON Schema validators for every BUILT-IN tool, keyed by tool
+# name. The MCP framework does not enforce ``inputSchema``, so declared bounds
+# (``minimum``, ``required``, ``type``, ``enum``) are advisory until checked
+# server-side. Validating here is the single guard that makes them real for
+# every built-in mutation — most importantly the real-spend boundary values
+# (budget / bid ``minimum: 1``) flagged in issue #277. Plugin tools are
+# validated by their own providers and are intentionally excluded.
+def _build_tool_validators() -> dict[str, Draft202012Validator]:
+    validators: dict[str, Draft202012Validator] = {}
+    for tool in _ALL_TOOLS:
+        if tool.name in _PLUGIN_NAMES:
+            continue
+        schema = getattr(tool, "inputSchema", None)
+        if not isinstance(schema, dict):
+            continue
+        try:
+            Draft202012Validator.check_schema(schema)
+        except jsonschema.exceptions.SchemaError as exc:
+            # A malformed built-in schema must not take the whole server
+            # offline — skip validation for that one tool and log it.
+            logger.warning(
+                "tool %s: inputSchema is not a valid JSON Schema (%s); "
+                "input validation skipped for it",
+                tool.name,
+                exc,
+            )
+            continue
+        validators[tool.name] = Draft202012Validator(schema)
+    return validators
+
+
+_TOOL_VALIDATORS: dict[str, Draft202012Validator] = _build_tool_validators()
+
+
+def _validate_tool_input(name: str, arguments: dict[str, Any]) -> None:
+    """Validate ``arguments`` against the tool's declared ``inputSchema``.
+
+    Raises ``ValueError`` (the dispatcher's standard caller-error channel)
+    on the first violation, before the tool handler runs — so an invalid
+    budget/bid never reaches a real-spend API call. No-op for tools without
+    a registered validator (plugins, or a tool with no schema).
+    """
+    validator = _TOOL_VALIDATORS.get(name)
+    if validator is None:
+        return
+    errors = sorted(validator.iter_errors(arguments), key=lambda e: list(e.path))
+    if not errors:
+        return
+    first = errors[0]
+    location = "/".join(str(p) for p in first.path) or "(root)"
+    raise ValueError(f"Invalid arguments for {name}: at '{location}': {first.message}")
+
 
 # One conservative shared bucket for all plugin tool calls. Built-in
 # platforms keep their own per-platform throttlers; this only gates the
@@ -425,11 +481,17 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     :mod:`mureo.core.strategy_reminder`.
 
     Raises:
-        ValueError: Unknown tool name or missing required parameter
+        ValueError: Unknown tool name, schema-invalid arguments, or a
+            missing required parameter.
     """
     decision = _evaluate_policy_gates(name, arguments)
     if decision is not None:
         return _refuse_text_content(name, decision)
+    # Schema-validate AFTER the gate decision (a policy denial is absolute and
+    # need not depend on arg validity) but BEFORE any handler, before-state
+    # capture, or real-spend API call — so an out-of-bounds budget/bid is
+    # rejected before it can reach a live campaign.
+    _validate_tool_input(name, arguments)
     if name in _GOOGLE_ADS_NAMES:
         before = await capture_before_state(name, arguments)
         result = await handle_google_ads_tool(name, arguments)

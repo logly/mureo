@@ -35,6 +35,12 @@ dependencies = [
     "rich>=13.0,<14",
     "simple-term-menu>=1.6,<2",
     "mcp>=1.0,<2",
+    # jsonschema validates every built-in tool's inputSchema at the MCP
+    # dispatch boundary (mureo.mcp.server._validate_tool_input) so declared
+    # bounds like budget/bid `minimum` are enforced server-side before a
+    # real-spend API call. Already a transitive dep of mcp; pinned explicitly
+    # because we import it directly.
+    "jsonschema>=4.20,<5",
     # openpyxl is used by the BYOD bundle importer (mureo byod import
     # --bundle <xlsx>) to read multi-tab Sheets exported from the
     # mureo Sheet template (Apps Script + Google Ads Script).

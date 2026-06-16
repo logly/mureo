@@ -188,6 +188,28 @@ class TestMetaAdsCampaignHandlers:
 
         client.update_campaign.assert_awaited_once()
 
+    async def test_campaigns_create_rejects_zero_daily_budget(self) -> None:
+        """A 0 daily budget halts delivery — refuse before any API call (#277)."""
+        mod = _import_meta_ads_tools()
+        with pytest.raises(ValueError, match="greater than 0"):
+            await mod.handle_tool(
+                "meta_ads_campaigns_create",
+                {
+                    "account_id": "act_123",
+                    "name": "C",
+                    "objective": "CONVERSIONS",
+                    "daily_budget": 0,
+                },
+            )
+
+    async def test_campaigns_update_rejects_negative_daily_budget(self) -> None:
+        mod = _import_meta_ads_tools()
+        with pytest.raises(ValueError, match="greater than 0"):
+            await mod.handle_tool(
+                "meta_ads_campaigns_update",
+                {"account_id": "act_123", "campaign_id": "456", "daily_budget": -10},
+            )
+
 
 # ---------------------------------------------------------------------------
 # Handler tests — ad sets
@@ -252,6 +274,19 @@ class TestMetaAdsAdSetHandlers:
             )
 
         client.update_ad_set.assert_awaited_once()
+
+    async def test_ad_sets_create_rejects_zero_bid_amount(self) -> None:
+        mod = _import_meta_ads_tools()
+        with pytest.raises(ValueError, match="greater than 0"):
+            await mod.handle_tool(
+                "meta_ads_ad_sets_create",
+                {
+                    "account_id": "act_123",
+                    "campaign_id": "456",
+                    "name": "AS",
+                    "bid_amount": 0,
+                },
+            )
 
 
 # ---------------------------------------------------------------------------

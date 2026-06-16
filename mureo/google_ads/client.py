@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
+import math
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -46,6 +47,14 @@ logger = logging.getLogger(__name__)
 
 
 _VALID_STATUSES = frozenset({"ENABLED", "PAUSED", "REMOVED"})
+
+# Absolute sanity ceiling for a single daily budget, in micros
+# (1e15 micros = 1,000,000,000 currency units / day). This is a last-line
+# CATASTROPHE guard against a digit slip / float overflow reaching a live
+# campaign — NOT a spend policy. Real per-account spend limits are enforced
+# by the Pro BudgetGuard on the Managed side; the OSS client only refuses
+# values so large they can only be a mistake.
+_MAX_BUDGET_AMOUNT_MICROS = 1_000_000_000_000_000
 _SMART_BIDDING_STRATEGIES = frozenset(
     {
         "MAXIMIZE_CONVERSIONS",
@@ -84,6 +93,59 @@ _BETWEEN_PATTERN = re.compile(
 )
 
 _F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def _resolve_budget_amount_micros(params: dict[str, Any]) -> int:
+    """Resolve and validate a budget amount from ``params`` into micros.
+
+    Accepts ``amount`` (currency units) or ``amount_micros`` (exact int),
+    mutually exclusive; exactly one is required. Rejects non-numeric input,
+    non-positive values (a ``0`` budget halts delivery), and values above
+    :data:`_MAX_BUDGET_AMOUNT_MICROS` (catastrophe guard against a digit
+    slip / overflow). Raises ``ValueError`` on any violation.
+    """
+    has_amount = "amount" in params and params["amount"] is not None
+    has_micros = "amount_micros" in params and params["amount_micros"] is not None
+    if has_amount and has_micros:
+        raise ValueError(
+            "budget update: specify either 'amount' or 'amount_micros', not both"
+        )
+    if not has_amount and not has_micros:
+        raise ValueError(
+            "budget update: one of 'amount' or 'amount_micros' is required"
+        )
+
+    amount_micros: int
+    if has_micros:
+        value = params["amount_micros"]
+        # bool is an int subclass — reject it so True/False can't be a budget.
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"amount_micros must be an integer (specified: {value!r})")
+        amount_micros = int(value)
+    else:
+        value = params["amount"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"Daily budget must be a number (specified: {value!r})")
+        # Reject inf/nan so int() raises a clean ValueError (not OverflowError)
+        # on the direct-adapter path (MCP callers are already schema-bounded).
+        if not math.isfinite(value):
+            raise ValueError(
+                f"Daily budget must be a finite number (specified: {value!r})"
+            )
+        amount_micros = int(value * 1_000_000)
+
+    if amount_micros <= 0:
+        raise ValueError(
+            f"Daily budget must be a positive number (specified: "
+            f"{amount_micros} micros)"
+        )
+    if amount_micros > _MAX_BUDGET_AMOUNT_MICROS:
+        raise ValueError(
+            f"Daily budget {amount_micros} micros exceeds the sanity ceiling "
+            f"({_MAX_BUDGET_AMOUNT_MICROS} micros); refusing as a likely "
+            f"digit slip — pass a correct amount or raise the budget in steps"
+        )
+    return amount_micros
 
 
 def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
@@ -845,11 +907,22 @@ class GoogleAdsApiClient(  # type: ignore[misc]
 
     @_wrap_mutate_error("budget update")
     async def update_budget(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Update budget
+        """Update a campaign budget's daily amount.
 
-        Note: BudgetGuard validation is performed on the Managed side.
+        Accepts EITHER ``amount`` (account currency units, e.g. ``5000`` for
+        ¥5,000 / day) OR ``amount_micros`` (exact integer micros) — mutually
+        exclusive, mirroring :meth:`create_budget`. ``amount_micros`` avoids
+        the ``amount * 1e6`` float round-trip and lets rollback restore an
+        exact prior value.
+
+        The resolved amount is validated ``> 0`` (a ``0`` budget silently
+        halts delivery) and against :data:`_MAX_BUDGET_AMOUNT_MICROS` (a
+        digit slip must not send a runaway value to a live campaign). This is
+        a client-layer guard so it also protects non-MCP callers (adapters).
+        Per-account spend *policy* (BudgetGuard) is enforced on the Managed
+        side.
         """
-        new_amount = params["amount"]
+        amount_micros = _resolve_budget_amount_micros(params)
 
         budget_service = self._get_service("CampaignBudgetService")
         budget_op = self._client.get_type("CampaignBudgetOperation")
@@ -857,7 +930,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         budget.resource_name = budget_service.campaign_budget_path(
             self._customer_id, params["budget_id"]
         )
-        budget.amount_micros = int(new_amount * 1_000_000)
+        budget.amount_micros = amount_micros
         self._client.copy_from(
             budget_op.update_mask,
             PbFieldMask(paths=["amount_micros"]),
