@@ -21,11 +21,13 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import shutil
 import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
 try:  # POSIX advisory whole-file lock
     import fcntl as _fcntl
@@ -66,6 +68,41 @@ def secure_chmod(path: str | os.PathLike[str]) -> None:
         os.chmod(path, _OWNER_ONLY)
     except (OSError, NotImplementedError):
         logger.debug("secure_chmod best-effort skip", exc_info=True)
+
+
+def backup_file(path: Path, *, timestamped: bool = False) -> Path | None:
+    """Copy ``path`` to a sibling backup before an in-place overwrite.
+
+    Returns the backup path, or ``None`` when ``path`` does not exist yet
+    (a first write has no prior state to preserve). With ``timestamped`` the
+    backup is ``<name>.bak.<unix_ns>`` so a history accrues (used for
+    ``STRATEGY.md``); without it a single rolling ``<name>.bak`` is kept
+    (used for ``credentials.json``). The copy inherits the source mode
+    (``0o600`` for credential files) and perms are hardened best-effort.
+
+    A symlinked ``path`` is dereferenced — the backup is a real-file copy of
+    the link target, not the link itself. Propagates ``OSError`` from the
+    copy so a caller never proceeds to overwrite the original when its backup
+    could not be made (fail closed).
+    """
+    if not path.exists():
+        return None
+    if timestamped:
+        # ``time.time_ns()`` is not guaranteed to be monotonic or unique on
+        # every platform (macOS truncates to ~µs), so two writes in the same
+        # tick could otherwise collide and silently clobber an earlier
+        # backup. Disambiguate with a counter so the history is never lost.
+        base = f"{path.name}.bak.{time.time_ns()}"
+        backup = path.with_name(base)
+        counter = 1
+        while backup.exists():
+            backup = path.with_name(f"{base}.{counter}")
+            counter += 1
+    else:
+        backup = path.with_name(f"{path.name}.bak")
+    shutil.copy2(path, backup)
+    secure_chmod(backup)
+    return backup
 
 
 def _acquire_lock(fd: int) -> None:
@@ -130,4 +167,4 @@ def file_lock(lock_path: str | os.PathLike[str]) -> Iterator[None]:
         os.close(fd)
 
 
-__all__ = ["file_lock", "secure_chmod", "secure_fchmod"]
+__all__ = ["backup_file", "file_lock", "secure_chmod", "secure_fchmod"]

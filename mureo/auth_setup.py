@@ -37,7 +37,7 @@ from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 # ``mureo.auth_setup._terminal_fd`` keep working now that the canonical
 # implementation lives in :mod:`mureo.core.terminal` (#227 follow-up).
 from mureo.core.terminal import terminal_fd as _terminal_fd
-from mureo.fsutil import secure_chmod
+from mureo.fsutil import backup_file
 
 # Backward-compat re-exports of the platform-level account-discovery
 # helpers that used to live in this module. The canonical homes are
@@ -53,9 +53,7 @@ from mureo.fsutil import secure_chmod
 from mureo.google_ads.accounts import (
     list_accessible_accounts as list_accessible_accounts,
 )
-from mureo.meta_ads.accounts import (
-    list_meta_ad_accounts as list_meta_ad_accounts,
-)
+from mureo.meta_ads.accounts import list_meta_ad_accounts as list_meta_ad_accounts
 
 logger = logging.getLogger(__name__)
 
@@ -180,10 +178,7 @@ def _select_account(
 # :mod:`mureo.meta_ads.accounts` (the public-API home for Meta account
 # discovery). Importing from there keeps a single source of truth so a
 # Graph API version bump only needs to land in one place.
-from mureo.meta_ads.accounts import (  # noqa: E402
-    _HTTP_TIMEOUT,
-    _META_GRAPH_API_BASE,
-)
+from mureo.meta_ads.accounts import _HTTP_TIMEOUT, _META_GRAPH_API_BASE  # noqa: E402
 
 _META_AUTH_URL = "https://www.facebook.com/v21.0/dialog/oauth"
 _META_OAUTH_SCOPES = (
@@ -548,10 +543,7 @@ def _register_user_scope_mcp() -> Path:
     # hardened atomic, refuse-malformed writer (mkstemp+0o600+fsync+
     # os.replace; raises ConfigWriteError rather than clobbering a
     # corrupt-but-recoverable file) instead of a plain truncating write.
-    from mureo.providers.config_writer import (
-        _atomic_write_json,
-        _load_existing,
-    )
+    from mureo.providers.config_writer import _atomic_write_json, _load_existing
 
     path = _claude_user_config_path()
     existing = _load_existing(path)  # {} if absent; raises on malformed
@@ -788,13 +780,16 @@ def save_credentials(
     # Create directory
     resolved.parent.mkdir(parents=True, exist_ok=True)
 
-    # Load existing data
-    existing: dict[str, Any] = {}
-    if resolved.exists():
-        try:
-            existing = json.loads(resolved.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            existing = {}
+    # Load existing data. Reuse the hardened reader/writer from
+    # config_writer: ``_load_existing`` returns {} only when the file is
+    # absent and RAISES ConfigWriteError on malformed JSON, instead of the
+    # old ``existing = {}`` reset that silently erased every other provider's
+    # auth on a slightly-corrupt file. ``_atomic_write_json`` (tmp + fsync +
+    # os.replace + 0o600) replaces the old truncating write so a crash mid-
+    # write can't brick all providers.
+    from mureo.providers.config_writer import _atomic_write_json, _load_existing
+
+    existing: dict[str, Any] = _load_existing(resolved)
 
     # Merge Google Ads credentials
     if google is not None:
@@ -828,14 +823,10 @@ def save_credentials(
             meta_data["account_id"] = account_id
         existing["meta_ads"] = meta_data
 
-    # Write file
-    resolved.write_text(
-        json.dumps(existing, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-
-    # Set permissions (owner read/write only; best-effort on Windows)
-    secure_chmod(resolved)
+    # Keep a .bak of the prior good file, then write atomically. The atomic
+    # writer also applies owner-only (0o600) permissions.
+    backup_file(resolved)
+    _atomic_write_json(existing, resolved)
 
     logger.info("Credentials saved: %s", resolved)
 

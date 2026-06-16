@@ -323,3 +323,55 @@ class TestWriteCredentialEnvVarSectionAware:
                 section="google_ads",
                 credentials_path=creds,
             )
+
+
+@pytest.mark.unit
+class TestWriteCredentialEnvVarMalformedGuard:
+    """``write_credential_env_var`` must FAIL CLOSED on a malformed file (#276).
+
+    The old ``read_json_safe`` returned ``{}`` on any JSON error, so a single
+    slightly-corrupt ``credentials.json`` made the next single-field write
+    erase every other provider's auth. The write now refuses (raises
+    ``ConfigWriteError``) and keeps a ``.bak`` of the prior file before any
+    legitimate overwrite.
+    """
+
+    def test_malformed_file_raises_and_preserves(self, tmp_path: Path) -> None:
+        from mureo.providers.config_writer import ConfigWriteError
+
+        creds = tmp_path / "credentials.json"
+        corrupt = '{"google_ads": {"developer_token": "DT"},,,'
+        creds.write_text(corrupt, encoding="utf-8")
+
+        with pytest.raises(ConfigWriteError):
+            write_credential_env_var(
+                "META_ADS_ACCESS_TOKEN",
+                "new-token",
+                credentials_path=creds,
+            )
+
+        # The corrupt file is untouched — NOT silently replaced by a
+        # single-section dict that drops google_ads.
+        assert creds.read_text(encoding="utf-8") == corrupt
+
+    def test_backup_written_before_overwrite(self, tmp_path: Path) -> None:
+        creds = tmp_path / "credentials.json"
+        creds.write_text(
+            json.dumps({"google_ads": {"developer_token": "DT"}}),
+            encoding="utf-8",
+        )
+
+        write_credential_env_var(
+            "META_ADS_ACCESS_TOKEN",
+            "new-token",
+            credentials_path=creds,
+        )
+
+        # New value landed; the sibling google_ads section was preserved.
+        merged = read_json_safe(creds)
+        assert merged["meta_ads"]["access_token"] == "new-token"
+        assert merged["google_ads"]["developer_token"] == "DT"
+        # The prior good file was backed up before the overwrite.
+        backup = tmp_path / "credentials.json.bak"
+        assert backup.exists()
+        assert read_json_safe(backup) == {"google_ads": {"developer_token": "DT"}}

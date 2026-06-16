@@ -134,6 +134,54 @@ async def test_strategy_set_is_atomic(cwd_to_tmp, monkeypatch) -> None:
     assert (cwd_to_tmp / "STRATEGY.md").read_text(encoding="utf-8") == "# Original\n"
 
 
+@pytest.mark.parametrize("markdown", ["", "   ", "\n\t\n"])
+async def test_strategy_set_rejects_empty_markdown(cwd_to_tmp, markdown) -> None:
+    """Empty / whitespace-only markdown must NOT wipe STRATEGY.md (#276).
+
+    A prompt-injected agent posting blank content would otherwise reduce the
+    file to a bare ``# Strategy``. The pre-existing file must be untouched.
+    """
+    (cwd_to_tmp / "STRATEGY.md").write_text(
+        "# Strategy\n\n## Persona\nkeep me\n", encoding="utf-8"
+    )
+    mod = _import_tools()
+    # "" is rejected by _require ("not specified"); whitespace-only by the
+    # explicit guard ("empty or whitespace-only"). Either way: rejected.
+    with pytest.raises(ValueError, match="empty|not specified"):
+        await mod.handle_tool("mureo_strategy_set", {"markdown": markdown})
+    assert "keep me" in (cwd_to_tmp / "STRATEGY.md").read_text(encoding="utf-8")
+
+
+async def test_strategy_set_backs_up_before_overwrite(cwd_to_tmp) -> None:
+    """A timestamped ``.bak`` of the prior file is kept before replacement."""
+    (cwd_to_tmp / "STRATEGY.md").write_text(
+        "# Strategy\n\n## Persona\nold persona\n", encoding="utf-8"
+    )
+    mod = _import_tools()
+    await mod.handle_tool(
+        "mureo_strategy_set",
+        {"markdown": "# Strategy\n\n## USP\nnew usp\n"},
+    )
+
+    backups = list(cwd_to_tmp.glob("STRATEGY.md.bak.*"))
+    assert len(backups) == 1
+    assert "old persona" in backups[0].read_text(encoding="utf-8")
+
+
+async def test_strategy_set_preserves_unknown_heading(cwd_to_tmp) -> None:
+    """An unrecognized heading round-trips and is reported, not dropped."""
+    mod = _import_tools()
+    md = "# Strategy\n\n" "## Persona\n30s\n\n" "## Quarterly Notes\nlaunch in Q3\n"
+    result = await mod.handle_tool("mureo_strategy_set", {"markdown": md})
+    payload = json.loads(result[0].text)
+
+    assert payload["unrecognized"] == 1
+    assert "## Quarterly Notes" in payload["markdown"]
+    assert "launch in Q3" in payload["markdown"]
+    written = (cwd_to_tmp / "STRATEGY.md").read_text(encoding="utf-8")
+    assert "launch in Q3" in written
+
+
 # ---------------------------------------------------------------------------
 # mureo_state_get
 # ---------------------------------------------------------------------------
@@ -326,10 +374,7 @@ async def test_default_path_follows_runtime_context_workspace(
     Verified by injecting a :class:`FilesystemStateStore` whose
     workspace is a sibling of CWD, then asserting the on-disk write
     lands in the injected workspace (NOT in CWD)."""
-    from mureo.core.runtime_context import (
-        RuntimeContext,
-        default_runtime_context,
-    )
+    from mureo.core.runtime_context import RuntimeContext, default_runtime_context
 
     # CWD is one dir, the injected workspace is a SIBLING dir.
     cwd_dir = tmp_path / "cwd"

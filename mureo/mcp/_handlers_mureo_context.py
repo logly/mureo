@@ -31,22 +31,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mureo.context.errors import ContextFileError
-from mureo.context.models import (
-    ActionLogEntry,
-    CampaignSnapshot,
-    StateDocument,
-)
+from mureo.context.models import ActionLogEntry, CampaignSnapshot, StateDocument
 from mureo.context.state import (
     append_action_log,
     read_state_file,
     render_state,
     upsert_campaign,
 )
-from mureo.context.strategy import (
-    parse_strategy,
-    write_strategy_file,
-)
+from mureo.context.strategy import RAW_HEADING_TYPE, parse_strategy, write_strategy_file
 from mureo.core.runtime_context import get_runtime_context
+from mureo.fsutil import backup_file
 from mureo.mcp._helpers import _json_result, _require
 
 if TYPE_CHECKING:
@@ -119,14 +113,30 @@ async def handle_strategy_get(arguments: dict[str, Any]) -> list[TextContent]:
 
 async def handle_strategy_set(arguments: dict[str, Any]) -> list[TextContent]:
     markdown = _require(arguments, "markdown")
+    # Refuse empty / whitespace-only content: a full-replacement write of it
+    # would reduce STRATEGY.md to a bare "# Strategy", which a prompt-injected
+    # agent could use to wipe the strategy (issue #276). ``_require`` already
+    # rejects "" / None; this also catches whitespace-only payloads.
+    if not markdown.strip():
+        raise ValueError("markdown must not be empty or whitespace-only")
     path = _resolve_path(arguments, "STRATEGY.md", store_attr="strategy_path")
     # Round-trip through parse so callers can't write a STRATEGY.md
     # whose subsequent parse_strategy() call breaks downstream skills.
+    # Unrecognized headings are preserved (raw passthrough), not dropped.
     entries = parse_strategy(markdown)
+    # Keep a timestamped .bak before this full replacement so a bad
+    # round-trip is recoverable.
+    backup_file(path, timestamped=True)
     write_strategy_file(path, entries)
     rewritten = path.read_text(encoding="utf-8")
+    unrecognized = sum(1 for e in entries if e.context_type == RAW_HEADING_TYPE)
     return _json_result(
-        {"markdown": rewritten, "entries_count": len(entries), "path": str(path)}
+        {
+            "markdown": rewritten,
+            "entries_count": len(entries),
+            "unrecognized": unrecognized,
+            "path": str(path),
+        }
     )
 
 
