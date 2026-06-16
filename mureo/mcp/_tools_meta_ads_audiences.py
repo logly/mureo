@@ -55,8 +55,9 @@ TOOLS: list[Tool] = [
         name="meta_ads_audiences_create",
         description=(
             "Creates a Custom Audience in a Meta Ads account. Returns the "
-            "new audience_id. Mutating, reversible via rollback_apply "
-            "(rollback deletes the audience). Subtype controls the data "
+            "new audience_id. Mutating — not automatically reversible; "
+            "record before-state with mureo_state_action_log_append if you "
+            "may need to roll back. Subtype controls the data "
             "source: WEBSITE audiences require a pixel_id and an event "
             "rule; CUSTOM audiences accept a manually supplied rule or a "
             "customer list upload (the upload path is handled out-of-band "
@@ -172,10 +173,11 @@ TOOLS: list[Tool] = [
         description=(
             "Deletes a Custom Audience. Returns a success flag. "
             "Destructive — any ad sets currently targeting this audience "
-            "lose the targeting source and may stop delivering. Reversible "
-            "via rollback_apply within Meta's standard retention window, "
-            "but re-creation does not restore the original "
-            "approximate_count. Call meta_ads_audiences_get first to "
+            "lose the targeting source and may stop delivering. Not "
+            "automatically reversible — record before-state with "
+            "mureo_state_action_log_append if you may need to roll back "
+            "(and note that re-creation does not restore the original "
+            "approximate_count). Call meta_ads_audiences_get first to "
             "confirm which ad sets use it (search ad_sets.list targeting "
             "specs client-side), and consider pausing those ad sets first."
         ),
@@ -195,8 +197,10 @@ TOOLS: list[Tool] = [
         name="meta_ads_audiences_create_lookalike",
         description=(
             "Creates a Lookalike Audience from an existing source "
-            "audience. Returns the new audience_id. Mutating, reversible "
-            "via rollback_apply. Lookalikes typically populate within "
+            "audience. Returns the new audience_id. Mutating — not "
+            "automatically reversible; record before-state with "
+            "mureo_state_action_log_append if you may need to roll back. "
+            "Lookalikes typically populate within "
             "24–72h; the approximate_count remains 0 until Meta finishes "
             "the similarity build. ratio=0.01 gives the top 1% most "
             "similar users in the target country (smallest, highest "

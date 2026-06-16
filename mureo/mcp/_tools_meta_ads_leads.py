@@ -85,8 +85,9 @@ TOOLS: list[Tool] = [
         name="meta_ads_lead_forms_create",
         description=(
             "Creates a new lead form on a Facebook Page. Returns the new "
-            "form_id. Mutating, reversible via rollback_apply (rollback "
-            "archives the form rather than deleting submitted leads). "
+            "form_id. Mutating — not automatically reversible; record "
+            "before-state with mureo_state_action_log_append if you may "
+            "need to roll back. "
             "Questions is an ordered list of standard Meta types "
             "(FULL_NAME, EMAIL, PHONE_NUMBER, COMPANY_NAME, JOB_TITLE, "
             "CITY, STATE, ZIP_CODE, COUNTRY, DATE_OF_BIRTH) or CUSTOM "

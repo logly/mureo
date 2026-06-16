@@ -40,22 +40,22 @@ class TestReversibleHintPresent:
         entry = _entry(
             reversible_params={
                 "operation": "google_ads_budget_update",
-                "params": {"budget_id": "456", "amount_micros": 10_000_000_000},
+                "params": {"budget_id": "456", "amount": 10_000_000_000},
             }
         )
         plan = plan_rollback(entry)
         assert plan is not None
         assert plan.status == RollbackStatus.SUPPORTED
         assert plan.operation == "google_ads_budget_update"
-        assert plan.params == {"budget_id": "456", "amount_micros": 10_000_000_000}
+        assert plan.params == {"budget_id": "456", "amount": 10_000_000_000}
         assert plan.source_timestamp == "2026-04-15T10:00:00"
         assert plan.platform == "google_ads"
 
     def test_caveats_promote_status_to_partial(self) -> None:
         entry = _entry(
             reversible_params={
-                "operation": "meta_ads_campaigns_update_status",
-                "params": {"campaign_id": "abc", "status": "ACTIVE"},
+                "operation": "meta_ads_campaigns_enable",
+                "params": {"campaign_id": "abc"},
                 "caveats": ["Paused spend is not refundable."],
             }
         )
@@ -69,7 +69,7 @@ class TestReversibleHintPresent:
             action="update_budget",
             reversible_params={
                 "operation": "google_ads_budget_update",
-                "params": {"budget_id": "456", "amount_micros": 10_000_000_000},
+                "params": {"budget_id": "456", "amount": 10_000_000_000},
             },
         )
         plan = plan_rollback(entry)
@@ -139,7 +139,7 @@ class TestNotReversible:
                 # login_customer_id would let an agent pivot to another account.
                 "params": {
                     "budget_id": "456",
-                    "amount_micros": 1,
+                    "amount": 1,
                     "login_customer_id": "999",
                 },
             }
@@ -153,7 +153,7 @@ class TestNotReversible:
         entry = _entry(
             reversible_params={
                 "operation": "google_ads_budget_update",
-                "params": {"budget_id": "456", "amount_micros": 1},
+                "params": {"budget_id": "456", "amount": 1},
                 "caveats": "just a string",
             }
         )
@@ -167,7 +167,7 @@ class TestNotReversible:
             action="list_campaigns",
             reversible_params={
                 "operation": "google_ads_budget_update",
-                "params": {"budget_id": "456", "amount_micros": 1},
+                "params": {"budget_id": "456", "amount": 1},
             },
         )
         plan = plan_rollback(entry)
@@ -194,7 +194,7 @@ class TestRollbackPlanImmutability:
             plan.status = RollbackStatus.NOT_SUPPORTED  # type: ignore[misc]
 
     def test_params_defensive_copy(self) -> None:
-        src = {"budget_id": "456", "amount_micros": 10_000_000_000}
+        src = {"budget_id": "456", "amount": 10_000_000_000}
         entry = _entry(
             reversible_params={
                 "operation": "google_ads_budget_update",
@@ -209,7 +209,7 @@ class TestRollbackPlanImmutability:
     def test_post_construction_mutation_does_not_affect_stored_plan(self) -> None:
         # Directly constructing a plan should also snapshot params, so a caller
         # mutating the dict they passed in cannot corrupt the stored plan.
-        params = {"budget_id": "456", "amount_micros": 1}
+        params = {"budget_id": "456", "amount": 1}
         plan = RollbackPlan(
             source_timestamp="t",
             source_action="update_budget",
@@ -219,9 +219,9 @@ class TestRollbackPlanImmutability:
             params=params,
             description="x",
         )
-        params["amount_micros"] = 999
+        params["amount"] = 999
         assert plan.params is not None
-        assert plan.params["amount_micros"] == 1
+        assert plan.params["amount"] == 1
 
 
 @pytest.mark.unit

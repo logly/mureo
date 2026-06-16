@@ -54,9 +54,9 @@ TOOLS: list[Tool] = [
         name="meta_ads_catalogs_create",
         description=(
             "Creates a new Product Catalog under a Meta Business. Returns "
-            "the new catalog_id. Mutating, reversible via rollback_apply "
-            "(rollback deletes the catalog if it has no ads consuming "
-            "it). Catalogs are the container — add products individually "
+            "the new catalog_id. Mutating — not automatically reversible; "
+            "record before-state with mureo_state_action_log_append if you "
+            "may need to roll back. Catalogs are the container — add products individually "
             "via meta_ads_products_add, or schedule bulk imports via "
             "meta_ads_feeds_create."
         ),
@@ -109,9 +109,9 @@ TOOLS: list[Tool] = [
             "Deletes a Product Catalog. Returns a success flag. "
             "Destructive and cascades — all products inside and any DPA "
             "campaigns consuming the catalog lose their product source "
-            "and stop serving dynamic ads. Reversible via rollback_apply "
-            "only if no ad consuming the catalog has served since "
-            "deletion. Always call meta_ads_catalogs_get first to check "
+            "and stop serving dynamic ads. Not automatically reversible — "
+            "record before-state with mureo_state_action_log_append if you "
+            "may need to roll back. Always call meta_ads_catalogs_get first to check "
             "product_count and operator-confirm before calling this."
         ),
         inputSchema={
@@ -162,7 +162,9 @@ TOOLS: list[Tool] = [
         name="meta_ads_products_add",
         description=(
             "Adds a single product to a Meta Product Catalog. Returns the "
-            "new product_id. Mutating, reversible via rollback_apply. "
+            "new product_id. Mutating — not automatically reversible; "
+            "record before-state with mureo_state_action_log_append if you "
+            "may need to roll back. "
             "For bulk ingestion prefer a scheduled feed "
             "(meta_ads_feeds_create) — Meta rate-limits single-product "
             "adds aggressively. Meta requires a stable retailer_id per "
@@ -307,8 +309,9 @@ TOOLS: list[Tool] = [
         description=(
             "Updates one or more fields on an existing catalog product. "
             "Partial update — only supplied fields are changed. Returns "
-            "the updated product. Mutating, reversible via rollback_apply "
-            "(rollback restores prior field values). For availability "
+            "the updated product. Mutating — not automatically reversible; "
+            "record before-state with mureo_state_action_log_append if you "
+            "may need to roll back. For availability "
             "toggles (in stock ↔ out of stock) this is the correct entry "
             "point; for full record replacement call meta_ads.products."
             "add with the same retailer_id (the add is upsert-semantic)."
@@ -378,10 +381,12 @@ TOOLS: list[Tool] = [
         description=(
             "Deletes a single catalog product. Returns a success flag. "
             "Destructive — DPA / Collection ads that referenced this "
-            "product_id will skip it on the next serve cycle. Reversible "
-            "via rollback_apply (re-adds with the same retailer_id), but "
-            "the Meta-assigned product_id changes on re-add, which can "
-            "break hard-coded downstream references. For temporary "
+            "product_id will skip it on the next serve cycle. Not "
+            "automatically reversible — record before-state with "
+            "mureo_state_action_log_append if you may need to roll back "
+            "(and note that re-adding with the same retailer_id assigns a "
+            "new Meta product_id, which can "
+            "break hard-coded downstream references). For temporary "
             "suppression use meta_ads_products_update with "
             "availability='out of stock' instead."
         ),
@@ -425,8 +430,10 @@ TOOLS: list[Tool] = [
         name="meta_ads_feeds_create",
         description=(
             "Creates a scheduled product feed that imports products into "
-            "a catalog from a URL. Returns the new feed_id. Mutating, "
-            "reversible via rollback_apply. Feeds run automatically on "
+            "a catalog from a URL. Returns the new feed_id. Mutating — not "
+            "automatically reversible; record before-state with "
+            "mureo_state_action_log_append if you may need to roll back. "
+            "Feeds run automatically on "
             "the chosen schedule; the first run triggers shortly after "
             "creation. For one-off product adds use "
             "meta_ads_products_add — feeds are for ongoing bulk sync. "

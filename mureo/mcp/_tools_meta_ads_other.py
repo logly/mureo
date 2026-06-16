@@ -89,8 +89,9 @@ TOOLS: list[Tool] = [
         name="meta_ads_split_tests_create",
         description=(
             "Creates a new Split Test. Returns the new study_id. "
-            "Mutating, reversible via rollback_apply (rollback ends the "
-            "test immediately without declaring a winner). Meta runs the "
+            "Mutating — not automatically reversible; record before-state "
+            "with mureo_state_action_log_append if you may need to roll "
+            "back. Meta runs the "
             "test for the configured duration, then compares cells on "
             "the chosen objective (COST_PER_RESULT / CONVERSIONS / "
             "REACH / CPC / CPM). Cells must reference pre-existing ad "
@@ -180,9 +181,9 @@ TOOLS: list[Tool] = [
             "end_time. Returns the final study record with whatever "
             "confidence Meta has accumulated so far. Destructive — no "
             "further data accrues; if significance was not yet reached, "
-            "winner_cell_id may be null. Reversible via rollback_apply "
-            "only if the underlying ad sets have not been independently "
-            "modified since the early termination."
+            "winner_cell_id may be null. Not automatically reversible — "
+            "record before-state with mureo_state_action_log_append if you "
+            "may need to roll back."
         ),
         inputSchema={
             "type": "object",
@@ -248,9 +249,10 @@ TOOLS: list[Tool] = [
         description=(
             "Creates a new Automated Rule that Meta evaluates on the "
             "configured schedule and fires actions when the trigger "
-            "matches. Returns the new rule_id. Mutating, reversible via "
-            "rollback_apply (rollback disables the rule; actions the "
-            "rule already took stand). Common patterns: CPA-spike alert "
+            "matches. Returns the new rule_id. Mutating — not automatically "
+            "reversible; record before-state with "
+            "mureo_state_action_log_append if you may need to roll back. "
+            "Common patterns: CPA-spike alert "
             "(execution NOTIFICATION), auto-pause ads with low ROAS "
             "(execution PAUSE), scale winners (execution CHANGE_BUDGET). "
             "evaluation_spec and execution_spec are Meta's JSON schemas "
@@ -315,7 +317,9 @@ TOOLS: list[Tool] = [
         description=(
             "Updates fields on an existing Automated Rule. Partial "
             "update — only supplied fields are changed. Returns the "
-            "updated rule. Mutating, reversible via rollback_apply. "
+            "updated rule. Mutating — not automatically reversible; record "
+            "before-state with mureo_state_action_log_append if you may "
+            "need to roll back. "
             "Changes take effect on the next scheduled evaluation. To "
             "temporarily suspend a rule, set status=DISABLED rather than "
             "deleting it so history is preserved."
@@ -367,9 +371,11 @@ TOOLS: list[Tool] = [
         description=(
             "Deletes an Automated Rule. Returns a success flag. "
             "Destructive — the rule stops firing immediately and its "
-            "evaluation history is purged. Reversible via rollback_apply "
-            "(re-creates the rule), but the rule_id changes on re-create "
-            "which can break downstream references. For temporary "
+            "evaluation history is purged. Not automatically reversible — "
+            "record before-state with mureo_state_action_log_append if you "
+            "may need to roll back (and note that re-creating the rule "
+            "assigns a new rule_id, "
+            "which can break downstream references). For temporary "
             "suspension prefer meta_ads_ad_rules_update with "
             "status=DISABLED."
         ),
@@ -420,8 +426,9 @@ TOOLS: list[Tool] = [
         description=(
             "Boosts an existing Facebook Page post by creating a paid "
             "ad that uses the post as its creative. Returns the new "
-            "ad_id. Mutating, reversible via rollback_apply (rollback "
-            "pauses the boosting ad; the original post stays live). The "
+            "ad_id. Mutating — not automatically reversible; record "
+            "before-state with mureo_state_action_log_append if you may "
+            "need to roll back. The "
             "parent ad_set_id must already exist with budget and "
             "targeting configured — this tool only attaches the post as "
             "creative. For new-creative paid ads use "
@@ -509,9 +516,10 @@ TOOLS: list[Tool] = [
         name="meta_ads_instagram_boost",
         description=(
             "Boosts an organic Instagram post by creating a paid ad "
-            "that uses it as creative. Returns the new ad_id. Mutating, "
-            "reversible via rollback_apply (rollback pauses the boosting "
-            "ad; the organic post stays live). The parent ad_set_id "
+            "that uses it as creative. Returns the new ad_id. Mutating — "
+            "not automatically reversible; record before-state with "
+            "mureo_state_action_log_append if you may need to roll back. "
+            "The parent ad_set_id "
             "must already exist with budget and targeting. For a "
             "freshly-composed ad (non-organic source) use "
             "meta_ads_ads_create with a creative_id instead."

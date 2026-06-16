@@ -91,8 +91,9 @@ TOOLS: list[Tool] = [
         description=(
             "Adds one or more keyword criteria to a single ad group. "
             "Returns the created criterion_ids keyed by their input "
-            "position. Mutating, reversible via rollback_apply (rollback "
-            "pauses the keywords rather than removing them). Duplicate "
+            "position. Mutating — not automatically reversible; record "
+            "before-state with mureo_state_action_log_append if you may "
+            "need to roll back. Duplicate "
             "text+match_type pairs inside the same ad group are rejected "
             "by Google Ads — call google_ads_keywords_cross_adgroup_duplicates "
             "first if you are adding at scale."
@@ -126,10 +127,12 @@ TOOLS: list[Tool] = [
         name="google_ads_keywords_remove",
         description=(
             "Removes (soft-deletes) a single keyword criterion from an ad "
-            "group. Returns the removed criterion_id. Destructive and "
-            "reversible via rollback_apply, but rollback re-adds the "
-            "keyword as a fresh criterion — the original quality score and "
-            "learning are lost. For temporary suspension prefer "
+            "group. Returns the removed criterion_id. Destructive — not "
+            "automatically reversible; record before-state with "
+            "mureo_state_action_log_append if you may need to roll back "
+            "(and note that re-adding the keyword creates a fresh criterion "
+            "— the original quality score and learning are lost). For "
+            "temporary suspension prefer "
             "google_ads_keywords_pause, which preserves all signals."
         ),
         inputSchema={
@@ -251,7 +254,9 @@ TOOLS: list[Tool] = [
         description=(
             "Adds one or more campaign-level negative keywords. These "
             "apply to every ad group in the campaign. Returns created "
-            "criterion_ids. Mutating, reversible via rollback_apply. For "
+            "criterion_ids. Mutating — not automatically reversible; record "
+            "before-state with mureo_state_action_log_append if you may "
+            "need to roll back. For "
             "negatives scoped to a single ad group use "
             "google_ads_negative_keywords_add_to_ad_group instead — "
             "campaign-level negatives can over-block if applied too broadly."
@@ -291,7 +296,9 @@ TOOLS: list[Tool] = [
             "stats are preserved, and the keyword can be resumed by "
             "calling google_ads_keywords_add with the same text+match_type "
             "(or re-enabled via the Google Ads UI). Returns the criterion "
-            "ID and new status. Reversible via rollback_apply. Use this "
+            "ID and new status. Not automatically reversible — record "
+            "before-state with mureo_state_action_log_append if you may "
+            "need to roll back. Use this "
             "instead of google_ads_keywords_remove whenever the suspension "
             "might be temporary."
         ),
@@ -321,8 +328,9 @@ TOOLS: list[Tool] = [
             "Removes a single campaign-level negative keyword. Returns the "
             "removed criterion_id. Destructive — the exclusion is lifted "
             "immediately on the next serving cycle, which can increase "
-            "unwanted traffic. Reversible via rollback_apply (re-adds the "
-            "negative). For ad group-level negatives there is currently no "
+            "unwanted traffic. Not automatically reversible — record "
+            "before-state with mureo_state_action_log_append if you may "
+            "need to roll back. For ad group-level negatives there is currently no "
             "explicit remove tool — use the Google Ads UI or raise an "
             "issue if needed."
         ),
@@ -352,7 +360,9 @@ TOOLS: list[Tool] = [
             "Adds one or more ad group-level negative keywords. Scope is "
             "narrower than campaign-level negatives — exclusions apply only "
             "to the specified ad group. Returns created criterion_ids. "
-            "Mutating, reversible via rollback_apply. Prefer this over "
+            "Mutating — not automatically reversible; record before-state "
+            "with mureo_state_action_log_append if you may need to roll "
+            "back. Prefer this over "
             "google_ads_negative_keywords_add when the exclusion is only "
             "wrong in one ad group's context."
         ),
