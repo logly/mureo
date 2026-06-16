@@ -432,4 +432,55 @@ TOOLS: list[Tool] = [
             "required": ["ad_id"],
         },
     ),
+    Tool(
+        name="meta_ads_pages_upload_photo",
+        description=(
+            "Uploads a photo to a Facebook Page and returns its PAGE photo "
+            "id (`photo_id`). This is the id an Instant Form intro screen "
+            "needs for `context_card.cover_photo_id` — which is DIFFERENT "
+            "from the ad-account `image_hash` returned by "
+            "meta_ads_images_upload_file (that hash does NOT work as a form "
+            "cover photo; Meta requires a Page photo id). Typical flow: "
+            "upload here → take `photo_id` → pass it as "
+            "`context_card.cover_photo_id` to meta_ads_lead_forms_create. "
+            "Provide exactly one of `file_path` (local image) or "
+            "`image_url`. The photo is uploaded UNPUBLISHED (not shown on "
+            "the page timeline). Requires the `pages_manage_posts` "
+            "permission and a Page Access Token — if you just granted it, "
+            "re-run Meta auth so the token carries the scope. Mutating "
+            "(creates a Page photo); not automatically reversible."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "page_id": {
+                    "type": "string",
+                    "description": (
+                        "Facebook Page id that will own the photo (the same "
+                        "page the lead form belongs to)."
+                    ),
+                },
+                "file_path": {
+                    "type": "string",
+                    "description": (
+                        "Local image file path. Mutually exclusive with "
+                        "image_url. Max 30MB; jpg/jpeg/png/gif/bmp/tiff."
+                    ),
+                },
+                "image_url": {
+                    "type": "string",
+                    "description": (
+                        "Public image URL Meta fetches directly. Mutually "
+                        "exclusive with file_path."
+                    ),
+                },
+            },
+            "required": ["page_id"],
+            "anyOf": [
+                {"required": ["file_path"]},
+                {"required": ["image_url"]},
+            ],
+        },
+    ),
 ]
