@@ -1437,6 +1437,18 @@ def test_generate_meta_auth_url() -> None:
 
 
 @pytest.mark.unit
+def test_meta_oauth_scopes_include_pages_manage_posts() -> None:
+    """pages_manage_posts is required to upload a Page photo for an Instant
+    Form cover (context_card.cover_photo_id) — see meta_ads_pages_upload_photo
+    (#151)."""
+    from mureo.auth_setup import _META_OAUTH_SCOPES
+
+    scopes = set(_META_OAUTH_SCOPES.split(","))
+    assert "pages_manage_posts" in scopes
+    assert "leads_retrieval" in scopes
+
+
+@pytest.mark.unit
 def test_generate_meta_auth_url_no_state() -> None:
     """When state=None, the state parameter is omitted."""
     from mureo.auth_setup import _generate_meta_auth_url

@@ -679,6 +679,25 @@ async def handle_images_upload_file(args: dict[str, Any]) -> list[TextContent]:
     return _json_result(result)
 
 
+@api_error_handler
+async def handle_pages_upload_photo(args: dict[str, Any]) -> list[TextContent]:
+    """Upload a Page photo and return its Page photo id (cover_photo_id).
+
+    Distinct from meta_ads_images_upload_file (ad-account image_hash): an
+    Instant Form ``context_card.cover_photo_id`` needs a PAGE photo id.
+    """
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    page_id = _require(args, "page_id")
+    image_url = _opt(args, "image_url")
+    file_path = _opt(args, "file_path")
+    result = await client.upload_page_photo(
+        page_id, image_url=image_url, file_path=file_path
+    )
+    return _json_result(result)
+
+
 # ---------------------------------------------------------------------------
 # Video, carousel, collection handlers
 # ---------------------------------------------------------------------------

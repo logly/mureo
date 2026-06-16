@@ -380,6 +380,7 @@ Or use `uv` to run it:
 | `meta_ads_leads_export_csv` | Export form leads to a local CSV file | `account_id`, `form_id`, `output_path` |
 | `meta_ads_leads_get` | Get lead data (per form) | `account_id`, `form_id` |
 | `meta_ads_leads_get_by_ad` | Get lead data (per ad) | `account_id`, `ad_id` |
+| `meta_ads_pages_upload_photo` | Upload a Page photo, returns the `photo_id` for an Instant Form intro `context_card.cover_photo_id` (needs `pages_manage_posts`) | `account_id`, `page_id`, `file_path` \| `image_url` |
 
 #### Videos
 

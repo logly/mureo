@@ -183,7 +183,11 @@ from mureo.meta_ads.accounts import _HTTP_TIMEOUT, _META_GRAPH_API_BASE  # noqa:
 _META_AUTH_URL = "https://www.facebook.com/v21.0/dialog/oauth"
 _META_OAUTH_SCOPES = (
     "ads_management,ads_read,business_management,"
-    "pages_show_list,pages_manage_ads,pages_read_engagement,leads_retrieval"
+    "pages_show_list,pages_manage_ads,pages_read_engagement,leads_retrieval,"
+    # pages_manage_posts: upload a Page photo (POST /{page_id}/photos) to get
+    # the Page photo id an Instant Form intro screen needs for
+    # context_card.cover_photo_id (see meta_ads_pages_upload_photo).
+    "pages_manage_posts"
 )
 
 # Input function replaceable for testing

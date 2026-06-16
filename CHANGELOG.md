@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Instant Form cover photo: `meta_ads_pages_upload_photo` (#151)
+
+Setting a cover image on an Instant Form intro screen
+(`context_card.cover_photo_id`) was impossible from mureo: that field
+requires a **Page photo id**, but `meta_ads_images_upload_file` only
+returns an ad-account `image_hash` (a different id Meta rejects as a cover
+photo), and the `lead-form-create` skill wrongly told users the hash would
+work. Added a `meta_ads_pages_upload_photo` tool (and
+`MetaAdsApiClient.upload_page_photo`) that uploads to
+`POST /{page_id}/photos` with the Page Access Token and returns the
+`photo_id` to use as `cover_photo_id`. This needs the new
+`pages_manage_posts` OAuth scope — existing tokens must re-run Meta auth to
+pick it up. The skill is corrected to the working flow.
+
 ## [0.10.5] - 2026-06-16
 
 ### Changed

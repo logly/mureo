@@ -35,9 +35,9 @@ class TestMetaAdsToolDefinitions:
     """Verify the Meta Ads tool list is defined correctly."""
 
     def test_tool_count(self) -> None:
-        """All 81 tools are defined."""
+        """All 82 tools are defined (81 + meta_ads_pages_upload_photo, #151)."""
         mod = _import_meta_ads_tools()
-        assert len(mod.TOOLS) == 81
+        assert len(mod.TOOLS) == 82
 
     def test_all_tool_names(self) -> None:
         """Every tool name starts with meta_ads_ (underscore-separated, per MCP spec)."""
@@ -274,6 +274,29 @@ class TestMetaAdsAdSetHandlers:
             )
 
         client.update_ad_set.assert_awaited_once()
+
+    async def test_pages_upload_photo(self) -> None:
+        """meta_ads_pages_upload_photo returns the PAGE photo_id (cover_photo_id)."""
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.upload_page_photo.return_value = {"photo_id": "123_456"}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            result = await mod.handle_tool(
+                "meta_ads_pages_upload_photo",
+                {
+                    "account_id": "act_123",
+                    "page_id": "111",
+                    "image_url": "https://example.com/banner.png",
+                },
+            )
+
+        client.upload_page_photo.assert_awaited_once()
+        assert "123_456" in result[0].text
 
     async def test_ad_sets_create_rejects_zero_bid_amount(self) -> None:
         mod = _import_meta_ads_tools()
