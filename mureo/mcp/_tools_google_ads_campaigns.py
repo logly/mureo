@@ -579,11 +579,15 @@ TOOLS: list[Tool] = [
         name="google_ads_ads_update",
         description=(
             "Updates the creative copy of an existing Responsive Search Ad "
-            "by replacing headlines and/or descriptions. Returns the "
-            "updated ad. Google Ads does not support in-place edit of RSA "
-            "creative assets — this call typically replaces the ad with a "
-            "new one under the same ID, which resets learning and triggers "
-            "re-review. Mutating — not automatically reversible; record "
+            "by replacing headlines and/or descriptions. A supplied side is "
+            "fully replaced (Google has no per-asset patch); omit a side to "
+            "leave it unchanged — the omitted side is read from the current "
+            "ad and preserved, so updating headlines never wipes "
+            "descriptions. Returns the updated ad. Google Ads does not "
+            "support in-place edit of RSA creative assets — this call "
+            "typically replaces the ad with a new one under the same ID, "
+            "which resets learning and triggers re-review. Mutating — not "
+            "automatically reversible; record "
             "before-state with mureo_state_action_log_append if you may "
             "need to roll back. For "
             "status-only changes (pause/resume) use "
@@ -608,7 +612,9 @@ TOOLS: list[Tool] = [
                     "minItems": 3,
                     "maxItems": 15,
                     "description": (
-                        "Replacement headlines (3 to 15). Each max 30 "
+                        "Replacement headlines (3 to 15) — the full new set, "
+                        "since the supplied side is replaced wholesale. Omit "
+                        "to keep the current headlines unchanged. Each max 30 "
                         "characters display width."
                     ),
                 },
@@ -618,8 +624,10 @@ TOOLS: list[Tool] = [
                     "minItems": 2,
                     "maxItems": 4,
                     "description": (
-                        "Replacement descriptions (2 to 4). Each max 90 "
-                        "characters display width."
+                        "Replacement descriptions (2 to 4) — the full new "
+                        "set, since the supplied side is replaced wholesale. "
+                        "Omit to keep the current descriptions unchanged. "
+                        "Each max 90 characters display width."
                     ),
                 },
             },

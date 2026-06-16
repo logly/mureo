@@ -339,20 +339,36 @@ TOOLS: list[Tool] = [
                 "evaluation_spec": {
                     "type": "object",
                     "description": (
-                        "New trigger definition. Replaces the entire "
-                        "spec — fetch current via "
-                        "meta_ads_ad_rules_get first if merging."
+                        "Trigger changes. Merged onto the current spec by "
+                        "default (top-level keys you omit are kept), so you "
+                        "can change one facet without dropping the rest. "
+                        "Note: array values such as `filters` are replaced "
+                        "wholesale — include every condition you want to keep. "
+                        "Set replace_specs=true to replace the whole spec."
                     ),
                 },
                 "execution_spec": {
                     "type": "object",
                     "description": (
-                        "New action definition. Replaces the entire " "spec."
+                        "Action changes. Merged onto the current spec by "
+                        "default; array values are replaced wholesale. Set "
+                        "replace_specs=true to replace it."
                     ),
                 },
                 "schedule_spec": {
                     "type": "object",
-                    "description": "New schedule definition.",
+                    "description": (
+                        "Schedule changes. Merged onto the current spec by "
+                        "default; set replace_specs=true to replace it."
+                    ),
+                },
+                "replace_specs": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, supplied spec objects replace the whole "
+                        "spec instead of merging onto the current one. "
+                        "Default false (safe merge)."
+                    ),
                 },
                 "status": {
                     "type": "string",

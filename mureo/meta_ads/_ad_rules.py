@@ -98,27 +98,68 @@ class AdRulesMixin:
         logger.info("Automated rule creation: name=%s", name)
         return await self._post(f"/{self._ad_account_id}/adrules_library", data)
 
+    # Spec fields Meta full-replaces on write; merged read-modify-write by default.
+    _SPEC_FIELDS = ("evaluation_spec", "execution_spec", "schedule_spec")
+
     async def update_ad_rule(
-        self, rule_id: str, updates: dict[str, Any]
+        self,
+        rule_id: str,
+        updates: dict[str, Any],
+        *,
+        replace_specs: bool = False,
     ) -> dict[str, Any]:
         """Update an automated rule.
+
+        Meta full-replaces the evaluation/execution/schedule specs on write,
+        so a partial spec would silently drop the rest of the rule's
+        triggers/actions (e.g. a "pause when ROAS drops" guard). By default
+        this method read-modify-writes each supplied spec: it fetches the
+        current rule once and shallow-merges the supplied top-level keys onto
+        the current spec. Pass ``replace_specs=True`` to replace a spec
+        wholesale.
 
         Args:
             rule_id: Rule ID
             updates: Update contents (name, evaluation_spec, execution_spec, etc.)
+            replace_specs: When True, spec dicts replace the whole spec
+                instead of being merged onto the current one.
 
         Returns:
             Update result
         """
         data: dict[str, Any] = {}
+        current: dict[str, Any] | None = None
         for key, value in updates.items():
             if isinstance(value, dict):
+                if key in self._SPEC_FIELDS and not replace_specs:
+                    if current is None:
+                        current = await self.get_ad_rule(rule_id)
+                    value = self._merge_spec(current, key, value)
                 data[key] = json.dumps(value)
             else:
                 data[key] = value
 
         logger.info("Automated rule update: rule_id=%s", rule_id)
         return await self._post(f"/{rule_id}", data)
+
+    @staticmethod
+    def _merge_spec(
+        current: dict[str, Any], key: str, delta: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Shallow-merge a spec ``delta`` onto the rule's current ``key`` spec.
+
+        Top-level keys the caller omits are preserved. Meta may return the
+        spec as a dict or a JSON string; both are handled.
+        """
+        existing = current.get(key)
+        if isinstance(existing, str):
+            try:
+                existing = json.loads(existing)
+            except (ValueError, TypeError):
+                existing = {}
+        if not isinstance(existing, dict):
+            existing = {}
+        return {**existing, **delta}
 
     async def delete_ad_rule(self, rule_id: str) -> dict[str, Any]:
         """Delete an automated rule.

@@ -125,6 +125,74 @@ class TestAdRulesMixin:
         data = call_args[1].get("data") or call_args[0][1]
         assert data["name"] == "更新後ルール名"
 
+    @pytest.mark.asyncio
+    async def test_update_ad_rule_merges_spec(self, client: AdRulesMixin) -> None:
+        """A partial evaluation_spec is merged onto the current one, not
+        replacing it — unrelated keys (evaluation_type) must survive."""
+        client._get = AsyncMock(
+            return_value={
+                "id": "rule_001",
+                "evaluation_spec": {
+                    "evaluation_type": "SCHEDULE",
+                    "filters": [{"field": "roas", "operator": "LESS_THAN", "value": 1}],
+                },
+            }
+        )
+        await client.update_ad_rule(
+            "rule_001",
+            {"evaluation_spec": {"filters": [{"field": "spend", "value": 100}]}},
+        )
+        data = client._post.call_args[0][1]
+        merged = json.loads(data["evaluation_spec"])
+        # evaluation_type preserved; filters replaced by the supplied list.
+        assert merged["evaluation_type"] == "SCHEDULE"
+        assert merged["filters"] == [{"field": "spend", "value": 100}]
+
+    @pytest.mark.asyncio
+    async def test_update_ad_rule_replace_specs_bypasses_merge(
+        self, client: AdRulesMixin
+    ) -> None:
+        client._get = AsyncMock(
+            return_value={
+                "id": "rule_001",
+                "evaluation_spec": {"evaluation_type": "SCHEDULE", "filters": []},
+            }
+        )
+        await client.update_ad_rule(
+            "rule_001",
+            {"evaluation_spec": {"filters": [{"field": "spend"}]}},
+            replace_specs=True,
+        )
+        merged = json.loads(client._post.call_args[0][1]["evaluation_spec"])
+        assert merged == {"filters": [{"field": "spend"}]}
+        client._get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_ad_rule_name_only_skips_get(
+        self, client: AdRulesMixin
+    ) -> None:
+        await client.update_ad_rule("rule_001", {"name": "x"})
+        client._get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_ad_rule_merges_json_string_spec(
+        self, client: AdRulesMixin
+    ) -> None:
+        # Meta may return the spec as a JSON string; merge must still preserve
+        # the omitted top-level keys.
+        client._get = AsyncMock(
+            return_value={
+                "id": "rule_001",
+                "evaluation_spec": '{"evaluation_type": "SCHEDULE", "filters": []}',
+            }
+        )
+        await client.update_ad_rule(
+            "rule_001", {"evaluation_spec": {"filters": [{"field": "spend"}]}}
+        )
+        merged = json.loads(client._post.call_args[0][1]["evaluation_spec"])
+        assert merged["evaluation_type"] == "SCHEDULE"
+        assert merged["filters"] == [{"field": "spend"}]
+
     # -----------------------------------------------------------------------
     # 5. test_delete_ad_rule
     # -----------------------------------------------------------------------
