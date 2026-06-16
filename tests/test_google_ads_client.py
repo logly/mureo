@@ -9,19 +9,18 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from google.ads.googleads.errors import GoogleAdsException
 
 from mureo.google_ads.client import (
+    _VALID_MATCH_TYPES,
+    _VALID_STATUSES,
+    PARTNER_CPA_WARNING_RATIO,
     GoogleAdsApiClient,
     _wrap_mutate_error,
-    PARTNER_CPA_WARNING_RATIO,
-    _VALID_STATUSES,
-    _VALID_MATCH_TYPES,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -879,6 +878,68 @@ class TestBudget:
             }
         )
         assert result["resource_name"] == "customers/123/budgets/100"
+
+    @pytest.mark.asyncio
+    async def test_update_budget_amount_micros_exact(self) -> None:
+        """``amount_micros`` is sent verbatim — no float round-trip (#277)."""
+        client = _make_client()
+        mock_result = MagicMock()
+        mock_result.resource_name = "customers/123/budgets/100"
+        mock_response = MagicMock()
+        mock_response.results = [mock_result]
+        mock_service = MagicMock()
+        mock_service.mutate_campaign_budgets.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+        budget_op = MagicMock()
+        client._client.get_type.return_value = budget_op
+
+        await client.update_budget({"budget_id": "100", "amount_micros": 1_234_567})
+
+        assert budget_op.update.amount_micros == 1_234_567
+
+    @pytest.mark.asyncio
+    async def test_update_budget_金額0以下(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="positive number"):
+            await client.update_budget({"budget_id": "100", "amount": 0})
+
+    @pytest.mark.asyncio
+    async def test_update_budget_負数(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="positive number"):
+            await client.update_budget({"budget_id": "100", "amount": -100})
+
+    @pytest.mark.asyncio
+    async def test_update_budget_上限超過(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="ceiling"):
+            await client.update_budget({"budget_id": "100", "amount": 2_000_000_000})
+
+    @pytest.mark.asyncio
+    async def test_update_budget_両方指定(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="not both"):
+            await client.update_budget(
+                {"budget_id": "100", "amount": 5000, "amount_micros": 5_000_000}
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_budget_どちらもなし(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="required"):
+            await client.update_budget({"budget_id": "100"})
+
+    @pytest.mark.asyncio
+    async def test_update_budget_amount_micros_bool拒否(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="integer"):
+            await client.update_budget({"budget_id": "100", "amount_micros": True})
+
+    @pytest.mark.asyncio
+    async def test_update_budget_inf拒否(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="finite"):
+            await client.update_budget({"budget_id": "100", "amount": float("inf")})
 
     @pytest.mark.asyncio
     async def test_create_budget_正常(self) -> None:

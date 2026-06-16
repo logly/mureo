@@ -25,6 +25,7 @@ from mureo.mcp._helpers import (
     _no_creds_result,
     _opt,
     _require,
+    _validate_positive_money,
     api_error_handler,
 )
 from mureo.throttle import META_ADS_THROTTLE, Throttler
@@ -109,6 +110,7 @@ async def handle_campaigns_get(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_campaigns_create(args: dict[str, Any]) -> list[TextContent]:
+    _validate_positive_money(args, "daily_budget", "lifetime_budget")
     client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
@@ -126,6 +128,7 @@ async def handle_campaigns_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_campaigns_update(args: dict[str, Any]) -> list[TextContent]:
+    _validate_positive_money(args, "daily_budget")
     client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
@@ -158,6 +161,7 @@ async def handle_ad_sets_list(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ad_sets_create(args: dict[str, Any]) -> list[TextContent]:
+    _validate_positive_money(args, "daily_budget", "bid_amount")
     client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
@@ -182,6 +186,7 @@ async def handle_ad_sets_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_ad_sets_update(args: dict[str, Any]) -> list[TextContent]:
+    _validate_positive_money(args, "daily_budget")
     client = await _get_client(args)
     if client is None:
         return _no_meta_creds()

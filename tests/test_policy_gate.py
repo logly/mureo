@@ -88,11 +88,13 @@ class TestDispatcherGateIntegration:
         from mureo.mcp.server import handle_call_tool
 
         fake_handler = AsyncMock(return_value=[MagicMock(text="result")])
+        # ``rollback_plan_get`` requires ``index`` — dispatch now runs the
+        # inputSchema validation pass (#277), so pass schema-valid args.
         with (
             patch("mureo.mcp.server._load_policy_gates", return_value=()),
             patch("mureo.mcp.server.handle_rollback_tool", new=fake_handler),
         ):
-            result = await handle_call_tool("rollback_plan_get", {})
+            result = await handle_call_tool("rollback_plan_get", {"index": 0})
         fake_handler.assert_awaited_once()
         assert result[0].text == "result"
 
@@ -105,8 +107,8 @@ class TestDispatcherGateIntegration:
             patch("mureo.mcp.server._load_policy_gates", return_value=(gate,)),
             patch("mureo.mcp.server.handle_rollback_tool", new=fake_handler),
         ):
-            result = await handle_call_tool("rollback_plan_get", {"k": "v"})
-        gate.evaluate.assert_called_once_with("rollback_plan_get", {"k": "v"})
+            result = await handle_call_tool("rollback_plan_get", {"index": 0})
+        gate.evaluate.assert_called_once_with("rollback_plan_get", {"index": 0})
         fake_handler.assert_awaited_once()
         assert result[0].text == "result"
 
@@ -161,7 +163,7 @@ class TestDispatcherGateIntegration:
             patch("mureo.mcp.server.handle_rollback_tool", new=fake_handler),
             caplog.at_level(logging.WARNING, logger="mureo.mcp.server"),
         ):
-            result = await handle_call_tool("rollback_plan_get", {})
+            result = await handle_call_tool("rollback_plan_get", {"index": 0})
         fake_handler.assert_awaited_once()
         assert result[0].text == "result"
         assert any(
@@ -194,7 +196,7 @@ class TestDispatcherGateIntegration:
             patch("mureo.mcp.server.handle_rollback_tool", new=fake_handler),
             caplog.at_level(logging.WARNING, logger="mureo.mcp.server"),
         ):
-            result = await handle_call_tool("rollback_plan_get", {})
+            result = await handle_call_tool("rollback_plan_get", {"index": 0})
         fake_handler.assert_awaited_once()
         assert result[0].text == "result"
         assert any(

@@ -32,6 +32,24 @@ def _opt(arguments: dict[str, Any], key: str, default: Any = None) -> Any:
     return arguments.get(key, default)
 
 
+def _validate_positive_money(arguments: dict[str, Any], *keys: str) -> None:
+    """Reject non-positive monetary values before a real-spend mutation.
+
+    For each key present and not ``None``, require a positive number. Guards
+    against ``0`` (which silently halts delivery) and negatives reaching a
+    live budget/bid. ``bool`` is rejected even though it is an ``int``
+    subclass. No-op for absent keys (the field is simply not being changed).
+    """
+    for key in keys:
+        if key not in arguments or arguments[key] is None:
+            continue
+        value = arguments[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{key} must be a positive number (got {value!r})")
+        if value <= 0:
+            raise ValueError(f"{key} must be greater than 0 (got {value!r})")
+
+
 def _json_result(data: Any) -> list[TextContent]:
     """Convert a result to a list of TextContent containing a JSON string."""
     return [TextContent(type="text", text=json.dumps(data, ensure_ascii=False))]

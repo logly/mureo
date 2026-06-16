@@ -749,11 +749,26 @@ TOOLS: list[Tool] = [
                     "description": (
                         "New daily budget in the account's currency "
                         "(JPY / USD / etc.). Not micros — e.g. pass 5000 "
-                        "for ¥5,000 / day."
+                        "for ¥5,000 / day. Mutually exclusive with "
+                        "amount_micros."
+                    ),
+                },
+                "amount_micros": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": (
+                        "New daily budget in micros (currency unit × "
+                        "1,000,000). Use this for an exact value with no "
+                        "float rounding (e.g. when restoring a prior amount "
+                        "on rollback). Mutually exclusive with amount."
                     ),
                 },
             },
-            "required": ["budget_id", "amount"],
+            "required": ["budget_id"],
+            "anyOf": [
+                {"required": ["amount"]},
+                {"required": ["amount_micros"]},
+            ],
         },
     ),
     # === Budget creation ===
