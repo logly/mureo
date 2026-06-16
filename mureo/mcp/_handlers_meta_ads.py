@@ -191,7 +191,10 @@ async def handle_ad_sets_update(args: dict[str, Any]) -> list[TextContent]:
         val = _opt(args, key)
         if val is not None:
             update_kwargs[key] = val
-    result = await client.update_ad_set(ad_set_id, **update_kwargs)
+    replace_targeting = bool(args.get("replace_targeting", False))
+    result = await client.update_ad_set(
+        ad_set_id, replace_targeting=replace_targeting, **update_kwargs
+    )
     return _json_result(result)
 
 

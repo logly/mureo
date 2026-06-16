@@ -125,12 +125,24 @@ class AdSetsMixin:
     async def update_ad_set(
         self,
         ad_set_id: str,
+        *,
+        replace_targeting: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Update an ad set
+        """Update an ad set.
+
+        Meta replaces the **entire** targeting spec on write, so a partial
+        ``targeting`` dict would silently clear every key not supplied
+        (geo_locations, custom_audiences, interests, ...). To prevent that
+        data loss this method performs a read-modify-write by default: it
+        fetches the current spec and shallow-merges the supplied top-level
+        keys over it. Pass ``replace_targeting=True`` to skip the merge and
+        replace the whole spec deliberately (e.g. to clear a facet).
 
         Args:
             ad_set_id: Ad set ID
+            replace_targeting: When True, ``targeting`` replaces the whole
+                spec instead of being merged onto the current one.
             **kwargs: Fields to update (name, status, daily_budget,
                       targeting, optimization_goal, etc.)
 
@@ -139,13 +151,34 @@ class AdSetsMixin:
         """
         data: dict[str, Any] = {}
         for key, value in kwargs.items():
-            if value is not None:
-                if key == "targeting" and isinstance(value, dict):
-                    data[key] = json.dumps(value)
-                else:
-                    data[key] = value
+            if value is None:
+                continue
+            if key == "targeting" and isinstance(value, dict):
+                targeting = value
+                if not replace_targeting:
+                    targeting = await self._merge_targeting(ad_set_id, value)
+                data[key] = json.dumps(targeting)
+            else:
+                data[key] = value
 
         return await self._post(f"/{ad_set_id}", data)
+
+    async def _merge_targeting(
+        self, ad_set_id: str, delta: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Shallow-merge a targeting ``delta`` onto the ad set's current spec.
+
+        Read-modify-write guard against Meta's whole-spec replacement: the
+        current spec's top-level keys are preserved unless overridden by a
+        key present in ``delta``. Merging is top-level only — a supplied key
+        replaces that key wholesale (nested lists like ``flexible_spec`` are
+        not deep-merged, which would be ambiguous).
+        """
+        current = await self.get_ad_set(ad_set_id)
+        existing = current.get("targeting")
+        if not isinstance(existing, dict):
+            existing = {}
+        return {**existing, **delta}
 
     async def pause_ad_set(self, ad_set_id: str) -> dict[str, Any]:
         """Pause an ad set
