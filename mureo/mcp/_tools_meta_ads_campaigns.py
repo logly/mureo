@@ -383,11 +383,14 @@ TOOLS: list[Tool] = [
         description=(
             "Updates one or more settings on an existing ad set. Partial "
             "update — only provided fields are changed. Returns the updated "
-            "ad set. Mutating, reversible via rollback_apply. For "
-            "status-only transitions prefer meta_ads_ad_sets_pause / "
-            "meta_ads_ad_sets_enable. Changing `targeting` replaces the "
-            "entire targeting spec — fetch the current spec via "
-            "meta_ads_ad_sets_get and merge client-side to avoid data loss."
+            "ad set. Mutating; not automatically reversible — record "
+            "before-state if you need to roll back. For status-only "
+            "transitions prefer meta_ads_ad_sets_pause / "
+            "meta_ads_ad_sets_enable. Changing `targeting` is a safe "
+            "read-modify-write by default: the supplied top-level keys are "
+            "merged onto the current spec, so keys you omit are preserved. "
+            "Set `replace_targeting` to true to replace the whole spec "
+            "instead (e.g. to clear a facet)."
         ),
         inputSchema={
             "type": "object",
@@ -420,10 +423,20 @@ TOOLS: list[Tool] = [
                 "targeting": {
                     "type": "object",
                     "description": (
-                        "Full targeting spec replacement. Any keys not "
-                        "supplied here are cleared — fetch current spec "
-                        "via meta_ads_ad_sets_get and merge before "
-                        "writing back."
+                        "Targeting spec changes. Merged onto the current "
+                        "spec by default (top-level keys you omit are kept). "
+                        "Supply only the facets you want to change, e.g. "
+                        '{"age_min": 25}. Set replace_targeting=true to '
+                        "replace the whole spec instead."
+                    ),
+                },
+                "replace_targeting": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, `targeting` replaces the entire spec "
+                        "instead of merging onto the current one. Use only "
+                        "to deliberately clear targeting facets. Default "
+                        "false (safe merge)."
                     ),
                 },
             },

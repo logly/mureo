@@ -197,6 +197,65 @@ class TestAdSetsMixin:
         assert json.loads(data["targeting"]) == targeting
 
     @pytest.mark.asyncio
+    async def test_update_ad_set_targeting_merges_with_existing(self, client) -> None:
+        # Meta replaces the whole targeting spec on write. A partial delta
+        # must be merged onto the current spec so unrelated facets survive.
+        client._get = AsyncMock(
+            return_value={
+                "id": "1",
+                "targeting": {
+                    "geo_locations": {"countries": ["JP"]},
+                    "interests": [{"id": "6003", "name": "Tech"}],
+                },
+            }
+        )
+        await client.update_ad_set("1", targeting={"age_min": 25})
+        merged = json.loads(client._post.call_args[0][1]["targeting"])
+        # Unrelated keys must survive — this is the data-loss fix (#273).
+        assert merged["geo_locations"] == {"countries": ["JP"]}
+        assert merged["interests"] == [{"id": "6003", "name": "Tech"}]
+        assert merged["age_min"] == 25
+
+    @pytest.mark.asyncio
+    async def test_update_ad_set_targeting_merge_no_existing_spec(self, client) -> None:
+        # Ad set has no targeting yet (get returns no 'targeting' key): the
+        # merge must fall back to {} and write the delta as-is, not crash.
+        client._get = AsyncMock(return_value={"id": "1"})
+        await client.update_ad_set("1", targeting={"age_min": 25})
+        merged = json.loads(client._post.call_args[0][1]["targeting"])
+        assert merged == {"age_min": 25}
+
+    @pytest.mark.asyncio
+    async def test_update_ad_set_targeting_delta_overrides_key(self, client) -> None:
+        client._get = AsyncMock(
+            return_value={
+                "id": "1",
+                "targeting": {"geo_locations": {"countries": ["JP"]}},
+            }
+        )
+        await client.update_ad_set(
+            "1", targeting={"geo_locations": {"countries": ["US"]}}
+        )
+        merged = json.loads(client._post.call_args[0][1]["targeting"])
+        # A supplied top-level key replaces that key wholesale.
+        assert merged["geo_locations"] == {"countries": ["US"]}
+
+    @pytest.mark.asyncio
+    async def test_update_ad_set_targeting_replace_bypasses_merge(self, client) -> None:
+        client._get = AsyncMock(
+            return_value={"id": "1", "targeting": {"interests": [{"id": "6003"}]}}
+        )
+        await client.update_ad_set(
+            "1",
+            targeting={"geo_locations": {"countries": ["US"]}},
+            replace_targeting=True,
+        )
+        merged = json.loads(client._post.call_args[0][1]["targeting"])
+        # Explicit opt-in to full replacement: no read, only supplied keys.
+        assert merged == {"geo_locations": {"countries": ["US"]}}
+        client._get.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_pause_ad_set(self, client) -> None:
         await client.pause_ad_set("1")
         data = client._post.call_args[0][1]
@@ -408,9 +467,7 @@ class TestCreativesMixin:
         assert spec["link_data"]["call_to_action"] == {"type": "SIGN_UP"}
 
     @pytest.mark.asyncio
-    async def test_create_lead_ad_creative_accepts_alternate_cta(
-        self, client
-    ) -> None:
+    async def test_create_lead_ad_creative_accepts_alternate_cta(self, client) -> None:
         """Lead Ads support several CTAs (LEARN_MORE, APPLY_NOW,
         GET_QUOTE, SUBSCRIBE, ...) — the helper must pass through
         whatever the caller chooses without validation."""
@@ -460,9 +517,7 @@ class TestCreativesMixin:
             "https://example.com",
             image_url="https://img.example.com/x.jpg",
         )
-        client.upload_ad_image.assert_awaited_once_with(
-            "https://img.example.com/x.jpg"
-        )
+        client.upload_ad_image.assert_awaited_once_with("https://img.example.com/x.jpg")
         spec = json.loads(client._post.call_args[0][1]["object_story_spec"])
         assert spec["link_data"]["image_hash"] == "uploaded_hash"
 
@@ -486,9 +541,7 @@ class TestCreativesMixin:
         assert "image_hash" not in spec["link_data"]
 
     @pytest.mark.asyncio
-    async def test_create_lead_ad_creative_calls_correct_endpoint(
-        self, client
-    ) -> None:
+    async def test_create_lead_ad_creative_calls_correct_endpoint(self, client) -> None:
         """The POST goes to ``/<ad_account_id>/adcreatives`` — same
         endpoint as ``create_ad_creative``, only the payload differs."""
         await client.create_lead_ad_creative(
