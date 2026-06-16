@@ -37,23 +37,27 @@ if TYPE_CHECKING:
 # idempotent reversals are listed. Deletion/removal operations are
 # deliberately absent so an agent cannot log a "reversal" that drops a
 # campaign, keyword, or asset. Add entries as new reversible flows land.
-# All keys use the underscore form that the MCP tool registry exposes
-# post the spec-compliance rename. Some entries (e.g.
-# ``meta_ads_campaigns_update_status``) do not correspond to a
-# registered tool today — that's a pre-existing rollback-allowlist
-# gap inherited from before the rename. Kept here so action_log
-# entries that previously serialized this operation name continue to
-# be recognized by the planner; the actual dispatch will fail with
-# "tool not found", same as on main before this PR. Reconciling the
-# allowlist with the actual registered tool set is a separate concern.
+# Every operation here must name a *registered* MCP tool with these exact
+# param keys — native status toggles are recorded automatically by
+# :mod:`mureo.mcp.native_reversal`, which builds reversals against these
+# operations. Keep the two in lockstep.
 _ALLOWED_OPERATIONS: dict[str, frozenset[str]] = {
-    "google_ads_budget_update": frozenset({"budget_id", "amount_micros"}),
+    # Google budget: restores the prior daily amount. Key is ``amount`` to
+    # match the real google_ads_budget_update tool (currency units, not
+    # micros). Captured manually — see native_reversal for why budget is not
+    # auto-recorded.
+    "google_ads_budget_update": frozenset({"budget_id", "amount"}),
+    # Google status toggles: one update_status tool restores the prior status.
     "google_ads_campaigns_update_status": frozenset({"campaign_id", "status"}),
-    "google_ads_ad_groups_update_status": frozenset({"ad_group_id", "status"}),
     "google_ads_ads_update_status": frozenset({"ad_group_id", "ad_id", "status"}),
-    "meta_ads_campaigns_update_status": frozenset({"campaign_id", "status"}),
-    "meta_ads_ad_sets_update_status": frozenset({"ad_set_id", "status"}),
-    "meta_ads_ads_update_status": frozenset({"ad_id", "status"}),
+    # Meta status toggles are dedicated pause/enable tools; the reversal
+    # invokes the opposite verb to restore the prior status.
+    "meta_ads_campaigns_pause": frozenset({"campaign_id"}),
+    "meta_ads_campaigns_enable": frozenset({"campaign_id"}),
+    "meta_ads_ad_sets_pause": frozenset({"ad_set_id"}),
+    "meta_ads_ad_sets_enable": frozenset({"ad_set_id"}),
+    "meta_ads_ads_pause": frozenset({"ad_id"}),
+    "meta_ads_ads_enable": frozenset({"ad_id"}),
 }
 
 # Underscore-prefixed verbs match the spec-compliant tool naming

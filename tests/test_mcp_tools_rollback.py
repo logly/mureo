@@ -37,9 +37,7 @@ def _clear_runtime_context_cache():
 
 
 @pytest.fixture
-def sandboxed_cwd(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Path:
+def sandboxed_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Run each test under ``tmp_path`` so the handler's path-sandboxing
     accepts a relative ``STATE.json`` argument. The autouse cache-reset
     fixture above runs first, so the resolver picks up the chdir on the
@@ -56,7 +54,7 @@ def _budget_entry() -> ActionLogEntry:
         campaign_id="100",
         reversible_params={
             "operation": "google_ads_budget_update",
-            "params": {"budget_id": "B1", "amount_micros": 5_000_000_000},
+            "params": {"budget_id": "B1", "amount": 5_000_000_000},
         },
     )
 
@@ -96,13 +94,11 @@ class TestPlanGetHandler:
         assert payload["operation"] == "google_ads_budget_update"
         assert payload["params"] == {
             "budget_id": "B1",
-            "amount_micros": 5_000_000_000,
+            "amount": 5_000_000_000,
         }
 
     @pytest.mark.asyncio
-    async def test_read_only_entry_returns_null_plan(
-        self, sandboxed_cwd: Path
-    ) -> None:
+    async def test_read_only_entry_returns_null_plan(self, sandboxed_cwd: Path) -> None:
         _write_state(
             sandboxed_cwd / "STATE.json",
             [
@@ -151,9 +147,7 @@ class TestApplyHandler:
 
         calls: list[tuple[str, dict[str, Any]]] = []
 
-        async def _fake_dispatcher(
-            name: str, arguments: dict[str, Any]
-        ) -> list[Any]:
+        async def _fake_dispatcher(name: str, arguments: dict[str, Any]) -> list[Any]:
             calls.append((name, dict(arguments)))
             return [{"ok": True}]
 
@@ -172,7 +166,7 @@ class TestApplyHandler:
         assert calls == [
             (
                 "google_ads_budget_update",
-                {"budget_id": "B1", "amount_micros": 5_000_000_000},
+                {"budget_id": "B1", "amount": 5_000_000_000},
             )
         ]
 
@@ -205,9 +199,7 @@ class TestApplyHandler:
         )
 
     @pytest.mark.asyncio
-    async def test_truthy_non_bool_confirm_refused(
-        self, sandboxed_cwd: Path
-    ) -> None:
+    async def test_truthy_non_bool_confirm_refused(self, sandboxed_cwd: Path) -> None:
         """confirm must be the literal True, not a truthy non-bool."""
         _write_state(sandboxed_cwd / "STATE.json", [_budget_entry()])
 

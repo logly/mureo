@@ -42,7 +42,7 @@ def _budget_update_entry(
     timestamp: str = "2026-04-15T10:00:00",
     campaign_id: str = "100",
     budget_id: str = "B1",
-    amount_micros: int = 5_000_000_000,
+    amount: int = 5_000_000_000,
 ) -> ActionLogEntry:
     return ActionLogEntry(
         timestamp=timestamp,
@@ -52,7 +52,7 @@ def _budget_update_entry(
         summary="Increased budget for traffic test",
         reversible_params={
             "operation": "google_ads_budget_update",
-            "params": {"budget_id": budget_id, "amount_micros": amount_micros},
+            "params": {"budget_id": budget_id, "amount": amount},
         },
     )
 
@@ -104,7 +104,7 @@ class TestExecuteRollback:
         assert dispatcher.calls == [
             (
                 "google_ads_budget_update",
-                {"budget_id": "B1", "amount_micros": 5_000_000_000},
+                {"budget_id": "B1", "amount": 5_000_000_000},
             )
         ]
 
@@ -199,9 +199,7 @@ class TestExecuteRollback:
         assert dispatcher.calls == []
 
     @pytest.mark.asyncio
-    async def test_dispatch_failure_does_not_append_log(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_dispatch_failure_does_not_append_log(self, tmp_path: Path) -> None:
         state_file = tmp_path / "STATE.json"
         _write_state(state_file, [_budget_update_entry()])
         dispatcher = _FakeDispatcher(raise_exc=RuntimeError("API exploded"))
@@ -268,7 +266,7 @@ class TestExecuteRollback:
             platform="google_ads",
             reversible_params={
                 "operation": "google_ads_budget_update",
-                "params": {"budget_id": "B1", "amount_micros": 1_000_000_000},
+                "params": {"budget_id": "B1", "amount": 1_000_000_000},
                 "caveats": ["Spend already incurred cannot be refunded."],
             },
         )
@@ -283,9 +281,7 @@ class TestExecuteRollback:
         )
 
         assert result["status"] == "applied"
-        assert result["caveats"] == [
-            "Spend already incurred cannot be refunded."
-        ]
+        assert result["caveats"] == ["Spend already incurred cannot be refunded."]
 
 
 @pytest.mark.unit
@@ -318,9 +314,7 @@ class TestExecutorWiringContract:
         assert "0" in (new_entry.summary or "")
 
     @pytest.mark.asyncio
-    async def test_state_file_is_valid_json_after_success(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_state_file_is_valid_json_after_success(self, tmp_path: Path) -> None:
         state_file = tmp_path / "STATE.json"
         _write_state(state_file, [_budget_update_entry()])
         dispatcher = _FakeDispatcher()

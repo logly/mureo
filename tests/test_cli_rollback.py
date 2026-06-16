@@ -52,7 +52,7 @@ def state_file(tmp_path: Path) -> Path:
                 "summary": "Reduced daily budget",
                 "reversible_params": {
                     "operation": "google_ads_budget_update",
-                    "params": {"budget_id": "222", "amount_micros": 10_000_000_000},
+                    "params": {"budget_id": "222", "amount": 10_000_000_000},
                 },
             },
             {
@@ -66,8 +66,8 @@ def state_file(tmp_path: Path) -> Path:
                 "platform": "meta_ads",
                 "campaign_id": "abc",
                 "reversible_params": {
-                    "operation": "meta_ads_campaigns_update_status",
-                    "params": {"campaign_id": "abc", "status": "ACTIVE"},
+                    "operation": "meta_ads_campaigns_enable",
+                    "params": {"campaign_id": "abc"},
                     "caveats": ["Spend during pause is not refundable."],
                 },
             },
@@ -186,7 +186,7 @@ class TestSafeOutput:
                     "platform": "google_ads",
                     "reversible_params": {
                         "operation": "google_ads_budget_update",
-                        "params": {"budget_id": "1", "amount_micros": 1},
+                        "params": {"budget_id": "1", "amount": 1},
                     },
                 },
             ],
@@ -237,7 +237,7 @@ class TestStateFileDefault:
                     "campaign_id": "111",
                     "reversible_params": {
                         "operation": "google_ads_budget_update",
-                        "params": {"budget_id": "222", "amount_micros": 1_000_000_000},
+                        "params": {"budget_id": "222", "amount": 1_000_000_000},
                     },
                 },
             ],
@@ -276,8 +276,8 @@ class TestStateFileDefault:
                     "platform": "meta_ads",
                     "campaign_id": "ws-1",
                     "reversible_params": {
-                        "operation": "meta_ads_campaigns_update_status",
-                        "params": {"campaign_id": "ws-1", "status": "ACTIVE"},
+                        "operation": "meta_ads_campaigns_enable",
+                        "params": {"campaign_id": "ws-1"},
                     },
                 },
             ],
@@ -294,9 +294,7 @@ class TestStateFileDefault:
             throttle_store=base.throttle_store,
             workspace_id="injected",
         )
-        monkeypatch.setattr(
-            "mureo.core.runtime_context._cached_context", injected
-        )
+        monkeypatch.setattr("mureo.core.runtime_context._cached_context", injected)
 
         from mureo.cli.main import app
 

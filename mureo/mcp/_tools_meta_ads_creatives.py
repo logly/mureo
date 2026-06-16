@@ -74,8 +74,10 @@ TOOLS: list[Tool] = [
         name="meta_ads_creatives_create",
         description=(
             "Creates a single-image Meta Ads AdCreative. Returns the new "
-            "creative's id and object_story_id. Mutating, reversible via "
-            "rollback_apply (rollback soft-deletes the creative). Supply "
+            "creative's id and object_story_id. Mutating — not "
+            "automatically reversible; record before-state with "
+            "mureo_state_action_log_append if you may need to roll back. "
+            "Supply "
             "exactly one of image_url or image_hash — image_url triggers "
             "Meta to fetch and host the image; image_hash references an "
             "image already uploaded via meta_ads_creatives_upload_image or "
@@ -166,7 +168,9 @@ TOOLS: list[Tool] = [
         description=(
             "Creates a Lead Ad AdCreative attached to a Meta Instant "
             "Form. Returns the new creative's id and object_story_id. "
-            "Mutating, reversible via rollback_apply. Use under a "
+            "Mutating — not automatically reversible; record before-state "
+            "with mureo_state_action_log_append if you may need to roll "
+            "back. Use under a "
             "campaign with objective=OUTCOME_LEADS and an ad set with "
             "optimization_goal=LEAD_GENERATION. Pre-requisite: the "
             "lead form must exist (create via "
@@ -288,8 +292,10 @@ TOOLS: list[Tool] = [
         description=(
             "Creates a Dynamic Creative — Meta auto-generates and "
             "optimises combinations from multiple images, headlines, "
-            "bodies, and CTAs. Returns the new creative id. Mutating, "
-            "reversible via rollback_apply. Use when you want Meta to "
+            "bodies, and CTAs. Returns the new creative id. Mutating — not "
+            "automatically reversible; record before-state with "
+            "mureo_state_action_log_append if you may need to roll back. "
+            "Use when you want Meta to "
             "learn the best-performing asset mix rather than testing "
             "manually. For static single-image ads use "
             "meta_ads_creatives_create; for explicitly-controlled multi-"
@@ -408,8 +414,10 @@ TOOLS: list[Tool] = [
         name="meta_ads_creatives_create_carousel",
         description=(
             "Creates a Carousel AdCreative with 2–10 swipeable cards. "
-            "Returns the new creative id. Mutating, reversible via "
-            "rollback_apply. Each card carries its own image (or video), "
+            "Returns the new creative id. Mutating — not automatically "
+            "reversible; record before-state with "
+            "mureo_state_action_log_append if you may need to roll back. "
+            "Each card carries its own image (or video), "
             "name, description, and link — useful for product catalogs or "
             "multi-step narratives. For auto-optimized asset rotation use "
             "meta_ads_creatives_create_dynamic; for product-feed-driven "
@@ -495,7 +503,9 @@ TOOLS: list[Tool] = [
         description=(
             "Creates a Collection AdCreative that pulls products from a "
             "catalog into a mobile-optimized storefront layout. Returns "
-            "the new creative id. Mutating, reversible via rollback_apply. "
+            "the new creative id. Mutating — not automatically reversible; "
+            "record before-state with mureo_state_action_log_append if you "
+            "may need to roll back. "
             "Requires a Meta product catalog with the referenced "
             "product_ids — set up the catalog via meta_ads.catalogs.* "
             "tools first. For static card decks (non-catalog) use "

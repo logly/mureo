@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from mureo.core.policy import PolicyDecision, PolicyGate
     from mureo.mcp.tool_provider import MCPToolProvider
 
+from mureo.mcp.native_reversal import capture_before_state, record_native_mutation
 from mureo.mcp.plugin_audit import record_plugin_call
 from mureo.mcp.plugin_semantics import (
     ToolSemantics,
@@ -430,13 +431,15 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     if decision is not None:
         return _refuse_text_content(name, decision)
     if name in _GOOGLE_ADS_NAMES:
-        return _maybe_append_strategy_reminder(
-            name, await handle_google_ads_tool(name, arguments)
-        )
+        before = await capture_before_state(name, arguments)
+        result = await handle_google_ads_tool(name, arguments)
+        record_native_mutation(name, arguments, before, result)
+        return _maybe_append_strategy_reminder(name, result)
     if name in _META_ADS_NAMES:
-        return _maybe_append_strategy_reminder(
-            name, await handle_meta_ads_tool(name, arguments)
-        )
+        before = await capture_before_state(name, arguments)
+        result = await handle_meta_ads_tool(name, arguments)
+        record_native_mutation(name, arguments, before, result)
+        return _maybe_append_strategy_reminder(name, result)
     if name in _SEARCH_CONSOLE_NAMES:
         return _maybe_append_strategy_reminder(
             name, await handle_search_console_tool(name, arguments)

@@ -100,9 +100,10 @@ TOOLS: list[Tool] = [
         name="meta_ads_campaigns_create",
         description=(
             "Creates a new campaign in the specified Meta Ads account. "
-            "Returns the new campaign id. Mutating, reversible via "
-            "rollback_apply (rollback sets status to PAUSED rather than "
-            "deleting). Default initial status is PAUSED — explicitly "
+            "Returns the new campaign id. Mutating — not automatically "
+            "reversible; record before-state with "
+            "mureo_state_action_log_append if you may need to roll back. "
+            "Default initial status is PAUSED — explicitly "
             "pass status='ACTIVE' only if the operator has confirmed "
             "immediate spend. A campaign acts as a container; ad sets "
             "(where budgets and targeting live) and ads must be created "
@@ -172,7 +173,9 @@ TOOLS: list[Tool] = [
         description=(
             "Updates fields on an existing campaign. Partial update — only "
             "the supplied fields are changed. Returns the updated campaign. "
-            "Mutating, reversible via rollback_apply. For status-only "
+            "Mutating — not automatically reversible; record before-state "
+            "with mureo_state_action_log_append if you may need to roll "
+            "back. For status-only "
             "transitions prefer meta_ads_campaigns_pause / "
             "meta_ads_campaigns_enable, which are safer and map to a "
             "single explicit operator intent."
@@ -290,8 +293,9 @@ TOOLS: list[Tool] = [
         name="meta_ads_ad_sets_create",
         description=(
             "Creates a new ad set inside an existing campaign. Returns the "
-            "new ad_set id. Mutating, reversible via rollback_apply "
-            "(rollback sets status to PAUSED). Targeting is passed as a "
+            "new ad_set id. Mutating — not automatically reversible; record "
+            "before-state with mureo_state_action_log_append if you may "
+            "need to roll back. Targeting is passed as a "
             "Meta targeting spec object; at minimum supply "
             "geo_locations and age bounds. Default initial status is "
             "PAUSED — only ACTIVE when the operator has confirmed spend. "
@@ -543,8 +547,10 @@ TOOLS: list[Tool] = [
         name="meta_ads_ads_create",
         description=(
             "Creates a new ad inside an existing ad set, binding it to a "
-            "pre-existing creative. Returns the new ad id. Mutating, "
-            "reversible via rollback_apply. Default initial status is "
+            "pre-existing creative. Returns the new ad id. Mutating — not "
+            "automatically reversible; record before-state with "
+            "mureo_state_action_log_append if you may need to roll back. "
+            "Default initial status is "
             "PAUSED. The creative must already exist — use "
             "meta_ads_creatives_create (or sibling constructors like "
             "meta_ads_creatives_create_carousel) to produce a creative_id "
@@ -585,7 +591,9 @@ TOOLS: list[Tool] = [
         name="meta_ads_ads_update",
         description=(
             "Updates fields on an existing ad. Partial update. Returns the "
-            "updated ad. Mutating, reversible via rollback_apply. The ad's "
+            "updated ad. Mutating — not automatically reversible; record "
+            "before-state with mureo_state_action_log_append if you may "
+            "need to roll back. The ad's "
             "creative cannot be swapped via this call — creative changes "
             "require creating a replacement ad with a new creative_id and "
             "pausing the old one. For status-only transitions use "
