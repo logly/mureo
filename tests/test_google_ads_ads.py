@@ -915,6 +915,69 @@ class TestUpdateAd:
                     }
                 )
 
+    @staticmethod
+    async def _assets(self, ad_id: str):  # noqa: ARG004
+        return (["旧見出し1", "旧見出し2", "旧見出し3"], ["旧説明1", "旧説明2"])
+
+    def _mutate_client(self):
+        client = _make_client()
+        mock_result = MagicMock()
+        mock_result.resource_name = "customers/123/ads/456"
+        mock_response = MagicMock()
+        mock_response.results = [mock_result]
+        mock_service = MagicMock()
+        mock_service.mutate_ads.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+        client._client.get_type.return_value = MagicMock()
+        return client
+
+    @pytest.mark.asyncio
+    async def test_headlines_only_preserves_descriptions(self) -> None:
+        # Supplying only headlines must NOT touch descriptions (no FieldMask
+        # path for descriptions), so the existing descriptions survive.
+        client = self._mutate_client()
+        with patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa):
+            with patch.object(type(client), "_get_rsa_assets", self._assets):
+                await client.update_ad(
+                    {"ad_id": "456", "headlines": ["H1", "H2", "H3"]}
+                )
+        paths = list(client._client.copy_from.call_args[0][1].paths)
+        assert "responsive_search_ad.headlines" in paths
+        assert "responsive_search_ad.descriptions" not in paths
+
+    @pytest.mark.asyncio
+    async def test_descriptions_only_preserves_headlines(self) -> None:
+        client = self._mutate_client()
+        with patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa):
+            with patch.object(type(client), "_get_rsa_assets", self._assets):
+                await client.update_ad({"ad_id": "456", "descriptions": ["D1", "D2"]})
+        paths = list(client._client.copy_from.call_args[0][1].paths)
+        assert "responsive_search_ad.descriptions" in paths
+        assert "responsive_search_ad.headlines" not in paths
+
+    @pytest.mark.asyncio
+    async def test_no_headlines_or_descriptions_raises(self) -> None:
+        client = self._mutate_client()
+        with patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa):
+            with pytest.raises(ValueError, match="Supply headlines"):
+                await client.update_ad({"ad_id": "456"})
+
+    @pytest.mark.asyncio
+    async def test_unreadable_omitted_side_raises_clear_error(self) -> None:
+        # Only headlines supplied; current descriptions can't be read (empty)
+        # -> a clear error, not a misleading "min descriptions" message.
+        client = self._mutate_client()
+
+        async def _no_desc(self, ad_id: str):  # noqa: ARG001
+            return (["旧1", "旧2", "旧3"], [])
+
+        with patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa):
+            with patch.object(type(client), "_get_rsa_assets", _no_desc):
+                with pytest.raises(ValueError, match="current descriptions"):
+                    await client.update_ad(
+                        {"ad_id": "456", "headlines": ["H1", "H2", "H3"]}
+                    )
+
 
 # ---------------------------------------------------------------------------
 # update_ad_status

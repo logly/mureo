@@ -200,7 +200,8 @@ async def handle_ad_rules_update(args: dict[str, Any]) -> list[TextContent]:
         val = _opt(args, key)
         if val is not None:
             updates[key] = val
-    result = await client.update_ad_rule(rule_id, updates)
+    replace_specs = bool(args.get("replace_specs", False))
+    result = await client.update_ad_rule(rule_id, updates, replace_specs=replace_specs)
     return _json_result(result)
 
 

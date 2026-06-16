@@ -72,6 +72,25 @@ class _AdsMixin:
             f"have access to this account."
         )
 
+    async def _get_rsa_assets(self, ad_id: str) -> tuple[list[str], list[str]]:
+        """Read an RSA's current headline and description texts.
+
+        Used to backfill the side of an ``update_ad`` the caller did not
+        supply, so a single-side update never wipes the other side.
+        """
+        query = (
+            "SELECT ad_group_ad.ad.responsive_search_ad.headlines, "
+            "ad_group_ad.ad.responsive_search_ad.descriptions "
+            f"FROM ad_group_ad WHERE ad_group_ad.ad.id = {ad_id}"
+        )
+        response = await self._search(query)
+        for row in response:
+            rsa = row.ad_group_ad.ad.responsive_search_ad
+            headlines = [asset.text for asset in rsa.headlines]
+            descriptions = [asset.text for asset in rsa.descriptions]
+            return headlines, descriptions
+        return [], []
+
     # === Ads ===
 
     @staticmethod
@@ -329,10 +348,14 @@ class _AdsMixin:
 
     @_wrap_mutate_error("ad text update")
     async def update_ad(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Update headlines and descriptions of an existing responsive search ad.
+        """Update headlines and/or descriptions of an existing RSA.
 
-        Uses AdService.mutate_ads (not AdGroupAdService).
-        Headlines and descriptions are fully replaced, not patched.
+        Uses AdService.mutate_ads (not AdGroupAdService). A supplied side
+        (headlines or descriptions) is **fully replaced** — Google has no
+        per-asset patch. To avoid wiping the side you are not changing, omit
+        it: the omitted side is read from the current ad and left untouched
+        (its FieldMask path is not set). Supply at least one of headlines /
+        descriptions / final_url.
 
         This method currently supports RSA (Responsive Search Ad) only.
         If the target ad is a RDA (Responsive Display Ad), it raises
@@ -348,11 +371,46 @@ class _AdsMixin:
         # while processing ad text update." message for display ads.
         await self._assert_ad_is_rsa(ad_id)
 
+        supplied_headlines = params.get("headlines")
+        supplied_descriptions = params.get("descriptions")
+        if not supplied_headlines and not supplied_descriptions and not final_url:
+            raise ValueError(
+                "Supply headlines and/or descriptions (and/or final_url) to update."
+            )
+
+        # Read current assets only when a side is omitted, so the omitted
+        # side can be preserved (single-side update never wipes the other).
+        if supplied_headlines is None or supplied_descriptions is None:
+            current_headlines, current_descriptions = await self._get_rsa_assets(ad_id)
+        else:
+            current_headlines, current_descriptions = [], []
+        # If a side was omitted but its current assets could not be read, fail
+        # with a clear message rather than a misleading "min count" error from
+        # validation below (which would blame the side the caller never touched).
+        if supplied_headlines is None and not current_headlines:
+            raise ValueError(
+                "Could not read the ad's current headlines to preserve them; "
+                "supply headlines explicitly."
+            )
+        if supplied_descriptions is None and not current_descriptions:
+            raise ValueError(
+                "Could not read the ad's current descriptions to preserve them; "
+                "supply descriptions explicitly."
+            )
+        effective_headlines = (
+            supplied_headlines if supplied_headlines is not None else current_headlines
+        )
+        effective_descriptions = (
+            supplied_descriptions
+            if supplied_descriptions is not None
+            else current_descriptions
+        )
+
         # Use dummy URL for validation when final_url is not specified (URL itself is not updated)
         validation_url = final_url if final_url else "https://placeholder.example.com"
         headlines, descriptions, rsa_result = self._validate_and_prepare_rsa(
-            params.get("headlines", []),
-            params.get("descriptions", []),
+            effective_headlines,
+            effective_descriptions,
             validation_url,
         )
 
@@ -362,20 +420,21 @@ class _AdsMixin:
         ad = op.update
         ad.resource_name = ad_service.ad_path(self._customer_id, ad_id)
 
-        for h in headlines:
-            text_asset = self._client.get_type("AdTextAsset")
-            text_asset.text = h
-            ad.responsive_search_ad.headlines.append(text_asset)
-        for d in descriptions:
-            text_asset = self._client.get_type("AdTextAsset")
-            text_asset.text = d
-            ad.responsive_search_ad.descriptions.append(text_asset)
-
-        # Build FieldMask
-        paths = [
-            "responsive_search_ad.headlines",
-            "responsive_search_ad.descriptions",
-        ]
+        # Only mask the side(s) the caller actually supplied; the other side
+        # keeps its current assets untouched.
+        paths: list[str] = []
+        if supplied_headlines is not None:
+            for h in headlines:
+                text_asset = self._client.get_type("AdTextAsset")
+                text_asset.text = h
+                ad.responsive_search_ad.headlines.append(text_asset)
+            paths.append("responsive_search_ad.headlines")
+        if supplied_descriptions is not None:
+            for d in descriptions:
+                text_asset = self._client.get_type("AdTextAsset")
+                text_asset.text = d
+                ad.responsive_search_ad.descriptions.append(text_asset)
+            paths.append("responsive_search_ad.descriptions")
         if final_url:
             ad.final_urls.append(final_url)
             paths.append("final_urls")
