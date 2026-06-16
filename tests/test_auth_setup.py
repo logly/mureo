@@ -192,6 +192,69 @@ def test_save_credentials_creates_directory(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 6b. credentials.json — fail closed on a malformed existing file (#276)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_save_credentials_malformed_raises_and_preserves(tmp_path: Path) -> None:
+    """A corrupt credentials.json must NOT be silently reset to ``{}``.
+
+    The old code did ``existing = {}`` on JSONDecodeError, so the next save
+    erased every other provider's auth. It now refuses (ConfigWriteError) and
+    leaves the corrupt file untouched for the user to repair.
+    """
+    from mureo.auth_setup import save_credentials
+    from mureo.providers.config_writer import ConfigWriteError
+
+    cred_path = tmp_path / "credentials.json"
+    corrupt = '{"meta_ads": {"access_token": "keep-me"},,,'
+    cred_path.write_text(corrupt, encoding="utf-8")
+
+    google_creds = GoogleAdsCredentials(
+        developer_token="dev-tok",
+        client_id="cid",
+        client_secret="csec",
+        refresh_token="rtok",
+    )
+
+    with pytest.raises(ConfigWriteError):
+        save_credentials(path=cred_path, google=google_creds)
+
+    assert cred_path.read_text(encoding="utf-8") == corrupt
+
+
+@pytest.mark.unit
+def test_save_credentials_backs_up_before_overwrite(tmp_path: Path) -> None:
+    """A ``.bak`` of the prior good file is kept before the merge write."""
+    from mureo.auth_setup import save_credentials
+
+    cred_path = tmp_path / "credentials.json"
+    cred_path.write_text(
+        json.dumps({"meta_ads": {"access_token": "existing-meta-token"}}),
+        encoding="utf-8",
+    )
+
+    google_creds = GoogleAdsCredentials(
+        developer_token="dev-tok",
+        client_id="cid",
+        client_secret="csec",
+        refresh_token="rtok",
+    )
+    save_credentials(path=cred_path, google=google_creds)
+
+    data = json.loads(cred_path.read_text(encoding="utf-8"))
+    assert data["google_ads"]["developer_token"] == "dev-tok"
+    assert data["meta_ads"]["access_token"] == "existing-meta-token"
+
+    backup = tmp_path / "credentials.json.bak"
+    assert backup.exists()
+    assert json.loads(backup.read_text(encoding="utf-8")) == {
+        "meta_ads": {"access_token": "existing-meta-token"}
+    }
+
+
+# ---------------------------------------------------------------------------
 # 7. List accounts (API mocked)
 # ---------------------------------------------------------------------------
 
@@ -863,9 +926,7 @@ def test_install_mcp_config_global_fallback_no_cli(tmp_path: Path) -> None:
 
     claude_json = tmp_path / ".claude.json"
     claude_json.write_text(
-        json.dumps(
-            {"numStartups": 3, "mcpServers": {"figma": {"type": "http"}}}
-        ),
+        json.dumps({"numStartups": 3, "mcpServers": {"figma": {"type": "http"}}}),
         encoding="utf-8",
     )
 
@@ -905,9 +966,7 @@ def test_install_mcp_config_project_already_exists(tmp_path: Path) -> None:
 
     mcp_json = tmp_path / ".mcp.json"
     mcp_json.write_text(
-        json.dumps(
-            {"mcpServers": {"mureo": {"command": "python", "args": ["-m"]}}}
-        ),
+        json.dumps({"mcpServers": {"mureo": {"command": "python", "args": ["-m"]}}}),
         encoding="utf-8",
     )
 
@@ -1334,8 +1393,14 @@ def test_save_credentials_meta_ads(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_save_credentials_corrupted_existing(tmp_path: Path) -> None:
-    """A new file is created even when the existing credentials.json is corrupt."""
+    """A corrupt credentials.json is NOT silently overwritten (#276).
+
+    Previously this fell back to ``{}`` and wrote a fresh file, erasing any
+    other provider's auth that the corruption merely made unreadable. It now
+    fails closed so the user can repair (or delete) the file deliberately.
+    """
     from mureo.auth_setup import save_credentials
+    from mureo.providers.config_writer import ConfigWriteError
 
     cred_path = tmp_path / "credentials.json"
     cred_path.write_text("not valid json", encoding="utf-8")
@@ -1347,10 +1412,10 @@ def test_save_credentials_corrupted_existing(tmp_path: Path) -> None:
         refresh_token="rtok",
     )
 
-    save_credentials(path=cred_path, google=google_creds)
+    with pytest.raises(ConfigWriteError):
+        save_credentials(path=cred_path, google=google_creds)
 
-    data = json.loads(cred_path.read_text(encoding="utf-8"))
-    assert data["google_ads"]["developer_token"] == "dev-tok"
+    assert cred_path.read_text(encoding="utf-8") == "not valid json"
 
 
 # ---------------------------------------------------------------------------

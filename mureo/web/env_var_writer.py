@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mureo.fsutil import backup_file
+from mureo.providers.config_writer import _load_existing
 from mureo.web._helpers import atomic_write_json, read_json_safe
 
 if TYPE_CHECKING:
@@ -176,6 +178,12 @@ def write_credential_env_var(
     Raises ``ValueError`` if ``name`` is not on the allow-list, ``value`` is
     empty, or ``name`` does not bind to ``section``. The value is never
     logged.
+
+    Raises ``ConfigWriteError`` if ``credentials.json`` already exists but is
+    malformed JSON: this is a read-modify-write, and silently treating a
+    corrupt file as ``{}`` (the old ``read_json_safe`` behaviour) would drop
+    every other provider's saved credentials on the next single-field write.
+    We fail closed and keep a ``.bak`` of the prior file before overwriting.
     """
     if not is_allowed_env_var(name):
         raise ValueError(f"env var not allowed: {name!r}")
@@ -190,7 +198,10 @@ def write_credential_env_var(
             raise ValueError(f"env var {name!r} not valid for section {section!r}")
         target = EnvVarTarget(section, field)
     path = _resolve_credentials_path(credentials_path)
-    existing = read_json_safe(path)
+    # Strict read: {} only when the file is absent; raises ConfigWriteError on
+    # malformed JSON so a corrupt file is never clobbered into a one-section
+    # dict that erases other providers.
+    existing = _load_existing(path)
 
     section_payload_raw = existing.get(target.section)
     section_payload: dict[str, Any] = (
@@ -200,6 +211,7 @@ def write_credential_env_var(
     merged: dict[str, Any] = dict(existing)
     merged[target.section] = section_payload
 
+    backup_file(path)  # keep the prior good file before the overwrite
     atomic_write_json(path, merged)
     # Log the field, not the value.
     logger.info("Wrote credential env var %s into %s", name, target.section)
@@ -236,12 +248,19 @@ def remove_credential_section(
         raise ValueError(f"credential section not allowed: {section!r}")
 
     path = _resolve_credentials_path(credentials_path)
+    # Lenient read is safe HERE (unlike the single-field write above): on a
+    # malformed file ``read_json_safe`` yields ``{}``, the section reads as
+    # "absent", and we no-op (return False) WITHOUT writing — so a corrupt
+    # file is never clobbered. The cost is that removal silently reports
+    # "nothing to remove" instead of surfacing the corruption; acceptable for
+    # an idempotent delete, and out of scope for the #276 data-loss fix.
     existing = read_json_safe(path)
     if section not in existing:
         return False
 
     merged: dict[str, Any] = dict(existing)
     merged.pop(section, None)
+    backup_file(path)  # keep the prior good file before the overwrite
     atomic_write_json(path, merged)
     logger.info("Removed mureo credential section %s", section)
     return True

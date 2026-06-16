@@ -39,6 +39,12 @@ _PREFIX_TYPES: dict[str, str] = {
 # context_type -> prefix name (SUGGESTION-1: module-level constants)
 _TYPE_TO_PREFIX: dict[str, str] = {v: k for k, v in _PREFIX_TYPES.items()}
 
+# Sentinel context_type for headings we don't recognise. Rather than dropping
+# their content on a round-trip (silent data loss on a partial update or a
+# misspelled custom heading — issue #276), we keep the section verbatim: the
+# full heading is stored in ``title`` and rendered back unchanged.
+RAW_HEADING_TYPE = "raw_heading"
+
 # h2 heading pattern
 _H2_PATTERN = re.compile(r"^##\s+(.+)$")
 
@@ -78,10 +84,13 @@ def parse_strategy(text: str) -> list[StrategyEntry]:
     return entries
 
 
-def _resolve_heading(heading: str) -> tuple[str | None, str]:
+def _resolve_heading(heading: str) -> tuple[str, str]:
     """Resolve (context_type, title) from a heading string.
 
-    Returns (None, heading) for unknown headings and logs a warning.
+    Unknown headings are preserved as raw passthrough — returns
+    ``(RAW_HEADING_TYPE, heading)`` (the full heading kept as the title so it
+    renders back verbatim) and logs a warning so a likely misspelling is
+    still visible.
     """
     # Exact match check
     if heading in _SECTION_MAP:
@@ -93,9 +102,9 @@ def _resolve_heading(heading: str) -> tuple[str | None, str]:
             title = heading[len(prefix) + 1 :].strip()
             return ctx_type, title
 
-    # WARNING-3: logging.warning for unknown sections
-    logger.warning("Skipping unknown section heading: '%s'", heading)
-    return None, heading
+    # Unrecognised: keep it rather than drop it (issue #276), but warn.
+    logger.warning("Preserving unrecognized section heading as-is: '%s'", heading)
+    return RAW_HEADING_TYPE, heading
 
 
 def render_strategy(entries: list[StrategyEntry]) -> str:
@@ -120,6 +129,8 @@ def _make_heading(entry: StrategyEntry) -> str:
     if entry.context_type in _TYPE_TO_PREFIX:
         return f"{_TYPE_TO_PREFIX[entry.context_type]}: {entry.title}"
 
+    # RAW_HEADING_TYPE and any other unknown type: the original heading was
+    # stored verbatim in ``title``, so render it back unchanged.
     return entry.title
 
 

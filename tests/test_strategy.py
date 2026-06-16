@@ -19,7 +19,6 @@ from mureo.context.strategy import (
     write_strategy_file,
 )
 
-
 # ============================================================
 # STRATEGY.md parse tests
 # ============================================================
@@ -100,18 +99,40 @@ class TestParseStrategy:
         assert result[0].content == "TURNAROUND_RESCUE"
 
     @pytest.mark.unit
-    def test_parse_strategy_unknown_section_ignored(self) -> None:
-        """Unknown sections are skipped."""
+    def test_parse_strategy_unknown_section_preserved(self) -> None:
+        """Unknown sections are PRESERVED as raw passthrough (#276).
+
+        Dropping them silently lost strategy text on a partial update or a
+        misspelled custom heading. They are now kept verbatim so a
+        round-trip write does not destroy content.
+        """
+        from mureo.context.strategy import RAW_HEADING_TYPE
+
         md = (
             "# Strategy\n\n"
             "## Persona\nターゲット\n\n"
-            "## Unknown Section\nこれは無視される\n\n"
+            "## Unknown Section\nこれは保持される\n\n"
             "## USP\n強み\n"
         )
         result = parse_strategy(md)
-        assert len(result) == 2
+        assert len(result) == 3
         assert result[0].context_type == "persona"
-        assert result[1].context_type == "usp"
+        assert result[1].context_type == RAW_HEADING_TYPE
+        assert result[1].title == "Unknown Section"
+        assert result[1].content == "これは保持される"
+        assert result[2].context_type == "usp"
+
+    @pytest.mark.unit
+    def test_unknown_section_survives_roundtrip(self) -> None:
+        """parse -> render keeps an unrecognized heading and its body."""
+        md = (
+            "# Strategy\n\n"
+            "## Persona\nターゲット\n\n"
+            "## Unknown Section\nこれは保持される\n"
+        )
+        rendered = render_strategy(parse_strategy(md))
+        assert "## Unknown Section" in rendered
+        assert "これは保持される" in rendered
 
 
 # ============================================================
@@ -298,7 +319,9 @@ class TestUnknownSectionWarning:
         with caplog.at_level(logging.WARNING, logger="mureo.context.strategy"):
             result = parse_strategy(md)
 
-        assert len(result) == 2
+        # Persona + raw passthrough + USP — the unknown section is kept,
+        # but still logged so an operator notices a likely misspelling.
+        assert len(result) == 3
         assert any("Unknown Section" in record.message for record in caplog.records)
 
 
