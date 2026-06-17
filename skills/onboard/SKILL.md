@@ -45,11 +45,31 @@ Guide me through setting up mureo for a new marketing account.
    - **Target Audience**: Demographics, geography, budget range
    - **Brand Voice**: Tone and style guidelines for ad copy
    - **Market Context**: Competitors, market trends, competitive advantages
-   - **Operation Mode**: Start with `ONBOARDING_LEARNING` for new accounts
+   - **Operation Mode**: Choose from the imported campaigns' **actual
+     maturity**, NOT from the fact that mureo was just set up:
+     - Use `ONBOARDING_LEARNING` only for genuinely **new** campaigns still
+       in their learning period — little/no accumulated conversions and
+       started recently (roughly the last 2-4 weeks).
+     - For campaigns that have already been running for a while with
+       accumulated conversion history, pick a steady-state mode — default to
+       `EFFICIENCY_STABILIZE` (mature campaigns optimizing for efficiency),
+       or another mode the imported data clearly warrants (e.g.
+       `SCALE_EXPANSION`, `TURNAROUND_RESCUE`).
+     - Base this on real delivery data, not setup recency: use the recent
+       conversion volume from `google_ads_performance_report` (LAST_30_DAYS)
+       and the learning status from `google_ads_campaigns_diagnose` — i.e.
+       the data fetched in step 7 below. If you reach this step before that
+       data is available, fetch it now (or finalize the mode right after the
+       step-7 diagnosis). STATE.json's campaign snapshots do not carry age /
+       conversion counts, so do not rely on them for this. If still unsure,
+       ask me. Picking `ONBOARDING_LEARNING` for a long-running campaign
+       makes the first daily-check wrongly tell me to "prioritize data
+       accumulation" when the data is already there.
 
    If I don't know the answers to any of the above sections (Persona, USP,
-   Target Audience, Brand Voice, Market Context — Operation Mode always
-   defaults to `ONBOARDING_LEARNING`), offer an alternative: ask me for the
+   Target Audience, Brand Voice, Market Context — Operation Mode is chosen
+   from campaign maturity per the rule above, not from the URL), offer an
+   alternative: ask me for the
    **product / landing-page URL** (or corporate site / competitor URLs).
    Then fetch the URL with WebFetch, read the page content, and draft a
    first-pass for **every** unknown section — Persona, USP, Target Audience,

@@ -40,7 +40,7 @@ Run a daily health check on all marketing accounts using the strategy context.
    - Present a unified health summary across all platforms, including any `analytics_not_available_for_<platform>` notices.
 
 5. **Mode-specific checks** based on Operation Mode:
-   - **ONBOARDING_LEARNING**: Check learning status on each platform. Warn against making changes.
+   - **ONBOARDING_LEARNING**: This mode means the *campaign* is in its learning period — NOT merely that mureo was recently set up. First confirm it still applies: check each platform's learning status and the accumulated conversion history. If the campaigns are actually mature (well past the learning window, with accumulated conversions — common when mureo is added to an already long-running account), do **not** blindly warn "prioritize data accumulation". Instead proceed with the full analysis and proactively offer to switch the Operation Mode to a steady-state mode (e.g. `EFFICIENCY_STABILIZE`). Only hold back on changes when the data confirms a genuine learning period is still underway.
    - **EFFICIENCY_STABILIZE**: Analyze CPA trends across all platforms. Flag if CPA increased >10% on any platform.
    - **TURNAROUND_RESCUE**: Identify zero-conversion campaigns and cost spikes across all platforms.
    - **SCALE_EXPANSION**: Check budget utilization across all platforms. Flag underspending campaigns.

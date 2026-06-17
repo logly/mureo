@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+#### Operation Mode is chosen from campaign maturity, not mureo setup recency
+
+Setting mureo up on an already long-running campaign made the first
+`daily-check` say "currently in learning mode — prioritize data
+accumulation", forcing the operator to re-issue the analysis request even
+though the campaign already had plenty of accumulated data. The `onboard`
+skill defaulted Operation Mode to `ONBOARDING_LEARNING` unconditionally.
+Now `onboard` chooses the mode from the imported campaigns' actual maturity
+(age + accumulated conversions) — reserving `ONBOARDING_LEARNING` for
+genuinely new campaigns and defaulting mature accounts to a steady-state
+mode (e.g. `EFFICIENCY_STABILIZE`). `daily-check` also no longer withholds
+analysis on `ONBOARDING_LEARNING` when the data shows a mature campaign; it
+proceeds and offers to switch the mode. (`onboard`, `daily-check`,
+`_mureo-strategy` skills.)
+
 ## [0.10.6] - 2026-06-17
 
 ### Added
