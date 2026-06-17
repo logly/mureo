@@ -135,33 +135,54 @@ class TestInstall:
         nothing loaded. Install must re-bootstrap until the job is confirmed
         loaded (regression for a re-install that silently killed the service)."""
         print_calls = {"n": 0}
+        bootstrap_calls = {"n": 0}
 
         def fake_run(argv: list[str], **kwargs: object) -> object:
             if "print" in argv:  # _is_loaded probe
                 print_calls["n"] += 1
                 # Not loaded on the first check; loaded after one retry.
                 return _ok() if print_calls["n"] >= 2 else _fail("could not find")
+            if "bootstrap" in argv:
+                bootstrap_calls["n"] += 1
             return _ok()  # bootout / bootstrap succeed
 
         with (
             patch.object(launchd.subprocess, "run", side_effect=fake_run),
-            patch.object(launchd.time, "sleep") as mock_sleep,
+            # Patch sleep only to keep the test fast — do NOT assert on it.
+            # ``launchd.time`` is the process-global ``time`` module, so this
+            # patches sleep everywhere; a leaked background thread elsewhere in
+            # the suite can call it, making a sleep-based assertion flaky.
+            # Assert on install's real retry behaviour (re-bootstrap) instead.
+            patch.object(launchd.time, "sleep"),
         ):
             result = launchd.install(home=home, port=7613)
         assert result.ok is True
         assert print_calls["n"] >= 2, "did not re-check after a non-sticking bootstrap"
-        mock_sleep.assert_called()  # it backed off before retrying
+        assert bootstrap_calls["n"] >= 2  # re-bootstrapped after a non-sticking load
 
     def test_install_does_not_retry_a_hard_bootstrap_failure(self, home: Path) -> None:
-        """A real bootstrap error returns immediately (no retry loop / sleep)."""
+        """A real bootstrap error returns immediately (no retry loop)."""
+        bootstrap_calls = {"n": 0}
+
+        def fake_run(argv: list[str], **kwargs: object) -> object:
+            if "bootstrap" in argv:
+                bootstrap_calls["n"] += 1
+            return _fail("denied")
+
         with (
-            patch.object(launchd.subprocess, "run", return_value=_fail("denied")),
-            patch.object(launchd.time, "sleep") as mock_sleep,
+            patch.object(launchd.subprocess, "run", side_effect=fake_run),
+            # Patch sleep only to keep a regression fast — do NOT assert on it.
+            # ``launchd.time.sleep`` is the process-global sleep; a leaked
+            # background thread elsewhere in the suite can call it, so a
+            # ``sleep.assert_not_called()`` here is flaky. Assert on install's
+            # real behaviour: a hard failure short-circuits, so bootstrap is
+            # attempted exactly once (no retry loop).
+            patch.object(launchd.time, "sleep"),
         ):
             result = launchd.install(home=home, port=7613)
         assert result.ok is False
         assert "denied" in (result.message or "")
-        mock_sleep.assert_not_called()
+        assert bootstrap_calls["n"] == 1
 
     def test_install_fails_if_job_never_sticks(self, home: Path) -> None:
         """If a bootstrap that returns 0 never actually loads, install exhausts
