@@ -184,28 +184,31 @@
                         <option value="http" data-i18n="dashboard.advisors_transport_http">http (remote)</option>
                       </select>
                     </label>
-                    <div data-advisor-stdio-fields>
-                      <label>
+                    <div class="advisor-fields" data-advisor-stdio-fields>
+                      <label class="advisor-field">
                         <span data-i18n="dashboard.advisors_command_label">Command</span>
-                        <input type="text" name="advisor_command" data-advisor-command autocomplete="off" placeholder="/usr/local/bin/my-advisor">
+                        <input type="text" name="advisor_command" data-advisor-command class="advisor-mono" autocomplete="off" placeholder="npx">
                       </label>
-                      <label>
+                      <label class="advisor-field">
                         <span data-i18n="dashboard.advisors_args_label">Arguments (one per line)</span>
-                        <textarea name="advisor_args" data-advisor-args rows="2" autocomplete="off"></textarea>
+                        <textarea name="advisor_args" data-advisor-args class="advisor-mono" rows="3" autocomplete="off" spellcheck="false" placeholder="-y&#10;@acme/advisor-mcp&#10;--top-k=5"></textarea>
+                        <small class="field-hint" data-i18n="dashboard.advisors_args_hint">Example — command "npx" with these args: -y / @acme/advisor-mcp. One argument per line (do not include the command itself).</small>
                       </label>
-                      <label>
+                      <label class="advisor-field">
                         <span data-i18n="dashboard.advisors_env_label">Environment (KEY=VALUE, one per line)</span>
-                        <textarea name="advisor_env" data-advisor-env rows="2" autocomplete="off"></textarea>
+                        <textarea name="advisor_env" data-advisor-env class="advisor-mono" rows="3" autocomplete="off" spellcheck="false" placeholder="API_KEY=sk-xxxxxxxx&#10;LOG_LEVEL=info"></textarea>
+                        <small class="field-hint" data-i18n="dashboard.advisors_env_hint">Example: API_KEY=sk-xxxx — one KEY=VALUE per line. Passed to the command as environment variables (the binary handles its own auth).</small>
                       </label>
                     </div>
-                    <div data-advisor-remote-fields hidden>
-                      <label>
+                    <div class="advisor-fields" data-advisor-remote-fields hidden>
+                      <label class="advisor-field">
                         <span data-i18n="dashboard.advisors_url_label">URL</span>
-                        <input type="text" name="advisor_url" data-advisor-url autocomplete="off" placeholder="https://advisor.example.com/mcp">
+                        <input type="text" name="advisor_url" data-advisor-url class="advisor-mono" autocomplete="off" placeholder="https://advisor.example.com/mcp">
                       </label>
-                      <label>
+                      <label class="advisor-field">
                         <span data-i18n="dashboard.advisors_headers_label">Headers (KEY=VALUE, one per line)</span>
-                        <textarea name="advisor_headers" data-advisor-headers rows="2" autocomplete="off"></textarea>
+                        <textarea name="advisor_headers" data-advisor-headers class="advisor-mono" rows="3" autocomplete="off" spellcheck="false" placeholder="Authorization=Bearer eyJhbGciOi...&#10;X-Api-Key=abc123"></textarea>
+                        <small class="field-hint" data-i18n="dashboard.advisors_headers_hint">Example: Authorization=Bearer &lt;token&gt; — one KEY=VALUE per line. Bearer auth goes here for http/sse advisors.</small>
                       </label>
                     </div>
                     <button type="submit" class="btn btn-primary" data-i18n="dashboard.advisors_add_button">Add advisor</button>
