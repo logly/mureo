@@ -147,7 +147,7 @@ The `Operation Mode` section contains one of 7 predefined modes that control age
 
 | Mode | When to Use |
 |------|-------------|
-| `ONBOARDING_LEARNING` | New campaigns in learning period |
+| `ONBOARDING_LEARNING` | Genuinely new campaigns still in their learning period — set this from campaign maturity (age + accumulated conversions), NOT just because mureo was newly set up on an existing long-running account |
 | `TURNAROUND_RESCUE` | Campaigns with poor performance needing rescue |
 | `SCALE_EXPANSION` | Campaigns ready to scale up |
 | `EFFICIENCY_STABILIZE` | Mature campaigns optimizing for efficiency |
@@ -316,11 +316,15 @@ Priority: Grow while maintaining efficiency
 **ONBOARDING_LEARNING mode:**
 ```
 Priority: Let the algorithm learn, minimal changes
-1. Monitor performance but avoid making changes
-2. Warn before any budget or bid changes
-3. Check campaign diagnose for learning status
+Applies to a campaign genuinely IN its learning period — not to a mature
+campaign that mureo was simply set up on recently. If the campaign already
+has accumulated conversions / history, it is NOT learning: switch the mode
+(e.g. EFFICIENCY_STABILIZE) and analyze normally instead of withholding.
+1. Confirm the campaign is actually learning (recent start, sparse conversions)
    -> google_ads_campaigns_diagnose {customer_id, campaign_id}
-4. Wait until learning period completes before optimizing
+2. If still learning: monitor performance, warn before budget/bid changes,
+   wait until the learning period completes before optimizing
+3. If already mature: recommend updating Operation Mode and proceed
 ```
 
 ### 5. Market Context for Competitive Response
