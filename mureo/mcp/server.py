@@ -466,6 +466,40 @@ def _maybe_append_strategy_reminder(name: str, result: list[Any]) -> list[Any]:
     return [*result, TextContent(type="text", text=reminder)]
 
 
+# Once-per-process latch: the stale-version banner is appended to the first
+# tool result that detects the mismatch, not every call (avoid spamming a
+# read-heavy daily-check). A fresh process after restart starts False again.
+_staleness_warned = False
+
+
+def _maybe_append_staleness_warning(result: list[Any]) -> list[Any]:
+    """Append a one-time restart warning when this MCP process is older than
+    the mureo installed on disk.
+
+    Push, not pull: the agent receives the warning in normal tool output and
+    never has to ask for a version. No-op once warned this process, or when the
+    running version is current. Best-effort — never raises, never replaces the
+    tool's own content. See :mod:`mureo.core.version_staleness`.
+    """
+    global _staleness_warned
+    if _staleness_warned:
+        return result
+    try:
+        from mureo.core.version_staleness import staleness_warning
+
+        warning = staleness_warning()
+        if warning is None:
+            return result
+        _staleness_warned = True
+        logger.warning("%s", warning)
+        from mcp.types import TextContent
+
+        return [*result, TextContent(type="text", text=warning)]
+    except Exception:  # noqa: BLE001 - a version check must never break a tool call
+        logger.debug("staleness warning check failed", exc_info=True)
+        return result
+
+
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     """Execute a tool and return the result.
 
@@ -492,6 +526,21 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     # capture, or real-spend API call — so an out-of-bounds budget/bid is
     # rejected before it can reach a live campaign.
     _validate_tool_input(name, arguments)
+    result = await _dispatch_tool(name, arguments)
+    # Push, not pull: if this MCP process is older than the mureo installed on
+    # disk (operator upgraded but did not fully restart Claude), append a
+    # one-time restart warning so the agent surfaces it WITHOUT having to ask
+    # for a version. See :mod:`mureo.core.version_staleness`.
+    return _maybe_append_staleness_warning(result)
+
+
+async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
+    """Route an already-gated, already-validated tool call to its handler.
+
+    Built-in tool families append their STRATEGY.md reminder per-branch; the
+    process-level staleness warning is applied once by the caller around the
+    whole result.
+    """
     if name in _GOOGLE_ADS_NAMES:
         before = await capture_before_state(name, arguments)
         result = await handle_google_ads_tool(name, arguments)

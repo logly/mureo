@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Warn when the MCP server is running an outdated mureo after an upgrade
+
+Upgrading mureo had no visible effect when the already-running MCP server
+process kept serving the old in-memory code (operator upgraded but did not
+fully restart the client) — e.g. a freshly written `STATE.json` still
+missing `last_synced_at`, because the *old* code wrote it. The server now
+compares its in-memory `__version__` against the on-disk installed
+distribution and, when the process is older, appends a one-time restart
+warning to tool output (push, not pull — the agent surfaces it without
+having to ask for a version, and the comparison baseline is the install
+itself). See `mureo.core.version_staleness`.
+
 ### Fixed
 
 #### Operation Mode is chosen from campaign maturity, not mureo setup recency
