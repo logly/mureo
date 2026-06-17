@@ -31,8 +31,15 @@ class TestStalenessWarning:
         """A dev/editable checkout ahead of the published dist must not nag."""
         assert vs.staleness_warning(running="0.11.0", installed="0.10.6") is None
 
-    def test_missing_installed_is_silent(self) -> None:
-        assert vs.staleness_warning(running="0.10.6", installed=None) is None
+    def test_missing_installed_is_silent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ``installed=None`` means "look it up", so to exercise the genuinely
+        # missing-metadata path stub the lookup to None. (Passing a literal
+        # version would couple this test to the current release number — which
+        # is exactly what broke it on a version bump.)
+        monkeypatch.setattr(vs, "installed_version", lambda: None)
+        assert vs.staleness_warning(running="0.10.6") is None
 
     def test_invalid_version_is_silent(self) -> None:
         assert vs.staleness_warning(running="0.10.6", installed="not-a-version") is None
