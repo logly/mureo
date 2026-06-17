@@ -128,3 +128,67 @@ class TestPluginOAuthCallbackKeysParity:
         data = _load_i18n()
         for key in self._KEYS:
             assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
+class TestAdvancedAdvisorKeysParity:
+    """EN/JA parity for the Advanced → External advisor MCP card keys: the
+    nav label + section/card titles, the form field labels + transport
+    options, the security note, and the toast/confirm/error strings (no JS
+    harness — asserted against bundled i18n.json directly)."""
+
+    # Distinct EN/JA strings — ``dashboard.advisors_url_label`` ("URL") is
+    # intentionally NOT here: "URL" is a universal term with the same form
+    # in both locales, so the distinctness assertion would falsely fail.
+    _KEYS = (
+        "dashboard.nav_advanced",
+        "dashboard.advanced_title",
+        "dashboard.advisors_title",
+        "dashboard.advisors_desc",
+        "dashboard.advisors_security_note",
+        "dashboard.advisors_add_summary",
+        "dashboard.advisors_name_label",
+        "dashboard.advisors_tool_label",
+        "dashboard.advisors_transport_label",
+        "dashboard.advisors_transport_stdio",
+        "dashboard.advisors_transport_sse",
+        "dashboard.advisors_transport_http",
+        "dashboard.advisors_command_label",
+        "dashboard.advisors_args_label",
+        "dashboard.advisors_env_label",
+        "dashboard.advisors_headers_label",
+        "dashboard.advisors_add_button",
+        "dashboard.advisors_empty",
+        "dashboard.advisors_remove",
+        "dashboard.advisors_confirm_remove",
+        "dashboard.advisors_added",
+        "dashboard.advisors_removed",
+        "dashboard.advisors_add_failed",
+        "dashboard.advisors_remove_failed",
+        "dashboard.advisors_name_required",
+        "dashboard.advisors_err_duplicate_name",
+        "dashboard.advisors_err_invalid",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_url_label_present_in_both_locales(self) -> None:
+        """The URL label is exempt from the distinctness check (universal
+        term) but must still exist + be non-empty in both locales."""
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            value = data[locale].get("dashboard.advisors_url_label")
+            assert isinstance(value, str) and value.strip()
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            assert data["en"][key] != data["ja"][key], f"{key} not localized"

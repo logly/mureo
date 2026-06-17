@@ -818,9 +818,7 @@ class TestPostEnvVar:
         assert "secret_token_xxx" not in json.dumps(body)
         mock_write.assert_called_once()
 
-    def test_section_passed_through_to_writer(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_section_passed_through_to_writer(self, wizard: ConfigureWizard) -> None:
         """#102 B2: an optional ``section`` routes a shared env name to the
         right credentials.json section (Google Ads service-account path uses
         the shared GOOGLE_APPLICATION_CREDENTIALS name but section google_ads)."""
@@ -2369,4 +2367,164 @@ class TestPostCheckUpdates:
     def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
         with pytest.raises(urllib.error.HTTPError) as exc:
             _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestAdvisors:
+    """``/api/advisors`` list / add / remove — the Advanced → External
+    advisor MCP card. Exercises the full stack against the sandboxed home
+    (``wizard`` fixture), so an add/remove writes through to
+    ``<home>/.mureo/insight_sources.json``.
+    """
+
+    def _path(self, wizard: ConfigureWizard) -> Path:
+        return wizard.host_paths.credentials_path.parent / "insight_sources.json"
+
+    def test_list_empty_when_no_file(self, wizard: ConfigureWizard) -> None:
+        resp = _get(wizard, "/api/advisors")
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"advisors": []}
+
+    def test_add_persists_and_lists(self, wizard: ConfigureWizard) -> None:
+        resp = _post(
+            wizard,
+            "/api/advisors/add",
+            {
+                "name": "advisor-1",
+                "transport": "stdio",
+                "tool": "vector_search",
+                "command": "/usr/bin/advisor",
+            },
+        )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "ok"
+        assert body["advisors"] == [
+            {
+                "name": "advisor-1",
+                "transport": "stdio",
+                "target": "/usr/bin/advisor",
+            }
+        ]
+        # Persisted to the sandboxed home.
+        assert self._path(wizard).exists()
+        # And surfaced by a fresh GET.
+        listed = json.loads(_get(wizard, "/api/advisors").read().decode("utf-8"))
+        assert listed["advisors"][0]["name"] == "advisor-1"
+
+    def test_add_http_uses_url_as_target(self, wizard: ConfigureWizard) -> None:
+        resp = _post(
+            wizard,
+            "/api/advisors/add",
+            {
+                "name": "advisor-http",
+                "transport": "http",
+                "tool": "vector_search",
+                "url": "https://advisor.example.com/mcp",
+            },
+        )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["advisors"][0] == {
+            "name": "advisor-http",
+            "transport": "http",
+            "target": "https://advisor.example.com/mcp",
+        }
+
+    def test_add_invalid_transport_returns_400(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(
+                wizard,
+                "/api/advisors/add",
+                {"name": "a", "transport": "carrier-pigeon", "tool": "t"},
+            )
+        assert exc.value.code == 400
+
+    def test_add_stdio_missing_command_returns_400(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(
+                wizard,
+                "/api/advisors/add",
+                {"name": "a", "transport": "stdio", "tool": "t"},
+            )
+        assert exc.value.code == 400
+
+    def test_add_http_missing_url_returns_400(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(
+                wizard,
+                "/api/advisors/add",
+                {"name": "a", "transport": "http", "tool": "t"},
+            )
+        assert exc.value.code == 400
+
+    def test_add_duplicate_name_returns_400(self, wizard: ConfigureWizard) -> None:
+        _post(
+            wizard,
+            "/api/advisors/add",
+            {
+                "name": "dup",
+                "transport": "stdio",
+                "tool": "t",
+                "command": "/c",
+            },
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(
+                wizard,
+                "/api/advisors/add",
+                {
+                    "name": "dup",
+                    "transport": "http",
+                    "tool": "t",
+                    "url": "https://x.example.com/mcp",
+                },
+            )
+        assert exc.value.code == 400
+
+    def test_remove_returns_updated_list(self, wizard: ConfigureWizard) -> None:
+        _post(
+            wizard,
+            "/api/advisors/add",
+            {"name": "a", "transport": "stdio", "tool": "t", "command": "/c"},
+        )
+        _post(
+            wizard,
+            "/api/advisors/add",
+            {
+                "name": "b",
+                "transport": "http",
+                "tool": "t",
+                "url": "https://x.example.com/mcp",
+            },
+        )
+        resp = _post(wizard, "/api/advisors/remove", {"name": "a"})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body["status"] == "ok"
+        assert [a["name"] for a in body["advisors"]] == ["b"]
+
+    def test_remove_absent_name_is_ok_noop(self, wizard: ConfigureWizard) -> None:
+        resp = _post(wizard, "/api/advisors/remove", {"name": "ghost"})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok", "advisors": []}
+
+    def test_remove_blank_name_returns_400(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, "/api/advisors/remove", {"name": "  "})
+        assert exc.value.code == 400
+
+    def test_add_requires_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(
+                wizard,
+                "/api/advisors/add",
+                {"name": "a", "transport": "stdio", "tool": "t", "command": "/c"},
+                csrf=None,
+            )
+        assert exc.value.code == 403
+
+    def test_remove_requires_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, "/api/advisors/remove", {"name": "a"}, csrf=None)
         assert exc.value.code == 403

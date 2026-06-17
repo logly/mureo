@@ -35,6 +35,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from mureo.fsutil import backup_file
+from mureo.providers.config_writer import _atomic_write_json, _load_existing
+
 logger = logging.getLogger(__name__)
 
 
@@ -177,6 +180,117 @@ def load_insight_sources(path: Path | None = None) -> InsightSourceConfig:
     return InsightSourceConfig(sources=tuple(sources))
 
 
+def serialize_insight_source(source: InsightSource) -> dict[str, Any]:
+    """Serialize an ``InsightSource`` to its on-disk JSON dict.
+
+    The inverse of :func:`_build_source`: a value produced here round-trips
+    back to an equal ``InsightSource`` through the loader. Optional fields
+    are OMITTED when they carry no information so the file stays minimal —
+    with one deliberate exception: ``env`` / ``headers`` are emitted as an
+    explicit ``{}`` when set to an empty dict so the
+    "sealed empty env" vs "inherit parent env" (``None``) distinction
+    survives the write (see :class:`InsightSource.env`). Collapsing the two
+    would silently leak the operator's secrets into a third-party advisor
+    binary, so the emptiness is preserved rather than dropped.
+    """
+    data: dict[str, Any] = {
+        "name": source.name,
+        "transport": source.transport,
+        "tool": source.tool,
+    }
+    if source.transport == "stdio":
+        if source.command is not None:
+            data["command"] = source.command
+        if source.args:
+            data["args"] = list(source.args)
+        # ``{}`` (sealed env) is meaningful and MUST be written; only a
+        # ``None`` (inherit) is omitted.
+        if source.env is not None:
+            data["env"] = dict(source.env)
+    else:  # sse / http
+        if source.url is not None:
+            data["url"] = source.url
+        if source.headers is not None:
+            data["headers"] = dict(source.headers)
+    # Defaults are omitted so the on-disk file stays minimal; the loader
+    # re-applies them.
+    if source.timeout_sec != 10.0:
+        data["timeout_sec"] = source.timeout_sec
+    if source.top_k != 5:
+        data["top_k"] = source.top_k
+    return data
+
+
+def add_insight_source(
+    source: InsightSource, *, path: Path | None = None
+) -> InsightSourceConfig:
+    """Append ``source`` to the insight-sources config and return the result.
+
+    Read-modify-write with the #276-hardened safe-write stack:
+
+    - the existing file is read FAIL-CLOSED via
+      :func:`mureo.providers.config_writer._load_existing` — a malformed
+      file raises :class:`ConfigWriteError` (NOT the tolerant
+      :func:`load_insight_sources`, which would silently drop a corrupt
+      file and let us clobber it);
+    - a duplicate ``name`` raises :class:`ValueError` and nothing is
+      written;
+    - the prior good file is backed up to a rolling ``.bak`` before the
+      overwrite (:func:`mureo.fsutil.backup_file`), then the new content is
+      written atomically.
+    """
+    cfg_path = path if path is not None else default_config_path()
+    existing = _load_existing_sources(cfg_path)
+    if any(entry.get("name") == source.name for entry in existing):
+        raise ValueError(f"insight source name already exists: {source.name!r}")
+    updated = [*existing, serialize_insight_source(source)]
+    _write_sources(cfg_path, updated)
+    return load_insight_sources(cfg_path)
+
+
+def remove_insight_source(name: str, *, path: Path | None = None) -> bool:
+    """Remove the entry named ``name`` from the config. Idempotent.
+
+    Returns ``True`` when an entry was removed (and the file rewritten),
+    ``False`` when no entry matched (no write happens). Reads FAIL-CLOSED
+    like :func:`add_insight_source` — a malformed file raises
+    :class:`ConfigWriteError` rather than being silently treated as empty
+    and clobbered. The prior good file is backed up before the overwrite.
+    """
+    cfg_path = path if path is not None else default_config_path()
+    if not cfg_path.exists():
+        return False
+    existing = _load_existing_sources(cfg_path)
+    remaining = [entry for entry in existing if entry.get("name") != name]
+    if len(remaining) == len(existing):
+        return False  # idempotent no-op — nothing matched, no write
+    _write_sources(cfg_path, remaining)
+    return True
+
+
+def _load_existing_sources(cfg_path: Path) -> list[dict[str, Any]]:
+    """Return the on-disk ``sources`` list, reading the file FAIL-CLOSED.
+
+    Reuses :func:`mureo.providers.config_writer._load_existing` so a
+    malformed file raises :class:`ConfigWriteError` (never the tolerant
+    reader). A missing file yields ``[]``; a present-but-non-list
+    ``sources`` value is normalised to ``[]`` so the writer rebuilds a
+    well-formed file rather than refusing — only malformed JSON / a
+    non-object top level fail closed.
+    """
+    loaded = _load_existing(cfg_path)
+    entries = loaded.get("sources")
+    if not isinstance(entries, list):
+        return []
+    return [entry for entry in entries if isinstance(entry, dict)]
+
+
+def _write_sources(cfg_path: Path, sources: list[dict[str, Any]]) -> None:
+    """Back up the prior file then atomically write the new sources list."""
+    backup_file(cfg_path)  # rolling .bak before any overwrite (no-op if absent)
+    _atomic_write_json({"sources": sources}, cfg_path)
+
+
 def _build_source(entry: dict[str, Any]) -> InsightSource:
     """Construct an ``InsightSource`` from a JSON dict.
 
@@ -209,6 +323,9 @@ __all__ = [
     "InsightSource",
     "InsightSourceConfig",
     "Transport",
+    "add_insight_source",
     "default_config_path",
     "load_insight_sources",
+    "remove_insight_source",
+    "serialize_insight_source",
 ]

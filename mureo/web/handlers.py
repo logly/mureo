@@ -23,6 +23,9 @@ Routes
 ``POST /api/providers/hosted-status`` → hosted connectors' Connected state
 ``POST /api/providers/native-toggle`` → switch a platform native↔official
 ``POST /api/providers/remove``   → remove one official MCP entry
+``GET  /api/advisors``           → list external advisor MCP entries
+``POST /api/advisors/add``       → add one external advisor MCP entry
+``POST /api/advisors/remove``    → remove one external advisor MCP entry
 ``POST /api/credentials/env-var``→ write one env var into credentials
 ``GET  /api/credentials/plugins``→ list plugins declaring per-account fields
 ``POST /api/credentials/plugins/save`` → save one plugin's credentials
@@ -70,6 +73,12 @@ from mureo.web._helpers import (
     send_json,
 )
 from mureo.web.about import collect_about_info
+from mureo.web.advisors import (
+    AdvisorActionError,
+    add_advisor,
+    list_advisors,
+    remove_advisor,
+)
 from mureo.web.byod_actions import (
     byod_clear,
     byod_import,
@@ -116,6 +125,7 @@ from mureo.web.version_check import get_update_status, request_update_refresh
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping
+    from pathlib import Path
 
     from mureo.web.extensions import (
         RouteContribution,
@@ -387,6 +397,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/byod/status":
             send_json(self, byod_status().as_dict())
+            return
+        if path == "/api/advisors":
+            self._serve_advisors()
             return
         if path == "/api/credentials/plugins":
             # Forward the session locale so plugin-declared
@@ -799,6 +812,55 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         )
         send_json(self, result.as_dict())
 
+    # ------------------------------------------------------------------
+    # External advisor MCP (Advanced) — list / add / remove
+    # ------------------------------------------------------------------
+    def _insight_sources_path(self) -> Path:
+        """Resolve ``insight_sources.json`` next to the runtime credentials.
+
+        Derived from ``host_paths.credentials_path`` (the home-gated,
+        runtime-resolved path — see #195/#196) so an injected/sandboxed
+        home never escapes to the operator's real ``~/.mureo``. The
+        advisor list is a sibling of ``credentials.json``.
+        """
+        return self.wizard.host_paths.credentials_path.parent / "insight_sources.json"
+
+    def _serve_advisors(self) -> None:
+        """GET ``/api/advisors`` — the configured external advisor MCPs.
+
+        Tolerant read (never 500): a missing/malformed file lists nothing.
+        Only name/transport/target are surfaced — never args/env/headers,
+        which can carry secrets.
+        """
+        send_json(self, {"advisors": list_advisors(path=self._insight_sources_path())})
+
+    def _post_advisors_add(self, payload: dict[str, Any]) -> None:
+        try:
+            result = add_advisor(payload, path=self._insight_sources_path())
+        except AdvisorActionError as exc:
+            send_error_json(self, 400, exc.code)
+            return
+        except Exception:  # noqa: BLE001
+            # A malformed existing file (ConfigWriteError) or any other
+            # write fault — never echo the exception (it may carry a path
+            # fragment); log it server-side and return a generic envelope.
+            logger.exception("advisor add failed")
+            send_error_json(self, 400, "write_failed")
+            return
+        send_json(self, result)
+
+    def _post_advisors_remove(self, payload: dict[str, Any]) -> None:
+        try:
+            result = remove_advisor(payload, path=self._insight_sources_path())
+        except AdvisorActionError as exc:
+            send_error_json(self, 400, exc.code)
+            return
+        except Exception:  # noqa: BLE001
+            logger.exception("advisor remove failed")
+            send_error_json(self, 400, "write_failed")
+            return
+        send_json(self, result)
+
     def _post_env_var(self, payload: dict[str, Any]) -> None:
         name = str(payload.get("name", "")).strip()
         value = str(payload.get("value", ""))
@@ -1184,6 +1246,8 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/providers/hosted-status": _post_providers_hosted_status,
         "/api/providers/native-toggle": _post_providers_native_toggle,
         "/api/providers/remove": _post_providers_remove,
+        "/api/advisors/add": _post_advisors_add,
+        "/api/advisors/remove": _post_advisors_remove,
         "/api/credentials/env-var": _post_env_var,
         "/api/credentials/remove": _post_credentials_remove,
         "/api/credentials/plugins/save": _post_plugin_credentials_save,

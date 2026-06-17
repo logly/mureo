@@ -69,6 +69,11 @@
                  data-i18n="dashboard.nav_setup">Setup</a>
             </li>
             <li>
+              <a href="#" class="dashboard-nav-item" data-dashboard-nav="advanced"
+                 role="button" tabindex="0"
+                 data-i18n="dashboard.nav_advanced">Advanced</a>
+            </li>
+            <li>
               <a href="#" class="dashboard-nav-item" data-dashboard-nav="demo"
                  role="button" tabindex="0"
                  data-i18n="dashboard.nav_demo">Demo</a>
@@ -148,6 +153,65 @@
                   <button type="submit" class="btn btn-primary" data-i18n="dashboard.env_submit">Save</button>
                 </form>
               </details>
+            </div>
+          </div>
+
+          <div class="dashboard-group" data-dashboard-group="advanced" hidden>
+            <div class="dashboard-section" data-dashboard-advanced>
+              <h2 data-i18n="dashboard.advanced_title">Advanced</h2>
+
+              <div class="dashboard-section" data-dashboard-advisors>
+                <h2 data-i18n="dashboard.advisors_title">External advisor MCP</h2>
+                <p data-i18n="dashboard.advisors_desc">External MCP servers that mureo_consult_advisor queries for second-opinion insights.</p>
+                <p class="dashboard-advisors-security-note" data-i18n="dashboard.advisors_security_note">Security: a stdio advisor runs an arbitrary local command, and any env values you set are passed to that third-party binary. Add only advisors you trust.</p>
+                <ul data-dashboard-advisors-list></ul>
+                <details>
+                  <summary data-i18n="dashboard.advisors_add_summary">Add an advisor</summary>
+                  <form data-advisor-form>
+                    <label>
+                      <span data-i18n="dashboard.advisors_name_label">Name</span>
+                      <input type="text" name="advisor_name" data-advisor-name autocomplete="off">
+                    </label>
+                    <label>
+                      <span data-i18n="dashboard.advisors_tool_label">Tool name</span>
+                      <input type="text" name="advisor_tool" data-advisor-tool autocomplete="off" placeholder="vector_search">
+                    </label>
+                    <label>
+                      <span data-i18n="dashboard.advisors_transport_label">Transport</span>
+                      <select name="advisor_transport" data-advisor-transport>
+                        <option value="stdio" data-i18n="dashboard.advisors_transport_stdio">stdio (local command)</option>
+                        <option value="sse" data-i18n="dashboard.advisors_transport_sse">sse (remote)</option>
+                        <option value="http" data-i18n="dashboard.advisors_transport_http">http (remote)</option>
+                      </select>
+                    </label>
+                    <div data-advisor-stdio-fields>
+                      <label>
+                        <span data-i18n="dashboard.advisors_command_label">Command</span>
+                        <input type="text" name="advisor_command" data-advisor-command autocomplete="off" placeholder="/usr/local/bin/my-advisor">
+                      </label>
+                      <label>
+                        <span data-i18n="dashboard.advisors_args_label">Arguments (one per line)</span>
+                        <textarea name="advisor_args" data-advisor-args rows="2" autocomplete="off"></textarea>
+                      </label>
+                      <label>
+                        <span data-i18n="dashboard.advisors_env_label">Environment (KEY=VALUE, one per line)</span>
+                        <textarea name="advisor_env" data-advisor-env rows="2" autocomplete="off"></textarea>
+                      </label>
+                    </div>
+                    <div data-advisor-remote-fields hidden>
+                      <label>
+                        <span data-i18n="dashboard.advisors_url_label">URL</span>
+                        <input type="text" name="advisor_url" data-advisor-url autocomplete="off" placeholder="https://advisor.example.com/mcp">
+                      </label>
+                      <label>
+                        <span data-i18n="dashboard.advisors_headers_label">Headers (KEY=VALUE, one per line)</span>
+                        <textarea name="advisor_headers" data-advisor-headers rows="2" autocomplete="off"></textarea>
+                      </label>
+                    </div>
+                    <button type="submit" class="btn btn-primary" data-i18n="dashboard.advisors_add_button">Add advisor</button>
+                  </form>
+                </details>
+              </div>
             </div>
           </div>
 
