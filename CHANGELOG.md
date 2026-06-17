@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.7] - 2026-06-18
+
 ### Added
+
+#### Configure UI: manage external advisor MCPs (Advanced menu)
+
+External advisor MCP servers (the ones `mureo_consult_advisor` queries)
+could only be configured by hand-editing `~/.mureo/insight_sources.json`.
+A new "Advanced" dashboard menu adds an "External advisor MCP" card to
+list / add / delete them, with safe writes (fail closed on a malformed
+file, `.bak` backup, atomic write; secrets in `env`/`headers` are never
+surfaced in the list or error messages). The add form shows per-field
+examples and a monospace layout for command / args / env / headers.
 
 #### Warn when the MCP server is running an outdated mureo after an upgrade
 
