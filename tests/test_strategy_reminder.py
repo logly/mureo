@@ -206,6 +206,7 @@ _MUTATING_CATALOGUE: frozenset[str] = frozenset(
         "mureo_state_upsert_campaign",
         "mureo_strategy_set",
         "mureo_state_action_log_append",
+        "mureo_state_report_set",
     }
 )
 
