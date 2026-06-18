@@ -1,6 +1,6 @@
 """mureo's STRATEGY.md / STATE.json MCP tool surface.
 
-Six tools that expose mureo's context layer over MCP, so any MCP host
+Seven tools that expose mureo's context layer over MCP, so any MCP host
 (Claude Desktop chat, claude.ai web, Codex/Cursor, …) can read and
 update STRATEGY.md / STATE.json without direct filesystem access.
 
@@ -19,6 +19,7 @@ from mcp.types import Tool
 from mureo.mcp._handlers_mureo_context import (
     handle_state_action_log_append,
     handle_state_get,
+    handle_state_platform_metrics_set,
     handle_state_report_set,
     handle_state_upsert_campaign,
     handle_strategy_get,
@@ -244,6 +245,71 @@ TOOLS: list[Tool] = [
             "required": ["report", "summary"],
         },
     ),
+    Tool(
+        name="mureo_state_platform_metrics_set",
+        description=(
+            "Atomically set a platform's metric ROLLUP in STATE.json's v2 "
+            "``platforms`` section so the read-only reporting dashboard can "
+            "render per-platform KPIs (and the YESTERDAY / LAST_30_DAYS period "
+            "toggle) without re-querying. This writes the PLATFORM-LEVEL "
+            "rollup — distinct from mureo_state_upsert_campaign, which writes "
+            "per-campaign metrics. Pass ``totals`` + ``metrics_period`` for the "
+            "single most-recent window, and/or ``periods`` "
+            '({"YESTERDAY": {…}, "LAST_30_DAYS": {…}}) for the per-window '
+            "rollups the toggle reads. ``periods`` is merged per window key "
+            "(a YESTERDAY write keeps a prior LAST_30_DAYS bucket); omitted "
+            "fields preserve their existing value. Campaigns and every other "
+            "platform are preserved. ``account_id`` is required and always "
+            "written onto the entry. Returns the updated state document."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "platform": {
+                    "type": "string",
+                    "description": (
+                        "Platform key: a built-in (``google_ads`` / "
+                        "``meta_ads`` / ``search_console`` / ``ga4``) or a "
+                        "plugin bridge ``plugin:<dist>``."
+                    ),
+                },
+                "account_id": {
+                    "type": "string",
+                    "description": (
+                        "The platform account id (Google customer_id / Meta "
+                        "act_*). Always written onto the platform entry."
+                    ),
+                },
+                "totals": {
+                    "type": "object",
+                    "description": (
+                        "Single-rollup totals for the most recent window "
+                        "(spend, impressions, clicks, conversions, cpa, ctr, "
+                        "result_indicator, period, fetched_at). Omit to "
+                        "preserve the existing value."
+                    ),
+                },
+                "metrics_period": {
+                    "type": "string",
+                    "description": (
+                        "The window ``totals`` covers (e.g. ``LAST_30_DAYS``). "
+                        "Omit to preserve the existing value."
+                    ),
+                },
+                "periods": {
+                    "type": "object",
+                    "description": (
+                        "Per-window rollups keyed by period token "
+                        "(``YESTERDAY`` / ``LAST_30_DAYS`` / …); each value is "
+                        "a totals-shaped object. Merged per key into the "
+                        "existing map. Omit to preserve the existing map."
+                    ),
+                },
+                "path": _PATH_PROPERTY,
+            },
+            "required": ["platform", "account_id"],
+        },
+    ),
 ]
 
 
@@ -254,6 +320,7 @@ _HANDLERS = {
     "mureo_state_action_log_append": handle_state_action_log_append,
     "mureo_state_upsert_campaign": handle_state_upsert_campaign,
     "mureo_state_report_set": handle_state_report_set,
+    "mureo_state_platform_metrics_set": handle_state_platform_metrics_set,
 }
 
 

@@ -57,9 +57,9 @@ def _import_tools():
 # ---------------------------------------------------------------------------
 
 
-def test_tools_module_exports_six_tools() -> None:
+def test_tools_module_exports_seven_tools() -> None:
     mod = _import_tools()
-    assert len(mod.TOOLS) == 6
+    assert len(mod.TOOLS) == 7
     expected = {
         "mureo_strategy_get",
         "mureo_strategy_set",
@@ -67,6 +67,7 @@ def test_tools_module_exports_six_tools() -> None:
         "mureo_state_action_log_append",
         "mureo_state_upsert_campaign",
         "mureo_state_report_set",
+        "mureo_state_platform_metrics_set",
     }
     assert {t.name for t in mod.TOOLS} == expected
 
@@ -547,3 +548,128 @@ async def test_default_path_follows_runtime_context_workspace(
     # NOT under CWD — proving the handler followed the RuntimeContext.
     assert (workspace_dir / "STATE.json").exists()
     assert not (cwd_dir / "STATE.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# mureo_state_platform_metrics_set
+# ---------------------------------------------------------------------------
+
+
+async def test_platform_metrics_set_creates_platform_with_periods(cwd_to_tmp) -> None:
+    """Writes the v2 platform entry with account_id + per-period rollups."""
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_platform_metrics_set",
+        {
+            "platform": "google_ads",
+            "account_id": "act_123",
+            "totals": {"spend": 3000.0, "conversions": 60},
+            "metrics_period": "LAST_30_DAYS",
+            "periods": {
+                "LAST_30_DAYS": {"spend": 3000.0, "conversions": 60},
+                "YESTERDAY": {"spend": 100.0, "conversions": 2},
+            },
+        },
+    )
+    payload = json.loads(result[0].text)
+    plat = payload["platforms"]["google_ads"]
+    assert plat["account_id"] == "act_123"
+    assert plat["totals"] == {"spend": 3000.0, "conversions": 60}
+    assert plat["metrics_period"] == "LAST_30_DAYS"
+    assert plat["periods"]["YESTERDAY"] == {"spend": 100.0, "conversions": 2}
+    assert payload.get("last_synced_at")
+
+
+async def test_platform_metrics_set_merges_periods_per_window(cwd_to_tmp) -> None:
+    """A YESTERDAY write must keep the LAST_30_DAYS bucket a prior call wrote."""
+    mod = _import_tools()
+    await mod.handle_tool(
+        "mureo_state_platform_metrics_set",
+        {
+            "platform": "google_ads",
+            "account_id": "act_123",
+            "periods": {"LAST_30_DAYS": {"spend": 3000.0}},
+        },
+    )
+    result = await mod.handle_tool(
+        "mureo_state_platform_metrics_set",
+        {
+            "platform": "google_ads",
+            "account_id": "act_123",
+            "periods": {"YESTERDAY": {"spend": 100.0}},
+        },
+    )
+    payload = json.loads(result[0].text)
+    periods = payload["platforms"]["google_ads"]["periods"]
+    assert periods == {"LAST_30_DAYS": {"spend": 3000.0}, "YESTERDAY": {"spend": 100.0}}
+
+
+async def test_platform_metrics_set_preserves_campaigns_and_other_platforms(
+    cwd_to_tmp,
+) -> None:
+    """Setting one platform's rollup leaves its campaigns + siblings intact."""
+    mod = _import_tools()
+    # Seed google_ads with a campaign, and meta_ads as a sibling platform.
+    await mod.handle_tool(
+        "mureo_state_upsert_campaign",
+        {
+            "campaign": {
+                "campaign_id": "g1",
+                "campaign_name": "Brand",
+                "status": "ENABLED",
+                "platform": "google_ads",
+                "account_id": "act_123",
+            }
+        },
+    )
+    await mod.handle_tool(
+        "mureo_state_platform_metrics_set",
+        {"platform": "meta_ads", "account_id": "act_9", "totals": {"spend": 5.0}},
+    )
+    # Now set google_ads rollup — campaign + meta_ads must survive.
+    result = await mod.handle_tool(
+        "mureo_state_platform_metrics_set",
+        {
+            "platform": "google_ads",
+            "account_id": "act_123",
+            "periods": {"YESTERDAY": {"spend": 100.0}},
+        },
+    )
+    payload = json.loads(result[0].text)
+    google = payload["platforms"]["google_ads"]
+    assert [c["campaign_id"] for c in google["campaigns"]] == ["g1"]
+    assert payload["platforms"]["meta_ads"]["totals"] == {"spend": 5.0}
+
+
+async def test_platform_metrics_set_requires_platform_and_account(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    with pytest.raises(ValueError, match="platform"):
+        await mod.handle_tool(
+            "mureo_state_platform_metrics_set", {"account_id": "act_123"}
+        )
+    with pytest.raises(ValueError, match="account_id"):
+        await mod.handle_tool(
+            "mureo_state_platform_metrics_set", {"platform": "google_ads"}
+        )
+
+
+async def test_platform_metrics_set_rejects_malformed_shapes(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    base = {"platform": "google_ads", "account_id": "act_123"}
+    with pytest.raises(ValueError, match="totals must be an object"):
+        await mod.handle_tool(
+            "mureo_state_platform_metrics_set", {**base, "totals": "nope"}
+        )
+    with pytest.raises(ValueError, match="periods must be an object"):
+        await mod.handle_tool(
+            "mureo_state_platform_metrics_set", {**base, "periods": [1, 2]}
+        )
+    with pytest.raises(ValueError, match=r"periods\['YESTERDAY'\] must be an object"):
+        await mod.handle_tool(
+            "mureo_state_platform_metrics_set",
+            {**base, "periods": {"YESTERDAY": "nope"}},
+        )
+    with pytest.raises(ValueError, match="metrics_period must be a string"):
+        await mod.handle_tool(
+            "mureo_state_platform_metrics_set", {**base, "metrics_period": 30}
+        )

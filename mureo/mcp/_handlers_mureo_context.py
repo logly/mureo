@@ -36,6 +36,7 @@ from mureo.context.state import (
     append_action_log,
     read_state_file,
     render_state,
+    set_platform_metrics,
     set_report,
     upsert_campaign,
 )
@@ -240,4 +241,44 @@ async def handle_state_report_set(
         raise ValueError("summary must be an object")
     path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
     doc = set_report(path, report, summary)
+    return _json_result(_state_to_dict(doc))
+
+
+async def handle_state_platform_metrics_set(
+    arguments: dict[str, Any],
+) -> list[TextContent]:
+    # Platform context is required so the v2 ``platforms`` entry (the shape the
+    # dashboard reads) always carries the account id, mirroring upsert_campaign.
+    platform = _require(arguments, "platform")
+    account_id = _require(arguments, "account_id")
+    totals = arguments.get("totals")
+    metrics_period = arguments.get("metrics_period")
+    periods = arguments.get("periods")
+    # Validate the optional shapes before they reach the file: each rollup must
+    # be a JSON object (and each ``periods`` bucket too) so a malformed payload
+    # is rejected cleanly rather than corrupting STATE.json.
+    if totals is not None and not isinstance(totals, dict):
+        raise ValueError("totals must be an object")
+    if metrics_period is not None and not isinstance(metrics_period, str):
+        raise ValueError("metrics_period must be a string")
+    if periods is not None:
+        if not isinstance(periods, dict):
+            raise ValueError("periods must be an object")
+        for window, bucket in periods.items():
+            if not isinstance(bucket, dict):
+                raise ValueError(f"periods[{window!r}] must be an object")
+    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    try:
+        doc = set_platform_metrics(
+            path,
+            platform,
+            account_id,
+            totals=totals,
+            metrics_period=metrics_period,
+            periods=periods,
+        )
+    except ContextFileError as exc:
+        # Surface as ValueError so the MCP dispatcher returns a clean tool
+        # error rather than a 500-style server error (matches upsert_campaign).
+        raise ValueError(str(exc)) from exc
     return _json_result(_state_to_dict(doc))
