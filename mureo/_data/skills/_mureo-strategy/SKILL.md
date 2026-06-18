@@ -238,6 +238,23 @@ Platform-level: `platforms[<p>].totals` holds the same keys summed for that
 platform (respecting the `result_indicator` grouping for Meta), and
 `platforms[<p>].metrics_period` records the window the totals cover.
 
+**Per-period rollups:** `platforms[<p>].periods` is an optional map keyed by a
+canonical period token, each value a totals-shaped object using the SAME
+vocabulary above — so the reporting dashboard can offer a period toggle. Use
+these exact tokens (they are Google Ads date-range tokens):
+
+| Token | Window | Written by |
+|-------|--------|------------|
+| `YESTERDAY` | The prior day | `daily-check` (runs daily) |
+| `LAST_30_DAYS` | Trailing 30 days | `sync-state` |
+
+Write a platform's rollup with the `mureo_state_platform_metrics_set` tool on
+hosts without filesystem access (Desktop / Cowork), or a direct file write in
+Code mode: pass `totals` + `metrics_period` for the single most-recent window
+and/or `periods` for the per-window map. `periods` is merged per window key, so
+writing `YESTERDAY` never clobbers a prior `LAST_30_DAYS` bucket (and vice
+versa); omitted fields preserve their existing value.
+
 ### Reports section
 
 `reports` (top-level, optional) holds the latest agent-written summary per
