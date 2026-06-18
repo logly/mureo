@@ -157,3 +157,57 @@ def test_toast_node_lives_outside_main() -> None:
         "(after </main>) — a transformed ancestor hijacks position:fixed. "
         "See #214."
     )
+
+
+# ---------------------------------------------------------------------------
+# Reports dashboard — read-only STATE.json summary (platform-agnostic).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_reports_nav_item_present_after_setup() -> None:
+    """The Reports nav item must exist and sit immediately after the Setup
+    nav item (before Advanced) so the left-nav order is Setup → Reports →
+    Advanced. dashboard.js toggles ``[data-dashboard-group]`` by the nav's
+    ``data-dashboard-nav`` value, so the marker must be present verbatim.
+    """
+    html = _read("app.html")
+    assert 'data-dashboard-nav="reports"' in html
+    assert 'data-i18n="dashboard.nav_reports"' in html
+    setup_idx = html.index('data-dashboard-nav="setup"')
+    reports_idx = html.index('data-dashboard-nav="reports"')
+    advanced_idx = html.index('data-dashboard-nav="advanced"')
+    assert (
+        setup_idx < reports_idx < advanced_idx
+    ), "Reports nav item must be ordered Setup → Reports → Advanced"
+
+
+@pytest.mark.unit
+def test_reports_section_shell_present() -> None:
+    """The reports group + the containers renderReports() populates (cards,
+    latest, actions, empty state) must exist in app.html — otherwise the
+    render function has nowhere to write.
+    """
+    html = _read("app.html")
+    assert 'data-dashboard-group="reports"' in html
+    assert "data-reports-cards" in html
+    assert "data-reports-latest" in html
+    assert "data-reports-actions" in html
+    assert "data-reports-empty" in html
+    assert "data-reports-client" in html
+
+
+@pytest.mark.unit
+def test_reports_card_css_uses_design_tokens() -> None:
+    """The KPI card rule must carry the card treatment (surface bg, hairline
+    border, radius, shadow) built on the existing tokens — a generic flat
+    block would regress the design intent.
+    """
+    css = _read("app.css")
+    assert ".report-card {" in css
+    block_start = css.index(".report-card {")
+    window = css[block_start : block_start + 600]
+    assert "var(--surface)" in window
+    assert "var(--hairline)" in window
+    assert "border-radius:" in window
+    assert "box-shadow: var(--shadow-sm)" in window
