@@ -57,15 +57,16 @@ def _import_tools():
 # ---------------------------------------------------------------------------
 
 
-def test_tools_module_exports_five_tools() -> None:
+def test_tools_module_exports_six_tools() -> None:
     mod = _import_tools()
-    assert len(mod.TOOLS) == 5
+    assert len(mod.TOOLS) == 6
     expected = {
         "mureo_strategy_get",
         "mureo_strategy_set",
         "mureo_state_get",
         "mureo_state_action_log_append",
         "mureo_state_upsert_campaign",
+        "mureo_state_report_set",
     }
     assert {t.name for t in mod.TOOLS} == expected
 
@@ -394,6 +395,85 @@ async def test_upsert_campaign_without_metrics_still_works(cwd_to_tmp) -> None:
     plat = payload["platforms"]["google_ads"]
     snap = next(c for c in plat["campaigns"] if c["campaign_id"] == "camp_abc")
     assert "metrics" not in snap
+
+
+# ---------------------------------------------------------------------------
+# mureo_state_report_set (stage c)
+# ---------------------------------------------------------------------------
+
+
+async def test_report_set_persists_summary(cwd_to_tmp) -> None:
+    """A report summary is written into STATE.json ``reports[report]`` and
+    round-trips via a subsequent read."""
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
+    mod = _import_tools()
+    summary = {
+        "generated_at": "2026-06-17T00:00:00+00:00",
+        "period": "2026-06-17",
+        "kpis": {"google_ads": {"cpa": 4800}},
+        "flags": ["cpa_over_target"],
+        "narrative": "One campaign over target.",
+    }
+    result = await mod.handle_tool(
+        "mureo_state_report_set", {"report": "daily", "summary": summary}
+    )
+    payload = json.loads(result[0].text)
+    assert payload["reports"]["daily"] == summary
+
+    # Round-trip via a fresh read of STATE.json.
+    result2 = await mod.handle_tool("mureo_state_get", {})
+    payload2 = json.loads(result2[0].text)
+    assert payload2["reports"]["daily"]["flags"] == ["cpa_over_target"]
+
+
+async def test_report_set_preserves_other_reports(cwd_to_tmp) -> None:
+    """Writing one report kind does not clobber a previously written one."""
+    initial = {
+        "version": "2",
+        "platforms": {},
+        "action_log": [],
+        "reports": {"weekly": {"narrative": "ok"}},
+    }
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_report_set",
+        {"report": "daily", "summary": {"narrative": "healthy"}},
+    )
+    payload = json.loads(result[0].text)
+    assert payload["reports"]["daily"] == {"narrative": "healthy"}
+    assert payload["reports"]["weekly"] == {"narrative": "ok"}
+
+
+async def test_report_set_rejects_non_object_summary(cwd_to_tmp) -> None:
+    """A non-object ``summary`` is refused by the handler."""
+    mod = _import_tools()
+    with pytest.raises(ValueError):
+        await mod.handle_tool(
+            "mureo_state_report_set",
+            {"report": "daily", "summary": "not-a-dict"},
+        )
+
+
+async def test_report_set_requires_report_and_summary(cwd_to_tmp) -> None:
+    """Both ``report`` and ``summary`` are required."""
+    mod = _import_tools()
+    with pytest.raises(ValueError):
+        await mod.handle_tool("mureo_state_report_set", {"summary": {"narrative": "x"}})
+    with pytest.raises(ValueError):
+        await mod.handle_tool("mureo_state_report_set", {"report": "daily"})
+
+
+def test_report_set_schema_enum_constrains_report() -> None:
+    """The tool's inputSchema constrains ``report`` to the three known kinds
+    so the dispatcher's schema pass (#277) rejects anything else."""
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_report_set")
+    props = tool.inputSchema["properties"]
+    assert props["report"]["enum"] == ["daily", "weekly", "goal"]
+    assert props["summary"]["type"] == "object"
+    assert set(tool.inputSchema["required"]) == {"report", "summary"}
 
 
 # ---------------------------------------------------------------------------

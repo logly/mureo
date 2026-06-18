@@ -36,6 +36,7 @@ from mureo.context.state import (
     append_action_log,
     read_state_file,
     render_state,
+    set_report,
     upsert_campaign,
 )
 from mureo.context.strategy import RAW_HEADING_TYPE, parse_strategy, write_strategy_file
@@ -224,4 +225,19 @@ async def handle_state_upsert_campaign(
         # path translates this into a clean tool-error response rather
         # than a 500-style server error.
         raise ValueError(str(exc)) from exc
+    return _json_result(_state_to_dict(doc))
+
+
+async def handle_state_report_set(
+    arguments: dict[str, Any],
+) -> list[TextContent]:
+    report = _require(arguments, "report")
+    summary = _require(arguments, "summary")
+    # The free-form summary must be a JSON object so it round-trips into the
+    # reports section and the dashboard can render it. Reject anything else
+    # (string / list / number) before it reaches the file.
+    if not isinstance(summary, dict):
+        raise ValueError("summary must be an object")
+    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    doc = set_report(path, report, summary)
     return _json_result(_state_to_dict(doc))

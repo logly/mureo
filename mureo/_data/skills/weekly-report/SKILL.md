@@ -64,3 +64,12 @@ Generate a weekly marketing operations report.
     - Recommendations for next week
 
 11. **Log to action_log** in STATE.json that a weekly report was generated, including the reporting period.
+
+12. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="weekly"` and a concise `summary` object so the read-only dashboard can render this report without re-running you. Follow this convention:
+    - `generated_at`: ISO 8601 timestamp of this run
+    - `period`: the reporting window (e.g. `"LAST_7_DAYS"` or an explicit date range)
+    - `kpis`: per-platform and/or totals headline numbers (spend, conversions, cpa, week-over-week change)
+    - `flags`: a list of notable items (e.g. `["meta_ads_cpa_up_15pct"]`)
+    - `narrative`: the 2-3 sentence executive summary
+
+    This is best-effort: if `mureo_state_report_set` is unavailable (e.g. a pure file-mode host without the context MCP), skip it silently — the rest of this skill still works.

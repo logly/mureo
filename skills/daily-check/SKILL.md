@@ -73,3 +73,12 @@ Run a daily health check on all marketing accounts using the strategy context.
     For each issue, suggest specific actions aligned with the current Operation Mode. Do NOT recommend actions based on single-day fluctuations — at least 7 consecutive days of critical metrics (>30% off target) before suggesting rescue.
 
 11. **Update STATE.json**: Update campaign snapshots, add notes for flagged issues, and log this daily check to the `action_log` with a summary of findings.
+
+12. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="daily"` and a concise `summary` object so the read-only dashboard can render this report without re-running you. Follow this convention:
+    - `generated_at`: ISO 8601 timestamp of this run
+    - `period`: the day reviewed (e.g. `"2026-06-17"`)
+    - `kpis`: per-platform and/or totals headline numbers (spend, conversions, cpa, ctr)
+    - `flags`: a list of notable items (e.g. `["cpa_over_target_google_ads"]`)
+    - `narrative`: a short text summary (the Healthy / Watch / Action-needed verdict in 1-2 sentences)
+
+    This is best-effort: if `mureo_state_report_set` is unavailable (e.g. a pure file-mode host without the context MCP), skip it silently — the rest of this skill still works.

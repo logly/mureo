@@ -22,6 +22,7 @@ from mureo.context.state import (
     parse_state,
     read_state_file,
     render_state,
+    set_report,
     upsert_campaign,
     write_state_file,
 )
@@ -981,6 +982,145 @@ class TestAppendActionLog:
         assert len(updated.action_log) == 1
 
 
+class TestSetReport:
+    """Stage c: set_report writes a structured analysis summary into the
+    STATE.json ``reports`` section so a read-only dashboard can render the
+    latest report without re-running the agent."""
+
+    @pytest.mark.unit
+    def test_set_report_writes_new_report_key(self, tmp_path: Path) -> None:
+        """set_report stores the summary under reports[report]."""
+        fp = tmp_path / "STATE.json"
+        doc = StateDocument(version="2")
+        write_state_file(fp, doc)
+
+        summary = {
+            "generated_at": "2026-06-17T00:00:00+00:00",
+            "period": "2026-06-17",
+            "kpis": {"google_ads": {"cpa": 4800}},
+            "flags": ["cpa_over_target"],
+            "narrative": "One campaign is over the CPA target.",
+        }
+        updated = set_report(fp, "daily", summary)
+        assert updated.reports is not None
+        assert updated.reports["daily"] == summary
+
+        reloaded = read_state_file(fp)
+        assert reloaded.reports is not None
+        assert reloaded.reports["daily"]["flags"] == ["cpa_over_target"]
+
+    @pytest.mark.unit
+    def test_set_report_preserves_other_report_keys(self, tmp_path: Path) -> None:
+        """Writing one report kind does not clobber the others."""
+        fp = tmp_path / "STATE.json"
+        doc = StateDocument(version="2", reports={"weekly": {"narrative": "ok"}})
+        write_state_file(fp, doc)
+
+        updated = set_report(fp, "daily", {"narrative": "healthy"})
+        assert updated.reports is not None
+        # New key added.
+        assert updated.reports["daily"] == {"narrative": "healthy"}
+        # Pre-existing key untouched.
+        assert updated.reports["weekly"] == {"narrative": "ok"}
+
+    @pytest.mark.unit
+    def test_set_report_overwrites_same_report_key(self, tmp_path: Path) -> None:
+        """Re-writing the same report kind replaces its summary."""
+        fp = tmp_path / "STATE.json"
+        doc = StateDocument(version="2", reports={"daily": {"narrative": "old"}})
+        write_state_file(fp, doc)
+
+        updated = set_report(fp, "daily", {"narrative": "new"})
+        assert updated.reports is not None
+        assert updated.reports["daily"] == {"narrative": "new"}
+
+    @pytest.mark.unit
+    def test_set_report_preserves_campaigns_and_action_log(
+        self, tmp_path: Path
+    ) -> None:
+        """The rest of the document (campaigns, action_log, platforms) survives
+        a report write."""
+        fp = tmp_path / "STATE.json"
+        ps = PlatformState(
+            account_id="123",
+            campaigns=(
+                CampaignSnapshot(campaign_id="1", campaign_name="C", status="ENABLED"),
+            ),
+        )
+        entry = ActionLogEntry(
+            timestamp="2026-06-17T09:00:00Z",
+            action="budget.update",
+            platform="google_ads",
+        )
+        doc = StateDocument(
+            version="2",
+            campaigns=(
+                CampaignSnapshot(campaign_id="1", campaign_name="C", status="ENABLED"),
+            ),
+            platforms={"google_ads": ps},
+            action_log=(entry,),
+        )
+        write_state_file(fp, doc)
+
+        updated = set_report(fp, "goal", {"narrative": "on track"})
+        assert updated.reports is not None
+        assert updated.reports["goal"] == {"narrative": "on track"}
+        # Untouched sections.
+        assert len(updated.campaigns) == 1
+        assert updated.campaigns[0].campaign_id == "1"
+        assert len(updated.action_log) == 1
+        assert updated.action_log[0].action == "budget.update"
+        assert updated.platforms is not None
+        assert updated.platforms["google_ads"].account_id == "123"
+
+    @pytest.mark.unit
+    def test_set_report_restamps_last_synced_at(self, tmp_path: Path) -> None:
+        """last_synced_at is re-stamped to now on a report write."""
+        fp = tmp_path / "STATE.json"
+        doc = StateDocument(version="2", last_synced_at="2020-01-01T00:00:00+00:00")
+        write_state_file(fp, doc)
+
+        updated = set_report(fp, "daily", {"narrative": "fresh"})
+        assert updated.last_synced_at is not None
+        assert updated.last_synced_at != "2020-01-01T00:00:00+00:00"
+
+    @pytest.mark.unit
+    def test_set_report_starts_from_none_reports(self, tmp_path: Path) -> None:
+        """Backward compat: a doc whose reports is None gains a {} that the new
+        report key is merged into."""
+        fp = tmp_path / "STATE.json"
+        doc = StateDocument(version="2")
+        assert doc.reports is None
+        write_state_file(fp, doc)
+
+        updated = set_report(fp, "weekly", {"narrative": "watch"})
+        assert updated.reports == {"weekly": {"narrative": "watch"}}
+
+    @pytest.mark.unit
+    def test_set_report_to_nonexistent_file_creates_it(self, tmp_path: Path) -> None:
+        """Writing a report to an absent STATE.json creates the file."""
+        fp = tmp_path / "STATE.json"
+        updated = set_report(fp, "daily", {"narrative": "first run"})
+        assert fp.exists()
+        assert updated.reports == {"daily": {"narrative": "first run"}}
+
+    @pytest.mark.unit
+    def test_set_report_roundtrips_to_disk(self, tmp_path: Path) -> None:
+        """The persisted summary round-trips through a fresh read."""
+        fp = tmp_path / "STATE.json"
+        summary = {
+            "generated_at": "2026-06-17T00:00:00+00:00",
+            "period": "LAST_7_DAYS",
+            "kpis": {"totals": {"spend": 12345.0, "conversions": 12}},
+            "flags": [],
+            "narrative": "Spend steady week over week.",
+        }
+        set_report(fp, "weekly", summary)
+        reloaded = read_state_file(fp)
+        assert reloaded.reports is not None
+        assert reloaded.reports["weekly"] == summary
+
+
 class TestStatePerformanceMetrics:
     """Stage a+b: optional performance metrics on snapshots / platforms /
     document. All fields are OPTIONAL with safe defaults so old STATE.json
@@ -989,9 +1129,7 @@ class TestStatePerformanceMetrics:
     @pytest.mark.unit
     def test_campaign_metrics_defaults_to_none(self) -> None:
         """CampaignSnapshot.metrics defaults to None."""
-        snap = CampaignSnapshot(
-            campaign_id="1", campaign_name="C", status="ENABLED"
-        )
+        snap = CampaignSnapshot(campaign_id="1", campaign_name="C", status="ENABLED")
         assert snap.metrics is None
 
     @pytest.mark.unit
@@ -1113,9 +1251,7 @@ class TestStatePerformanceMetrics:
         """metrics is omitted from JSON when None (no diff churn)."""
         doc = StateDocument(
             campaigns=(
-                CampaignSnapshot(
-                    campaign_id="1", campaign_name="C", status="ENABLED"
-                ),
+                CampaignSnapshot(campaign_id="1", campaign_name="C", status="ENABLED"),
             ),
         )
         rendered = render_state(doc)
@@ -1128,9 +1264,7 @@ class TestStatePerformanceMetrics:
         ps = PlatformState(
             account_id="123",
             campaigns=(
-                CampaignSnapshot(
-                    campaign_id="1", campaign_name="C", status="ENABLED"
-                ),
+                CampaignSnapshot(campaign_id="1", campaign_name="C", status="ENABLED"),
             ),
             totals={"spend": 5000.0, "conversions": 20},
             metrics_period="LAST_30_DAYS",

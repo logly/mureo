@@ -43,11 +43,11 @@ class TestListTools:
 
     async def test_list_tools_returns_all_tools(self) -> None:
         """list_tools returns all tools (Google Ads 83 + Meta Ads 82 + Search Console 10
-        + Rollback 2 + Analysis 1 + Mureo Context 5 + Analytics Registry 1
-        + Learning 2 = 186)."""
+        + Rollback 2 + Analysis 1 + Mureo Context 6 + Analytics Registry 1
+        + Learning 2 = 187)."""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
-        assert len(tools) == 186
+        assert len(tools) == 187
 
     async def test_list_tools_contains_google_and_meta(self) -> None:
         """Google Ads and Meta Ads tools are included."""
@@ -213,3 +213,13 @@ class TestCallToolErrors:
         assert len(result) == 1
         assert result[0].type == "text"
         assert "Credentials not found" in result[0].text
+
+    async def test_report_set_invalid_report_rejected_by_schema(self) -> None:
+        """mureo_state_report_set with a ``report`` outside the enum is rejected
+        by the dispatcher's schema pass (#277) before any handler runs."""
+        mod = _import_server_module()
+        with pytest.raises(ValueError, match="report"):
+            await mod.handle_call_tool(
+                "mureo_state_report_set",
+                {"report": "monthly", "summary": {"narrative": "x"}},
+            )

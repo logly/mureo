@@ -1,6 +1,6 @@
 """mureo's STRATEGY.md / STATE.json MCP tool surface.
 
-Five tools that expose mureo's context layer over MCP, so any MCP host
+Six tools that expose mureo's context layer over MCP, so any MCP host
 (Claude Desktop chat, claude.ai web, Codex/Cursor, …) can read and
 update STRATEGY.md / STATE.json without direct filesystem access.
 
@@ -19,6 +19,7 @@ from mcp.types import Tool
 from mureo.mcp._handlers_mureo_context import (
     handle_state_action_log_append,
     handle_state_get,
+    handle_state_report_set,
     handle_state_upsert_campaign,
     handle_strategy_get,
     handle_strategy_set,
@@ -204,6 +205,45 @@ TOOLS: list[Tool] = [
             "required": ["campaign"],
         },
     ),
+    Tool(
+        name="mureo_state_report_set",
+        description=(
+            "Atomically persist a structured analysis report summary into "
+            "STATE.json's ``reports`` section so the read-only configure "
+            "dashboard can render the latest daily / weekly / goal report "
+            "without re-running the agent. ``report`` selects the kind "
+            "(daily / weekly / goal); ``summary`` is a free-form object — by "
+            "convention generated_at (ISO 8601), period, kpis (per-platform "
+            "/ totals headline numbers), flags (notable items), narrative "
+            "(short text). Other report kinds are preserved. Best-effort: a "
+            "skill should skip this silently where the context MCP is "
+            "unavailable. Returns the updated state document."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "report": {
+                    "type": "string",
+                    "enum": ["daily", "weekly", "goal"],
+                    "description": (
+                        "Report kind: ``daily`` (daily-check), ``weekly`` "
+                        "(weekly-report), or ``goal`` (goal-review)."
+                    ),
+                },
+                "summary": {
+                    "type": "object",
+                    "description": (
+                        "Free-form summary object. Convention: generated_at "
+                        "(ISO 8601), period, kpis (per-platform / totals "
+                        "headline numbers), flags (list of notable items), "
+                        "narrative (short text)."
+                    ),
+                },
+                "path": _PATH_PROPERTY,
+            },
+            "required": ["report", "summary"],
+        },
+    ),
 ]
 
 
@@ -213,6 +253,7 @@ _HANDLERS = {
     "mureo_state_get": handle_state_get,
     "mureo_state_action_log_append": handle_state_action_log_append,
     "mureo_state_upsert_campaign": handle_state_upsert_campaign,
+    "mureo_state_report_set": handle_state_report_set,
 }
 
 

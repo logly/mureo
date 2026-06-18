@@ -368,6 +368,45 @@ def append_action_log(path: Path, entry: ActionLogEntry) -> StateDocument:
     return _locked_state_mutation(path, _build)
 
 
+def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocument:
+    """Persist a structured analysis ``summary`` into STATE.json ``reports``.
+
+    Merges ``reports[report] = summary`` into the document's ``reports``
+    section (a free-form ``{"daily": ..., "weekly": ..., "goal": ...}`` map
+    the read-only dashboard renders), re-stamps ``last_synced_at``, and writes
+    back atomically. Other report keys and the rest of the document
+    (campaigns, platforms, action_log) are preserved. When ``reports`` is
+    ``None`` (old STATE.json), it starts from ``{}`` — so the call is
+    backward compatible.
+
+    Args:
+        path: STATE.json location.
+        report: Report kind key (``"daily"`` / ``"weekly"`` / ``"goal"``).
+        summary: The free-form summary object to store under that key.
+
+    Returns:
+        The updated :class:`StateDocument`.
+    """
+
+    def _build(doc: StateDocument) -> StateDocument:
+        # Start from a shallow copy of the existing reports (or {} when the
+        # document predates the reports section) so sibling report kinds are
+        # preserved rather than wiped.
+        reports = dict(doc.reports) if doc.reports else {}
+        reports[report] = summary
+        return StateDocument(
+            version=doc.version,
+            last_synced_at=_now_iso(),
+            customer_id=doc.customer_id,
+            campaigns=doc.campaigns,
+            platforms=doc.platforms,
+            action_log=doc.action_log,
+            reports=reports,
+        )
+
+    return _locked_state_mutation(path, _build)
+
+
 def get_campaign(doc: StateDocument, campaign_id: str) -> CampaignSnapshot | None:
     """Search for a campaign by campaign_id."""
     for c in doc.campaigns:

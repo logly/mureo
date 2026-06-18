@@ -65,4 +65,13 @@ Review progress toward all marketing goals across all platforms.
    - Log the review to `action_log` with a summary of Goal statuses
    - Update Current values in STRATEGY.md Goal sections if approved
 
+9. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="goal"` and a concise `summary` object so the read-only dashboard can render this review without re-running you. Follow this convention:
+   - `generated_at`: ISO 8601 timestamp of this run
+   - `period`: the assessment window or "as of" date
+   - `kpis`: per-Goal headline numbers (target, current, % of target achieved)
+   - `flags`: a list of notable items (e.g. `["goal_cpa_off_track"]`)
+   - `narrative`: a short text summary of overall Goal health (on-track / at-risk / off-track)
+
+   This is best-effort: if `mureo_state_report_set` is unavailable (e.g. a pure file-mode host without the context MCP), skip it silently — the rest of this skill still works.
+
 IMPORTANT: When updating Goal "Current" values in STRATEGY.md, ask for approval first.
