@@ -111,8 +111,17 @@ class PlatformState:
     # Optional platform-level metric rollup (e.g. {"spend": ..., "clicks": ...})
     # and the period those totals cover (e.g. "LAST_30_DAYS"). Both default to
     # None so legacy platform entries parse unchanged and emit no extra keys.
+    # ``totals`` / ``metrics_period`` carry a SINGLE rollup (the most recent
+    # window a sync wrote); ``periods`` carries one rollup PER window so the
+    # dashboard can offer a period toggle.
     totals: dict[str, Any] | None = None
     metrics_period: str | None = None
+    # Optional per-period rollups keyed by canonical period token
+    # ({"YESTERDAY": {<totals>}, "LAST_30_DAYS": {<totals>}}). Each value is a
+    # totals-shaped dict (same canonical keys as ``totals``). None by default so
+    # legacy entries parse unchanged and emit no extra key. sync-state writes
+    # LAST_30_DAYS; daily-check writes YESTERDAY.
+    periods: dict[str, dict[str, Any]] | None = None
 
     def __post_init__(self) -> None:
         """Ensure campaigns is a tuple (defensive copy)."""
@@ -120,6 +129,8 @@ class PlatformState:
             object.__setattr__(self, "campaigns", tuple(self.campaigns))
         if self.totals is not None:
             object.__setattr__(self, "totals", copy.deepcopy(self.totals))
+        if self.periods is not None:
+            object.__setattr__(self, "periods", copy.deepcopy(self.periods))
 
 
 @dataclass(frozen=True)

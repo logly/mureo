@@ -90,6 +90,17 @@ _BUILTIN_DISPLAY_NAMES: dict[str, str] = {
 
 _PLUGIN_PREFIX = "plugin:"
 
+# Canonical period tokens in dashboard-toggle order. The default view is the
+# most recent day (``YESTERDAY``) — daily-check runs every day, so the prior
+# day's state is what an operator checks first; ``LAST_30_DAYS`` is the
+# trend window written by sync-state. Windows not listed here sort after
+# these, alphabetically (see :func:`_available_periods`).
+_PERIOD_ORDER: tuple[str, ...] = (
+    "YESTERDAY",
+    "LAST_7_DAYS",
+    "LAST_30_DAYS",
+)
+
 
 def platform_display_name(key: str) -> str:
     """Resolve a human label for a ``platforms`` key.
@@ -251,8 +262,12 @@ def build_report_summary(
 
     - ``platforms``: one row per key in ``platforms`` — built-in AND
       ``plugin:<dist>`` — each ``{key, display_name, totals, metrics_period,
-      campaign_count}``. A platform without metrics still appears (``totals``
-      empty / ``metrics_period`` ``None``).
+      campaign_count}``. A platform without metrics for the resolved window
+      still appears (``totals`` ``None`` / ``metrics_period`` ``None``).
+    - ``periods``: the windows that have data SOMEWHERE in this document
+      (union over every platform's per-period rollups plus its legacy
+      single-rollup window), in canonical order — so the dashboard renders a
+      period toggle only for windows it can actually show.
     - ``last_synced_at``: the document's sync timestamp (or ``None``).
     - ``recent_actions``: the last :data:`_RECENT_ACTIONS_LIMIT` action-log
       entries, each ``{timestamp, action, platform, campaign_id, summary,
@@ -261,10 +276,20 @@ def build_report_summary(
     - ``reports``: the daily/weekly/goal summaries verbatim (or ``None``).
     - ``client`` / ``period``: echoed back so the caller knows what was read.
 
-    ``period`` is accepted for forward-compatibility (a future filtered view)
-    and echoed; the current STATE.json-sourced view returns whatever window
-    the sync wrote. Never raises on a missing/empty/malformed STATE.json —
-    it returns an empty-but-valid summary instead.
+    Period selection
+    ----------------
+    - ``period is None`` (the default) → backward-compatible passthrough:
+      each platform's stored single rollup (``totals`` / ``metrics_period``)
+      is returned as-is. No existing caller regresses.
+    - ``period`` set (e.g. ``"YESTERDAY"`` / ``"LAST_30_DAYS"``) → each
+      platform's totals are resolved FOR THAT WINDOW from its ``periods``
+      rollups, falling back to the legacy single rollup ONLY when its stored
+      ``metrics_period`` matches the requested window (never mislabels a
+      different window's totals). A platform with no data for the window gets
+      ``totals``/``metrics_period`` ``None``.
+
+    Never raises on a missing/empty/malformed STATE.json — it returns an
+    empty-but-valid summary instead.
     """
     store = _state_store_for_client(client)
     doc = _read_state_safe(store)
@@ -273,8 +298,9 @@ def build_report_summary(
     return {
         "client": resolved_client,
         "period": period,
+        "periods": _available_periods(doc),
         "last_synced_at": doc.last_synced_at if doc is not None else None,
-        "platforms": _build_platforms(doc),
+        "platforms": _build_platforms(doc, period),
         "recent_actions": _build_recent_actions(doc),
         # ``reports`` is relayed verbatim. Unlike ``totals`` / ``recent_actions``
         # it is NOT whitelisted: it holds the structured analysis summary written
@@ -301,22 +327,77 @@ def _read_state_safe(store: StateStore) -> StateDocument | None:
         return None
 
 
-def _build_platforms(doc: StateDocument | None) -> list[dict[str, Any]]:
+def _build_platforms(
+    doc: StateDocument | None, period: str | None
+) -> list[dict[str, Any]]:
     """One JSON-safe row per ``platforms`` key (insertion order preserved)."""
     if doc is None or not doc.platforms:
         return []
-    return [_platform_row(key, state) for key, state in doc.platforms.items()]
+    return [_platform_row(key, state, period) for key, state in doc.platforms.items()]
 
 
-def _platform_row(key: str, state: PlatformState) -> dict[str, Any]:
-    """Shape a single platform's dashboard row (no account ids / secrets)."""
+def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[str, Any]:
+    """Shape a single platform's dashboard row (no account ids / secrets).
+
+    ``period is None`` returns the stored single rollup (legacy passthrough);
+    a set ``period`` resolves the totals for that window (see
+    :func:`_period_totals`).
+    """
+    if period is None:
+        totals = _safe_totals(state.totals)
+        metrics_period = state.metrics_period
+    else:
+        totals = _period_totals(state, period)
+        # Only label the row with the window once it actually carries totals,
+        # so the frontend can tell "no data for this window" from "this data
+        # covers <window>".
+        metrics_period = period if totals is not None else None
     return {
         "key": key,
         "display_name": platform_display_name(key),
-        "totals": _safe_totals(state.totals),
-        "metrics_period": state.metrics_period,
+        "totals": totals,
+        "metrics_period": metrics_period,
         "campaign_count": len(state.campaigns),
     }
+
+
+def _period_totals(state: PlatformState, period: str) -> dict[str, Any] | None:
+    """Resolve a platform's totals for ``period`` (whitelisted) or ``None``.
+
+    Precedence:
+    1. ``periods[period]`` when the key is PRESENT — authoritative, even if
+       it whitelists down to nothing (``None``).
+    2. else the legacy single rollup (``totals``) ONLY when its stored
+       ``metrics_period`` equals ``period`` — never mislabel another window.
+    3. else ``None`` (no data for this window).
+    """
+    if state.periods is not None and period in state.periods:
+        bucket = state.periods[period]
+        return _safe_totals(bucket if isinstance(bucket, dict) else None)
+    if state.metrics_period == period:
+        return _safe_totals(state.totals)
+    return None
+
+
+def _available_periods(doc: StateDocument | None) -> list[str]:
+    """Windows with data anywhere in the document, in canonical order.
+
+    Union over every platform's ``periods`` keys plus its legacy
+    ``metrics_period`` (so a legacy single-rollup window still advertises
+    itself). Sorted with :data:`_PERIOD_ORDER` first, unknown windows
+    appended alphabetically — gives the dashboard a stable toggle order.
+    """
+    if doc is None or not doc.platforms:
+        return []
+    found: set[str] = set()
+    for state in doc.platforms.values():
+        if state.periods:
+            found.update(k for k in state.periods if isinstance(k, str) and k)
+        if state.metrics_period:
+            found.add(state.metrics_period)
+    known = [p for p in _PERIOD_ORDER if p in found]
+    extra = sorted(p for p in found if p not in _PERIOD_ORDER)
+    return known + extra
 
 
 def _safe_totals(totals: dict[str, Any] | None) -> dict[str, Any] | None:
