@@ -1395,9 +1395,11 @@
   // platform with no synced metrics (totals null/empty) still gets a card
   // labelled "no synced metrics yet" instead of a broken/empty one.
   //
-  // No 7d/30d toggle: STATE.json holds a single latest snapshot, so a
-  // period switch would mislead. Each card shows its own metrics_period as
-  // a label; overall freshness comes from last_synced_at ("synced N ago").
+  // Period toggle (YESTERDAY default / LAST_30_DAYS): the summary carries a
+  // `periods` union of the windows that have data; the toggle is rendered
+  // ONLY for those, and only when there is a real choice (>= 2). Each call
+  // requests `?period=`, and the cards show that window's totals. Overall
+  // freshness still comes from last_synced_at ("synced N ago").
   // ----------------------------------------------------------------------
 
   // Canonical secondary KPI vocabulary → i18n label key. Headline (spend)
@@ -1410,9 +1412,34 @@
     impressions: "dashboard.reports_kpi_impressions",
   };
 
+  // Canonical period token → i18n label key. Unknown tokens fall back to the
+  // raw token (so a future window still renders a button, just unlocalized).
+  const REPORTS_PERIOD_LABELS = {
+    YESTERDAY: "dashboard.reports_period_yesterday",
+    LAST_7_DAYS: "dashboard.reports_period_last_7_days",
+    LAST_30_DAYS: "dashboard.reports_period_last_30_days",
+  };
+
+  function reportsPeriodLabel(token) {
+    const key = REPORTS_PERIOD_LABELS[token];
+    return key ? MUREO.t(key) : String(token);
+  }
+
+  // The selected window. Default = YESTERDAY (daily-check runs every day, so
+  // the prior day is what an operator checks first). Reconciled against the
+  // summary's `periods` union on each render — falls back to the first
+  // available window when YESTERDAY has no data yet.
+  let reportsPeriod = "YESTERDAY";
+
+  // The client whose summary is on screen — so the period toggle re-fetches
+  // the SAME client (the client selector and the period toggle are wired
+  // independently).
+  let reportsActiveClient = null;
+
   // Monotonic render generation (mirrors renderPluginCredentials #223):
   // the section clears then awaits a fetch, so an interleaved re-render
-  // (locale change, client switch) must not let a stale result append.
+  // (locale change, client switch, period switch) must not let a stale
+  // result append.
   let reportsRenderSeq = 0;
 
   // Humanize an ISO-8601 timestamp into a coarse "N ago" string. Falls
@@ -1680,9 +1707,48 @@
     });
   }
 
+  // Render the period toggle from the summary's `periods` union. Shown only
+  // when there is a real choice (>= 2 windows); a single-window account has
+  // nothing to switch, so the toggle stays hidden. Buttons are recreated on
+  // every render, so their click handlers never accumulate.
+  function renderReportsPeriodToggle(periods) {
+    const wrap = document.querySelector("[data-reports-period]");
+    if (!wrap) return;
+    const list = Array.isArray(periods)
+      ? periods.filter(function (p) {
+          return typeof p === "string" && p;
+        })
+      : [];
+    wrap.textContent = "";
+    if (list.length < 2) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    list.forEach(function (token) {
+      const active = token === reportsPeriod;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "reports-period-btn" + (active ? " is-active" : "");
+      btn.setAttribute("data-period", token);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+      btn.textContent = reportsPeriodLabel(token);
+      btn.addEventListener("click", function () {
+        if (token === reportsPeriod) return;
+        reportsPeriod = token;
+        // Bump the generation so any in-flight summary render is dropped,
+        // then re-fetch the SAME client for the newly selected window.
+        reportsRenderSeq++;
+        renderReportsSummary(reportsActiveClient);
+      });
+      wrap.appendChild(btn);
+    });
+  }
+
   // Fetch + render the summary for a given client (or the default one).
   async function renderReportsSummary(client) {
     const seq = reportsRenderSeq;
+    reportsActiveClient = client || null;
     const cards = document.querySelector("[data-reports-cards]");
     const empty = document.querySelector("[data-reports-empty]");
     const freshness = document.querySelector("[data-reports-freshness]");
@@ -1690,9 +1756,11 @@
 
     let summary;
     try {
+      const params = [];
+      if (client) params.push("client=" + encodeURIComponent(client));
+      if (reportsPeriod) params.push("period=" + encodeURIComponent(reportsPeriod));
       const url =
-        "/api/reports/summary" +
-        (client ? "?client=" + encodeURIComponent(client) : "");
+        "/api/reports/summary" + (params.length ? "?" + params.join("&") : "");
       const res = await fetch(url, { credentials: "same-origin" });
       if (!res.ok) throw new Error("HTTP " + res.status);
       summary = await res.json();
@@ -1703,6 +1771,7 @@
       if (seq !== reportsRenderSeq) return;
       cards.textContent = "";
       if (freshness) freshness.textContent = "";
+      renderReportsPeriodToggle([]);
       renderReportsLatest(null);
       renderReportsActions(null);
       if (empty) empty.hidden = false;
@@ -1713,6 +1782,22 @@
     // misbehaving backend or proxy) must not crash the render — coerce to an
     // empty summary so the guarded accessors below fall back to the empty state.
     if (!summary || typeof summary !== "object") summary = {};
+
+    // Reconcile the selected window against the windows that actually carry
+    // data. When the preferred window (YESTERDAY) has nothing yet, fall back
+    // to the first available and re-fetch ONCE — the corrected period is
+    // guaranteed to be in `available`, so the re-entry can't loop.
+    const available = Array.isArray(summary.periods)
+      ? summary.periods.filter(function (p) {
+          return typeof p === "string" && p;
+        })
+      : [];
+    if (available.length && available.indexOf(reportsPeriod) === -1) {
+      reportsPeriod =
+        available.indexOf("YESTERDAY") !== -1 ? "YESTERDAY" : available[0];
+      return renderReportsSummary(client);
+    }
+    renderReportsPeriodToggle(available);
 
     cards.textContent = "";
 
