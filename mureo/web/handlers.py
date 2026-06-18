@@ -34,6 +34,8 @@ Routes
 ``GET  /api/demo/scenarios``     → list registered demo scenarios
 ``POST /api/demo/init``          → scaffold a demo workspace
 ``GET  /api/byod/status``        → per-platform byod/live status
+``GET  /api/reports/clients``    → selectable reporting clients (Agency seam)
+``GET  /api/reports/summary``    → read-only STATE.json report summary
 ``POST /api/byod/import``        → import a Sheet bundle XLSX
 ``POST /api/byod/remove``        → drop one platform's BYOD data
 ``POST /api/byod/clear``         → wipe all BYOD data
@@ -106,6 +108,7 @@ from mureo.web.plugin_credentials import (
     list_plugin_credential_fields,
     save_plugin_credentials,
 )
+from mureo.web.reports import build_report_summary, list_report_clients
 from mureo.web.session import OAUTH_PROVIDERS, SUPPORTED_HOSTS
 from mureo.web.setup_actions import (
     clear_all_setup,
@@ -397,6 +400,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/byod/status":
             send_json(self, byod_status().as_dict())
+            return
+        if path == "/api/reports/clients":
+            self._serve_reports_clients()
+            return
+        if path == "/api/reports/summary":
+            self._serve_reports_summary()
             return
         if path == "/api/advisors":
             self._serve_advisors()
@@ -833,6 +842,31 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         which can carry secrets.
         """
         send_json(self, {"advisors": list_advisors(path=self._insight_sources_path())})
+
+    # ------------------------------------------------------------------
+    # Reporting dashboard (read-only, STATE.json-sourced)
+    # ------------------------------------------------------------------
+    def _serve_reports_clients(self) -> None:
+        """GET ``/api/reports/clients`` — selectable reporting clients.
+
+        Read-only, Host-gated like every other GET. One client for the OSS
+        single-workspace install; the Agency backend's ``list_clients`` seam
+        plugs in inside :func:`mureo.web.reports.list_report_clients`. Never
+        raises — the builder degrades to the active workspace.
+        """
+        send_json(self, {"clients": list_report_clients()})
+
+    def _serve_reports_summary(self) -> None:
+        """GET ``/api/reports/summary`` — read-only STATE.json report data.
+
+        Optional ``client`` / ``period`` query params select the client
+        (Agency seam) and forward a window hint. Read-only, Host-gated, and
+        secret-free; the builder never raises on a missing/empty STATE.json.
+        """
+        query = _flatten_query(self.path)
+        client = query.get("client") or None
+        period = query.get("period") or None
+        send_json(self, build_report_summary(client=client, period=period))
 
     def _post_advisors_add(self, payload: dict[str, Any]) -> None:
         try:

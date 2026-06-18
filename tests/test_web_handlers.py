@@ -2528,3 +2528,89 @@ class TestAdvisors:
         with pytest.raises(urllib.error.HTTPError) as exc:
             _post(wizard, "/api/advisors/remove", {"name": "a"}, csrf=None)
         assert exc.value.code == 403
+
+
+# ---------------------------------------------------------------------------
+# Reporting dashboard routes (read-only, STATE.json-sourced):
+#   GET /api/reports/clients   (Host-gated only, no CSRF for GET)
+#   GET /api/reports/summary   (Host-gated only; ?client=&period= forwarded)
+# The reports.py builders are unit-tested in test_web_reports.py; here we
+# pin only the route layer (dispatch, gating, query forwarding, JSON shape).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGetReportsClients:
+    """``GET /api/reports/clients`` — selectable reporting clients."""
+
+    ROUTE = "/api/reports/clients"
+
+    def test_returns_clients_envelope(self, wizard: ConfigureWizard) -> None:
+        fake = [{"slug": "default", "name": "default", "active": True}]
+        with patch(
+            "mureo.web.handlers.list_report_clients", return_value=fake
+        ) as mock_clients:
+            resp = _get(wizard, self.ROUTE)
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"clients": fake}
+        mock_clients.assert_called_once()
+
+    def test_get_does_not_require_csrf(self, wizard: ConfigureWizard) -> None:
+        with patch("mureo.web.handlers.list_report_clients", return_value=[]):
+            resp = _get(wizard, self.ROUTE)
+        assert resp.status == 200
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        req = urllib.request.Request(_url(wizard, self.ROUTE))
+        req.add_header("Host", "attacker.example.com")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestGetReportsSummary:
+    """``GET /api/reports/summary`` — read-only STATE.json report summary."""
+
+    ROUTE = "/api/reports/summary"
+
+    def test_returns_summary_payload(self, wizard: ConfigureWizard) -> None:
+        fake = {
+            "client": "default",
+            "period": None,
+            "last_synced_at": None,
+            "platforms": [],
+            "recent_actions": [],
+            "reports": None,
+        }
+        with patch(
+            "mureo.web.handlers.build_report_summary", return_value=fake
+        ) as mock_summary:
+            resp = _get(wizard, self.ROUTE)
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == fake
+        mock_summary.assert_called_once_with(client=None, period=None)
+
+    def test_forwards_client_and_period_query(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        with patch(
+            "mureo.web.handlers.build_report_summary", return_value={}
+        ) as mock_summary:
+            resp = _get(
+                wizard, self.ROUTE + "?client=acme&period=LAST_7_DAYS"
+            )
+        assert resp.status == 200
+        mock_summary.assert_called_once_with(client="acme", period="LAST_7_DAYS")
+
+    def test_get_does_not_require_csrf(self, wizard: ConfigureWizard) -> None:
+        with patch("mureo.web.handlers.build_report_summary", return_value={}):
+            resp = _get(wizard, self.ROUTE)
+        assert resp.status == 200
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        req = urllib.request.Request(_url(wizard, self.ROUTE))
+        req.add_header("Host", "attacker.example.com")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
