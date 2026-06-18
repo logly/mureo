@@ -70,7 +70,9 @@ _CAMPAIGN_PROPERTY = {
         "account_id. The platform + account_id populate the per-platform "
         "``platforms`` section the dashboard reads (omit them and the "
         "client renders as inactive). Optional fields mirror the snapshot "
-        "schema in docs/strategy-context.md."
+        "schema in docs/strategy-context.md, including ``metrics`` "
+        "(spend / impressions / clicks / conversions / cpa / ctr / "
+        "result_indicator / period / fetched_at) for dashboard KPIs."
     ),
     "properties": {
         "campaign_id": {"type": "string"},
@@ -96,6 +98,15 @@ _CAMPAIGN_PROPERTY = {
         "device_targeting": {"type": "array"},
         "campaign_goal": {"type": "string"},
         "notes": {"type": "string"},
+        "metrics": {
+            "type": "object",
+            "description": (
+                "Optional performance metrics for the reporting dashboard: "
+                "spend, impressions, clicks, conversions, cpa, ctr, "
+                "result_indicator (Meta: clicks vs leads), period (e.g. "
+                "``LAST_30_DAYS``), fetched_at (ISO 8601)."
+            ),
+        },
     },
     "required": [
         "campaign_id",
@@ -179,7 +190,10 @@ TOOLS: list[Tool] = [
             "Atomically upsert a CampaignSnapshot into STATE.json (root "
             "campaigns array). Use this to keep STATE.json in sync with "
             "campaign metadata changes the agent observes via vendor "
-            "MCPs or BYOD imports."
+            "MCPs or BYOD imports. Pass the optional ``metrics`` object to "
+            "persist the campaign's performance numbers (spend, clicks, "
+            "conversions, cpa, ctr, …) so the reporting dashboard can "
+            "render KPIs from STATE.json."
         ),
         inputSchema={
             "type": "object",

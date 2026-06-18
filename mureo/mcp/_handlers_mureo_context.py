@@ -214,6 +214,7 @@ async def handle_state_upsert_campaign(
         device_targeting=device_targeting,
         campaign_goal=raw.get("campaign_goal"),
         notes=raw.get("notes"),
+        metrics=raw.get("metrics"),
     )
     path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
     try:

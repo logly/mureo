@@ -33,6 +33,13 @@ class CampaignSnapshot:
     device_targeting: tuple[dict[str, Any], ...] | None = None
     campaign_goal: str | None = None
     notes: str | None = None
+    # Optional performance metrics for the read-only reporting dashboard.
+    # Validation stays loose (free-form dict); intended keys are:
+    #   spend, impressions, clicks, conversions, cpa, ctr,
+    #   result_indicator (Meta: whether "results" are clicks vs leads),
+    #   period (e.g. "LAST_30_DAYS"), fetched_at (ISO 8601).
+    # Optional with a None default so old STATE.json files parse unchanged.
+    metrics: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable fields."""
@@ -44,6 +51,8 @@ class CampaignSnapshot:
             # Convert lists to tuples and deepcopy contents
             copied = tuple(copy.deepcopy(item) for item in self.device_targeting)
             object.__setattr__(self, "device_targeting", copied)
+        if self.metrics is not None:
+            object.__setattr__(self, "metrics", copy.deepcopy(self.metrics))
 
 
 @dataclass(frozen=True)
@@ -99,11 +108,18 @@ class PlatformState:
 
     account_id: str
     campaigns: tuple[CampaignSnapshot, ...] = field(default_factory=tuple)
+    # Optional platform-level metric rollup (e.g. {"spend": ..., "clicks": ...})
+    # and the period those totals cover (e.g. "LAST_30_DAYS"). Both default to
+    # None so legacy platform entries parse unchanged and emit no extra keys.
+    totals: dict[str, Any] | None = None
+    metrics_period: str | None = None
 
     def __post_init__(self) -> None:
         """Ensure campaigns is a tuple (defensive copy)."""
         if not isinstance(self.campaigns, tuple):
             object.__setattr__(self, "campaigns", tuple(self.campaigns))
+        if self.totals is not None:
+            object.__setattr__(self, "totals", copy.deepcopy(self.totals))
 
 
 @dataclass(frozen=True)
@@ -120,6 +136,11 @@ class StateDocument:
     action_log: tuple[ActionLogEntry, ...] = field(
         default_factory=tuple
     )  # v2: action log
+    # Forward-ready section for stage-c analysis summaries (e.g.
+    # {"daily": ..., "weekly": ..., "goal": ...}). Round-tripped now; no
+    # skill writes it yet. Optional with a None default so old STATE.json
+    # files parse unchanged and emit no extra key.
+    reports: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Defensive copies for mutable fields."""
@@ -127,3 +148,5 @@ class StateDocument:
             object.__setattr__(self, "platforms", dict(self.platforms))
         if not isinstance(self.action_log, tuple):
             object.__setattr__(self, "action_log", tuple(self.action_log))
+        if self.reports is not None:
+            object.__setattr__(self, "reports", copy.deepcopy(self.reports))

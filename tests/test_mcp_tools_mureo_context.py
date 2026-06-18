@@ -338,6 +338,64 @@ async def test_upsert_campaign_updates_existing(cwd_to_tmp) -> None:
         assert ids.count("camp_xyz") <= 1
 
 
+async def test_upsert_campaign_persists_metrics(cwd_to_tmp) -> None:
+    """Stage a+b: an upsert carrying a ``metrics`` object persists it and
+    round-trips via a subsequent read."""
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
+    mod = _import_tools()
+    campaign = {
+        "campaign_id": "camp_xyz",
+        "campaign_name": "Generic",
+        "status": "ENABLED",
+        "daily_budget": 5000,
+        "platform": "google_ads",
+        "account_id": "act_123",
+        "metrics": {
+            "spend": 12345.0,
+            "impressions": 10000,
+            "clicks": 250,
+            "conversions": 12,
+            "cpa": 1028.75,
+            "ctr": 0.025,
+            "period": "LAST_30_DAYS",
+            "fetched_at": "2026-06-17T00:00:00+00:00",
+        },
+    }
+    await mod.handle_tool("mureo_state_upsert_campaign", {"campaign": campaign})
+
+    # Round-trip via a fresh read of STATE.json.
+    result = await mod.handle_tool("mureo_state_get", {})
+    payload = json.loads(result[0].text)
+    plat = payload["platforms"]["google_ads"]
+    snap = next(c for c in plat["campaigns"] if c["campaign_id"] == "camp_xyz")
+    assert snap["metrics"]["spend"] == 12345.0
+    assert snap["metrics"]["conversions"] == 12
+    assert snap["metrics"]["period"] == "LAST_30_DAYS"
+
+
+async def test_upsert_campaign_without_metrics_still_works(cwd_to_tmp) -> None:
+    """Regression: an upsert with no ``metrics`` key still succeeds and the
+    persisted snapshot carries no ``metrics`` field."""
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
+    mod = _import_tools()
+    campaign = {
+        "campaign_id": "camp_abc",
+        "campaign_name": "Brand",
+        "status": "ENABLED",
+        "platform": "google_ads",
+        "account_id": "act_123",
+    }
+    result = await mod.handle_tool(
+        "mureo_state_upsert_campaign", {"campaign": campaign}
+    )
+    payload = json.loads(result[0].text)
+    plat = payload["platforms"]["google_ads"]
+    snap = next(c for c in plat["campaigns"] if c["campaign_id"] == "camp_abc")
+    assert "metrics" not in snap
+
+
 # ---------------------------------------------------------------------------
 # Path traversal gate (security)
 # ---------------------------------------------------------------------------

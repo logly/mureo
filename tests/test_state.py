@@ -222,6 +222,47 @@ class TestStateFile:
         assert reloaded.last_synced_at is not None
 
     @pytest.mark.unit
+    def test_upsert_campaign_preserves_platform_rollup(self, tmp_path: Path) -> None:
+        """A campaign upsert must NOT wipe the platform's totals/metrics_period.
+
+        Those have no upsert input, so the read-modify-write must inherit them
+        — otherwise every sync-state campaign upsert silently destroys the
+        dashboard KPIs (regression guard for the rollup-preservation fix).
+        """
+        fp = tmp_path / "STATE.json"
+        doc = StateDocument(
+            platforms={
+                "google_ads": PlatformState(
+                    account_id="123",
+                    campaigns=(
+                        CampaignSnapshot(
+                            campaign_id="1", campaign_name="A", status="ENABLED"
+                        ),
+                    ),
+                    totals={"spend": 100, "conversions": 5},
+                    metrics_period="LAST_30_DAYS",
+                )
+            },
+        )
+        write_state_file(fp, doc)
+
+        new_doc = upsert_campaign(
+            fp,
+            CampaignSnapshot(campaign_id="2", campaign_name="B", status="ENABLED"),
+            platform="google_ads",
+            account_id="123",
+        )
+
+        ga = new_doc.platforms["google_ads"]
+        assert ga.totals == {"spend": 100, "conversions": 5}
+        assert ga.metrics_period == "LAST_30_DAYS"
+        assert {c.campaign_id for c in ga.campaigns} == {"1", "2"}
+        # And it survives the round-trip to disk.
+        reloaded = read_state_file(fp).platforms["google_ads"]
+        assert reloaded.totals == {"spend": 100, "conversions": 5}
+        assert reloaded.metrics_period == "LAST_30_DAYS"
+
+    @pytest.mark.unit
     def test_upsert_campaign_new(self, tmp_path: Path) -> None:
         """Add new campaign."""
         fp = tmp_path / "STATE.json"
@@ -938,6 +979,255 @@ class TestAppendActionLog:
         updated = append_action_log(fp, entry)
         assert fp.exists()
         assert len(updated.action_log) == 1
+
+
+class TestStatePerformanceMetrics:
+    """Stage a+b: optional performance metrics on snapshots / platforms /
+    document. All fields are OPTIONAL with safe defaults so old STATE.json
+    files (without them) parse unchanged and emit no extra keys."""
+
+    @pytest.mark.unit
+    def test_campaign_metrics_defaults_to_none(self) -> None:
+        """CampaignSnapshot.metrics defaults to None."""
+        snap = CampaignSnapshot(
+            campaign_id="1", campaign_name="C", status="ENABLED"
+        )
+        assert snap.metrics is None
+
+    @pytest.mark.unit
+    def test_campaign_metrics_defensive_copy(self) -> None:
+        """metrics dict is defensively deep-copied on init."""
+        original: dict[str, Any] = {"spend": 1000, "nested": {"cpa": 5200}}
+        snap = CampaignSnapshot(
+            campaign_id="1",
+            campaign_name="C",
+            status="ENABLED",
+            metrics=original,
+        )
+        original["spend"] = 9999
+        original["nested"]["cpa"] = 1
+        assert snap.metrics is not None
+        assert snap.metrics["spend"] == 1000
+        assert snap.metrics["nested"]["cpa"] == 5200
+
+    @pytest.mark.unit
+    def test_platform_state_metrics_defaults(self) -> None:
+        """PlatformState.totals / metrics_period default to None."""
+        ps = PlatformState(account_id="123")
+        assert ps.totals is None
+        assert ps.metrics_period is None
+
+    @pytest.mark.unit
+    def test_platform_state_totals_defensive_copy(self) -> None:
+        """PlatformState.totals dict is defensively deep-copied on init."""
+        totals: dict[str, Any] = {"spend": 5000, "nested": {"clicks": 12}}
+        ps = PlatformState(account_id="123", totals=totals)
+        totals["spend"] = 1
+        totals["nested"]["clicks"] = 0
+        assert ps.totals is not None
+        assert ps.totals["spend"] == 5000
+        assert ps.totals["nested"]["clicks"] == 12
+
+    @pytest.mark.unit
+    def test_state_document_reports_defaults_to_none(self) -> None:
+        """StateDocument.reports defaults to None."""
+        doc = StateDocument()
+        assert doc.reports is None
+
+    @pytest.mark.unit
+    def test_state_document_reports_defensive_copy(self) -> None:
+        """StateDocument.reports dict is defensively deep-copied on init."""
+        reports: dict[str, Any] = {"daily": {"summary": "ok"}}
+        doc = StateDocument(reports=reports)
+        reports["daily"]["summary"] = "changed"
+        assert doc.reports is not None
+        assert doc.reports["daily"]["summary"] == "ok"
+
+    @pytest.mark.unit
+    def test_parse_campaign_metrics(self) -> None:
+        """Parse a campaign carrying a metrics object."""
+        data = {
+            "campaigns": [
+                {
+                    "campaign_id": "1",
+                    "campaign_name": "C",
+                    "status": "ENABLED",
+                    "metrics": {
+                        "spend": 12345.0,
+                        "impressions": 10000,
+                        "clicks": 250,
+                        "conversions": 12,
+                        "cpa": 1028.75,
+                        "ctr": 0.025,
+                        "result_indicator": "leads",
+                        "period": "LAST_30_DAYS",
+                        "fetched_at": "2026-06-17T00:00:00+00:00",
+                    },
+                }
+            ]
+        }
+        doc = parse_state(json.dumps(data))
+        metrics = doc.campaigns[0].metrics
+        assert metrics is not None
+        assert metrics["spend"] == 12345.0
+        assert metrics["result_indicator"] == "leads"
+        assert metrics["period"] == "LAST_30_DAYS"
+
+    @pytest.mark.unit
+    def test_parse_campaign_without_metrics_defaults_none(self) -> None:
+        """A campaign with no metrics key parses to None (backward compat)."""
+        data = {
+            "campaigns": [
+                {"campaign_id": "1", "campaign_name": "C", "status": "ENABLED"}
+            ]
+        }
+        doc = parse_state(json.dumps(data))
+        assert doc.campaigns[0].metrics is None
+
+    @pytest.mark.unit
+    def test_render_campaign_metrics_roundtrip(self) -> None:
+        """metrics round-trips through render -> parse."""
+        metrics = {
+            "spend": 1000.0,
+            "clicks": 50,
+            "conversions": 5,
+            "cpa": 200.0,
+            "period": "LAST_30_DAYS",
+            "fetched_at": "2026-06-17T00:00:00+00:00",
+        }
+        doc = StateDocument(
+            campaigns=(
+                CampaignSnapshot(
+                    campaign_id="1",
+                    campaign_name="C",
+                    status="ENABLED",
+                    metrics=metrics,
+                ),
+            ),
+        )
+        restored = parse_state(render_state(doc))
+        assert restored.campaigns[0].metrics == metrics
+
+    @pytest.mark.unit
+    def test_render_campaign_omits_none_metrics(self) -> None:
+        """metrics is omitted from JSON when None (no diff churn)."""
+        doc = StateDocument(
+            campaigns=(
+                CampaignSnapshot(
+                    campaign_id="1", campaign_name="C", status="ENABLED"
+                ),
+            ),
+        )
+        rendered = render_state(doc)
+        snap_dict = json.loads(rendered)["campaigns"][0]
+        assert "metrics" not in snap_dict
+
+    @pytest.mark.unit
+    def test_render_platform_totals_and_period_roundtrip(self) -> None:
+        """PlatformState.totals / metrics_period round-trip."""
+        ps = PlatformState(
+            account_id="123",
+            campaigns=(
+                CampaignSnapshot(
+                    campaign_id="1", campaign_name="C", status="ENABLED"
+                ),
+            ),
+            totals={"spend": 5000.0, "conversions": 20},
+            metrics_period="LAST_30_DAYS",
+        )
+        doc = StateDocument(version="2", platforms={"google_ads": ps})
+        restored = parse_state(render_state(doc))
+        rp = restored.platforms["google_ads"]
+        assert rp.totals == {"spend": 5000.0, "conversions": 20}
+        assert rp.metrics_period == "LAST_30_DAYS"
+
+    @pytest.mark.unit
+    def test_render_platform_omits_none_totals_and_period(self) -> None:
+        """totals / metrics_period are omitted from JSON when None."""
+        ps = PlatformState(account_id="123")
+        doc = StateDocument(version="2", platforms={"google_ads": ps})
+        plat_dict = json.loads(render_state(doc))["platforms"]["google_ads"]
+        assert "totals" not in plat_dict
+        assert "metrics_period" not in plat_dict
+
+    @pytest.mark.unit
+    def test_parse_platform_without_metrics_defaults_none(self) -> None:
+        """Legacy platform entry (no totals/metrics_period) parses to None."""
+        data = {
+            "version": "2",
+            "platforms": {
+                "google_ads": {
+                    "account_id": "123",
+                    "campaigns": [
+                        {
+                            "campaign_id": "1",
+                            "campaign_name": "C",
+                            "status": "ENABLED",
+                        }
+                    ],
+                }
+            },
+        }
+        doc = parse_state(json.dumps(data))
+        ps = doc.platforms["google_ads"]
+        assert ps.totals is None
+        assert ps.metrics_period is None
+
+    @pytest.mark.unit
+    def test_render_reports_roundtrip(self) -> None:
+        """StateDocument.reports round-trips through render -> parse."""
+        reports = {
+            "daily": {"summary": "healthy"},
+            "weekly": {"summary": "watch"},
+            "goal": {"progress": 0.8},
+        }
+        doc = StateDocument(version="2", reports=reports)
+        restored = parse_state(render_state(doc))
+        assert restored.reports == reports
+
+    @pytest.mark.unit
+    def test_render_omits_none_reports(self) -> None:
+        """reports is omitted from JSON when None."""
+        doc = StateDocument(version="2")
+        assert "reports" not in render_state(doc)
+
+    @pytest.mark.unit
+    def test_old_state_json_parses_to_safe_defaults(self) -> None:
+        """A complete old STATE.json (no metrics/totals/reports) parses
+        with every new field defaulting to None — the hard backward-compat
+        requirement."""
+        old = {
+            "version": "2",
+            "last_synced_at": "2026-04-03T10:00:00Z",
+            "customer_id": "1234567890",
+            "campaigns": [
+                {"campaign_id": "111", "campaign_name": "G", "status": "ENABLED"}
+            ],
+            "platforms": {
+                "google_ads": {
+                    "account_id": "1234567890",
+                    "campaigns": [
+                        {
+                            "campaign_id": "111",
+                            "campaign_name": "G",
+                            "status": "ENABLED",
+                        }
+                    ],
+                }
+            },
+            "action_log": [],
+        }
+        doc = parse_state(json.dumps(old))
+        assert doc.campaigns[0].metrics is None
+        assert doc.platforms["google_ads"].totals is None
+        assert doc.platforms["google_ads"].metrics_period is None
+        assert doc.reports is None
+        # And re-rendering does NOT introduce any of the new keys.
+        rendered = render_state(doc)
+        assert "metrics" not in rendered
+        assert "totals" not in rendered
+        assert "metrics_period" not in rendered
+        assert "reports" not in rendered
 
 
 class TestRenderParseV2Roundtrip:

@@ -2,7 +2,7 @@
 name: sync-state
 description: "Sync STATE.json with current campaign data from all platforms. Use when the user asks to refresh state, sync campaigns, update STATE.json from live data, or pull latest campaign snapshots."
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Sync State
@@ -21,8 +21,8 @@ Synchronize STATE.json with the current state of all marketing platforms.
 2. **Discover platforms**: Identify all platforms registered in STATE.json `platforms`.
 
 3. **Fetch platform data**: For each registered platform:
-   - **Google Ads**: prefer mureo native — call `google_ads_campaigns_list`, then `google_ads_performance_report` for the current period (last 30 days). Both work in BYOD and Live API modes. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's equivalent campaign-list and performance-report tools for the same period.
-   - **Meta Ads**: prefer mureo native — call `meta_ads_campaigns_list`, then `meta_ads_insights_report` for the current period — capture `result_indicator` per campaign so STATE.json reflects whether each campaign's "results" are clicks or real leads. If mureo's Meta Ads tools are unavailable, fall back to the official `meta-ads-official` hosted MCP for the campaign list and insights; the `result_indicator` field is mureo-specific and will not be present — record the raw optimization goal / actions list per campaign in STATE.json instead and note that CV-definition disambiguation requires mureo's native MCP.
+   - **Google Ads**: prefer mureo native — call `google_ads_campaigns_list`, then `google_ads_performance_report` for the current period (last 30 days). Both work in BYOD and Live API modes. Keep the per-campaign numbers from the performance report — they become each campaign's `metrics` in step 7. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's equivalent campaign-list and performance-report tools for the same period.
+   - **Meta Ads**: prefer mureo native — call `meta_ads_campaigns_list`, then `meta_ads_insights_report` for the current period — capture `result_indicator` per campaign so STATE.json reflects whether each campaign's "results" are clicks or real leads, and keep the per-campaign insight numbers for the `metrics` write in step 7. If mureo's Meta Ads tools are unavailable, fall back to the official `meta-ads-official` hosted MCP for the campaign list and insights; the `result_indicator` field is mureo-specific and will not be present — record the raw optimization goal / actions list per campaign in STATE.json instead and note that CV-definition disambiguation requires mureo's native MCP.
    - mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through mureo MCP tools — do **not** look for raw CSVs in the project directory.
 
 4. **Check data sources**: If Search Console is configured, verify site access is still valid. If GA4 is available, verify connectivity.
@@ -31,7 +31,7 @@ Synchronize STATE.json with the current state of all marketing platforms.
 
 6. **Verify STRATEGY.md Data Sources**: If STRATEGY.md is missing a `## Data Sources` section (older setup), prompt the user to add it listing all configured platforms.
 
-7. **Update STATE.json** with all campaign snapshots.
+7. **Update STATE.json** with all campaign snapshots. For each campaign, also write the `metrics` you fetched in step 3 onto the snapshot: `spend`, `impressions`, `clicks`, `conversions`, `cpa`, `ctr`, the Meta `result_indicator` (when present), `period` (e.g. `LAST_30_DAYS`), and `fetched_at` (ISO 8601). On Code use `Write`; on Desktop / Cowork call `mureo_state_upsert_campaign` with the `metrics` object. Record the per-platform rollup on each `platforms[<platform>]` entry too — `totals` (summed `spend` / `clicks` / `conversions` / etc.) and `metrics_period` (the period the totals cover) — so the reporting dashboard can render KPIs from STATE.json without re-querying. All metric fields are optional: omit any a platform doesn't provide rather than writing nulls.
 
 8. **Show diff**: Compare old vs new state and highlight changes:
    - New campaigns added
