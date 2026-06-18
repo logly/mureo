@@ -414,6 +414,93 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
     return _locked_state_mutation(path, _build)
 
 
+def set_platform_metrics(
+    path: Path,
+    platform: str,
+    account_id: str,
+    *,
+    totals: dict[str, Any] | None = None,
+    metrics_period: str | None = None,
+    periods: dict[str, dict[str, Any]] | None = None,
+) -> StateDocument:
+    """Set a platform's metric rollups in STATE.json's v2 ``platforms`` section.
+
+    Writes the platform-level KPI rollup the reporting dashboard reads — the
+    single ``totals`` + ``metrics_period`` (the most recent window) and/or the
+    per-period ``periods`` map (``{"YESTERDAY": {...}, "LAST_30_DAYS": {...}}``).
+    The platform's campaigns and every OTHER platform are preserved; only the
+    targeted platform's rollup fields are touched. The platform entry is
+    created (carrying ``account_id``) when absent.
+
+    Merge semantics — a partial write never clobbers an unrelated window:
+
+    - ``totals`` / ``metrics_period``: replaced when provided (non-``None``),
+      otherwise the existing value is preserved.
+    - ``periods``: merged PER WINDOW KEY into the existing map, so a
+      daily-check ``YESTERDAY`` write keeps the ``LAST_30_DAYS`` bucket a prior
+      sync wrote (and vice versa). A given window key is replaced wholesale.
+      ``None`` preserves the existing map untouched.
+
+    Re-stamps ``last_synced_at`` and writes back atomically under the state
+    lock. Other document sections (root campaigns, action_log, reports) are
+    preserved.
+
+    Args:
+        path: STATE.json location.
+        platform: Platform key (``"google_ads"`` / ``"meta_ads"`` /
+            ``"plugin:<dist>"`` / …) — the ``platforms`` dict key.
+        account_id: The platform account id, always written onto the entry.
+        totals: The single-rollup totals to set (or ``None`` to preserve).
+        metrics_period: The window ``totals`` covers (or ``None`` to preserve).
+        periods: Per-window rollups to merge in (or ``None`` to preserve).
+
+    Returns:
+        The updated :class:`StateDocument`.
+    """
+
+    def _build(doc: StateDocument) -> StateDocument:
+        platforms = dict(doc.platforms) if doc.platforms else {}
+        existing = platforms.get(platform)
+
+        merged_periods: dict[str, dict[str, Any]] | None
+        if periods is not None:
+            base = dict(existing.periods) if existing and existing.periods else {}
+            base.update(periods)
+            merged_periods = base
+        else:
+            merged_periods = existing.periods if existing is not None else None
+
+        platforms[platform] = PlatformState(
+            account_id=account_id,
+            # Rollups have no campaign input — inherit the campaigns a prior
+            # sync/upsert wrote rather than reset them.
+            campaigns=existing.campaigns if existing is not None else (),
+            totals=(
+                totals
+                if totals is not None
+                else (existing.totals if existing is not None else None)
+            ),
+            metrics_period=(
+                metrics_period
+                if metrics_period is not None
+                else (existing.metrics_period if existing is not None else None)
+            ),
+            periods=merged_periods,
+        )
+
+        return StateDocument(
+            version=doc.version,
+            last_synced_at=_now_iso(),
+            customer_id=doc.customer_id,
+            campaigns=doc.campaigns,
+            platforms=platforms,
+            action_log=doc.action_log,
+            reports=doc.reports,
+        )
+
+    return _locked_state_mutation(path, _build)
+
+
 def get_campaign(doc: StateDocument, campaign_id: str) -> CampaignSnapshot | None:
     """Search for a campaign by campaign_id."""
     for c in doc.campaigns:

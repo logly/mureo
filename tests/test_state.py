@@ -22,6 +22,7 @@ from mureo.context.state import (
     parse_state,
     read_state_file,
     render_state,
+    set_platform_metrics,
     set_report,
     upsert_campaign,
     write_state_file,
@@ -1430,3 +1431,68 @@ class TestRenderParseV2Roundtrip:
         assert len(restored.action_log) == 1
         assert restored.action_log[0].action == "negative_keywords.add"
         assert restored.action_log[0].campaign_id == "111"
+
+
+class TestSetPlatformMetrics:
+    """set_platform_metrics — platform rollup write + preserve contracts."""
+
+    @pytest.mark.unit
+    def test_creates_platform_when_missing(self, tmp_path: Path) -> None:
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        doc = set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            totals={"spend": 3000.0},
+            metrics_period="LAST_30_DAYS",
+            periods={"YESTERDAY": {"spend": 100.0}},
+        )
+        assert doc.platforms is not None
+        ps = doc.platforms["google_ads"]
+        assert ps.account_id == "act_123"
+        assert ps.totals == {"spend": 3000.0}
+        assert ps.metrics_period == "LAST_30_DAYS"
+        assert ps.periods == {"YESTERDAY": {"spend": 100.0}}
+
+    @pytest.mark.unit
+    def test_omitted_fields_preserve_existing(self, tmp_path: Path) -> None:
+        """A periods-only call must not reset totals/metrics_period to None."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        set_platform_metrics(
+            fp,
+            "google_ads",
+            "act_123",
+            totals={"spend": 3000.0},
+            metrics_period="LAST_30_DAYS",
+        )
+        doc = set_platform_metrics(
+            fp, "google_ads", "act_123", periods={"YESTERDAY": {"spend": 100.0}}
+        )
+        ps = doc.platforms["google_ads"]
+        assert ps.totals == {"spend": 3000.0}  # preserved
+        assert ps.metrics_period == "LAST_30_DAYS"  # preserved
+        assert ps.periods == {"YESTERDAY": {"spend": 100.0}}
+
+    @pytest.mark.unit
+    def test_periods_none_preserves_existing_map(self, tmp_path: Path) -> None:
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        set_platform_metrics(
+            fp, "google_ads", "act_123", periods={"LAST_30_DAYS": {"spend": 1.0}}
+        )
+        doc = set_platform_metrics(fp, "google_ads", "act_123", totals={"spend": 2.0})
+        ps = doc.platforms["google_ads"]
+        assert ps.periods == {"LAST_30_DAYS": {"spend": 1.0}}  # untouched
+
+    @pytest.mark.unit
+    def test_preserves_reports_section(self, tmp_path: Path) -> None:
+        """Unlike the other mutators, this one must not drop reports."""
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        set_report(fp, "daily", {"verdict": "Healthy"})
+        doc = set_platform_metrics(
+            fp, "google_ads", "act_123", periods={"YESTERDAY": {"spend": 1.0}}
+        )
+        assert doc.reports == {"daily": {"verdict": "Healthy"}}
