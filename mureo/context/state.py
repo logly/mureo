@@ -51,6 +51,7 @@ def parse_state(text: str) -> StateDocument:
                 campaigns=platform_campaigns,
                 totals=platform_data.get("totals"),
                 metrics_period=platform_data.get("metrics_period"),
+                periods=platform_data.get("periods"),
             )
 
     # v2: action_log
@@ -146,6 +147,10 @@ def _platform_state_to_dict(ps: PlatformState) -> dict[str, Any]:
         result["totals"] = copy.deepcopy(ps.totals)
     if ps.metrics_period is not None:
         result["metrics_period"] = ps.metrics_period
+    # Per-period rollups: emit only when non-empty so legacy files (and
+    # entries with no per-period data) stay byte-stable on round-trip.
+    if ps.periods:
+        result["periods"] = copy.deepcopy(ps.periods)
     return result
 
 
@@ -329,9 +334,11 @@ def upsert_campaign(
             ),
             # Preserve the platform-level rollup: it has no upsert input, so
             # a campaign upsert must inherit it rather than reset it to None
-            # (otherwise every upsert silently wipes the dashboard KPIs).
+            # (otherwise every upsert silently wipes the dashboard KPIs). The
+            # same applies to the per-period rollups.
             totals=existing.totals if existing is not None else None,
             metrics_period=existing.metrics_period if existing is not None else None,
+            periods=existing.periods if existing is not None else None,
         )
 
         return StateDocument(
