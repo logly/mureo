@@ -49,6 +49,8 @@ def parse_state(text: str) -> StateDocument:
             platforms[platform_key] = PlatformState(
                 account_id=platform_data["account_id"],
                 campaigns=platform_campaigns,
+                totals=platform_data.get("totals"),
+                metrics_period=platform_data.get("metrics_period"),
             )
 
     # v2: action_log
@@ -62,6 +64,7 @@ def parse_state(text: str) -> StateDocument:
         campaigns=campaigns,
         platforms=platforms,
         action_log=action_log,
+        reports=data.get("reports"),
     )
 
 
@@ -100,6 +103,7 @@ def _parse_campaign(c: dict[str, Any]) -> CampaignSnapshot:
         device_targeting=device_targeting,
         campaign_goal=c.get("campaign_goal"),
         notes=c.get("notes"),
+        metrics=c.get("metrics"),
     )
 
 
@@ -123,15 +127,26 @@ def render_state(doc: StateDocument) -> str:
     # v2: action_log
     data["action_log"] = [_action_log_entry_to_dict(e) for e in doc.action_log]
 
+    # Optional reports section (stage-c forward-ready): emit only when present
+    # so old STATE.json files don't gain a new key.
+    if doc.reports is not None:
+        data["reports"] = copy.deepcopy(doc.reports)
+
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
 def _platform_state_to_dict(ps: PlatformState) -> dict[str, Any]:
     """Convert a PlatformState to a dictionary."""
-    return {
+    result: dict[str, Any] = {
         "account_id": ps.account_id,
         "campaigns": [_snapshot_to_dict(c) for c in ps.campaigns],
     }
+    # Optional platform-level rollup: emit only when present.
+    if ps.totals is not None:
+        result["totals"] = copy.deepcopy(ps.totals)
+    if ps.metrics_period is not None:
+        result["metrics_period"] = ps.metrics_period
+    return result
 
 
 def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
@@ -163,7 +178,7 @@ def _snapshot_to_dict(c: CampaignSnapshot) -> dict[str, Any]:
     device_targeting: list[dict[str, Any]] | None = None
     if c.device_targeting is not None:
         device_targeting = list(c.device_targeting)
-    return {
+    result: dict[str, Any] = {
         "campaign_id": c.campaign_id,
         "campaign_name": c.campaign_name,
         "status": c.status,
@@ -174,6 +189,11 @@ def _snapshot_to_dict(c: CampaignSnapshot) -> dict[str, Any]:
         "campaign_goal": c.campaign_goal,
         "notes": c.notes,
     }
+    # Optional metrics: emit only when present so old STATE.json files don't
+    # gain a new key (no diff churn / bloat).
+    if c.metrics is not None:
+        result["metrics"] = copy.deepcopy(c.metrics)
+    return result
 
 
 def _atomic_write(path: Path, content: str) -> None:
@@ -307,6 +327,11 @@ def upsert_campaign(
             campaigns=_upsert_into(
                 existing.campaigns if existing is not None else (), campaign
             ),
+            # Preserve the platform-level rollup: it has no upsert input, so
+            # a campaign upsert must inherit it rather than reset it to None
+            # (otherwise every upsert silently wipes the dashboard KPIs).
+            totals=existing.totals if existing is not None else None,
+            metrics_period=existing.metrics_period if existing is not None else None,
         )
 
         return StateDocument(
