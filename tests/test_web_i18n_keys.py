@@ -192,3 +192,63 @@ class TestAdvancedAdvisorKeysParity:
         data = _load_i18n()
         for key in self._KEYS:
             assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
+class TestReportsDashboardKeysParity:
+    """EN/JA parity for the read-only Reports dashboard keys: the nav label,
+    section title + hint, client selector, freshness, KPI labels, the
+    no-metrics/empty states, the latest-report + recent-actions titles, and
+    the relative-age strings (no JS harness — asserted against the bundled
+    i18n.json directly)."""
+
+    # Distinct EN/JA strings. ``dashboard.reports_kpi_cpa`` ("CPA") and
+    # ``dashboard.reports_kpi_ctr`` ("CTR") are intentionally NOT here:
+    # they are universal acronyms with the same form in both locales (the
+    # same exemption the Advanced-advisor suite makes for "URL"), so the
+    # distinctness assertion would falsely fail.
+    _KEYS = (
+        "dashboard.nav_reports",
+        "dashboard.reports_title",
+        "dashboard.reports_hint",
+        "dashboard.reports_client_label",
+        "dashboard.reports_synced",
+        "dashboard.reports_kpi_spend",
+        "dashboard.reports_kpi_conversions",
+        "dashboard.reports_kpi_clicks",
+        "dashboard.reports_kpi_impressions",
+        "dashboard.reports_no_metrics",
+        "dashboard.reports_campaign_count",
+        "dashboard.reports_latest_title",
+        "dashboard.reports_generated",
+        "dashboard.reports_actions_title",
+        "dashboard.reports_observation_due",
+        "dashboard.reports_empty",
+        "dashboard.reports_empty_hint",
+        "dashboard.reports_age_just_now",
+        "dashboard.reports_age_minutes",
+        "dashboard.reports_age_hours",
+        "dashboard.reports_age_days",
+    )
+
+    # Universal acronym KPI labels — present + non-empty in both locales,
+    # but exempt from the distinctness check.
+    _UNIVERSAL_KEYS = (
+        "dashboard.reports_kpi_cpa",
+        "dashboard.reports_kpi_ctr",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS + self._UNIVERSAL_KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            assert data["en"][key] != data["ja"][key], f"{key} not localized"

@@ -1274,6 +1274,327 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   margin-left: 12px;
 }
 
+/* ====================================================================== *
+ * Reports dashboard — read-only, STATE.json-sourced (platform-agnostic). *
+ * A KPI card per platform (built-in AND plugin bridges); freshness from   *
+ * last_synced_at; latest-report + recent-actions blocks; empty state.     *
+ * Built on the existing tokens (--surface, --hairline, --shadow-sm,       *
+ * --r-md/--r-lg, --accent, the *-tint family, --muted, --ink,             *
+ * --font-mono) so it reads as one design system with the rest of the UI.  *
+ * ====================================================================== */
+
+/* Header row: title left, client selector + freshness right. */
+.dashboard-reports-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-reports-head h2 {
+  margin: 0;
+}
+
+.dashboard-reports-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.dashboard-reports-client {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.dashboard-reports-client span {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.dashboard-reports-client select {
+  min-width: 0;
+  width: auto;
+}
+
+.dashboard-reports-freshness {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-reports-hint {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* Responsive KPI card grid — auto-fits cards, never less than ~260px. */
+.dashboard-reports-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.report-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 18px 18px 14px;
+}
+
+.report-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.report-card-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+/* metrics_period label, e.g. "LAST_30_DAYS" — quiet, mono, tinted pill. */
+.report-card-period {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+/* Headline number: large, mono so digits align across cards. */
+.report-card-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.report-card-headline-value {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.05;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-card-headline-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Secondary KPIs in a tidy 2-column grid (label / value pairs). */
+.report-card-kpis {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px 12px;
+  margin: 0;
+}
+
+.report-card-kpis dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.report-card-kpis dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Advisory bridge / not-yet-synced card body. */
+.report-card-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.report-card-foot {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+
+.report-card-count {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Latest-report + recent-actions blocks share a quiet sub-section frame. */
+.dashboard-reports-block {
+  margin-top: 24px;
+}
+
+.dashboard-reports-block h3 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 640;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.report-latest-period {
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.report-latest-narrative {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.report-latest-generated {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* Free-form report flags as small tinted chips. */
+.report-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.report-chip {
+  font-size: 11.5px;
+  font-weight: 550;
+  line-height: 1;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  color: var(--ink-soft);
+}
+
+.report-chip.is-success {
+  background: var(--success-tint);
+  border-color: transparent;
+  color: var(--success);
+}
+
+.report-chip.is-warn {
+  background: var(--warn-tint);
+  border-color: transparent;
+  color: var(--ink-soft);
+}
+
+.report-chip.is-danger {
+  background: var(--danger-tint);
+  border-color: transparent;
+  color: var(--danger);
+}
+
+/* Recent-actions list — one quiet row per logged autonomous action. */
+.dashboard-reports-actions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.report-action {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.report-action:last-child {
+  border-bottom: 0;
+}
+
+.report-action-top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.report-action-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink);
+}
+
+.report-action-platform {
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.report-action-summary {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.report-action-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Empty state — no platforms / no synced data: point at sync-state. */
+.dashboard-reports-empty {
+  margin-top: 18px;
+  padding: 28px 22px;
+  text-align: center;
+  background: var(--surface-2);
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--r-lg);
+}
+
+.dashboard-reports-empty p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.dashboard-reports-empty p.muted {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
 /* ---- reduced motion ------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   *,

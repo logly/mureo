@@ -1387,6 +1387,392 @@
     });
   }
 
+  // ----------------------------------------------------------------------
+  // Reports dashboard (read-only, STATE.json-sourced via /api/reports/*).
+  //
+  // Platform-agnostic: a KPI card is rendered for EVERY platform the API
+  // returns — built-in google_ads/meta_ads AND plugin:<dist> bridges. A
+  // platform with no synced metrics (totals null/empty) still gets a card
+  // labelled "no synced metrics yet" instead of a broken/empty one.
+  //
+  // No 7d/30d toggle: STATE.json holds a single latest snapshot, so a
+  // period switch would mislead. Each card shows its own metrics_period as
+  // a label; overall freshness comes from last_synced_at ("synced N ago").
+  // ----------------------------------------------------------------------
+
+  // Canonical secondary KPI vocabulary → i18n label key. Headline (spend)
+  // is rendered separately. Order here is the on-card display order.
+  const REPORTS_KPI_LABELS = {
+    conversions: "dashboard.reports_kpi_conversions",
+    cpa: "dashboard.reports_kpi_cpa",
+    ctr: "dashboard.reports_kpi_ctr",
+    clicks: "dashboard.reports_kpi_clicks",
+    impressions: "dashboard.reports_kpi_impressions",
+  };
+
+  // Monotonic render generation (mirrors renderPluginCredentials #223):
+  // the section clears then awaits a fetch, so an interleaved re-render
+  // (locale change, client switch) must not let a stale result append.
+  let reportsRenderSeq = 0;
+
+  // Humanize an ISO-8601 timestamp into a coarse "N ago" string. Falls
+  // back to the raw string if it cannot be parsed (never throws).
+  function relativeAge(iso) {
+    if (!iso) return "";
+    const then = Date.parse(iso);
+    if (Number.isNaN(then)) return String(iso);
+    const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+    if (secs < 60) return MUREO.t("dashboard.reports_age_just_now");
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return MUREO.t("dashboard.reports_age_minutes", { n: mins });
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return MUREO.t("dashboard.reports_age_hours", { n: hours });
+    const days = Math.floor(hours / 24);
+    return MUREO.t("dashboard.reports_age_days", { n: days });
+  }
+
+  // Format a raw number with thousands separators (no currency symbol —
+  // the API returns raw numbers and we must not assume a currency). Non-
+  // numbers pass through as plain text.
+  function formatNumber(value) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value.toLocaleString();
+    }
+    return value == null ? "" : String(value);
+  }
+
+  // CTR is a ratio/percentage — render with up to 2 decimals + "%".
+  function formatKpi(key, value) {
+    if (key === "ctr" && typeof value === "number" && Number.isFinite(value)) {
+      // Heuristic: a value <= 1 is a fraction (0.034 → 3.4%); otherwise it
+      // is already a percentage figure from the platform. NOTE: totals are
+      // platform-agnostic (built-in + arbitrary plugin:<dist> bridges) with no
+      // guaranteed CTR-unit convention, so a bridge reporting "0.8" meaning
+      // 0.8% would render as 80%. The real fix is normalizing CTR units in the
+      // backend (PR-1) so the frontend doesn't guess; tracked as a follow-up.
+      const pct = value <= 1 ? value * 100 : value;
+      return pct.toLocaleString(undefined, { maximumFractionDigits: 2 }) + "%";
+    }
+    return formatNumber(value);
+  }
+
+  // Build one KPI card for a single platform entry.
+  function buildReportCard(platform) {
+    const card = document.createElement("article");
+    card.className = "report-card";
+    // Defensive: a null/non-object element in the platforms array must not
+    // throw and break the whole render (Array.isArray guards the list, not
+    // its elements).
+    if (!platform || typeof platform !== "object") return card;
+
+    const head = document.createElement("header");
+    head.className = "report-card-head";
+    const name = document.createElement("h3");
+    name.className = "report-card-name";
+    name.textContent = platform.display_name || platform.key || "";
+    head.appendChild(name);
+    const period = platform.metrics_period;
+    if (period) {
+      const periodEl = document.createElement("span");
+      periodEl.className = "report-card-period";
+      periodEl.textContent = String(period);
+      head.appendChild(periodEl);
+    }
+    card.appendChild(head);
+
+    const totals =
+      platform.totals && typeof platform.totals === "object"
+        ? platform.totals
+        : null;
+    const hasMetrics = totals && Object.keys(totals).length > 0;
+
+    if (!hasMetrics) {
+      // Advisory bridge / not-yet-synced platform: a deliberate, complete
+      // card (display name + status + campaign count), never empty.
+      const empty = document.createElement("p");
+      empty.className = "report-card-empty";
+      empty.textContent = MUREO.t("dashboard.reports_no_metrics");
+      card.appendChild(empty);
+      card.appendChild(buildReportCardFoot(platform));
+      return card;
+    }
+
+    // Headline number: spend, large, mono so digits align.
+    const headline = document.createElement("div");
+    headline.className = "report-card-headline";
+    const headlineValue = document.createElement("span");
+    headlineValue.className = "report-card-headline-value";
+    headlineValue.textContent = formatNumber(totals.spend != null ? totals.spend : 0);
+    const headlineLabel = document.createElement("span");
+    headlineLabel.className = "report-card-headline-label";
+    headlineLabel.textContent = MUREO.t("dashboard.reports_kpi_spend");
+    headline.appendChild(headlineValue);
+    headline.appendChild(headlineLabel);
+    card.appendChild(headline);
+
+    // Secondary KPIs in a tidy 2-col grid — only those present in totals.
+    const grid = document.createElement("dl");
+    grid.className = "report-card-kpis";
+    Object.keys(REPORTS_KPI_LABELS).forEach(function (key) {
+      if (totals[key] == null) return;
+      const term = document.createElement("dt");
+      term.textContent = MUREO.t(REPORTS_KPI_LABELS[key]);
+      const def = document.createElement("dd");
+      def.textContent = formatKpi(key, totals[key]);
+      grid.appendChild(term);
+      grid.appendChild(def);
+    });
+    if (grid.childNodes.length > 0) card.appendChild(grid);
+
+    card.appendChild(buildReportCardFoot(platform));
+    return card;
+  }
+
+  // Card footer: campaign count + any free-form report flags as chips.
+  function buildReportCardFoot(platform) {
+    const foot = document.createElement("footer");
+    foot.className = "report-card-foot";
+    const count = document.createElement("span");
+    count.className = "report-card-count";
+    const n = typeof platform.campaign_count === "number" ? platform.campaign_count : 0;
+    count.textContent = MUREO.t("dashboard.reports_campaign_count", { n: n });
+    foot.appendChild(count);
+    return foot;
+  }
+
+  // Map a free-form flag (string) to a chip kind. Defensive: any field may
+  // be absent and the value may be an object with {level, label}.
+  function flagChipKind(level) {
+    const l = String(level || "").toLowerCase();
+    if (l.indexOf("danger") >= 0 || l.indexOf("critical") >= 0 || l.indexOf("error") >= 0)
+      return "is-danger";
+    if (l.indexOf("warn") >= 0 || l.indexOf("watch") >= 0) return "is-warn";
+    if (l.indexOf("ok") >= 0 || l.indexOf("good") >= 0 || l.indexOf("healthy") >= 0)
+      return "is-success";
+    return "";
+  }
+
+  // Render the "latest report" block from reports.{daily|weekly|goal}. The
+  // object is free-form; render defensively (any field may be absent).
+  function renderReportsLatest(reports) {
+    const block = document.querySelector("[data-reports-latest]");
+    const body = document.querySelector("[data-reports-latest-body]");
+    if (!block || !body) return;
+    body.textContent = "";
+    const obj = reports && typeof reports === "object" ? reports : null;
+    // Prefer daily → weekly → goal, whichever is present.
+    const report = obj && (obj.daily || obj.weekly || obj.goal) ? obj.daily || obj.weekly || obj.goal : null;
+    if (!report || typeof report !== "object") {
+      block.hidden = true;
+      return;
+    }
+    block.hidden = false;
+
+    if (report.period) {
+      const period = document.createElement("p");
+      period.className = "report-latest-period";
+      period.textContent = String(report.period);
+      body.appendChild(period);
+    }
+    // Flags as small tinted chips (warn/danger/success).
+    const flags = Array.isArray(report.flags) ? report.flags : [];
+    if (flags.length > 0) {
+      const chips = document.createElement("div");
+      chips.className = "report-flags";
+      flags.forEach(function (flag) {
+        const isObj = flag && typeof flag === "object";
+        const label = isObj ? flag.label || flag.message || flag.level || "" : flag;
+        const level = isObj ? flag.level || flag.kind : flag;
+        const chip = document.createElement("span");
+        chip.className = "report-chip " + flagChipKind(level);
+        chip.textContent = String(label);
+        chips.appendChild(chip);
+      });
+      body.appendChild(chips);
+    }
+    if (report.narrative) {
+      const narrative = document.createElement("p");
+      narrative.className = "report-latest-narrative";
+      narrative.textContent = String(report.narrative);
+      body.appendChild(narrative);
+    }
+    if (report.generated_at) {
+      const gen = document.createElement("p");
+      gen.className = "report-latest-generated";
+      gen.textContent = MUREO.t("dashboard.reports_generated", {
+        ago: relativeAge(report.generated_at),
+      });
+      body.appendChild(gen);
+    }
+  }
+
+  // Render the recent-actions list from the action log.
+  function renderReportsActions(actions) {
+    const block = document.querySelector("[data-reports-actions]");
+    const list = document.querySelector("[data-reports-actions-list]");
+    if (!block || !list) return;
+    list.textContent = "";
+    const rows = Array.isArray(actions) ? actions : [];
+    if (rows.length === 0) {
+      block.hidden = true;
+      return;
+    }
+    block.hidden = false;
+    rows.forEach(function (a) {
+      const li = document.createElement("li");
+      li.className = "report-action";
+      const top = document.createElement("div");
+      top.className = "report-action-top";
+      const action = document.createElement("span");
+      action.className = "report-action-name";
+      action.textContent = a.action || "";
+      const platform = document.createElement("span");
+      platform.className = "report-action-platform";
+      platform.textContent = a.platform || "";
+      top.appendChild(action);
+      top.appendChild(platform);
+      li.appendChild(top);
+      if (a.summary) {
+        const summary = document.createElement("p");
+        summary.className = "report-action-summary";
+        summary.textContent = String(a.summary);
+        li.appendChild(summary);
+      }
+      const meta = document.createElement("div");
+      meta.className = "report-action-meta";
+      if (a.timestamp) {
+        const ts = document.createElement("span");
+        ts.textContent = relativeAge(a.timestamp);
+        meta.appendChild(ts);
+      }
+      if (a.observation_due) {
+        const due = document.createElement("span");
+        due.textContent = MUREO.t("dashboard.reports_observation_due", {
+          date: String(a.observation_due),
+        });
+        meta.appendChild(due);
+      }
+      if (meta.childNodes.length > 0) li.appendChild(meta);
+      list.appendChild(li);
+    });
+  }
+
+  // Populate / toggle the client selector. Only shown when >1 client.
+  function renderReportsClientSelector(clients, active) {
+    const wrap = document.querySelector("[data-reports-client-wrap]");
+    const select = document.querySelector("[data-reports-client]");
+    if (!wrap || !select) return;
+    const rows = Array.isArray(clients) ? clients : [];
+    if (rows.length <= 1) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    select.textContent = "";
+    rows.forEach(function (c) {
+      const opt = document.createElement("option");
+      opt.value = c.slug || "";
+      opt.textContent = c.name || c.slug || "";
+      if ((active && c.slug === active) || (!active && c.active)) {
+        opt.selected = true;
+      }
+      select.appendChild(opt);
+    });
+  }
+
+  // Fetch + render the summary for a given client (or the default one).
+  async function renderReportsSummary(client) {
+    const seq = reportsRenderSeq;
+    const cards = document.querySelector("[data-reports-cards]");
+    const empty = document.querySelector("[data-reports-empty]");
+    const freshness = document.querySelector("[data-reports-freshness]");
+    if (!cards) return;
+
+    let summary;
+    try {
+      const url =
+        "/api/reports/summary" +
+        (client ? "?client=" + encodeURIComponent(client) : "");
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      summary = await res.json();
+    } catch (_err) {
+      // Fetch/parse failed. Clear any prior render so a failed client switch
+      // never leaves a different client's numbers on screen — degrade to the
+      // empty state rather than stale data.
+      if (seq !== reportsRenderSeq) return;
+      cards.textContent = "";
+      if (freshness) freshness.textContent = "";
+      renderReportsLatest(null);
+      renderReportsActions(null);
+      if (empty) empty.hidden = false;
+      return;
+    }
+    if (seq !== reportsRenderSeq) return; // Superseded by a newer render.
+    // A 200 whose body is not a JSON object (null / string / number from a
+    // misbehaving backend or proxy) must not crash the render — coerce to an
+    // empty summary so the guarded accessors below fall back to the empty state.
+    if (!summary || typeof summary !== "object") summary = {};
+
+    cards.textContent = "";
+
+    const platforms = Array.isArray(summary.platforms) ? summary.platforms : [];
+    if (freshness) {
+      freshness.textContent = summary.last_synced_at
+        ? MUREO.t("dashboard.reports_synced", {
+            ago: relativeAge(summary.last_synced_at),
+          })
+        : "";
+    }
+
+    if (platforms.length === 0) {
+      if (empty) empty.hidden = false;
+    } else {
+      if (empty) empty.hidden = true;
+      platforms.forEach(function (p) {
+        cards.appendChild(buildReportCard(p));
+      });
+    }
+
+    renderReportsLatest(summary.reports);
+    renderReportsActions(summary.recent_actions);
+  }
+
+  // Entry point: fetch the client list, wire the selector, then load the
+  // active client's summary. Re-runnable (locale change, client switch).
+  async function renderReports() {
+    const cards = document.querySelector("[data-reports-cards]");
+    if (!cards) return;
+    const seq = ++reportsRenderSeq;
+    let clients = [];
+    try {
+      const res = await fetch("/api/reports/clients", { credentials: "same-origin" });
+      if (res.ok) {
+        const body = await res.json();
+        clients = Array.isArray(body.clients) ? body.clients : [];
+      }
+    } catch (_err) {
+      // Tolerate a missing client list — fall back to the default summary.
+    }
+    if (seq !== reportsRenderSeq) return;
+    const activeClient = (clients.find(function (c) {
+      return c && c.active;
+    }) || {}).slug;
+    renderReportsClientSelector(clients, activeClient);
+    await renderReportsSummary(activeClient || null);
+  }
+
+  // Wire the client selector once — re-fetch the summary on change.
+  function wireReportsClientSelector() {
+    const select = document.querySelector("[data-reports-client]");
+    if (!select) return;
+    select.addEventListener("change", function () {
+      // Bump the generation so any in-flight summary render is dropped.
+      reportsRenderSeq++;
+      renderReportsSummary(select.value || null);
+    });
+  }
+
   function renderAll() {
     const status = MUREO.state.status;
     renderHostSection(status);
@@ -1398,6 +1784,7 @@
     loadDemoScenarios();
     renderByodStatus();
     renderAdvisors();
+    renderReports();
     renderAbout();
     renderUpdates();
   }
@@ -1714,6 +2101,7 @@
     wireByodImport();
     wireByodClear();
     wireAdvisorForm();
+    wireReportsClientSelector();
     wirePickers();
     if (MUREO.isDashboardRoute()) {
       show();
