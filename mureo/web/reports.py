@@ -333,14 +333,10 @@ def _build_platforms(
     """One JSON-safe row per ``platforms`` key (insertion order preserved)."""
     if doc is None or not doc.platforms:
         return []
-    return [
-        _platform_row(key, state, period) for key, state in doc.platforms.items()
-    ]
+    return [_platform_row(key, state, period) for key, state in doc.platforms.items()]
 
 
-def _platform_row(
-    key: str, state: PlatformState, period: str | None
-) -> dict[str, Any]:
+def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[str, Any]:
     """Shape a single platform's dashboard row (no account ids / secrets).
 
     ``period is None`` returns the stored single rollup (legacy passthrough);
