@@ -208,6 +208,45 @@ The `Operation Mode` section contains one of 7 predefined modes that control age
 | `device_targeting` | array | No | Device bid modifiers |
 | `campaign_goal` | string | No | Business objective for this campaign |
 | `notes` | string | No | Important notes (learning period, restrictions, etc.) |
+| `metrics` | object | No | Latest performance snapshot — canonical vocabulary below |
+
+### Performance Metrics — canonical vocabulary
+
+`campaigns[].metrics` (per campaign) and `platforms[<p>].totals` (per-platform
+rollup) use ONE shared field vocabulary so every skill, the reporting
+dashboard, and any other STATE.json consumer agree on names and units. Write
+these exact keys (lowercase); omit a key when the platform does not provide it.
+
+| Key | Type | Unit / meaning |
+|-----|------|----------------|
+| `spend` | number | Cost in the account's **currency units** (NOT micros) |
+| `impressions` | integer | Impressions |
+| `clicks` | integer | Clicks |
+| `conversions` | number | Conversions (see `result_indicator` for what counts) |
+| `cpa` | number | Cost per conversion, currency units (`spend / conversions`) |
+| `ctr` | number | Click-through rate as a ratio (e.g. `0.024`), not a percent string |
+| `result_indicator` | string | **Meta only** — what a "result/conversion" counts (e.g. `link_click` vs `offsite_conversion.fb_pixel_lead`) |
+| `period` | string | Window the numbers cover, e.g. `LAST_30_DAYS` |
+| `fetched_at` | string | ISO 8601 time the numbers were pulled (freshness) |
+
+**CV-definition rule (Meta):** never aggregate conversions/CPA across campaigns
+with **different** `result_indicator` values — `link_click`-optimized totals and
+`pixel_lead`-optimized totals are different things. Group by `result_indicator`.
+Google Ads has a single conversion definition, so `result_indicator` is omitted.
+
+Platform-level: `platforms[<p>].totals` holds the same keys summed for that
+platform (respecting the `result_indicator` grouping for Meta), and
+`platforms[<p>].metrics_period` records the window the totals cover.
+
+### Reports section
+
+`reports` (top-level, optional) holds the latest agent-written summary per
+report kind so the dashboard can show it without re-running the agent:
+`reports = {"daily": {...}, "weekly": {...}, "goal": {...}}`. Each value is
+`{generated_at (ISO 8601), period, kpis (headline numbers using the vocabulary
+above), flags (list of notable items), narrative (short text)}`. Written via
+the `mureo_state_report_set` tool by `daily-check` / `weekly-report` /
+`goal-review`.
 
 ### Action Log Entry Fields
 
@@ -219,7 +258,7 @@ The `Operation Mode` section contains one of 7 predefined modes that control age
 | `campaign_id` | string | No | Campaign affected |
 | `command` | string | No | Slash command that initiated the action |
 | `summary` | string | No | Human-readable summary |
-| `metrics_at_action` | object | No | Key metrics at the time of action (for outcome evaluation) |
+| `metrics_at_action` | object | No | Key metrics at the time of action, for outcome evaluation — use the same canonical vocabulary as `metrics` above (e.g. `cpa`, `conversions`, `clicks`) |
 | `observation_due` | string | No | ISO 8601 date when the outcome should be evaluated |
 
 The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. See `skills/_mureo-learning/SKILL.md` for the decision framework.
