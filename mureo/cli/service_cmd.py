@@ -1,12 +1,15 @@
-"""``mureo service`` — install/uninstall/status the auto-start daemon (#241).
+"""``mureo service`` — install/uninstall/restart/status the auto-start daemon (#241).
 
-Registers (or removes, or inspects) a *user-level* auto-start agent that
-runs the headless configure daemon (``mureo configure --serve``) at login:
+Registers (or removes, restarts, or inspects) a *user-level* auto-start
+agent that runs the headless configure daemon (``mureo configure
+--serve``) at login:
 
 * ``install``   — write the OS unit AND start it now; print the dashboard
   URL and that it will auto-start at login. Idempotent.
 * ``uninstall`` — stop the running daemon AND remove the unit. Idempotent
   (a clean no-op when nothing is installed).
+* ``restart``   — kill + relaunch the running daemon in place so it picks
+  up new code / static assets without a re-install (needs it installed).
 * ``status``    — report installed? (unit registered) and running? (probe
   ``/api/ping`` on the configured port) and print the URL.
 
@@ -92,6 +95,19 @@ def uninstall() -> None:
         typer.echo(f"Failed to uninstall mureo service: {result.message}", err=True)
         raise typer.Exit(code=1)
     typer.echo(f"mureo service uninstalled ({result.message}).")
+
+
+@service_app.command("restart")
+def restart() -> None:
+    """Restart the running service so it picks up new code / static assets."""
+    backend = _resolve_backend()
+    result = backend.restart(port=SERVICE_PORT)
+    if not result.ok:
+        typer.echo(f"Failed to restart mureo service: {result.message}", err=True)
+        raise typer.Exit(code=1)
+    url = dashboard_url(port=SERVICE_PORT)
+    typer.echo("mureo service restarted.")
+    typer.echo(f"Dashboard: {url}")
 
 
 @service_app.command("status")

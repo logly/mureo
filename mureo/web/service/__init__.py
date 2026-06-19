@@ -9,9 +9,9 @@ is no privilege escalation:
 * Windows → an on-logon Scheduled Task + ``schtasks`` (:mod:`.windows`).
 
 Each backend exposes the same small contract — ``install()`` /
-``uninstall()`` / ``status()`` — returning the structured results defined
-here so the command layer (:mod:`mureo.cli.service_cmd`) stays
-OS-agnostic. Every backend degrades gracefully: a missing loader binary,
+``uninstall()`` / ``restart()`` / ``status()`` — returning the structured
+results defined here so the command layer (:mod:`mureo.cli.service_cmd`)
+stays OS-agnostic. Every backend degrades gracefully: a missing loader binary,
 a nonzero exit, or a permission error becomes an :class:`OpResult` with
 ``ok=False`` and a message, never a traceback.
 

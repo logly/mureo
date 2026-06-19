@@ -198,6 +198,38 @@ def uninstall(*, home: Path | None = None) -> OpResult:
     return OpResult(ok=True, message="removed")
 
 
+def restart(*, home: Path | None = None, port: int = SERVICE_PORT) -> OpResult:
+    """Restart the running agent in place (kill + relaunch).
+
+    ``launchctl kickstart -k`` stops the job and immediately relaunches it
+    under launchd, so a running daemon picks up new code / static assets
+    without a re-install. Requires the plist to be installed — a clean
+    "not installed" message points the user at ``mureo service install``.
+    When the plist exists but the job is not currently loaded (e.g. booted
+    out by hand), it is bootstrapped instead so ``restart`` still ends with
+    the daemon running.
+    """
+    path = plist_path(home)
+    if not path.exists():
+        return OpResult(ok=False, message="not installed (run `mureo service install`)")
+    if not _is_loaded():
+        # Registered plist but not loaded — bring it up rather than kickstart
+        # a job launchd does not know about.
+        return _load(path)
+    uid = _current_uid()
+    try:
+        proc = _run(["launchctl", "kickstart", "-k", f"gui/{uid}/{LABEL}"])
+    except FileNotFoundError:
+        return OpResult(ok=False, message="launchctl not found on PATH")
+    except OSError as exc:  # pragma: no cover - defensive
+        return OpResult(ok=False, message=str(exc))
+    if proc.returncode == 0:
+        return OpResult(ok=True, message="restarted")
+    return OpResult(
+        ok=False, message=(proc.stderr or "launchctl kickstart failed").strip()
+    )
+
+
 def status(*, home: Path | None = None, port: int = SERVICE_PORT) -> StatusResult:
     """Report installed (plist exists) and running (``/api/ping``) state."""
     installed = plist_path(home).exists()
@@ -212,6 +244,7 @@ __all__ = [
     "build_plist",
     "install",
     "plist_path",
+    "restart",
     "status",
     "uninstall",
 ]

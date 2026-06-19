@@ -117,6 +117,35 @@ def uninstall(*, home: Path | None = None) -> OpResult:
     return OpResult(ok=True, message="removed")
 
 
+def restart(*, home: Path | None = None, port: int = SERVICE_PORT) -> OpResult:
+    """Restart the on-logon task: end the running instance, then run it.
+
+    Picks up new code / static assets without a re-install. Requires the
+    task to exist — a clean "not installed" message points the user at
+    ``mureo service install``. ``schtasks /End`` stops the current instance
+    (a not-running task makes ``/End`` return nonzero, which is ignored so
+    it never fails the restart) and ``/Run`` starts a fresh one.
+    """
+    try:
+        query = _run(["schtasks", "/Query", "/TN", TASK_NAME])
+        if query.returncode != 0:
+            return OpResult(
+                ok=False, message="not installed (run `mureo service install`)"
+            )
+        # Best-effort stop of any running instance before relaunching.
+        _run(["schtasks", "/End", "/TN", TASK_NAME])
+        proc = _run(["schtasks", "/Run", "/TN", TASK_NAME])
+        if proc.returncode != 0:
+            return OpResult(
+                ok=False, message=(proc.stderr or proc.stdout or "").strip()
+            )
+    except FileNotFoundError:
+        return OpResult(ok=False, message="schtasks not found on PATH")
+    except OSError as exc:  # pragma: no cover - defensive
+        return OpResult(ok=False, message=str(exc))
+    return OpResult(ok=True, message="restarted")
+
+
 def status(*, home: Path | None = None, port: int = SERVICE_PORT) -> StatusResult:
     """Report installed (task exists) and running (``/api/ping``) state."""
     installed = _task_exists()
@@ -129,6 +158,7 @@ def status(*, home: Path | None = None, port: int = SERVICE_PORT) -> StatusResul
 __all__ = [
     "TASK_NAME",
     "install",
+    "restart",
     "status",
     "task_run_command",
     "uninstall",

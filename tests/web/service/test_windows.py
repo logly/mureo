@@ -159,3 +159,52 @@ class TestStatus:
         ):
             result = windows.status(home=home, port=7613)
         assert result.installed is False
+
+
+@pytest.mark.unit
+class TestRestart:
+    """``restart`` ends the running task instance, then runs a fresh one."""
+
+    def test_restart_ends_and_runs_task(self, home: Path) -> None:
+        # query (found) → /End → /Run
+        with patch.object(
+            windows.subprocess, "run", side_effect=[_ok(), _ok(), _ok()]
+        ) as mock_run:
+            result = windows.restart(home=home, port=7613)
+        assert result.ok
+        assert result.message == "restarted"
+        argvs = [c.args[0] for c in mock_run.call_args_list]
+        assert any("/End" in a and windows.TASK_NAME in a for a in argvs)
+        assert any("/Run" in a and windows.TASK_NAME in a for a in argvs)
+
+    def test_restart_not_installed_is_clear_error(self, home: Path) -> None:
+        with patch.object(windows.subprocess, "run", return_value=_fail("not found")):
+            result = windows.restart(home=home, port=7613)
+        assert not result.ok
+        assert "not installed" in result.message
+
+    def test_restart_reports_error_on_run_failure(self, home: Path) -> None:
+        # query (found) → /End ok → /Run fails
+        with patch.object(
+            windows.subprocess, "run", side_effect=[_ok(), _ok(), _fail("denied")]
+        ):
+            result = windows.restart(home=home, port=7613)
+        assert not result.ok
+        assert "denied" in result.message
+
+    def test_restart_ignores_end_failure(self, home: Path) -> None:
+        # query (found) -> /End fails (task not running) -> /Run ok: still ok.
+        with patch.object(
+            windows.subprocess, "run", side_effect=[_ok(), _fail("not running"), _ok()]
+        ):
+            result = windows.restart(home=home, port=7613)
+        assert result.ok
+        assert result.message == "restarted"
+
+    def test_restart_handles_missing_schtasks(self, home: Path) -> None:
+        with patch.object(
+            windows.subprocess, "run", side_effect=FileNotFoundError("schtasks")
+        ):
+            result = windows.restart(home=home, port=7613)
+        assert not result.ok
+        assert "schtasks not found" in result.message

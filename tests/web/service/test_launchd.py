@@ -252,3 +252,92 @@ class TestStatus:
             result = launchd.status(home=home, port=7613)
         assert result.installed is False
         assert result.running is False
+
+
+@pytest.mark.unit
+class TestRestart:
+    """``restart`` kickstarts the loaded agent in place (kill + relaunch)."""
+
+    def _write_plist(self, home: Path) -> None:
+        launchd.plist_path(home).write_bytes(launchd.build_plist(home, port=7613))
+
+    def test_restart_kickstarts_when_loaded(self, home: Path) -> None:
+        self._write_plist(home)
+
+        def fake_run(argv: list[str], **kwargs: object) -> object:
+            if "print" in argv:  # _is_loaded probe → loaded
+                return _ok()
+            return _ok()  # kickstart
+
+        with patch.object(launchd.subprocess, "run", side_effect=fake_run) as mock_run:
+            result = launchd.restart(home=home, port=7613)
+        assert result.ok
+        assert result.message == "restarted"
+        argvs = [c.args[0] for c in mock_run.call_args_list]
+        assert any(
+            a[:3] == ["launchctl", "kickstart", "-k"] and a[-1].endswith(launchd.LABEL)
+            for a in argvs
+        )
+
+    def test_restart_not_installed_is_clear_error(self, home: Path) -> None:
+        # No plist written.
+        with patch.object(launchd.subprocess, "run", return_value=_ok()) as mock_run:
+            result = launchd.restart(home=home, port=7613)
+        assert not result.ok
+        assert "not installed" in result.message
+        mock_run.assert_not_called()
+
+    def test_restart_loads_when_registered_but_not_loaded(self, home: Path) -> None:
+        self._write_plist(home)
+
+        def fake_run(argv: list[str], **kwargs: object) -> object:
+            if "print" in argv:  # _is_loaded probe → NOT loaded
+                return _fail()
+            return _ok()  # bootstrap
+
+        with patch.object(launchd.subprocess, "run", side_effect=fake_run) as mock_run:
+            result = launchd.restart(home=home, port=7613)
+        assert result.ok
+        argvs = [c.args[0] for c in mock_run.call_args_list]
+        # It bootstrapped (loaded) rather than kickstarting an unloaded job.
+        assert any("bootstrap" in a for a in argvs)
+        assert not any("kickstart" in a for a in argvs)
+
+    def test_restart_propagates_load_failure_when_not_loaded(self, home: Path) -> None:
+        self._write_plist(home)
+
+        def fake_run(argv: list[str], **kwargs: object) -> object:
+            if "print" in argv:  # _is_loaded probe -> NOT loaded
+                return _fail()
+            return _fail("bootstrap boom")  # both bootstrap and load fail
+
+        with patch.object(launchd.subprocess, "run", side_effect=fake_run):
+            result = launchd.restart(home=home, port=7613)
+        assert not result.ok
+        assert "bootstrap boom" in result.message
+
+    def test_restart_reports_error_on_nonzero_kickstart(self, home: Path) -> None:
+        self._write_plist(home)
+
+        def fake_run(argv: list[str], **kwargs: object) -> object:
+            if "print" in argv:
+                return _ok()  # loaded
+            return _fail("kickstart boom")
+
+        with patch.object(launchd.subprocess, "run", side_effect=fake_run):
+            result = launchd.restart(home=home, port=7613)
+        assert not result.ok
+        assert "kickstart boom" in result.message
+
+    def test_restart_handles_missing_launchctl(self, home: Path) -> None:
+        self._write_plist(home)
+
+        def fake_run(argv: list[str], **kwargs: object) -> object:
+            if "print" in argv:
+                return _ok()  # loaded
+            raise FileNotFoundError
+
+        with patch.object(launchd.subprocess, "run", side_effect=fake_run):
+            result = launchd.restart(home=home, port=7613)
+        assert not result.ok
+        assert "launchctl not found" in result.message

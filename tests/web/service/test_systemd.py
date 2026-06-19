@@ -155,3 +155,45 @@ class TestStatus:
             result = systemd.status(home=home, port=7613)
         assert result.installed is False
         assert result.running is False
+
+
+@pytest.mark.unit
+class TestRestart:
+    """``restart`` runs ``systemctl --user restart`` on the installed unit."""
+
+    def _write_unit(self, home: Path) -> None:
+        path = systemd.unit_path(home)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(systemd.build_unit(port=7613), encoding="utf-8")
+
+    def test_restart_runs_systemctl_restart(self, home: Path) -> None:
+        self._write_unit(home)
+        with patch.object(systemd.subprocess, "run", return_value=_ok()) as mock_run:
+            result = systemd.restart(home=home, port=7613)
+        assert result.ok
+        assert result.message == "restarted"
+        argvs = [c.args[0] for c in mock_run.call_args_list]
+        assert ["systemctl", "--user", "restart", systemd.UNIT_NAME] in argvs
+
+    def test_restart_not_installed_is_clear_error(self, home: Path) -> None:
+        with patch.object(systemd.subprocess, "run", return_value=_ok()) as mock_run:
+            result = systemd.restart(home=home, port=7613)
+        assert not result.ok
+        assert "not installed" in result.message
+        mock_run.assert_not_called()
+
+    def test_restart_reports_error_on_nonzero_exit(self, home: Path) -> None:
+        self._write_unit(home)
+        with patch.object(systemd.subprocess, "run", return_value=_fail("nope")):
+            result = systemd.restart(home=home, port=7613)
+        assert not result.ok
+        assert "nope" in result.message
+
+    def test_restart_handles_missing_systemctl(self, home: Path) -> None:
+        self._write_unit(home)
+        with patch.object(
+            systemd.subprocess, "run", side_effect=FileNotFoundError("systemctl")
+        ):
+            result = systemd.restart(home=home, port=7613)
+        assert not result.ok
+        assert "systemctl not found" in result.message
