@@ -1496,3 +1496,49 @@ class TestSetPlatformMetrics:
             fp, "google_ads", "act_123", periods={"YESTERDAY": {"spend": 1.0}}
         )
         assert doc.reports == {"daily": {"verdict": "Healthy"}}
+
+
+class TestMutatorsPreserveReports:
+    """Regression: every STATE.json mutator must preserve the reports section.
+
+    `set_report` writes reports[daily|weekly|goal]; a later `upsert_campaign`
+    or `append_action_log` rebuilds the document and historically dropped
+    `reports` (omitted from the StateDocument constructor), silently wiping
+    the dashboard's analysis summaries. These pin the preservation so the
+    bug cannot regress.
+    """
+
+    @pytest.mark.unit
+    def test_upsert_campaign_preserves_reports(self, tmp_path: Path) -> None:
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        set_report(fp, "daily", {"verdict": "Healthy", "note": "all good"})
+
+        doc = upsert_campaign(
+            fp,
+            CampaignSnapshot(campaign_id="g1", campaign_name="Brand", status="ENABLED"),
+            platform="google_ads",
+            account_id="act_123",
+        )
+        assert doc.reports == {"daily": {"verdict": "Healthy", "note": "all good"}}
+        # And it survives to disk, not just the returned object.
+        assert read_state_file(fp).reports == {
+            "daily": {"verdict": "Healthy", "note": "all good"}
+        }
+
+    @pytest.mark.unit
+    def test_append_action_log_preserves_reports(self, tmp_path: Path) -> None:
+        fp = tmp_path / "STATE.json"
+        write_state_file(fp, StateDocument(version="2"))
+        set_report(fp, "weekly", {"verdict": "Watch"})
+
+        doc = append_action_log(
+            fp,
+            ActionLogEntry(
+                timestamp="2026-06-19T00:00:00+00:00",
+                action="budget_update",
+                platform="google_ads",
+            ),
+        )
+        assert doc.reports == {"weekly": {"verdict": "Watch"}}
+        assert read_state_file(fp).reports == {"weekly": {"verdict": "Watch"}}

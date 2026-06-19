@@ -348,6 +348,11 @@ def upsert_campaign(
             campaigns=flat_campaigns,
             platforms=platforms,
             action_log=doc.action_log,
+            # Preserve the analysis summaries: a campaign upsert has no reports
+            # input, so dropping this would silently wipe the daily/weekly/goal
+            # summaries the dashboard renders (every upsert after a report write
+            # erased it).
+            reports=doc.reports,
         )
 
     return _locked_state_mutation(path, _build)
@@ -370,6 +375,9 @@ def append_action_log(path: Path, entry: ActionLogEntry) -> StateDocument:
             campaigns=doc.campaigns,
             platforms=doc.platforms,
             action_log=(*doc.action_log, entry),
+            # Preserve the analysis summaries — appending an action must not
+            # wipe the daily/weekly/goal reports the dashboard renders.
+            reports=doc.reports,
         )
 
     return _locked_state_mutation(path, _build)
