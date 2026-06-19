@@ -53,6 +53,7 @@ class TestServiceSubcommandRegistered:
         assert result.exit_code == 0
         assert "install" in result.output
         assert "uninstall" in result.output
+        assert "restart" in result.output
         assert "status" in result.output
 
 
@@ -196,3 +197,52 @@ class TestUnsupportedPlatform:
         # No traceback — a clean, explained nonzero exit.
         assert result.exit_code != 0
         assert "not supported" in result.output.lower()
+
+
+@pytest.mark.unit
+class TestRestartDispatch:
+    @pytest.mark.parametrize(
+        ("platform", "backend_attr"),
+        [
+            ("darwin", "launchd"),
+            ("linux", "systemd"),
+            ("win32", "windows"),
+        ],
+    )
+    def test_restart_dispatches_to_backend(
+        self, platform: str, backend_attr: str
+    ) -> None:
+        with (
+            patch("mureo.cli.service_cmd.sys.platform", platform),
+            patch(
+                f"mureo.web.service.{backend_attr}.restart",
+                return_value=OpResult(ok=True, message="restarted"),
+            ) as mock_restart,
+        ):
+            result = _runner().invoke(_app(), ["service", "restart"])
+        assert result.exit_code == 0, result.output
+        mock_restart.assert_called_once()
+
+    def test_restart_nonzero_on_backend_error(self) -> None:
+        with (
+            patch("mureo.cli.service_cmd.sys.platform", "darwin"),
+            patch(
+                "mureo.web.service.launchd.restart",
+                return_value=OpResult(ok=False, message="not installed"),
+            ),
+        ):
+            result = _runner().invoke(_app(), ["service", "restart"])
+        assert result.exit_code != 0
+        assert "not installed" in result.output
+
+    def test_restart_prints_dashboard_url(self) -> None:
+        with (
+            patch("mureo.cli.service_cmd.sys.platform", "darwin"),
+            patch(
+                "mureo.web.service.launchd.restart",
+                return_value=OpResult(ok=True, message="restarted"),
+            ),
+        ):
+            result = _runner().invoke(_app(), ["service", "restart"])
+        assert result.exit_code == 0
+        assert "http://127.0.0.1:7613/" in result.output

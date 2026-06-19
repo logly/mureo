@@ -137,6 +137,28 @@ def uninstall(*, home: Path | None = None) -> OpResult:
     return OpResult(ok=True, message="removed")
 
 
+def restart(*, home: Path | None = None, port: int = SERVICE_PORT) -> OpResult:
+    """Restart the user unit in place via ``systemctl --user restart``.
+
+    Picks up new code / static assets without a re-install. Requires the
+    unit to be installed — a clean "not installed" message points the user
+    at ``mureo service install``.
+    """
+    if not unit_path(home).exists():
+        return OpResult(ok=False, message="not installed (run `mureo service install`)")
+    try:
+        proc = _systemctl("restart", UNIT_NAME)
+    except FileNotFoundError:
+        return OpResult(ok=False, message="systemctl not found on PATH")
+    except OSError as exc:  # pragma: no cover - defensive
+        return OpResult(ok=False, message=str(exc))
+    if proc.returncode == 0:
+        return OpResult(ok=True, message="restarted")
+    return OpResult(
+        ok=False, message=(proc.stderr or "systemctl restart failed").strip()
+    )
+
+
 def status(*, home: Path | None = None, port: int = SERVICE_PORT) -> StatusResult:
     """Report installed (unit exists) and running (``/api/ping``) state."""
     installed = unit_path(home).exists()
@@ -150,6 +172,7 @@ __all__ = [
     "UNIT_NAME",
     "build_unit",
     "install",
+    "restart",
     "status",
     "uninstall",
     "unit_path",
