@@ -1328,6 +1328,49 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-variant-numeric: tabular-nums;
 }
 
+/* Period toggle (前日｜30日) — a segmented pill inside the reports head.
+   Built only from windows that have data (summary.periods); the active
+   segment lifts onto --surface with the accent, idle ones read as muted. */
+.dashboard-reports-period {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+}
+
+.reports-period-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.reports-period-btn:hover {
+  color: var(--ink);
+}
+
+.reports-period-btn.is-active {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.reports-period-btn:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
 .dashboard-reports-hint {
   margin: 4px 0 0;
   font-size: 12.5px;

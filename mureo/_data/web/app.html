@@ -172,6 +172,10 @@
                     <span data-i18n="dashboard.reports_client_label">Client</span>
                     <select data-reports-client></select>
                   </label>
+                  <!-- Period toggle (前日｜30日). Populated by renderReports()
+                       from summary.periods; hidden unless >= 2 windows. -->
+                  <div class="dashboard-reports-period" data-reports-period
+                       role="group" aria-label="Report period" hidden></div>
                   <!-- Freshness: "synced N ago" from last_synced_at. -->
                   <span class="dashboard-reports-freshness" data-reports-freshness></span>
                 </div>
