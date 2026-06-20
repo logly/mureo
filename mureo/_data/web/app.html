@@ -164,7 +164,15 @@
           <div class="dashboard-group" data-dashboard-group="reports" hidden>
             <div class="dashboard-section dashboard-reports" data-dashboard-reports>
               <div class="dashboard-reports-head">
-                <h2 data-i18n="dashboard.reports_title">Reports</h2>
+                <div class="dashboard-reports-head-title">
+                  <h2 data-i18n="dashboard.reports_title">Reports</h2>
+                  <!-- Back to the client index — directly under the "Reports"
+                       heading. Shown only in the detail view of a multi-client
+                       (Agency) install. -->
+                  <button type="button" class="reports-back" data-reports-back hidden>
+                    <span data-i18n="dashboard.reports_back">← Clients</span>
+                  </button>
+                </div>
                 <div class="dashboard-reports-meta">
                   <!-- Period toggle (前日｜30日). Populated by renderReports()
                        from summary.periods; hidden unless >= 2 windows. -->
@@ -184,14 +192,8 @@
 
               <!-- DETAIL view: one client's full report. -->
               <div class="dashboard-reports-detail" data-reports-detail hidden>
-                <!-- Back-to-index bar + selected client name. Shown only when
-                     an index exists to return to (>1 client). -->
-                <div class="dashboard-reports-detailbar" data-reports-detailbar hidden>
-                  <button type="button" class="reports-back" data-reports-back>
-                    <span data-i18n="dashboard.reports_back">← Clients</span>
-                  </button>
-                  <span class="dashboard-reports-detail-client" data-reports-detail-client></span>
-                </div>
+                <!-- Selected client name (multi-client / Agency only). -->
+                <h3 class="dashboard-reports-detail-client" data-reports-detail-client hidden></h3>
 
                 <!-- Per-platform KPI cards (generic over the API's platforms). -->
                 <div class="dashboard-reports-cards" data-reports-cards></div>

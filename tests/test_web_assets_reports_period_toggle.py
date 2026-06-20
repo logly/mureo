@@ -143,12 +143,14 @@ def test_reports_index_detail_navigation() -> None:
     html = _read("app.html")
     js = _read("dashboard.js")
     css = _read("app.css")
-    # Index grid + detail container + back bar present; old dropdown removed.
+    # Index grid + detail container present; old dropdown removed.
     assert "data-reports-clients" in html  # index grid
     assert "data-reports-detail" in html  # detail view wrapper
     assert "data-reports-back" in html  # back-to-index button
     assert "data-reports-client-wrap" not in html
     assert "<select data-reports-client>" not in html
+    # The back link sits under the "Reports" heading (its own head column).
+    assert "dashboard-reports-head-title" in html
     # JS builds the index, aggregates KPIs, opens detail, and toggles views.
     assert "function renderReportsIndex(" in js
     assert "function buildClientCard(" in js
@@ -156,9 +158,9 @@ def test_reports_index_detail_navigation() -> None:
     assert "function showReportsClientDetail(" in js
     assert "function setReportsView(" in js
     assert "renderReportsClientSelector" not in js
-    # Card + back-bar styling exists.
+    # Card + back-link styling exists.
     assert ".reports-client-card" in css
-    assert ".dashboard-reports-detailbar" in css
+    assert ".dashboard-reports-head-title" in css
 
 
 @pytest.mark.unit

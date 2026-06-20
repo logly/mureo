@@ -1985,13 +1985,16 @@
     reportsView = view;
     const index = document.querySelector("[data-reports-clients]");
     const detail = document.querySelector("[data-reports-detail]");
-    const detailbar = document.querySelector("[data-reports-detailbar]");
+    const back = document.querySelector("[data-reports-back]");
+    const nameEl = document.querySelector("[data-reports-detail-client]");
     if (index) index.hidden = view !== "index";
     if (detail) detail.hidden = view !== "detail";
-    if (detailbar) {
-      // A back bar only when a multi-client index exists to go back to.
-      detailbar.hidden = !(view === "detail" && reportsClients.length > 1);
-    }
+    // The back link (under the "Reports" heading) and the client-name heading
+    // appear only in a multi-client detail view — an OSS single client has no
+    // index to go back to and no sibling to disambiguate.
+    const showClientChrome = view === "detail" && reportsClients.length > 1;
+    if (back) back.hidden = !showClientChrome;
+    if (nameEl) nameEl.hidden = !showClientChrome;
   }
 
   // INDEX view: a card per client (KPIs + flags for the selected window).
