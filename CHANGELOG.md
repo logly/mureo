@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.9] - 2026-06-21
+
+### Added
+
+#### Multi-client overview on the Reports tab (index → detail)
+
+The Reports tab is now a two-view navigation built on the existing Agency
+seam (`list_clients()` / `state_store_for_client()`): an **index** page —
+one card per client showing aggregated KPIs (spend / conversions / CPA) and
+the latest report's flags (humanized, severity-coloured, capped with a `+N`
+overflow) — and a **detail** page for the selected client (per-platform
+KPIs, latest report, recent activity, period toggle) with a "← Clients"
+back link. A single-workspace (OSS) install skips the index and opens the
+detail directly. Replaces the single-select client dropdown.
+
+### Changed
+
+- The report-flag chips are now severity-coloured (off-target → amber,
+  data-integrity → red, on-target → green) and drop the inconsistent
+  parenthetical context for a cleaner read; the reports detail header
+  spacing was balanced (back link under the heading, prominent client name).
+- `daily-check` (and every report-writing skill) now persists its summary
+  **after** any STATE change it makes, with the narrative/flags describing
+  the post-change state — so the dashboard's "Latest report" can no longer
+  read as older than, and contradict, an `action_log` entry from the same
+  run (e.g. recommending a mode switch the run then executed).
+
 ## [0.10.8] - 2026-06-20
 
 ### Added
