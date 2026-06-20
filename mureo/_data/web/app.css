@@ -1287,9 +1287,9 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .dashboard-reports-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 12px 16px;
 }
 
 .dashboard-reports-head h2 {
@@ -1488,17 +1488,19 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   color: var(--muted);
 }
 
-/* Index ↔ detail navigation (#307): the detail view's back bar. */
+/* Index ↔ detail navigation (#307). The "← Clients" back link sits directly
+   under the "Reports" heading (its own stacked column on the head's left). */
 .dashboard-reports-detail[hidden],
-.dashboard-reports-detailbar[hidden] {
+.reports-back[hidden],
+.dashboard-reports-detail-client[hidden] {
   display: none;
 }
 
-.dashboard-reports-detailbar {
+.dashboard-reports-head-title {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 4px 0 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
 }
 
 .reports-back {
@@ -1507,26 +1509,30 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  padding: 4px 10px;
-  color: var(--ink-soft);
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-pill);
+  padding: 0;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
 }
 
 .reports-back:hover {
-  color: var(--ink);
-  border-color: var(--hairline-strong);
+  color: var(--accent-press);
+  text-decoration: underline;
 }
 
 .reports-back:focus-visible {
   outline: 2px solid var(--accent-ring);
-  outline-offset: 1px;
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
+/* Selected client name — the prominent title leading the detail view, set
+   apart from the section heading + back link above it. */
 .dashboard-reports-detail-client {
-  font-size: 14px;
-  font-weight: 600;
+  margin: 10px 0 16px;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--ink);
 }
 
