@@ -1425,6 +1425,78 @@
     return key ? MUREO.t(key) : String(token);
   }
 
+  // Report flags (reports.daily.flags) are free-form snake_case tags the
+  // analysis skill authors (e.g. "cpa_over_target_logly"). Map the common
+  // bases to friendly localized labels; anything unknown is humanized
+  // generically so a raw snake_case token never reaches the operator. The
+  // LONGEST matching base wins, and any trailing context (e.g. the platform)
+  // is humanized and shown in parentheses — UNLESS the base opts out with a
+  // third `true` element (for flags whose remainder is a noisy identifier,
+  // not a useful platform, e.g. a Search Console property name).
+  const REPORTS_FLAG_BASES = [
+    ["cpa_over_target", "dashboard.reports_flag_cpa_over_target"],
+    ["cpa_under_target", "dashboard.reports_flag_cpa_under_target"],
+    ["cv_below_target", "dashboard.reports_flag_cv_below_target"],
+    ["conversions_below_target", "dashboard.reports_flag_cv_below_target"],
+    ["cv_above_target", "dashboard.reports_flag_cv_above_target"],
+    ["operation_mode_mismatch", "dashboard.reports_flag_operation_mode_mismatch"],
+    ["low_cvr_lp_conversion", "dashboard.reports_flag_low_cvr_lp"],
+    ["low_cvr", "dashboard.reports_flag_low_cvr"],
+    ["sparse_conversions_tracking_suspect", "dashboard.reports_flag_tracking_suspect"],
+    ["tracking_suspect", "dashboard.reports_flag_tracking_suspect"],
+    ["zero_conversions", "dashboard.reports_flag_zero_conversions"],
+    ["budget_overspend", "dashboard.reports_flag_budget_overspend"],
+    ["spend_spike", "dashboard.reports_flag_spend_spike"],
+    ["search_console_no", "dashboard.reports_flag_sc_no_property", true],
+  ];
+
+  // snake_case tokens that read better upper-cased (metric acronyms).
+  const REPORTS_FLAG_ACRONYMS = {
+    cpa: "CPA",
+    cpc: "CPC",
+    cpm: "CPM",
+    ctr: "CTR",
+    cvr: "CVR",
+    cv: "CV",
+    roas: "ROAS",
+    roi: "ROI",
+    lp: "LP",
+    ga4: "GA4",
+    seo: "SEO",
+    url: "URL",
+  };
+
+  function humanizeFlagWords(token) {
+    const words = String(token == null ? "" : token)
+      .split("_")
+      .filter(Boolean)
+      .map(function (w) {
+        return REPORTS_FLAG_ACRONYMS[w] || w;
+      });
+    if (!words.length) return "";
+    const s = words.join(" ");
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function humanizeReportFlag(flag) {
+    const raw = String(flag == null ? "" : flag);
+    let best = null;
+    for (let i = 0; i < REPORTS_FLAG_BASES.length; i++) {
+      const base = REPORTS_FLAG_BASES[i][0];
+      if ((raw === base || raw.indexOf(base + "_") === 0) &&
+          (!best || base.length > best[0].length)) {
+        best = REPORTS_FLAG_BASES[i];
+      }
+    }
+    if (!best) return humanizeFlagWords(raw);
+    const label = MUREO.t(best[1]);
+    // best[2] === true suppresses the parenthetical context (noisy remainder).
+    const ctx = best[2]
+      ? ""
+      : humanizeFlagWords(raw.slice(best[0].length).replace(/^_/, ""));
+    return ctx ? label + " (" + ctx + ")" : label;
+  }
+
   // The selected window. Default = YESTERDAY (daily-check runs every day, so
   // the prior day is what an operator checks first). Reconciled against the
   // summary's `periods` union on each render — falls back to the first
@@ -1608,7 +1680,11 @@
       chips.className = "report-flags";
       flags.forEach(function (flag) {
         const isObj = flag && typeof flag === "object";
-        const label = isObj ? flag.label || flag.message || flag.level || "" : flag;
+        // Object flags carry their own author-written label; a bare string is
+        // a free-form snake_case code we humanize into a friendly label.
+        const label = isObj
+          ? flag.label || flag.message || flag.level || ""
+          : humanizeReportFlag(flag);
         const level = isObj ? flag.level || flag.kind : flag;
         const chip = document.createElement("span");
         chip.className = "report-chip " + flagChipKind(level);
