@@ -1776,27 +1776,237 @@
     });
   }
 
-  // Populate / toggle the client selector. Only shown when >1 client.
-  function renderReportsClientSelector(clients, active) {
-    const wrap = document.querySelector("[data-reports-client-wrap]");
-    const select = document.querySelector("[data-reports-client]");
-    if (!wrap || !select) return;
+  // ----------------------------------------------------------------------
+  // Multi-client overview (#307): a card grid (one per client) replaces the
+  // old single-select dropdown. Each card shows that client's headline KPIs
+  // + latest report flags; clicking it loads the existing per-client detail.
+  // ----------------------------------------------------------------------
+
+  const REPORTS_CLIENT_FLAG_CAP = 3; // chips per card before collapsing to +N
+
+  // Fetch JSON defensively — null on any failure / non-object body.
+  async function fetchReportsJson(url) {
+    try {
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (!res.ok) return null;
+      const body = await res.json();
+      return body && typeof body === "object" ? body : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  // Sum a client's headline KPIs across its platforms. null when absent so a
+  // missing metric reads as "—" rather than a misleading zero.
+  function aggregateClientKpis(summary) {
+    const platforms =
+      summary && Array.isArray(summary.platforms) ? summary.platforms : [];
+    let spend = 0;
+    let conv = 0;
+    let hasSpend = false;
+    let hasConv = false;
+    platforms.forEach(function (p) {
+      const t = p && typeof p.totals === "object" ? p.totals : null;
+      if (!t) return;
+      if (typeof t.spend === "number" && isFinite(t.spend)) {
+        spend += t.spend;
+        hasSpend = true;
+      }
+      if (typeof t.conversions === "number" && isFinite(t.conversions)) {
+        conv += t.conversions;
+        hasConv = true;
+      }
+    });
+    return {
+      spend: hasSpend ? spend : null,
+      conversions: hasConv ? conv : null,
+      cpa: hasSpend && hasConv && conv > 0 ? spend / conv : null,
+    };
+  }
+
+  // Flags from a client's latest report (daily → weekly → goal).
+  function clientReportFlags(summary) {
+    const reports =
+      summary && typeof summary.reports === "object" ? summary.reports : null;
+    if (!reports) return [];
+    const r = reports.daily || reports.weekly || reports.goal;
+    return r && Array.isArray(r.flags) ? r.flags : [];
+  }
+
+  // Sort flags danger → warn → success → neutral (most urgent first).
+  const REPORTS_FLAG_SEVERITY_ORDER = ["is-danger", "is-warn", "is-success", ""];
+  function flagSeverityRank(flag) {
+    const idx = REPORTS_FLAG_SEVERITY_ORDER.indexOf(reportFlagKind(flag));
+    return idx === -1 ? REPORTS_FLAG_SEVERITY_ORDER.length : idx;
+  }
+
+  // Fetch a client's summary for its overview card. Honours the period toggle,
+  // and when the selected window has no totals (a period-bucketed client whose
+  // passthrough rollup is blank) falls back to the first window with data.
+  async function fetchClientCardSummary(slug) {
+    function summaryUrl(period) {
+      const params = [];
+      if (slug) params.push("client=" + encodeURIComponent(slug));
+      if (period) params.push("period=" + encodeURIComponent(period));
+      return (
+        "/api/reports/summary" + (params.length ? "?" + params.join("&") : "")
+      );
+    }
+    let summary = (await fetchReportsJson(summaryUrl(reportsPeriod))) || {};
+    const kpis = aggregateClientKpis(summary);
+    const periods = Array.isArray(summary.periods)
+      ? summary.periods.filter(function (p) {
+          return typeof p === "string" && p;
+        })
+      : [];
+    if (kpis.spend == null && kpis.conversions == null && periods.length) {
+      const fallback = periods.indexOf(reportsPeriod) === -1 ? periods[0] : null;
+      if (fallback) {
+        const alt = await fetchReportsJson(summaryUrl(fallback));
+        if (alt) summary = alt;
+      }
+    }
+    return summary;
+  }
+
+  function clientKpiCell(labelKey, value) {
+    const cell = document.createElement("div");
+    cell.className = "reports-client-kpi";
+    const v = document.createElement("span");
+    v.className = "reports-client-kpi-value";
+    v.textContent = value;
+    const l = document.createElement("span");
+    l.className = "reports-client-kpi-label";
+    l.textContent = MUREO.t(labelKey);
+    cell.appendChild(v);
+    cell.appendChild(l);
+    return cell;
+  }
+
+  function buildClientCard(client, summary) {
+    const slug = client && client.slug ? client.slug : "";
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "reports-client-card";
+    card.setAttribute("role", "listitem");
+    card.setAttribute("data-client", slug);
+
+    const head = document.createElement("div");
+    head.className = "reports-client-card-head";
+    const name = document.createElement("span");
+    name.className = "reports-client-card-name";
+    name.textContent = (client && (client.name || client.slug)) || "";
+    head.appendChild(name);
+    const fresh = document.createElement("span");
+    fresh.className = "reports-client-card-fresh";
+    fresh.textContent =
+      summary && summary.last_synced_at ? relativeAge(summary.last_synced_at) : "";
+    head.appendChild(fresh);
+    card.appendChild(head);
+
+    const kpis = aggregateClientKpis(summary);
+    const krow = document.createElement("div");
+    krow.className = "reports-client-card-kpis";
+    krow.appendChild(
+      clientKpiCell(
+        "dashboard.reports_kpi_spend",
+        // "—" (not 0) when absent — a no-data client must not read as zero
+        // spend in this at-a-glance triage view.
+        kpis.spend != null ? formatNumber(kpis.spend) : "—"
+      )
+    );
+    if (kpis.conversions != null) {
+      krow.appendChild(
+        clientKpiCell(
+          "dashboard.reports_kpi_conversions",
+          formatNumber(kpis.conversions)
+        )
+      );
+    }
+    if (kpis.cpa != null) {
+      krow.appendChild(
+        clientKpiCell(
+          "dashboard.reports_kpi_cpa",
+          formatNumber(Math.round(kpis.cpa))
+        )
+      );
+    }
+    card.appendChild(krow);
+
+    const flags = clientReportFlags(summary)
+      .slice()
+      .sort(function (a, b) {
+        return flagSeverityRank(a) - flagSeverityRank(b);
+      });
+    if (flags.length) {
+      const chips = document.createElement("div");
+      chips.className = "reports-client-card-flags";
+      flags.slice(0, REPORTS_CLIENT_FLAG_CAP).forEach(function (flag) {
+        const chip = document.createElement("span");
+        chip.className = "report-chip " + reportFlagKind(flag);
+        chip.textContent = humanizeReportFlag(flag);
+        chips.appendChild(chip);
+      });
+      const overflow = flags.length - REPORTS_CLIENT_FLAG_CAP;
+      if (overflow > 0) {
+        const more = document.createElement("span");
+        more.className = "report-chip reports-client-flag-more";
+        more.textContent = "+" + overflow;
+        chips.appendChild(more);
+      }
+      card.appendChild(chips);
+    }
+
+    card.addEventListener("click", function () {
+      selectReportsClient(slug);
+    });
+    return card;
+  }
+
+  // Build the client overview grid (one card per client). Returns the slug to
+  // select by default (first active, else first), or null when there are none.
+  async function renderReportsClientOverview(clients, seq) {
+    const wrap = document.querySelector("[data-reports-clients]");
     const rows = Array.isArray(clients) ? clients : [];
-    if (rows.length <= 1) {
+    if (!wrap) return null;
+    wrap.textContent = "";
+    if (!rows.length) {
       wrap.hidden = true;
-      return;
+      return null;
     }
     wrap.hidden = false;
-    select.textContent = "";
-    rows.forEach(function (c) {
-      const opt = document.createElement("option");
-      opt.value = c.slug || "";
-      opt.textContent = c.name || c.slug || "";
-      if ((active && c.slug === active) || (!active && c.active)) {
-        opt.selected = true;
-      }
-      select.appendChild(opt);
+    const summaries = await Promise.all(
+      rows.map(function (c) {
+        return fetchClientCardSummary(c && c.slug ? c.slug : "");
+      })
+    );
+    if (seq !== reportsRenderSeq) return null; // superseded by a newer render
+    wrap.textContent = "";
+    rows.forEach(function (c, i) {
+      wrap.appendChild(buildClientCard(c, summaries[i]));
     });
+    const active = rows.find(function (c) {
+      return c && c.active;
+    });
+    return ((active || rows[0]) || {}).slug || null;
+  }
+
+  // Select a client: highlight its card and load its detail below.
+  function selectReportsClient(slug) {
+    const wrap = document.querySelector("[data-reports-clients]");
+    if (wrap) {
+      const cards = wrap.querySelectorAll(".reports-client-card");
+      Array.prototype.forEach.call(cards, function (c) {
+        const isSel = (c.getAttribute("data-client") || "") === (slug || "");
+        c.classList.toggle("is-selected", isSel);
+        // aria-current present only on the selected card (absent, not "false").
+        if (isSel) c.setAttribute("aria-current", "true");
+        else c.removeAttribute("aria-current");
+      });
+    }
+    // Bump the generation so any in-flight detail render is dropped, then load.
+    reportsRenderSeq++;
+    renderReportsSummary(slug || null);
   }
 
   // Render the period toggle from the summary's `periods` union. Shown only
@@ -1915,39 +2125,20 @@
     renderReportsActions(summary.recent_actions);
   }
 
-  // Entry point: fetch the client list, wire the selector, then load the
-  // active client's summary. Re-runnable (locale change, client switch).
+  // Entry point: fetch the client list, render the overview grid, then load
+  // the default client's detail. Re-runnable (locale change, client switch).
   async function renderReports() {
     const cards = document.querySelector("[data-reports-cards]");
     if (!cards) return;
     const seq = ++reportsRenderSeq;
     let clients = [];
-    try {
-      const res = await fetch("/api/reports/clients", { credentials: "same-origin" });
-      if (res.ok) {
-        const body = await res.json();
-        clients = Array.isArray(body.clients) ? body.clients : [];
-      }
-    } catch (_err) {
-      // Tolerate a missing client list — fall back to the default summary.
-    }
+    const body = await fetchReportsJson("/api/reports/clients");
+    if (body && Array.isArray(body.clients)) clients = body.clients;
     if (seq !== reportsRenderSeq) return;
-    const activeClient = (clients.find(function (c) {
-      return c && c.active;
-    }) || {}).slug;
-    renderReportsClientSelector(clients, activeClient);
-    await renderReportsSummary(activeClient || null);
-  }
-
-  // Wire the client selector once — re-fetch the summary on change.
-  function wireReportsClientSelector() {
-    const select = document.querySelector("[data-reports-client]");
-    if (!select) return;
-    select.addEventListener("change", function () {
-      // Bump the generation so any in-flight summary render is dropped.
-      reportsRenderSeq++;
-      renderReportsSummary(select.value || null);
-    });
+    const defaultSlug = await renderReportsClientOverview(clients, seq);
+    if (seq !== reportsRenderSeq) return;
+    // selectReportsClient highlights the default card + loads its detail.
+    selectReportsClient(defaultSlug);
   }
 
   function renderAll() {
@@ -2278,7 +2469,6 @@
     wireByodImport();
     wireByodClear();
     wireAdvisorForm();
-    wireReportsClientSelector();
     wirePickers();
     if (MUREO.isDashboardRoute()) {
       show();

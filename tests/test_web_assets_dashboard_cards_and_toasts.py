@@ -194,7 +194,8 @@ def test_reports_section_shell_present() -> None:
     assert "data-reports-latest" in html
     assert "data-reports-actions" in html
     assert "data-reports-empty" in html
-    assert "data-reports-client" in html
+    # The multi-client overview grid (#307) replaced the old client dropdown.
+    assert "data-reports-clients" in html
 
 
 @pytest.mark.unit

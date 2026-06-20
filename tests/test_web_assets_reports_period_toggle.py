@@ -133,3 +133,37 @@ def test_report_flags_get_severity_colored_chips() -> None:
     assert "reportFlagKind(flag)" in js
     assert '"is-warn"' in js
     assert '"is-danger"' in js
+
+
+@pytest.mark.unit
+def test_reports_client_overview_replaces_dropdown() -> None:
+    """#307: the Reports tab renders a client overview grid (one card per
+    client with KPIs + flags) that loads the per-client detail on click —
+    not a single-select dropdown. The old <select> dropdown is gone."""
+    html = _read("app.html")
+    js = _read("dashboard.js")
+    css = _read("app.css")
+    # New overview container present; old dropdown markup removed.
+    assert "data-reports-clients" in html
+    assert "data-reports-client-wrap" not in html
+    assert "<select data-reports-client>" not in html
+    # JS builds the grid, aggregates KPIs, and selects a client on click.
+    assert "function renderReportsClientOverview(" in js
+    assert "function buildClientCard(" in js
+    assert "function aggregateClientKpis(" in js
+    assert "function selectReportsClient(" in js
+    assert "renderReportsClientSelector" not in js
+    # Card styling exists and uses the selected-state highlight.
+    assert ".reports-client-card" in css
+    assert ".reports-client-card.is-selected" in css
+
+
+@pytest.mark.unit
+def test_reports_client_card_flags_are_severity_capped() -> None:
+    """Client cards reuse the humanized + severity-coloured flag chips, sorted
+    most-urgent-first and capped with a +N overflow."""
+    js = _read("dashboard.js")
+    assert "REPORTS_CLIENT_FLAG_CAP" in js
+    assert "flagSeverityRank" in js
+    assert "humanizeReportFlag(flag)" in js
+    assert "reports-client-flag-more" in js

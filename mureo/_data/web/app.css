@@ -1392,6 +1392,102 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   color: var(--muted);
 }
 
+/* Multi-client overview (#307): one selectable card per client, above the
+   per-client detail. A single-workspace install shows one card. */
+.dashboard-reports-clients {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 12px 0 4px;
+}
+
+.dashboard-reports-clients[hidden] {
+  display: none;
+}
+
+.reports-client-card {
+  appearance: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 13px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+}
+
+.reports-client-card:hover {
+  border-color: var(--hairline-strong);
+}
+
+.reports-client-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.reports-client-card:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+.reports-client-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reports-client-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.reports-client-card-fresh {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.reports-client-card-kpis {
+  display: flex;
+  gap: 14px;
+}
+
+.reports-client-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.reports-client-kpi-value {
+  font-size: 15px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+.reports-client-kpi-label {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.reports-client-card-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.reports-client-flag-more {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
 /* Responsive KPI card grid — auto-fits cards, never less than ~260px. */
 .dashboard-reports-cards {
   display: grid;

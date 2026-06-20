@@ -166,12 +166,6 @@
               <div class="dashboard-reports-head">
                 <h2 data-i18n="dashboard.reports_title">Reports</h2>
                 <div class="dashboard-reports-meta">
-                  <!-- Client selector — only shown when more than one client
-                       (Agency seam). Populated by renderReports(). -->
-                  <label class="dashboard-reports-client" data-reports-client-wrap hidden>
-                    <span data-i18n="dashboard.reports_client_label">Client</span>
-                    <select data-reports-client></select>
-                  </label>
                   <!-- Period toggle (前日｜30日). Populated by renderReports()
                        from summary.periods; hidden unless >= 2 windows. -->
                   <div class="dashboard-reports-period" data-reports-period
@@ -181,6 +175,13 @@
                 </div>
               </div>
               <p class="dashboard-reports-hint" data-i18n="dashboard.reports_hint">Data reflects the latest sync-state run.</p>
+
+              <!-- Multi-client overview (#307): one card per client (KPIs +
+                   latest-report flags). Click a card to load its detail below.
+                   Replaces the old single-select dropdown. Hidden until built;
+                   a single-workspace install shows one card. -->
+              <div class="dashboard-reports-clients" data-reports-clients
+                   role="list" aria-label="Clients" hidden></div>
 
               <!-- Per-platform KPI cards (generic over the API's platforms). -->
               <div class="dashboard-reports-cards" data-reports-cards></div>
