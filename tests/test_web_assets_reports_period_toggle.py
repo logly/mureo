@@ -120,3 +120,16 @@ def test_common_flag_labels_present_in_both_locales() -> None:
         for loc in ("en", "ja"):
             assert data[loc].get(key), f"{key} missing in {loc}"
         assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
+def test_report_flags_get_severity_colored_chips() -> None:
+    """Flags render as coloured tags: each known base carries a severity
+    (is-warn / is-danger / is-success) and the chip class comes from
+    reportFlagKind(), not raw keyword inference alone — so issue flags are
+    not all neutral grey."""
+    js = _read("dashboard.js")
+    assert "function reportFlagKind(" in js
+    assert "reportFlagKind(flag)" in js
+    assert '"is-warn"' in js
+    assert '"is-danger"' in js
