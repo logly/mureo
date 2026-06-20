@@ -92,3 +92,31 @@ def test_hidden_attribute_collapses_reports_header_controls() -> None:
     css = _read("app.css")
     assert ".dashboard-reports-client[hidden]" in css
     assert ".dashboard-reports-period[hidden]" in css
+
+
+@pytest.mark.unit
+def test_report_flags_are_humanized_not_raw() -> None:
+    """Free-form snake_case report flags (reports.daily.flags) must be mapped
+    to friendly labels, not rendered raw. The dashboard humanizes them via a
+    base→i18n-label map with a generic fallback, so a raw tag like
+    `cpa_over_target_logly` never reaches the operator."""
+    js = _read("dashboard.js")
+    assert "function humanizeReportFlag(" in js
+    assert "REPORTS_FLAG_BASES" in js
+    # The chip text must go through the humanizer for bare-string flags.
+    assert "humanizeReportFlag(flag)" in js
+
+
+@pytest.mark.unit
+def test_common_flag_labels_present_in_both_locales() -> None:
+    import json
+
+    data = json.loads(_read("i18n.json"))
+    for key in (
+        "dashboard.reports_flag_cpa_over_target",
+        "dashboard.reports_flag_cv_below_target",
+        "dashboard.reports_flag_operation_mode_mismatch",
+    ):
+        for loc in ("en", "ja"):
+            assert data[loc].get(key), f"{key} missing in {loc}"
+        assert data["en"][key] != data["ja"][key], f"{key} not localized"
