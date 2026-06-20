@@ -1287,9 +1287,9 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
 .dashboard-reports-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 12px 16px;
 }
 
 .dashboard-reports-head h2 {
@@ -1500,7 +1500,7 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 3px;
 }
 
 .reports-back {
@@ -1526,11 +1526,13 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   border-radius: 4px;
 }
 
-/* Selected client name — a heading at the top of the detail view. */
+/* Selected client name — the prominent title leading the detail view, set
+   apart from the section heading + back link above it. */
 .dashboard-reports-detail-client {
-  margin: 0 0 12px;
-  font-size: 15px;
-  font-weight: 600;
+  margin: 10px 0 16px;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--ink);
 }
 
