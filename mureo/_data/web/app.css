@@ -1488,6 +1488,48 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   color: var(--muted);
 }
 
+/* Index ↔ detail navigation (#307): the detail view's back bar. */
+.dashboard-reports-detail[hidden],
+.dashboard-reports-detailbar[hidden] {
+  display: none;
+}
+
+.dashboard-reports-detailbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+
+.reports-back {
+  appearance: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 10px;
+  color: var(--ink-soft);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+}
+
+.reports-back:hover {
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+}
+
+.reports-back:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+.dashboard-reports-detail-client {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
 /* Responsive KPI card grid — auto-fits cards, never less than ~260px. */
 .dashboard-reports-cards {
   display: grid;

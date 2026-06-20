@@ -1520,10 +1520,16 @@
   // available window when YESTERDAY has no data yet.
   let reportsPeriod = "YESTERDAY";
 
-  // The client whose summary is on screen — so the period toggle re-fetches
-  // the SAME client (the client selector and the period toggle are wired
-  // independently).
+  // The client whose detail is on screen — so the period toggle re-fetches
+  // the SAME client.
   let reportsActiveClient = null;
+
+  // Reports navigation: "index" (the client overview grid) or "detail" (one
+  // client's full report). A single-client (OSS) install has no index and
+  // stays on "detail". The last-fetched client list is cached so a back /
+  // period re-render does not need to re-resolve it.
+  let reportsView = "index";
+  let reportsClients = [];
 
   // Monotonic render generation (mirrors renderPluginCredentials #223):
   // the section clears then awaits a fetch, so an interleaved re-render
@@ -1958,53 +1964,80 @@
     }
 
     card.addEventListener("click", function () {
-      selectReportsClient(slug);
+      reportsActiveClient = slug;
+      showReportsClientDetail(slug);
     });
     return card;
   }
 
-  // Build the client overview grid (one card per client). Returns the slug to
-  // select by default (first active, else first), or null when there are none.
-  async function renderReportsClientOverview(clients, seq) {
-    const wrap = document.querySelector("[data-reports-clients]");
-    const rows = Array.isArray(clients) ? clients : [];
-    if (!wrap) return null;
-    wrap.textContent = "";
-    if (!rows.length) {
-      wrap.hidden = true;
-      return null;
-    }
-    wrap.hidden = false;
-    const summaries = await Promise.all(
-      rows.map(function (c) {
-        return fetchClientCardSummary(c && c.slug ? c.slug : "");
-      })
-    );
-    if (seq !== reportsRenderSeq) return null; // superseded by a newer render
-    wrap.textContent = "";
-    rows.forEach(function (c, i) {
-      wrap.appendChild(buildClientCard(c, summaries[i]));
-    });
+  // Default slug for a client list: the first active client, else the first.
+  function defaultClientSlug(rows) {
+    if (!rows.length) return null;
     const active = rows.find(function (c) {
       return c && c.active;
     });
     return ((active || rows[0]) || {}).slug || null;
   }
 
-  // Select a client: highlight its card and load its detail below.
-  function selectReportsClient(slug) {
-    const wrap = document.querySelector("[data-reports-clients]");
-    if (wrap) {
-      const cards = wrap.querySelectorAll(".reports-client-card");
-      Array.prototype.forEach.call(cards, function (c) {
-        const isSel = (c.getAttribute("data-client") || "") === (slug || "");
-        c.classList.toggle("is-selected", isSel);
-        // aria-current present only on the selected card (absent, not "false").
-        if (isSel) c.setAttribute("aria-current", "true");
-        else c.removeAttribute("aria-current");
-      });
+  // Toggle the index (client grid) vs detail (one client) views, and the
+  // detail's back bar (only meaningful when there is an index to return to).
+  function setReportsView(view) {
+    reportsView = view;
+    const index = document.querySelector("[data-reports-clients]");
+    const detail = document.querySelector("[data-reports-detail]");
+    const detailbar = document.querySelector("[data-reports-detailbar]");
+    if (index) index.hidden = view !== "index";
+    if (detail) detail.hidden = view !== "detail";
+    if (detailbar) {
+      // A back bar only when a multi-client index exists to go back to.
+      detailbar.hidden = !(view === "detail" && reportsClients.length > 1);
     }
-    // Bump the generation so any in-flight detail render is dropped, then load.
+  }
+
+  // INDEX view: a card per client (KPIs + flags for the selected window).
+  // Fetches each client's summary in parallel; a period toggle built from the
+  // union of windows lets the operator triage by Yesterday / Last 30 days.
+  async function renderReportsIndex(seq) {
+    const wrap = document.querySelector("[data-reports-clients]");
+    if (!wrap) return;
+    const rows = reportsClients;
+    const summaries = await Promise.all(
+      rows.map(function (c) {
+        return fetchClientCardSummary(c && c.slug ? c.slug : "");
+      })
+    );
+    if (seq !== reportsRenderSeq) return; // superseded by a newer render
+    // Commit the view switch only once the data is ready — switching before
+    // the await would expose an empty index grid if this render is superseded.
+    setReportsView("index");
+    const freshness = document.querySelector("[data-reports-freshness]");
+    if (freshness) freshness.textContent = "";
+    wrap.textContent = "";
+    rows.forEach(function (c, i) {
+      wrap.appendChild(buildClientCard(c, summaries[i]));
+    });
+    // Period toggle from the union of windows any client advertises.
+    const union = [];
+    summaries.forEach(function (s) {
+      (s && Array.isArray(s.periods) ? s.periods : []).forEach(function (p) {
+        if (typeof p === "string" && p && union.indexOf(p) === -1) union.push(p);
+      });
+    });
+    renderReportsPeriodToggle(union);
+  }
+
+  // DETAIL view: one client's full report (per-platform KPIs, latest report,
+  // recent activity, period toggle). Sets the back bar + client name.
+  function showReportsClientDetail(slug) {
+    setReportsView("detail");
+    const nameEl = document.querySelector("[data-reports-detail-client]");
+    if (nameEl) {
+      const c = reportsClients.find(function (r) {
+        return r && r.slug === slug;
+      });
+      nameEl.textContent = c ? c.name || c.slug || "" : "";
+    }
+    // Bump the generation so any in-flight render is dropped, then load.
     reportsRenderSeq++;
     renderReportsSummary(slug || null);
   }
@@ -2038,10 +2071,10 @@
       btn.addEventListener("click", function () {
         if (token === reportsPeriod) return;
         reportsPeriod = token;
-        // Bump the generation so any in-flight summary render is dropped,
-        // then re-fetch the SAME client for the newly selected window.
-        reportsRenderSeq++;
-        renderReportsSummary(reportsActiveClient);
+        // Re-render the CURRENT view for the new window: the index re-fetches
+        // every client's card, the detail re-fetches the selected client.
+        // renderReports() preserves the active view + client via state.
+        renderReports();
       });
       wrap.appendChild(btn);
     });
@@ -2050,7 +2083,9 @@
   // Fetch + render the summary for a given client (or the default one).
   async function renderReportsSummary(client) {
     const seq = reportsRenderSeq;
-    reportsActiveClient = client || null;
+    // NB: reportsActiveClient is set only after the stale-render guards below,
+    // so a superseded call can never reset it to a no-longer-shown client
+    // (which would make the period toggle re-fetch the wrong one).
     const cards = document.querySelector("[data-reports-cards]");
     const empty = document.querySelector("[data-reports-empty]");
     const freshness = document.querySelector("[data-reports-freshness]");
@@ -2071,6 +2106,7 @@
       // never leaves a different client's numbers on screen — degrade to the
       // empty state rather than stale data.
       if (seq !== reportsRenderSeq) return;
+      reportsActiveClient = client || null;
       cards.textContent = "";
       if (freshness) freshness.textContent = "";
       renderReportsPeriodToggle([]);
@@ -2080,6 +2116,7 @@
       return;
     }
     if (seq !== reportsRenderSeq) return; // Superseded by a newer render.
+    reportsActiveClient = client || null;
     // A 200 whose body is not a JSON object (null / string / number from a
     // misbehaving backend or proxy) must not crash the render — coerce to an
     // empty summary so the guarded accessors below fall back to the empty state.
@@ -2125,20 +2162,48 @@
     renderReportsActions(summary.recent_actions);
   }
 
-  // Entry point: fetch the client list, render the overview grid, then load
-  // the default client's detail. Re-runnable (locale change, client switch).
+  // Entry point: fetch the client list, then show the right view. Re-runnable
+  // (tab open, locale / period change, navigation). Routing:
+  //   • 0–1 client (OSS)  → detail of the single client; no index, no back.
+  //   • >1 client (Agency) → keep the current view across re-renders, defaulting
+  //     to the index on first entry (or when the selected client disappears).
   async function renderReports() {
     const cards = document.querySelector("[data-reports-cards]");
     if (!cards) return;
     const seq = ++reportsRenderSeq;
-    let clients = [];
     const body = await fetchReportsJson("/api/reports/clients");
-    if (body && Array.isArray(body.clients)) clients = body.clients;
     if (seq !== reportsRenderSeq) return;
-    const defaultSlug = await renderReportsClientOverview(clients, seq);
-    if (seq !== reportsRenderSeq) return;
-    // selectReportsClient highlights the default card + loads its detail.
-    selectReportsClient(defaultSlug);
+    reportsClients = body && Array.isArray(body.clients) ? body.clients : [];
+
+    if (reportsClients.length <= 1) {
+      // OSS single workspace: no index page — open the detail directly.
+      // showReportsClientDetail() sets the view + syncs the DOM.
+      reportsActiveClient = defaultClientSlug(reportsClients);
+      showReportsClientDetail(reportsActiveClient);
+      return;
+    }
+
+    const selectionAlive =
+      reportsActiveClient &&
+      reportsClients.some(function (c) {
+        return c && c.slug === reportsActiveClient;
+      });
+    if (reportsView === "detail" && selectionAlive) {
+      showReportsClientDetail(reportsActiveClient);
+    } else {
+      await renderReportsIndex(seq);
+    }
+  }
+
+  // Wire the back-to-index button once. Re-fetches the client list (a fresh
+  // sync may have changed it) and shows the index.
+  function wireReportsBackButton() {
+    const back = document.querySelector("[data-reports-back]");
+    if (!back) return;
+    back.addEventListener("click", function () {
+      reportsView = "index";
+      renderReports();
+    });
   }
 
   function renderAll() {
@@ -2469,6 +2534,7 @@
     wireByodImport();
     wireByodClear();
     wireAdvisorForm();
+    wireReportsBackButton();
     wirePickers();
     if (MUREO.isDashboardRoute()) {
       show();

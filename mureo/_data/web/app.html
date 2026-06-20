@@ -174,34 +174,45 @@
                   <span class="dashboard-reports-freshness" data-reports-freshness></span>
                 </div>
               </div>
-              <p class="dashboard-reports-hint" data-i18n="dashboard.reports_hint">Data reflects the latest sync-state run.</p>
 
-              <!-- Multi-client overview (#307): one card per client (KPIs +
-                   latest-report flags). Click a card to load its detail below.
-                   Replaces the old single-select dropdown. Hidden until built;
-                   a single-workspace install shows one card. -->
+              <!-- INDEX view (#307): one card per client (KPIs + latest-report
+                   flags). Click a card → that client's DETAIL view. Shown only
+                   for >1 client (Agency); a single-workspace OSS install skips
+                   the index and opens the detail directly. -->
               <div class="dashboard-reports-clients" data-reports-clients
                    role="list" aria-label="Clients" hidden></div>
 
-              <!-- Per-platform KPI cards (generic over the API's platforms). -->
-              <div class="dashboard-reports-cards" data-reports-cards></div>
+              <!-- DETAIL view: one client's full report. -->
+              <div class="dashboard-reports-detail" data-reports-detail hidden>
+                <!-- Back-to-index bar + selected client name. Shown only when
+                     an index exists to return to (>1 client). -->
+                <div class="dashboard-reports-detailbar" data-reports-detailbar hidden>
+                  <button type="button" class="reports-back" data-reports-back>
+                    <span data-i18n="dashboard.reports_back">← Clients</span>
+                  </button>
+                  <span class="dashboard-reports-detail-client" data-reports-detail-client></span>
+                </div>
 
-              <!-- Latest generated report summary (daily/weekly/goal). -->
-              <div class="dashboard-reports-block" data-reports-latest hidden>
-                <h3 data-i18n="dashboard.reports_latest_title">Latest report</h3>
-                <div data-reports-latest-body></div>
-              </div>
+                <!-- Per-platform KPI cards (generic over the API's platforms). -->
+                <div class="dashboard-reports-cards" data-reports-cards></div>
 
-              <!-- Recent autonomous actions from the action log. -->
-              <div class="dashboard-reports-block" data-reports-actions hidden>
-                <h3 data-i18n="dashboard.reports_actions_title">Recent actions</h3>
-                <ul class="dashboard-reports-actions-list" data-reports-actions-list></ul>
-              </div>
+                <!-- Latest generated report summary (daily/weekly/goal). -->
+                <div class="dashboard-reports-block" data-reports-latest hidden>
+                  <h3 data-i18n="dashboard.reports_latest_title">Latest report</h3>
+                  <div data-reports-latest-body></div>
+                </div>
 
-              <!-- Empty state: no platforms / no synced data yet. -->
-              <div class="dashboard-reports-empty" data-reports-empty hidden>
-                <p data-i18n="dashboard.reports_empty">No report data yet.</p>
-                <p class="muted" data-i18n="dashboard.reports_empty_hint">Run sync-state to pull the latest campaign snapshots.</p>
+                <!-- Recent autonomous actions from the action log. -->
+                <div class="dashboard-reports-block" data-reports-actions hidden>
+                  <h3 data-i18n="dashboard.reports_actions_title">Recent actions</h3>
+                  <ul class="dashboard-reports-actions-list" data-reports-actions-list></ul>
+                </div>
+
+                <!-- Empty state: no platforms / no synced data yet. -->
+                <div class="dashboard-reports-empty" data-reports-empty hidden>
+                  <p data-i18n="dashboard.reports_empty">No report data yet.</p>
+                  <p class="muted" data-i18n="dashboard.reports_empty_hint">Run sync-state to pull the latest campaign snapshots.</p>
+                </div>
               </div>
             </div>
           </div>

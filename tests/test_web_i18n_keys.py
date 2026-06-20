@@ -234,6 +234,7 @@ class TestReportsDashboardKeysParity:
         "dashboard.reports_flag_sc_no_property",
         "dashboard.reports_no_metrics",
         "dashboard.reports_campaign_count",
+        "dashboard.reports_back",
         "dashboard.reports_latest_title",
         "dashboard.reports_generated",
         "dashboard.reports_actions_title",
