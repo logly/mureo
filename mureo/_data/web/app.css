@@ -1309,6 +1309,14 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   margin: 0;
 }
 
+/* The explicit `display` above overrides the UA `[hidden] { display: none }`,
+   so the single-client case (renderReports sets the `hidden` attribute) would
+   otherwise leave an empty client dropdown on screen. Same gotcha handled for
+   .dashboard-group / .app-toast / .btn elsewhere. */
+.dashboard-reports-client[hidden] {
+  display: none;
+}
+
 .dashboard-reports-client span {
   font-size: 12px;
   font-weight: 600;
@@ -1339,6 +1347,13 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   background: var(--surface-2);
   border: 1px solid var(--hairline);
   border-radius: var(--r-pill);
+}
+
+/* Same `[hidden]`-override gotcha as .dashboard-reports-client: the explicit
+   `display` above would otherwise leave an empty toggle on screen when there
+   is only one (or zero) window to switch between. */
+.dashboard-reports-period[hidden] {
+  display: none;
 }
 
 .reports-period-btn {

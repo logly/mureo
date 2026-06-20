@@ -79,3 +79,16 @@ def test_css_styles_active_period_segment() -> None:
     css = _read("app.css")
     assert ".reports-period-btn" in css
     assert ".reports-period-btn.is-active" in css
+
+
+@pytest.mark.unit
+def test_hidden_attribute_collapses_reports_header_controls() -> None:
+    """The client selector and the period toggle both set ``display``
+    explicitly, which overrides the UA ``[hidden] { display: none }`` — so
+    each needs a targeted ``[hidden]`` rule, or it renders an empty control
+    when JS hides it (a single client / fewer than two windows). Regression
+    guard for the empty client dropdown that shipped in the reports UI.
+    """
+    css = _read("app.css")
+    assert ".dashboard-reports-client[hidden]" in css
+    assert ".dashboard-reports-period[hidden]" in css
