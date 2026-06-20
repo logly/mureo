@@ -265,6 +265,14 @@ above), flags (list of notable items), narrative (short text)}`. Written via
 the `mureo_state_report_set` tool by `daily-check` / `weekly-report` /
 `goal-review`.
 
+**A report summary must reflect the FINAL state of the run that wrote it.**
+Persist it AFTER every STATE change and `action_log` entry the run made, and
+let the `narrative` / `flags` describe the post-change state — never a
+pre-change snapshot (e.g. "switched to `EFFICIENCY_STABILIZE`", not "recommend
+switching", once you have switched it). Otherwise the dashboard's "Latest
+report" reads as older than, and contradicts, the very `action_log` entry the
+same run appended.
+
 ### Action Log Entry Fields
 
 | Field | Type | Required | Description |

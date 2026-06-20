@@ -81,6 +81,19 @@ Run a daily health check on all marketing accounts using the strategy context.
     - `flags`: a list of notable items (e.g. `["cpa_over_target_google_ads"]`)
     - `narrative`: a short text summary (the Healthy / Watch / Action-needed verdict in 1-2 sentences)
 
+    **Reflect the FINAL state, and persist this LAST.** Write this summary
+    AFTER every STATE change and `action_log` entry you made this run (it is
+    the last persistence step — keep it after any Operation Mode switch,
+    campaign pause, budget edit, etc.). If you changed something, the
+    `narrative` + `flags` must describe the POST-change state (e.g.
+    "switched to `EFFICIENCY_STABILIZE`", not "recommend switching"; flag
+    `operation_mode_switched`, not a now-resolved recommendation). Stamp
+    `generated_at` at the moment you write this — so the dashboard's
+    "Latest report" is never an older snapshot that contradicts the action
+    log or STRATEGY.md. (If you only *recommended* a change and did NOT make
+    it, the recommendation wording is correct — and there is then no matching
+    `action_log` entry, so nothing contradicts it.)
+
     This is best-effort: if `mureo_state_report_set` is unavailable (e.g. a pure file-mode host without the context MCP), skip it silently — the rest of this skill still works.
 
 13. **Persist yesterday's per-platform rollup** (best-effort): so the reporting dashboard's default *Yesterday* view has data, write each platform's prior-day totals to `platforms[<platform>].periods["YESTERDAY"]` using the canonical metric vocabulary (`spend`, `impressions`, `clicks`, `conversions`, `cpa`, `ctr`, the Meta `result_indicator` when present). On Code use `Write`; on Desktop / Cowork call `mureo_state_platform_metrics_set` (pass `platform`, `account_id`, and `periods={"YESTERDAY": {…}}`) — it merges per window key, so this never disturbs the `LAST_30_DAYS` bucket `sync-state` wrote. **Honest scope / cost:** only write a window whose numbers you actually pulled. Reuse the per-platform numbers your step-4 health checks already gathered for the day under review; do **not** fire an extra API call solely to populate this. If you only have a wider window (e.g. 30 days), **skip** the `YESTERDAY` write rather than mislabel a different window as yesterday. Best-effort: if `mureo_state_platform_metrics_set` is unavailable, skip silently.
