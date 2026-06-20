@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.8] - 2026-06-20
+
+### Added
+
+#### Read-only reporting dashboard (configure UI → Reports)
+
+A new **Reports** section in the configure dashboard renders per-platform
+KPIs — spend, conversions, CPA, CTR, clicks, impressions — sourced entirely
+from `STATE.json` (no live API call, no agent run). Cards cover built-in
+platforms AND `plugin:<dist>` bridges (a metric-less bridge still shows an
+advisory card); the latest daily / weekly / goal report summary and the
+recent autonomous actions are shown alongside, with a freshness indicator.
+
+#### Period toggle: Yesterday / Last 30 days
+
+The reporting dashboard offers a per-window toggle (default **Yesterday** —
+daily-check runs every day, so the prior day is what an operator checks
+first). `PlatformState` gains a `periods` map; `build_report_summary(period)`
+selects the window (backward-compatible passthrough when no period is
+requested); `sync-state` writes `LAST_30_DAYS` and `daily-check` writes
+`YESTERDAY`. The toggle appears only for windows that actually have data.
+
+#### `mureo_state_platform_metrics_set` MCP tool
+
+Skills can now write platform-level metric rollups (`totals` /
+`metrics_period` / `periods`) into `STATE.json` on hosts without filesystem
+access (Claude Desktop / Cowork) — distinct from
+`mureo_state_upsert_campaign`, which writes per-campaign metrics — so the
+reporting dashboard has data on every surface. Atomic write; `periods`
+merges per window key.
+
+#### `mureo service restart`
+
+Restart the running auto-start configure daemon in place (macOS
+`launchctl kickstart -k` / Linux `systemctl --user restart` / Windows
+`schtasks /End` + `/Run`) so it picks up new code without an
+uninstall + install cycle.
+
+### Fixed
+
+- The STATE.json mutators `upsert_campaign` and `append_action_log` no
+  longer drop the `reports` section, which silently wiped the daily /
+  weekly / goal analysis summaries after a report write.
+- The reports header no longer shows an empty **Client** dropdown on a
+  single-client install (an explicit `display` rule was overriding the
+  `[hidden]` attribute).
+
+### Changed
+
+- Report flags render as friendly, localized, colour-coded chips instead of
+  raw `snake_case` tags (e.g. `cpa_over_target_logly` → "CPAが目標超過").
+  Off-target / setup gaps read amber (warn), data-integrity / runaway red
+  (danger), on-target green (success); unmapped flags are humanized
+  generically.
+
 ## [0.10.7] - 2026-06-18
 
 ### Added
