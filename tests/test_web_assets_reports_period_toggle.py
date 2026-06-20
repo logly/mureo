@@ -136,26 +136,39 @@ def test_report_flags_get_severity_colored_chips() -> None:
 
 
 @pytest.mark.unit
-def test_reports_client_overview_replaces_dropdown() -> None:
-    """#307: the Reports tab renders a client overview grid (one card per
-    client with KPIs + flags) that loads the per-client detail on click —
-    not a single-select dropdown. The old <select> dropdown is gone."""
+def test_reports_index_detail_navigation() -> None:
+    """#307: the Reports tab is an index (client card grid) ↔ detail (one
+    client) navigation — not a single-select dropdown. Clicking a card opens
+    its detail; a back bar returns to the index. The old <select> is gone."""
     html = _read("app.html")
     js = _read("dashboard.js")
     css = _read("app.css")
-    # New overview container present; old dropdown markup removed.
-    assert "data-reports-clients" in html
+    # Index grid + detail container + back bar present; old dropdown removed.
+    assert "data-reports-clients" in html  # index grid
+    assert "data-reports-detail" in html  # detail view wrapper
+    assert "data-reports-back" in html  # back-to-index button
     assert "data-reports-client-wrap" not in html
     assert "<select data-reports-client>" not in html
-    # JS builds the grid, aggregates KPIs, and selects a client on click.
-    assert "function renderReportsClientOverview(" in js
+    # JS builds the index, aggregates KPIs, opens detail, and toggles views.
+    assert "function renderReportsIndex(" in js
     assert "function buildClientCard(" in js
     assert "function aggregateClientKpis(" in js
-    assert "function selectReportsClient(" in js
+    assert "function showReportsClientDetail(" in js
+    assert "function setReportsView(" in js
     assert "renderReportsClientSelector" not in js
-    # Card styling exists and uses the selected-state highlight.
+    # Card + back-bar styling exists.
     assert ".reports-client-card" in css
-    assert ".reports-client-card.is-selected" in css
+    assert ".dashboard-reports-detailbar" in css
+
+
+@pytest.mark.unit
+def test_reports_single_client_skips_index() -> None:
+    """A single-client (OSS) install opens the detail directly — no index page,
+    no back bar — while >1 client (Agency) defaults to the index."""
+    js = _read("dashboard.js")
+    assert "reportsClients.length <= 1" in js
+    # The back bar only appears when there is an index to return to.
+    assert "reportsClients.length > 1" in js
 
 
 @pytest.mark.unit
