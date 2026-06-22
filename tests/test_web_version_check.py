@@ -294,6 +294,11 @@ class TestRunPipReport:
         assert kwargs["text"] is True
         assert kwargs["check"] is False
         assert kwargs["timeout"] == 60
+        # Decode pip output as UTF-8 explicitly — NOT the locale codec (cp932
+        # on a Japanese Windows), which would raise UnicodeDecodeError and kill
+        # the update check on Windows.
+        assert kwargs["encoding"] == "utf-8"
+        assert kwargs["errors"] == "replace"
 
     def test_nonzero_exit_returns_none(self) -> None:
         with patch(

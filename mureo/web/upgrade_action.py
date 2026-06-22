@@ -84,6 +84,11 @@ def run_upgrade_all() -> dict[str, Any]:
             cmd,
             capture_output=True,
             text=True,
+            # Force UTF-8 decoding of pip's output — otherwise text mode uses
+            # the locale codec (cp932 on a Japanese Windows) and pip's install
+            # log raises UnicodeDecodeError, which escapes the except below.
+            encoding="utf-8",
+            errors="replace",
             check=False,
             timeout=_UPGRADE_TIMEOUT_SECONDS,
         )

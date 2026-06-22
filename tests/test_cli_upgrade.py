@@ -113,6 +113,18 @@ def test_upgrade_default_upgrades_mureo_self(fake_pip: MagicMock) -> None:
     assert cmd[-1] == "mureo"
 
 
+def test_pip_version_probe_captures_as_utf8(fake_pip: MagicMock) -> None:
+    """The ``pip --version`` availability probe must decode output as UTF-8,
+    not the locale codec (cp932 on a Japanese Windows) — otherwise capturing
+    pip's output raises UnicodeDecodeError and ``mureo upgrade`` dies there."""
+    _runner().invoke(_app(), ["upgrade"])
+
+    version_calls = [c for c in fake_pip.call_args_list if c.args[0][-1] == "--version"]
+    assert version_calls, "expected a `pip --version` probe"
+    assert version_calls[0].kwargs["encoding"] == "utf-8"
+    assert version_calls[0].kwargs["errors"] == "replace"
+
+
 # ---------------------------------------------------------------------------
 # Explicit package + version pin
 # ---------------------------------------------------------------------------

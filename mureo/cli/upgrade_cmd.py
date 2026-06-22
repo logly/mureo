@@ -132,6 +132,10 @@ def _pip_is_available() -> tuple[bool, str]:
         [sys.executable, "-m", "pip", "--version"],
         capture_output=True,
         text=True,
+        # UTF-8, not the locale codec (cp932 on a Japanese Windows), so
+        # capturing pip's output never raises UnicodeDecodeError.
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     return proc.returncode == 0, proc.stderr or ""
