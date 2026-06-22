@@ -404,6 +404,50 @@ class TestStateFileErrorHandling:
         with pytest.raises(ValueError, match="status"):
             parse_state(json.dumps(data))
 
+    @pytest.mark.unit
+    def test_parse_state_strict_false_skips_malformed_campaigns(self) -> None:
+        """``strict=False`` drops nonconforming campaign entries (top-level
+        AND per-platform) instead of raising, and preserves the rest of the
+        document. The read-only Reports view depends on this so a single
+        variant / hand-authored campaign cannot blank a whole STATE.json
+        whose platforms/totals/reports are perfectly readable."""
+        data = {
+            "version": "2",
+            "campaigns": [
+                {"id": "69680", "name": "variant shape"},  # no campaign_id/_name
+                {"campaign_id": "ok", "campaign_name": "Good", "status": "ENABLED"},
+            ],
+            "platforms": {
+                "logly_ads_context": {
+                    "account_id": "acct-1",
+                    "campaigns": [
+                        {"campaign_id": "72804", "name": "E2E", "status": "paused"},
+                    ],
+                    "totals": {"spend": 8739.0},
+                    "metrics_period": "YESTERDAY",
+                }
+            },
+            "reports": {"daily": {"verdict": "Healthy"}},
+        }
+        doc = parse_state(json.dumps(data), strict=False)
+
+        # The one conforming top-level campaign survives; the variant is gone.
+        assert [c.campaign_id for c in doc.campaigns] == ["ok"]
+        # The platform's nonconforming campaign is dropped, the platform kept.
+        assert doc.platforms is not None
+        plat = doc.platforms["logly_ads_context"]
+        assert plat.campaigns == ()
+        assert plat.totals == {"spend": 8739.0}
+        assert doc.reports == {"daily": {"verdict": "Healthy"}}
+
+    @pytest.mark.unit
+    def test_parse_state_strict_true_is_default_and_still_raises(self) -> None:
+        """The default (strict) path is unchanged — the writer contract still
+        hard-fails on a nonconforming campaign."""
+        data = {"campaigns": [{"id": "x", "name": "variant"}]}
+        with pytest.raises(ValueError, match="campaign_id"):
+            parse_state(json.dumps(data))
+
 
 class TestAtomicWrite:
     """Atomic write tests."""
