@@ -89,6 +89,10 @@ class TestRunUpgradeAll:
         assert cmd[1:6] == ["-m", "pip", "install", "--upgrade", "--"]
         assert cmd[6:] == ["mureo", "mureo-logly-bridge"]
         assert result["packages"] == ["mureo", "mureo-logly-bridge"]
+        # Decode pip output as UTF-8, not the locale codec (cp932 on a
+        # Japanese Windows) — otherwise the upgrade raises UnicodeDecodeError.
+        assert mock_run.call_args.kwargs["encoding"] == "utf-8"
+        assert mock_run.call_args.kwargs["errors"] == "replace"
 
     def test_output_is_capped(self) -> None:
         """A huge pip output is truncated so the JSON envelope stays small."""

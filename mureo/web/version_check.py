@@ -151,6 +151,12 @@ def _run_pip_report(packages: list[str]) -> dict[str, Any] | None:
             cmd,
             capture_output=True,
             text=True,
+            # Decode pip's output as UTF-8 explicitly. Without this, text mode
+            # uses the locale codec — cp932 on a Japanese Windows — and pip's
+            # JSON report / logs (UTF-8) raise UnicodeDecodeError, which is not
+            # caught below, so the update check silently dies on Windows.
+            encoding="utf-8",
+            errors="replace",
             check=False,
             timeout=_PIP_TIMEOUT_SECONDS,
         )
