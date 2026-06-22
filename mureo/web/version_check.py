@@ -57,6 +57,7 @@ from mureo.cli.upgrade_cmd import (
     _discover_all_mureo_packages,
     _is_mureo_package,
 )
+from mureo.pip_env import pip_subprocess_env
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,11 @@ def _run_pip_report(packages: list[str]) -> dict[str, Any] | None:
             # caught below, so the update check silently dies on Windows.
             encoding="utf-8",
             errors="replace",
+            # Force the CHILD (pip) to ENCODE its stdout as UTF-8 too — decoding
+            # our side is not enough. On a Japanese Windows pip otherwise encodes
+            # its rich-rendered --report JSON with cp932 and crashes on a char
+            # outside it (e.g. U+00B7), exiting before any output. See pip_env.
+            env=pip_subprocess_env(),
             check=False,
             timeout=_PIP_TIMEOUT_SECONDS,
         )

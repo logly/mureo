@@ -93,6 +93,11 @@ class TestRunUpgradeAll:
         # Japanese Windows) — otherwise the upgrade raises UnicodeDecodeError.
         assert mock_run.call_args.kwargs["encoding"] == "utf-8"
         assert mock_run.call_args.kwargs["errors"] == "replace"
+        # …and force pip itself to ENCODE its stdout as UTF-8 (cp932 cannot
+        # encode every char pip emits, crashing the child before we decode).
+        env = mock_run.call_args.kwargs["env"]
+        assert env["PYTHONIOENCODING"] == "utf-8:replace"
+        assert env["PYTHONUTF8"] == "1"
 
     def test_output_is_capped(self) -> None:
         """A huge pip output is truncated so the JSON envelope stays small."""

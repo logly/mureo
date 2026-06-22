@@ -41,6 +41,8 @@ from importlib import metadata
 
 import typer
 
+from mureo.pip_env import pip_subprocess_env
+
 upgrade_app = typer.Typer(
     name="upgrade",
     help=(
@@ -136,6 +138,9 @@ def _pip_is_available() -> tuple[bool, str]:
         # capturing pip's output never raises UnicodeDecodeError.
         encoding="utf-8",
         errors="replace",
+        # …and force pip to ENCODE its stdout as UTF-8 too (cp932 cannot encode
+        # every char pip may emit, crashing the child). See pip_env.
+        env=pip_subprocess_env(),
         check=False,
     )
     return proc.returncode == 0, proc.stderr or ""
@@ -146,6 +151,9 @@ def _bootstrap_pip() -> int:
 
     proc = subprocess.run(
         [sys.executable, "-m", "ensurepip", "--upgrade"],
+        # UTF-8 child stdio so a cp932 console cannot crash the bootstrap on a
+        # non-cp932 char in its output. See pip_env.
+        env=pip_subprocess_env(),
         check=False,
     )
     return proc.returncode
@@ -163,7 +171,9 @@ def _run_pip_install(targets: list[str]) -> int:
         "--",
         *targets,
     ]
-    proc = subprocess.run(cmd, check=False)
+    # UTF-8 child stdio so streaming pip output to a cp932 console never crashes
+    # pip on a non-cp932 char (e.g. U+00B7 in a package's metadata). See pip_env.
+    proc = subprocess.run(cmd, env=pip_subprocess_env(), check=False)
     return proc.returncode
 
 

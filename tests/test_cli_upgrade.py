@@ -125,6 +125,21 @@ def test_pip_version_probe_captures_as_utf8(fake_pip: MagicMock) -> None:
     assert version_calls[0].kwargs["errors"] == "replace"
 
 
+def test_every_pip_subprocess_forces_utf8_child_stdio(fake_pip: MagicMock) -> None:
+    """Every pip / ensurepip subprocess must pass an ``env`` that forces the
+    CHILD to encode its stdio as UTF-8 — on a Japanese Windows pip otherwise
+    crashes encoding non-cp932 output (e.g. U+00B7) before we read it. Guards
+    all of `_pip_is_available`, `_run_pip_install`, and `_bootstrap_pip`."""
+    _runner().invoke(_app(), ["upgrade", "--all"])
+
+    assert fake_pip.call_args_list, "expected at least one pip subprocess"
+    for call in fake_pip.call_args_list:
+        env = call.kwargs.get("env")
+        assert env is not None, f"pip call missing env: {call.args[0]}"
+        assert env["PYTHONIOENCODING"] == "utf-8:replace"
+        assert env["PYTHONUTF8"] == "1"
+
+
 # ---------------------------------------------------------------------------
 # Explicit package + version pin
 # ---------------------------------------------------------------------------
