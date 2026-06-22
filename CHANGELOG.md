@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.11] - 2026-06-22
+
+### Fixed
+
+- The configure UI's "About mureo" update check and one-click upgrade crashed
+  on a Japanese Windows with `UnicodeEncodeError: 'cp932' codec can't encode
+  character` raised inside pip's own output rendering (the
+  `pip install --report -` JSON path), so pip exited before producing output.
+  When mureo spawns pip as a subprocess, the child Python defaulted its stdout
+  encoding to the console code page (cp932), which cannot encode characters
+  pip emits (e.g. `U+00B7`). 0.10.10 fixed the decode side; this fixes the
+  encode side by forcing the pip child's stdio to UTF-8
+  (`PYTHONIOENCODING=utf-8:replace`, `PYTHONUTF8=1`) across every
+  pip/ensurepip subprocess. No effect on macOS/Linux (already UTF-8).
+
 ## [0.10.10] - 2026-06-22
 
 ### Fixed
