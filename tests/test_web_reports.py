@@ -21,6 +21,7 @@ injected here never leaks into another test.
 from __future__ import annotations
 
 import dataclasses
+import json
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -320,6 +321,44 @@ def test_summary_does_not_raise_on_broken_state(
     summary = build_report_summary()
     assert summary["platforms"] == []
     assert summary["recent_actions"] == []
+
+
+@pytest.mark.unit
+def test_summary_tolerates_nonconforming_campaign_entries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A STATE.json whose campaign list has a nonconforming entry — e.g. a
+    hand-authored / variant campaign using ``id``/``name`` instead of
+    ``campaign_id``/``campaign_name`` — must NOT blank the dashboard.
+
+    The strict read raises on that campaign, so the read-only view re-reads
+    tolerantly and still surfaces the platform totals + reports. Regression
+    for the field report where the dashboard logged a parse traceback on
+    every render and returned an empty summary (the campaign list is not even
+    used by the report KPIs — they come from platform totals/periods)."""
+    _use_workspace(monkeypatch, tmp_path)
+    raw = {
+        "version": "2",
+        "platforms": {
+            "logly_ads_context": {
+                "account_id": "acct-1",
+                "campaigns": [
+                    # Variant shape: no campaign_id / campaign_name.
+                    {"id": "69680", "name": "LOGLY Onemove", "status": "enabled"},
+                ],
+                "totals": {"spend": 8739.0, "conversions": 0},
+                "metrics_period": "YESTERDAY",
+            }
+        },
+        "reports": {"daily": {"verdict": "Watch", "note": "spend down"}},
+    }
+    (tmp_path / "STATE.json").write_text(json.dumps(raw), encoding="utf-8")
+
+    summary = build_report_summary()
+    by_key = {p["key"]: p for p in summary["platforms"]}
+    assert "logly_ads_context" in by_key, "platform blanked by a bad campaign entry"
+    assert by_key["logly_ads_context"]["totals"] == {"spend": 8739.0, "conversions": 0}
+    assert summary["reports"] == {"daily": {"verdict": "Watch", "note": "spend down"}}
 
 
 # ---------------------------------------------------------------------------

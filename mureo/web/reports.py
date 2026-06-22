@@ -40,6 +40,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mureo.context.state import read_state_file
 from mureo.core.runtime_context import get_runtime_context
 
 if TYPE_CHECKING:
@@ -319,11 +320,40 @@ def _read_state_safe(store: StateStore) -> StateDocument | None:
     file, but a malformed STATE.json raises ``ContextFileError`` and an
     alternate backend could raise anything — the dashboard must degrade to
     an empty summary, never 500.
+
+    When the strict read fails, retry tolerantly against the raw file before
+    giving up: ``store.read_state()`` validates the campaign list strictly, so
+    one variant / hand-authored campaign entry (e.g. ``name`` instead of
+    ``campaign_name``) would otherwise blank out a document whose
+    platforms/periods/reports the read-only dashboard can still render.
     """
     try:
         return store.read_state()
     except Exception:  # noqa: BLE001 — read-only view degrades, never raises
-        logger.exception("reading STATE.json failed; returning empty summary")
+        logger.warning(
+            "strict STATE.json read failed; retrying tolerantly for the "
+            "read-only Reports view",
+            exc_info=True,
+        )
+        return _read_state_tolerant(store)
+
+
+def _read_state_tolerant(store: StateStore) -> StateDocument | None:
+    """Re-read ``store``'s STATE.json skipping nonconforming campaign entries.
+
+    Needs the backing file path (``state_path``), which the filesystem store —
+    including the Agency per-client stores resolved by
+    :func:`_state_store_for_client` — exposes. A store without one cannot be
+    re-read tolerantly, so the view degrades to an empty summary.
+    """
+    path = getattr(store, "state_path", None)
+    if path is None:
+        logger.warning("STATE.json unreadable and no path to retry; empty summary")
+        return None
+    try:
+        return read_state_file(path, strict=False)
+    except Exception:  # noqa: BLE001 — last-resort guard; never raise from a read
+        logger.exception("tolerant STATE.json read also failed; empty summary")
         return None
 
 

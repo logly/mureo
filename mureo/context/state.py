@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import json
+import logging
 import os
 import tempfile
 from datetime import datetime, timezone
@@ -23,6 +24,8 @@ from mureo.context.models import (
 )
 from mureo.fsutil import file_lock
 
+logger = logging.getLogger(__name__)
+
 # Required campaign fields
 _CAMPAIGN_REQUIRED_FIELDS: tuple[str, ...] = (
     "campaign_id",
@@ -31,11 +34,40 @@ _CAMPAIGN_REQUIRED_FIELDS: tuple[str, ...] = (
 )
 
 
-def parse_state(text: str) -> StateDocument:
-    """Parse a JSON string and return a StateDocument."""
+def _parse_campaigns(
+    raw: list[dict[str, Any]], *, strict: bool
+) -> tuple[CampaignSnapshot, ...]:
+    """Parse a campaign list.
+
+    ``strict=True`` (the canonical contract relied on by every writer) raises
+    on the first nonconforming entry. ``strict=False`` skips entries that fail
+    validation, logging each one — used only by the read-only Reports view so a
+    single variant/hand-authored campaign cannot blank out a whole document
+    (whose platforms/periods/reports the dashboard actually renders).
+    """
+    if strict:
+        return tuple(_parse_campaign(c) for c in raw)
+    parsed: list[CampaignSnapshot] = []
+    for c in raw:
+        try:
+            parsed.append(_parse_campaign(c))
+        except (ValueError, KeyError, TypeError) as exc:
+            logger.warning("skipping unparseable campaign entry: %s", exc)
+    return tuple(parsed)
+
+
+def parse_state(text: str, *, strict: bool = True) -> StateDocument:
+    """Parse a JSON string and return a StateDocument.
+
+    ``strict`` controls campaign-list validation only: ``True`` (default)
+    preserves the strict writer contract (raises on a missing required field);
+    ``False`` tolerantly skips nonconforming campaign entries for the read-only
+    Reports view. Structural problems (invalid JSON, a missing platform
+    ``account_id``) always raise regardless of ``strict``.
+    """
     data = json.loads(text)
     campaigns_raw = data.get("campaigns", [])
-    campaigns = tuple(_parse_campaign(c) for c in campaigns_raw)
+    campaigns = _parse_campaigns(campaigns_raw, strict=strict)
 
     # v2: platforms
     platforms: dict[str, PlatformState] | None = None
@@ -43,8 +75,8 @@ def parse_state(text: str) -> StateDocument:
     if platforms_raw is not None:
         platforms = {}
         for platform_key, platform_data in platforms_raw.items():
-            platform_campaigns = tuple(
-                _parse_campaign(c) for c in platform_data.get("campaigns", [])
+            platform_campaigns = _parse_campaigns(
+                platform_data.get("campaigns", []), strict=strict
             )
             platforms[platform_key] = PlatformState(
                 account_id=platform_data["account_id"],
@@ -215,10 +247,13 @@ def _atomic_write(path: Path, content: str) -> None:
         raise
 
 
-def read_state_file(path: Path) -> StateDocument:
+def read_state_file(path: Path, *, strict: bool = True) -> StateDocument:
     """Read a STATE.json file and return a StateDocument.
 
-    Returns a default StateDocument if the file does not exist.
+    Returns a default StateDocument if the file does not exist. ``strict`` is
+    forwarded to :func:`parse_state`: pass ``strict=False`` from the read-only
+    Reports view so a nonconforming campaign entry is skipped instead of
+    raising and blanking the whole document.
     """
     if not path.exists():
         return StateDocument()
@@ -227,7 +262,7 @@ def read_state_file(path: Path) -> StateDocument:
     except PermissionError as exc:
         raise ContextFileError(f"No read permission for STATE.json: {path}") from exc
     try:
-        return parse_state(text)
+        return parse_state(text, strict=strict)
     except json.JSONDecodeError as exc:
         raise ContextFileError(f"Failed to parse JSON in STATE.json: {path}") from exc
 
