@@ -36,6 +36,7 @@ from typer.testing import CliRunner
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -477,3 +478,131 @@ def test_upgrade_propagates_ensurepip_failure(fake_pip: MagicMock) -> None:
     result = _runner().invoke(_app(), ["upgrade"])
 
     assert result.exit_code == 7
+
+
+# ---------------------------------------------------------------------------
+# Post-upgrade refresh — re-deploy skills + restart the always-on service so a
+# successful `mureo upgrade` actually takes effect (Part 2).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _no_real_post_upgrade(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Neutralise the real post-upgrade refresh by default.
+
+    Every successful-upgrade test would otherwise run the REAL refresh —
+    copying skills into the developer's `~/.claude/skills` and querying /
+    restarting a real OS service. Patch it to a mock; the wiring tests assert
+    against this mock, and the helper tests exercise the inner functions in
+    isolation.
+    """
+    mock = MagicMock()
+    monkeypatch.setattr("mureo.cli.upgrade_cmd._post_upgrade_refresh", mock)
+    return mock
+
+
+def test_successful_upgrade_runs_post_upgrade_refresh(
+    fake_pip: MagicMock, _no_real_post_upgrade: MagicMock
+) -> None:
+    result = _runner().invoke(_app(), ["upgrade"])
+    assert result.exit_code == 0, result.stderr
+    _no_real_post_upgrade.assert_called_once()
+
+
+def test_no_refresh_flag_skips_post_upgrade_refresh(
+    fake_pip: MagicMock, _no_real_post_upgrade: MagicMock
+) -> None:
+    result = _runner().invoke(_app(), ["upgrade", "--no-refresh"])
+    assert result.exit_code == 0, result.stderr
+    _no_real_post_upgrade.assert_not_called()
+
+
+def test_dry_run_skips_post_upgrade_refresh(
+    fake_pip: MagicMock, _no_real_post_upgrade: MagicMock
+) -> None:
+    result = _runner().invoke(_app(), ["upgrade", "--dry-run"])
+    assert result.exit_code == 0, result.stderr
+    _no_real_post_upgrade.assert_not_called()
+
+
+def test_failed_upgrade_skips_post_upgrade_refresh(
+    fake_pip: MagicMock, _no_real_post_upgrade: MagicMock
+) -> None:
+    """A non-zero pip install aborts before the refresh — never refresh on a
+    failed upgrade."""
+
+    def _fail(cmd: list[str], *_: Any, **__: Any) -> subprocess.CompletedProcess[str]:
+        rc = 1 if "install" in cmd else 0
+        return subprocess.CompletedProcess(cmd, returncode=rc, stdout="", stderr="x")
+
+    fake_pip.side_effect = _fail
+    result = _runner().invoke(_app(), ["upgrade"])
+    assert result.exit_code != 0
+    _no_real_post_upgrade.assert_not_called()
+
+
+def test_refresh_deployed_skills_noop_when_no_skills_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No `~/.claude/skills` → never force-install skills on upgrade."""
+    from mureo.cli import upgrade_cmd
+
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    install = MagicMock()
+    monkeypatch.setattr("mureo.cli.setup_cmd.install_skills", install)
+    upgrade_cmd._refresh_deployed_skills()
+    install.assert_not_called()
+
+
+def test_refresh_deployed_skills_recopies_when_dir_exists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An existing skills dir → re-copy the bundled skills (refresh format)."""
+    from mureo.cli import upgrade_cmd
+
+    skills = tmp_path / ".claude" / "skills"
+    skills.mkdir(parents=True)
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    install = MagicMock(return_value=(5, skills))
+    monkeypatch.setattr("mureo.cli.setup_cmd.install_skills", install)
+    upgrade_cmd._refresh_deployed_skills()
+    install.assert_called_once()
+
+
+def test_restart_managed_service_noop_when_not_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.cli import upgrade_cmd
+
+    backend = MagicMock()
+    backend.status.return_value = MagicMock(installed=False)
+    monkeypatch.setattr("mureo.cli.service_cmd._resolve_backend", lambda: backend)
+    upgrade_cmd._restart_managed_service()
+    backend.restart.assert_not_called()
+
+
+def test_restart_managed_service_restarts_when_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.cli import upgrade_cmd
+
+    backend = MagicMock()
+    backend.status.return_value = MagicMock(installed=True)
+    backend.restart.return_value = MagicMock(ok=True, message="restarted")
+    monkeypatch.setattr("mureo.cli.service_cmd._resolve_backend", lambda: backend)
+    upgrade_cmd._restart_managed_service()
+    backend.restart.assert_called_once()
+
+
+def test_restart_managed_service_swallows_unsupported_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unsupported platform / missing backend must never fail the upgrade."""
+    from mureo.cli import upgrade_cmd
+
+    def _boom() -> None:
+        raise RuntimeError("unsupported platform")
+
+    monkeypatch.setattr("mureo.cli.service_cmd._resolve_backend", _boom)
+    # Must not raise.
+    upgrade_cmd._restart_managed_service()
