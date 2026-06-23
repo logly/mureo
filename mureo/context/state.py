@@ -56,14 +56,36 @@ def _parse_campaigns(
     return tuple(parsed)
 
 
+def _parse_action_log(
+    raw: list[dict[str, Any]], *, strict: bool
+) -> tuple[ActionLogEntry, ...]:
+    """Parse the action_log list.
+
+    ``strict=True`` (the writer contract) raises on the first entry missing a
+    required field (``timestamp`` / ``action`` / ``platform``). ``strict=False``
+    skips such entries, logging each — used only by the read-only Reports view
+    so a single old / hand-authored entry (e.g. one written before those fields
+    were required) cannot blank out a whole document.
+    """
+    if strict:
+        return tuple(_parse_action_log_entry(e) for e in raw)
+    parsed: list[ActionLogEntry] = []
+    for e in raw:
+        try:
+            parsed.append(_parse_action_log_entry(e))
+        except (ValueError, KeyError, TypeError) as exc:
+            logger.warning("skipping unparseable action_log entry: %s", exc)
+    return tuple(parsed)
+
+
 def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     """Parse a JSON string and return a StateDocument.
 
-    ``strict`` controls campaign-list validation only: ``True`` (default)
-    preserves the strict writer contract (raises on a missing required field);
-    ``False`` tolerantly skips nonconforming campaign entries for the read-only
-    Reports view. Structural problems (invalid JSON, a missing platform
-    ``account_id``) always raise regardless of ``strict``.
+    ``strict`` controls campaign-list AND action_log validation: ``True``
+    (default) preserves the strict writer contract (raises on a missing required
+    field); ``False`` tolerantly skips nonconforming campaign / action_log
+    entries for the read-only Reports view. Structural problems (invalid JSON, a
+    missing platform ``account_id``) always raise regardless of ``strict``.
     """
     data = json.loads(text)
     campaigns_raw = data.get("campaigns", [])
@@ -88,7 +110,7 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
 
     # v2: action_log
     action_log_raw = data.get("action_log", [])
-    action_log = tuple(_parse_action_log_entry(e) for e in action_log_raw)
+    action_log = _parse_action_log(action_log_raw, strict=strict)
 
     return StateDocument(
         version=data.get("version", "1"),
