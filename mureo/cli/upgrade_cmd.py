@@ -38,6 +38,7 @@ import shlex
 import subprocess
 import sys
 from importlib import metadata
+from pathlib import Path
 
 import typer
 
@@ -197,6 +198,83 @@ def _resolve_targets(packages: list[str], upgrade_all: bool) -> list[str]:
     return [_validate_spec(p) for p in packages]
 
 
+def _refresh_deployed_skills() -> None:
+    """Re-copy the bundled skills into ``~/.claude/skills`` after an upgrade.
+
+    A new mureo version ships new skill content, but the deployed copies under
+    ``~/.claude/skills`` are only written by the setup wizard — an upgrade alone
+    leaves them on the OLD format. Re-deploy here so ``mureo upgrade`` reliably
+    refreshes the skills too. Only refresh when the user already has a skills
+    directory, so an upgrade never force-installs skills someone deliberately
+    removed. Best-effort: a failure is reported but never fails the upgrade.
+    """
+    dest = Path.home() / ".claude" / "skills"
+    if not dest.exists():
+        return
+    try:
+        from mureo.cli.setup_cmd import install_skills
+
+        count, where = install_skills()
+        typer.echo(f"Refreshed {count} skills at {where}.")
+    except Exception as exc:  # noqa: BLE001 — refresh is best-effort
+        typer.echo(
+            f"Skill refresh skipped ({type(exc).__name__}); "
+            "re-run `mureo configure` to update skills.",
+            err=True,
+        )
+
+
+def _restart_managed_service() -> None:
+    """Restart the always-on configure daemon so it loads the new code.
+
+    A long-running ``mureo service`` daemon keeps the pre-upgrade code in memory
+    until restarted — the exact reason an upgrade can appear to have "no effect"
+    (stale tools, old static assets). Restart it when one is installed; a no-op
+    otherwise. Best-effort: never fails the upgrade.
+    """
+    try:
+        from mureo.cli.service_cmd import _resolve_backend
+        from mureo.web.service import SERVICE_PORT
+
+        backend = _resolve_backend()
+    except Exception:  # noqa: BLE001 — unsupported platform / no backend; nothing to do
+        return
+
+    # Resolution succeeded → this platform HAS a service backend. A failure
+    # past here is a genuine error worth a one-line hint (not a silent no-op),
+    # but must still never fail the upgrade.
+    try:
+        if not backend.status(port=SERVICE_PORT).installed:
+            return
+        result = backend.restart(port=SERVICE_PORT)
+    except Exception as exc:  # noqa: BLE001 — never fail the upgrade
+        typer.echo(
+            f"Could not auto-restart the mureo service ({type(exc).__name__}); "
+            "run `mureo service restart` to finish applying the upgrade.",
+            err=True,
+        )
+        return
+    if result.ok:
+        typer.echo("Restarted the mureo service so it runs the new version.")
+    else:
+        typer.echo(
+            f"Could not auto-restart the mureo service: {result.message}. "
+            "Run `mureo service restart` to finish applying the upgrade.",
+            err=True,
+        )
+
+
+def _post_upgrade_refresh() -> None:
+    """Make a successful upgrade actually take effect.
+
+    Both the deployed skills and any always-on daemon otherwise keep the
+    pre-upgrade version: skills are not re-copied, and the daemon holds old code
+    in memory. Refresh both so ``mureo upgrade`` is a single, reliable step.
+    """
+    _refresh_deployed_skills()
+    _restart_managed_service()
+
+
 @upgrade_app.callback(invoke_without_command=True)
 def upgrade(
     packages: list[str] | None = typer.Argument(  # noqa: B008
@@ -221,6 +299,15 @@ def upgrade(
         False,
         "--dry-run",
         help="Print the pip command that would run; do not invoke pip.",
+    ),
+    no_refresh: bool = typer.Option(
+        False,
+        "--no-refresh",
+        help=(
+            "Skip the post-upgrade refresh (re-deploying skills + restarting "
+            "the always-on service). By default a successful upgrade refreshes "
+            "both so the new version actually takes effect."
+        ),
     ),
 ) -> None:
     """Upgrade mureo and/or its plugins in the active pipx venv."""
@@ -276,3 +363,9 @@ def upgrade(
     rc = _run_pip_install(targets)
     if rc != 0:
         raise typer.Exit(code=rc)
+
+    # The upgrade landed. Make it actually take effect: refresh the deployed
+    # skills (otherwise still the old format) and restart any always-on daemon
+    # (otherwise still running old code). Best-effort; never fails the upgrade.
+    if not no_refresh:
+        _post_upgrade_refresh()
