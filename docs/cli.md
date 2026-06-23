@@ -113,6 +113,44 @@ Both end at the same destination: `~/.mureo/credentials.json` is populated and C
 
 See [authentication.md](authentication.md) for details on credentials.
 
+## Configure UI & Always-On Service
+
+`mureo configure` normally runs the browser UI on demand and stops when idle. To keep it running across reboots — so the dashboard (including the read-only **Reports** tab) is always reachable — register it as a user-level auto-start service.
+
+```bash
+# Open the configure UI (or surface the already-running one)
+mureo configure
+mureo open                 # bring an already-running configure UI to the front
+
+# Run headless as a long-lived daemon (no browser, no idle timeout).
+# This is what the service backend invokes; you rarely run it by hand.
+mureo configure --serve --port 7613
+
+# Auto-start service (user-level: launchd on macOS, systemd --user on
+# Linux, Task Scheduler on Windows — never root/admin daemon).
+mureo service install      # register + start now (runs at every login)
+mureo service status       # show installed / running state + the URL
+mureo service restart      # restart in place to pick up a new version
+mureo service uninstall    # remove the auto-start registration
+```
+
+Notes:
+
+- **Windows**: `mureo service install` registers an on-logon Scheduled Task. Creating it writes to the Task Scheduler root, which needs an **elevated** shell — run it from a PowerShell opened via *Run as administrator* (being in the Administrators group is not enough). The task itself then runs at logon with your normal (non-elevated) rights.
+- After upgrading mureo, run `mureo service restart` so the running daemon picks up the new code (Task Scheduler and the supervisors do not relaunch a cleanly-exited process automatically on every platform).
+
+## Maintenance Commands
+
+`mureo upgrade` upgrades mureo and its plugins inside the current (pipx) venv in one pip invocation — `pipx upgrade mureo` only touches the primary package, leaving same-venv plugins behind.
+
+```bash
+mureo upgrade              # upgrade mureo itself
+mureo upgrade --all        # upgrade mureo + every installed `mureo-*` plugin
+mureo upgrade --dry-run    # print the pip command without running it
+```
+
+The configure UI's **About mureo** tab surfaces the same capability for GUI users: it shows installed versions, checks the index for newer mureo / plugin releases in the background, and offers a one-click "update all" button.
+
 ## Rollback Commands
 
 `mureo rollback` lets an operator inspect reversible actions recorded in `STATE.json`. The commands are read-only — executing a rollback still goes through the MCP dispatcher so it re-enters the same policy gate as forward actions.
