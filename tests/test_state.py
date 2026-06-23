@@ -448,6 +448,42 @@ class TestStateFileErrorHandling:
         with pytest.raises(ValueError, match="campaign_id"):
             parse_state(json.dumps(data))
 
+    @pytest.mark.unit
+    def test_parse_state_strict_false_skips_malformed_action_log(self) -> None:
+        """``strict=False`` drops action_log entries missing a required field
+        (timestamp / action / platform) instead of raising, and keeps the rest
+        of the document. The read-only Reports view relies on this — an old /
+        hand-authored entry written before those fields were required (e.g. one
+        with only a `summary`) must not blank a whole STATE.json."""
+        data = {
+            "version": "2",
+            "action_log": [
+                {"summary": "old entry, no timestamp/action/platform"},  # bad
+                {
+                    "timestamp": "2026-06-16T10:00:00+00:00",
+                    "action": "budget_update",
+                    "platform": "google_ads",
+                    "summary": "good entry",
+                },
+            ],
+            "reports": {"daily": {"verdict": "Healthy"}},
+        }
+        doc = parse_state(json.dumps(data), strict=False)
+
+        # The conforming entry survives; the field-less one is dropped.
+        assert [e.action for e in doc.action_log] == ["budget_update"]
+        assert doc.reports == {"daily": {"verdict": "Healthy"}}
+
+    @pytest.mark.unit
+    def test_parse_state_strict_true_raises_on_action_log_missing_timestamp(
+        self,
+    ) -> None:
+        """The default (strict) path still hard-fails on an action_log entry
+        missing a required field — the writer contract is unchanged."""
+        data = {"action_log": [{"action": "x", "platform": "google_ads"}]}
+        with pytest.raises(KeyError):
+            parse_state(json.dumps(data))
+
 
 class TestAtomicWrite:
     """Atomic write tests."""
