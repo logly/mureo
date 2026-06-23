@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from mcp.types import TextContent, Tool, ToolAnnotations
@@ -382,5 +383,169 @@ class TestPhase2Promotion:
             assert (
                 mod._PLUGIN_TOOL_THROTTLERS["th_plugin_go"] is not mod._PLUGIN_THROTTLER
             )
+        finally:
+            importlib.reload(mod)
+
+
+# ---------------------------------------------------------------------------
+# Guardrail parity (#114 follow-up): plugin tools get the same three
+# guardrails built-ins have — server-side inputSchema validation (GAP A),
+# a STRATEGY.md reminder after mutating calls (GAP B), and executable
+# reversal lookup for the rollback planner (GAP C).
+# ---------------------------------------------------------------------------
+
+
+class _StrictSchemaPlugin:
+    """A plugin that declares a real-spend bound on its mutating tool."""
+
+    name = "strict_plugin"
+    display_name = "Strict"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="strict_plugin_spend",
+                description="spends real money",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"budget": {"type": "integer", "minimum": 1}},
+                    "required": ["budget"],
+                },
+            ),
+        )
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text=f"spent {arguments['budget']}")]
+
+
+@pytest.mark.unit
+class TestGapAPluginSchemaValidation:
+    @pytest.fixture
+    def server_strict(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_StrictSchemaPlugin),
+        )
+        # Keep the audit jsonl out of the developer's home/cwd.
+        from mureo.mcp import plugin_audit
+
+        monkeypatch.setattr(
+            plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        yield mod
+        importlib.reload(mod)
+
+    def test_validator_built_for_plugin_tool(self, server_strict) -> None:
+        # GAP A: a plugin tool's schema is now compiled into a validator,
+        # same as a built-in (previously _PLUGIN_NAMES were skipped).
+        assert "strict_plugin_spend" in server_strict._TOOL_VALIDATORS
+
+    async def test_below_minimum_rejected_before_dispatch(self, server_strict) -> None:
+        with pytest.raises(ValueError, match="Invalid arguments"):
+            await server_strict.handle_call_tool("strict_plugin_spend", {"budget": 0})
+
+    async def test_missing_required_rejected(self, server_strict) -> None:
+        with pytest.raises(ValueError, match="Invalid arguments"):
+            await server_strict.handle_call_tool("strict_plugin_spend", {})
+
+    async def test_valid_args_pass_through(self, server_strict) -> None:
+        out = await server_strict.handle_call_tool("strict_plugin_spend", {"budget": 5})
+        assert out[0].text == "spent 5"
+
+
+@pytest.mark.unit
+class TestGapBPluginStrategyReminder:
+    async def test_mutating_plugin_gets_strategy_reminder(
+        self, server_with_plugin, monkeypatch, tmp_path
+    ) -> None:
+        from mureo.context.models import StrategyEntry
+        from mureo.mcp import plugin_audit
+
+        monkeypatch.setattr(
+            plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
+        )
+        fake_ctx = MagicMock()
+        fake_ctx.state_store.read_strategy.return_value = [
+            StrategyEntry(context_type="goal", title="Q2 CPA target", content="x"),
+        ]
+        monkeypatch.setattr(
+            "mureo.core.strategy_reminder.get_runtime_context", lambda: fake_ctx
+        )
+        monkeypatch.delenv("MUREO_DISABLE_STRATEGY_REMINDER", raising=False)
+
+        out = await server_with_plugin.handle_call_tool(
+            "wired_plugin_echo", {"msg": "hi"}
+        )
+        # Original output preserved + reminder appended (GAP B).
+        assert out[0].text == "hi"
+        assert any("Q2 CPA target" in getattr(c, "text", "") for c in out)
+
+    async def test_readonly_plugin_gets_no_reminder(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from mureo.context.models import StrategyEntry
+        from mureo.mcp import plugin_audit
+
+        monkeypatch.setattr(
+            plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
+        )
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_ReadOnlyPlugin),
+        )
+        fake_ctx = MagicMock()
+        fake_ctx.state_store.read_strategy.return_value = [
+            StrategyEntry(context_type="goal", title="Q2 CPA target", content="x"),
+        ]
+        monkeypatch.setattr(
+            "mureo.core.strategy_reminder.get_runtime_context", lambda: fake_ctx
+        )
+        monkeypatch.delenv("MUREO_DISABLE_STRATEGY_REMINDER", raising=False)
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            out = await mod.handle_call_tool("ro_plugin_report", {})
+            assert all("Q2 CPA target" not in getattr(c, "text", "") for c in out)
+        finally:
+            importlib.reload(mod)
+
+
+@pytest.mark.unit
+class TestGapCPluginReversalParamKeys:
+    async def test_registered_tool_returns_schema_keys(
+        self, server_with_plugin
+    ) -> None:
+        # wired_plugin_echo declares {"msg": {...}} → keys = {"msg"}.
+        is_plugin, keys = server_with_plugin.plugin_reversal_param_keys(
+            "wired_plugin_echo"
+        )
+        assert is_plugin is True
+        assert keys == frozenset({"msg"})
+
+    async def test_unregistered_operation_returns_false(
+        self, server_with_plugin
+    ) -> None:
+        assert server_with_plugin.plugin_reversal_param_keys("not_a_real_tool") == (
+            False,
+            None,
+        )
+
+    def test_schemaless_plugin_tool_returns_true_none(self, monkeypatch) -> None:
+        # _ReadOnlyPlugin's tool declares empty properties → (True, None):
+        # registered but no plan-time key restriction.
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_ReadOnlyPlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            assert mod.plugin_reversal_param_keys("ro_plugin_report") == (True, None)
         finally:
             importlib.reload(mod)

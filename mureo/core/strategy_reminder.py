@@ -203,36 +203,61 @@ def build_reminder_text(entries: list[StrategyEntry]) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def maybe_build_reminder(tool_name: str) -> str | None:
-    """Best-effort: return the reminder text for ``tool_name`` if the
-    tool is mutating, the env var has not opted out, STRATEGY.md is
-    non-empty, and the state read succeeds. Returns ``None`` in every
-    other case so the caller can simply do
-    ``if text is not None: append`` without further error handling.
+def _read_strategy_reminder(tool_name: str) -> str | None:
+    """Env-gated STRATEGY.md reminder body shared by the built-in and
+    plugin entry points. Returns ``None`` when opted out, on a state-read
+    failure, or when STRATEGY.md is empty.
 
-    Any exception inside this function is caught and logged at DEBUG —
-    a broken reminder must never break a mutating tool dispatch.
+    The state read AND the text build are both inside the try: any
+    exception is caught and logged at DEBUG, so a broken reminder can
+    never break a mutating tool dispatch (the callers that append the
+    result do not wrap it in their own try/except).
     """
     if os.environ.get(_OPT_OUT_ENV_VAR) == "1":
-        return None
-    if not is_mutating_builtin_tool(tool_name):
         return None
     try:
         ctx = get_runtime_context()
         entries = list(ctx.state_store.read_strategy())
+        return build_reminder_text(entries)
     except Exception as exc:  # noqa: BLE001
         logger.debug(
-            "strategy reminder: state read failed for tool %s (%s); "
-            "skipping reminder",
+            "strategy reminder: build failed for tool %s (%s); skipping reminder",
             tool_name,
             exc,
         )
         return None
-    return build_reminder_text(entries)
+
+
+def maybe_build_reminder(tool_name: str) -> str | None:
+    """Best-effort: return the reminder text for ``tool_name`` if the
+    tool is a mutating *built-in*, the env var has not opted out,
+    STRATEGY.md is non-empty, and the state read succeeds. Returns
+    ``None`` in every other case so the caller can simply do
+    ``if text is not None: append`` without further error handling.
+    """
+    if not is_mutating_builtin_tool(tool_name):
+        return None
+    return _read_strategy_reminder(tool_name)
+
+
+def maybe_build_reminder_for_plugin(tool_name: str) -> str | None:
+    """Plugin counterpart of :func:`maybe_build_reminder` (guardrail
+    parity, #114 follow-up).
+
+    The dispatcher only calls this after a plugin tool has *already* been
+    classified as mutating by :func:`mureo.mcp.plugin_semantics.derive_semantics`
+    (standard MCP ``readOnlyHint``/``meta`` metadata). So unlike the built-in
+    entry point, it deliberately does NOT run :func:`is_mutating_builtin_tool`
+    — that classifier excludes the ``mcp__`` plugin namespace by design. Same
+    env opt-out and best-effort contract; the reminder body is identical, so a
+    plugin mutation re-surfaces STRATEGY.md exactly like a built-in one.
+    """
+    return _read_strategy_reminder(tool_name)
 
 
 __all__ = [
     "build_reminder_text",
     "is_mutating_builtin_tool",
     "maybe_build_reminder",
+    "maybe_build_reminder_for_plugin",
 ]

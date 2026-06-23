@@ -230,3 +230,131 @@ class TestStatusValues:
         assert RollbackStatus.SUPPORTED.value == "supported"
         assert RollbackStatus.PARTIAL.value == "partial"
         assert RollbackStatus.NOT_SUPPORTED.value == "not_supported"
+
+
+@pytest.mark.unit
+class TestPluginReversalEscapeHatch:
+    """Guardrail parity (#114 follow-up): a plugin-declared reversal that
+    names a *registered* plugin tool is planned (and so executable),
+    bounded by that tool's schema property keys. The plugin lookup is
+    monkeypatched so these stay pure — the live wiring is exercised in
+    ``test_mcp_server_plugin_wiring`` / ``test_rollback_execute``.
+    """
+
+    def test_registered_plugin_reversal_is_supported(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "mureo.rollback.planner._plugin_reversal_keys",
+            lambda op: (True, frozenset({"campaign_id"})),
+        )
+        entry = _entry(
+            action="acme_pause",
+            platform="plugin:acme-dist",
+            reversible_params={
+                "operation": "acme_resume",
+                "params": {"campaign_id": "123"},
+            },
+        )
+        plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.SUPPORTED
+        assert plan.operation == "acme_resume"
+        assert plan.params == {"campaign_id": "123"}
+
+    def test_unregistered_operation_still_not_supported(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "mureo.rollback.planner._plugin_reversal_keys",
+            lambda op: (False, None),
+        )
+        entry = _entry(
+            action="acme_pause",
+            reversible_params={
+                "operation": "acme_resume",
+                "params": {"campaign_id": "123"},
+            },
+        )
+        plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.NOT_SUPPORTED
+        assert "allow-list" in plan.notes
+
+    def test_plugin_reversal_extra_params_rejected(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "mureo.rollback.planner._plugin_reversal_keys",
+            lambda op: (True, frozenset({"campaign_id"})),
+        )
+        entry = _entry(
+            action="acme_pause",
+            reversible_params={
+                "operation": "acme_resume",
+                "params": {"campaign_id": "123", "smuggled": "evil"},
+            },
+        )
+        plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.NOT_SUPPORTED
+        assert "unexpected params" in plan.notes
+
+    def test_schemaless_plugin_reversal_skips_key_restriction(
+        self, monkeypatch
+    ) -> None:
+        # (True, None) = registered plugin tool with no usable schema:
+        # no plan-time key restriction (execution re-validates + re-gates).
+        monkeypatch.setattr(
+            "mureo.rollback.planner._plugin_reversal_keys",
+            lambda op: (True, None),
+        )
+        entry = _entry(
+            action="acme_pause",
+            reversible_params={
+                "operation": "acme_resume",
+                "params": {"anything": "goes", "more": 1},
+            },
+        )
+        plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.SUPPORTED
+
+    def test_reversal_naming_builtin_tool_is_not_a_plugin_op(self) -> None:
+        """Cross-namespace boundary: a plugin reversal whose ``operation``
+        names a *built-in* tool not in the static allow-list is refused — the
+        real ``_plugin_reversal_keys`` lazily resolves it against the live
+        server and returns ``(False, None)`` because built-in names are never
+        in ``_PLUGIN_NAMES``. No monkeypatch — exercises the real lazy import.
+        """
+        entry = _entry(
+            action="acme_pause",
+            reversible_params={
+                # A real built-in tool name, but NOT in _ALLOWED_OPERATIONS.
+                "operation": "google_ads_campaigns_create",
+                "params": {"campaign_id": "123"},
+            },
+        )
+        plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.NOT_SUPPORTED
+        assert "allow-list" in plan.notes
+
+    def test_destructive_plugin_reversal_rejected_before_lookup(
+        self, monkeypatch
+    ) -> None:
+        """The destructive-verb refusal runs *before* the plugin hook, so a
+        plugin can never declare a reversal that deletes."""
+        consulted: list[str] = []
+
+        def _spy(op: str):
+            consulted.append(op)
+            return (True, None)
+
+        monkeypatch.setattr("mureo.rollback.planner._plugin_reversal_keys", _spy)
+        entry = _entry(
+            action="acme_pause",
+            reversible_params={
+                "operation": "acme_campaigns_delete",
+                "params": {},
+            },
+        )
+        plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.NOT_SUPPORTED
+        assert "destructive" in plan.notes.lower()
+        assert consulted == []  # hook never reached for a destructive op

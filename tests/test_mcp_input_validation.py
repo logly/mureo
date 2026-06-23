@@ -26,15 +26,74 @@ _budget_registered = pytest.mark.skipif(
 
 
 def test_unknown_tool_is_noop() -> None:
-    """A tool with no registered validator (plugins, unknown) is skipped."""
+    """A tool with no registered validator (unknown name, or a tool with no
+    schema) is skipped."""
     _validate_tool_input("definitely_not_a_registered_tool", {"x": 1})
 
 
-def test_plugin_tools_are_not_validated() -> None:
-    """Plugin tool names must be excluded from the built-in validator map."""
-    from mureo.mcp.server import _PLUGIN_NAMES
+def test_plugin_tools_are_validated() -> None:
+    """Guardrail parity (#114 follow-up): a plugin tool that declares a valid
+    ``inputSchema`` is compiled into the validator map too, so its declared
+    bounds are enforced server-side exactly like a built-in. (Previously
+    ``_PLUGIN_NAMES`` were intentionally excluded — that exclusion is removed.)
 
-    assert _PLUGIN_NAMES.isdisjoint(_TOOL_VALIDATORS)
+    Exercised with a synthetic plugin so the assertion does not depend on
+    which third-party providers happen to be installed in the environment.
+    """
+    import importlib
+    from typing import Any
+
+    from mcp.types import TextContent, Tool
+
+    from mureo.core.providers.capabilities import Capability
+    from mureo.core.providers.registry import ProviderEntry
+
+    class _SchemaPlugin:
+        name = "iv_schema_plugin"
+        display_name = "IV"
+        capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+        def mcp_tools(self) -> tuple[Tool, ...]:
+            return (
+                Tool(
+                    name="iv_schema_plugin_spend",
+                    description="x",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {"budget": {"type": "integer", "minimum": 1}},
+                        "required": ["budget"],
+                    },
+                ),
+            )
+
+        async def handle_mcp_tool(
+            self, name: str, arguments: dict[str, Any]
+        ) -> list[Any]:
+            return [TextContent(type="text", text="ok")]
+
+    def _disc(**_kw: Any) -> tuple[ProviderEntry, ...]:
+        return (
+            ProviderEntry(
+                name=_SchemaPlugin.name,
+                display_name=_SchemaPlugin.display_name,
+                capabilities=_SchemaPlugin.capabilities,
+                provider_class=_SchemaPlugin,
+                source_distribution="iv-dist",
+            ),
+        )
+
+    import mureo.core.providers.registry as registry
+    from mureo.mcp import server as mod
+
+    original = registry.discover_providers
+    registry.discover_providers = _disc
+    try:
+        mod = importlib.reload(mod)
+        assert "iv_schema_plugin_spend" in mod._PLUGIN_NAMES
+        assert "iv_schema_plugin_spend" in mod._TOOL_VALIDATORS
+    finally:
+        registry.discover_providers = original
+        importlib.reload(mod)
 
 
 @_budget_registered

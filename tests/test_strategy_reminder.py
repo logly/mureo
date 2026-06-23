@@ -485,3 +485,96 @@ class TestDispatcherInjection:
         # Original output preserved; no reminder; no exception.
         assert len(result) == 1
         assert result[0].text == "original"
+
+
+@pytest.mark.unit
+class TestPluginReminderBuilder:
+    """``maybe_build_reminder_for_plugin`` — the plugin entry point used by
+    the dispatcher for a *mutating* plugin call. Unlike the built-in builder
+    it must NOT run the built-in suffix classifier (the caller has already
+    classified the tool via ``derive_semantics``), but it shares the same
+    env opt-out and best-effort contract."""
+
+    def _ctx(self, strategy):
+        ctx = MagicMock()
+        ctx.state_store.read_strategy.return_value = strategy
+        return ctx
+
+    def test_fires_for_plugin_namespaced_tool(self) -> None:
+        from mureo.core.strategy_reminder import maybe_build_reminder_for_plugin
+
+        ctx = self._ctx(
+            [StrategyEntry(context_type="goal", title="Q2 CPA target", content="x")]
+        )
+        with (
+            patch(
+                "mureo.core.strategy_reminder.get_runtime_context",
+                return_value=ctx,
+            ),
+            patch.dict("os.environ", {}, clear=False),
+        ):
+            import os
+
+            os.environ.pop("MUREO_DISABLE_STRATEGY_REMINDER", None)
+            # A plugin-namespaced name the built-in classifier would reject.
+            text = maybe_build_reminder_for_plugin("mcp__mureo__acme_create")
+        assert text is not None
+        assert "Q2 CPA target" in text
+
+    def test_empty_strategy_returns_none(self) -> None:
+        from mureo.core.strategy_reminder import maybe_build_reminder_for_plugin
+
+        with patch(
+            "mureo.core.strategy_reminder.get_runtime_context",
+            return_value=self._ctx([]),
+        ):
+            assert maybe_build_reminder_for_plugin("acme_resume") is None
+
+    def test_env_opt_out_suppresses(self) -> None:
+        from mureo.core.strategy_reminder import maybe_build_reminder_for_plugin
+
+        ctx = self._ctx(
+            [StrategyEntry(context_type="goal", title="Q2 CPA target", content="x")]
+        )
+        with (
+            patch(
+                "mureo.core.strategy_reminder.get_runtime_context",
+                return_value=ctx,
+            ),
+            patch.dict(
+                "os.environ",
+                {"MUREO_DISABLE_STRATEGY_REMINDER": "1"},
+                clear=False,
+            ),
+        ):
+            assert maybe_build_reminder_for_plugin("acme_resume") is None
+
+    def test_state_read_failure_returns_none(self) -> None:
+        from mureo.core.strategy_reminder import maybe_build_reminder_for_plugin
+
+        ctx = MagicMock()
+        ctx.state_store.read_strategy.side_effect = OSError("disk gone")
+        with patch(
+            "mureo.core.strategy_reminder.get_runtime_context", return_value=ctx
+        ):
+            assert maybe_build_reminder_for_plugin("acme_resume") is None
+
+    def test_text_build_failure_returns_none(self) -> None:
+        """The text builder is inside the try too — a raise there must
+        degrade to ``None``, never propagate into the dispatch."""
+        from mureo.core.strategy_reminder import maybe_build_reminder_for_plugin
+
+        ctx = self._ctx(
+            [StrategyEntry(context_type="goal", title="Q2 CPA target", content="x")]
+        )
+        with (
+            patch(
+                "mureo.core.strategy_reminder.get_runtime_context",
+                return_value=ctx,
+            ),
+            patch(
+                "mureo.core.strategy_reminder.build_reminder_text",
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            assert maybe_build_reminder_for_plugin("acme_resume") is None
