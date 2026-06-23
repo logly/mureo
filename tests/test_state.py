@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -483,6 +484,28 @@ class TestStateFileErrorHandling:
         data = {"action_log": [{"action": "x", "platform": "google_ads"}]}
         with pytest.raises(KeyError):
             parse_state(json.dumps(data))
+
+    @pytest.mark.unit
+    def test_parse_state_strict_false_skips_log_at_debug_not_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Skipped nonconforming entries log at DEBUG, never WARNING+.
+
+        The read-only Reports view re-parses STATE.json on every dashboard
+        poll, so a per-entry WARNING would flood the daemon log for an account
+        with many legacy / hand-authored campaigns — and read as a failure when
+        it is graceful degradation. Pin DEBUG so the noise never returns."""
+        data = {
+            "campaigns": [{"id": "x", "name": "variant, no campaign_id/_name"}],
+            "action_log": [{"summary": "legacy, no timestamp/action/platform"}],
+        }
+        with caplog.at_level(logging.DEBUG, logger="mureo.context.state"):
+            parse_state(json.dumps(data), strict=False)
+
+        # The skips still happen and are observable at DEBUG …
+        assert any("skipping unparseable" in r.message for r in caplog.records)
+        # … but nothing is emitted at WARNING or above (the per-render flood).
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
 class TestAtomicWrite:

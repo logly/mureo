@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -325,7 +326,9 @@ def test_summary_does_not_raise_on_broken_state(
 
 @pytest.mark.unit
 def test_summary_tolerates_nonconforming_campaign_entries(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A STATE.json whose campaign list has a nonconforming entry — e.g. a
     hand-authored / variant campaign using ``id``/``name`` instead of
@@ -354,11 +357,16 @@ def test_summary_tolerates_nonconforming_campaign_entries(
     }
     (tmp_path / "STATE.json").write_text(json.dumps(raw), encoding="utf-8")
 
-    summary = build_report_summary()
+    with caplog.at_level(logging.DEBUG):
+        summary = build_report_summary()
     by_key = {p["key"]: p for p in summary["platforms"]}
     assert "logly_ads_context" in by_key, "platform blanked by a bad campaign entry"
     assert by_key["logly_ads_context"]["totals"] == {"spend": 8739.0, "conversions": 0}
     assert summary["reports"] == {"daily": {"verdict": "Watch", "note": "spend down"}}
+    # The strict-fail → tolerant-retry happens on EVERY dashboard poll, so it
+    # must not flood the daemon log: nothing at WARNING+ for this handled,
+    # gracefully-degraded read (the per-entry skips + retry trace are DEBUG).
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
 @pytest.mark.unit

@@ -52,7 +52,10 @@ def _parse_campaigns(
         try:
             parsed.append(_parse_campaign(c))
         except (ValueError, KeyError, TypeError) as exc:
-            logger.warning("skipping unparseable campaign entry: %s", exc)
+            # DEBUG, not WARNING: the read-only Reports view re-parses on every
+            # poll, so a per-entry WARNING would flood the log for a STATE.json
+            # with many nonconforming (e.g. legacy / hand-authored) campaigns.
+            logger.debug("skipping unparseable campaign entry: %s", exc)
     return tuple(parsed)
 
 
@@ -74,7 +77,9 @@ def _parse_action_log(
         try:
             parsed.append(_parse_action_log_entry(e))
         except (ValueError, KeyError, TypeError) as exc:
-            logger.warning("skipping unparseable action_log entry: %s", exc)
+            # DEBUG, not WARNING — see _parse_campaigns: avoid per-render log
+            # flood from a STATE.json with many nonconforming action_log entries.
+            logger.debug("skipping unparseable action_log entry: %s", exc)
     return tuple(parsed)
 
 
