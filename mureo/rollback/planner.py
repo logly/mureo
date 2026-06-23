@@ -17,10 +17,15 @@ that performed the original action, and is therefore untrusted input
 for the rollback executor: a compromised or prompt-injected agent
 could otherwise log a "reversal" that points to a destructive
 operation. This module enforces that only operations explicitly
-listed in :data:`_ALLOWED_OPERATIONS` are planned, and that each plan
-carries only the keys that operation declares. Executors (Task #26)
-must still re-authorize against the same policy gate used for forward
-actions.
+listed in :data:`_ALLOWED_OPERATIONS` — or, via
+:func:`_plugin_reversal_keys`, naming a *registered* plugin tool —
+are planned, that no operation naming a destructive verb is ever
+planned, and that each plan carries only the param keys that operation
+declares (built-in: the static key-set; plugin: its ``inputSchema``
+property names). Executors (Task #26) must still re-authorize against
+the same policy gate used for forward actions; for a plugin reversal
+the dispatcher additionally re-validates the params against the live
+tool's ``inputSchema`` before the call runs.
 """
 
 from __future__ import annotations
@@ -85,6 +90,30 @@ _READ_ONLY_PREFIXES: tuple[str, ...] = (
 )
 
 
+def _plugin_reversal_keys(operation: str) -> tuple[bool, frozenset[str] | None]:
+    """Plugin escape hatch for :func:`plan_rollback` (guardrail parity).
+
+    A plugin tool may declare ``meta["mureo"]["reversal"]`` pointing at one of
+    its own operations. Such an operation can never appear in the static
+    :data:`_ALLOWED_OPERATIONS` (mureo cannot enumerate third-party tools at
+    author time), so before #114-follow-up it was always recorded-but-not-
+    executable. This hook lets the planner accept it when it names a
+    *registered* plugin tool, bounding params by that tool's declared schema.
+
+    Returns ``(is_registered_plugin_tool, allowed_keys_or_None)``. Resolved
+    lazily against the live MCP server to avoid the import cycle
+    ``server → tools_rollback → _handlers_rollback → rollback.planner``. A
+    server-import failure (e.g. this module imported in isolation in a test)
+    degrades safely to ``(False, None)`` — no plugin operation is planned.
+    Tests monkeypatch this function directly.
+    """
+    try:
+        from mureo.mcp.server import plugin_reversal_param_keys
+    except Exception:  # noqa: BLE001 — degrade to "not a plugin op"
+        return (False, None)
+    return plugin_reversal_param_keys(operation)
+
+
 def plan_rollback(entry: ActionLogEntry) -> RollbackPlan | None:
     """Build a :class:`RollbackPlan` for one action log entry.
 
@@ -136,21 +165,30 @@ def plan_rollback(entry: ActionLogEntry) -> RollbackPlan | None:
                 "and cannot be planned as a rollback."
             ),
         )
+    # Built-in allow-list first; fall back to the plugin escape hatch so a
+    # plugin-declared reversal naming a registered plugin tool is executable
+    # too (guardrail parity). ``allowed_keys is None`` means "no plan-time key
+    # restriction" — used both for an unrecognised built-in (rejected below)
+    # and for a registered schema-less plugin tool (accepted, bounded at
+    # execution by the dispatcher's re-validation + policy gates).
     allowed_keys = _ALLOWED_OPERATIONS.get(operation)
     if allowed_keys is None:
-        return _not_supported(
-            entry,
-            notes=(f"Operation {operation!r} is not in the rollback allow-list."),
-        )
-    extra = set(params) - allowed_keys
-    if extra:
-        return _not_supported(
-            entry,
-            notes=(
-                f"Operation {operation!r} received unexpected params: "
-                f"{sorted(extra)}."
-            ),
-        )
+        is_plugin_tool, allowed_keys = _plugin_reversal_keys(operation)
+        if not is_plugin_tool:
+            return _not_supported(
+                entry,
+                notes=(f"Operation {operation!r} is not in the rollback allow-list."),
+            )
+    if allowed_keys is not None:
+        extra = set(params) - allowed_keys
+        if extra:
+            return _not_supported(
+                entry,
+                notes=(
+                    f"Operation {operation!r} received unexpected params: "
+                    f"{sorted(extra)}."
+                ),
+            )
 
     raw_caveats = hint.get("caveats")
     if raw_caveats is not None and not isinstance(raw_caveats, list):

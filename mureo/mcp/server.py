@@ -157,18 +157,24 @@ _ALL_TOOLS.extend(_PLUGIN_TOOLS)
 _PLUGIN_NAMES: frozenset[str] = frozenset(_PLUGIN_DISPATCH)
 
 
-# Pre-compiled JSON Schema validators for every BUILT-IN tool, keyed by tool
-# name. The MCP framework does not enforce ``inputSchema``, so declared bounds
+# Pre-compiled JSON Schema validators for every tool, keyed by tool name.
+# The MCP framework does not enforce ``inputSchema``, so declared bounds
 # (``minimum``, ``required``, ``type``, ``enum``) are advisory until checked
 # server-side. Validating here is the single guard that makes them real for
-# every built-in mutation — most importantly the real-spend boundary values
-# (budget / bid ``minimum: 1``) flagged in issue #277. Plugin tools are
-# validated by their own providers and are intentionally excluded.
+# every mutation — most importantly the real-spend boundary values
+# (budget / bid ``minimum: 1``) flagged in issue #277.
+#
+# Plugin tools are validated here too (guardrail parity, #114 follow-up): a
+# plugin that declares ``minimum``/``required``/``enum`` on a real-spend
+# parameter now has those bounds enforced server-side, exactly like a
+# built-in, instead of relying on the (unverifiable) assumption that every
+# provider validates its own inputs. A plugin whose schema is permissive
+# (no constraints, ``additionalProperties`` open) is unaffected — the
+# validator simply finds nothing to reject. A malformed plugin schema is
+# skipped per-tool below, same as a malformed built-in schema.
 def _build_tool_validators() -> dict[str, Draft202012Validator]:
     validators: dict[str, Draft202012Validator] = {}
     for tool in _ALL_TOOLS:
-        if tool.name in _PLUGIN_NAMES:
-            continue
         schema = getattr(tool, "inputSchema", None)
         if not isinstance(schema, dict):
             continue
@@ -196,8 +202,9 @@ def _validate_tool_input(name: str, arguments: dict[str, Any]) -> None:
 
     Raises ``ValueError`` (the dispatcher's standard caller-error channel)
     on the first violation, before the tool handler runs — so an invalid
-    budget/bid never reaches a real-spend API call. No-op for tools without
-    a registered validator (plugins, or a tool with no schema).
+    budget/bid never reaches a real-spend API call. Applies to both built-in
+    and plugin tools. No-op for a tool without a registered validator (no
+    schema, or a schema that failed ``check_schema`` at build time).
     """
     validator = _TOOL_VALIDATORS.get(name)
     if validator is None:
@@ -233,6 +240,58 @@ _PLUGIN_TOOL_THROTTLERS: dict[str, Throttler] = {
     for name, sem in _PLUGIN_SEMANTICS.items()
     if sem.throttle is not None
 }
+
+
+# Guardrail parity (#114 follow-up): top-level ``inputSchema`` property names
+# per plugin tool. The rollback planner uses these to bound the params a
+# plugin-declared reversal may carry — the plugin counterpart of the static
+# ``_ALLOWED_OPERATIONS`` key-sets the planner enforces for built-in reversals.
+def _plugin_schema_property_keys(tool: Tool) -> frozenset[str] | None:
+    """Return the declared top-level object property names of ``tool``'s
+    ``inputSchema``, or ``None`` when the schema is absent or declares no
+    usable ``properties`` map (so the planner applies no key restriction
+    and leaves the bound to execution-time validation)."""
+    schema = getattr(tool, "inputSchema", None)
+    if not isinstance(schema, dict):
+        return None
+    props = schema.get("properties")
+    if not isinstance(props, dict) or not props:
+        return None
+    return frozenset(props)
+
+
+_PLUGIN_REVERSAL_KEYS: dict[str, frozenset[str] | None] = {
+    t.name: _plugin_schema_property_keys(t) for t in _PLUGIN_TOOLS
+}
+
+
+def plugin_reversal_param_keys(operation: str) -> tuple[bool, frozenset[str] | None]:
+    """Resolve a plugin reversal operation for the rollback planner (GAP C).
+
+    The planner calls this (lazily, to avoid an import cycle) when a reversal
+    ``operation`` is not in its static built-in allow-list, to decide whether
+    a plugin-declared reversal is executable.
+
+    Returns:
+        ``(False, None)`` when ``operation`` is not a registered plugin tool
+        — the planner then refuses it exactly as before (an arbitrary,
+        unregistered operation is never auto-reversible).
+
+        ``(True, frozenset(keys))`` when ``operation`` is a registered plugin
+        tool that declares an object ``inputSchema`` — the planner bounds the
+        reversal params to ``keys`` (defense-in-depth against an injected
+        agent smuggling extra params), mirroring the built-in key-set check.
+
+        ``(True, None)`` when ``operation`` is a registered plugin tool with
+        no usable schema — the planner applies no plan-time key restriction.
+        The reversal is still gated by the planner's destructive-verb refusal,
+        and at execution the dispatcher re-runs policy gates + ``inputSchema``
+        validation against the live tool, so an unbounded plan cannot bypass
+        the forward-action guardrails.
+    """
+    if operation not in _PLUGIN_NAMES:
+        return (False, None)
+    return (True, _PLUGIN_REVERSAL_KEYS.get(operation))
 
 
 # ---------------------------------------------------------------------------
@@ -466,6 +525,25 @@ def _maybe_append_strategy_reminder(name: str, result: list[Any]) -> list[Any]:
     return [*result, TextContent(type="text", text=reminder)]
 
 
+def _maybe_append_plugin_strategy_reminder(name: str, result: list[Any]) -> list[Any]:
+    """Plugin counterpart of :func:`_maybe_append_strategy_reminder`.
+
+    Called only for a successful *mutating* plugin tool (the dispatch branch
+    has already consulted ``derive_semantics``), so the reminder fires for a
+    plugin mutation exactly as it does for a built-in one — closing the
+    strategy-reminder guardrail gap. Same soft-enforcement contract: never
+    refuses, never replaces the tool's content, best-effort.
+    """
+    from mcp.types import TextContent
+
+    from mureo.core.strategy_reminder import maybe_build_reminder_for_plugin
+
+    reminder = maybe_build_reminder_for_plugin(name)
+    if reminder is None:
+        return result
+    return [*result, TextContent(type="text", text=reminder)]
+
+
 # Once-per-process latch: the stale-version banner is appended to the first
 # tool result that detects the mismatch, not every call (avoid spamming a
 # read-heavy daily-check). A fresh process after restart starts False again.
@@ -602,6 +680,11 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
                 reversal=None if sem is None else sem.reversal,
                 observation_days=None if sem is None else sem.observation_days,
             )
+            # Guardrail parity: a mutating plugin call re-surfaces the
+            # operator's STRATEGY.md sections, exactly like a built-in
+            # mutation. Read-only plugin tools skip it (no mutation to
+            # check against strategy).
+            result = _maybe_append_plugin_strategy_reminder(name, result)
         return result
     raise ValueError(f"Unknown tool: {name}")
 
