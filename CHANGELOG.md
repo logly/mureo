@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.12] - 2026-06-23
+
+### Fixed
+
+- The read-only Reports dashboard crashed (and returned an empty summary) when
+  STATE.json held an old / hand-authored `action_log` entry missing a required
+  field (`timestamp` / `platform`). The strict parse is kept for writers, but
+  the read-only view now skips nonconforming `action_log` entries — the same
+  tolerance 0.10.10 added for campaign entries, which had not covered the
+  action log.
+- The Reports period toggle (Yesterday / Last 30 days) did not appear when only
+  `daily-check` had run, because the 30-day window was written solely by
+  `sync-state`. `daily-check` now also persists `LAST_30_DAYS` when it already
+  holds those numbers (no extra API call), so the toggle shows from a
+  daily-check-only routine.
+
+### Added
+
+- `mureo upgrade` now refreshes deployed skills (`~/.claude/skills`) and
+  restarts the always-on `mureo service` daemon after a successful upgrade, so
+  a new version actually takes effect instead of leaving stale skills and a
+  daemon running the old code. Use `--no-refresh` to skip. Best-effort: it
+  never fails the upgrade.
+
+### Documentation
+
+- Refreshed the Meta OAuth scope list (now the full 8 scopes), corrected the
+  MCP tool count (188), and documented the `mureo service` / `mureo open` /
+  `mureo configure --serve` / `mureo upgrade` commands.
+
 ## [0.10.11] - 2026-06-22
 
 ### Fixed
