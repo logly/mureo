@@ -52,7 +52,10 @@ def _parse_campaigns(
         try:
             parsed.append(_parse_campaign(c))
         except (ValueError, KeyError, TypeError) as exc:
-            logger.warning("skipping unparseable campaign entry: %s", exc)
+            # DEBUG, not WARNING: the read-only Reports view re-parses on every
+            # poll, so a per-entry WARNING would flood the log for a STATE.json
+            # with many nonconforming (e.g. legacy / hand-authored) campaigns.
+            logger.debug("skipping unparseable campaign entry: %s", exc)
     return tuple(parsed)
 
 
@@ -74,18 +77,46 @@ def _parse_action_log(
         try:
             parsed.append(_parse_action_log_entry(e))
         except (ValueError, KeyError, TypeError) as exc:
-            logger.warning("skipping unparseable action_log entry: %s", exc)
+            # DEBUG, not WARNING — see _parse_campaigns: avoid per-render log
+            # flood from a STATE.json with many nonconforming action_log entries.
+            logger.debug("skipping unparseable action_log entry: %s", exc)
     return tuple(parsed)
+
+
+def _platform_account_id(
+    platform_key: str, platform_data: dict[str, Any], *, strict: bool
+) -> str:
+    """Resolve a platform's ``account_id``.
+
+    ``strict=True`` (the writer contract) requires the key — a missing
+    ``account_id`` raises ``KeyError`` exactly as before. ``strict=False``
+    (the read-only Reports view) defaults a missing ``account_id`` to ``""``
+    so an agent-/hand-authored STATE.json that omitted it still renders its
+    platforms/totals/periods instead of blanking the whole dashboard. Logged
+    at DEBUG (expected for non-canonical files; never per-poll WARNING noise).
+    """
+    if strict or "account_id" in platform_data:
+        # KeyError in strict if absent — unchanged writer contract. Annotated
+        # local so mypy treats the dict[str, Any] value as the declared str.
+        account_id: str = platform_data["account_id"]
+        return account_id
+    logger.debug(
+        "platform %r missing 'account_id'; defaulting to '' for the tolerant "
+        "read-only view",
+        platform_key,
+    )
+    return ""
 
 
 def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     """Parse a JSON string and return a StateDocument.
 
-    ``strict`` controls campaign-list AND action_log validation: ``True``
-    (default) preserves the strict writer contract (raises on a missing required
-    field); ``False`` tolerantly skips nonconforming campaign / action_log
-    entries for the read-only Reports view. Structural problems (invalid JSON, a
-    missing platform ``account_id``) always raise regardless of ``strict``.
+    ``strict`` controls campaign-list, action_log AND platform validation:
+    ``True`` (default) preserves the strict writer contract (raises on a missing
+    required field, including a platform ``account_id``); ``False`` tolerantly
+    skips nonconforming campaign / action_log entries and defaults a missing
+    platform ``account_id`` to ``""`` for the read-only Reports view. Invalid
+    JSON always raises regardless of ``strict``.
     """
     data = json.loads(text)
     campaigns_raw = data.get("campaigns", [])
@@ -101,7 +132,9 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
                 platform_data.get("campaigns", []), strict=strict
             )
             platforms[platform_key] = PlatformState(
-                account_id=platform_data["account_id"],
+                account_id=_platform_account_id(
+                    platform_key, platform_data, strict=strict
+                ),
                 campaigns=platform_campaigns,
                 totals=platform_data.get("totals"),
                 metrics_period=platform_data.get("metrics_period"),

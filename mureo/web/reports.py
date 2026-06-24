@@ -330,7 +330,13 @@ def _read_state_safe(store: StateStore) -> StateDocument | None:
     try:
         return store.read_state()
     except Exception:  # noqa: BLE001 — read-only view degrades, never raises
-        logger.warning(
+        # Expected + handled for a STATE.json with nonconforming entries (e.g. a
+        # hand-authored legacy campaign list, or a platform missing account_id):
+        # the tolerant retry below renders the view fine. The read-only
+        # dashboard re-reads on every poll, so log this at DEBUG — a per-render
+        # WARNING + traceback would flood the daemon log on every refresh and
+        # read as a failure when it is not.
+        logger.debug(
             "strict STATE.json read failed; retrying tolerantly for the "
             "read-only Reports view",
             exc_info=True,
