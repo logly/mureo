@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.14] - 2026-06-24
+
+### Fixed
+
+- `google_ads_accounts_list` required a `customer_id` (resolved via the shared
+  client) even though its schema marks it optional, so the natural recovery
+  from an unset `customer_id` ("list accounts to find the account") failed with
+  the same `customer_id is required` error. It is now id-free in real mode —
+  BYOD and an explicit `customer_id` still use the customer-scoped client, but
+  with neither it uses the credential-keyed `list_accessible_accounts` primitive
+  (the one the auth wizard already uses pre-account-selection). This lets the
+  agent auto-recover when auth is configured but no account was selected (#333).
+- Skill docs listed non-existent `mureo google-ads …` / `mureo meta-ads …` CLI
+  commands (ad operations are MCP tools, not CLI) — which led the agent to run a
+  phantom command and mis-report a "CLI bug". The shared CLI Quick Reference now
+  lists only real commands and points ad ops at the MCP tools, the Google/Meta
+  skills' `cliHelp` frontmatter no longer references a phantom command, and a
+  stale `mureo rollback {plan,apply}` row is corrected to `{list,show}` (#333).
+- Added a Google Ads "No customer_id? (recovery)" skill section so the agent
+  discovers the account via `google_ads_accounts_list` (auto-set when one, ask
+  when several, re-run `mureo auth setup` when none) instead of asking the
+  operator to look the ID up in the UI or supply a CSV (#333).
+
 ## [0.10.13] - 2026-06-24
 
 ### Added
