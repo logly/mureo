@@ -306,22 +306,28 @@ Canonical STATE.json shape (note `campaign_name` and `account_id`):
 
 ## CLI Quick Reference
 
+> **The `mureo` CLI covers setup, auth, and service management only — it has NO
+> ad-operation subcommands.** Listing campaigns, pulling insights, editing
+> budgets, etc. are done through the **MCP tools** (`google_ads_*`,
+> `meta_ads_*`, `search_console_*`) — there is **no** `mureo google-ads …` /
+> `mureo meta-ads …` shell command. Never run or suggest one (it will error with
+> "no such command"); call the corresponding MCP tool instead.
+
 | Command | Description |
 |---------|-------------|
-| `mureo auth setup` | Interactive authentication wizard |
+| `mureo auth setup` | Interactive auth wizard — records the Google Ads `customer_id` / Meta `account_id` |
 | `mureo auth status` | Show authentication status |
-| `mureo auth check-google` | Verify Google Ads credentials |
-| `mureo auth check-meta` | Verify Meta Ads credentials |
-| `mureo google-ads campaigns-list` | List Google Ads campaigns |
-| `mureo google-ads campaigns-get` | Get campaign details |
-| `mureo google-ads ads-list` | List ads |
-| `mureo google-ads keywords-list` | List keywords |
-| `mureo google-ads budget-get` | Get campaign budget |
-| `mureo google-ads performance-report` | Performance report |
-| `mureo meta-ads campaigns-list` | List Meta Ads campaigns |
-| `mureo meta-ads campaigns-get` | Get campaign details |
-| `mureo meta-ads ad-sets-list` | List ad sets |
-| `mureo meta-ads ads-list` | List ads |
-| `mureo meta-ads insights-report` | Performance report |
+| `mureo auth check-google` | Verify Google Ads credentials (masked) |
+| `mureo auth check-meta` | Verify Meta Ads credentials (masked) |
+| `mureo configure` | Launch the local configuration / Reports UI |
+| `mureo service {install,status,restart,uninstall}` | Manage the always-on daemon |
+| `mureo upgrade [--all]` | Upgrade mureo (also refreshes deployed skills + restarts the service) |
+| `mureo providers {list,add,remove}` | Manage official-MCP / plugin providers |
+| `mureo rollback {list,show}` | Inspect reversible actions in the `action_log` (apply a reversal via the `rollback_apply` MCP tool) |
 
-All CLI commands output JSON to stdout for easy piping and parsing.
+To **list Google Ads campaigns**, call the MCP tool `google_ads_campaigns_list`
+(it resolves `customer_id` from the stored credentials). If you hit
+`customer_id is required`, do **not** ask the operator to read it from the
+Google Ads UI or hand over a CSV — call `google_ads_accounts_list` to discover
+the accessible accounts and set it. See `../_mureo-google-ads/SKILL.md` →
+*No customer_id? (recovery)*.

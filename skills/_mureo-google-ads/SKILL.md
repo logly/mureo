@@ -8,11 +8,43 @@ metadata:
     requires:
       bins:
         - mureo
-    cliHelp: "mureo google-ads --help"
+    cliHelp: "mureo --help"
 ---
 
 # Google Ads (v18)
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, global flags, and security rules.
+
+> **There is no `mureo google-ads …` CLI command.** Every operation below is an
+> **MCP tool** (`google_ads_*`). Call the tool directly — never run or suggest a
+> `mureo google-ads campaigns-list`-style shell command (it does not exist and
+> will error, which is NOT a mureo bug).
+
+## No customer_id? (recovery)
+
+Every Google Ads tool needs a `customer_id` (the target account). It is resolved
+from the stored credentials (set by `mureo auth setup`). When it is missing a
+tool returns **`customer_id is required. Provide it as a parameter or configure
+it …`** — auth is fine, only the *account* is unset (a common state when the
+operator finished sign-in but skipped account selection).
+
+When you see that error, **recover automatically — do NOT ask the operator to
+look up the ID in the Google Ads UI, and do NOT fall back to a CSV / "ask the
+agency"**:
+
+1. Call **`google_ads_accounts_list`** — it needs **no** `customer_id` and
+   returns every account reachable by the login.
+2. **Exactly one account** → use its id as `customer_id` on the retried call and
+   tell the operator which account you selected.
+3. **Several accounts** → show the list and ask the operator which one to use.
+4. **Zero accounts** → the login can't reach any Google Ads account; tell the
+   operator to re-run `mureo auth setup` (or grant the account access), and that
+   `customer_id` can be set there or via `GOOGLE_ADS_CUSTOMER_ID` (plus
+   `GOOGLE_ADS_LOGIN_CUSTOMER_ID` for an MCC).
+
+To persist the choice so it survives across sessions, point the operator at
+`mureo auth setup` (account picker) or the `configure` UI's env writer
+(`GOOGLE_ADS_CUSTOMER_ID`); passing `customer_id` per call works for the
+immediate request but is not remembered.
 
 ## Tool Summary
 

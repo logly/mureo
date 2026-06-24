@@ -45,11 +45,36 @@ async def handle_budget_create(args: dict[str, Any]) -> list[TextContent]:
 
 @api_error_handler
 async def handle_accounts_list(args: dict[str, Any]) -> list[TextContent]:
-    client = _get_client(args)
-    if client is None:
+    """List the Google Ads accounts reachable by the login.
+
+    Account discovery is keyed on the authenticated OAuth user
+    (``listAccessibleCustomers``), NOT on a specific account — so unlike every
+    other Google Ads tool this one does **not** require a ``customer_id`` (its
+    schema marks it optional). That makes it the recovery path when no account
+    has been selected yet: an agent that hits ``customer_id is required`` on a
+    campaign call can call this to discover/choose the account. See
+    ``_mureo-google-ads/SKILL.md`` → "No customer_id? (recovery)".
+
+    An explicit ``customer_id`` (or BYOD mode) still routes through the
+    customer-scoped client; only the real-mode, no-customer_id case uses the
+    id-free :func:`mureo.google_ads.list_accessible_accounts` primitive.
+    """
+    from mureo.byod.runtime import byod_has
+
+    if byod_has("google_ads") or _opt(args, "customer_id"):
+        client = _get_client(args)
+        if client is None:
+            return _no_google_creds()
+        return _json_result(await client.list_accounts())
+
+    from mureo.auth import load_google_ads_credentials
+    from mureo.google_ads import list_accessible_accounts
+
+    creds = load_google_ads_credentials()
+    if creds is None:
         return _no_google_creds()
-    result = await client.list_accounts()
-    return _json_result(result)
+    accounts = await list_accessible_accounts(creds)
+    return _json_result(accounts)
 
 
 @api_error_handler

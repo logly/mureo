@@ -8,7 +8,7 @@ metadata:
     requires:
       bins:
         - mureo
-    cliHelp: "mureo meta-ads --help"
+    cliHelp: "mureo --help"
 ---
 
 # Meta Ads (Marketing API v21.0)
