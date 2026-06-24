@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.13] - 2026-06-24
+
+### Added
+
+- Plugin (third-party MCP) tools now get the same guardrails as the built-in
+  Google/Meta tools (#324): server-side `inputSchema` validation (so a plugin's
+  declared real-spend bounds are enforced before dispatch), a STRATEGY.md
+  reminder appended after a mutating plugin call, and executable rollback for a
+  plugin-declared reversal that names a registered, non-destructive plugin tool
+  (previously recorded for audit only).
+- New optional `MCPReversibleToolProvider` protocol (#327, #328): a plugin can
+  implement `capture_reversal` to return a runtime-correct reversal (the actual
+  entity id + the prior state it reads itself) captured *before* the mutation —
+  so a plugin status toggle becomes reversible via `rollback_apply`, mirroring
+  the built-in before-state capture. A plugin that does not opt in keeps its
+  static `meta["mureo"]["reversal"]` behavior.
+
+### Fixed
+
+- The read-only Reports dashboard crashed with `KeyError: 'account_id'`
+  (empty summary + a per-poll traceback flood in the daemon log) for an
+  agent-/hand-authored STATE.json whose platforms omit `account_id`. The
+  tolerant read now defaults a missing `account_id` to `""` so the platform's
+  totals/periods still render, and the strict-fail → tolerant-retry path plus
+  the per-entry skips now log at DEBUG instead of WARNING, so a non-canonical
+  STATE.json no longer crashes the view or floods the log (#329).
+- A plugin that returned an `"API error: ..."` result *without raising* was
+  promoted to STATE.json's `action_log` as a phantom mutation (and, via a
+  declared reversal, a phantom executable rollback). The plugin dispatch path
+  now skips that promotion for an error-envelope result, matching the built-in
+  mutation behavior (#325).
+- Skills now pin the canonical STATE.json schema for the Claude Code `Write`
+  path (#331): documented that vendor tool output uses `name` while STATE.json
+  requires `campaign_name`, and that platform entries require `account_id` —
+  preventing the field-name drift that made the Reports view skip campaigns.
+
 ## [0.10.12] - 2026-06-23
 
 ### Fixed
