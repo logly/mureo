@@ -168,15 +168,13 @@ def _status_of(record: Any) -> str | None:
 def _is_error_result(result: list[Any] | None) -> bool:
     """True if ``result`` is an ``api_error_handler`` error envelope.
 
-    Status-toggle handlers are wrapped by ``api_error_handler``, which turns
-    an API-level failure into a ``"API error: ..."`` TextContent instead of
-    raising. Detecting it lets us skip recording action_log entries for
-    mutations that did not actually change platform state.
+    Thin module-local alias for :func:`mureo.mcp._helpers.is_error_result`
+    (the one source of truth, kept next to the producer). Retained so the
+    in-module call site and its history stay stable.
     """
-    if not result:
-        return False
-    text = getattr(result[0], "text", "")
-    return isinstance(text, str) and text.startswith("API error:")
+    from mureo.mcp._helpers import is_error_result
+
+    return is_error_result(result)
 
 
 def record_native_mutation(
