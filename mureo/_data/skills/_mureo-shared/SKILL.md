@@ -255,6 +255,55 @@ All tools return structured JSON via `TextContent`. The format depends on the to
 }
 ```
 
+## STATE.json Schema (when writing on Code via `Write`)
+
+> **Tool output ≠ STATE.json.** The *Success Response* above is what a vendor
+> MCP tool *returns* — a campaign there is `{"campaign_id", "name", "status", …}`.
+> STATE.json's `CampaignSnapshot` is a **different** shape: it requires
+> **`campaign_name`**, not `name`. When you hand-write STATE.json with `Write`
+> on Code, **map** the tool-output `name` → `campaign_name` (and `id` →
+> `campaign_id`), and always set the platform's **`account_id`**. On Desktop /
+> Cowork the `mureo_state_*` MCP tools serialize this canonical shape for you,
+> so the mapping only matters on the Code `Write` path.
+
+A campaign or platform missing a required field below is silently **dropped**
+by the read-only Reports view (and rejected by a strict read), so the dashboard
+shows fewer campaigns than you wrote — get these exact names right:
+
+- **Campaign snapshot** (root `campaigns[]` and `platforms[<p>].campaigns[]`) —
+  required: `campaign_id` (str), `campaign_name` (str), `status` (str).
+  Optional: `bidding_strategy_type`, `daily_budget`, `campaign_goal`, `notes`,
+  `device_targeting`, and `metrics` (the per-campaign performance object:
+  `spend` / `impressions` / `clicks` / `conversions` / `cpa` / `ctr` / …).
+- **Platform entry** (`platforms[<platform>]`) — required: `account_id` (str;
+  use `""` only if genuinely unknown). Plus `campaigns[]` and the rollups the
+  dashboard actually renders: `totals`, `metrics_period`, `periods[<window>]`.
+
+Canonical STATE.json shape (note `campaign_name` and `account_id`):
+
+```json
+{
+  "version": "2",
+  "platforms": {
+    "google_ads": {
+      "account_id": "123-456-7890",
+      "campaigns": [
+        {
+          "campaign_id": "12345",
+          "campaign_name": "Brand Search",
+          "status": "ENABLED",
+          "daily_budget": 5000.0,
+          "metrics": {"spend": 4200.0, "clicks": 310, "conversions": 12}
+        }
+      ],
+      "totals": {"spend": 4200.0, "clicks": 310, "conversions": 12},
+      "metrics_period": "LAST_30_DAYS",
+      "periods": {"LAST_30_DAYS": {"spend": 4200.0, "clicks": 310, "conversions": 12}}
+    }
+  }
+}
+```
+
 ## CLI Quick Reference
 
 | Command | Description |

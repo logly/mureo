@@ -72,7 +72,7 @@ Run a daily health check on all marketing accounts using the strategy context.
 
     For each issue, suggest specific actions aligned with the current Operation Mode. Do NOT recommend actions based on single-day fluctuations — at least 7 consecutive days of critical metrics (>30% off target) before suggesting rescue.
 
-11. **Update STATE.json**: Update campaign snapshots, add notes for flagged issues, and log this daily check to the `action_log` with a summary of findings.
+11. **Update STATE.json**: Update campaign snapshots, add notes for flagged issues, and log this daily check to the `action_log` with a summary of findings. On the Code `Write` path, use the canonical STATE.json field names — `campaign_name` (NOT the tool-output `name`), `campaign_id`, and each platform's `account_id`; a snapshot/platform missing a required field is dropped by the reporting dashboard. See `../_mureo-shared/SKILL.md` → *STATE.json Schema*.
 
 12. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="daily"` and a concise `summary` object so the read-only dashboard can render this report without re-running you. Follow this convention:
     - `generated_at`: ISO 8601 timestamp of this run
