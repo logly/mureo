@@ -28,8 +28,10 @@ comparison; multiple tests pin the contract.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import jsonschema
@@ -51,7 +53,11 @@ from mureo.mcp.plugin_semantics import (
     derive_semantics,
     record_mutation_action_log,
 )
-from mureo.mcp.tool_provider import collect_plugin_tools, plugin_source
+from mureo.mcp.tool_provider import (
+    MCPReversibleToolProvider,
+    collect_plugin_tools,
+    plugin_source,
+)
 from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
 from mureo.mcp.tools_analysis import handle_tool as handle_analysis_tool
 from mureo.mcp.tools_analytics_registry import (
@@ -545,6 +551,52 @@ def _maybe_append_plugin_strategy_reminder(name: str, result: list[Any]) -> list
     return [*result, TextContent(type="text", text=reminder)]
 
 
+async def _capture_plugin_reversal(
+    provider: MCPToolProvider, name: str, arguments: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Best-effort runtime-correct reversal capture for a plugin mutation (#327).
+
+    Mirrors :func:`mureo.mcp.native_reversal.capture_before_state`: when the
+    provider opts into :class:`MCPReversibleToolProvider`, call its
+    ``capture_reversal`` **before** the mutation so it can read prior state and
+    return a reversal carrying the actual entity id + prior value — something a
+    static tool-definition ``meta`` reversal can never express.
+
+    Returns ``None`` (and the caller falls back to the static ``meta``
+    reversal) when the provider does not opt in, when there is no STATE.json in
+    cwd to record into (so we skip the read entirely), when the call raises, or
+    when the returned value is not a well-formed ``{operation: str, params:
+    dict}``. Never raises — a capture failure must not block the mutation.
+    """
+    if not isinstance(provider, MCPReversibleToolProvider):
+        return None
+    capture = getattr(provider, "capture_reversal", None)
+    if not inspect.iscoroutinefunction(capture):
+        return None
+    # No STATE.json ⇒ nothing will be recorded; skip the (network) read.
+    if not (Path.cwd() / "STATE.json").is_file():
+        return None
+    try:
+        reversal = await capture(name, dict(arguments))
+    except KeyboardInterrupt:
+        raise
+    except BaseException:  # noqa: BLE001 — capture must never block the mutation
+        logger.warning(
+            "plugin capture_reversal failed for %r; falling back to static "
+            "meta reversal",
+            name,
+            exc_info=True,
+        )
+        return None
+    if (
+        isinstance(reversal, dict)
+        and isinstance(reversal.get("operation"), str)
+        and isinstance(reversal.get("params"), dict)
+    ):
+        return reversal
+    return None
+
+
 # Once-per-process latch: the stale-version banner is appended to the first
 # tool result that detects the mismatch, not every call (avoid spamming a
 # read-heavy daily-check). A fresh process after restart starts False again.
@@ -652,6 +704,15 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         provider = _PLUGIN_DISPATCH[name]
         source = plugin_source(provider)
         sem = _PLUGIN_SEMANTICS.get(name)
+        # Capture a runtime-correct reversal BEFORE the mutation (#327),
+        # mirroring the native before-state capture: an opted-in provider reads
+        # the entity's prior state and returns a reversal carrying the actual
+        # id + prior value. Only for mutating tools; best-effort, never blocks.
+        captured_reversal: dict[str, Any] | None = None
+        if sem is None or sem.mutating:
+            captured_reversal = await _capture_plugin_reversal(
+                provider, name, arguments
+            )
         await _acquire_plugin_throttle(name)
         try:
             result = await provider.handle_mcp_tool(name, arguments)
@@ -683,10 +744,18 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
             # _is_error_result skip for built-in mutations. The jsonl audit
             # (above) still captures the attempt regardless.
             if not is_error_result(result):
+                # Prefer the runtime-correct reversal captured before the
+                # mutation; fall back to the provider's static meta reversal
+                # when it did not opt into capture_reversal (#327).
+                reversal = (
+                    captured_reversal
+                    if captured_reversal is not None
+                    else (None if sem is None else sem.reversal)
+                )
                 record_mutation_action_log(
                     tool=name,
                     source=source,
-                    reversal=None if sem is None else sem.reversal,
+                    reversal=reversal,
                     observation_days=None if sem is None else sem.observation_days,
                 )
             # Guardrail parity: a mutating plugin call re-surfaces the

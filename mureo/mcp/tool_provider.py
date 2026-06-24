@@ -88,6 +88,46 @@ class MCPToolProvider(Protocol):
         ...
 
 
+@runtime_checkable
+class MCPReversibleToolProvider(Protocol):
+    """Opt-in contract for **runtime-correct** reversal capture (#327).
+
+    A static ``meta["mureo"]["reversal"]`` on a :class:`Tool` is fixed at
+    server-start and therefore cannot carry the actual entity id of *this*
+    call, nor the entity's *prior* state — so it is useless for a real
+    status toggle (``set_ad_status(ad_id, status)``) or value edit. This
+    secondary Protocol closes that gap, mirroring mureo's native
+    before-state capture (:mod:`mureo.mcp.native_reversal`): the provider —
+    which owns the platform client and entity knowledge — builds the
+    reversal itself, capturing any prior state via its own read.
+
+    A provider opts in by *also* implementing this method. mureo calls it
+    **before** a mutating tool runs; the returned reversal (if any) is what
+    gets recorded into the ``action_log`` instead of the static ``meta``
+    reversal. The reversal's ``operation`` must name a registered,
+    non-destructive tool of the same plugin for ``rollback_apply`` to
+    execute it (the rollback planner enforces this — see
+    :mod:`mureo.rollback.planner`).
+    """
+
+    async def capture_reversal(
+        self, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Return ``{"operation": <tool>, "params": {...}}`` that reverses the
+        mutation ``name`` is *about to* perform, or ``None`` when it is not
+        reversible.
+
+        Called **before** :meth:`MCPToolProvider.handle_mcp_tool`, so an
+        implementation can read the entity's prior state (e.g. GET the
+        current status) and bake a runtime-correct reversal. MUST be
+        best-effort from the caller's view: mureo swallows any exception so a
+        capture failure never blocks the actual mutation — but the
+        implementation should still avoid slow/expensive work on the hot
+        path.
+        """
+        ...
+
+
 def _warn(message: str) -> None:
     warnings.warn(message, PluginToolWarning, stacklevel=3)
 
@@ -227,6 +267,7 @@ def plugin_source(provider: object) -> str:
 
 
 __all__ = [
+    "MCPReversibleToolProvider",
     "MCPToolProvider",
     "PluginToolWarning",
     "collect_plugin_tools",

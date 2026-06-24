@@ -681,3 +681,337 @@ class TestErrorEnvelopeNotPromoted:
         doc = read_state_file(tmp_path / "STATE.json")
         assert len(doc.action_log) == 1
         assert doc.action_log[0].action == "wired_plugin_echo"
+
+
+# ---------------------------------------------------------------------------
+# #327 — call-time reversal capture for plugins. A provider that opts into
+# MCPReversibleToolProvider builds a runtime-correct reversal (real entity id
+# + prior state) BEFORE the mutation; mureo records that instead of the static
+# tool-definition meta, so the reversal is actually executable via rollback.
+# ---------------------------------------------------------------------------
+
+
+# Module-level tracker so the fresh provider instance (built by discovery) can
+# report whether/how its capture_reversal hook was invoked.
+_CAPTURE_CALLS: list[tuple[str, dict]] = []
+
+
+class _CaptureReversalPlugin:
+    """Mutating status-toggle whose provider captures a runtime-correct
+    reversal (the real ad_id from args + the prior status it 'read')."""
+
+    name = "cap_plugin"
+    display_name = "Cap"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="cap_plugin_set_status",
+                description="toggle status",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "ad_id": {"type": "string"},
+                        "status": {"type": "string"},
+                    },
+                },
+            ),
+        )
+
+    async def capture_reversal(
+        self, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        _CAPTURE_CALLS.append((name, dict(arguments)))
+        # Simulate reading the prior status (was "enabled") and building a
+        # reversal carrying the ACTUAL id from this call.
+        return {
+            "operation": "cap_plugin_set_status",
+            "params": {"ad_id": arguments["ad_id"], "status": "enabled"},
+        }
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text="ok")]
+
+
+class _StaticReversalPlugin:
+    """Mutating tool with only a STATIC meta reversal and NO capture hook —
+    the pre-#327 behavior must be preserved (static reversal recorded)."""
+
+    name = "static_plugin"
+    display_name = "Static"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="static_plugin_act",
+                description="x",
+                inputSchema={"type": "object", "properties": {}},
+                meta={
+                    "mureo": {
+                        "reversal": {
+                            "operation": "static_plugin_act",
+                            "params": {"k": "v"},
+                        }
+                    }
+                },
+            ),
+        )
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text="ok")]
+
+
+class _CaptureRaisesPlugin:
+    """capture_reversal raises — must fall back to the static meta reversal and
+    never block the mutation."""
+
+    name = "raise_plugin"
+    display_name = "Raise"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="raise_plugin_act",
+                description="x",
+                inputSchema={"type": "object", "properties": {}},
+                meta={
+                    "mureo": {
+                        "reversal": {
+                            "operation": "raise_plugin_act",
+                            "params": {},
+                        }
+                    }
+                },
+            ),
+        )
+
+    async def capture_reversal(
+        self, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        raise RuntimeError("capture boom")
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text="ok")]
+
+
+class _ReadOnlyCapturePlugin:
+    """Read-only tool that also implements capture_reversal — the hook must
+    NOT be invoked (no mutation, no wasted read)."""
+
+    name = "ro_cap_plugin"
+    display_name = "ROCap"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="ro_cap_plugin_report",
+                description="x",
+                inputSchema={"type": "object", "properties": {}},
+                annotations=ToolAnnotations(readOnlyHint=True),
+            ),
+        )
+
+    async def capture_reversal(
+        self, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        _CAPTURE_CALLS.append(("RO", dict(arguments)))
+        return {"operation": "ro_cap_plugin_report", "params": {}}
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text="ok")]
+
+
+class _CaptureButErrorsPlugin:
+    """capture_reversal succeeds, but the mutation handler returns an
+    api_error_handler-style error envelope — the captured reversal must be
+    dropped (no phantom executable rollback)."""
+
+    name = "cap_err_plugin"
+    display_name = "CapErr"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="cap_err_plugin_set_status",
+                description="toggle that fails",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"ad_id": {"type": "string"}},
+                },
+            ),
+        )
+
+    async def capture_reversal(
+        self, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        _CAPTURE_CALLS.append((name, dict(arguments)))
+        return {
+            "operation": "cap_err_plugin_set_status",
+            "params": {"ad_id": arguments["ad_id"]},
+        }
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text="API error: quota exceeded")]
+
+
+@pytest.mark.unit
+class TestCaptureReversal:
+    async def test_dynamic_reversal_recorded_and_executable(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        _CAPTURE_CALLS.clear()
+        from mureo.context.state import read_state_file
+        from mureo.mcp import plugin_audit
+        from mureo.rollback import RollbackStatus, plan_rollback
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_CaptureReversalPlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            await mod.handle_call_tool(
+                "cap_plugin_set_status", {"ad_id": "A1", "status": "paused"}
+            )
+            # capture_reversal was called BEFORE the mutation, with real args.
+            assert _CAPTURE_CALLS == [
+                ("cap_plugin_set_status", {"ad_id": "A1", "status": "paused"})
+            ]
+            doc = read_state_file(tmp_path / "STATE.json")
+            assert len(doc.action_log) == 1
+            entry = doc.action_log[0]
+            # The RUNTIME-correct reversal (real id + prior status) was recorded,
+            # not a static template.
+            assert entry.reversible_params == {
+                "operation": "cap_plugin_set_status",
+                "params": {"ad_id": "A1", "status": "enabled"},
+            }
+            # ...and it is actually EXECUTABLE: the planner accepts it because
+            # the operation names a registered, non-destructive plugin tool.
+            plan = plan_rollback(entry)
+            assert plan is not None
+            assert plan.status == RollbackStatus.SUPPORTED
+            assert plan.operation == "cap_plugin_set_status"
+            assert plan.params == {"ad_id": "A1", "status": "enabled"}
+        finally:
+            importlib.reload(mod)
+
+    async def test_falls_back_to_static_when_no_capture_hook(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+        from mureo.mcp import plugin_audit
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_StaticReversalPlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            await mod.handle_call_tool("static_plugin_act", {})
+            doc = read_state_file(tmp_path / "STATE.json")
+            assert doc.action_log[0].reversible_params == {
+                "operation": "static_plugin_act",
+                "params": {"k": "v"},
+            }
+        finally:
+            importlib.reload(mod)
+
+    async def test_capture_failure_falls_back_to_static_without_blocking(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+        from mureo.mcp import plugin_audit
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_CaptureRaisesPlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            # The mutation still succeeds despite capture_reversal raising.
+            out = await mod.handle_call_tool("raise_plugin_act", {})
+            assert out[0].text == "ok"
+            doc = read_state_file(tmp_path / "STATE.json")
+            # Fell back to the static meta reversal.
+            assert doc.action_log[0].reversible_params == {
+                "operation": "raise_plugin_act",
+                "params": {},
+            }
+        finally:
+            importlib.reload(mod)
+
+    async def test_capture_not_called_for_read_only_tool(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        _CAPTURE_CALLS.clear()
+        from mureo.mcp import plugin_audit
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_ReadOnlyCapturePlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            await mod.handle_call_tool("ro_cap_plugin_report", {})
+            assert _CAPTURE_CALLS == []  # read-only ⇒ capture skipped
+        finally:
+            importlib.reload(mod)
+
+    async def test_captured_reversal_dropped_on_error_envelope(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Safety: even when capture_reversal succeeds, an error-envelope
+        result means the mutation did not happen — so nothing is promoted and
+        no phantom executable rollback is left behind (the is_error_result gate
+        wraps the captured-reversal selection too)."""
+        _CAPTURE_CALLS.clear()
+        from mureo.context.state import read_state_file
+        from mureo.mcp import plugin_audit
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_CaptureButErrorsPlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            out = await mod.handle_call_tool(
+                "cap_err_plugin_set_status", {"ad_id": "A1"}
+            )
+            assert out[0].text == "API error: quota exceeded"
+            # capture ran, but the failed mutation is NOT promoted.
+            assert _CAPTURE_CALLS == [("cap_err_plugin_set_status", {"ad_id": "A1"})]
+            doc = read_state_file(tmp_path / "STATE.json")
+            assert doc.action_log == ()
+        finally:
+            importlib.reload(mod)
