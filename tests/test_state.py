@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -447,6 +448,88 @@ class TestStateFileErrorHandling:
         data = {"campaigns": [{"id": "x", "name": "variant"}]}
         with pytest.raises(ValueError, match="campaign_id"):
             parse_state(json.dumps(data))
+
+    @pytest.mark.unit
+    def test_parse_state_strict_false_tolerates_missing_account_id(self) -> None:
+        """``strict=False`` defaults a platform's missing ``account_id`` to ''
+        instead of crashing, so the read-only Reports view still renders the
+        platform. Reproduces the customer case: an agent-authored STATE.json
+        whose platforms omit account_id and whose campaigns use `name` (skipped)
+        — the tolerant read must NOT blow up with KeyError('account_id')."""
+        data = {
+            "version": "2",
+            "platforms": {
+                "google_ads": {
+                    # no account_id
+                    "campaigns": [
+                        {"campaign_id": "22279041552", "name": "x", "status": "PAUSED"},
+                    ],
+                    "totals": {"spend": 180206.0},
+                    "metrics_period": "LAST_30_DAYS",
+                }
+            },
+        }
+        doc = parse_state(json.dumps(data), strict=False)
+        assert doc.platforms is not None
+        plat = doc.platforms["google_ads"]
+        assert plat.account_id == ""  # defaulted, not crashed
+        assert plat.campaigns == ()  # `name`-variant campaign skipped (by design)
+        assert plat.totals == {"spend": 180206.0}  # platform data still rendered
+
+    @pytest.mark.unit
+    def test_parse_state_strict_true_raises_on_missing_account_id(self) -> None:
+        """The writer contract is preserved: a platform missing account_id
+        still raises under strict (the default)."""
+        data = {
+            "version": "2",
+            "platforms": {
+                "google_ads": {
+                    "campaigns": [],
+                    "totals": {"spend": 1.0},
+                }
+            },
+        }
+        with pytest.raises(KeyError, match="account_id"):
+            parse_state(json.dumps(data))
+
+    @pytest.mark.unit
+    def test_missing_account_id_logs_at_debug_not_warning(self, caplog) -> None:
+        """The tolerant default must not add per-poll WARNING noise — the
+        customer complaint included a log flood, so the missing-account_id
+        fallback is logged at DEBUG only."""
+        data = {
+            "version": "2",
+            "platforms": {"google_ads": {"campaigns": [], "totals": {"spend": 1.0}}},
+        }
+        with caplog.at_level(logging.DEBUG, logger="mureo.context.state"):
+            parse_state(json.dumps(data), strict=False)
+        assert any(
+            "missing 'account_id'" in r.message and r.levelno == logging.DEBUG
+            for r in caplog.records
+        )
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    @pytest.mark.unit
+    def test_parse_state_strict_false_skips_log_at_debug_not_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Skipped nonconforming entries log at DEBUG, never WARNING+.
+
+        The read-only Reports view re-parses STATE.json on every dashboard
+        poll, so a per-entry WARNING would flood the daemon log for an account
+        with many legacy / hand-authored campaigns — and read as a failure when
+        it is graceful degradation. Pin DEBUG so the noise never returns."""
+        data = {
+            "campaigns": [{"id": "x", "name": "variant, no campaign_id/_name"}],
+            "action_log": [{"summary": "legacy, no timestamp/action/platform"}],
+        }
+        with caplog.at_level(logging.DEBUG, logger="mureo.context.state"):
+            parse_state(json.dumps(data), strict=False)
+
+        # The skips still happen and are observable at DEBUG …
+        assert any("skipping unparseable" in r.message for r in caplog.records)
+        # … but nothing is emitted at WARNING or above (the per-render flood).
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
     @pytest.mark.unit
     def test_parse_state_strict_false_skips_malformed_action_log(self) -> None:
