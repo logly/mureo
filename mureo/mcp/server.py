@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from mureo.core.policy import PolicyDecision, PolicyGate
     from mureo.mcp.tool_provider import MCPToolProvider
 
+from mureo.mcp._helpers import is_error_result
 from mureo.mcp.native_reversal import capture_before_state, record_native_mutation
 from mureo.mcp.plugin_audit import record_plugin_call
 from mureo.mcp.plugin_semantics import (
@@ -674,16 +675,24 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         # / strategy review / rollback can see it like a built-in op.
         # Read-only tools stay in the jsonl audit only (no STATE bloat).
         if sem is None or sem.mutating:
-            record_mutation_action_log(
-                tool=name,
-                source=source,
-                reversal=None if sem is None else sem.reversal,
-                observation_days=None if sem is None else sem.observation_days,
-            )
+            # Skip the action_log promotion when the plugin returned an
+            # api_error_handler-style error envelope WITHOUT raising — the
+            # mutation did not change platform state, so promoting it would
+            # log a phantom action (and, via a declared reversal, leave a
+            # phantom executable rollback). Mirrors native_reversal's
+            # _is_error_result skip for built-in mutations. The jsonl audit
+            # (above) still captures the attempt regardless.
+            if not is_error_result(result):
+                record_mutation_action_log(
+                    tool=name,
+                    source=source,
+                    reversal=None if sem is None else sem.reversal,
+                    observation_days=None if sem is None else sem.observation_days,
+                )
             # Guardrail parity: a mutating plugin call re-surfaces the
             # operator's STRATEGY.md sections, exactly like a built-in
-            # mutation. Read-only plugin tools skip it (no mutation to
-            # check against strategy).
+            # mutation — appended regardless of the result envelope, matching
+            # the built-in dispatch. Read-only plugin tools skip it.
             result = _maybe_append_plugin_strategy_reminder(name, result)
         return result
     raise ValueError(f"Unknown tool: {name}")

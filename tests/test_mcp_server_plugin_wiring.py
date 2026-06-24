@@ -549,3 +549,135 @@ class TestGapCPluginReversalParamKeys:
             assert mod.plugin_reversal_param_keys("ro_plugin_report") == (True, None)
         finally:
             importlib.reload(mod)
+
+
+# ---------------------------------------------------------------------------
+# Error-envelope parity: a mutating plugin that returns an api_error_handler
+# -style "API error: ..." TextContent WITHOUT raising must NOT be promoted to
+# STATE.json's action_log (mirrors native_reversal's _is_error_result skip),
+# so no phantom mutation — and no phantom executable reversal — is recorded.
+# ---------------------------------------------------------------------------
+
+
+class _ErrorEnvelopePlugin:
+    """A mutating plugin that catches its own API error and returns it as
+    content (the built-in `api_error_handler` idiom) instead of raising. It
+    also declares an executable reversal, to prove the phantom-rollback case
+    is closed."""
+
+    name = "err_plugin"
+    display_name = "Err"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="err_plugin_pause",
+                description="pauses, but the API call failed",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"campaign_id": {"type": "string"}},
+                },
+                meta={
+                    "mureo": {
+                        "reversal": {
+                            "operation": "err_plugin_resume",
+                            "params": {"campaign_id": "123"},
+                        }
+                    }
+                },
+            ),
+        )
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text="API error: quota exceeded")]
+
+
+@pytest.mark.unit
+class TestErrorEnvelopeNotPromoted:
+    async def test_error_result_skips_action_log_but_keeps_audit(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        import json
+
+        from mureo.context.state import read_state_file
+        from mureo.mcp import plugin_audit
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        audit = tmp_path / "audit.jsonl"
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: audit)
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_ErrorEnvelopePlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            out = await mod.handle_call_tool("err_plugin_pause", {"campaign_id": "123"})
+            # The error envelope is returned to the agent unchanged.
+            assert out[0].text == "API error: quota exceeded"
+            # No phantom mutation in STATE.json → no phantom executable reversal.
+            doc = read_state_file(tmp_path / "STATE.json")
+            assert doc.action_log == ()
+            # The attempt is still captured in the jsonl audit (ok=True: it
+            # did not raise).
+            rec = json.loads(audit.read_text(encoding="utf-8").splitlines()[0])
+            assert rec["tool"] == "err_plugin_pause"
+            assert rec["ok"] is True
+        finally:
+            importlib.reload(mod)
+
+    async def test_error_result_still_appends_strategy_reminder(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Parity lock-in: the strategy reminder is appended for a mutating
+        plugin call regardless of the error envelope (matching the built-in
+        dispatch, which appends it even when record_native_mutation skipped
+        the action_log)."""
+        from mureo.context.models import StrategyEntry
+        from mureo.mcp import plugin_audit
+
+        monkeypatch.setattr(
+            plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
+        )
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_ErrorEnvelopePlugin),
+        )
+        fake_ctx = MagicMock()
+        fake_ctx.state_store.read_strategy.return_value = [
+            StrategyEntry(context_type="goal", title="Q2 CPA target", content="x"),
+        ]
+        monkeypatch.setattr(
+            "mureo.core.strategy_reminder.get_runtime_context", lambda: fake_ctx
+        )
+        monkeypatch.delenv("MUREO_DISABLE_STRATEGY_REMINDER", raising=False)
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            out = await mod.handle_call_tool("err_plugin_pause", {"campaign_id": "123"})
+            # Error envelope preserved AND the reminder still appended.
+            assert out[0].text == "API error: quota exceeded"
+            assert any("Q2 CPA target" in getattr(c, "text", "") for c in out)
+        finally:
+            importlib.reload(mod)
+
+    async def test_normal_result_still_promoted(
+        self, server_with_plugin, tmp_path, monkeypatch
+    ) -> None:
+        """Regression guard: a non-error mutating result is still promoted."""
+        from mureo.context.state import read_state_file
+        from mureo.mcp import plugin_audit
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
+        )
+        await server_with_plugin.handle_call_tool("wired_plugin_echo", {"msg": "x"})
+        doc = read_state_file(tmp_path / "STATE.json")
+        assert len(doc.action_log) == 1
+        assert doc.action_log[0].action == "wired_plugin_echo"

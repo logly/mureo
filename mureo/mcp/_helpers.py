@@ -60,6 +60,29 @@ def _no_creds_result(msg: str) -> list[TextContent]:
     return [TextContent(type="text", text=msg)]
 
 
+# The single prefix ``api_error_handler`` stamps onto a caught-exception
+# result. Detectors key off this exact string to recognise "the API call
+# failed but was returned as content instead of raised" — kept here, next to
+# the producer, as the one source of truth.
+API_ERROR_PREFIX = "API error:"
+
+
+def is_error_result(result: list[Any] | None) -> bool:
+    """True if ``result`` is an :func:`api_error_handler` error envelope.
+
+    An ``api_error_handler``-wrapped mutation turns an API-level failure into
+    an ``"API error: ..."`` TextContent instead of raising. Detecting it lets
+    the dispatch paths skip recording an ``action_log`` entry for a mutation
+    that did not actually change platform state. Shared by the native
+    (:mod:`mureo.mcp.native_reversal`) and plugin (:mod:`mureo.mcp.server`)
+    promotion paths so both skip the identical envelope.
+    """
+    if not result:
+        return False
+    text = getattr(result[0], "text", "")
+    return isinstance(text, str) and text.startswith(API_ERROR_PREFIX)
+
+
 def api_error_handler(
     func: Callable[..., Coroutine[Any, Any, list[TextContent]]],
 ) -> Callable[..., Coroutine[Any, Any, list[TextContent]]]:
@@ -74,6 +97,6 @@ def api_error_handler(
             raise
         except Exception as exc:
             logger.exception("%s failed", func.__name__)
-            return [TextContent(type="text", text=f"API error: {exc}")]
+            return [TextContent(type="text", text=f"{API_ERROR_PREFIX} {exc}")]
 
     return wrapper
