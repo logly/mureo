@@ -2277,13 +2277,21 @@
   function gatherFormValues(form) {
     const values = {};
     Array.from(form.querySelectorAll("input")).forEach(function (input) {
+      // #336 — skip the account-picker radios (UI-only, grouped by a
+      // non-field name): they must not leak into the OAuth
+      // Authenticate-is-save payload. The chosen account rides on the
+      // hidden input named after the field key, which is collected here.
+      if (input.type === "radio") return;
       values[input.name] = input.value;
     });
     return values;
   }
 
-  // #217 — read-only status row for an OAuth-obtained target field (the
-  // refresh token is acquired via consent, never typed).
+  // #217/#338 — read-only status row for an OAuth-obtained target field
+  // (the token is acquired via consent, never typed). #338: reflect the
+  // stored state — a configured token shows "Configured ✓" instead of the
+  // "click Authenticate" prompt, so the operator isn't told to re-auth an
+  // already-connected provider.
   function appendOAuthTargetStatus(form, field) {
     const row = document.createElement("p");
     row.className = "plugin-oauth-target muted";
@@ -2291,7 +2299,9 @@
     rowLabel.textContent = field.display_name + ": ";
     const rowValue = document.createElement("span");
     rowValue.setAttribute("data-oauth-target-status", "");
-    rowValue.textContent = MUREO.t("dashboard.plugin_oauth_target_unset");
+    rowValue.textContent = field.configured
+      ? MUREO.t("dashboard.plugin_oauth_target_configured")
+      : MUREO.t("dashboard.plugin_oauth_target_unset");
     row.appendChild(rowLabel);
     row.appendChild(rowValue);
     form.appendChild(row);
@@ -2412,9 +2422,28 @@
     // entry, unchanged.
     const oauth = plugin.oauth;
     const form = document.createElement("form");
+    // #336 — whether the OAuth token is already stored. The post-auth
+    // account picker can only enumerate once a token exists, so its Load
+    // control stays disabled until then.
+    let authConfigured = false;
+    if (oauth) {
+      const tf = plugin.fields.find(function (f) {
+        return f.key === oauth.target_field;
+      });
+      authConfigured = !!(tf && tf.configured);
+    }
     plugin.fields.forEach(function (field) {
       if (oauth && field.key === oauth.target_field) {
         appendOAuthTargetStatus(form, field);
+      } else if (
+        oauth &&
+        oauth.has_account_lister &&
+        field.key === oauth.accounts_field
+      ) {
+        // #336 — render this field as a post-auth account picker instead
+        // of a free-text input (the operator chooses from the accounts the
+        // obtained token can reach).
+        appendAccountPicker(form, plugin, field, authConfigured);
       } else {
         appendCredentialInput(form, field);
       }
@@ -2426,6 +2455,182 @@
     }
     wrap.appendChild(form);
     return wrap;
+  }
+
+  // #336 — post-auth account picker for an OAuth provider's accounts_field.
+  // A hidden input carries the chosen id (so the OAuth card's existing
+  // gatherFormValues sees it); a Load button fetches the accounts the
+  // obtained token can reach and renders them as radios; a dedicated Save
+  // (type="button", so it never triggers the card's Authenticate submit)
+  // persists just the chosen id. Load is disabled until a token exists.
+  function appendAccountPicker(form, plugin, field, authConfigured) {
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = field.display_name;
+    if (field.required) labelText.textContent += " *";
+    label.appendChild(labelText);
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.key;
+    if (field.value) hidden.value = field.value;
+    label.appendChild(hidden);
+
+    const current = document.createElement("span");
+    current.className = "plugin-account-current muted";
+    current.setAttribute("data-account-current", "");
+    current.textContent = field.value || MUREO.t("dashboard.plugin_account_none");
+    label.appendChild(current);
+
+    if (field.description) {
+      const hint = document.createElement("small");
+      hint.className = "field-hint";
+      hint.textContent = field.description;
+      label.appendChild(hint);
+    }
+    form.appendChild(label);
+
+    const loadBtn = document.createElement("button");
+    loadBtn.type = "button";
+    loadBtn.className = "btn";
+    loadBtn.textContent = MUREO.t("dashboard.plugin_accounts_load");
+    loadBtn.disabled = !authConfigured;
+    form.appendChild(loadBtn);
+
+    const status = document.createElement("span");
+    status.className = "plugin-accounts-status muted";
+    status.setAttribute("data-accounts-status", "");
+    if (!authConfigured) {
+      status.textContent = MUREO.t("dashboard.plugin_accounts_authenticate_first");
+    }
+    form.appendChild(status);
+
+    const options = document.createElement("div");
+    options.className = "plugin-accounts-options";
+    options.setAttribute("data-account-options", "");
+    form.appendChild(options);
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "btn btn-primary plugin-account-save";
+    saveBtn.textContent = MUREO.t("dashboard.plugin_accounts_save");
+    saveBtn.disabled = true;
+    form.appendChild(saveBtn);
+
+    const ui = { loadBtn, status, options, hidden, current, saveBtn, field };
+    loadBtn.addEventListener("click", function () {
+      loadPluginAccounts(plugin.provider_name, ui);
+    });
+    saveBtn.addEventListener("click", function () {
+      savePluginAccount(plugin.provider_name, field.key, hidden.value, ui);
+    });
+  }
+
+  // Map a failed /accounts response error code to the clearest toast.
+  function accountsErrorKey(err) {
+    if (err === "not_authenticated")
+      return "dashboard.plugin_accounts_authenticate_first";
+    return "dashboard.plugin_accounts_failed";
+  }
+
+  async function loadPluginAccounts(providerName, ui) {
+    ui.loadBtn.disabled = true;
+    ui.status.textContent = MUREO.t("dashboard.plugin_accounts_loading");
+    ui.options.textContent = "";
+    let res;
+    let body = {};
+    try {
+      res = await fetch(
+        "/api/credentials/plugins/" +
+          encodeURIComponent(providerName) +
+          "/accounts",
+        { credentials: "same-origin" }
+      );
+      body = await res.json().catch(function () {
+        return {};
+      });
+    } catch (_e) {
+      ui.loadBtn.disabled = false;
+      ui.status.textContent = "";
+      MUREO.toast(MUREO.t("dashboard.plugin_accounts_failed"), "error");
+      return;
+    }
+    ui.loadBtn.disabled = false;
+    if (!res.ok) {
+      ui.status.textContent = "";
+      MUREO.toast(MUREO.t(accountsErrorKey(body.error)), "error");
+      return;
+    }
+    const accounts = Array.isArray(body.accounts) ? body.accounts : [];
+    if (accounts.length === 0) {
+      ui.status.textContent = MUREO.t("dashboard.plugin_accounts_empty");
+      return;
+    }
+    ui.status.textContent = "";
+    renderAccountRadios(accounts, ui);
+  }
+
+  function renderAccountRadios(accounts, ui) {
+    ui.options.textContent = "";
+    const groupName = "account_pick_" + ui.field.key;
+    accounts.forEach(function (acct) {
+      const row = document.createElement("label");
+      row.className = "plugin-account-option";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = groupName;
+      radio.value = acct.id;
+      if (acct.id === ui.hidden.value) {
+        // Pre-select the stored account. Programmatic `checked` does NOT
+        // fire `change`, so enable Save here too — otherwise a re-load of
+        // an already-saved account leaves Save permanently disabled.
+        radio.checked = true;
+        ui.saveBtn.disabled = false;
+      }
+      radio.addEventListener("change", function () {
+        ui.hidden.value = acct.id;
+        ui.current.textContent = acct.name || acct.id;
+        ui.saveBtn.disabled = false;
+      });
+      const text = document.createElement("span");
+      text.textContent =
+        acct.name && acct.name !== acct.id
+          ? acct.name + " (" + acct.id + ")"
+          : acct.id;
+      row.appendChild(radio);
+      row.appendChild(text);
+      ui.options.appendChild(row);
+    });
+  }
+
+  async function savePluginAccount(providerName, key, value, ui) {
+    if (!value) {
+      MUREO.toast(MUREO.t("dashboard.plugin_accounts_pick_first"), "error");
+      return;
+    }
+    // Disable during the in-flight request so a double-click can't fire two
+    // concurrent saves; re-enabled on failure, kept disabled on success.
+    ui.saveBtn.disabled = true;
+    const values = {};
+    values[key] = value;
+    let res;
+    try {
+      res = await MUREO.postJson("/api/credentials/plugins/save", {
+        provider_name: providerName,
+        values: values,
+      });
+    } catch (_e) {
+      ui.saveBtn.disabled = false;
+      MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"), "error");
+      return;
+    }
+    if (res && res.ok && res.body && res.body.status === "ok") {
+      ui.saveBtn.disabled = true;
+      MUREO.toast(MUREO.t("dashboard.plugin_accounts_saved"), "success");
+    } else {
+      ui.saveBtn.disabled = false;
+      MUREO.toast(MUREO.t("dashboard.plugin_credentials_save_failed"), "error");
+    }
   }
 
   // #201/#216/#217 — start a plugin's authorization-code OAuth flow.
@@ -2492,6 +2697,10 @@
         btn.disabled = false;
         statusNode.textContent = MUREO.t("dashboard.plugin_oauth_connected");
         MUREO.toast(MUREO.t("dashboard.plugin_oauth_connected"), "success");
+        // #336/#338 — refresh the section so the target shows "Configured ✓"
+        // and the account picker's Load control becomes usable now that a
+        // token exists.
+        renderPluginCredentials();
       } else if (data.error) {
         clearInterval(timer);
         btn.disabled = false;

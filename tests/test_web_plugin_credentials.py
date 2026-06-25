@@ -44,6 +44,7 @@ def _make_class(
     display_name: str | None = None,
     display_name_i18n: dict[str, str] | None = None,
     oauth: Any = None,
+    lister: Any = None,
 ) -> type:
     """Build a minimal provider class with the requested credential fields.
 
@@ -66,6 +67,11 @@ def _make_class(
         _Fake.display_name_i18n = display_name_i18n  # type: ignore[attr-defined]
     if oauth is not None:
         _Fake.account_oauth = oauth  # type: ignore[attr-defined]
+    if lister is not None:
+        # #336 — the post-auth account picker hook. ``staticmethod`` so it
+        # is callable off the class without instantiation (registry only
+        # ever holds the class).
+        _Fake.list_oauth_accounts = staticmethod(lister)  # type: ignore[attr-defined]
     return _Fake
 
 
@@ -89,6 +95,7 @@ def _entry(
     display_name: str | None = None,
     display_name_i18n: dict[str, str] | None = None,
     oauth: Any = None,
+    lister: Any = None,
 ) -> ProviderEntry:
     cls = _make_class(
         name,
@@ -96,6 +103,7 @@ def _entry(
         display_name=display_name,
         display_name_i18n=display_name_i18n,
         oauth=oauth,
+        lister=lister,
     )
     return ProviderEntry(
         name=name,
@@ -1120,3 +1128,336 @@ def test_list_oauth_block_omits_default_callback_url_without_port(
     )
     [plugin] = list_plugin_credential_fields()
     assert "default_callback_url" not in plugin["oauth"]
+
+
+# ---------------------------------------------------------------------------
+# #336 — post-auth account picker: list_oauth_accounts + _oauth_to_dict
+# surfacing of accounts_field / has_account_lister.
+# ---------------------------------------------------------------------------
+
+
+def _broker_fields() -> tuple[AccountCredentialField, ...]:
+    return (
+        AccountCredentialField(key="client_id", display_name="Client ID"),
+        AccountCredentialField(
+            key="client_secret", display_name="Client Secret", secret=True
+        ),
+        AccountCredentialField(
+            key="access_token", display_name="Access Token", secret=True
+        ),
+        AccountCredentialField(key="account_id", display_name="Ad Account"),
+    )
+
+
+def _broker_oauth(accounts_field: str | None = "account_id") -> Any:
+    from mureo.core.providers import AccountOAuthConfig
+
+    return AccountOAuthConfig(
+        authorize_url="https://example.test/authorize",
+        token_url="https://example.test/token",
+        client_id_field="client_id",
+        client_secret_field="client_secret",
+        target_field="access_token",
+        accounts_field=accounts_field,
+    )
+
+
+@pytest.mark.unit
+def test_oauth_block_surfaces_accounts_field_and_lister(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A picker provider exposes ``accounts_field`` + ``has_account_lister``
+    so the dashboard renders a picker; a manual-id OAuth provider does not."""
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "meta_ads_logly",
+                fields=_broker_fields(),
+                oauth=_broker_oauth(),
+                lister=lambda creds: [{"id": "act_1", "name": "Brand"}],
+            ),
+        ],
+    )
+    [plugin] = list_plugin_credential_fields()
+    assert plugin["oauth"]["accounts_field"] == "account_id"
+    assert plugin["oauth"]["has_account_lister"] is True
+
+
+@pytest.mark.unit
+def test_oauth_block_lister_false_when_hook_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """accounts_field declared but no hook → has_account_lister False, so the
+    UI keeps the plain input rather than a dead picker."""
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch,
+        [_entry("broker", fields=_broker_fields(), oauth=_broker_oauth())],
+    )
+    [plugin] = list_plugin_credential_fields()
+    assert plugin["oauth"]["accounts_field"] == "account_id"
+    assert plugin["oauth"]["has_account_lister"] is False
+
+
+@pytest.mark.unit
+def test_oauth_block_omits_accounts_keys_without_accounts_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-picker OAuth provider keeps the original block (no picker keys)."""
+    from mureo.web.plugin_credentials import list_plugin_credential_fields
+
+    _register(
+        monkeypatch, [_entry("yahoo_ads", fields=_yahoo_fields(), oauth=_yahoo_oauth())]
+    )
+    [plugin] = list_plugin_credential_fields()
+    assert "accounts_field" not in plugin["oauth"]
+    assert "has_account_lister" not in plugin["oauth"]
+
+
+@pytest.mark.unit
+def test_list_oauth_accounts_returns_normalised_rows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import list_oauth_accounts
+
+    def _lister(creds: dict[str, str]) -> list[dict[str, str]]:
+        assert creds["access_token"] == "TKN"
+        return [
+            {"id": "act_1", "name": "Brand A"},
+            {"id": "act_2"},  # name falls back to id
+            {"name": "no id — dropped"},  # no id → dropped
+            "garbage",  # non-mapping → dropped
+        ]
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "broker", fields=_broker_fields(), oauth=_broker_oauth(), lister=_lister
+            )
+        ],
+    )
+    store = _store(tmp_path)
+    store.save("broker", {"access_token": "TKN"})
+    accounts = list_oauth_accounts("broker", secret_store=store)
+    assert accounts == [
+        {"id": "act_1", "name": "Brand A"},
+        {"id": "act_2", "name": "act_2"},
+    ]
+
+
+@pytest.mark.unit
+def test_list_oauth_accounts_supports_async_hook(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import list_oauth_accounts
+
+    async def _lister(creds: dict[str, str]) -> list[dict[str, str]]:
+        return [{"id": "act_9", "name": "Async"}]
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "broker", fields=_broker_fields(), oauth=_broker_oauth(), lister=_lister
+            )
+        ],
+    )
+    store = _store(tmp_path)
+    store.save("broker", {"access_token": "TKN"})
+    assert list_oauth_accounts("broker", secret_store=store) == [
+        {"id": "act_9", "name": "Async"}
+    ]
+
+
+@pytest.mark.unit
+def test_list_oauth_accounts_unknown_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import (
+        UnknownProviderError,
+        list_oauth_accounts,
+    )
+
+    _register(monkeypatch, [])
+    with pytest.raises(UnknownProviderError):
+        list_oauth_accounts("nope", secret_store=_store(tmp_path))
+
+
+@pytest.mark.unit
+def test_list_oauth_accounts_not_supported_without_accounts_field(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import (
+        OAuthAccountsNotSupportedError,
+        list_oauth_accounts,
+    )
+
+    _register(
+        monkeypatch,
+        [_entry("yahoo_ads", fields=_yahoo_fields(), oauth=_yahoo_oauth())],
+    )
+    with pytest.raises(OAuthAccountsNotSupportedError):
+        list_oauth_accounts("yahoo_ads", secret_store=_store(tmp_path))
+
+
+@pytest.mark.unit
+def test_list_oauth_accounts_not_supported_without_hook(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import (
+        OAuthAccountsNotSupportedError,
+        list_oauth_accounts,
+    )
+
+    _register(
+        monkeypatch,
+        [_entry("broker", fields=_broker_fields(), oauth=_broker_oauth())],
+    )
+    store = _store(tmp_path)
+    store.save("broker", {"access_token": "TKN"})
+    with pytest.raises(OAuthAccountsNotSupportedError):
+        list_oauth_accounts("broker", secret_store=store)
+
+
+@pytest.mark.unit
+def test_list_oauth_accounts_requires_token(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.web.plugin_credentials import (
+        OAuthNotAuthenticatedError,
+        list_oauth_accounts,
+    )
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "broker",
+                fields=_broker_fields(),
+                oauth=_broker_oauth(),
+                lister=lambda creds: [{"id": "act_1"}],
+            )
+        ],
+    )
+    # No access_token stored → must refuse to list (nothing to enumerate with).
+    with pytest.raises(OAuthNotAuthenticatedError):
+        list_oauth_accounts("broker", secret_store=_store(tmp_path))
+
+
+@pytest.mark.unit
+def test_list_oauth_accounts_wraps_hook_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    from mureo.web.plugin_credentials import AccountListingError, list_oauth_accounts
+
+    def _boom(creds: dict[str, str]) -> list[dict[str, str]]:
+        raise RuntimeError("token expired: SECRET-TKN")
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "broker", fields=_broker_fields(), oauth=_broker_oauth(), lister=_boom
+            )
+        ],
+    )
+    store = _store(tmp_path)
+    store.save("broker", {"access_token": "SECRET-TKN"})
+    with caplog.at_level("WARNING"):
+        with pytest.raises(AccountListingError):
+            list_oauth_accounts("broker", secret_store=store)
+    # The underlying exception detail (and token) must not leak into logs.
+    assert "SECRET-TKN" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# #337 — multi_account_picker_scope hides the picker field per OAuth provider.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_multi_account_picker_scope_excludes_accounts_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.plugin_credentials import multi_account_picker_scope
+
+    _register(
+        monkeypatch,
+        [
+            _entry("meta_ads_logly", fields=_broker_fields(), oauth=_broker_oauth()),
+            _entry("yahoo_ads", fields=_yahoo_fields(), oauth=_yahoo_oauth()),
+            _entry(
+                "manual", fields=(AccountCredentialField(key="k", display_name="K"),)
+            ),
+        ],
+    )
+    scope = multi_account_picker_scope()
+    # Picker provider: allow-list keeps everything EXCEPT account_id.
+    assert "meta_ads_logly" in scope
+    assert "account_id" not in scope["meta_ads_logly"]
+    assert "client_id" in scope["meta_ads_logly"]
+    # Non-picker providers are absent (all their fields kept).
+    assert "yahoo_ads" not in scope
+    assert "manual" not in scope
+
+
+@pytest.mark.unit
+def test_list_oauth_accounts_non_iterable_return_is_wrapped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A hook returning a non-iterable (a typo'd ``return 42``) must collapse
+    to AccountListingError → 502, never escape as a raw 500."""
+    from mureo.web.plugin_credentials import AccountListingError, list_oauth_accounts
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "broker",
+                fields=_broker_fields(),
+                oauth=_broker_oauth(),
+                lister=lambda creds: 42,  # not iterable
+            )
+        ],
+    )
+    store = _store(tmp_path)
+    store.save("broker", {"access_token": "TKN"})
+    with pytest.raises(AccountListingError):
+        list_oauth_accounts("broker", secret_store=store)
+
+
+@pytest.mark.unit
+def test_list_oauth_accounts_async_hook_from_running_loop(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The async-bridge worker-thread fallback runs an async hook even when a
+    loop is already running (no 'asyncio.run() cannot be called from a running
+    event loop')."""
+    import asyncio
+
+    from mureo.web.plugin_credentials import list_oauth_accounts
+
+    async def _lister(creds: dict[str, str]) -> list[dict[str, str]]:
+        return [{"id": "act_loop", "name": "Loop"}]
+
+    _register(
+        monkeypatch,
+        [
+            _entry(
+                "broker", fields=_broker_fields(), oauth=_broker_oauth(), lister=_lister
+            )
+        ],
+    )
+    store = _store(tmp_path)
+    store.save("broker", {"access_token": "TKN"})
+
+    async def _drive() -> list[dict[str, str]]:
+        # Called from inside a running loop → exercises the ThreadPool branch.
+        return list_oauth_accounts("broker", secret_store=store)
+
+    assert asyncio.run(_drive()) == [{"id": "act_loop", "name": "Loop"}]

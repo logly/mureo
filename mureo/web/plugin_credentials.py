@@ -26,6 +26,9 @@ sensitive, and the configure-UI layer honours it.
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
+import inspect
 import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
@@ -34,6 +37,7 @@ from mureo.core.providers import (
     default_registry,
     get_account_credential_fields,
     get_account_oauth_config,
+    get_oauth_account_lister,
 )
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
 
@@ -66,6 +70,33 @@ class RequiredFieldMissingError(PluginCredentialsError):
     keep" carve-out for ``secret=True`` only applies when an existing
     value is already stored — there is nothing to keep for a fresh
     install.
+    """
+
+
+class OAuthAccountsNotSupportedError(PluginCredentialsError):
+    """Raised when a provider exposes no post-auth account picker (#336).
+
+    The provider is registered but either declares no ``account_oauth``,
+    no ``accounts_field`` on it, or no ``list_oauth_accounts`` hook — so
+    there is nothing for the picker to enumerate.
+    """
+
+
+class OAuthNotAuthenticatedError(PluginCredentialsError):
+    """Raised when the picker is asked to list before consent (#336).
+
+    The provider supports an account picker but its OAuth ``target_field``
+    holds no token yet, so there is no credential to enumerate accounts
+    with. The operator must Authenticate first.
+    """
+
+
+class AccountListingError(PluginCredentialsError):
+    """Raised when the provider's ``list_oauth_accounts`` hook fails (#336).
+
+    Wraps any exception the plugin-supplied hook raises (network error,
+    expired token, malformed response) so the HTTP layer returns a clean
+    envelope instead of a 500, without leaking the underlying detail.
     """
 
 
@@ -154,7 +185,7 @@ def list_plugin_credential_fields(
     return result
 
 
-def _oauth_to_dict(provider_class: type) -> dict[str, str] | None:
+def _oauth_to_dict(provider_class: type) -> dict[str, Any] | None:
     """Return the provider's OAuth field-key mapping, or ``None``.
 
     Exposes only the three ``*_field`` key names so the configure UI can
@@ -172,7 +203,7 @@ def _oauth_to_dict(provider_class: type) -> dict[str, str] | None:
     config = get_account_oauth_config(provider_class)
     if config is None:
         return None
-    block = {
+    block: dict[str, Any] = {
         "target_field": config.target_field,
         "client_id_field": config.client_id_field,
         "client_secret_field": config.client_secret_field,
@@ -181,7 +212,158 @@ def _oauth_to_dict(provider_class: type) -> dict[str, str] | None:
         block["default_callback_url"] = (
             f"http://127.0.0.1:{config.callback_port}{config.callback_path}"
         )
+    # #336 — post-auth account picker. ``accounts_field`` names the field
+    # the picker fills; ``has_account_lister`` tells the UI a real lister
+    # is wired so it shows the picker only when both are present (a typo'd
+    # accounts_field is rejected by get_account_oauth_config, and a missing
+    # hook keeps the plain input). Both omitted for the common case so the
+    # block stays its original three keys for non-picker OAuth providers.
+    if config.accounts_field is not None:
+        block["accounts_field"] = config.accounts_field
+        block["has_account_lister"] = bool(get_oauth_account_lister(provider_class))
     return block
+
+
+def _run_coroutine(coro: Any) -> Any:
+    """Run an awaitable to completion from a synchronous caller (#336).
+
+    The configure HTTP handler is synchronous (no running loop), so the
+    common path is a plain :func:`asyncio.run`. When a loop *is* already
+    running (a caller that bridges this from async code), the coroutine is
+    run on a fresh loop in a worker thread to avoid the ``asyncio.run()
+    cannot be called from a running event loop`` error.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
+def list_oauth_accounts(
+    provider_name: str,
+    *,
+    secret_store: SecretStore | None = None,
+) -> list[dict[str, str]]:
+    """Enumerate the accounts a provider's OAuth token can reach (#336).
+
+    Powers the post-auth account picker for a provider whose
+    :class:`AccountOAuthConfig` declares an ``accounts_field`` and exposes
+    a ``list_oauth_accounts`` hook. The hook receives the provider's stored
+    credentials section (so it can read the obtained token under
+    ``target_field``) and returns one mapping per reachable account; this
+    function normalises each to ``{"id": ..., "name": ...}`` for the UI.
+
+    Args:
+        provider_name: Snake_case registry key of the provider.
+        secret_store: Persistence backend. Defaults to a fresh
+            :class:`FilesystemSecretStore` at ``~/.mureo/credentials.json``.
+
+    Returns:
+        A list of ``{"id", "name"}`` dicts (``name`` falls back to ``id``).
+        Entries without a usable id are dropped — a malformed hook row
+        cannot inject a blank radio option.
+
+    Raises:
+        UnknownProviderError: ``provider_name`` is not registered.
+        OAuthAccountsNotSupportedError: the provider declares no
+            ``accounts_field`` or exposes no ``list_oauth_accounts`` hook.
+        OAuthNotAuthenticatedError: no token is stored yet (consent first).
+        AccountListingError: the hook raised (network/token/parse failure).
+    """
+    if provider_name not in default_registry:
+        raise UnknownProviderError(
+            f"unknown provider for account listing: {provider_name!r}"
+        )
+    entry = default_registry.get(provider_name)
+
+    try:
+        oauth_config = get_account_oauth_config(entry.provider_class)
+    except (TypeError, ValueError):
+        oauth_config = None
+    if oauth_config is None or oauth_config.accounts_field is None:
+        raise OAuthAccountsNotSupportedError(
+            f"provider does not support an account picker: {provider_name!r}"
+        )
+    lister = get_oauth_account_lister(entry.provider_class)
+    if lister is None:
+        raise OAuthAccountsNotSupportedError(
+            f"provider declares no list_oauth_accounts hook: {provider_name!r}"
+        )
+
+    store = secret_store if secret_store is not None else FilesystemSecretStore()
+    credentials = store.load(provider_name)
+    if not credentials.get(oauth_config.target_field):
+        raise OAuthNotAuthenticatedError(
+            f"provider not authenticated yet: {provider_name!r}"
+        )
+
+    # Both the hook call AND its result normalisation run inside the guard:
+    # a hook that returns a non-iterable (``return 42``) would otherwise blow
+    # up the ``for`` loop with a TypeError that escapes as a raw 500, breaking
+    # the "never a 5xx" contract. Any failure — call, await, or bad shape —
+    # collapses to AccountListingError → 502. The hook is plugin-supplied and
+    # runs in-process with no timeout, so cancellation/timeout is the hook's
+    # own responsibility (a ThreadingMixIn server confines a hang to this
+    # request thread).
+    accounts: list[dict[str, str]] = []
+    try:
+        result: Any = lister(credentials)
+        if inspect.isawaitable(result):
+            result = _run_coroutine(result)
+        for row in result or ():
+            if not isinstance(row, Mapping):
+                continue
+            acct_id = str(row.get("id", "")).strip()
+            if not acct_id:
+                continue
+            name = str(row.get("name", "")).strip() or acct_id
+            accounts.append({"id": acct_id, "name": name})
+    except Exception as exc:  # noqa: BLE001 — opaque hook; never 500.
+        # Log the type only; the credentials section (token) must not leak
+        # into logs through the exception's str().
+        logger.warning(
+            "plugin account listing failed: provider=%s error=%s",
+            provider_name,
+            type(exc).__name__,
+        )
+        raise AccountListingError(
+            f"list_oauth_accounts failed for {provider_name!r}"
+        ) from exc
+    return accounts
+
+
+def multi_account_picker_scope() -> dict[str, frozenset[str]]:
+    """Field scope that hides post-auth picker fields in multi-account (#337).
+
+    For every registered provider whose :class:`AccountOAuthConfig` names an
+    ``accounts_field``, return an allow-list of **all its other declared
+    field keys** — i.e. every key except the picker field. A multi-account
+    (agency) backend selects the account per-client at runtime, so pinning a
+    single ``account_id`` at configure time is meaningless; dropping it from
+    the allow-list both hides the input (#207 list side) and exempts it from
+    required-validation (#211 save side), routed through the same
+    ``field_scope`` plumbing the handler already merges.
+
+    Providers without an ``accounts_field`` are omitted entirely (absent
+    from the mapping → all fields kept), so this only ever *removes* the
+    picker field and never narrows an unrelated provider.
+    """
+    scope: dict[str, frozenset[str]] = {}
+    for entry in default_registry:
+        try:
+            oauth_config = get_account_oauth_config(entry.provider_class)
+        except (TypeError, ValueError):
+            continue
+        if oauth_config is None or oauth_config.accounts_field is None:
+            continue
+        declared = get_account_credential_fields(entry.provider_class)
+        keep = frozenset(
+            f.key for f in declared if f.key != oauth_config.accounts_field
+        )
+        scope[entry.name] = keep
+    return scope
 
 
 def save_plugin_credentials(
@@ -390,10 +572,15 @@ def _resolve_localized(i18n: Mapping[str, str], fallback: str, locale: str) -> s
 
 
 __all__ = [
+    "AccountListingError",
     "InvalidFieldValueError",
+    "OAuthAccountsNotSupportedError",
+    "OAuthNotAuthenticatedError",
     "PluginCredentialsError",
     "RequiredFieldMissingError",
     "UnknownProviderError",
+    "list_oauth_accounts",
     "list_plugin_credential_fields",
+    "multi_account_picker_scope",
     "save_plugin_credentials",
 ]

@@ -345,3 +345,141 @@ def test_post_save_blank_secret_keeps_existing(
 
     on_disk = json.loads(credentials_path.read_text())
     assert on_disk == {"demo_ads": {"api_key": "previous", "account_id": "new-label"}}
+
+
+# ---------------------------------------------------------------------------
+# #336 — GET /api/credentials/plugins/<provider>/accounts (post-auth picker)
+# ---------------------------------------------------------------------------
+
+
+def _picker_entry(
+    lister: Any, *, accounts_field: str | None = "account_id"
+) -> ProviderEntry:
+    from mureo.core.providers import AccountOAuthConfig
+
+    class _Broker:
+        name = "meta_ads_logly"
+        display_name = "Logly Meta"
+        capabilities = frozenset()
+        account_credential_fields = (
+            AccountCredentialField(key="client_id", display_name="Client ID"),
+            AccountCredentialField(
+                key="client_secret", display_name="Client Secret", secret=True
+            ),
+            AccountCredentialField(
+                key="access_token", display_name="Access Token", secret=True
+            ),
+            AccountCredentialField(key="account_id", display_name="Account"),
+        )
+        account_oauth = AccountOAuthConfig(
+            authorize_url="https://example.test/authorize",
+            token_url="https://example.test/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="access_token",
+            accounts_field=accounts_field,
+        )
+
+    if lister is not None:
+        _Broker.list_oauth_accounts = staticmethod(lister)  # type: ignore[attr-defined]
+    return ProviderEntry(
+        name="meta_ads_logly",
+        display_name="Logly Meta",
+        capabilities=frozenset(),
+        provider_class=_Broker,
+        source_distribution=None,
+    )
+
+
+def _store_token(credentials_path: Path) -> None:
+    from mureo.core.secret_store import FilesystemSecretStore
+
+    FilesystemSecretStore(path=credentials_path).save(
+        "meta_ads_logly", {"access_token": "TKN"}
+    )
+
+
+@pytest.mark.unit
+def test_accounts_endpoint_returns_normalised_accounts(
+    wizard: ConfigureWizard,
+    credentials_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        default_registry,
+        "_entries",
+        {
+            "meta_ads_logly": _picker_entry(
+                lambda creds: [{"id": "act_1", "name": "Brand"}]
+            )
+        },
+    )
+    _store_token(credentials_path)
+    resp = _get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    assert resp.status == 200
+    body = json.loads(resp.read())
+    assert body["accounts"] == [{"id": "act_1", "name": "Brand"}]
+
+
+@pytest.mark.unit
+def test_accounts_endpoint_409_when_not_authenticated(
+    wizard: ConfigureWizard, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        default_registry,
+        "_entries",
+        {"meta_ads_logly": _picker_entry(lambda creds: [{"id": "act_1"}])},
+    )
+    # No token stored → 409 not_authenticated.
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    assert exc.value.code == 409
+    assert json.loads(exc.value.read())["error"] == "not_authenticated"
+
+
+@pytest.mark.unit
+def test_accounts_endpoint_404_when_not_supported(
+    wizard: ConfigureWizard,
+    credentials_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # accounts_field present but no lister hook → accounts_not_supported.
+    monkeypatch.setattr(
+        default_registry,
+        "_entries",
+        {"meta_ads_logly": _picker_entry(None)},
+    )
+    _store_token(credentials_path)
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    assert exc.value.code == 404
+    assert json.loads(exc.value.read())["error"] == "accounts_not_supported"
+
+
+@pytest.mark.unit
+def test_accounts_endpoint_404_unknown_provider(wizard: ConfigureWizard) -> None:
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _get(wizard, "/api/credentials/plugins/nope/accounts")
+    assert exc.value.code == 404
+    assert json.loads(exc.value.read())["error"] == "unknown_provider"
+
+
+@pytest.mark.unit
+def test_accounts_endpoint_502_when_hook_fails(
+    wizard: ConfigureWizard,
+    credentials_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _boom(creds: dict[str, str]) -> list[dict[str, str]]:
+        raise RuntimeError("graph down")
+
+    monkeypatch.setattr(
+        default_registry,
+        "_entries",
+        {"meta_ads_logly": _picker_entry(_boom)},
+    )
+    _store_token(credentials_path)
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _get(wizard, "/api/credentials/plugins/meta_ads_logly/accounts")
+    assert exc.value.code == 502
+    assert json.loads(exc.value.read())["error"] == "account_listing_failed"
