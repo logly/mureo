@@ -234,3 +234,49 @@ class TestInstallCodexSkills:
         assert (link / "SKILL.md").exists()
         assert external.exists()
         assert (external / "SKILL.md").read_text() == "dev onboard body"
+
+
+class TestRemoveCredentialGuard:
+    """remove_codex_credential_guard — inverse of the install, tag-scoped."""
+
+    def test_removes_only_tagged_entries(self, home: Path) -> None:
+        from mureo.cli.setup_codex import (
+            remove_codex_credential_guard,
+        )
+
+        hooks_file = home / ".codex" / "hooks.json"
+        hooks_file.parent.mkdir(parents=True)
+        # A user's own unrelated hook must survive.
+        hooks_file.write_text(
+            json.dumps(
+                {"PreToolUse": [{"matcher": "Read", "hooks": [{"command": "echo hi"}]}]}
+            ),
+            encoding="utf-8",
+        )
+        install_codex_credential_guard()
+        removed = remove_codex_credential_guard()
+        assert removed == hooks_file
+        data = json.loads(hooks_file.read_text(encoding="utf-8"))
+        remaining = [
+            h.get("command", "")
+            for e in data["PreToolUse"]
+            for h in e.get("hooks", [])
+        ]
+        assert remaining == ["echo hi"]  # only the user's hook kept
+        assert not any("mureo-credential-guard" in c for c in remaining)
+
+    def test_idempotent_when_absent(self, home: Path) -> None:
+        from mureo.cli.setup_codex import remove_codex_credential_guard
+
+        assert remove_codex_credential_guard() is None  # no file
+
+    def test_honours_explicit_hooks_file_path(self, tmp_path: Path) -> None:
+        """The home-aware override path is respected (configure-UI flow)."""
+        from mureo.cli.setup_codex import remove_codex_credential_guard
+
+        target = tmp_path / "custom" / "hooks.json"
+        install_codex_credential_guard(target)
+        assert target.exists()
+        assert remove_codex_credential_guard(target) == target
+        data = json.loads(target.read_text(encoding="utf-8"))
+        assert data["PreToolUse"] == []

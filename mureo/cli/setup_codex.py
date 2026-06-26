@@ -160,13 +160,18 @@ def install_codex_mcp_config() -> Path | None:
 # ---------------------------------------------------------------------------
 
 
-def install_codex_credential_guard() -> Path | None:
+def install_codex_credential_guard(hooks_file: Path | None = None) -> Path | None:
     """Append PreToolUse hooks to ``~/.codex/hooks.json``.
 
     Existing hook entries are preserved. Returns the path on first
     install or ``None`` if the mureo tag is already present.
+
+    ``hooks_file`` overrides the target (the home-aware configure-UI flow
+    passes ``<home>/.codex/hooks.json``); it defaults to the real
+    ``~/.codex/hooks.json`` for the ``mureo setup codex`` CLI.
     """
-    hooks_file = Path.home() / ".codex" / "hooks.json"
+    if hooks_file is None:
+        hooks_file = Path.home() / ".codex" / "hooks.json"
     hooks_file.parent.mkdir(parents=True, exist_ok=True)
 
     existing: dict[str, Any] = {}
@@ -203,6 +208,51 @@ def install_codex_credential_guard() -> Path | None:
         json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
     )
     logger.info("Codex credential guard installed: %s", hooks_file)
+    return hooks_file
+
+
+def remove_codex_credential_guard(hooks_file: Path | None = None) -> Path | None:
+    """Drop the mureo-tagged PreToolUse hooks from ``~/.codex/hooks.json``.
+
+    The inverse of :func:`install_codex_credential_guard`: removes only the
+    entries whose command carries the ``[mureo-credential-guard]`` tag, and
+    preserves every other hook. Returns the path when something was removed,
+    or ``None`` when the file is absent/unparseable or no tagged entry was
+    present (idempotent). ``hooks_file`` mirrors the install override.
+    """
+    if hooks_file is None:
+        hooks_file = Path.home() / ".codex" / "hooks.json"
+    if not hooks_file.exists():
+        return None
+    try:
+        parsed = json.loads(hooks_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        logger.warning("Could not parse %s — refusing to overwrite", hooks_file)
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    pre_tool_use = parsed.get("PreToolUse")
+    if not isinstance(pre_tool_use, list):
+        return None
+
+    def _is_mureo_entry(entry: Any) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        return any(
+            _GUARD_TAG in hook.get("command", "")
+            for hook in entry.get("hooks", [])
+            if isinstance(hook, dict)
+        )
+
+    kept = [entry for entry in pre_tool_use if not _is_mureo_entry(entry)]
+    if len(kept) == len(pre_tool_use):
+        return None  # nothing tagged — idempotent no-op
+    parsed["PreToolUse"] = kept
+    _atomic_write_text(
+        hooks_file,
+        json.dumps(parsed, indent=2, ensure_ascii=False) + "\n",
+    )
+    logger.info("Codex credential guard removed: %s", hooks_file)
     return hooks_file
 
 

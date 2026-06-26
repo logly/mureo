@@ -135,6 +135,8 @@
         ? "wizard.host.claude_desktop"
         : status.host === "claude-code"
         ? "wizard.host.claude_code"
+        : status.host === "codex"
+        ? "wizard.host.codex"
         : null;
     if (hostKey) {
       node.textContent = MUREO.t(hostKey);
@@ -291,6 +293,10 @@
           // rejects http config; Meta's hosted MCP has no OAuth DCR).
           // Only the Connectors instruction applies.
           appendNote("dashboard.provider_desktop_connectors_note");
+        } else if (status && status.host === "codex") {
+          // Codex has no account-level connector for Meta's hosted MCP,
+          // so the official path isn't available — keep mureo-native Meta.
+          appendNote("dashboard.provider_codex_hosted_na_note");
         } else {
           appendNote("dashboard.provider_hosted_oauth_note");
         }

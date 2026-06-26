@@ -18,7 +18,7 @@ from mureo.web._helpers import fresh_csrf_token
 OAUTH_PROVIDERS: tuple[str, ...] = ("google", "meta")
 
 # Allow-list of supported host slugs.
-SUPPORTED_HOSTS: tuple[str, ...] = ("claude-code", "claude-desktop")
+SUPPORTED_HOSTS: tuple[str, ...] = ("claude-code", "claude-desktop", "codex")
 
 
 @dataclass

@@ -25,8 +25,8 @@ class TestSupportedHosts:
     def test_supported_hosts_is_tuple(self) -> None:
         assert isinstance(SUPPORTED_HOSTS, tuple)
 
-    def test_only_claude_code_and_desktop(self) -> None:
-        assert set(SUPPORTED_HOSTS) == {"claude-code", "claude-desktop"}
+    def test_supported_hosts_allow_list(self) -> None:
+        assert set(SUPPORTED_HOSTS) == {"claude-code", "claude-desktop", "codex"}
 
 
 @pytest.mark.unit
@@ -134,6 +134,21 @@ class TestGetHostPathsClaudeDesktopLinux:
         with patch("mureo.web.host_paths.platform.system", return_value="Linux"):
             paths = get_host_paths("claude-desktop", home=tmp_path)
         assert paths.settings_path == tmp_path / ".claude" / "settings.json"
+
+
+@pytest.mark.unit
+class TestGetHostPathsCodex:
+    def test_codex_paths(self, tmp_path: Path) -> None:
+        paths = get_host_paths("codex", home=tmp_path)
+        config = tmp_path / ".codex" / "config.toml"
+        assert paths.host == "codex"
+        # Codex reads MCP from the SAME config.toml it is configured in.
+        assert paths.settings_path == config
+        assert paths.mcp_registry_path == config
+        assert paths.skills_dir == tmp_path / ".codex" / "skills"
+        assert paths.commands_dir == tmp_path / ".codex" / "commands"
+        # Credentials stay in the mureo-owned store, not under ~/.codex.
+        assert paths.credentials_path == tmp_path / ".mureo" / "credentials.json"
 
 
 @pytest.mark.unit

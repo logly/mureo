@@ -26,6 +26,21 @@ from mureo.cli.settings_remove import (
     remove_mcp_config,
 )
 from mureo.cli.setup_cmd import remove_skills
+from mureo.cli.setup_codex import (
+    install_codex_credential_guard,
+    remove_codex_credential_guard,
+)
+from mureo.web.codex_mcp import (
+    install_codex_mcp_block,
+    install_codex_server_block,
+    installed_codex_server_ids,
+    is_codex_server_installed,
+    remove_codex_mcp_block,
+    remove_codex_server_block,
+    resolve_codex_config_path,
+    set_mureo_disable_env_codex,
+    unset_mureo_disable_env_codex,
+)
 from mureo.web.desktop_mcp import (
     install_desktop_mcp_block,
     install_desktop_server_block,
@@ -51,6 +66,7 @@ logger = logging.getLogger(__name__)
 # tests keep the exact pre-change Claude Code behaviour.
 _HOST_CODE = "claude-code"
 _HOST_DESKTOP = "claude-desktop"
+_HOST_CODEX = "codex"
 
 # Official MCP provider IDs that ``clear_all_setup`` will try to remove if
 # they are present in ``settings.json``. Listed explicitly (rather than
@@ -99,6 +115,35 @@ def _install_desktop_mcp(home: Path | None) -> ActionResult:
     return ActionResult(status="ok", detail=str(config_path))
 
 
+def _codex_hooks_path(home: Path | None) -> Path:
+    """``<home>/.codex/hooks.json`` — Codex's PreToolUse hook file."""
+    return resolve_codex_config_path(home).parent / "hooks.json"
+
+
+def _codex_skills_dir(home: Path | None) -> Path:
+    """``<home>/.codex/skills`` — Codex's own skill directory."""
+    from mureo.web.host_paths import get_host_paths
+
+    return get_host_paths(_HOST_CODEX, home).skills_dir
+
+
+def _install_codex_mcp(home: Path | None) -> ActionResult:
+    """Register the ``[mcp_servers.mureo]`` block in the Codex config (TOML)."""
+    try:
+        config_path = resolve_codex_config_path(home)
+        wrote = install_codex_mcp_block(
+            config_path, sys.executable, ["-m", "mureo.mcp"]
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("install_mureo_mcp (codex) failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    mark_part_installed(PART_MCP, home=home)
+    if not wrote:
+        return ActionResult(status="noop", detail="already_configured")
+    return ActionResult(status="ok", detail=str(config_path))
+
+
 def backfill_disable_for_installed_providers(
     host: str, home: Path | None = None
 ) -> None:
@@ -130,7 +175,6 @@ def backfill_disable_for_installed_providers(
     """
     try:
         from mureo.providers.catalog import get_catalog
-        from mureo.providers.config_writer import is_provider_installed
         from mureo.web.host_paths import get_host_paths
 
         registry = get_host_paths(host, home).mcp_registry_path
@@ -147,7 +191,7 @@ def backfill_disable_for_installed_providers(
             # native-toggle, which gate on the verified connector.
             if spec.install_kind == "hosted_http":
                 continue
-            if is_provider_installed(spec.id, settings_path=registry):
+            if _registered_in_registry(host, spec.id, registry):
                 _disable_native_for(host, platform, home, registry)
     except Exception:  # noqa: BLE001 — backfill must never break setup
         logger.exception("backfill disable-env after mureo MCP install failed")
@@ -174,10 +218,29 @@ def _apply_disable_env(
             resolve_desktop_config_path(home), env_var
         )
         return changed, True
+    if host == _HOST_CODEX:
+        env_var = "MUREO_DISABLE_" + platform.upper()
+        changed = set_mureo_disable_env_codex(resolve_codex_config_path(home), env_var)
+        return changed, True
     from mureo.providers.mureo_env import set_mureo_disable_env
 
     res = set_mureo_disable_env(platform, settings_path=registry)  # type: ignore[arg-type]
     return res.changed, res.mureo_block_present
+
+
+def _registered_in_registry(host: str, provider_id: str, registry: Path) -> bool:
+    """Host-aware "is ``provider_id`` registered in this host's MCP registry?".
+
+    Codex stores MCP servers as TOML ``[mcp_servers.<id>]`` regions, so it is
+    probed via :func:`is_codex_server_installed`; the Claude hosts parse the
+    JSON ``mcpServers`` object of ``registry`` (``~/.claude.json`` for Code,
+    ``claude_desktop_config.json`` for Desktop).
+    """
+    if host == _HOST_CODEX:
+        return is_codex_server_installed(registry, provider_id)
+    from mureo.providers.config_writer import is_provider_installed
+
+    return is_provider_installed(provider_id, settings_path=registry)
 
 
 def _disable_native_for(
@@ -228,10 +291,7 @@ def set_native_preference(
     # prefer_official: guard — the official path must really be usable.
     try:
         from mureo.providers.catalog import get_catalog
-        from mureo.providers.config_writer import (
-            is_hosted_provider_connected,
-            is_provider_installed,
-        )
+        from mureo.providers.config_writer import is_hosted_provider_connected
 
         spec = next(
             (s for s in get_catalog() if s.coexists_with_mureo_platform == platform),
@@ -242,7 +302,7 @@ def set_native_preference(
         if spec.install_kind == "hosted_http":
             if not is_hosted_provider_connected(spec):
                 return ActionResult(status="error", detail="connector_not_connected")
-        elif not is_provider_installed(spec.id, settings_path=registry):
+        elif not _registered_in_registry(host, spec.id, registry):
             return ActionResult(status="error", detail="provider_not_installed")
     except Exception as exc:  # noqa: BLE001
         logger.exception("set_native_preference guard failed")
@@ -277,6 +337,11 @@ def _restore_native(
             changed = unset_mureo_disable_env_desktop(
                 resolve_desktop_config_path(home), env_var
             )
+        elif host == _HOST_CODEX:
+            env_var = "MUREO_DISABLE_" + platform.upper()
+            changed = unset_mureo_disable_env_codex(
+                resolve_codex_config_path(home), env_var
+            )
         else:
             from mureo.providers.mureo_env import unset_mureo_disable_env
 
@@ -302,6 +367,8 @@ def install_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Actio
     """
     if host == _HOST_DESKTOP:
         result = _install_desktop_mcp(home)
+    elif host == _HOST_CODEX:
+        result = _install_codex_mcp(home)
     else:
         try:
             from mureo.auth_setup import install_mcp_config
@@ -328,15 +395,20 @@ def install_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Actio
 
     Claude Desktop has no ``hooks.PreToolUse`` surface, so the Desktop
     branch is a graceful no-op that writes nothing and does NOT mark
-    ``PART_HOOK`` installed (planner HANDOFF Q2).
+    ``PART_HOOK`` installed (planner HANDOFF Q2). Codex DOES have a
+    PreToolUse surface (``~/.codex/hooks.json``), so it installs the same
+    credential guard via the home-aware codex installer.
     """
     if host == _HOST_DESKTOP:
         return ActionResult(status="noop", detail="unsupported_on_desktop")
 
     try:
-        from mureo.auth_setup import install_credential_guard
+        if host == _HOST_CODEX:
+            result = install_codex_credential_guard(_codex_hooks_path(home))
+        else:
+            from mureo.auth_setup import install_credential_guard
 
-        result = install_credential_guard()
+            result = install_credential_guard()
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_auth_hook failed")
         return ActionResult(status="error", detail=type(exc).__name__)
@@ -352,16 +424,15 @@ def install_workflow_skills(
 ) -> ActionResult:
     """Copy workflow skills into ~/.claude/skills.
 
-    Host-agnostic by design (planner HANDOFF Q3): both Claude Code and
-    Claude Desktop share ``~/.claude/skills`` and there is no Desktop
-    plugin bundle in the repo. The ``host`` param is accepted for
-    signature symmetry only and intentionally does not branch.
+    Claude Code and Claude Desktop share ``~/.claude/skills`` (planner
+    HANDOFF Q3). Codex reads skills from its OWN ``~/.codex/skills``, so
+    the codex host installs there (home-aware) instead.
     """
-    del host  # host-agnostic; accepted for signature symmetry only
     try:
         from mureo.cli.setup_cmd import install_skills
 
-        count, dest = install_skills()
+        target = _codex_skills_dir(home) if host == _HOST_CODEX else None
+        count, dest = install_skills(target_dir=target)
     except Exception as exc:  # noqa: BLE001
         logger.exception("install_workflow_skills failed")
         return ActionResult(status="error", detail=type(exc).__name__)
@@ -652,6 +723,64 @@ def _install_provider_desktop(
     return ActionResult(status="ok", detail=spec.id)
 
 
+def _install_provider_codex(
+    provider_id: str,
+    home: Path | None,
+    credentials_path: Path | None = None,
+) -> ActionResult:
+    """Codex path — install one official provider into ``config.toml`` (TOML).
+
+    Mirrors the Desktop path: pipx/npm providers still run the
+    host-agnostic ``run_install`` subprocess and then write a tagged
+    ``[mcp_servers.<id>]`` block (with credential env) via
+    :func:`install_codex_server_block`. hosted_http (Meta) has no Codex
+    connector — Codex cannot wire a remote MCP through ``config.toml`` and
+    has no account-level Connectors — so it is ``manual_required`` and
+    native is NOT auto-disabled (no stranding), identical to Code/Desktop.
+    ``credentials.json`` is never touched.
+    """
+    try:
+        from mureo.providers.catalog import get_provider
+        from mureo.providers.installer import run_install
+
+        spec = get_provider(provider_id)
+    except KeyError:
+        return ActionResult(status="error", detail="unknown_provider")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("install_provider (codex) import/resolve failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    if spec.install_kind == "hosted_http":
+        return ActionResult(status="manual_required", detail=spec.id)
+
+    if spec.install_argv:
+        try:
+            result = run_install(spec, dry_run=False)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("install_provider (codex) subprocess failed")
+            return ActionResult(status="error", detail=type(exc).__name__)
+        if result.returncode != 0:
+            return ActionResult(
+                status="error",
+                detail=f"install_returncode_{result.returncode}",
+            )
+
+    block: dict[str, Any] = dict(_desktop_block_for(spec))
+    extra_env = _credential_env_for(spec, credentials_path)
+    if extra_env:
+        block = {**block, "env": {**block.get("env", {}), **extra_env}}
+    try:
+        config_path = resolve_codex_config_path(home)
+        wrote = install_codex_server_block(config_path, spec.id, block)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("install_provider (codex) config write failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    if not wrote:
+        return ActionResult(status="noop", detail="already_configured")
+    return ActionResult(status="ok", detail=spec.id)
+
+
 def install_provider(
     provider_id: str,
     home: Path | None = None,
@@ -663,14 +792,17 @@ def install_provider(
 
     ``host="claude-code"`` (default) registers into ``~/.claude.json``;
     ``host="claude-desktop"`` writes the provider block into
-    ``claude_desktop_config.json``. In BOTH cases the credential env the
-    upstream MCP needs is resolved from ``credentials_path`` (defaults to
-    ``~/.mureo/credentials.json``) and injected into the registered
-    block — without it the official server registers but cannot
-    authenticate.
+    ``claude_desktop_config.json``; ``host="codex"`` writes a tagged
+    ``[mcp_servers.<id>]`` block into ``~/.codex/config.toml``. In all
+    cases the credential env the upstream MCP needs is resolved from
+    ``credentials_path`` (defaults to ``~/.mureo/credentials.json``) and
+    injected into the registered block — without it the official server
+    registers but cannot authenticate.
     """
     if host == _HOST_DESKTOP:
         return _install_provider_desktop(provider_id, home, credentials_path)
+    if host == _HOST_CODEX:
+        return _install_provider_codex(provider_id, home, credentials_path)
     return _install_provider_code(provider_id, credentials_path)
 
 
@@ -721,6 +853,51 @@ def _remove_provider_desktop(provider_id: str, home: Path | None) -> ActionResul
     return ActionResult(status="ok", detail=provider_id)
 
 
+def _remove_provider_codex(provider_id: str, home: Path | None) -> ActionResult:
+    """Codex path — remove a provider from ``config.toml``.
+
+    Mirror of :func:`_remove_provider_desktop`: hosted_http (never written
+    on Codex) re-enables mureo's own tool family by unsetting
+    ``MUREO_DISABLE_<PLATFORM>``; a local-install provider's tagged
+    ``[mcp_servers.<id>]`` region is removed. Idempotent
+    (``noop not_registered``). ``credentials.json`` is never touched.
+    """
+    try:
+        from mureo.providers.catalog import get_provider
+
+        spec = get_provider(provider_id)
+    except KeyError:
+        return ActionResult(status="error", detail="unknown_provider")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("remove_provider (codex) import/resolve failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    config_path = resolve_codex_config_path(home)
+    if spec.install_kind == "hosted_http":
+        platform = spec.coexists_with_mureo_platform
+        if not platform:
+            return ActionResult(status="noop", detail="not_registered")
+        env_var = "MUREO_DISABLE_" + platform.upper()
+        try:
+            changed = unset_mureo_disable_env_codex(config_path, env_var)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("remove_provider (codex) unset-env failed")
+            return ActionResult(status="error", detail=type(exc).__name__)
+        if not changed:
+            return ActionResult(status="noop", detail="not_registered")
+        return ActionResult(status="ok", detail=provider_id)
+
+    try:
+        removed = remove_codex_server_block(config_path, provider_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("remove_provider (codex) failed")
+        return ActionResult(status="error", detail=type(exc).__name__)
+
+    if not removed:
+        return ActionResult(status="noop", detail="not_registered")
+    return ActionResult(status="ok", detail=provider_id)
+
+
 def remove_provider(
     provider_id: str, home: Path | None = None, host: str = _HOST_CODE
 ) -> ActionResult:
@@ -729,10 +906,13 @@ def remove_provider(
     ``host="claude-code"`` (default) unregisters it from user scope via
     the ``claude`` CLI (``~/.claude.json``), NOT ``settings.json``.
     ``host="claude-desktop"`` pops only ``mcpServers[provider_id]`` from
-    ``claude_desktop_config.json``.
+    ``claude_desktop_config.json``; ``host="codex"`` removes the tagged
+    ``[mcp_servers.<id>]`` region from ``~/.codex/config.toml``.
     """
     if host == _HOST_DESKTOP:
         return _remove_provider_desktop(provider_id, home)
+    if host == _HOST_CODEX:
+        return _remove_provider_codex(provider_id, home)
 
     try:
         from mureo.providers.catalog import get_provider
@@ -813,8 +993,8 @@ def confirm_hosted_provider(
         return ActionResult(status="noop", detail="nothing_to_switch")
 
     try:
-        if host == _HOST_DESKTOP:
-            # No `claude mcp list` on Desktop ⇒ never auto-verifiable.
+        if host in (_HOST_DESKTOP, _HOST_CODEX):
+            # No `claude mcp list` on Desktop/Codex ⇒ never auto-verifiable.
             # Apply only on an explicit user affirmation (no stranding).
             if not affirm:
                 return ActionResult(status="manual", detail=spec.id)
@@ -842,6 +1022,12 @@ def confirm_hosted_provider(
                 resolve_desktop_config_path(home), env_var
             )
             mureo_block_present = True  # Desktop has no such signal
+        elif host == _HOST_CODEX:
+            env_var = "MUREO_DISABLE_" + platform.upper()
+            changed = set_mureo_disable_env_codex(
+                resolve_codex_config_path(home), env_var
+            )
+            mureo_block_present = True  # Codex has no such signal
         else:
             from mureo.providers.mureo_env import set_mureo_disable_env
 
@@ -919,6 +1105,16 @@ def remove_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Action
     """
     if host == _HOST_DESKTOP:
         return _remove_desktop_mcp(home)
+    if host == _HOST_CODEX:
+        try:
+            changed = remove_codex_mcp_block(resolve_codex_config_path(home))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("remove_mureo_mcp (codex) failed")
+            return ActionResult(status="error", detail=type(exc).__name__)
+        if not changed:
+            return ActionResult(status="noop", detail="not_installed")
+        clear_part(PART_MCP, home=home)
+        return ActionResult(status="ok")
 
     try:
         result = remove_mcp_config()
@@ -937,12 +1133,19 @@ def remove_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Action
 
     Mirror of ``install_auth_hook``: the Desktop branch is a no-op
     (Desktop has no hook surface) that touches no file and does NOT
-    clear ``PART_HOOK`` state (planner HANDOFF Q2).
+    clear ``PART_HOOK`` state (planner HANDOFF Q2). Codex has a hook
+    surface, so it drops the tagged entries from ``~/.codex/hooks.json``.
     """
     if host == _HOST_DESKTOP:
         return ActionResult(status="noop", detail="unsupported_on_desktop")
 
     try:
+        if host == _HOST_CODEX:
+            removed = remove_codex_credential_guard(_codex_hooks_path(home))
+            if removed is None:
+                return ActionResult(status="noop", detail="not_installed")
+            clear_part(PART_HOOK, home=home)
+            return ActionResult(status="ok")
         result = remove_credential_guard()
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_auth_hook failed")
@@ -959,13 +1162,12 @@ def remove_workflow_skills(
 ) -> ActionResult:
     """Delete bundle-listed workflow skills from ``~/.claude/skills``.
 
-    Host-agnostic (planner HANDOFF Q3): skills live in the shared
-    ``~/.claude/skills`` for both hosts. ``host`` is accepted for
-    signature symmetry only and intentionally does not branch.
+    Claude Code and Desktop share ``~/.claude/skills`` (planner HANDOFF
+    Q3); Codex removes from its own ``~/.codex/skills``.
     """
-    del host  # host-agnostic; accepted for signature symmetry only
     try:
-        count, dest = remove_skills()
+        target = _codex_skills_dir(home) if host == _HOST_CODEX else None
+        count, dest = remove_skills(target_dir=target)
     except Exception as exc:  # noqa: BLE001
         logger.exception("remove_workflow_skills failed")
         return ActionResult(status="error", detail=type(exc).__name__)
@@ -998,6 +1200,10 @@ def _installed_official_providers(
     ``claude_desktop_config.json`` so that file is read directly. A
     missing/malformed file degrades gracefully to "none".
     """
+    if host == _HOST_CODEX:
+        installed = installed_codex_server_ids(resolve_codex_config_path(home))
+        return [pid for pid in _OFFICIAL_PROVIDER_IDS if pid in installed]
+
     if host != _HOST_DESKTOP:
         from mureo.providers.config_writer import is_provider_installed
 
@@ -1047,7 +1253,9 @@ def clear_all_setup(home: Path | None = None, host: str = _HOST_CODE) -> dict[st
     envelope: dict[str, Any] = {}
     envelope["mureo_mcp"] = _safe_step(remove_mureo_mcp, home=home, host=host)
     envelope["auth_hook"] = _safe_step(remove_auth_hook, home=home, host=host)
-    envelope["skills"] = _safe_step(remove_workflow_skills, home=home)
+    # Forward host: codex skills live in ~/.codex/skills, not ~/.claude/skills,
+    # so bulk-clear must target the right directory (install already does).
+    envelope["skills"] = _safe_step(remove_workflow_skills, home=home, host=host)
 
     commands_dir = (home or Path.home()) / ".claude" / "commands"
     try:

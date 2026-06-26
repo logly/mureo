@@ -340,6 +340,18 @@
     if (isHosted) {
       wrap.innerHTML =
         "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
+      // Codex has no claude.ai account connector, so Meta's hosted MCP
+      // can't be wired at all — there are no connector steps to show.
+      // Surface the "not available, native stays" note and let the user
+      // proceed; mureo-native Meta is never disabled here.
+      if (state.host === "codex") {
+        const note = document.createElement("p");
+        note.className = "dashboard-provider-hosted-note";
+        note.textContent = MUREO.t("dashboard.provider_codex_hosted_na_note");
+        note.setAttribute("data-i18n", "dashboard.provider_codex_hosted_na_note");
+        wrap.appendChild(note);
+        return wrap;
+      }
       if (!showManualSetup()) onComplete();
       return wrap;
     }
