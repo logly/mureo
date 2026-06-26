@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Any
 
+from mureo.meta_ads._conversion_count import count_conversions_from_actions
 from mureo.meta_ads._period import previous_period, resolve_period
 
 logger = logging.getLogger(__name__)
@@ -223,17 +224,9 @@ class InsightsMixin:
             impressions = int(row.get("impressions", 0) or 0)
             ctr = float(row.get("ctr", 0) or 0)
 
-            # Extract CV count from actions
-            actions = row.get("actions", [])
-            conversions = 0.0
-            if actions:
-                for a in actions:
-                    if a.get("action_type") in (
-                        "lead",
-                        "purchase",
-                        "complete_registration",
-                    ):
-                        conversions += float(a.get("value", 0))
+            # Conversions via the canonical exact-match counter (#340) so
+            # this breakdown agrees with every other live path.
+            conversions = count_conversions_from_actions(row.get("actions"))
 
             cpa = round(spend / conversions, 0) if conversions > 0 else None
 
