@@ -105,10 +105,12 @@ Skills and commands describe "Read STRATEGY.md", "Update STATE.json", and "Appen
 | Read STRATEGY.md | `Read` tool | `mureo_strategy_get` MCP tool |
 | Replace STRATEGY.md | `Write` / `Edit` tool | `mureo_strategy_set` MCP tool |
 | Read STATE.json | `Read` tool | `mureo_state_get` MCP tool |
-| Append action_log entry | `Edit` tool (modify JSON) | `mureo_state_action_log_append` MCP tool |
-| Upsert campaign snapshot | `Edit` tool (modify JSON) | `mureo_state_upsert_campaign` MCP tool |
+| Append action_log entry | `mureo_state_action_log_append` MCP tool | `mureo_state_action_log_append` MCP tool |
+| Upsert campaign snapshot | `mureo_state_upsert_campaign` MCP tool | `mureo_state_upsert_campaign` MCP tool |
 
 When you don't have direct filesystem tools (Desktop / Cowork / web), always reach for the corresponding `mureo_*` MCP tool — they encode the same atomic-write semantics so you can't corrupt the file mid-edit.
+
+For STATE.json **mutations** (`Upsert campaign snapshot` / `Append action_log entry`) prefer the `mureo_state_*` MCP tool on **every** host, **including Code**: they apply the correct schema atomically. A raw `Edit` easily omits the required `platforms[<platform>]` / `account_id`, and a platform/campaign missing those is **dropped** by the dashboard — the workspace then renders **empty / "not yet bootstrapped"** even after you wrote campaigns. Separately, `mureo_state_upsert_campaign` (and the metrics / report setters) stamp the top-level **`last_synced_at`** — the dashboard's "Synced N ago" freshness — which a hand-edit leaves stale (`mureo_state_action_log_append` does **not** re-stamp it). Hand-writing STATE.json directly with `Write` on Code is reserved for the **bulk-snapshot** flows (`sync-state` / `daily-check`); on that path you own replicating the full **STATE.json Schema** below, **including a fresh `last_synced_at`**.
 
 The platform tools (`google_ads_*`, `meta_ads_*`, `search_console_*`) are the same across all hosts because they only exist as MCP tools.
 
@@ -278,12 +280,19 @@ shows fewer campaigns than you wrote — get these exact names right:
 - **Platform entry** (`platforms[<platform>]`) — required: `account_id` (str;
   use `""` only if genuinely unknown). Plus `campaigns[]` and the rollups the
   dashboard actually renders: `totals`, `metrics_period`, `periods[<window>]`.
+- **Top-level** — required: `last_synced_at` (ISO-8601 string, **stamped to
+  _now_** by every campaign/metrics/report write). It drives the dashboard's
+  "Synced N ago" freshness; a missing or stale value makes the data read as
+  not-recently-synced. `mureo_state_upsert_campaign` / `_platform_metrics_set`
+  / `_report_set` set it for you (`_action_log_append` does not); on the Code
+  `Write` path you must set it yourself.
 
-Canonical STATE.json shape (note `campaign_name` and `account_id`):
+Canonical STATE.json shape (note `campaign_name`, `account_id`, `last_synced_at`):
 
 ```json
 {
   "version": "2",
+  "last_synced_at": "2026-06-26T10:00:00+09:00",
   "platforms": {
     "google_ads": {
       "account_id": "123-456-7890",
