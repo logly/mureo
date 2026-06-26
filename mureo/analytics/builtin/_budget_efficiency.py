@@ -59,17 +59,17 @@ def _extract_cost_and_conversions(
     else:
         cost = float(row.get(spend_key) or 0)
         conversions = float(row.get("conversions") or 0)
-        # Meta Live shape: conversions live inside ``actions``. Sum
-        # leads/purchases there if no flat conversion field is set.
+        # Meta Live shape: conversions live inside ``actions``. Count via the
+        # canonical exact-match counter (#340) — the old substring scan here
+        # double-counted aggregate+component aliases and swept in custom
+        # slugs, skewing the budget-efficiency CPA. Lazy import keeps adapter
+        # registration free of the mureo.meta_ads client weight.
         if conversions == 0:
-            actions = row.get("actions")
-            if isinstance(actions, list):
-                for action in actions:
-                    if not isinstance(action, dict):
-                        continue
-                    action_type = str(action.get("action_type", ""))
-                    if "lead" in action_type or "purchase" in action_type:
-                        conversions += float(action.get("value") or 0)
+            from mureo.meta_ads._conversion_count import (
+                count_conversions_from_actions,
+            )
+
+            conversions = count_conversions_from_actions(row.get("actions"))
 
     if cost <= 0:
         return None

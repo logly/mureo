@@ -85,14 +85,15 @@ def meta_row_conversions(row: dict[str, Any]) -> float:
     """
     actions = row.get("actions")
     if isinstance(actions, list):
-        total = 0.0
-        for action in actions:
-            if not isinstance(action, dict):
-                continue
-            action_type = str(action.get("action_type", ""))
-            if "lead" in action_type or "purchase" in action_type:
-                total += float(action.get("value") or 0)
-        return total
+        # #340 — count via the canonical exact-match counter (deduped
+        # generic conversion action_types) instead of a substring scan,
+        # which double-counted aggregate+component aliases (lead +
+        # offsite_conversion.fb_pixel_lead) and swept in custom-conversion
+        # slugs. Lazy import keeps adapter registration free of the
+        # mureo.meta_ads client weight (this runs only on the live path).
+        from mureo.meta_ads._conversion_count import count_conversions_from_actions
+
+        return count_conversions_from_actions(actions)
     return float(row.get("conversions") or 0)
 
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from mureo.meta_ads._conversion_count import count_conversions_from_actions
 from mureo.meta_ads._period import previous_period as _previous_period
 
 logger = logging.getLogger(__name__)
@@ -21,13 +22,14 @@ def _safe_float(v: Any) -> float:
 
 
 def _extract_cv(row: dict[str, Any]) -> float:
-    actions = row.get("actions")
-    if not actions or not isinstance(actions, list):
-        return 0.0
-    cv_types = {"lead", "purchase", "complete_registration"}
-    return sum(
-        _safe_float(a.get("value")) for a in actions if a.get("action_type") in cv_types
-    )
+    """Conversion count for one insights row via the canonical counter (#340).
+
+    Delegates to the shared :func:`count_conversions_from_actions` so this
+    MCP-analysis path and the analytics/diagnose path
+    (:func:`mureo.analytics.builtin._common.meta_row_conversions`) can never
+    drift on what counts as a conversion.
+    """
+    return count_conversions_from_actions(row.get("actions"))
 
 
 class AnalysisMixin:
