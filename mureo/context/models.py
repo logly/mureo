@@ -122,6 +122,14 @@ class PlatformState:
     # legacy entries parse unchanged and emit no extra key. sync-state writes
     # LAST_30_DAYS; daily-check writes YESTERDAY.
     periods: dict[str, dict[str, Any]] | None = None
+    # Optional operator-declared conversion ``action_type`` allow-list (#342).
+    # When set (non-None), the Meta conversion counters treat EXACTLY these
+    # action_types as this account's conversions — overriding the default
+    # deduped generic set — so a custom-event advertiser
+    # (``offsite_conversion.custom.<id>``) or a component-only account is
+    # counted correctly. None (the default) keeps the built-in generic set, so
+    # legacy entries parse unchanged and emit no extra key.
+    conversion_action_types: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         """Ensure campaigns is a tuple (defensive copy)."""
@@ -131,6 +139,17 @@ class PlatformState:
             object.__setattr__(self, "totals", copy.deepcopy(self.totals))
         if self.periods is not None:
             object.__setattr__(self, "periods", copy.deepcopy(self.periods))
+        if self.conversion_action_types is not None and not isinstance(
+            self.conversion_action_types, tuple
+        ):
+            # A bare str must NOT be char-split into a tuple of letters; wrap
+            # it as a single action_type. Other iterables tuple-ify normally.
+            normalized = (
+                (self.conversion_action_types,)
+                if isinstance(self.conversion_action_types, str)
+                else tuple(self.conversion_action_types)
+            )
+            object.__setattr__(self, "conversion_action_types", normalized)
 
 
 @dataclass(frozen=True)

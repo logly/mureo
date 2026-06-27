@@ -48,7 +48,10 @@ def test_ignores_custom_conversion_slug_containing_lead() -> None:
     slug happens to contain 'lead'/'purchase' must not be counted."""
     actions = [
         {"action_type": "offsite_conversion.custom.my_lead_magnet", "value": "99"},
-        {"action_type": "offsite_conversion.custom.black_friday_purchase", "value": "50"},
+        {
+            "action_type": "offsite_conversion.custom.black_friday_purchase",
+            "value": "50",
+        },
         {"action_type": "lead", "value": "2"},
     ]
     assert count_conversions_from_actions(actions) == 2.0
@@ -106,3 +109,44 @@ def test_matches_extract_cv_byte_for_byte() -> None:
     ]
     for row in rows:
         assert _extract_cv(row) == count_conversions_from_actions(row.get("actions"))
+
+
+@pytest.mark.unit
+def test_override_replaces_default_set() -> None:
+    """#342 — when an override is given, EXACTLY those action_types count."""
+    actions = [
+        {"action_type": "lead", "value": "5"},
+        {"action_type": "offsite_conversion.custom.123", "value": "9"},
+    ]
+    # Default: only the generic 'lead'.
+    assert count_conversions_from_actions(actions) == 5.0
+    # Override: only the custom event.
+    assert (
+        count_conversions_from_actions(
+            actions, conversion_action_types={"offsite_conversion.custom.123"}
+        )
+        == 9.0
+    )
+
+
+@pytest.mark.unit
+def test_empty_override_falls_back_to_default() -> None:
+    """An empty/cleared override must NOT zero every conversion — it means
+    'use the default set'."""
+    actions = [{"action_type": "purchase", "value": "4"}]
+    assert count_conversions_from_actions(actions, conversion_action_types=[]) == 4.0
+    assert count_conversions_from_actions(actions, conversion_action_types=None) == 4.0
+
+
+@pytest.mark.unit
+def test_override_counts_component_only_account() -> None:
+    """A component-only account (no generic aggregate) is counted once the
+    operator declares the component as their conversion (#342)."""
+    actions = [{"action_type": "offsite_conversion.fb_pixel_lead", "value": "7"}]
+    assert count_conversions_from_actions(actions) == 0.0  # default misses it
+    assert (
+        count_conversions_from_actions(
+            actions, conversion_action_types=("offsite_conversion.fb_pixel_lead",)
+        )
+        == 7.0
+    )
