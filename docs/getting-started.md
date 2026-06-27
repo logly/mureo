@@ -236,6 +236,16 @@ The MCP server picks up the credentials from `~/.mureo/credentials.json` automat
 
 Same as Desktop chat — Cowork uses the same MCP entry. After `install-desktop` + `auth setup`, **connect the workspace folder** in Cowork (`~/mureo`) so the agent can also see local files when needed.
 
+### D. Auth in OpenAI Codex
+
+```bash
+pip install mureo
+mureo setup codex                   # wires the MCP server + credential-guard hook + skills into ~/.codex
+mureo configure                     # browser UI: OAuth + credentials (or do it all here by picking the "OpenAI Codex" host)
+```
+
+Restart Codex — the CLI, IDE extension, and desktop app all share `~/.codex/config.toml`, so one setup covers all three. Then run a workflow ("run a daily check", or `$daily-check` via the `/skills` picker). The MCP server reads credentials from `~/.mureo/credentials.json` automatically.
+
 ## Step 3 — Verify
 
 ```bash
@@ -271,6 +281,7 @@ Skill availability by host:
 | Claude Code | `/daily-check`, `/budget-rebalance`, … | All 11 operational skills + 6 foundation skills available locally |
 | Claude Desktop chat | natural language ("run a daily check") | Skills must be registered to claude.ai (manual upload or marketplace) |
 | Cowork | natural language | Same registration story as chat |
+| OpenAI Codex | `$daily-check` / the `/skills` picker, or natural language | Skills install to `~/.codex/skills` (CLI / IDE / desktop app share them) |
 
 ---
 
