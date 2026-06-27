@@ -4,6 +4,8 @@ import json
 import logging
 from typing import Any
 
+from mureo.context.state import load_conversion_action_types
+from mureo.meta_ads._conversion_count import count_conversions_from_actions
 from mureo.meta_ads._period import previous_period, resolve_period
 
 logger = logging.getLogger(__name__)
@@ -217,23 +219,19 @@ class InsightsMixin:
             }
 
         segments: list[dict[str, Any]] = []
+        cv_types = load_conversion_action_types(self._ad_account_id)
         for row in breakdown_data:
             spend = float(row.get("spend", 0) or 0)
             clicks = int(row.get("clicks", 0) or 0)
             impressions = int(row.get("impressions", 0) or 0)
             ctr = float(row.get("ctr", 0) or 0)
 
-            # Extract CV count from actions
-            actions = row.get("actions", [])
-            conversions = 0.0
-            if actions:
-                for a in actions:
-                    if a.get("action_type") in (
-                        "lead",
-                        "purchase",
-                        "complete_registration",
-                    ):
-                        conversions += float(a.get("value", 0))
+            # Conversions via the canonical exact-match counter (#340) so this
+            # breakdown agrees with every other live path; #342 threads the
+            # operator's per-account conversion override.
+            conversions = count_conversions_from_actions(
+                row.get("actions"), conversion_action_types=cv_types
+            )
 
             cpa = round(spend / conversions, 0) if conversions > 0 else None
 

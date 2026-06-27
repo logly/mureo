@@ -165,3 +165,95 @@ def test_reader_unknown_field_reference_raises_valueerror() -> None:
 
     with pytest.raises(ValueError, match="refresh_token"):
         get_account_oauth_config(_Typo())
+
+
+# ---------------------------------------------------------------------------
+# #336 — accounts_field validation + get_oauth_account_lister hook discovery.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_config_accounts_field_defaults_none() -> None:
+    cfg = AccountOAuthConfig(
+        authorize_url="https://a.test/authorize",
+        token_url="https://a.test/token",
+        client_id_field="client_id",
+        client_secret_field="client_secret",
+        target_field="refresh_token",
+    )
+    assert cfg.accounts_field is None
+
+
+@pytest.mark.unit
+def test_reader_accepts_valid_accounts_field() -> None:
+    _ACCOUNT = AccountCredentialField(key="account_id", display_name="Account")
+
+    class _Picker:
+        name = "broker"
+        account_credential_fields = (_CLIENT_ID, _CLIENT_SECRET, _REFRESH, _ACCOUNT)
+        account_oauth = AccountOAuthConfig(
+            authorize_url="https://a.test/authorize",
+            token_url="https://a.test/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            accounts_field="account_id",
+        )
+
+    cfg = get_account_oauth_config(_Picker())
+    assert cfg is not None and cfg.accounts_field == "account_id"
+
+
+@pytest.mark.unit
+def test_reader_unknown_accounts_field_raises_valueerror() -> None:
+    """A typo'd accounts_field would silently disable the picker (#336) and
+    the multi-account hide (#337) — fail loudly at the boundary instead."""
+
+    class _Typo:
+        name = "typo"
+        account_credential_fields = (_CLIENT_ID, _CLIENT_SECRET, _REFRESH)
+        account_oauth = AccountOAuthConfig(
+            authorize_url="https://a.test/authorize",
+            token_url="https://a.test/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="refresh_token",
+            accounts_field="account_id",  # not declared
+        )
+
+    with pytest.raises(ValueError, match="accounts_field"):
+        get_account_oauth_config(_Typo())
+
+
+@pytest.mark.unit
+def test_get_oauth_account_lister_returns_callable() -> None:
+    from mureo.core.providers import get_oauth_account_lister
+
+    class _WithHook:
+        name = "broker"
+
+        @staticmethod
+        def list_oauth_accounts(creds: dict[str, str]) -> list[dict[str, str]]:
+            return [{"id": "act_1"}]
+
+    hook = get_oauth_account_lister(_WithHook())
+    assert callable(hook)
+    assert hook({}) == [{"id": "act_1"}]
+
+
+@pytest.mark.unit
+def test_get_oauth_account_lister_absent_returns_none() -> None:
+    from mureo.core.providers import get_oauth_account_lister
+
+    assert get_oauth_account_lister(_PlainProvider()) is None
+
+
+@pytest.mark.unit
+def test_get_oauth_account_lister_non_callable_returns_none() -> None:
+    from mureo.core.providers import get_oauth_account_lister
+
+    class _Bad:
+        name = "bad"
+        list_oauth_accounts = "not callable"
+
+    assert get_oauth_account_lister(_Bad()) is None

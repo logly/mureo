@@ -95,6 +95,11 @@ def test_aggregate_meta_metrics_sums_actions() -> None:
             "impressions": "1000",
             "clicks": "40",
             "actions": [
+                # The same 3 leads reported BOTH as the deduped generic
+                # aggregate AND its pixel component. The canonical counter
+                # (#340) takes the generic ONCE (=3); the old substring scan
+                # summed both (=6) — a double-count.
+                {"action_type": "lead", "value": "3"},
                 {"action_type": "offsite_conversion.fb_pixel_lead", "value": "3"},
                 {"action_type": "link_click", "value": "40"},
             ],
@@ -113,7 +118,9 @@ def test_aggregate_meta_metrics_sums_actions() -> None:
     assert result.cost == 80.0
     assert result.impressions == 1500
     assert result.clicks == 55
-    # 3 (lead) + 2 (lead) + 1 (purchase) = 6
+    # Deduped: row1 = 3 (generic lead; component not added again),
+    # row2 = 2 (lead) + 1 (purchase) = 3 → 6. Old substring scan would
+    # have over-counted row1 as 6 → total 9.
     assert result.conversions == 6
 
 

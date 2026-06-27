@@ -329,3 +329,72 @@ class TestExecutorWiringContract:
         # Atomically written and re-parseable.
         data = json.loads(state_file.read_text(encoding="utf-8"))
         assert data["action_log"][1]["rollback_of"] == 0
+
+
+def _plugin_reversal_entry() -> ActionLogEntry:
+    """A plugin mutation whose declared reversal names another plugin tool."""
+    return ActionLogEntry(
+        timestamp="2026-04-15T10:00:00",
+        action="acme_pause",
+        platform="plugin:acme-dist",
+        summary="paused via acme plugin",
+        reversible_params={
+            "operation": "acme_resume",
+            "params": {"campaign_id": "123"},
+        },
+    )
+
+
+@pytest.mark.unit
+class TestExecutePluginReversal:
+    """Guardrail parity (#114 follow-up, GAP C): a plugin-declared reversal
+    naming a registered plugin tool is dispatched through the same executor
+    path as a built-in reversal. The planner's plugin lookup is monkeypatched
+    so the test stays free of the live MCP registry; the executor + planner
+    integration is what is exercised here."""
+
+    @pytest.mark.asyncio
+    async def test_registered_plugin_reversal_dispatched(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(
+            "mureo.rollback.planner._plugin_reversal_keys",
+            lambda op: (True, frozenset({"campaign_id"})),
+        )
+        state_file = tmp_path / "STATE.json"
+        _write_state(state_file, [_plugin_reversal_entry()])
+        dispatcher = _FakeDispatcher()
+
+        result = await execute_rollback(
+            state_file=state_file,
+            index=0,
+            confirm=True,
+            dispatcher=dispatcher,
+        )
+
+        assert result["status"] == "applied"
+        assert result["dispatched_tool"] == "acme_resume"
+        assert dispatcher.calls == [("acme_resume", {"campaign_id": "123"})]
+        doc = read_state_file(state_file)
+        assert doc.action_log[1].rollback_of == 0
+
+    @pytest.mark.asyncio
+    async def test_unregistered_plugin_reversal_refused(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(
+            "mureo.rollback.planner._plugin_reversal_keys",
+            lambda op: (False, None),
+        )
+        state_file = tmp_path / "STATE.json"
+        _write_state(state_file, [_plugin_reversal_entry()])
+        dispatcher = _FakeDispatcher()
+
+        with pytest.raises(RollbackExecutionError, match="not supported"):
+            await execute_rollback(
+                state_file=state_file,
+                index=0,
+                confirm=True,
+                dispatcher=dispatcher,
+            )
+        assert dispatcher.calls == []

@@ -155,13 +155,34 @@ Alternatively, use the [Google OAuth Playground](https://developers.google.com/o
 
 ## Obtaining Meta Ads Credentials
 
+### Permissions (OAuth scopes)
+
+`mureo configure` / `mureo auth setup` request the following scopes automatically during sign-in — you do not list them by hand. The full set is the source of truth in `mureo/auth_setup.py` (`_META_OAUTH_SCOPES`):
+
+| Scope | Enables |
+| --- | --- |
+| `ads_management` | Create / edit campaigns, ad sets, ads, budgets, bids |
+| `ads_read` | Read ad data and insights |
+| `business_management` | Resolve ad accounts reached through a Business Portfolio (a permission warning may appear during sign-in — it is required and safe to accept) |
+| `pages_show_list` | List the Facebook Pages you can link |
+| `pages_manage_ads` | Manage ads tied to a Page |
+| `pages_read_engagement` | Read a Page's posts (e.g. to list posts for the Boost Post flow, `meta_ads_page_posts_list`) |
+| `leads_retrieval` | Retrieve leads from Lead Ads / Instant Forms |
+| `pages_manage_posts` | Upload a Page photo for an Instant Form cover image (`meta_ads_pages_upload_photo`) |
+
+Notes:
+
+- `public_profile` is granted by default on every Facebook Login and does not need to be requested explicitly, so it is not in the list above.
+- "Page Public Metadata Access" / "Page Public Content Access" are **not** required — mureo only ever operates on Pages you administer (it resolves a Page Access Token via `/me/accounts` and Business-owned Pages), never arbitrary public Pages.
+- After upgrading mureo to a version that adds new scopes, re-run `mureo auth setup` (or re-authenticate in `mureo configure`) so the token is re-issued with the new permissions — an existing token does not gain scopes retroactively.
+
 ### Access Token
 
 **Option A: Graph API Explorer (for testing)**
 
 1. Go to [Meta Graph API Explorer](https://developers.facebook.com/tools/explorer/).
 2. Select your app.
-3. Click **Generate Access Token** with the `ads_management` and `ads_read` permissions.
+3. Click **Generate Access Token**. For read/write ads, `ads_management` + `ads_read` is the minimum; add the `pages_*` / `leads_retrieval` scopes from the table above to exercise Page, Lead Ads, and Instant Form features.
 4. The resulting token is short-lived (1-2 hours).
 
 **Option B: Long-Lived Token (for production)**
@@ -182,7 +203,7 @@ fb_exchange_token=SHORT_LIVED_TOKEN"
 1. Go to [Business Settings](https://business.facebook.com/settings/) > **System Users**.
 2. Create a System User with **Admin** role.
 3. Assign the ad account to the system user.
-4. Generate a token with `ads_management` permission.
+4. Generate a token with at least `ads_management` + `ads_read` (add the `pages_*` / `leads_retrieval` scopes from the table above for Page / Lead Ads / Instant Form features).
 5. System User tokens do not expire.
 
 ### App ID and App Secret

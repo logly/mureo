@@ -92,7 +92,7 @@ from mureo.core.providers.credentials import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 PROVIDERS_ENTRY_POINT_GROUP: Final[str] = "mureo.providers"
 SKILLS_ENTRY_POINT_GROUP: Final[str] = "mureo.skills"
@@ -650,7 +650,49 @@ def get_account_oauth_config(provider: object) -> AccountOAuthConfig | None:
                 f"{identity}.account_oauth.{attr}={ref!r} does not name a "
                 f"declared account_credential_fields key"
             )
+    # ``accounts_field`` (#336) is optional; when set it must also name a
+    # declared field — the post-auth picker fills it, and a multi-account
+    # backend hides it (#337), so a typo would silently disable both.
+    if config.accounts_field is not None and config.accounts_field not in declared_keys:
+        raise ValueError(
+            f"{identity}.account_oauth.accounts_field={config.accounts_field!r} "
+            f"does not name a declared account_credential_fields key"
+        )
     return config
+
+
+def get_oauth_account_lister(provider: object) -> Callable[..., object] | None:
+    """Return a provider's ``list_oauth_accounts`` hook, or ``None`` (#336).
+
+    A provider whose :class:`AccountOAuthConfig` declares an
+    ``accounts_field`` lists the accounts its obtained OAuth token can
+    reach so the configure UI can render a picker for that field instead
+    of a free-text input. The behaviour lives in the plugin (the OSS layer
+    must stay free of provider-specific Graph/REST calls — "OSS =
+    mechanism, plugin = values"), surfaced as a callable attribute:
+
+        list_oauth_accounts(credentials: Mapping[str, str])
+            -> Sequence[Mapping[str, str]]   # [{"id": ..., "name": ...}, ...]
+
+    The hook receives the provider's **stored credentials section** (so it
+    can read the obtained token under ``target_field``) and returns one
+    mapping per reachable account. It may be a plain function,
+    ``staticmethod``, or ``classmethod``, and may be ``async`` — the
+    configure layer (:func:`mureo.web.plugin_credentials.list_oauth_accounts`)
+    awaits a coroutine result on its own loop. Read defensively via
+    ``getattr`` so a provider that omits it yields ``None`` and the UI
+    keeps the plain input (same convention as ``account_credential_fields``).
+
+    Args:
+        provider: The provider class/instance to introspect. Uses
+            :func:`getattr` only; never instantiates anything.
+
+    Returns:
+        The callable hook, or ``None`` when the attribute is absent or not
+        callable.
+    """
+    hook = getattr(provider, "list_oauth_accounts", None)
+    return hook if callable(hook) else None
 
 
 __all__ = [
@@ -664,6 +706,7 @@ __all__ = [
     "discover_providers",
     "get_account_credential_fields",
     "get_account_oauth_config",
+    "get_oauth_account_lister",
     "get_provider",
     "list_providers_by_capability",
     "register_provider_class",

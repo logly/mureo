@@ -17,7 +17,7 @@ avoids cycles at registration time.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from typing import TYPE_CHECKING, Any, Protocol
 
 from mureo.analysis.anomaly_detector import (
@@ -70,7 +70,11 @@ def google_row_metrics(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def meta_row_conversions(row: dict[str, Any]) -> float:
+def meta_row_conversions(
+    row: dict[str, Any],
+    *,
+    conversion_action_types: Collection[str] | None = None,
+) -> float:
     """Return the conversion count for a Meta performance row.
 
     Live: conversions live inside an ``actions`` list keyed by
@@ -79,20 +83,28 @@ def meta_row_conversions(row: dict[str, Any]) -> float:
     the #120 live-wiring validation — accepting only the live shape
     silently zeroes BYOD conversions.
 
+    ``conversion_action_types`` (#342) is the operator's per-account override
+    for which action_types count as conversions; ``None`` uses the built-in
+    deduped generic set. It applies only to the live ``actions`` shape (BYOD
+    rows carry a pre-aggregated total).
+
     Expected runtime shape: :class:`MetaLivePerformanceRow` /
     :class:`MetaByodPerformanceRow`. Same caller-ergonomics rationale
     as :func:`google_row_metrics` for the looser parameter type.
     """
     actions = row.get("actions")
     if isinstance(actions, list):
-        total = 0.0
-        for action in actions:
-            if not isinstance(action, dict):
-                continue
-            action_type = str(action.get("action_type", ""))
-            if "lead" in action_type or "purchase" in action_type:
-                total += float(action.get("value") or 0)
-        return total
+        # #340 — count via the canonical exact-match counter (deduped
+        # generic conversion action_types) instead of a substring scan,
+        # which double-counted aggregate+component aliases (lead +
+        # offsite_conversion.fb_pixel_lead) and swept in custom-conversion
+        # slugs. Lazy import keeps adapter registration free of the
+        # mureo.meta_ads client weight (this runs only on the live path).
+        from mureo.meta_ads._conversion_count import count_conversions_from_actions
+
+        return count_conversions_from_actions(
+            actions, conversion_action_types=conversion_action_types
+        )
     return float(row.get("conversions") or 0)
 
 

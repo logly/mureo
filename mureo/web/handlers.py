@@ -102,10 +102,15 @@ from mureo.web.instance import PING_APP_NAME
 from mureo.web.legacy_commands import remove_legacy_commands
 from mureo.web.native_picker import pick_directory, pick_file
 from mureo.web.plugin_credentials import (
+    AccountListingError,
     InvalidFieldValueError,
+    OAuthAccountsNotSupportedError,
+    OAuthNotAuthenticatedError,
     RequiredFieldMissingError,
     UnknownProviderError,
+    list_oauth_accounts,
     list_plugin_credential_fields,
+    multi_account_picker_scope,
     save_plugin_credentials,
 )
 from mureo.web.reports import build_report_summary, list_report_clients
@@ -225,6 +230,13 @@ _OAUTH_PROVIDER_RE = re.compile(
 # untouched. ``provider`` is a snake_case registry name.
 _PLUGIN_OAUTH_RE = re.compile(
     r"^/api/credentials/plugins/(?P<provider>[a-z0-9_]+)/oauth/(?P<verb>start|status)$"
+)
+
+# #336 — post-auth account picker. A GET lists the accounts the provider's
+# obtained OAuth token can reach so the dashboard renders a radio picker for
+# the declared ``accounts_field`` instead of a free-text input.
+_PLUGIN_ACCOUNTS_RE = re.compile(
+    r"^/api/credentials/plugins/(?P<provider>[a-z0-9_]+)/accounts$"
 )
 
 # #216 — the form key the dashboard's Authenticate card submits carrying
@@ -432,6 +444,10 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             plugin_oauth_match.group("verb") == "status"
         ):
             self._serve_plugin_oauth_status(plugin_oauth_match.group("provider"))
+            return
+        plugin_accounts_match = _PLUGIN_ACCOUNTS_RE.match(path)
+        if plugin_accounts_match is not None:
+            self._serve_plugin_oauth_accounts(plugin_accounts_match.group("provider"))
             return
         ext_api_match = _EXTENSION_API_RE.match(path)
         if ext_api_match is not None:
@@ -718,10 +734,27 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         #195 gate the credentials-path / multi-account resolution use.
         Both the list (#207) and save (#211) sides read this one value so
         they never diverge.
+
+        Multi-account fold-in (#337): when a multi-account backend is active
+        it also hides each OAuth provider's post-auth picker field
+        (``accounts_field``) — the account is chosen per-client at runtime,
+        so a single configure-time ``account_id`` is meaningless. This is
+        merged with the backend's own ``ui_plugin_credential_fields`` so the
+        agency backend need declare nothing for it (``mureo-pro`` unchanged);
+        an explicit backend scope for a provider wins, since it is the more
+        specific authority.
         """
         if self.wizard.home is not None:
             return None
-        return runtime_ui_plugin_credential_fields()
+        backend = runtime_ui_plugin_credential_fields()
+        if not self._multi_account_active():
+            return backend
+        # Auto-hide picker fields, then let any explicit backend scope
+        # override per provider (backend is the more specific authority).
+        merged: dict[str, Collection[str]] = dict(multi_account_picker_scope())
+        if backend:
+            merged.update(backend)
+        return merged or None
 
     def _post_plugin_credentials_save(self, payload: dict[str, Any]) -> None:
         """Persist one plugin provider's per-account credential values.
@@ -1152,6 +1185,33 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         except ValueError:
             status = {"pending": False, "success": False, "error": None}
         send_json(self, status)
+
+    def _serve_plugin_oauth_accounts(self, provider: str) -> None:
+        """List the accounts a provider's OAuth token can reach (#336).
+
+        Powers the post-auth account picker. Each failure mode maps to a
+        clean 4xx envelope the dashboard can act on, never a 5xx:
+        ``unknown_provider`` (404), ``accounts_not_supported`` (404 — the
+        provider declares no picker), ``not_authenticated`` (409 — consent
+        first), ``account_listing_failed`` (502 — the plugin hook raised,
+        detail withheld).
+        """
+        store = FilesystemSecretStore(path=self.wizard.host_paths.credentials_path)
+        try:
+            accounts = list_oauth_accounts(provider, secret_store=store)
+        except UnknownProviderError:
+            send_error_json(self, 404, "unknown_provider")
+            return
+        except OAuthAccountsNotSupportedError:
+            send_error_json(self, 404, "accounts_not_supported")
+            return
+        except OAuthNotAuthenticatedError:
+            send_error_json(self, 409, "not_authenticated")
+            return
+        except AccountListingError:
+            send_error_json(self, 502, "account_listing_failed")
+            return
+        send_json(self, {"accounts": accounts})
 
     # ------------------------------------------------------------------
     # Extension dispatch

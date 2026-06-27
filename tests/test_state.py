@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -446,6 +447,124 @@ class TestStateFileErrorHandling:
         hard-fails on a nonconforming campaign."""
         data = {"campaigns": [{"id": "x", "name": "variant"}]}
         with pytest.raises(ValueError, match="campaign_id"):
+            parse_state(json.dumps(data))
+
+    @pytest.mark.unit
+    def test_parse_state_strict_false_tolerates_missing_account_id(self) -> None:
+        """``strict=False`` defaults a platform's missing ``account_id`` to ''
+        instead of crashing, so the read-only Reports view still renders the
+        platform. Reproduces the customer case: an agent-authored STATE.json
+        whose platforms omit account_id and whose campaigns use `name` (skipped)
+        — the tolerant read must NOT blow up with KeyError('account_id')."""
+        data = {
+            "version": "2",
+            "platforms": {
+                "google_ads": {
+                    # no account_id
+                    "campaigns": [
+                        {"campaign_id": "22279041552", "name": "x", "status": "PAUSED"},
+                    ],
+                    "totals": {"spend": 180206.0},
+                    "metrics_period": "LAST_30_DAYS",
+                }
+            },
+        }
+        doc = parse_state(json.dumps(data), strict=False)
+        assert doc.platforms is not None
+        plat = doc.platforms["google_ads"]
+        assert plat.account_id == ""  # defaulted, not crashed
+        assert plat.campaigns == ()  # `name`-variant campaign skipped (by design)
+        assert plat.totals == {"spend": 180206.0}  # platform data still rendered
+
+    @pytest.mark.unit
+    def test_parse_state_strict_true_raises_on_missing_account_id(self) -> None:
+        """The writer contract is preserved: a platform missing account_id
+        still raises under strict (the default)."""
+        data = {
+            "version": "2",
+            "platforms": {
+                "google_ads": {
+                    "campaigns": [],
+                    "totals": {"spend": 1.0},
+                }
+            },
+        }
+        with pytest.raises(KeyError, match="account_id"):
+            parse_state(json.dumps(data))
+
+    @pytest.mark.unit
+    def test_missing_account_id_logs_at_debug_not_warning(self, caplog) -> None:
+        """The tolerant default must not add per-poll WARNING noise — the
+        customer complaint included a log flood, so the missing-account_id
+        fallback is logged at DEBUG only."""
+        data = {
+            "version": "2",
+            "platforms": {"google_ads": {"campaigns": [], "totals": {"spend": 1.0}}},
+        }
+        with caplog.at_level(logging.DEBUG, logger="mureo.context.state"):
+            parse_state(json.dumps(data), strict=False)
+        assert any(
+            "missing 'account_id'" in r.message and r.levelno == logging.DEBUG
+            for r in caplog.records
+        )
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    @pytest.mark.unit
+    def test_parse_state_strict_false_skips_log_at_debug_not_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Skipped nonconforming entries log at DEBUG, never WARNING+.
+
+        The read-only Reports view re-parses STATE.json on every dashboard
+        poll, so a per-entry WARNING would flood the daemon log for an account
+        with many legacy / hand-authored campaigns — and read as a failure when
+        it is graceful degradation. Pin DEBUG so the noise never returns."""
+        data = {
+            "campaigns": [{"id": "x", "name": "variant, no campaign_id/_name"}],
+            "action_log": [{"summary": "legacy, no timestamp/action/platform"}],
+        }
+        with caplog.at_level(logging.DEBUG, logger="mureo.context.state"):
+            parse_state(json.dumps(data), strict=False)
+
+        # The skips still happen and are observable at DEBUG …
+        assert any("skipping unparseable" in r.message for r in caplog.records)
+        # … but nothing is emitted at WARNING or above (the per-render flood).
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    @pytest.mark.unit
+    def test_parse_state_strict_false_skips_malformed_action_log(self) -> None:
+        """``strict=False`` drops action_log entries missing a required field
+        (timestamp / action / platform) instead of raising, and keeps the rest
+        of the document. The read-only Reports view relies on this — an old /
+        hand-authored entry written before those fields were required (e.g. one
+        with only a `summary`) must not blank a whole STATE.json."""
+        data = {
+            "version": "2",
+            "action_log": [
+                {"summary": "old entry, no timestamp/action/platform"},  # bad
+                {
+                    "timestamp": "2026-06-16T10:00:00+00:00",
+                    "action": "budget_update",
+                    "platform": "google_ads",
+                    "summary": "good entry",
+                },
+            ],
+            "reports": {"daily": {"verdict": "Healthy"}},
+        }
+        doc = parse_state(json.dumps(data), strict=False)
+
+        # The conforming entry survives; the field-less one is dropped.
+        assert [e.action for e in doc.action_log] == ["budget_update"]
+        assert doc.reports == {"daily": {"verdict": "Healthy"}}
+
+    @pytest.mark.unit
+    def test_parse_state_strict_true_raises_on_action_log_missing_timestamp(
+        self,
+    ) -> None:
+        """The default (strict) path still hard-fails on an action_log entry
+        missing a required field — the writer contract is unchanged."""
+        data = {"action_log": [{"action": "x", "platform": "google_ads"}]}
+        with pytest.raises(KeyError):
             parse_state(json.dumps(data))
 
 
@@ -1586,3 +1705,144 @@ class TestMutatorsPreserveReports:
         )
         assert doc.reports == {"weekly": {"verdict": "Watch"}}
         assert read_state_file(fp).reports == {"weekly": {"verdict": "Watch"}}
+
+
+@pytest.mark.unit
+class TestConversionActionTypesOverride:
+    """#342 — operator-declared per-account conversion action_type override."""
+
+    def _state_with_meta(self, tmp_path: Path, account_id: str = "act_1") -> Path:
+        p = tmp_path / "STATE.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {
+                        "meta_ads": {"account_id": account_id, "campaigns": []}
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return p
+
+    def test_set_and_load_roundtrip(self, tmp_path: Path) -> None:
+        from mureo.context.state import (
+            load_conversion_action_types,
+            set_conversion_action_types,
+        )
+
+        p = self._state_with_meta(tmp_path)
+        set_conversion_action_types(
+            p, "meta_ads", "act_1", ["offsite_conversion.custom.123"]
+        )
+        assert load_conversion_action_types("act_1", path=p) == (
+            "offsite_conversion.custom.123",
+        )
+        # Serialized as a JSON list under the platform entry.
+        data = json.loads(p.read_text(encoding="utf-8"))
+        assert data["platforms"]["meta_ads"]["conversion_action_types"] == [
+            "offsite_conversion.custom.123"
+        ]
+
+    def test_clear_with_empty_list(self, tmp_path: Path) -> None:
+        from mureo.context.state import (
+            load_conversion_action_types,
+            set_conversion_action_types,
+        )
+
+        p = self._state_with_meta(tmp_path)
+        set_conversion_action_types(p, "meta_ads", "act_1", ["lead"])
+        set_conversion_action_types(p, "meta_ads", "act_1", [])
+        assert load_conversion_action_types("act_1", path=p) is None
+        data = json.loads(p.read_text(encoding="utf-8"))
+        assert "conversion_action_types" not in data["platforms"]["meta_ads"]
+
+    def test_load_account_mismatch_returns_none(self, tmp_path: Path) -> None:
+        from mureo.context.state import (
+            load_conversion_action_types,
+            set_conversion_action_types,
+        )
+
+        p = self._state_with_meta(tmp_path, account_id="act_1")
+        set_conversion_action_types(p, "meta_ads", "act_1", ["lead"])
+        assert load_conversion_action_types("act_OTHER", path=p) is None
+
+    def test_load_missing_file_or_unset_is_none(self, tmp_path: Path) -> None:
+        from mureo.context.state import load_conversion_action_types
+
+        assert (
+            load_conversion_action_types("act_1", path=tmp_path / "absent.json") is None
+        )
+        p = self._state_with_meta(tmp_path)
+        assert load_conversion_action_types("act_1", path=p) is None  # unset
+
+    def test_preserved_across_upsert_and_metrics(self, tmp_path: Path) -> None:
+        from mureo.context.models import CampaignSnapshot
+        from mureo.context.state import (
+            load_conversion_action_types,
+            set_conversion_action_types,
+            set_platform_metrics,
+            upsert_campaign,
+        )
+
+        p = self._state_with_meta(tmp_path)
+        set_conversion_action_types(p, "meta_ads", "act_1", ["lead"])
+        upsert_campaign(
+            p,
+            CampaignSnapshot(campaign_id="c1", campaign_name="C1", status="ACTIVE"),
+            platform="meta_ads",
+            account_id="act_1",
+        )
+        assert load_conversion_action_types("act_1", path=p) == ("lead",)
+        set_platform_metrics(
+            p, "meta_ads", "act_1", totals={"spend": 1.0}, metrics_period="LAST_30_DAYS"
+        )
+        assert load_conversion_action_types("act_1", path=p) == ("lead",)
+
+    def test_parse_render_roundtrip(self, tmp_path: Path) -> None:
+        from mureo.context.state import parse_state, render_state
+
+        doc = parse_state(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {
+                        "meta_ads": {
+                            "account_id": "act_1",
+                            "campaigns": [],
+                            "conversion_action_types": ["lead", "purchase"],
+                        }
+                    },
+                }
+            )
+        )
+        ps = doc.platforms["meta_ads"]
+        assert ps.conversion_action_types == ("lead", "purchase")
+        # Round-trips through render.
+        re = parse_state(render_state(doc))
+        assert re.platforms["meta_ads"].conversion_action_types == ("lead", "purchase")
+
+    def test_load_never_raises_on_malformed_json(self, tmp_path: Path) -> None:
+        """#342 HIGH — the resolver runs inside live analysis; a non-object /
+        malformed STATE.json must yield None, never raise (which would take
+        down the whole report)."""
+        from mureo.context.state import load_conversion_action_types
+
+        for bad in ("[1,2,3]", '"a string"', "123", "null", "{not json", ""):
+            p = tmp_path / "STATE.json"
+            p.write_text(bad, encoding="utf-8")
+            assert load_conversion_action_types("act_1", path=p) is None
+
+    def test_load_tolerates_act_prefix_mismatch(self, tmp_path: Path) -> None:
+        """#342 — a bare-numeric stored id matches the act_* live id and vice
+        versa, so the override isn't silently dropped over the prefix."""
+        from mureo.context.state import (
+            load_conversion_action_types,
+            set_conversion_action_types,
+        )
+
+        p = self._state_with_meta(tmp_path, account_id="123456")  # bare
+        set_conversion_action_types(p, "meta_ads", "123456", ["lead"])
+        # Live counters resolve with the act_* form.
+        assert load_conversion_action_types("act_123456", path=p) == ("lead",)

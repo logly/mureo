@@ -105,10 +105,12 @@ Skills and commands describe "Read STRATEGY.md", "Update STATE.json", and "Appen
 | Read STRATEGY.md | `Read` tool | `mureo_strategy_get` MCP tool |
 | Replace STRATEGY.md | `Write` / `Edit` tool | `mureo_strategy_set` MCP tool |
 | Read STATE.json | `Read` tool | `mureo_state_get` MCP tool |
-| Append action_log entry | `Edit` tool (modify JSON) | `mureo_state_action_log_append` MCP tool |
-| Upsert campaign snapshot | `Edit` tool (modify JSON) | `mureo_state_upsert_campaign` MCP tool |
+| Append action_log entry | `mureo_state_action_log_append` MCP tool | `mureo_state_action_log_append` MCP tool |
+| Upsert campaign snapshot | `mureo_state_upsert_campaign` MCP tool | `mureo_state_upsert_campaign` MCP tool |
 
 When you don't have direct filesystem tools (Desktop / Cowork / web), always reach for the corresponding `mureo_*` MCP tool — they encode the same atomic-write semantics so you can't corrupt the file mid-edit.
+
+For STATE.json **mutations** (`Upsert campaign snapshot` / `Append action_log entry`) prefer the `mureo_state_*` MCP tool on **every** host, **including Code**: they apply the correct schema atomically. A raw `Edit` easily omits the required `platforms[<platform>]` / `account_id`, and a platform/campaign missing those is **dropped** by the dashboard — the workspace then renders **empty / "not yet bootstrapped"** even after you wrote campaigns. Separately, `mureo_state_upsert_campaign` (and the metrics / report setters) stamp the top-level **`last_synced_at`** — the dashboard's "Synced N ago" freshness — which a hand-edit leaves stale (`mureo_state_action_log_append` does **not** re-stamp it). Hand-writing STATE.json directly with `Write` on Code is reserved for the **bulk-snapshot** flows (`sync-state` / `daily-check`); on that path you own replicating the full **STATE.json Schema** below, **including a fresh `last_synced_at`**.
 
 The platform tools (`google_ads_*`, `meta_ads_*`, `search_console_*`) are the same across all hosts because they only exist as MCP tools.
 
@@ -255,24 +257,86 @@ All tools return structured JSON via `TextContent`. The format depends on the to
 }
 ```
 
+## STATE.json Schema (when writing on Code via `Write`)
+
+> **Tool output ≠ STATE.json.** The *Success Response* above is what a vendor
+> MCP tool *returns* — a campaign there is `{"campaign_id", "name", "status", …}`.
+> STATE.json's `CampaignSnapshot` is a **different** shape: it requires
+> **`campaign_name`**, not `name`. When you hand-write STATE.json with `Write`
+> on Code, **map** the tool-output `name` → `campaign_name` (and `id` →
+> `campaign_id`), and always set the platform's **`account_id`**. On Desktop /
+> Cowork the `mureo_state_*` MCP tools serialize this canonical shape for you,
+> so the mapping only matters on the Code `Write` path.
+
+A campaign or platform missing a required field below is silently **dropped**
+by the read-only Reports view (and rejected by a strict read), so the dashboard
+shows fewer campaigns than you wrote — get these exact names right:
+
+- **Campaign snapshot** (root `campaigns[]` and `platforms[<p>].campaigns[]`) —
+  required: `campaign_id` (str), `campaign_name` (str), `status` (str).
+  Optional: `bidding_strategy_type`, `daily_budget`, `campaign_goal`, `notes`,
+  `device_targeting`, and `metrics` (the per-campaign performance object:
+  `spend` / `impressions` / `clicks` / `conversions` / `cpa` / `ctr` / …).
+- **Platform entry** (`platforms[<platform>]`) — required: `account_id` (str;
+  use `""` only if genuinely unknown). Plus `campaigns[]` and the rollups the
+  dashboard actually renders: `totals`, `metrics_period`, `periods[<window>]`.
+- **Top-level** — required: `last_synced_at` (ISO-8601 string, **stamped to
+  _now_** by every campaign/metrics/report write). It drives the dashboard's
+  "Synced N ago" freshness; a missing or stale value makes the data read as
+  not-recently-synced. `mureo_state_upsert_campaign` / `_platform_metrics_set`
+  / `_report_set` set it for you (`_action_log_append` does not); on the Code
+  `Write` path you must set it yourself.
+
+Canonical STATE.json shape (note `campaign_name`, `account_id`, `last_synced_at`):
+
+```json
+{
+  "version": "2",
+  "last_synced_at": "2026-06-26T10:00:00+09:00",
+  "platforms": {
+    "google_ads": {
+      "account_id": "123-456-7890",
+      "campaigns": [
+        {
+          "campaign_id": "12345",
+          "campaign_name": "Brand Search",
+          "status": "ENABLED",
+          "daily_budget": 5000.0,
+          "metrics": {"spend": 4200.0, "clicks": 310, "conversions": 12}
+        }
+      ],
+      "totals": {"spend": 4200.0, "clicks": 310, "conversions": 12},
+      "metrics_period": "LAST_30_DAYS",
+      "periods": {"LAST_30_DAYS": {"spend": 4200.0, "clicks": 310, "conversions": 12}}
+    }
+  }
+}
+```
+
 ## CLI Quick Reference
+
+> **The `mureo` CLI covers setup, auth, and service management only — it has NO
+> ad-operation subcommands.** Listing campaigns, pulling insights, editing
+> budgets, etc. are done through the **MCP tools** (`google_ads_*`,
+> `meta_ads_*`, `search_console_*`) — there is **no** `mureo google-ads …` /
+> `mureo meta-ads …` shell command. Never run or suggest one (it will error with
+> "no such command"); call the corresponding MCP tool instead.
 
 | Command | Description |
 |---------|-------------|
-| `mureo auth setup` | Interactive authentication wizard |
+| `mureo auth setup` | Interactive auth wizard — records the Google Ads `customer_id` / Meta `account_id` |
 | `mureo auth status` | Show authentication status |
-| `mureo auth check-google` | Verify Google Ads credentials |
-| `mureo auth check-meta` | Verify Meta Ads credentials |
-| `mureo google-ads campaigns-list` | List Google Ads campaigns |
-| `mureo google-ads campaigns-get` | Get campaign details |
-| `mureo google-ads ads-list` | List ads |
-| `mureo google-ads keywords-list` | List keywords |
-| `mureo google-ads budget-get` | Get campaign budget |
-| `mureo google-ads performance-report` | Performance report |
-| `mureo meta-ads campaigns-list` | List Meta Ads campaigns |
-| `mureo meta-ads campaigns-get` | Get campaign details |
-| `mureo meta-ads ad-sets-list` | List ad sets |
-| `mureo meta-ads ads-list` | List ads |
-| `mureo meta-ads insights-report` | Performance report |
+| `mureo auth check-google` | Verify Google Ads credentials (masked) |
+| `mureo auth check-meta` | Verify Meta Ads credentials (masked) |
+| `mureo configure` | Launch the local configuration / Reports UI |
+| `mureo service {install,status,restart,uninstall}` | Manage the always-on daemon |
+| `mureo upgrade [--all]` | Upgrade mureo (also refreshes deployed skills + restarts the service) |
+| `mureo providers {list,add,remove}` | Manage official-MCP / plugin providers |
+| `mureo rollback {list,show}` | Inspect reversible actions in the `action_log` (apply a reversal via the `rollback_apply` MCP tool) |
 
-All CLI commands output JSON to stdout for easy piping and parsing.
+To **list Google Ads campaigns**, call the MCP tool `google_ads_campaigns_list`
+(it resolves `customer_id` from the stored credentials). If you hit
+`customer_id is required`, do **not** ask the operator to read it from the
+Google Ads UI or hand over a CSV — call `google_ads_accounts_list` to discover
+the accessible accounts and set it. See `../_mureo-google-ads/SKILL.md` →
+*No customer_id? (recovery)*.

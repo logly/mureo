@@ -318,6 +318,48 @@ class TestRecordNativeMutation:
 
 
 # ---------------------------------------------------------------------------
+# shared is_error_result helper (one source of truth in _helpers)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSharedIsErrorResult:
+    def test_native_alias_delegates_to_helper(self) -> None:
+        # nr._is_error_result is a thin alias for the shared helper.
+        from mcp.types import TextContent
+
+        from mureo.mcp._helpers import is_error_result
+
+        envelope = [TextContent(type="text", text="API error: boom")]
+        assert is_error_result(envelope) is True
+        assert nr._is_error_result(envelope) is True
+
+    def test_empty_and_none_are_not_errors(self) -> None:
+        from mureo.mcp._helpers import is_error_result
+
+        assert is_error_result(None) is False
+        assert is_error_result([]) is False
+
+    def test_non_error_text_is_not_an_error(self) -> None:
+        from mcp.types import TextContent
+
+        from mureo.mcp._helpers import is_error_result
+
+        assert is_error_result([TextContent(type="text", text="ok")]) is False
+        # "Error:" alone is NOT the api_error_handler envelope — only the exact
+        # "API error:" prefix counts, so plugin data starting with "Error" is
+        # not mistaken for a failed mutation.
+        assert is_error_result([TextContent(type="text", text="Error: data")]) is False
+
+    def test_api_error_prefix_constant_matches_handler_output(self) -> None:
+        # Pin the producer/detector contract: the prefix the handler stamps is
+        # the prefix the detector keys off.
+        from mureo.mcp._helpers import API_ERROR_PREFIX
+
+        assert API_ERROR_PREFIX == "API error:"
+
+
+# ---------------------------------------------------------------------------
 # server.handle_call_tool wiring
 # ---------------------------------------------------------------------------
 

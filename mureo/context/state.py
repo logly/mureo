@@ -52,18 +52,85 @@ def _parse_campaigns(
         try:
             parsed.append(_parse_campaign(c))
         except (ValueError, KeyError, TypeError) as exc:
-            logger.warning("skipping unparseable campaign entry: %s", exc)
+            # DEBUG, not WARNING: the read-only Reports view re-parses on every
+            # poll, so a per-entry WARNING would flood the log for a STATE.json
+            # with many nonconforming (e.g. legacy / hand-authored) campaigns.
+            logger.debug("skipping unparseable campaign entry: %s", exc)
     return tuple(parsed)
+
+
+def _parse_action_log(
+    raw: list[dict[str, Any]], *, strict: bool
+) -> tuple[ActionLogEntry, ...]:
+    """Parse the action_log list.
+
+    ``strict=True`` (the writer contract) raises on the first entry missing a
+    required field (``timestamp`` / ``action`` / ``platform``). ``strict=False``
+    skips such entries, logging each — used only by the read-only Reports view
+    so a single old / hand-authored entry (e.g. one written before those fields
+    were required) cannot blank out a whole document.
+    """
+    if strict:
+        return tuple(_parse_action_log_entry(e) for e in raw)
+    parsed: list[ActionLogEntry] = []
+    for e in raw:
+        try:
+            parsed.append(_parse_action_log_entry(e))
+        except (ValueError, KeyError, TypeError) as exc:
+            # DEBUG, not WARNING — see _parse_campaigns: avoid per-render log
+            # flood from a STATE.json with many nonconforming action_log entries.
+            logger.debug("skipping unparseable action_log entry: %s", exc)
+    return tuple(parsed)
+
+
+def _platform_account_id(
+    platform_key: str, platform_data: dict[str, Any], *, strict: bool
+) -> str:
+    """Resolve a platform's ``account_id``.
+
+    ``strict=True`` (the writer contract) requires the key — a missing
+    ``account_id`` raises ``KeyError`` exactly as before. ``strict=False``
+    (the read-only Reports view) defaults a missing ``account_id`` to ``""``
+    so an agent-/hand-authored STATE.json that omitted it still renders its
+    platforms/totals/periods instead of blanking the whole dashboard. Logged
+    at DEBUG (expected for non-canonical files; never per-poll WARNING noise).
+    """
+    if strict or "account_id" in platform_data:
+        # KeyError in strict if absent — unchanged writer contract. Annotated
+        # local so mypy treats the dict[str, Any] value as the declared str.
+        account_id: str = platform_data["account_id"]
+        return account_id
+    logger.debug(
+        "platform %r missing 'account_id'; defaulting to '' for the tolerant "
+        "read-only view",
+        platform_key,
+    )
+    return ""
+
+
+def _parse_conversion_action_types(raw: Any) -> tuple[str, ...] | None:
+    """Parse a platform's ``conversion_action_types`` override (#342).
+
+    Returns a tuple of non-empty string action_types, or ``None`` when the
+    field is absent / not a list / has no usable entries (so the counters
+    fall back to the built-in generic set). Tolerant by design — a malformed
+    value degrades to "no override" rather than raising.
+    """
+    if not isinstance(raw, list):
+        return None
+    cleaned = tuple(str(x).strip() for x in raw if isinstance(x, str) and x.strip())
+    return cleaned or None
 
 
 def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     """Parse a JSON string and return a StateDocument.
 
-    ``strict`` controls campaign-list validation only: ``True`` (default)
-    preserves the strict writer contract (raises on a missing required field);
-    ``False`` tolerantly skips nonconforming campaign entries for the read-only
-    Reports view. Structural problems (invalid JSON, a missing platform
-    ``account_id``) always raise regardless of ``strict``.
+    ``strict`` controls campaign-list, action_log AND platform validation:
+    ``True`` (default) preserves the strict writer contract (raises on a missing
+    required field, including a platform ``account_id``); ``False`` tolerantly
+    skips nonconforming campaign / action_log entries and defaults a missing
+    platform ``account_id`` to ``""`` for the read-only Reports view. Invalid
+    JSON always raises regardless of ``strict``.
     """
     data = json.loads(text)
     campaigns_raw = data.get("campaigns", [])
@@ -79,16 +146,21 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
                 platform_data.get("campaigns", []), strict=strict
             )
             platforms[platform_key] = PlatformState(
-                account_id=platform_data["account_id"],
+                account_id=_platform_account_id(
+                    platform_key, platform_data, strict=strict
+                ),
                 campaigns=platform_campaigns,
                 totals=platform_data.get("totals"),
                 metrics_period=platform_data.get("metrics_period"),
                 periods=platform_data.get("periods"),
+                conversion_action_types=_parse_conversion_action_types(
+                    platform_data.get("conversion_action_types")
+                ),
             )
 
     # v2: action_log
     action_log_raw = data.get("action_log", [])
-    action_log = tuple(_parse_action_log_entry(e) for e in action_log_raw)
+    action_log = _parse_action_log(action_log_raw, strict=strict)
 
     return StateDocument(
         version=data.get("version", "1"),
@@ -183,6 +255,10 @@ def _platform_state_to_dict(ps: PlatformState) -> dict[str, Any]:
     # entries with no per-period data) stay byte-stable on round-trip.
     if ps.periods:
         result["periods"] = copy.deepcopy(ps.periods)
+    # #342 — operator conversion override: emit only when set, as a JSON list,
+    # so legacy entries stay byte-stable.
+    if ps.conversion_action_types:
+        result["conversion_action_types"] = list(ps.conversion_action_types)
     return result
 
 
@@ -374,6 +450,11 @@ def upsert_campaign(
             totals=existing.totals if existing is not None else None,
             metrics_period=existing.metrics_period if existing is not None else None,
             periods=existing.periods if existing is not None else None,
+            # #342 — the operator conversion override has no upsert input;
+            # inherit it so a campaign upsert never wipes the account setting.
+            conversion_action_types=(
+                existing.conversion_action_types if existing is not None else None
+            ),
         )
 
         return StateDocument(
@@ -529,6 +610,11 @@ def set_platform_metrics(
                 else (existing.metrics_period if existing is not None else None)
             ),
             periods=merged_periods,
+            # #342 — preserve the operator conversion override across a
+            # metrics write (it has no input here, same rationale as totals).
+            conversion_action_types=(
+                existing.conversion_action_types if existing is not None else None
+            ),
         )
 
         return StateDocument(
@@ -542,6 +628,154 @@ def set_platform_metrics(
         )
 
     return _locked_state_mutation(path, _build)
+
+
+def set_conversion_action_types(
+    path: Path,
+    platform: str,
+    account_id: str,
+    conversion_action_types: list[str] | None,
+) -> StateDocument:
+    """Set a platform's operator conversion ``action_type`` override (#342).
+
+    Declares EXACTLY which Meta ``action_type`` rows count as this account's
+    conversions — overriding the built-in deduped generic set
+    (``{lead, purchase, complete_registration}``) so a custom-event advertiser
+    (``offsite_conversion.custom.<id>``) or a component-only account is counted
+    correctly. Pass ``None`` (or an empty list) to clear the override and
+    restore the default.
+
+    Replacement semantics: the override is the *complete* conversion set for
+    the account — the counters use these and only these, never summed on top of
+    the generic set (so two overlapping alias rows can't double-count).
+
+    The platform's campaigns / rollups and every OTHER platform are preserved;
+    the entry is created (carrying ``account_id``) when absent. Re-stamps
+    ``last_synced_at`` and writes back atomically under the state lock.
+
+    Args:
+        path: STATE.json location.
+        platform: Platform key (e.g. ``"meta_ads"``).
+        account_id: The platform account id, always written onto the entry.
+        conversion_action_types: The exact action_types to count, or ``None`` /
+            ``[]`` to clear.
+
+    Returns:
+        The updated :class:`StateDocument`.
+    """
+    cleaned: tuple[str, ...] | None = None
+    if conversion_action_types:
+        cleaned = tuple(
+            str(x).strip()
+            for x in conversion_action_types
+            if isinstance(x, str) and x.strip()
+        )
+        cleaned = cleaned or None
+
+    def _build(doc: StateDocument) -> StateDocument:
+        platforms = dict(doc.platforms) if doc.platforms else {}
+        existing = platforms.get(platform)
+        platforms[platform] = PlatformState(
+            account_id=account_id,
+            campaigns=existing.campaigns if existing is not None else (),
+            totals=existing.totals if existing is not None else None,
+            metrics_period=existing.metrics_period if existing is not None else None,
+            periods=existing.periods if existing is not None else None,
+            conversion_action_types=cleaned,
+        )
+        return StateDocument(
+            version=doc.version,
+            last_synced_at=_now_iso(),
+            customer_id=doc.customer_id,
+            campaigns=doc.campaigns,
+            platforms=platforms,
+            action_log=doc.action_log,
+            reports=doc.reports,
+        )
+
+    return _locked_state_mutation(path, _build)
+
+
+def _workspace_state_path() -> Path:
+    """Resolve the ACTIVE workspace's STATE.json — the same file the MCP state
+    tools write to (#342).
+
+    Mirrors ``_handlers_mureo_context._resolve_path``'s default resolution
+    (``store.state_path`` → ``store.workspace / STATE.json``) via the runtime
+    context, so the conversion override is read from the same file it is
+    written to — even under an agency / alternate ``StateStore`` where the
+    workspace diverges from the process cwd. ``get_runtime_context`` is
+    imported lazily to avoid an import cycle (``runtime_context`` builds on
+    ``context``). Any failure falls back to the cwd convention.
+    """
+    from pathlib import Path as _Path
+
+    try:
+        from mureo.core.runtime_context import get_runtime_context
+
+        store = get_runtime_context().state_store
+        attr = getattr(store, "state_path", None)
+        if attr is not None:
+            return _Path(attr)
+        workspace = getattr(store, "workspace", None)
+        if workspace is not None:
+            return _Path(workspace) / "STATE.json"
+    except Exception:  # noqa: BLE001 — best-effort; never break a live read.
+        pass
+    return _Path("STATE.json")
+
+
+def _account_id_eq(a: str, b: str) -> bool:
+    """Compare Meta account ids tolerant of the optional ``act_`` prefix (#342).
+
+    The MCP setter stores whatever id the operator/agent passed; the live
+    counters resolve with the ``act_*`` form the client enforces. Comparing
+    after stripping a leading ``act_`` keeps a bare-numeric override from
+    silently never matching.
+    """
+    return a.removeprefix("act_") == b.removeprefix("act_")
+
+
+def load_conversion_action_types(
+    account_id: str,
+    *,
+    path: Path | None = None,
+    platform: str = "meta_ads",
+) -> tuple[str, ...] | None:
+    """Read an account's operator conversion override from STATE.json (#342).
+
+    Returns the ``platforms[platform].conversion_action_types`` override when
+    it is set AND the entry's ``account_id`` matches ``account_id`` (tolerant
+    of the ``act_`` prefix); otherwise ``None`` so the conversion counters fall
+    back to the built-in generic set.
+
+    Reads the ACTIVE workspace ``STATE.json`` (resolved via the runtime context
+    — the same file the MCP state tools write to). **Never raises**: a missing
+    / unreadable / malformed file, or an absent platform entry, all yield
+    ``None`` so a live analysis is never broken by a state-read failure.
+    """
+    state_path = path if path is not None else _workspace_state_path()
+    try:
+        if not state_path.exists():
+            return None
+        doc = parse_state(state_path.read_text(encoding="utf-8"), strict=False)
+    except Exception:  # noqa: BLE001 — never break a live analysis on a bad file.
+        # parse_state can raise OSError / ContextFileError / ValueError
+        # (JSONDecodeError) AND AttributeError/TypeError on non-object JSON;
+        # a best-effort override read must swallow all of them.
+        return None
+    if doc.platforms is None:
+        return None
+    entry = doc.platforms.get(platform)
+    if entry is None or not entry.conversion_action_types:
+        return None
+    if (
+        entry.account_id
+        and account_id
+        and not _account_id_eq(entry.account_id, account_id)
+    ):
+        return None
+    return entry.conversion_action_types
 
 
 def get_campaign(doc: StateDocument, campaign_id: str) -> CampaignSnapshot | None:

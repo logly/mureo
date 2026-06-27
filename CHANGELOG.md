@@ -7,6 +7,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.14] - 2026-06-24
+
+### Fixed
+
+- `google_ads_accounts_list` required a `customer_id` (resolved via the shared
+  client) even though its schema marks it optional, so the natural recovery
+  from an unset `customer_id` ("list accounts to find the account") failed with
+  the same `customer_id is required` error. It is now id-free in real mode —
+  BYOD and an explicit `customer_id` still use the customer-scoped client, but
+  with neither it uses the credential-keyed `list_accessible_accounts` primitive
+  (the one the auth wizard already uses pre-account-selection). This lets the
+  agent auto-recover when auth is configured but no account was selected (#333).
+- Skill docs listed non-existent `mureo google-ads …` / `mureo meta-ads …` CLI
+  commands (ad operations are MCP tools, not CLI) — which led the agent to run a
+  phantom command and mis-report a "CLI bug". The shared CLI Quick Reference now
+  lists only real commands and points ad ops at the MCP tools, the Google/Meta
+  skills' `cliHelp` frontmatter no longer references a phantom command, and a
+  stale `mureo rollback {plan,apply}` row is corrected to `{list,show}` (#333).
+- Added a Google Ads "No customer_id? (recovery)" skill section so the agent
+  discovers the account via `google_ads_accounts_list` (auto-set when one, ask
+  when several, re-run `mureo auth setup` when none) instead of asking the
+  operator to look the ID up in the UI or supply a CSV (#333).
+
+## [0.10.13] - 2026-06-24
+
+### Added
+
+- Plugin (third-party MCP) tools now get the same guardrails as the built-in
+  Google/Meta tools (#324): server-side `inputSchema` validation (so a plugin's
+  declared real-spend bounds are enforced before dispatch), a STRATEGY.md
+  reminder appended after a mutating plugin call, and executable rollback for a
+  plugin-declared reversal that names a registered, non-destructive plugin tool
+  (previously recorded for audit only).
+- New optional `MCPReversibleToolProvider` protocol (#327, #328): a plugin can
+  implement `capture_reversal` to return a runtime-correct reversal (the actual
+  entity id + the prior state it reads itself) captured *before* the mutation —
+  so a plugin status toggle becomes reversible via `rollback_apply`, mirroring
+  the built-in before-state capture. A plugin that does not opt in keeps its
+  static `meta["mureo"]["reversal"]` behavior.
+
+### Fixed
+
+- The read-only Reports dashboard crashed with `KeyError: 'account_id'`
+  (empty summary + a per-poll traceback flood in the daemon log) for an
+  agent-/hand-authored STATE.json whose platforms omit `account_id`. The
+  tolerant read now defaults a missing `account_id` to `""` so the platform's
+  totals/periods still render, and the strict-fail → tolerant-retry path plus
+  the per-entry skips now log at DEBUG instead of WARNING, so a non-canonical
+  STATE.json no longer crashes the view or floods the log (#329).
+- A plugin that returned an `"API error: ..."` result *without raising* was
+  promoted to STATE.json's `action_log` as a phantom mutation (and, via a
+  declared reversal, a phantom executable rollback). The plugin dispatch path
+  now skips that promotion for an error-envelope result, matching the built-in
+  mutation behavior (#325).
+- Skills now pin the canonical STATE.json schema for the Claude Code `Write`
+  path (#331): documented that vendor tool output uses `name` while STATE.json
+  requires `campaign_name`, and that platform entries require `account_id` —
+  preventing the field-name drift that made the Reports view skip campaigns.
+
+## [0.10.12] - 2026-06-23
+
+### Fixed
+
+- The read-only Reports dashboard crashed (and returned an empty summary) when
+  STATE.json held an old / hand-authored `action_log` entry missing a required
+  field (`timestamp` / `platform`). The strict parse is kept for writers, but
+  the read-only view now skips nonconforming `action_log` entries — the same
+  tolerance 0.10.10 added for campaign entries, which had not covered the
+  action log.
+- The Reports period toggle (Yesterday / Last 30 days) did not appear when only
+  `daily-check` had run, because the 30-day window was written solely by
+  `sync-state`. `daily-check` now also persists `LAST_30_DAYS` when it already
+  holds those numbers (no extra API call), so the toggle shows from a
+  daily-check-only routine.
+
+### Added
+
+- `mureo upgrade` now refreshes deployed skills (`~/.claude/skills`) and
+  restarts the always-on `mureo service` daemon after a successful upgrade, so
+  a new version actually takes effect instead of leaving stale skills and a
+  daemon running the old code. Use `--no-refresh` to skip. Best-effort: it
+  never fails the upgrade.
+
+### Documentation
+
+- Refreshed the Meta OAuth scope list (now the full 8 scopes), corrected the
+  MCP tool count (188), and documented the `mureo service` / `mureo open` /
+  `mureo configure --serve` / `mureo upgrade` commands.
+
+## [0.10.11] - 2026-06-22
+
+### Fixed
+
+- The configure UI's "About mureo" update check and one-click upgrade crashed
+  on a Japanese Windows with `UnicodeEncodeError: 'cp932' codec can't encode
+  character` raised inside pip's own output rendering (the
+  `pip install --report -` JSON path), so pip exited before producing output.
+  When mureo spawns pip as a subprocess, the child Python defaulted its stdout
+  encoding to the console code page (cp932), which cannot encode characters
+  pip emits (e.g. `U+00B7`). 0.10.10 fixed the decode side; this fixes the
+  encode side by forcing the pip child's stdio to UTF-8
+  (`PYTHONIOENCODING=utf-8:replace`, `PYTHONUTF8=1`) across every
+  pip/ensurepip subprocess. No effect on macOS/Linux (already UTF-8).
+
 ## [0.10.10] - 2026-06-22
 
 ### Fixed

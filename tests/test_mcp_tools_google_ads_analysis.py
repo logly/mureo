@@ -79,6 +79,55 @@ class TestGoogleAdsBudgetCreateAndAccountsHandlers:
         parsed = json.loads(result[0].text)
         assert len(parsed) == 1
 
+    async def test_accounts_list_without_customer_id_uses_id_free_discovery(
+        self,
+    ) -> None:
+        """Recovery path: with NO customer_id, accounts-list must not require one
+        — it uses the id-free ``list_accessible_accounts`` primitive (keyed on
+        the OAuth user), not the customer-scoped client. This is what lets an
+        agent recover from an unset customer_id instead of dead-ending."""
+        mod = _import_google_ads_tools()
+        creds = MagicMock()
+        accounts = [
+            {"id": "111", "name": "Acct A", "is_manager": False, "parent_id": None},
+            {"id": "222", "name": "Acct B", "is_manager": False, "parent_id": None},
+        ]
+        with (
+            patch("mureo.byod.runtime.byod_has", return_value=False),
+            patch("mureo.auth.load_google_ads_credentials", return_value=creds),
+            patch(
+                "mureo.google_ads.list_accessible_accounts", return_value=accounts
+            ) as m_list,
+        ):
+            result = await mod.handle_tool("google_ads_accounts_list", {})
+
+        # The id-free primitive was used with the creds, and no customer_id
+        # was required (no "customer_id is required" error).
+        m_list.assert_called_once_with(creds)
+        parsed = json.loads(result[0].text)
+        assert [a["id"] for a in parsed] == ["111", "222"]
+
+    async def test_accounts_list_byod_keeps_scoped_client_path(self) -> None:
+        """BYOD must keep using the customer-scoped client (CSV-backed
+        `list_accounts`), NOT the id-free discovery primitive — even with no
+        customer_id. Locks the branch against regression."""
+        mod = _import_google_ads_tools()
+        client = AsyncMock()
+        client.list_accounts.return_value = [{"customer_id": "byod"}]
+        with (
+            patch("mureo.byod.runtime.byod_has", return_value=True),
+            patch(
+                "mureo.mcp._handlers_google_ads_analysis._get_client",
+                return_value=client,
+            ),
+            patch("mureo.google_ads.list_accessible_accounts") as m_list,
+        ):
+            result = await mod.handle_tool("google_ads_accounts_list", {})
+
+        client.list_accounts.assert_awaited_once()
+        m_list.assert_not_called()  # id-free path NOT taken in BYOD
+        assert json.loads(result[0].text) == [{"customer_id": "byod"}]
+
     async def test_network_performance_report(self) -> None:
         mod = _import_google_ads_tools()
         creds, client = _mock_google_ads_context()

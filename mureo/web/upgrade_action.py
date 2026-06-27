@@ -24,6 +24,7 @@ import sys
 from typing import Any, Final
 
 from mureo.cli.upgrade_cmd import _discover_all_mureo_packages
+from mureo.pip_env import pip_subprocess_env
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,10 @@ def run_upgrade_all() -> dict[str, Any]:
             # log raises UnicodeDecodeError, which escapes the except below.
             encoding="utf-8",
             errors="replace",
+            # Force the child (pip) to ENCODE its stdout as UTF-8 too, or a
+            # Japanese Windows (cp932) crashes pip on a non-cp932 char in its
+            # install log before our UTF-8 decoding runs. See pip_env.
+            env=pip_subprocess_env(),
             check=False,
             timeout=_UPGRADE_TIMEOUT_SECONDS,
         )

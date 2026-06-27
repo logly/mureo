@@ -160,6 +160,19 @@ class AccountOAuthConfig:
             providers expect); ``"body"`` sends them in the form body for
             providers that reject Basic — Yahoo! JAPAN biz-oauth requires
             this. Declarative only; the OSS exchange (#201) honours it.
+        accounts_field: ``key`` of the declared field that names a
+            *per-account selection* the operator makes **after** consent —
+            e.g. a broker-managed Meta provider whose ``access_token`` is
+            obtained via consent and whose ad ``account_id`` is then chosen
+            from the accounts that token can reach (#336). ``None`` (the
+            default) keeps the field a free-text input. When set, the
+            configure UI renders that field as a post-auth picker, populated
+            by the provider's ``list_oauth_accounts`` hook
+            (:func:`mureo.core.providers.get_oauth_account_lister`); and a
+            multi-account backend hides it entirely, since the account is
+            selected per-client at runtime, not pinned once at configure
+            time (#337). Declarative only — the OSS layer carries the
+            mechanism; the plugin supplies the lister behaviour and values.
     """
 
     authorize_url: str
@@ -171,6 +184,7 @@ class AccountOAuthConfig:
     callback_path: str = "/oauth/callback"
     callback_port: int | None = None
     token_auth_style: str = "basic"
+    accounts_field: str | None = None
 
 
 __all__ = ["AccountCredentialField", "AccountOAuthConfig"]

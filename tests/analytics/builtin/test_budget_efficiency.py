@@ -103,13 +103,18 @@ def test_scorer_accepts_byod_flat_google_shape() -> None:
 
 
 @pytest.mark.unit
-def test_scorer_meta_sums_actions_when_flat_conversions_zero() -> None:
+def test_scorer_meta_counts_actions_when_flat_conversions_zero() -> None:
+    # The canonical counter (#340) counts the deduped generic `lead`
+    # aggregate once; the `offsite_conversion.fb_pixel_lead` component is the
+    # SAME 10 leads and must NOT be added on top (the old substring scorer
+    # double-counted it to 20).
     rows: list[dict[str, Any]] = [
         {
             "campaign_id": "c",
             "spend": 100,
             "conversions": 0,
             "actions": [
+                {"action_type": "lead", "value": 10},
                 {"action_type": "offsite_conversion.fb_pixel_lead", "value": 10},
             ],
         },
@@ -121,7 +126,35 @@ def test_scorer_meta_sums_actions_when_flat_conversions_zero() -> None:
         spend_key="spend",
         nested_metrics=False,
     )
+    # Single campaign with conversions > 0 normalises to the top score.
     assert dict(result.per_campaign_score) == {"c": 1.0}
+
+
+@pytest.mark.unit
+def test_scorer_meta_ignores_custom_slug_so_zero_conversions_warns() -> None:
+    """A custom-conversion slug containing 'lead' is NOT a conversion (#340),
+    so a campaign reporting only that is treated as zero-conversions."""
+    rows: list[dict[str, Any]] = [
+        {
+            "campaign_id": "c",
+            "spend": 100,
+            "conversions": 0,
+            "actions": [
+                {"action_type": "offsite_conversion.custom.my_lead_form", "value": 9},
+            ],
+        },
+    ]
+    result = score_budget_efficiency(
+        rows,
+        platform="meta_ads",
+        account_id="act",
+        spend_key="spend",
+        nested_metrics=False,
+    )
+    # The custom slug is not a conversion → the campaign reads as zero
+    # conversions → the scorer surfaces the tracking warning (mirrors
+    # test_scorer_zero_conversions_returns_tracking_warning).
+    assert "tracking" in result.rebalance_suggestion
 
 
 @pytest.mark.unit

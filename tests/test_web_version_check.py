@@ -299,6 +299,14 @@ class TestRunPipReport:
         # the update check on Windows.
         assert kwargs["encoding"] == "utf-8"
         assert kwargs["errors"] == "replace"
+        # …and force the CHILD (pip) to ENCODE its stdout as UTF-8 too, or pip
+        # crashes on a non-cp932 char in its rich --report JSON before any
+        # output reaches us. The env must carry the whole environment plus the
+        # two UTF-8 switches.
+        env = kwargs["env"]
+        assert env["PYTHONIOENCODING"] == "utf-8:replace"
+        assert env["PYTHONUTF8"] == "1"
+        assert "PATH" in env  # a copy of os.environ, not a 2-key dict
 
     def test_nonzero_exit_returns_none(self) -> None:
         with patch(

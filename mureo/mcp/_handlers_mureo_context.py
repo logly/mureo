@@ -36,6 +36,7 @@ from mureo.context.state import (
     append_action_log,
     read_state_file,
     render_state,
+    set_conversion_action_types,
     set_platform_metrics,
     set_report,
     upsert_campaign,
@@ -280,5 +281,24 @@ async def handle_state_platform_metrics_set(
     except ContextFileError as exc:
         # Surface as ValueError so the MCP dispatcher returns a clean tool
         # error rather than a 500-style server error (matches upsert_campaign).
+        raise ValueError(str(exc)) from exc
+    return _json_result(_state_to_dict(doc))
+
+
+async def handle_state_set_conversion_events(
+    arguments: dict[str, Any],
+) -> list[TextContent]:
+    """Set/clear an account's operator conversion override (#342)."""
+    platform = _require(arguments, "platform")
+    account_id = _require(arguments, "account_id")
+    raw = arguments.get("conversion_action_types")
+    if raw is not None and not isinstance(raw, list):
+        raise ValueError("conversion_action_types must be a list of strings")
+    if isinstance(raw, list) and not all(isinstance(x, str) for x in raw):
+        raise ValueError("conversion_action_types entries must be strings")
+    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    try:
+        doc = set_conversion_action_types(path, platform, account_id, raw)
+    except ContextFileError as exc:
         raise ValueError(str(exc)) from exc
     return _json_result(_state_to_dict(doc))

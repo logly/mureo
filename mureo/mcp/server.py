@@ -28,8 +28,10 @@ comparison; multiple tests pin the contract.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import jsonschema
@@ -43,6 +45,7 @@ if TYPE_CHECKING:
     from mureo.core.policy import PolicyDecision, PolicyGate
     from mureo.mcp.tool_provider import MCPToolProvider
 
+from mureo.mcp._helpers import is_error_result
 from mureo.mcp.native_reversal import capture_before_state, record_native_mutation
 from mureo.mcp.plugin_audit import record_plugin_call
 from mureo.mcp.plugin_semantics import (
@@ -50,7 +53,11 @@ from mureo.mcp.plugin_semantics import (
     derive_semantics,
     record_mutation_action_log,
 )
-from mureo.mcp.tool_provider import collect_plugin_tools, plugin_source
+from mureo.mcp.tool_provider import (
+    MCPReversibleToolProvider,
+    collect_plugin_tools,
+    plugin_source,
+)
 from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
 from mureo.mcp.tools_analysis import handle_tool as handle_analysis_tool
 from mureo.mcp.tools_analytics_registry import (
@@ -157,18 +164,24 @@ _ALL_TOOLS.extend(_PLUGIN_TOOLS)
 _PLUGIN_NAMES: frozenset[str] = frozenset(_PLUGIN_DISPATCH)
 
 
-# Pre-compiled JSON Schema validators for every BUILT-IN tool, keyed by tool
-# name. The MCP framework does not enforce ``inputSchema``, so declared bounds
+# Pre-compiled JSON Schema validators for every tool, keyed by tool name.
+# The MCP framework does not enforce ``inputSchema``, so declared bounds
 # (``minimum``, ``required``, ``type``, ``enum``) are advisory until checked
 # server-side. Validating here is the single guard that makes them real for
-# every built-in mutation — most importantly the real-spend boundary values
-# (budget / bid ``minimum: 1``) flagged in issue #277. Plugin tools are
-# validated by their own providers and are intentionally excluded.
+# every mutation — most importantly the real-spend boundary values
+# (budget / bid ``minimum: 1``) flagged in issue #277.
+#
+# Plugin tools are validated here too (guardrail parity, #114 follow-up): a
+# plugin that declares ``minimum``/``required``/``enum`` on a real-spend
+# parameter now has those bounds enforced server-side, exactly like a
+# built-in, instead of relying on the (unverifiable) assumption that every
+# provider validates its own inputs. A plugin whose schema is permissive
+# (no constraints, ``additionalProperties`` open) is unaffected — the
+# validator simply finds nothing to reject. A malformed plugin schema is
+# skipped per-tool below, same as a malformed built-in schema.
 def _build_tool_validators() -> dict[str, Draft202012Validator]:
     validators: dict[str, Draft202012Validator] = {}
     for tool in _ALL_TOOLS:
-        if tool.name in _PLUGIN_NAMES:
-            continue
         schema = getattr(tool, "inputSchema", None)
         if not isinstance(schema, dict):
             continue
@@ -196,8 +209,9 @@ def _validate_tool_input(name: str, arguments: dict[str, Any]) -> None:
 
     Raises ``ValueError`` (the dispatcher's standard caller-error channel)
     on the first violation, before the tool handler runs — so an invalid
-    budget/bid never reaches a real-spend API call. No-op for tools without
-    a registered validator (plugins, or a tool with no schema).
+    budget/bid never reaches a real-spend API call. Applies to both built-in
+    and plugin tools. No-op for a tool without a registered validator (no
+    schema, or a schema that failed ``check_schema`` at build time).
     """
     validator = _TOOL_VALIDATORS.get(name)
     if validator is None:
@@ -233,6 +247,58 @@ _PLUGIN_TOOL_THROTTLERS: dict[str, Throttler] = {
     for name, sem in _PLUGIN_SEMANTICS.items()
     if sem.throttle is not None
 }
+
+
+# Guardrail parity (#114 follow-up): top-level ``inputSchema`` property names
+# per plugin tool. The rollback planner uses these to bound the params a
+# plugin-declared reversal may carry — the plugin counterpart of the static
+# ``_ALLOWED_OPERATIONS`` key-sets the planner enforces for built-in reversals.
+def _plugin_schema_property_keys(tool: Tool) -> frozenset[str] | None:
+    """Return the declared top-level object property names of ``tool``'s
+    ``inputSchema``, or ``None`` when the schema is absent or declares no
+    usable ``properties`` map (so the planner applies no key restriction
+    and leaves the bound to execution-time validation)."""
+    schema = getattr(tool, "inputSchema", None)
+    if not isinstance(schema, dict):
+        return None
+    props = schema.get("properties")
+    if not isinstance(props, dict) or not props:
+        return None
+    return frozenset(props)
+
+
+_PLUGIN_REVERSAL_KEYS: dict[str, frozenset[str] | None] = {
+    t.name: _plugin_schema_property_keys(t) for t in _PLUGIN_TOOLS
+}
+
+
+def plugin_reversal_param_keys(operation: str) -> tuple[bool, frozenset[str] | None]:
+    """Resolve a plugin reversal operation for the rollback planner (GAP C).
+
+    The planner calls this (lazily, to avoid an import cycle) when a reversal
+    ``operation`` is not in its static built-in allow-list, to decide whether
+    a plugin-declared reversal is executable.
+
+    Returns:
+        ``(False, None)`` when ``operation`` is not a registered plugin tool
+        — the planner then refuses it exactly as before (an arbitrary,
+        unregistered operation is never auto-reversible).
+
+        ``(True, frozenset(keys))`` when ``operation`` is a registered plugin
+        tool that declares an object ``inputSchema`` — the planner bounds the
+        reversal params to ``keys`` (defense-in-depth against an injected
+        agent smuggling extra params), mirroring the built-in key-set check.
+
+        ``(True, None)`` when ``operation`` is a registered plugin tool with
+        no usable schema — the planner applies no plan-time key restriction.
+        The reversal is still gated by the planner's destructive-verb refusal,
+        and at execution the dispatcher re-runs policy gates + ``inputSchema``
+        validation against the live tool, so an unbounded plan cannot bypass
+        the forward-action guardrails.
+    """
+    if operation not in _PLUGIN_NAMES:
+        return (False, None)
+    return (True, _PLUGIN_REVERSAL_KEYS.get(operation))
 
 
 # ---------------------------------------------------------------------------
@@ -466,6 +532,71 @@ def _maybe_append_strategy_reminder(name: str, result: list[Any]) -> list[Any]:
     return [*result, TextContent(type="text", text=reminder)]
 
 
+def _maybe_append_plugin_strategy_reminder(name: str, result: list[Any]) -> list[Any]:
+    """Plugin counterpart of :func:`_maybe_append_strategy_reminder`.
+
+    Called only for a successful *mutating* plugin tool (the dispatch branch
+    has already consulted ``derive_semantics``), so the reminder fires for a
+    plugin mutation exactly as it does for a built-in one — closing the
+    strategy-reminder guardrail gap. Same soft-enforcement contract: never
+    refuses, never replaces the tool's content, best-effort.
+    """
+    from mcp.types import TextContent
+
+    from mureo.core.strategy_reminder import maybe_build_reminder_for_plugin
+
+    reminder = maybe_build_reminder_for_plugin(name)
+    if reminder is None:
+        return result
+    return [*result, TextContent(type="text", text=reminder)]
+
+
+async def _capture_plugin_reversal(
+    provider: MCPToolProvider, name: str, arguments: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Best-effort runtime-correct reversal capture for a plugin mutation (#327).
+
+    Mirrors :func:`mureo.mcp.native_reversal.capture_before_state`: when the
+    provider opts into :class:`MCPReversibleToolProvider`, call its
+    ``capture_reversal`` **before** the mutation so it can read prior state and
+    return a reversal carrying the actual entity id + prior value — something a
+    static tool-definition ``meta`` reversal can never express.
+
+    Returns ``None`` (and the caller falls back to the static ``meta``
+    reversal) when the provider does not opt in, when there is no STATE.json in
+    cwd to record into (so we skip the read entirely), when the call raises, or
+    when the returned value is not a well-formed ``{operation: str, params:
+    dict}``. Never raises — a capture failure must not block the mutation.
+    """
+    if not isinstance(provider, MCPReversibleToolProvider):
+        return None
+    capture = getattr(provider, "capture_reversal", None)
+    if not inspect.iscoroutinefunction(capture):
+        return None
+    # No STATE.json ⇒ nothing will be recorded; skip the (network) read.
+    if not (Path.cwd() / "STATE.json").is_file():
+        return None
+    try:
+        reversal = await capture(name, dict(arguments))
+    except KeyboardInterrupt:
+        raise
+    except BaseException:  # noqa: BLE001 — capture must never block the mutation
+        logger.warning(
+            "plugin capture_reversal failed for %r; falling back to static "
+            "meta reversal",
+            name,
+            exc_info=True,
+        )
+        return None
+    if (
+        isinstance(reversal, dict)
+        and isinstance(reversal.get("operation"), str)
+        and isinstance(reversal.get("params"), dict)
+    ):
+        return reversal
+    return None
+
+
 # Once-per-process latch: the stale-version banner is appended to the first
 # tool result that detects the mismatch, not every call (avoid spamming a
 # read-heavy daily-check). A fresh process after restart starts False again.
@@ -573,6 +704,15 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         provider = _PLUGIN_DISPATCH[name]
         source = plugin_source(provider)
         sem = _PLUGIN_SEMANTICS.get(name)
+        # Capture a runtime-correct reversal BEFORE the mutation (#327),
+        # mirroring the native before-state capture: an opted-in provider reads
+        # the entity's prior state and returns a reversal carrying the actual
+        # id + prior value. Only for mutating tools; best-effort, never blocks.
+        captured_reversal: dict[str, Any] | None = None
+        if sem is None or sem.mutating:
+            captured_reversal = await _capture_plugin_reversal(
+                provider, name, arguments
+            )
         await _acquire_plugin_throttle(name)
         try:
             result = await provider.handle_mcp_tool(name, arguments)
@@ -596,12 +736,33 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         # / strategy review / rollback can see it like a built-in op.
         # Read-only tools stay in the jsonl audit only (no STATE bloat).
         if sem is None or sem.mutating:
-            record_mutation_action_log(
-                tool=name,
-                source=source,
-                reversal=None if sem is None else sem.reversal,
-                observation_days=None if sem is None else sem.observation_days,
-            )
+            # Skip the action_log promotion when the plugin returned an
+            # api_error_handler-style error envelope WITHOUT raising — the
+            # mutation did not change platform state, so promoting it would
+            # log a phantom action (and, via a declared reversal, leave a
+            # phantom executable rollback). Mirrors native_reversal's
+            # _is_error_result skip for built-in mutations. The jsonl audit
+            # (above) still captures the attempt regardless.
+            if not is_error_result(result):
+                # Prefer the runtime-correct reversal captured before the
+                # mutation; fall back to the provider's static meta reversal
+                # when it did not opt into capture_reversal (#327).
+                reversal = (
+                    captured_reversal
+                    if captured_reversal is not None
+                    else (None if sem is None else sem.reversal)
+                )
+                record_mutation_action_log(
+                    tool=name,
+                    source=source,
+                    reversal=reversal,
+                    observation_days=None if sem is None else sem.observation_days,
+                )
+            # Guardrail parity: a mutating plugin call re-surfaces the
+            # operator's STRATEGY.md sections, exactly like a built-in
+            # mutation — appended regardless of the result envelope, matching
+            # the built-in dispatch. Read-only plugin tools skip it.
+            result = _maybe_append_plugin_strategy_reminder(name, result)
         return result
     raise ValueError(f"Unknown tool: {name}")
 

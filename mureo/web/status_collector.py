@@ -91,10 +91,16 @@ def _detect_installed_providers(mcp_registry_path: Path) -> dict[str, bool]:
 
     Reads the file the host actually discovers MCP servers from
     (``~/.claude.json`` for Claude Code — NOT ``settings.json`` —;
-    ``claude_desktop_config.json`` for Desktop). A read-only parse is
-    deterministic and race-safe for status display; writes still go
-    through the ``claude`` CLI.
+    ``claude_desktop_config.json`` for Desktop; ``config.toml`` for Codex).
+    A read-only parse is deterministic and race-safe for status display.
     """
+    if mcp_registry_path.suffix == ".toml":
+        from mureo.web.codex_mcp import installed_codex_server_ids
+
+        ids = installed_codex_server_ids(mcp_registry_path)
+        installed = {pid: pid in ids for pid in OFFICIAL_PROVIDER_IDS}
+        installed[MUREO_NATIVE_ID] = MUREO_NATIVE_ID in ids
+        return installed
     payload = read_json_safe(mcp_registry_path)
     raw = payload.get("mcpServers")
     mcp_servers: dict[str, Any] = raw if isinstance(raw, dict) else {}
@@ -116,6 +122,14 @@ def _detect_mureo_disable(mcp_registry_path: Path) -> dict[str, bool]:
     missing/corrupt file or absent mureo block means nothing is
     disabled (all ``False``) — never raises.
     """
+    if mcp_registry_path.suffix == ".toml":
+        from mureo.web.codex_mcp import read_codex_server_env
+
+        codex_env = read_codex_server_env(mcp_registry_path, MUREO_NATIVE_ID)
+        return {
+            p: codex_env.get("MUREO_DISABLE_" + p.upper()) == "1"
+            for p in _DISABLE_PLATFORMS
+        }
     payload = read_json_safe(mcp_registry_path)
     servers = payload.get("mcpServers")
     mureo = servers.get("mureo") if isinstance(servers, dict) else None

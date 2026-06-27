@@ -24,7 +24,9 @@
   function readStoredHost() {
     try {
       const v = window.localStorage.getItem(HOST_KEY);
-      return v === "claude-code" || v === "claude-desktop" ? v : null;
+      return v === "claude-code" || v === "claude-desktop" || v === "codex"
+        ? v
+        : null;
     } catch (_e) {
       return null;
     }
@@ -239,7 +241,9 @@
       '<label><input type="radio" name="host" value="claude-code">' +
       MUREO.t("wizard.host.claude_code") + "</label><br>" +
       '<label><input type="radio" name="host" value="claude-desktop">' +
-      MUREO.t("wizard.host.claude_desktop") + "</label>" +
+      MUREO.t("wizard.host.claude_desktop") + "</label><br>" +
+      '<label><input type="radio" name="host" value="codex">' +
+      MUREO.t("wizard.host.codex") + "</label>" +
       "</div>";
     // Assert the current selection to the server on step entry too —
     // not only on a radio `change`. A resumed wizard / restarted
@@ -477,7 +481,11 @@
     // the user adds it as a Claude.ai account connector. Don't list
     // Meta as "saved"; surface an explicit, actionable reminder (the
     // pending_meta copy covers both hosts).
+    // Codex has no claude.ai connector, so official Meta is never the
+    // active path there (mureo-native Meta stays) — don't show the
+    // Claude.ai-connector reminder; Meta surfaces as a normal saved row.
     const metaPending =
+      STATE.host !== "codex" &&
       STATE.platforms.meta_ads &&
       STATE.providerChoice.meta_ads === "official";
 

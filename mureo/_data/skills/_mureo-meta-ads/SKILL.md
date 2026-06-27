@@ -8,7 +8,7 @@ metadata:
     requires:
       bins:
         - mureo
-    cliHelp: "mureo meta-ads --help"
+    cliHelp: "mureo --help"
 ---
 
 # Meta Ads (Marketing API v21.0)
@@ -238,6 +238,31 @@ metadata:
   Optional: breakdown (default: "age,gender"), period (default: "last_7d")
   ```
   Breakdown options: `age`, `gender`, `age,gender`, `country`, `region`, `publisher_platform`, `platform_position`, `device_platform`, `impression_device`
+
+### conversion definition (custom / non-standard events)
+
+mureo counts conversions from the Insights `actions` array using a **default
+deduped set of standard events** (`lead`, `purchase`, `complete_registration`).
+If an advertiser's real conversion is a **custom pixel event**
+(`offsite_conversion.custom.<id>`, e.g. "Booking Completed"), or their account
+only emits a component row (`offsite_conversion.fb_pixel_lead`) with no generic
+aggregate, the default counts **0** for them — which silently wrong-foots CPA,
+daily-check, and budget decisions.
+
+To fix, register the account's real conversion `action_type`(s):
+
+1. Look up the account's **actual** labels — call `meta_ads_insights_report`
+   (or `_breakdown`) and inspect the `actions` array's `action_type` values.
+   Don't guess the string; custom slugs like `offsite_conversion.custom.123`
+   are easy to mistype.
+2. Confirm with the operator which label(s) are *their* conversion.
+3. Call **`mureo_state_set_conversion_events`** with `platform="meta_ads"`,
+   the `account_id`, and `conversion_action_types=[…the exact string(s)…]`.
+
+This is a **replacement** (the listed types become the complete conversion set
+for that account; never summed on top of the defaults). It is stored on
+`platforms[meta_ads]` in STATE.json and applied by every Meta conversion
+counter. Pass an empty list to clear it and restore the default.
 
 ### analysis
 

@@ -21,9 +21,13 @@ data and renders the response.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mureo.analytics.models import BudgetEfficiency
+from mureo.context.state import load_conversion_action_types
+
+if TYPE_CHECKING:
+    from collections.abc import Collection
 
 INEFFICIENT_THRESHOLD = 0.3
 EFFICIENT_THRESHOLD = 0.7
@@ -34,6 +38,7 @@ def _extract_cost_and_conversions(
     *,
     spend_key: str,
     nested_metrics: bool,
+    conversion_action_types: Collection[str] | None = None,
 ) -> tuple[str, float, float] | None:
     """Return ``(campaign_id, cost, conversions)`` for one row, or
     ``None`` when the row is unusable (missing id / non-positive cost).
@@ -59,17 +64,19 @@ def _extract_cost_and_conversions(
     else:
         cost = float(row.get(spend_key) or 0)
         conversions = float(row.get("conversions") or 0)
-        # Meta Live shape: conversions live inside ``actions``. Sum
-        # leads/purchases there if no flat conversion field is set.
+        # Meta Live shape: conversions live inside ``actions``. Count via the
+        # canonical exact-match counter (#340) — the old substring scan here
+        # double-counted aggregate+component aliases and swept in custom
+        # slugs, skewing the budget-efficiency CPA. Lazy import keeps adapter
+        # registration free of the mureo.meta_ads client weight.
         if conversions == 0:
-            actions = row.get("actions")
-            if isinstance(actions, list):
-                for action in actions:
-                    if not isinstance(action, dict):
-                        continue
-                    action_type = str(action.get("action_type", ""))
-                    if "lead" in action_type or "purchase" in action_type:
-                        conversions += float(action.get("value") or 0)
+            from mureo.meta_ads._conversion_count import (
+                count_conversions_from_actions,
+            )
+
+            conversions = count_conversions_from_actions(
+                row.get("actions"), conversion_action_types=conversion_action_types
+            )
 
     if cost <= 0:
         return None
@@ -99,9 +106,17 @@ def score_budget_efficiency(
     """
     rates: dict[str, tuple[float, float]] = {}  # campaign_id -> (rate, cost)
     total_unused = 0.0
+    # #342 — the operator conversion override is Meta-specific; resolve once
+    # for the account (None for non-Meta platforms / unset accounts).
+    cv_types = (
+        load_conversion_action_types(account_id) if platform == "meta_ads" else None
+    )
     for row in rows:
         extracted = _extract_cost_and_conversions(
-            row, spend_key=spend_key, nested_metrics=nested_metrics
+            row,
+            spend_key=spend_key,
+            nested_metrics=nested_metrics,
+            conversion_action_types=cv_types,
         )
         if extracted is None:
             continue

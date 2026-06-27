@@ -408,3 +408,118 @@ def test_save_handler_suppresses_scope_when_home_injected(
         )
     assert exc.value.code == 400
     assert json.loads(exc.value.read())["error"] == "required_field_missing"
+
+
+# ---------------------------------------------------------------------------
+# #337 — multi-account fold-in: _resolve_field_scope auto-hides an OAuth
+# provider's accounts_field (the per-account picker) when multi-account is
+# active, merged with any explicit backend scope (backend wins).
+# ---------------------------------------------------------------------------
+
+
+def _picker_entry() -> ProviderEntry:
+    from mureo.core.providers import AccountOAuthConfig
+
+    class _Broker:
+        name = "meta_ads_logly"
+        display_name = "Logly Meta"
+        capabilities = frozenset()
+        account_credential_fields = (
+            AccountCredentialField(key="client_id", display_name="Client ID"),
+            AccountCredentialField(
+                key="client_secret", display_name="Client Secret", secret=True
+            ),
+            AccountCredentialField(
+                key="access_token", display_name="Access Token", secret=True
+            ),
+            AccountCredentialField(key="account_id", display_name="Account"),
+        )
+        account_oauth = AccountOAuthConfig(
+            authorize_url="https://example.test/authorize",
+            token_url="https://example.test/token",
+            client_id_field="client_id",
+            client_secret_field="client_secret",
+            target_field="access_token",
+            accounts_field="account_id",
+        )
+
+    return ProviderEntry(
+        name="meta_ads_logly",
+        display_name="Logly Meta",
+        capabilities=frozenset(),
+        provider_class=_Broker,
+        source_distribution=None,
+    )
+
+
+def _bare_handler(home: Any) -> Any:
+    """A ConfigureHandler shell whose only live state is ``wizard.home`` —
+    enough to invoke ``_resolve_field_scope`` / ``_multi_account_active``
+    without booting a server."""
+    from types import SimpleNamespace
+
+    from mureo.web.handlers import ConfigureHandler
+
+    handler = ConfigureHandler.__new__(ConfigureHandler)
+    handler.wizard = SimpleNamespace(home=home)  # type: ignore[attr-defined]
+    return handler
+
+
+@pytest.mark.unit
+def test_resolve_scope_hides_picker_field_when_multi_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        default_registry, "_entries", {"meta_ads_logly": _picker_entry()}
+    )
+    handler = _bare_handler(home=None)
+    with (
+        patch("mureo.web.handlers.runtime_multi_account_auth", return_value=True),
+        patch(
+            "mureo.web.handlers.runtime_ui_plugin_credential_fields", return_value=None
+        ),
+    ):
+        scope = handler._resolve_field_scope()
+    assert scope is not None
+    assert "account_id" not in scope["meta_ads_logly"]
+    assert "client_id" in scope["meta_ads_logly"]
+
+
+@pytest.mark.unit
+def test_resolve_scope_backend_overrides_auto_picker_hide(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit backend scope for the same provider wins — it is the more
+    specific authority — so the auto picker-hide does not override it."""
+    monkeypatch.setattr(
+        default_registry, "_entries", {"meta_ads_logly": _picker_entry()}
+    )
+    handler = _bare_handler(home=None)
+    backend = {"meta_ads_logly": frozenset({"client_id"})}
+    with (
+        patch("mureo.web.handlers.runtime_multi_account_auth", return_value=True),
+        patch(
+            "mureo.web.handlers.runtime_ui_plugin_credential_fields",
+            return_value=backend,
+        ),
+    ):
+        scope = handler._resolve_field_scope()
+    assert scope["meta_ads_logly"] == frozenset({"client_id"})
+
+
+@pytest.mark.unit
+def test_resolve_scope_unchanged_when_not_multi_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        default_registry, "_entries", {"meta_ads_logly": _picker_entry()}
+    )
+    handler = _bare_handler(home=None)
+    with (
+        patch("mureo.web.handlers.runtime_multi_account_auth", return_value=False),
+        patch(
+            "mureo.web.handlers.runtime_ui_plugin_credential_fields", return_value=None
+        ),
+    ):
+        # Single-account: no fold-in, backend (None) returned verbatim.
+        assert handler._resolve_field_scope() is None
