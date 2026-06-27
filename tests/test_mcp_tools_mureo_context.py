@@ -57,9 +57,9 @@ def _import_tools():
 # ---------------------------------------------------------------------------
 
 
-def test_tools_module_exports_seven_tools() -> None:
+def test_tools_module_exports_eight_tools() -> None:
     mod = _import_tools()
-    assert len(mod.TOOLS) == 7
+    assert len(mod.TOOLS) == 8
     expected = {
         "mureo_strategy_get",
         "mureo_strategy_set",
@@ -68,6 +68,7 @@ def test_tools_module_exports_seven_tools() -> None:
         "mureo_state_upsert_campaign",
         "mureo_state_report_set",
         "mureo_state_platform_metrics_set",
+        "mureo_state_set_conversion_events",
     }
     assert {t.name for t in mod.TOOLS} == expected
 
@@ -673,3 +674,75 @@ async def test_platform_metrics_set_rejects_malformed_shapes(cwd_to_tmp) -> None
         await mod.handle_tool(
             "mureo_state_platform_metrics_set", {**base, "metrics_period": 30}
         )
+
+
+# ---------------------------------------------------------------------------
+# mureo_state_set_conversion_events (#342)
+# ---------------------------------------------------------------------------
+
+
+async def test_set_conversion_events_sets_and_clears(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_set_conversion_events",
+        {
+            "platform": "meta_ads",
+            "account_id": "act_9",
+            "conversion_action_types": ["offsite_conversion.custom.123"],
+        },
+    )
+    payload = json.loads(result[0].text)
+    assert payload["platforms"]["meta_ads"]["conversion_action_types"] == [
+        "offsite_conversion.custom.123"
+    ]
+    # Clearing with an empty list removes the override.
+    result = await mod.handle_tool(
+        "mureo_state_set_conversion_events",
+        {"platform": "meta_ads", "account_id": "act_9", "conversion_action_types": []},
+    )
+    payload = json.loads(result[0].text)
+    assert "conversion_action_types" not in payload["platforms"]["meta_ads"]
+
+
+async def test_set_conversion_events_requires_platform_and_account(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    with pytest.raises(ValueError, match="platform"):
+        await mod.handle_tool(
+            "mureo_state_set_conversion_events", {"account_id": "act_9"}
+        )
+    with pytest.raises(ValueError, match="account_id"):
+        await mod.handle_tool(
+            "mureo_state_set_conversion_events", {"platform": "meta_ads"}
+        )
+
+
+async def test_set_conversion_events_rejects_non_list(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    with pytest.raises(ValueError, match="must be a list"):
+        await mod.handle_tool(
+            "mureo_state_set_conversion_events",
+            {
+                "platform": "meta_ads",
+                "account_id": "act_9",
+                "conversion_action_types": "lead",
+            },
+        )
+
+
+async def test_set_conversion_events_read_write_path_agree(cwd_to_tmp) -> None:
+    """#342 HIGH — the override written via the MCP tool (workspace-resolved)
+    must be readable by the live counters' resolver with NO explicit path."""
+    from mureo.context.state import load_conversion_action_types
+
+    mod = _import_tools()
+    await mod.handle_tool(
+        "mureo_state_set_conversion_events",
+        {
+            "platform": "meta_ads",
+            "account_id": "act_42",
+            "conversion_action_types": ["offsite_conversion.custom.7"],
+        },
+    )
+    assert load_conversion_action_types("act_42") == ("offsite_conversion.custom.7",)
+    # act_ prefix tolerance: a bare-id live resolve still matches.
+    assert load_conversion_action_types("42") == ("offsite_conversion.custom.7",)

@@ -32,6 +32,7 @@ from mureo.analytics.builtin._common import (
     meta_row_conversions,
     to_analytics_anomalies,
 )
+from mureo.context.state import load_conversion_action_types
 
 if TYPE_CHECKING:
     from mureo.analysis.anomaly_detector import CampaignMetrics
@@ -295,13 +296,14 @@ def _summarise_meta_performance(
     impressions = 0
     clicks = 0
     conversions = 0.0
+    cv_types = load_conversion_action_types(account_id)  # #342 per-account override
     for row in rows:
         row_cost = float(row.get("spend") or 0)
         row_impressions = int(row.get("impressions") or 0)
         row_clicks = int(row.get("clicks") or 0)
         # Tolerates live (actions list) and BYOD (flat conversions);
         # both shapes are valid factory outputs.
-        row_conversions = meta_row_conversions(row)
+        row_conversions = meta_row_conversions(row, conversion_action_types=cv_types)
         cost += row_cost
         impressions += row_impressions
         clicks += row_clicks

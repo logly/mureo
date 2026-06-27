@@ -36,6 +36,7 @@ from mureo.analytics.builtin._common import (
 from mureo.analytics.builtin._common import (
     meta_row_conversions as _meta_row_conversions,
 )
+from mureo.context.state import load_conversion_action_types
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -294,19 +295,24 @@ async def fetch_google_ads_per_campaign_metrics(
 
 def _index_meta_rows_by_campaign(
     rows: list[dict[str, Any]],
+    account_id: str,
 ) -> dict[str, CampaignMetrics]:
     """Build ``{campaign_id: metrics}`` from Meta rows.
 
     Mirrors :func:`_index_google_rows_by_campaign` for Meta's flatter
     shape — Meta exposes ``spend`` and either an ``actions`` list
-    (Live) or a top-level ``conversions`` field (BYOD).
+    (Live) or a top-level ``conversions`` field (BYOD). ``account_id``
+    resolves the operator's per-account conversion override (#342).
     """
+    cv_types = load_conversion_action_types(account_id)
     indexed: dict[str, CampaignMetrics] = {}
     for row in rows:
         metric = _row_to_campaign_metrics(
             row,
             spend_key="spend",
-            conversion_getter=_meta_row_conversions,
+            conversion_getter=lambda r: _meta_row_conversions(
+                r, conversion_action_types=cv_types
+            ),
         )
         if metric is None:
             continue
@@ -363,8 +369,8 @@ async def fetch_meta_ads_per_campaign_metrics(
         period=baseline_period
     )
 
-    current_index = _index_meta_rows_by_campaign(current_rows)
-    baseline_index = _index_meta_rows_by_campaign(baseline_rows)
+    current_index = _index_meta_rows_by_campaign(current_rows, account_id)
+    baseline_index = _index_meta_rows_by_campaign(baseline_rows, account_id)
 
     out: dict[str, tuple[CampaignMetrics, CampaignMetrics | None]] = {}
     for campaign_id, current in current_index.items():
@@ -402,11 +408,12 @@ def _aggregate_meta_metrics(
     impressions = 0
     clicks = 0
     conversions = 0.0
+    cv_types = load_conversion_action_types(account_id)  # #342 per-account override
     for row in rows:
         cost += float(row.get("spend") or 0)
         impressions += int(row.get("impressions") or 0)
         clicks += int(row.get("clicks") or 0)
-        conversions += _meta_row_conversions(row)
+        conversions += _meta_row_conversions(row, conversion_action_types=cv_types)
     return CampaignMetrics(
         campaign_id=account_id,
         cost=cost,

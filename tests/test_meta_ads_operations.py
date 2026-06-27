@@ -931,6 +931,7 @@ class TestAnalysisMixin:
     def client(self):
         class MockAnalysisClient(AnalysisMixin):
             def __init__(self):
+                self._ad_account_id = "act_123"
                 self.get_performance_report = AsyncMock(return_value=[])
                 self.get_breakdown_report = AsyncMock(return_value=[])
 
