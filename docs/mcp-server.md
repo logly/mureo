@@ -45,6 +45,20 @@ Add to `.cursor/mcp.json` in your project root:
 }
 ```
 
+### OpenAI Codex
+
+Codex reads MCP servers from `~/.codex/config.toml` (**TOML**, not JSON) — shared
+across the Codex CLI, IDE extension, and desktop app. The easiest path is
+`mureo setup codex` (or `mureo configure` → pick the **OpenAI Codex** host),
+which writes a tagged `[mcp_servers.mureo]` block and preserves the rest of the
+file. To wire it by hand:
+
+```toml
+[mcp_servers.mureo]
+command = "python"
+args = ["-m", "mureo.mcp"]
+```
+
 ### Using a Virtual Environment
 
 If mureo is installed in a virtual environment, use the full path to the Python interpreter:
