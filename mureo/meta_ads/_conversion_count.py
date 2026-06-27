@@ -37,7 +37,7 @@ This module fixes the over-count; it does not add per-account event config.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Any
 
 # Deduped generic conversion ``action_type`` values. Each already rolls up
@@ -58,19 +58,33 @@ def _safe_float(value: Any) -> float:
         return 0.0
 
 
-def count_conversions_from_actions(actions: Any) -> float:
-    """Sum the values of the canonical conversion ``action_type`` rows.
+def count_conversions_from_actions(
+    actions: Any,
+    *,
+    conversion_action_types: Collection[str] | None = None,
+) -> float:
+    """Sum the values of the conversion ``action_type`` rows.
 
     ``actions`` is the Insights ``actions`` array — a list of
     ``{"action_type": str, "value": str|number}`` mappings. A non-list
     (``None`` / BYOD shape / malformed) yields ``0.0`` so callers can pass
     ``row.get("actions")`` directly. Non-mapping entries are skipped.
+
+    ``conversion_action_types`` (#342) is the operator's per-account override:
+    when provided (non-``None``), EXACTLY those action_types are counted —
+    replacing :data:`CONVERSION_ACTION_TYPES` — so a custom-event advertiser
+    (``offsite_conversion.custom.<id>``) or a component-only account is counted
+    correctly. An empty collection is treated as "no override" (use the
+    default) so a cleared setting never zeroes every conversion. ``None`` (the
+    default) keeps the built-in deduped generic set.
     """
     if not isinstance(actions, list):
         return 0.0
+    allowed: Collection[str] = (
+        conversion_action_types if conversion_action_types else CONVERSION_ACTION_TYPES
+    )
     return sum(
         _safe_float(entry.get("value"))
         for entry in actions
-        if isinstance(entry, Mapping)
-        and entry.get("action_type") in CONVERSION_ACTION_TYPES
+        if isinstance(entry, Mapping) and entry.get("action_type") in allowed
     )

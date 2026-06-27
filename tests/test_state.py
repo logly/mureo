@@ -1705,3 +1705,144 @@ class TestMutatorsPreserveReports:
         )
         assert doc.reports == {"weekly": {"verdict": "Watch"}}
         assert read_state_file(fp).reports == {"weekly": {"verdict": "Watch"}}
+
+
+@pytest.mark.unit
+class TestConversionActionTypesOverride:
+    """#342 — operator-declared per-account conversion action_type override."""
+
+    def _state_with_meta(self, tmp_path: Path, account_id: str = "act_1") -> Path:
+        p = tmp_path / "STATE.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {
+                        "meta_ads": {"account_id": account_id, "campaigns": []}
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return p
+
+    def test_set_and_load_roundtrip(self, tmp_path: Path) -> None:
+        from mureo.context.state import (
+            load_conversion_action_types,
+            set_conversion_action_types,
+        )
+
+        p = self._state_with_meta(tmp_path)
+        set_conversion_action_types(
+            p, "meta_ads", "act_1", ["offsite_conversion.custom.123"]
+        )
+        assert load_conversion_action_types("act_1", path=p) == (
+            "offsite_conversion.custom.123",
+        )
+        # Serialized as a JSON list under the platform entry.
+        data = json.loads(p.read_text(encoding="utf-8"))
+        assert data["platforms"]["meta_ads"]["conversion_action_types"] == [
+            "offsite_conversion.custom.123"
+        ]
+
+    def test_clear_with_empty_list(self, tmp_path: Path) -> None:
+        from mureo.context.state import (
+            load_conversion_action_types,
+            set_conversion_action_types,
+        )
+
+        p = self._state_with_meta(tmp_path)
+        set_conversion_action_types(p, "meta_ads", "act_1", ["lead"])
+        set_conversion_action_types(p, "meta_ads", "act_1", [])
+        assert load_conversion_action_types("act_1", path=p) is None
+        data = json.loads(p.read_text(encoding="utf-8"))
+        assert "conversion_action_types" not in data["platforms"]["meta_ads"]
+
+    def test_load_account_mismatch_returns_none(self, tmp_path: Path) -> None:
+        from mureo.context.state import (
+            load_conversion_action_types,
+            set_conversion_action_types,
+        )
+
+        p = self._state_with_meta(tmp_path, account_id="act_1")
+        set_conversion_action_types(p, "meta_ads", "act_1", ["lead"])
+        assert load_conversion_action_types("act_OTHER", path=p) is None
+
+    def test_load_missing_file_or_unset_is_none(self, tmp_path: Path) -> None:
+        from mureo.context.state import load_conversion_action_types
+
+        assert (
+            load_conversion_action_types("act_1", path=tmp_path / "absent.json") is None
+        )
+        p = self._state_with_meta(tmp_path)
+        assert load_conversion_action_types("act_1", path=p) is None  # unset
+
+    def test_preserved_across_upsert_and_metrics(self, tmp_path: Path) -> None:
+        from mureo.context.models import CampaignSnapshot
+        from mureo.context.state import (
+            load_conversion_action_types,
+            set_conversion_action_types,
+            set_platform_metrics,
+            upsert_campaign,
+        )
+
+        p = self._state_with_meta(tmp_path)
+        set_conversion_action_types(p, "meta_ads", "act_1", ["lead"])
+        upsert_campaign(
+            p,
+            CampaignSnapshot(campaign_id="c1", campaign_name="C1", status="ACTIVE"),
+            platform="meta_ads",
+            account_id="act_1",
+        )
+        assert load_conversion_action_types("act_1", path=p) == ("lead",)
+        set_platform_metrics(
+            p, "meta_ads", "act_1", totals={"spend": 1.0}, metrics_period="LAST_30_DAYS"
+        )
+        assert load_conversion_action_types("act_1", path=p) == ("lead",)
+
+    def test_parse_render_roundtrip(self, tmp_path: Path) -> None:
+        from mureo.context.state import parse_state, render_state
+
+        doc = parse_state(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {
+                        "meta_ads": {
+                            "account_id": "act_1",
+                            "campaigns": [],
+                            "conversion_action_types": ["lead", "purchase"],
+                        }
+                    },
+                }
+            )
+        )
+        ps = doc.platforms["meta_ads"]
+        assert ps.conversion_action_types == ("lead", "purchase")
+        # Round-trips through render.
+        re = parse_state(render_state(doc))
+        assert re.platforms["meta_ads"].conversion_action_types == ("lead", "purchase")
+
+    def test_load_never_raises_on_malformed_json(self, tmp_path: Path) -> None:
+        """#342 HIGH — the resolver runs inside live analysis; a non-object /
+        malformed STATE.json must yield None, never raise (which would take
+        down the whole report)."""
+        from mureo.context.state import load_conversion_action_types
+
+        for bad in ("[1,2,3]", '"a string"', "123", "null", "{not json", ""):
+            p = tmp_path / "STATE.json"
+            p.write_text(bad, encoding="utf-8")
+            assert load_conversion_action_types("act_1", path=p) is None
+
+    def test_load_tolerates_act_prefix_mismatch(self, tmp_path: Path) -> None:
+        """#342 — a bare-numeric stored id matches the act_* live id and vice
+        versa, so the override isn't silently dropped over the prefix."""
+        from mureo.context.state import (
+            load_conversion_action_types,
+            set_conversion_action_types,
+        )
+
+        p = self._state_with_meta(tmp_path, account_id="123456")  # bare
+        set_conversion_action_types(p, "meta_ads", "123456", ["lead"])
+        # Live counters resolve with the act_* form.
+        assert load_conversion_action_types("act_123456", path=p) == ("lead",)

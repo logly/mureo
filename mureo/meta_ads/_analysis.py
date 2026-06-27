@@ -6,10 +6,14 @@ Placement analysis, cost investigation, A/B comparison, and creative improvement
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from mureo.context.state import load_conversion_action_types
 from mureo.meta_ads._conversion_count import count_conversions_from_actions
 from mureo.meta_ads._period import previous_period as _previous_period
+
+if TYPE_CHECKING:
+    from collections.abc import Collection
 
 logger = logging.getLogger(__name__)
 
@@ -21,15 +25,21 @@ def _safe_float(v: Any) -> float:
         return 0.0
 
 
-def _extract_cv(row: dict[str, Any]) -> float:
+def _extract_cv(
+    row: dict[str, Any],
+    conversion_action_types: Collection[str] | None = None,
+) -> float:
     """Conversion count for one insights row via the canonical counter (#340).
 
     Delegates to the shared :func:`count_conversions_from_actions` so this
     MCP-analysis path and the analytics/diagnose path
     (:func:`mureo.analytics.builtin._common.meta_row_conversions`) can never
-    drift on what counts as a conversion.
+    drift on what counts as a conversion. ``conversion_action_types`` (#342)
+    threads the operator's per-account override; ``None`` uses the default set.
     """
-    return count_conversions_from_actions(row.get("actions"))
+    return count_conversions_from_actions(
+        row.get("actions"), conversion_action_types=conversion_action_types
+    )
 
 
 class AnalysisMixin:
@@ -38,6 +48,10 @@ class AnalysisMixin:
     Used via multiple inheritance with MetaAdsApiClient.
     get_performance_report / get_breakdown_report are provided by InsightsMixin.
     """
+
+    # Provided by MetaAdsApiClient; used to resolve the per-account conversion
+    # override (#342). Declared here so mypy sees the attribute on the mixin.
+    _ad_account_id: str
 
     async def get_performance_report(  # type: ignore[empty-body]
         self,
@@ -80,11 +94,12 @@ class AnalysisMixin:
             }
 
         placements: list[dict[str, Any]] = []
+        cv_types = load_conversion_action_types(self._ad_account_id)
         for row in data:
             spend = _safe_float(row.get("spend"))
             clicks = _safe_float(row.get("clicks"))
             impressions = _safe_float(row.get("impressions"))
-            cv = _extract_cv(row)
+            cv = _extract_cv(row, cv_types)
             cpa = round(spend / cv, 0) if cv > 0 else None
 
             placements.append(
@@ -243,10 +258,11 @@ class AnalysisMixin:
             }
 
         ads: list[dict[str, Any]] = []
+        cv_types = load_conversion_action_types(self._ad_account_id)
         for r in ads_data:
             ctr = _safe_float(r.get("ctr"))
             cpc = _safe_float(r.get("cpc"))
-            cv = _extract_cv(r)
+            cv = _extract_cv(r, cv_types)
             spend = _safe_float(r.get("spend"))
             # Score: CTR-weighted + CV bonus
             score = ctr * 10 + (cv * 5 if cv > 0 else 0)
@@ -315,9 +331,10 @@ class AnalysisMixin:
             }
 
         ads: list[dict[str, Any]] = []
+        cv_types = load_conversion_action_types(self._ad_account_id)
         for r in data:
             ctr = _safe_float(r.get("ctr"))
-            cv = _extract_cv(r)
+            cv = _extract_cv(r, cv_types)
             spend = _safe_float(r.get("spend"))
             cpa = round(spend / cv, 0) if cv > 0 else None
 

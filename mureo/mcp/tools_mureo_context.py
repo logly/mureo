@@ -21,6 +21,7 @@ from mureo.mcp._handlers_mureo_context import (
     handle_state_get,
     handle_state_platform_metrics_set,
     handle_state_report_set,
+    handle_state_set_conversion_events,
     handle_state_upsert_campaign,
     handle_strategy_get,
     handle_strategy_set,
@@ -310,6 +311,58 @@ TOOLS: list[Tool] = [
             "required": ["platform", "account_id"],
         },
     ),
+    Tool(
+        name="mureo_state_set_conversion_events",
+        description=(
+            "Declare which Meta Insights ``action_type`` rows count as THIS "
+            "account's conversions, overriding mureo's built-in deduped generic "
+            "set (lead / purchase / complete_registration). Use this when an "
+            "advertiser's real conversion is a CUSTOM pixel event "
+            "(``offsite_conversion.custom.<id>``) — otherwise it reports 0 "
+            "conversions — or when their account only emits a component row "
+            "(e.g. ``offsite_conversion.fb_pixel_lead``) with no generic "
+            "aggregate. Replacement semantics: the listed action_types are the "
+            "COMPLETE conversion set (never summed on top of the defaults), so "
+            "overlapping alias rows can't double-count. Tip: to avoid typos, "
+            "first call meta_ads_insights_report / _breakdown to see the "
+            "account's real action_type labels, confirm with the operator, then "
+            "set the exact string(s) here. Pass an empty list (or omit "
+            "``conversion_action_types``) to CLEAR the override and restore the "
+            "default. Stored on ``platforms[platform]`` and preserved across "
+            "syncs. Returns the updated state document."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "platform": {
+                    "type": "string",
+                    "description": (
+                        "Platform key — normally ``meta_ads`` (the override "
+                        "only affects the Meta conversion counters)."
+                    ),
+                },
+                "account_id": {
+                    "type": "string",
+                    "description": (
+                        "The Meta ad account id (``act_*``). Always written "
+                        "onto the platform entry."
+                    ),
+                },
+                "conversion_action_types": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Exact Meta ``action_type`` strings to count as "
+                        "conversions (e.g. "
+                        '["offsite_conversion.custom.123"]). Empty / omitted '
+                        "clears the override."
+                    ),
+                },
+                "path": _PATH_PROPERTY,
+            },
+            "required": ["platform", "account_id"],
+        },
+    ),
 ]
 
 
@@ -321,6 +374,7 @@ _HANDLERS = {
     "mureo_state_upsert_campaign": handle_state_upsert_campaign,
     "mureo_state_report_set": handle_state_report_set,
     "mureo_state_platform_metrics_set": handle_state_platform_metrics_set,
+    "mureo_state_set_conversion_events": handle_state_set_conversion_events,
 }
 
 
