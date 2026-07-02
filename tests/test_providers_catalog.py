@@ -26,7 +26,27 @@ def test_catalog_has_phase1_providers() -> None:
     from mureo.providers.catalog import CATALOG
 
     ids = {spec.id for spec in CATALOG}
-    assert ids == {"google-ads-official", "meta-ads-official", "ga4-official"}
+    assert ids == {
+        "google-ads-official",
+        "meta-ads-official",
+        "ga4-official",
+        "tiktok-ads-official",
+    }
+
+
+@pytest.mark.unit
+def test_official_provider_id_lists_match_catalog() -> None:
+    """The hardcoded ``OFFICIAL_PROVIDER_IDS`` tuples (``status_collector``
+    and ``setup_actions``) must stay in sync with ``CATALOG`` — every
+    catalog entry is an official provider. Guards against silent drift when
+    a provider is added to only one of the three places."""
+    from mureo.providers.catalog import CATALOG
+    from mureo.web.setup_actions import _OFFICIAL_PROVIDER_IDS
+    from mureo.web.status_collector import OFFICIAL_PROVIDER_IDS
+
+    catalog_ids = {spec.id for spec in CATALOG}
+    assert set(OFFICIAL_PROVIDER_IDS) == catalog_ids
+    assert set(_OFFICIAL_PROVIDER_IDS) == catalog_ids
 
 
 @pytest.mark.unit
@@ -124,6 +144,29 @@ def test_required_env_documents_credentials() -> None:
     ga4 = get_provider("ga4-official")
     assert len(ga4.required_env) >= 1
 
+    tiktok = get_provider("tiktok-ads-official")
+    # TikTok uses interactive OAuth — no pre-populated env vars expected.
+    assert tiktok.required_env == ()
+
+
+@pytest.mark.unit
+def test_tiktok_ads_is_hosted_layered_endpoint() -> None:
+    """TikTok's official provider is a hosted HTTP MCP that mureo points at
+    the Progressive Disclosure (layered) endpoint, authenticates via browser
+    OAuth (no env vars), and does NOT overlap a mureo-native platform."""
+    from mureo.providers.catalog import get_provider
+
+    tiktok = get_provider("tiktok-ads-official")
+    assert tiktok.install_kind == "hosted_http"
+    assert tiktok.install_argv == ()
+    assert tiktok.mcp_server_config["type"] == "http"
+    assert (
+        tiktok.mcp_server_config["url"]
+        == "https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer"
+    )
+    # mureo has no native TikTok platform, so no coexistence toggle applies.
+    assert tiktok.coexists_with_mureo_platform is None
+
 
 @pytest.mark.unit
 def test_google_ads_required_env_is_adc_not_client_library() -> None:
@@ -184,3 +227,6 @@ def test_coexists_with_mureo_platform_correctly_set() -> None:
 
     ga4 = get_provider("ga4-official")
     assert ga4.coexists_with_mureo_platform == "ga4"
+
+    tiktok = get_provider("tiktok-ads-official")
+    assert tiktok.coexists_with_mureo_platform is None

@@ -447,10 +447,14 @@ def hosted_provider_connectivity(spec: ProviderSpec) -> HostedConnectivity:
         return "unknown"  # could not determine — not "not connected"
     if completed.returncode != 0:
         return "unknown"
-    # NOTE: substring match on the endpoint URL. Phase 1 has a single
-    # hosted provider (one Meta endpoint), so prefix collisions
-    # (e.g. ".../ads" vs ".../ads-v2") are not a concern; revisit if a
-    # second hosted endpoint sharing a prefix is ever added.
+    # NOTE: substring match on the endpoint URL. The two hosted providers
+    # (Meta `mcp.facebook.com/ads`, TikTok
+    # `business-api.tiktok.com/open_mcp/tt-ads-mcp-layer`) share no prefix,
+    # so cross-provider collisions are not a concern; revisit if a future
+    # hosted endpoint shares a prefix. Edge case: a user who manually
+    # registers TikTok's alternate `tt-ads-mcp-flat` endpoint (not the
+    # layered one mureo points at) will not match here and reads as
+    # not_connected — mureo only guides users to the layered endpoint.
     for line in completed.stdout.splitlines():
         if url not in line:
             continue

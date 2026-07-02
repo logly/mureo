@@ -218,6 +218,48 @@ CATALOG: tuple[ProviderSpec, ...] = (
         ),
         coexists_with_mureo_platform="ga4",
     ),
+    ProviderSpec(
+        id="tiktok-ads-official",
+        display_name="TikTok Ads (official hosted MCP)",
+        install_kind="hosted_http",
+        # Hosted endpoint — no local install step. TikTok delivers its
+        # official "TikTok for Business MCP Server" as a hosted HTTP service
+        # (launched at TikTok World '26, 2026-05-13; docs at
+        # business-api.tiktok.com/portal/docs/tiktok-ads-mcp-server/v1.3,
+        # verified 2026-07-02). Two endpoints are published:
+        # `tt-ads-mcp-flat` loads all ~400 tools at connect, while
+        # `tt-ads-mcp-layer` (Progressive Disclosure) loads ~40 core tools
+        # and surfaces the rest on demand. mureo defaults to the layered
+        # endpoint to keep the exposed tool surface small.
+        install_argv=(),
+        mcp_server_config=_freeze_config(
+            {
+                "type": "http",
+                "url": "https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer",
+            }
+        ),
+        # Auth is interactive browser-OAuth via the user's TikTok for Business
+        # account on first connect (sign in to TikTok Ads Manager, then
+        # authorize) — no developer token or env vars are pre-populated.
+        required_env=(),
+        notes=(
+            "TikTok's official hosted MCP (\"TikTok for Business MCP "
+            "Server\", launched at TikTok World '26). mureo points at the "
+            "Progressive Disclosure endpoint "
+            "`business-api.tiktok.com/open_mcp/tt-ads-mcp-layer` (~40 core "
+            "tools, the rest discovered on demand); the full-surface "
+            "`tt-ads-mcp-flat` (~400 tools) is also published. Read-write "
+            "across campaign management, reporting, catalogs, creatives, "
+            "audiences, and Business Center. Auth is interactive browser "
+            "OAuth via your TikTok for Business account on first connect "
+            "(no developer token or env vars). Like other hosted providers, "
+            "mureo does not register it locally — add it as a Claude.ai "
+            "connector (mureo prints the steps). TikTok also documents "
+            "direct registration as a remote HTTP MCP server, which "
+            "advanced users can configure manually. Public beta."
+        ),
+        coexists_with_mureo_platform=None,
+    ),
 )
 
 
