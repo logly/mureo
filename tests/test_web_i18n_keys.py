@@ -161,6 +161,36 @@ class TestTikTokHostedNoteKeysParity:
 
 
 @pytest.mark.unit
+class TestTikTokWizardKeysParity:
+    """EN/JA presence for the TikTok wizard keys: the platforms checkbox
+    label, the providers_install slot banner, and the completed-screen
+    pending reminder. The label + banner are proper nouns ("TikTok Ads",
+    identical in both locales like the other platform labels), so only the
+    prose reminder is asserted to be a distinct translation."""
+
+    _PRESENCE_KEYS = (
+        "wizard.platforms.tiktok_ads",
+        "wizard.provider_banner.tiktok_ads",
+        "wizard.completed.pending_tiktok",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._PRESENCE_KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_prose_reminder_is_distinct_translation(self) -> None:
+        data = _load_i18n()
+        key = "wizard.completed.pending_tiktok"
+        assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
 class TestAdvancedAdvisorKeysParity:
     """EN/JA parity for the Advanced → External advisor MCP card keys: the
     nav label + section/card titles, the form field labels + transport
