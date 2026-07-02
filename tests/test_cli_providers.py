@@ -164,6 +164,29 @@ def test_add_meta_dry_run_says_not_registered_connector(home: Path) -> None:
 
 
 @pytest.mark.integration
+def test_add_tiktok_prints_connector_steps_not_meta(home: Path) -> None:
+    """``add tiktok-ads-official``: a hosted provider that does NOT overlap a
+    mureo-native platform. It prints the vendor-neutral Claude.ai connector
+    steps with TikTok's endpoint — never any Meta-specific wording, and with
+    NO native-disable / ``providers confirm`` tail (``coexists`` is None)."""
+    result = _invoke("providers", "add", "tiktok-ads-official")
+    assert result.exit_code == 0, result.output
+
+    mock_run = _get_subprocess_mock()
+    mock_run.assert_not_called()
+
+    combined = (result.output or "") + (result.stderr or "")
+    lowered = combined.lower()
+    assert "connector" in lowered
+    assert "claude.ai" in lowered
+    assert "business-api.tiktok.com/open_mcp/tt-ads-mcp-layer" in combined
+    # No Meta contamination, and no native-coexistence tail (coexists=None).
+    assert "meta" not in lowered
+    assert "facebook" not in lowered
+    assert "providers confirm" not in lowered
+
+
+@pytest.mark.integration
 def test_add_writes_settings_json(home: Path) -> None:
     """``add`` writes ``mcpServers.<id>`` to ``~/.claude.json``."""
     result = _invoke("providers", "add", "google-ads-official")

@@ -76,6 +76,7 @@ _OFFICIAL_PROVIDER_IDS: tuple[str, ...] = (
     "google-ads-official",
     "meta-ads-official",
     "ga4-official",
+    "tiktok-ads-official",
 )
 
 

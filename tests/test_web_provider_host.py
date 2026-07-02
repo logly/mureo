@@ -9,8 +9,9 @@ Behaviour matrix asserted (RED until the params + Desktop branch exist):
 
 - ``host="claude-code"`` (default, or explicit) → byte-for-byte the
   CURRENT behaviour: ``run_install`` then
-  ``add_provider_and_disable_in_mureo`` (all CATALOG entries coexist)
-  / ``add_provider_to_claude_settings``; the Desktop writer is NOT
+  ``add_provider_and_disable_in_mureo`` (for CATALOG entries that overlap
+  a mureo-native platform) / ``add_provider_to_claude_settings``; the
+  Desktop writer is NOT
   called and ``claude_desktop_config.json`` is never created.
 - ``host="claude-desktop"``:
   - hosted_http (meta-ads-official): ``run_install`` short-circuits
@@ -161,10 +162,11 @@ class TestInstallProviderCodeHostUnchanged:
         self, tmp_path: Path
     ) -> None:
         """No ``host`` arg → today's path: ``run_install`` then
-        ``add_provider_and_disable_in_mureo`` (every CATALOG provider
-        sets ``coexists_with_mureo_platform``). Desktop writer NOT called,
-        Desktop config NOT created. Credentials are present, so native IS
-        disabled (the #102 decision-C gate is satisfied)."""
+        ``add_provider_and_disable_in_mureo`` (the provider under test,
+        google-ads-official, sets ``coexists_with_mureo_platform``).
+        Desktop writer NOT called, Desktop config NOT created. Credentials
+        are present, so native IS disabled (the #102 decision-C gate is
+        satisfied)."""
         from mureo.web import setup_actions
 
         creds = _google_creds(tmp_path)
@@ -1404,7 +1406,10 @@ class TestHostedProviderStatus:
             "mureo.providers.config_writer.is_hosted_provider_connected",
             lambda spec: True,
         )
-        assert setup_actions.hosted_provider_status() == {"meta-ads-official": True}
+        assert setup_actions.hosted_provider_status() == {
+            "meta-ads-official": True,
+            "tiktok-ads-official": True,
+        }
 
     def test_returns_connected_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from mureo.web import setup_actions
@@ -1413,7 +1418,10 @@ class TestHostedProviderStatus:
             "mureo.providers.config_writer.is_hosted_provider_connected",
             lambda spec: False,
         )
-        assert setup_actions.hosted_provider_status() == {"meta-ads-official": False}
+        assert setup_actions.hosted_provider_status() == {
+            "meta-ads-official": False,
+            "tiktok-ads-official": False,
+        }
 
     def test_never_raises_returns_empty_on_error(
         self, monkeypatch: pytest.MonkeyPatch
