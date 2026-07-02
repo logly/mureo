@@ -132,7 +132,7 @@ from mureo.web.upgrade_action import run_upgrade_all
 from mureo.web.version_check import get_update_status, request_update_refresh
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Mapping
+    from collections.abc import Callable, Collection, Iterator, Mapping
     from pathlib import Path
 
     from mureo.web.extensions import (
@@ -276,15 +276,21 @@ def _find_extension_route(
     return None
 
 
+def _iter_extension_assets(entry: WebExtensionEntry) -> Iterator[StaticAsset]:
+    """Yield every static asset the extension ships — view assets first,
+    then dashboard-card assets, in declaration order."""
+    if entry.view is not None:
+        yield from entry.view.scripts
+        yield from entry.view.styles
+    for card in entry.dashboard_cards:
+        yield from card.scripts
+        yield from card.styles
+
+
 def _find_extension_static(
     entry: WebExtensionEntry, filename: str
 ) -> StaticAsset | None:
-    if entry.view is None:
-        return None
-    for asset in entry.view.scripts:
-        if asset.filename == filename:
-            return asset
-    for asset in entry.view.styles:
+    for asset in _iter_extension_assets(entry):
         if asset.filename == filename:
             return asset
     return None
@@ -1239,6 +1245,18 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 # check before reading them.
                 "hidden_builtin_tabs": list(entry.hidden_builtin_tabs),
                 "replaces_landing": entry.replaces_landing,
+                # Cards injected into built-in dashboard groups. Always
+                # present ([] when none) so extensions.js never needs an
+                # existence check before iterating.
+                "dashboard_cards": [
+                    {
+                        "group": card.group,
+                        "html_fragment": card.html_fragment,
+                        "scripts": [a.filename for a in card.scripts],
+                        "styles": [a.filename for a in card.styles],
+                    }
+                    for card in entry.dashboard_cards
+                ],
             }
             if entry.view is None:
                 item["view"] = None

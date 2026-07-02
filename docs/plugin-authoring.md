@@ -1617,6 +1617,70 @@ with your view active. Both attributes ride `/api/extensions` as
 `hidden_builtin_tabs` (list) and `replaces_landing` (bool) — always
 present, no existence check needed client-side.
 
+### Dashboard cards (contributing to built-in groups)
+
+Sometimes a plugin's setting belongs *next to* an existing built-in
+card rather than on a tab of its own — e.g. a companion write-side
+setting rendered beside the built-in "External advisor MCP" card. For
+that, declare the optional `dashboard_cards()` method (read via
+`getattr`; pre-feature extensions keep loading unchanged):
+
+```python
+from mureo.web.extensions import DashboardCard, StaticAsset
+
+class MyExtension:
+    name = "acme-advisor"
+    display_name = "Acme Advisor"
+
+    def routes(self):
+        ...  # the card's form posts to your /api/ext/<name>/ routes
+
+    def view(self):
+        return None  # cards do NOT require a view/tab
+
+    def dashboard_cards(self) -> tuple[DashboardCard, ...]:
+        return (
+            DashboardCard(
+                group="advanced",  # must be in BUILTIN_CARD_GROUPS
+                html_fragment=(
+                    '<section class="dashboard-section" data-acme-advisor>'
+                    "<h2>Acme advisor</h2>"
+                    "</section>"
+                ),
+                scripts=(
+                    StaticAsset(
+                        filename="acme-card.js",
+                        content_type="application/javascript",
+                        body=_CARD_JS,
+                    ),
+                ),
+            ),
+        )
+```
+
+Contract:
+
+- `group` must be one of `BUILTIN_CARD_GROUPS` (currently only
+  `"advanced"`) — a fixed allowlist, mirroring the
+  `hidden_builtin_tabs` discipline, so plugins never couple to
+  arbitrary internals of the app layout. An unknown group raises at
+  `DashboardCard` construction and skips the extension.
+- The fragment obeys the same sanitisation as `view()` — no inline
+  `<script>` / `<style>` / `on*=` / `javascript:`; ship behaviour and
+  styling as `StaticAsset` `scripts` / `styles`, served from
+  `GET /static/ext/<name>/<filename>` alongside your view assets.
+  Keep asset filenames unique across your extension (view + cards
+  share one URL namespace; a duplicate filename shadows the other).
+- Unlike a view, cards are injected **eagerly** when extension
+  discovery renders (a built-in tab has no per-plugin click hook), so
+  card scripts must be idempotent and cheap to load.
+- `dashboard_cards()` is called exactly once during discovery, like
+  `view()`. A non-callable attribute, non-tuple return, or foreign
+  element skips the whole extension with a `WebExtensionWarning`.
+- The index payload carries the cards as `dashboard_cards` (always
+  present, `[]` when none): one
+  `{group, html_fragment, scripts, styles}` object per card.
+
 ### `pyproject.toml`
 
 ```toml

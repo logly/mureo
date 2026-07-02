@@ -924,3 +924,243 @@ def _reset_extensions_cache() -> Iterator[None]:
     reset_web_extensions()
     yield
     reset_web_extensions()
+
+
+# ---------------------------------------------------------------------------
+# Dashboard cards (fragments injected into built-in dashboard groups)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_dashboard_card_is_frozen() -> None:
+    from mureo.web.extensions import DashboardCard
+
+    card = DashboardCard(group="advanced", html_fragment="<p>hi</p>")
+    with pytest.raises(FrozenInstanceError):
+        card.group = "other"  # type: ignore[misc]
+
+
+@pytest.mark.unit
+def test_dashboard_card_rejects_unknown_group() -> None:
+    from mureo.web.extensions import DashboardCard
+
+    with pytest.raises(ValueError, match="group"):
+        DashboardCard(group="setup", html_fragment="<p>hi</p>")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "html",
+    [
+        "<script>alert(1)</script>",
+        "<style>p{}</style>",
+        '<img onerror="x">',
+        '<a href="javascript:void(0)">x</a>',
+    ],
+)
+def test_dashboard_card_rejects_inline_executable_content(html: str) -> None:
+    from mureo.web.extensions import DashboardCard
+
+    with pytest.raises(ValueError):
+        DashboardCard(group="advanced", html_fragment=html)
+
+
+@pytest.mark.unit
+def test_dashboard_card_rejects_non_tuple_assets() -> None:
+    from mureo.web.extensions import DashboardCard, StaticAsset
+
+    asset = StaticAsset(
+        filename="c.js", content_type="application/javascript", body=b"1"
+    )
+    with pytest.raises(TypeError):
+        DashboardCard(
+            group="advanced",
+            html_fragment="<p>x</p>",
+            scripts=[asset],  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.unit
+def test_web_extension_entry_defaults_dashboard_cards_to_empty() -> None:
+    from mureo.web.extensions import WebExtensionEntry
+
+    entry = WebExtensionEntry(
+        name="demo",
+        display_name="Demo",
+        routes=(),
+        view=None,
+        source_distribution=None,
+    )
+    assert entry.dashboard_cards == ()
+
+
+class _CardExtension:
+    """Headless extension contributing one advanced-group card."""
+
+    name = "cardful"
+    display_name = "Cardful"
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        return None
+
+    def dashboard_cards(self) -> tuple[Any, ...]:
+        from mureo.web.extensions import DashboardCard, StaticAsset
+
+        return (
+            DashboardCard(
+                group="advanced",
+                html_fragment="<section data-cardful>hi</section>",
+                scripts=(
+                    StaticAsset(
+                        filename="cardful.js",
+                        content_type="application/javascript",
+                        body=b"1",
+                    ),
+                ),
+            ),
+        )
+
+
+class _BadCardsReturn:
+    name = "bad-cards-return"
+    display_name = "Bad cards return"
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        return None
+
+    def dashboard_cards(self) -> Any:
+        return []  # list, not tuple — packaging bug
+
+
+class _BadCardsElement:
+    name = "bad-cards-element"
+    display_name = "Bad card element"
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        return None
+
+    def dashboard_cards(self) -> tuple[Any, ...]:
+        return ("not a card",)
+
+
+@pytest.mark.unit
+def test_discover_picks_up_dashboard_cards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import discover_web_extensions
+
+    _patch_entry_points(monkeypatch, [_FakeEP("cardful", _CardExtension)])
+    entries = discover_web_extensions()
+    assert len(entries) == 1
+    cards = entries[0].dashboard_cards
+    assert len(cards) == 1
+    assert cards[0].group == "advanced"
+    assert cards[0].scripts[0].filename == "cardful.js"
+
+
+@pytest.mark.unit
+def test_discover_defaults_missing_dashboard_cards_to_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import discover_web_extensions
+
+    _patch_entry_points(monkeypatch, [_FakeEP("demo", _DemoExtension)])
+    entries = discover_web_extensions()
+    assert entries[0].dashboard_cards == ()
+
+
+@pytest.mark.unit
+def test_discover_skips_extensions_with_bad_dashboard_cards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import discover_web_extensions
+
+    _patch_entry_points(
+        monkeypatch,
+        [
+            _FakeEP("bad-cards-return", _BadCardsReturn),
+            _FakeEP("bad-cards-element", _BadCardsElement),
+            _FakeEP("demo", _DemoExtension),
+        ],
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        entries = discover_web_extensions()
+    assert [e.name for e in entries] == ["demo"]
+    messages = [str(w.message) for w in caught]
+    assert any("bad-cards-return" in m for m in messages)
+    assert any("bad-cards-element" in m for m in messages)
+
+
+class _NonCallableCards:
+    name = "non-callable-cards"
+    display_name = "Non-callable cards"
+    dashboard_cards = 5  # attribute, not a method — packaging bug
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        return None
+
+
+class _ViewAndCards:
+    """Extension shipping BOTH a tab view and an advanced-group card."""
+
+    name = "view-and-cards"
+    display_name = "View and cards"
+
+    def routes(self) -> tuple[Any, ...]:
+        return ()
+
+    def view(self) -> Any:
+        from mureo.web.extensions import ViewContribution
+
+        return ViewContribution(html_fragment="<p>tab</p>")
+
+    def dashboard_cards(self) -> tuple[Any, ...]:
+        from mureo.web.extensions import DashboardCard
+
+        return (DashboardCard(group="advanced", html_fragment="<p>card</p>"),)
+
+
+@pytest.mark.unit
+def test_discover_skips_extension_with_non_callable_dashboard_cards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import discover_web_extensions
+
+    _patch_entry_points(
+        monkeypatch,
+        [
+            _FakeEP("non-callable-cards", _NonCallableCards),
+            _FakeEP("demo", _DemoExtension),
+        ],
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        entries = discover_web_extensions()
+    assert [e.name for e in entries] == ["demo"]
+    assert any("non-callable-cards" in str(w.message) for w in caught)
+
+
+@pytest.mark.unit
+def test_discover_accepts_extension_with_both_view_and_cards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mureo.web.extensions import discover_web_extensions
+
+    _patch_entry_points(monkeypatch, [_FakeEP("view-and-cards", _ViewAndCards)])
+    entries = discover_web_extensions()
+    assert len(entries) == 1
+    assert entries[0].view is not None
+    assert len(entries[0].dashboard_cards) == 1

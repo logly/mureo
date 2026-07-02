@@ -13,6 +13,13 @@
 // time the user clicks the extension's tab. The CSP only permits
 // ``script-src 'self'`` / ``style-src 'self'``; every asset URL is
 // ``/static/ext/<name>/<filename>`` (same origin) so the loads pass.
+//
+// Extensions may additionally ship ``dashboard_cards`` — fragments
+// injected into BUILT-IN dashboard groups (allowlisted; currently the
+// "advanced" group only). Cards render eagerly at discovery time (the
+// built-in tab's click path belongs to dashboard.js, so there is no
+// lazy hook), and card assets load through the same
+// ``/static/ext/<name>/…`` URLs.
 
 (function () {
   "use strict";
@@ -23,6 +30,12 @@
   // client-side allowlist keeps a malformed payload from hiding an
   // arbitrary node (e.g. another extension's tab).
   const BUILTIN_TABS = ["setup", "demo", "byod", "danger"];
+
+  // Built-in dashboard groups an extension may contribute cards to.
+  // Mirrors BUILTIN_CARD_GROUPS in ``mureo/web/extensions.py`` — the
+  // server already validates, but a client-side allowlist keeps a
+  // malformed payload from writing into an arbitrary group node.
+  const CARD_GROUPS = ["advanced"];
 
   const _populated = new Set();
   // Every discovered extension (including headless / route-only ones —
@@ -120,6 +133,31 @@
     _injectStyles(extension.name, extension.view.styles || []);
     _injectScripts(extension.name, extension.view.scripts || []);
     _populated.add(extension.name);
+  }
+
+  function _cardId(name, index) {
+    return "ext-card-" + name + "-" + index;
+  }
+
+  function _renderCards(extension) {
+    (extension.dashboard_cards || []).forEach(function (card, index) {
+      if (!card || CARD_GROUPS.indexOf(card.group) === -1) return;
+      if (document.getElementById(_cardId(extension.name, index))) return;
+      const group = document.querySelector(
+        '[data-dashboard-group="' + card.group + '"]',
+      );
+      if (!group) return;
+      const holder = document.createElement("div");
+      holder.id = _cardId(extension.name, index);
+      holder.setAttribute("data-ext-card-owner", extension.name);
+      // innerHTML is fine here for the same reason as _populate: the
+      // server rejected inline-executable content at discovery time
+      // and the CSP refuses any that slip through.
+      holder.innerHTML = card.html_fragment;
+      group.appendChild(holder);
+      _injectStyles(extension.name, card.styles || []);
+      _injectScripts(extension.name, card.scripts || []);
+    });
   }
 
   function _onTabClick(extension) {
@@ -322,6 +360,9 @@
       return item.view; // tabs are only rendered for view-bearing extensions
     });
     _extensions.forEach(_renderNavItem);
+    // Cards do not require a view — headless extensions may contribute
+    // them too, so iterate the full discovery set.
+    _allExtensions.forEach(_renderCards);
   }
 
   function _onLocaleChanged(evt) {
