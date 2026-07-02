@@ -105,6 +105,18 @@ _SUBPATH_RE: Final[re.Pattern[str]] = re.compile(rf"^{SUBPATH_PATTERN}$")
 #: requires a matching markup change there.
 BUILTIN_DASHBOARD_TABS: Final[tuple[str, ...]] = ("setup", "demo", "byod", "danger")
 
+#: Built-in dashboard groups an extension may contribute cards to via
+#: ``dashboard_cards()``. Deliberately a fixed allowlist (mirroring
+#: the *discipline* of ``BUILTIN_DASHBOARD_TABS``, not its values):
+#: opening every group would couple extensions to the app's internal
+#: layout, so new groups are added here intentionally, one review at a
+#: time. Each value is the ``data-dashboard-group`` attribute
+#: hardcoded in ``mureo/_data/web/app.html``. NB: before adding a
+#: group that also appears in ``BUILTIN_DASHBOARD_TABS``, decide what
+#: a card inside a tab hidden via ``hidden_builtin_tabs`` should do —
+#: today the two sets are disjoint so a card can never be hidden.
+BUILTIN_CARD_GROUPS: Final[tuple[str, ...]] = ("advanced",)
+
 #: Inline-executable patterns banned in ``html_fragment``. The
 #: configure-UI CSP forbids ``unsafe-inline`` so these would not
 #: execute anyway, but discovery refuses them so plugin authors get
@@ -239,6 +251,56 @@ class ViewContribution:
 
 
 @dataclass(frozen=True)
+class DashboardCard:
+    """One extension-supplied card rendered INSIDE a built-in dashboard
+    group (``group`` must be one of :data:`BUILTIN_CARD_GROUPS`,
+    currently only ``"advanced"``).
+
+    For small, operator-wide companion settings that belong next to an
+    existing built-in card — e.g. a plugin that pairs a write-side
+    setting with the built-in "External advisor MCP" (read-side) card —
+    where a whole extension tab would be disproportionate.
+
+    Same safety contract as :class:`ViewContribution`: the fragment may
+    not contain inline-executable content; behaviour ships as
+    :class:`StaticAsset` ``scripts`` / ``styles`` served from
+    ``/static/ext/<name>/…`` alongside the extension's view assets.
+    Unlike a view, cards are injected when extension discovery renders
+    (not lazily on tab click), so card scripts must be idempotent and
+    cheap to load.
+    """
+
+    group: str
+    html_fragment: str
+    scripts: tuple[StaticAsset, ...] = ()
+    styles: tuple[StaticAsset, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.group not in BUILTIN_CARD_GROUPS:
+            raise ValueError(
+                f"DashboardCard.group must be one of {BUILTIN_CARD_GROUPS}; "
+                f"got {self.group!r}"
+            )
+        if not isinstance(self.html_fragment, str):
+            raise TypeError("DashboardCard.html_fragment must be str")
+        for pat in _BANNED_HTML_PATTERNS:
+            if pat.search(self.html_fragment):
+                raise ValueError(
+                    "DashboardCard.html_fragment may not contain "
+                    "<script>, <style>, on*= handlers, or javascript: URLs; "
+                    f"matched {pat.pattern!r}"
+                )
+        if not isinstance(self.scripts, tuple) or not all(
+            isinstance(s, StaticAsset) for s in self.scripts
+        ):
+            raise TypeError("DashboardCard.scripts must be tuple[StaticAsset, ...]")
+        if not isinstance(self.styles, tuple) or not all(
+            isinstance(s, StaticAsset) for s in self.styles
+        ):
+            raise TypeError("DashboardCard.styles must be tuple[StaticAsset, ...]")
+
+
+@dataclass(frozen=True)
 class ServeContext:
     """Context handed to :py:meth:`WebExtension.on_serve_start` by the
     always-on daemon so an extension can run a clean background job (#249).
@@ -293,6 +355,15 @@ class WebExtension(Protocol):
       :class:`WebExtensionWarning`. When several installed
       extensions claim the landing the first-discovered one wins
       (later claims are downgraded with a warning). Added in #189.
+    * ``dashboard_cards() -> tuple[DashboardCard, ...]`` — cards the
+      renderer injects into built-in dashboard groups (each card's
+      ``group`` must be in :data:`BUILTIN_CARD_GROUPS`; currently only
+      ``"advanced"``). Use for small operator-wide settings that pair
+      with a built-in card and do not warrant a whole extension tab;
+      an extension may ship cards with or without a ``view()``. Called
+      exactly once during discovery, like ``view()``. A non-callable
+      attribute, a non-tuple return, or a non-``DashboardCard``
+      element skips the extension.
     * ``on_serve_start(ctx: ServeContext) -> None`` and
       ``on_serve_stop() -> None`` — lifecycle hooks invoked ONLY by the
       always-on daemon (``mureo configure --serve``), never by a
@@ -347,6 +418,10 @@ class WebExtensionEntry:
     # before.
     hidden_builtin_tabs: tuple[str, ...] = ()
     replaces_landing: bool = False
+    # Cards injected into built-in dashboard groups. Defaults to () so
+    # entries constructed before the feature existed (and every
+    # extension that ships none) behave exactly as before.
+    dashboard_cards: tuple[DashboardCard, ...] = ()
     # #249 — optional always-on lifecycle hooks, captured as bound
     # callables during discovery (``None`` when the extension declares
     # neither). Invoked only in ``serve_forever`` (daemon) mode by
@@ -485,6 +560,35 @@ def _load_entry_point(ep: Any) -> WebExtensionEntry | None:
                 f"view() returned {type(view_value).__name__}, "
                 f"expected ViewContribution or None"
             )
+        # Optional dashboard cards (additive — absent means no cards).
+        # Read via ``getattr`` like the other optional attributes so
+        # pre-feature extensions keep working unmodified. Any type
+        # problem (non-callable attribute, non-tuple return, foreign
+        # element) is a packaging bug that skips the whole extension
+        # via the surrounding try/except; value problems (unknown
+        # group, inline-executable HTML) already raise inside
+        # ``DashboardCard.__post_init__`` with the same effect.
+        cards_method = getattr(extension, "dashboard_cards", None)
+        cards_value: tuple[DashboardCard, ...] = ()
+        if cards_method is not None:
+            if not callable(cards_method):
+                raise TypeError(
+                    f"dashboard_cards must be callable, "
+                    f"got {type(cards_method).__name__}"
+                )
+            cards_raw = cards_method()
+            if not isinstance(cards_raw, tuple):
+                raise TypeError(
+                    f"dashboard_cards() must return tuple, "
+                    f"got {type(cards_raw).__name__}"
+                )
+            for card in cards_raw:
+                if not isinstance(card, DashboardCard):
+                    raise TypeError(
+                        f"dashboard_cards() returned {type(card).__name__}, "
+                        f"expected DashboardCard"
+                    )
+            cards_value = cards_raw
         # ``display_name_i18n`` is read defensively so the Protocol
         # itself does not require the attribute — every pre-feature
         # extension keeps working without modification. When present
@@ -589,6 +693,7 @@ def _load_entry_point(ep: Any) -> WebExtensionEntry | None:
         display_name_i18n=i18n_normalised,
         hidden_builtin_tabs=tuple(hidden_tabs),
         replaces_landing=replaces_landing,
+        dashboard_cards=cards_value,
         on_serve_start=on_serve_start,
         on_serve_stop=on_serve_stop,
     )
@@ -673,7 +778,9 @@ def stop_serve_lifecycles(entries: tuple[WebExtensionEntry, ...]) -> None:
 
 
 __all__ = [
+    "BUILTIN_CARD_GROUPS",
     "BUILTIN_DASHBOARD_TABS",
+    "DashboardCard",
     "FILENAME_PATTERN",
     "NAME_PATTERN",
     "RouteContribution",

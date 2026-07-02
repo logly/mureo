@@ -313,6 +313,7 @@ def test_extensions_index_view_null_when_extension_has_no_view(
                 "display_name_i18n": {},
                 "hidden_builtin_tabs": [],
                 "replaces_landing": False,
+                "dashboard_cards": [],
                 "view": None,
             }
         ]
@@ -515,3 +516,114 @@ def test_static_asset_response_carries_security_headers(
     assert resp.headers["X-Content-Type-Options"] == "nosniff"
     assert resp.headers["X-Frame-Options"] == "DENY"
     assert "default-src 'none'" in (resp.headers["Content-Security-Policy"] or "")
+
+
+# ---------------------------------------------------------------------------
+# Dashboard cards — index payload + card asset serving
+# ---------------------------------------------------------------------------
+
+
+def _make_card_entry() -> WebExtensionEntry:
+    from mureo.web.extensions import DashboardCard
+
+    return WebExtensionEntry(
+        name="cardful",
+        display_name="Cardful extension",
+        routes=(),
+        view=None,
+        source_distribution="mureo-cardful",
+        dashboard_cards=(
+            DashboardCard(
+                group="advanced",
+                html_fragment="<section data-cardful>Cardful</section>",
+                scripts=(
+                    StaticAsset(
+                        filename="cardful.js",
+                        content_type="application/javascript",
+                        body=b"console.log('cardful');",
+                    ),
+                ),
+                styles=(
+                    StaticAsset(
+                        filename="cardful.css",
+                        content_type="text/css",
+                        body=b".cardful{color:blue}",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
+@pytest.fixture
+def wizard_with_card_extension(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[ConfigureWizard]:
+    """Pre-seed one headless, card-bearing extension, boot a wizard."""
+    entry = _make_card_entry()
+    monkeypatch.setattr("mureo.web.extensions._cached_entries", (entry,))
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    (home / ".claude" / "commands").mkdir()
+    (home / ".mureo").mkdir()
+    wiz = ConfigureWizard(home=home)
+    thread = threading.Thread(target=wiz.serve, daemon=True)
+    thread.start()
+    wiz.wait_until_ready(timeout=5.0)
+    try:
+        yield wiz
+    finally:
+        wiz.shutdown()
+        thread.join(timeout=2.0)
+
+
+@pytest.mark.unit
+def test_extensions_index_includes_dashboard_cards(
+    wizard_with_card_extension: ConfigureWizard,
+) -> None:
+    resp = _get(wizard_with_card_extension, "/api/extensions")
+    payload = json.loads(resp.read().decode())
+    assert len(payload) == 1
+    item = payload[0]
+    assert item["view"] is None  # cards do not require a view
+    assert item["dashboard_cards"] == [
+        {
+            "group": "advanced",
+            "html_fragment": "<section data-cardful>Cardful</section>",
+            "scripts": ["cardful.js"],
+            "styles": ["cardful.css"],
+        }
+    ]
+
+
+@pytest.mark.unit
+def test_extensions_index_dashboard_cards_default_to_empty_list(
+    wizard_with_extensions: ConfigureWizard,
+) -> None:
+    resp = _get(wizard_with_extensions, "/api/extensions")
+    payload = json.loads(resp.read().decode())
+    assert payload[0]["dashboard_cards"] == []
+
+
+@pytest.mark.unit
+def test_dashboard_card_static_assets_are_served(
+    wizard_with_card_extension: ConfigureWizard,
+) -> None:
+    resp = _get(wizard_with_card_extension, "/static/ext/cardful/cardful.js")
+    assert resp.status == 200
+    assert resp.headers["Content-Type"].startswith("application/javascript")
+    assert resp.read() == b"console.log('cardful');"
+
+    resp = _get(wizard_with_card_extension, "/static/ext/cardful/cardful.css")
+    assert resp.status == 200
+    assert resp.read() == b".cardful{color:blue}"
+
+
+@pytest.mark.unit
+def test_dashboard_card_unknown_asset_still_404s(
+    wizard_with_card_extension: ConfigureWizard,
+) -> None:
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        _get(wizard_with_card_extension, "/static/ext/cardful/absent.js")
+    assert excinfo.value.code == 404
