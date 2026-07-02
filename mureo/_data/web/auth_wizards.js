@@ -6,7 +6,7 @@
 (function () {
   "use strict";
 
-  const PROVIDER_INSTALL_ORDER = ["google_ads", "meta_ads", "ga4"];
+  const PROVIDER_INSTALL_ORDER = ["google_ads", "meta_ads", "ga4", "tiktok_ads"];
 
   // ------------------------------------------------------------------
   // Provider install slots (Step: providers_install)
@@ -149,12 +149,75 @@
     const wrap = document.createElement("section");
     wrap.style.marginTop = "16px";
     const providerId = platform.replace("_", "-") + "-official";
+
+    // TikTok (tiktok-ads-official): hosted_http, but it supports OAuth
+    // Dynamic Client Registration AND has no mureo-native platform — so it
+    // needs neither Meta's connector-confirm flow nor a native-disable
+    // step. Show a simple, host-specific setup card (the same DCR guidance
+    // as the dashboard) plus a copy-able endpoint. Advancing is via the
+    // outer wizard's Next (no Install button — mureo registers nothing;
+    // the user runs `claude mcp add` / a connector, then /mcp). Handled by
+    // its own branch here, so the Meta-only `isHosted` check below is left
+    // untouched.
+    if (providerId === "tiktok-ads-official") {
+      const TIKTOK_HOSTED_URL =
+        "https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer";
+      wrap.innerHTML =
+        "<h3>" + MUREO.t("wizard.provider_banner." + platform) + "</h3>";
+      const noteKey =
+        state.host === "claude-desktop"
+          ? "dashboard.provider_tiktok_desktop_note"
+          : state.host === "codex"
+          ? "dashboard.provider_tiktok_codex_note"
+          : "dashboard.provider_tiktok_oauth_note";
+      const note = document.createElement("p");
+      note.className = "dashboard-provider-hosted-note";
+      note.textContent = MUREO.t(noteKey);
+      note.setAttribute("data-i18n", noteKey);
+      wrap.appendChild(note);
+      // Endpoint + copy button — handy for the Desktop custom-connector
+      // dialog or to confirm the URL for `claude mcp add`. Omitted on
+      // Codex, where the provider is not wired.
+      if (state.host !== "codex") {
+        const urlRow = document.createElement("div");
+        urlRow.className = "connector-url-row";
+        const code = document.createElement("code");
+        code.textContent = TIKTOK_HOSTED_URL;
+        const copyBtn = document.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "btn btn-secondary connector-copy-btn";
+        copyBtn.textContent = MUREO.t("connector.copy");
+        copyBtn.setAttribute("data-i18n", "connector.copy");
+        copyBtn.addEventListener("click", function () {
+          const done = function () {
+            copyBtn.textContent = MUREO.t("connector.copied");
+            setTimeout(function () {
+              copyBtn.textContent = MUREO.t("connector.copy");
+            }, 1500);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard
+              .writeText(TIKTOK_HOSTED_URL)
+              .then(done, function () {
+                MUREO.toast(TIKTOK_HOSTED_URL);
+              });
+          } else {
+            MUREO.toast(TIKTOK_HOSTED_URL);
+          }
+        });
+        urlRow.appendChild(code);
+        urlRow.appendChild(copyBtn);
+        wrap.appendChild(urlRow);
+      }
+      return wrap;
+    }
+
     const installed = state.providerInstalled[providerId];
     // hosted_http providers (catalog install_kind === "hosted_http").
-    // Only meta-ads-official is a *wizard* platform: the wizard's
-    // PLATFORMS list has no tiktok entry, so TikTok (also hosted_http) is
-    // dashboard-managed, not wizard-driven, and never reaches this slot.
-    // If a hosted provider is ever promoted to a wizard platform, extend
+    // meta-ads-official is the only one that reaches THIS branch: TikTok
+    // (also hosted_http) is handled by its dedicated DCR card above, and
+    // no other hosted provider is a wizard platform. If a Meta-style
+    // (no-DCR, native-coexisting) hosted provider is ever added, extend
     // this check.
     const isHosted = providerId === "meta-ads-official";
     const onDesktop = state.host === "claude-desktop";
@@ -442,7 +505,8 @@
           state.providerChoice.google_ads === "official") ||
         (platform === "meta_ads" && state.platforms.meta_ads &&
           state.providerChoice.meta_ads === "official") ||
-        (platform === "ga4" && state.platforms.ga4);
+        (platform === "ga4" && state.platforms.ga4) ||
+        (platform === "tiktok_ads" && state.platforms.tiktok_ads);
       if (needsOfficial) {
         host.appendChild(buildProviderInstallSlot(state, platform, render));
       }
