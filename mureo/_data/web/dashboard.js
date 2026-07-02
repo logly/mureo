@@ -18,9 +18,28 @@
 
   // Official provider ids whose catalog entry is a hosted_http server
   // (auth is client-side browser OAuth on first use in Claude). Source
-  // of truth: catalog.py install_kind === "hosted_http". Phase 1: only
-  // meta-ads-official. Extend when a new hosted provider is added.
-  const HOSTED_PROVIDER_IDS = ["meta-ads-official"];
+  // of truth: catalog.py install_kind === "hosted_http": meta-ads-official
+  // and tiktok-ads-official. Extend when a new hosted provider is added.
+  const HOSTED_PROVIDER_IDS = ["meta-ads-official", "tiktok-ads-official"];
+
+  // Per-hosted-provider setup note key, selected by the running host.
+  // Meta is connector-only (its endpoint has no OAuth dynamic client
+  // registration); TikTok DOES support DCR, so on Claude Code it is
+  // registered directly with `claude mcp add` rather than a claude.ai
+  // connector — hence a distinct note set. Missing/unknown host falls
+  // back to the claude-code key.
+  const HOSTED_NOTE_KEYS = {
+    "meta-ads-official": {
+      "claude-code": "dashboard.provider_hosted_oauth_note",
+      "claude-desktop": "dashboard.provider_desktop_connectors_note",
+      codex: "dashboard.provider_codex_hosted_na_note",
+    },
+    "tiktok-ads-official": {
+      "claude-code": "dashboard.provider_tiktok_oauth_note",
+      "claude-desktop": "dashboard.provider_tiktok_desktop_note",
+      codex: "dashboard.provider_tiktok_codex_note",
+    },
+  };
 
   // Official provider id → the mureo-native platform it overlaps. Drives
   // the per-platform native↔official tool toggle. GA4 is intentionally
@@ -228,6 +247,7 @@
       "google-ads-official",
       "meta-ads-official",
       "ga4-official",
+      "tiktok-ads-official",
     ].forEach(function (pid) {
       const li = document.createElement("li");
       // Tag the row with its provider id so CSS can apply a
@@ -275,9 +295,9 @@
       }
 
       // hosted_http note(s) live INSIDE the provider's own <li> so
-      // they read as part of the same Meta Ads row — not as separate
-      // bordered list items. Guarded so a missing translation never
-      // echoes the key.
+      // they read as part of the same provider row (Meta or TikTok) —
+      // not as separate bordered list items. Guarded so a missing
+      // translation never echoes the key.
       if (HOSTED_PROVIDER_IDS.indexOf(pid) !== -1) {
         function appendNote(key) {
           const text = MUREO.t(key);
@@ -288,17 +308,14 @@
           note.setAttribute("data-i18n", key);
           li.appendChild(note);
         }
-        if (status && status.host === "claude-desktop") {
-          // Desktop: a remote MCP can't be wired from here (Desktop
-          // rejects http config; Meta's hosted MCP has no OAuth DCR).
-          // Only the Connectors instruction applies.
-          appendNote("dashboard.provider_desktop_connectors_note");
-        } else if (status && status.host === "codex") {
-          // Codex has no account-level connector for Meta's hosted MCP,
-          // so the official path isn't available — keep mureo-native Meta.
-          appendNote("dashboard.provider_codex_hosted_na_note");
-        } else {
-          appendNote("dashboard.provider_hosted_oauth_note");
+        // The setup note is provider- and host-specific (see
+        // HOSTED_NOTE_KEYS): Meta is connector-only on every host; TikTok
+        // registers directly on Claude Code (DCR) but still needs the
+        // Connectors flow on Desktop.
+        const noteKeys = HOSTED_NOTE_KEYS[pid];
+        if (noteKeys) {
+          const host = (status && status.host) || "claude-code";
+          appendNote(noteKeys[host] || noteKeys["claude-code"]);
         }
       }
 

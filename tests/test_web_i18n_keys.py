@@ -131,6 +131,36 @@ class TestPluginOAuthCallbackKeysParity:
 
 
 @pytest.mark.unit
+class TestTikTokHostedNoteKeysParity:
+    """EN/JA parity for the TikTok hosted-provider dashboard setup notes
+    (Claude Code / Desktop / Codex). TikTok is a ``hosted_http`` provider
+    like Meta but supports OAuth dynamic client registration, so it carries
+    its own note set distinct from Meta's (asserted against the bundled
+    i18n.json directly — no JS harness)."""
+
+    _KEYS = (
+        "dashboard.provider_tiktok_oauth_note",
+        "dashboard.provider_tiktok_desktop_note",
+        "dashboard.provider_tiktok_codex_note",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
 class TestAdvancedAdvisorKeysParity:
     """EN/JA parity for the Advanced → External advisor MCP card keys: the
     nav label + section/card titles, the form field labels + transport
