@@ -801,8 +801,8 @@ input[type="checkbox"] {
 
 /* Per-platform accent — left edge color identifies the provider at a
    glance. Brand colors come from each platform's own brand guidelines
-   (Google blue, Meta blue, GA4 orange). Plugin-credentials cards
-   inherit the neutral default. */
+   (Google blue, Meta blue, GA4 orange, TikTok cyan). Plugin-credentials
+   cards inherit the neutral default. */
 [data-dashboard-providers-list] > li[data-platform="google-ads-official"] {
   border-left-color: #4285f4;
 }
@@ -813,6 +813,10 @@ input[type="checkbox"] {
 
 [data-dashboard-providers-list] > li[data-platform="ga4-official"] {
   border-left-color: #f9ab00;
+}
+
+[data-dashboard-providers-list] > li[data-platform="tiktok-ads-official"] {
+  border-left-color: #25f4ee;
 }
 
 /* Providers list rows are <li>; preserve the legacy flex layout

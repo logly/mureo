@@ -151,7 +151,11 @@
     const providerId = platform.replace("_", "-") + "-official";
     const installed = state.providerInstalled[providerId];
     // hosted_http providers (catalog install_kind === "hosted_http").
-    // Phase 1: only meta-ads-official. Extend when a new one is added.
+    // Only meta-ads-official is a *wizard* platform: the wizard's
+    // PLATFORMS list has no tiktok entry, so TikTok (also hosted_http) is
+    // dashboard-managed, not wizard-driven, and never reaches this slot.
+    // If a hosted provider is ever promoted to a wizard platform, extend
+    // this check.
     const isHosted = providerId === "meta-ads-official";
     const onDesktop = state.host === "claude-desktop";
 
