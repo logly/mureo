@@ -146,13 +146,37 @@ Community-maintained MCP servers exist for HubSpot and Salesforce. Quality and c
 
 > **Note**: The HubSpot package name above is a placeholder. Check the official HubSpot or community MCP documentation for the correct package name and configuration.
 
+## TikTok Ads
+
+### Status: Official MCP — first-class mureo support
+
+TikTok publishes an official **TikTok for Business MCP Server** (a hosted HTTP MCP). mureo ships it as an official provider (`tiktok-ads-official`), so you don't wire it by hand — add it from `mureo configure` (both the dashboard and the setup wizard list TikTok) or with the CLI. It offers **read + write** across campaign management, reporting, catalogs, creatives, audiences, and Business Center.
+
+mureo points at TikTok's **Progressive Disclosure** endpoint `https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer` — ~40 core tools load up front and the rest are discovered on demand — rather than the ~400-tool full-surface (`tt-ads-mcp-flat`) endpoint, to keep the exposed tool count manageable.
+
+### Configuration
+
+TikTok's MCP supports OAuth **Dynamic Client Registration**, so it can be added directly as a remote HTTP MCP server and authenticated in the browser on first connect — no developer token, API key, or `.mcp.json` hand-editing required:
+
+```bash
+claude mcp add --transport http tiktok-ads \
+  https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer
+```
+
+Then run `/mcp` in Claude Code, select `tiktok-ads`, choose **Authenticate**, and sign in with your **TikTok for Business** account. `mureo configure` walks you through the same steps and reflects the connected state on the dashboard.
+
+> **Note**: The official TikTok MCP is in beta; its tool surface may change. On **Claude Desktop**, add it via **Settings → Connectors → Add custom connector** with the URL above; on **Codex** it is not yet wired.
+
+### Authentication
+
+Interactive browser OAuth via your TikTok for Business account on first connect. mureo never stores or handles a TikTok token — Claude Code (or a Claude.ai custom connector) brokers the sign-in. These credentials are separate from your other platform credentials.
+
 ## Future Platforms
 
 The following platforms are planned for integration as their official or community MCP servers mature:
 
 | Platform | Status | Expected Value |
 |----------|--------|----------------|
-| TikTok Ads | Planned | Cross-platform creative performance, younger demographic insights |
 | LinkedIn Ads | Planned | B2B audience targeting coordination, ABM campaign alignment |
 | Amazon Ads | Planned | E-commerce ad spend coordination, product-level ROAS |
 | Microsoft Ads | Planned | Search campaign coordination alongside Google Ads |

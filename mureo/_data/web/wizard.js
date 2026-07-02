@@ -5,13 +5,22 @@
 (function () {
   "use strict";
 
-  const PLATFORMS = ["google_ads", "meta_ads", "search_console", "ga4"];
+  const PLATFORMS = [
+    "google_ads",
+    "meta_ads",
+    "search_console",
+    "ga4",
+    "tiktok_ads",
+  ];
 
-  // Platforms whose official provider is a hosted_http catalog entry
-  // (auth is client-side browser OAuth on first use in Claude). Source
-  // of truth: catalog.py install_kind === "hosted_http". Phase 1: only
-  // meta-ads-official (the meta_ads platform). Extend this list when a
-  // new hosted provider is added to the catalog.
+  // Platforms whose official provider is a hosted_http catalog entry AND
+  // that also expose a native<->official provider_choice card (auth is
+  // client-side browser OAuth on first use in Claude). Source of truth:
+  // catalog.py install_kind === "hosted_http". Only meta_ads qualifies:
+  // TikTok is ALSO hosted_http but is official-only (no provider_choice
+  // card), so it is intentionally excluded here and handled entirely by
+  // its providers_install slot. Extend this list only for a hosted
+  // platform that has a native<->official choice.
   const HOSTED_PLATFORMS = ["meta_ads"];
 
   // The user's explicit host choice is persisted client-side so it
@@ -51,6 +60,7 @@
       meta_ads: false,
       search_console: false,
       ga4: false,
+      tiktok_ads: false,
     },
     providerChoice: {
       google_ads: null, // "official" | "native"
@@ -107,7 +117,10 @@
         STATE.providerChoice.google_ads === "official") ||
       (STATE.platforms.meta_ads &&
         STATE.providerChoice.meta_ads === "official") ||
-      STATE.platforms.ga4
+      STATE.platforms.ga4 ||
+      // TikTok is official-only (no mureo-native tools), so selecting it
+      // always queues the providers_install step (its hosted setup card).
+      STATE.platforms.tiktok_ads
     );
   }
 
@@ -488,12 +501,20 @@
       STATE.host !== "codex" &&
       STATE.platforms.meta_ads &&
       STATE.providerChoice.meta_ads === "official";
+    // TikTok's hosted MCP always needs a post-wizard step (browser OAuth
+    // via `claude mcp add` on Code / a connector on Desktop), so it is
+    // surfaced as a pending reminder rather than a "saved" summary row.
+    // Not applicable on Codex, where it is not wired.
+    const tiktokPending = STATE.host !== "codex" && STATE.platforms.tiktok_ads;
 
     const summary = document.createElement("ul");
     summary.className = "wizard-completed-summary";
     PLATFORMS.forEach(function (p) {
       if (!STATE.platforms[p]) return;
       if (p === "meta_ads" && metaPending) return;
+      // TikTok is never a "saved" row: pending (Code/Desktop) → shown as a
+      // reminder below; on Codex it is omitted (not available there).
+      if (p === "tiktok_ads") return;
       const li = document.createElement("li");
       li.textContent = MUREO.t("wizard.platforms." + p);
       li.setAttribute("data-i18n", "wizard.platforms." + p);
@@ -510,6 +531,19 @@
       const body = document.createElement("span");
       body.textContent = MUREO.t("wizard.completed.pending_meta");
       body.setAttribute("data-i18n", "wizard.completed.pending_meta");
+      reminder.appendChild(head);
+      reminder.appendChild(body);
+      wrap.appendChild(reminder);
+    }
+    if (tiktokPending) {
+      const reminder = document.createElement("div");
+      reminder.className = "wizard-pending-reminder";
+      const head = document.createElement("strong");
+      head.textContent = MUREO.t("wizard.platforms.tiktok_ads");
+      head.setAttribute("data-i18n", "wizard.platforms.tiktok_ads");
+      const body = document.createElement("span");
+      body.textContent = MUREO.t("wizard.completed.pending_tiktok");
+      body.setAttribute("data-i18n", "wizard.completed.pending_tiktok");
       reminder.appendChild(head);
       reminder.appendChild(body);
       wrap.appendChild(reminder);
