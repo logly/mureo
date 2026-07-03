@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.16] - 2026-07-03
+
+Batch of fixes from a full-codebase audit (2 critical, 6 high, plus
+medium/low). No new features; behaviour changes are limited to the fixes.
+
+### Fixed
+
+- **Rollback no longer reports a failed reversal as applied.**
+  `rollback_apply` now detects an API error envelope from the dispatched
+  reversal and returns an error without writing an `action_log` entry, so a
+  campaign is not shown as restored while it keeps spending, and a retry is
+  no longer blocked by a premature `rollback_of` marker. The reversal is also
+  no longer double-recorded as a fresh reversible mutation.
+- **Credentials file is never wiped on a corrupt read.** Saving the refreshed
+  Meta token, or any provider's credentials, now backs up and refuses to
+  overwrite an existing-but-corrupt `credentials.json` instead of resetting it
+  to `{}` and dropping every other provider's credentials.
+- **Meta access-token auto-refresh now actually runs.** Setup records
+  `token_obtained_at`, so the background 53-day refresh fires instead of the
+  long-lived token silently expiring at ~60 days.
+- **Google Ads campaign listing no longer crashes** on campaigns with a
+  budget (`budget_amount_micros` now carries integer micros, not the budget
+  resource-name string).
+- **Meta insights are no longer truncated** to the first ~25 rows — pagination
+  follows the Graph cursors, so account-level spend and anomaly checks include
+  every campaign/ad-set/ad.
+- **Anomaly detection compares against a non-overlapping prior window** (was
+  comparing against a superset/identical window, which suppressed CPA/CTR
+  spike alerts).
+- **The native MCP server no longer leaks HTTP connections** — per-call Meta
+  and Search Console clients are closed after each tool call.
+- **The OAuth setup poller is bounded** (5-minute deadline; the button
+  re-enables) instead of looping forever if the consent tab is closed.
+- Budget-reallocation analysis flags incomplete data instead of feeding
+  fabricated zeros into the numbers; five Meta tools no longer require
+  `account_id` (it falls back to the configured credentials); Codex/Gemini
+  register the MCP server with `sys.executable` (a bare `python` could be
+  missing or lack mureo); outbound image/landing-page fetches are SSRF-guarded
+  with per-hop redirect validation; `STATE.json`/config writes `fsync` before
+  rename; service `status` reports the actually-bound port; and several
+  read/parse paths (reports, status, Codex config, advisor config) were made
+  tolerant of malformed input.
+
 ## [0.10.15] - 2026-07-03
 
 ### Added
