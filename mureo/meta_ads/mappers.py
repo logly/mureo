@@ -43,40 +43,17 @@ def _safe_int(value: str | int | None) -> int:
 def _extract_conversions(actions: list[dict[str, Any]] | None) -> float:
     """Extract conversion count from actions.
 
-    Meta API actions are an array in [{"action_type": "...", "value": "..."}] format.
-    Aggregates conversion-related action_types.
-
-    Args:
-        actions: Actions data
-
-    Returns:
-        Total conversion count
+    Delegates to the canonical :func:`count_conversions_from_actions`, which
+    counts only the deduped *generic* action_types. The previous local set
+    summed both aggregates (``purchase``/``lead``) AND their component aliases
+    (``offsite_conversion.fb_pixel_purchase``/``onsite_conversion.purchase``),
+    double- or triple-counting a single conversion — exactly what the canonical
+    counter exists to avoid. Kept as a thin wrapper so callers (and third
+    parties importing the public ``map_insights``) get the correct count.
     """
-    if not actions:
-        return 0.0
+    from mureo.meta_ads._conversion_count import count_conversions_from_actions
 
-    # action_types treated as conversions
-    cv_action_types = {
-        "offsite_conversion.fb_pixel_purchase",
-        "offsite_conversion.fb_pixel_lead",
-        "offsite_conversion.fb_pixel_complete_registration",
-        "offsite_conversion.fb_pixel_add_to_cart",
-        "offsite_conversion.fb_pixel_initiate_checkout",
-        "offsite_conversion.fb_pixel_custom",
-        "onsite_conversion.purchase",
-        "onsite_conversion.lead_grouped",
-        "lead",
-        "purchase",
-        "complete_registration",
-    }
-
-    total = 0.0
-    for action in actions:
-        action_type = action.get("action_type", "")
-        if action_type in cv_action_types:
-            total += _safe_float(action.get("value"))
-
-    return total
+    return count_conversions_from_actions(actions)
 
 
 def _extract_cost_per_conversion(

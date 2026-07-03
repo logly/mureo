@@ -48,6 +48,36 @@ class InsightsMixin:
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
+    async def _get_all_insights(
+        self, path: str, params: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Fetch every insights page, following the Graph ``paging`` cursors.
+
+        A bare ``_get`` returns only Meta's default first page (~25 rows), so
+        on an account with many campaigns/ad-sets/ads the tail is silently
+        dropped and every downstream sum (spend, conversions, anomaly checks)
+        under-reports. This follows ``paging.next``/``cursors.after`` until
+        exhausted, reusing ``_get`` so throttling, retries, and error handling
+        stay identical. A larger ``limit`` reduces round-trips; the cursor set
+        guards against a malformed response that would otherwise loop forever.
+        """
+        collected: list[dict[str, Any]] = []
+        params = dict(params)
+        params.setdefault("limit", 500)
+        seen_cursors: set[str] = set()
+        while True:
+            result = await self._get(path, params)
+            collected.extend(result.get("data", []))
+            paging = result.get("paging") or {}
+            if not paging.get("next"):
+                break
+            after = (paging.get("cursors") or {}).get("after")
+            if not after or after in seen_cursors:
+                break
+            seen_cursors.add(after)
+            params["after"] = after
+        return collected
+
     async def get_performance_report(
         self,
         *,
@@ -80,8 +110,7 @@ class InsightsMixin:
             account_id = self._ad_account_id
             path = f"/{account_id}/insights"
 
-        result = await self._get(path, params)
-        return result.get("data", [])  # type: ignore[no-any-return]
+        return await self._get_all_insights(path, params)
 
     async def insights_time_range(
         self,
@@ -118,8 +147,7 @@ class InsightsMixin:
             "time_increment": time_increment,
             "level": level,
         }
-        result = await self._get(f"/{node_id}/insights", params)
-        return result.get("data", [])  # type: ignore[no-any-return]
+        return await self._get_all_insights(f"/{node_id}/insights", params)
 
     async def analyze_performance(
         self,
@@ -301,5 +329,4 @@ class InsightsMixin:
         params["fields"] = _INSIGHTS_FIELDS
         params["breakdowns"] = breakdown
 
-        result = await self._get(f"/{campaign_id}/insights", params)
-        return result.get("data", [])  # type: ignore[no-any-return]
+        return await self._get_all_insights(f"/{campaign_id}/insights", params)

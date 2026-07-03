@@ -824,6 +824,15 @@ class MetaAdsAdapter:
                 # for the v1 BYOD path. (The export with both rollup
                 # AND breakdown rows takes the rollup-row branch above
                 # via has_non_demo and skips this fallback.)
+                # KNOWN LIMITATION: if a breakdown-ONLY export carries two or
+                # more distinct breakdown dimensions as separate row groups for
+                # the same (day, campaign) — e.g. Age rows AND Gender rows with
+                # no totals row — each group independently covers the full
+                # spend, so cost/clicks/conv are summed once per dimension and
+                # over-count. Deduplicating by dimension requires per-row
+                # dimension detection not modelled here; documented rather than
+                # silently mis-aggregated. Single-dimension exports (the common
+                # case) are correct.
                 if (day, cid) not in has_non_demo:
                     fb = metrics_agg.setdefault(
                         (day, cid),
@@ -1250,12 +1259,32 @@ def _to_float(value: str) -> float:
     s = (value or "").strip()
     if not s:
         return 0.0
-    s = s.replace(",", "")
-    # Strip a leading currency symbol from the known set. We do not
-    # strip arbitrary non-numeric leads because that would silently
-    # accept corrupted cells like "abc123" as 123.
+    # Strip a leading OR trailing currency symbol from the known set. Some
+    # locales place the symbol after the number (e.g. "1.234,56 €"); we do not
+    # strip arbitrary non-currency leads because that would silently accept
+    # corrupted cells like "abc123" as 123.
     if s and s[0] in _CURRENCY_SYMBOLS:
-        s = s[1:]
+        s = s[1:].strip()
+    if s and s[-1] in _CURRENCY_SYMBOLS:
+        s = s[:-1].strip()
+    if not s:
+        return 0.0
+    has_dot = "." in s
+    has_comma = "," in s
+    if has_dot and has_comma:
+        # Mixed grouping + decimal: the RIGHTMOST separator is the decimal
+        # point. Handles both "1,234.56" (US) and "1.234,56" (de_DE/es_ES/
+        # pt_BR/fr_FR); the other separator is thousands and is removed.
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    else:
+        # A single separator kind keeps the historical US/JP assumption: a
+        # comma is a thousands separator (removed); a lone dot is the decimal
+        # point. (A comma-decimal locale WITHOUT a thousands dot, e.g. a bare
+        # "12,5", stays ambiguous and is out of scope.)
+        s = s.replace(",", "")
     try:
         return float(s)
     except ValueError:

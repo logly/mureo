@@ -90,13 +90,17 @@ class TestExtractConversions:
     def test_空リストは0(self) -> None:
         assert _extract_conversions([]) == 0.0
 
-    def test_複数のCV種別を集計(self) -> None:
+    def test_component_aliasは二重カウントしない(self) -> None:
+        # A purchase reported as BOTH the generic aggregate and its component
+        # alias must count ONCE (via the generic type only). The previous
+        # implementation summed both, double-counting the same conversion.
         actions = [
-            {"action_type": "offsite_conversion.fb_pixel_purchase", "value": "2"},
-            {"action_type": "offsite_conversion.fb_pixel_lead", "value": "4"},
+            {"action_type": "purchase", "value": "3"},
+            {"action_type": "offsite_conversion.fb_pixel_purchase", "value": "3"},
             {"action_type": "complete_registration", "value": "1"},
         ]
-        assert _extract_conversions(actions) == 7.0
+        # 3 (purchase) + 1 (complete_registration); the offsite alias is ignored.
+        assert _extract_conversions(actions) == 4.0
 
     def test_CV以外は無視(self) -> None:
         actions = [
