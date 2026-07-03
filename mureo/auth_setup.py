@@ -25,6 +25,7 @@ try:
 except ImportError:  # pragma: no cover - Windows (Unix-only stdlib)
     termios = None  # type: ignore[assignment]
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -797,6 +798,8 @@ def save_credentials(
 
     # Merge Google Ads credentials
     if google is not None:
+        prior_google = existing.get("google_ads")
+        prior_google = prior_google if isinstance(prior_google, dict) else {}
         google_data: dict[str, Any] = {
             "developer_token": google.developer_token,
             "client_id": google.client_id,
@@ -807,15 +810,25 @@ def save_credentials(
         # otherwise the account itself)
         google_data["login_customer_id"] = google.login_customer_id
         # customer_id: the account that operations target. Falls back to
-        # login_customer_id when not explicitly specified.
-        target_cid = customer_id or google.customer_id or google.login_customer_id
+        # login_customer_id when not explicitly specified, and finally to any
+        # previously-saved customer_id so a re-auth whose account listing
+        # transiently failed does not wipe the operator's prior selection.
+        target_cid = (
+            customer_id
+            or google.customer_id
+            or google.login_customer_id
+            or prior_google.get("customer_id")
+        )
         google_data["customer_id"] = target_cid
         existing["google_ads"] = google_data
 
     # Merge Meta Ads credentials
     if meta is not None:
+        prior_meta = existing.get("meta_ads")
+        prior_meta = prior_meta if isinstance(prior_meta, dict) else {}
+        access_token = getattr(meta, "access_token", "")
         meta_data: dict[str, Any] = {
-            "access_token": getattr(meta, "access_token", ""),
+            "access_token": access_token,
         }
         app_id = getattr(meta, "app_id", None)
         if app_id is not None:
@@ -823,8 +836,34 @@ def save_credentials(
         app_secret = getattr(meta, "app_secret", None)
         if app_secret is not None:
             meta_data["app_secret"] = app_secret
+        # Preserve a previously-saved account_id when this call couldn't
+        # resolve one (e.g. the account listing failed): the whole meta_ads
+        # section is replaced below, so without this a transient failure would
+        # silently drop the operator's prior selection.
         if account_id is not None:
             meta_data["account_id"] = account_id
+        elif prior_meta.get("account_id"):
+            meta_data["account_id"] = prior_meta["account_id"]
+        # Record when this token was obtained so the background 53-day refresh
+        # (auth.refresh_meta_token_if_needed) can actually fire. Without a
+        # persisted token_obtained_at, _should_refresh always returns False and
+        # the long-lived token silently expires at ~60 days. Prefer an explicit
+        # timestamp on the credentials object; keep the prior timestamp when the
+        # token is unchanged (a metadata-only re-save must not reset the clock);
+        # otherwise stamp now for a new/changed token.
+        obtained_at = getattr(meta, "token_obtained_at", None)
+        if obtained_at:
+            meta_data["token_obtained_at"] = obtained_at
+        elif access_token and access_token == prior_meta.get("access_token"):
+            prior_ts = prior_meta.get("token_obtained_at")
+            if prior_ts:
+                meta_data["token_obtained_at"] = prior_ts
+            else:
+                meta_data["token_obtained_at"] = datetime.now(
+                    tz=timezone.utc
+                ).isoformat()
+        elif access_token:
+            meta_data["token_obtained_at"] = datetime.now(tz=timezone.utc).isoformat()
         existing["meta_ads"] = meta_data
 
     # Keep a .bak of the prior good file, then write atomically. The atomic

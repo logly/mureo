@@ -7,12 +7,16 @@ can swap the underlying storage without touching the rest of mureo.
 
 ``FilesystemSecretStore`` is the default implementation. It is
 behaviourally equivalent to the legacy ``~/.mureo/credentials.json``
-flow read by :func:`mureo.auth.load_credentials`: missing or corrupt
-files yield an empty result rather than raising; the on-disk root must
-be a JSON object keyed by platform name; saves preserve unrelated
-platform keys; saves land at ``0o600`` on POSIX so credential files
-stay owner-readable (via :func:`mureo.fsutil.secure_fchmod`, the
-cross-platform helper used elsewhere in the repo).
+flow read by :func:`mureo.auth.load_credentials`: on READS, missing or
+corrupt files yield an empty result rather than raising. On WRITES,
+however, an existing-but-corrupt file is backed up and the save is
+refused (:class:`SecretStoreError`) rather than silently reset to ``{}``
+— otherwise saving one provider would drop every other provider's
+credentials. The on-disk root must be a JSON object keyed by platform
+name; saves preserve unrelated platform keys; saves land at ``0o600`` on
+POSIX so credential files stay owner-readable (via
+:func:`mureo.fsutil.secure_fchmod`, the cross-platform helper used
+elsewhere in the repo).
 
 This default is **single-writer**. Concurrent writes from different
 processes can lose updates because the read-modify-write inside
@@ -32,9 +36,21 @@ import tempfile
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from mureo.fsutil import secure_fchmod
+from mureo.fsutil import backup_file, secure_fchmod
 
 logger = logging.getLogger(__name__)
+
+
+class SecretStoreError(Exception):
+    """Raised when a write would clobber an existing but unreadable/malformed
+    credentials file.
+
+    Reads stay tolerant (missing/corrupt → empty), but a *save* or *delete*
+    must not silently reset a corrupt file to ``{}`` and drop every other
+    provider's credentials — the same data-loss class fixed for the env-var and
+    Meta-token writers (#276). The corrupt file is backed up before the error is
+    raised so the operator can recover it.
+    """
 
 
 @runtime_checkable
@@ -131,12 +147,14 @@ class FilesystemSecretStore:
         return dict(value) if isinstance(value, dict) else {}
 
     def save(self, key: str, value: dict[str, Any]) -> None:
-        data = self._read_root()
+        # Strict read: refuse to overwrite a corrupt file (which would drop
+        # every other provider's credentials); back it up + raise instead.
+        data = self._read_root(strict=True)
         data[key] = dict(value)  # defensive copy of caller's input
         self._write_root(data)
 
     def delete(self, key: str) -> None:
-        data = self._read_root()
+        data = self._read_root(strict=True)
         if key in data:
             del data[key]
             self._write_root(data)
@@ -163,9 +181,17 @@ class FilesystemSecretStore:
 
     # ------------------------------------------------------------------
 
-    def _read_root(self) -> dict[str, Any]:
-        """Return the file's root object, tolerating every reasonable
-        failure mode (missing, unreadable, malformed, wrong type)."""
+    def _read_root(self, *, strict: bool = False) -> dict[str, Any]:
+        """Return the file's root object.
+
+        Non-strict (reads): tolerate every reasonable failure mode (missing,
+        unreadable, malformed, wrong type) by returning ``{}``.
+
+        Strict (writes): a genuinely absent file is still ``{}`` (a first
+        write), but an existing-yet-unreadable/malformed/non-object file backs
+        itself up and raises :class:`SecretStoreError` — overwriting it would
+        silently drop every other provider's credentials.
+        """
         if not self.path.exists():
             logger.debug("credentials file not found: %s", self.path)
             return {}
@@ -173,12 +199,36 @@ class FilesystemSecretStore:
             text = self.path.read_text(encoding="utf-8")
             data = json.loads(text)
         except (json.JSONDecodeError, OSError) as exc:
+            if strict:
+                self._backup_corrupt("unreadable or malformed JSON")
+                raise SecretStoreError(
+                    f"refusing to overwrite unreadable credentials file "
+                    f"{self.path} ({exc}); a .bak copy was kept"
+                ) from exc
             logger.warning("failed to read credentials file: %s", exc)
             return {}
         if not isinstance(data, dict):
+            # A valid-JSON but non-object root (e.g. a stray list) holds no
+            # provider entries, so replacing it loses nothing — stay tolerant
+            # even on writes. Only genuinely unreadable/malformed files (the
+            # branch above, which may have held real credentials) are refused.
             logger.warning("credentials file root is not an object: %s", self.path)
             return {}
         return data
+
+    def _backup_corrupt(self, reason: str) -> None:
+        """Best-effort backup of a corrupt file before a refused overwrite."""
+        try:
+            backup = backup_file(self.path)
+        except OSError:
+            logger.warning("could not back up corrupt credentials file %s", self.path)
+            return
+        logger.warning(
+            "credentials file %s is corrupt (%s); backed up to %s",
+            self.path,
+            reason,
+            backup,
+        )
 
     def _write_root(self, data: dict[str, Any]) -> None:
         """Atomically write the root object and apply secure permissions.

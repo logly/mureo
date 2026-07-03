@@ -18,13 +18,34 @@ from pathlib import Path
 
 import pytest
 
-from mureo.core.secret_store import FilesystemSecretStore, SecretStore
+from mureo.core.secret_store import (
+    FilesystemSecretStore,
+    SecretStore,
+    SecretStoreError,
+)
 
 
 @pytest.mark.unit
 def test_satisfies_protocol(tmp_path: Path) -> None:
     store = FilesystemSecretStore(path=tmp_path / "credentials.json")
     assert isinstance(store, SecretStore)
+
+
+@pytest.mark.unit
+def test_save_refuses_to_clobber_malformed_file(tmp_path: Path) -> None:
+    """A save must NOT reset a corrupt (truncated) file to ``{}`` — that would
+    drop every other provider's credentials. It backs the file up and raises."""
+    path = tmp_path / "credentials.json"
+    # Truncated JSON that once held multiple providers.
+    path.write_text('{"google_ads": {"developer_token": "abc"}, "meta_a', encoding="utf-8")
+    store = FilesystemSecretStore(path=path)
+
+    with pytest.raises(SecretStoreError):
+        store.save("meta_ads", {"access_token": "xyz"})
+
+    # Original corrupt bytes are preserved (not overwritten) and a .bak exists.
+    assert path.read_text(encoding="utf-8").startswith('{"google_ads"')
+    assert (tmp_path / "credentials.json.bak").exists()
 
 
 @pytest.mark.unit

@@ -7,11 +7,9 @@ Falls back to environment variables if the file does not exist.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import os
-import tempfile
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -21,7 +19,6 @@ import httpx
 from google.oauth2.credentials import Credentials
 
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
-from mureo.fsutil import secure_fchmod
 from mureo.google_ads import GoogleAdsApiClient
 from mureo.meta_ads import MetaAdsApiClient
 from mureo.search_console import SearchConsoleApiClient
@@ -321,8 +318,18 @@ async def refresh_meta_token_if_needed(
         try:
             _save_meta_token(resolved, new_token, new_obtained_at)
         except Exception:
+            # The refreshed token works for THIS process (returned below) but is
+            # not on disk, so every future process re-refreshes from the aging
+            # stored token. If the underlying cause (read-only mount, bad perms,
+            # corrupt credentials.json) persists past the token's ~60-day life,
+            # Meta calls will start failing with an expired-token error that
+            # looks unrelated. Surface an actionable warning rather than a bare
+            # "failed to save".
             logger.warning(
-                "Failed to save refreshed Meta Ads token to %s",
+                "Meta Ads token was refreshed but could NOT be persisted to %s "
+                "— the new token is used for this session only. Check the file's "
+                "permissions/JSON validity and re-run `mureo auth setup` if Meta "
+                "tools later report an expired token.",
                 resolved,
                 exc_info=True,
             )
@@ -391,20 +398,22 @@ def _save_meta_token(
     new_token: str,
     new_obtained_at: str,
 ) -> None:
-    """Atomically update meta_ads token in credentials.json.
+    """Atomically update the meta_ads token in credentials.json.
 
-    Reads the current file, updates the meta_ads section, and writes back
-    using a temp file + os.replace for atomicity.
+    Reuses the hardened ``config_writer`` helpers rather than a local
+    read-modify-write: ``_load_existing`` returns ``{}`` only when the file is
+    absent and RAISES ``ConfigWriteError`` on malformed JSON — instead of the
+    old ``data = {}`` reset that silently erased every other provider's
+    credentials (google_ads etc.) on a slightly-corrupt file. On that raise the
+    caller (:func:`refresh_meta_token_if_needed`) skips the save and warns,
+    leaving the file intact. ``_atomic_write_json`` writes via tmp + fsync +
+    ``os.replace`` at ``0o600`` so a crash mid-write is durable and safe.
     """
-    data: dict[str, Any] = {}
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            data = {}
+    # Lazy import mirrors ``auth_setup.save_credentials`` and avoids any
+    # import-time coupling to the providers package.
+    from mureo.providers.config_writer import _atomic_write_json, _load_existing
 
-    if not isinstance(data, dict):
-        data = {}
+    data = _load_existing(path)
 
     meta_section = data.get("meta_ads", {})
     if not isinstance(meta_section, dict):
@@ -414,18 +423,7 @@ def _save_meta_token(
     meta_section["token_obtained_at"] = new_obtained_at
     data["meta_ads"] = meta_section
 
-    content = json.dumps(data, indent=2, ensure_ascii=False)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    secure_fchmod(fd)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
-        os.replace(tmp_path, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_path)
-        raise
+    _atomic_write_json(data, path)
 
 
 # ---------------------------------------------------------------------------
