@@ -73,18 +73,22 @@ def coexistence_warning(
     label = _PLATFORM_LABELS.get(platform, platform)
     env_var = _PLATFORM_TO_ENV_VAR.get(platform, f"MUREO_DISABLE_{platform.upper()}")
 
+    # Claude Code reads user-scope MCP servers (and their env) from
+    # ~/.claude.json — NOT ~/.claude/settings.json (that file is hooks/
+    # permissions/env only). config_writer writes the auto-disable there, so
+    # the remediation message must name the same file.
     if mureo_block_present:
         return (
             f"Note: mureo's {label} tools have been auto-disabled "
             f'(mcpServers.mureo.env.{env_var}="1"). To re-enable, run '
             f"'mureo providers remove {spec.id}' to remove the official "
             f"server and clear the env entry, or edit "
-            f"~/.claude/settings.json manually."
+            f"~/.claude.json manually."
         )
 
     return (
         f"Note: mureo's native MCP is not registered in "
-        f"~/.claude/settings.json — nothing to auto-disable for {label}. "
+        f"~/.claude.json — nothing to auto-disable for {label}. "
         f"If you later run 'mureo setup claude-code', re-run "
         f"'mureo providers add {spec.id}' to apply the auto-disable."
     )

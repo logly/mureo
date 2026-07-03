@@ -163,7 +163,11 @@ def load_insight_sources(path: Path | None = None) -> InsightSourceConfig:
             continue
         try:
             src = _build_source(entry)
-        except ValueError as exc:
+        except (ValueError, TypeError) as exc:
+            # TypeError guards against a JSON null/list/dict reaching int()/
+            # float() in _build_source (e.g. {"top_k": null}) — without it that
+            # one bad entry would crash the whole advisor-config load instead of
+            # being skipped, breaking the "empty config + WARNING" contract.
             logger.warning("insight_sources: entry %d invalid (%s), skipping", idx, exc)
             continue
         if src.name in seen_names:

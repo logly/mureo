@@ -198,6 +198,13 @@ class GoogleAdsAdapter:
         ``asyncio.run`` raises ``RuntimeError`` when called from inside a
         running loop — that is the documented Phase 1 behaviour for
         async callers and is allowed to propagate.
+
+        HAZARD when wiring this adapter to a client that holds a persistent
+        connection/loop-bound resource: ``asyncio.run`` opens and closes a new
+        loop per call, so a method issuing two ``_run`` calls could reuse a
+        resource bound to the first, now-closed loop. Latent today (no
+        production code instantiates this adapter with a real client). See the
+        fuller note on ``MetaAdsAdapter._run``.
         """
         return asyncio.run(coro)  # type: ignore[arg-type]
 

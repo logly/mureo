@@ -197,6 +197,17 @@ class MetaAdsAdapter:
         ``asyncio.run`` raises :class:`RuntimeError` when called from
         inside a running loop — that is the documented Phase 1 behaviour
         for async callers and is allowed to propagate.
+
+        HAZARD when wiring this adapter to a REAL ``MetaAdsApiClient``:
+        ``asyncio.run`` opens and closes a NEW event loop per call, but the
+        client holds one persistent ``httpx.AsyncClient`` created in
+        ``__init__``. A method that makes two ``_run`` calls (e.g.
+        ``create_campaign`` = create POST then refresh GET) would reuse a
+        pooled connection bound to the first, now-closed loop on the second
+        call → ``RuntimeError: Event loop is closed``. This is currently
+        latent (no production code instantiates ``MetaAdsAdapter`` with a real
+        client). Before wiring one up, either drive the client on a single
+        shared loop or give it a per-call ``httpx.AsyncClient``.
         """
         return asyncio.run(coro)  # type: ignore[arg-type]
 
