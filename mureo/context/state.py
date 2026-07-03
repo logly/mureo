@@ -310,17 +310,40 @@ def _snapshot_to_dict(c: CampaignSnapshot) -> dict[str, Any]:
 
 
 def _atomic_write(path: Path, content: str) -> None:
-    """Atomically write a file (temp file -> rename)."""
+    """Atomically and durably write a file (temp file -> fsync -> rename).
+
+    fsync the data before the rename so a crash/power loss just after
+    ``os.replace`` cannot leave STATE.json as a zero-length/partial file (which
+    would lose campaign history / action_log). Best-effort directory fsync makes
+    the rename itself durable on POSIX.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp_path, path)
+        _fsync_dir(path.parent)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp_path)
         raise
+
+
+def _fsync_dir(parent: Path) -> None:
+    """Best-effort fsync of ``parent`` so a rename is durable (POSIX-only)."""
+    try:
+        dir_fd = os.open(str(parent), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(dir_fd)
+    except OSError:
+        pass
+    finally:
+        os.close(dir_fd)
 
 
 def read_state_file(path: Path, *, strict: bool = True) -> StateDocument:

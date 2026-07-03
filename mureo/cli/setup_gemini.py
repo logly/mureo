@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -89,7 +90,10 @@ def install_gemini_extension() -> Path:
     mcp_servers: dict[str, Any] = (
         mcp_servers_raw if isinstance(mcp_servers_raw, dict) else {}
     )
-    mcp_servers["mureo"] = {"command": "python", "args": ["-m", "mureo.mcp"]}
+    # sys.executable (not a bare "python") is the interpreter where mureo is
+    # installed; a bare "python" may be missing or lack mureo, so the MCP would
+    # silently fail to start. Mirrors auth_setup._MCP_SERVER_CONFIG.
+    mcp_servers["mureo"] = {"command": sys.executable, "args": ["-m", "mureo.mcp"]}
     existing["mcpServers"] = mcp_servers
 
     manifest.write_text(

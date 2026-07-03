@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -43,17 +44,33 @@ logger = logging.getLogger(__name__)
 
 
 def _atomic_write_text(path: Path, content: str) -> None:
-    """Write ``content`` to ``path`` atomically (temp file + rename).
+    """Write ``content`` to ``path`` atomically and durably (temp + fsync +
+    rename).
 
     A crash mid-write leaves the original file intact, so the tag-based
-    idempotency check cannot be defeated by half-written output.
+    idempotency check cannot be defeated by half-written output. fsync before
+    the rename (and a best-effort directory fsync after) so a power loss just
+    after ``os.replace`` cannot leave a zero-length config.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp_path, path)
+        try:
+            dir_fd = os.open(str(path.parent), os.O_RDONLY)
+        except OSError:
+            dir_fd = None
+        if dir_fd is not None:
+            try:
+                os.fsync(dir_fd)
+            except OSError:
+                pass
+            finally:
+                os.close(dir_fd)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp_path)
@@ -68,9 +85,15 @@ def _atomic_write_text(path: Path, content: str) -> None:
 _MCP_TAG = "[mureo-mcp-config]"
 _GUARD_TAG = "[mureo-credential-guard]"
 
+# Use the interpreter running `mureo setup codex` (sys.executable), the env
+# where mureo IS installed — a bare "python" resolves to a system Python that
+# may not have mureo installed (or not exist at all on modern macOS/Linux that
+# ship only python3), so the mureo MCP would silently fail to start. Mirrors
+# the Claude Code fix in auth_setup._MCP_SERVER_CONFIG. json.dumps yields a
+# TOML-safe basic string (correct quoting/backslash escaping on Windows paths).
 _MCP_CONFIG_BLOCK = f"""# >>> {_MCP_TAG} >>>
 [mcp_servers.mureo]
-command = "python"
+command = {json.dumps(sys.executable)}
 args = ["-m", "mureo.mcp"]
 # <<< {_MCP_TAG} <<<
 """

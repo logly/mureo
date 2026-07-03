@@ -9,6 +9,7 @@ never touch the operator's real ``~/.codex``.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -38,7 +39,9 @@ class TestInstallCodexMcpConfig:
         assert config.exists()
         text = config.read_text(encoding="utf-8")
         assert "[mcp_servers.mureo]" in text
-        assert 'command = "python"' in text
+        # command must be the interpreter running mureo (sys.executable), not a
+        # bare "python" that may be missing or lack mureo installed.
+        assert f"command = {json.dumps(sys.executable)}" in text
         assert '"-m"' in text and '"mureo.mcp"' in text
 
     def test_preserves_existing_content(self, home: Path) -> None:

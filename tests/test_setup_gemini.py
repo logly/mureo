@@ -10,6 +10,7 @@ this PR).
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -38,7 +39,7 @@ class TestInstallGeminiExtension:
 
         mcp = data.get("mcpServers", {})
         assert "mureo" in mcp
-        assert mcp["mureo"]["command"] == "python"
+        assert mcp["mureo"]["command"] == sys.executable
         assert mcp["mureo"]["args"] == ["-m", "mureo.mcp"]
 
     def test_updates_stale_version_and_mcp(self, home: Path) -> None:
@@ -53,7 +54,7 @@ class TestInstallGeminiExtension:
 
         data = json.loads(manifest.read_text(encoding="utf-8"))
         assert data["version"] != "0.0.0-stale"
-        assert data["mcpServers"]["mureo"]["command"] == "python"
+        assert data["mcpServers"]["mureo"]["command"] == sys.executable
 
     def test_preserves_operator_added_fields(self, home: Path) -> None:
         """Unknown top-level keys and extra mcpServers entries survive reinstall."""
@@ -83,7 +84,7 @@ class TestInstallGeminiExtension:
         # Operator's allow/deny list is untouched.
         assert data["excludeTools"] == ["google_ads_budget_update"]
         # mureo's mcpServers.mureo is refreshed, but extra servers survive.
-        assert data["mcpServers"]["mureo"]["command"] == "python"
+        assert data["mcpServers"]["mureo"]["command"] == sys.executable
         assert data["mcpServers"]["other"] == {"command": "other-server"}
 
     def test_does_not_touch_other_extensions(self, home: Path) -> None:
