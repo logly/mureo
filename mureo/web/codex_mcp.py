@@ -38,6 +38,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import sys
 import tempfile
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
@@ -250,6 +251,15 @@ def _parse_region(region_text: str, server_id: str) -> dict[str, Any]:
         arr = _ARGS_RE.match(line)
         if arr:
             args = [_unescape_toml(i) for i in _ITEM_RE.findall(arr.group("body"))]
+    # Repair a hand-trimmed region: if the command/args lines were removed or
+    # malformed, re-rendering the parsed block would emit `command = ""`, which
+    # breaks Codex's launch of the mureo MCP. Restore the canonical mureo
+    # invocation (sys.executable -m mureo.mcp) so an env-toggle re-render can
+    # never blank the command.
+    if server_id == _MUREO_SERVER_ID and not command:
+        command = sys.executable
+        if not args:
+            args = ["-m", "mureo.mcp"]
     return {"command": command, "args": args, "env": env}
 
 
@@ -455,10 +465,16 @@ _REGION_ID_RE = re.compile(
 
 
 def installed_codex_server_ids(config_path: Path) -> set[str]:
-    """All mureo-managed server ids present in the Codex config (tag scan)."""
-    if not config_path.exists():
+    """All mureo-managed server ids present in the Codex config (tag scan).
+
+    Tolerant read: an existing-but-unreadable config (path is a directory,
+    permission denied) returns an empty set rather than raising — this feeds
+    the status snapshot, which must never crash on one host's bad config.
+    """
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except OSError:
         return set()
-    text = config_path.read_text(encoding="utf-8")
     return {m.group("id") for m in _REGION_ID_RE.finditer(text)}
 
 
@@ -470,9 +486,10 @@ def read_codex_server_env(config_path: Path, server_id: str) -> dict[str, str]:
     Parses only this module's own tagged region, never the operator's
     surrounding TOML.
     """
-    if not config_path.exists():
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except OSError:
         return {}
-    text = config_path.read_text(encoding="utf-8")
     span = _region_span(text, server_id)
     if span is None:
         return {}

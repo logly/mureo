@@ -180,7 +180,13 @@
       if (!confirmed) return;
       let res;
       try {
-        res = await MUREO.postJson(row.removeUrl, {});
+        // Send the client's known host so the server self-heals a session
+        // whose host reset to the claude-code default after a daemon restart
+        // (see handlers._resolve_host); otherwise the removal could target
+        // the wrong host's config.
+        res = await MUREO.postJson(row.removeUrl, {
+          host: MUREO.state.status && MUREO.state.status.host,
+        });
       } catch (_err) {
         MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
         return;
@@ -473,7 +479,11 @@
     if (!ok2) return;
     let res;
     try {
-      res = await MUREO.postJson("/api/setup/basic/clear", {});
+      // Send the client's known host so the server self-heals a stale/reset
+      // session host (see handlers._resolve_host).
+      res = await MUREO.postJson("/api/setup/basic/clear", {
+        host: MUREO.state.status && MUREO.state.status.host,
+      });
     } catch (_err) {
       MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
       return;

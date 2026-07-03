@@ -160,6 +160,18 @@ class OAuthBridge:
             logger.warning("OAuth bridge bind timed out for %s", provider)
             return OAuthHandoffResult(url=None, state="pending", provider=provider)
 
+        # serve() sets the ready event even on a bind failure (leaving
+        # _server=None), so wait_until_ready returns normally; without this
+        # check the subsequent home_url() -> self.port would raise RuntimeError
+        # and escape the ValueError-only handler. Mirror start_plugin_oauth.
+        if wizard.bind_error is not None:
+            with contextlib.suppress(Exception):
+                wizard.shutdown()
+            logger.warning("OAuth bridge callback bind failed for %s", provider)
+            return OAuthHandoffResult(
+                url=None, state="pending", provider=provider, error="bind_failed"
+            )
+
         path = _PROVIDER_TO_PATH[provider]
         # Allow-list locales to keep the spawned URL injection-free.
         safe_locale = locale if locale in {"en", "ja"} else "en"

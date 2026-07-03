@@ -63,7 +63,7 @@ from mureo.core.runtime_context import (
     runtime_multi_account_auth,
     runtime_ui_plugin_credential_fields,
 )
-from mureo.core.secret_store import FilesystemSecretStore
+from mureo.core.secret_store import FilesystemSecretStore, SecretStoreError
 from mureo.oauth_authcode import parse_loopback_callback_url
 from mureo.web._helpers import (
     compare_csrf,
@@ -591,10 +591,14 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         session_host: str = self.wizard.session.host
         return session_host
 
-    def _post_setup_basic(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
+    def _post_setup_basic(self, payload: dict[str, Any]) -> None:
+        # Client-authoritative host (see _resolve_host): these host-dependent
+        # writes/removals must target the operator's actual host, not a
+        # session.host that reset to the claude-code default on a daemon
+        # restart. Symmetric with the providers endpoints.
         result = install_basic_setup(
             home=self.wizard.home,
-            host=self.wizard.session.host,
+            host=self._resolve_host(payload),
             # #222: a multi-account backend must not get the bare `mureo`
             # entry (per-client `mureo-<slug>` entries are the only correct
             # wiring). Same production gate as the account-picker skip.
@@ -602,24 +606,28 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         )
         send_json(self, result)
 
-    def _post_setup_mcp_remove(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
-        result = remove_mureo_mcp(home=self.wizard.home, host=self.wizard.session.host)
-        send_json(self, result.as_dict())
-
-    def _post_setup_hook_remove(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
-        result = remove_auth_hook(home=self.wizard.home, host=self.wizard.session.host)
-        send_json(self, result.as_dict())
-
-    def _post_setup_skills_remove(
-        self, payload: dict[str, Any]
-    ) -> None:  # noqa: ARG002
-        result = remove_workflow_skills(
-            home=self.wizard.home, host=self.wizard.session.host
+    def _post_setup_mcp_remove(self, payload: dict[str, Any]) -> None:
+        result = remove_mureo_mcp(
+            home=self.wizard.home, host=self._resolve_host(payload)
         )
         send_json(self, result.as_dict())
 
-    def _post_setup_basic_clear(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
-        envelope = clear_all_setup(home=self.wizard.home, host=self.wizard.session.host)
+    def _post_setup_hook_remove(self, payload: dict[str, Any]) -> None:
+        result = remove_auth_hook(
+            home=self.wizard.home, host=self._resolve_host(payload)
+        )
+        send_json(self, result.as_dict())
+
+    def _post_setup_skills_remove(self, payload: dict[str, Any]) -> None:
+        result = remove_workflow_skills(
+            home=self.wizard.home, host=self._resolve_host(payload)
+        )
+        send_json(self, result.as_dict())
+
+    def _post_setup_basic_clear(self, payload: dict[str, Any]) -> None:
+        envelope = clear_all_setup(
+            home=self.wizard.home, host=self._resolve_host(payload)
+        )
         send_json(self, envelope)
 
     def _post_upgrade(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
@@ -793,6 +801,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         except RequiredFieldMissingError:
             send_error_json(self, 400, "required_field_missing")
+            return
+        except SecretStoreError:
+            # The credentials file is corrupt; the store backed it up and
+            # refused to overwrite (rather than dropping other providers).
+            # Surface a clean signal instead of a 500 / silent data loss.
+            send_error_json(self, 409, "credentials_file_corrupt")
             return
         send_json(
             self,

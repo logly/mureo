@@ -23,7 +23,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from mureo.web.instance import probe_mureo_instance
+from mureo.web.instance import probe_mureo_instance, read_state_file
 from mureo.web.service import (
     SERVICE_BIND_HOST,
     SERVICE_ENVIRONMENT,
@@ -231,12 +231,23 @@ def restart(*, home: Path | None = None, port: int = SERVICE_PORT) -> OpResult:
 
 
 def status(*, home: Path | None = None, port: int = SERVICE_PORT) -> StatusResult:
-    """Report installed (plist exists) and running (``/api/ping``) state."""
+    """Report installed (plist exists) and running (``/api/ping``) state.
+
+    Prefer the actually-bound port/url the daemon persisted in configure.json:
+    when SERVICE_PORT was busy at launch the daemon degrades to an ephemeral
+    port, so probing/reporting the fixed port would falsely say "not running"
+    and print a URL that may hit a foreign process.
+    """
     installed = plist_path(home).exists()
-    running = probe_mureo_instance(SERVICE_BIND_HOST, port)
-    return StatusResult(
-        installed=installed, running=running, url=dashboard_url(port=port)
-    )
+    persisted = read_state_file(_home(home))
+    if persisted is not None:
+        effective_port = int(persisted["port"])
+        url = str(persisted["url"])
+    else:
+        effective_port = port
+        url = dashboard_url(port=port)
+    running = probe_mureo_instance(SERVICE_BIND_HOST, effective_port)
+    return StatusResult(installed=installed, running=running, url=url)
 
 
 __all__ = [

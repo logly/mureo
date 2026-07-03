@@ -136,7 +136,12 @@
           ? res.body.detail || res.body.status
           : "request_failed";
         status.hidden = false;
-        status.textContent = tmpl.replace("{detail}", detail);
+        // Replacement via a function so a server-derived detail containing
+        // "$" sequences (e.g. "$&", "$1") is inserted literally rather than
+        // triggering String.replace's special-pattern substitution.
+        status.textContent = tmpl.replace("{detail}", function () {
+          return detail;
+        });
       }
       retryBtn.disabled = false;
     });
@@ -439,7 +444,12 @@
       statusLine.hidden = true;
       function fail(detail) {
         const tmpl = MUREO.t("wizard.providers_install.failed");
-        const msg = tmpl.replace("{detail}", detail || "unknown");
+        // Function replacement so a "$"-containing detail is inserted
+        // literally (see the note at the providers-install failure path).
+        const safeDetail = detail || "unknown";
+        const msg = tmpl.replace("{detail}", function () {
+          return safeDetail;
+        });
         statusLine.hidden = false;
         statusLine.textContent = msg;
         MUREO.toast(msg);
@@ -775,7 +785,7 @@
         );
         if (res.ok && res.body && res.body.url) {
           window.open(res.body.url, "_blank", "noopener");
-          pollOAuth(slot.oauthProvider, status, function () {
+          pollOAuth(slot.oauthProvider, status, btn, function () {
             // Auto-advance: intermediate slots roll to the next slot;
             // the final slot hands control back to the outer wizard.
             onAllDone();
@@ -796,10 +806,21 @@
     return wrap;
   }
 
-  function pollOAuth(provider, statusNode, onFinished) {
+  function pollOAuth(provider, statusNode, btn, onFinished) {
+    // Bounded poll (mirrors dashboard.js pollPluginOAuth): without a deadline
+    // the loop re-arms forever if the operator closes the consent tab, and the
+    // Connect button stays disabled until a full page reload. On timeout we
+    // re-enable the button and clear the status so the flow can be retried.
+    const deadline = Date.now() + 5 * 60 * 1000;
     let cancelled = false;
     function tick() {
       if (cancelled) return;
+      if (Date.now() > deadline) {
+        cancelled = true;
+        statusNode.textContent = "";
+        if (btn) btn.disabled = false;
+        return;
+      }
       fetch("/api/oauth/" + provider + "/status")
         .then(function (r) { return r.json(); })
         .then(function (data) {
@@ -812,6 +833,7 @@
             statusNode.textContent = msg;
             MUREO.toast(msg, "error");
             cancelled = true;
+            if (btn) btn.disabled = false;
           } else {
             setTimeout(tick, 750);
           }

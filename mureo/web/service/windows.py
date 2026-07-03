@@ -20,7 +20,7 @@ import logging
 import subprocess
 from typing import TYPE_CHECKING
 
-from mureo.web.instance import probe_mureo_instance
+from mureo.web.instance import probe_mureo_instance, read_state_file
 from mureo.web.service import (
     SERVICE_BIND_HOST,
     SERVICE_PORT,
@@ -147,12 +147,23 @@ def restart(*, home: Path | None = None, port: int = SERVICE_PORT) -> OpResult:
 
 
 def status(*, home: Path | None = None, port: int = SERVICE_PORT) -> StatusResult:
-    """Report installed (task exists) and running (``/api/ping``) state."""
+    """Report installed (task exists) and running (``/api/ping``) state.
+
+    Prefer the actually-bound port/url from configure.json so an ephemeral-port
+    fallback (SERVICE_PORT busy at launch) is not misreported as "not running".
+    """
+    from pathlib import Path as _Path
+
     installed = _task_exists()
-    running = probe_mureo_instance(SERVICE_BIND_HOST, port)
-    return StatusResult(
-        installed=installed, running=running, url=dashboard_url(port=port)
-    )
+    persisted = read_state_file(home if home is not None else _Path.home())
+    if persisted is not None:
+        effective_port = int(persisted["port"])
+        url = str(persisted["url"])
+    else:
+        effective_port = port
+        url = dashboard_url(port=port)
+    running = probe_mureo_instance(SERVICE_BIND_HOST, effective_port)
+    return StatusResult(installed=installed, running=running, url=url)
 
 
 __all__ = [

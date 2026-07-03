@@ -172,6 +172,9 @@ def test_oauth_bridge_threads_multi_account_flag(
         # Polled by OAuthBridge._watch_handoff on its daemon thread;
         # defined so that watcher does not raise before bridge.cancel().
         completed = False
+        # Mirrors the real WebAuthWizard: the bridge checks bind_error after
+        # wait_until_ready before calling home_url().
+        bind_error = None
 
         def __init__(
             self, *, credentials_path: Any = None, multi_account_auth: bool = False

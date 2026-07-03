@@ -205,8 +205,20 @@ def _agency_list_clients(store: StateStore) -> list[dict[str, Any]] | None:
 
 
 def _active_state_store() -> StateStore:
-    """The active workspace's ``StateStore`` (default single-workspace)."""
-    return get_runtime_context().state_store
+    """The active workspace's ``StateStore`` (default single-workspace).
+
+    Tolerant of a misconfigured ``mureo.runtime_context_factory`` (>1 entry
+    point raises ``RuntimeContextFactoryError``): fall back to the default
+    filesystem store so the Reports endpoints keep their documented "never
+    raises" contract instead of dropping the connection with no envelope.
+    """
+    try:
+        return get_runtime_context().state_store
+    except Exception:  # noqa: BLE001 — a broken factory must not 500 the reports view
+        logger.exception("runtime context factory failed; using default state store")
+        from mureo.core.state_store import FilesystemStateStore
+
+        return FilesystemStateStore()
 
 
 def _active_workspace_id(store: StateStore) -> str:
@@ -215,7 +227,10 @@ def _active_workspace_id(store: StateStore) -> str:
     Prefers the runtime context's opaque ``workspace_id`` (``"default"`` for
     OSS), falling back to a literal so the slug is never blank.
     """
-    workspace_id = getattr(get_runtime_context(), "workspace_id", "")
+    try:
+        workspace_id = getattr(get_runtime_context(), "workspace_id", "")
+    except Exception:  # noqa: BLE001 — mirror _active_state_store's tolerance
+        workspace_id = ""
     slug = str(workspace_id).strip()
     return slug or "default"
 
