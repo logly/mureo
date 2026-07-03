@@ -55,13 +55,18 @@ class NoCredentialsError(RuntimeError):
 # Google Ads
 # ---------------------------------------------------------------------------
 
-_GOOGLE_PERIOD_MAP: dict[int, tuple[str, str]] = {
-    # window_days -> (current period token, baseline period token).
-    # Tokens passed to GoogleAdsApiClient.get_performance_report —
-    # see mureo/google_ads/_analysis_constants.py _PERIOD_DAYS.
-    7: ("LAST_7_DAYS", "LAST_30_DAYS"),
-    14: ("LAST_14_DAYS", "LAST_30_DAYS"),
-    30: ("LAST_30_DAYS", "LAST_30_DAYS"),
+_GOOGLE_WINDOW_TO_PERIOD: dict[int, str] = {
+    # window_days -> Google date-range constant. The baseline is derived as the
+    # equal-length window immediately *before* this one via
+    # ``_get_comparison_date_ranges`` — NOT a preset such as LAST_30_DAYS, which
+    # overlaps (7d ⊂ 30d) or, for the 30d case, is literally identical to the
+    # current window (baseline == current → ratio always 1.0 → no anomaly can
+    # fire). Same non-overlapping period-over-period contract the rest of the
+    # analysis layer uses (google_ads/_analysis_constants,
+    # meta_ads/_period, #134).
+    7: "LAST_7_DAYS",
+    14: "LAST_14_DAYS",
+    30: "LAST_30_DAYS",
 }
 
 
@@ -142,9 +147,15 @@ async def fetch_google_ads_metrics(
     """
     client = _open_google_ads_client(account_id)
 
-    current_period, baseline_period = _GOOGLE_PERIOD_MAP.get(
-        window_days, ("LAST_7_DAYS", "LAST_30_DAYS")
-    )
+    # Local import defers the google_ads analysis module until first use (the
+    # registry import must stay cheap; see the module docstring).
+    from mureo.google_ads._analysis_constants import _get_comparison_date_ranges
+
+    period_token = _GOOGLE_WINDOW_TO_PERIOD.get(window_days, "LAST_7_DAYS")
+    # Non-overlapping, equal-length current/previous BETWEEN clauses. The Google
+    # client's _period_to_date_clause accepts a BETWEEN clause and validates it
+    # against the GAQL whitelist, so this is injection-safe.
+    current_period, baseline_period = _get_comparison_date_ranges(period_token)
     current_rows = await client.get_performance_report(  # type: ignore[attr-defined]
         period=current_period
     )
@@ -269,9 +280,10 @@ async def fetch_google_ads_per_campaign_metrics(
     :func:`fetch_google_ads_metrics`.
     """
     client = _open_google_ads_client(account_id)
-    current_period, baseline_period = _GOOGLE_PERIOD_MAP.get(
-        window_days, ("LAST_7_DAYS", "LAST_30_DAYS")
-    )
+    from mureo.google_ads._analysis_constants import _get_comparison_date_ranges
+
+    period_token = _GOOGLE_WINDOW_TO_PERIOD.get(window_days, "LAST_7_DAYS")
+    current_period, baseline_period = _get_comparison_date_ranges(period_token)
     current_rows = await client.get_performance_report(  # type: ignore[attr-defined]
         period=current_period
     )
@@ -359,9 +371,10 @@ async def fetch_meta_ads_per_campaign_metrics(
     :func:`fetch_google_ads_per_campaign_metrics`.
     """
     client = _open_meta_ads_client(account_id)
-    current_period, baseline_period = _META_PERIOD_MAP.get(
-        window_days, ("last_7d", "last_30d")
-    )
+    from mureo.meta_ads._period import previous_period
+
+    current_period = _META_WINDOW_TO_PERIOD.get(window_days, "last_7d")
+    baseline_period = previous_period(current_period)
     current_rows = await client.get_performance_report(  # type: ignore[attr-defined]
         period=current_period
     )
@@ -385,13 +398,15 @@ async def fetch_meta_ads_per_campaign_metrics(
 # Meta Ads
 # ---------------------------------------------------------------------------
 
-_META_PERIOD_MAP: dict[int, tuple[str, str]] = {
-    # window_days -> (current period preset, baseline period preset).
-    # Tokens passed to MetaAdsApiClient.get_performance_report —
-    # see mureo/meta_ads/_period.py for supported presets.
-    7: ("last_7d", "last_30d"),
-    14: ("last_14d", "last_30d"),
-    30: ("last_30d", "last_30d"),
+_META_WINDOW_TO_PERIOD: dict[int, str] = {
+    # window_days -> Meta date preset. The baseline is derived from
+    # meta_ads._period.previous_period (the equal-length window immediately
+    # before this one), NOT last_30d — which overlaps last_7d/last_14d and is
+    # identical to last_30d for the 30d case, making the anomaly ratio a
+    # meaningless 1.0. This is exactly the #134 fix applied to the anomaly path.
+    7: "last_7d",
+    14: "last_14d",
+    30: "last_30d",
 }
 
 
@@ -450,10 +465,10 @@ async def fetch_meta_ads_metrics(
     documented on :func:`fetch_google_ads_metrics`.
     """
     client = _open_meta_ads_client(account_id)
+    from mureo.meta_ads._period import previous_period
 
-    current_period, baseline_period = _META_PERIOD_MAP.get(
-        window_days, ("last_7d", "last_30d")
-    )
+    current_period = _META_WINDOW_TO_PERIOD.get(window_days, "last_7d")
+    baseline_period = previous_period(current_period)
     current_rows = await client.get_performance_report(  # type: ignore[attr-defined]
         period=current_period
     )
