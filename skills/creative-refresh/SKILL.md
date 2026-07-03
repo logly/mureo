@@ -1,8 +1,8 @@
 ---
 name: creative-refresh
-description: "Refresh ad copy and creative assets based on performance signals and brand voice. Use when the user asks to refresh creative, propose new ad copy, A/B test creatives, update RSA assets, or rotate underperformers."
+description: "Refresh ad copy and creative assets based on performance signals and brand voice. Use when the user asks to refresh creative, propose new ad copy, A/B test creatives, update RSA assets, rotate underperformers, or visually evaluate / compare banner (image) creatives."
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Creative Refresh
@@ -30,6 +30,7 @@ Refresh ad creatives based on strategy context and performance data across all p
    - **Meta Ads**: prefer mureo native — call `meta_ads_creatives_list`, `meta_ads_analysis_compare_ads`, and `meta_ads_analysis_suggest_creative`. In BYOD mode, creative URLs / headlines / body / CTA may be present in `~/.mureo/byod/meta_ads/creatives.csv` (best-effort, populated only when those columns were in the export). If mureo's Meta Ads tools are unavailable, fall back to the official `meta-ads-official` hosted MCP for the creative list and ad-level insights only, then **skip the mureo-only analysis tools** (`meta_ads_analysis_compare_ads`, `meta_ads_analysis_suggest_creative`); perform the ad-comparison and creative-suggestion logic yourself using the rules in step 6 and note to the user that mureo's automated creative-suggestion engine requires the native MCP.
    - mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through mureo MCP tools — do **not** look for raw CSVs in the project directory.
    - Identify underperforming assets (LOW/POOR ratings for search ads, low CTR/engagement for social ads).
+   - **Image / banner creatives**: the text-and-metrics audit above does not look at the picture itself. When a creative carries an image (`image_url` / `thumbnail_url` from `meta_ads_creatives_list`, or a Google image/Display/PMax asset), also run the **Visual creative evaluation** section below to score the banner's design, not just its copy and CTR.
 
 4. **Analyze landing pages**: For each campaign's final URL, analyze the landing page to extract key selling points, CTAs, and features. If GA4 is available, pull engagement metrics (time on page, scroll depth, bounce rate) to inform creative direction.
 
@@ -59,5 +60,68 @@ Refresh ad creatives based on strategy context and performance data across all p
 12. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current CTR, CPA, conversions, impressions, clicks) and `observation_due` (14 days from today).
 
 13. **Update STATE.json** with notes.
+
+## Visual creative evaluation (image / banner ads)
+
+Scores the **picture itself** — composition, legibility, brand fit — which the
+copy-and-metrics audit in step 3 does not cover. Use it to grade a single
+banner or to rank several competing ones before recommending a refresh.
+
+**Applies only to creatives that have an image.** A text-only search ad
+(Google RSA / ETA, or any ad with no `image_url` / `thumbnail_url`) has nothing
+to view — skip this entire section for it and evaluate it with the copy +
+RSA-asset ratings + performance audit from step 3 alone. Do not emit a visual
+score, an empty rubric, or an "image not found" finding for a text ad.
+
+### Getting the image in front of you (surface-dependent)
+
+1. Collect each creative's image reference: `image_url` (or `thumbnail_url` for
+   video — you evaluate the still frame only, not motion) from
+   `meta_ads_creatives_list`; for Google, the image/Display/PMax asset URL. In
+   BYOD mode use the URL column from `creatives.csv` when present.
+2. **On Claude Code (has Read/Bash):** download the image to the scratch
+   directory (`curl -sL "<image_url>" -o <scratch>/creative_<id>.jpg`) and
+   `Read` that file — the Read tool renders the pixels so you can actually see
+   the banner. Only fetch URLs on the ad platform's own CDN
+   (`*.fbcdn.net` / `*.cdninstagram.com` / `googleusercontent.com` /
+   `gstatic.com` etc.); refuse arbitrary hosts (SSRF hygiene). Delete the temp
+   files when done.
+3. **On Desktop / Cowork (MCP-only, no Read/Bash):** you generally cannot fetch
+   and view an arbitrary URL yourself. Present the `image_url` to the operator
+   and ask them to paste/drop the image into chat so you can see it; if they
+   can't, do the copy/metrics audit only and tell them the pixel-level score
+   needs the Code surface (or the future ImageContent tool). **Never invent a
+   visual score for an image you have not actually seen.**
+
+### Scoring rubric
+
+Once you can see the banner, score each dimension **1–5** (5 = excellent):
+
+| Dimension | What to judge |
+|---|---|
+| Legibility | Is overlaid text readable at feed/thumbnail size? Contrast, font size, not cramped. |
+| Composition & hierarchy | Clear focal point, uncluttered, the eye lands on the offer/CTA. |
+| Brand fit | Matches STRATEGY.md Brand Voice — palette, tone, logo usage, style. |
+| Message clarity | Is the value prop / offer graspable in under ~2 seconds? |
+| CTA visibility | Is there a visible, prominent call to action? |
+| Copy/LP consistency | Does the image match the ad copy and the landing-page promise? |
+| Policy / text density | Excessive text overlay (heavy-text creatives underdeliver on Meta), or any prohibited/misleading visual. |
+
+- **Overall** = the simple average, but any dimension scoring **≤ 2 is a
+  must-fix** and caps the verdict at "Needs work" regardless of the average.
+- Output a per-creative table of the 7 scores + overall + the **top 3 concrete
+  fixes** (specific and actionable, e.g. "increase headline contrast; the white
+  text on a light-sky background fails legibility at feed size").
+
+### Comparison mode (2+ banners)
+
+Score each banner with the same rubric, then produce a **ranking** with a
+one-line justification per rank. Name the winner, and for the runners-up call
+out the single strongest element worth borrowing into the winner. Tie the
+recommendation back to Persona / USP / performance data from step 3 — a
+visually strong banner that already has low CTR still loses.
+
+Fold the visual verdict into the step 6 recommendations and the step 8
+presentation (a low visual score is itself a reason to refresh).
 
 IMPORTANT: Every headline/description must have a clear rationale tied to Persona, USP, or LP content. Never generate generic ad copy. Consult past action_log — if previous creative refreshes have evaluated outcomes, reference what worked.
