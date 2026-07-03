@@ -78,6 +78,7 @@ from mureo.mcp.tools_rollback import TOOLS as ROLLBACK_TOOLS
 from mureo.mcp.tools_rollback import handle_tool as handle_rollback_tool
 from mureo.mcp.tools_search_console import TOOLS as SEARCH_CONSOLE_TOOLS
 from mureo.mcp.tools_search_console import handle_tool as handle_search_console_tool
+from mureo.rollback.executor import is_rollback_dispatch_active
 from mureo.throttle import PLUGIN_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -672,15 +673,21 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     process-level staleness warning is applied once by the caller around the
     whole result.
     """
+    # When this dispatch is the reversal leg of a rollback, executor.py appends
+    # the single authoritative rollback_of entry; skip the native recording so
+    # the reversal is not double-logged as a fresh reversible mutation.
+    record_mutations = not is_rollback_dispatch_active()
     if name in _GOOGLE_ADS_NAMES:
         before = await capture_before_state(name, arguments)
         result = await handle_google_ads_tool(name, arguments)
-        record_native_mutation(name, arguments, before, result)
+        if record_mutations:
+            record_native_mutation(name, arguments, before, result)
         return _maybe_append_strategy_reminder(name, result)
     if name in _META_ADS_NAMES:
         before = await capture_before_state(name, arguments)
         result = await handle_meta_ads_tool(name, arguments)
-        record_native_mutation(name, arguments, before, result)
+        if record_mutations:
+            record_native_mutation(name, arguments, before, result)
         return _maybe_append_strategy_reminder(name, result)
     if name in _SEARCH_CONSOLE_NAMES:
         return _maybe_append_strategy_reminder(
@@ -743,7 +750,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
             # phantom executable rollback). Mirrors native_reversal's
             # _is_error_result skip for built-in mutations. The jsonl audit
             # (above) still captures the attempt regardless.
-            if not is_error_result(result):
+            if record_mutations and not is_error_result(result):
                 # Prefer the runtime-correct reversal captured before the
                 # mutation; fall back to the provider's static meta reversal
                 # when it did not opt into capture_reversal (#327).

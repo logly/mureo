@@ -17,8 +17,10 @@ Safety contract:
   to recurse into itself.
 - A later ``action_log`` entry with ``rollback_of == index`` marks
   the source as already reversed; a second call is refused.
-- Dispatch failures never write to ``action_log``. The caller sees
-  the underlying exception and STATE.json stays consistent.
+- Dispatch failures never write to ``action_log``. A raised exception
+  propagates to the caller; an ``api_error_handler`` "API error: ..."
+  envelope is detected via ``is_error_result`` and returned with
+  ``status="error"``. Either way STATE.json stays consistent.
 - The appended rollback entry carries ``reversible_params=None`` so
   rollbacks of rollbacks do not chain by default.
 
@@ -30,6 +32,7 @@ against the same file can race each other.
 
 from __future__ import annotations
 
+import contextvars
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -44,6 +47,23 @@ if TYPE_CHECKING:
 
 
 Dispatcher = Callable[[str, dict[str, Any]], Awaitable[list[Any]]]
+
+
+# Set while ``execute_rollback`` is re-dispatching the reversal through the MCP
+# handler. The dispatch path (``mcp.server._dispatch_tool``) records every
+# native/plugin mutation into ``action_log``; during a rollback that would
+# double-record the reversal (once as a fresh reversible mutation carrying an
+# observation window, once as the authoritative ``rollback_of`` entry the
+# executor appends). ``_dispatch_tool`` checks this flag and skips its own
+# recording so only the executor's single tagged entry is written.
+_rollback_dispatch_active: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "mureo_rollback_dispatch_active", default=False
+)
+
+
+def is_rollback_dispatch_active() -> bool:
+    """True while a rollback reversal is being dispatched (see the contextvar)."""
+    return _rollback_dispatch_active.get()
 
 
 class RollbackExecutionError(Exception):
@@ -109,6 +129,11 @@ async def execute_rollback(
         raise RollbackExecutionError(
             f"Rollback not supported for entry #{index}: {plan.notes}"
         )
+    # Lazy import: ``mureo.mcp`` imports the rollback package, so importing the
+    # helper at module load would risk a circular import. ``_helpers`` itself
+    # pulls in nothing from mureo, so this is safe and cheap here.
+    from mureo.mcp._helpers import is_error_result
+
     # Planner guarantees these are populated when status != NOT_SUPPORTED.
     # Use explicit raises (not `assert`) so the contract holds under `python -O`.
     if plan.operation is None or plan.params is None:
@@ -137,7 +162,34 @@ async def execute_rollback(
     # plan.params directly is safe — the stored plan cannot be mutated by the
     # dispatcher since it's a fresh copy, and subsequent executor runs always
     # call plan_rollback again from the log entry's hint.
-    result = await dispatcher(plan.operation, plan.params)
+    #
+    # Flag the dispatch so the MCP dispatch path does not ALSO record this
+    # reversal in action_log — the executor appends the single authoritative
+    # rollback_of entry below. Without this the reversal is double-recorded
+    # (and the phantom entry carries an observation window, so the
+    # daily-check/outcome-review loop treats the rollback as a fresh mutation).
+    token = _rollback_dispatch_active.set(True)
+    try:
+        result = await dispatcher(plan.operation, plan.params)
+    finally:
+        _rollback_dispatch_active.reset(token)
+
+    # ``api_error_handler`` turns an API-level failure into an "API error: ..."
+    # envelope instead of raising, so a dispatch that did *not* change platform
+    # state can still return here without an exception. Detect that envelope and
+    # refuse to record the rollback — otherwise STATE.json would gain a
+    # ``rollback_of`` marker (blocking any retry via the already-rolled-back
+    # guard above) while the campaign keeps running at the un-reverted value.
+    # Mirrors the native (native_reversal) and plugin (server) promotion paths,
+    # which both skip ``action_log`` on ``is_error_result``.
+    if is_error_result(result):
+        return {
+            "status": "error",
+            "dispatched_tool": plan.operation,
+            "result": result,
+            "caveats": list(plan.caveats),
+            "rollback_of": index,
+        }
 
     new_entry = ActionLogEntry(
         timestamp=_utc_now_iso(),
