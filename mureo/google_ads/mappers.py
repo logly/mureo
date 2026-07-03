@@ -222,9 +222,12 @@ def map_campaign(campaign: Any) -> dict[str, Any]:
         "id": str(campaign.id),
         "name": campaign.name,
         "status": map_entity_status(campaign.status),
-        "budget_amount_micros": (
-            campaign.campaign_budget if hasattr(campaign, "campaign_budget") else None
-        ),
+        # NOTE: the budget *amount* is not on the campaign proto — it lives on
+        # the sibling ``campaign_budget`` resource (``campaign_budget.amount_micros``)
+        # that the GAQL selects separately. Callers inject the true
+        # ``budget_amount_micros`` (integer micros) from that row; do NOT put
+        # ``campaign.campaign_budget`` (a resource-name string) here — that was
+        # the source of a ValueError when the adapter coerced it via ``int()``.
         "bidding_strategy_type": (
             map_bidding_strategy_type(campaign.bidding_strategy_type)
             if hasattr(campaign, "bidding_strategy_type")

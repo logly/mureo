@@ -156,7 +156,10 @@ class TestMapCampaign:
         campaign.id = 12345
         campaign.name = "テストキャンペーン"
         campaign.status = 2
-        campaign.campaign_budget = 5_000_000
+        # On the real proto this is a resource-name string, not micros. It is
+        # deliberately NOT surfaced by map_campaign: the true amount comes from
+        # the sibling campaign_budget.amount_micros, injected by the client.
+        campaign.campaign_budget = "customers/123/campaignBudgets/456"
         campaign.bidding_strategy_type = "TARGET_CPA"
 
         result = map_campaign(campaign)
@@ -164,7 +167,10 @@ class TestMapCampaign:
         assert result["id"] == "12345"
         assert result["name"] == "テストキャンペーン"
         assert result["status"] == "ENABLED"
-        assert result["budget_amount_micros"] == 5_000_000
+        # map_campaign must not emit budget_amount_micros — doing so with the
+        # campaign proto would leak the resource-name string and crash the
+        # adapter's int() coercion.
+        assert "budget_amount_micros" not in result
 
     def test_オプションフィールド付き(self) -> None:
         campaign = MagicMock()

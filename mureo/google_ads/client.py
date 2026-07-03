@@ -392,6 +392,10 @@ class GoogleAdsApiClient(  # type: ignore[misc]
             # Calculate daily budget from campaign_budget.amount_micros
             if hasattr(row, "campaign_budget") and row.campaign_budget.amount_micros:
                 camp["daily_budget"] = row.campaign_budget.amount_micros / 1_000_000
+                # Integer micros for the adapter/canonical layer, which coerces
+                # this via int(). This is the true amount — never the budget
+                # resource-name string.
+                camp["budget_amount_micros"] = int(row.campaign_budget.amount_micros)
             results.append(camp)
         return results
 
@@ -426,6 +430,8 @@ class GoogleAdsApiClient(  # type: ignore[misc]
             # Budget information
             b = row.campaign_budget
             result["budget_daily"] = b.amount_micros / 1_000_000
+            # Integer micros for the adapter/canonical layer (coerced via int()).
+            result["budget_amount_micros"] = int(b.amount_micros)
             result["budget_status"] = map_entity_status(b.status)
             # Bidding strategy detail parameters
             result["bidding_details"] = self._extract_bidding_details(row.campaign)

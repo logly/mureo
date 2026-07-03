@@ -40,6 +40,12 @@ class _BudgetAnalysisMixin:
         campaign_data: list[dict[str, Any]] = []
         total_cost: float = 0.0
         total_conversions: float = 0.0
+        # Campaigns whose performance fetch failed. They are EXCLUDED from the
+        # aggregates and share math below rather than folded in as fabricated
+        # zeros — a transient fetch error must not make a campaign look like it
+        # spent nothing and thereby skew every other campaign's cost_share /
+        # cv_share / efficiency_ratio, which drive real budget reallocation.
+        failed_campaigns: list[str] = []
 
         for camp in campaigns:
             cid = str(camp.get("id", ""))
@@ -54,8 +60,8 @@ class _BudgetAnalysisMixin:
                     cid,
                     exc_info=True,
                 )
-                cost = 0.0
-                convs = 0.0
+                failed_campaigns.append(cid)
+                continue
 
             total_cost += cost
             total_conversions += convs
@@ -131,6 +137,11 @@ class _BudgetAnalysisMixin:
                 f"Efficient: {len(efficient)}, Normal: {normal_count}, "
                 f"Inefficient: {len(inefficient)}"
             )
+        if failed_campaigns:
+            insights.append(
+                f"⚠️ Performance data unavailable for {len(failed_campaigns)} "
+                "campaign(s); excluded from shares/efficiency — analysis is partial."
+            )
 
         return {
             "period": period,
@@ -139,6 +150,9 @@ class _BudgetAnalysisMixin:
             "campaigns": enriched_data,
             "recommendations": recommendations,
             "insights": insights,
+            # Campaign ids omitted from the analysis due to fetch failures. Empty
+            # in the normal case; non-empty signals the numbers are incomplete.
+            "incomplete_data": failed_campaigns,
         }
 
     # =================================================================

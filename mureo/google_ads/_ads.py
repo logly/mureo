@@ -466,15 +466,19 @@ class _AdsMixin:
         self._validate_id(ad_id, "ad_id")
         validated_status = self._validate_status(status)
 
-        # Check RSA limit when changing to ENABLED
+        # Check RSA limit when changing to ENABLED. list_ads returns a
+        # list[dict] (not a {"ads": [...]} envelope), so iterate it directly —
+        # the old ads_data.get("ads", []) always yielded [] and made this guard
+        # dead code that never fired.
+        precheck_skipped = False
         if validated_status == "ENABLED":
             try:
-                ads_data = await self.list_ads(ad_group_id=ad_group_id)
-                ads = ads_data.get("ads", []) if isinstance(ads_data, dict) else []  # type: ignore[var-annotated]
+                ads = await self.list_ads(ad_group_id=ad_group_id)
                 enabled_rsa = sum(
-                    1  # type: ignore[misc]
+                    1
                     for a in ads
-                    if a.get("status") == "ENABLED"
+                    if isinstance(a, dict)
+                    and a.get("status") == "ENABLED"
                     and a.get("type") == "RESPONSIVE_SEARCH_AD"
                     and str(a.get("id", "")) != ad_id
                 )
@@ -489,7 +493,17 @@ class _AdsMixin:
                         ),
                     }
             except Exception:
-                logger.debug("RSA limit check failed (continuing)", exc_info=True)
+                # Advisory guard only — Google still enforces the RSA limit
+                # server-side. But do not silently bypass it: log at WARNING and
+                # thread a caveat into the result so the caller knows the
+                # friendly pre-check did not run for this call.
+                logger.warning(
+                    "RSA-limit pre-check failed for ad_group %s; proceeding "
+                    "(Google Ads still enforces the limit server-side).",
+                    ad_group_id,
+                    exc_info=True,
+                )
+                precheck_skipped = True
 
         ad_group_ad_service = self._get_service("AdGroupAdService")
         op = self._client.get_type("AdGroupAdOperation")
@@ -507,4 +521,10 @@ class _AdsMixin:
             customer_id=self._customer_id,
             operations=[op],
         )
-        return {"resource_name": response.results[0].resource_name}
+        result: dict[str, Any] = {"resource_name": response.results[0].resource_name}
+        if precheck_skipped:
+            result["caveat"] = (
+                "RSA-limit pre-check could not run; relied on the Google Ads "
+                "API's own enforcement."
+            )
+        return result
