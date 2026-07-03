@@ -394,6 +394,10 @@ class TestCreativesMixin:
         mock_resp.status_code = 200
         mock_resp.content = b"fake-image-bytes"
         mock_resp.raise_for_status = MagicMock()
+        # The uploader follows redirects manually (validating each hop) and
+        # gates on has_redirect_location; a terminal response must report False
+        # rather than a truthy MagicMock.
+        mock_resp.has_redirect_location = False
 
         mock_http = AsyncMock()
         mock_http.get = AsyncMock(return_value=mock_resp)

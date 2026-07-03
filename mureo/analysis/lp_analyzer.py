@@ -65,6 +65,11 @@ _EXCLUDE_TAGS = frozenset({"script", "style", "nav", "footer", "header", "noscri
 # SSRF protection: allowed URL schemes
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
 
+# SSRF protection: max redirect hops. Each hop is validated BEFORE it is
+# followed (we do not let httpx auto-follow), so a public URL cannot bounce the
+# fetch to an internal host.
+_MAX_REDIRECTS = 5
+
 # SSRF protection: blocked hostnames
 _BLOCKED_HOSTS = frozenset(
     {
@@ -185,26 +190,44 @@ class LPAnalyzer:
                 pass  # DNS resolution failure will error at HTTP request time
 
     async def _fetch_html(self, url: str) -> str:
-        """Fetch HTML via HTTP."""
+        """Fetch HTML via HTTP, validating every redirect hop for SSRF.
+
+        Redirects are followed MANUALLY (``follow_redirects=False``) so each
+        ``Location`` is run through :meth:`_validate_url` *before* the next
+        request is issued. Letting httpx auto-follow would fetch an
+        intermediate hop pointing at an internal host (e.g. 169.254.169.254)
+        before the destination could be re-validated — a blind-SSRF gap. A
+        residual DNS-rebinding TOCTOU remains (httpx re-resolves the validated
+        hostname), acceptable for this read-only analyzer.
+        """
         self._validate_url(url)
         async with httpx.AsyncClient(
             timeout=_TIMEOUT_SECONDS,
-            follow_redirects=True,
-            max_redirects=5,
+            follow_redirects=False,
             headers={"User-Agent": _USER_AGENT},
         ) as client:
-            response = await client.get(url)
-            # Validate redirect destination for SSRF
-            final_url = str(response.url)
-            if final_url != url:
-                self._validate_url(final_url)
-            response.raise_for_status()
-            # Size limit
-            if len(response.content) > _MAX_BODY_BYTES:
-                return response.content[:_MAX_BODY_BYTES].decode(
-                    response.encoding or "utf-8", errors="replace"
-                )
-            return response.text
+            current_url = url
+            for _ in range(_MAX_REDIRECTS + 1):
+                response = await client.get(current_url)
+                # has_redirect_location (not is_redirect) is True only for a 3xx
+                # that actually carries a Location — so a 304/300 without one is
+                # treated as a terminal response rather than a phantom redirect.
+                if response.has_redirect_location:
+                    location = response.headers["location"]
+                    # Resolve a possibly-relative Location against the current
+                    # URL, then validate BEFORE following it.
+                    next_url = str(httpx.URL(current_url).join(location))
+                    self._validate_url(next_url)
+                    current_url = next_url
+                    continue
+                response.raise_for_status()
+                # Size limit
+                if len(response.content) > _MAX_BODY_BYTES:
+                    return response.content[:_MAX_BODY_BYTES].decode(
+                        response.encoding or "utf-8", errors="replace"
+                    )
+                return response.text
+            raise ValueError(f"Too many redirects (>{_MAX_REDIRECTS}) fetching {url}")
 
     def _parse_html(self, url: str, html: str) -> LPContent:
         """Parse HTML and build an LPContent."""

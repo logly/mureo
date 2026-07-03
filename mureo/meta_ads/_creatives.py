@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 _META_MAX_IMAGE_SIZE_BYTES = 30 * 1024 * 1024  # 30MB
 _META_ALLOWED_IMAGE_EXTENSIONS = frozenset({"jpg", "jpeg", "png", "gif", "bmp", "tiff"})
 
+# Max redirect hops when downloading a remote image (each hop is SSRF-validated
+# before it is followed; see upload_ad_image).
+_MAX_IMAGE_REDIRECTS = 5
+
 # Meta Ads video upload limits
 _META_MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024  # 100MB (practical limit)
 _META_ALLOWED_VIDEO_EXTENSIONS = frozenset({"mp4", "mov", "avi", "wmv", "mkv"})
@@ -303,12 +307,44 @@ class CreativesMixin:
         """
         import base64
 
+        from mureo.core.url_guard import UnsafeUrlError, validate_public_url
+
+        # SSRF guard: image_url originates from LLM/MCP tool arguments, so a
+        # prompt-injection payload could point it at an internal host (e.g. the
+        # cloud metadata endpoint) and exfiltrate the bytes into a Meta ad
+        # account. Validate before fetching, and follow redirects MANUALLY so
+        # each hop is validated before it is followed (httpx auto-follow would
+        # hit an internal redirect target before we could re-check it).
+        try:
+            validate_public_url(image_url)
+        except UnsafeUrlError as exc:
+            return {"error": f"Refusing to fetch image URL: {exc}"}
+
         # Download the image
         try:
-            async with httpx.AsyncClient(timeout=30.0) as http:
-                resp = await http.get(image_url)
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as http:
+                current_url = image_url
+                resp = None
+                for _ in range(_MAX_IMAGE_REDIRECTS + 1):
+                    resp = await http.get(current_url)
+                    # has_redirect_location (not is_redirect) is True only for a
+                    # 3xx that carries a Location, so a 304/300 without one is a
+                    # terminal response rather than a phantom redirect hop.
+                    if not resp.has_redirect_location:
+                        break
+                    next_url = str(
+                        httpx.URL(current_url).join(resp.headers["location"])
+                    )
+                    validate_public_url(next_url)
+                    current_url = next_url
+                else:
+                    return {
+                        "error": (f"Too many redirects fetching image from {image_url}")
+                    }
                 resp.raise_for_status()
                 image_bytes = base64.b64encode(resp.content).decode("utf-8")
+        except UnsafeUrlError as exc:
+            return {"error": f"Refusing to follow image redirect: {exc}"}
         except Exception as exc:
             return {"error": f"Failed to download image from {image_url}: {exc}"}
 
