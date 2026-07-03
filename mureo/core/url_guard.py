@@ -41,7 +41,7 @@ class UnsafeUrlError(ValueError):
     """Raised when a URL targets an internal/blocked network location."""
 
 
-def _is_internal_ip(ip: ipaddress._BaseAddress) -> bool:
+def _is_internal_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return bool(
         ip.is_private
         or ip.is_loopback
