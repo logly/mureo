@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.15] - 2026-07-03
+
+### Added
+
+- TikTok Ads official hosted MCP provider (`tiktok-ads-official`): a
+  `hosted_http` catalog entry targeting TikTok's official "TikTok for
+  Business MCP Server" Progressive Disclosure endpoint (~40 core tools plus
+  on-demand discovery, chosen over the ~400-tool flat endpoint to keep the
+  exposed surface small). Auth is interactive browser OAuth via a TikTok for
+  Business account on first connect — no developer token or env vars — and it
+  can be set up from both the `mureo configure` dashboard and the setup
+  wizard. TikTok supports OAuth Dynamic Client Registration, so
+  `claude mcp add --transport http` works directly (a claude.ai connector is
+  optional); it has no mureo-native platform, so the native↔official toggle
+  is correctly skipped (#348, #349, #350).
+- OpenAI Codex is now a full `mureo configure` host with parity to Claude
+  Code and Claude Desktop — basic setup, official-provider install/remove,
+  the native↔official disable toggle, status detection, and bulk clear.
+  Codex stores MCP servers in `~/.codex/config.toml`, so mureo manages its
+  own `[mcp_servers.<id>]` blocks as tagged regions (`# >>> mureo-mcp:<id>`
+  … `# <<< <id> <<<`), leaving operator hand-edits and unrelated servers
+  untouched (#346).
+- Web extensions can contribute cards into built-in dashboard groups via an
+  opt-in `dashboard_cards()` method. `DashboardCard` uses the same
+  sanitisation contract as `ViewContribution` (no inline-executable content;
+  behaviour ships as `StaticAsset`s) and is restricted to the fixed
+  `BUILTIN_CARD_GROUPS` allowlist; a headless extension may contribute a card
+  without a view (#351).
+- Plugin (third-party MCP) providers gain an OAuth account picker,
+  multi-account hiding, and a "configured" status indicator in the configure
+  UI (#339).
+- Meta Ads: an operator can declare the canonical conversion event used for
+  conversion counting, so custom conversion setups count against the intended
+  action type (#342).
+
+### Fixed
+
+- Meta Ads conversions are now counted via a canonical exact-match counter,
+  avoiding the over-/under-counting that arose when several related
+  `action_type` rows existed for one account (#340).
+
+### Changed
+
+- Skill docs now mutate STATE.json via the `mureo_state_*` MCP tools on
+  Claude Code (instead of prose that implied direct file edits) (#341).
+- Documentation: the official TikTok Ads MCP provider is now documented as a
+  full integration section, and an "Auth in OpenAI Codex" walkthrough plus a
+  Codex client-config section were added (#352, #347).
+- CI: bump `actions/checkout` from 6 to 7 (#316).
+
 ## [0.10.14] - 2026-06-24
 
 ### Fixed
