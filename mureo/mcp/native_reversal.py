@@ -129,17 +129,23 @@ async def _read_status(
     platform, entity, _ = spec
     if platform == "meta_ads":
         from mureo.mcp._handlers_meta_ads import _get_client
+        from mureo.mcp._helpers import _close_clients
 
         client = await _get_client(args)
         if client is None:
             return None
-        if entity == "campaigns":
-            record = await client.get_campaign(args["campaign_id"])
-        elif entity == "ad_sets":
-            record = await client.get_ad_set(args["ad_set_id"])
-        else:
-            record = await client.get_ad(args["ad_id"])
-        return _status_of(record)
+        # before-state capture runs outside any handler's cleanup scope, so
+        # close the client's httpx pool here rather than leaking it.
+        try:
+            if entity == "campaigns":
+                record = await client.get_campaign(args["campaign_id"])
+            elif entity == "ad_sets":
+                record = await client.get_ad_set(args["ad_set_id"])
+            else:
+                record = await client.get_ad(args["ad_id"])
+            return _status_of(record)
+        finally:
+            await _close_clients([client])
 
     from mureo.mcp._handlers_google_ads import _get_client as _get_google_client
 

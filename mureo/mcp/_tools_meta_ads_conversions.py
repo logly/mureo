@@ -221,8 +221,9 @@ TOOLS: list[Tool] = [
                     "description": _TEST_EVENT_CODE_DESCRIPTION,
                 },
             },
+            # account_id is optional: it falls back to META_ADS_ACCOUNT_ID from
+            # the configured credentials (see _ACCOUNT_ID_PARAM / _get_client).
             "required": [
-                "account_id",
                 "pixel_id",
                 "event_time",
                 "user_data",

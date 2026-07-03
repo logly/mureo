@@ -6,7 +6,9 @@ shared by Google Ads / Meta Ads handlers.
 
 from __future__ import annotations
 
+import contextvars
 import functools
+import inspect
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -17,6 +19,42 @@ if TYPE_CHECKING:
 from mcp.types import TextContent
 
 logger = logging.getLogger(__name__)
+
+
+# Per-call registry of platform clients whose async resources must be released
+# once the handler returns. Handlers open a fresh client per tool call (Meta /
+# Search Console clients each hold a persistent ``httpx.AsyncClient``); without
+# an explicit close, the long-lived native MCP server accumulates idle
+# keep-alive sockets/file descriptors for the whole session. ``api_error_handler``
+# scopes a bucket around each handler; ``_get_client`` helpers register into it.
+_active_clients: contextvars.ContextVar[list[Any] | None] = contextvars.ContextVar(
+    "mureo_active_mcp_clients", default=None
+)
+
+
+def register_client_for_cleanup(client: Any) -> None:
+    """Register ``client`` for close after the current handler completes.
+
+    No-op when called outside a handler scope (no active bucket), so it is safe
+    for callers that may run without the ``api_error_handler`` wrapper.
+    """
+    bucket = _active_clients.get()
+    if bucket is not None and client is not None:
+        bucket.append(client)
+
+
+async def _close_clients(bucket: list[Any]) -> None:
+    """Best-effort close of every registered client. Never raises."""
+    for client in bucket:
+        close = getattr(client, "close", None)
+        if close is None:
+            continue
+        try:
+            result = close()
+            if inspect.isawaitable(result):
+                await result
+        except Exception:  # noqa: BLE001 - cleanup must not mask the handler result
+            logger.debug("client cleanup failed", exc_info=True)
 
 
 def _require(arguments: dict[str, Any], key: str) -> Any:
@@ -90,6 +128,10 @@ def api_error_handler(
 
     @functools.wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> list[TextContent]:
+        # Scope a per-call client-cleanup bucket so any client opened via
+        # ``_get_client`` during this handler is closed on the way out,
+        # regardless of success/exception.
+        token = _active_clients.set([])
         try:
             return await func(*args, **kwargs)
         except ValueError:
@@ -98,5 +140,9 @@ def api_error_handler(
         except Exception as exc:
             logger.exception("%s failed", func.__name__)
             return [TextContent(type="text", text=f"{API_ERROR_PREFIX} {exc}")]
+        finally:
+            bucket = _active_clients.get() or []
+            _active_clients.reset(token)
+            await _close_clients(bucket)
 
     return wrapper

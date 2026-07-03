@@ -27,6 +27,7 @@ from mureo.mcp._helpers import (
     _require,
     _validate_positive_money,
     api_error_handler,
+    register_client_for_cleanup,
 )
 from mureo.throttle import META_ADS_THROTTLE, Throttler
 
@@ -53,9 +54,11 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
     """
     if byod_has("meta_ads"):
         account_id = _opt(arguments, "account_id") or "act_byod"
-        return get_meta_ads_client(
+        client = get_meta_ads_client(
             creds=None, account_id=account_id, throttler=_throttler
         )
+        register_client_for_cleanup(client)
+        return client
 
     creds = load_meta_ads_credentials()
     if creds is None:
@@ -73,7 +76,12 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
         )
 
     creds = await refresh_meta_token_if_needed(creds)
-    return create_meta_ads_client(creds, account_id, throttler=_throttler)
+    client = create_meta_ads_client(creds, account_id, throttler=_throttler)
+    # Close the client's persistent httpx.AsyncClient after the handler returns
+    # (see register_client_for_cleanup) so the native server does not leak
+    # keep-alive sockets across tool calls.
+    register_client_for_cleanup(client)
+    return client
 
 
 def _no_meta_creds() -> list[TextContent]:

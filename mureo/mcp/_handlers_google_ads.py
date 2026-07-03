@@ -509,7 +509,11 @@ async def handle_assets_upload_image(args: dict[str, Any]) -> list[TextContent]:
     file_path = _require(args, "file_path")
     if not os.path.isfile(file_path):
         raise ValueError(f"File not found: {file_path}")
-    _allowed_image_ext = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+    # Keep in sync with the tool schema/description in _tools_google_ads_assets
+    # (jpg/jpeg/png/gif). .webp was accepted here but not documented, letting an
+    # unsupported upload pass local validation only to be rejected later by the
+    # Google Ads API with a confusing error.
+    _allowed_image_ext = (".png", ".jpg", ".jpeg", ".gif")
     if not file_path.lower().endswith(_allowed_image_ext):
         raise ValueError(
             f"Unsupported image format. Allowed: {', '.join(_allowed_image_ext)}"

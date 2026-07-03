@@ -19,6 +19,7 @@ from mureo.mcp._helpers import (
     _opt,
     _require,
     api_error_handler,
+    register_client_for_cleanup,
 )
 from mureo.throttle import SEARCH_CONSOLE_THROTTLE, Throttler
 
@@ -41,7 +42,11 @@ async def _get_client(arguments: dict[str, Any]) -> Any:
     creds = load_google_ads_credentials()
     if creds is None:
         return None
-    return create_search_console_client(creds, throttler=_throttler)
+    client = create_search_console_client(creds, throttler=_throttler)
+    # Close the persistent httpx.AsyncClient after the handler returns so the
+    # native server does not leak keep-alive sockets across tool calls.
+    register_client_for_cleanup(client)
+    return client
 
 
 def _no_sc_creds() -> list[TextContent]:
