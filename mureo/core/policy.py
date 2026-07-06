@@ -7,17 +7,21 @@ Constants exported:
 
 
 
-mureo OSS itself ships zero gates — the dispatcher consults gates
-registered by third-party packages via the ``mureo.policy_gates``
-entry-point group. The default behaviour (no gates installed) is
-byte-identical to v0.9.22: every tool call dispatches normally with
-zero policy overhead.
+mureo OSS ships ONE built-in gate — :class:`mureo.policy.strategy_gate.StrategyPolicyGate`,
+which enforces the operator's STRATEGY.md ``## Guardrails`` hard rules
+(strategy enforcement is core mureo value). It is fail-open: with no
+``## Guardrails`` section it abstains, so the default behaviour stays
+byte-identical to "no enforcement". The dispatcher runs the built-in
+gate(s) first (see :func:`mureo.mcp.server._builtin_policy_gates`), then
+any gates registered by third-party packages via the ``mureo.policy_gates``
+entry-point group.
 
-This module exists so that third-party packages (for example
+This entry-point contract lets third-party packages (for example
 ``mureo-agency``, which builds a read-only mode for ad-platform
-mutations) can plug their policy logic into mureo without forking
-the dispatcher. mureo's job is to define the contract and call the
-gates; the policy itself stays out of OSS.
+mutations) plug additional policy logic into mureo without forking the
+dispatcher, on equal footing with the built-in gate. ``_load_policy_gates``
+returns only the entry-point gates; the built-in gate is added separately
+at evaluation time.
 
 Stable ABI (1.x):
 - :class:`PolicyGate` Protocol — the contract a third-party gate

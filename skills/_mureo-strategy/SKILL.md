@@ -2,7 +2,7 @@
 name: _mureo-strategy
 description: "Strategy Context: Manage business strategy files (STRATEGY.md, STATE.json) for strategy-driven ad operations."
 metadata:
-  version: 0.2.0
+  version: 0.3.0
   openclaw:
     category: "advertising"
     requires:
@@ -154,6 +154,48 @@ The `Operation Mode` section contains one of 7 predefined modes that control age
 | `COMPETITOR_DEFENSE` | Increased competitive pressure detected |
 | `CREATIVE_TESTING` | Focus on ad creative testing and iteration |
 | `LTV_QUALITY_FOCUS` | Prioritize lead/conversion quality over volume |
+
+### Guardrails (machine-enforced hard rules)
+
+An **optional** `## Guardrails` section lets the operator declare hard limits
+that mureo enforces **deterministically, before dispatch, regardless of what
+the LLM decides** — via the built-in `StrategyPolicyGate` (a
+`mureo.core.policy.PolicyGate` that ships in OSS). This is stronger than a
+prose instruction the model could overlook.
+
+**Coverage:** the gate runs inside mureo's own MCP dispatch, so it hard-enforces
+every **mureo-dispatched** tool call — native `google_ads_*` / `meta_ads_*`,
+`mureo_*`, and plugin tools routed through mureo. It does **NOT** cover a
+**hosted connector** (e.g. TikTok's `tt-ads-*`, or an official Google/Meta MCP
+used directly as a connector): those calls go client→platform and never reach
+mureo's dispatcher, so the hard gate cannot see them. For hosted connectors,
+guardrail adherence remains an instruction the skill must follow (or, when
+available, an advisory pre-check the skill calls before mutating).
+
+The section is machine-readable: one `- key: value` bullet per rule. Recognized
+keys (all optional):
+
+```markdown
+## Guardrails
+- max_daily_budget_per_campaign: 50000
+- max_daily_budget_increase_pct: 20
+- max_total_daily_budget: 300000
+- blocked_operations: google_ads_campaigns_remove, meta_ads_campaigns_delete
+```
+
+- `max_daily_budget_per_campaign` — a budget mutation proposing more than this
+  (per campaign, account currency) is **refused**.
+- `max_daily_budget_increase_pct` — a budget raise larger than this percent is
+  refused **when the current budget is supplied** (skills pass
+  `current_daily_budget`).
+- `max_total_daily_budget` — refused when a caller supplies
+  `projected_total_daily_budget` above this.
+- `blocked_operations` — comma-separated tool names that are always refused.
+
+Absent section (or an unparseable value) ⇒ no enforcement for that rule
+(fail-open); mureo never blocks on a rule the operator did not write. When a
+mutation is refused, the agent receives the guardrail's reason verbatim and
+should surface it to the operator rather than retrying.
 
 ## STATE.json
 

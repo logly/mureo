@@ -441,11 +441,26 @@ def _load_policy_gates() -> tuple[PolicyGate, ...]:
     return tuple(gates)
 
 
+def _builtin_policy_gates() -> tuple[PolicyGate, ...]:
+    """mureo's own gates, shipped in OSS and active by default.
+
+    Unlike :func:`_load_policy_gates` (third-party gates via the
+    ``mureo.policy_gates`` entry-point group), these are built in —
+    strategy enforcement is core mureo value, not a plugin add-on. Kept
+    separate from ``_load_policy_gates`` so that function's "entry-point
+    gates only" contract (and its tests) stay unchanged. Each built-in gate
+    is fail-open: it abstains (allows) whenever no rule applies.
+    """
+    from mureo.policy.strategy_gate import StrategyPolicyGate
+
+    return (StrategyPolicyGate(),)
+
+
 def _evaluate_policy_gates(
     name: str, arguments: dict[str, Any]
 ) -> PolicyDecision | None:
-    """Run every registered gate. Returns the first deny decision, or
-    ``None`` if every gate allowed (or abstained on exception).
+    """Run every gate — built-in then third-party. Returns the first deny
+    decision, or ``None`` if every gate allowed (or abstained on exception).
 
     Calls :func:`_load_policy_gates` on every dispatch rather than
     caching at module-import time so a (rare) at-runtime
@@ -458,7 +473,7 @@ def _evaluate_policy_gates(
     # under TYPE_CHECKING for the rest of this module).
     from mureo.core.policy import PolicyDecision as _PolicyDecision
 
-    for gate in _load_policy_gates():
+    for gate in (*_builtin_policy_gates(), *_load_policy_gates()):
         try:
             decision = gate.evaluate(name, arguments)
         except Exception as exc:  # noqa: BLE001
@@ -635,10 +650,12 @@ def _maybe_append_staleness_warning(result: list[Any]) -> list[Any]:
 async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     """Execute a tool and return the result.
 
-    Before dispatch, every gate registered under the
-    ``mureo.policy_gates`` entry-point group is consulted. If any
-    gate denies the call, a TextContent refusal is returned and the
-    handler is never invoked. See :mod:`mureo.core.policy`.
+    Before dispatch, every policy gate is consulted — mureo's built-in
+    gate(s) (:func:`_builtin_policy_gates`, e.g. the STRATEGY.md
+    guardrail gate) first, then any gate registered under the
+    ``mureo.policy_gates`` entry-point group. If any gate denies the
+    call, a TextContent refusal is returned and the handler is never
+    invoked. See :mod:`mureo.core.policy`.
 
     After successful dispatch of a built-in *mutating* tool, a
     STRATEGY.md reminder TextContent block is appended to the result
