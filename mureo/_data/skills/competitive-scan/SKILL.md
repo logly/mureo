@@ -2,7 +2,7 @@
 name: competitive-scan
 description: "Scan competitor activity using auction insights and market signals. Use when the user asks about competitors, market dynamics, impression share changes, competitor moves, or competitive positioning."
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Competitive Scan
@@ -23,7 +23,7 @@ Scan the competitive landscape and suggest strategic responses across all channe
 
 1. **Load context**: Read STRATEGY.md (Market Context, USP, Data Sources) and STATE.json.
 
-2. **Discover platforms**: Identify all configured platforms from STATE.json `platforms`.
+2. **Discover platforms**: Identify all configured platforms from STATE.json `platforms`. Also include any **hosted official-MCP connector** present in the session (e.g. TikTok, key `tiktok_ads`) where it exposes competitive/auction data — drive it via its own tools and skip mureo-only value-adds; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
 3. **Paid competitive analysis**: For each ad platform that provides competitive/auction data:
    - **Google Ads**: prefer mureo native — call `google_ads_auction_insights_get` (raw impression-share / overlap rows) and `google_ads_auction_insights_analyze` (rule-based summary), then `google_ads_cpc_detect_trend` (CPC drift) and `google_ads_device_analyze` (device-level breakdown). **BYOD limitation**: Apps Script does not expose `auction_insight_domain` (GAQL) — auction insight tools return `[]` in BYOD mode. The remaining tools (CPC trend, device breakdown) work in BYOD against the bundle. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP for auction insights and per-device performance queries (the official MCP exposes the GAQL surface, so raw auction-insights rows are obtainable when not blocked by the Apps Script limitation), then **skip the mureo-only analysis layers** (`google_ads_auction_insights_analyze`, `google_ads_cpc_detect_trend`, `google_ads_device_analyze`); perform the rule-based summary / CPC trend regression / device CPA-gap analysis yourself from the raw rows, and note: "mureo's automated competitive-analysis layers (rule-based auction summary, CPC trend regression, device CPA-gap detection) require the native MCP — install via `mureo setup claude-code` for full coverage."

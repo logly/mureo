@@ -2,7 +2,7 @@
 name: goal-review
 description: "Review Goal progress against STRATEGY.md targets. Use when the user asks to evaluate goal achievement, review KPI progress, assess strategy performance, or check if targets are being met."
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Goal Review
@@ -24,7 +24,7 @@ Review progress toward all marketing goals across all platforms.
 
 1. **Load context**: Read STRATEGY.md (all Goal sections, Data Sources) and STATE.json.
 
-2. **Discover platforms**: Identify all configured platforms and available data sources.
+2. **Discover platforms**: Identify all configured platforms and available data sources. Also include any **hosted official-MCP connector** present in the session (e.g. TikTok, key `tiktok_ads`) — drive it via its own tools and skip mureo-only value-adds; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
 3. **For each Goal**, gather current metrics from all relevant platforms and data sources:
    - Ad platforms: Use performance reporting tools for each platform

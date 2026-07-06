@@ -2,7 +2,7 @@
 name: rescue
 description: "Emergency performance fix when an ad account is in trouble. Use when the user reports a sudden CPA spike, conversion drop, runaway spend, or asks for an urgent performance rescue. Sets Operation Mode to TURNAROUND_RESCUE and applies stabilization actions."
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Rescue
@@ -23,7 +23,7 @@ Run an emergency performance rescue workflow for underperforming campaigns.
 
 1. **Load context**: Read STRATEGY.md (including Goal sections and Data Sources) and STATE.json. Set Operation Mode to `TURNAROUND_RESCUE` in STRATEGY.md.
 
-2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`.
+2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`. Also include any **hosted official-MCP connector** present in the session (e.g. TikTok, key `tiktok_ads`) — drive it via its own tools and skip mureo-only value-adds; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
 3. **Diagnose: platform-side or site-side?** (if GA4 is available): Before making ad changes, check if the performance problem is platform-side or site-side. If LP conversion rates dropped in GA4 too, the issue may be the landing page, not the ads. Recommend LP investigation before ad changes.
 

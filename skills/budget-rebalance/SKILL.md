@@ -2,7 +2,7 @@
 name: budget-rebalance
 description: "Rebalance campaign budgets across all configured platforms based on strategy and performance signals. Use when the user asks to optimize budgets, redistribute spend, scale efficient campaigns, or cap overspending ones. Reads STRATEGY.md goals, analyzes campaign efficiency, and proposes budget changes with rationale."
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Budget Rebalance
@@ -23,7 +23,7 @@ Analyze budget allocation and suggest rebalancing across all campaigns.
 
 1. **Load context**: Read STRATEGY.md (Operation Mode, Market Context, Goal sections, Data Sources) and STATE.json.
 
-2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`.
+2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`. Also include any **hosted official-MCP connector** present in the session (e.g. TikTok, key `tiktok_ads`) — drive it via its own tools and skip mureo-only value-adds; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
 3. **Analyze budget efficiency**: For each ad platform:
    - **Google Ads**: prefer mureo native — call `google_ads_budget_efficiency` (campaign × budget × spend × conv ratio) and `google_ads_performance_report` for the period. In BYOD mode, `budget.efficiency` may return `[]` because daily budgets aren't carried in the Apps Script bundle — fall back to `performance.report` cost / conv numbers and rank by CPA. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP for the performance report only, then **skip `google_ads_budget_efficiency`** (mureo-only analysis) and rank campaigns by CPA from the raw cost / conv numbers yourself; note to the user that mureo's automated budget-efficiency scoring requires the native MCP (`mureo setup claude-code`).

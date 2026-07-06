@@ -171,6 +171,17 @@ def test_summary_lists_every_platform_with_display_names(
 
 
 @pytest.mark.unit
+def test_platform_display_name_labels() -> None:
+    from mureo.web.reports import platform_display_name
+
+    # Hosted-connector platform gets a friendly label, not the raw key.
+    assert platform_display_name("tiktok_ads") == "TikTok Ads"
+    # Built-ins and an unknown key (raw fallback) are unaffected.
+    assert platform_display_name("google_ads") == "Google Ads"
+    assert platform_display_name("some_unknown_key") == "some_unknown_key"
+
+
+@pytest.mark.unit
 def test_summary_carries_totals_period_and_campaign_count(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

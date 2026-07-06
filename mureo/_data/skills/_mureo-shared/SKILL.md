@@ -2,7 +2,7 @@
 name: _mureo-shared
 description: "mureo: Shared patterns for authentication, security rules, and output formatting."
 metadata:
-  version: 0.2.0
+  version: 0.3.0
   openclaw:
     category: "advertising"
     requires:
@@ -142,6 +142,19 @@ A plugin author OR an official-MCP wrapper can opt into mureo's analytics surfac
 - The MCP tool `mureo_analytics_modules_list` reports which platforms have analytics and which capabilities each advertises (`detect_anomalies`, `diagnose_performance`, `audit_creative`, `analyze_budget_efficiency`).
 - Workflow skills (daily-check, rescue, …) consult that list **before** running deep diagnostics on an external-integration platform: if the platform has no module or the needed capability is missing, the skill must say `analytics_not_available_for_<platform>` in its output rather than invent heuristics from the integration's tool schemas. Auto-deriving analytics is unsafe (would produce plausible-but-wrong analysis) and is explicitly out of scope.
 - Built-in google_ads and meta_ads ship analytics modules for the capabilities they support today; new platforms get parity by **hand-authoring** a module, not by code generation.
+
+## Hosted-connector platforms (official MCPs added as connectors)
+
+Some official ad-platform MCPs are **hosted** services with no native mureo tools and no local install — you add them as a Claude.ai connector / remote HTTP MCP (`mureo providers add` prints the steps). **TikTok Ads** (`tiktok-ads-official`) is the current example; its tools appear in the session under the connector's **own** namespace (e.g. `tt-ads-*` / the TikTok MCP's tool names), **NOT** as `mcp__mureo__*`.
+
+When a workflow enumerates "all configured platforms", **also include a hosted connector** when its tools are present in the session, or when STATE.json `platforms` carries its key. Use the platform key **`tiktok_ads`** — a first-class ad-platform key alongside `google_ads` / `meta_ads`, **not** a `plugin:<dist>` key.
+
+Honest scope — like a plugin platform, but with one critical difference:
+
+- **Include** the basic listing / performance / reporting the connector's tools support (campaigns, spend, conversions). Drive it with the connector's own tools as their names/descriptions imply — **best-effort**; never fail the whole workflow because a hosted tool is missing, report it and continue with the other platforms.
+- **Skip** mureo-only value-adds (anomaly detection, `result_indicator` CV-mismatch, RSA-asset audit, rule-based scoring) and say `analytics_not_available_for_tiktok_ads` — no analytics module ships for it (see *analytics-module parity*).
+- **Gate mutations against strategy exactly like a built-in write** — *Confirm Before Write Operations* + read STRATEGY.md / STATE.json and refuse conflicts with the current Operation Mode or a Goal (all Security Rules apply).
+- **CRITICAL — mureo is NOT in the data path for a hosted connector.** Unlike a `mcp__mureo__*` plugin tool (which mureo audits and auto-promotes to `action_log`), a hosted-connector call goes client→platform directly, so mureo does **not** audit it or record it. After a confirmed hosted-connector **mutation** you MUST record it yourself with `mureo_state_action_log_append` (`platform="tiktok_ads"`, an `observation_due` window ~14 days out, and the pre-change values you could read) so daily-check's outcome review still evaluates it. Auto-rollback is **not** available (only built-in allow-listed operations are auto-reversible); record a reversal hint for visibility only and reverse manually via the connector if needed.
 
 ## MCP Server Configuration
 

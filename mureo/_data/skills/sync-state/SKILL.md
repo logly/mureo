@@ -2,7 +2,7 @@
 name: sync-state
 description: "Sync STATE.json with current campaign data from all platforms. Use when the user asks to refresh state, sync campaigns, update STATE.json from live data, or pull latest campaign snapshots."
 metadata:
-  version: 0.8.0
+  version: 0.9.0
 ---
 
 # Sync State
@@ -18,12 +18,13 @@ Synchronize STATE.json with the current state of all marketing platforms.
 
 1. **Read current STATE.json** (if exists) to track changes.
 
-2. **Discover platforms**: Identify all platforms registered in STATE.json `platforms` — built-in AND plugin/bridge platforms. Per `../_mureo-shared/SKILL.md` → *Plugin platforms*, also enumerate any installed entry-point plugin that exposes `mcp__mureo__<plugin>_*` tools; its STATE.json platform key is `plugin:<dist>` (the same convention mureo uses when promoting plugin mutations into `action_log`).
+2. **Discover platforms**: Identify all platforms registered in STATE.json `platforms` — built-in AND plugin/bridge platforms. Per `../_mureo-shared/SKILL.md` → *Plugin platforms*, also enumerate any installed entry-point plugin that exposes `mcp__mureo__<plugin>_*` tools; its STATE.json platform key is `plugin:<dist>` (the same convention mureo uses when promoting plugin mutations into `action_log`). Also enumerate any **hosted official-MCP connector** present in the session (e.g. TikTok's `tt-ads-*` tools) — its key is a first-class ad-platform key such as `tiktok_ads`; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
 3. **Fetch platform data**: For each registered platform:
    - **Google Ads**: prefer mureo native — call `google_ads_campaigns_list`, then `google_ads_performance_report` for the current period (last 30 days). Both work in BYOD and Live API modes. Keep the per-campaign numbers from the performance report — they become each campaign's `metrics` in step 7. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's equivalent campaign-list and performance-report tools for the same period.
    - **Meta Ads**: prefer mureo native — call `meta_ads_campaigns_list`, then `meta_ads_insights_report` for the current period — capture `result_indicator` per campaign so STATE.json reflects whether each campaign's "results" are clicks or real leads, and keep the per-campaign insight numbers for the `metrics` write in step 7. If mureo's Meta Ads tools are unavailable, fall back to the official `meta-ads-official` hosted MCP for the campaign list and insights; the `result_indicator` field is mureo-specific and will not be present — record the raw optimization goal / actions list per campaign in STATE.json instead and note that CV-definition disambiguation requires mureo's native MCP.
    - **Plugin / bridge platforms** (`plugin:<dist>`): where the plugin exposes a daily-report / insights / performance tool (infer from the live tool list — best-effort, not deterministic), call it for the current period and keep the per-campaign numbers for the `metrics` write in step 7. Honest scope per `../_mureo-shared/SKILL.md`: capture only the basic metrics the plugin's own tools return; **skip** mureo-only value-adds (`result_indicator` CV-mismatch, anomaly detection, RSA-asset audit, rule-based scoring) — they do not exist for plugins, so omit `result_indicator` for a plugin platform. If a plugin has no such reporting tool, leave its `metrics`/`totals` empty (it stays an advisory platform) and continue — never fail the whole sync because a plugin tool is missing.
+   - **Hosted-connector platforms** (`tiktok_ads` etc.): call the hosted connector's own campaign-list / reporting tools (e.g. `tt-ads-*`) for the current period and keep the per-campaign numbers for the `metrics` write in step 7. Same honest scope as a plugin platform (basic metrics only; omit `result_indicator` and other mureo-only value-adds). If the connector has no reporting tool available, leave its `metrics`/`totals` empty and continue. See `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
    - mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through mureo MCP tools — do **not** look for raw CSVs in the project directory.
 
 4. **Check data sources**: If Search Console is configured, verify site access is still valid. If GA4 is available, verify connectivity.

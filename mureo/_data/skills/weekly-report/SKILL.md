@@ -2,7 +2,7 @@
 name: weekly-report
 description: "Generate a weekly summary report across all platforms. Use when the user asks for a weekly report, summary, recap, end-of-week review, or weekly digest."
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Weekly Report
@@ -19,7 +19,7 @@ Generate a weekly marketing operations report.
 
 1. **Load context**: Read STRATEGY.md and STATE.json.
 
-2. **Discover platforms**: Identify all configured platforms and available data sources.
+2. **Discover platforms**: Identify all configured platforms and available data sources — built-in, `mcp__mureo__<plugin>_*` plugin platforms, and any **hosted official-MCP connector** present in the session (e.g. TikTok's `tt-ads-*` tools, key `tiktok_ads`). See `../_mureo-shared/SKILL.md` → *Plugin platforms* and *Hosted-connector platforms*; pull a hosted connector's numbers from its own reporting tools and omit mureo-only value-adds.
 
 3. **Period**: Determine the reporting period (last 7 days from today).
 

@@ -2,7 +2,7 @@
 name: daily-check
 description: "Run a daily health check on all configured ad accounts (Google Ads, Meta Ads, Search Console, GA4). Use when the user asks for a daily review, health check, status update, anomaly detection, or 'how are my campaigns doing today'. Reads STRATEGY.md and STATE.json, runs platform-specific health diagnostics, checks goal progress, evaluates pending action_log observations, and reports findings as Healthy / Watch / Action-needed."
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Daily Check
@@ -23,11 +23,12 @@ Run a daily health check on all marketing accounts using the strategy context.
 
 1. **Load context**: Read STRATEGY.md (especially Operation Mode, Data Sources, and all Goal sections) and STATE.json.
 
-2. **Discover available platforms**: Identify all configured platforms from STATE.json `platforms` and check which data sources (Search Console, GA4) are accessible. Also enumerate installed **plugin** platforms (`mcp__mureo__<plugin>_*` tools) and include them best-effort — see `_mureo-shared` → *Plugin platforms*.
+2. **Discover available platforms**: Identify all configured platforms from STATE.json `platforms` and check which data sources (Search Console, GA4) are accessible. Also enumerate installed **plugin** platforms (`mcp__mureo__<plugin>_*` tools) and any **hosted official-MCP connector** present in the session (e.g. TikTok's `tt-ads-*` tools, STATE.json key `tiktok_ads`); include them best-effort — see `_mureo-shared` → *Plugin platforms* and *Hosted-connector platforms*.
 
 3. **Sync state**: For each platform in STATE.json `platforms`, fetch current campaign data and update STATE.json.
    - **Google Ads**: prefer mureo native `google_ads_campaigns_list`. If mureo's Google Ads tools are unavailable (i.e. `MUREO_DISABLE_GOOGLE_ADS=1` was set when the user installed the official MCP via `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's equivalent campaign-list tool (typically `list_campaigns` or `report_campaigns`).
    - **Meta Ads**: prefer mureo native `meta_ads_campaigns_list`. If unavailable, fall back to the official `meta-ads-official` hosted MCP's campaign-list tool (the official MCP exposes the Marketing API surface, so basic listing is available).
+   - **TikTok Ads (hosted connector, `tiktok_ads`)**: mureo has no native TikTok tools — call the TikTok connector's own campaign-list / reporting tools (e.g. `tt-ads-*`) for the current period, and write the per-campaign numbers to STATE.json via `mureo_state_upsert_campaign` (`platform="tiktok_ads"`). Skip mureo-only fields (`result_indicator`, anomaly, RSA audit). See `_mureo-shared` → *Hosted-connector platforms*.
    - mureo BYOD mode applies only to mureo native tools — do **not** look for raw CSVs in the project directory; mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through mureo MCP tools.
 
 4. **Platform health checks**: Run health diagnostics on each configured ad platform.

@@ -87,6 +87,10 @@ _BUILTIN_DISPLAY_NAMES: dict[str, str] = {
     "meta_ads": "Meta Ads",
     "search_console": "Search Console",
     "ga4": "GA4",
+    # Hosted-connector platform (no native mureo tools; added as a Claude.ai
+    # connector). Skills write its snapshots under this key — give it a friendly
+    # dashboard label instead of falling back to the raw "tiktok_ads".
+    "tiktok_ads": "TikTok Ads",
 }
 
 _PLUGIN_PREFIX = "plugin:"

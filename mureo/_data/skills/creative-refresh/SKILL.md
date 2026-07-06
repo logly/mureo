@@ -2,7 +2,7 @@
 name: creative-refresh
 description: "Refresh ad copy and creative assets based on performance signals and brand voice. Use when the user asks to refresh creative, propose new ad copy, A/B test creatives, update RSA assets, rotate underperformers, or visually evaluate / compare banner (image) creatives."
 metadata:
-  version: 0.8.0
+  version: 0.9.0
 ---
 
 # Creative Refresh
@@ -23,7 +23,7 @@ Refresh ad creatives based on strategy context and performance data across all p
 
 1. **Load context**: Read STRATEGY.md (Persona, USP, Brand Voice, Data Sources) and STATE.json.
 
-2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`.
+2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`. Also include any **hosted official-MCP connector** present in the session (e.g. TikTok, key `tiktok_ads`) — drive it via its own tools and skip mureo-only value-adds; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
 3. **Audit current creatives**: For each ad platform:
    - **Google Ads**: prefer mureo native — call `google_ads_ad_performance_report` per campaign, plus `google_ads_rsa_assets_audit` (per-asset CTR/CVR ratings) and `google_ads_rsa_assets_analyze` (LOW/POOR detection). In BYOD mode, the Apps Script bundle does not include per-asset ratings — these tools return `[]`; fall back to `google_ads_ads_list` for headline/description text and use `ad_performance.report` for ad-level CTR/conv only. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP for ad-level performance and ad listing, then **skip the mureo-only RSA asset audit tools** (`google_ads_rsa_assets_audit`, `google_ads_rsa_assets_analyze`) and note: "per-asset LOW/POOR detection and the RSA asset audit are mureo-specific value-add features — install or re-enable via `mureo setup claude-code` for the full creative audit."

@@ -2,7 +2,7 @@
 name: onboard
 description: "Initial account setup — create STRATEGY.md and STATE.json from scratch, import platform data, and establish baseline metrics. Use when the user is starting fresh with mureo, has no STRATEGY.md yet, or asks to set up a new account."
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Onboard
@@ -87,11 +87,12 @@ Guide me through setting up mureo for a new marketing account.
 
 4. **Discover platforms and data sources**:
    - For each advertising platform with configured credentials, discover accessible accounts and list campaigns
+   - **Hosted-connector platforms**: if a hosted official-MCP connector is present in the session (e.g. TikTok's `tt-ads-*` tools — `mureo providers add tiktok-ads-official` registers it as a Claude.ai connector), treat it as a discoverable platform under the key `tiktok_ads` and list its campaigns via the connector's own tools. See `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
    - Check if Search Console credentials are available — if so, run site discovery and list verified sites
    - Check if GA4 MCP is available by probing for analytics tools
    - Record all available platforms and data sources in STRATEGY.md under a `## Data Sources` section
 
-5. **Initialize STATE.json**: For each discovered platform, snapshot campaigns into STATE.json under the corresponding `platforms` key.
+5. **Initialize STATE.json**: For each discovered platform, snapshot campaigns into STATE.json under the corresponding `platforms` key (e.g. `google_ads`, `meta_ads`, `tiktok_ads` for the TikTok hosted connector).
 
 6. **Set up Goals**: Ask about quantitative marketing goals:
    - "What are your key marketing goals? (e.g., CPA target, lead volume, ROAS target, organic traffic growth)"
@@ -103,6 +104,7 @@ Guide me through setting up mureo for a new marketing account.
 7. **Initial diagnosis**: Run health checks on each configured ad platform:
    - **Google Ads**: prefer mureo native — `google_ads_performance_report` (LAST_30_DAYS), `google_ads_campaigns_list`, `google_ads_health_check_all`. Iterate the campaigns and call `google_ads_monitoring_zero_conversions` per campaign_id for any with conv = 0. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's equivalent campaign-list and performance-report tools, then **skip the mureo-only anomaly-detection tools** (`google_ads_health_check_all`, `google_ads_monitoring_zero_conversions`) and identify zero-conversion campaigns manually from the raw conv numbers; note: "anomaly detection requires mureo's native MCP — install or re-enable via `mureo setup claude-code` for full onboarding coverage."
    - **Meta Ads**: prefer mureo native — `meta_ads_insights_report` (LAST_30_DAYS) — surface `result_indicator` per campaign so the operator sees up front whether any campaigns are optimizing for `link_click` instead of true leads. If mureo's Meta Ads tools are unavailable, fall back to the official `meta-ads-official` hosted MCP for raw insights; note that the `result_indicator` field is mureo-specific — inspect each campaign's optimization goal / actions list yourself and warn the operator about any `link_click`-optimized campaigns where the user expects real leads.
+   - **TikTok Ads (hosted connector, `tiktok_ads`)**: call the connector's own reporting tools (e.g. `tt-ads-*`) for LAST_30_DAYS and record baseline per-campaign spend/conversions. mureo-only anomaly detection / RSA audit do not apply — report `analytics_not_available_for_tiktok_ads` and keep the diagnosis to the raw numbers. See `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
    - mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through mureo MCP tools — do **not** look for raw CSVs in the project directory.
    - If Search Console is available, run a top-queries check to establish an organic baseline. If GA4 is available, check overall site conversion metrics.
 

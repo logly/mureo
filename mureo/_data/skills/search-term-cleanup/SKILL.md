@@ -2,7 +2,7 @@
 name: search-term-cleanup
 description: "Audit and clean up search terms (negative keywords, intent classification, query hygiene). Use when the user asks to clean up search queries, add negative keywords, review search term reports, or improve match quality. Cross-references Search Console, GA4, and ad platform data."
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Search Term Cleanup
@@ -23,7 +23,7 @@ Review and clean up search terms and keywords across all platforms.
 
 1. **Load context**: Read STRATEGY.md (Persona, USP, Target Audience, Data Sources) and STATE.json.
 
-2. **Discover platforms**: Identify all configured platforms that support search term data from STATE.json `platforms`.
+2. **Discover platforms**: Identify all configured platforms that support search term data from STATE.json `platforms`. Also include any **hosted official-MCP connector** present in the session (e.g. TikTok, key `tiktok_ads`) where it exposes search-term data — drive it via its own tools and skip mureo-only value-adds; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
 3. **Review search terms**: For each ad platform that supports search term data:
    - **Google Ads**: prefer mureo native — call `google_ads_search_terms_report` for the raw query rows, then `google_ads_search_terms_review` (rule-based scoring) and `google_ads_search_terms_analyze` (intent classification) per campaign. **These tools work in both Live API and BYOD mode.** In BYOD they read from `~/.mureo/byod/google_ads/search_terms.csv` (the Apps Script bundle output) — do **not** look for raw CSVs in the project directory; mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through mureo MCP tools. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's search-terms report tool for the raw rows, then **skip the mureo-only rule-based scoring and intent-classification tools** (`google_ads_search_terms_review`, `google_ads_search_terms_analyze`) and do the scoring/classification yourself using the rules described in step 6 below; note to the user that mureo's automated scoring is only available with the native MCP (install or re-enable via `mureo setup claude-code`).
