@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.17] - 2026-07-04
+
+### Added
+
+- **Visual banner evaluation in `creative-refresh`.** The skill can now grade
+  the image itself — legibility, composition/hierarchy, brand fit, message
+  clarity, CTA visibility, copy/LP consistency, and policy/text-density — on a
+  1–5 rubric, and rank several competing banners, instead of judging only copy
+  and metrics. It is surface-aware (on Code it downloads the ad-platform-CDN
+  image and views it; on Desktop/Cowork it asks the operator to share the image
+  and never fabricates a score) and gated on an image being present, so
+  text-only search ads (RSA/ETA) are unaffected.
+- **TikTok Ads hosted-MCP integration at the orchestration layer.** TikTok's
+  official MCP is a hosted connector with no native mureo tools, so the skills
+  previously never enumerated or recorded it. A new *Hosted-connector
+  platforms* convention (in `_mureo-shared`) is now threaded through
+  `daily-check`, `sync-state`, `weekly-report`, and `onboard` (discovery, data
+  fetch, and STATE.json recording under the first-class key `tiktok_ads`), with
+  discovery pointers added to `budget-rebalance`, `creative-refresh`,
+  `competitive-scan`, `search-term-cleanup`, `rescue`, and `goal-review`. The
+  Reports dashboard now shows a friendly "TikTok Ads" label for the key.
+
+  Note the documented limitation: mureo is **not** in the data path for a
+  hosted connector, so it does not audit or auto-promote the call — after a
+  confirmed mutation the skill records it via `mureo_state_action_log_append`,
+  and auto-rollback / mureo-only analytics (anomaly detection, `result_indicator`,
+  RSA audit) do not apply. Google/Meta official MCPs already had skill-layer
+  fallback coverage and are unchanged.
+
 ## [0.10.16] - 2026-07-03
 
 Batch of fixes from a full-codebase audit (2 critical, 6 high, plus
