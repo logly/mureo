@@ -302,3 +302,43 @@ async def handle_state_set_conversion_events(
     except ContextFileError as exc:
         raise ValueError(str(exc)) from exc
     return _json_result(_state_to_dict(doc))
+
+
+async def handle_outcome_evaluate(arguments: dict[str, Any]) -> list[TextContent]:
+    """Deterministically evaluate a before→after metric change.
+
+    Pure calculation (no state I/O), so it works for ANY platform — the caller
+    supplies the two metric maps (typically an action_log entry's
+    ``metrics_at_action`` as ``before`` and the current numbers as ``after``).
+    Returns per-metric and overall improved/regressed/inconclusive verdicts.
+    """
+    from mureo.analysis.outcome_eval import evaluate_outcome
+
+    before = _require(arguments, "before")
+    after = _require(arguments, "after")
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        raise ValueError("before and after must be objects (metric name -> number)")
+    raw_noise = arguments.get("noise_pct", 10.0)
+    try:
+        noise_pct = float(raw_noise)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("noise_pct must be a number") from exc
+
+    report = evaluate_outcome(before, after, noise_pct=noise_pct)
+    return _json_result(
+        {
+            "overall": report.overall.value,
+            "summary": report.summary,
+            "metrics": [
+                {
+                    "metric": m.metric,
+                    "before": m.before,
+                    "after": m.after,
+                    "delta_pct": m.delta_pct,
+                    "verdict": m.verdict.value,
+                    "note": m.note,
+                }
+                for m in report.metrics
+            ],
+        }
+    )
