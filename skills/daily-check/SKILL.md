@@ -2,7 +2,7 @@
 name: daily-check
 description: "Run a daily health check on all configured ad accounts (Google Ads, Meta Ads, Search Console, GA4). Use when the user asks for a daily review, health check, status update, anomaly detection, or 'how are my campaigns doing today'. Reads STRATEGY.md and STATE.json, runs platform-specific health diagnostics, checks goal progress, evaluates pending action_log observations, and reports findings as Healthy / Watch / Action-needed."
 metadata:
-  version: 0.8.0
+  version: 0.9.0
 ---
 
 # Daily Check
@@ -61,7 +61,7 @@ Run a daily health check on all marketing accounts using the strategy context.
    ```
 
 9. **Evidence check**: Review `action_log` entries that have `observation_due` dates:
-   - For entries whose observation window has passed: collect current metrics for the same campaign, compare with `metrics_at_action` (when present), and evaluate the outcome. Report findings with confidence level (see `_mureo-learning` skill).
+   - For entries whose observation window has passed: collect current metrics for the same campaign and call **`mureo_outcome_evaluate`** with `before` = the entry's `metrics_at_action` and `after` = the current metrics. It returns a deterministic per-metric + overall **improved / regressed / inconclusive** verdict (applying the ±noise band and metric directions for you) — use it instead of eyeballing the numbers, then report with the confidence it implies (see `_mureo-learning` skill). This tool is pure/platform-agnostic, so it works for **any** platform including hosted connectors and plugins — for those, first **normalize the connector's metric names to the standard keys** (`cpa`, `conversions`, `ctr`, `cost`, …) so they can be scored (unknown names are treated as neutral/no-verdict).
    - For entries still within their observation window: note them as "pending observation" and do NOT recommend further changes to those campaigns.
    - `platform="plugin:<dist>"` entries participate in this loop on equal footing with built-ins; they have no `metrics_at_action` baseline, so evaluate them **qualitatively/advisory** (see `_mureo-shared` → *Mutating plugin tools — structural strategy parity*).
    - Do NOT attribute metric movements to specific actions without checking sample sizes and observation windows.

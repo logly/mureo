@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 from mcp.types import Tool
 
 from mureo.mcp._handlers_mureo_context import (
+    handle_outcome_evaluate,
     handle_state_action_log_append,
     handle_state_get,
     handle_state_platform_metrics_set,
@@ -363,6 +364,48 @@ TOOLS: list[Tool] = [
             "required": ["platform", "account_id"],
         },
     ),
+    Tool(
+        name="mureo_outcome_evaluate",
+        description=(
+            "Deterministically evaluate whether a logged action's outcome "
+            "improved, regressed, or is inconclusive — the reproducible verdict "
+            "the observation-window review (daily-check) and /learn rely on, "
+            "instead of eyeballing the numbers. Pass ``before`` (typically the "
+            "action_log entry's ``metrics_at_action``) and ``after`` (the "
+            "current numbers). Pure calculation — works for ANY platform "
+            "(google_ads / meta_ads / tiktok_ads / plugins) as long as you feed "
+            "comparable metric names. Direction is built in: cpa/cpc/cpl/cpm "
+            "lower-is-better; conversions/ctr/cvr/roas higher-is-better; "
+            "cost/spend/clicks/impressions are volume-only (reported, never "
+            "scored). A change within ±noise_pct (default 10%) or a zero/absent "
+            "baseline is 'inconclusive' (no fabricated swing)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "before": {
+                    "type": "object",
+                    "description": (
+                        "Baseline metrics — metric name → number (e.g. "
+                        '{"cpa": 5000, "conversions": 50}). Usually the '
+                        "action_log entry's metrics_at_action."
+                    ),
+                },
+                "after": {
+                    "type": "object",
+                    "description": "Current metrics, same shape as ``before``.",
+                },
+                "noise_pct": {
+                    "type": "number",
+                    "description": (
+                        "Noise band in percent (default 10). A change smaller "
+                        "than this is 'inconclusive' (day-to-day variance)."
+                    ),
+                },
+            },
+            "required": ["before", "after"],
+        },
+    ),
 ]
 
 
@@ -375,6 +418,7 @@ _HANDLERS = {
     "mureo_state_report_set": handle_state_report_set,
     "mureo_state_platform_metrics_set": handle_state_platform_metrics_set,
     "mureo_state_set_conversion_events": handle_state_set_conversion_events,
+    "mureo_outcome_evaluate": handle_outcome_evaluate,
 }
 
 

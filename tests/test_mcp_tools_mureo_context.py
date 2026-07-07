@@ -57,9 +57,9 @@ def _import_tools():
 # ---------------------------------------------------------------------------
 
 
-def test_tools_module_exports_eight_tools() -> None:
+def test_tools_module_exports_nine_tools() -> None:
     mod = _import_tools()
-    assert len(mod.TOOLS) == 8
+    assert len(mod.TOOLS) == 9
     expected = {
         "mureo_strategy_get",
         "mureo_strategy_set",
@@ -69,6 +69,7 @@ def test_tools_module_exports_eight_tools() -> None:
         "mureo_state_report_set",
         "mureo_state_platform_metrics_set",
         "mureo_state_set_conversion_events",
+        "mureo_outcome_evaluate",
     }
     assert {t.name for t in mod.TOOLS} == expected
 
