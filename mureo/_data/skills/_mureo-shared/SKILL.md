@@ -2,7 +2,7 @@
 name: _mureo-shared
 description: "mureo: Shared patterns for authentication, security rules, and output formatting."
 metadata:
-  version: 0.3.0
+  version: 0.4.0
   openclaw:
     category: "advertising"
     requires:
@@ -142,6 +142,8 @@ A plugin author OR an official-MCP wrapper can opt into mureo's analytics surfac
 - The MCP tool `mureo_analytics_modules_list` reports which platforms have analytics and which capabilities each advertises (`detect_anomalies`, `diagnose_performance`, `audit_creative`, `analyze_budget_efficiency`).
 - Workflow skills (daily-check, rescue, …) consult that list **before** running deep diagnostics on an external-integration platform: if the platform has no module or the needed capability is missing, the skill must say `analytics_not_available_for_<platform>` in its output rather than invent heuristics from the integration's tool schemas. Auto-deriving analytics is unsafe (would produce plausible-but-wrong analysis) and is explicitly out of scope.
 - Built-in google_ads and meta_ads ship analytics modules for the capabilities they support today; new platforms get parity by **hand-authoring** a module, not by code generation.
+
+**Generic anomaly check — available for EVERY platform (do not confuse with the modules above).** The MCP tool `analysis_anomalies_check` is a **platform-agnostic** detector: pass one campaign's current metrics (`campaign_id`, `cost`, and any of `impressions`/`clicks`/`conversions`/`cpa`/`ctr`) and it builds a **median baseline from STATE.json's `action_log` history** and returns zero-spend / CPA-spike / CTR-drop anomalies (sample-size gated; baseline=null below `min_baseline_entries`, default 7). It is **not** a fabricated heuristic and is **not** gated by `mureo_analytics_modules_list` — so it is the right tool to run for a **hosted connector or plugin platform** (TikTok `tiktok_ads`, `plugin:<dist>`, official-MCP platforms) that has no analytics module. Feed it the platform's current numbers (normalize metric names to the standard keys first); `analytics_not_available_for_<platform>` applies only to the **module-specific** deep diagnostics (RSA audit, `result_indicator` CV-mismatch, budget-efficiency), NOT to this generic anomaly check.
 
 ## Hosted-connector platforms (official MCPs added as connectors)
 
