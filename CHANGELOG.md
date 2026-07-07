@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.18] - 2026-07-07
+
+### Added
+
+- **Built-in STRATEGY.md guardrail enforcement (`StrategyPolicyGate`).** mureo
+  OSS now ships its first built-in policy gate. Declare hard limits in an
+  optional `## Guardrails` section of STRATEGY.md
+  (`max_daily_budget_per_campaign`, `max_daily_budget_increase_pct`,
+  `max_total_daily_budget`, `blocked_operations`) and mureo **refuses**, before
+  dispatch, any native `google_ads_*` / `meta_ads_*` mutation that violates
+  them — regardless of what the model decides. Fail-open: no `## Guardrails`
+  section means no enforcement, so existing behaviour is unchanged.
+  Official/hosted MCP calls (google-ads-official, meta-ads-official, TikTok) are
+  off mureo's data path, so for those the skills apply the same guardrails as a
+  best-effort self-check; hard enforcement there is tracked in #359.
+- **Deterministic outcome evaluation (`mureo_outcome_evaluate`).** Turns the
+  observation-window review and `/learn` signal from an eyeball judgement into
+  a reproducible **improved / regressed / inconclusive** verdict, with explicit
+  metric directions and a noise band (a change within ±10% or against a
+  zero/absent baseline is inconclusive). Pure and platform-agnostic — works for
+  any platform including TikTok/plugins. daily-check now uses it.
+- **Generic anomaly detection wired for every platform.** The
+  platform-agnostic `analysis_anomalies_check` tool (median baseline from
+  `action_log`; zero-spend / CPA-spike / CTR-drop) is now surfaced by the skills
+  for plugin, hosted-connector, and official-MCP platforms too — not only the
+  built-in google_ads/meta_ads analytics modules. TikTok and plugin campaigns
+  get anomaly detection off their stored metrics.
+
 ## [0.10.17] - 2026-07-04
 
 ### Added
