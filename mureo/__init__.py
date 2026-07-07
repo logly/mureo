@@ -1,3 +1,3 @@
 """mureo — your local-first AI ad ops crew. Works with Claude Code, Cursor, Codex & Gemini."""
 
-__version__ = "0.10.17"
+__version__ = "0.10.18"
