@@ -133,6 +133,47 @@ class TestEvaluateGuardrails:
         )
         assert d.allowed is True
 
+    def test_total_amount_micros_hits_lifetime_cap(self) -> None:
+        """Google total (CUSTOM_PERIOD) budgets are lifetime-capped too (#366)."""
+        g = Guardrails(max_lifetime_budget_per_campaign=900000)
+        d = evaluate_guardrails(
+            "google_ads_budget_update",
+            {"budget_id": "1", "total_amount_micros": 1_000_000_000_000},
+            g,
+        )
+        assert d.allowed is False
+        assert "max_lifetime_budget_per_campaign" in d.reason
+
+    def test_total_amount_units_hits_lifetime_cap(self) -> None:
+        """The currency-unit form total_amount cannot sidestep the cap."""
+        g = Guardrails(max_lifetime_budget_per_campaign=900000)
+        d = evaluate_guardrails(
+            "google_ads_budget_update",
+            {"budget_id": "1", "total_amount": 1_000_000},
+            g,
+        )
+        assert d.allowed is False
+        assert "max_lifetime_budget_per_campaign" in d.reason
+
+    def test_amount_micros_hits_daily_cap(self) -> None:
+        """The micros form amount_micros cannot sidestep the daily cap."""
+        g = Guardrails(max_daily_budget_per_campaign=50000)
+        d = evaluate_guardrails(
+            "google_ads_budget_update",
+            {"budget_id": "1", "amount_micros": 80_000_000_000},
+            g,
+        )
+        assert d.allowed is False
+
+    def test_total_amount_micros_under_lifetime_cap_allows(self) -> None:
+        g = Guardrails(max_lifetime_budget_per_campaign=900000)
+        d = evaluate_guardrails(
+            "google_ads_budget_update",
+            {"budget_id": "1", "total_amount_micros": 500_000_000_000},
+            g,
+        )
+        assert d.allowed is True
+
     def test_lifetime_budget_ignores_daily_cap(self) -> None:
         """Daily and lifetime caps have distinct semantics — no cross-check."""
         g = Guardrails(max_daily_budget_per_campaign=50000)

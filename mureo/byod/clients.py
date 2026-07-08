@@ -248,6 +248,12 @@ class ByodGoogleAdsClient:
                     "campaign_id": campaign_id,
                     "amount_micros": int(amt * 1_000_000),
                     "amount": amt,
+                    # Shape parity with GoogleAdsApiClient.get_budget (#366):
+                    # BYOD campaign CSVs only carry a daily budget.
+                    "period": "DAILY",
+                    "total_budget": None,
+                    "total_amount_micros": None,
+                    "reference_count": 1,
                     "delivery_method": "STANDARD",
                     "status": "ENABLED",
                 }

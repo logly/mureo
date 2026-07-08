@@ -35,11 +35,15 @@ from mureo.google_ads._gaql_validator import (
 from mureo.google_ads._media import _MediaMixin
 from mureo.google_ads._monitoring import _MonitoringMixin
 from mureo.google_ads.mappers import (
+    BUDGET_DELIVERY_METHOD_MAP,
+    BUDGET_PERIOD_MAP,
+    BUDGET_STATUS_MAP,
     map_ad_group,
     map_ad_performance_report,
     map_bidding_strategy_type,
     map_campaign,
     map_entity_status,
+    map_enum_name,
     map_performance_report,
 )
 
@@ -95,57 +99,94 @@ _BETWEEN_PATTERN = re.compile(
 _F = TypeVar("_F", bound=Callable[..., Any])
 
 
-def _resolve_budget_amount_micros(params: dict[str, Any]) -> int:
+def _resolve_amount_micros(
+    params: dict[str, Any],
+    *,
+    amount_key: str,
+    micros_key: str,
+    label: str,
+    required: bool,
+) -> int | None:
     """Resolve and validate a budget amount from ``params`` into micros.
 
-    Accepts ``amount`` (currency units) or ``amount_micros`` (exact int),
-    mutually exclusive; exactly one is required. Rejects non-numeric input,
-    non-positive values (a ``0`` budget halts delivery), and values above
-    :data:`_MAX_BUDGET_AMOUNT_MICROS` (catastrophe guard against a digit
-    slip / overflow). Raises ``ValueError`` on any violation.
+    Accepts ``amount_key`` (currency units) or ``micros_key`` (exact int),
+    mutually exclusive. When ``required`` neither being present is an error;
+    otherwise ``None`` is returned (the field is not being changed). Rejects
+    non-numeric input, non-positive values (a ``0`` budget halts delivery),
+    and values above :data:`_MAX_BUDGET_AMOUNT_MICROS` (catastrophe guard
+    against a digit slip / overflow). Raises ``ValueError`` on any violation.
     """
-    has_amount = "amount" in params and params["amount"] is not None
-    has_micros = "amount_micros" in params and params["amount_micros"] is not None
+    has_amount = params.get(amount_key) is not None
+    has_micros = params.get(micros_key) is not None
     if has_amount and has_micros:
         raise ValueError(
-            "budget update: specify either 'amount' or 'amount_micros', not both"
+            f"budget: specify either '{amount_key}' or '{micros_key}', not both"
         )
     if not has_amount and not has_micros:
-        raise ValueError(
-            "budget update: one of 'amount' or 'amount_micros' is required"
-        )
+        if required:
+            raise ValueError(
+                f"budget: one of '{amount_key}' or '{micros_key}' is required"
+            )
+        return None
 
     amount_micros: int
     if has_micros:
-        value = params["amount_micros"]
+        value = params[micros_key]
         # bool is an int subclass — reject it so True/False can't be a budget.
         if isinstance(value, bool) or not isinstance(value, int):
-            raise ValueError(f"amount_micros must be an integer (specified: {value!r})")
+            raise ValueError(f"{micros_key} must be an integer (specified: {value!r})")
         amount_micros = int(value)
     else:
-        value = params["amount"]
+        value = params[amount_key]
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError(f"Daily budget must be a number (specified: {value!r})")
+            raise ValueError(f"{label} must be a number (specified: {value!r})")
         # Reject inf/nan so int() raises a clean ValueError (not OverflowError)
         # on the direct-adapter path (MCP callers are already schema-bounded).
         if not math.isfinite(value):
-            raise ValueError(
-                f"Daily budget must be a finite number (specified: {value!r})"
-            )
+            raise ValueError(f"{label} must be a finite number (specified: {value!r})")
         amount_micros = int(value * 1_000_000)
 
     if amount_micros <= 0:
         raise ValueError(
-            f"Daily budget must be a positive number (specified: "
-            f"{amount_micros} micros)"
+            f"{label} must be a positive number (specified: " f"{amount_micros} micros)"
         )
     if amount_micros > _MAX_BUDGET_AMOUNT_MICROS:
         raise ValueError(
-            f"Daily budget {amount_micros} micros exceeds the sanity ceiling "
+            f"{label} {amount_micros} micros exceeds the sanity ceiling "
             f"({_MAX_BUDGET_AMOUNT_MICROS} micros); refusing as a likely "
             f"digit slip — pass a correct amount or raise the budget in steps"
         )
     return amount_micros
+
+
+def _resolve_budget_amount_micros(params: dict[str, Any]) -> int:
+    """Resolve/validate the required daily budget amount (legacy signature)."""
+    resolved = _resolve_amount_micros(
+        params,
+        amount_key="amount",
+        micros_key="amount_micros",
+        label="Daily budget",
+        required=True,
+    )
+    assert resolved is not None  # required=True never returns None
+    return resolved
+
+
+def _resolve_total_amount_micros(params: dict[str, Any]) -> int | None:
+    """Resolve/validate the optional total (CUSTOM_PERIOD) budget amount."""
+    return _resolve_amount_micros(
+        params,
+        amount_key="total_amount",
+        micros_key="total_amount_micros",
+        label="Total budget",
+        required=False,
+    )
+
+
+# Budget periods settable at creation. The Google Ads API marks
+# CampaignBudget.period as Immutable, so it is create-only — update_budget
+# deliberately does not accept it.
+_VALID_BUDGET_PERIODS = frozenset({"DAILY", "CUSTOM_PERIOD"})
 
 
 def _wrap_mutate_error(label: str) -> Callable[[_F], _F]:
@@ -888,14 +929,25 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     # === Budgets ===
 
     async def get_budget(self, campaign_id: str) -> dict[str, Any] | None:
-        """Get campaign budget."""
+        """Get campaign budget, including its type (period) and total amount.
+
+        ``period`` distinguishes a DAILY budget from a CUSTOM_PERIOD (total)
+        budget; ``total_amount_micros`` / ``total_budget`` are ``None``
+        unless the budget is CUSTOM_PERIOD (the API only uses the total
+        amount for that period). ``reference_count`` tells how many
+        campaigns share this budget — check it before updating.
+        """
         self._validate_id(campaign_id, "campaign_id")
         query = f"""
             SELECT
                 campaign.id,
                 campaign_budget.id,
+                campaign_budget.name,
                 campaign_budget.amount_micros,
                 campaign_budget.total_amount_micros,
+                campaign_budget.period,
+                campaign_budget.delivery_method,
+                campaign_budget.reference_count,
                 campaign_budget.status
             FROM campaign_budget
             WHERE campaign.id = {campaign_id}
@@ -903,11 +955,22 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         response = await self._search(query)
         for row in response:
             budget = row.campaign_budget
+            total_micros = int(budget.total_amount_micros) or None
             return {
                 "id": str(budget.id),
+                "name": str(budget.name),
                 "daily_budget": budget.amount_micros / 1_000_000,
                 "daily_budget_micros": budget.amount_micros,
-                "status": str(budget.status),
+                "total_budget": (
+                    total_micros / 1_000_000 if total_micros is not None else None
+                ),
+                "total_amount_micros": total_micros,
+                "period": map_enum_name(budget.period, BUDGET_PERIOD_MAP),
+                "delivery_method": map_enum_name(
+                    budget.delivery_method, BUDGET_DELIVERY_METHOD_MAP
+                ),
+                "reference_count": int(budget.reference_count),
+                "status": map_enum_name(budget.status, BUDGET_STATUS_MAP),
             }
         return None
 
@@ -927,8 +990,25 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         a client-layer guard so it also protects non-MCP callers (adapters).
         Per-account spend *policy* (BudgetGuard) is enforced on the Managed
         side.
+
+        Total (CUSTOM_PERIOD) budgets: pass ``total_amount`` (currency
+        units) or ``total_amount_micros`` to change the lifetime cap —
+        validated with the same positive/ceiling guards. ``period`` itself
+        is immutable in the API, so it can only be set at creation.
         """
-        amount_micros = _resolve_budget_amount_micros(params)
+        amount_micros = _resolve_amount_micros(
+            params,
+            amount_key="amount",
+            micros_key="amount_micros",
+            label="Daily budget",
+            required=False,
+        )
+        total_micros = _resolve_total_amount_micros(params)
+        if amount_micros is None and total_micros is None:
+            raise ValueError(
+                "budget update: one of 'amount', 'amount_micros', "
+                "'total_amount' or 'total_amount_micros' is required"
+            )
 
         budget_service = self._get_service("CampaignBudgetService")
         budget_op = self._client.get_type("CampaignBudgetOperation")
@@ -936,10 +1016,16 @@ class GoogleAdsApiClient(  # type: ignore[misc]
         budget.resource_name = budget_service.campaign_budget_path(
             self._customer_id, params["budget_id"]
         )
-        budget.amount_micros = amount_micros
+        update_paths: list[str] = []
+        if amount_micros is not None:
+            budget.amount_micros = amount_micros
+            update_paths.append("amount_micros")
+        if total_micros is not None:
+            budget.total_amount_micros = total_micros
+            update_paths.append("total_amount_micros")
         self._client.copy_from(
             budget_op.update_mask,
-            PbFieldMask(paths=["amount_micros"]),
+            PbFieldMask(paths=update_paths),
         )
         response = budget_service.mutate_campaign_budgets(
             customer_id=self._customer_id,
@@ -1082,47 +1168,64 @@ class GoogleAdsApiClient(  # type: ignore[misc]
                 ``CreateCampaignRequest.daily_budget_micros``) should use
                 this key to preserve precision.
 
-        At least one of ``amount`` or ``amount_micros`` must be supplied.
-        Supplying both at the same time is a ``ValueError`` (ambiguous
-        intent).
+        Budget type: ``period`` (DAILY, the default, or CUSTOM_PERIOD) is
+        set at creation only — the API marks it immutable. A total
+        (lifetime) amount via ``total_amount`` / ``total_amount_micros`` is
+        only meaningful for CUSTOM_PERIOD budgets, so supplying one without
+        ``period='CUSTOM_PERIOD'`` is a ``ValueError``.
+
+        At least one of the daily (``amount`` / ``amount_micros``) or total
+        (``total_amount`` / ``total_amount_micros``) amounts must be
+        supplied. Supplying both keys of a pair at the same time is a
+        ``ValueError`` (ambiguous intent).
         """
         name = params["name"]
         if len(name) > 256:
             raise ValueError(
                 f"Budget name must be 256 characters or less (currently {len(name)} chars)"
             )
-        has_amount = "amount" in params
-        has_amount_micros = "amount_micros" in params
-        if has_amount and has_amount_micros:
-            raise ValueError(
-                "create_budget: specify either 'amount' or 'amount_micros', not both"
-            )
-        if not has_amount and not has_amount_micros:
-            raise ValueError(
-                "create_budget: one of 'amount' or 'amount_micros' is required"
-            )
-
-        if has_amount_micros:
-            amount_micros = int(params["amount_micros"])
-            if amount_micros <= 0:
+        period = params.get("period")
+        if period is not None:
+            period = str(period).upper()
+            if period not in _VALID_BUDGET_PERIODS:
                 raise ValueError(
-                    f"Daily budget must be a positive number (specified: "
-                    f"{amount_micros} micros)"
+                    f"Invalid budget period: {period} "
+                    f"(must be one of {sorted(_VALID_BUDGET_PERIODS)})"
                 )
-        else:
-            amount = params["amount"]
-            if amount <= 0:
-                raise ValueError(
-                    f"Daily budget must be a positive number (specified: {amount})"
-                )
-            amount_micros = int(amount * 1_000_000)
+        amount_micros = _resolve_amount_micros(
+            params,
+            amount_key="amount",
+            micros_key="amount_micros",
+            label="Daily budget",
+            required=False,
+        )
+        total_micros = _resolve_total_amount_micros(params)
+        if amount_micros is None and total_micros is None:
+            raise ValueError(
+                "create_budget: one of 'amount', 'amount_micros', "
+                "'total_amount' or 'total_amount_micros' is required"
+            )
+        if total_micros is not None and period != "CUSTOM_PERIOD":
+            raise ValueError(
+                "total_amount/total_amount_micros is only used by the API "
+                "when period='CUSTOM_PERIOD' — set the period explicitly"
+            )
+        if period == "CUSTOM_PERIOD" and total_micros is None:
+            raise ValueError(
+                "period='CUSTOM_PERIOD' requires total_amount or " "total_amount_micros"
+            )
 
         # Note: BudgetGuard absolute ceiling check is performed on the Managed side.
         budget_service = self._get_service("CampaignBudgetService")
         budget_op = self._client.get_type("CampaignBudgetOperation")
         budget = budget_op.create
         budget.name = name
-        budget.amount_micros = amount_micros
+        if amount_micros is not None:
+            budget.amount_micros = amount_micros
+        if total_micros is not None:
+            budget.total_amount_micros = total_micros
+        if period is not None:
+            budget.period = getattr(self._client.enums.BudgetPeriodEnum, period)
         budget.explicitly_shared = False
         budget.delivery_method = self._client.enums.BudgetDeliveryMethodEnum.STANDARD
         try:

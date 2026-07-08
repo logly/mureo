@@ -35,10 +35,14 @@ async def handle_budget_create(args: dict[str, Any]) -> list[TextContent]:
     client = _get_client(args)
     if client is None:
         return _no_google_creds()
-    params: dict[str, Any] = {
-        "name": _require(args, "name"),
-        "amount": _require(args, "amount"),
-    }
+    params: dict[str, Any] = {"name": _require(args, "name")}
+    # amount is no longer unconditionally required: a CUSTOM_PERIOD total
+    # budget is created with total_amount(_micros) instead. The client
+    # validates that at least one amount is present and that totals come
+    # with period='CUSTOM_PERIOD'.
+    for key in ("amount", "total_amount", "total_amount_micros", "period"):
+        if args.get(key) is not None:
+            params[key] = args[key]
     result = await client.create_budget(params)
     return _json_result(result)
 

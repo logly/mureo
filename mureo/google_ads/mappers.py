@@ -21,6 +21,11 @@ from google.ads.googleads.v23.enums.types.bidding_strategy_system_status import 
 from google.ads.googleads.v23.enums.types.bidding_strategy_type import (
     BiddingStrategyTypeEnum,
 )
+from google.ads.googleads.v23.enums.types.budget_delivery_method import (
+    BudgetDeliveryMethodEnum,
+)
+from google.ads.googleads.v23.enums.types.budget_period import BudgetPeriodEnum
+from google.ads.googleads.v23.enums.types.budget_status import BudgetStatusEnum
 from google.ads.googleads.v23.enums.types.campaign_primary_status_reason import (
     CampaignPrimaryStatusReasonEnum,
 )
@@ -185,6 +190,21 @@ ASSET_TYPE_MAP: dict[int, str] = {
 
 MIME_TYPE_MAP: dict[int, str] = {
     member.value: member.name for member in MimeTypeEnum.MimeType  # type: ignore[attr-defined]
+}
+
+
+# Auto-generated campaign-budget enum maps (#366 — budget type get/set).
+BUDGET_PERIOD_MAP: dict[int, str] = {
+    member.value: member.name for member in BudgetPeriodEnum.BudgetPeriod  # type: ignore[attr-defined]
+}
+
+BUDGET_DELIVERY_METHOD_MAP: dict[int, str] = {
+    member.value: member.name
+    for member in BudgetDeliveryMethodEnum.BudgetDeliveryMethod  # type: ignore[attr-defined]
+}
+
+BUDGET_STATUS_MAP: dict[int, str] = {
+    member.value: member.name for member in BudgetStatusEnum.BudgetStatus  # type: ignore[attr-defined]
 }
 
 
