@@ -1,10 +1,11 @@
 """Version/extension-package discovery for ``mureo.web.about``.
 
 ``collect_about_info`` resolves the installed mureo version plus every
-distribution contributing to mureo's plugin entry-point groups via
-:mod:`importlib.metadata`. These tests mock that surface entirely —
-the machine running them may carry real mureo plugins (dev boxes do),
-so nothing here depends on what is actually installed.
+installed mureo plugin, discovered along two axes (#365): the plugin
+entry-point groups AND the ``mureo`` / ``mureo-*`` name prefix (the same
+set the updater sees). These tests mock both surfaces entirely — the
+machine running them may carry real mureo plugins (dev boxes do), so
+nothing here depends on what is actually installed.
 """
 
 from __future__ import annotations
@@ -86,11 +87,28 @@ def _version_for(versions: dict[str, str]) -> Any:
 
 @pytest.mark.unit
 class TestCollectAboutInfo:
-    def test_groups_constant_covers_all_three_plugin_surfaces(self) -> None:
+    @pytest.fixture(autouse=True)
+    def _no_name_prefixed_dists(self) -> Any:
+        """Neutralise the real name-prefix distribution walk (#365).
+
+        ``collect_about_info`` now also lists every installed ``mureo`` /
+        ``mureo-*`` distribution (the same set the updater discovers). That
+        walk hits real installed metadata, so on a dev box carrying real
+        ``mureo-*`` plugins it would break these hermetic entry-point cases.
+        Default it to "no name-prefixed dists"; the cases that exercise the
+        name-prefix axis re-patch it inside their own ``with`` block.
+        """
+        with patch("mureo.web.about._discover_all_mureo_packages", return_value=[]):
+            yield
+
+    def test_groups_constant_covers_all_mureo_plugin_surfaces(self) -> None:
         assert ABOUT_ENTRY_POINT_GROUPS == (
             "mureo.providers",
+            "mureo.skills",
             "mureo.runtime_context_factory",
             "mureo.web_extensions",
+            "mureo.policy_gates",
+            "mureo.analytics",
         )
 
     def test_mureo_always_present_with_no_entry_points(self) -> None:
@@ -209,6 +227,30 @@ class TestCollectAboutInfo:
             info = collect_about_info()
         assert {"name": "acme-plugin", "version": "2.0.0"} in info["packages"]
 
+    def test_dist_none_fallback_version_none_uses_placeholder(self) -> None:
+        """The ``dist is None`` fallback path also normalizes a ``None``
+        version (malformed dist-info) to the placeholder — matching the
+        dist-present branch and never emitting a non-string version."""
+
+        def version_returns_none(name: str) -> str | None:
+            return "1.0.0" if name == "mureo" else None
+
+        by_group = {
+            "mureo.providers": (
+                _FakeEntryPoint(dist=None, module="acme_plugin.providers"),
+            ),
+        }
+        with (
+            patch("mureo.web.about.entry_points", _entry_points_for(by_group)),
+            patch("mureo.web.about.version", version_returns_none),
+            patch(
+                "mureo.web.about.packages_distributions",
+                return_value={"acme_plugin": ["acme-plugin"]},
+            ),
+        ):
+            info = collect_about_info()
+        assert {"name": "acme-plugin", "version": UNKNOWN_VERSION} in info["packages"]
+
     def test_dist_none_without_mapping_is_skipped(self) -> None:
         by_group = {
             "mureo.providers": (
@@ -255,6 +297,195 @@ class TestCollectAboutInfo:
         assert set(info["mureo"].keys()) == {"name", "version"}
         for pkg in info["packages"]:
             assert set(pkg.keys()) == {"name", "version"}
+
+    # -- #365: consistency with the update checker ------------------------
+    #
+    # The "Installed packages" list and the "Update available" banner must
+    # agree on what counts as an installed mureo package. The updater keys
+    # off the ``mureo`` / ``mureo-*`` name prefix; About must list that same
+    # set so a package can never be flagged "update available" while absent
+    # from "Installed packages".
+
+    def test_name_prefixed_package_without_entry_points_is_listed(self) -> None:
+        """A ``mureo-*`` plugin registering NONE of the scanned entry-point
+        groups (e.g. ``mureo-logly-tools`` — ``mureo.skills`` only, but here
+        with no entry point at all) is still listed, matching the updater."""
+        with (
+            patch("mureo.web.about.entry_points", _entry_points_for({})),
+            patch(
+                "mureo.web.about.version",
+                _version_for({"mureo": "1.0.0", "mureo-logly-tools": "0.3.0"}),
+            ),
+            patch(
+                "mureo.web.about._discover_all_mureo_packages",
+                return_value=["mureo", "mureo-logly-tools"],
+            ),
+        ):
+            info = collect_about_info()
+        assert {"name": "mureo-logly-tools", "version": "0.3.0"} in info["packages"]
+        names = [pkg["name"] for pkg in info["packages"]]
+        assert names == ["mureo", "mureo-logly-tools"]
+
+    def test_name_prefixed_package_missing_version_uses_placeholder(self) -> None:
+        """A name-prefix-discovered dist whose version cannot be resolved
+        degrades to the placeholder rather than dropping the row."""
+        with (
+            patch("mureo.web.about.entry_points", _entry_points_for({})),
+            patch("mureo.web.about.version", _version_for({"mureo": "1.0.0"})),
+            patch(
+                "mureo.web.about._discover_all_mureo_packages",
+                return_value=["mureo", "mureo-ghost"],
+            ),
+        ):
+            info = collect_about_info()
+        assert {"name": "mureo-ghost", "version": UNKNOWN_VERSION} in info["packages"]
+
+    def test_name_prefix_and_entry_point_dedupe_by_canonical(self) -> None:
+        """A package surfaced by BOTH axes (a skills entry point AND the
+        name prefix) appears exactly once."""
+        by_group = {
+            "mureo.skills": (
+                _FakeEntryPoint(dist=_FakeDist("mureo-logly-tools", "0.3.0")),
+            ),
+        }
+        with (
+            patch("mureo.web.about.entry_points", _entry_points_for(by_group)),
+            patch(
+                "mureo.web.about.version",
+                _version_for({"mureo": "1.0.0", "mureo-logly-tools": "0.3.0"}),
+            ),
+            patch(
+                "mureo.web.about._discover_all_mureo_packages",
+                return_value=["mureo", "mureo-logly-tools"],
+            ),
+        ):
+            info = collect_about_info()
+        names = [pkg["name"] for pkg in info["packages"]]
+        assert names == ["mureo", "mureo-logly-tools"]
+
+    def test_skills_only_entry_point_plugin_is_listed(self) -> None:
+        """A skills plugin NOT named ``mureo-*`` (so invisible to the
+        name-prefix axis) is surfaced via the now-scanned skills group."""
+        by_group = {
+            "mureo.skills": (_FakeEntryPoint(dist=_FakeDist("acme-skills", "1.1.0")),),
+        }
+        with (
+            patch("mureo.web.about.entry_points", _entry_points_for(by_group)),
+            patch("mureo.web.about.version", _version_for({"mureo": "1.0.0"})),
+        ):
+            info = collect_about_info()
+        names = [pkg["name"] for pkg in info["packages"]]
+        assert names == ["acme-skills", "mureo"]
+
+    def test_policy_gate_and_analytics_groups_are_scanned(self) -> None:
+        """The policy-gate and analytics extension surfaces are scanned too,
+        so a plugin contributing only those still appears."""
+        by_group = {
+            "mureo.policy_gates": (
+                _FakeEntryPoint(dist=_FakeDist("gate-plugin", "2.0.0")),
+            ),
+            "mureo.analytics": (
+                _FakeEntryPoint(dist=_FakeDist("analytics-plugin", "3.0.0")),
+            ),
+        }
+        with (
+            patch("mureo.web.about.entry_points", _entry_points_for(by_group)),
+            patch("mureo.web.about.version", _version_for({"mureo": "1.0.0"})),
+        ):
+            info = collect_about_info()
+        names = [pkg["name"] for pkg in info["packages"]]
+        assert names == ["analytics-plugin", "gate-plugin", "mureo"]
+
+    def test_name_prefix_discovery_failure_is_isolated(self) -> None:
+        """If the name-prefix walk blows up, the endpoint still returns the
+        entry-point-derived rows rather than 500-ing."""
+        by_group = {
+            "mureo.providers": (_FakeEntryPoint(dist=_FakeDist("ep-plugin", "1.0.0")),),
+        }
+        with (
+            patch("mureo.web.about.entry_points", _entry_points_for(by_group)),
+            patch("mureo.web.about.version", _version_for({"mureo": "1.0.0"})),
+            patch(
+                "mureo.web.about._discover_all_mureo_packages",
+                side_effect=RuntimeError("metadata index corrupted"),
+            ),
+        ):
+            info = collect_about_info()
+        names = [pkg["name"] for pkg in info["packages"]]
+        assert names == ["ep-plugin", "mureo"]
+
+    def test_name_prefixed_version_none_uses_placeholder(self) -> None:
+        """``importlib.metadata.version`` returns ``None`` (not raises) for a
+        dist whose ``METADATA`` has a Name but no Version header. The row must
+        still carry a string version (payload shape ``{"name","version"}``)."""
+
+        def version_returns_none(name: str) -> str | None:
+            if name == "mureo":
+                return "1.0.0"
+            return None  # malformed dist-info: Version header absent
+
+        with (
+            patch("mureo.web.about.entry_points", _entry_points_for({})),
+            patch("mureo.web.about.version", version_returns_none),
+            patch(
+                "mureo.web.about._discover_all_mureo_packages",
+                return_value=["mureo", "mureo-malformed"],
+            ),
+        ):
+            info = collect_about_info()
+        row = next(p for p in info["packages"] if p["name"] == "mureo-malformed")
+        assert row == {"name": "mureo-malformed", "version": UNKNOWN_VERSION}
+        assert isinstance(row["version"], str)
+
+    def test_mixed_case_name_dedupes_and_displays_canonical(self) -> None:
+        """A distribution whose raw entry-point name is mixed-case / underscored
+        is deduped against its name-prefix canonical form AND displayed in the
+        canonical form — so About labels it identically to the update banner."""
+        by_group = {
+            "mureo.skills": (
+                _FakeEntryPoint(dist=_FakeDist("Mureo_Logly_Tools", "0.3.0")),
+            ),
+        }
+        with (
+            patch("mureo.web.about.entry_points", _entry_points_for(by_group)),
+            patch(
+                "mureo.web.about.version",
+                _version_for({"mureo": "1.0.0", "mureo-logly-tools": "0.3.0"}),
+            ),
+            patch(
+                "mureo.web.about._discover_all_mureo_packages",
+                return_value=["mureo", "mureo-logly-tools"],
+            ),
+        ):
+            info = collect_about_info()
+        names = [pkg["name"] for pkg in info["packages"]]
+        assert names == ["mureo", "mureo-logly-tools"]
+        assert "Mureo_Logly_Tools" not in names
+
+    def test_every_updater_package_appears_exactly_once(self) -> None:
+        """Property of #365: every name the updater discovers is listed here
+        exactly once (⊆ guarantee), regardless of entry-point registration."""
+        updater_set = ["mureo", "mureo-agency", "mureo-logly-tools", "mureo-x"]
+        by_group = {
+            # Only one of them also registers an entry point — the rest are
+            # name-prefix-only, exactly the #365 gap.
+            "mureo.providers": (
+                _FakeEntryPoint(dist=_FakeDist("mureo-agency", "0.1.0")),
+            ),
+        }
+        versions = {name: "1.0.0" for name in updater_set}
+        with (
+            patch("mureo.web.about.entry_points", _entry_points_for(by_group)),
+            patch("mureo.web.about.version", _version_for(versions)),
+            patch(
+                "mureo.web.about._discover_all_mureo_packages",
+                return_value=updater_set,
+            ),
+        ):
+            info = collect_about_info()
+        names = [pkg["name"] for pkg in info["packages"]]
+        for canonical in updater_set:
+            assert names.count(canonical) == 1, f"{canonical} not listed exactly once"
 
 
 @pytest.mark.unit
