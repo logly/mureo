@@ -35,9 +35,9 @@ class TestGoogleAdsToolDefinitions:
     """Verify the Google Ads tool list is defined correctly."""
 
     def test_tool_count(self) -> None:
-        """All 83 tools are defined."""
+        """All 86 tools are defined (83 + demographic/audience/image-asset reads, #366)."""
         mod = _import_google_ads_tools()
-        assert len(mod.TOOLS) == 83
+        assert len(mod.TOOLS) == 86
 
     def test_all_tool_names(self) -> None:
         """Every tool name starts with google_ads_ (underscore-separated, per MCP spec)."""
@@ -130,6 +130,9 @@ class TestGoogleAdsToolDefinitions:
             ),
             ("google_ads_cpc_detect_trend", ["campaign_id"]),
             ("google_ads_device_analyze", ["campaign_id"]),
+            ("google_ads_demographic_targeting_list", []),
+            ("google_ads_audience_targeting_list", []),
+            ("google_ads_image_assets_list", []),
         ],
     )
     def test_required_fields(
@@ -152,6 +155,96 @@ def _mock_google_ads_context():
     mock_client = AsyncMock()
     mock_creds = MagicMock()
     return mock_creds, mock_client
+
+
+# ---------------------------------------------------------------------------
+# Handler tests — read-only criteria / asset retrievals (#366)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGoogleAdsCriteriaReadHandlers:
+    """Demographic / audience criteria and image-asset read handlers."""
+
+    async def test_demographic_targeting_list(self) -> None:
+        mod = _import_google_ads_tools()
+        creds, client = _mock_google_ads_context()
+        client.list_demographic_criteria.return_value = [
+            {"criterion_id": "1", "type": "AGE_RANGE", "value": "AGE_RANGE_25_34"}
+        ]
+
+        h = _import_handlers()
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=creds),
+            patch.object(h, "create_google_ads_client", return_value=client),
+        ):
+            result = await mod.handle_tool(
+                "google_ads_demographic_targeting_list",
+                {"customer_id": "123", "ad_group_id": "456"},
+            )
+
+        client.list_demographic_criteria.assert_awaited_once_with(
+            ad_group_id="456", campaign_id=None
+        )
+        parsed = json.loads(result[0].text)
+        assert parsed[0]["type"] == "AGE_RANGE"
+
+    async def test_audience_targeting_list(self) -> None:
+        mod = _import_google_ads_tools()
+        creds, client = _mock_google_ads_context()
+        client.list_audience_criteria.return_value = [
+            {"criterion_id": "2", "type": "USER_LIST", "value": "customers/1/x/9"}
+        ]
+
+        h = _import_handlers()
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=creds),
+            patch.object(h, "create_google_ads_client", return_value=client),
+        ):
+            result = await mod.handle_tool(
+                "google_ads_audience_targeting_list",
+                {"customer_id": "123", "campaign_id": "789"},
+            )
+
+        client.list_audience_criteria.assert_awaited_once_with(
+            ad_group_id=None, campaign_id="789"
+        )
+        parsed = json.loads(result[0].text)
+        assert parsed[0]["type"] == "USER_LIST"
+
+    async def test_image_assets_list(self) -> None:
+        mod = _import_google_ads_tools()
+        creds, client = _mock_google_ads_context()
+        client.list_image_assets.return_value = [{"id": "5", "name": "hero"}]
+
+        h = _import_handlers()
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=creds),
+            patch.object(h, "create_google_ads_client", return_value=client),
+        ):
+            result = await mod.handle_tool(
+                "google_ads_image_assets_list", {"customer_id": "123"}
+            )
+
+        client.list_image_assets.assert_awaited_once_with(limit=100)
+        parsed = json.loads(result[0].text)
+        assert parsed[0]["name"] == "hero"
+
+    async def test_image_assets_list_custom_limit(self) -> None:
+        mod = _import_google_ads_tools()
+        creds, client = _mock_google_ads_context()
+        client.list_image_assets.return_value = []
+
+        h = _import_handlers()
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=creds),
+            patch.object(h, "create_google_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "google_ads_image_assets_list", {"customer_id": "123", "limit": 25}
+            )
+
+        client.list_image_assets.assert_awaited_once_with(limit=25)
 
 
 # ---------------------------------------------------------------------------

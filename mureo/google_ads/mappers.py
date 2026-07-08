@@ -5,11 +5,16 @@ from typing import Any, Protocol
 from google.ads.googleads.v23.enums.types.ad_group_criterion_approval_status import (
     AdGroupCriterionApprovalStatusEnum,
 )
+from google.ads.googleads.v23.enums.types.ad_group_criterion_status import (
+    AdGroupCriterionStatusEnum,
+)
 from google.ads.googleads.v23.enums.types.ad_strength import AdStrengthEnum
 from google.ads.googleads.v23.enums.types.ad_type import AdTypeEnum
 from google.ads.googleads.v23.enums.types.advertising_channel_type import (
     AdvertisingChannelTypeEnum,
 )
+from google.ads.googleads.v23.enums.types.age_range_type import AgeRangeTypeEnum
+from google.ads.googleads.v23.enums.types.asset_type import AssetTypeEnum
 from google.ads.googleads.v23.enums.types.bidding_strategy_system_status import (
     BiddingStrategySystemStatusEnum,
 )
@@ -18,6 +23,15 @@ from google.ads.googleads.v23.enums.types.bidding_strategy_type import (
 )
 from google.ads.googleads.v23.enums.types.campaign_primary_status_reason import (
     CampaignPrimaryStatusReasonEnum,
+)
+from google.ads.googleads.v23.enums.types.criterion_type import CriterionTypeEnum
+from google.ads.googleads.v23.enums.types.gender_type import GenderTypeEnum
+from google.ads.googleads.v23.enums.types.income_range_type import (
+    IncomeRangeTypeEnum,
+)
+from google.ads.googleads.v23.enums.types.mime_type import MimeTypeEnum
+from google.ads.googleads.v23.enums.types.parental_status_type import (
+    ParentalStatusTypeEnum,
 )
 from google.ads.googleads.v23.enums.types.policy_topic_entry_type import (
     PolicyTopicEntryTypeEnum,
@@ -134,11 +148,67 @@ _BIDDING_SYSTEM_STATUS_MAP: dict[int, str] = {
 }
 
 
+# Auto-generated criterion / asset enum maps for the read-only criteria and
+# asset retrievals (#366). The client runs with use_proto_plus=False, so the
+# search stream yields raw protobuf where enum fields are plain ints — these
+# maps recover the API enum names.
+CRITERION_TYPE_MAP: dict[int, str] = {
+    member.value: member.name for member in CriterionTypeEnum.CriterionType  # type: ignore[attr-defined]
+}
+
+AD_GROUP_CRITERION_STATUS_MAP: dict[int, str] = {
+    member.value: member.name
+    for member in AdGroupCriterionStatusEnum.AdGroupCriterionStatus  # type: ignore[attr-defined]
+}
+
+AGE_RANGE_TYPE_MAP: dict[int, str] = {
+    member.value: member.name for member in AgeRangeTypeEnum.AgeRangeType  # type: ignore[attr-defined]
+}
+
+GENDER_TYPE_MAP: dict[int, str] = {
+    member.value: member.name for member in GenderTypeEnum.GenderType  # type: ignore[attr-defined]
+}
+
+PARENTAL_STATUS_TYPE_MAP: dict[int, str] = {
+    member.value: member.name
+    for member in ParentalStatusTypeEnum.ParentalStatusType  # type: ignore[attr-defined]
+}
+
+INCOME_RANGE_TYPE_MAP: dict[int, str] = {
+    member.value: member.name
+    for member in IncomeRangeTypeEnum.IncomeRangeType  # type: ignore[attr-defined]
+}
+
+ASSET_TYPE_MAP: dict[int, str] = {
+    member.value: member.name for member in AssetTypeEnum.AssetType  # type: ignore[attr-defined]
+}
+
+MIME_TYPE_MAP: dict[int, str] = {
+    member.value: member.name for member in MimeTypeEnum.MimeType  # type: ignore[attr-defined]
+}
+
+
 def _map_enum(value: Any, mapping: dict[int, str]) -> str:
     """Generic helper to convert protobuf enum int to string."""
     if isinstance(value, int):
         return mapping.get(value, str(value))
     return str(value)
+
+
+def map_enum_name(value: Any, mapping: dict[int, str]) -> str:
+    """Convert a proto enum value to its bare name, whatever its shape.
+
+    Handles every representation the google-ads client can produce:
+    raw protobuf ints (use_proto_plus=False — the production path),
+    proto-plus members stringifying as 'EnumClass.NAME' (Python <= 3.10),
+    and members stringifying as the bare number (IntEnum on Python 3.11+).
+    """
+    if isinstance(value, int) and not isinstance(value, bool):
+        return mapping.get(value, str(value))
+    s = str(value)
+    if s.isdigit():
+        return mapping.get(int(s), s)
+    return s.rsplit(".", 1)[-1]
 
 
 # ---------------------------------------------------------------------------

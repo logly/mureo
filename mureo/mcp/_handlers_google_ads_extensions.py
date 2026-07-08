@@ -259,6 +259,34 @@ async def handle_device_targeting_get(
 
 
 @api_error_handler
+async def handle_demographic_targeting_list(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.list_demographic_criteria(
+        ad_group_id=_opt(args, "ad_group_id"),
+        campaign_id=_opt(args, "campaign_id"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_audience_targeting_list(
+    args: dict[str, Any],
+) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.list_audience_criteria(
+        ad_group_id=_opt(args, "ad_group_id"),
+        campaign_id=_opt(args, "campaign_id"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
 async def handle_device_targeting_set(
     args: dict[str, Any],
 ) -> list[TextContent]:
@@ -398,6 +426,8 @@ HANDLERS_EXTENSIONS: dict[str, Any] = {
     "google_ads_recommendations_apply": handle_recommendations_apply,
     "google_ads_device_targeting_get": handle_device_targeting_get,
     "google_ads_device_targeting_set": handle_device_targeting_set,
+    "google_ads_demographic_targeting_list": handle_demographic_targeting_list,
+    "google_ads_audience_targeting_list": handle_audience_targeting_list,
     "google_ads_bid_adjustments_get": handle_bid_adjustments_get,
     "google_ads_bid_adjustments_update": handle_bid_adjustments_update,
     "google_ads_location_targeting_list": handle_location_targeting_list,

@@ -523,6 +523,15 @@ async def handle_assets_upload_image(args: dict[str, Any]) -> list[TextContent]:
     return _json_result(result)
 
 
+@api_error_handler
+async def handle_image_assets_list(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.list_image_assets(limit=_opt(args, "limit", 100))
+    return _json_result(result)
+
+
 # ---------------------------------------------------------------------------
 # Handler mapping
 # ---------------------------------------------------------------------------
@@ -557,6 +566,7 @@ _HANDLERS_BASE: dict[str, Any] = {
     "google_ads_cpc_detect_trend": handle_cpc_detect_trend,
     "google_ads_device_analyze": handle_device_analyze,
     "google_ads_assets_upload_image": handle_assets_upload_image,
+    "google_ads_image_assets_list": handle_image_assets_list,
 }
 
 # Merge extension and analysis handlers
