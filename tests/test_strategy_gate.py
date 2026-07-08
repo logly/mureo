@@ -21,11 +21,13 @@ class TestParseGuardrails:
             "- max_daily_budget_per_campaign: 50,000\n"
             "- max_daily_budget_increase_pct: 20\n"
             "- max_total_daily_budget: 300000\n"
+            "- max_lifetime_budget_per_campaign: 900000\n"
             "- blocked_operations: google_ads_campaigns_remove, meta_ads_x\n"
         )
         assert g.max_daily_budget_per_campaign == 50000
         assert g.max_daily_budget_increase_pct == 20
         assert g.max_total_daily_budget == 300000
+        assert g.max_lifetime_budget_per_campaign == 900000
         assert g.blocked_operations == frozenset(
             {"google_ads_campaigns_remove", "meta_ads_x"}
         )
@@ -110,6 +112,36 @@ class TestEvaluateGuardrails:
             g,
         )
         assert d.allowed is False
+
+    def test_lifetime_cap_denies(self) -> None:
+        """lifetime_budget is gate-covered so it cannot sidestep caps (#367)."""
+        g = Guardrails(max_lifetime_budget_per_campaign=900000)
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update",
+            {"ad_set_id": "1", "lifetime_budget": 1_000_000},
+            g,
+        )
+        assert d.allowed is False
+        assert "max_lifetime_budget_per_campaign" in d.reason
+
+    def test_lifetime_under_cap_allows(self) -> None:
+        g = Guardrails(max_lifetime_budget_per_campaign=900000)
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update",
+            {"ad_set_id": "1", "lifetime_budget": 500000},
+            g,
+        )
+        assert d.allowed is True
+
+    def test_lifetime_budget_ignores_daily_cap(self) -> None:
+        """Daily and lifetime caps have distinct semantics — no cross-check."""
+        g = Guardrails(max_daily_budget_per_campaign=50000)
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update",
+            {"ad_set_id": "1", "lifetime_budget": 80000},
+            g,
+        )
+        assert d.allowed is True
 
     def test_non_budget_tool_with_budget_cap_allows(self) -> None:
         # A status change carries no budget → the budget cap does not apply.

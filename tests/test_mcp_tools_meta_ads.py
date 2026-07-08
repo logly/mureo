@@ -93,6 +93,15 @@ class TestMetaAdsToolDefinitions:
         assert tool is not None, f"Tool {tool_name} not found"
         assert set(tool.inputSchema["required"]) == set(expected_required)
 
+    def test_ad_sets_update_exposes_schedule_and_lifetime_budget(self) -> None:
+        """meta_ads_ad_sets_update exposes end_time and lifetime_budget (#367)."""
+        mod = _import_meta_ads_tools()
+        tool = next(t for t in mod.TOOLS if t.name == "meta_ads_ad_sets_update")
+        props = tool.inputSchema["properties"]
+        assert "end_time" in props
+        assert "lifetime_budget" in props
+        assert props["lifetime_budget"]["type"] == "integer"
+
 
 # ---------------------------------------------------------------------------
 # Handler tests — helpers
@@ -274,6 +283,139 @@ class TestMetaAdsAdSetHandlers:
             )
 
         client.update_ad_set.assert_awaited_once()
+
+    async def test_ad_sets_update_forwards_lifetime_budget(self) -> None:
+        """lifetime_budget reaches update_ad_set unchanged (#367)."""
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.update_ad_set.return_value = {"success": True}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "meta_ads_ad_sets_update",
+                {"account_id": "act_123", "ad_set_id": "20", "lifetime_budget": 90000},
+            )
+
+        kwargs = client.update_ad_set.await_args.kwargs
+        assert kwargs["lifetime_budget"] == 90000
+
+    async def test_ad_sets_update_forwards_end_time_string(self) -> None:
+        """An ISO 8601 end_time string reaches update_ad_set unchanged (#367)."""
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.update_ad_set.return_value = {"success": True}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "meta_ads_ad_sets_update",
+                {
+                    "account_id": "act_123",
+                    "ad_set_id": "20",
+                    "end_time": "2026-08-01T00:00:00+09:00",
+                },
+            )
+
+        kwargs = client.update_ad_set.await_args.kwargs
+        assert kwargs["end_time"] == "2026-08-01T00:00:00+09:00"
+
+    async def test_ad_sets_update_end_time_zero_clears_end_date(self) -> None:
+        """end_time=0 (Meta convention: no end date) is forwarded, not dropped (#367)."""
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.update_ad_set.return_value = {"success": True}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "meta_ads_ad_sets_update",
+                {"account_id": "act_123", "ad_set_id": "20", "end_time": 0},
+            )
+
+        kwargs = client.update_ad_set.await_args.kwargs
+        assert kwargs["end_time"] == 0
+
+    async def test_ad_sets_update_rejects_both_budgets(self) -> None:
+        """daily_budget and lifetime_budget are mutually exclusive on Meta (#367)."""
+        mod = _import_meta_ads_tools()
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            await mod.handle_tool(
+                "meta_ads_ad_sets_update",
+                {
+                    "account_id": "act_123",
+                    "ad_set_id": "20",
+                    "daily_budget": 5000,
+                    "lifetime_budget": 90000,
+                },
+            )
+
+    @pytest.mark.parametrize("no_end", [0, "0", " 0 "])
+    async def test_ad_sets_update_rejects_lifetime_budget_with_no_end(
+        self, no_end: Any
+    ) -> None:
+        """A lifetime budget requires an end date — end_time=0 contradicts it,
+        including the string form "0" which is wire-identical to 0 (#367)."""
+        mod = _import_meta_ads_tools()
+        with pytest.raises(ValueError, match="end_time"):
+            await mod.handle_tool(
+                "meta_ads_ad_sets_update",
+                {
+                    "account_id": "act_123",
+                    "ad_set_id": "20",
+                    "lifetime_budget": 90000,
+                    "end_time": no_end,
+                },
+            )
+
+    async def test_ad_sets_update_normalizes_string_zero_end_time(self) -> None:
+        """end_time="0" is normalized to the integer 0 before forwarding (#367)."""
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.update_ad_set.return_value = {"success": True}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "meta_ads_ad_sets_update",
+                {"account_id": "act_123", "ad_set_id": "20", "end_time": "0"},
+            )
+
+        kwargs = client.update_ad_set.await_args.kwargs
+        assert kwargs["end_time"] == 0
+
+    async def test_ad_sets_update_rejects_zero_lifetime_budget(self) -> None:
+        """A 0 lifetime budget halts delivery — refuse before any API call (#367)."""
+        mod = _import_meta_ads_tools()
+        with pytest.raises(ValueError, match="greater than 0"):
+            await mod.handle_tool(
+                "meta_ads_ad_sets_update",
+                {"account_id": "act_123", "ad_set_id": "20", "lifetime_budget": 0},
+            )
+
+    @pytest.mark.parametrize("bad_end_time", [-1, True, "", "  "])
+    async def test_ad_sets_update_rejects_invalid_end_time(
+        self, bad_end_time: Any
+    ) -> None:
+        """Negative / boolean / blank end_time values are rejected (#367)."""
+        mod = _import_meta_ads_tools()
+        with pytest.raises(ValueError, match="end_time"):
+            await mod.handle_tool(
+                "meta_ads_ad_sets_update",
+                {"account_id": "act_123", "ad_set_id": "20", "end_time": bad_end_time},
+            )
 
     async def test_pages_upload_photo(self) -> None:
         """meta_ads_pages_upload_photo returns the PAGE photo_id (cover_photo_id)."""
