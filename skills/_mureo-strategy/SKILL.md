@@ -185,18 +185,24 @@ keys (all optional):
 ```
 
 - `max_daily_budget_per_campaign` — a budget mutation proposing more than this
-  (per campaign, account currency) is **refused**.
+  (per campaign) is **refused**. Compared against the platform's native
+  budget value: Google Ads amounts in account-currency units (micros are
+  converted), Meta amounts in Meta's minor units — identical to currency
+  units for JPY and other zero-decimal currencies, but cents for USD-like
+  currencies.
 - `max_daily_budget_increase_pct` — a budget raise larger than this percent is
   refused **when the current budget is supplied** (skills pass
   `current_daily_budget`).
 - `max_total_daily_budget` — refused when a caller supplies
   `projected_total_daily_budget` above this.
 - `max_lifetime_budget_per_campaign` — a mutation proposing a lifetime /
-  period-total budget (Meta `lifetime_budget` in account currency, or a
-  Google Ads CUSTOM_PERIOD `total_amount_micros`, converted from micros)
-  above this is refused. Lifetime and daily budgets have distinct semantics,
-  so declare this cap separately — a daily cap alone does not constrain
-  lifetime-budget mutations.
+  period-total budget above this is refused. Compared against the
+  platform's native value: Meta `lifetime_budget` in Meta's minor units
+  (= currency units for JPY-like zero-decimal currencies, cents for
+  USD-like), Google Ads CUSTOM_PERIOD `total_amount` in currency units or
+  `total_amount_micros` converted from micros. Lifetime and daily budgets
+  have distinct semantics, so declare this cap separately — a daily cap
+  alone does not constrain lifetime-budget mutations.
 - `blocked_operations` — comma-separated tool names that are always refused.
 
 Absent section (or an unparseable value) ⇒ no enforcement for that rule

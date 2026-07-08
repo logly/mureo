@@ -69,6 +69,7 @@ from mureo.core.providers.models import (
     DailyReportRow,
     UpdateAdRequest,
     UpdateCampaignRequest,
+    minor_units_per_unit,
 )
 from mureo.meta_ads.client import MetaAdsApiClient
 
@@ -171,13 +172,24 @@ class MetaAdsAdapter:
         ),
     )
 
-    def __init__(self, client: MetaAdsApiClient) -> None:
+    def __init__(self, client: MetaAdsApiClient, *, currency: str) -> None:
         if not isinstance(client, MetaAdsApiClient):
             raise TypeError(
                 f"MetaAdsAdapter requires a MetaAdsApiClient instance, "
                 f"got {type(client).__name__}"
             )
+        # The account currency drives every budget conversion (Meta's
+        # per-currency offset: 100 for USD-like, 1 for JPY-like). It is
+        # deliberately REQUIRED: guessing an offset silently scales real
+        # money 100x for zero-decimal currencies. Callers can read it
+        # from the ad account (GET /act_<id>?fields=currency).
+        if not isinstance(currency, str) or not currency.strip():
+            raise ValueError(
+                "MetaAdsAdapter requires the account currency (ISO 4217 "
+                f"code, e.g. 'JPY' / 'USD'); got {currency!r}"
+            )
         self._client: MetaAdsApiClient = client
+        self._currency: str = currency.strip().upper()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -228,7 +240,9 @@ class MetaAdsAdapter:
         if filters is not None and filters.status is not None:
             status_filter = _CAMPAIGN_STATUS_TO_WIRE[filters.status]
         rows = self._run(self._client.list_campaigns(status_filter=status_filter))
-        campaigns = to_campaigns(rows, account_id=self._account_id)
+        campaigns = to_campaigns(
+            rows, account_id=self._account_id, currency=self._currency
+        )
         if filters is not None and filters.name_contains is not None:
             needle = filters.name_contains
             campaigns = tuple(c for c in campaigns if needle in c.name)
@@ -238,7 +252,7 @@ class MetaAdsAdapter:
         raw = self._run(self._client.get_campaign(campaign_id))
         if raw is None:
             raise KeyError(campaign_id)
-        return to_campaign(raw, account_id=self._account_id)
+        return to_campaign(raw, account_id=self._account_id, currency=self._currency)
 
     def create_campaign(self, request: CreateCampaignRequest) -> Campaign:
         """Create a campaign and return the post-create refreshed entity.
@@ -256,13 +270,15 @@ class MetaAdsAdapter:
         """
         self._reject_unsupported_create_fields(request)
 
-        daily_budget_cents = _micros_to_cents(request.daily_budget_micros)
+        daily_budget_minor = _micros_to_minor_units(
+            request.daily_budget_micros, self._currency
+        )
         created = self._run(
             self._client.create_campaign(
                 name=request.name,
                 objective=_DEFAULT_OBJECTIVE,
                 status="PAUSED",
-                daily_budget=daily_budget_cents,
+                daily_budget=daily_budget_minor,
             )
         )
         new_campaign_id = self._extract_new_id(created, key="id")
@@ -293,8 +309,8 @@ class MetaAdsAdapter:
         """Apply the partial ``request`` and return the refreshed campaign.
 
         Unlike Google Ads, Meta supports ``daily_budget`` mutation on the
-        campaign resource directly — the adapter converts micros → cents
-        (``micros // 10_000``) at the boundary.
+        campaign resource directly — the adapter converts micros → minor
+        units at the boundary using the account currency's Meta offset.
 
         ``status`` transitions are wired through ``update_campaign`` with
         the inverse mapping (ENABLED → ``"ACTIVE"``, PAUSED → ``"PAUSED"``,
@@ -304,7 +320,9 @@ class MetaAdsAdapter:
         if request.name is not None:
             params["name"] = request.name
         if request.daily_budget_micros is not None:
-            params["daily_budget"] = _micros_to_cents(request.daily_budget_micros)
+            params["daily_budget"] = _micros_to_minor_units(
+                request.daily_budget_micros, self._currency
+            )
         if request.status is not None:
             params["status"] = _CAMPAIGN_STATUS_TO_WIRE[request.status]
         if request.bidding_strategy is not None:
@@ -541,13 +559,19 @@ class MetaAdsAdapter:
         raise KeyError(f"mutate response missing {key!r}: {response!r}")
 
 
-def _micros_to_cents(micros: int) -> int:
-    """Convert a micros amount to a Meta cents integer (``micros // 10_000``).
+def _micros_to_minor_units(micros: int, currency: str) -> int:
+    """Convert a micros amount to Meta minor units for ``currency``.
 
-    Negative / zero values are passed through; the caller is responsible
-    for surfacing zero-budget semantics to Meta.
+    ``micros // 10_000`` for offset-100 currencies (USD cents) and
+    ``micros // 1_000_000`` for zero-decimal currencies — a blanket
+    ``// 10_000`` would send a JPY budget to Meta 100x too large.
+
+    Negative values are rejected (``ValueError``); zero passes through —
+    the caller is responsible for surfacing zero-budget semantics to Meta.
     """
-    return micros // 10_000
+    if micros < 0:
+        raise ValueError(f"budget micros must be non-negative (got {micros})")
+    return micros // (1_000_000 // minor_units_per_unit(currency))
 
 
 __all__ = ["MetaAdsAdapter"]

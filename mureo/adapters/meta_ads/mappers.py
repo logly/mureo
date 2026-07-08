@@ -14,8 +14,10 @@ package so it can be exercised in isolation.
 
 Phase 1 conversions
 -------------------
-- Budget: Meta returns ``daily_budget`` as a **cents** string; this
-  mapper converts to **micros** (``int(cents) * 10_000``).
+- Budget: Meta returns ``daily_budget`` in the currency's **minor
+  units** (offset 100 for e.g. USD, offset 1 for zero-decimal
+  currencies like JPY); this mapper converts to **micros** via the
+  caller-supplied account currency.
 - Spend: Meta returns ``spend`` as a **dollars** string; this mapper
   converts to **micros** (``int(round(float(s) * 1_000_000))``).
 - Status: Meta wire-strings (``ACTIVE`` / ``PAUSED`` / ``DELETED`` /
@@ -38,6 +40,7 @@ from mureo.core.providers.models import (
     Campaign,
     CampaignStatus,
     DailyReportRow,
+    minor_units_per_unit,
 )
 
 if TYPE_CHECKING:
@@ -118,38 +121,45 @@ def map_ad_status(meta_wire: Any) -> AdStatus:
 # ---------------------------------------------------------------------------
 
 
-def to_campaign(raw: dict[str, Any], *, account_id: str) -> Campaign:
+def to_campaign(raw: dict[str, Any], *, account_id: str, currency: str) -> Campaign:
     """Build a :class:`Campaign` from a Meta campaign row.
 
-    ``daily_budget`` is returned by Meta as a cents-denominated string
-    (e.g. ``"1500"`` for 15.00 USD). This mapper converts to micros via
-    ``int(cents) * 10_000`` — exact integer arithmetic, no float
-    round-trip.
+    ``daily_budget`` is returned by Meta in the currency's minor units
+    (``"1500"`` = 15.00 USD at offset 100, ``"5000"`` = ¥5,000 at offset
+    1). This mapper converts to micros with exact integer arithmetic —
+    no float round-trip — using the account ``currency`` to pick the
+    offset.
     """
     return Campaign(
         id=str(raw["id"]),
         account_id=account_id,
         name=str(raw["name"]),
         status=map_campaign_status(raw.get("status")),
-        daily_budget_micros=_cents_to_micros(raw.get("daily_budget")),
+        daily_budget_micros=_minor_units_to_micros(raw.get("daily_budget"), currency),
     )
 
 
 def to_campaigns(
-    rows: Iterable[dict[str, Any]], *, account_id: str
+    rows: Iterable[dict[str, Any]], *, account_id: str, currency: str
 ) -> tuple[Campaign, ...]:
     """Build a tuple of :class:`Campaign` from any iterable of rows."""
-    return tuple(to_campaign(row, account_id=account_id) for row in rows)
+    return tuple(
+        to_campaign(row, account_id=account_id, currency=currency) for row in rows
+    )
 
 
-def _cents_to_micros(cents_value: Any) -> int:
-    """Convert a Meta cents value (str or int, possibly missing) to micros.
+def _minor_units_to_micros(value: Any, currency: str) -> int:
+    """Convert a Meta minor-unit value (str or int, possibly missing) to micros.
 
-    Returns 0 when the field is absent (e.g. lifetime-budget campaigns).
+    The micros-per-minor-unit factor depends on the currency's Meta
+    offset: 10_000 for offset-100 currencies (USD cents), 1_000_000 for
+    zero-decimal currencies (JPY — where a blanket ×10_000 would record
+    budgets 100x too small). Returns 0 when the field is absent (e.g.
+    lifetime-budget campaigns).
     """
-    if cents_value is None or cents_value == "":
+    if value is None or value == "":
         return 0
-    return int(cents_value) * 10_000
+    return int(value) * (1_000_000 // minor_units_per_unit(currency))
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from mureo.meta_ads.mappers import (
-    _cents_to_amount,
+    _minor_units_to_amount,
     _extract_conversions,
     _extract_cost_per_conversion,
     _safe_float,
@@ -27,19 +27,22 @@ from mureo.meta_ads.mappers import (
 
 
 @pytest.mark.unit
-class TestCentsToAmount:
+class TestMinorUnitsToAmount:
     def test_文字列のセントを変換(self) -> None:
-        assert _cents_to_amount("100000") == 1000.0
+        assert _minor_units_to_amount("100000", "USD") == 1000.0
 
     def test_整数のセントを変換(self) -> None:
-        assert _cents_to_amount(50000) == 500.0
+        assert _minor_units_to_amount(50000, "USD") == 500.0
+
+    def test_JPYはオフセット1でそのまま(self) -> None:
+        assert _minor_units_to_amount("5000", "JPY") == 5000.0
 
     def test_Noneの場合は0(self) -> None:
-        assert _cents_to_amount(None) == 0.0
+        assert _minor_units_to_amount(None, "USD") == 0.0
 
     def test_ゼロの場合(self) -> None:
-        assert _cents_to_amount("0") == 0.0
-        assert _cents_to_amount(0) == 0.0
+        assert _minor_units_to_amount("0", "USD") == 0.0
+        assert _minor_units_to_amount(0, "JPY") == 0.0
 
 
 @pytest.mark.unit
@@ -160,7 +163,7 @@ class TestMapCampaign:
             "stop_time": "",
         }
 
-        result = map_campaign(raw)
+        result = map_campaign(raw, currency="USD")
 
         assert result["campaign_id"] == "campaign_123"
         assert result["campaign_name"] == "テストキャンペーン"
@@ -170,7 +173,7 @@ class TestMapCampaign:
         assert result["budget_remaining"] == 3000.0
 
     def test_空の辞書(self) -> None:
-        result = map_campaign({})
+        result = map_campaign({}, currency="USD")
 
         assert result["campaign_id"] == ""
         assert result["campaign_name"] == ""
@@ -202,7 +205,7 @@ class TestMapAdSet:
             "end_time": "",
         }
 
-        result = map_ad_set(raw)
+        result = map_ad_set(raw, currency="USD")
 
         assert result["ad_set_id"] == "adset_456"
         assert result["ad_set_name"] == "テスト広告セット"
@@ -211,7 +214,7 @@ class TestMapAdSet:
         assert result["targeting"] == {"age_min": 25, "age_max": 55}
 
     def test_空の辞書(self) -> None:
-        result = map_ad_set({})
+        result = map_ad_set({}, currency="USD")
 
         assert result["ad_set_id"] == ""
         assert result["daily_budget"] == 0.0

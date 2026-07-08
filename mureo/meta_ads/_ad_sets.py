@@ -88,13 +88,15 @@ class AdSetsMixin:
         Args:
             campaign_id: Parent campaign ID
             name: Ad set name
-            daily_budget: Daily budget (in cents). Set to 0 for CBO campaigns.
+            daily_budget: Daily budget in the currency's minor units
+                (cents for USD, whole yen for JPY). Set to 0 for CBO campaigns.
             billing_event: Billing event (IMPRESSIONS, LINK_CLICKS, etc.)
             optimization_goal: Optimization goal (REACH, LINK_CLICKS, CONVERSIONS, etc.)
             targeting: Targeting settings
             status: Initial status (default: PAUSED)
             use_dynamic_creative: Enable dynamic creative
-            bid_amount: Bid amount in cents (required for some optimization goals)
+            bid_amount: Bid amount in the currency's minor units (cents for
+                USD, whole yen for JPY; required for some optimization goals)
 
         Returns:
             Created ad set information.

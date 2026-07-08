@@ -2,22 +2,27 @@ from __future__ import annotations
 
 from typing import Any
 
+from mureo.core.providers.models import minor_units_per_unit
 
-def _cents_to_amount(cents_str: str | int | None) -> float:
-    """Convert a cent-denominated amount to a real currency value.
 
-    Meta API returns budget amounts in cents (integer strings).
-    Divide by 100 regardless of currency to get the real value.
+def _minor_units_to_amount(value: str | int | None, currency: str) -> float:
+    """Convert a Meta minor-unit amount to a real currency value.
+
+    Meta returns budgets/bids in the currency's minor unit with a
+    per-currency offset: "1500" is 15.00 USD (offset 100) but "5000" is
+    exactly ¥5,000 (offset 1 — JPY has no minor unit). A blanket ÷100
+    would shrink zero-decimal-currency amounts 100x.
 
     Args:
-        cents_str: Amount in cents (string or integer)
+        value: Amount in minor units (string or integer)
+        currency: ISO 4217 account currency code (e.g. "JPY", "USD")
 
     Returns:
         Amount in account currency units
     """
-    if cents_str is None:
+    if value is None:
         return 0.0
-    return int(cents_str) / 100
+    return int(value) / minor_units_per_unit(currency)
 
 
 def _safe_float(value: str | int | float | None) -> float:
@@ -87,11 +92,13 @@ def _extract_cost_per_conversion(
     return None
 
 
-def map_campaign(raw: dict[str, Any]) -> dict[str, Any]:
+def map_campaign(raw: dict[str, Any], *, currency: str) -> dict[str, Any]:
     """Convert a Meta API campaign response to a common format.
 
     Args:
         raw: Meta API raw response
+        currency: ISO 4217 account currency code — required to scale the
+            minor-unit budget fields correctly (offset 1 vs 100)
 
     Returns:
         Formatted campaign information
@@ -101,9 +108,11 @@ def map_campaign(raw: dict[str, Any]) -> dict[str, Any]:
         "campaign_name": raw.get("name", ""),
         "status": raw.get("status", ""),
         "objective": raw.get("objective", ""),
-        "daily_budget": _cents_to_amount(raw.get("daily_budget")),
-        "lifetime_budget": _cents_to_amount(raw.get("lifetime_budget")),
-        "budget_remaining": _cents_to_amount(raw.get("budget_remaining")),
+        "daily_budget": _minor_units_to_amount(raw.get("daily_budget"), currency),
+        "lifetime_budget": _minor_units_to_amount(raw.get("lifetime_budget"), currency),
+        "budget_remaining": _minor_units_to_amount(
+            raw.get("budget_remaining"), currency
+        ),
         "bid_strategy": raw.get("bid_strategy", ""),
         "special_ad_categories": raw.get("special_ad_categories", []),
         "created_time": raw.get("created_time", ""),
@@ -113,11 +122,13 @@ def map_campaign(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def map_ad_set(raw: dict[str, Any]) -> dict[str, Any]:
+def map_ad_set(raw: dict[str, Any], *, currency: str) -> dict[str, Any]:
     """Convert a Meta API ad set response to a common format.
 
     Args:
         raw: Meta API raw response
+        currency: ISO 4217 account currency code — required to scale the
+            minor-unit budget/bid fields correctly (offset 1 vs 100)
 
     Returns:
         Formatted ad set information
@@ -127,12 +138,12 @@ def map_ad_set(raw: dict[str, Any]) -> dict[str, Any]:
         "ad_set_name": raw.get("name", ""),
         "status": raw.get("status", ""),
         "campaign_id": raw.get("campaign_id", ""),
-        "daily_budget": _cents_to_amount(raw.get("daily_budget")),
-        "lifetime_budget": _cents_to_amount(raw.get("lifetime_budget")),
+        "daily_budget": _minor_units_to_amount(raw.get("daily_budget"), currency),
+        "lifetime_budget": _minor_units_to_amount(raw.get("lifetime_budget"), currency),
         "billing_event": raw.get("billing_event", ""),
         "optimization_goal": raw.get("optimization_goal", ""),
         "targeting": raw.get("targeting"),
-        "bid_amount": _cents_to_amount(raw.get("bid_amount")),
+        "bid_amount": _minor_units_to_amount(raw.get("bid_amount"), currency),
         "created_time": raw.get("created_time", ""),
         "updated_time": raw.get("updated_time", ""),
         "start_time": raw.get("start_time", ""),

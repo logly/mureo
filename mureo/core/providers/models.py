@@ -18,7 +18,10 @@ Currency convention (Phase 1)
 -----------------------------
 Monetary amounts use ``int`` micros (1/1,000,000 of the account currency),
 matching the existing Google Ads convention in ``mureo/AGENTS.md``. The
-Meta adapter is responsible for converting to/from cents at its boundary.
+Meta adapter is responsible for converting to/from the currency's minor
+units at its boundary — see :data:`ZERO_DECIMAL_CURRENCIES` /
+:func:`minor_units_per_unit` (Meta's per-currency offset: 100 for e.g.
+USD, 1 for JPY and the other zero-decimal currencies).
 A future ``Money(amount_minor: int, currency: str)`` abstraction may
 replace these raw ``_micros: int`` fields in Phase 2.
 
@@ -45,6 +48,116 @@ from dataclasses import dataclass
 from datetime import date
 
 from mureo.core.providers.capabilities import StrEnum
+
+# Meta Marketing API per-currency offsets. Offset-1 currencies express
+# budgets/bids as whole currency units; offset-100 as hundredths
+# ("cents"). Both sets transcribed from the official table:
+# https://developers.facebook.com/docs/marketing-api/currencies
+ZERO_DECIMAL_CURRENCIES: frozenset[str] = frozenset(
+    {
+        "CLP",
+        "COP",
+        "CRC",
+        "HUF",
+        "IDR",
+        "ISK",
+        "JPY",
+        "KRW",
+        "PYG",
+        "TWD",
+        "VND",
+    }
+)
+
+# Offset-100 currencies Meta supports (includes legacy codes Meta still
+# lists, e.g. LVL/LTL/SKK/VEF, and Meta's own FBZ).
+META_OFFSET_100_CURRENCIES: frozenset[str] = frozenset(
+    {
+        "AED",
+        "ARS",
+        "AUD",
+        "BDT",
+        "BGN",
+        "BHD",
+        "BOB",
+        "BRL",
+        "CAD",
+        "CHF",
+        "CNY",
+        "CZK",
+        "DKK",
+        "DZD",
+        "EGP",
+        "EUR",
+        "FBZ",
+        "GBP",
+        "GTQ",
+        "HKD",
+        "HNL",
+        "HRK",
+        "ILS",
+        "INR",
+        "JOD",
+        "KES",
+        "LTL",
+        "LVL",
+        "MOP",
+        "MXN",
+        "MYR",
+        "NGN",
+        "NIO",
+        "NOK",
+        "NZD",
+        "PEN",
+        "PHP",
+        "PKR",
+        "PLN",
+        "QAR",
+        "RON",
+        "RSD",
+        "RUB",
+        "SAR",
+        "SEK",
+        "SGD",
+        "SKK",
+        "THB",
+        "TRY",
+        "UAH",
+        "USD",
+        "UYU",
+        "VEF",
+        "VES",
+        "ZAR",
+    }
+)
+
+
+def minor_units_per_unit(currency: str) -> int:
+    """Minor units per one currency unit under Meta's offset rules.
+
+    Returns 1 for zero-decimal currencies (a Meta budget of ``"5000"``
+    in JPY means exactly ¥5,000) and 100 for offset-100 currencies
+    (``"1500"`` in USD means 15.00 USD). A blanket divide-by-100
+    silently shrinks JPY budgets 100x, so every Meta money conversion
+    must go through here.
+
+    Unrecognized codes raise ``ValueError`` instead of guessing: on the
+    write path a wrong guess (e.g. the typo ``"JPN"`` falling back to
+    offset 100) would send a 100x-too-large budget to the live API, and
+    an unknown-but-real code likely means Meta extended its currency
+    table — fail loudly so the whitelist gets updated.
+    """
+    code = currency.strip().upper()
+    if code in ZERO_DECIMAL_CURRENCIES:
+        return 1
+    if code in META_OFFSET_100_CURRENCIES:
+        return 100
+    raise ValueError(
+        f"Unknown Meta currency code: {currency!r}. Expected an ISO 4217 "
+        "code from Meta's supported-currency table "
+        "(https://developers.facebook.com/docs/marketing-api/currencies)."
+    )
+
 
 # ---------------------------------------------------------------------------
 # Enums (StrEnum — values are snake_case strings forming the public ABI)
@@ -329,6 +442,9 @@ class ExtensionRequest:
 
 
 __all__ = [
+    "META_OFFSET_100_CURRENCIES",
+    "ZERO_DECIMAL_CURRENCIES",
+    "minor_units_per_unit",
     "Ad",
     "AdStatus",
     "Audience",

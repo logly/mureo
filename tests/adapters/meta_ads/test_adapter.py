@@ -129,7 +129,7 @@ def mock_client() -> Mock:
 
 @pytest.fixture
 def adapter(mock_client: Mock) -> MetaAdsAdapter:
-    return MetaAdsAdapter(client=mock_client)
+    return MetaAdsAdapter(client=mock_client, currency="USD")
 
 
 @pytest.fixture(autouse=True)
@@ -356,13 +356,13 @@ def test_init_rejects_non_client() -> None:
     """``__init__`` rejects a non-``MetaAdsApiClient`` value with
     ``TypeError``."""
     with pytest.raises(TypeError):
-        MetaAdsAdapter(client="not a client")  # type: ignore[arg-type]
+        MetaAdsAdapter(client="not a client", currency="USD")  # type: ignore[arg-type]
 
 
 @pytest.mark.unit
 def test_init_does_no_io(mock_client: Mock) -> None:
     """``__init__`` is pure — no async call is invoked on the client."""
-    MetaAdsAdapter(client=mock_client)
+    MetaAdsAdapter(client=mock_client, currency="USD")
     for attr_name in (
         "list_campaigns",
         "list_ad_sets",
@@ -378,7 +378,7 @@ def test_init_does_no_io(mock_client: Mock) -> None:
 @pytest.mark.unit
 def test_init_stores_client_privately(mock_client: Mock) -> None:
     """Adapter stores the injected client on a private attribute."""
-    a = MetaAdsAdapter(client=mock_client)
+    a = MetaAdsAdapter(client=mock_client, currency="USD")
     assert getattr(a, "_client") is mock_client  # noqa: B009
     assert not hasattr(a, "client")  # no public attribute
 

@@ -120,7 +120,7 @@ def test_to_campaign_maps_required_fields_and_cents_to_micros() -> None:
         "status": "ACTIVE",
         "daily_budget": "1500",
     }
-    out = to_campaign(raw, account_id=_ACCOUNT_ID)
+    out = to_campaign(raw, account_id=_ACCOUNT_ID, currency="USD")
     assert isinstance(out, Campaign)
     assert out.id == "c1"
     assert out.account_id == _ACCOUNT_ID
@@ -141,7 +141,7 @@ def test_to_campaign_missing_daily_budget_defaults_to_zero() -> None:
         "name": "Lifetime",
         "status": "ACTIVE",
     }
-    out = to_campaign(raw, account_id=_ACCOUNT_ID)
+    out = to_campaign(raw, account_id=_ACCOUNT_ID, currency="USD")
     assert out.daily_budget_micros == 0
 
 
@@ -154,7 +154,7 @@ def test_to_campaign_unknown_status_raises_value_error() -> None:
         "daily_budget": "0",
     }
     with pytest.raises(ValueError):
-        to_campaign(raw, account_id=_ACCOUNT_ID)
+        to_campaign(raw, account_id=_ACCOUNT_ID, currency="USD")
 
 
 @pytest.mark.unit
@@ -163,7 +163,7 @@ def test_to_campaigns_returns_tuple_of_campaign() -> None:
         {"id": "1", "name": "a", "status": "ACTIVE", "daily_budget": "100"},
         {"id": "2", "name": "b", "status": "PAUSED", "daily_budget": "200"},
     ]
-    out = to_campaigns(rows, account_id=_ACCOUNT_ID)
+    out = to_campaigns(rows, account_id=_ACCOUNT_ID, currency="USD")
     assert isinstance(out, tuple)
     assert len(out) == 2
     assert all(isinstance(c, Campaign) for c in out)

@@ -86,8 +86,10 @@ class CampaignsMixin:
             name: Campaign name
             objective: Campaign objective (CONVERSIONS, LINK_CLICKS, REACH, etc.)
             status: Initial status (default: PAUSED)
-            daily_budget: Daily budget (in cents)
-            lifetime_budget: Lifetime budget (in cents)
+            daily_budget: Daily budget in the currency's minor units
+                (cents for USD, whole yen for JPY)
+            lifetime_budget: Lifetime budget in the currency's minor units
+                (cents for USD, whole yen for JPY)
             special_ad_categories: Special ad categories (HOUSING, CREDIT, etc.)
 
         Returns:
