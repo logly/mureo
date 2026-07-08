@@ -133,6 +133,9 @@ immediate request but is not remembered.
 | 81 | `google_ads_capture_screenshot` | Capture | Read | Capture a screenshot of a URL |
 | 82 | `google_ads_assets_upload_image` | Asset | Write | Upload image as Google Ads asset |
 | 83 | `google_ads_ads_create_display` | Ad | Write | Create an RDA (responsive display ad); image files are uploaded automatically |
+| 84 | `google_ads_demographic_targeting_list` | Targeting | Read | List demographic criteria (age/gender/parental status/income) |
+| 85 | `google_ads_audience_targeting_list` | Targeting | Read | List audience criteria (user lists, interests, custom/combined audiences) |
+| 86 | `google_ads_image_assets_list` | Asset | Read | List image assets with names and dimensions |
 
 ## API Resources
 
@@ -476,6 +479,18 @@ immediate request but is not remembered.
   Required: customer_id (string)
   ```
 
+- `demographic_targeting.list` -- List explicit demographic criteria (age range, gender, parental status, income). Excluded segments have negative=true; segments with no explicit criterion are targeted by default and not returned.
+  ```
+  Required: customer_id (string)
+  Optional: ad_group_id (string), campaign_id (string)
+  ```
+
+- `audience_targeting.list` -- List audience-type criteria (user interests, user lists, custom/combined audiences). value is the criterion's resource name.
+  ```
+  Required: customer_id (string)
+  Optional: ad_group_id (string), campaign_id (string)
+  ```
+
 ### analysis & reporting
 
 - `performance.report` -- Get performance metrics aggregated by campaign.
@@ -611,6 +626,12 @@ immediate request but is not remembered.
 - `assets.upload_image` -- Upload a local image file as a Google Ads asset.
   ```
   Required: customer_id, file_path (string)
+  ```
+
+- `image_assets.list` -- List image assets with names, dimensions, and serving URLs.
+  ```
+  Required: customer_id (string)
+  Optional: limit (integer 1-1000, default: 100)
   ```
 
 ## Common Workflows

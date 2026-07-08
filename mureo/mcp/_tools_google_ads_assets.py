@@ -59,4 +59,32 @@ TOOLS: list[Tool] = [
             "required": ["file_path"],
         },
     ),
+    Tool(
+        name="google_ads_image_assets_list",
+        description=(
+            "Lists image assets in the Google Ads account with their "
+            "names and dimensions. Returns one entry per asset shaped "
+            "{id, name (the display name shown in the Google Ads UI), "
+            "type ('IMAGE'), file_size (bytes), mime_type (e.g. "
+            "'IMAGE_PNG'), width_pixels, height_pixels, url (full-size "
+            "serving URL)}. Read-only. Use this to find an existing "
+            "asset id/name before referencing it in a Responsive "
+            "Display Ad, or to audit what imagery the account already "
+            "has instead of re-uploading duplicates via "
+            "google_ads_assets_upload_image."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "customer_id": _CUSTOMER_ID_PARAM,
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": ("Maximum number of assets to return. Default 100."),
+                },
+            },
+            "required": [],
+        },
+    ),
 ]

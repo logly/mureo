@@ -15,7 +15,17 @@ from typing import TYPE_CHECKING, Any
 from google.protobuf.field_mask_pb2 import FieldMask as PbFieldMask
 
 from mureo.google_ads.client import _wrap_mutate_error
-from mureo.google_ads.mappers import map_change_event, map_recommendation
+from mureo.google_ads.mappers import (
+    AD_GROUP_CRITERION_STATUS_MAP,
+    AGE_RANGE_TYPE_MAP,
+    CRITERION_TYPE_MAP,
+    GENDER_TYPE_MAP,
+    INCOME_RANGE_TYPE_MAP,
+    PARENTAL_STATUS_TYPE_MAP,
+    map_change_event,
+    map_enum_name,
+    map_recommendation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +40,32 @@ _DEVICE_ENUM_MAP: dict[int, str] = {
     2: "MOBILE",
     3: "TABLET",
     4: "DESKTOP",
+}
+
+
+# Internal row cap for the criteria reads below. They allow account-wide,
+# unscoped queries (unlike the campaign-scoped sibling reads), so an explicit
+# LIMIT keeps a huge account from materializing an unbounded result set.
+_CRITERIA_READ_LIMIT = 1000
+
+# Demographic criterion types → (attribute carrying the value, enum map for
+# that value). Keys double as the GAQL type filter (whitelisted literals,
+# never user input).
+_DEMOGRAPHIC_VALUE_FIELDS: dict[str, tuple[str, dict[int, str]]] = {
+    "AGE_RANGE": ("age_range", AGE_RANGE_TYPE_MAP),
+    "GENDER": ("gender", GENDER_TYPE_MAP),
+    "PARENTAL_STATUS": ("parental_status", PARENTAL_STATUS_TYPE_MAP),
+    "INCOME_RANGE": ("income_range", INCOME_RANGE_TYPE_MAP),
+}
+
+# Audience criterion types → (attribute on ad_group_criterion, value field).
+_AUDIENCE_VALUE_FIELDS: dict[str, tuple[str, str]] = {
+    "USER_INTEREST": ("user_interest", "user_interest_category"),
+    "USER_LIST": ("user_list", "user_list"),
+    "AUDIENCE": ("audience", "audience"),
+    "CUSTOM_AFFINITY": ("custom_affinity", "custom_affinity"),
+    "CUSTOM_AUDIENCE": ("custom_audience", "custom_audience"),
+    "COMBINED_AUDIENCE": ("combined_audience", "combined_audience"),
 }
 
 
@@ -170,6 +206,118 @@ class _TargetingMixin:
             )
             for d in all_devices
         ]
+
+    def _criterion_scope_clause(
+        self, ad_group_id: str | None, campaign_id: str | None
+    ) -> str:
+        """Optional AND-clauses scoping an ad_group_criterion read (#366)."""
+        clause = ""
+        if ad_group_id:
+            self._validate_id(ad_group_id, "ad_group_id")
+            clause += f"\n                AND ad_group.id = {ad_group_id}"
+        if campaign_id:
+            self._validate_id(campaign_id, "campaign_id")
+            clause += f"\n                AND campaign.id = {campaign_id}"
+        return clause
+
+    @staticmethod
+    def _criterion_row(row: Any, ctype: str, value: str | None) -> dict[str, Any]:
+        """Shape one ad_group_criterion search row for the criteria reads."""
+        crit = row.ad_group_criterion
+        return {
+            "criterion_id": str(crit.criterion_id),
+            "type": ctype,
+            "value": value,
+            "status": map_enum_name(crit.status, AD_GROUP_CRITERION_STATUS_MAP),
+            "negative": bool(crit.negative),
+            "campaign_id": str(row.campaign.id),
+            "ad_group_id": str(row.ad_group.id),
+            "ad_group_name": str(row.ad_group.name),
+        }
+
+    async def list_demographic_criteria(
+        self,
+        ad_group_id: str | None = None,
+        campaign_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List demographic (age / gender / parental status / income) criteria.
+
+        Read-only. Returns one entry per explicit ad-group criterion;
+        segments without an explicit criterion are targeted by default and
+        do not appear (Google Ads convention).
+        """
+        type_filter = ", ".join(f"'{t}'" for t in _DEMOGRAPHIC_VALUE_FIELDS)
+        query = f"""
+            SELECT
+                campaign.id,
+                ad_group.id, ad_group.name,
+                ad_group_criterion.criterion_id,
+                ad_group_criterion.type,
+                ad_group_criterion.status,
+                ad_group_criterion.negative,
+                ad_group_criterion.age_range.type,
+                ad_group_criterion.gender.type,
+                ad_group_criterion.parental_status.type,
+                ad_group_criterion.income_range.type
+            FROM ad_group_criterion
+            WHERE ad_group_criterion.type IN ({type_filter})"""
+        query += self._criterion_scope_clause(ad_group_id, campaign_id)
+        query += f"\n            LIMIT {_CRITERIA_READ_LIMIT}"
+        response = await self._search(query)  # type: ignore[attr-defined]
+        results: list[dict[str, Any]] = []
+        for row in response:
+            crit = row.ad_group_criterion
+            ctype = map_enum_name(crit.type_, CRITERION_TYPE_MAP)
+            value_spec = _DEMOGRAPHIC_VALUE_FIELDS.get(ctype)
+            value = (
+                map_enum_name(getattr(crit, value_spec[0]).type_, value_spec[1])
+                if value_spec
+                else None
+            )
+            results.append(self._criterion_row(row, ctype, value))
+        return results
+
+    async def list_audience_criteria(
+        self,
+        ad_group_id: str | None = None,
+        campaign_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List audience-type criteria attached to ad groups.
+
+        Read-only. Covers user interests, remarketing / customer-match user
+        lists, custom & combined audiences, and Audience resources. ``value``
+        is the criterion's resource name (e.g. 'customers/1/userLists/42').
+        """
+        type_filter = ", ".join(f"'{t}'" for t in _AUDIENCE_VALUE_FIELDS)
+        query = f"""
+            SELECT
+                campaign.id,
+                ad_group.id, ad_group.name,
+                ad_group_criterion.criterion_id,
+                ad_group_criterion.type,
+                ad_group_criterion.status,
+                ad_group_criterion.negative,
+                ad_group_criterion.user_interest.user_interest_category,
+                ad_group_criterion.user_list.user_list,
+                ad_group_criterion.audience.audience,
+                ad_group_criterion.custom_affinity.custom_affinity,
+                ad_group_criterion.custom_audience.custom_audience,
+                ad_group_criterion.combined_audience.combined_audience
+            FROM ad_group_criterion
+            WHERE ad_group_criterion.type IN ({type_filter})"""
+        query += self._criterion_scope_clause(ad_group_id, campaign_id)
+        query += f"\n            LIMIT {_CRITERIA_READ_LIMIT}"
+        response = await self._search(query)  # type: ignore[attr-defined]
+        results: list[dict[str, Any]] = []
+        for row in response:
+            crit = row.ad_group_criterion
+            ctype = map_enum_name(crit.type_, CRITERION_TYPE_MAP)
+            fields = _AUDIENCE_VALUE_FIELDS.get(ctype)
+            value = (
+                str(getattr(getattr(crit, fields[0]), fields[1])) if fields else None
+            )
+            results.append(self._criterion_row(row, ctype, value))
+        return results
 
     @_wrap_mutate_error("device targeting update")
     async def set_device_targeting(self, params: dict[str, Any]) -> dict[str, Any]:
