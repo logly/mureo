@@ -421,7 +421,30 @@ TOOLS: list[Tool] = [
                     "minimum": 1,
                     "description": (
                         "New daily budget in account currency minor units. "
-                        "Only valid when the campaign is not using CBO."
+                        "Only valid when the campaign is not using CBO. "
+                        "Mutually exclusive with lifetime_budget."
+                    ),
+                },
+                "lifetime_budget": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": (
+                        "New lifetime budget in account currency minor units "
+                        "(cents for USD, yen for JPY). Mutually exclusive "
+                        "with daily_budget. Requires the ad set to have an "
+                        "end_time — supply one in the same call if it is "
+                        "not already set."
+                    ),
+                },
+                "end_time": {
+                    "type": ["string", "integer"],
+                    "description": (
+                        "New schedule end. Accepts an ISO 8601 datetime "
+                        "string (e.g. '2026-08-01T00:00:00+0900') or a UTC "
+                        "UNIX timestamp integer. Pass 0 to clear the end "
+                        "date so the ad set runs continuously (Meta API "
+                        "convention; only valid with a daily budget — a "
+                        "lifetime budget requires an end date)."
                     ),
                 },
                 "targeting": {
