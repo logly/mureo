@@ -128,8 +128,27 @@ def _proposed_budget(arguments: dict[str, Any]) -> float | None:
             v = arguments[key]
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 return float(v)
-    # Google Ads budgets are sometimes expressed in micros.
-    micros = arguments.get("budget_amount_micros")
+    # Google Ads budgets are sometimes expressed in micros —
+    # budget_amount_micros on campaign tools, amount_micros on budget tools.
+    for micros_key in ("budget_amount_micros", "amount_micros"):
+        micros = arguments.get(micros_key)
+        if isinstance(micros, (int, float)) and not isinstance(micros, bool):
+            return float(micros) / 1_000_000
+    return None
+
+
+def _proposed_lifetime_budget(arguments: dict[str, Any]) -> float | None:
+    """Extract a proposed lifetime / period-total budget in currency units.
+
+    Both spellings of a Google total budget are covered — ``total_amount``
+    (currency units) and ``total_amount_micros`` — so the cap cannot be
+    sidestepped by picking the other parameter form.
+    """
+    for key in ("lifetime_budget", "total_amount"):
+        v = arguments.get(key)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return float(v)
+    micros = arguments.get("total_amount_micros")
     if isinstance(micros, (int, float)) and not isinstance(micros, bool):
         return float(micros) / 1_000_000
     return None
@@ -196,19 +215,16 @@ def evaluate_guardrails(
     # Lifetime (period-total) budgets have distinct semantics from daily
     # budgets, so they get their own cap rather than reusing the daily one.
     # Without this, a lifetime-budget mutation would sidestep every budget
-    # guardrail the operator wrote (#367).
-    lifetime = arguments.get("lifetime_budget")
+    # guardrail the operator wrote (#367). Covers Meta's ``lifetime_budget``
+    # (minor units) and Google's CUSTOM_PERIOD ``total_amount_micros``
+    # (micros → currency units), mirroring the daily micros handling (#366).
+    lifetime = _proposed_lifetime_budget(arguments)
     lifetime_cap = guardrails.max_lifetime_budget_per_campaign
-    if (
-        lifetime_cap is not None
-        and isinstance(lifetime, (int, float))
-        and not isinstance(lifetime, bool)
-        and float(lifetime) > lifetime_cap
-    ):
+    if lifetime_cap is not None and lifetime is not None and lifetime > lifetime_cap:
         return PolicyDecision(
             allowed=False,
             reason=(
-                f"Proposed lifetime budget {float(lifetime):,.0f} exceeds the "
+                f"Proposed lifetime budget {lifetime:,.0f} exceeds the "
                 f"STRATEGY.md Guardrails cap of {lifetime_cap:,.0f} "
                 f"(max_lifetime_budget_per_campaign)."
             ),

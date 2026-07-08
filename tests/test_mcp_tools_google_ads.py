@@ -158,6 +158,112 @@ def _mock_google_ads_context():
 
 
 # ---------------------------------------------------------------------------
+# Handler tests — budget type (daily vs total / CUSTOM_PERIOD) (#366)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGoogleAdsBudgetPeriodHandlers:
+    """Total-budget / period parameters on the budget tools."""
+
+    def test_budget_update_schema_exposes_total(self) -> None:
+        mod = _import_google_ads_tools()
+        tool = next(t for t in mod.TOOLS if t.name == "google_ads_budget_update")
+        props = tool.inputSchema["properties"]
+        assert "total_amount" in props
+        assert "total_amount_micros" in props
+        assert {"required": ["total_amount_micros"]} in tool.inputSchema["anyOf"]
+
+    def test_budget_create_schema_exposes_period_and_total(self) -> None:
+        mod = _import_google_ads_tools()
+        tool = next(t for t in mod.TOOLS if t.name == "google_ads_budget_create")
+        props = tool.inputSchema["properties"]
+        assert props["period"]["enum"] == ["DAILY", "CUSTOM_PERIOD"]
+        assert "total_amount_micros" in props
+        assert tool.inputSchema["required"] == ["name"]
+
+    async def test_budget_update_forwards_total(self) -> None:
+        mod = _import_google_ads_tools()
+        creds, client = _mock_google_ads_context()
+        client.update_budget.return_value = {"resource_name": "x"}
+
+        h = _import_handlers()
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=creds),
+            patch.object(h, "create_google_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "google_ads_budget_update",
+                {
+                    "customer_id": "123",
+                    "budget_id": "100",
+                    "total_amount_micros": 900_000_000_000,
+                },
+            )
+
+        params = client.update_budget.await_args.args[0]
+        assert params["total_amount_micros"] == 900_000_000_000
+        assert "amount" not in params and "amount_micros" not in params
+
+    async def test_budget_update_still_requires_some_amount(self) -> None:
+        mod = _import_google_ads_tools()
+        creds, client = _mock_google_ads_context()
+        h = _import_handlers()
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=creds),
+            patch.object(h, "create_google_ads_client", return_value=client),
+            pytest.raises(ValueError, match="required"),
+        ):
+            await mod.handle_tool(
+                "google_ads_budget_update",
+                {"customer_id": "123", "budget_id": "100"},
+            )
+
+    async def test_budget_create_forwards_period_and_total(self) -> None:
+        mod = _import_google_ads_tools()
+        creds, client = _mock_google_ads_context()
+        client.create_budget.return_value = {"resource_name": "y"}
+
+        h = _import_handlers()
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=creds),
+            patch.object(h, "create_google_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "google_ads_budget_create",
+                {
+                    "customer_id": "123",
+                    "name": "Q3 total",
+                    "period": "CUSTOM_PERIOD",
+                    "total_amount_micros": 900_000_000_000,
+                },
+            )
+
+        params = client.create_budget.await_args.args[0]
+        assert params["period"] == "CUSTOM_PERIOD"
+        assert params["total_amount_micros"] == 900_000_000_000
+        assert "amount" not in params
+
+    async def test_budget_create_daily_unchanged(self) -> None:
+        mod = _import_google_ads_tools()
+        creds, client = _mock_google_ads_context()
+        client.create_budget.return_value = {"resource_name": "z"}
+
+        h = _import_handlers()
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=creds),
+            patch.object(h, "create_google_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "google_ads_budget_create",
+                {"customer_id": "123", "name": "daily", "amount": 3000},
+            )
+
+        params = client.create_budget.await_args.args[0]
+        assert params == {"name": "daily", "amount": 3000}
+
+
+# ---------------------------------------------------------------------------
 # Handler tests — read-only criteria / asset retrievals (#366)
 # ---------------------------------------------------------------------------
 

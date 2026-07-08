@@ -191,10 +191,12 @@ keys (all optional):
   `current_daily_budget`).
 - `max_total_daily_budget` — refused when a caller supplies
   `projected_total_daily_budget` above this.
-- `max_lifetime_budget_per_campaign` — a mutation proposing a `lifetime_budget`
-  (period-total, account currency) above this is refused. Lifetime and daily
-  budgets have distinct semantics, so declare this cap separately — a daily
-  cap alone does not constrain lifetime-budget mutations.
+- `max_lifetime_budget_per_campaign` — a mutation proposing a lifetime /
+  period-total budget (Meta `lifetime_budget` in account currency, or a
+  Google Ads CUSTOM_PERIOD `total_amount_micros`, converted from micros)
+  above this is refused. Lifetime and daily budgets have distinct semantics,
+  so declare this cap separately — a daily cap alone does not constrain
+  lifetime-budget mutations.
 - `blocked_operations` — comma-separated tool names that are always refused.
 
 Absent section (or an unparseable value) ⇒ no enforcement for that rule

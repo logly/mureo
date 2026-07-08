@@ -941,6 +941,202 @@ class TestBudget:
         with pytest.raises(ValueError, match="finite"):
             await client.update_budget({"budget_id": "100", "amount": float("inf")})
 
+    # --- Budget type (daily vs total/CUSTOM_PERIOD) — #366 task 3 ---
+
+    @pytest.mark.asyncio
+    async def test_get_budget_exposes_period_and_total(self) -> None:
+        """get_budget surfaces period / delivery_method / total / name (#366)."""
+        client = _make_client()
+        row = MagicMock()
+        row.campaign_budget.id = 100
+        row.campaign_budget.name = "Q3 total budget"
+        row.campaign_budget.amount_micros = 10000_000_000
+        row.campaign_budget.total_amount_micros = 900_000_000_000
+        row.campaign_budget.status = 2  # ENABLED
+        row.campaign_budget.period = 5  # CUSTOM_PERIOD
+        row.campaign_budget.delivery_method = 2  # STANDARD
+        row.campaign_budget.reference_count = 2
+
+        with patch.object(client, "_search", return_value=[row]):
+            result = await client.get_budget("111")
+
+        assert result is not None
+        assert result["name"] == "Q3 total budget"
+        assert result["period"] == "CUSTOM_PERIOD"
+        assert result["delivery_method"] == "STANDARD"
+        assert result["status"] == "ENABLED"
+        assert result["total_amount_micros"] == 900_000_000_000
+        assert result["total_budget"] == 900_000.0
+        assert result["reference_count"] == 2
+
+    @pytest.mark.asyncio
+    async def test_get_budget_daily_has_no_total(self) -> None:
+        """A DAILY budget reports period=DAILY and null total fields."""
+        client = _make_client()
+        row = MagicMock()
+        row.campaign_budget.id = 100
+        row.campaign_budget.name = "daily"
+        row.campaign_budget.amount_micros = 10000_000_000
+        row.campaign_budget.total_amount_micros = 0  # proto default = unset
+        row.campaign_budget.status = 2
+        row.campaign_budget.period = 2  # DAILY
+        row.campaign_budget.delivery_method = 2
+        row.campaign_budget.reference_count = 1
+
+        with patch.object(client, "_search", return_value=[row]):
+            result = await client.get_budget("111")
+
+        assert result is not None
+        assert result["period"] == "DAILY"
+        assert result["total_amount_micros"] is None
+        assert result["total_budget"] is None
+
+    @pytest.mark.asyncio
+    async def test_update_budget_total_amount_micros_exact(self) -> None:
+        """total_amount_micros is sent verbatim on a CUSTOM_PERIOD budget."""
+        client = _make_client()
+        mock_result = MagicMock()
+        mock_result.resource_name = "customers/123/budgets/100"
+        mock_response = MagicMock()
+        mock_response.results = [mock_result]
+        mock_service = MagicMock()
+        mock_service.mutate_campaign_budgets.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+        budget_op = MagicMock()
+        client._client.get_type.return_value = budget_op
+
+        await client.update_budget(
+            {"budget_id": "100", "total_amount_micros": 900_000_000_000}
+        )
+
+        assert budget_op.update.total_amount_micros == 900_000_000_000
+
+    @pytest.mark.asyncio
+    async def test_update_budget_total_amount_units_converted(self) -> None:
+        client = _make_client()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock()]
+        mock_service = MagicMock()
+        mock_service.mutate_campaign_budgets.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+        budget_op = MagicMock()
+        client._client.get_type.return_value = budget_op
+
+        await client.update_budget({"budget_id": "100", "total_amount": 900_000})
+
+        assert budget_op.update.total_amount_micros == 900_000_000_000
+
+    @pytest.mark.asyncio
+    async def test_update_budget_total_両方指定(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="not both"):
+            await client.update_budget(
+                {
+                    "budget_id": "100",
+                    "total_amount": 900_000,
+                    "total_amount_micros": 900_000_000_000,
+                }
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_budget_total_金額0以下(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="positive number"):
+            await client.update_budget({"budget_id": "100", "total_amount_micros": 0})
+
+    @pytest.mark.asyncio
+    async def test_update_budget_total_上限超過(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="ceiling"):
+            await client.update_budget(
+                {"budget_id": "100", "total_amount": 2_000_000_000}
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_budget_daily_and_total_together(self) -> None:
+        """Daily and total amounts may be updated in a single mutate."""
+        client = _make_client()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock()]
+        mock_service = MagicMock()
+        mock_service.mutate_campaign_budgets.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+        budget_op = MagicMock()
+        client._client.get_type.return_value = budget_op
+
+        await client.update_budget(
+            {
+                "budget_id": "100",
+                "amount_micros": 5_000_000,
+                "total_amount_micros": 900_000_000_000,
+            }
+        )
+
+        assert budget_op.update.amount_micros == 5_000_000
+        assert budget_op.update.total_amount_micros == 900_000_000_000
+
+    @pytest.mark.asyncio
+    async def test_create_budget_custom_period_total(self) -> None:
+        """create_budget sets period=CUSTOM_PERIOD and total_amount_micros."""
+        client = _make_client()
+        mock_result = MagicMock()
+        mock_result.resource_name = "customers/123/budgets/200"
+        mock_response = MagicMock()
+        mock_response.results = [mock_result]
+        mock_service = MagicMock()
+        mock_service.mutate_campaign_budgets.return_value = mock_response
+        client._client.get_service.return_value = mock_service
+        budget_op = MagicMock()
+        client._client.get_type.return_value = budget_op
+        client._client.enums = MagicMock()
+
+        result = await client.create_budget(
+            {
+                "name": "Q3 total",
+                "period": "CUSTOM_PERIOD",
+                "total_amount_micros": 900_000_000_000,
+            }
+        )
+
+        assert result["resource_name"] == "customers/123/budgets/200"
+        assert budget_op.create.total_amount_micros == 900_000_000_000
+        assert (
+            budget_op.create.period
+            == client._client.enums.BudgetPeriodEnum.CUSTOM_PERIOD
+        )
+
+    @pytest.mark.asyncio
+    async def test_create_budget_total_requires_custom_period(self) -> None:
+        """A total amount without period=CUSTOM_PERIOD is contradictory."""
+        client = _make_client()
+        with pytest.raises(ValueError, match="CUSTOM_PERIOD"):
+            await client.create_budget(
+                {"name": "bad", "total_amount_micros": 900_000_000_000}
+            )
+
+    @pytest.mark.asyncio
+    async def test_create_budget_custom_period_requires_total(self) -> None:
+        """CUSTOM_PERIOD without a total fails fast, before any API call."""
+        client = _make_client()
+        with pytest.raises(ValueError, match="total_amount"):
+            await client.create_budget(
+                {"name": "bad", "amount": 1000, "period": "CUSTOM_PERIOD"}
+            )
+
+    @pytest.mark.asyncio
+    async def test_create_budget_invalid_period(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="period"):
+            await client.create_budget(
+                {"name": "bad", "amount": 1000, "period": "WEEKLY"}
+            )
+
+    @pytest.mark.asyncio
+    async def test_create_budget_requires_some_amount(self) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="required"):
+            await client.create_budget({"name": "empty"})
+
     @pytest.mark.asyncio
     async def test_create_budget_正常(self) -> None:
         client = _make_client()

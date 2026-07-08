@@ -310,19 +310,20 @@ immediate request but is not remembered.
 
 ### budget
 
-- `get` -- Get the daily budget for a campaign.
+- `get` -- Get the budget attached to a campaign, including its type. Returns id, name, daily_budget(_micros), total_budget / total_amount_micros (null unless a CUSTOM_PERIOD total budget), period (DAILY / CUSTOM_PERIOD), delivery_method, status, reference_count.
   ```
   Required: customer_id, campaign_id (string)
   ```
 
-- `update` -- Update daily budget amount. **Requires user confirmation.** Always show current vs. new amount.
+- `update` -- Update the daily and/or total budget amount. **Requires user confirmation.** Always show current vs. new amount. The period is immutable -- total amounts only apply to CUSTOM_PERIOD budgets.
   ```
-  Required: customer_id, budget_id (string), amount (number)
+  Required: customer_id, budget_id (string), and one of amount / amount_micros / total_amount / total_amount_micros
   ```
 
-- `create` -- Create a new campaign budget. **Requires user confirmation.**
+- `create` -- Create a new campaign budget. **Requires user confirmation.** Pass period=CUSTOM_PERIOD with total_amount(_micros) for a campaign-lifetime total budget (immutable after creation); otherwise supply the daily amount.
   ```
-  Required: customer_id, name (string), amount (number)
+  Required: customer_id, name (string), and one of amount / total_amount / total_amount_micros
+  Optional: period (DAILY | CUSTOM_PERIOD)
   ```
 
 ### accounts

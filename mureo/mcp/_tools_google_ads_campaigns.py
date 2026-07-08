@@ -701,10 +701,12 @@ TOOLS: list[Tool] = [
         name="google_ads_budget_get",
         description=(
             "Fetches the campaign-budget record attached to a campaign. "
-            "Returns budget_id, name, amount_micros, delivery_method "
-            "(STANDARD / ACCELERATED), period (DAILY), and "
-            "reference_count (how many campaigns share this budget). "
-            "Read-only. Shared budgets are common — confirm "
+            "Returns id, name, daily_budget / daily_budget_micros, "
+            "total_budget / total_amount_micros (null unless the budget "
+            "is a CUSTOM_PERIOD total budget), period (DAILY / "
+            "CUSTOM_PERIOD), delivery_method (STANDARD / ACCELERATED), "
+            "status, and reference_count (how many campaigns share this "
+            "budget). Read-only. Shared budgets are common — confirm "
             "reference_count before calling google_ads_budget_update, "
             "since changes affect all linked campaigns."
         ),
@@ -726,14 +728,18 @@ TOOLS: list[Tool] = [
     Tool(
         name="google_ads_budget_update",
         description=(
-            "Sets the daily amount on an existing campaign budget. Mutating "
+            "Sets the daily and/or total amount on an existing campaign "
+            "budget. Mutating "
             "— not automatically reversible; record before-state with "
             "mureo_state_action_log_append if you may need to roll back. "
             "Returns the updated budget. If the budget is shared "
             "across multiple campaigns, the change affects all of them — "
             "call google_ads_budget_get first to check reference_count. "
             "The `amount` parameter is in the account's currency unit "
-            "(JPY / USD / etc.), not micros."
+            "(JPY / USD / etc.), not micros. The budget's period (DAILY / "
+            "CUSTOM_PERIOD) is immutable in the Google Ads API — total "
+            "amounts only apply to budgets created with "
+            "period='CUSTOM_PERIOD'."
         ),
         inputSchema={
             "type": "object",
@@ -763,11 +769,34 @@ TOOLS: list[Tool] = [
                         "on rollback). Mutually exclusive with amount."
                     ),
                 },
+                "total_amount": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": (
+                        "New total (lifetime) amount in the account's "
+                        "currency. Only applies to CUSTOM_PERIOD budgets — "
+                        "the API rejects it on DAILY budgets. Mutually "
+                        "exclusive with total_amount_micros."
+                    ),
+                },
+                "total_amount_micros": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": (
+                        "New total (lifetime) amount in micros. Only "
+                        "applies to CUSTOM_PERIOD budgets — the API "
+                        "rejects it on DAILY budgets. Use for an exact "
+                        "value with no float rounding. Mutually exclusive "
+                        "with total_amount."
+                    ),
+                },
             },
             "required": ["budget_id"],
             "anyOf": [
                 {"required": ["amount"]},
                 {"required": ["amount_micros"]},
+                {"required": ["total_amount"]},
+                {"required": ["total_amount_micros"]},
             ],
         },
     ),
@@ -782,7 +811,12 @@ TOOLS: list[Tool] = [
             "back. Typical flow: "
             "budget.create → campaigns.create with the returned budget_id. "
             "To edit an existing budget's amount use "
-            "google_ads_budget_update instead of creating a second budget."
+            "google_ads_budget_update instead of creating a second budget. "
+            "Budget type is fixed at creation: the period (DAILY / "
+            "CUSTOM_PERIOD) is immutable in the Google Ads API. For a "
+            "campaign-lifetime total budget pass period='CUSTOM_PERIOD' "
+            "with total_amount or total_amount_micros; otherwise supply "
+            "the daily amount."
         ),
         inputSchema={
             "type": "object",
@@ -804,8 +838,42 @@ TOOLS: list[Tool] = [
                         "for ¥5,000 / day."
                     ),
                 },
+                "period": {
+                    "type": "string",
+                    "enum": ["DAILY", "CUSTOM_PERIOD"],
+                    "description": (
+                        "Budget period. Default DAILY. CUSTOM_PERIOD makes "
+                        "this a campaign-lifetime total budget (requires "
+                        "total_amount or total_amount_micros, and the "
+                        "attached campaign must have start/end dates). "
+                        "Immutable after creation."
+                    ),
+                },
+                "total_amount": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": (
+                        "Total (lifetime) amount in the account's currency. "
+                        "Only valid with period='CUSTOM_PERIOD'. Mutually "
+                        "exclusive with total_amount_micros."
+                    ),
+                },
+                "total_amount_micros": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": (
+                        "Total (lifetime) amount in micros. Only valid "
+                        "with period='CUSTOM_PERIOD'. Mutually exclusive "
+                        "with total_amount."
+                    ),
+                },
             },
-            "required": ["name", "amount"],
+            "required": ["name"],
+            "anyOf": [
+                {"required": ["amount"]},
+                {"required": ["total_amount"]},
+                {"required": ["total_amount_micros"]},
+            ],
         },
     ),
     # === Account ===

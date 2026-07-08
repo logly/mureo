@@ -401,15 +401,17 @@ async def handle_budget_update(args: dict[str, Any]) -> list[TextContent]:
     if client is None:
         return _no_google_creds()
     params: dict[str, Any] = {"budget_id": _require(args, "budget_id")}
-    # Accept either currency-unit ``amount`` or exact ``amount_micros``
-    # (mutually exclusive). The client validates value bounds; here we only
-    # require that one of the two is present.
-    if args.get("amount_micros") is not None:
-        params["amount_micros"] = args["amount_micros"]
-    elif args.get("amount") is not None:
-        params["amount"] = args["amount"]
-    else:
-        raise ValueError("one of 'amount' or 'amount_micros' is required")
+    # Accept currency-unit or exact-micros forms for the daily and/or total
+    # (CUSTOM_PERIOD) amounts. The client validates value bounds and pair
+    # exclusivity; here we only require that at least one is present.
+    for key in ("amount", "amount_micros", "total_amount", "total_amount_micros"):
+        if args.get(key) is not None:
+            params[key] = args[key]
+    if len(params) == 1:
+        raise ValueError(
+            "one of 'amount', 'amount_micros', 'total_amount' or "
+            "'total_amount_micros' is required"
+        )
     result = await client.update_budget(params)
     return _json_result(result)
 
