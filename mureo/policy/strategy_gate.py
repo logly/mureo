@@ -52,6 +52,7 @@ class Guardrails:
     max_daily_budget_per_campaign: float | None = None
     max_daily_budget_increase_pct: float | None = None
     max_total_daily_budget: float | None = None
+    max_lifetime_budget_per_campaign: float | None = None
     blocked_operations: frozenset[str] = field(default_factory=frozenset)
 
     def is_empty(self) -> bool:
@@ -59,6 +60,7 @@ class Guardrails:
             self.max_daily_budget_per_campaign is None
             and self.max_daily_budget_increase_pct is None
             and self.max_total_daily_budget is None
+            and self.max_lifetime_budget_per_campaign is None
             and not self.blocked_operations
         )
 
@@ -80,6 +82,7 @@ def parse_guardrails(content: str) -> Guardrails:
     max_per_campaign: float | None = None
     max_increase_pct: float | None = None
     max_total: float | None = None
+    max_lifetime: float | None = None
     blocked: set[str] = set()
 
     for line in content.splitlines():
@@ -94,6 +97,8 @@ def parse_guardrails(content: str) -> Guardrails:
             max_increase_pct = _to_float(raw)
         elif key == "max_total_daily_budget":
             max_total = _to_float(raw)
+        elif key == "max_lifetime_budget_per_campaign":
+            max_lifetime = _to_float(raw)
         elif key == "blocked_operations":
             blocked = {op.strip() for op in raw.split(",") if op.strip()}
 
@@ -101,6 +106,7 @@ def parse_guardrails(content: str) -> Guardrails:
         max_daily_budget_per_campaign=max_per_campaign,
         max_daily_budget_increase_pct=max_increase_pct,
         max_total_daily_budget=max_total,
+        max_lifetime_budget_per_campaign=max_lifetime,
         blocked_operations=frozenset(blocked),
     )
 
@@ -186,6 +192,27 @@ def evaluate_guardrails(
                         f"(max_daily_budget_increase_pct)."
                     ),
                 )
+
+    # Lifetime (period-total) budgets have distinct semantics from daily
+    # budgets, so they get their own cap rather than reusing the daily one.
+    # Without this, a lifetime-budget mutation would sidestep every budget
+    # guardrail the operator wrote (#367).
+    lifetime = arguments.get("lifetime_budget")
+    lifetime_cap = guardrails.max_lifetime_budget_per_campaign
+    if (
+        lifetime_cap is not None
+        and isinstance(lifetime, (int, float))
+        and not isinstance(lifetime, bool)
+        and float(lifetime) > lifetime_cap
+    ):
+        return PolicyDecision(
+            allowed=False,
+            reason=(
+                f"Proposed lifetime budget {float(lifetime):,.0f} exceeds the "
+                f"STRATEGY.md Guardrails cap of {lifetime_cap:,.0f} "
+                f"(max_lifetime_budget_per_campaign)."
+            ),
+        )
 
     total = arguments.get("projected_total_daily_budget")
     total_cap = guardrails.max_total_daily_budget

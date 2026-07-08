@@ -192,18 +192,72 @@ async def handle_ad_sets_create(args: dict[str, Any]) -> list[TextContent]:
     return _json_result(result)
 
 
+def _normalized_end_time(value: Any) -> int | str:
+    """Validate an ad-set ``end_time`` argument and normalize the zero form.
+
+    Meta's documented convention for "no end date, run continuously" is
+    ``end_time=0``; the string ``"0"`` is wire-identical once form-encoded,
+    so it is normalized to the integer ``0`` here — otherwise it could
+    sidestep the lifetime-budget contradiction guard below.
+    """
+    err = ValueError(
+        "end_time must be an ISO 8601 datetime string, a UNIX timestamp, "
+        f"or 0 to clear the end date (got {value!r})"
+    )
+    if isinstance(value, bool):
+        raise err
+    if isinstance(value, int):
+        if value < 0:
+            raise err
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise err
+        return 0 if stripped == "0" else value
+    raise err
+
+
+def _validate_ad_set_schedule_and_budget(args: dict[str, Any]) -> int | str | None:
+    """Reject contradictory ad-set budget/schedule updates before dispatch.
+
+    Meta treats daily_budget and lifetime_budget as mutually exclusive on an
+    ad set, and a lifetime budget requires a schedule end — while end_time=0
+    means "no end date". Returns the normalized end_time (or None if absent).
+    """
+    if args.get("daily_budget") is not None and args.get("lifetime_budget") is not None:
+        raise ValueError(
+            "daily_budget and lifetime_budget are mutually exclusive on an "
+            "ad set — supply only one."
+        )
+    if args.get("end_time") is None:
+        return None
+    end_time = _normalized_end_time(args["end_time"])
+    if end_time == 0 and args.get("lifetime_budget") is not None:
+        raise ValueError(
+            "end_time=0 (no end date) cannot be combined with lifetime_budget "
+            "— a lifetime budget requires a schedule end."
+        )
+    return end_time
+
+
 @api_error_handler
 async def handle_ad_sets_update(args: dict[str, Any]) -> list[TextContent]:
-    _validate_positive_money(args, "daily_budget")
+    _validate_positive_money(args, "daily_budget", "lifetime_budget")
+    end_time = _validate_ad_set_schedule_and_budget(args)
     client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     ad_set_id = _require(args, "ad_set_id")
     update_kwargs: dict[str, Any] = {}
-    for key in ("name", "status", "daily_budget", "targeting"):
+    for key in ("name", "status", "daily_budget", "lifetime_budget", "targeting"):
         val = _opt(args, key)
         if val is not None:
             update_kwargs[key] = val
+    # end_time is handled outside the loop: 0 is a meaningful value (clear
+    # the end date, Meta convention), so a falsy check must not drop it.
+    if end_time is not None:
+        update_kwargs["end_time"] = end_time
     replace_targeting = bool(args.get("replace_targeting", False))
     result = await client.update_ad_set(
         ad_set_id, replace_targeting=replace_targeting, **update_kwargs
