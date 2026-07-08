@@ -140,7 +140,7 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 | Sitelinks | `sitelinks.list`, `sitelinks.create`, `sitelinks.remove` |
 | Callouts | `callouts.list`, `callouts.create`, `callouts.remove` |
 | Conversions | `conversions.list`, `conversions.get`, `conversions.performance`, `conversions.create`, `conversions.update`, `conversions.remove`, `conversions.tag` |
-| Targeting | `recommendations.list`, `recommendations.apply`, `device_targeting.get`, `device_targeting.set`, `bid_adjustments.get`, `bid_adjustments.update`, `location_targeting.list`, `location_targeting.update`, `schedule_targeting.list`, `schedule_targeting.update`, `change_history.list` |
+| Targeting | `recommendations.list`, `recommendations.apply`, `device_targeting.get`, `device_targeting.set`, `bid_adjustments.get`, `bid_adjustments.update`, `location_targeting.list`, `location_targeting.update`, `schedule_targeting.list`, `schedule_targeting.update`, `change_history.list`, `demographic_targeting.list`, `audience_targeting.list` |
 | Analysis | `performance.report`, `performance.analyze`, `cost_increase.investigate`, `health_check.all`, `ad_performance.compare`, `ad_performance.report`, `network_performance.report`, `budget.efficiency`, `budget.reallocation`, `auction_insights.get`, `rsa_assets.analyze`, `rsa_assets.audit`, `search_terms.review` |
 | B2B | `btob.optimizations` |
 | Creative | `landing_page.analyze`, `creative.research` |
@@ -148,7 +148,7 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 | Capture | `capture.screenshot` |
 | Device | `device.analyze` |
 | CPC | `cpc.detect_trend` |
-| Assets | `assets.upload_image` |
+| Assets | `assets.upload_image`, `image_assets.list` |
 
 ### Meta Ads
 
