@@ -345,3 +345,79 @@ def runtime_ui_plugin_credential_fields() -> dict[str, frozenset[str]] | None:
             continue
         scoped[provider] = frozenset(str(k) for k in keys)
     return scoped or None
+
+
+def runtime_search_console_sites() -> frozenset[str] | None:
+    """Return the Search Console ``site_url`` allow-list for the ACTIVE
+    client, or ``None`` when Search Console is not tenant-scoped.
+
+    Search Console reuses the operator-shared Google OAuth — one identity
+    that may see MANY clients' properties — and its MCP tools take
+    ``site_url`` as a free caller argument. In a multi-account (agency)
+    deployment nothing otherwise stops one client's workspace from querying a
+    sibling client's property (cross-client data leak). A multi-account
+    backend closes this by declaring, on its ``SecretStore``, the set of
+    ``site_url``s that belong to the active client as ``search_console_sites``
+    (a non-``str`` collection of strings). The Search Console handlers then
+    resolve/enforce ``site_url`` against this set — fail-closed for an
+    out-of-set value, fail-fast when none is configured — mirroring how
+    Google Ads binds ``customer_id`` from per-client config. Joins the
+    store-capability family of :func:`runtime_credentials_path` (#196),
+    :func:`runtime_multi_account_auth` (#198), and
+    :func:`runtime_ui_plugin_credential_fields` (#202).
+
+    Resolution:
+
+    - **No factory registered** → ``None``. Standalone OSS keeps the
+      unrestricted behavior — the gate is on entry-point *presence* so the
+      default store is never consulted and existing single-workspace use is
+      byte-identical.
+    - **Store declares a usable ``search_console_sites``** (a non-``str`` /
+      non-``bytes`` :class:`~collections.abc.Collection`) → a ``frozenset`` of
+      its non-blank string entries. An empty / all-blank / all-non-str
+      collection resolves to an EMPTY ``frozenset`` (scoping ON, zero sites),
+      which the handlers turn into a fail-fast — a security control errs
+      CLOSED once engaged.
+    - **Attribute absent or NOT a usable collection (bare ``str`` / ``bytes``
+      / generator / other), on a multi-account backend** (``multi_account_auth
+      is True``) → an EMPTY ``frozenset``, NOT ``None``. A shared-OAuth
+      backend that reaches many clients' properties MUST scope Search Console;
+      forgetting (or mistyping) the allow-list must fail CLOSED (a loud
+      "not configured for this client") rather than silently reopen the
+      cross-client leak. This is the key difference from the permissive
+      members of the family: absence defaults to the SAFE side here.
+    - **Attribute absent / not usable on a single-account backend** → ``None``
+      (not scoped). A single-account factory carries no shared-OAuth
+      cross-client risk, so it keeps the unrestricted behavior; a usable
+      allow-list still scopes it if one is declared.
+    """
+    if not list(entry_points(group=RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP)):
+        return None
+    store = get_runtime_context().secret_store
+    scoped = _coerce_site_allow_list(getattr(store, "search_console_sites", None))
+    if scoped is not None:
+        return scoped
+    # No usable allow-list. Fail CLOSED for a shared-OAuth (multi-account)
+    # backend — it can reach every client's property, so an un-declared or
+    # mistyped list must scope to nothing, not everything. A single-account
+    # backend has no such cross-client reach, so it stays unrestricted.
+    if getattr(store, "multi_account_auth", False) is True:
+        return frozenset()
+    return None
+
+
+def _coerce_site_allow_list(declared: object) -> frozenset[str] | None:
+    """Normalize a declared ``search_console_sites`` value, or ``None``.
+
+    ``None`` means "no usable declaration" (absent, or a non-collection /
+    bare ``str`` / ``bytes`` — a mistyped scalar must never become a
+    one-element allow-list). A usable collection yields a ``frozenset`` of its
+    non-blank string entries (possibly empty).
+    """
+    if declared is None:
+        return None
+    if isinstance(declared, (str, bytes)) or not isinstance(declared, Collection):
+        return None
+    return frozenset(
+        site.strip() for site in declared if isinstance(site, str) and site.strip()
+    )

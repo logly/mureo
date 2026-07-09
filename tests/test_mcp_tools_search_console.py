@@ -13,6 +13,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _standalone_search_console():
+    """Pin these handler tests to STANDALONE (untenanted) Search Console.
+
+    Search Console gained tenant scoping (:func:`runtime_search_console_sites`):
+    when a ``mureo.runtime_context_factory`` is installed AND its store is a
+    shared-OAuth multi-account backend, an undeclared ``search_console_sites``
+    fail-closes every ``site_url``. A dev box carrying the agency plugin would
+    therefore break these standalone assertions. Neutralize the scoping seam so
+    the module always exercises the unrestricted path regardless of what is
+    installed; the scoped behavior lives in
+    ``test_search_console_tenant_scope.py``.
+    """
+    with patch(
+        "mureo.mcp._handlers_search_console.runtime_search_console_sites",
+        return_value=None,
+    ):
+        yield
+
+
 def _import_tools():
     from mureo.mcp import tools_search_console
 
