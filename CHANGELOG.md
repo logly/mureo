@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.19] - 2026-07-09
+
+### Added
+
+- **Google Ads read-only demographic & audience criteria + image assets.** New
+  `google_ads_demographic_targeting_list` (age range / gender / parental status
+  / income range) and `google_ads_audience_targeting_list` (user interest, user
+  list, audience, custom affinity, custom audience, combined audience) surface
+  the criteria attached to ad groups, and `google_ads_image_assets_list`
+  returns image-asset name/type/size/dimensions. (#369)
+- **Google Ads budget type (daily vs total) get and set.** `google_ads_budget_get`
+  now reports the budget `period` (`DAILY` / `CUSTOM_PERIOD`) and
+  `total_amount_micros`; budget create/update accept a total (CUSTOM_PERIOD)
+  budget. (#371)
+- **Meta Ads ad-set schedule & lifetime budget.** `meta_ads_ad_sets_update`
+  gains `end_time` (pass `0` to clear the end date / run continuously) and
+  `lifetime_budget` (mutually exclusive with `daily_budget`). (#368)
+
+### Fixed
+
+- **Search Console cross-client data isolation (security).** In multi-account
+  (agency) deployments Search Console reused one operator-shared Google OAuth
+  and every tool took `site_url` as an unvalidated argument, so one client's
+  workspace could query a sibling client's property. `site_url` is now bound to
+  a per-client allow-list — out-of-scope values are refused (fail-closed) and
+  `search_console_sites_list` is filtered to the client's own properties; a
+  shared-OAuth backend that has not declared its allow-list fail-closes rather
+  than leaking. Standalone (single-workspace) installs are unchanged. (#375)
+- **About "Installed packages" now agrees with the update checker.** A
+  `mureo.skills`-only plugin (e.g. `mureo-logly-tools`) could be flagged
+  "update available" yet never appear under Installed; the About list now
+  unions the same name-prefixed `mureo`/`mureo-*` set the updater uses. (#365)
+- **Meta Ads budget conversions honor zero-decimal currencies.** Budget amounts
+  now respect each currency's offset, so JPY and other zero-decimal currencies
+  convert correctly. (#372)
+
 ## [0.10.18] - 2026-07-07
 
 ### Added
