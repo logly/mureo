@@ -76,7 +76,10 @@ def _resolve_site_url(args: dict[str, Any]) -> str:
     """
     allowed = runtime_search_console_sites()
     if allowed is None:
-        return _require(args, "site_url")
+        # Standalone: unchanged. Annotate the Any from _require so the
+        # str-typed return is honest to mypy (no-any-return).
+        site_url: str = _require(args, "site_url")
+        return site_url
     if not allowed:
         raise ValueError(
             "Search Console is not configured for this client. Configure the "
