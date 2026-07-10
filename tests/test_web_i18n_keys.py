@@ -255,6 +255,35 @@ class TestAdvancedAdvisorKeysParity:
 
 
 @pytest.mark.unit
+class TestBasicSetupInstallKeysParity:
+    """EN/JA parity for the basic-setup per-row (re)install button keys:
+    the not-installed "Install" and installed "Reinstall" labels plus the
+    install-failure toast (no JS harness — asserted against the bundled
+    i18n.json directly)."""
+
+    _KEYS = (
+        "dashboard.basic_install",
+        "dashboard.basic_reinstall",
+        "dashboard.install_failed",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
 class TestReportsDashboardKeysParity:
     """EN/JA parity for the read-only Reports dashboard keys: the nav label,
     section title + hint, client selector, freshness, KPI labels, the

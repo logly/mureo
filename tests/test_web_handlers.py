@@ -1256,6 +1256,138 @@ class TestPostSetupSkillsRemove:
         assert exc.value.code == 403
 
 
+@pytest.mark.unit
+class TestPostSetupHookInstall:
+    """``POST /api/setup/hook/install`` — (re)install the credential-guard
+    hook without re-running the full basic-setup wizard."""
+
+    ROUTE = "/api/setup/hook/install"
+
+    def test_ok_dispatches_to_install_auth_hook(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok", "detail": "written"}
+        with patch(
+            "mureo.web.handlers.install_auth_hook", return_value=fake
+        ) as mock_install:
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok", "detail": "written"}
+        mock_install.assert_called_once()
+
+    def test_noop_envelope_when_already_installed(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "noop"}
+        with patch("mureo.web.handlers.install_auth_hook", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "noop"}
+
+    def test_error_envelope_surfaces_to_client(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "error", "detail": "OSError"}
+        with patch("mureo.web.handlers.install_auth_hook", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "error", "detail": "OSError"}
+
+    def test_forwards_client_host_and_home(self, wizard: ConfigureWizard) -> None:
+        """The client-authoritative payload host must reach the install
+        function (the desync ``_resolve_host`` exists to prevent), along
+        with the session home."""
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.install_auth_hook", return_value=fake
+        ) as mock_install:
+            _post(wizard, self.ROUTE, {"host": "codex"})
+        _, kwargs = mock_install.call_args
+        assert kwargs["host"] == "codex"
+        assert kwargs["home"] == wizard.home
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestPostSetupSkillsInstall:
+    """``POST /api/setup/skills/install`` — (re)install workflow skills
+    without re-running the full basic-setup wizard."""
+
+    ROUTE = "/api/setup/skills/install"
+
+    def test_ok_dispatches_to_install_workflow_skills(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok", "detail": "installed 15 skills"}
+        with patch(
+            "mureo.web.handlers.install_workflow_skills", return_value=fake
+        ) as mock_install:
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok", "detail": "installed 15 skills"}
+        mock_install.assert_called_once()
+
+    def test_error_envelope_surfaces_to_client(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "error", "detail": "OSError"}
+        with patch("mureo.web.handlers.install_workflow_skills", return_value=fake):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "error", "detail": "OSError"}
+
+    def test_forwards_client_host_and_home(self, wizard: ConfigureWizard) -> None:
+        fake = MagicMock()
+        fake.as_dict.return_value = {"status": "ok"}
+        with patch(
+            "mureo.web.handlers.install_workflow_skills", return_value=fake
+        ) as mock_install:
+            _post(wizard, self.ROUTE, {"host": "codex"})
+        _, kwargs = mock_install.call_args
+        assert kwargs["host"] == "codex"
+        assert kwargs["home"] == wizard.home
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403
+
+    def test_rejects_wrong_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf="bad")
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "evil.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
 # ---------------------------------------------------------------------------
 # Dashboard demo + byod routes (planner HANDOFF
 # feat-web-config-ui-phase1-demo-byod.md). 6 new endpoints:

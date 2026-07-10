@@ -119,8 +119,10 @@ from mureo.web.setup_actions import (
     clear_all_setup,
     confirm_hosted_provider,
     hosted_provider_status,
+    install_auth_hook,
     install_basic_setup,
     install_provider,
+    install_workflow_skills,
     remove_auth_hook,
     remove_mureo_mcp,
     remove_provider,
@@ -618,8 +620,27 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         )
         send_json(self, result.as_dict())
 
+    def _post_setup_hook_install(self, payload: dict[str, Any]) -> None:
+        # Per-row (re)install so the operator can restore the credential-guard
+        # hook without re-running the full basic-setup wizard. Host is
+        # client-authoritative (see _resolve_host), symmetric with the remove
+        # route. install_auth_hook swallows its own errors into an ``error``
+        # ActionResult, so this always sends a 200 envelope.
+        result = install_auth_hook(
+            home=self.wizard.home, host=self._resolve_host(payload)
+        )
+        send_json(self, result.as_dict())
+
     def _post_setup_skills_remove(self, payload: dict[str, Any]) -> None:
         result = remove_workflow_skills(
+            home=self.wizard.home, host=self._resolve_host(payload)
+        )
+        send_json(self, result.as_dict())
+
+    def _post_setup_skills_install(self, payload: dict[str, Any]) -> None:
+        # Per-row (re)install of the workflow skills, symmetric with the
+        # remove route (see _post_setup_hook_install).
+        result = install_workflow_skills(
             home=self.wizard.home, host=self._resolve_host(payload)
         )
         send_json(self, result.as_dict())
@@ -1366,7 +1387,9 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/updates/refresh": _post_check_updates,
         "/api/setup/mcp/remove": _post_setup_mcp_remove,
         "/api/setup/hook/remove": _post_setup_hook_remove,
+        "/api/setup/hook/install": _post_setup_hook_install,
         "/api/setup/skills/remove": _post_setup_skills_remove,
+        "/api/setup/skills/install": _post_setup_skills_install,
         "/api/providers/install": _post_providers_install,
         "/api/providers/confirm": _post_providers_confirm,
         "/api/providers/hosted-status": _post_providers_hosted_status,
