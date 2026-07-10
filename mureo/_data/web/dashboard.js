@@ -64,6 +64,10 @@
   // Kept as a module-local constant so renderBasicSection stays small.
   const BASIC_ROWS = [
     {
+      // No `installUrl` on purpose: #222 makes the bare `mureo` MCP entry
+      // harmful for multi-account backends (per-client `mureo-<slug>`
+      // entries are the correct wiring), so this row intentionally has no
+      // per-row (re)install button — restore it via the wizard instead.
       key: "mureo_mcp",
       labelKey: "wizard.basic.mureo_mcp",
       removeUrl: "/api/setup/mcp/remove",
@@ -74,6 +78,7 @@
       key: "auth_hook",
       labelKey: "wizard.basic.auth_hook",
       removeUrl: "/api/setup/hook/remove",
+      installUrl: "/api/setup/hook/install",
       confirmKey: "dashboard.confirm_remove_hook",
       actionKey: "dashboard.action_remove_hook",
     },
@@ -81,6 +86,7 @@
       key: "skills",
       labelKey: "wizard.basic.skills",
       removeUrl: "/api/setup/skills/remove",
+      installUrl: "/api/setup/skills/install",
       confirmKey: "dashboard.confirm_remove_skills",
       actionKey: "dashboard.action_remove_skills",
     },
@@ -191,8 +197,52 @@
         MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
         return;
       }
-      if (!res || !res.ok) {
+      // The route always answers HTTP 200; a swallowed failure surfaces as
+      // an ``error`` envelope, so gate on the parsed body too (mirrors the
+      // advisors/byod handlers) — otherwise a failed remove looks like it
+      // succeeded.
+      if (!res || !res.ok || !res.body || res.body.status === "error") {
         MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
+        return;
+      }
+      await MUREO.loadStatus();
+      renderAll();
+    });
+    return btn;
+  }
+
+  function buildBasicInstallButton(row, installed) {
+    // Returns a button that (re)installs `row` via `row.installUrl` so the
+    // operator can restore a removed part without re-running the wizard.
+    // Non-destructive, so no confirm — toast (not throw) on failure. The
+    // label is "Reinstall" when the part is present (idempotent refresh)
+    // and "Install" when it was removed.
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-secondary";
+    const actionKey = installed
+      ? "dashboard.basic_reinstall"
+      : "dashboard.basic_install";
+    btn.textContent = MUREO.t(actionKey);
+    btn.setAttribute("data-i18n", actionKey);
+    btn.setAttribute("data-basic-install", row.key);
+    btn.addEventListener("click", async function () {
+      let res;
+      try {
+        // Send the client's known host so the server targets the operator's
+        // actual host (see handlers._resolve_host), symmetric with remove.
+        res = await MUREO.postJson(row.installUrl, {
+          host: MUREO.state.status && MUREO.state.status.host,
+        });
+      } catch (_err) {
+        MUREO.toast(MUREO.t("dashboard.install_failed"), "error");
+        return;
+      }
+      // Same 200-envelope caveat as the remove button: a swallowed install
+      // failure comes back as an ``error`` envelope over HTTP 200, so a bare
+      // ``res.ok`` check would show a green "installed" mark on failure.
+      if (!res || !res.ok || !res.body || res.body.status === "error") {
+        MUREO.toast(MUREO.t("dashboard.install_failed"), "error");
         return;
       }
       await MUREO.loadStatus();
@@ -218,11 +268,11 @@
       let labelText = MUREO.t(row.labelKey);
       // The credential-guard hook has no surface on Claude Desktop, so
       // annotate it inline rather than implying it can be installed.
-      if (
+      const hookUnsupported =
         row.key === "auth_hook" &&
         status &&
-        status.host === "claude-desktop"
-      ) {
+        status.host === "claude-desktop";
+      if (hookUnsupported) {
         labelText += " " + MUREO.t("wizard.basic.auth_hook_desktop_na");
       }
       labelSpan.appendChild(statusMark(installed));
@@ -230,6 +280,12 @@
       li.appendChild(labelSpan);
       if (installed) {
         li.appendChild(buildBasicRemoveButton(row));
+      }
+      // Per-row (re)install button, shown in both states so a removed part
+      // can be restored without re-running the wizard. Suppressed for the
+      // auth hook on Claude Desktop, where install is a no-op.
+      if (row.installUrl && !hookUnsupported) {
+        li.appendChild(buildBasicInstallButton(row, installed));
       }
       list.appendChild(li);
     });
