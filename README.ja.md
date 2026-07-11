@@ -7,6 +7,7 @@
 
 <p align="center">
   <a href="https://mureo.io">Webサイト</a> ·
+  <a href="https://mureo.jp">商用版</a> ·
   <a href="README.md">English</a>
 </p>
 
@@ -22,6 +23,8 @@
 _ローカルファースト・戦略準拠・セーフティゲート。_
 
 Claude Code、Cursor、Codex、Gemini に対応。mureo は各広告プラットフォームの公式 MCP の上に乗り、AI に守るべき戦略・測るべき成果・誰にでも見せられる監査証跡を与えます。**認証情報は端末の外に出ません。**
+
+> チーム・代理店向けの商用版（クラウド版／ローカルで動く Agency 版）もご用意しています。詳しくは **[mureo.jp](https://mureo.jp)** をご覧ください。
 
 <p align="center">
   <img src="docs/img/sample-search-term-cleanup.ja.svg" alt="mureo /search-term-cleanup の出力: ブランド自己カニバリゼーションを自動検出 — 同じブランド検索語が片方で CPA ¥4,550、もう片方で ¥31,800 が無駄、約 ¥250,000/30日 を再配分可能">
