@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.20] - 2026-07-12
+
+### Added
+
+- **Per-row reinstall buttons for the basic setup.** The configure dashboard's
+  Setup section gains Install / Reinstall buttons next to the existing Remove
+  buttons for the credential-guard hook and the workflow skills, so either can
+  be restored without re-running the wizard (new `/api/setup/hook/install` and
+  `/api/setup/skills/install` routes). Both install and remove buttons now
+  surface error envelopes instead of treating HTTP 200 as success. (#377)
+- **"Restart configure" button on the About tab.** Restart the running
+  configure server from the browser: a managed service (launchd/systemd)
+  restarts via its supervisor, while an interactive `mureo configure`
+  re-execs itself in place. The page waits for the server to come back and
+  reloads automatically. (#378)
+- **Workspace-scoped MCP server instructions.** When bound to a non-default
+  workspace, the MCP server names that workspace in its `InitializeResult`
+  instructions so hosts that expose several mureo servers to one conversation
+  can route tool calls to the right workspace. The default single-workspace
+  install is unchanged. (#379)
+
+### Fixed
+
+- Deflaked the managed-upgrade route by scheduling the exit-to-restart before
+  flushing the HTTP response (no behavior change). (#381)
+
+### Documentation
+
+- READMEs now link the commercial editions (mureo.jp): the cloud-hosted
+  service and the local Agency edition. (#380)
+
+
 ## [0.10.19] - 2026-07-09
 
 ### Added
