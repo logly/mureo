@@ -733,11 +733,16 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             request_update_refresh()
             restarting = is_managed_service()
         result = {**result, "restarting": restarting}
-        send_json(self, result)
-        # Schedule the restart AFTER the response is flushed so the client
-        # receives ``restarting=True`` and can poll for the daemon's return.
+        # Schedule the restart FIRST (same ordering as ``_post_restart``): the
+        # scheduler only SPAWNS a daemon thread that waits out
+        # ``_RESTART_RESPONSE_GRACE_SECONDS`` before touching the process, so
+        # the response below still flushes long before the server goes down.
+        # Scheduling before ``send_json`` also removes the send-then-schedule
+        # race that made the route test flaky (the assertion could run before
+        # the handler thread reached the scheduling line).
         if restarting:
             _request_service_restart(self.wizard)
+        send_json(self, result)
 
     def _post_restart(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         """Restart the running configure server (About tab button).
