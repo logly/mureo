@@ -138,6 +138,7 @@ Notes:
 
 - **Windows**: `mureo service install` registers an on-logon Scheduled Task. Creating it writes to the Task Scheduler root, which needs an **elevated** shell — run it from a PowerShell opened via *Run as administrator* (being in the Administrators group is not enough). The task itself then runs at logon with your normal (non-elevated) rights.
 - After upgrading mureo, run `mureo service restart` so the running daemon picks up the new code (Task Scheduler and the supervisors do not relaunch a cleanly-exited process automatically on every platform).
+- The configure dashboard's **About** tab also has a **Restart configure** button that does the same thing from the browser: a managed service restarts via its supervisor, while an interactive `mureo configure` restarts itself in place. The page waits for the server to come back and reloads automatically.
 
 ## Maintenance Commands
 

@@ -340,6 +340,21 @@
               </p>
               <p data-dashboard-about-version></p>
 
+              <!-- Restart the running configure server without re-running the
+                   wizard. Managed service (launchd/systemd) restarts via its
+                   supervisor; an interactive `mureo configure` self-reexecs in
+                   place. dashboard.js polls /api/ping then reloads either way. -->
+              <div class="dashboard-about-restart">
+                <p class="dashboard-about-restart-desc"
+                   data-i18n="dashboard.about_restart_desc">Restart the configuration server to pick up new code or settings.</p>
+                <div class="dashboard-about-restart-actions">
+                  <button type="button" class="btn btn-secondary"
+                          data-about-restart-button
+                          data-i18n="dashboard.about_restart_button">Restart configure</button>
+                  <span class="dashboard-about-restart-status" data-about-restart-status role="status" aria-live="polite"></span>
+                </div>
+              </div>
+
               <!-- #239 — available mureo/plugin updates + one-click
                    upgrade. Populated by dashboard.js renderUpdates();
                    hidden until the background check returns a result. -->

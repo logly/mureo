@@ -284,6 +284,35 @@ class TestBasicSetupInstallKeysParity:
 
 
 @pytest.mark.unit
+class TestAboutRestartKeysParity:
+    """EN/JA parity for the About-tab "Restart configure" control keys: the
+    button label, its description, the in-progress status, and the failure
+    toast (no JS harness — asserted against the bundled i18n.json directly)."""
+
+    _KEYS = (
+        "dashboard.about_restart_button",
+        "dashboard.about_restart_desc",
+        "dashboard.about_restarting",
+        "dashboard.about_restart_failed",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
 class TestReportsDashboardKeysParity:
     """EN/JA parity for the read-only Reports dashboard keys: the nav label,
     section title + hint, client selector, freshness, KPI labels, the

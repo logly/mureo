@@ -52,6 +52,7 @@ import importlib
 import logging
 import os
 import re
+import sys
 import threading
 import time
 import urllib.parse
@@ -183,6 +184,53 @@ def _request_service_restart(wizard: ConfigureWizard) -> None:
         target=_restart_runner,
         args=(wizard,),
         name="mureo-service-restart",
+        daemon=True,
+    ).start()
+
+
+def _reexec_runner() -> None:
+    """Replace the process image with a fresh copy of the same command.
+
+    The restart path for an UNSUPERVISED ``mureo configure`` (no launchd /
+    systemd to relaunch a self-exit): ``os.execv`` re-runs the command in
+    place, picking up new code and config.
+
+    CRITICAL — this deliberately does NOT call ``wizard.request_stop()``.
+    Setting the stop event unblocks the main thread's serve loop
+    (``run_configure_wizard``), which then returns and finalizes the
+    interpreter — and interpreter shutdown ABANDONS this daemon thread before
+    ``os.execv`` can run, so the server would exit with no restart (the exact
+    opposite of the intent). By leaving the stop event unset the main thread
+    stays blocked and the process stays alive until ``os.execv`` replaces the
+    whole image atomically — which releases the close-on-exec listen socket on
+    its own; the server's ``allow_reuse_address`` lets the re-exec'd process
+    rebind the fixed port. Only the response-flush grace is needed first — no
+    stop signal, no second sleep. Extracted (not a closure) so it is
+    unit-testable with ``time.sleep`` / ``os.execv`` patched.
+
+    The command is rebuilt as ``<python> -m mureo <original args>`` (works for
+    both the ``mureo`` entry point and ``python -m mureo``) rather than
+    replaying a console-script shim path that may not be re-executable. NOTE:
+    on Windows ``os.execv`` is emulated as spawn-new-process + exit-current
+    (new PID, no true in-place replace); the Windows service (which is NOT
+    supervisor-managed — see ``_post_restart``) relies on that best-effort
+    path.
+    """
+    time.sleep(_RESTART_RESPONSE_GRACE_SECONDS)
+    logger.info("re-exec for interactive (unsupervised) configure restart")
+    os.execv(sys.executable, [sys.executable, "-m", "mureo", *sys.argv[1:]])
+
+
+def _request_interactive_reexec() -> None:
+    """Schedule an in-place self-reexec of an unsupervised configure server.
+
+    Spawns a daemon thread so the ``/api/restart`` response flushes before
+    the process image is replaced. Only call this when NOT running under a
+    supervisor — see :func:`mureo.web.service.is_managed_service`.
+    """
+    threading.Thread(
+        target=_reexec_runner,
+        name="mureo-interactive-reexec",
         daemon=True,
     ).start()
 
@@ -690,6 +738,42 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         # receives ``restarting=True`` and can poll for the daemon's return.
         if restarting:
             _request_service_restart(self.wizard)
+
+    def _post_restart(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
+        """Restart the running configure server (About tab button).
+
+        Two modes, resolved server-side from the process environment (never
+        the request body):
+        - Managed (launchd / systemd ``service install``): exit-to-restart so
+          the supervisor relaunches the daemon — the robust path also used by
+          the self-upgrade flow.
+        - Interactive (plain ``mureo configure`` — and Windows, whose Task
+          Scheduler will not relaunch a clean exit): self-reexec in place,
+          since no supervisor would bring a self-exit back up.
+
+        Either way the restart is scheduled on a daemon thread AFTER this
+        response is flushed, so the browser receives ``mode`` and can poll
+        ``/api/ping`` until the server returns, then reload. CSRF + Host gated
+        like every other POST; the body is ignored.
+        """
+        # Lazy import: ``mureo.web.service`` imports ``mureo.web.server``,
+        # which imports this module — a module-level import would cycle.
+        from mureo.web.service import is_managed_service
+
+        managed = is_managed_service()
+        mode = "managed" if managed else "interactive"
+        # Schedule the restart FIRST. Both schedulers only SPAWN a daemon thread
+        # that waits out a response-flush grace (``_RESTART_RESPONSE_GRACE_SECONDS``)
+        # before touching the process, so the response below still flushes long
+        # before the server goes down. Spawning first (a fast, non-blocking call)
+        # also keeps the threaded route tests deterministic — no send-then-
+        # schedule race where the assertion runs before the handler thread
+        # reaches the scheduling line.
+        if managed:
+            _request_service_restart(self.wizard)
+        else:
+            _request_interactive_reexec()
+        send_json(self, {"status": "ok", "mode": mode})
 
     def _post_check_updates(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         """#246 — force a fresh update check for the About "check now" button.
@@ -1384,6 +1468,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/setup/basic": _post_setup_basic,
         "/api/setup/basic/clear": _post_setup_basic_clear,
         "/api/upgrade": _post_upgrade,
+        "/api/restart": _post_restart,
         "/api/updates/refresh": _post_check_updates,
         "/api/setup/mcp/remove": _post_setup_mcp_remove,
         "/api/setup/hook/remove": _post_setup_hook_remove,

@@ -2283,6 +2283,127 @@ class TestRestartRunner:
 
 
 @pytest.mark.unit
+class TestReexecRunner:
+    """The interactive self-reexec runner: replace the process image via
+    ``os.execv`` so an unsupervised ``mureo configure`` genuinely restarts on
+    the new code.
+
+    ``os.execv`` is patched so the suite never actually re-execs itself.
+    """
+
+    def test_reexecs_same_command_as_python_m_mureo(self) -> None:
+        """The command is rebuilt as ``<python> -m mureo <original args>`` so it
+        works for both the console-script and ``-m`` launch styles."""
+        import mureo.web.handlers as handlers_mod
+
+        with (
+            patch("mureo.web.handlers.time.sleep"),
+            patch.object(
+                handlers_mod.sys, "argv", ["mureo", "configure", "--serve"]
+            ),
+            patch.object(handlers_mod.sys, "executable", "/usr/bin/python3"),
+            patch("mureo.web.handlers.os.execv") as mock_execv,
+        ):
+            handlers_mod._reexec_runner()
+        mock_execv.assert_called_once_with(
+            "/usr/bin/python3",
+            ["/usr/bin/python3", "-m", "mureo", "configure", "--serve"],
+        )
+
+    def test_takes_no_wizard_so_it_cannot_signal_stop(self) -> None:
+        """Invariant guard (the CRITICAL fix): the runner must NOT set the stop
+        event — doing so unblocks the main serve loop and the interpreter
+        finalizes, abandoning this daemon thread before ``os.execv`` runs. It
+        takes no wizard at all, so there is nothing it *could* stop.
+        """
+        import inspect
+
+        import mureo.web.handlers as handlers_mod
+
+        assert list(inspect.signature(handlers_mod._reexec_runner).parameters) == []
+
+
+@pytest.mark.unit
+class TestRequestInteractiveReexec:
+    """The scheduler that runs ``_reexec_runner`` on a daemon thread AFTER the
+    ``/api/restart`` response has flushed."""
+
+    def test_runs_reexec_runner_on_a_background_thread(self) -> None:
+        """Spawns a REAL thread but stubs ``_reexec_runner`` itself (so no
+        ``os.execv``), rather than patching the global ``threading.Thread`` —
+        which would collide with other suites' live HTTP servers."""
+        import mureo.web.handlers as handlers_mod
+
+        ran = threading.Event()
+        with patch(
+            "mureo.web.handlers._reexec_runner", side_effect=lambda: ran.set()
+        ):
+            handlers_mod._request_interactive_reexec()
+            assert ran.wait(timeout=2.0), "reexec runner was not invoked"
+
+
+@pytest.mark.unit
+class TestPostRestart:
+    """``POST /api/restart`` — restart the running configure server.
+
+    Managed (launchd/systemd) → exit-to-restart so the supervisor relaunches;
+    interactive (plain ``mureo configure``) → self-reexec in place. Both
+    schedulers are stubbed so the test process never exits/re-execs.
+    """
+
+    ROUTE = "/api/restart"
+
+    def test_managed_schedules_service_restart(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        with (
+            patch("mureo.web.service.is_managed_service", return_value=True),
+            patch(
+                "mureo.web.handlers._request_service_restart"
+            ) as mock_service,
+            patch(
+                "mureo.web.handlers._request_interactive_reexec"
+            ) as mock_reexec,
+        ):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok", "mode": "managed"}
+        mock_service.assert_called_once()
+        mock_reexec.assert_not_called()
+
+    def test_interactive_schedules_reexec(self, wizard: ConfigureWizard) -> None:
+        with (
+            patch("mureo.web.service.is_managed_service", return_value=False),
+            patch(
+                "mureo.web.handlers._request_service_restart"
+            ) as mock_service,
+            patch(
+                "mureo.web.handlers._request_interactive_reexec"
+            ) as mock_reexec,
+        ):
+            resp = _post(wizard, self.ROUTE, {})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok", "mode": "interactive"}
+        mock_reexec.assert_called_once()
+        mock_service.assert_not_called()
+
+    def test_rejects_missing_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {}, csrf=None)
+        assert exc.value.code == 403
+
+    def test_rejects_spoofed_host_header(self, wizard: ConfigureWizard) -> None:
+        body = json.dumps({}).encode()
+        req = urllib.request.Request(_url(wizard, self.ROUTE), data=body, method="POST")
+        req.add_header("Host", "attacker.example.com")
+        req.add_header("X-CSRF-Token", wizard.session.csrf_token)
+        req.add_header("Content-Type", "application/json")
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
 class TestPostUpgrade:
     """``POST /api/upgrade`` dispatches to ``run_upgrade_all`` (server-
     derived targets only — the request body is never read for packages)."""

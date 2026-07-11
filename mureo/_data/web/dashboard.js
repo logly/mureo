@@ -959,6 +959,9 @@
   // server payload carries only distribution names and versions.
   // Silent failure like renderByodStatus — the section is non-critical.
   async function renderAbout() {
+    // Wire the (static) restart control first — it is independent of the
+    // /api/about payload, so it must be armed even if that fetch fails below.
+    wireRestartButton();
     const versionNode = document.querySelector(
       "[data-dashboard-about-version]"
     );
@@ -1095,7 +1098,7 @@
   // the mureo version is unchanged). Gating on those signals — rather than the
   // first 200 — avoids reloading onto the OLD process, which can still answer
   // briefly while it shuts down. Falls back to the manual prompt after 60s.
-  async function pollServiceRestartThenReload(summary) {
+  async function pollServiceRestartThenReload(summary, timeoutKey) {
     let oldVersion = null;
     try {
       const r = await fetch("/api/ping", { cache: "no-store" });
@@ -1131,7 +1134,9 @@
         sawDown = true; // down mid-restart — a restart is happening
       }
     }
-    if (summary) setSummary(summary, "dashboard.about_update_done_restart");
+    if (summary) {
+      setSummary(summary, timeoutKey || "dashboard.about_update_done_restart");
+    }
   }
 
   // Wire the "Update all" button to upgrade DIRECTLY on click (one step — no
@@ -1200,6 +1205,53 @@
     if (!btn) return;
     btn.onclick = function () {
       runCheckNow();
+    };
+  }
+
+  // POST /api/restart, then reuse the upgrade flow's poll-then-reload: the
+  // server is going down (managed service → supervisor relaunch; interactive
+  // `mureo configure` → self-reexec), so we wait for /api/ping to come back
+  // and reload onto the fresh process. The button stays disabled meanwhile;
+  // it is only re-enabled if the server never returns within the deadline.
+  let restartInProgress = false;
+  async function runRestart() {
+    if (restartInProgress) return;
+    const button = document.querySelector("[data-about-restart-button]");
+    const status = document.querySelector("[data-about-restart-status]");
+    restartInProgress = true;
+    if (button) button.disabled = true;
+    if (status) setSummary(status, "dashboard.about_restarting");
+    let res;
+    try {
+      res = await MUREO.postJson("/api/restart", {});
+    } catch (_err) {
+      res = null;
+    }
+    const ok = res && res.ok && res.body && res.body.status === "ok";
+    if (!ok) {
+      if (status) setSummary(status, "dashboard.about_restart_failed");
+      if (button) button.disabled = false;
+      restartInProgress = false;
+      return;
+    }
+    // Reuse the upgrade poll. A plain restart keeps the same version, so the
+    // reload fires on the "server went down then came back" signal rather than
+    // a version change — reliable here because a full supervisor relaunch or
+    // os.execv cold-start takes seconds (Python re-import), comfortably longer
+    // than the poll interval. Success ends in location.reload(); this await
+    // returns only if the server never came back within the deadline.
+    await pollServiceRestartThenReload(status, "dashboard.about_restart_failed");
+    if (button) button.disabled = false;
+    restartInProgress = false;
+  }
+
+  // Wire the "Restart configure" button. Idempotent (onclick, not
+  // addEventListener) so repeated About renders never stack handlers.
+  function wireRestartButton() {
+    const btn = document.querySelector("[data-about-restart-button]");
+    if (!btn) return;
+    btn.onclick = function () {
+      runRestart();
     };
   }
 
