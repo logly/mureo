@@ -796,9 +796,52 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
 # ---------------------------------------------------------------------------
 
 
+def _server_instructions() -> str | None:
+    """Server-level instructions that name the workspace this server is bound to.
+
+    Some hosts expose *every* configured MCP server to *every* conversation at
+    once, with no way to scope a conversation to one of them. When more than one
+    mureo server is configured (one per workspace), the model has no signal about
+    which workspace a given server is bound to and can route a tool call to the
+    wrong one. Single-process, cwd-scoped hosts (e.g. Claude Code) are unaffected.
+
+    Naming the bound workspace in the server's ``instructions`` (part of the MCP
+    ``InitializeResult`` the client shows the model) gives the model the signal it
+    needs to pick the right server and to notice a mismatch instead of proceeding.
+
+    Returns ``None`` for the default single-workspace install so its
+    ``InitializeResult`` stays byte-identical — standalone OSS users see no change.
+    """
+    # Lazy import mirrors the throttle path above (``_acquire_plugin_throttle``):
+    # keeping it inside the function pre-empts a cycle should
+    # ``mureo.core.runtime_context`` ever reference MCP types.
+    from mureo.core.runtime_context import (
+        DEFAULT_WORKSPACE_ID,
+        RuntimeContextFactoryError,
+        get_runtime_context,
+    )
+
+    try:
+        workspace_id = get_runtime_context().workspace_id
+    except RuntimeContextFactoryError:
+        # A misconfigured factory is a real error, but it must surface where it
+        # already does (first tool call), not by refusing to start the server.
+        # Omit instructions and let startup proceed unchanged.
+        return None
+    if workspace_id == DEFAULT_WORKSPACE_ID:
+        return None
+    return (
+        f"This mureo server is bound to workspace {workspace_id!r}. Every tool "
+        f"here reads and writes ONLY that workspace's data. If the user is "
+        f"working on a different client/workspace, do NOT use this server — use "
+        f"the mureo server bound to that workspace instead. Never assume a tool "
+        f"call here acts on any workspace other than {workspace_id!r}."
+    )
+
+
 def _create_server() -> Server:
     """Create an MCP Server instance and register handlers."""
-    server = Server("mureo")
+    server = Server("mureo", instructions=_server_instructions())
 
     @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator, unused-ignore]
     async def list_tools() -> list[Any]:
