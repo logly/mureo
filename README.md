@@ -7,6 +7,7 @@
 
 <p align="center">
   <a href="https://mureo.io">Website</a> ·
+  <a href="https://mureo.jp">Commercial edition</a> ·
   <a href="README.ja.md">日本語</a>
 </p>
 
@@ -22,6 +23,8 @@
 _Local-first. Strategy-grounded. Safety-gated._
 
 Works with Claude Code, Cursor, Codex & Gemini. mureo sits on top of the official ad-platform MCPs and gives your AI a strategy to follow, an outcome to be measured against, and an audit trail you can show to anyone — **credentials never leave your machine**.
+
+> Commercial editions are also available — including a cloud-hosted service and a local Agency edition for teams and agencies. See **[mureo.jp](https://mureo.jp)**.
 
 <p align="center">
   <img src="docs/img/sample-search-term-cleanup.svg" alt="mureo /search-term-cleanup output: brand self-cannibalization detected — same brand term converts at ¥4,550 CPA in one campaign vs ¥31,800 wasted in another, ~¥250,000/30d redirectable">
