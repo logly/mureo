@@ -67,10 +67,43 @@ _NO_TEXT_CONSTRAINT = (
 
 _ASPECTS = ("square", "portrait", "landscape", "vertical")
 
+# Template-aware negative-space guidance. Keyed by composer template id, each
+# value is one precise English composition sentence appended to the provider
+# prompt so the generated visual leaves the calm zone the overlay template
+# needs. Enforcing negative space mechanically (rather than trusting the
+# agent to remember it) is what keeps the composed copy legible. The keys must
+# stay in lock-step with :data:`mureo.creative_studio.composer.TEMPLATES`.
+TEMPLATE_NEGATIVE_SPACE: dict[str, str] = {
+    "hero_overlay": (
+        "Compose the subject in the upper two thirds; keep the lower third "
+        "visually calm and uncluttered for a text overlay."
+    ),
+    "split": (
+        "Compose the subject so it reads well when cropped to one half of the "
+        "frame; keep the composition centered-weighted with clean edges."
+    ),
+    "minimal_badge": (
+        "Center-weighted subject with even, low-contrast texture around it, "
+        "suitable for a centered card overlay."
+    ),
+}
 
-def build_visual_prompt(user_prompt: str) -> str:
-    """Wrap ``user_prompt`` with the hard no-text constraint."""
-    return f"{user_prompt.strip()} {_NO_TEXT_CONSTRAINT}"
+
+def build_visual_prompt(user_prompt: str, template: str | None = None) -> str:
+    """Wrap ``user_prompt`` with template negative space + the no-text constraint.
+
+    The optional ``template`` (a composer template id) appends one precise
+    composition sentence *between* the user prompt and the hard no-text
+    constraint, so the generated visual reserves the calm zone the overlay
+    template will place copy into. An unknown or ``None`` template adds nothing,
+    so the wrapper stays backward compatible.
+    """
+    parts = [user_prompt.strip()]
+    guidance = TEMPLATE_NEGATIVE_SPACE.get(template) if template else None
+    if guidance:
+        parts.append(guidance)
+    parts.append(_NO_TEXT_CONSTRAINT)
+    return " ".join(parts)
 
 
 TOOLS: list[Tool] = [
@@ -130,6 +163,18 @@ TOOLS: list[Tool] = [
                         "Provider name to use (defaults to the first "
                         "configured provider). Pass 'all' to generate one "
                         "image per configured provider."
+                    ),
+                },
+                "template": {
+                    "type": "string",
+                    "enum": list(composer.TEMPLATES),
+                    "description": (
+                        "Layout template you intend to compose with. When set, "
+                        "a precise negative-space sentence is appended to the "
+                        "prompt so the subject leaves the calm zone that "
+                        "template overlays copy into (hero_overlay -> lower "
+                        "third clear; split -> one half clear; minimal_badge -> "
+                        "even center-weighted texture). Omit to add nothing."
                     ),
                 },
             },
@@ -298,6 +343,16 @@ async def _handle_generate_visual(arguments: dict[str, Any]) -> list[TextContent
     aspect = _opt(arguments, "aspect", "square")
     n = int(_opt(arguments, "n", 2))
     provider_arg = _opt(arguments, "provider")
+    template = _opt(arguments, "template")
+
+    # Validate the template at the boundary (the schema enum is advisory only):
+    # an unknown value would inject no guidance yet still be recorded in the
+    # manifest, making the provenance lie — and a non-string value would crash
+    # ``build_visual_prompt`` before the error envelope. Reject it, mirroring the
+    # server-side check in ``creative_studio_compose``.
+    if template is not None and template not in composer.TEMPLATES:
+        valid = ", ".join(composer.TEMPLATES)
+        return _error(f"unknown template {template!r}. Valid templates: {valid}")
 
     providers = _resolve_providers(provider_arg)
     if not providers:
@@ -309,7 +364,7 @@ async def _handle_generate_visual(arguments: dict[str, Any]) -> list[TextContent
         )
 
     width, height = generation_size_for_aspect(aspect)
-    wrapped_prompt = build_visual_prompt(prompt)
+    wrapped_prompt = build_visual_prompt(prompt, template)
     fan_out = provider_arg == "all"
 
     run_dir = create_run_dir()
@@ -339,6 +394,7 @@ async def _handle_generate_visual(arguments: dict[str, Any]) -> list[TextContent
         "prompt": prompt,
         "aspect": aspect,
         "n": n,
+        "template": template,
         "files": files_meta,
     }
     manifest_path = write_manifest(run_dir, manifest_data)
@@ -666,4 +722,4 @@ async def handle_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]
     return await handler(arguments)
 
 
-__all__ = ["TOOLS", "build_visual_prompt", "handle_tool"]
+__all__ = ["TEMPLATE_NEGATIVE_SPACE", "TOOLS", "build_visual_prompt", "handle_tool"]

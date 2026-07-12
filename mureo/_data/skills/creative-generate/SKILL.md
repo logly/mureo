@@ -67,19 +67,177 @@ When the response is the "no insights saved yet" guidance, proceed without it.
 - Call `creative_studio_providers_list` **first** and pick a configured provider
   (or pass `provider="all"` to fan out one candidate per provider when several
   keys are set).
-- Call `creative_studio_generate_visual` with a **visual-only** prompt: describe
-  scene / subject / style / mood, plus **explicit negative-space guidance that
-  matches the copy zone of the template you intend to compose with**:
-  - `hero_overlay` → keep the **lower third** clean and uncluttered for the
-    headline/CTA band.
+- **Write the prompt with the scaffold**, never off the top of your head — see
+  **Visual prompt engineering** below for the full framework, the style-discipline
+  menu, per-genre presets, and provider dialects. Quality is won here.
+- **Pass the `template` arg** to `creative_studio_generate_visual`, set to the
+  layout you intend to compose with (`hero_overlay` / `split` / `minimal_badge`).
+  The tool then appends that template's negative-space sentence automatically, so
+  the calm copy zone is **enforced mechanically** instead of left to memory.
+  **Then still restate the composition intent in the prompt body** — passing the
+  arg and writing it into the prompt reinforce each other, and the model listens
+  harder when it hears the constraint twice:
+  - `hero_overlay` → subject in the upper two thirds; keep the **lower third**
+    clean and uncluttered for the headline/CTA band.
   - `split` → keep **one half** (left or right) clear as a solid-ish panel for
     copy; put the subject on the other half.
   - `minimal_badge` → a **center-weighted subject with even surrounding texture**
     so a small badge chip and centered copy read cleanly.
-- Use `n >= 4` candidates (`aspect` picks the master generation size — `square` /
-  `portrait` / `landscape` / `vertical`). The tool appends the hard no-text
-  constraint for you and writes every PNG to a run directory with a provenance
-  `manifest.json`.
+- Call `creative_studio_generate_visual` with the **visual-only** prompt (scene /
+  subject / style / lighting / mood + the restated negative space). Use `n >= 4`
+  candidates (`aspect` picks the master generation size — `square` / `portrait` /
+  `landscape` / `vertical`). The tool appends the hard no-text constraint for you
+  and writes every PNG to a run directory with a provenance `manifest.json`.
+
+### Visual prompt engineering
+
+The `template` arg and the no-text constraint are handled for you — **this
+section is how you raise the ceiling of the picture itself.** The scoring loop
+(step 4) can only pick from what you generate; a lazy prompt caps the whole run.
+Skip to *4. Art-direction loop* for the scoring checklist and come back here
+whenever you are actually writing a prompt.
+
+#### The prompt framework
+
+Never free-associate a prompt. Fill this scaffold, in this order, every time:
+
+```
+[subject & action]
+  + [environment / setting]
+  + [style discipline]
+  + [lighting]
+  + [color & mood — tie to Brand Voice / BRAND_KIT palette]
+  + [composition & negative space — auto-handled when the `template` arg is
+     passed; restate it here for reinforcement]
+  + [quality descriptors]
+```
+
+Each slot is a lever. Leaving one vague hands that decision to the model's
+default — usually a generic, over-lit stock look. Fill the slots that matter for
+the genre; do not pad the ones that don't. Tie **color & mood** to the Brand
+Voice and the `BRAND_KIT` palette so the visual and the composed typography read
+as one brand, not two.
+
+**Worked example — photographic (beauty product):**
+
+> A single frosted-glass serum bottle on wet river stone, water droplets
+> catching the light + minimal spa setting, eucalyptus leaves soft out of focus
+> + editorial commercial product photography, 100mm macro lens, shallow depth of
+> field + soft diffused morning light from the left with one gentle rim
+> highlight + cool sage-green and cream palette, calm clinical-premium mood +
+> center-weighted subject with even, low-contrast surrounding texture for a
+> centered card overlay + crisp focus on the label area, natural water
+> refraction, high detail.
+
+**Worked example — illustration (B2B SaaS hero):**
+
+> A stylized isometric dashboard floating above a laptop, small abstract data
+> nodes connecting outward + clean off-white studio backdrop with a faint grid +
+> flat vector illustration with soft grain, geometric shapes, consistent thick
+> line weight + flat even lighting with gentle long shadows + indigo and
+> slate-blue accents on a near-white ground, confident and trustworthy mood +
+> main object in the upper two thirds, lower third calm for a headline band +
+> clean edges, balanced negative space.
+
+#### Style disciplines menu
+
+Pick ONE discipline per generation — mixing them muddies the model.
+
+| Discipline | Vocabulary that works | When to use (ad genre) |
+|---|---|---|
+| **Commercial photography** | lens (35mm environmental, 50mm natural, 100mm macro), aperture look (shallow depth of field / deep focus), lighting rig (softbox, high-key, golden-hour, rim light) | product, food, real estate, beauty — anything that must feel real and premium |
+| **Flat & textured illustration** | flat vector, geometric shapes, grain / paper texture, limited palette, consistent line weight | SaaS, fintech, abstract services, explainer creatives |
+| **3D render** | soft studio render, subsurface scattering, matte clay look, soft contact shadows | app UI heroes, product concepts, playful DTC |
+| **Collage / editorial** | cut-paper collage, magazine editorial layout, bold color blocking, mixed media | recruiting, culture, bold brand campaigns |
+
+#### Genre presets
+
+Five starting points. Each is a scaffold-filled prompt (English — image models
+respond best to English) plus one line on why it converts for that genre.
+
+**美容 / コスメ (beauty):**
+> Close-up of a dewy skincare cream swatch on smooth skin, a soft highlight
+> gliding across it + minimal pastel studio surface + macro commercial
+> photography, 100mm, shallow depth of field + soft high-key light, no harsh
+> shadows + blush-pink and pearl-white palette, fresh gentle mood +
+> center-weighted subject with even surrounding texture + natural skin texture,
+> high detail, no plastic sheen.
+> *Why it converts:* texture and softness signal efficacy and gentleness; the
+> calm center leaves room for a JP product name and price without fighting the
+> visual.
+
+**B2B SaaS:**
+> An abstract network of glowing connected nodes over a clean desk with a laptop
+> + bright uncluttered workspace + flat isometric vector illustration with subtle
+> grain + even studio lighting + indigo and slate accents on off-white, competent
+> calm mood + subject in the upper two thirds, lower third clear for a headline +
+> balanced, uncluttered composition.
+> *Why it converts:* trust and clarity beat spectacle for B2B; an uncluttered
+> frame reads as "this tool is simple," and the clear band carries a value-prop
+> headline.
+
+**不動産 (real estate):**
+> A sunlit modern living room with large windows and warm wood floors, a soft
+> linen sofa + bright airy interior with plants near the window + interior
+> architectural photography, 24mm wide, deep focus + warm golden-hour daylight
+> flooding in + warm neutral palette with soft green accents, aspirational homey
+> mood + composed to read when cropped to one half of the frame, clean edges +
+> realistic materials, crisp detail, no fisheye distortion.
+> *Why it converts:* light and space sell the lifestyle; the half-frame
+> composition suits a split layout carrying price / access / area copy in JP.
+
+**EC・食品 (food / ecommerce):**
+> A stack of fresh handmade dorayaki with red-bean filling on a rustic ceramic
+> plate, faint steam rising + warm cafe tabletop with a soft blurred background +
+> macro food photography, 60mm, shallow depth of field + warm directional window
+> light with appetizing highlights + warm amber and cream palette, cozy
+> craving-inducing mood + center-weighted subject with even background texture +
+> glossy natural food sheen, rich detail, no artificial-coloring look.
+> *Why it converts:* appetite appeal is visual first; the warm center-weighted
+> shot leaves clean space for a centered badge (期間限定 / 送料無料) and the price.
+
+**採用 (recruiting):**
+> Three diverse colleagues collaborating around a bright table, candid natural
+> laughter mid-action + modern open office with plants and warm wood + candid
+> editorial lifestyle photography, 35mm, natural depth + soft daylight from large
+> windows + warm optimistic palette with the brand accent, welcoming energetic
+> mood + subjects in the upper two thirds, lower third calm for a headline band +
+> authentic detail, natural skin tones, no stiff posed-stock look.
+> *Why it converts:* candid warmth signals culture better than posed stock; JP
+> candidates respond to genuine atmosphere, and the calm band carries the role
+> and message.
+
+#### Provider dialect notes
+
+Different backends reward slightly different prompt styles:
+
+| Provider | Dialect | Lean on it for |
+|---|---|---|
+| **FLUX** (fal.ai) | Concrete photographic vocabulary — exact lens (85mm), aperture, and named lighting rigs land precisely | crisp product and photoreal shots where you can name the optics |
+| **gpt-image** (OpenAI) | Understands natural-language intent and complex scene logic; be explicit about mood and relationships | multi-element scenes, conceptual / abstract briefs, "the feeling of…" |
+| **Gemini image** (Google) | Strong at photoreal product / scene consistency; iterate via the edit path | consistent product renders you refine with `creative_studio_edit_visual` |
+
+When unsure which will land, **fan out with `provider="all"`** (one candidate per
+configured provider) and let the step-4 scoring loop pick the winner — do not
+agonize over provider choice up front.
+
+#### Anti-patterns
+
+- **Never put copy / text in the prompt.** No headline, no CTA, no Japanese — the
+  model garbles it and the typography layer owns text. (It is stripped by the
+  no-text constraint anyway; do not fight it.)
+- **No brand names, celebrities, or logos** — a policy and IP hazard, and the
+  model's rendition is off-brand regardless. Describe the *look*, then apply the
+  real logo in compose.
+- **Skip "4k, 8k, masterpiece, trending on artstation" token spam.** Modern
+  models ignore it; describe the light and the material instead ("soft rim light,
+  matte ceramic surface").
+- **Don't over-constrain.** Nail subject, style, lighting, and negative space;
+  leave secondary details (exact background props, minor colors) to the model so
+  it composes naturally.
+- **One concept per generation.** Variations come from `n` (and `provider="all"`),
+  never from cramming two ideas into one prompt — two subjects fighting for the
+  frame is the fastest route to a weak, cluttered candidate.
 
 ### 4. Art-direction loop
 

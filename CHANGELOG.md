@@ -47,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cover the 3-layer architecture, install (`pip install 'mureo[creative]'` +
   `playwright install chromium`), provider keys, the `BRAND_KIT/kit.yml` schema,
   the format matrix, and safety notes.
+- **Creative Studio visual prompt engineering.** The `creative-generate` skill
+  gains a *Visual prompt engineering* section — a fill-in prompt scaffold, a
+  style-discipline menu, five genre presets (beauty / B2B SaaS / real estate /
+  food-EC / recruiting), provider-dialect notes, and anti-patterns — to raise
+  the ceiling of generated visuals. `creative_studio_generate_visual` takes an
+  optional `template` argument (`hero_overlay` / `split` / `minimal_badge`) that
+  appends template-aware negative-space guidance to the provider prompt so the
+  copy zone is enforced mechanically, and records the chosen template in the run
+  manifest.
 - **Creative Studio dashboard credentials section.** The `mureo configure`
   dashboard's Setup tab gains a first-class **Creative Studio (image
   generation)** section for the three image-provider API keys

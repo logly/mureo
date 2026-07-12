@@ -111,6 +111,55 @@ class TestCreativeGenerateWorkflow:
         assert "center-weighted" in body
 
     @pytest.mark.parametrize("path", _SKILL_PATHS)
+    def test_visual_prompt_engineering_scaffold(self, path: Path) -> None:
+        """The prompt-craft framework is the substance of this PR — pin the
+        scaffold headline and every fill-in slot so it cannot be gutted."""
+        body = _read(path)
+        assert "Visual prompt engineering" in body
+        assert "The prompt framework" in body
+        for slot in (
+            "[subject & action]",
+            "[style discipline]",
+            "[lighting]",
+            "[color & mood",
+            "[composition & negative space",
+            "[quality descriptors]",
+        ):
+            assert slot in body, f"missing scaffold slot: {slot}"
+
+    @pytest.mark.parametrize("path", _SKILL_PATHS)
+    def test_five_genre_presets_present(self, path: Path) -> None:
+        """One worked prompt per core ad genre must survive edits."""
+        body = _read(path)
+        for genre in ("美容", "B2B SaaS", "不動産", "EC・食品", "採用"):
+            assert genre in body, f"missing genre preset: {genre}"
+
+    @pytest.mark.parametrize("path", _SKILL_PATHS)
+    def test_provider_dialect_table_present(self, path: Path) -> None:
+        """The provider-dialect guidance (FLUX / gpt-image / Gemini) plus the
+        fan-out instruction must be present."""
+        body = _read(path)
+        assert "Provider dialect" in body
+        for provider in ("FLUX", "gpt-image", "Gemini image"):
+            assert provider in body, f"missing provider dialect: {provider}"
+        assert 'provider="all"' in body
+
+    @pytest.mark.parametrize("path", _SKILL_PATHS)
+    def test_template_arg_wired_into_step3(self, path: Path) -> None:
+        """Step 3 must instruct passing the `template` arg (mechanical negative
+        space) AND restating the composition intent in the prompt body."""
+        body = _read(path)
+        assert "`template` arg" in body
+        assert "enforced mechanically" in body
+        assert "restate the composition intent in the prompt body" in body
+
+    @pytest.mark.parametrize("path", _SKILL_PATHS)
+    def test_anti_patterns_present(self, path: Path) -> None:
+        body = _read(path)
+        assert "Anti-patterns" in body
+        assert "One concept per generation" in body
+
+    @pytest.mark.parametrize("path", _SKILL_PATHS)
     def test_hosts_without_file_access_section(self, path: Path) -> None:
         """Desktop / Cowork cannot Read PNGs — the skill must tell the
         agent to present paths and NOT invent scores there."""

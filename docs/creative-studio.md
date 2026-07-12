@@ -179,6 +179,28 @@ language on Desktop / Cowork ("make three banner variations for this campaign").
 
 ---
 
+## Visual prompt engineering
+
+Prompt quality is the ceiling on visual quality, so the `creative-generate` skill
+ships a **prompt-engineering framework** the agent fills for every generation: a
+scaffold (`[subject & action] + [environment] + [style discipline] + [lighting] +
+[color & mood] + [composition & negative space] + [quality descriptors]`), a
+style-discipline menu (commercial photography, illustration, 3D render,
+collage/editorial), per-genre presets (beauty, B2B SaaS, real estate, food/EC,
+recruiting), provider-dialect notes (FLUX / gpt-image / Gemini image), and an
+anti-patterns list. See the skill's *Visual prompt engineering* section for the
+worked examples.
+
+To make negative space mechanical rather than a matter of prompt wording,
+`creative_studio_generate_visual` takes an optional **`template`** argument
+(`hero_overlay` / `split` / `minimal_badge`). When set, the tool appends that
+template's negative-space sentence to the prompt automatically, so the generated
+subject leaves the calm zone the matching layout overlays copy into. Pass the
+template you intend to compose with, then still restate the composition intent in
+the prompt body — the two reinforce each other.
+
+---
+
 ## Safety notes
 
 - **Throttle.** Every provider call passes through a shared rate limiter

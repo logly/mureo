@@ -95,6 +95,10 @@ def test_generate_visual_schema_constraints() -> None:
     assert props["n"]["maximum"] == 6
     assert props["n"]["default"] == 2
     assert "provider" in props
+    # Template-aware negative space: enum of the three layout ids, NO default
+    # (unknown/None stays backward compatible).
+    assert set(props["template"]["enum"]) == set(mod.composer.TEMPLATES)
+    assert "default" not in props["template"]
     assert tool.inputSchema["required"] == ["prompt"]
 
 
@@ -111,6 +115,50 @@ def test_build_visual_prompt_appends_no_text_constraint() -> None:
     assert "no text" in lowered
     assert "no letters" in lowered
     assert "negative space" in lowered
+
+
+@pytest.mark.unit
+def test_template_negative_space_covers_every_template() -> None:
+    """Every composer template must map to one guidance sentence."""
+    assert set(mod.TEMPLATE_NEGATIVE_SPACE) == set(mod.composer.TEMPLATES)
+    for sentence in mod.TEMPLATE_NEGATIVE_SPACE.values():
+        assert sentence and sentence == sentence.strip()
+
+
+@pytest.mark.unit
+def test_build_visual_prompt_hero_overlay_injects_lower_third() -> None:
+    out = mod.build_visual_prompt("a cat on a sofa", "hero_overlay")
+    lowered = out.lower()
+    # User prompt, then the negative-space sentence, then the no-text constraint.
+    assert "a cat on a sofa" in out
+    assert "lower third visually calm and uncluttered" in out
+    assert out.index("a cat on a sofa") < out.index("lower third")
+    # Compare within one string so the ordering assertion is robust.
+    assert lowered.index("lower third") < lowered.index("no text")
+
+
+@pytest.mark.unit
+def test_build_visual_prompt_split_injects_half_frame() -> None:
+    out = mod.build_visual_prompt("a product", "split")
+    assert "cropped to one half of the frame" in out
+    assert "clean edges" in out
+
+
+@pytest.mark.unit
+def test_build_visual_prompt_minimal_badge_injects_center_weight() -> None:
+    out = mod.build_visual_prompt("a texture", "minimal_badge")
+    assert "Center-weighted subject" in out
+    assert "centered card overlay" in out
+
+
+@pytest.mark.unit
+def test_build_visual_prompt_none_template_is_backward_compatible() -> None:
+    assert mod.build_visual_prompt("a cat", None) == mod.build_visual_prompt("a cat")
+
+
+@pytest.mark.unit
+def test_build_visual_prompt_unknown_template_adds_nothing() -> None:
+    assert mod.build_visual_prompt("a cat", "bogus") == mod.build_visual_prompt("a cat")
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +278,70 @@ async def test_generate_visual_all_fans_out_one_per_provider(
     assert len(payload["files"]) == 2
     assert a.calls[0]["n"] == 1
     assert b.calls[0]["n"] == 1
+
+
+@pytest.mark.unit
+async def test_generate_visual_passes_template_negative_space_and_records_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = _FakeProvider(images=[b"IMG"])
+    monkeypatch.setattr(mod, "available_providers", lambda: [fake])
+    monkeypatch.chdir(tmp_path)
+
+    result = await mod.handle_tool(
+        "creative_studio_generate_visual",
+        {"prompt": "a cat", "template": "hero_overlay", "n": 1},
+    )
+    payload = _payload(result)
+    assert "error" not in payload
+
+    # The fake provider saw the template negative-space sentence in the prompt.
+    prompt_seen = str(fake.calls[0]["prompt"])
+    assert "lower third visually calm and uncluttered" in prompt_seen
+    assert "no text" in prompt_seen.lower()
+
+    # The chosen template is recorded in the run manifest.
+    manifest = json.loads(Path(payload["manifest"]).read_text(encoding="utf-8"))
+    assert manifest["template"] == "hero_overlay"
+
+
+@pytest.mark.unit
+async def test_generate_visual_manifest_records_template_none_when_omitted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = _FakeProvider(images=[b"IMG"])
+    monkeypatch.setattr(mod, "available_providers", lambda: [fake])
+    monkeypatch.chdir(tmp_path)
+
+    result = await mod.handle_tool(
+        "creative_studio_generate_visual", {"prompt": "a cat", "n": 1}
+    )
+    payload = _payload(result)
+    manifest = json.loads(Path(payload["manifest"]).read_text(encoding="utf-8"))
+    assert manifest["template"] is None
+    # No negative-space sentence leaked into the prompt.
+    assert "lower third" not in str(fake.calls[0]["prompt"])
+
+
+@pytest.mark.unit
+async def test_generate_visual_unknown_template_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An out-of-enum template is rejected at the boundary (the schema enum is
+    advisory only) so the manifest never claims a template that did nothing."""
+    fake = _FakeProvider(images=[b"IMG"])
+    monkeypatch.setattr(mod, "available_providers", lambda: [fake])
+    monkeypatch.chdir(tmp_path)
+
+    result = await mod.handle_tool(
+        "creative_studio_generate_visual",
+        {"prompt": "a cat", "template": "bogus", "n": 1},
+    )
+    payload = _payload(result)
+    assert "error" in payload
+    assert "bogus" in payload["error"]
+    # No provider call happened — we failed fast on bad input.
+    assert fake.calls == []
 
 
 @pytest.mark.unit
