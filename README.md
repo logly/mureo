@@ -215,12 +215,16 @@ See [SECURITY.md](SECURITY.md) for the full threat model and vulnerability repor
 | `/daily-check` | Cross-platform health monitoring + organic pulse + site behavior correlation |
 | `/tracking-health` | Preventive conversion-tracking audit (Meta pixels + CAPI, Google Ads conversion actions) with GA4 cross-check — scorecard + fix list ranked by revenue risk |
 | `/rescue` | Emergency performance fix: platform-side vs site-side root cause diagnosis |
+| `/incident-postmortem` | Post-incident retrospective: timeline reconstruction, root-cause analysis, reusable insights via `/learn`, and preventive guardrails (no ad-platform writes) |
 | `/search-term-cleanup` | Keyword hygiene with paid/organic overlap elimination |
 | `/creative-refresh` | Multi-platform ad copy refresh using your Persona, USP, and organic keyword data |
+| `/ad-fatigue-check` | Detect creative fatigue (frequency, week-over-week CTR decline, CPM drift), score ads FATIGUED/WATCH/FRESH, and route refreshes to `/creative-refresh` |
+| `/experiment` | Design, run, and evaluate a controlled A/B split test — one variable, a falsifiable hypothesis, a fixed window, and a per-variant winner/no-difference/inconclusive verdict |
 | `/lead-form-create` | One-question-at-a-time interview that builds a Meta Instant Form (Lead Ad form) and surfaces the cover-image step explicitly |
 | `/budget-rebalance` | Cross-platform budget optimization informed by organic coverage |
 | `/budget-pacing` | Month-to-date spend vs monthly target, landing forecast, and pace alerts (total-spend trajectory; pairs with `/budget-rebalance`) |
 | `/competitive-scan` | Paid + organic competitive landscape analysis |
+| `/audience-review` | Targeting & placement audit against your Persona — exclusions, bid adjustments, lookalikes, and placement pruning |
 | `/goal-review` | Multi-source goal progress evaluation with operation mode recommendations |
 | `/weekly-report` | Cross-platform weekly operations summary |
 | `/monthly-report` | Client-facing monthly digest: month-over-month comparison, goal attainment, action recap, budget utilization |

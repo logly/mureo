@@ -1,7 +1,9 @@
-"""Content tests for the three workflow skills added together:
-``tracking-health``, ``budget-pacing``, and ``monthly-report``.
+"""Content tests for the bundled workflow skills added in this family:
+``tracking-health``, ``budget-pacing``, ``monthly-report`` (PR #390) and
+``experiment``, ``audience-review``, ``ad-fatigue-check``,
+``incident-postmortem`` (this PR).
 
-They use one shared parametrized suite over all three skills. For each skill
+They use one shared parametrized suite over all the skills. For each skill
 we pin the load-bearing invariants a future edit could silently break:
 
 1. The packaged copy (``mureo/_data/skills``) and the repo-root mirror
@@ -13,8 +15,11 @@ we pin the load-bearing invariants a future edit could silently break:
 4. At least three **verified-real** MCP tool names are referenced (guards
    against a rewrite drifting to a tool that does not exist).
 5. Approval-gate language is present (no silent platform mutation).
-6. The ``mureo_state_report_set`` persistence key is present
-   (``tracking`` / ``pacing`` / ``monthly``).
+6. The ``mureo_state_report_set`` persistence key is present for the skills
+   that persist a report (``tracking`` / ``pacing`` / ``monthly`` /
+   ``experiment`` / ``audience`` / ``fatigue``). ``incident-postmortem``
+   persists no report — instead it must state it makes no ad-platform
+   writes.
 
 Marks: unit — pure on-disk file inspection, no network.
 """
@@ -68,13 +73,47 @@ _SKILLS: dict[str, tuple[str, ...]] = {
         "meta_ads_insights_report",
         "mureo_outcome_evaluate",
     ),
+    "experiment": (
+        "meta_ads_split_tests_create",
+        "meta_ads_split_tests_get",
+        "meta_ads_split_tests_end",
+        "mureo_outcome_evaluate",
+        "mureo_state_action_log_append",
+    ),
+    "audience-review": (
+        "google_ads_demographic_targeting_list",
+        "google_ads_audience_targeting_list",
+        "meta_ads_audiences_list",
+        "meta_ads_analysis_placements",
+        "meta_ads_ad_sets_update",
+    ),
+    "ad-fatigue-check": (
+        "meta_ads_insights_report",
+        "meta_ads_ads_list",
+        "google_ads_ad_performance_report",
+        "meta_ads_ads_pause",
+        "google_ads_rsa_assets_audit",
+    ),
+    # incident-postmortem persists no report; it may reference mureo_*
+    # context tools (it makes no ad-platform writes).
+    "incident-postmortem": (
+        "mureo_state_get",
+        "mureo_outcome_evaluate",
+        "mureo_state_action_log_append",
+        "mureo_strategy_set",
+        "mureo_learning_insights_get",
+    ),
 }
 
-# name -> the report_set persistence key it must write.
+# name -> the report_set persistence key it must write. Skills absent from
+# this map (``incident-postmortem``) intentionally persist no report.
 _REPORT_KEY: dict[str, str] = {
     "tracking-health": "tracking",
     "budget-pacing": "pacing",
     "monthly-report": "monthly",
+    "experiment": "experiment",
+    "audience-review": "audience",
+    "ad-fatigue-check": "fatigue",
 }
 
 _NAMES = tuple(_SKILLS)
@@ -134,6 +173,20 @@ class TestNewWorkflowSkills:
         assert "approval" in _read(_packaged(name)).lower()
 
     def test_report_set_persistence_key_present(self, name: str) -> None:
+        if name not in _REPORT_KEY:
+            pytest.skip(f"{name} persists no report (asserted elsewhere)")
         body = _read(_packaged(name))
         assert "mureo_state_report_set" in body
         assert f'report="{_REPORT_KEY[name]}"' in body
+
+    def test_no_platform_writes_statement(self, name: str) -> None:
+        """``incident-postmortem`` persists no report and must instead
+        state, up front, that it performs no ad-platform writes. It may
+        *mention* ``mureo_state_report_set`` to explain the omission, but
+        must not actually persist a ``report="..."`` key."""
+        if name != "incident-postmortem":
+            pytest.skip("no-platform-writes contract is specific to postmortem")
+        body = _read(_packaged(name)).lower()
+        assert "no ad-platform writes" in body
+        # Negative guard: no report_set persistence key is written.
+        assert 'report="' not in body

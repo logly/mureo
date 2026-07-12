@@ -268,7 +268,7 @@ mureo auth check-meta
 
 | ホスト | skill の起動 | 補足 |
 |---|---|---|
-| Claude Code | `/daily-check` / `/budget-rebalance` ... | 操作系 15 + foundation 6 すべてローカルで利用可 |
+| Claude Code | `/daily-check` / `/budget-rebalance` ... | 操作系 19 + foundation 6 すべてローカルで利用可 |
 | Claude Desktop チャット | 自然言語(「日次チェックして」) | claude.ai に登録された skill のみ表示(手動 upload またはマーケット経由) |
 | Cowork | 自然言語 | チャットと同じ登録要件 |
 
@@ -279,7 +279,7 @@ mureo auth check-meta
 > [Anthropic Skills マーケット](https://github.com/anthropics/claude-plugins-official) に mureo が掲載されるまで、Desktop / Cowork ユーザーは手動登録できます:
 
 1. claude.ai を開く → **Skills** 管理ページへ。
-2. 操作系 skill を 1 つずつアップロード: `mureo/_data/skills/<name>/SKILL.md` (15 ファイル: `daily-check` / `tracking-health` / `budget-rebalance` / `budget-pacing` / `search-term-cleanup` / `creative-refresh` / `lead-form-create` / `rescue` / `goal-review` / `weekly-report` / `monthly-report` / `competitive-scan` / `onboard` / `sync-state` / `learn`)。
+2. 操作系 skill を 1 つずつアップロード: `mureo/_data/skills/<name>/SKILL.md` (19 ファイル: `daily-check` / `tracking-health` / `budget-rebalance` / `budget-pacing` / `search-term-cleanup` / `creative-refresh` / `ad-fatigue-check` / `experiment` / `lead-form-create` / `rescue` / `incident-postmortem` / `goal-review` / `weekly-report` / `monthly-report` / `competitive-scan` / `audience-review` / `onboard` / `sync-state` / `learn`)。
 3. Foundation skill (`_mureo-*`) は他 skill が PREREQUISITE で参照する辞書 — 登録は任意ですが推奨(エージェントが tool 選択を間違える確率が下がる)。
 4. Claude Desktop を再起動。
 
