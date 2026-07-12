@@ -66,6 +66,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and section-remove endpoints, so keys no longer have to be hand-exported or
   entered through the generic advanced env form.
 
+### Changed
+
+- **Skills polish.** Deduplicated the ~20-line learning-insights + advisor
+  diagnostic preamble into a single canonical *Diagnostic preamble* section in
+  `_mureo-shared/SKILL.md` (nine workflow skills now carry a two-line pointer;
+  `weekly-report` gains the preamble, `sync-state` documents why it is
+  intentionally exempt); normalized every bundled skill's `metadata.version` to
+  `0.10.20`; corrected the Google Ads skill title from `v18` to `v23` to match
+  the shipped `google-ads` client; and documented OpenAI Codex tool-selection
+  behaviour (`~/.codex/skills`, `$<name>` / `/skills` invocation) in the shared
+  Tool Selection guidance.
+
 ### Fixed
 
 - **Creative Studio review follow-ups.** Font resolution during `compose` runs

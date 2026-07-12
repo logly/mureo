@@ -30,10 +30,7 @@ setup.
   `creative_studio_compose` returns a clear pip-hint error — you can still run
   steps 1-4 (brief, copy, visuals, scoring) and hand off the raw key visual.
 
-**Before you start**: Call `mureo_learning_insights_get` (no arguments) and treat
-the returned Markdown as authoritative practitioner know-how — the operator saved
-those via `/learn` precisely because they should inform your creative direction.
-When the response is the "no insights saved yet" guidance, proceed without it.
+**Before you start**: Run the **Diagnostic preamble** from ../_mureo-shared/SKILL.md — load learning insights (mureo_learning_insights_get) and consult advisors (mureo_consult_advisor) before drawing conclusions.
 
 ## The 6-step workflow
 
