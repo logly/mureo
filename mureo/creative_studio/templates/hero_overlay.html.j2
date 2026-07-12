@@ -1,0 +1,116 @@
+{#
+  hero_overlay — full-bleed key visual with a bottom gradient scrim, headline,
+  optional body line, a pill CTA in the brand accent, and an optional top-left
+  logo with clear-space. All copy sits inside the format's safe area.
+
+  autoescape is ON: user copy ({{ headline }} etc.) is HTML-escaped; CSS values
+  (colours, fonts, data URIs, the injected @font-face block) are trusted and
+  marked | safe so they are not corrupted by HTML entity encoding.
+#}
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
+:root {
+  --u: calc(min(100vw, 100vh) / 100);
+  --accent: {{ colors.accent | safe }};
+  --bg: {{ colors.background | safe }};
+  --heading: '{{ fonts.heading | safe }}', {{ fallback_stack | safe }};
+  --body: '{{ fonts.body | safe }}', {{ fallback_stack | safe }};
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: {{ width }}px;
+  height: {{ height }}px;
+  overflow: hidden;
+}
+.stage {
+  position: relative;
+  width: {{ width }}px;
+  height: {{ height }}px;
+  background: var(--bg);
+  font-family: var(--body);
+}
+.bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 42%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+}
+.logo-wrap {
+  position: absolute;
+  top: {{ pad_top }};
+  left: {{ pad_left }};
+  padding: {{ logo_min_clear_px }}px;
+}
+.logo {
+  display: block;
+  height: clamp(18px, calc(var(--u) * 9), 88px);
+  width: auto;
+}
+.content {
+  position: absolute;
+  left: {{ pad_left }};
+  right: {{ pad_right }};
+  bottom: {{ pad_bottom }};
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--u) * 2);
+}
+.headline {
+  font-family: var(--heading);
+  color: #ffffff;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: 0.01em;
+  font-size: clamp(16px, calc(var(--u) * 7.6), 100px);
+  text-shadow: 0 calc(var(--u) * 0.3) calc(var(--u) * 1.6) rgba(0, 0, 0, 0.45);
+  overflow-wrap: anywhere;
+}
+.body {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: clamp(11px, calc(var(--u) * 3.4), 34px);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.cta {
+  display: inline-block;
+  margin-top: calc(var(--u) * 1.5);
+  padding: calc(var(--u) * 2.2) calc(var(--u) * 4.5);
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+  border-radius: 999px;
+  font-size: clamp(11px, calc(var(--u) * 3.2), 30px);
+  overflow-wrap: anywhere;
+}
+</style>
+</head>
+<body>
+<div class="stage">
+  <img class="bg" src="{{ visual_uri | safe }}" alt="">
+  <div class="scrim"></div>
+  {% if logo_uri %}
+  <div class="logo-wrap"><img class="logo" src="{{ logo_uri | safe }}" alt=""></div>
+  {% endif %}
+  <div class="content">
+    <div class="headline">{{ headline }}</div>
+    {% if body %}<div class="body">{{ body }}</div>{% endif %}
+    <span class="cta">{{ cta }}</span>
+  </div>
+</div>
+</body>
+</html>

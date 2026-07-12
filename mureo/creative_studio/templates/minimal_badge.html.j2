@@ -1,0 +1,119 @@
+{#
+  minimal_badge — a slightly desaturated background visual behind a centred
+  white card holding the headline and pill CTA. A small accent badge chip sits
+  at the card's top-right (only when a badge is supplied); the logo sits at the
+  card's bottom-centre. The card is kept within the format's safe area.
+  autoescape ON: only CSS values are marked | safe.
+#}
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<style>
+{{ font_css | safe }}
+:root {
+  --u: calc(min(100vw, 100vh) / 100);
+  --accent: {{ colors.accent | safe }};
+  --bg: {{ colors.background | safe }};
+  --text: {{ colors.text | safe }};
+  --heading: '{{ fonts.heading | safe }}', {{ fallback_stack | safe }};
+  --body: '{{ fonts.body | safe }}', {{ fallback_stack | safe }};
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: {{ width }}px;
+  height: {{ height }}px;
+  overflow: hidden;
+}
+.stage {
+  position: relative;
+  width: {{ width }}px;
+  height: {{ height }}px;
+  background: var(--bg);
+  font-family: var(--body);
+}
+.bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.7) brightness(0.96);
+}
+.safe {
+  position: absolute;
+  inset: 0;
+  padding: {{ pad_top }} {{ pad_right }} {{ pad_bottom }} {{ pad_left }};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card {
+  position: relative;
+  max-width: 82%;
+  background: #ffffff;
+  border-radius: clamp(16px, calc(var(--u) * 2.2), 24px);
+  box-shadow: 0 calc(var(--u) * 2) calc(var(--u) * 5) rgba(0, 0, 0, 0.22);
+  padding: calc(var(--u) * 6) calc(var(--u) * 6) calc(var(--u) * 5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--u) * 2.5);
+  text-align: center;
+}
+{% if badge %}
+.badge {
+  position: absolute;
+  top: calc(var(--u) * -2);
+  right: calc(var(--u) * -1);
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+  padding: calc(var(--u) * 1.2) calc(var(--u) * 2.6);
+  border-radius: 999px;
+  font-size: clamp(9px, calc(var(--u) * 2.6), 22px);
+  box-shadow: 0 calc(var(--u) * 0.6) calc(var(--u) * 1.8) rgba(0, 0, 0, 0.25);
+  overflow-wrap: anywhere;
+}
+{% endif %}
+.headline {
+  font-family: var(--heading);
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.16;
+  font-size: clamp(15px, calc(var(--u) * 6), 72px);
+  overflow-wrap: anywhere;
+}
+.cta {
+  display: inline-block;
+  padding: calc(var(--u) * 2.2) calc(var(--u) * 5);
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+  border-radius: 999px;
+  font-size: clamp(10px, calc(var(--u) * 3.1), 28px);
+  overflow-wrap: anywhere;
+}
+.logo {
+  display: block;
+  height: clamp(14px, calc(var(--u) * 6), 60px);
+  width: auto;
+  margin-top: calc(var(--u) * 1.5);
+}
+</style>
+</head>
+<body>
+<div class="stage">
+  <img class="bg" src="{{ visual_uri | safe }}" alt="">
+  <div class="safe">
+    <div class="card">
+      {% if badge %}<span class="badge">{{ badge }}</span>{% endif %}
+      <div class="headline">{{ headline }}</div>
+      {% if body %}<div class="body">{{ body }}</div>{% endif %}
+      <span class="cta">{{ cta }}</span>
+      {% if logo_uri %}<img class="logo" src="{{ logo_uri | safe }}" alt="">{% endif %}
+    </div>
+  </div>
+</div>
+</body>
+</html>

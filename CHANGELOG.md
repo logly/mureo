@@ -20,6 +20,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `creative_studio` credentials section (or the `OPENAI_API_KEY` /
   `GEMINI_API_KEY` / `FAL_KEY` env vars), calls are rate-limited, and the
   family can be disabled with `MUREO_DISABLE_CREATIVE_STUDIO=1`.
+- **Creative Studio composition (typography layer).** The `creative_studio_*`
+  family gains the layout half of the pipeline: `creative_studio_compose`
+  composites headline/body/CTA/badge/logo over a text-free key visual using
+  three professional Jinja2 HTML/CSS templates (`hero_overlay`, `split`,
+  `minimal_badge`) rendered by headless Chromium, so Japanese typography is
+  pixel-perfect across every banner format (per-format safe areas keep copy
+  clear of platform UI chrome). A lightweight brand kit
+  (`./BRAND_KIT/kit.yml`, surfaced by `creative_studio_brand_kit_get`) supplies
+  colours, fonts, and a logo — degrading field-by-field to tasteful defaults so
+  output quality never depends on config hygiene. A Japanese-font pipeline
+  bundles Noto Sans JP + Zen Kaku Gothic New, downloaded once into
+  `~/.mureo/fonts` with checksum-locked provenance and a system-font fallback
+  when offline. `creative_studio_edit_visual` refines a visual through a
+  provider's edit path for the art-direction loop. Composition dependencies
+  (jinja2, playwright, pillow) install via the new `mureo[creative]` extra and
+  are lazily imported, so the core install stays lean.
 
 ## [0.10.20] - 2026-07-12
 

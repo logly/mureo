@@ -7,8 +7,9 @@ display sizes, responsive display assets) as frozen
 recommended master-generation size a provider should render at before the
 composer (PR-B) crops per format.
 
-Safe-area definitions are a placeholder here; the composer consumes them
-fully in PR-B.
+Safe-area definitions are per-format keep-out margins (fractional insets)
+consumed by the composer (PR-B) to keep every headline / CTA / logo clear of
+the format's edges and any platform UI chrome.
 """
 
 from __future__ import annotations
@@ -71,16 +72,48 @@ _GENERATION_SIZE_BY_ASPECT: dict[str, tuple[int, int]] = {
 }
 
 
-# Placeholder safe-area (headline / CTA keep-out) definitions per aspect
-# class, expressed as fractional margins (top, right, bottom, left). Filled
-# in and consumed by the composer in PR-B; kept here so the matrix module is
-# the single source of truth for format geometry.
+# Per-format safe-area (headline / CTA / logo keep-out) definitions, expressed
+# as fractional margins (top, right, bottom, left) of the format's own
+# dimensions. These are per FORMAT id — not per aspect class — because two
+# formats sharing an aspect can need very different insets: a 9:16 story
+# reserves large top/bottom bands for platform UI chrome, whereas a 160x600
+# skyscraper (same "vertical" aspect) wants a tight 2% margin to use every
+# scarce pixel. The composer converts these fractions to CSS padding.
+#
+# Defaults: 4% each side. Overrides:
+#   - story_9x16: 14% top / 20% bottom (Instagram/Facebook story UI chrome).
+#   - gdn_728x90 & gdn_160x600: 2% (very small canvases, maximise usable area).
+_DEFAULT_INSET = 0.04
+
+
+def _uniform(value: float) -> dict[str, float]:
+    """Return an inset dict with the same margin on all four sides."""
+    return {"top": value, "right": value, "bottom": value, "left": value}
+
+
 SAFE_AREAS: dict[str, dict[str, float]] = {
-    SQUARE: {"top": 0.08, "right": 0.08, "bottom": 0.08, "left": 0.08},
-    PORTRAIT: {"top": 0.08, "right": 0.08, "bottom": 0.10, "left": 0.08},
-    LANDSCAPE: {"top": 0.08, "right": 0.08, "bottom": 0.08, "left": 0.08},
-    VERTICAL: {"top": 0.10, "right": 0.06, "bottom": 0.12, "left": 0.06},
+    "meta_feed_1x1": _uniform(_DEFAULT_INSET),
+    "meta_feed_4x5": _uniform(_DEFAULT_INSET),
+    "story_9x16": {"top": 0.14, "right": 0.04, "bottom": 0.20, "left": 0.04},
+    "gdn_300x250": _uniform(_DEFAULT_INSET),
+    "gdn_336x280": _uniform(_DEFAULT_INSET),
+    "gdn_728x90": _uniform(0.02),
+    "gdn_160x600": _uniform(0.02),
+    "rda_landscape": _uniform(_DEFAULT_INSET),
+    "rda_square": _uniform(_DEFAULT_INSET),
 }
+
+
+def safe_area_for(format_id: str) -> dict[str, float]:
+    """Return a fresh copy of the safe-area insets for ``format_id``.
+
+    A copy is returned so a caller mutating the result never corrupts the
+    shared table.
+
+    Raises:
+        KeyError: When ``format_id`` is not a known format.
+    """
+    return dict(SAFE_AREAS[format_id])
 
 
 def aspect_for(format_id: str) -> str:
@@ -118,4 +151,5 @@ __all__ = [
     "CreativeFormat",
     "aspect_for",
     "generation_size_for_aspect",
+    "safe_area_for",
 ]

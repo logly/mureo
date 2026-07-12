@@ -59,7 +59,22 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Creative Studio composition (PR-B). jinja2 renders the HTML/CSS banner
+# templates and playwright rasterises them with headless Chromium; pillow is
+# available for optional crop/resize helpers. All three are lazily imported
+# (mureo.creative_studio.composer) so a core install stays lean — the tools
+# raise a clear "pip install 'mureo[creative]'" message when the extra is
+# absent. PyYAML (brand kit) and httpx (font pipeline) are already core deps.
+creative = [
+    "jinja2>=3.1",
+    "playwright>=1.40",
+    "pillow>=10.0",
+]
 dev = [
+    # jinja2 backs the composer template unit tests (the browser layer is
+    # mocked; playwright/pillow stay out of CI — they live in the "creative"
+    # runtime extra only).
+    "jinja2>=3.1,<4",
     "pytest>=7.4,<9",
     "pytest-asyncio>=0.23,<1",
     "pytest-cov>=4.1,<7",

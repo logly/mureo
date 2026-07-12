@@ -9,9 +9,11 @@ import pytest
 from mureo.creative_studio.formats import (
     FORMATS,
     FORMATS_BY_ID,
+    SAFE_AREAS,
     CreativeFormat,
     aspect_for,
     generation_size_for_aspect,
+    safe_area_for,
 )
 
 _EXPECTED_IDS = {
@@ -121,3 +123,50 @@ def test_generation_size_for_aspect() -> None:
 def test_generation_size_for_aspect_unknown_raises() -> None:
     with pytest.raises(ValueError):
         generation_size_for_aspect("bogus")
+
+
+# ---------------------------------------------------------------------------
+# Per-format safe areas (PR-B)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_safe_areas_cover_every_format() -> None:
+    assert set(SAFE_AREAS) == _EXPECTED_IDS
+    for insets in SAFE_AREAS.values():
+        assert set(insets) == {"top", "right", "bottom", "left"}
+        for value in insets.values():
+            assert 0.0 <= value < 0.5
+
+
+@pytest.mark.unit
+def test_safe_area_for_default_is_four_percent() -> None:
+    insets = safe_area_for("meta_feed_1x1")
+    assert insets == {"top": 0.04, "right": 0.04, "bottom": 0.04, "left": 0.04}
+
+
+@pytest.mark.unit
+def test_safe_area_for_story_reserves_platform_chrome() -> None:
+    insets = safe_area_for("story_9x16")
+    assert insets["top"] == 0.14
+    assert insets["bottom"] == 0.20
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("format_id", ["gdn_728x90", "gdn_160x600"])
+def test_safe_area_for_small_gdn_units(format_id: str) -> None:
+    insets = safe_area_for(format_id)
+    assert insets == {"top": 0.02, "right": 0.02, "bottom": 0.02, "left": 0.02}
+
+
+@pytest.mark.unit
+def test_safe_area_for_returns_copy(format_id: str = "meta_feed_1x1") -> None:
+    a = safe_area_for(format_id)
+    a["top"] = 0.99
+    assert safe_area_for(format_id)["top"] == 0.04  # not mutated by caller
+
+
+@pytest.mark.unit
+def test_safe_area_for_unknown_raises() -> None:
+    with pytest.raises(KeyError):
+        safe_area_for("does_not_exist")
