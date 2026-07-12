@@ -2,7 +2,7 @@
 name: sync-state
 description: "Sync STATE.json with current campaign data from all platforms. Use when the user asks to refresh state, sync campaigns, update STATE.json from live data, or pull latest campaign snapshots."
 metadata:
-  version: 0.9.0
+  version: 0.10.20
 ---
 
 # Sync State
@@ -15,6 +15,8 @@ Synchronize STATE.json with the current state of all marketing platforms.
 - STRATEGY.md and STATE.json should exist in the current directory (run the `onboard` skill first if not)
 
 ## Steps
+
+> Note: the **Diagnostic preamble** (learning insights + advisor consult) from `../_mureo-shared/SKILL.md` is intentionally **not** required here — sync-state is mechanical data synchronization with no judgement calls.
 
 1. **Read current STATE.json** (if exists) to track changes.
 
