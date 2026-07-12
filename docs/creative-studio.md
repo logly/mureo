@@ -43,7 +43,7 @@ Visual **generation** (steps 1-4 of the workflow) works with the core install.
 `creative` extra and a Chromium browser:
 
 ```bash
-pip install 'mureo[creative]'     # adds jinja2, playwright, pillow
+pip install 'mureo[creative]'     # adds jinja2, playwright
 playwright install chromium       # one-time browser download for Playwright
 ```
 

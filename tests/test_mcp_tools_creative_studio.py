@@ -268,6 +268,7 @@ def test_compose_schema_constraints() -> None:
     assert props["template"]["default"] == "hero_overlay"
     assert props["formats"]["type"] == "array"
     assert props["formats"]["default"] == ["meta_feed_1x1"]
+    assert props["formats"]["uniqueItems"] is True
     assert set(tool.inputSchema["required"]) == {"visual_path", "headline", "cta"}
 
 
@@ -371,6 +372,59 @@ async def test_compose_happy_path(
     assert manifest["copy"]["headline"] == "H"
     assert manifest["inputs"]["visual_sha256"]
     assert len(manifest["files"]) == 2
+
+
+@pytest.mark.unit
+async def test_compose_dedupes_duplicate_formats(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    recorded_formats: list[list[str]] = []
+
+    async def _recording_compose(
+        visual_path: Path,
+        copy: object,
+        template: str,
+        formats: list[str],
+        brand: object,
+        out_dir: Path,
+        **_kwargs: object,
+    ) -> list[dict]:
+        recorded_formats.append(list(formats))
+        files = []
+        for fid in formats:
+            p = Path(out_dir) / f"{fid}_{template}.png"
+            p.write_bytes(b"\x89PNG composed")
+            files.append(
+                {
+                    "format": fid,
+                    "path": str(p),
+                    "sha256": "deadbeef",
+                    "width": 1,
+                    "height": 1,
+                }
+            )
+        return files
+
+    monkeypatch.setattr(mod.composer, "compose", _recording_compose)
+    visual = tmp_path / "v.png"
+    visual.write_bytes(b"\x89PNG raw visual")
+
+    result = await mod.handle_tool(
+        "creative_studio_compose",
+        {
+            "visual_path": str(visual),
+            "headline": "H",
+            "cta": "C",
+            "formats": ["meta_feed_1x1", "meta_feed_1x1", "gdn_300x250"],
+        },
+    )
+    payload = _payload(result)
+    assert "error" not in payload
+    # compose was invoked exactly once, with duplicates removed (order kept).
+    assert len(recorded_formats) == 1
+    assert recorded_formats[0] == ["meta_feed_1x1", "gdn_300x250"]
+    assert len(payload["files"]) == 2
 
 
 @pytest.mark.unit

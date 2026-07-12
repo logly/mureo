@@ -20,6 +20,7 @@ Two entry points:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import importlib
 import logging
@@ -292,7 +293,9 @@ async def compose(
 
     visual_uri = _data_uri(Path(visual_path))
     logo_uri = _data_uri(brand.logo_path) if brand.logo_path is not None else None
-    font_css = _embedded_font_css()
+    # Font resolution may hit the network (synchronous httpx). Offload it to a
+    # worker thread so it never blocks the event loop this coroutine runs on.
+    font_css = await asyncio.to_thread(_embedded_font_css)
 
     factory = browser_factory or _default_browser_factory
     results: list[dict[str, Any]] = []

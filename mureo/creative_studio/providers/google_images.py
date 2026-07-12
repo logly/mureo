@@ -87,9 +87,11 @@ class GoogleImageProvider:
             resp = await client.post(_URL, params={"key": key}, json=body)
             resp.raise_for_status()
             payload = resp.json()
+            # Parse INSIDE the try so a malformed 200 body (missing inlineData
+            # / bad base64) surfaces as a normalized, redacted provider error.
+            return self._extract_image(payload)
         except Exception as exc:  # noqa: BLE001 — normalize + redact
             raise provider_error(self.name, exc, key) from exc
-        return self._extract_image(payload)
 
     async def generate(
         self, prompt: str, *, width: int, height: int, n: int = 1
@@ -122,9 +124,11 @@ class GoogleImageProvider:
                 resp = await client.post(_URL, params={"key": key}, json=body)
                 resp.raise_for_status()
                 payload = resp.json()
+                # Parse INSIDE the try (see _generate_one) so a malformed 200
+                # body is normalized + redacted rather than raising raw.
+                return self._extract_image(payload)
             except Exception as exc:  # noqa: BLE001 — normalize + redact
                 raise provider_error(self.name, exc, key) from exc
-        return self._extract_image(payload)
 
 
 #: Exposed for the shared provider test-suite.

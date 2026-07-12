@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.mureo/fonts` with checksum-locked provenance and a system-font fallback
   when offline. `creative_studio_edit_visual` refines a visual through a
   provider's edit path for the art-direction loop. Composition dependencies
-  (jinja2, playwright, pillow) install via the new `mureo[creative]` extra and
+  (jinja2, playwright) install via the new `mureo[creative]` extra and
   are lazily imported, so the core install stays lean.
 - **Creative Studio guided workflow (`/creative-generate`) + documentation.** A
   new bundled skill encodes the 6-step, quality-first workflow — brief (Persona /
@@ -56,6 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `creative_studio` credentials section — reusing the existing env-var write
   and section-remove endpoints, so keys no longer have to be hand-exported or
   entered through the generic advanced env form.
+
+### Fixed
+
+- **Creative Studio review follow-ups.** Font resolution during `compose` runs
+  off the event loop (`asyncio.to_thread`) and a failed download is
+  negative-cached for 24h, so an offline / egress-filtered host no longer
+  re-blocks on every compose call. Malformed provider `200` bodies now surface
+  as normalized, redacted provider errors instead of raw `KeyError` /
+  `binascii.Error`. `creative_studio_compose` deduplicates requested `formats`
+  (and the schema declares `uniqueItems`). Dropped the unused `pillow`
+  dependency from the `creative` extra.
 
 ## [0.10.20] - 2026-07-12
 

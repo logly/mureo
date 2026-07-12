@@ -237,6 +237,7 @@ TOOLS: list[Tool] = [
                         "type": "string",
                         "enum": sorted(FORMATS_BY_ID),
                     },
+                    "uniqueItems": True,
                     "default": ["meta_feed_1x1"],
                     "description": "Target format ids to render.",
                 },
@@ -560,6 +561,9 @@ async def _handle_compose(arguments: dict[str, Any]) -> list[TextContent]:
 
     if not isinstance(formats, list) or not formats:
         return _error("formats must be a non-empty array of format ids")
+    # Defensively dedupe (preserving order): the schema declares uniqueItems,
+    # but the handler can be called directly, so never render a format twice.
+    formats = list(dict.fromkeys(formats))
     unknown = [f for f in formats if f not in FORMATS_BY_ID]
     if unknown:
         valid = ", ".join(sorted(FORMATS_BY_ID))

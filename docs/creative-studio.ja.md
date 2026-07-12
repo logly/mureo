@@ -43,7 +43,7 @@ Creative Studio がプロ品質で勝てるのは、**3 つのレイヤーを分
 extra と Chromium ブラウザが必要です。
 
 ```bash
-pip install 'mureo[creative]'     # jinja2 / playwright / pillow を追加
+pip install 'mureo[creative]'     # jinja2 / playwright を追加
 playwright install chromium       # Playwright 用の Chromium を初回のみダウンロード
 ```
 

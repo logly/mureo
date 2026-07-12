@@ -92,9 +92,14 @@ class OpenAIImageProvider:
                 resp = await client.post(_GENERATE_URL, json=payload, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
+                # Parse INSIDE the try so a malformed 200 body (missing
+                # b64_json / bad base64) surfaces as a normalized, redacted
+                # provider error rather than a raw KeyError / binascii.Error.
+                return [
+                    base64.b64decode(item["b64_json"]) for item in data.get("data", [])
+                ]
             except Exception as exc:  # noqa: BLE001 — normalize + redact
                 raise provider_error(self.name, exc, key) from exc
-        return [base64.b64decode(item["b64_json"]) for item in data.get("data", [])]
 
     async def edit(self, image: bytes, instruction: str) -> bytes:
         key = self._require_key()
@@ -108,9 +113,11 @@ class OpenAIImageProvider:
                 )
                 resp.raise_for_status()
                 data = resp.json()
+                # Parse INSIDE the try (see generate) so a malformed 200 body
+                # is normalized + redacted rather than raising a raw error.
+                return base64.b64decode(data["data"][0]["b64_json"])
             except Exception as exc:  # noqa: BLE001 — normalize + redact
                 raise provider_error(self.name, exc, key) from exc
-        return base64.b64decode(data["data"][0]["b64_json"])
 
 
 #: Exposed so the shared provider test-suite can instantiate without knowing
