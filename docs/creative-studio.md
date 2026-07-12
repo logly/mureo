@@ -67,9 +67,14 @@ more under the `mureo.image_providers` entry-point group.
 | Google (Gemini image / Imagen) | `creative_studio.gemini_api_key` | `GEMINI_API_KEY` | yes |
 | fal.ai (FLUX / Recraft …) | `creative_studio.fal_key` | `FAL_KEY` | no |
 
-Add the keys in the `mureo configure` dashboard's **`creative_studio`**
-credentials section, or export the env vars. Keys are never logged and provider
-error messages are redacted.
+The recommended way to add keys is the `mureo configure` dashboard: open the
+**Setup** tab and use the **Creative Studio (image generation)** section, which
+gives each provider a labelled, masked input, shows a ✓/✗ configured indicator,
+and saves straight into the `creative_studio` credentials section (leave a field
+blank to keep its stored key; a **Remove** button clears the whole section once
+a key is stored). Exporting the env-var fallbacks above still works for
+headless / CI setups. Keys are never logged and provider error messages are
+redacted.
 
 > **Rough cost pointer.** Each provider bills you per generated image (typically a
 > few US cents up to ~10¢ per image at current list prices, varying by model and

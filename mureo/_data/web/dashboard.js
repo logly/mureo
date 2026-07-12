@@ -50,6 +50,41 @@
     "meta-ads-official": "meta_ads",
   };
 
+  // Creative Studio image-provider API keys (Setup tab). Each env-var name
+  // binds to the ``creative_studio`` credentials section via env_var_writer's
+  // allow-list, so this section reuses the generic single-field write
+  // (POST /api/credentials/env-var) and the section remove
+  // (POST /api/credentials/remove) — no dedicated backend route. Labels are
+  // proper nouns (identical EN/JA); the hint prose is localized per key.
+  const CREATIVE_STUDIO_KEYS = [
+    {
+      name: "OPENAI_API_KEY",
+      labelKey: "dashboard.creative_studio_openai_label",
+      hintKey: "dashboard.creative_studio_openai_hint",
+    },
+    {
+      name: "GEMINI_API_KEY",
+      labelKey: "dashboard.creative_studio_gemini_label",
+      hintKey: "dashboard.creative_studio_gemini_hint",
+    },
+    {
+      name: "FAL_KEY",
+      labelKey: "dashboard.creative_studio_fal_label",
+      hintKey: "dashboard.creative_studio_fal_hint",
+    },
+  ];
+
+  // Membership lookup for de-duping these names out of the generic advanced
+  // env list — they now have their own first-class Creative Studio section.
+  const CREATIVE_STUDIO_ENV_NAMES = CREATIVE_STUDIO_KEYS.reduce(function (
+    acc,
+    key
+  ) {
+    acc[key.name] = true;
+    return acc;
+  },
+  {});
+
   // Colored ✓ / ✗ status mark as its own element (kept separate from any
   // data-i18n text node so a locale re-translation can't wipe it).
   function statusMark(ok) {
@@ -495,7 +530,13 @@
     if (!list) return;
     while (list.firstChild) list.removeChild(list.firstChild);
     const envVars = (status && status.env_vars) || {};
-    const names = Object.keys(envVars).sort();
+    const names = Object.keys(envVars)
+      .filter(function (name) {
+        // Creative Studio keys have their own first-class section — don't
+        // list them a second time in the generic advanced list.
+        return !CREATIVE_STUDIO_ENV_NAMES[name];
+      })
+      .sort();
     names.forEach(function (name) {
       const entry = envVars[name] || {};
       const li = document.createElement("li");
@@ -514,6 +555,133 @@
       li.appendChild(valueSpan);
       list.appendChild(li);
     });
+  }
+
+  // Creative Studio image-provider keys: one masked input per provider with
+  // a ✓/✗ configured mark + localized hint, one Save (persists every
+  // non-blank field), and a Remove for the whole creative_studio section
+  // (shown only once a key is stored). A stored key never round-trips to the
+  // browser — a configured field shows the leave-blank-to-keep placeholder.
+  function renderCreativeStudioSection(status) {
+    const list = document.querySelector(
+      "[data-dashboard-creative-studio-list]"
+    );
+    if (!list) return;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    const envVars = (status && status.env_vars) || {};
+
+    const form = document.createElement("form");
+    form.className = "creative-studio-form";
+    const inputs = [];
+    let anyConfigured = false;
+
+    CREATIVE_STUDIO_KEYS.forEach(function (key) {
+      const entry = envVars[key.name] || {};
+      const configured = entry.set === true;
+      if (configured) anyConfigured = true;
+
+      const label = document.createElement("label");
+      const head = document.createElement("span");
+      head.className = "creative-studio-key-head";
+      head.appendChild(statusMark(configured));
+      head.appendChild(document.createTextNode(" "));
+      // data-i18n on an INNER span only, so a locale re-translation (which
+      // overwrites textContent) can't wipe the ✓/✗ mark.
+      const labelText = document.createElement("span");
+      labelText.textContent = MUREO.t(key.labelKey);
+      labelText.setAttribute("data-i18n", key.labelKey);
+      head.appendChild(labelText);
+      label.appendChild(head);
+
+      const input = document.createElement("input");
+      input.type = "password";
+      input.name = key.name;
+      // ``new-password`` defeats browser autofill of saved site passwords
+      // into the key field (``off`` is ignored on password inputs).
+      input.autocomplete = "new-password";
+      input.placeholder = configured
+        ? MUREO.t("dashboard.plugin_credentials_secret_placeholder")
+        : MUREO.t("dashboard.creative_studio_key_placeholder");
+      label.appendChild(input);
+      inputs.push({ input: input, name: key.name });
+
+      const hint = document.createElement("small");
+      hint.className = "field-hint";
+      hint.textContent = MUREO.t(key.hintKey);
+      hint.setAttribute("data-i18n", key.hintKey);
+      label.appendChild(hint);
+
+      form.appendChild(label);
+    });
+
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.className = "btn btn-primary";
+    save.textContent = MUREO.t("dashboard.creative_studio_save");
+    save.setAttribute("data-i18n", "dashboard.creative_studio_save");
+    form.appendChild(save);
+
+    form.addEventListener("submit", function (evt) {
+      evt.preventDefault();
+      saveCreativeStudioKeys(inputs);
+    });
+    list.appendChild(form);
+
+    if (anyConfigured) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn btn-secondary";
+      remove.textContent = MUREO.t("dashboard.action_remove");
+      remove.setAttribute("data-i18n", "dashboard.action_remove");
+      remove.addEventListener("click", async function () {
+        const ok = await MUREO.confirmAction(
+          MUREO.t("dashboard.confirm_remove_credentials")
+        );
+        if (!ok) return;
+        const res = await MUREO.postJson("/api/credentials/remove", {
+          section: "creative_studio",
+        });
+        if (res.ok) {
+          await MUREO.loadStatus();
+          renderAll();
+        } else {
+          MUREO.toast(MUREO.t("dashboard.remove_failed"), "error");
+        }
+      });
+      list.appendChild(remove);
+    }
+  }
+
+  // Persist every non-blank Creative Studio key via the shared single-field
+  // env-var write (the endpoint takes one name/value per call). Blank inputs
+  // are skipped — leave-blank-to-keep. Awaits all writes, then refreshes so
+  // the ✓/✗ marks + placeholders reflect the new stored state.
+  async function saveCreativeStudioKeys(inputs) {
+    const pending = inputs.filter(function (item) {
+      return item.input.value !== "";
+    });
+    if (pending.length === 0) return;
+    let ok = true;
+    for (let i = 0; i < pending.length; i += 1) {
+      const item = pending[i];
+      let res;
+      try {
+        res = await MUREO.postJson("/api/credentials/env-var", {
+          name: item.name,
+          value: item.input.value,
+        });
+      } catch (_err) {
+        res = null;
+      }
+      if (!res || !res.ok) ok = false;
+    }
+    if (ok) {
+      MUREO.toast(MUREO.t("app.toast_saved"), "success");
+    } else {
+      MUREO.toast(MUREO.t("app.toast_save_failed"), "error");
+    }
+    await MUREO.loadStatus();
+    renderCreativeStudioSection(MUREO.state.status);
   }
 
   function wireRerunWizardButton() {
@@ -2357,6 +2525,7 @@
     renderNativeSection(status);
     renderProvidersSection(status);
     renderPluginCredentials();
+    renderCreativeStudioSection(status);
     renderEnvVarsSection(status);
     loadDemoScenarios();
     renderByodStatus();

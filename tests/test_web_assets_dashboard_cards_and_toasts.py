@@ -212,3 +212,51 @@ def test_reports_card_css_uses_design_tokens() -> None:
     assert "var(--hairline)" in window
     assert "border-radius:" in window
     assert "box-shadow: var(--shadow-sm)" in window
+
+
+# ---------------------------------------------------------------------------
+# Creative Studio — Setup-tab section for the three image-provider API keys
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_creative_studio_section_shell_present_and_ordered() -> None:
+    """The Creative Studio key section must live in the Setup group between
+    the plugin-credentials card and the advanced credentials list, carrying
+    the container renderCreativeStudioSection() populates plus its localized
+    title marker. Order matters: it groups with the other integration
+    credential surfaces, above the generic advanced env list.
+    """
+    html = _read("app.html")
+    assert "data-dashboard-creative-studio" in html
+    assert "data-dashboard-creative-studio-list" in html
+    assert 'data-i18n="dashboard.creative_studio_title"' in html
+    plugin_idx = html.index("data-dashboard-plugin-credentials-list")
+    cs_idx = html.index("data-dashboard-creative-studio")
+    env_idx = html.index("data-dashboard-env-list")
+    assert plugin_idx < cs_idx < env_idx, (
+        "Creative Studio section must sit after plugin credentials and "
+        "before the advanced env credentials list"
+    )
+
+
+@pytest.mark.unit
+def test_creative_studio_render_wired_in_dashboard_js() -> None:
+    """dashboard.js must define renderCreativeStudioSection and call it from
+    renderAll — otherwise the section shell never populates.
+    """
+    js = _read("dashboard.js")
+    assert "function renderCreativeStudioSection(" in js
+    assert "renderCreativeStudioSection(status)" in js
+
+
+@pytest.mark.unit
+def test_creative_studio_keys_excluded_from_generic_env_list() -> None:
+    """The three creative_studio env names must be filtered out of the generic
+    advanced env list (renderEnvVarsSection) so they are not listed twice —
+    the dedicated Creative Studio section is their single editing surface.
+    """
+    js = _read("dashboard.js")
+    assert "CREATIVE_STUDIO_ENV_NAMES" in js
+    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "FAL_KEY"):
+        assert name in js

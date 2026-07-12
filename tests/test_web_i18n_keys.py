@@ -313,6 +313,53 @@ class TestAboutRestartKeysParity:
 
 
 @pytest.mark.unit
+class TestCreativeStudioDashboardKeysParity:
+    """EN/JA parity for the Setup → Creative Studio image-provider key
+    section: the section title + description, the per-provider hint prose,
+    the Save button, and the key-input placeholder (no JS harness — asserted
+    against the bundled i18n.json directly).
+
+    The three provider *labels* ("OpenAI (gpt-image)", "Google Gemini",
+    "fal.ai") are proper nouns identical in both locales — the same exemption
+    the Reports suite makes for the KPI acronyms and the advisor URL label —
+    so they are presence-only, not distinctness-checked.
+    """
+
+    _KEYS = (
+        "dashboard.creative_studio_title",
+        "dashboard.creative_studio_desc",
+        "dashboard.creative_studio_openai_hint",
+        "dashboard.creative_studio_gemini_hint",
+        "dashboard.creative_studio_fal_hint",
+        "dashboard.creative_studio_save",
+        "dashboard.creative_studio_key_placeholder",
+    )
+
+    # Proper-noun provider labels — present + non-empty in both locales, but
+    # exempt from the distinctness check.
+    _UNIVERSAL_KEYS = (
+        "dashboard.creative_studio_openai_label",
+        "dashboard.creative_studio_gemini_label",
+        "dashboard.creative_studio_fal_label",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS + self._UNIVERSAL_KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
 class TestReportsDashboardKeysParity:
     """EN/JA parity for the read-only Reports dashboard keys: the nav label,
     section title + hint, client selector, freshness, KPI labels, the

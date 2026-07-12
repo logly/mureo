@@ -47,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cover the 3-layer architecture, install (`pip install 'mureo[creative]'` +
   `playwright install chromium`), provider keys, the `BRAND_KIT/kit.yml` schema,
   the format matrix, and safety notes.
+- **Creative Studio dashboard credentials section.** The `mureo configure`
+  dashboard's Setup tab gains a first-class **Creative Studio (image
+  generation)** section for the three image-provider API keys
+  (`OPENAI_API_KEY` / `GEMINI_API_KEY` / `FAL_KEY`): a labelled masked input
+  per provider, a ✓/✗ configured indicator, a Save that persists each
+  non-blank key (leave-blank-to-keep), and a Remove for the whole
+  `creative_studio` credentials section — reusing the existing env-var write
+  and section-remove endpoints, so keys no longer have to be hand-exported or
+  entered through the generic advanced env form.
 
 ## [0.10.20] - 2026-07-12
 
