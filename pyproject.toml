@@ -71,6 +71,10 @@ creative = [
     "pillow>=10.0",
 ]
 dev = [
+    # jinja2 backs the composer template unit tests (the browser layer is
+    # mocked; playwright/pillow stay out of CI — they live in the "creative"
+    # runtime extra only).
+    "jinja2>=3.1,<4",
     "pytest>=7.4,<9",
     "pytest-asyncio>=0.23,<1",
     "pytest-cov>=4.1,<7",
