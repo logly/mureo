@@ -46,6 +46,7 @@ _BUNDLE_NAMES = (
     "_mureo-meta-ads",
     "_mureo-shared",
     "_mureo-strategy",
+    "budget-pacing",
     "budget-rebalance",
     "competitive-scan",
     "creative-generate",
@@ -54,10 +55,12 @@ _BUNDLE_NAMES = (
     "goal-review",
     "lead-form-create",
     "learn",
+    "monthly-report",
     "onboard",
     "rescue",
     "search-term-cleanup",
     "sync-state",
+    "tracking-health",
     "weekly-report",
 )
 

@@ -65,6 +65,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `creative_studio` credentials section — reusing the existing env-var write
   and section-remove endpoints, so keys no longer have to be hand-exported or
   entered through the generic advanced env form.
+- **Three workflow skills — `/tracking-health`, `/budget-pacing`,
+  `/monthly-report`.** `tracking-health` is a preventive conversion-tracking
+  audit: Meta pixel inventory + health (`meta_ads_pixels_list` / `_get` /
+  `_stats` / `_events`), per-campaign `result_indicator` CV-mismatch checks,
+  a best-effort CAPI-presence note, Google Ads conversion-action status +
+  recency (`google_ads_conversions_list` / `_performance`) with
+  primary/secondary counting sanity, and a GA4 cross-check flagging any
+  ads-vs-GA4 divergence > 20% — output is a per-platform OK/Watch/Broken
+  scorecard plus a fix list ranked by revenue risk (persists
+  `report="tracking"`). `budget-pacing` tracks month-to-date spend vs a
+  monthly target (from a `## Custom: Monthly Budget` section or the
+  `## Guardrails` daily ceiling, otherwise interactively captured and
+  optionally persisted), using the true month-to-date presets
+  (`THIS_MONTH` / `this_month`), then projects the month-end landing and
+  raises on-pace/over/under alerts with Guardrail-respecting daily-budget
+  recommendations — distinct from `/budget-rebalance` (allocation), which it
+  hands off to (persists `report="pacing"`). `monthly-report` is a
+  client-facing monthly digest mirroring `/weekly-report` over the previous
+  full calendar month (`LAST_MONTH` / `last_month`) with month-over-month
+  comparison, per-Goal met/missed/partial attainment, an action-log recap
+  grouped by command with `mureo_outcome_evaluate` outcome verdicts, budget
+  utilization, and next-month recommendations (persists `report="monthly"`).
+  Each ships a packaged copy and a byte-identical repo-root mirror.
 
 ### Changed
 
