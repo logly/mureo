@@ -13,6 +13,7 @@ the network.
 from __future__ import annotations
 
 import threading
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -486,9 +487,22 @@ class TestMetaAdsSubmitRoute:
             method="POST",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        with pytest.raises(urllib.error.HTTPError) as exc_info:
+        try:
             urllib.request.urlopen(req, timeout=2.0)
-        assert exc_info.value.code == 413
+            raise AssertionError("oversize body was not rejected")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 413
+        except (ConnectionError, urllib.error.URLError) as exc:
+            # Windows: the server tears down the socket while the client is
+            # still sending the oversize body, surfacing as
+            # ConnectionAbortedError (WinError 10053) before the 413 response
+            # can be read. The request was still rejected — accept that on
+            # win32 only; POSIX must still see a clean 413. Mirrors the
+            # spoofed-Host tests in test_web_handlers.py.
+            if sys.platform != "win32":
+                raise AssertionError(
+                    f"expected HTTP 413, got {type(exc).__name__}: {exc}"
+                ) from exc
 
     def test_refuses_non_facebook_redirect_origin(self, wizard: Any) -> None:
         """Even if build_meta_auth_url is somehow subverted to return a
