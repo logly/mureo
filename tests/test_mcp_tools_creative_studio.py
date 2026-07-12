@@ -64,6 +64,9 @@ def test_tool_names_are_prefixed() -> None:
     assert names == {
         "creative_studio_providers_list",
         "creative_studio_generate_visual",
+        "creative_studio_brand_kit_get",
+        "creative_studio_edit_visual",
+        "creative_studio_compose",
     }
     for tool in mod.TOOLS:
         assert tool.name.startswith("creative_studio_")
@@ -247,3 +250,295 @@ async def test_generate_visual_named_unconfigured_provider_errors(
 async def test_handle_tool_unknown_name_raises() -> None:
     with pytest.raises(ValueError, match="Unknown tool"):
         await mod.handle_tool("creative_studio_nope", {})
+
+
+# ---------------------------------------------------------------------------
+# PR-B: schemas for the composer / brand-kit / edit tools
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_compose_schema_constraints() -> None:
+    tool = next(t for t in mod.TOOLS if t.name == "creative_studio_compose")
+    props = tool.inputSchema["properties"]
+    assert props["visual_path"]["type"] == "string"
+    assert props["headline"]["minLength"] == 1
+    assert props["cta"]["type"] == "string"
+    assert set(props["template"]["enum"]) == set(mod.composer.TEMPLATES)
+    assert props["template"]["default"] == "hero_overlay"
+    assert props["formats"]["type"] == "array"
+    assert props["formats"]["default"] == ["meta_feed_1x1"]
+    assert set(tool.inputSchema["required"]) == {"visual_path", "headline", "cta"}
+
+
+@pytest.mark.unit
+def test_edit_visual_schema_constraints() -> None:
+    tool = next(t for t in mod.TOOLS if t.name == "creative_studio_edit_visual")
+    props = tool.inputSchema["properties"]
+    assert props["path"]["type"] == "string"
+    assert props["instruction"]["minLength"] == 1
+    assert "provider" in props
+    assert set(tool.inputSchema["required"]) == {"path", "instruction"}
+
+
+@pytest.mark.unit
+def test_brand_kit_get_schema_takes_no_args() -> None:
+    tool = next(t for t in mod.TOOLS if t.name == "creative_studio_brand_kit_get")
+    assert tool.inputSchema.get("properties", {}) == {}
+
+
+# ---------------------------------------------------------------------------
+# brand_kit_get handler
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_brand_kit_get_shape(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = await mod.handle_tool("creative_studio_brand_kit_get", {})
+    payload = _payload(result)
+    assert set(payload["colors"]) >= {
+        "primary",
+        "secondary",
+        "accent",
+        "text",
+        "background",
+    }
+    assert set(payload["fonts"]) == {"heading", "body"}
+    assert payload["logo"] is None
+    assert payload["defaults_used"] is True
+
+
+# ---------------------------------------------------------------------------
+# compose handler (fake composer — no Playwright)
+# ---------------------------------------------------------------------------
+
+
+async def _fake_compose(
+    visual_path: Path,
+    copy: object,
+    template: str,
+    formats: list[str],
+    brand: object,
+    out_dir: Path,
+    **_kwargs: object,
+) -> list[dict]:
+    files = []
+    for fid in formats:
+        p = Path(out_dir) / f"{fid}_{template}.png"
+        p.write_bytes(b"\x89PNG composed")
+        files.append(
+            {
+                "format": fid,
+                "path": str(p),
+                "sha256": "deadbeef",
+                "width": 1,
+                "height": 1,
+            }
+        )
+    return files
+
+
+@pytest.mark.unit
+async def test_compose_happy_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mod.composer, "compose", _fake_compose)
+    visual = tmp_path / "v.png"
+    visual.write_bytes(b"\x89PNG raw visual")
+
+    result = await mod.handle_tool(
+        "creative_studio_compose",
+        {
+            "visual_path": str(visual),
+            "headline": "H",
+            "cta": "C",
+            "body": "B",
+            "template": "split",
+            "formats": ["meta_feed_1x1", "gdn_300x250"],
+        },
+    )
+    payload = _payload(result)
+    assert "run_id" in payload
+    assert Path(payload["run_dir"]).is_dir()
+    assert len(payload["files"]) == 2
+    manifest = json.loads(Path(payload["manifest"]).read_text(encoding="utf-8"))
+    assert manifest["kind"] == "compose"
+    assert manifest["template"] == "split"
+    assert manifest["copy"]["headline"] == "H"
+    assert manifest["inputs"]["visual_sha256"]
+    assert len(manifest["files"]) == 2
+
+
+@pytest.mark.unit
+async def test_compose_unknown_format_lists_valid_ids(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mod.composer, "compose", _fake_compose)
+    visual = tmp_path / "v.png"
+    visual.write_bytes(b"\x89PNG raw visual")
+
+    result = await mod.handle_tool(
+        "creative_studio_compose",
+        {"visual_path": str(visual), "headline": "H", "cta": "C", "formats": ["bogus"]},
+    )
+    payload = _payload(result)
+    assert "error" in payload
+    assert "bogus" in payload["error"]
+    assert "meta_feed_1x1" in payload["error"]  # valid ids are listed
+
+
+@pytest.mark.unit
+async def test_compose_missing_extra_envelope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    async def _raise(*_a: object, **_k: object) -> list[dict]:
+        raise RuntimeError(
+            "Creative Studio composition requires the 'creative' extra: "
+            "pip install 'mureo[creative]'"
+        )
+
+    monkeypatch.setattr(mod.composer, "compose", _raise)
+    visual = tmp_path / "v.png"
+    visual.write_bytes(b"\x89PNG raw visual")
+
+    result = await mod.handle_tool(
+        "creative_studio_compose",
+        {"visual_path": str(visual), "headline": "H", "cta": "C"},
+    )
+    payload = _payload(result)
+    assert "error" in payload
+    assert "mureo[creative]" in payload["error"]
+
+
+@pytest.mark.unit
+async def test_compose_rejects_bad_visual_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mod.composer, "compose", _fake_compose)
+    bad = tmp_path / "v.txt"
+    bad.write_text("not an image")
+    result = await mod.handle_tool(
+        "creative_studio_compose",
+        {"visual_path": str(bad), "headline": "H", "cta": "C"},
+    )
+    assert "error" in _payload(result)
+
+
+# ---------------------------------------------------------------------------
+# edit_visual handler
+# ---------------------------------------------------------------------------
+
+
+class _EditProvider(_FakeProvider):
+    """A configured, edit-capable provider that returns edited bytes."""
+
+    def capabilities(self) -> dict:
+        return {"edit": True, "max_size": [1024, 1024]}
+
+    async def edit(self, image: bytes, instruction: str) -> bytes:
+        self.calls.append({"edit": instruction})
+        return b"EDITED-BYTES"
+
+
+class _LyingProvider(_FakeProvider):
+    """Advertises edit support but raises NotSupportedError at call time."""
+
+    def capabilities(self) -> dict:
+        return {"edit": True, "max_size": [1024, 1024]}
+
+    async def edit(self, image: bytes, instruction: str) -> bytes:
+        raise NotSupportedError("edit not actually supported")
+
+
+@pytest.mark.unit
+async def test_edit_visual_happy_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    prov = _EditProvider()
+    monkeypatch.setattr(mod, "available_providers", lambda: [prov])
+    img = tmp_path / "pic.png"
+    img.write_bytes(b"\x89PNG original")
+
+    result = await mod.handle_tool(
+        "creative_studio_edit_visual",
+        {"path": str(img), "instruction": "brighten the sky"},
+    )
+    payload = _payload(result)
+    assert payload["provider"] == "fake"
+    out = Path(payload["path"])
+    assert out.exists()
+    assert out.name == "pic_edit_1.png"
+    assert out.read_bytes() == b"EDITED-BYTES"
+    assert payload["sha256"]
+
+
+@pytest.mark.unit
+async def test_edit_visual_increments_suffix(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mod, "available_providers", lambda: [_EditProvider()])
+    img = tmp_path / "pic.png"
+    img.write_bytes(b"\x89PNG original")
+    (tmp_path / "pic_edit_1.png").write_bytes(b"existing")
+
+    result = await mod.handle_tool(
+        "creative_studio_edit_visual",
+        {"path": str(img), "instruction": "x"},
+    )
+    assert Path(_payload(result)["path"]).name == "pic_edit_2.png"
+
+
+@pytest.mark.unit
+async def test_edit_visual_no_edit_capable_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    # _FakeProvider advertises edit=False.
+    monkeypatch.setattr(mod, "available_providers", lambda: [_FakeProvider()])
+    img = tmp_path / "pic.png"
+    img.write_bytes(b"\x89PNG original")
+    result = await mod.handle_tool(
+        "creative_studio_edit_visual",
+        {"path": str(img), "instruction": "x"},
+    )
+    assert "error" in _payload(result)
+
+
+@pytest.mark.unit
+async def test_edit_visual_not_supported_envelope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mod, "available_providers", lambda: [_LyingProvider()])
+    img = tmp_path / "pic.png"
+    img.write_bytes(b"\x89PNG original")
+    result = await mod.handle_tool(
+        "creative_studio_edit_visual",
+        {"path": str(img), "instruction": "x"},
+    )
+    assert "error" in _payload(result)
+
+
+@pytest.mark.unit
+async def test_edit_visual_rejects_bad_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mod, "available_providers", lambda: [_EditProvider()])
+    bad = tmp_path / "pic.txt"
+    bad.write_text("not an image")
+    result = await mod.handle_tool(
+        "creative_studio_edit_visual",
+        {"path": str(bad), "instruction": "x"},
+    )
+    assert "error" in _payload(result)
