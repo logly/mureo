@@ -53,7 +53,10 @@ class TestCreativeGenerateSkillLoadable:
         assert "クリエイティブ作成" in entry.description
         # metadata block is preserved verbatim in extra (forward-compat).
         assert "metadata" in entry.extra
-        assert entry.extra["metadata"]["version"] == "0.10.20"
+        # Pinned to the package version so release bumps can't drift.
+        from mureo import __version__
+
+        assert entry.extra["metadata"]["version"] == __version__
 
     def test_copies_are_byte_identical(self) -> None:
         """The packaged copy and the repo-root mirror must not drift."""

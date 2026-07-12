@@ -2,7 +2,7 @@
 name: goal-review
 description: "Review Goal progress against STRATEGY.md targets. Use when the user asks to evaluate goal achievement, review KPI progress, assess strategy performance, or check if targets are being met."
 metadata:
-  version: 0.10.20
+  version: 0.10.22
 ---
 
 # Goal Review

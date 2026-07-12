@@ -2,7 +2,7 @@
 name: onboard
 description: "Initial account setup — create STRATEGY.md and STATE.json from scratch, import platform data, and establish baseline metrics. Use when the user is starting fresh with mureo, has no STRATEGY.md yet, or asks to set up a new account."
 metadata:
-  version: 0.10.20
+  version: 0.10.22
 ---
 
 # Onboard

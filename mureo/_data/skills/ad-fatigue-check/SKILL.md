@@ -2,7 +2,7 @@
 name: ad-fatigue-check
 description: "Detect creative fatigue across active ads — rising frequency, declining CTR week-over-week, and CPM drift — score each ad FATIGUED / WATCH / FRESH, and hand the evidence to a creative refresh. Use when the user asks whether creatives are worn out, why CTR is falling, if frequency is too high, when to rotate or refresh ads, or requests クリエイティブ疲弊チェック / 広告の疲弊を確認 / フリークエンシーが高い / CTRが落ちてきた / そろそろ差し替え時か. Reads active ads per platform, applies documented fatigue thresholds with noise guards, and routes fatigued ads to /creative-generate or /creative-refresh."
 metadata:
-  version: 0.10.20
+  version: 0.10.22
 ---
 
 # Ad Fatigue Check

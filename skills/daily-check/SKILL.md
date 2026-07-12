@@ -2,7 +2,7 @@
 name: daily-check
 description: "Run a daily health check on all configured ad accounts (Google Ads, Meta Ads, Search Console, GA4). Use when the user asks for a daily review, health check, status update, anomaly detection, or 'how are my campaigns doing today'. Reads STRATEGY.md and STATE.json, runs platform-specific health diagnostics, checks goal progress, evaluates pending action_log observations, and reports findings as Healthy / Watch / Action-needed."
 metadata:
-  version: 0.10.20
+  version: 0.10.22
 ---
 
 # Daily Check

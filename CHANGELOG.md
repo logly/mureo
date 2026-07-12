@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.22] - 2026-07-12
+
 ### Added
 
 - **Creative Studio image generation (visual layer).** A new
@@ -65,6 +67,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `creative_studio` credentials section — reusing the existing env-var write
   and section-remove endpoints, so keys no longer have to be hand-exported or
   entered through the generic advanced env form.
+
+### Fixed
+
+- **Creative Studio review follow-ups.** Font resolution during `compose` runs
+  off the event loop (`asyncio.to_thread`) and a failed download is
+  negative-cached for 24h, so an offline / egress-filtered host no longer
+  re-blocks on every compose call. Malformed provider `200` bodies now surface
+  as normalized, redacted provider errors instead of raw `KeyError` /
+  `binascii.Error`. `creative_studio_compose` deduplicates requested `formats`
+  (and the schema declares `uniqueItems`). Dropped the unused `pillow`
+  dependency from the `creative` extra.
+
+## [0.10.21] - 2026-07-12
+
+### Added
+
 - **Three workflow skills — `/tracking-health`, `/budget-pacing`,
   `/monthly-report`.** `tracking-health` is a preventive conversion-tracking
   audit: Meta pixel inventory + health (`meta_ads_pixels_list` / `_get` /
@@ -113,7 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (derived from `meta_ads_insights_report` impressions ÷ reach, since no
   `frequency` field is exposed), week-over-week CTR decline, and CPM drift
   — with a minimum-impressions noise guard — and hands fatigued ads to
-  `/creative-generate` or `/creative-refresh` (persists `report="fatigue"`).
+  `/creative-refresh` (persists `report="fatigue"`).
   `incident-postmortem` closes the learning loop after a `/rescue`:
   reconstructs the timeline from `action_log`, runs platform/site/measurement/
   external root-cause analysis, writes a structured postmortem document,
@@ -125,24 +143,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Skills polish.** Deduplicated the ~20-line learning-insights + advisor
   diagnostic preamble into a single canonical *Diagnostic preamble* section in
-  `_mureo-shared/SKILL.md` (nine workflow skills now carry a two-line pointer;
+  `_mureo-shared/SKILL.md` (eight workflow skills now carry a two-line pointer;
   `weekly-report` gains the preamble, `sync-state` documents why it is
   intentionally exempt); normalized every bundled skill's `metadata.version` to
   `0.10.20`; corrected the Google Ads skill title from `v18` to `v23` to match
   the shipped `google-ads` client; and documented OpenAI Codex tool-selection
   behaviour (`~/.codex/skills`, `$<name>` / `/skills` invocation) in the shared
   Tool Selection guidance.
-
-### Fixed
-
-- **Creative Studio review follow-ups.** Font resolution during `compose` runs
-  off the event loop (`asyncio.to_thread`) and a failed download is
-  negative-cached for 24h, so an offline / egress-filtered host no longer
-  re-blocks on every compose call. Malformed provider `200` bodies now surface
-  as normalized, redacted provider errors instead of raw `KeyError` /
-  `binascii.Error`. `creative_studio_compose` deduplicates requested `formats`
-  (and the schema declares `uniqueItems`). Dropped the unused `pillow`
-  dependency from the `creative` extra.
 
 ## [0.10.20] - 2026-07-12
 

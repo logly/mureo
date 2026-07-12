@@ -2,7 +2,7 @@
 name: budget-rebalance
 description: "Rebalance campaign budgets across all configured platforms based on strategy and performance signals. Use when the user asks to optimize budgets, redistribute spend, scale efficient campaigns, or cap overspending ones. Reads STRATEGY.md goals, analyzes campaign efficiency, and proposes budget changes with rationale."
 metadata:
-  version: 0.10.20
+  version: 0.10.22
 ---
 
 # Budget Rebalance

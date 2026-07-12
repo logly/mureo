@@ -2,7 +2,7 @@
 name: competitive-scan
 description: "Scan competitor activity using auction insights and market signals. Use when the user asks about competitors, market dynamics, impression share changes, competitor moves, or competitive positioning."
 metadata:
-  version: 0.10.20
+  version: 0.10.22
 ---
 
 # Competitive Scan
