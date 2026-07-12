@@ -48,6 +48,7 @@ _BUNDLE_NAMES = (
     "_mureo-strategy",
     "budget-rebalance",
     "competitive-scan",
+    "creative-generate",
     "creative-refresh",
     "daily-check",
     "goal-review",
