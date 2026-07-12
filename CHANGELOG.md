@@ -88,6 +88,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   grouped by command with `mureo_outcome_evaluate` outcome verdicts, budget
   utilization, and next-month recommendations (persists `report="monthly"`).
   Each ships a packaged copy and a byte-identical repo-root mirror.
+- **Four workflow skills — `/experiment`, `/audience-review`,
+  `/ad-fatigue-check`, `/incident-postmortem`.** `experiment` turns an ad-hoc
+  change into a designed A/B test: a falsifiable hypothesis, exactly one
+  variable, a Goal-bound success metric, and a sample/duration floor from the
+  `_mureo-learning` windows — set up on Meta via the native split-test tools
+  (`meta_ads_split_tests_create` / `_get` / `_end`; Google Ads has no
+  experiment tool, so it offers the RSA-asset-A/B and duplicated-campaign
+  paths with their caveats spelled out), records per-variant baselines in
+  `action_log`, forbids peeking-based decisions before the window closes,
+  and evaluates each variant with `mureo_outcome_evaluate` to a
+  winner/no-difference/inconclusive verdict (persists `report="experiment"`).
+  `audience-review` audits current targeting against the STRATEGY.md Persona
+  — Google Ads demographic/audience/device reads
+  (`google_ads_demographic_targeting_list` /
+  `google_ads_audience_targeting_list` / `google_ads_device_analyze`), Meta
+  audiences, ad-set targeting, and placement/audience analysis
+  (`meta_ads_audiences_list` / `meta_ads_analysis_placements`) — and proposes
+  exclusions, bid adjustments, lookalikes, and placement pruning, executing
+  only the mutations mureo supports (`google_ads_bid_adjustments_update`,
+  `meta_ads_audiences_create_lookalike`, `meta_ads_ad_sets_update`) and
+  presenting the rest as honest manual steps (persists `report="audience"`).
+  `ad-fatigue-check` scores active ads FATIGUED/WATCH/FRESH on frequency
+  (derived from `meta_ads_insights_report` impressions ÷ reach, since no
+  `frequency` field is exposed), week-over-week CTR decline, and CPM drift
+  — with a minimum-impressions noise guard — and hands fatigued ads to
+  `/creative-generate` or `/creative-refresh` (persists `report="fatigue"`).
+  `incident-postmortem` closes the learning loop after a `/rescue`:
+  reconstructs the timeline from `action_log`, runs platform/site/measurement/
+  external root-cause analysis, writes a structured postmortem document,
+  distills insights via `/learn`, and proposes preventive STRATEGY.md
+  guardrails — read-and-document only, with no ad-platform writes. Each ships
+  a packaged copy and a byte-identical repo-root mirror.
 
 ### Changed
 
