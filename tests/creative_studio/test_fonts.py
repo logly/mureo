@@ -159,6 +159,55 @@ def test_ensure_font_http_error_returns_none(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_ensure_font_failure_writes_negative_cache_and_skips_second_attempt(
+    tmp_path: Path,
+) -> None:
+    spec = FONT_MANIFEST[0]
+    calls = {"n": 0}
+
+    def boom(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no network")
+
+    def counting_factory() -> httpx.Client:
+        calls["n"] += 1
+        return httpx.Client(transport=httpx.MockTransport(boom))
+
+    with pytest.warns(FontWarning):
+        assert (
+            ensure_font(spec, dest_dir=tmp_path, client_factory=counting_factory)
+            is None
+        )
+    assert calls["n"] == 1
+    # A negative-cache marker was written next to where the font would live.
+    assert (tmp_path / (spec.filename + ".unavailable")).exists()
+
+    # Second call within the TTL must NOT construct the HTTP client at all.
+    assert ensure_font(spec, dest_dir=tmp_path, client_factory=counting_factory) is None
+    assert calls["n"] == 1
+
+
+@pytest.mark.unit
+def test_ensure_font_negative_cache_expires_after_ttl(tmp_path: Path) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    spec = FONT_MANIFEST[0]
+    marker = tmp_path / (spec.filename + ".unavailable")
+    stale = datetime.now(timezone.utc) - timedelta(
+        seconds=fonts_mod._NEGATIVE_CACHE_TTL_SECONDS + 60
+    )
+    marker.write_text(stale.isoformat(timespec="seconds"), encoding="utf-8")
+
+    # A marker older than the TTL must not block a retry; the now-successful
+    # download succeeds and clears the stale marker.
+    result = ensure_font(
+        spec, dest_dir=tmp_path, client_factory=_factory(_ok_handler(_VALID_TTF))
+    )
+    assert result is not None
+    assert result.read_bytes() == _VALID_TTF
+    assert not marker.exists()
+
+
+@pytest.mark.unit
 def test_font_face_css_embeds_data_uri_and_fallback(tmp_path: Path) -> None:
     spec = FONT_MANIFEST[0]
     font_file = tmp_path / spec.filename

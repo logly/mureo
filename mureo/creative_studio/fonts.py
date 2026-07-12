@@ -37,6 +37,13 @@ _TIMEOUT = 30.0
 _LOCKFILE = "manifest.lock.json"
 _FILE_MODE = 0o644
 
+# Negative cache: after a failed download, a ``<filename>.unavailable`` marker
+# is written next to where the font would live. A fresh marker (younger than
+# the TTL) short-circuits :func:`ensure_font` so an offline / egress-filtered
+# host does not re-attempt (and re-block up to 2x30s) on EVERY compose call.
+_NEGATIVE_CACHE_TTL_SECONDS = 86400
+_UNAVAILABLE_SUFFIX = ".unavailable"
+
 # Font byte-size sanity bounds. Below the floor is almost certainly an error
 # page; above the ceiling is not a web font we would ship.
 _MIN_FONT_BYTES = 10 * 1024
@@ -142,6 +149,51 @@ def _record_lock(dest_dir: Path, spec: FontSpec, data: bytes) -> None:
         logger.debug("font lockfile update failed", exc_info=True)
 
 
+def _marker_path(dest: Path) -> Path:
+    """Return the negative-cache marker path sitting beside ``dest``."""
+    return dest.with_name(dest.name + _UNAVAILABLE_SUFFIX)
+
+
+def _unavailable_recently(dest: Path) -> bool:
+    """Return ``True`` when a fresh (< TTL) negative-cache marker exists.
+
+    A marker whose timestamp cannot be parsed, or that is older than the TTL,
+    is treated as absent so a genuine retry can proceed.
+    """
+    marker = _marker_path(dest)
+    try:
+        recorded = datetime.fromisoformat(marker.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return False
+    if recorded.tzinfo is None:
+        recorded = recorded.replace(tzinfo=timezone.utc)
+    age_seconds = (datetime.now(timezone.utc) - recorded).total_seconds()
+    return age_seconds < _NEGATIVE_CACHE_TTL_SECONDS
+
+
+def _write_unavailable_marker(dest: Path) -> None:
+    """Best-effort write of a timestamped negative-cache marker beside ``dest``.
+
+    Never raises: the marker is an optimisation, not a correctness requirement.
+    """
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        _marker_path(dest).write_text(
+            datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            encoding="utf-8",
+        )
+    except OSError:
+        logger.debug("could not write font negative-cache marker", exc_info=True)
+
+
+def _clear_unavailable_marker(dest: Path) -> None:
+    """Best-effort removal of a (possibly stale) negative-cache marker."""
+    try:
+        _marker_path(dest).unlink(missing_ok=True)
+    except OSError:
+        logger.debug("could not clear font negative-cache marker", exc_info=True)
+
+
 def ensure_font(
     spec: FontSpec,
     dest_dir: Path | None = None,
@@ -154,25 +206,32 @@ def ensure_font(
     present. Otherwise downloads from the fixed manifest URL, verifies the
     magic bytes and size, writes it ``0o644``, and records a checksum in
     ``manifest.lock.json``. On ANY failure returns ``None`` with a
-    :class:`FontWarning` so the caller falls back to system fonts.
+    :class:`FontWarning` so the caller falls back to system fonts, and records
+    a negative-cache marker so the failing download is not re-attempted for
+    :data:`_NEGATIVE_CACHE_TTL_SECONDS`. A later successful download clears the
+    marker.
 
     Args:
         spec: The font to ensure.
         dest_dir: Directory to cache into (default ``~/.mureo/fonts``).
         client_factory: Injectable ``httpx.Client`` factory (tests / advanced).
     """
+    base = Path(dest_dir) if dest_dir is not None else Path.home() / ".mureo" / "fonts"
+    dest = base / spec.filename
+
+    if dest.is_file() and dest.stat().st_size > 0:
+        return dest
+
+    # A recent failed attempt short-circuits the download so an offline host
+    # does not re-block on every compose call. The HTTP client is not touched.
+    if _unavailable_recently(dest):
+        return None
+
+    if not spec.url.startswith("https://"):
+        _warn(f"font {spec.name!r}: refusing non-https url; skipped")
+        return None
+
     try:
-        base = (
-            Path(dest_dir) if dest_dir is not None else Path.home() / ".mureo" / "fonts"
-        )
-        dest = base / spec.filename
-        if dest.is_file() and dest.stat().st_size > 0:
-            return dest
-
-        if not spec.url.startswith("https://"):
-            _warn(f"font {spec.name!r}: refusing non-https url; skipped")
-            return None
-
         factory = client_factory or _default_client_factory
         with factory() as client:
             response = client.get(spec.url, follow_redirects=True)
@@ -180,9 +239,11 @@ def ensure_font(
             data = response.content
 
         if not _has_font_magic(data):
+            _write_unavailable_marker(dest)
             _warn(f"font {spec.name!r}: download failed magic-byte check; skipped")
             return None
         if not (_MIN_FONT_BYTES <= len(data) <= _MAX_FONT_BYTES):
+            _write_unavailable_marker(dest)
             _warn(
                 f"font {spec.name!r}: download size {len(data)} bytes out of "
                 f"bounds [{_MIN_FONT_BYTES}, {_MAX_FONT_BYTES}]; skipped"
@@ -192,9 +253,12 @@ def ensure_font(
         base.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
         os.chmod(dest, _FILE_MODE)
+        # Ignore/clear any stale marker now that the download has succeeded.
+        _clear_unavailable_marker(dest)
         _record_lock(base, spec, data)
         return dest
     except Exception as exc:  # noqa: BLE001 — never block composition on fonts
+        _write_unavailable_marker(dest)
         _warn(f"font {spec.name!r}: could not be resolved ({exc}); skipped")
         return None
 

@@ -178,6 +178,81 @@ async def test_openai_edit_returns_bytes(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 @pytest.mark.unit
+async def test_openai_edit_sends_multipart_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(openai_mod, "_creative_studio_secret", lambda _f: "sk-KEY")
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["content_type"] = request.headers.get("content-type", "")
+        captured["body"] = request.read()
+        return httpx.Response(200, json={"data": [{"b64_json": _B64_PNG}]})
+
+    provider = openai_mod.OpenAIImageProvider(client_factory=_client_factory(handler))
+    out = await provider.edit(_PNG_BYTES, "brighten it")
+    assert out == _PNG_BYTES
+
+    assert "multipart/form-data" in str(captured["content_type"])
+    body = captured["body"]
+    assert isinstance(body, (bytes, bytearray))
+    # The image file part.
+    assert b'name="image"' in body
+    assert b"image.png" in body
+    assert _PNG_BYTES in body
+    # The model + prompt form fields.
+    assert b'name="model"' in body
+    assert b"gpt-image-1" in body
+    assert b'name="prompt"' in body
+    assert b"brighten it" in body
+
+
+@pytest.mark.unit
+async def test_openai_generate_malformed_body_wrapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(openai_mod, "_creative_studio_secret", lambda _f: "sk-KEY")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{}]})  # missing b64_json
+
+    provider = openai_mod.OpenAIImageProvider(client_factory=_client_factory(handler))
+    with pytest.raises(RuntimeError) as excinfo:
+        await provider.generate("x", width=1024, height=1024, n=1)
+    assert str(excinfo.value).startswith("openai image API error")
+
+
+@pytest.mark.unit
+async def test_openai_generate_invalid_base64_wrapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(openai_mod, "_creative_studio_secret", lambda _f: "sk-KEY")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{"b64_json": "a"}]})  # invalid b64
+
+    provider = openai_mod.OpenAIImageProvider(client_factory=_client_factory(handler))
+    with pytest.raises(RuntimeError) as excinfo:
+        await provider.generate("x", width=1024, height=1024, n=1)
+    assert str(excinfo.value).startswith("openai image API error")
+
+
+@pytest.mark.unit
+async def test_openai_edit_malformed_body_wrapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(openai_mod, "_creative_studio_secret", lambda _f: "sk-KEY")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{}]})  # missing b64_json
+
+    provider = openai_mod.OpenAIImageProvider(client_factory=_client_factory(handler))
+    with pytest.raises(RuntimeError) as excinfo:
+        await provider.edit(_PNG_BYTES, "x")
+    assert str(excinfo.value).startswith("openai image API error")
+
+
+@pytest.mark.unit
 async def test_openai_error_redacts_key(monkeypatch: pytest.MonkeyPatch) -> None:
     key = "sk-SUPER-SECRET-123"
     monkeypatch.setattr(openai_mod, "_creative_studio_secret", lambda _f: key)
@@ -224,6 +299,40 @@ async def test_google_generate_parses_inline_data(
     assert images == [_PNG_BYTES, _PNG_BYTES]
     assert len(calls) == 2  # n sequential calls
     assert "key=gm-KEY" in calls[0]
+
+
+@pytest.mark.unit
+async def test_google_generate_missing_inline_data_wrapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(google_mod, "_creative_studio_secret", lambda _f: "gm-KEY")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        # A 200 with candidates but no inlineData part.
+        return httpx.Response(
+            200,
+            json={"candidates": [{"content": {"parts": [{"text": "hi"}]}}]},
+        )
+
+    provider = google_mod.GoogleImageProvider(client_factory=_client_factory(handler))
+    with pytest.raises(RuntimeError) as excinfo:
+        await provider.generate("x", width=1024, height=1024, n=1)
+    assert str(excinfo.value).startswith("google image API error")
+
+
+@pytest.mark.unit
+async def test_google_edit_missing_inline_data_wrapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(google_mod, "_creative_studio_secret", lambda _f: "gm-KEY")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"candidates": []})  # no image data
+
+    provider = google_mod.GoogleImageProvider(client_factory=_client_factory(handler))
+    with pytest.raises(RuntimeError) as excinfo:
+        await provider.edit(_PNG_BYTES, "x")
+    assert str(excinfo.value).startswith("google image API error")
 
 
 @pytest.mark.unit

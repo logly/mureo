@@ -374,6 +374,43 @@ async def test_compose_embeds_logo_when_present(
 
 
 @pytest.mark.unit
+async def test_compose_resolves_fonts_via_to_thread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Fonts unavailable (offline): the resolver returns "" but compose still
+    # succeeds, and the (potentially blocking) resolution is offloaded to a
+    # worker thread so the event loop is never blocked.
+    monkeypatch.setattr(composer_mod, "_embedded_font_css", lambda: "")
+    recorded: list[object] = []
+    real_to_thread = composer_mod.asyncio.to_thread
+
+    async def recording_to_thread(func, /, *args, **kwargs):  # type: ignore[no-untyped-def]
+        recorded.append(func)
+        return await real_to_thread(func, *args, **kwargs)
+
+    monkeypatch.setattr(composer_mod.asyncio, "to_thread", recording_to_thread)
+
+    visual = tmp_path / "visual.png"
+    visual.write_bytes(b"\x89PNG visual")
+    out = tmp_path / "out"
+    out.mkdir()
+
+    browser = _FakeBrowser()
+    results = await compose(
+        visual,
+        _copy(),
+        "hero_overlay",
+        ["meta_feed_1x1"],
+        DEFAULT_BRAND_KIT,
+        out,
+        browser_factory=_fake_factory(browser),
+    )
+    assert len(results) == 1
+    # Font resolution was routed through asyncio.to_thread.
+    assert composer_mod._embedded_font_css in recorded
+
+
+@pytest.mark.unit
 async def test_compose_unknown_template_raises(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
