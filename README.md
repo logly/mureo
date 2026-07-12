@@ -164,6 +164,10 @@ The agent auto-discovers your configured platforms. Add Meta Ads later? Every co
 
 Campaign diagnostics that pinpoint *why* ads aren't delivering -- budget constraints, bidding misconfiguration, policy disapprovals, and more. Search term intent classification. Budget efficiency scoring. RSA ad validation and asset auditing. Landing page analysis. Device-level CPA gap detection. The kind of knowledge experienced ad operators carry in their heads -- built into every workflow.
 
+### Creator-quality creative generation
+
+`/creative-generate` produces creator-quality ad creatives — text-free key visuals from a bring-your-own-key image provider, then pixel-perfect Japanese typography composited via HTML/CSS + headless Chromium — and the agent scores every candidate before anything ships. See [docs/creative-studio.md](docs/creative-studio.md).
+
 ### Learnable operational know-how
 
 When you correct the agent or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is loaded at the start of every future session, so the agent doesn't repeat the same mistakes and applies what it learned to similar situations across your account.
@@ -216,6 +220,7 @@ See [SECURITY.md](SECURITY.md) for the full threat model and vulnerability repor
 | `/rescue` | Emergency performance fix: platform-side vs site-side root cause diagnosis |
 | `/search-term-cleanup` | Keyword hygiene with paid/organic overlap elimination |
 | `/creative-refresh` | Multi-platform ad copy refresh using your Persona, USP, and organic keyword data |
+| `/creative-generate` | Generate creator-quality ad creatives (key visuals + composed banners) from a strategy brief, with an art-direction scoring loop ([Creative Studio](docs/creative-studio.md)) |
 | `/lead-form-create` | One-question-at-a-time interview that builds a Meta Instant Form (Lead Ad form) and surfaces the cover-image step explicitly |
 | `/budget-rebalance` | Cross-platform budget optimization informed by organic coverage |
 | `/competitive-scan` | Paid + organic competitive landscape analysis |

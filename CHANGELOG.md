@@ -36,6 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider's edit path for the art-direction loop. Composition dependencies
   (jinja2, playwright, pillow) install via the new `mureo[creative]` extra and
   are lazily imported, so the core install stays lean.
+- **Creative Studio guided workflow (`/creative-generate`) + documentation.** A
+  new bundled skill encodes the 6-step, quality-first workflow — brief (Persona /
+  USP / Brand Voice, optional landing-page analysis), agent-authored copy,
+  text-free visual generation, an art-direction scoring loop that Reads each PNG
+  and grades it on the 7-dimension creative-refresh rubric (pass bar: no dimension
+  ≤ 3 and total ≥ 28/35, max 3 edit rounds), per-format composition, and delivery
+  handing approved banners to the existing upload tools. The creative-refresh
+  skill cross-links to it. New `docs/creative-studio.md` / `docs/creative-studio.ja.md`
+  cover the 3-layer architecture, install (`pip install 'mureo[creative]'` +
+  `playwright install chromium`), provider keys, the `BRAND_KIT/kit.yml` schema,
+  the format matrix, and safety notes.
 
 ## [0.10.20] - 2026-07-12
 

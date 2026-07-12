@@ -67,6 +67,12 @@ Scores the **picture itself** — composition, legibility, brand fit — which t
 copy-and-metrics audit in step 3 does not cover. Use it to grade a single
 banner or to rank several competing ones before recommending a refresh.
 
+> **Generating new creatives?** This section *scores existing* banners. To
+> *create* fresh ad creatives (text-free key visuals + composed banners) from a
+> brief, use the **creative-generate** skill — it drives the image providers and
+> the HTML/CSS composer, and reuses this exact 7-dimension rubric in its
+> art-direction loop.
+
 **Applies only to creatives that have an image.** A text-only search ad
 (Google RSA / ETA, or any ad with no `image_url` / `thumbnail_url`) has nothing
 to view — skip this entire section for it and evaluate it with the copy +
