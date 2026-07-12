@@ -26,6 +26,12 @@ from mureo._image_validation import validate_image_file
 #: ``#rgb`` or ``#rrggbb`` (case-insensitive).
 _HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
+# Font-family names flow into template CSS marked ``| safe`` (autoescape is
+# for HTML, not CSS strings), so restrict them to a conservative charset: a
+# hostile BRAND_KIT (e.g. client-supplied in an agency workspace) must not be
+# able to break out of the CSS string context.
+_FONT_NAME_RE = re.compile(r"^[A-Za-z0-9 \-_+.]{1,64}$")
+
 #: Colour roles a kit may define. Unknown keys are ignored.
 _COLOR_KEYS: tuple[str, ...] = ("primary", "secondary", "accent", "text", "background")
 #: Font roles a kit may define.
@@ -124,11 +130,11 @@ def _resolve_fonts(raw: Any) -> dict[str, str]:
         if key not in raw:
             continue
         value = raw[key]
-        if isinstance(value, str) and value.strip():
+        if isinstance(value, str) and _FONT_NAME_RE.match(value.strip()):
             fonts[key] = value.strip()
         else:
             _warn(
-                f"brand kit font {key!r} is not a non-empty string "
+                f"brand kit font {key!r} is not a safe font-family name "
                 f"({value!r}); keeping the default {fonts[key]!r}"
             )
     return fonts

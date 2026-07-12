@@ -176,3 +176,21 @@ def test_empty_kit_yml_returns_defaults(tmp_path: Path) -> None:
     _write_kit(tmp_path, "")
     kit = load_brand_kit(base=tmp_path)
     assert kit == DEFAULT_BRAND_KIT
+
+
+@pytest.mark.unit
+def test_font_name_css_injection_rejected(tmp_path, recwarn):
+    """A font name that could break out of the CSS string context (templates
+    mark font names ``| safe``) is rejected and the default kept."""
+    kit_dir = tmp_path / "BRAND_KIT"
+    kit_dir.mkdir()
+    (kit_dir / "kit.yml").write_text(
+        "fonts:\n"
+        '  heading: "\'; } </style><script>alert(1)</script>"\n'
+        "  body: 'Zen Kaku Gothic New'\n",
+        encoding="utf-8",
+    )
+    kit = load_brand_kit(tmp_path)
+    assert kit.fonts["heading"] == DEFAULT_BRAND_KIT.fonts["heading"]
+    assert kit.fonts["body"] == "Zen Kaku Gothic New"
+    assert any("heading" in str(w.message) for w in recwarn.list)
