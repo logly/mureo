@@ -55,6 +55,11 @@ META_ADS_THROTTLE = ThrottleConfig(rate=20.0, burst=10, hourly_limit=50_000)
 # See https://developers.google.com/webmaster-tools/limits
 SEARCH_CONSOLE_THROTTLE = ThrottleConfig(rate=5.0, burst=5)
 
+# Creative Studio: BYO image-generation providers (OpenAI / Gemini / fal).
+# Image generation is slow and metered, so a single conservative shared
+# bucket fronts every provider call — small burst, capped hourly volume.
+CREATIVE_STUDIO_THROTTLE = ThrottleConfig(rate=1.0, burst=2, hourly_limit=120)
+
 # Third-party plugin tools: arbitrary external APIs with unknown quotas,
 # so apply a single conservative shared bucket at the plugin dispatch
 # boundary (a plugin can still impose its own tighter limits internally).

@@ -36,6 +36,7 @@ _DISABLE_ENV_VARS = (
     "MUREO_DISABLE_GOOGLE_ADS",
     "MUREO_DISABLE_META_ADS",
     "MUREO_DISABLE_GA4",
+    "MUREO_DISABLE_CREATIVE_STUDIO",
     "MUREO_DISABLE_SEARCH_CONSOLE",  # deliberately unhonored — defensive
 )
 
@@ -258,6 +259,69 @@ def test_all_three_set_disables_three_keeps_search_console(
     assert any(n.startswith("search_console_") for n in names)
     # mureo-specific families (rollback / analysis / context) must remain.
     assert any("rollback" in n for n in names)
+
+
+@pytest.mark.unit
+def test_creative_studio_tools_skipped_when_env_set(
+    monkeypatch: pytest.MonkeyPatch,
+    reload_mcp_server_clean: None,
+) -> None:
+    """``MUREO_DISABLE_CREATIVE_STUDIO=1`` removes all ``creative_studio_*`` tools."""
+    for var in _DISABLE_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("MUREO_DISABLE_CREATIVE_STUDIO", "1")
+
+    server_mod = _reload_server()
+    names = _tool_names(server_mod)
+
+    assert not any(n.startswith("creative_studio_") for n in names), (
+        "no creative_studio_* tool should remain when "
+        "MUREO_DISABLE_CREATIVE_STUDIO=1; found: "
+        f"{sorted(n for n in names if n.startswith('creative_studio_'))}"
+    )
+    assert not server_mod._CREATIVE_STUDIO_NAMES
+    # Other families are unaffected.
+    assert any(n.startswith("google_ads_") for n in names)
+    assert any(n.startswith("meta_ads_") for n in names)
+
+
+@pytest.mark.unit
+def test_creative_studio_enabled_by_default_and_reserved(
+    monkeypatch: pytest.MonkeyPatch,
+    reload_mcp_server_clean: None,
+) -> None:
+    """By default the family registers and its names are reserved.
+
+    Reserved-name protection prevents an entry-point plugin from shadowing a
+    core ``creative_studio_*`` tool. The names must therefore be part of the
+    union handed to ``collect_plugin_tools`` — reconstructed here from the
+    per-family name frozensets the server exposes.
+    """
+    for var in _DISABLE_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+    server_mod = _reload_server()
+    names = _tool_names(server_mod)
+
+    assert "creative_studio_providers_list" in names
+    assert "creative_studio_generate_visual" in names
+    assert server_mod._CREATIVE_STUDIO_NAMES  # non-empty when enabled
+
+    reserved = (
+        server_mod._GOOGLE_ADS_NAMES
+        | server_mod._META_ADS_NAMES
+        | server_mod._SEARCH_CONSOLE_NAMES
+        | server_mod._ROLLBACK_NAMES
+        | server_mod._ANALYSIS_NAMES
+        | server_mod._MUREO_CONTEXT_NAMES
+        | server_mod._ANALYTICS_REGISTRY_NAMES
+        | server_mod._LEARNING_NAMES
+        | server_mod._CREATIVE_STUDIO_NAMES
+    )
+    assert server_mod._CREATIVE_STUDIO_NAMES.issubset(reserved)
+    # No collision with any other family.
+    others = reserved - server_mod._CREATIVE_STUDIO_NAMES
+    assert server_mod._CREATIVE_STUDIO_NAMES.isdisjoint(others)
 
 
 @pytest.mark.unit

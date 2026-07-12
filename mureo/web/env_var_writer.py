@@ -52,6 +52,10 @@ _ENV_VAR_TO_FIELD: dict[str, EnvVarTarget] = {
     # GA4
     "GOOGLE_APPLICATION_CREDENTIALS": EnvVarTarget("ga4", "service_account_path"),
     "GOOGLE_PROJECT_ID": EnvVarTarget("ga4", "project_id"),
+    # Creative Studio (image-generation providers)
+    "OPENAI_API_KEY": EnvVarTarget("creative_studio", "openai_api_key"),
+    "GEMINI_API_KEY": EnvVarTarget("creative_studio", "gemini_api_key"),
+    "FAL_KEY": EnvVarTarget("creative_studio", "fal_key"),
 }
 
 
@@ -223,7 +227,9 @@ def write_credential_env_var(
 # (mureo.auth_setup._GOOGLE_SCOPES), so removing it == removing
 # google_ads. The dashboard surfaces that relationship rather than a
 # misleading standalone SC remove.
-_REMOVABLE_SECTIONS: frozenset[str] = frozenset({"google_ads", "meta_ads", "ga4"})
+_REMOVABLE_SECTIONS: frozenset[str] = frozenset(
+    {"google_ads", "meta_ads", "ga4", "creative_studio"}
+)
 
 
 def removable_credential_sections() -> tuple[str, ...]:

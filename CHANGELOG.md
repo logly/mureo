@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Creative Studio image generation (visual layer).** A new
+  `creative_studio_*` MCP tool family generates text-free ad key visuals
+  through a pluggable, BYO-API-key image provider abstraction (OpenAI
+  gpt-image, Google Gemini image, fal.ai FLUX, plus third-party providers via
+  the `mureo.image_providers` entry point). `creative_studio_providers_list`
+  reports configured providers and their capabilities;
+  `creative_studio_generate_visual` renders candidate PNGs into a run
+  directory with a provenance manifest. Provider keys live in a new
+  `creative_studio` credentials section (or the `OPENAI_API_KEY` /
+  `GEMINI_API_KEY` / `FAL_KEY` env vars), calls are rate-limited, and the
+  family can be disabled with `MUREO_DISABLE_CREATIVE_STUDIO=1`.
+
 ## [0.10.20] - 2026-07-12
 
 ### Added

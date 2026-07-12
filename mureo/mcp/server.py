@@ -15,6 +15,8 @@ before launching the server (typically written by ``mureo providers add
 - ``MUREO_DISABLE_META_ADS`` — skip the ``meta_ads_*`` tool family.
 - ``MUREO_DISABLE_GA4`` — wired in for forward-compat (no-op today; mureo
   ships no native GA4 tools yet).
+- ``MUREO_DISABLE_CREATIVE_STUDIO`` — skip the ``creative_studio_*`` tool
+  family (image-generation providers + visual generation).
 
 The env vars are read **once at module import time**; the server starts
 once per process and the gate is a startup decision. Search Console is
@@ -66,6 +68,10 @@ from mureo.mcp.tools_analytics_registry import (
 from mureo.mcp.tools_analytics_registry import (
     handle_tool as handle_analytics_registry_tool,
 )
+from mureo.mcp.tools_creative_studio import TOOLS as CREATIVE_STUDIO_TOOLS
+from mureo.mcp.tools_creative_studio import (
+    handle_tool as handle_creative_studio_tool,
+)
 from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
 from mureo.mcp.tools_google_ads import handle_tool as handle_google_ads_tool
 from mureo.mcp.tools_learning import TOOLS as LEARNING_TOOLS
@@ -106,6 +112,7 @@ _META_ADS_ENABLED = not _is_disabled("MUREO_DISABLE_META_ADS")
 # tools land in mureo, add a ``GA4_TOOLS`` import + ``_GA4_NAMES`` block
 # below and the gate becomes operational automatically.
 _GA4_ENABLED = not _is_disabled("MUREO_DISABLE_GA4")  # noqa: F841
+_CREATIVE_STUDIO_ENABLED = not _is_disabled("MUREO_DISABLE_CREATIVE_STUDIO")
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +130,7 @@ _ALL_TOOLS: list[Tool] = [
     *MUREO_CONTEXT_TOOLS,
     *ANALYTICS_REGISTRY_TOOLS,
     *LEARNING_TOOLS,
+    *(CREATIVE_STUDIO_TOOLS if _CREATIVE_STUDIO_ENABLED else []),
 ]
 _GOOGLE_ADS_NAMES: frozenset[str] = (
     frozenset(t.name for t in GOOGLE_ADS_TOOLS) if _GOOGLE_ADS_ENABLED else frozenset()
@@ -138,6 +146,11 @@ _ANALYTICS_REGISTRY_NAMES: frozenset[str] = frozenset(
     t.name for t in ANALYTICS_REGISTRY_TOOLS
 )
 _LEARNING_NAMES: frozenset[str] = frozenset(t.name for t in LEARNING_TOOLS)
+_CREATIVE_STUDIO_NAMES: frozenset[str] = (
+    frozenset(t.name for t in CREATIVE_STUDIO_TOOLS)
+    if _CREATIVE_STUDIO_ENABLED
+    else frozenset()
+)
 
 # ---------------------------------------------------------------------------
 # Third-party plugin tools (entry-point–discovered providers implementing
@@ -159,6 +172,7 @@ _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
         | _MUREO_CONTEXT_NAMES
         | _ANALYTICS_REGISTRY_NAMES
         | _LEARNING_NAMES
+        | _CREATIVE_STUDIO_NAMES
     ),
 )
 _ALL_TOOLS.extend(_PLUGIN_TOOLS)
@@ -724,6 +738,8 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         return await handle_analytics_registry_tool(name, arguments)
     if name in _LEARNING_NAMES:
         return await handle_learning_tool(name, arguments)
+    if name in _CREATIVE_STUDIO_NAMES:
+        return await handle_creative_studio_tool(name, arguments)
     if name in _PLUGIN_NAMES:
         provider = _PLUGIN_DISPATCH[name]
         source = plugin_source(provider)
