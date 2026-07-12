@@ -213,14 +213,17 @@ See [SECURITY.md](SECURITY.md) for the full threat model and vulnerability repor
 |---------|-------------|
 | `/onboard` | Discover your platforms, generate STRATEGY.md, initialize STATE.json |
 | `/daily-check` | Cross-platform health monitoring + organic pulse + site behavior correlation |
+| `/tracking-health` | Preventive conversion-tracking audit (Meta pixels + CAPI, Google Ads conversion actions) with GA4 cross-check — scorecard + fix list ranked by revenue risk |
 | `/rescue` | Emergency performance fix: platform-side vs site-side root cause diagnosis |
 | `/search-term-cleanup` | Keyword hygiene with paid/organic overlap elimination |
 | `/creative-refresh` | Multi-platform ad copy refresh using your Persona, USP, and organic keyword data |
 | `/lead-form-create` | One-question-at-a-time interview that builds a Meta Instant Form (Lead Ad form) and surfaces the cover-image step explicitly |
 | `/budget-rebalance` | Cross-platform budget optimization informed by organic coverage |
+| `/budget-pacing` | Month-to-date spend vs monthly target, landing forecast, and pace alerts (total-spend trajectory; pairs with `/budget-rebalance`) |
 | `/competitive-scan` | Paid + organic competitive landscape analysis |
 | `/goal-review` | Multi-source goal progress evaluation with operation mode recommendations |
 | `/weekly-report` | Cross-platform weekly operations summary |
+| `/monthly-report` | Client-facing monthly digest: month-over-month comparison, goal attainment, action recap, budget utilization |
 | `/sync-state` | Refresh STATE.json from live platform data |
 | `/learn` | Save a diagnostic insight to the knowledge base for future sessions |
 
