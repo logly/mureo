@@ -2,7 +2,7 @@
 name: weekly-report
 description: "Generate a weekly summary report across all platforms. Use when the user asks for a weekly report, summary, recap, end-of-week review, or weekly digest."
 metadata:
-  version: 0.8.0
+  version: 0.10.20
 ---
 
 # Weekly Report
@@ -16,6 +16,8 @@ Generate a weekly marketing operations report.
 - STATE.json with action_log (actions must have been logged during the week)
 
 ## Steps
+
+**Before you start**: Run the **Diagnostic preamble** from ../_mureo-shared/SKILL.md — load learning insights (mureo_learning_insights_get) and consult advisors (mureo_consult_advisor) before drawing conclusions.
 
 1. **Load context**: Read STRATEGY.md and STATE.json.
 

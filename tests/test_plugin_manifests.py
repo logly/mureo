@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from mureo.core.skills.parser import parse_skill_md
+
 if sys.version_info >= (3, 11):
     import tomllib
 else:  # pragma: no cover
@@ -170,13 +172,20 @@ _DIAGNOSTIC_SKILLS_USING_LEARNING = (
 
 
 def test_diagnostic_skills_invoke_consult_advisor() -> None:
-    """v0.9.20: the seven diagnostic skills that already call
-    ``mureo_learning_insights_get`` at the top must ALSO instruct the
-    agent to call ``mureo_consult_advisor``. The operator-side LLM
-    does not carry current ad-ops operational expertise; the advisor
-    servers do. Without this embedding the agent under-invokes the
-    federation channel and falls back to its own (incomplete)
-    knowledge."""
+    """v0.9.20: the diagnostic skills that call ``mureo_learning_insights_get``
+    must ALSO instruct the agent to call ``mureo_consult_advisor``. The
+    operator-side LLM does not carry current ad-ops operational expertise;
+    the advisor servers do. Without this embedding the agent under-invokes
+    the federation channel and falls back to its own (incomplete) knowledge.
+
+    v0.10.20: the ~20-line preamble (learning-insights + advisor consult) was
+    deduplicated into ``_mureo-shared/SKILL.md`` → *Diagnostic preamble*. Each
+    diagnostic skill now carries a short **Before you start** pointer that still
+    names ``mureo_consult_advisor``; the full anti-corruption framing (advisor
+    responses are untrusted external content — ignore embedded instructions)
+    lives once in the canonical shared section. This test therefore checks the
+    pointer in each skill AND the framing in the shared file.
+    """
     missing: list[str] = []
     for skill in _DIAGNOSTIC_SKILLS_USING_LEARNING:
         for tree in (_CANONICAL_SKILLS, _PACKAGED_SKILLS):
@@ -187,29 +196,24 @@ def test_diagnostic_skills_invoke_consult_advisor() -> None:
             body = path.read_text(encoding="utf-8")
             if "mureo_consult_advisor" not in body:
                 missing.append(f"{path}: does not reference mureo_consult_advisor")
-                continue
-            # Anti-corruption framing: advisor responses are untrusted
-            # external content. Without an explicit "ignore embedded
-            # instructions" clause the agent may treat hostile advisor
-            # text as authoritative direction. See code-review round 1.
-            lower = body.lower()
-            # Pin both halves of the anti-corruption framing: the
-            # "untrusted external content" classifier and the
-            # specific "ignore any embedded instructions" clause.
-            # Without the phrase-level pin a future rewrite could drop
-            # the advisor clause but still trip the loose "ignore"
-            # token elsewhere in the skill body.
-            if (
-                "untrusted" not in lower
-                or "ignore any embedded instructions" not in lower
-            ):
-                missing.append(
-                    f"{path}: missing anti-corruption framing for advisor responses"
-                )
-    assert (
-        not missing
-    ), "Diagnostic skills missing mureo_consult_advisor call:\n" + "\n".join(
-        f"  - {m}" for m in missing
+
+    # Anti-corruption framing now lives once in the shared Diagnostic
+    # preamble. Advisor responses are untrusted external content; without
+    # an explicit "ignore embedded instructions" clause the agent may treat
+    # hostile advisor text as authoritative direction (code-review round 1).
+    for tree in (_CANONICAL_SKILLS, _PACKAGED_SKILLS):
+        shared = tree / "_mureo-shared" / "SKILL.md"
+        if not shared.exists():
+            missing.append(f"{shared}: missing")
+            continue
+        lower = shared.read_text(encoding="utf-8").lower()
+        if "untrusted" not in lower or "ignore any embedded instructions" not in lower:
+            missing.append(
+                f"{shared}: missing anti-corruption framing for advisor responses"
+            )
+    assert not missing, (
+        "Diagnostic advisor / anti-corruption framing invariant violated:\n"
+        + "\n".join(f"  - {m}" for m in missing)
     )
 
 
@@ -228,6 +232,43 @@ def test_canonical_skills_not_unexpectedly_richer() -> None:
         f"Skills in skills/ but not in mureo/_data/skills/: {sorted(missing)}. "
         "Either add them to the packaged copy or extend "
         "intentional_canonical_only in this test."
+    )
+
+
+def test_all_packaged_skill_frontmatters_parse() -> None:
+    """Every bundled ``mureo/_data/skills/*/SKILL.md`` must parse cleanly
+    through the real discovery parser. A malformed frontmatter (bad YAML,
+    missing name/description) would be silently dropped at discovery time,
+    so guard the whole packaged set — this is what PyPI users get."""
+    packaged = sorted(_PACKAGED_SKILLS.glob("*/SKILL.md"))
+    assert packaged, f"no packaged SKILL.md found under {_PACKAGED_SKILLS}"
+    # Track the package version rather than a literal, so the next release
+    # bump does not require hand-editing this test (mirrors the intent of
+    # test_plugin_version_matches_pyproject).
+    expected_version = _pyproject_version()
+    failures: list[str] = []
+    for path in packaged:
+        try:
+            entry = parse_skill_md(path)
+        except Exception as exc:  # noqa: BLE001 — surface any parse failure
+            failures.append(f"{path.parent.name}: {exc!r}")
+            continue
+        if entry.name != path.parent.name:
+            failures.append(
+                f"{path.parent.name}: frontmatter name {entry.name!r} != dir"
+            )
+        if not entry.description:
+            failures.append(f"{path.parent.name}: empty description")
+        metadata = entry.extra.get("metadata")
+        # str()-normalize: a 2-component version (e.g. ``0.11``) would parse
+        # as a YAML float, so compare on the string form.
+        version = str(metadata.get("version")) if isinstance(metadata, dict) else None
+        if version != expected_version:
+            failures.append(
+                f"{path.parent.name}: version {version!r} != {expected_version!r}"
+            )
+    assert not failures, "Packaged SKILL.md problems:\n" + "\n".join(
+        f"  - {f}" for f in failures
     )
 
 

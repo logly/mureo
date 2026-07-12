@@ -2,7 +2,7 @@
 name: _mureo-google-ads
 description: "Google Ads: Manage campaigns, ad groups, ads, keywords, budgets, and performance analysis."
 metadata:
-  version: 0.2.0
+  version: 0.10.20
   openclaw:
     category: "advertising"
     requires:
@@ -11,7 +11,7 @@ metadata:
     cliHelp: "mureo --help"
 ---
 
-# Google Ads (v18)
+# Google Ads (v23)
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, global flags, and security rules.
 
 > **There is no `mureo google-ads …` CLI command.** Every operation below is an
