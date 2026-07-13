@@ -241,11 +241,20 @@ environment variables and never transmitted anywhere except the
 official Google Ads, Meta Ads, and Search Console APIs. mureo itself
 has no telemetry or phone-home behavior.
 
+Each successful save keeps a single rolling backup of the previous
+file at `~/.mureo/credentials.json.bak` (owner-only `0o600`, covered
+by the credential-guard hook like every file under `~/.mureo`). The
+backup therefore holds the *previous* generation of your keys: when
+you rotate credentials, revoke the old key at the platform — do not
+rely on overwriting the file alone to retire it.
+
 ## Security Best Practices for Users
 
 - Never commit `~/.mureo/credentials.json` to version control
 - Use environment variables for CI/CD environments
-- Rotate OAuth tokens periodically
+- Rotate OAuth tokens periodically, and revoke the replaced key at the
+  platform (the previous generation persists in
+  `~/.mureo/credentials.json.bak` until the next save overwrites it)
 - Keep mureo updated to the latest version
 - Run `mureo setup claude-code` (not a bare `mureo auth setup`) so
   the credential guard hook is installed alongside your MCP config
