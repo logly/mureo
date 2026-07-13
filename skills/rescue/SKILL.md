@@ -2,7 +2,7 @@
 name: rescue
 description: "Emergency performance fix when an ad account is in trouble. Use when the user reports a sudden CPA spike, conversion drop, runaway spend, or asks for an urgent performance rescue. Sets Operation Mode to TURNAROUND_RESCUE and applies stabilization actions."
 metadata:
-  version: 0.10.22
+  version: 0.10.23
 ---
 
 # Rescue

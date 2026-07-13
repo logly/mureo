@@ -2,7 +2,7 @@
 name: weekly-report
 description: "Generate a weekly summary report across all platforms. Use when the user asks for a weekly report, summary, recap, end-of-week review, or weekly digest."
 metadata:
-  version: 0.10.22
+  version: 0.10.23
 ---
 
 # Weekly Report

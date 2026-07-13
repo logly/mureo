@@ -2,7 +2,7 @@
 name: sync-state
 description: "Sync STATE.json with current campaign data from all platforms. Use when the user asks to refresh state, sync campaigns, update STATE.json from live data, or pull latest campaign snapshots."
 metadata:
-  version: 0.10.22
+  version: 0.10.23
 ---
 
 # Sync State

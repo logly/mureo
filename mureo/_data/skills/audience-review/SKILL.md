@@ -2,7 +2,7 @@
 name: audience-review
 description: "Audit who your ads actually target and where they run, compare it against the STRATEGY.md Persona, and surface exclusions, bid adjustments, lookalikes, and placement pruning tied to that Persona. Use when the user asks to review targeting, audiences, demographics, placements, or device performance, to check whether spend matches the Persona, to find wasted placements (e.g. Audience Network with no conversions), or requests オーディエンスレビュー / 配置レビュー / ターゲティング見直し / ペルソナと配信のズレを確認 / 除外設定を提案して. Reads Persona + Target Audience from STRATEGY.md and drives the read-only targeting tools."
 metadata:
-  version: 0.10.22
+  version: 0.10.23
 ---
 
 # Audience Review

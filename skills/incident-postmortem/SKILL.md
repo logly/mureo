@@ -2,7 +2,7 @@
 name: incident-postmortem
 description: "Close the learning loop after a rescue or incident — reconstruct the timeline from action_log, run root-cause analysis (platform / site / measurement / external), produce a structured postmortem document, distill reusable insights via /learn, and propose preventive guardrails. Use after a /rescue, a CPA spike, a conversion drop, or a runaway-spend event has been handled, or when the user asks for a postmortem, retrospective, root-cause writeup, or requests インシデント振り返り / ポストモーテム / 事後分析 / なぜ起きたのか / 再発防止策. Read-and-document only — makes no ad-platform writes."
 metadata:
-  version: 0.10.22
+  version: 0.10.23
 ---
 
 # Incident Postmortem

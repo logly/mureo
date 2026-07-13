@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.23] - 2026-07-13
+
+### Fixed
+
+- **Credential guard now actually blocks.** The PreToolUse hooks installed
+  into Claude Code's `~/.claude/settings.json` and Codex's
+  `~/.codex/hooks.json` used `sys.exit(1)`, which both hosts treat as a
+  *non-blocking* hook error — reading `~/.mureo/credentials.json` was never
+  actually blocked. The guard templates (now shared via a single
+  `mureo.credential_guard` module so a fix can never again land on one host
+  and miss the other) block with a `permissionDecision: "deny"` JSON
+  response, protect the entire `~/.mureo` tree via realpath + case-folded
+  path matching (closing symlink, tilde, wildcard `cred*`, and
+  case-insensitive-filesystem `~/.MUREO` evasions), and widen coverage to
+  `Read|Edit|Write|Grep|Glob|NotebookEdit` plus `Bash`. Codex's
+  `hooks.json` is now written in the nested `{"hooks": {"PreToolUse":
+  [...]}}` shape Codex actually loads, migrating mureo's entries out of the
+  legacy top-level list. The installers are upgrade-aware: re-running
+  `mureo setup` (or the configure UI's per-row Reinstall button) replaces
+  stale hooks in place. (#393)
+- **`mureo upgrade` refreshes installed credential-guard hooks.** The
+  post-upgrade refresh now upgrades stale tagged guard hooks on both the
+  Claude Code and Codex surfaces — only where a guard entry actually
+  exists, so a deliberately removed guard is never reinstalled. (#398)
+- **Dashboard (re)install buttons report their outcome.** The basic-setup
+  rows' (re)install buttons now toast every result — success, "already up
+  to date", and error — instead of reacting only to errors, so pressing
+  Reinstall on an already-installed row is no longer indistinguishable
+  from a dead button. (#400)
+
+### Security
+
+- Existing installations keep the old non-blocking guard until refreshed:
+  run `mureo upgrade` once (or press the credential-guard **Reinstall**
+  button in the configure UI) to replace the stale hooks. (#393, #398)
+
 ## [0.10.22] - 2026-07-12
 
 ### Added

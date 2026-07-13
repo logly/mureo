@@ -2,7 +2,7 @@
 name: creative-generate
 description: "Generate creator-quality ad creatives — text-free key visuals plus composed banners — from a strategy-grounded brief. Use when the user asks to create ad creatives, generate ad images or banners, make banner variations, design display / social ad creatives, or asks in Japanese (クリエイティブ作成 / バナー作成 / 広告画像を生成 / バナーのバリエーションを作って). Runs a 6-step workflow (brief → copy → visuals → art-direction scoring loop → HTML/CSS composition → delivery) via the creative_studio_* MCP tools, then hands approved banners to the existing upload tools."
 metadata:
-  version: 0.10.22
+  version: 0.10.23
 ---
 
 # Creative Generate

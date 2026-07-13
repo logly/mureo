@@ -2,7 +2,7 @@
 name: budget-pacing
 description: "Month-to-date spend vs the monthly budget target, projected month-end landing, and pace alerts across all configured platforms. Use when the user asks about pacing, burn rate, whether they will overspend or underspend this month, monthly-budget tracking, landing/forecast, 'are we on budget', or requests 予算ペーシング / 着地予測 / 予算消化ペース. DISTINCT from /budget-rebalance (which reallocates budget between campaigns) — this manages total-spend trajectory toward a monthly target. Reads STRATEGY.md Guardrails / a Monthly Budget section and STATE.json."
 metadata:
-  version: 0.10.22
+  version: 0.10.23
 ---
 
 # Budget Pacing

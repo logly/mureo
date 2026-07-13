@@ -2,7 +2,7 @@
 name: _mureo-meta-ads
 description: "Meta Ads: Manage campaigns, ad sets, ads, insights, and audiences on Facebook/Instagram."
 metadata:
-  version: 0.10.22
+  version: 0.10.23
   openclaw:
     category: "advertising"
     requires:
