@@ -30,15 +30,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from mureo.credential_guard import GUARD_TAG as _MUREO_HOOK_TAG
 from mureo.fsutil import secure_fchmod
 
 logger = logging.getLogger(__name__)
-
-
-# Unique identifier the credential-guard hooks carry in their ``command``
-# field. Must match the literal used by ``mureo.auth_setup`` so removal is
-# tag-driven (not heuristic).
-_MUREO_HOOK_TAG = "[mureo-credential-guard]"
 
 
 class ConfigWriteError(Exception):

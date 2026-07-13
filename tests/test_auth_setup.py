@@ -1021,7 +1021,7 @@ def test_install_credential_guard_new(tmp_path: Path) -> None:
     settings = json.loads(result.read_text(encoding="utf-8"))
     pre_tool_use = settings["hooks"]["PreToolUse"]
     assert len(pre_tool_use) == 2
-    assert pre_tool_use[0]["matcher"] == "Read"
+    assert pre_tool_use[0]["matcher"] == "Read|Edit|Write|Grep|Glob|NotebookEdit"
     assert pre_tool_use[1]["matcher"] == "Bash"
     assert "[mureo-credential-guard]" in pre_tool_use[0]["hooks"][0]["command"]
 
@@ -1062,7 +1062,7 @@ def test_install_credential_guard_preserves_existing_hooks(tmp_path: Path) -> No
     pre_tool_use = settings["hooks"]["PreToolUse"]
     assert len(pre_tool_use) == 3
     assert pre_tool_use[0]["matcher"] == "Write"  # original
-    assert pre_tool_use[1]["matcher"] == "Read"  # mureo
+    assert pre_tool_use[1]["matcher"] == "Read|Edit|Write|Grep|Glob|NotebookEdit"  # mureo
     assert pre_tool_use[2]["matcher"] == "Bash"  # mureo
 
 
@@ -1088,6 +1088,61 @@ def test_install_credential_guard_skip_if_already_installed(tmp_path: Path) -> N
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
     # Still only 2 mureo hooks (no duplicates)
     assert len(settings["hooks"]["PreToolUse"]) == 2
+
+
+@pytest.mark.unit
+def test_install_credential_guard_upgrades_stale_hooks(tmp_path: Path) -> None:
+    """Tagged hooks from an older mureo (non-blocking ``sys.exit(1)`` form)
+    are replaced on re-install instead of being skipped (#393)."""
+    from mureo.auth_setup import install_credential_guard
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings_path = claude_dir / "settings.json"
+    stale_cmd = (
+        'python3 -c "import sys,json; sys.exit(1)" # [mureo-credential-guard]'
+    )
+    settings_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": "Write",
+                            "hooks": [{"type": "command", "command": "echo check"}],
+                        },
+                        {
+                            "matcher": "Read",
+                            "hooks": [{"type": "command", "command": stale_cmd}],
+                        },
+                        {
+                            "matcher": "Bash",
+                            "hooks": [{"type": "command", "command": stale_cmd}],
+                        },
+                    ]
+                }
+            }
+        )
+    )
+
+    with patch("mureo.auth_setup.Path.home", return_value=tmp_path):
+        result = install_credential_guard()
+
+    assert result is not None  # upgrade happened, not a skip
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    pre_tool_use = settings["hooks"]["PreToolUse"]
+    # Foreign hook survives; the 2 stale mureo entries became 2 current ones.
+    assert len(pre_tool_use) == 3
+    assert pre_tool_use[0]["matcher"] == "Write"
+    tagged = [
+        h["command"]
+        for e in pre_tool_use
+        for h in e["hooks"]
+        if "[mureo-credential-guard]" in h["command"]
+    ]
+    assert len(tagged) == 2
+    assert all("sys.exit(1)" not in c for c in tagged)
+    assert all("permissionDecision" in c for c in tagged)
 
 
 @pytest.mark.unit
