@@ -280,6 +280,27 @@
         MUREO.toast(MUREO.t("dashboard.install_failed"), "error");
         return;
       }
+      // #400: toast the success/noop outcomes too — on an already-installed
+      // row nothing else on screen changes, so a silent success is
+      // indistinguishable from a dead button. ``noop`` means the server
+      // decided nothing needed to change; its ``detail`` says why.
+      if (res.body.status === "noop") {
+        if (res.body.detail === "unsupported_on_desktop") {
+          // Currently unreachable via the UI: the hook row's button is
+          // suppressed on claude-desktop (hookUnsupported below), the only
+          // host where the server returns this detail. Kept to match the
+          // backend contract in case the row-gating ever changes.
+          MUREO.toast(MUREO.t("dashboard.install_unsupported_desktop"), "info");
+        } else {
+          MUREO.toast(MUREO.t("dashboard.install_already"), "info");
+        }
+      } else if (res.body.status === "ok") {
+        MUREO.toast(MUREO.t("dashboard.install_done"), "success");
+      } else {
+        // Unrecognized status — surface it rather than mislabeling as
+        // success; the whole point of #400 is toast accuracy.
+        MUREO.toast(MUREO.t("dashboard.install_failed"), "error");
+      }
       await MUREO.loadStatus();
       renderAll();
     });

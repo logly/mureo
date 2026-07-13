@@ -260,3 +260,33 @@ def test_creative_studio_keys_excluded_from_generic_env_list() -> None:
     assert "CREATIVE_STUDIO_ENV_NAMES" in js
     for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "FAL_KEY"):
         assert name in js
+
+
+# ---------------------------------------------------------------------------
+# #400 — the basic-setup (re)install buttons must toast success and noop too
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_basic_install_button_toasts_every_outcome() -> None:
+    """``buildBasicInstallButton`` previously toasted only the ``error``
+    envelope; ``ok`` and ``noop`` reloaded status silently, so pressing
+    "Reinstall" on an already-installed row produced zero visible
+    reaction (#400). The handler must now toast all three outcomes:
+    success (``ok``), info for ``noop`` — distinguishing "already up to
+    date" from "unsupported on Claude Desktop" — and the existing error.
+    """
+    js = _read("dashboard.js")
+    start = js.index("function buildBasicInstallButton")
+    end = js.index("function renderBasicSection", start)
+    block = js[start:end]
+    # Success outcome → success-kind toast.
+    assert 'MUREO.t("dashboard.install_done")' in block
+    assert '"success"' in block
+    # noop outcomes → info-kind toast, split by the server's detail.
+    assert 'MUREO.t("dashboard.install_already")' in block
+    assert 'MUREO.t("dashboard.install_unsupported_desktop")' in block
+    assert '"unsupported_on_desktop"' in block
+    assert '"info"' in block
+    # The pre-existing error toast must survive.
+    assert 'MUREO.t("dashboard.install_failed")' in block
