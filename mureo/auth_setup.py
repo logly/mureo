@@ -32,6 +32,7 @@ from typing import Any
 import httpx
 from google_auth_oauthlib.flow import Flow, InstalledAppFlow
 
+from mureo import credential_guard
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 
 # Private alias so existing call sites and test monkeypatches of
@@ -668,55 +669,22 @@ def setup_mcp_config() -> None:
 # Credential guard hook
 # ---------------------------------------------------------------------------
 
-# Unique identifier to detect mureo-installed hooks
-_MUREO_HOOK_TAG = "[mureo-credential-guard]"
-
-_CREDENTIAL_GUARD_HOOK_READ = {
-    "matcher": "Read",
-    "hooks": [
-        {
-            "type": "command",
-            "command": (
-                f'python3 -c "'
-                f"import sys,json; "
-                f"d=json.loads(sys.stdin.read()); "
-                f"p=d.get('tool_input',{{}}).get('file_path',''); "
-                f"sys.exit(1) if 'credentials' in p and '.mureo' in p else sys.exit(0)"
-                f'" # {_MUREO_HOOK_TAG}'
-            ),
-        }
-    ],
-}
-
-_CREDENTIAL_GUARD_HOOK_BASH = {
-    "matcher": "Bash",
-    "hooks": [
-        {
-            "type": "command",
-            "command": (
-                f'python3 -c "'
-                f"import sys,json; "
-                f"d=json.loads(sys.stdin.read()); "
-                f"c=d.get('tool_input',{{}}).get('command',''); "
-                f"sys.exit(1) if '.mureo/credentials' in c or "
-                f"('.mureo' in c and 'credentials' in c) else sys.exit(0)"
-                f'" # {_MUREO_HOOK_TAG}'
-            ),
-        }
-    ],
-}
+# Unique identifier to detect mureo-installed hooks (re-exported for callers
+# that predate the shared mureo.credential_guard module).
+_MUREO_HOOK_TAG = credential_guard.GUARD_TAG
 
 
 def install_credential_guard() -> Path | None:
     """Add PreToolUse hooks to block AI agents from reading credentials.
 
-    Safely merges into ~/.claude/settings.json without overwriting
-    existing hooks. Uses a tag comment to detect previously installed
-    mureo hooks and avoid duplicates.
+    Safely merges into ~/.claude/settings.json without overwriting existing
+    hooks. Tagged entries from an older mureo are replaced in place so
+    re-running setup upgrades a stale guard (#393: the old ``sys.exit(1)``
+    form never blocked anything); everything else is preserved.
 
     Returns:
-        Path to settings file if hooks were added. None if skipped
-        (already installed or file could not be parsed).
+        Path to settings file if hooks were added or upgraded. None if
+        skipped (already current or file could not be parsed).
     """
     settings_path = Path.home() / ".claude" / "settings.json"
 
@@ -732,28 +700,36 @@ def install_credential_guard() -> Path | None:
             )
             return None
 
-    # Get or create hooks.PreToolUse
+    # Get or create hooks.PreToolUse, refusing unexpected shapes
     hooks = existing.setdefault("hooks", {})
-    pre_tool_use: list[dict[str, Any]] = hooks.setdefault("PreToolUse", [])
+    if not isinstance(hooks, dict):
+        logger.warning(
+            "settings.json 'hooks' is not an object — skipping credential guard",
+        )
+        return None
+    pre_tool_use = hooks.setdefault("PreToolUse", [])
+    if not isinstance(pre_tool_use, list):
+        logger.warning(
+            "settings.json 'hooks.PreToolUse' is not a list — "
+            "skipping credential guard",
+        )
+        return None
 
-    # Check if mureo hooks are already installed (by tag)
-    for entry in pre_tool_use:
-        for h in entry.get("hooks", []):
-            cmd = h.get("command", "")
-            if _MUREO_HOOK_TAG in cmd:
-                logger.info("Credential guard already installed: %s", settings_path)
-                return None
+    # Drop any previously installed mureo entries (tag-scoped), then append
+    # the current templates. Identical content means nothing to do.
+    kept = [e for e in pre_tool_use if not credential_guard.is_guard_entry(e)]
+    desired = kept + credential_guard.guard_entries()
+    if desired == pre_tool_use:
+        logger.info("Credential guard already installed: %s", settings_path)
+        return None
+    hooks["PreToolUse"] = desired
 
-    # Append mureo hooks (do NOT replace existing hooks)
-    pre_tool_use.append(_CREDENTIAL_GUARD_HOOK_READ)
-    pre_tool_use.append(_CREDENTIAL_GUARD_HOOK_BASH)
+    # Write back (preserve all existing content). Same atomic writer the
+    # removal path uses on this file — upgrades now rewrite a populated
+    # settings.json, so a crash mid-write must not truncate it.
+    from mureo.cli.settings_remove import _atomic_write_json
 
-    # Write back (preserve all existing content)
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(
-        json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    _atomic_write_json(existing, settings_path)
 
     logger.info("Credential guard hooks installed: %s", settings_path)
     return settings_path
