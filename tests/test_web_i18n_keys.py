@@ -433,3 +433,33 @@ class TestReportsDashboardKeysParity:
         data = _load_i18n()
         for key in self._KEYS:
             assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
+class TestBasicInstallToastKeys:
+    """#400 — the dashboard (re)install buttons must toast every outcome.
+
+    The success / noop toasts added to ``buildBasicInstallButton`` reference
+    three new keys; EN/JA parity is asserted here (no JS test harness).
+    """
+
+    _KEYS = (
+        "dashboard.install_done",
+        "dashboard.install_already",
+        "dashboard.install_unsupported_desktop",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            assert data["en"][key] != data["ja"][key], f"{key} not localized"
