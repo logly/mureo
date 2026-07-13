@@ -34,6 +34,13 @@ from unittest.mock import MagicMock
 import pytest
 from typer.testing import CliRunner
 
+# Captured at import time — before the autouse ``_no_real_post_upgrade``
+# fixture replaces the module attribute — so the wiring test can exercise
+# the real function.
+from mureo.cli.upgrade_cmd import (  # noqa: N812 — deliberate constant casing
+    _post_upgrade_refresh as _REAL_POST_UPGRADE_REFRESH,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
@@ -567,6 +574,200 @@ def test_refresh_deployed_skills_recopies_when_dir_exists(
     monkeypatch.setattr("mureo.cli.setup_cmd.install_skills", install)
     upgrade_cmd._refresh_deployed_skills()
     install.assert_called_once()
+
+
+_STALE_GUARD_SETTINGS = {
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "Read",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": (
+                            'python3 -c "import sys; sys.exit(1)"'
+                            " # [mureo-credential-guard]"
+                        ),
+                    }
+                ],
+            }
+        ]
+    }
+}
+
+
+def test_refresh_credential_guard_upgrades_stale_claude_hooks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Tagged hooks in ~/.claude/settings.json are upgraded on `mureo upgrade`
+    — the #393 sys.exit(1) form never blocked and must not survive an
+    upgrade (issue #398)."""
+    import json
+
+    from mureo.cli import upgrade_cmd
+
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps(_STALE_GUARD_SETTINGS), encoding="utf-8")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    upgrade_cmd._refresh_credential_guard()
+
+    text = settings.read_text(encoding="utf-8")
+    assert "[mureo-credential-guard]" in text
+    assert "sys.exit(1)" not in text
+    assert "permissionDecision" in text
+    assert "Refreshed credential-guard hooks" in capsys.readouterr().out
+
+
+def test_refresh_credential_guard_upgrades_stale_codex_hooks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Tagged hooks in ~/.codex/hooks.json are upgraded too, including the
+    legacy top-level schema migration."""
+    import json
+
+    from mureo.cli import upgrade_cmd
+
+    hooks_file = tmp_path / ".codex" / "hooks.json"
+    hooks_file.parent.mkdir(parents=True)
+    hooks_file.write_text(
+        json.dumps({"PreToolUse": _STALE_GUARD_SETTINGS["hooks"]["PreToolUse"]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    upgrade_cmd._refresh_credential_guard()
+
+    data = json.loads(hooks_file.read_text(encoding="utf-8"))
+    flat = json.dumps(data)
+    assert "sys.exit(1)" not in flat
+    assert "permissionDecision" in flat
+    # Migrated to the nested schema Codex actually loads.
+    assert "PreToolUse" not in data
+    assert data["hooks"]["PreToolUse"]
+
+
+def test_refresh_credential_guard_never_force_installs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No tagged hook → the guard was deliberately removed (or never
+    installed); an upgrade must not (re)install it."""
+    import json
+
+    from mureo.cli import upgrade_cmd
+
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    original = json.dumps({"hooks": {"PreToolUse": []}})
+    settings.write_text(original, encoding="utf-8")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    upgrade_cmd._refresh_credential_guard()
+
+    assert settings.read_text(encoding="utf-8") == original
+    assert not (tmp_path / ".codex").exists()
+
+
+def test_refresh_credential_guard_never_force_installs_codex(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An untagged ~/.codex/hooks.json is left untouched too."""
+    import json
+
+    from mureo.cli import upgrade_cmd
+
+    hooks_file = tmp_path / ".codex" / "hooks.json"
+    hooks_file.parent.mkdir(parents=True)
+    original = json.dumps({"hooks": {"PreToolUse": []}})
+    hooks_file.write_text(original, encoding="utf-8")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    upgrade_cmd._refresh_credential_guard()
+
+    assert hooks_file.read_text(encoding="utf-8") == original
+
+
+def test_refresh_credential_guard_ignores_tag_outside_hook_entries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The tag literal appearing outside a real hook entry (e.g. a stray
+    note key) must not trigger a (re)install — "installed" means an actual
+    tagged PreToolUse entry, matching credential_guard.is_guard_entry."""
+    import json
+
+    from mureo.cli import upgrade_cmd
+
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    original = json.dumps(
+        {
+            "note": "removed [mureo-credential-guard] on purpose",
+            "hooks": {"PreToolUse": []},
+        }
+    )
+    settings.write_text(original, encoding="utf-8")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    upgrade_cmd._refresh_credential_guard()
+
+    assert settings.read_text(encoding="utf-8") == original
+
+
+def test_refresh_credential_guard_noop_when_files_absent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mureo.cli import upgrade_cmd
+
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    upgrade_cmd._refresh_credential_guard()
+    assert not (tmp_path / ".claude").exists()
+    assert not (tmp_path / ".codex").exists()
+
+
+def test_refresh_credential_guard_swallows_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A failing installer must never fail the upgrade (best-effort)."""
+    import json
+
+    from mureo.cli import upgrade_cmd
+
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps(_STALE_GUARD_SETTINGS), encoding="utf-8")
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    def _boom() -> None:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr("mureo.auth_setup.install_credential_guard", _boom)
+    # Must not raise.
+    upgrade_cmd._refresh_credential_guard()
+    assert "Credential-guard refresh skipped" in capsys.readouterr().err
+
+
+def test_post_upgrade_refresh_includes_credential_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The wiring: _post_upgrade_refresh runs skills, guard, and service.
+
+    Uses ``_REAL_POST_UPGRADE_REFRESH`` (captured at module import) because
+    the autouse ``_no_real_post_upgrade`` fixture replaces the module
+    attribute with a mock for every test.
+    """
+    skills = MagicMock()
+    guard = MagicMock()
+    service = MagicMock()
+    monkeypatch.setattr("mureo.cli.upgrade_cmd._refresh_deployed_skills", skills)
+    monkeypatch.setattr("mureo.cli.upgrade_cmd._refresh_credential_guard", guard)
+    monkeypatch.setattr("mureo.cli.upgrade_cmd._restart_managed_service", service)
+
+    _REAL_POST_UPGRADE_REFRESH()
+
+    skills.assert_called_once()
+    guard.assert_called_once()
+    service.assert_called_once()
 
 
 def test_restart_managed_service_noop_when_not_installed(

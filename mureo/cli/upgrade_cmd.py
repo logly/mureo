@@ -33,12 +33,18 @@ Design contract
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 import subprocess
 import sys
 from importlib import metadata
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from typing import Any
 
 import typer
 
@@ -264,14 +270,79 @@ def _restart_managed_service() -> None:
         )
 
 
+def _has_installed_guard(config: Path) -> bool:
+    """True when ``config`` actually carries a tagged guard hook entry.
+
+    Deliberately stricter than a whole-file substring search: the tag
+    literal appearing anywhere else (a comment field, an unrelated key)
+    must not count as "installed", because the refresh below would then
+    re-append a guard the user deliberately removed. Checks the nested
+    ``hooks.PreToolUse`` list (Claude settings.json / current Codex
+    hooks.json) and the legacy Codex top-level ``PreToolUse`` list.
+    Unreadable or malformed files count as "not installed" — the refresh
+    then skips them instead of poking an installer at a file it would
+    refuse anyway.
+    """
+    from mureo.credential_guard import is_guard_entry
+
+    try:
+        data = json.loads(config.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    candidates: list[Any] = []
+    hooks = data.get("hooks")
+    if isinstance(hooks, dict) and isinstance(hooks.get("PreToolUse"), list):
+        candidates.extend(hooks["PreToolUse"])
+    if isinstance(data.get("PreToolUse"), list):
+        candidates.extend(data["PreToolUse"])
+    return any(is_guard_entry(entry) for entry in candidates)
+
+
+def _refresh_credential_guard() -> None:
+    """Upgrade previously installed credential-guard hooks after an upgrade.
+
+    #393 shipped guard hooks whose ``sys.exit(1)`` never blocked anything.
+    The installers are upgrade-aware, but they only run from setup — an
+    upgrade alone leaves the stale hooks in ``~/.claude/settings.json`` /
+    ``~/.codex/hooks.json`` forever (#398). Refresh here, but only on
+    surfaces where a tagged hook already exists, so an upgrade never
+    (re)installs the guard someone deliberately removed. Best-effort: a
+    failure is reported but never fails the upgrade.
+    """
+    from mureo.auth_setup import install_credential_guard
+    from mureo.cli.setup_codex import install_codex_credential_guard
+
+    surfaces: list[tuple[Path, Callable[[], Path | None]]] = [
+        (Path.home() / ".claude" / "settings.json", install_credential_guard),
+        (Path.home() / ".codex" / "hooks.json", install_codex_credential_guard),
+    ]
+    for config, installer in surfaces:
+        try:
+            if not _has_installed_guard(config):
+                continue
+            if installer() is not None:
+                typer.echo(f"Refreshed credential-guard hooks at {config}.")
+        except Exception as exc:  # noqa: BLE001 — refresh is best-effort
+            typer.echo(
+                f"Credential-guard refresh skipped for {config} "
+                f"({type(exc).__name__}); re-run `mureo configure` to update it.",
+                err=True,
+            )
+
+
 def _post_upgrade_refresh() -> None:
     """Make a successful upgrade actually take effect.
 
-    Both the deployed skills and any always-on daemon otherwise keep the
-    pre-upgrade version: skills are not re-copied, and the daemon holds old code
-    in memory. Refresh both so ``mureo upgrade`` is a single, reliable step.
+    The deployed skills, the installed credential-guard hooks, and any
+    always-on daemon otherwise keep the pre-upgrade version: skills are not
+    re-copied, stale hooks stay in the host configs, and the daemon holds
+    old code in memory. Refresh all three so ``mureo upgrade`` is a single,
+    reliable step.
     """
     _refresh_deployed_skills()
+    _refresh_credential_guard()
     _restart_managed_service()
 
 
@@ -304,9 +375,10 @@ def upgrade(
         False,
         "--no-refresh",
         help=(
-            "Skip the post-upgrade refresh (re-deploying skills + restarting "
-            "the always-on service). By default a successful upgrade refreshes "
-            "both so the new version actually takes effect."
+            "Skip the post-upgrade refresh (re-deploying skills, upgrading "
+            "installed credential-guard hooks, and restarting the always-on "
+            "service). By default a successful upgrade refreshes all three "
+            "so the new version actually takes effect."
         ),
     ),
 ) -> None:
