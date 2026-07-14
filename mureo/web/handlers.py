@@ -88,6 +88,7 @@ from mureo.web.byod_actions import (
     byod_remove,
     byod_status,
 )
+from mureo.web.creative_gallery import list_creative_runs, resolve_gallery_image
 from mureo.web.demo_actions import init_demo, list_demo_scenarios
 from mureo.web.env_var_writer import (
     is_allowed_env_var,
@@ -474,6 +475,16 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/reports/summary":
             self._serve_reports_summary()
+            return
+        if path == "/api/creative/clients":
+            # Same picker source as reports — clients are clients (#409).
+            send_json(self, {"clients": list_report_clients()})
+            return
+        if path == "/api/creative/runs":
+            self._serve_creative_runs()
+            return
+        if path == "/api/creative/image":
+            self._serve_creative_image()
             return
         if path == "/api/advisors":
             self._serve_advisors()
@@ -1030,6 +1041,43 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         client = query.get("client") or None
         period = query.get("period") or None
         send_json(self, build_report_summary(client=client, period=period))
+
+    def _serve_creative_runs(self) -> None:
+        """GET ``/api/creative/runs`` — one client's gallery runs (#409).
+
+        Optional ``client`` selects the client via the same multi-account
+        seam the reports tab uses. Read-only, Host-gated, secret-free
+        (filenames + a whitelisted manifest summary); the builder never
+        raises on a missing gallery directory.
+        """
+        query = _flatten_query(self.path)
+        send_json(self, list_creative_runs(query.get("client") or None))
+
+    def _serve_creative_image(self) -> None:
+        """GET ``/api/creative/image`` — one gallery PNG (#409).
+
+        ``resolve_gallery_image`` is the security boundary: every refusal
+        (charset, non-PNG, traversal, symlink escape, missing file) comes
+        back as ``None`` and maps to a uniform 404 — the route neither
+        distinguishes the refusal reason nor touches the filesystem
+        outside the gallery tree.
+        """
+        query = _flatten_query(self.path)
+        run_id = query.get("run", "")
+        filename = query.get("file", "")
+        if not run_id or not filename:
+            send_error_json(self, 404, "not_found")
+            return
+        resolved = resolve_gallery_image(query.get("client") or None, run_id, filename)
+        if resolved is None:
+            send_error_json(self, 404, "not_found")
+            return
+        try:
+            body = resolved.read_bytes()
+        except OSError:
+            send_error_json(self, 404, "not_found")
+            return
+        send_bytes(self, body, content_type="image/png")
 
     def _post_advisors_add(self, payload: dict[str, Any]) -> None:
         try:

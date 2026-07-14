@@ -1559,6 +1559,54 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   padding: 18px 18px 14px;
 }
 
+/* #409 Creative Studio gallery — run cards with lazy thumbnail grids.
+   Shares the report-card treatment (surface bg, hairline, radius). */
+.creative-clients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.creative-client-btn.is-selected {
+  border-color: var(--accent, #4f7cff);
+  font-weight: 600;
+}
+.creative-run-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.creative-run-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  justify-content: space-between;
+}
+.creative-run-prompt {
+  margin: 0;
+  font-size: 0.9em;
+}
+.creative-run-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.creative-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--hairline);
+}
+
 .report-card-head {
   display: flex;
   align-items: baseline;

@@ -56,6 +56,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "build_report_summary",
     "list_report_clients",
+    "state_store_for_client",
     "platform_display_name",
 ]
 
@@ -239,7 +240,7 @@ def _active_workspace_id(store: StateStore) -> str:
     return slug or "default"
 
 
-def _state_store_for_client(client: str | None) -> StateStore:
+def state_store_for_client(client: str | None) -> StateStore:
     """Resolve the ``StateStore`` to read for ``client``.
 
     Agency seam: when a non-default ``client`` is requested and the active
@@ -278,7 +279,7 @@ def build_report_summary(
 
     Resolves the STATE.json for ``client`` (the active workspace by default;
     a non-default client via the Agency seam — see
-    :func:`_state_store_for_client`), reads it, and shapes:
+    :func:`state_store_for_client`), reads it, and shapes:
 
     - ``platforms``: one row per key in ``platforms`` — built-in AND
       ``plugin:<dist>`` — each ``{key, display_name, totals, metrics_period,
@@ -311,7 +312,7 @@ def build_report_summary(
     Never raises on a missing/empty/malformed STATE.json — it returns an
     empty-but-valid summary instead.
     """
-    store = _state_store_for_client(client)
+    store = state_store_for_client(client)
     doc = _read_state_safe(store)
     resolved_client = client or _active_workspace_id(_active_state_store())
 
@@ -368,7 +369,7 @@ def _read_state_tolerant(store: StateStore) -> StateDocument | None:
 
     Needs the backing file path (``state_path``), which the filesystem store —
     including the Agency per-client stores resolved by
-    :func:`_state_store_for_client` — exposes. A store without one cannot be
+    :func:`state_store_for_client` — exposes. A store without one cannot be
     re-read tolerantly, so the view degrades to an empty summary.
     """
     path = getattr(store, "state_path", None)

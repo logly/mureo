@@ -74,6 +74,11 @@
                  data-i18n="dashboard.nav_reports">Reports</a>
             </li>
             <li>
+              <a href="#" class="dashboard-nav-item" data-dashboard-nav="creative"
+                 role="button" tabindex="0"
+                 data-i18n="dashboard.nav_creative">Creative Studio</a>
+            </li>
+            <li>
               <a href="#" class="dashboard-nav-item" data-dashboard-nav="advanced"
                  role="button" tabindex="0"
                  data-i18n="dashboard.nav_advanced">Advanced</a>
@@ -222,6 +227,26 @@
                   <p class="muted" data-i18n="dashboard.reports_empty_hint">Run sync-state to pull the latest campaign snapshots.</p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div class="dashboard-group" data-dashboard-group="creative" hidden>
+            <div class="dashboard-section dashboard-creative">
+              <h2 data-i18n="dashboard.creative_gallery_title">Creative Studio gallery</h2>
+              <p class="muted" data-i18n="dashboard.creative_gallery_hint">
+                Generated visuals and composed banners, per run. Read-only.
+              </p>
+              <!-- Client picker — rendered only when more than one client is
+                   selectable (multi-account installs). -->
+              <div class="creative-clients" data-creative-clients hidden></div>
+              <!-- Run cards with thumbnail grids; renderCreativeGallery()
+                   populates this. -->
+              <div class="creative-runs" data-creative-runs></div>
+              <p class="muted" data-creative-empty hidden
+                 data-i18n="dashboard.creative_gallery_empty">
+                No generated creatives yet. Run /creative-generate from your
+                agent to see results here.
+              </p>
             </div>
           </div>
 

@@ -2867,3 +2867,103 @@ class TestGetReportsSummary:
         with pytest.raises(urllib.error.HTTPError) as exc:
             urllib.request.urlopen(req, timeout=2.0)
         assert exc.value.code == 403
+
+
+# ---------------------------------------------------------------------------
+# Creative Studio gallery routes (#409, read-only):
+#   GET /api/creative/clients  (Host-gated only, no CSRF for GET)
+#   GET /api/creative/runs     (?client= forwarded)
+#   GET /api/creative/image    (?client=&run=&file= — strict containment in
+#                               the builder; the route 404s on refusal)
+# The creative_gallery.py builders are unit-tested in
+# test_web_creative_gallery.py; here we pin only the route layer.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGetCreativeClients:
+    """``GET /api/creative/clients`` — client picker source."""
+
+    ROUTE = "/api/creative/clients"
+
+    def test_returns_clients_envelope(self, wizard: ConfigureWizard) -> None:
+        fake = [{"slug": "default", "name": "default", "active": True}]
+        with patch(
+            "mureo.web.handlers.list_report_clients", return_value=fake
+        ) as mock_clients:
+            resp = _get(wizard, self.ROUTE)
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"clients": fake}
+        mock_clients.assert_called_once()
+
+
+@pytest.mark.unit
+class TestGetCreativeRuns:
+    """``GET /api/creative/runs`` — run list for one client."""
+
+    ROUTE = "/api/creative/runs"
+
+    def test_forwards_client_and_relays_payload(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        fake = {"client": "acme", "runs": []}
+        with patch(
+            "mureo.web.handlers.list_creative_runs", return_value=fake
+        ) as mock_runs:
+            resp = _get(wizard, self.ROUTE + "?client=acme")
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == fake
+        mock_runs.assert_called_once_with("acme")
+
+    def test_omitted_client_forwards_none(self, wizard: ConfigureWizard) -> None:
+        with patch(
+            "mureo.web.handlers.list_creative_runs",
+            return_value={"client": "default", "runs": []},
+        ) as mock_runs:
+            _get(wizard, self.ROUTE)
+        mock_runs.assert_called_once_with(None)
+
+
+@pytest.mark.unit
+class TestGetCreativeImage:
+    """``GET /api/creative/image`` — PNG bytes with strict containment."""
+
+    ROUTE = "/api/creative/image?client=default&run=r1&file=a.png"
+
+    def test_serves_png_bytes(
+        self, wizard: ConfigureWizard, tmp_path: Path
+    ) -> None:
+        png = tmp_path / "a.png"
+        png.write_bytes(b"\x89PNG gallery bytes")
+        with patch(
+            "mureo.web.handlers.resolve_gallery_image", return_value=png
+        ) as mock_resolve:
+            resp = _get(wizard, self.ROUTE)
+        assert resp.status == 200
+        assert resp.headers["Content-Type"] == "image/png"
+        assert resp.read() == b"\x89PNG gallery bytes"
+        mock_resolve.assert_called_once_with("default", "r1", "a.png")
+
+    def test_refusal_maps_to_404(self, wizard: ConfigureWizard) -> None:
+        with patch(
+            "mureo.web.handlers.resolve_gallery_image", return_value=None
+        ), pytest.raises(urllib.error.HTTPError) as exc:
+            _get(wizard, self.ROUTE)
+        assert exc.value.code == 404
+
+    def test_missing_params_map_to_404(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _get(wizard, "/api/creative/image?run=r1")
+        assert exc.value.code == 404
+
+    def test_vanished_file_maps_to_404(
+        self, wizard: ConfigureWizard, tmp_path: Path
+    ) -> None:
+        """A file that disappears between resolution and read (TOCTOU on a
+        live run dir) must map to the same uniform 404."""
+        ghost = tmp_path / "gone.png"
+        with patch(
+            "mureo.web.handlers.resolve_gallery_image", return_value=ghost
+        ), pytest.raises(urllib.error.HTTPError) as exc:
+            _get(wizard, self.ROUTE)
+        assert exc.value.code == 404

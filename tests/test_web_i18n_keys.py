@@ -463,3 +463,33 @@ class TestBasicInstallToastKeys:
         data = _load_i18n()
         for key in self._KEYS:
             assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
+class TestCreativeGalleryKeys:
+    """#409 — the Creative Studio gallery tab's localized strings."""
+
+    _KEYS = (
+        "dashboard.nav_creative",
+        "dashboard.creative_gallery_title",
+        "dashboard.creative_gallery_empty",
+        "dashboard.creative_gallery_hint",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            if key == "dashboard.nav_creative":
+                # "Creative Studio" is a product name — identical is fine.
+                continue
+            assert data["en"][key] != data["ja"][key], f"{key} not localized"
