@@ -240,6 +240,27 @@ class TestDeclaredBudgetExtraction:
         )
         assert "10,000 → 15,000" in reason
 
+    def test_the_fallback_ignores_the_bare_current_alias(self) -> None:
+        """The built-in scan also accepts a bare ``current``, but a DECLARING
+        plugin owns its vocabulary, and ``current`` is a plausible name for
+        something else entirely (an index, a status). Misreading one as the
+        baseline is the dangerous direction: a large stray value yields a small
+        percentage, i.e. it would ALLOW a raise that should have been refused.
+        """
+        decl = BudgetDeclaration(daily_key="daily_budget_micros", micros=True)
+        caps = Guardrails(max_daily_budget_increase_pct=20.0)
+        decision = evaluate_guardrails(
+            "t",
+            # `current` here is the plugin's own field, not a budget baseline.
+            # Read as one it would say "+50% of 1,000,000" — comfortably under
+            # the cap — and wave the ¥15,000 raise through.
+            {"daily_budget_micros": 15_000_000_000, "current": 1_000_000},
+            caps,
+            budget_declaration=decl,
+        )
+        assert decision.allowed is True  # no baseline ⇒ the pct rule abstains
+        assert "increase" not in (decision.reason or "")
+
     def test_a_declared_current_key_still_wins(self) -> None:
         """The fallback only fills a gap; an explicit declaration still owns
         the channel."""

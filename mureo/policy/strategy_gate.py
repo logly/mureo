@@ -44,6 +44,10 @@ GUARDRAILS_HEADING = "guardrails"
 # different vocabulary declares its own keys instead — see BudgetDeclaration.
 _BUDGET_KEYS = ("daily_budget", "proposed_daily_budget", "amount")
 _CURRENT_BUDGET_KEYS = ("current_daily_budget", "current")
+#: The cross-provider convention key for the *existing* daily budget (currency
+#: units), which the skills pass on every budget mutation. This is the only one
+#: honored for a tool that declared its budget: see :func:`_budget_inputs`.
+_CONVENTION_CURRENT_KEY = "current_daily_budget"
 
 _BULLET_RE = re.compile(r"^\s*[-*]\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+?)\s*$")
 
@@ -269,7 +273,7 @@ def _budget_inputs(
             return _BudgetInputs(unreadable_key=key)
         resolved.append(declared)
     proposed, current, lifetime = resolved
-    if declaration.current_key is None:
+    if not declaration.current_key:
         # The *current* budget is not part of the plugin's argument vocabulary
         # — it is context the caller supplies, under mureo's own cross-provider
         # convention (``current_daily_budget``, in currency units; the skills
@@ -278,7 +282,16 @@ def _budget_inputs(
         # adopted the seam, which is the exact underenforcement it exists to
         # remove. Note it is read in currency units even when the DECLARED keys
         # are micros: ``micros`` describes what the tool carries, not this.
-        current = _current_budget(arguments)
+        #
+        # Only the namespaced convention key, never the bare ``current`` alias
+        # the built-in scan also accepts: a declaring plugin owns its argument
+        # vocabulary, and ``current`` is a plausible name for something else
+        # entirely (an index, a status). Misreading one as the baseline would
+        # compute a nonsense increase — and a LARGE stray value yields a small
+        # percentage, i.e. it would ALLOW a raise that should have been refused.
+        value = arguments.get(_CONVENTION_CURRENT_KEY)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            current = float(value)
     return _BudgetInputs(proposed=proposed, current=current, lifetime=lifetime)
 
 
@@ -413,8 +426,13 @@ def evaluate_guardrails(
 
     ``budget_declaration`` (#414) names the argument keys carrying this
     tool's budget. When given it REPLACES the built-in Google/Meta key scan
-    — the tool's own vocabulary is authoritative. Omitted (every built-in
-    tool, and any plugin that has not declared) ⇒ unchanged behavior.
+    for the budgets the tool *proposes* — the tool's own vocabulary is
+    authoritative there. The one exception is ``current``, which is caller
+    context rather than a tool argument: undeclared, it still comes from the
+    ``current_daily_budget`` convention, so declaring a budget cannot switch
+    ``max_daily_budget_increase_pct`` off (see :class:`BudgetDeclaration`).
+    Omitted (every built-in tool, and any plugin that has not declared) ⇒
+    unchanged behavior.
     """
     if guardrails.is_empty():
         return PolicyDecision(allowed=True)
