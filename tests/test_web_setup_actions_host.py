@@ -30,12 +30,15 @@ from __future__ import annotations
 
 import json
 import platform
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from mureo.web.setup_actions import ActionResult
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _desktop_cfg(tmp_path: Path) -> Path:
@@ -76,17 +79,13 @@ class TestInstallMureoMcpHost:
         with patch(
             "mureo.auth_setup.install_mcp_config", return_value=None
         ) as mock_cfg:
-            result = setup_actions.install_mureo_mcp(
-                home=tmp_path, host="claude-code"
-            )
+            result = setup_actions.install_mureo_mcp(home=tmp_path, host="claude-code")
 
         assert result.status == "noop"
         assert result.detail == "already_configured"
         mock_cfg.assert_called_once_with(scope="global")
 
-    def test_desktop_host_writes_desktop_config_darwin(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_host_writes_desktop_config_darwin(self, tmp_path: Path) -> None:
         """``host="claude-desktop"`` on macOS writes the Desktop config
         (``mcpServers.mureo``), NOT ``settings.json``."""
         from mureo.web import setup_actions
@@ -109,9 +108,7 @@ class TestInstallMureoMcpHost:
         # The Code settings.json must NOT have been written.
         assert not (tmp_path / ".claude" / "settings.json").exists()
 
-    def test_desktop_host_already_configured_is_noop(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_host_already_configured_is_noop(self, tmp_path: Path) -> None:
         """An existing Desktop ``mureo`` entry → ``noop already_configured``;
         file unchanged."""
         from mureo.web import setup_actions
@@ -133,9 +130,7 @@ class TestInstallMureoMcpHost:
         assert result.detail == "already_configured"
         assert cfg.read_bytes() == before
 
-    def test_desktop_host_preserves_other_servers(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_host_preserves_other_servers(self, tmp_path: Path) -> None:
         """A pre-existing non-mureo Desktop server + unrelated top-level
         key survive the Desktop install."""
         from mureo.web import setup_actions
@@ -153,18 +148,14 @@ class TestInstallMureoMcpHost:
         )
 
         with patch.object(platform, "system", return_value="Darwin"):
-            setup_actions.install_mureo_mcp(
-                home=tmp_path, host="claude-desktop"
-            )
+            setup_actions.install_mureo_mcp(home=tmp_path, host="claude-desktop")
 
         payload = json.loads(cfg.read_text(encoding="utf-8"))
         assert payload["mcpServers"]["other"] == {"command": "node"}
         assert payload["theme"] == "dark"
         assert "mureo" in payload["mcpServers"]
 
-    def test_desktop_host_corrupt_config_returns_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_host_corrupt_config_returns_error(self, tmp_path: Path) -> None:
         """Corrupt Desktop config → ``status="error"`` (degrades, no
         500); original file untouched."""
         from mureo.web import setup_actions
@@ -182,9 +173,7 @@ class TestInstallMureoMcpHost:
         assert result.status == "error"
         assert cfg.read_bytes() == before
 
-    def test_desktop_host_non_darwin_falls_back_no_raise(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_host_non_darwin_falls_back_no_raise(self, tmp_path: Path) -> None:
         """Non-macOS + Desktop → host_paths fallback to
         ``<home>/.claude/settings.json``; no unsupported-platform error,
         mureo block present (acceptance criteria L23 / L118)."""
@@ -222,16 +211,12 @@ class TestInstallAuthHookHost:
         assert result.status == "ok"
         mock_guard.assert_called_once()
 
-    def test_desktop_host_returns_noop_unsupported(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_host_returns_noop_unsupported(self, tmp_path: Path) -> None:
         """``host="claude-desktop"`` → ``noop`` /
         ``detail="unsupported_on_desktop"``."""
         from mureo.web import setup_actions
 
-        with patch(
-            "mureo.auth_setup.install_credential_guard"
-        ) as mock_guard:
+        with patch("mureo.auth_setup.install_credential_guard") as mock_guard:
             result = setup_actions.install_auth_hook(
                 home=tmp_path, host="claude-desktop"
             )
@@ -250,18 +235,29 @@ class TestInstallAuthHookHost:
 
         assert before == after
 
-    def test_desktop_host_does_not_mark_part_hook(
+    def test_desktop_host_never_reports_the_hook_installed(
         self, tmp_path: Path
     ) -> None:
-        """Desktop hook is a no-op so ``PART_HOOK`` must NOT be marked
-        installed (dashboard must show "not applicable", not "installed").
-        Planner HANDOFF Q2 / risk L146."""
+        """Desktop has no ``PreToolUse`` surface, so the install is a no-op and
+        the dashboard must show "not applicable", not "installed" (planner
+        HANDOFF Q2 / risk L146).
+
+        Asserted against the *status*, which since #423 is detected rather than
+        recalled from a flag — so this now holds because there is no hook on
+        disk to find, not because an installer remembered to skip a write.
+        """
         from mureo.web import setup_actions
-        from mureo.web.setup_state import read_setup_state
+        from mureo.web.host_paths import get_host_paths
+        from mureo.web.status_collector import collect_status
 
         setup_actions.install_auth_hook(home=tmp_path, host="claude-desktop")
 
-        assert read_setup_state(home=tmp_path).auth_hook is False
+        snap = collect_status(
+            "claude-desktop",
+            home=tmp_path,
+            paths=get_host_paths("claude-desktop", tmp_path),
+        )
+        assert snap.setup_parts.auth_hook is False
 
 
 # ---------------------------------------------------------------------------
@@ -283,9 +279,7 @@ class TestInstallWorkflowSkillsHost:
         assert result.status == "ok"
         mock_skills.assert_called_once()
 
-    def test_desktop_host_same_dir_and_count_as_code(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_host_same_dir_and_count_as_code(self, tmp_path: Path) -> None:
         """Skills behaviour is identical for both hosts (shared
         ``~/.claude/skills`` — planner HANDOFF Q3)."""
         from mureo.web import setup_actions
@@ -367,9 +361,7 @@ class TestRemoveMureoMcpHost:
         assert "mureo" not in payload["mcpServers"]
         assert payload["mcpServers"]["other"] == {"command": "node"}
 
-    def test_desktop_host_idempotent_noop_when_absent(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_host_idempotent_noop_when_absent(self, tmp_path: Path) -> None:
         """Second Desktop remove (mureo already gone) → ``noop``."""
         from mureo.web import setup_actions
 
@@ -407,14 +399,10 @@ class TestRemoveAuthHookHost:
         assert result.status == "ok"
         mock_remove.assert_called_once()
 
-    def test_desktop_host_returns_noop_unsupported(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_host_returns_noop_unsupported(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
-        with patch(
-            "mureo.web.setup_actions.remove_credential_guard"
-        ) as mock_remove:
+        with patch("mureo.web.setup_actions.remove_credential_guard") as mock_remove:
             result = setup_actions.remove_auth_hook(
                 home=tmp_path, host="claude-desktop"
             )
@@ -470,9 +458,7 @@ class TestClearAllSetupHost:
         mock_mcp.assert_called_once()
         mock_hook.assert_called_once()
 
-    def test_desktop_host_propagates_host_to_mcp_and_hook(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_host_propagates_host_to_mcp_and_hook(self, tmp_path: Path) -> None:
         """``clear_all_setup(host="claude-desktop")`` passes
         ``host="claude-desktop"`` into the per-step mcp + hook removers."""
         from mureo.web import setup_actions
@@ -497,9 +483,7 @@ class TestClearAllSetupHost:
                 return_value=[],
             ),
         ):
-            setup_actions.clear_all_setup(
-                home=tmp_path, host="claude-desktop"
-            )
+            setup_actions.clear_all_setup(home=tmp_path, host="claude-desktop")
 
         for mock_fn in (mock_mcp, mock_hook):
             kwargs = mock_fn.call_args.kwargs
@@ -522,9 +506,7 @@ class TestClearAllSetupHost:
 
         with (
             patch.object(platform, "system", return_value="Darwin"),
-            patch(
-                "mureo.web.setup_actions.remove_credential_guard"
-            ) as mock_guard,
+            patch("mureo.web.setup_actions.remove_credential_guard") as mock_guard,
             patch(
                 "mureo.web.setup_actions.remove_skills",
                 return_value=(0, tmp_path / ".claude" / "skills"),
@@ -542,9 +524,7 @@ class TestClearAllSetupHost:
         assert envelope["auth_hook"]["detail"] == "unsupported_on_desktop"
         mock_guard.assert_not_called()
 
-    def test_desktop_host_never_touches_credentials_json(
-        self, tmp_path: Path
-    ) -> None:
+    def test_desktop_host_never_touches_credentials_json(self, tmp_path: Path) -> None:
         """CTO decision #3 holds on the Desktop bulk path too."""
         from mureo.web import setup_actions
 
@@ -562,9 +542,7 @@ class TestClearAllSetupHost:
 
         with (
             patch.object(platform, "system", return_value="Darwin"),
-            patch(
-                "mureo.web.setup_actions.remove_credential_guard"
-            ),
+            patch("mureo.web.setup_actions.remove_credential_guard"),
             patch(
                 "mureo.web.setup_actions.remove_skills",
                 return_value=(0, tmp_path / ".claude" / "skills"),
@@ -574,9 +552,7 @@ class TestClearAllSetupHost:
                 return_value=[],
             ),
         ):
-            setup_actions.clear_all_setup(
-                home=tmp_path, host="claude-desktop"
-            )
+            setup_actions.clear_all_setup(home=tmp_path, host="claude-desktop")
 
         assert creds.exists()
         assert creds.read_bytes() == before
@@ -589,40 +565,28 @@ class TestClearAllSetupHost:
 
 @pytest.mark.unit
 class TestHostParamSignatures:
-    def test_install_mureo_mcp_accepts_host_kwarg(
-        self, tmp_path: Path
-    ) -> None:
+    def test_install_mureo_mcp_accepts_host_kwarg(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
-        with patch(
-            "mureo.auth_setup.install_mcp_config", return_value=None
-        ):
+        with patch("mureo.auth_setup.install_mcp_config", return_value=None):
             r1 = setup_actions.install_mureo_mcp(home=tmp_path)
-            r2 = setup_actions.install_mureo_mcp(
-                home=tmp_path, host="claude-code"
-            )
+            r2 = setup_actions.install_mureo_mcp(home=tmp_path, host="claude-code")
 
         assert isinstance(r1, ActionResult)
         assert isinstance(r2, ActionResult)
 
-    def test_remove_mureo_mcp_accepts_host_kwarg(
-        self, tmp_path: Path
-    ) -> None:
+    def test_remove_mureo_mcp_accepts_host_kwarg(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         with patch(
             "mureo.web.setup_actions.remove_mcp_config",
             return_value=MagicMock(changed=False),
         ):
-            r = setup_actions.remove_mureo_mcp(
-                home=tmp_path, host="claude-code"
-            )
+            r = setup_actions.remove_mureo_mcp(home=tmp_path, host="claude-code")
 
         assert isinstance(r, ActionResult)
 
-    def test_clear_all_setup_accepts_host_kwarg(
-        self, tmp_path: Path
-    ) -> None:
+    def test_clear_all_setup_accepts_host_kwarg(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         with (
@@ -643,9 +607,7 @@ class TestHostParamSignatures:
                 return_value=[],
             ),
         ):
-            result = setup_actions.clear_all_setup(
-                home=tmp_path, host="claude-code"
-            )
+            result = setup_actions.clear_all_setup(home=tmp_path, host="claude-code")
 
         assert isinstance(result, dict)
 

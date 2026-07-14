@@ -3,12 +3,12 @@
 Pins the symmetric uninstall wrappers added per planner HANDOFF
 ``feat-web-config-ui-phase1-uninstall.md``:
 
-- ``remove_mureo_mcp(home)``     → wraps ``settings_remove.remove_mcp_config``,
-                                   then ``clear_part(PART_MCP)``.
-- ``remove_auth_hook(home)``     → wraps ``settings_remove.remove_credential_guard``,
-                                   then ``clear_part(PART_HOOK)``.
-- ``remove_workflow_skills(home)``→ wraps ``setup_cmd.remove_skills``,
-                                   then ``clear_part(PART_SKILLS)``.
+- ``remove_mureo_mcp(home)``     → wraps ``settings_remove.remove_mcp_config``.
+- ``remove_auth_hook(home)``     → wraps ``settings_remove.remove_credential_guard``.
+- ``remove_workflow_skills(home)``→ wraps ``setup_cmd.remove_skills``.
+
+None of them records anything: the dashboard detects each part on disk on
+every status read (#423), so there is no flag to keep in sync.
 - ``clear_all_setup(home)``      → orchestrates the 4 individual removes
                                    + ``remove_legacy_commands`` + iterates
                                    ``mcpServers`` for installed official
@@ -22,14 +22,15 @@ The wrappers return ``ActionResult`` shaped envelopes (status: ok/noop/error).
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from mureo.web.setup_actions import ActionResult
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # remove_mureo_mcp
@@ -59,9 +60,7 @@ class TestRemoveMureoMcp:
         from mureo.web import setup_actions
 
         fake = MagicMock(changed=False)
-        with patch(
-            "mureo.web.setup_actions.remove_mcp_config", return_value=fake
-        ):
+        with patch("mureo.web.setup_actions.remove_mcp_config", return_value=fake):
             result = setup_actions.remove_mureo_mcp(home=tmp_path)
 
         assert result.status == "noop"
@@ -81,51 +80,18 @@ class TestRemoveMureoMcp:
         # The detail should surface the exception type, not the raw message.
         assert result.detail == "RuntimeError"
 
-    def test_clears_part_state_on_success(self, tmp_path: Path) -> None:
-        """After a successful remove, ``setup_state.json``
-        ``mureo_mcp`` flips to False (acceptance criteria L135-L137).
-        Uses the real ``mark_part_installed`` + ``clear_part`` machinery."""
-        from mureo.web import setup_actions
-        from mureo.web.setup_state import (
-            PART_MCP,
-            mark_part_installed,
-            read_setup_state,
-        )
-
-        # Seed the state so we can observe the flip.
-        mark_part_installed(PART_MCP, home=tmp_path)
-        assert read_setup_state(home=tmp_path).mureo_mcp is True
-
-        fake = MagicMock(changed=True)
-        with patch(
-            "mureo.web.setup_actions.remove_mcp_config", return_value=fake
-        ):
-            setup_actions.remove_mureo_mcp(home=tmp_path)
-
-        assert read_setup_state(home=tmp_path).mureo_mcp is False
-
-    def test_does_not_clear_part_state_on_error(self, tmp_path: Path) -> None:
-        """A failed remove must NOT flip the setup-state flag. Otherwise
-        a transient failure would leave the dashboard reporting "not
-        installed" while the on-disk MCP block remains intact."""
-        from mureo.web import setup_actions
-        from mureo.web.setup_state import (
-            PART_MCP,
-            mark_part_installed,
-            read_setup_state,
-        )
-
-        mark_part_installed(PART_MCP, home=tmp_path)
-        assert read_setup_state(home=tmp_path).mureo_mcp is True
-
-        with patch(
-            "mureo.web.setup_actions.remove_mcp_config",
-            side_effect=RuntimeError("kaboom"),
-        ):
-            result = setup_actions.remove_mureo_mcp(home=tmp_path)
-
-        assert result.status == "error"
-        assert read_setup_state(home=tmp_path).mureo_mcp is True
+    # The two tests that lived here asserted that a remove flipped — and a
+    # FAILED remove did not flip — the ``setup_state.json`` flag the status
+    # used to be read from. The second one named the hazard exactly: "a
+    # transient failure would leave the dashboard reporting 'not installed'
+    # while the on-disk MCP block remains intact."
+    #
+    # That hazard is now structural rather than defended: the status is
+    # DETECTED from the MCP registry on every read (#423), so a remove that
+    # failed leaves the block on disk and the next status read simply finds it
+    # and says "installed". There is no flag left to flip, in either
+    # direction. What the status now reports off disk is covered by
+    # ``TestSetupPartsComeFromDisk`` in ``test_web_status_collector.py``.
 
     def test_as_dict_serializable(self, tmp_path: Path) -> None:
         """The returned ``ActionResult`` round-trips through ``as_dict``
@@ -133,9 +99,7 @@ class TestRemoveMureoMcp:
         from mureo.web import setup_actions
 
         fake = MagicMock(changed=True)
-        with patch(
-            "mureo.web.setup_actions.remove_mcp_config", return_value=fake
-        ):
+        with patch("mureo.web.setup_actions.remove_mcp_config", return_value=fake):
             result = setup_actions.remove_mureo_mcp(home=tmp_path)
 
         envelope = result.as_dict()
@@ -184,42 +148,9 @@ class TestRemoveAuthHook:
         assert result.status == "error"
         assert result.detail == "PermissionError"
 
-    def test_clears_part_state_on_success(self, tmp_path: Path) -> None:
-        """``auth_hook`` flag flips False after success."""
-        from mureo.web import setup_actions
-        from mureo.web.setup_state import (
-            PART_HOOK,
-            mark_part_installed,
-            read_setup_state,
-        )
-
-        mark_part_installed(PART_HOOK, home=tmp_path)
-        assert read_setup_state(home=tmp_path).auth_hook is True
-
-        fake = MagicMock(changed=True)
-        with patch(
-            "mureo.web.setup_actions.remove_credential_guard", return_value=fake
-        ):
-            setup_actions.remove_auth_hook(home=tmp_path)
-
-        assert read_setup_state(home=tmp_path).auth_hook is False
-
-    def test_does_not_clear_part_state_on_error(self, tmp_path: Path) -> None:
-        from mureo.web import setup_actions
-        from mureo.web.setup_state import (
-            PART_HOOK,
-            mark_part_installed,
-            read_setup_state,
-        )
-
-        mark_part_installed(PART_HOOK, home=tmp_path)
-        with patch(
-            "mureo.web.setup_actions.remove_credential_guard",
-            side_effect=RuntimeError("kaboom"),
-        ):
-            setup_actions.remove_auth_hook(home=tmp_path)
-
-        assert read_setup_state(home=tmp_path).auth_hook is True
+    # The flag-flip tests that lived here are gone with the flag (#423): the
+    # hook's status is now detected from the host's real hook surface, by the
+    # guard's tag, on every status read.
 
 
 # ---------------------------------------------------------------------------
@@ -269,43 +200,12 @@ class TestRemoveWorkflowSkills:
         assert result.status == "error"
         assert result.detail == "FileNotFoundError"
 
-    def test_clears_part_state_on_success(self, tmp_path: Path) -> None:
-        from mureo.web import setup_actions
-        from mureo.web.setup_state import (
-            PART_SKILLS,
-            mark_part_installed,
-            read_setup_state,
-        )
-
-        mark_part_installed(PART_SKILLS, home=tmp_path)
-        with patch(
-            "mureo.web.setup_actions.remove_skills",
-            return_value=(3, tmp_path / "skills"),
-        ):
-            setup_actions.remove_workflow_skills(home=tmp_path)
-
-        assert read_setup_state(home=tmp_path).skills is False
-
-    def test_clears_part_state_on_noop(self, tmp_path: Path) -> None:
-        """A noop on a previously-installed flag should still flip the
-        flag to False — there are no bundle skills on disk to remove,
-        so "installed" is already inaccurate. Pin this contract here so
-        the dashboard tri-state remains consistent."""
-        from mureo.web import setup_actions
-        from mureo.web.setup_state import (
-            PART_SKILLS,
-            mark_part_installed,
-            read_setup_state,
-        )
-
-        mark_part_installed(PART_SKILLS, home=tmp_path)
-        with patch(
-            "mureo.web.setup_actions.remove_skills",
-            return_value=(0, tmp_path / "skills"),
-        ):
-            setup_actions.remove_workflow_skills(home=tmp_path)
-
-        assert read_setup_state(home=tmp_path).skills is False
+    # The flag-flip tests that lived here are gone with the flag (#423). One of
+    # them existed only to paper over the flag drifting from disk: a *noop*
+    # remove (nothing on disk to delete) still had to force the flag to False
+    # because, as its docstring put it, "installed" was "already inaccurate".
+    # Detecting the skills on every status read removes the class of bug those
+    # tests were patching around — there is nothing left to keep in sync.
 
 
 # ---------------------------------------------------------------------------
@@ -408,9 +308,7 @@ class TestClearAllSetup:
         mock_skills.assert_called_once()
         mock_legacy.assert_called_once()
 
-    def test_uncaught_exception_in_step_is_isolated(
-        self, tmp_path: Path
-    ) -> None:
+    def test_uncaught_exception_in_step_is_isolated(self, tmp_path: Path) -> None:
         """If a wrapper itself raises (not returning an ActionResult),
         ``clear_all_setup`` still runs subsequent steps and reports the
         exception in the envelope. Acceptance criteria L132-L134."""
@@ -440,9 +338,7 @@ class TestClearAllSetup:
         mock_hook.assert_called_once()
         mock_skills.assert_called_once()
 
-    def test_iterates_installed_official_providers(
-        self, tmp_path: Path
-    ) -> None:
+    def test_iterates_installed_official_providers(self, tmp_path: Path) -> None:
         """Bulk path enumerates installed official providers from the
         real registry (``~/.claude.json`` for Claude Code, NOT
         settings.json) and calls ``remove_provider`` for each. CTO
@@ -597,9 +493,7 @@ class TestClearAllSetup:
 
         assert isinstance(result, dict)
 
-    def test_passes_home_through_to_individual_steps(
-        self, tmp_path: Path
-    ) -> None:
+    def test_passes_home_through_to_individual_steps(self, tmp_path: Path) -> None:
         """``home`` is propagated to each per-step wrapper so the
         per-step ``clear_part`` call hits the same state file."""
         from mureo.web import setup_actions
@@ -668,9 +562,7 @@ class TestRemoveActionsSignatures:
         for r in (r1, r2, r3):
             assert isinstance(r, ActionResult)
 
-    def test_remove_workflow_skills_accepts_optional_home(
-        self, tmp_path: Path
-    ) -> None:
+    def test_remove_workflow_skills_accepts_optional_home(self, tmp_path: Path) -> None:
         from mureo.web import setup_actions
 
         with patch(

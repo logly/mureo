@@ -1263,9 +1263,7 @@ class TestPostSetupHookInstall:
 
     ROUTE = "/api/setup/hook/install"
 
-    def test_ok_dispatches_to_install_auth_hook(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_ok_dispatches_to_install_auth_hook(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
         fake.as_dict.return_value = {"status": "ok", "detail": "written"}
         with patch(
@@ -1286,9 +1284,7 @@ class TestPostSetupHookInstall:
         body = json.loads(resp.read().decode("utf-8"))
         assert body == {"status": "noop"}
 
-    def test_error_envelope_surfaces_to_client(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_error_envelope_surfaces_to_client(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
         fake.as_dict.return_value = {"status": "error", "detail": "OSError"}
         with patch("mureo.web.handlers.install_auth_hook", return_value=fake):
@@ -1346,9 +1342,7 @@ class TestPostSetupSkillsInstall:
         assert body == {"status": "ok", "detail": "installed 15 skills"}
         mock_install.assert_called_once()
 
-    def test_error_envelope_surfaces_to_client(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_error_envelope_surfaces_to_client(self, wizard: ConfigureWizard) -> None:
         fake = MagicMock()
         fake.as_dict.return_value = {"status": "error", "detail": "OSError"}
         with patch("mureo.web.handlers.install_workflow_skills", return_value=fake):
@@ -2056,7 +2050,8 @@ class TestPostSetupBasicClear:
 
     def test_passes_wizard_home_through(self, wizard: ConfigureWizard) -> None:
         """The handler propagates ``self.wizard.home`` to ``clear_all_setup``
-        so the per-step ``clear_part`` calls write to the same setup_state.json."""
+        so every per-step remove operates on the same tree (the tests sandbox
+        that home; in production it is ``None`` and the real one is used)."""
         with patch("mureo.web.handlers.clear_all_setup", return_value={}) as mock_clear:
             _post(wizard, self.ROUTE, {})
 
@@ -2298,9 +2293,7 @@ class TestReexecRunner:
 
         with (
             patch("mureo.web.handlers.time.sleep"),
-            patch.object(
-                handlers_mod.sys, "argv", ["mureo", "configure", "--serve"]
-            ),
+            patch.object(handlers_mod.sys, "argv", ["mureo", "configure", "--serve"]),
             patch.object(handlers_mod.sys, "executable", "/usr/bin/python3"),
             patch("mureo.web.handlers.os.execv") as mock_execv,
         ):
@@ -2335,9 +2328,7 @@ class TestRequestInteractiveReexec:
         import mureo.web.handlers as handlers_mod
 
         ran = threading.Event()
-        with patch(
-            "mureo.web.handlers._reexec_runner", side_effect=lambda: ran.set()
-        ):
+        with patch("mureo.web.handlers._reexec_runner", side_effect=lambda: ran.set()):
             handlers_mod._request_interactive_reexec()
             assert ran.wait(timeout=2.0), "reexec runner was not invoked"
 
@@ -2353,17 +2344,11 @@ class TestPostRestart:
 
     ROUTE = "/api/restart"
 
-    def test_managed_schedules_service_restart(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_managed_schedules_service_restart(self, wizard: ConfigureWizard) -> None:
         with (
             patch("mureo.web.service.is_managed_service", return_value=True),
-            patch(
-                "mureo.web.handlers._request_service_restart"
-            ) as mock_service,
-            patch(
-                "mureo.web.handlers._request_interactive_reexec"
-            ) as mock_reexec,
+            patch("mureo.web.handlers._request_service_restart") as mock_service,
+            patch("mureo.web.handlers._request_interactive_reexec") as mock_reexec,
         ):
             resp = _post(wizard, self.ROUTE, {})
         body = json.loads(resp.read().decode("utf-8"))
@@ -2374,12 +2359,8 @@ class TestPostRestart:
     def test_interactive_schedules_reexec(self, wizard: ConfigureWizard) -> None:
         with (
             patch("mureo.web.service.is_managed_service", return_value=False),
-            patch(
-                "mureo.web.handlers._request_service_restart"
-            ) as mock_service,
-            patch(
-                "mureo.web.handlers._request_interactive_reexec"
-            ) as mock_reexec,
+            patch("mureo.web.handlers._request_service_restart") as mock_service,
+            patch("mureo.web.handlers._request_interactive_reexec") as mock_reexec,
         ):
             resp = _post(wizard, self.ROUTE, {})
         body = json.loads(resp.read().decode("utf-8"))
@@ -2844,15 +2825,11 @@ class TestGetReportsSummary:
         assert body == fake
         mock_summary.assert_called_once_with(client=None, period=None)
 
-    def test_forwards_client_and_period_query(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_forwards_client_and_period_query(self, wizard: ConfigureWizard) -> None:
         with patch(
             "mureo.web.handlers.build_report_summary", return_value={}
         ) as mock_summary:
-            resp = _get(
-                wizard, self.ROUTE + "?client=acme&period=LAST_7_DAYS"
-            )
+            resp = _get(wizard, self.ROUTE + "?client=acme&period=LAST_7_DAYS")
         assert resp.status == 200
         mock_summary.assert_called_once_with(client="acme", period="LAST_7_DAYS")
 
@@ -2903,9 +2880,7 @@ class TestGetCreativeRuns:
 
     ROUTE = "/api/creative/runs"
 
-    def test_forwards_client_and_relays_payload(
-        self, wizard: ConfigureWizard
-    ) -> None:
+    def test_forwards_client_and_relays_payload(self, wizard: ConfigureWizard) -> None:
         fake = {"client": "acme", "runs": []}
         with patch(
             "mureo.web.handlers.list_creative_runs", return_value=fake
@@ -2930,9 +2905,7 @@ class TestGetCreativeImage:
 
     ROUTE = "/api/creative/image?client=default&run=r1&file=a.png"
 
-    def test_serves_png_bytes(
-        self, wizard: ConfigureWizard, tmp_path: Path
-    ) -> None:
+    def test_serves_png_bytes(self, wizard: ConfigureWizard, tmp_path: Path) -> None:
         png = tmp_path / "a.png"
         png.write_bytes(b"\x89PNG gallery bytes")
         with patch(
@@ -2945,9 +2918,10 @@ class TestGetCreativeImage:
         mock_resolve.assert_called_once_with("default", "r1", "a.png")
 
     def test_refusal_maps_to_404(self, wizard: ConfigureWizard) -> None:
-        with patch(
-            "mureo.web.handlers.resolve_gallery_image", return_value=None
-        ), pytest.raises(urllib.error.HTTPError) as exc:
+        with (
+            patch("mureo.web.handlers.resolve_gallery_image", return_value=None),
+            pytest.raises(urllib.error.HTTPError) as exc,
+        ):
             _get(wizard, self.ROUTE)
         assert exc.value.code == 404
 
@@ -2962,8 +2936,9 @@ class TestGetCreativeImage:
         """A file that disappears between resolution and read (TOCTOU on a
         live run dir) must map to the same uniform 404."""
         ghost = tmp_path / "gone.png"
-        with patch(
-            "mureo.web.handlers.resolve_gallery_image", return_value=ghost
-        ), pytest.raises(urllib.error.HTTPError) as exc:
+        with (
+            patch("mureo.web.handlers.resolve_gallery_image", return_value=ghost),
+            pytest.raises(urllib.error.HTTPError) as exc,
+        ):
             _get(wizard, self.ROUTE)
         assert exc.value.code == 404

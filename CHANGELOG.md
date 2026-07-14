@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The configure dashboard now detects the basic-setup components instead of
+  recalling them from a flag file (#423).** Every other row on the status
+  snapshot is read off the filesystem, but the three basic-setup rows (mureo
+  MCP, credential-guard hook, workflow skills) came from `setup_state.json` — a
+  record only the dashboard's own actions ever wrote. So skills installed with
+  `mureo setup`, or by hand, read as **not installed while present**; and, in
+  the dangerous direction, a component deleted after a dashboard install kept
+  reading as **installed while absent** — the UI asserting a guardrail-bearing
+  component is there when it is not, with nothing to prompt the operator to
+  look. The status now detects each part on every read: the hook by the
+  credential guard's own tag on the host's real hook surface, the skills by
+  presence in the host's skills directory, and the mureo MCP block by the same
+  registry read that already reports every other provider (which could
+  previously contradict the flag *within a single snapshot*). `setup_state.json`
+  is no longer written or read; one left behind by an older mureo is ignored.
+
 ## [0.10.25] - 2026-07-14
 
 ### Fixed

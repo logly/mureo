@@ -1,14 +1,24 @@
-"""Persistent record of which basic-setup steps have been run."""
+"""Which basic-setup components are installed.
+
+Once a *record*: the configure UI wrote a flag file whenever one of its own
+actions ran, and read the status back out of it. That made the flag the only
+source of truth for three rows that every other row on the status snapshot
+detects from disk — so an install done any other way (``mureo setup``, by
+hand) read as absent, and a component deleted after a UI install read as
+present. The second is the dangerous direction: the UI asserts a
+guardrail-bearing component is there when it is not, and nothing prompts the
+operator to look (#423).
+
+So this is now just the shape. ``status_collector`` fills it by detecting each
+part on disk — the credential-guard hook by its tag, the skills by presence in
+the host's skills dir, the mureo MCP block by the same registry read that
+already reports every other provider. A ``setup_state.json`` left over from an
+older mureo is simply ignored.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
-
-from mureo.web._helpers import atomic_write_json, read_json_safe
-
-SETUP_STATE_FILENAME = "setup_state.json"
 
 PART_MCP = "mureo_mcp"
 PART_HOOK = "auth_hook"
@@ -19,7 +29,7 @@ KNOWN_PARTS: tuple[str, ...] = (PART_MCP, PART_HOOK, PART_SKILLS)
 
 @dataclass(frozen=True)
 class SetupParts:
-    """Whether each basic-setup component has been installed."""
+    """Whether each basic-setup component is installed, as found on disk."""
 
     mureo_mcp: bool = False
     auth_hook: bool = False
@@ -34,53 +44,3 @@ class SetupParts:
 
     def all_installed(self) -> bool:
         return self.mureo_mcp and self.auth_hook and self.skills
-
-
-def state_file_path(home: Path | None = None) -> Path:
-    """Return the canonical setup_state.json location."""
-    base = home if home is not None else Path.home()
-    return base / ".mureo" / SETUP_STATE_FILENAME
-
-
-def read_setup_state(home: Path | None = None) -> SetupParts:
-    """Load the persisted setup-parts record."""
-    payload = read_json_safe(state_file_path(home))
-    return SetupParts(
-        mureo_mcp=bool(payload.get(PART_MCP, False)),
-        auth_hook=bool(payload.get(PART_HOOK, False)),
-        skills=bool(payload.get(PART_SKILLS, False)),
-    )
-
-
-def write_setup_state(parts: SetupParts, home: Path | None = None) -> None:
-    """Persist ``parts`` to ``setup_state.json`` (atomic + 0o600)."""
-    payload: dict[str, Any] = parts.as_dict()
-    atomic_write_json(state_file_path(home), payload)
-
-
-def mark_part_installed(part: str, home: Path | None = None) -> SetupParts:
-    """Flip one part to True and persist."""
-    if part not in KNOWN_PARTS:
-        raise ValueError(f"unknown setup part: {part!r}")
-    current = read_setup_state(home)
-    updated = SetupParts(
-        mureo_mcp=current.mureo_mcp or part == PART_MCP,
-        auth_hook=current.auth_hook or part == PART_HOOK,
-        skills=current.skills or part == PART_SKILLS,
-    )
-    write_setup_state(updated, home)
-    return updated
-
-
-def clear_part(part: str, home: Path | None = None) -> SetupParts:
-    """Reset one part to False (used by uninstall flows)."""
-    if part not in KNOWN_PARTS:
-        raise ValueError(f"unknown setup part: {part!r}")
-    current = read_setup_state(home)
-    updated = SetupParts(
-        mureo_mcp=current.mureo_mcp and part != PART_MCP,
-        auth_hook=current.auth_hook and part != PART_HOOK,
-        skills=current.skills and part != PART_SKILLS,
-    )
-    write_setup_state(updated, home)
-    return updated

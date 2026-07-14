@@ -58,9 +58,7 @@ _GA_OFFICIAL = {"type": "stdio", "command": "pipx", "args": ["run", "x"]}
 
 @pytest.mark.unit
 class TestBackfillDisable:
-    def test_code_backfills_google_when_official_present(
-        self, tmp_path: Path
-    ) -> None:
+    def test_code_backfills_google_when_official_present(self, tmp_path: Path) -> None:
         from mureo.web.setup_actions import (
             backfill_disable_for_installed_providers,
         )
@@ -103,9 +101,7 @@ class TestBackfillDisable:
         # And the network probe is never even called from this path.
         probe.assert_not_called()
 
-    def test_code_meta_not_disabled_when_connector_absent(
-        self, tmp_path: Path
-    ) -> None:
+    def test_code_meta_not_disabled_when_connector_absent(self, tmp_path: Path) -> None:
         from mureo.web.setup_actions import (
             backfill_disable_for_installed_providers,
         )
@@ -184,9 +180,7 @@ class TestBackfillDisable:
                 return_value=False,
             ),
         ):
-            backfill_disable_for_installed_providers(
-                "claude-desktop", tmp_path
-            )
+            backfill_disable_for_installed_providers("claude-desktop", tmp_path)
 
         env = json.loads(cfg.read_text())["mcpServers"]["mureo"].get("env", {})
         assert env.get("MUREO_DISABLE_GOOGLE_ADS") == "1"
@@ -213,9 +207,9 @@ def test_install_mureo_mcp_triggers_backfill(tmp_path: Path) -> None:
             "mureo.auth_setup.install_mcp_config",
             side_effect=_fake_install_mcp_config,
         ),
-        patch(
-            "mureo.web.setup_actions.mark_part_installed"
-        ),
+        # (``mark_part_installed`` used to be patched here. The install no
+        # longer records a flag — the status is detected from disk, #423 — so
+        # there is nothing to stub out.)
         patch(
             "mureo.providers.config_writer.is_hosted_provider_connected",
             return_value=False,
