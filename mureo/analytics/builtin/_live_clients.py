@@ -104,6 +104,12 @@ def _aggregate_google_metrics(
 def _open_google_ads_client(account_id: str) -> object:
     """Resolve credentials + open a Google Ads client (live or BYOD).
 
+    WARNING (#411/#413): this helper does NOT enforce the workspace
+    account allow-list — ``account_id`` is used verbatim. Every wired MCP
+    tool today derives the id from workspace state, never from a caller
+    argument. If a future tool passes a caller-supplied id into the
+    AnalyticsModule Protocol, route it through the #411 resolvers first.
+
     Raises :class:`NoCredentialsError` in live mode when credentials
     are missing. BYOD mode is detected by the client factory itself
     (``mureo.mcp._client_factory``), so this helper does not re-check
@@ -439,7 +445,14 @@ def _aggregate_meta_metrics(
 
 
 def _open_meta_ads_client(account_id: str) -> object:
-    """Parallel to :func:`_open_google_ads_client` for Meta Ads."""
+    """Parallel to :func:`_open_google_ads_client` for Meta Ads.
+
+    WARNING (#411/#413): this helper does NOT enforce the workspace
+    account allow-list — ``account_id`` is used verbatim. Every wired MCP
+    tool today derives the id from workspace state, never from a caller
+    argument. If a future tool passes a caller-supplied id into the
+    AnalyticsModule Protocol, route it through the #411 resolvers first.
+    """
     from mureo.auth import load_meta_ads_credentials
     from mureo.byod.runtime import byod_has
     from mureo.mcp._client_factory import get_meta_ads_client

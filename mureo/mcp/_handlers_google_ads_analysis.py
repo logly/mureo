@@ -14,7 +14,12 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     from mcp.types import TextContent
 
-from mureo.mcp._handlers_google_ads import _get_client, _no_google_creds
+from mureo.core.runtime_context import runtime_google_ads_customer_ids
+from mureo.mcp._handlers_google_ads import (
+    _get_client,
+    _no_google_creds,
+    _normalize_customer_id,
+)
 from mureo.mcp._helpers import (
     _json_result,
     _opt,
@@ -62,14 +67,26 @@ async def handle_accounts_list(args: dict[str, Any]) -> list[TextContent]:
     An explicit ``customer_id`` (or BYOD mode) still routes through the
     customer-scoped client; only the real-mode, no-customer_id case uses the
     id-free :func:`mureo.google_ads.list_accessible_accounts` primitive.
+
+    Workspace scoping (#411): discovery enumerates every account the
+    (possibly operator-shared) auth can reach — on a multi-account backend
+    that is every sibling client's id and name. When the workspace is
+    scoped (:func:`runtime_google_ads_customer_ids` is not ``None``), both
+    real-mode branches filter the response to the allowed set, mirroring
+    the Search Console sites-list filtering (#375). BYOD rows are local
+    CSV labels with no shared-auth reach and stay unfiltered.
     """
     from mureo.byod.runtime import byod_has
 
-    if byod_has("google_ads") or _opt(args, "customer_id"):
+    byod = byod_has("google_ads")
+    if byod or _opt(args, "customer_id"):
         client = _get_client(args)
         if client is None:
             return _no_google_creds()
-        return _json_result(await client.list_accounts())
+        result = await client.list_accounts()
+        if not byod:
+            result = _filter_accounts_to_allowed(result)
+        return _json_result(result)
 
     from mureo.auth import load_google_ads_credentials
     from mureo.google_ads import list_accessible_accounts
@@ -78,7 +95,44 @@ async def handle_accounts_list(args: dict[str, Any]) -> list[TextContent]:
     if creds is None:
         return _no_google_creds()
     accounts = await list_accessible_accounts(creds)
-    return _json_result(accounts)
+    return _json_result(_filter_accounts_to_allowed(accounts))
+
+
+def _filter_accounts_to_allowed(accounts: Any) -> Any:
+    """Drop account rows outside the workspace allow-list (#411).
+
+    Unscoped (:func:`runtime_google_ads_customer_ids` → ``None``) returns
+    the payload untouched. Scoped keeps only ``dict`` rows whose account id
+    matches an allowed entry (hyphen-insensitive) — an unconfigured
+    workspace (empty set) therefore yields an empty roster, erring closed
+    like every other member of the #375 family.
+
+    The two branches feeding this filter use different row schemas:
+    :func:`mureo.google_ads.list_accessible_accounts` emits ``{"id": ...}``
+    rows, while ``client.list_accounts()`` emits ``{"customer_id":
+    "customers/<digits>"}`` resource names — both are handled.
+    """
+    allowed = runtime_google_ads_customer_ids()
+    if allowed is None:
+        return accounts
+    normalized = {_normalize_customer_id(str(entry)) for entry in allowed}
+    if not isinstance(accounts, list):
+        return []
+    return [
+        row
+        for row in accounts
+        if isinstance(row, dict) and _account_row_id(row) in normalized
+    ]
+
+
+def _account_row_id(row: dict[str, Any]) -> str:
+    """The normalized account id of one roster row, tolerant of both the
+    ``id`` and the resource-name ``customer_id`` schema."""
+    raw = str(row.get("id") or row.get("customer_id") or "")
+    prefix = "customers/"
+    if raw.startswith(prefix):
+        raw = raw[len(prefix) :]
+    return _normalize_customer_id(raw)
 
 
 @api_error_handler

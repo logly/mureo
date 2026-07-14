@@ -391,23 +391,68 @@ def runtime_search_console_sites() -> frozenset[str] | None:
       cross-client risk, so it keeps the unrestricted behavior; a usable
       allow-list still scopes it if one is declared.
     """
+    return _runtime_account_allow_list("search_console_sites")
+
+
+def runtime_meta_account_ids() -> frozenset[str] | None:
+    """The Meta Ads ``account_id`` allow-list for the ACTIVE client, or
+    ``None`` when Meta Ads is not tenant-scoped (#411).
+
+    Same shape and rationale as :func:`runtime_search_console_sites`: the
+    Meta MCP tools take ``account_id`` as a free caller argument while the
+    shared credentials can reach every managed ad account, so a
+    multi-account backend declares the active client's accounts as
+    ``meta_account_ids`` on its ``SecretStore`` and the handler choke point
+    enforces the effective id against it — fail-closed when a multi-account
+    backend declares nothing. Entries may be ``act_``-prefixed or bare
+    numeric; the handler compares prefix-insensitively.
+    """
+    return _runtime_account_allow_list("meta_account_ids")
+
+
+def runtime_google_ads_customer_ids() -> frozenset[str] | None:
+    """The Google Ads ``customer_id`` allow-list for the ACTIVE client, or
+    ``None`` when Google Ads is not tenant-scoped (#411).
+
+    Same shape and rationale as :func:`runtime_search_console_sites`; the
+    store attribute is ``google_ads_customer_ids``. Entries may carry
+    hyphens or not; the handler compares hyphen-insensitively.
+    """
+    return _runtime_account_allow_list("google_ads_customer_ids")
+
+
+def _runtime_account_allow_list(attribute: str) -> frozenset[str] | None:
+    """Shared resolver behind the per-provider account allow-lists.
+
+    Resolution (identical for every member — the #375 contract; see
+    :func:`runtime_search_console_sites` for the full rationale):
+
+    - **No factory registered** → ``None`` (standalone OSS unrestricted;
+      the gate is on entry-point presence so the default store is never
+      consulted).
+    - **Store declares a usable collection** under ``attribute`` → a
+      ``frozenset`` of its non-blank string entries (possibly empty —
+      declaring the attribute opts INTO scoping).
+    - **Attribute absent/unusable on a multi-account backend** → an EMPTY
+      ``frozenset``: shared auth reaches every client's account, so a
+      forgotten or mistyped allow-list must fail CLOSED, not silently
+      reopen the cross-client leak.
+    - **Attribute absent/unusable on a single-account backend** → ``None``
+      (no shared-auth cross-client risk; unrestricted).
+    """
     if not list(entry_points(group=RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP)):
         return None
     store = get_runtime_context().secret_store
-    scoped = _coerce_site_allow_list(getattr(store, "search_console_sites", None))
+    scoped = _coerce_site_allow_list(getattr(store, attribute, None))
     if scoped is not None:
         return scoped
-    # No usable allow-list. Fail CLOSED for a shared-OAuth (multi-account)
-    # backend — it can reach every client's property, so an un-declared or
-    # mistyped list must scope to nothing, not everything. A single-account
-    # backend has no such cross-client reach, so it stays unrestricted.
     if getattr(store, "multi_account_auth", False) is True:
         return frozenset()
     return None
 
 
 def _coerce_site_allow_list(declared: object) -> frozenset[str] | None:
-    """Normalize a declared ``search_console_sites`` value, or ``None``.
+    """Normalize a declared allow-list value, or ``None``.
 
     ``None`` means "no usable declaration" (absent, or a non-collection /
     bare ``str`` / ``bytes`` — a mistyped scalar must never become a
