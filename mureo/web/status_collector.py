@@ -22,7 +22,10 @@ from typing import TYPE_CHECKING, Any
 from mureo.web._helpers import read_json_safe
 from mureo.web.env_var_writer import allowed_env_var_names, get_env_var_target
 from mureo.web.host_paths import HostPaths, get_host_paths
-from mureo.web.setup_state import SetupParts, read_setup_state
+from mureo.web.setup_state import SetupParts
+
+_HOST_DESKTOP = "claude-desktop"
+_HOST_CODEX = "codex"
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -175,6 +178,71 @@ def _detect_legacy_commands(commands_dir: Path) -> bool:
     return bool(detect_legacy_commands(commands_dir))
 
 
+def _shipped_skill_names() -> frozenset[str]:
+    """The skills this mureo would install (``mureo/_data/skills``)."""
+    from mureo.cli.setup_cmd import _get_data_path
+
+    try:
+        src = _get_data_path("skills")
+        return frozenset(
+            d.name for d in src.iterdir() if d.is_dir() and (d / "SKILL.md").exists()
+        )
+    except OSError:  # unreadable package data — cannot claim anything is installed
+        return frozenset()
+
+
+def _detect_workflow_skills(skills_dir: Path) -> bool:
+    """Return True iff every skill mureo ships is present in ``skills_dir``.
+
+    Detected, never recalled (#423). The old status came from a flag file that
+    only the configure UI's own actions wrote, so a ``mureo setup`` install read
+    ✗ while present, and a hand-deleted skill read ✓ while absent — the UI
+    asserting a component is there when it is not.
+
+    A *missing* skill reads as not-installed rather than partially-installed:
+    the remedy is the same either way (re-run the install, which overwrites),
+    and a half-installed set reported as ✓ is how an operator ends up without
+    the workflow they think they have. Staleness (installed, but from an older
+    mureo) is version drift and belongs to the upgrade action, not here.
+    """
+    expected = _shipped_skill_names()
+    if not expected:
+        return False
+    return all((skills_dir / name / "SKILL.md").exists() for name in expected)
+
+
+def _detect_auth_hook(host: str, settings_path: Path) -> bool:
+    """Return True iff mureo's credential-guard PreToolUse hook is installed.
+
+    Identified with :func:`mureo.credential_guard.is_guard_entry` — the same
+    predicate the installer and the remover use. It is scoped to the entry's
+    inner ``command`` field, so a user's own hook is never claimed as ours, and
+    there is only ever one definition of "is this our guard" to keep correct.
+
+    The path comes from ``settings_path``, never from a separately-threaded
+    home: Codex keeps its hooks in ``hooks.json`` beside its config rather than
+    inside it, and deriving that from the resolved :class:`HostPaths` keeps this
+    reading the *same* tree the rest of the snapshot reads. (Taking a ``home``
+    of its own would let a caller that passes only ``paths`` — as the handler
+    does — silently read the operator's real ``~/.codex`` instead.)
+
+    Claude Desktop has no ``PreToolUse`` surface, so the installer no-ops there
+    and this is always False. A guard stranded in the *legacy* top-level
+    ``PreToolUse`` list by a much older mureo reads as absent; re-running the
+    install rewrites it into the nested shape, which is the safe direction.
+    """
+    if host == _HOST_DESKTOP:
+        return False
+    from mureo.credential_guard import is_guard_entry
+
+    path = settings_path.parent / "hooks.json" if host == _HOST_CODEX else settings_path
+    hooks = read_json_safe(path).get("hooks")
+    if not isinstance(hooks, dict):
+        return False
+    entries = hooks.get("PreToolUse")
+    return isinstance(entries, list) and any(is_guard_entry(e) for e in entries)
+
+
 def _mask_value(name: str, value: str) -> str:
     """Return a UI-safe preview for an env var value.
 
@@ -234,8 +302,15 @@ def collect_status(
     so this stays a pure filesystem read with no runtime-context coupling.
     """
     resolved = paths if paths is not None else get_host_paths(host, home)
-    setup_parts = read_setup_state(home)
     providers = _detect_installed_providers(resolved.mcp_registry_path)
+    # Detected from disk, like every other row here — never recalled from a
+    # flag file (#423). ``mureo_mcp`` reuses the provider detection above
+    # rather than keeping a second source of truth for the same fact.
+    setup_parts = SetupParts(
+        mureo_mcp=providers[MUREO_NATIVE_ID],
+        auth_hook=_detect_auth_hook(resolved.host, resolved.settings_path),
+        skills=_detect_workflow_skills(resolved.skills_dir),
+    )
     creds = _detect_credentials_present(resolved.credentials_path)
     creds_oauth = _detect_credentials_oauth(resolved.credentials_path)
     env_vars = _collect_env_vars(resolved.credentials_path)

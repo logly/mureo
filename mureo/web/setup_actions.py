@@ -51,13 +51,7 @@ from mureo.web.desktop_mcp import (
     unset_mureo_disable_env_desktop,
 )
 from mureo.web.legacy_commands import remove_legacy_commands
-from mureo.web.setup_state import (
-    PART_HOOK,
-    PART_MCP,
-    PART_SKILLS,
-    clear_part,
-    mark_part_installed,
-)
+from mureo.web.setup_state import PART_HOOK, PART_MCP, PART_SKILLS
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +104,6 @@ def _install_desktop_mcp(home: Path | None) -> ActionResult:
         logger.exception("install_mureo_mcp (desktop) failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
-    mark_part_installed(PART_MCP, home=home)
     if not wrote:
         return ActionResult(status="noop", detail="already_configured")
     return ActionResult(status="ok", detail=str(config_path))
@@ -139,7 +132,6 @@ def _install_codex_mcp(home: Path | None) -> ActionResult:
         logger.exception("install_mureo_mcp (codex) failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
-    mark_part_installed(PART_MCP, home=home)
     if not wrote:
         return ActionResult(status="noop", detail="already_configured")
     return ActionResult(status="ok", detail=str(config_path))
@@ -379,7 +371,6 @@ def install_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Actio
             logger.exception("install_mureo_mcp failed")
             return ActionResult(status="error", detail=type(exc).__name__)
 
-        mark_part_installed(PART_MCP, home=home)
         result = (
             ActionResult(status="noop", detail="already_configured")
             if res is None
@@ -414,7 +405,6 @@ def install_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Actio
         logger.exception("install_auth_hook failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
-    mark_part_installed(PART_HOOK, home=home)
     if result is None:
         return ActionResult(status="noop", detail="already_installed")
     return ActionResult(status="ok", detail=str(result))
@@ -438,7 +428,6 @@ def install_workflow_skills(
         logger.exception("install_workflow_skills failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
-    mark_part_installed(PART_SKILLS, home=home)
     return ActionResult(status="ok", detail=f"installed {count} skills at {dest}")
 
 
@@ -1093,7 +1082,6 @@ def _remove_desktop_mcp(home: Path | None) -> ActionResult:
 
     if not removed:
         return ActionResult(status="noop", detail="not_installed")
-    clear_part(PART_MCP, home=home)
     return ActionResult(status="ok")
 
 
@@ -1114,7 +1102,6 @@ def remove_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Action
             return ActionResult(status="error", detail=type(exc).__name__)
         if not changed:
             return ActionResult(status="noop", detail="not_installed")
-        clear_part(PART_MCP, home=home)
         return ActionResult(status="ok")
 
     try:
@@ -1125,7 +1112,6 @@ def remove_mureo_mcp(home: Path | None = None, host: str = _HOST_CODE) -> Action
 
     if not result.changed:
         return ActionResult(status="noop", detail="not_installed")
-    clear_part(PART_MCP, home=home)
     return ActionResult(status="ok")
 
 
@@ -1145,7 +1131,6 @@ def remove_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Action
             removed = remove_codex_credential_guard(_codex_hooks_path(home))
             if removed is None:
                 return ActionResult(status="noop", detail="not_installed")
-            clear_part(PART_HOOK, home=home)
             return ActionResult(status="ok")
         result = remove_credential_guard()
     except Exception as exc:  # noqa: BLE001
@@ -1154,7 +1139,6 @@ def remove_auth_hook(home: Path | None = None, host: str = _HOST_CODE) -> Action
 
     if not result.changed:
         return ActionResult(status="noop", detail="not_installed")
-    clear_part(PART_HOOK, home=home)
     return ActionResult(status="ok")
 
 
@@ -1173,10 +1157,6 @@ def remove_workflow_skills(
         logger.exception("remove_workflow_skills failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
-    # Clear the state flag on both success AND noop so the dashboard
-    # tri-state stays consistent (planner HANDOFF L137 — flag must reflect
-    # actual on-disk state).
-    clear_part(PART_SKILLS, home=home)
     if count == 0:
         return ActionResult(status="noop", detail=f"no skills found at {dest}")
     return ActionResult(status="ok", detail=f"removed {count} skills from {dest}")
@@ -1187,9 +1167,10 @@ def _installed_official_providers(
 ) -> list[str]:
     """Return the subset of ``_OFFICIAL_PROVIDER_IDS`` actually registered.
 
-    ``clear_all_setup`` needs to know which providers were installed
-    without depending on ``setup_state.json`` flags (those only track
-    basic-setup parts).
+    ``clear_all_setup`` needs to know which providers are actually
+    registered, so it probes the registry rather than trusting a record of
+    what was installed — the same rule the status snapshot now follows for
+    every row (#423).
 
     For ``host="claude-code"`` registration lives in ``~/.claude.json``
     (managed by ``claude mcp``) — NOT ``~/.claude/settings.json`` — so we

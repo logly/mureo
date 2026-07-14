@@ -16,8 +16,10 @@ import pytest
 
 from mureo.web.host_paths import HostPaths
 from mureo.web.status_collector import (
+    MUREO_NATIVE_ID,
     StatusSnapshot,
     _mask_value,
+    _shipped_skill_names,
     collect_status,
 )
 
@@ -40,7 +42,7 @@ def _paths(tmp_path: Path) -> HostPaths:
 
 
 def _build_home(tmp_path: Path) -> Path:
-    """Return a clean fake home dir (so read_setup_state finds nothing)."""
+    """Return a clean fake home dir, so nothing leaks in from the real one."""
     home = tmp_path / "home"
     (home / ".mureo").mkdir(parents=True, exist_ok=True)
     (home / ".claude" / "commands").mkdir(parents=True, exist_ok=True)
@@ -275,9 +277,7 @@ class TestMureoDisableState:
             json.dumps({"mcpServers": {"mureo": {"command": "python"}}}),
             encoding="utf-8",
         )
-        snap = collect_status(
-            "claude-code", home=_build_home(tmp_path), paths=paths
-        )
+        snap = collect_status("claude-code", home=_build_home(tmp_path), paths=paths)
         assert snap.mureo_disable == {
             "google_ads": False,
             "meta_ads": False,
@@ -300,9 +300,7 @@ class TestMureoDisableState:
             ),
             encoding="utf-8",
         )
-        snap = collect_status(
-            "claude-code", home=_build_home(tmp_path), paths=paths
-        )
+        snap = collect_status("claude-code", home=_build_home(tmp_path), paths=paths)
         assert snap.mureo_disable["google_ads"] is True
         assert snap.mureo_disable["meta_ads"] is False
 
@@ -340,3 +338,229 @@ class TestMultiAccountAuthFlag:
         )
         assert snap.multi_account_auth is True
         assert snap.as_dict()["multi_account_auth"] is True
+
+
+def _install_all_skills(skills_dir: Path) -> None:
+    """Put every skill mureo ships into ``skills_dir``, as an install would."""
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    for name in _shipped_skill_names():
+        (skills_dir / name).mkdir(parents=True, exist_ok=True)
+        (skills_dir / name / "SKILL.md").write_text(
+            "---\nname: x\n---\n", encoding="utf-8"
+        )
+
+
+def _state_file(home: Path) -> Path:
+    """The legacy flag file. Written by these tests only to prove it is now
+    IGNORED — the status comes from disk (#423)."""
+    return home / ".mureo" / "setup_state.json"
+
+
+@pytest.mark.unit
+class TestSetupPartsComeFromDisk:
+    """The three basic-setup rows must be DETECTED, not recalled (#423).
+
+    Every other row on the snapshot is read off the filesystem; these three
+    came from a flag file only the configure UI's own actions ever wrote. So
+    skills installed by ``mureo setup`` (or by hand) read ✗ while present, and
+    skills deleted after a UI install read ✓ while absent. The second is the
+    dangerous direction: the UI asserts a guardrail-bearing component is there
+    when it is not, and nothing prompts the operator to look.
+    """
+
+    def test_skills_on_disk_read_installed_even_with_no_flag(
+        self, tmp_path: Path
+    ) -> None:
+        paths = _paths(tmp_path)
+        home = _build_home(tmp_path)  # no flag file written at all
+        _install_all_skills(paths.skills_dir)
+
+        snap = collect_status("claude-code", home=home, paths=paths)
+
+        assert snap.setup_parts.skills is True
+
+    def test_skills_absent_read_not_installed_despite_the_flag(
+        self, tmp_path: Path
+    ) -> None:
+        """The false-POSITIVE direction: the flag says yes, the disk says no."""
+        paths = _paths(tmp_path)
+        home = _build_home(tmp_path)
+        _write_json(
+            _state_file(home),
+            {"mureo_mcp": True, "auth_hook": True, "skills": True},
+        )
+
+        snap = collect_status("claude-code", home=home, paths=paths)
+
+        assert snap.setup_parts.skills is False
+
+    def test_a_partial_install_reads_not_installed(self, tmp_path: Path) -> None:
+        """One skill missing means the install is incomplete — say so, so the
+        operator re-runs it, rather than reporting a half-installed set as ✓."""
+        import shutil
+
+        paths = _paths(tmp_path)
+        home = _build_home(tmp_path)
+        _install_all_skills(paths.skills_dir)
+        victim = sorted(p.name for p in paths.skills_dir.iterdir())[0]
+        shutil.rmtree(paths.skills_dir / victim)
+
+        snap = collect_status("claude-code", home=home, paths=paths)
+
+        assert snap.setup_parts.skills is False
+
+    def test_mureo_mcp_cannot_contradict_the_provider_detection(
+        self, tmp_path: Path
+    ) -> None:
+        """One snapshot could say ``setup_parts.mureo_mcp = True`` while
+        ``providers_installed["mureo"] = False`` — two sources of truth for one
+        fact, read in the same call."""
+        paths = _paths(tmp_path)
+        home = _build_home(tmp_path)
+        _write_json(_state_file(home), {"mureo_mcp": True})
+        _write_json(paths.mcp_registry_path, {"mcpServers": {}})  # mureo absent
+
+        snap = collect_status("claude-code", home=home, paths=paths)
+
+        assert snap.providers_installed[MUREO_NATIVE_ID] is False
+        assert snap.setup_parts.mureo_mcp is False
+
+    def test_auth_hook_is_read_from_the_settings_file(self, tmp_path: Path) -> None:
+        from mureo.credential_guard import GUARD_TAG
+
+        paths = _paths(tmp_path)
+        home = _build_home(tmp_path)
+        _write_json(
+            paths.settings_path,
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": f'python3 -c "..." # {GUARD_TAG}',
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+        )
+
+        snap = collect_status("claude-code", home=home, paths=paths)
+
+        assert snap.setup_parts.auth_hook is True
+
+    def test_auth_hook_absent_reads_not_installed_despite_the_flag(
+        self, tmp_path: Path
+    ) -> None:
+        paths = _paths(tmp_path)
+        home = _build_home(tmp_path)
+        _write_json(_state_file(home), {"auth_hook": True})
+        _write_json(paths.settings_path, {"hooks": {}})  # guard not installed
+
+        snap = collect_status("claude-code", home=home, paths=paths)
+
+        assert snap.setup_parts.auth_hook is False
+
+    def test_a_users_own_hook_is_not_claimed_as_ours(self, tmp_path: Path) -> None:
+        """Detection is scoped to the entry's own ``command``, via the same
+        ``is_guard_entry`` the installer and remover use — so an unrelated hook
+        never reads as mureo's guard."""
+        paths = _paths(tmp_path)
+        home = _build_home(tmp_path)
+        _write_json(
+            paths.settings_path,
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {"hooks": [{"type": "command", "command": "echo hi"}]}
+                    ]
+                }
+            },
+        )
+
+        snap = collect_status("claude-code", home=home, paths=paths)
+
+        assert snap.setup_parts.auth_hook is False
+
+
+@pytest.mark.unit
+class TestDetectorsAgreeWithTheRealInstallers:
+    """Round-trip the real installers through the detectors (#423).
+
+    The detectors read a shape somebody else writes. Hand-written fixtures pin
+    the reader against a shape that was true when the test was authored — they
+    would keep passing if the *writer* moved. These call the actual installers,
+    so the two cannot drift apart in silence.
+    """
+
+    def test_credential_guard_install_then_remove_round_trips(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.auth_setup import install_credential_guard
+        from mureo.cli.settings_remove import remove_credential_guard
+
+        home = _build_home(tmp_path)
+        monkeypatch.setattr("pathlib.Path.home", lambda: home)
+        paths = dataclasses.replace(
+            _paths(tmp_path), settings_path=home / ".claude" / "settings.json"
+        )
+
+        install_credential_guard()
+        assert (
+            collect_status("claude-code", home=home, paths=paths).setup_parts.auth_hook
+            is True
+        )
+
+        remove_credential_guard(settings_path=paths.settings_path)
+        assert (
+            collect_status("claude-code", home=home, paths=paths).setup_parts.auth_hook
+            is False
+        )
+
+    def test_codex_guard_is_found_beside_the_codex_config(self, tmp_path: Path) -> None:
+        """Codex keeps hooks in ``hooks.json`` next to ``config.toml``. The
+        detector derives that from the resolved HostPaths, so it reads the same
+        tree as the rest of the snapshot — never the operator's real ~/.codex.
+        """
+        from mureo.cli.setup_codex import install_codex_credential_guard
+        from mureo.web.host_paths import get_host_paths
+
+        home = _build_home(tmp_path)
+        paths = get_host_paths("codex", home)
+
+        assert collect_status(
+            "codex", home=home, paths=paths
+        ).setup_parts.auth_hook is (False)
+
+        install_codex_credential_guard(paths.settings_path.parent / "hooks.json")
+
+        assert (
+            collect_status("codex", home=home, paths=paths).setup_parts.auth_hook
+            is True
+        )
+
+    def test_skills_install_then_remove_round_trips(self, tmp_path: Path) -> None:
+        from mureo.cli.setup_cmd import install_skills, remove_skills
+
+        home = _build_home(tmp_path)
+        paths = _paths(tmp_path)
+
+        assert (
+            collect_status("claude-code", home=home, paths=paths).setup_parts.skills
+            is False
+        )
+
+        install_skills(target_dir=paths.skills_dir)
+        assert (
+            collect_status("claude-code", home=home, paths=paths).setup_parts.skills
+            is True
+        )
+
+        remove_skills(target_dir=paths.skills_dir)
+        assert (
+            collect_status("claude-code", home=home, paths=paths).setup_parts.skills
+            is False
+        )
