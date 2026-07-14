@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.24] - 2026-07-14
+
+### Security
+
+- **Meta `account_id` / Google Ads `customer_id` are now scoped to the
+  active workspace on multi-account backends (#411).** These ids are free
+  caller arguments, and the shared handler choke point used them with the
+  operator-shared credentials without validating them — so on a
+  multi-account (agency) backend a conversation bound to one client could
+  read, and with write tools mutate, a sibling client's account by passing
+  its id. New `runtime_meta_account_ids` / `runtime_google_ads_customer_ids`
+  allow-list resolvers (mirroring the Search Console `site_url` seam, #375)
+  enforce the effective id — explicit argument and credentials default
+  alike — before any API client is built; a multi-account backend that
+  declares no allow-list fails closed. `google_ads_accounts_list`, which
+  enumerated every account the shared auth could reach, is filtered to the
+  same allow-list. Standalone single-account installs are unaffected.
+- **Budget guardrails can no longer be bypassed with non-finite or
+  oversized values (#419).** `StrategyPolicyGate` read proposed budgets
+  with a bare `float()`, so a `NaN` (reachable over the wire — `json.loads`
+  accepts the `NaN`/`Infinity` tokens) made every comparison abstain, and
+  an oversized integer raised `OverflowError` that the gate swallowed into
+  an allow. Both now fail closed: out-of-range integers saturate to
+  infinity (which exceeds any finite cap and denies) and every budget
+  channel is `math.isfinite`-checked before comparison, across the
+  built-in Google/Meta scan, the total-budget cap, the increase-percentage
+  cap, and the plugin declaration path.
+
+### Added
+
+- **Creative Studio gallery (#409).** A read-only dashboard tab browses the
+  generated visuals and composed banners Creative Studio writes to
+  `<workspace>/creative_studio/<run_id>/`, grouped per run with provenance
+  (provider / prompt / template / date). On a multi-account backend the
+  gallery is browsable per client via the same seam the Reports tab uses.
+  Image serving validates paths with strict containment (traversal and
+  symlink escapes refused); the listing enforces the same containment so a
+  planted symlink cannot enumerate files outside the workspace.
+- **Plugin tools can declare their budget keys so STRATEGY.md Guardrails
+  reach them (#414).** The gate's budget extraction was hard-wired to the
+  built-in Google/Meta argument keys, so a plugin tool carrying its budget
+  under any other name sailed past every cap silently. A plugin now
+  declares its keys in standard MCP metadata
+  (`_meta={"mureo": {"budget": {"daily": "...", "unit": "micros"}}}`) and
+  the one built-in gate enforces them — no per-plugin gate. A declared key
+  that is present but unreadable fails closed.
+
+### Fixed
+
+- **Configure UI credential status/writes no longer race the credentials
+  path on the threaded server (#406).** `set_host` published a partially
+  resolved `HostPaths` before re-applying the runtime credentials-path
+  override, so a concurrent request (a dashboard page load fires several)
+  could read or write the wrong file — surfacing as saved credentials
+  showing as unset after a reload. The bundle is now published in a single
+  atomic assignment, and an unchanged-host `set_host` is a no-op.
+
+### Docs
+
+- Japanese trigger phrases added to the operational skill descriptions so
+  they fire reliably on Japanese requests (#396).
+- `docs/plugin-authoring.md` corrected where it had gone stale since
+  #324/#327 — `inputSchema` is server-side enforced before dispatch,
+  plugin-declared reversals are executable when they name a registered
+  non-destructive tool, and `capture_reversal` /
+  `MCPReversibleToolProvider` are now documented — plus the new budget
+  declaration seam (#414).
+- `SECURITY.md` documents the rolling `credentials.json.bak` backup and
+  advises revoking a replaced key at the platform on rotation (#394).
+
 ## [0.10.23] - 2026-07-13
 
 ### Fixed

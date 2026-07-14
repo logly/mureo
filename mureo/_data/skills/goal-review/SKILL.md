@@ -2,7 +2,7 @@
 name: goal-review
 description: "Review Goal progress against STRATEGY.md targets. Use when the user asks to evaluate goal achievement, review KPI progress, assess strategy performance, or check if targets are being met. Also use when the user asks in Japanese (目標の進捗を確認 / KPIレビュー / ゴール達成状況は / 目標に届きそうか)."
 metadata:
-  version: 0.10.23
+  version: 0.10.24
 ---
 
 # Goal Review

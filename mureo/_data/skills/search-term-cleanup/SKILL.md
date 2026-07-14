@@ -2,7 +2,7 @@
 name: search-term-cleanup
 description: "Audit and clean up search terms (negative keywords, intent classification, query hygiene). Use when the user asks to clean up search queries, add negative keywords, review search term reports, or improve match quality. Cross-references Search Console, GA4, and ad platform data. Also use when the user asks in Japanese (検索語句のクリーンアップ / 除外キーワードを追加して / 無駄な検索クエリを止めたい)."
 metadata:
-  version: 0.10.23
+  version: 0.10.24
 ---
 
 # Search Term Cleanup

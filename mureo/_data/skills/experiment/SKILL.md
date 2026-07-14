@@ -2,7 +2,7 @@
 name: experiment
 description: "Design, run, and evaluate a controlled A/B test (split test) on your ad accounts with evidence discipline — one variable, a falsifiable hypothesis, a fixed window, and a per-variant outcome verdict. Use when the user asks to run an A/B test, split test, or experiment, to 'test whether X beats Y', to validate a creative-refresh or learning hunch properly, or requests A/Bテスト / スプリットテスト設計 / 実験を回したい / どちらが勝ったか評価して / 仮説を検証したい. Forces a designed experiment instead of an ad-hoc change, records the baseline in action_log, and forbids peeking-based decisions before the window closes."
 metadata:
-  version: 0.10.23
+  version: 0.10.24
 ---
 
 # Experiment

@@ -2,7 +2,7 @@
 name: weekly-report
 description: "Generate a weekly summary report across all platforms. Use when the user asks for a weekly report, summary, recap, end-of-week review, or weekly digest. Also use when the user asks in Japanese (週次レポート / 今週のまとめ / 週報を作成して)."
 metadata:
-  version: 0.10.23
+  version: 0.10.24
 ---
 
 # Weekly Report
