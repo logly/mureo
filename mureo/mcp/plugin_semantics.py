@@ -35,6 +35,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mureo.policy.strategy_gate import BudgetDeclaration
 from mureo.throttle import ThrottleConfig
 
 if TYPE_CHECKING:
@@ -53,6 +54,10 @@ logger = logging.getLogger(__name__)
 _DEFAULT_OBSERVATION_DAYS = 14
 
 
+#: Accepted ``budget.unit`` spellings → whether the value is in micros.
+_BUDGET_UNITS = {"currency": False, "micros": True}
+
+
 @dataclass(frozen=True)
 class ToolSemantics:
     """Safety classification derived from a plugin tool's MCP metadata."""
@@ -61,6 +66,46 @@ class ToolSemantics:
     reversal: dict[str, Any] | None = None
     throttle: ThrottleConfig | None = None
     observation_days: int | None = None
+    budget: BudgetDeclaration | None = None
+
+
+def _parse_budget(raw: Any) -> BudgetDeclaration | None:
+    """Parse ``meta["mureo"]["budget"]``, or ``None`` when unusable (#414).
+
+    A malformed hint is rejected WHOLE rather than half-applied: a partial
+    declaration would re-create the exact silent-underenforcement the seam
+    exists to remove. Requires a dict carrying at least one of ``daily`` /
+    ``lifetime`` as a non-blank string key name; ``current`` is optional;
+    ``unit`` is ``currency`` (default) or ``micros``.
+    """
+    if not isinstance(raw, dict):
+        return None
+    unit = raw.get("unit", "currency")
+    if not isinstance(unit, str) or unit not in _BUDGET_UNITS:
+        return None
+
+    def _key(name: str) -> str | None:
+        value = raw.get(name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+    daily = _key("daily")
+    lifetime = _key("lifetime")
+    if daily is None and lifetime is None:
+        return None
+    # A declared-but-unusable key name (non-str) is a mistake, not an
+    # omission — refuse the whole declaration so it surfaces in testing
+    # rather than silently dropping one cap.
+    for name in ("daily", "lifetime", "current"):
+        if name in raw and _key(name) is None:
+            return None
+    return BudgetDeclaration(
+        daily_key=daily,
+        lifetime_key=lifetime,
+        current_key=_key("current"),
+        micros=_BUDGET_UNITS[unit],
+    )
 
 
 def _meta_mureo(tool: Tool) -> dict[str, Any]:
@@ -120,6 +165,7 @@ def derive_semantics(tool: Tool) -> ToolSemantics:
         reversal=reversal,
         throttle=throttle,
         observation_days=observation_days,
+        budget=_parse_budget(section.get("budget")),
     )
 
 

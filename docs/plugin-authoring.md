@@ -545,10 +545,14 @@ Rules the server enforces (a non-conforming provider is skipped with a
   name (e.g. `acme_ads_list_campaigns`). Built-in tool names are
   reserved — a colliding plugin tool is dropped (built-ins win), and a
   name already taken by an earlier plugin is dropped (first wins).
-- **Validate inbound arguments yourself.** `inputSchema` validation is
-  advisory on the client side and the dispatch path is not
-  fault-isolated; translate malformed arguments into your own error
-  type rather than letting a bare `KeyError`/`ValueError` escape.
+- **Keep `inputSchema` honest — mureo enforces it server-side.** Since
+  #324 the dispatcher validates every call against your declared
+  `inputSchema` *before* it reaches your handler and rejects a violation
+  with `ValueError`. Declare the types your handler actually accepts: a
+  tool that declares `{"type": "integer"}` but tolerates `"1000"` will
+  now have that call rejected before you see it. Beyond schema shape,
+  still translate malformed arguments into your own error type rather
+  than letting a bare `KeyError`/`ValueError` escape.
 
 Sync clients: run blocking work off the event loop with
 `asyncio.to_thread(...)` inside `handle_mcp_tool` so you do not block
@@ -585,11 +589,46 @@ mureo-specific Protocol method:
 - Optional `_meta={"mureo": {...}}` (the canonical alias; the
   intuitive `meta=` spelling is also accepted):
   - `"reversal": {"operation": "...", "params": {...}}` — recorded
-    verbatim into the entry's `reversible_params`. **Honest scope:**
-    `rollback_plan_get` only builds an *executable* reversal when
-    `operation` is in mureo's built-in rollback allow-list; an
-    arbitrary plugin operation is recorded for audit/visibility but
-    is **not** auto-reversible.
+    verbatim into the entry's `reversible_params`. Since #324 this is
+    **executable**, not audit-only: `rollback_plan_get` builds a real
+    reversal when `operation` names a *registered, non-destructive*
+    tool — a built-in from mureo's rollback allow-list, or one of your
+    own plugin tools. (An `operation` naming an unregistered or
+    destructive tool is still recorded for audit but is not applied.)
+    The reversal's params are bounded by the target tool's declared
+    `inputSchema` property names.
+  - **Runtime-correct reversal** (`MCPReversibleToolProvider`, #327/#328)
+    — a *static* `reversal` cannot know the entity id the platform will
+    mint, nor the prior state you are about to overwrite. Implement the
+    optional `capture_reversal` method on your provider and mureo calls
+    it **before** the mutation, recording what you return instead of the
+    static hint:
+
+    ```python
+    class AcmeAdsProvider:
+        async def capture_reversal(
+            self, name: str, arguments: dict[str, Any]
+        ) -> dict[str, Any] | None:
+            """Return the reversal for the call about to run, or None."""
+            if name != "acme_ads_set_campaign_status":
+                return None
+            prior = await self._client.get_campaign(arguments["campaign_id"])
+            return {
+                "operation": "acme_ads_set_campaign_status",
+                "params": {
+                    "campaign_id": arguments["campaign_id"],
+                    "status": prior["status"],  # the state we are replacing
+                },
+            }
+    ```
+
+    The method is `async`. Return `None` to fall back to the static hint.
+    It is best-effort: an exception is logged and the mutation proceeds
+    with the static hint (auditing must never break the call). For
+    `rollback_apply` to execute it, `operation` must name a registered,
+    non-destructive tool of the same plugin. A provider that does not
+    implement it keeps its static `meta["mureo"]["reversal"]` behavior
+    unchanged.
   - `"throttle": {"rate": <float>, "burst": <int>, "hourly_limit": <int|null>}`
     — a dedicated bucket for that tool; malformed/absent ⇒ shared
     default.
@@ -599,6 +638,77 @@ mureo-specific Protocol method:
     from this so daily-check's evidence step reviews the outcome like a
     built-in write (no `metrics_at_action` baseline ⇒ reviewed
     qualitatively).
+  - `"budget": {"daily": "<key>", "lifetime": "<key>",
+    "current": "<key>", "unit": "currency"|"micros"}` — **declare where
+    your tool carries its budget so `STRATEGY.md` `## Guardrails` caps
+    are enforced on your platform too** (#414). See the next section.
+
+##### Budget declarations — getting your platform under the Guardrails
+
+mureo's built-in `StrategyPolicyGate` blocks any mutation that violates
+the operator's `## Guardrails` (`max_daily_budget_per_campaign`,
+`max_daily_budget_increase_pct`, `max_lifetime_budget_per_campaign`,
+`blocked_operations`) **before dispatch**. To find the proposed budget it
+scans the argument keys the built-in Google/Meta tools use.
+
+If your tool spells its budget any other way, the gate finds nothing and
+treats the call as "no budget proposed" — it is **allowed through with no
+error and no warning**, and the operator who wrote a cap believes it is
+protecting your platform when it is not. Declare your keys and that
+silent gap closes:
+
+```python
+Tool(
+    name="acme_ads_update_budget",
+    description="Update a campaign's daily budget.",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "campaign_id": {"type": "string"},
+            "daily_budget_micros": {"type": "integer"},
+            "current_budget_micros": {"type": "integer"},
+        },
+        "required": ["campaign_id", "daily_budget_micros"],
+    },
+    _meta={
+        "mureo": {
+            "budget": {
+                "daily": "daily_budget_micros",
+                "current": "current_budget_micros",
+                "unit": "micros",
+            }
+        }
+    },
+)
+```
+
+- `daily` / `lifetime` — the argument key carrying the proposed daily /
+  lifetime (period-total) budget. At least one is required.
+- `current` — optional; the key carrying the *existing* daily budget.
+  Supply it to make `max_daily_budget_increase_pct` enforceable on your
+  tool (without it, a percentage cap has no baseline to compare against).
+- `unit` — `"currency"` (default) or `"micros"` (the value is divided by
+  1,000,000). Stringified numbers (`"20000"`) are accepted.
+
+Semantics worth knowing before you declare:
+
+- **A declaration replaces the built-in key scan for that tool — for
+  *every* channel, not only the ones you name.** Your vocabulary is
+  authoritative, so an unrelated field spelled `amount` cannot false-trip
+  a cap. The corollary: if your tool also carries a *lifetime* budget,
+  declare `lifetime` — declaring only `daily` opts the tool out of the
+  built-in `lifetime_budget` / `total_amount` scan as well.
+- **A declared key that is present but unreadable makes the gate deny.**
+  `inf`, `nan`, a bool, a non-numeric string, a nested object under your
+  declared key ⇒ the cap cannot be verified, so the call is refused with
+  a clear reason rather than waved through. (An *absent* key — or `null`
+  / a blank string — simply means "no budget proposed on that channel"
+  and is not a denial.)
+- **A malformed declaration is rejected whole**, never half-applied, and
+  undeclared tools keep today's behavior byte-identical.
+
+You do **not** need to register your own `mureo.policy_gates` entry for
+budget enforcement — declare the keys and the one built-in gate does it.
 
 **Structural strategy parity (mutating tools).** A mutating plugin
 call gets the same *structural* strategy handling as a built-in write:
