@@ -116,6 +116,24 @@ class _Unreadable:
 _UNREADABLE = _Unreadable()
 
 
+def _saturate(value: int | float) -> float:
+    """``float(value)``, saturating an out-of-range ``int`` to infinity.
+
+    Python ints are arbitrary precision but floats are not, so ``float(10**400)``
+    raises ``OverflowError`` — and the downstream handler forwards the bare int
+    happily. Every budget path here funnels through this helper so an oversized
+    integer becomes ``inf`` (which exceeds any finite cap and denies) rather than
+    an exception that bubbles up to ``StrategyPolicyGate.evaluate``'s blanket
+    ``except`` and silently abstains — the exact bypass the guardrail exists to
+    prevent. A string budget never reaches here (``float("9"*309)`` already
+    saturates to ``inf`` without raising).
+    """
+    try:
+        return float(value)
+    except OverflowError:
+        return math.inf if value > 0 else -math.inf
+
+
 def _declared_amount(
     arguments: dict[str, Any], key: str | None, *, micros: bool
 ) -> float | _Unreadable | None:
@@ -144,7 +162,7 @@ def _declared_amount(
     if isinstance(raw, bool):
         return _UNREADABLE
     if isinstance(raw, (int, float)):
-        value = float(raw)
+        value = _saturate(raw)
     elif isinstance(raw, str):
         stripped = raw.strip()
         if not stripped:
@@ -160,26 +178,77 @@ def _declared_amount(
     return value / 1_000_000 if micros else value
 
 
+def _projected_total(arguments: dict[str, Any]) -> float | None:
+    """The account-wide projected daily total a skill passes for the total cap.
+
+    Built-in key only (there is no declared equivalent); routed through
+    ``_saturate`` like every other budget channel so an oversized int denies
+    instead of raising.
+    """
+    total = arguments.get("projected_total_daily_budget")
+    if isinstance(total, (int, float)) and not isinstance(total, bool):
+        return _saturate(total)
+    return None
+
+
 @dataclass(frozen=True)
 class _BudgetInputs:
-    """The three budget channels one evaluation needs, already resolved."""
+    """The budget channels one evaluation needs, already resolved.
+
+    Every value here is either ``None`` (no budget on that channel) or a
+    FINITE float. A present-but-non-finite value (``inf``/``nan``, from an
+    oversized int that saturated, a bare ``NaN`` on the wire, or garbage on a
+    declared key) is collapsed into :attr:`unreadable_key` so the caller fails
+    closed once — no downstream comparison ever sees ``inf``/``nan``. This is
+    the single choke point that keeps ``nan > cap`` (always False) and
+    ``finite/inf = nan`` from silently defeating a cap.
+    """
 
     proposed: float | None = None
     current: float | None = None
     lifetime: float | None = None
-    #: The first declared key that was present but unreadable (⇒ deny).
+    total: float | None = None
+    #: The first budget key that was present but unreadable (⇒ deny).
     unreadable_key: str | None = None
 
 
 def _budget_inputs(
     arguments: dict[str, Any], declaration: BudgetDeclaration | None
 ) -> _BudgetInputs:
-    """Resolve the budget channels from declared keys, else the built-in scan."""
+    """Resolve the budget channels from declared keys, else the built-in scan.
+
+    A non-finite value on ANY channel — declared or built-in — fails closed:
+    the whole call is refused. The declared path already did this via
+    ``_declared_amount`` returning ``_UNREADABLE``; the built-in scan is held to
+    the same standard here so an oversized int (``inf``) or a bare ``NaN``
+    cannot slip past a comparison.
+
+    Deliberately BROAD, and fail-safe: a non-finite value on a budget channel
+    denies even when the specific cap that reads that channel is not the one
+    configured (e.g. garbage in ``current_daily_budget`` with only an absolute
+    cap set). This is only reachable once the operator has written *some*
+    guardrail (``evaluate_guardrails`` returns early on an empty ``Guardrails``),
+    so the fail-open default is preserved; past that point a non-finite figure
+    in any recognized budget argument is malformed input, and refusing it is the
+    safe direction. It also keeps this the single choke point — scoping the
+    check per-active-cap would re-introduce the "which comparison did we forget"
+    surface that let the overflow/NaN bypass exist in the first place. Mirrors
+    the already-shipped declared path (#414), which denies on any unreadable
+    declared key regardless of which cap reads it.
+    """
     if declaration is None:
+        channels: list[tuple[str, float | None]] = [
+            ("daily budget", _proposed_budget(arguments)),
+            ("current budget", _current_budget(arguments)),
+            ("lifetime budget", _proposed_lifetime_budget(arguments)),
+            ("projected total daily budget", _projected_total(arguments)),
+        ]
+        for label, value in channels:
+            if value is not None and not math.isfinite(value):
+                return _BudgetInputs(unreadable_key=label)
+        proposed, current, lifetime, total = (v for _, v in channels)
         return _BudgetInputs(
-            proposed=_proposed_budget(arguments),
-            current=_current_budget(arguments),
-            lifetime=_proposed_lifetime_budget(arguments),
+            proposed=proposed, current=current, lifetime=lifetime, total=total
         )
     resolved: list[float | None] = []
     for key in (
@@ -187,10 +256,10 @@ def _budget_inputs(
         declaration.current_key,
         declaration.lifetime_key,
     ):
-        value = _declared_amount(arguments, key, micros=declaration.micros)
-        if isinstance(value, _Unreadable):
+        declared = _declared_amount(arguments, key, micros=declaration.micros)
+        if isinstance(declared, _Unreadable):
             return _BudgetInputs(unreadable_key=key)
-        resolved.append(value)
+        resolved.append(declared)
     proposed, current, lifetime = resolved
     return _BudgetInputs(proposed=proposed, current=current, lifetime=lifetime)
 
@@ -277,13 +346,13 @@ def _proposed_budget(arguments: dict[str, Any]) -> float | None:
         if key in arguments:
             v = arguments[key]
             if isinstance(v, (int, float)) and not isinstance(v, bool):
-                return float(v)
+                return _saturate(v)
     # Google Ads budgets are sometimes expressed in micros —
     # budget_amount_micros on campaign tools, amount_micros on budget tools.
     for micros_key in ("budget_amount_micros", "amount_micros"):
         micros = arguments.get(micros_key)
         if isinstance(micros, (int, float)) and not isinstance(micros, bool):
-            return float(micros) / 1_000_000
+            return _saturate(micros) / 1_000_000
     return None
 
 
@@ -297,10 +366,10 @@ def _proposed_lifetime_budget(arguments: dict[str, Any]) -> float | None:
     for key in ("lifetime_budget", "total_amount"):
         v = arguments.get(key)
         if isinstance(v, (int, float)) and not isinstance(v, bool):
-            return float(v)
+            return _saturate(v)
     micros = arguments.get("total_amount_micros")
     if isinstance(micros, (int, float)) and not isinstance(micros, bool):
-        return float(micros) / 1_000_000
+        return _saturate(micros) / 1_000_000
     return None
 
 
@@ -308,7 +377,7 @@ def _current_budget(arguments: dict[str, Any]) -> float | None:
     for key in _CURRENT_BUDGET_KEYS:
         v = arguments.get(key)
         if isinstance(v, (int, float)) and not isinstance(v, bool):
-            return float(v)
+            return _saturate(v)
     return None
 
 
@@ -401,18 +470,13 @@ def evaluate_guardrails(
             ),
         )
 
-    total = arguments.get("projected_total_daily_budget")
+    total = inputs.total
     total_cap = guardrails.max_total_daily_budget
-    if (
-        total_cap is not None
-        and isinstance(total, (int, float))
-        and not isinstance(total, bool)
-        and float(total) > total_cap
-    ):
+    if total_cap is not None and total is not None and total > total_cap:
         return PolicyDecision(
             allowed=False,
             reason=(
-                f"Projected total daily budget {float(total):,.0f} exceeds the "
+                f"Projected total daily budget {total:,.0f} exceeds the "
                 f"STRATEGY.md Guardrails cap of {total_cap:,.0f} "
                 f"(max_total_daily_budget)."
             ),

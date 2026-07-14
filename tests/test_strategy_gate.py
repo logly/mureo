@@ -144,6 +144,106 @@ class TestEvaluateGuardrails:
         assert d.allowed is False
         assert "max_lifetime_budget_per_campaign" in d.reason
 
+    # A budget too large for a float64. Python ints are arbitrary precision, so
+    # ``float(10**400)`` raises OverflowError, not a value the extractor floors —
+    # and the handler downstream forwards the bare int happily. The gate must
+    # saturate to inf (which exceeds any finite cap and denies), never let the
+    # OverflowError bubble to StrategyPolicyGate.evaluate's blanket except, which
+    # would abstain and wave the call through.
+    _OVERSIZED_INT = int("9" * 309)
+
+    def test_oversized_daily_budget_denies_not_abstains(self) -> None:
+        g = Guardrails(max_daily_budget_per_campaign=50000)
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {"daily_budget": self._OVERSIZED_INT}, g
+        )
+        assert d.allowed is False
+
+    def test_oversized_micros_budget_denies(self) -> None:
+        g = Guardrails(max_daily_budget_per_campaign=50000)
+        d = evaluate_guardrails(
+            "google_ads_budget_update",
+            {"budget_amount_micros": self._OVERSIZED_INT},
+            g,
+        )
+        assert d.allowed is False
+
+    def test_oversized_lifetime_budget_denies(self) -> None:
+        g = Guardrails(max_lifetime_budget_per_campaign=900000)
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update",
+            {"lifetime_budget": self._OVERSIZED_INT},
+            g,
+        )
+        assert d.allowed is False
+
+    def test_oversized_int_reaches_the_gate_without_raising(self) -> None:
+        """End-to-end: the bare-int overflow must not fall through evaluate()'s
+        blanket except into a silent abstain."""
+        g = Guardrails(max_daily_budget_per_campaign=50000)
+        d = evaluate_guardrails(
+            "google_ads_budget_update", {"daily_budget": self._OVERSIZED_INT}, g
+        )
+        assert d.allowed is False
+
+    def test_oversized_projected_total_denies(self) -> None:
+        """The account-wide total cap funnels through the same saturation —
+        a bare-int projected total must deny, not raise-then-abstain."""
+        g = Guardrails(max_total_daily_budget=300000)
+        d = evaluate_guardrails(
+            "google_ads_budget_update",
+            {
+                "daily_budget": 10000,
+                "projected_total_daily_budget": self._OVERSIZED_INT,
+            },
+            g,
+        )
+        assert d.allowed is False
+
+    def test_oversized_current_does_not_neutralize_increase_pct(self) -> None:
+        """An oversized ``current`` makes ``(proposed-current)/current`` a NaN
+        that ``> cap`` reads as False. With only the pct cap configured, that
+        would let an arbitrarily large proposed budget through — so a
+        non-finite ``current`` must fail closed."""
+        g = Guardrails(max_daily_budget_increase_pct=20)  # NO absolute cap
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update",
+            {"daily_budget": 5_000_000, "current_daily_budget": self._OVERSIZED_INT},
+            g,
+        )
+        assert d.allowed is False
+
+    @pytest.mark.parametrize(
+        ("key", "guardrails"),
+        [
+            ("daily_budget", Guardrails(max_daily_budget_per_campaign=50000)),
+            ("lifetime_budget", Guardrails(max_lifetime_budget_per_campaign=900000)),
+            (
+                "projected_total_daily_budget",
+                Guardrails(max_total_daily_budget=300000),
+            ),
+        ],
+    )
+    def test_nan_budget_denies_not_abstains(
+        self, key: str, guardrails: Guardrails
+    ) -> None:
+        """A bare ``NaN`` needs no overflow: ``nan > cap`` is always False, so
+        without a guard it silently defeats the cap. ``json.loads`` accepts the
+        ``NaN`` token, so this is wire-reachable. Non-finite ⇒ deny."""
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update", {key: float("nan")}, guardrails
+        )
+        assert d.allowed is False
+
+    def test_nan_current_denies_not_abstains(self) -> None:
+        g = Guardrails(max_daily_budget_increase_pct=20)
+        d = evaluate_guardrails(
+            "meta_ads_ad_sets_update",
+            {"daily_budget": 11000, "current_daily_budget": float("nan")},
+            g,
+        )
+        assert d.allowed is False
+
     def test_total_amount_units_hits_lifetime_cap(self) -> None:
         """The currency-unit form total_amount cannot sidestep the cap."""
         g = Guardrails(max_lifetime_budget_per_campaign=900000)
