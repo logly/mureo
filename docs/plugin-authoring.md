@@ -724,8 +724,121 @@ Semantics worth knowing before you declare:
 - **A malformed declaration is rejected whole**, never half-applied, and
   undeclared tools keep today's behavior byte-identical.
 
-You do **not** need to register your own `mureo.policy_gates` entry for
-budget enforcement — declare the keys and the one built-in gate does it.
+If a declaration fits your tools, you do **not** need to register your own
+`mureo.policy_gates` entry for budget enforcement — declare the keys and the
+one built-in gate does it. Some tool shapes it cannot fit; the next section
+is for those.
+
+##### When a declaration cannot reach your budget
+
+A declaration names a **top-level argument key**. Two shapes are outside
+what that can express, and both are ordinary plugin designs (#417):
+
+- **The budget is nested.** A native passthrough tool takes the platform's
+  raw request body, so the budget lives at `body.daily_budget`, not at a
+  top-level key. Declaring `body` does not help — a key holding a dict is
+  *unreadable*, and the gate fails closed, refusing every call including
+  the legal ones.
+- **The budget is derived.** Your mapper computes a figure the caller never
+  typed (say `monthly = daily × multiplier`) and sends it to the platform.
+  It is not an argument at all, so no key can name it — and it is real
+  spend, so a cap must reach it.
+
+For these, register a gate on the `mureo.policy_gates` entry-point that
+**normalizes and delegates**: project your budget onto the canonical keys
+mureo already reads, and hand the decision straight back to
+`StrategyPolicyGate`. Your gate supplies **keys, not a policy** — cap
+comparison, `STRATEGY.md` parsing, the TTL cache and the fail-closed rules
+keep a single owner, so upstream fixes to guardrail semantics reach your
+platform without you touching anything.
+
+```python
+# mureo_acme_ads/policy.py
+import logging
+from typing import Any
+
+from mureo.core.policy import PolicyDecision
+
+logger = logging.getLogger(__name__)
+
+# The keys mureo's built-in scan reads. Normalise to the operator's currency
+# units, so a refusal quotes figures they recognise.
+_CANONICAL_DAILY = "daily_budget"
+_CANONICAL_PERIOD = "lifetime_budget"
+
+
+def normalize_budget_arguments(
+    tool_name: str, arguments: dict[str, Any]
+) -> dict[str, float]:
+    """Project this call's proposed budgets onto the keys mureo reads.
+
+    Pure; never mutates ``arguments``. Returns ``{}`` when the call proposes
+    no budget (a read, a bid change, a partial update that leaves the budget
+    alone) so the gate abstains rather than inventing a figure to judge.
+    """
+    if tool_name != "acme_ads_update_campaign_native":
+        return {}
+    body = arguments.get("body")
+    if not isinstance(body, dict):
+        return {}
+    daily = body.get("daily_budget")
+    if isinstance(daily, bool) or not isinstance(daily, (int, float)):
+        return {}
+    return {_CANONICAL_DAILY: float(daily)}
+
+
+class AcmeBudgetPolicyGate:
+    """Conforms to ``mureo.core.policy.PolicyGate``. Holds no state."""
+
+    def evaluate(self, tool_name: str, arguments: dict[str, Any]) -> PolicyDecision:
+        normalized: dict[str, float] = {}
+        try:
+            normalized = normalize_budget_arguments(tool_name, arguments)
+            if not normalized:
+                return PolicyDecision(allowed=True)
+            from mureo.policy.strategy_gate import StrategyPolicyGate
+
+            return StrategyPolicyGate().evaluate(
+                tool_name, {**arguments, **normalized}
+            )
+        except Exception:  # the gate ABI is fail-open — but never in silence
+            logger.warning(
+                "budget guardrail could not be evaluated for '%s'; allowing the "
+                "call. The STRATEGY.md cap(s) covering %s are NOT enforced here.",
+                tool_name,
+                ", ".join(sorted(normalized)) or "(none resolved)",
+                exc_info=True,
+            )
+            return PolicyDecision(allowed=True)
+```
+
+```toml
+[project.entry-points."mureo.policy_gates"]
+acme_budget = "mureo_acme_ads.policy:AcmeBudgetPolicyGate"
+```
+
+Rules for a gate of this kind:
+
+- **Supply keys, never a policy.** Do not re-implement cap comparison or
+  refusal messages. The moment your gate decides anything itself, mureo's
+  guardrail semantics are forked and upstream fixes stop reaching you.
+- **Pure and fast.** It runs on *every* tool call. No network, no
+  credential access — so a cap needing a figure your tool does not carry
+  and you cannot compute offline (`max_daily_budget_increase_pct` wants the
+  campaign's *current* budget; `max_total_daily_budget` wants an
+  account-wide projection) is simply out of reach. Say so in your docs
+  rather than fetching it.
+- **Never raise.** The ABI treats a raising gate as broken and abstains
+  anyway; raising *deliberately* would block every mutation on your
+  platform — an outage dressed up as a guardrail. Log the caps that went
+  unenforced, and allow.
+- **Cover every path to the same spend.** If two tools reach one budget
+  (an ergonomic wrapper and its native twin), normalize both. A refusal
+  names the cap it hit, so an agent refused on one tool will otherwise
+  retry through the other and commit the identical body.
+- **Do not also declare.** A declaration replaces the built-in scan for the
+  proposed budgets, which would switch off the very keys your gate injects.
+  Pick one mechanism per tool, and pin the choice with a test.
 
 **Structural strategy parity (mutating tools).** A mutating plugin
 call gets the same *structural* strategy handling as a built-in write:

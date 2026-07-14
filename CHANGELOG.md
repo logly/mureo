@@ -27,6 +27,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every other budget channel (#419): a non-finite or oversized figure there
   refuses the call instead of taking the cap dark. Docs updated accordingly.
 
+### Docs
+
+- **`docs/plugin-authoring.md` documents what to do when a budget declaration
+  cannot reach a plugin's budget (#417).** A declaration names a *top-level*
+  argument key, so it cannot express a budget nested in a raw passthrough body
+  (`body.daily_budget`) nor one a mapper *derives* and the caller never typed
+  (`monthly = daily × multiplier`) — both ordinary plugin designs. The guide
+  had flatly told authors they never need a `mureo.policy_gates` entry for
+  budget enforcement, which is untrue for those shapes. It now shows the
+  normalize-and-delegate gate they should register instead: project the budget
+  onto the canonical keys the built-in scan already reads, then hand the
+  decision straight back to `StrategyPolicyGate`. The plugin supplies **keys,
+  not a policy**, so cap comparison, `STRATEGY.md` parsing and the fail-closed
+  rules keep a single owner and upstream fixes to guardrail semantics reach the
+  plugin for free. Includes the rules such a gate must follow (pure and fast,
+  never raise, cover every path to the same spend, and do not also declare —
+  a declaration would switch off the very keys the gate injects).
+
 ## [0.10.24] - 2026-07-14
 
 ### Security
