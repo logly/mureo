@@ -198,6 +198,86 @@ class TestDeclaredBudgetExtraction:
         assert decision.allowed is False
         assert "max_daily_budget_increase_pct" in (decision.reason or "")
 
+    def test_undeclared_current_falls_back_to_the_built_in_key(self) -> None:
+        """A plugin declares where ITS OWN arguments carry a budget. The
+        *current* budget is not one of them: it is context the caller supplies,
+        under mureo's own cross-provider convention (``current_daily_budget``;
+        see the _mureo-strategy skill). Dropping it because the tool declared
+        `daily` would silently disable max_daily_budget_increase_pct for every
+        plugin that adopts the seam — the same silent underenforcement #414
+        exists to remove.
+        """
+        decl = BudgetDeclaration(daily_key="daily_budget_micros", micros=True)
+        caps = Guardrails(max_daily_budget_increase_pct=20.0)
+        decision = evaluate_guardrails(
+            "t",
+            {"daily_budget_micros": 15_000_000_000, "current_daily_budget": 10_000},
+            caps,
+            budget_declaration=decl,
+        )
+        assert decision.allowed is False  # 10,000 -> 15,000 is +50%
+        assert "50%" in (decision.reason or "")
+
+    def test_the_fallback_current_is_currency_not_micros(self) -> None:
+        """The built-in ``current_daily_budget`` is currency units even when the
+        tool's own budget is micros — ``micros`` describes the DECLARED keys.
+        Dividing it by 1e6 would read ¥10,000 as ¥0.01 and report a 149,999,900%
+        increase.
+        """
+        decl = BudgetDeclaration(daily_key="daily_budget_micros", micros=True)
+        caps = Guardrails(max_daily_budget_increase_pct=20.0)
+        reason = (
+            evaluate_guardrails(
+                "t",
+                {
+                    "daily_budget_micros": 15_000_000_000,
+                    "current_daily_budget": 10_000,
+                },
+                caps,
+                budget_declaration=decl,
+            ).reason
+            or ""
+        )
+        assert "10,000 → 15,000" in reason
+
+    def test_the_fallback_ignores_the_bare_current_alias(self) -> None:
+        """The built-in scan also accepts a bare ``current``, but a DECLARING
+        plugin owns its vocabulary, and ``current`` is a plausible name for
+        something else entirely (an index, a status). Misreading one as the
+        baseline is the dangerous direction: a large stray value yields a small
+        percentage, i.e. it would ALLOW a raise that should have been refused.
+        """
+        decl = BudgetDeclaration(daily_key="daily_budget_micros", micros=True)
+        caps = Guardrails(max_daily_budget_increase_pct=20.0)
+        decision = evaluate_guardrails(
+            "t",
+            # `current` here is the plugin's own field, not a budget baseline.
+            # Read as one it would say "+50% of 1,000,000" — comfortably under
+            # the cap — and wave the ¥15,000 raise through.
+            {"daily_budget_micros": 15_000_000_000, "current": 1_000_000},
+            caps,
+            budget_declaration=decl,
+        )
+        assert decision.allowed is True  # no baseline ⇒ the pct rule abstains
+        assert "increase" not in (decision.reason or "")
+
+    def test_a_declared_current_key_still_wins(self) -> None:
+        """The fallback only fills a gap; an explicit declaration still owns
+        the channel."""
+        decl = BudgetDeclaration(
+            daily_key="new_budget", current_key="old_budget", micros=False
+        )
+        caps = Guardrails(max_daily_budget_increase_pct=20.0)
+        decision = evaluate_guardrails(
+            "t",
+            # The declared key says +10% (allowed); the built-in key would say
+            # +900% if it were consulted. The declaration must win.
+            {"new_budget": 1_100, "old_budget": 1_000, "current_daily_budget": 110},
+            caps,
+            budget_declaration=decl,
+        )
+        assert decision.allowed is True
+
     def test_declared_lifetime_key_is_enforced(self) -> None:
         decl = BudgetDeclaration(lifetime_key="package_total")
         caps = Guardrails(max_lifetime_budget_per_campaign=50_000.0)
@@ -349,3 +429,115 @@ class TestUnreadableDeclaredBudget:
             "t", {"spend_limit": "inf"}, Guardrails(), budget_declaration=self._DECL
         )
         assert decision.allowed is True
+
+
+@pytest.mark.unit
+class TestDeclarationKeepsTheTotalCap:
+    """``max_total_daily_budget`` is the same story as the percentage cap.
+
+    ``projected_total_daily_budget`` is not a budget the tool proposes either —
+    it is the account-wide figure the *skills* compute and pass, under the same
+    cross-provider convention as ``current_daily_budget``. And a declaration
+    cannot even name it: ``BudgetDeclaration`` has no total key, so a declaring
+    plugin had NO way to keep ``max_total_daily_budget`` alive. Replacing that
+    channel therefore switched the cap off outright, for every plugin that
+    adopted the seam — the same silent underenforcement, one cap over.
+    """
+
+    _DECL = BudgetDeclaration(daily_key="daily_budget_micros", micros=True)
+    _CAPS_TOTAL = Guardrails(max_total_daily_budget=50_000.0)
+
+    def test_the_total_cap_still_fires_for_a_declaring_tool(self) -> None:
+        decision = evaluate_guardrails(
+            "t",
+            {
+                "daily_budget_micros": 15_000_000_000,
+                "projected_total_daily_budget": 120_000,
+            },
+            self._CAPS_TOTAL,
+            budget_declaration=self._DECL,
+        )
+        assert decision.allowed is False
+        assert "max_total_daily_budget" in (decision.reason or "")
+
+    def test_under_the_total_cap_is_allowed(self) -> None:
+        decision = evaluate_guardrails(
+            "t",
+            {
+                "daily_budget_micros": 15_000_000_000,
+                "projected_total_daily_budget": 40_000,
+            },
+            self._CAPS_TOTAL,
+            budget_declaration=self._DECL,
+        )
+        assert decision.allowed is True
+
+    @pytest.mark.parametrize(
+        "value", [float("nan"), float("inf"), float("-inf"), int("9" * 309)]
+    )
+    def test_a_non_finite_total_is_denied(self, value: Any) -> None:
+        """Held to #419's fail-closed standard like every other channel."""
+        decision = evaluate_guardrails(
+            "t",
+            {
+                "daily_budget_micros": 15_000_000_000,
+                "projected_total_daily_budget": value,
+            },
+            self._CAPS_TOTAL,
+            budget_declaration=self._DECL,
+        )
+        assert decision.allowed is False
+        assert "projected_total_daily_budget" in (decision.reason or "")
+
+
+@pytest.mark.unit
+class TestUnreadableFallbackCurrent:
+    """The fallback ``current`` is a budget channel, so #419 governs it too.
+
+    Every budget channel funnels through one choke point that saturates an
+    oversized int and refuses a non-finite figure (#419). The fallback reaches
+    ``current_daily_budget`` on a path the built-in scan does not walk, so it
+    has to be held to the same standard — otherwise a declaring plugin gets a
+    baseline the built-in gate would have refused, and in the dangerous
+    direction: ``nan > 0`` is False, which takes the percentage cap dark, and a
+    bare oversized int raises ``OverflowError`` into
+    ``StrategyPolicyGate.evaluate``'s blanket ``except`` — an abstain, i.e. an
+    allow. Both are the exact bypasses #419 closed on the built-in path.
+    """
+
+    _DECL = BudgetDeclaration(daily_key="daily_budget_micros", micros=True)
+    _CAPS_PCT = Guardrails(max_daily_budget_increase_pct=20.0)
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            int("9" * 309),  # bare int: float() raises OverflowError, not inf
+        ],
+    )
+    def test_a_non_finite_fallback_current_is_denied(self, value: Any) -> None:
+        decision = evaluate_guardrails(
+            "t",
+            {"daily_budget_micros": 15_000_000_000, "current_daily_budget": value},
+            self._CAPS_PCT,
+            budget_declaration=self._DECL,
+        )
+        assert decision.allowed is False
+        assert "current_daily_budget" in (decision.reason or "")
+
+    def test_it_matches_the_built_in_scan(self) -> None:
+        """Same garbage baseline, same verdict, declared or not — the seam must
+        not be a weaker gate than the one it replaces."""
+        args = {"current_daily_budget": float("nan")}
+        declared = evaluate_guardrails(
+            "t",
+            {**args, "daily_budget_micros": 15_000_000_000},
+            self._CAPS_PCT,
+            budget_declaration=self._DECL,
+        )
+        built_in = evaluate_guardrails(
+            "t", {**args, "daily_budget": 15_000}, self._CAPS_PCT
+        )
+        assert declared.allowed == built_in.allowed is False

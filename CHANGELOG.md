@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A budget declaration no longer switches off `max_daily_budget_increase_pct`
+  or `max_total_daily_budget` (#418).** The declaration seam (#414) replaced the
+  built-in key scan for *every* channel — including the two figures the *caller*
+  supplies rather than the tool. So a plugin that declared `daily` (the expected,
+  documented shape) had both of those caps silently stop firing for its tools, on
+  the built-in gate and on its own gate delegating to it. That is the same silent
+  underenforcement the seam exists to remove, reintroduced through the seam
+  itself, landing on the plugins that adopted it. Neither was work-around-able:
+  the `unit` flag covers all declared keys while mureo's `current_daily_budget`
+  convention is currency units, so a micros tool that declared `current` divided
+  the baseline by 1e6 (a ¥10,000 → ¥15,000 raise reported as "149,999,900% (0 →
+  15,000)"), and `projected_total_daily_budget` has no declaration key at all.
+  Both channels now keep mureo's own convention keys, which a declaration does
+  not replace — the proposed budgets (`daily` / `lifetime`) still belong wholly
+  to the plugin's vocabulary. They are held to the same fail-closed standard as
+  every other budget channel (#419): a non-finite or oversized figure there
+  refuses the call instead of taking the cap dark. Docs updated accordingly.
+
 ## [0.10.24] - 2026-07-14
 
 ### Security

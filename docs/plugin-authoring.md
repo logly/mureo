@@ -684,20 +684,37 @@ Tool(
 
 - `daily` / `lifetime` — the argument key carrying the proposed daily /
   lifetime (period-total) budget. At least one is required.
-- `current` — optional; the key carrying the *existing* daily budget.
-  Supply it to make `max_daily_budget_increase_pct` enforceable on your
-  tool (without it, a percentage cap has no baseline to compare against).
+- `current` — optional, and usually unnecessary: the key carrying the
+  *existing* daily budget. You only need it if your **tool itself** takes
+  the current budget as an argument under some other name. Leave it out
+  and mureo keeps reading its own `current_daily_budget` convention (in
+  currency units), which is what the skills pass on every budget
+  mutation — so `max_daily_budget_increase_pct` keeps working.
 - `unit` — `"currency"` (default) or `"micros"` (the value is divided by
-  1,000,000). Stringified numbers (`"20000"`) are accepted.
+  1,000,000). Stringified numbers (`"20000"`) are accepted. Note this
+  describes **your declared keys** only. The convention keys mureo reads
+  for itself (`current_daily_budget`, `projected_total_daily_budget`) are
+  always currency units, so a micros tool does not restate them — and
+  should not declare `current: "current_daily_budget"` alongside
+  `unit: "micros"`, which would divide that baseline by 1e6 and report a
+  ¥10,000 → ¥15,000 raise as a 149,999,900% one.
 
 Semantics worth knowing before you declare:
 
-- **A declaration replaces the built-in key scan for that tool — for
-  *every* channel, not only the ones you name.** Your vocabulary is
-  authoritative, so an unrelated field spelled `amount` cannot false-trip
-  a cap. The corollary: if your tool also carries a *lifetime* budget,
-  declare `lifetime` — declaring only `daily` opts the tool out of the
-  built-in `lifetime_budget` / `total_amount` scan as well.
+- **A declaration replaces the built-in key scan for the budgets your tool
+  proposes (`daily`, `lifetime`) — for *every* one of them, not only the
+  ones you name.** Your vocabulary is authoritative, so an unrelated field
+  spelled `amount` cannot false-trip a cap. The corollary: if your tool
+  also carries a *lifetime* budget, declare `lifetime` — declaring only
+  `daily` opts the tool out of the built-in `lifetime_budget` /
+  `total_amount` scan as well.
+- **What the *caller* supplies is the exception.** The existing daily
+  budget (`current_daily_budget`) and the account-wide projected total
+  (`projected_total_daily_budget`) are not budgets your tool proposes —
+  they are context the skills compute and pass. A declaration does not
+  replace them, so declaring `daily` never silently switches
+  `max_daily_budget_increase_pct` or `max_total_daily_budget` off. The
+  projected total has no declaration key at all, by design.
 - **A declared key that is present but unreadable makes the gate deny.**
   `inf`, `nan`, a bool, a non-numeric string, a nested object under your
   declared key ⇒ the cap cannot be verified, so the call is refused with

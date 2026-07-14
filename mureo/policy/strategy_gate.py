@@ -44,6 +44,13 @@ GUARDRAILS_HEADING = "guardrails"
 # different vocabulary declares its own keys instead — see BudgetDeclaration.
 _BUDGET_KEYS = ("daily_budget", "proposed_daily_budget", "amount")
 _CURRENT_BUDGET_KEYS = ("current_daily_budget", "current")
+#: The cross-provider convention keys for the two budget figures the CALLER
+#: supplies rather than the tool: the *existing* daily budget and the
+#: account-wide projected total (both in currency units), which the skills pass
+#: on a budget mutation. A declaration cannot replace these — see
+#: :func:`_budget_inputs`.
+_CONVENTION_CURRENT_KEY = "current_daily_budget"
+_CONVENTION_TOTAL_KEY = "projected_total_daily_budget"
 
 _BULLET_RE = re.compile(r"^\s*[-*]\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+?)\s*$")
 
@@ -68,18 +75,31 @@ class BudgetDeclaration:
 
     ``unit`` is ``"currency"`` (default) or ``"micros"`` (value / 1e6).
 
-    A declaration REPLACES the built-in key scan for that tool — **for every
-    channel, not just the ones it names**. The plugin owns its argument
-    vocabulary, so an unrelated field that happens to be spelled ``amount``
-    must not false-trip a cap. The corollary: declaring only ``daily`` also
-    opts the tool out of the built-in ``lifetime_budget`` / ``total_amount``
-    scan, so a tool that carries a lifetime budget must declare
-    ``lifetime`` too (a coincidental built-in spelling stops being honored
-    the moment you declare anything).
+    A declaration REPLACES the built-in key scan for the budgets the tool
+    **proposes** — ``daily`` and ``lifetime`` — for every one of them, not just
+    the ones it names. The plugin owns its argument vocabulary, so an unrelated
+    field that happens to be spelled ``amount`` must not false-trip a cap. The
+    corollary: declaring only ``daily`` also opts the tool out of the built-in
+    ``lifetime_budget`` / ``total_amount`` scan, so a tool that carries a
+    lifetime budget must declare ``lifetime`` too (a coincidental built-in
+    spelling stops being honored the moment you declare anything).
+
+    The two CALLER-supplied figures are the exception, and deliberately so.
+    Neither is something the tool carries: the *existing* daily budget
+    (``current_daily_budget``) and the account-wide *projected total*
+    (``projected_total_daily_budget``) are context the skills compute and pass
+    on a budget mutation, under mureo's own cross-provider convention, in
+    currency units. A declaration does not replace them, so
+    ``max_daily_budget_increase_pct`` and ``max_total_daily_budget`` go on
+    working for a declaring tool. ``current`` may still be declared where a
+    plugin really does carry the current budget itself, and that declaration
+    wins; the projected total has no key at all, because it is never a tool
+    argument.
 
     A declared key that is present but unreadable (``inf``, ``nan``, a
     bool, a non-numeric string) makes the gate DENY — see
-    :func:`_declared_amount`.
+    :func:`_declared_amount`. The convention keys are held to the same
+    standard (#419).
     """
 
     daily_key: str | None = None
@@ -181,11 +201,13 @@ def _declared_amount(
 def _projected_total(arguments: dict[str, Any]) -> float | None:
     """The account-wide projected daily total a skill passes for the total cap.
 
-    Built-in key only (there is no declared equivalent); routed through
-    ``_saturate`` like every other budget channel so an oversized int denies
-    instead of raising.
+    Convention key only, on the declared path as much as the built-in one:
+    there is no declared equivalent because this figure is not a budget the
+    TOOL proposes — like ``current_daily_budget`` it is context the CALLER
+    computes. Routed through ``_saturate`` like every other budget channel so
+    an oversized int denies instead of raising.
     """
-    total = arguments.get("projected_total_daily_budget")
+    total = arguments.get(_CONVENTION_TOTAL_KEY)
     if isinstance(total, (int, float)) and not isinstance(total, bool):
         return _saturate(total)
     return None
@@ -261,7 +283,41 @@ def _budget_inputs(
             return _BudgetInputs(unreadable_key=key)
         resolved.append(declared)
     proposed, current, lifetime = resolved
-    return _BudgetInputs(proposed=proposed, current=current, lifetime=lifetime)
+    # The two CALLER-supplied channels survive a declaration. Neither is part of
+    # the plugin's argument vocabulary: the existing daily budget and the
+    # account-wide projected total are context the skills compute and pass under
+    # mureo's own cross-provider convention (currency units, on every budget
+    # mutation). A declaration replaces the built-in scan for the budgets the
+    # tool PROPOSES; replacing these too silently disabled
+    # max_daily_budget_increase_pct and max_total_daily_budget for every plugin
+    # that adopted the seam — the exact underenforcement it exists to remove,
+    # and for the total cap not even opt-out-able, since a declaration has no
+    # key to name it with. Both are read in currency units even when the DECLARED
+    # keys are micros: ``micros`` describes what the tool carries, not these.
+    #
+    # They are budget channels like any other, so they fail closed on a
+    # non-finite figure exactly as the built-in scan does (#419): a ``nan``
+    # baseline makes ``current > 0`` False and takes the percentage cap dark,
+    # while a bare oversized int raises out of ``float()`` into the gate's
+    # blanket ``except`` — an abstain, i.e. an allow.
+    if not declaration.current_key:
+        # Only the namespaced convention key here, never the bare ``current``
+        # alias the built-in scan also accepts: a declaring plugin owns its
+        # argument vocabulary, and ``current`` is a plausible name for something
+        # else entirely (an index, a status). Misreading one as the baseline
+        # would compute a nonsense increase — and a LARGE stray value yields a
+        # SMALL percentage, i.e. it would allow a raise that should be refused.
+        raw = arguments.get(_CONVENTION_CURRENT_KEY)
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            current = _saturate(raw)
+            if not math.isfinite(current):
+                return _BudgetInputs(unreadable_key=_CONVENTION_CURRENT_KEY)
+    total = _projected_total(arguments)
+    if total is not None and not math.isfinite(total):
+        return _BudgetInputs(unreadable_key=_CONVENTION_TOTAL_KEY)
+    return _BudgetInputs(
+        proposed=proposed, current=current, lifetime=lifetime, total=total
+    )
 
 
 @dataclass(frozen=True)
@@ -395,8 +451,14 @@ def evaluate_guardrails(
 
     ``budget_declaration`` (#414) names the argument keys carrying this
     tool's budget. When given it REPLACES the built-in Google/Meta key scan
-    — the tool's own vocabulary is authoritative. Omitted (every built-in
-    tool, and any plugin that has not declared) ⇒ unchanged behavior.
+    for the budgets the tool *proposes* — the tool's own vocabulary is
+    authoritative there. The exceptions are the two figures the CALLER supplies
+    rather than the tool: the current daily budget (undeclared, it still comes
+    from the ``current_daily_budget`` convention) and the projected account
+    total (always ``projected_total_daily_budget``). So declaring a budget
+    cannot switch ``max_daily_budget_increase_pct`` or ``max_total_daily_budget``
+    off (see :class:`BudgetDeclaration`). Omitted (every built-in tool, and any
+    plugin that has not declared) ⇒ unchanged behavior.
     """
     if guardrails.is_empty():
         return PolicyDecision(allowed=True)
