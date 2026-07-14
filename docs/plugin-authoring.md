@@ -692,9 +692,12 @@ Tool(
   mutation — so `max_daily_budget_increase_pct` keeps working.
 - `unit` — `"currency"` (default) or `"micros"` (the value is divided by
   1,000,000). Stringified numbers (`"20000"`) are accepted. Note this
-  describes **your declared keys**; the built-in `current_daily_budget`
-  fallback is always currency units, so a micros tool does not have to
-  restate it.
+  describes **your declared keys** only. The convention keys mureo reads
+  for itself (`current_daily_budget`, `projected_total_daily_budget`) are
+  always currency units, so a micros tool does not restate them — and
+  should not declare `current: "current_daily_budget"` alongside
+  `unit: "micros"`, which would divide that baseline by 1e6 and report a
+  ¥10,000 → ¥15,000 raise as a 149,999,900% one.
 
 Semantics worth knowing before you declare:
 
@@ -705,10 +708,13 @@ Semantics worth knowing before you declare:
   also carries a *lifetime* budget, declare `lifetime` — declaring only
   `daily` opts the tool out of the built-in `lifetime_budget` /
   `total_amount` scan as well.
-- **`current` is the exception.** It is not a budget your tool proposes;
-  it is context the caller supplies. Leaving it undeclared keeps the
-  built-in `current_daily_budget` scan for that channel, so declaring
-  `daily` never silently switches `max_daily_budget_increase_pct` off.
+- **What the *caller* supplies is the exception.** The existing daily
+  budget (`current_daily_budget`) and the account-wide projected total
+  (`projected_total_daily_budget`) are not budgets your tool proposes —
+  they are context the skills compute and pass. A declaration does not
+  replace them, so declaring `daily` never silently switches
+  `max_daily_budget_increase_pct` or `max_total_daily_budget` off. The
+  projected total has no declaration key at all, by design.
 - **A declared key that is present but unreadable makes the gate deny.**
   `inf`, `nan`, a bool, a non-numeric string, a nested object under your
   declared key ⇒ the cap cannot be verified, so the call is refused with
