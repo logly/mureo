@@ -30,6 +30,25 @@ def _import_handlers():
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _standalone_google_ads():
+    """Pin these handler tests to STANDALONE (untenanted) Google Ads.
+
+    Google Ads gained workspace scoping (#411, mirroring Search Console's
+    #375): when a ``mureo.runtime_context_factory`` is installed AND its
+    store is a shared-auth multi-account backend, an undeclared
+    ``google_ads_customer_ids`` fail-closes every customer_id. A dev box carrying such a
+    plugin would therefore break these standalone assertions. Neutralize
+    the scoping seam so this module always exercises the unrestricted
+    path; the scoped behavior lives in test_account_id_tenant_scope.py.
+    """
+    with patch(
+        "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+        return_value=None,
+    ):
+        yield
+
+
 @pytest.mark.unit
 class TestGoogleAdsToolDefinitions:
     """Verify the Google Ads tool list is defined correctly."""

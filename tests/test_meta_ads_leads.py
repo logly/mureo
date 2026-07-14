@@ -36,6 +36,25 @@ def _make_mock_client() -> LeadsMixin:
 # ===========================================================================
 
 
+@pytest.fixture(autouse=True)
+def _standalone_meta_ads():
+    """Pin these handler tests to STANDALONE (untenanted) Meta Ads.
+
+    Meta Ads gained workspace scoping (#411, mirroring Search Console's
+    #375): when a ``mureo.runtime_context_factory`` is installed AND its
+    store is a shared-auth multi-account backend, an undeclared
+    ``meta_account_ids`` fail-closes every account_id. A dev box carrying such a
+    plugin would therefore break these standalone assertions. Neutralize
+    the scoping seam so this module always exercises the unrestricted
+    path; the scoped behavior lives in test_account_id_tenant_scope.py.
+    """
+    with patch(
+        "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+        return_value=None,
+    ):
+        yield
+
+
 @pytest.mark.unit
 class TestListLeadForms:
     @pytest.fixture()
