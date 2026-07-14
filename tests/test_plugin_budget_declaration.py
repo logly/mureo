@@ -198,6 +198,65 @@ class TestDeclaredBudgetExtraction:
         assert decision.allowed is False
         assert "max_daily_budget_increase_pct" in (decision.reason or "")
 
+    def test_undeclared_current_falls_back_to_the_built_in_key(self) -> None:
+        """A plugin declares where ITS OWN arguments carry a budget. The
+        *current* budget is not one of them: it is context the caller supplies,
+        under mureo's own cross-provider convention (``current_daily_budget``;
+        see the _mureo-strategy skill). Dropping it because the tool declared
+        `daily` would silently disable max_daily_budget_increase_pct for every
+        plugin that adopts the seam — the same silent underenforcement #414
+        exists to remove.
+        """
+        decl = BudgetDeclaration(daily_key="daily_budget_micros", micros=True)
+        caps = Guardrails(max_daily_budget_increase_pct=20.0)
+        decision = evaluate_guardrails(
+            "t",
+            {"daily_budget_micros": 15_000_000_000, "current_daily_budget": 10_000},
+            caps,
+            budget_declaration=decl,
+        )
+        assert decision.allowed is False  # 10,000 -> 15,000 is +50%
+        assert "50%" in (decision.reason or "")
+
+    def test_the_fallback_current_is_currency_not_micros(self) -> None:
+        """The built-in ``current_daily_budget`` is currency units even when the
+        tool's own budget is micros — ``micros`` describes the DECLARED keys.
+        Dividing it by 1e6 would read ¥10,000 as ¥0.01 and report a 149,999,900%
+        increase.
+        """
+        decl = BudgetDeclaration(daily_key="daily_budget_micros", micros=True)
+        caps = Guardrails(max_daily_budget_increase_pct=20.0)
+        reason = (
+            evaluate_guardrails(
+                "t",
+                {
+                    "daily_budget_micros": 15_000_000_000,
+                    "current_daily_budget": 10_000,
+                },
+                caps,
+                budget_declaration=decl,
+            ).reason
+            or ""
+        )
+        assert "10,000 → 15,000" in reason
+
+    def test_a_declared_current_key_still_wins(self) -> None:
+        """The fallback only fills a gap; an explicit declaration still owns
+        the channel."""
+        decl = BudgetDeclaration(
+            daily_key="new_budget", current_key="old_budget", micros=False
+        )
+        caps = Guardrails(max_daily_budget_increase_pct=20.0)
+        decision = evaluate_guardrails(
+            "t",
+            # The declared key says +10% (allowed); the built-in key would say
+            # +900% if it were consulted. The declaration must win.
+            {"new_budget": 1_100, "old_budget": 1_000, "current_daily_budget": 110},
+            caps,
+            budget_declaration=decl,
+        )
+        assert decision.allowed is True
+
     def test_declared_lifetime_key_is_enforced(self) -> None:
         decl = BudgetDeclaration(lifetime_key="package_total")
         caps = Guardrails(max_lifetime_budget_per_campaign=50_000.0)

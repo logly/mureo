@@ -684,20 +684,31 @@ Tool(
 
 - `daily` / `lifetime` — the argument key carrying the proposed daily /
   lifetime (period-total) budget. At least one is required.
-- `current` — optional; the key carrying the *existing* daily budget.
-  Supply it to make `max_daily_budget_increase_pct` enforceable on your
-  tool (without it, a percentage cap has no baseline to compare against).
+- `current` — optional, and usually unnecessary: the key carrying the
+  *existing* daily budget. You only need it if your **tool itself** takes
+  the current budget as an argument under some other name. Leave it out
+  and mureo keeps reading its own `current_daily_budget` convention (in
+  currency units), which is what the skills pass on every budget
+  mutation — so `max_daily_budget_increase_pct` keeps working.
 - `unit` — `"currency"` (default) or `"micros"` (the value is divided by
-  1,000,000). Stringified numbers (`"20000"`) are accepted.
+  1,000,000). Stringified numbers (`"20000"`) are accepted. Note this
+  describes **your declared keys**; the built-in `current_daily_budget`
+  fallback is always currency units, so a micros tool does not have to
+  restate it.
 
 Semantics worth knowing before you declare:
 
-- **A declaration replaces the built-in key scan for that tool — for
-  *every* channel, not only the ones you name.** Your vocabulary is
-  authoritative, so an unrelated field spelled `amount` cannot false-trip
-  a cap. The corollary: if your tool also carries a *lifetime* budget,
-  declare `lifetime` — declaring only `daily` opts the tool out of the
-  built-in `lifetime_budget` / `total_amount` scan as well.
+- **A declaration replaces the built-in key scan for the budgets your tool
+  proposes (`daily`, `lifetime`) — for *every* one of them, not only the
+  ones you name.** Your vocabulary is authoritative, so an unrelated field
+  spelled `amount` cannot false-trip a cap. The corollary: if your tool
+  also carries a *lifetime* budget, declare `lifetime` — declaring only
+  `daily` opts the tool out of the built-in `lifetime_budget` /
+  `total_amount` scan as well.
+- **`current` is the exception.** It is not a budget your tool proposes;
+  it is context the caller supplies. Leaving it undeclared keeps the
+  built-in `current_daily_budget` scan for that channel, so declaring
+  `daily` never silently switches `max_daily_budget_increase_pct` off.
 - **A declared key that is present but unreadable makes the gate deny.**
   `inf`, `nan`, a bool, a non-numeric string, a nested object under your
   declared key ⇒ the cap cannot be verified, so the call is refused with

@@ -68,14 +68,22 @@ class BudgetDeclaration:
 
     ``unit`` is ``"currency"`` (default) or ``"micros"`` (value / 1e6).
 
-    A declaration REPLACES the built-in key scan for that tool — **for every
-    channel, not just the ones it names**. The plugin owns its argument
-    vocabulary, so an unrelated field that happens to be spelled ``amount``
-    must not false-trip a cap. The corollary: declaring only ``daily`` also
-    opts the tool out of the built-in ``lifetime_budget`` / ``total_amount``
-    scan, so a tool that carries a lifetime budget must declare
-    ``lifetime`` too (a coincidental built-in spelling stops being honored
-    the moment you declare anything).
+    A declaration REPLACES the built-in key scan for the budgets the tool
+    **proposes** — ``daily`` and ``lifetime`` — for every one of them, not just
+    the ones it names. The plugin owns its argument vocabulary, so an unrelated
+    field that happens to be spelled ``amount`` must not false-trip a cap. The
+    corollary: declaring only ``daily`` also opts the tool out of the built-in
+    ``lifetime_budget`` / ``total_amount`` scan, so a tool that carries a
+    lifetime budget must declare ``lifetime`` too (a coincidental built-in
+    spelling stops being honored the moment you declare anything).
+
+    ``current`` is the exception, and deliberately so: the *existing* budget is
+    not something the tool carries — it is context the caller supplies, under
+    mureo's own cross-provider convention (``current_daily_budget``, in
+    currency units, passed by the skills on every budget mutation). A tool that
+    does not declare ``current`` therefore keeps the built-in scan for that one
+    channel, so ``max_daily_budget_increase_pct`` goes on working. Declaring it
+    still wins where a plugin really does carry the current budget itself.
 
     A declared key that is present but unreadable (``inf``, ``nan``, a
     bool, a non-numeric string) makes the gate DENY — see
@@ -261,6 +269,16 @@ def _budget_inputs(
             return _BudgetInputs(unreadable_key=key)
         resolved.append(declared)
     proposed, current, lifetime = resolved
+    if declaration.current_key is None:
+        # The *current* budget is not part of the plugin's argument vocabulary
+        # — it is context the caller supplies, under mureo's own cross-provider
+        # convention (``current_daily_budget``, in currency units; the skills
+        # pass it on every budget mutation). Replacing that channel too would
+        # silently disable max_daily_budget_increase_pct for every plugin that
+        # adopted the seam, which is the exact underenforcement it exists to
+        # remove. Note it is read in currency units even when the DECLARED keys
+        # are micros: ``micros`` describes what the tool carries, not this.
+        current = _current_budget(arguments)
     return _BudgetInputs(proposed=proposed, current=current, lifetime=lifetime)
 
 
