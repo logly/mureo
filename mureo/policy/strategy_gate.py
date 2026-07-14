@@ -24,6 +24,7 @@ keeps mureo's default behaviour identical to "no enforcement".
 from __future__ import annotations
 
 import logging
+import math
 import re
 import time
 from dataclasses import dataclass, field
@@ -39,10 +40,159 @@ logger = logging.getLogger(__name__)
 GUARDRAILS_HEADING = "guardrails"
 
 # Argument keys that carry a proposed daily budget, in priority order.
+# These are the BUILT-IN (Google/Meta) spellings; a plugin whose tools use a
+# different vocabulary declares its own keys instead — see BudgetDeclaration.
 _BUDGET_KEYS = ("daily_budget", "proposed_daily_budget", "amount")
 _CURRENT_BUDGET_KEYS = ("current_daily_budget", "current")
 
 _BULLET_RE = re.compile(r"^\s*[-*]\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+?)\s*$")
+
+
+@dataclass(frozen=True)
+class BudgetDeclaration:
+    """Where one tool carries its budget arguments (#414).
+
+    Built-in Google/Meta tools are covered by the hard-coded key scan above.
+    A plugin tool's arguments can be spelled anything, so the gate had no way
+    to find its budget and silently treated every plugin mutation as
+    "no budget proposed" — the operator's ``## Guardrails`` caps were
+    unenforced for that platform, with no error or warning. A plugin closes
+    that by declaring its keys in standard MCP metadata::
+
+        Tool(
+            name="acme_ads_update_budget",
+            _meta={"mureo": {"budget": {"daily": "daily_budget_micros",
+                                        "unit": "micros"}}},
+            ...
+        )
+
+    ``unit`` is ``"currency"`` (default) or ``"micros"`` (value / 1e6).
+
+    A declaration REPLACES the built-in key scan for that tool — **for every
+    channel, not just the ones it names**. The plugin owns its argument
+    vocabulary, so an unrelated field that happens to be spelled ``amount``
+    must not false-trip a cap. The corollary: declaring only ``daily`` also
+    opts the tool out of the built-in ``lifetime_budget`` / ``total_amount``
+    scan, so a tool that carries a lifetime budget must declare
+    ``lifetime`` too (a coincidental built-in spelling stops being honored
+    the moment you declare anything).
+
+    A declared key that is present but unreadable (``inf``, ``nan``, a
+    bool, a non-numeric string) makes the gate DENY — see
+    :func:`_declared_amount`.
+    """
+
+    daily_key: str | None = None
+    lifetime_key: str | None = None
+    current_key: str | None = None
+    micros: bool = False
+
+
+# Tool name → declaration. Populated by the MCP server from plugin tool
+# metadata at import (see ``mureo.mcp.server``), so the pure decision layer
+# stays I/O-free and the gate needs no plugin imports.
+_BUDGET_DECLARATIONS: dict[str, BudgetDeclaration] = {}
+
+
+def register_budget_declaration(tool_name: str, declaration: BudgetDeclaration) -> None:
+    """Bind ``tool_name``'s budget argument keys (last registration wins)."""
+    _BUDGET_DECLARATIONS[tool_name] = declaration
+
+
+def budget_declaration_for(tool_name: str) -> BudgetDeclaration | None:
+    """The declaration registered for ``tool_name``, or ``None``."""
+    return _BUDGET_DECLARATIONS.get(tool_name)
+
+
+def reset_budget_declarations() -> None:
+    """Drop every registration (tests; a re-discovery re-registers)."""
+    _BUDGET_DECLARATIONS.clear()
+
+
+class _Unreadable:
+    """Sentinel: a declared budget key is PRESENT but not a usable number."""
+
+
+_UNREADABLE = _Unreadable()
+
+
+def _declared_amount(
+    arguments: dict[str, Any], key: str | None, *, micros: bool
+) -> float | _Unreadable | None:
+    """Read one declared budget key as currency units.
+
+    Three outcomes, and the distinction is the whole point of #414:
+
+    - ``None`` — the key is absent (or ``null`` / blank, which mean the same
+      thing): this call proposes no budget on that channel.
+    - ``float`` — a usable amount (stringified numbers are accepted; plugins
+      hit them in the wild when a JSON body round-trips through a form
+      encoder).
+    - :data:`_UNREADABLE` — the key IS present but carries garbage (a
+      non-finite ``inf``/``nan``, a bool, a non-numeric string, a nested
+      object). The caller must **deny**: silently treating it as "no
+      proposal" would let ``{"spend_limit": "inf"}`` sail past every cap —
+      re-opening the exact silent bypass this seam exists to close, and
+      making the declared path weaker than the built-in scan (where a raw
+      ``inf`` simply exceeds any finite cap and denies).
+    """
+    if not key or key not in arguments:
+        return None
+    raw = arguments[key]
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return _UNREADABLE
+    if isinstance(raw, (int, float)):
+        value = float(raw)
+    elif isinstance(raw, str):
+        stripped = raw.strip()
+        if not stripped:
+            return None
+        try:
+            value = float(stripped)
+        except ValueError:
+            return _UNREADABLE
+    else:
+        return _UNREADABLE
+    if math.isnan(value) or math.isinf(value):
+        return _UNREADABLE
+    return value / 1_000_000 if micros else value
+
+
+@dataclass(frozen=True)
+class _BudgetInputs:
+    """The three budget channels one evaluation needs, already resolved."""
+
+    proposed: float | None = None
+    current: float | None = None
+    lifetime: float | None = None
+    #: The first declared key that was present but unreadable (⇒ deny).
+    unreadable_key: str | None = None
+
+
+def _budget_inputs(
+    arguments: dict[str, Any], declaration: BudgetDeclaration | None
+) -> _BudgetInputs:
+    """Resolve the budget channels from declared keys, else the built-in scan."""
+    if declaration is None:
+        return _BudgetInputs(
+            proposed=_proposed_budget(arguments),
+            current=_current_budget(arguments),
+            lifetime=_proposed_lifetime_budget(arguments),
+        )
+    resolved: list[float | None] = []
+    for key in (
+        declaration.daily_key,
+        declaration.current_key,
+        declaration.lifetime_key,
+    ):
+        value = _declared_amount(arguments, key, micros=declaration.micros)
+        if isinstance(value, _Unreadable):
+            return _BudgetInputs(unreadable_key=key)
+        resolved.append(value)
+    proposed, current, lifetime = resolved
+    return _BudgetInputs(proposed=proposed, current=current, lifetime=lifetime)
 
 
 @dataclass(frozen=True)
@@ -166,11 +316,18 @@ def evaluate_guardrails(
     tool_name: str,
     arguments: dict[str, Any],
     guardrails: Guardrails,
+    *,
+    budget_declaration: BudgetDeclaration | None = None,
 ) -> PolicyDecision:
     """Pure decision: does ``tool_name(arguments)`` violate ``guardrails``?
 
     Returns ``PolicyDecision(allowed=False, reason=...)`` on the first hard
     violation, else ``allowed=True``. No I/O.
+
+    ``budget_declaration`` (#414) names the argument keys carrying this
+    tool's budget. When given it REPLACES the built-in Google/Meta key scan
+    — the tool's own vocabulary is authoritative. Omitted (every built-in
+    tool, and any plugin that has not declared) ⇒ unchanged behavior.
     """
     if guardrails.is_empty():
         return PolicyDecision(allowed=True)
@@ -184,7 +341,21 @@ def evaluate_guardrails(
             ),
         )
 
-    proposed = _proposed_budget(arguments)
+    inputs = _budget_inputs(arguments, budget_declaration)
+    if inputs.unreadable_key is not None:
+        # Fail CLOSED: the operator wrote a cap and the tool's declared
+        # budget argument carries garbage, so the cap CANNOT be checked.
+        # Allowing here would be the #414 silent bypass with extra steps.
+        return PolicyDecision(
+            allowed=False,
+            reason=(
+                f"Budget argument '{inputs.unreadable_key}' is not a usable "
+                f"number, so the STRATEGY.md Guardrails caps cannot be "
+                f"verified for this call. Refusing it."
+            ),
+        )
+
+    proposed = inputs.proposed
     if proposed is not None:
         cap = guardrails.max_daily_budget_per_campaign
         if cap is not None and proposed > cap:
@@ -197,7 +368,7 @@ def evaluate_guardrails(
                 ),
             )
 
-        current = _current_budget(arguments)
+        current = inputs.current
         pct_cap = guardrails.max_daily_budget_increase_pct
         if pct_cap is not None and current is not None and current > 0:
             increase_pct = (proposed - current) / current * 100
@@ -218,7 +389,7 @@ def evaluate_guardrails(
     # guardrail the operator wrote (#367). Covers Meta's ``lifetime_budget``
     # (minor units) and Google's CUSTOM_PERIOD ``total_amount_micros``
     # (micros → currency units), mirroring the daily micros handling (#366).
-    lifetime = _proposed_lifetime_budget(arguments)
+    lifetime = inputs.lifetime
     lifetime_cap = guardrails.max_lifetime_budget_per_campaign
     if lifetime_cap is not None and lifetime is not None and lifetime > lifetime_cap:
         return PolicyDecision(
@@ -302,7 +473,14 @@ class StrategyPolicyGate:
 
     def evaluate(self, tool_name: str, arguments: dict[str, Any]) -> PolicyDecision:
         try:
-            return evaluate_guardrails(tool_name, arguments, _load_guardrails())
+            return evaluate_guardrails(
+                tool_name,
+                arguments,
+                _load_guardrails(),
+                # #414: a plugin tool that declared its budget keys is now
+                # enforced by THIS gate — no hand-rolled per-plugin gate.
+                budget_declaration=budget_declaration_for(tool_name),
+            )
         except Exception:  # noqa: BLE001 — abstain on any unexpected error
             logger.debug("StrategyPolicyGate: abstaining on error", exc_info=True)
             return PolicyDecision(allowed=True)

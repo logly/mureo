@@ -264,6 +264,37 @@ _PLUGIN_TOOL_THROTTLERS: dict[str, Throttler] = {
 }
 
 
+def _register_plugin_budget_declarations(
+    semantics: dict[str, ToolSemantics],
+) -> None:
+    """Publish plugin budget declarations to the StrategyPolicyGate (#414).
+
+    The gate's built-in key scan only knows the Google/Meta argument
+    spellings, so a plugin tool's budget was invisible to it — every
+    ``## Guardrails`` cap was silently unenforced on that platform. A
+    plugin now declares its keys in standard MCP metadata and this wires
+    them into the gate's registry, so the ONE built-in gate enforces them
+    (no per-plugin hand-rolled gate). Best-effort: a registry failure must
+    not take the server down.
+    """
+    from mureo.policy.strategy_gate import register_budget_declaration
+
+    for name, sem in semantics.items():
+        if sem.budget is None:
+            continue
+        try:
+            register_budget_declaration(name, sem.budget)
+        except Exception:  # noqa: BLE001 — never break startup on a hint
+            logger.warning(
+                "could not register budget declaration for plugin tool '%s'",
+                name,
+                exc_info=True,
+            )
+
+
+_register_plugin_budget_declarations(_PLUGIN_SEMANTICS)
+
+
 # Guardrail parity (#114 follow-up): top-level ``inputSchema`` property names
 # per plugin tool. The rollback planner uses these to bound the params a
 # plugin-declared reversal may carry — the plugin counterpart of the static
