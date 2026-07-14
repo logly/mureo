@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.25] - 2026-07-14
+
 ### Fixed
 
 - **A budget declaration no longer switches off `max_daily_budget_increase_pct`
