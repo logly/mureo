@@ -40,6 +40,13 @@ GUARDRAILS_HEADING = "guardrails"
 
 # Argument keys that carry a proposed daily budget, in priority order.
 _BUDGET_KEYS = ("daily_budget", "proposed_daily_budget", "amount")
+# The same, expressed in micros (1/1,000,000 of the account currency).
+# ``daily_budget_micros`` is the provider ABI's own budget field
+# (``CreateCampaignRequest.daily_budget_micros``) and the name
+# docs/plugin-authoring.md prescribes, so provider plugins surface it
+# verbatim on their MCP write tools. It belongs here, or every
+# ABI-faithful plugin's budget writes bypass the guardrails entirely.
+_BUDGET_MICROS_KEYS = ("daily_budget_micros", "budget_amount_micros", "amount_micros")
 _CURRENT_BUDGET_KEYS = ("current_daily_budget", "current")
 
 _BULLET_RE = re.compile(r"^\s*[-*]\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+?)\s*$")
@@ -128,9 +135,10 @@ def _proposed_budget(arguments: dict[str, Any]) -> float | None:
             v = arguments[key]
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 return float(v)
-    # Google Ads budgets are sometimes expressed in micros —
-    # budget_amount_micros on campaign tools, amount_micros on budget tools.
-    for micros_key in ("budget_amount_micros", "amount_micros"):
+    # Budgets are often expressed in micros instead — amount_micros on the
+    # Google budget tools, daily_budget_micros on any provider plugin that
+    # follows the ABI (see _BUDGET_MICROS_KEYS).
+    for micros_key in _BUDGET_MICROS_KEYS:
         micros = arguments.get(micros_key)
         if isinstance(micros, (int, float)) and not isinstance(micros, bool):
             return float(micros) / 1_000_000

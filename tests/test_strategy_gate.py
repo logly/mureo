@@ -81,6 +81,37 @@ class TestEvaluateGuardrails:
         )
         assert d.allowed is False  # 80,000 > 50,000
 
+    def test_canonical_abi_daily_budget_micros_denies(self) -> None:
+        """``daily_budget_micros`` is the provider ABI's budget field name
+        (``CreateCampaignRequest.daily_budget_micros``) and the one
+        docs/plugin-authoring.md tells plugin authors to use, so provider
+        plugins surface it verbatim on their MCP write tools. It must be
+        capped like any other budget — otherwise every ABI-faithful plugin
+        silently bypasses the guardrails.
+        """
+        g = Guardrails(max_daily_budget_per_campaign=50000)
+        d = evaluate_guardrails(
+            "example_ads_update_campaign", {"daily_budget_micros": 80_000_000_000}, g
+        )
+        assert d.allowed is False  # 80,000 > 50,000
+        assert "50,000" in d.reason and "80,000" in d.reason
+
+    def test_canonical_abi_daily_budget_micros_under_cap_allows(self) -> None:
+        g = Guardrails(max_daily_budget_per_campaign=50000)
+        d = evaluate_guardrails(
+            "example_ads_create_campaign", {"daily_budget_micros": 40_000_000_000}, g
+        )
+        assert d.allowed is True
+
+    def test_canonical_abi_daily_budget_micros_respects_increase_pct(self) -> None:
+        g = Guardrails(max_daily_budget_increase_pct=20)
+        d = evaluate_guardrails(
+            "example_ads_update_campaign",
+            {"daily_budget_micros": 15_000_000_000, "current_daily_budget": 10000},
+            g,
+        )
+        assert d.allowed is False  # 10,000 -> 15,000 is +50%
+
     def test_increase_pct_denies(self) -> None:
         g = Guardrails(max_daily_budget_increase_pct=20)
         d = evaluate_guardrails(

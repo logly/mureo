@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The budget guardrail now fires on provider plugins.** `StrategyPolicyGate`
+  matched a proposed budget against a fixed set of argument keys
+  (`daily_budget`, `amount`, `amount_micros`, …) — the spellings the
+  first-party `google_ads_*` / `meta_ads_*` tools use. It did
+  not match `daily_budget_micros`, which is the provider ABI's *own* budget
+  field (`CreateCampaignRequest.daily_budget_micros`) and the name
+  `docs/plugin-authoring.md` tells plugin authors to use. A provider plugin
+  that followed the ABI therefore had **every** budget rule silently skipped:
+  an operator's `max_daily_budget_per_campaign` was enforced on Google and Meta
+  while that plugin's budget writes went straight through — no error, no
+  warning, just an unenforced cap on a real-spend surface. `daily_budget_micros`
+  is now read alongside the other micros keys, so the caps
+  (`max_daily_budget_per_campaign`, `max_daily_budget_increase_pct`,
+  `max_total_daily_budget`) apply to any ABI-faithful plugin. Behaviour for
+  first-party tools is unchanged.
+
 ## [0.10.23] - 2026-07-13
 
 ### Fixed
