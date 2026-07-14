@@ -102,10 +102,8 @@ class ConfigureWizard:
             static_dir if static_dir is not None else _resolve_static_dir()
         )
         self.session = ConfigureSession()
-        self._host_paths: HostPaths = get_host_paths(self.session.host, home=home)
         self._commands_path_override = commands_path
-        self._apply_commands_override()
-        self._apply_credentials_override()
+        self._host_paths: HostPaths = self._build_host_paths()
         self.oauth_bridge = OAuthBridge()
         # Discover third-party extensions once at wizard construction.
         # ``discover_web_extensions`` caches internally, so this call
@@ -172,11 +170,23 @@ class ConfigureWizard:
         return f"http://{self._bind_host}:{self.port}/"
 
     def set_host(self, host: str) -> None:
-        """Switch the Claude host and recompute path resolution."""
+        """Switch the Claude host and recompute path resolution.
+
+        No-op when ``host`` is already the session host: ``_resolve_host``
+        relays the client's host on every host-carrying POST, and the
+        rebuild is not free — the credentials override may resolve a
+        runtime-context factory (#406).
+
+        The rebuilt bundle is published in a single assignment AFTER every
+        override has been applied. The configure server is threaded, and
+        publishing the base bundle first opened a window in which
+        concurrent requests read — or wrote — the unresolved host-default
+        credentials path instead of the runtime-resolved one (#406).
+        """
+        if host == self.session.host:
+            return
         self.session.set_host(host)
-        self._host_paths = get_host_paths(self.session.host, home=self.home)
-        self._apply_commands_override()
-        self._apply_credentials_override()
+        self._host_paths = self._build_host_paths()
 
     def mark_oauth_complete(
         self, provider: str, *, success: bool, error: str | None = None
@@ -271,20 +281,25 @@ class ConfigureWizard:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
-    def _apply_commands_override(self) -> None:
-        """If the caller pinned a commands path, swap it into the bundle."""
-        if self._commands_path_override is None:
-            return
-        self._host_paths = HostPaths(
-            host=self._host_paths.host,
-            settings_path=self._host_paths.settings_path,
-            skills_dir=self._host_paths.skills_dir,
-            commands_dir=self._commands_path_override,
-            credentials_path=self._host_paths.credentials_path,
-            mcp_registry_path=self._host_paths.mcp_registry_path,
-        )
+    def _build_host_paths(self) -> HostPaths:
+        """Resolve the FULL paths bundle for the current session host.
 
-    def _apply_credentials_override(self) -> None:
+        Base resolution plus the commands-path pin plus the credentials
+        override are all applied to a local value; the caller publishes
+        the result in one assignment. The configure server is threaded,
+        and mutating ``self._host_paths`` step-by-step opened a window in
+        which concurrent requests observed the unresolved host-default
+        credentials path (#406) — with a slow runtime-context factory the
+        window spanned most of a dashboard page load.
+        """
+        paths = get_host_paths(self.session.host, home=self.home)
+        if self._commands_path_override is not None:
+            paths = dataclasses.replace(
+                paths, commands_dir=self._commands_path_override
+            )
+        return self._with_credentials_override(paths)
+
+    def _with_credentials_override(self, paths: HostPaths) -> HostPaths:
         """Align the configure-UI credentials path with the active
         RuntimeContext when running against the real home (#194).
 
@@ -308,15 +323,17 @@ class ConfigureWizard:
         ``home=None`` and so still honors the factory. The factory's path
         is resolved by :func:`runtime_credentials_path`, unit-tested
         directly; this method only decides *whether* to apply it.
+
+        Pure: returns a new bundle instead of mutating ``self._host_paths``
+        so the caller can publish the fully-resolved result atomically
+        (#406).
         """
         if self.home is not None:
-            return
-        resolved = runtime_credentials_path(self._host_paths.credentials_path)
-        if resolved == self._host_paths.credentials_path:
-            return
-        self._host_paths = dataclasses.replace(
-            self._host_paths, credentials_path=resolved
-        )
+            return paths
+        resolved = runtime_credentials_path(paths.credentials_path)
+        if resolved == paths.credentials_path:
+            return paths
+        return dataclasses.replace(paths, credentials_path=resolved)
 
 
 def run_configure_wizard(
