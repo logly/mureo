@@ -303,6 +303,8 @@ class TestUnreadableDeclaredBudget:
             "Infinity",
             "nan",
             "not-a-number",
+            "9" * 309,  # too large for float64 as a string — saturates to inf
+            int("9" * 309),  # bare int: float() raises OverflowError, not inf
             True,  # bool is an int subclass — never a budget
             {"amount": 1},
             [],
