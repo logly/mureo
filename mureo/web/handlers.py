@@ -598,9 +598,12 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         send_bytes(self, body, content_type=_static_content_type(filename))
 
     def _serve_status(self) -> None:
+        # One atomic snapshot: pairing self.wizard.session.host with a separate
+        # self.wizard.host_paths read could cross a concurrent set_host (#407).
+        snap = self.wizard.host_snapshot()
         snapshot = collect_status(
-            self.wizard.session.host,
-            paths=self.wizard.host_paths,
+            snap.host,
+            paths=snap.paths,
             multi_account_auth=self._multi_account_active(),
         )
         send_json(self, snapshot.as_dict())
@@ -943,11 +946,14 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if not provider_id:
             send_error_json(self, 400, "provider_id_required")
             return
+        # One atomic snapshot: host and credentials_path must come from the
+        # same host, not two reads a concurrent set_host could split (#407).
+        snap = self.wizard.host_snapshot()
         result = install_provider(
             provider_id,
             home=self.wizard.home,
-            host=self.wizard.session.host,
-            credentials_path=self.wizard.host_paths.credentials_path,
+            host=snap.host,
+            credentials_path=snap.paths.credentials_path,
         )
         send_json(self, result.as_dict())
 

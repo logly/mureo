@@ -48,7 +48,15 @@ class ConfigureSession:
             self.locale = locale
 
     def set_host(self, host: str) -> None:
-        """Set the Claude application host. Allow-list only."""
+        """Set the Claude application host. Allow-list only.
+
+        Not self-synchronizing: the sole production caller
+        (:meth:`mureo.web.server.ConfigureWizard.set_host`) serializes this
+        under ``_host_lock`` and publishes ``host`` together with the rebuilt
+        ``host_paths`` bundle, so readers never observe a torn (host, paths)
+        pair (#407). A new caller that mutates ``host`` outside that lock would
+        reintroduce the race.
+        """
         if host in SUPPORTED_HOSTS:
             self.host = host
 

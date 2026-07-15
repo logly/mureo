@@ -34,7 +34,7 @@ from mureo.web.handlers import ConfigureHandler
 from mureo.web.host_paths import HostPaths, get_host_paths
 from mureo.web.instance import probe_mureo_instance, write_state_file
 from mureo.web.oauth_bridge import OAuthBridge
-from mureo.web.session import ConfigureSession
+from mureo.web.session import SUPPORTED_HOSTS, ConfigureSession
 from mureo.web.version_check import (
     start_periodic_update_check,
     stop_periodic_update_check,
@@ -85,6 +85,21 @@ class _ConfigureServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     wizard: ConfigureWizard
 
 
+@dataclasses.dataclass(frozen=True)
+class HostSnapshot:
+    """An atomically-captured ``(host, paths)`` pair (#407).
+
+    Reading :attr:`ConfigureWizard.session`'s ``host`` and
+    :attr:`ConfigureWizard.host_paths` as two separate accesses lets a
+    concurrent :meth:`ConfigureWizard.set_host` land between them and pair one
+    host with another host's bundle. :meth:`ConfigureWizard.host_snapshot`
+    returns both captured under one lock, so the pair is always consistent.
+    """
+
+    host: str
+    paths: HostPaths
+
+
 class ConfigureWizard:
     """Configure-UI lifecycle owner."""
 
@@ -121,6 +136,10 @@ class ConfigureWizard:
         self._ready = threading.Event()
         self._stop = threading.Event()
         self._lock = threading.Lock()
+        # Guards the (session.host, _host_paths) pair so set_host publishes both
+        # together and host_snapshot() reads both together (#407). Separate from
+        # _lock (server lifecycle) to avoid coupling the two concerns.
+        self._host_lock = threading.Lock()
 
     @staticmethod
     def _discover_providers_safely() -> None:
@@ -172,21 +191,35 @@ class ConfigureWizard:
     def set_host(self, host: str) -> None:
         """Switch the Claude host and recompute path resolution.
 
-        No-op when ``host`` is already the session host: ``_resolve_host``
-        relays the client's host on every host-carrying POST, and the
-        rebuild is not free — the credentials override may resolve a
-        runtime-context factory (#406).
+        No-op when ``host`` is already the session host (``_resolve_host``
+        relays the client's host on every host-carrying POST) or when it is
+        not an allow-listed host — the rebuild is not free (the credentials
+        override may resolve a runtime-context factory).
 
-        The rebuilt bundle is published in a single assignment AFTER every
-        override has been applied. The configure server is threaded, and
-        publishing the base bundle first opened a window in which
-        concurrent requests read — or wrote — the unresolved host-default
-        credentials path instead of the runtime-resolved one (#406).
+        The new bundle is built OUTSIDE the lock (a single, fully-resolved
+        ``HostPaths`` — publishing a half-built bundle let concurrent requests
+        read the unresolved host-default credentials path, #406), then the host
+        and the bundle are published TOGETHER under ``_host_lock`` so a
+        concurrent :meth:`host_snapshot` never pairs one host with another
+        host's bundle (#407).
         """
-        if host == self.session.host:
+        if host == self.session.host or host not in SUPPORTED_HOSTS:
             return
-        self.session.set_host(host)
-        self._host_paths = self._build_host_paths()
+        new_paths = self._build_host_paths(host)
+        with self._host_lock:
+            self.session.set_host(host)
+            self._host_paths = new_paths
+
+    def host_snapshot(self) -> HostSnapshot:
+        """Atomically capture the current ``(host, host_paths)`` pair (#407).
+
+        Both fields are read under the lock :meth:`set_host` publishes them
+        under, so a concurrent switch can never expose a host paired with
+        another host's bundle. A handler that needs BOTH values in one request
+        takes a single snapshot instead of two separate ``self.wizard`` reads.
+        """
+        with self._host_lock:
+            return HostSnapshot(host=self.session.host, paths=self._host_paths)
 
     def mark_oauth_complete(
         self, provider: str, *, success: bool, error: str | None = None
@@ -281,8 +314,12 @@ class ConfigureWizard:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
-    def _build_host_paths(self) -> HostPaths:
-        """Resolve the FULL paths bundle for the current session host.
+    def _build_host_paths(self, host: str | None = None) -> HostPaths:
+        """Resolve the FULL paths bundle for ``host`` (default: session host).
+
+        ``host`` is passed by :meth:`set_host` so the target bundle is built
+        BEFORE the session host is switched — keeping the potentially slow
+        build off the ``_host_lock`` critical section (#407).
 
         Base resolution plus the commands-path pin plus the credentials
         override are all applied to a local value; the caller publishes
@@ -292,7 +329,9 @@ class ConfigureWizard:
         credentials path (#406) — with a slow runtime-context factory the
         window spanned most of a dashboard page load.
         """
-        paths = get_host_paths(self.session.host, home=self.home)
+        paths = get_host_paths(
+            host if host is not None else self.session.host, home=self.home
+        )
         if self._commands_path_override is not None:
             paths = dataclasses.replace(
                 paths, commands_dir=self._commands_path_override
