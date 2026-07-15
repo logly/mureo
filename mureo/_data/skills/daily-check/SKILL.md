@@ -77,7 +77,12 @@ Run a daily health check on all marketing accounts using the strategy context.
     - `generated_at`: ISO 8601 timestamp of this run
     - `period`: the day reviewed (e.g. `"2026-06-17"`)
     - `kpis`: per-platform and/or totals headline numbers (spend, conversions, cpa, ctr)
-    - `flags`: a list of notable items (e.g. `["cpa_over_target_google_ads"]`)
+    - `flags`: a list of **structured** flags — each a small object `{code, severity, params}` so the dashboard renders a coarse, localizable chip with the numbers on drill-down:
+        - `code`: a canonical vocabulary key — one of `goals_met`, `cpa_over_target`, `cpa_under_target`, `cv_below_target`, `cv_above_target`, `spend_spike`, `cpa_spike`, `invalid_traffic_suspected`, `zero_cv_adspots`, `budget_overspend`, `budget_drift`, `tracking_suspect`, `zero_conversions`, `supply_tools_unconfigured`, `anomaly_baseline_insufficient`, `pending_observations`, `search_console_no_property`, `ga4_not_configured`.
+        - `severity`: one of `action`/`watch`/`info`/`positive` (omit to take the code's default — `info`/`positive` keep informational and good-news flags visually distinct from alarms).
+        - `params`: an object holding the DETAIL (adspot ids, yen, ctr, dates). Keep detail in `params`, **NOT baked into the code** — write `{"code":"invalid_traffic_suspected","params":{"adspot":"4311492","spend":115740,"cv":0,"ctr":0.0466}}`, never a slug like `adspot_4311492_invalid_traffic_spike_115740yen`.
+        - For a finding outside the vocabulary use `{code:"custom", severity, label}` where `label` is a string or a `{"ja":…,"en":…}` map. Unknown non-`custom` codes are rejected. (A legacy bare-string flag still works but renders without the drill-down — prefer the object form.)
+        - Example: `[{"code":"invalid_traffic_suspected","params":{"adspot":"4311492","spend":115740,"cv":0,"ctr":0.0466}}, {"code":"budget_drift","params":{"live":170000,"configured":150000,"unlogged":true}}, {"code":"goals_met"}]`
     - `narrative`: a short text summary (the Healthy / Watch / Action-needed verdict in 1-2 sentences)
 
     **Reflect the FINAL state, and persist this LAST.** Write this summary
@@ -86,7 +91,7 @@ Run a daily health check on all marketing accounts using the strategy context.
     campaign pause, budget edit, etc.). If you changed something, the
     `narrative` + `flags` must describe the POST-change state (e.g.
     "switched to `EFFICIENCY_STABILIZE`", not "recommend switching"; flag
-    `operation_mode_switched`, not a now-resolved recommendation). Stamp
+    `{code:"custom", severity:"info", label:"Switched to EFFICIENCY_STABILIZE"}`, not a now-resolved recommendation). Stamp
     `generated_at` at the moment you write this — so the dashboard's
     "Latest report" is never an older snapshot that contradicts the action
     log or STRATEGY.md. (If you only *recommended* a change and did NOT make
