@@ -22,8 +22,25 @@ def _read(name: str) -> str:
 def test_extensions_js_declares_card_group_allowlist() -> None:
     js = _read("extensions.js")
     # Mirrors BUILTIN_CARD_GROUPS in mureo/web/extensions.py — widening
-    # one side without the other is a bug this assertion surfaces.
-    assert 'const CARD_GROUPS = ["advanced"];' in js
+    # one side without the other is a bug this assertion surfaces (#425
+    # added "reports").
+    assert 'const CARD_GROUPS = ["advanced", "reports"];' in js
+
+
+@pytest.mark.unit
+def test_extensions_js_card_group_allowlist_matches_python() -> None:
+    """The client allowlist must equal ``BUILTIN_CARD_GROUPS`` exactly — a
+    group accepted by the Python constructor but missing here would let a card
+    validate on the server and then silently never render (#425)."""
+    import re
+
+    from mureo.web.extensions import BUILTIN_CARD_GROUPS
+
+    js = _read("extensions.js")
+    match = re.search(r"const CARD_GROUPS = (\[[^\]]*\]);", js)
+    assert match is not None, "CARD_GROUPS declaration not found"
+    js_groups = re.findall(r'"([^"]+)"', match.group(1))
+    assert tuple(js_groups) == BUILTIN_CARD_GROUPS
 
 
 @pytest.mark.unit
