@@ -238,8 +238,19 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Free-form summary object. Convention: generated_at "
                         "(ISO 8601), period, kpis (per-platform / totals "
-                        "headline numbers), flags (list of notable items), "
-                        "narrative (short text)."
+                        "headline numbers), flags, narrative (short text). "
+                        "Each flag is either a legacy snake_case string OR a "
+                        "structured object {code, severity, params}: code is a "
+                        "canonical vocabulary key (e.g. goals_met, "
+                        "invalid_traffic_suspected, budget_drift, "
+                        "zero_cv_adspots, spend_spike, anomaly_baseline_"
+                        "insufficient), severity is action|watch|info|positive "
+                        "(defaulted from code if omitted), and params holds the "
+                        "detail (adspot ids, yen, ctr) — keep detail in params "
+                        "/ narrative, NOT in the code. For a finding outside "
+                        "the vocabulary use {code:'custom', severity, label} "
+                        "where label is a string or {locale: text} map. Unknown "
+                        "non-custom codes are rejected."
                     ),
                 },
                 "path": _PATH_PROPERTY,
