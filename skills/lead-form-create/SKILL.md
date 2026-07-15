@@ -2,7 +2,7 @@
 name: lead-form-create
 description: "Create a Meta Instant Form (Lead Ad form) through a one-question-at-a-time interview. Use when the user asks to create a lead form, Instant Form, CV form, or similar. The agent collects required parameters via a guided dialogue, confirms, then calls meta_ads_lead_forms_create. Also use when the user asks in Japanese (リードフォームを作成 / インスタントフォームを作って / CVフォーム作成)."
 metadata:
-  version: 0.10.25
+  version: 0.10.26
 ---
 
 # Lead Form Create

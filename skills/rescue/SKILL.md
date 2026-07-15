@@ -2,7 +2,7 @@
 name: rescue
 description: "Emergency performance fix when an ad account is in trouble. Use when the user reports a sudden CPA spike, conversion drop, runaway spend, or asks for an urgent performance rescue. Sets Operation Mode to TURNAROUND_RESCUE and applies stabilization actions. Also use when the user asks in Japanese (CPAが急に悪化した / CVが激減した / 広告費が暴走している / 緊急で立て直して)."
 metadata:
-  version: 0.10.25
+  version: 0.10.26
 ---
 
 # Rescue

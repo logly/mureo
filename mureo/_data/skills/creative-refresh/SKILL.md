@@ -2,7 +2,7 @@
 name: creative-refresh
 description: "Refresh ad copy and creative assets based on performance signals and brand voice. Use when the user asks to refresh creative, propose new ad copy, A/B test creatives, update RSA assets, rotate underperformers, or visually evaluate / compare banner (image) creatives. Also use when the user asks in Japanese (クリエイティブを刷新して / 広告文の改善案がほしい / RSAアセットの入れ替え / バナーを比較評価して)."
 metadata:
-  version: 0.10.25
+  version: 0.10.26
 ---
 
 # Creative Refresh

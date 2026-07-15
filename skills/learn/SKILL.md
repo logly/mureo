@@ -2,7 +2,7 @@
 name: learn
 description: "Save a marketing diagnosis insight to the pro-diagnosis knowledge base so it is applied in future operations across all platforms. Use when the user runs /learn, explicitly teaches the agent a marketing insight, corrects the agent's analysis, or asks to remember/record an operational learning for next time. Also use when the user asks in Japanese (この学びを記録して / 次回から反映して / 運用の気づきを覚えておいて)."
 metadata:
-  version: 0.10.25
+  version: 0.10.26
 ---
 
 # Learn

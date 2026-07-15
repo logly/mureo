@@ -2,7 +2,7 @@
 name: competitive-scan
 description: "Scan competitor activity using auction insights and market signals. Use when the user asks about competitors, market dynamics, impression share changes, competitor moves, or competitive positioning. Also use when the user asks in Japanese (競合の動きを調べて / 競合分析 / インプレッションシェアの変化を確認 / 競合にシェアを取られていないか)."
 metadata:
-  version: 0.10.25
+  version: 0.10.26
 ---
 
 # Competitive Scan

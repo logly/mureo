@@ -2,7 +2,7 @@
 name: monthly-report
 description: "Stakeholder / client-facing monthly digest across all configured platforms: the previous full calendar month with month-over-month comparison, per-Goal attainment, an action-log recap grouped by command with outcome verdicts, budget utilization, and next-month recommendations. Use when the user asks for a monthly report, month-end summary, client report, monthly recap / digest, or requests 月次レポート / 月次まとめ / クライアント向けレポート. Written in plain language for a client audience."
 metadata:
-  version: 0.10.25
+  version: 0.10.26
 ---
 
 # Monthly Report
