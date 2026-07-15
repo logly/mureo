@@ -115,7 +115,7 @@ BUILTIN_DASHBOARD_TABS: Final[tuple[str, ...]] = ("setup", "demo", "byod", "dang
 #: group that also appears in ``BUILTIN_DASHBOARD_TABS``, decide what
 #: a card inside a tab hidden via ``hidden_builtin_tabs`` should do —
 #: today the two sets are disjoint so a card can never be hidden.
-BUILTIN_CARD_GROUPS: Final[tuple[str, ...]] = ("advanced",)
+BUILTIN_CARD_GROUPS: Final[tuple[str, ...]] = ("advanced", "reports")
 
 #: Inline-executable patterns banned in ``html_fragment``. The
 #: configure-UI CSP forbids ``unsafe-inline`` so these would not
@@ -253,13 +253,15 @@ class ViewContribution:
 @dataclass(frozen=True)
 class DashboardCard:
     """One extension-supplied card rendered INSIDE a built-in dashboard
-    group (``group`` must be one of :data:`BUILTIN_CARD_GROUPS`,
-    currently only ``"advanced"``).
+    group (``group`` must be one of :data:`BUILTIN_CARD_GROUPS`:
+    ``"advanced"`` or ``"reports"``).
 
-    For small, operator-wide companion settings that belong next to an
-    existing built-in card — e.g. a plugin that pairs a write-side
-    setting with the built-in "External advisor MCP" (read-side) card —
-    where a whole extension tab would be disproportionate.
+    For a small companion that belongs next to an existing built-in card,
+    where a whole extension tab would be disproportionate — e.g. a plugin
+    that pairs a write-side setting with the built-in "External advisor
+    MCP" (read-side) card under ``"advanced"``, or an operator reporting
+    action (refresh every client's numbers now) beside the report cards
+    under ``"reports"`` (#425).
 
     Same safety contract as :class:`ViewContribution`: the fragment may
     not contain inline-executable content; behaviour ships as
@@ -357,9 +359,9 @@ class WebExtension(Protocol):
       (later claims are downgraded with a warning). Added in #189.
     * ``dashboard_cards() -> tuple[DashboardCard, ...]`` — cards the
       renderer injects into built-in dashboard groups (each card's
-      ``group`` must be in :data:`BUILTIN_CARD_GROUPS`; currently only
-      ``"advanced"``). Use for small operator-wide settings that pair
-      with a built-in card and do not warrant a whole extension tab;
+      ``group`` must be in :data:`BUILTIN_CARD_GROUPS`: ``"advanced"``
+      or ``"reports"``). Use for a small companion that pairs with a
+      built-in card and does not warrant a whole extension tab;
       an extension may ship cards with or without a ``view()``. Called
       exactly once during discovery, like ``view()``. A non-callable
       attribute, a non-tuple return, or a non-``DashboardCard``

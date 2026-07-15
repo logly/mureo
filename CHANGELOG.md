@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Extensions can contribute a `DashboardCard` to the Reports tab (#425).**
+  `BUILTIN_CARD_GROUPS` previously allowed only `"advanced"`, where operator
+  *settings* live; `"reports"` is now a second accepted group so an extension
+  can place an operator reporting action (e.g. "refresh every client's numbers
+  now") beside the built-in report cards rather than under Advanced or in a
+  whole separate tab. Purely additive — extensions using only `"advanced"` are
+  unaffected; a `DashboardCard(group="reports")` raises `ValueError` on an older
+  mureo, so a downstream extension version-gates on this release. Same safety
+  contract as before (no inline-executable HTML; behaviour ships as
+  `StaticAsset` scripts/styles).
+
 ### Fixed
 
 - **The configure dashboard now detects the basic-setup components instead of

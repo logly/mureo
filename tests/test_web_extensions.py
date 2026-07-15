@@ -949,6 +949,29 @@ def test_dashboard_card_rejects_unknown_group() -> None:
 
 
 @pytest.mark.unit
+def test_reports_is_an_allowed_card_group() -> None:
+    """#425: an extension can contribute a card to the Reports tab, not only
+    Advanced — an operator reporting action (e.g. refresh every client now)
+    belongs beside the report cards, not under operator settings."""
+    from mureo.web.extensions import BUILTIN_CARD_GROUPS, DashboardCard
+
+    assert "reports" in BUILTIN_CARD_GROUPS
+    card = DashboardCard(group="reports", html_fragment="<p>hi</p>")
+    assert card.group == "reports"
+
+
+@pytest.mark.unit
+def test_advanced_is_still_an_allowed_card_group() -> None:
+    """The addition is purely additive — the existing group keeps working."""
+    from mureo.web.extensions import BUILTIN_CARD_GROUPS, DashboardCard
+
+    assert "advanced" in BUILTIN_CARD_GROUPS
+    assert (
+        DashboardCard(group="advanced", html_fragment="<p>hi</p>").group == "advanced"
+    )
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "html",
     [

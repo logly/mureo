@@ -15,8 +15,8 @@
 // ``/static/ext/<name>/<filename>`` (same origin) so the loads pass.
 //
 // Extensions may additionally ship ``dashboard_cards`` — fragments
-// injected into BUILT-IN dashboard groups (allowlisted; currently the
-// "advanced" group only). Cards render eagerly at discovery time (the
+// injected into BUILT-IN dashboard groups (allowlisted: the "advanced"
+// and "reports" groups). Cards render eagerly at discovery time (the
 // built-in tab's click path belongs to dashboard.js, so there is no
 // lazy hook), and card assets load through the same
 // ``/static/ext/<name>/…`` URLs.
@@ -35,7 +35,7 @@
   // Mirrors BUILTIN_CARD_GROUPS in ``mureo/web/extensions.py`` — the
   // server already validates, but a client-side allowlist keeps a
   // malformed payload from writing into an arbitrary group node.
-  const CARD_GROUPS = ["advanced"];
+  const CARD_GROUPS = ["advanced", "reports"];
 
   const _populated = new Set();
   // Every discovered extension (including headless / route-only ones —

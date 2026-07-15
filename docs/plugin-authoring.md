@@ -1900,11 +1900,15 @@ class MyExtension:
 
 Contract:
 
-- `group` must be one of `BUILTIN_CARD_GROUPS` (currently only
-  `"advanced"`) — a fixed allowlist, mirroring the
-  `hidden_builtin_tabs` discipline, so plugins never couple to
-  arbitrary internals of the app layout. An unknown group raises at
-  `DashboardCard` construction and skips the extension.
+- `group` must be one of `BUILTIN_CARD_GROUPS` (`"advanced"` for an
+  operator setting beside a built-in settings card, or `"reports"` for a
+  reporting action beside the built-in report cards) — a fixed allowlist,
+  mirroring the `hidden_builtin_tabs` discipline, so plugins never couple
+  to arbitrary internals of the app layout. An unknown group raises at
+  `DashboardCard` construction and skips the extension. A card in a group
+  a given mureo does not yet accept (e.g. `"reports"` before this release)
+  raises `ValueError`, so version-gate a new-group card on the mureo
+  release that added it.
 - The fragment obeys the same sanitisation as `view()` — no inline
   `<script>` / `<style>` / `on*=` / `javascript:`; ship behaviour and
   styling as `StaticAsset` `scripts` / `styles`, served from
