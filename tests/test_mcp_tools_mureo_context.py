@@ -175,7 +175,7 @@ async def test_strategy_set_backs_up_before_overwrite(cwd_to_tmp) -> None:
 async def test_strategy_set_preserves_unknown_heading(cwd_to_tmp) -> None:
     """An unrecognized heading round-trips and is reported, not dropped."""
     mod = _import_tools()
-    md = "# Strategy\n\n" "## Persona\n30s\n\n" "## Quarterly Notes\nlaunch in Q3\n"
+    md = "# Strategy\n\n## Persona\n30s\n\n## Quarterly Notes\nlaunch in Q3\n"
     result = await mod.handle_tool("mureo_strategy_set", {"markdown": md})
     payload = json.loads(result[0].text)
 
@@ -477,6 +477,66 @@ def test_report_set_schema_enum_constrains_report() -> None:
     assert props["report"]["enum"] == ["daily", "weekly", "goal"]
     assert props["summary"]["type"] == "object"
     assert set(tool.inputSchema["required"]) == {"report", "summary"}
+
+
+async def test_report_set_normalizes_structured_flags(cwd_to_tmp) -> None:
+    """A structured object flag with a known code but no explicit severity is
+    persisted with the vocabulary's default severity filled in."""
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
+    mod = _import_tools()
+    summary = {
+        "narrative": "One adspot spiking.",
+        "flags": [
+            {
+                "code": "invalid_traffic_suspected",
+                "params": {"adspot": "4311492", "spend": 115740, "ctr": 0.0466},
+            }
+        ],
+    }
+    result = await mod.handle_tool(
+        "mureo_state_report_set", {"report": "daily", "summary": summary}
+    )
+    payload = json.loads(result[0].text)
+    flag = payload["reports"]["daily"]["flags"][0]
+    assert flag["code"] == "invalid_traffic_suspected"
+    assert flag["severity"] == "action"
+    assert flag["params"]["adspot"] == "4311492"
+
+
+async def test_report_set_rejects_unknown_flag_code(cwd_to_tmp) -> None:
+    """A non-``custom`` object flag whose code is outside the vocabulary is
+    refused BEFORE it reaches STATE.json — validation is fail-closed, so a
+    rejected write leaves the document byte-for-byte untouched (no partial
+    write). Pinning the on-disk bytes guards the validate-before-write ordering
+    against a future refactor."""
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    state_path = cwd_to_tmp / "STATE.json"
+    state_path.write_text(json.dumps(initial), encoding="utf-8")
+    before = state_path.read_text(encoding="utf-8")
+    mod = _import_tools()
+    with pytest.raises(ValueError):
+        await mod.handle_tool(
+            "mureo_state_report_set",
+            {
+                "report": "daily",
+                "summary": {"flags": [{"code": "totally_made_up"}]},
+            },
+        )
+    assert state_path.read_text(encoding="utf-8") == before
+
+
+async def test_report_set_preserves_legacy_string_flags(cwd_to_tmp) -> None:
+    """Legacy bare-string flags round-trip unchanged (no normalization)."""
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_report_set",
+        {"report": "daily", "summary": {"flags": ["cpa_over_target"]}},
+    )
+    payload = json.loads(result[0].text)
+    assert payload["reports"]["daily"]["flags"] == ["cpa_over_target"]
 
 
 # ---------------------------------------------------------------------------

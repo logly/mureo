@@ -30,6 +30,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mureo.analysis.report_flags import normalize_flags
 from mureo.context.errors import ContextFileError
 from mureo.context.models import ActionLogEntry, CampaignSnapshot, StateDocument
 from mureo.context.state import (
@@ -240,6 +241,11 @@ async def handle_state_report_set(
     # (string / list / number) before it reaches the file.
     if not isinstance(summary, dict):
         raise ValueError("summary must be an object")
+    # Validate + normalize the structured flags (fills default severities,
+    # rejects unknown codes) before they reach STATE.json. Bare-string flags
+    # pass through untouched; a ``summary`` without ``flags`` is left as-is.
+    if "flags" in summary:
+        summary = {**summary, "flags": normalize_flags(summary.get("flags"))}
     path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
     doc = set_report(path, report, summary)
     return _json_result(_state_to_dict(doc))
