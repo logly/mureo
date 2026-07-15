@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.27] - 2026-07-16
+
+### Added
+
+- **Structured, localizable report-flag chips on the Reports dashboard (#428,
+  #429, #430, #431).** Report flags persisted via `mureo_state_report_set` can
+  now be structured objects `{code, severity, params}` drawn from a canonical
+  18-code vocabulary, instead of free-form snake_case strings with the detail
+  baked into the slug. The configure dashboard renders each as a coarse,
+  **localized** chip (en / ja) coloured by one of four severities (action /
+  watch / info / positive — so a positive or informational flag is no longer
+  styled like an alarm), with the per-flag detail (adspot ids, spend, CTR, …)
+  moved off the chip face into a click-to-expand drill-down. A `custom` code
+  carries an author-supplied label for findings outside the vocabulary. The
+  `daily-check`, `weekly-report` and `goal-review` skills now author flags in
+  this shape; legacy bare-string flags still render (humanized) for backward
+  compatibility.
+
+### Changed
+
+- **`mureo_state_report_set` now validates report flags (#428).** Structured
+  flags are checked against the vocabulary before they reach STATE.json —
+  unknown non-`custom` codes are rejected and a severity is defaulted from the
+  code when omitted — while legacy bare-string flags pass through unchanged.
+
 ## [0.10.26] - 2026-07-15
 
 ### Added
