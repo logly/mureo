@@ -67,7 +67,12 @@ Review progress toward all marketing goals across all platforms.
    - `generated_at`: ISO 8601 timestamp of this run
    - `period`: the assessment window or "as of" date
    - `kpis`: per-Goal headline numbers (target, current, % of target achieved)
-   - `flags`: a list of notable items (e.g. `["goal_cpa_off_track"]`)
+   - `flags`: a list of **structured** flags — each a small object `{code, severity, params}` so the dashboard renders a coarse, localizable chip with the numbers on drill-down:
+       - `code`: a canonical vocabulary key — one of `goals_met`, `cpa_over_target`, `cpa_under_target`, `cv_below_target`, `cv_above_target`, `spend_spike`, `cpa_spike`, `invalid_traffic_suspected`, `zero_cv_adspots`, `budget_overspend`, `budget_drift`, `tracking_suspect`, `zero_conversions`, `supply_tools_unconfigured`, `anomaly_baseline_insufficient`, `pending_observations`, `search_console_no_property`, `ga4_not_configured`.
+       - `severity`: one of `action`/`watch`/`info`/`positive` (omit to take the code's default — `info`/`positive` keep informational and good-news flags visually distinct from alarms).
+       - `params`: an object holding the DETAIL (target, current, % of target). Keep detail in `params`, **NOT baked into the code** — write `{"code":"cpa_over_target","params":{"cpa":15200}}`, never a slug like `goal_cpa_off_track`.
+       - For a finding outside the vocabulary use `{code:"custom", severity, label}` where `label` is a string or a `{"ja":…,"en":…}` map. Unknown non-`custom` codes are rejected. (A legacy bare-string flag still works but renders without the drill-down — prefer the object form.)
+       - Example: `[{"code":"cpa_over_target","params":{"cpa":15200}}, {"code":"cv_below_target","params":{"cv":18}}]`
    - `narrative`: a short text summary of overall Goal health (on-track / at-risk / off-track)
 
    This is best-effort: if `mureo_state_report_set` is unavailable (e.g. a pure file-mode host without the context MCP), skip it silently — the rest of this skill still works.
