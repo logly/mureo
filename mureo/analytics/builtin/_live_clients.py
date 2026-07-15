@@ -104,11 +104,12 @@ def _aggregate_google_metrics(
 def _open_google_ads_client(account_id: str) -> object:
     """Resolve credentials + open a Google Ads client (live or BYOD).
 
-    WARNING (#411/#413): this helper does NOT enforce the workspace
-    account allow-list — ``account_id`` is used verbatim. Every wired MCP
-    tool today derives the id from workspace state, never from a caller
-    argument. If a future tool passes a caller-supplied id into the
-    AnalyticsModule Protocol, route it through the #411 resolvers first.
+    Workspace scoping (#411/#413): ``account_id`` is bound to the active
+    client's allow-list via ``_resolve_customer_id`` before use — a
+    non-tenant-scoped run passes it through unchanged, a tenant-scoped run
+    refuses an out-of-allow-list id (fail-closed). Enforcing here means a
+    future tool that wires a caller-supplied id into the AnalyticsModule
+    Protocol cannot silently bypass #411 scoping.
 
     Raises :class:`NoCredentialsError` in live mode when credentials
     are missing. BYOD mode is detected by the client factory itself
@@ -124,6 +125,11 @@ def _open_google_ads_client(account_id: str) -> object:
     from mureo.auth import load_google_ads_credentials
     from mureo.byod.runtime import byod_has
     from mureo.mcp._client_factory import get_google_ads_client
+    from mureo.mcp._handlers_google_ads import _resolve_customer_id
+
+    # Bind the account to the workspace allow-list (#411/#413) before it
+    # reaches the client factory — see the workspace-scoping note above.
+    account_id = _resolve_customer_id(account_id, None)
 
     if byod_has("google_ads"):
         return get_google_ads_client(creds=None, customer_id=account_id)
@@ -447,15 +453,21 @@ def _aggregate_meta_metrics(
 def _open_meta_ads_client(account_id: str) -> object:
     """Parallel to :func:`_open_google_ads_client` for Meta Ads.
 
-    WARNING (#411/#413): this helper does NOT enforce the workspace
-    account allow-list — ``account_id`` is used verbatim. Every wired MCP
-    tool today derives the id from workspace state, never from a caller
-    argument. If a future tool passes a caller-supplied id into the
-    AnalyticsModule Protocol, route it through the #411 resolvers first.
+    Workspace scoping (#411/#413): ``account_id`` is bound to the active
+    client's allow-list via ``_resolve_account_id`` before use — a
+    non-tenant-scoped run passes it through unchanged, a tenant-scoped run
+    refuses an out-of-allow-list id (fail-closed). Enforcing here means a
+    future tool that wires a caller-supplied id into the AnalyticsModule
+    Protocol cannot silently bypass #411 scoping.
     """
     from mureo.auth import load_meta_ads_credentials
     from mureo.byod.runtime import byod_has
     from mureo.mcp._client_factory import get_meta_ads_client
+    from mureo.mcp._handlers_meta_ads import _resolve_account_id
+
+    # Bind the account to the workspace allow-list (#411/#413) before it
+    # reaches the client factory — see the workspace-scoping note above.
+    account_id = _resolve_account_id(account_id, None)
 
     if byod_has("meta_ads"):
         return get_meta_ads_client(creds=None, account_id=account_id)
