@@ -1771,6 +1771,52 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   color: var(--danger);
 }
 
+/* Info: an intentional neutral bucket (baseline not yet established, pending
+   observations) — distinct from the coloured alarm/positive chips. */
+.report-chip.is-info {
+  background: var(--surface-2);
+  border-color: var(--hairline);
+  color: var(--ink-soft);
+}
+
+/* An interactive chip toggles its drill-down detail. Reset the <button> so it
+   reads as a chip, with a caret affordance that flips when expanded. */
+.report-chip.is-interactive {
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 550;
+  /* `font: inherit` resets line-height; restore it so the <button> chip
+     matches the plain <span> chips' height in the same row. */
+  line-height: 1;
+}
+
+.report-chip.is-interactive::after {
+  content: "›";
+  margin-left: 5px;
+  opacity: 0.6;
+}
+
+.report-chip.is-interactive[aria-expanded="true"]::after {
+  content: "⌄";
+}
+
+/* Chip + its drill-down detail, stacked so the detail appears under the chip
+   without disturbing the sibling chips' baseline. */
+.report-chip-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-self: flex-start;
+  gap: 4px;
+}
+
+.report-flag-detail {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  padding: 2px 2px 0;
+}
+
 /* Recent-actions list — one quiet row per logged autonomous action. */
 .dashboard-reports-actions-list {
   list-style: none;

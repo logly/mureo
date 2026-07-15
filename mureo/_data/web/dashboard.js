@@ -1781,6 +1781,18 @@
     ["budget_overspend", "dashboard.reports_flag_budget_overspend", "is-danger"],
     ["spend_spike", "dashboard.reports_flag_spend_spike", "is-warn"],
     ["search_console_no", "dashboard.reports_flag_sc_no_property", "is-warn"],
+    // Canonical vocabulary (PR-A) — a bare-string flag emitted as one of these
+    // codes maps to the same localized label + severity as its object form.
+    ["invalid_traffic_suspected", "dashboard.reports_flag_invalid_traffic_suspected", "is-danger"],
+    ["cpa_spike", "dashboard.reports_flag_cpa_spike", "is-warn"],
+    ["zero_cv_adspots", "dashboard.reports_flag_zero_cv_adspots", "is-warn"],
+    ["budget_drift", "dashboard.reports_flag_budget_drift", "is-warn"],
+    ["goals_met", "dashboard.reports_flag_goals_met", "is-success"],
+    ["supply_tools_unconfigured", "dashboard.reports_flag_supply_tools_unconfigured", "is-info"],
+    ["anomaly_baseline_insufficient", "dashboard.reports_flag_anomaly_baseline_insufficient", "is-info"],
+    ["pending_observations", "dashboard.reports_flag_pending_observations", "is-info"],
+    ["search_console_no_property", "dashboard.reports_flag_search_console_no_property", "is-info"],
+    ["ga4_not_configured", "dashboard.reports_flag_ga4_not_configured", "is-info"],
   ];
 
   // snake_case tokens that read better upper-cased (metric acronyms).
@@ -1827,21 +1839,159 @@
   }
 
   function humanizeReportFlag(flag) {
+    // Structured object flag: localize by its canonical code, or use the
+    // author-written label for a `custom` flag. Detail never appears here —
+    // it lives in `params` (rendered on drill-down) and the narrative.
+    if (flag && typeof flag === "object") {
+      if (flag.code === "custom") return pickLocalizedLabel(flag.label);
+      if (typeof flag.code === "string" && flag.code) {
+        const key = "dashboard.reports_flag_" + flag.code;
+        const label = MUREO.t(key);
+        return label !== key ? label : humanizeFlagWords(flag.code);
+      }
+      // Legacy object without a code: fall back to any author text it carries
+      // (label / message / level / kind), matching the pre-vocabulary render.
+      return String(flag.label || flag.message || flag.level || flag.kind || "");
+    }
     const raw = String(flag == null ? "" : flag);
     const best = matchReportFlagBase(raw);
     // A matched base shows only its localized label (no trailing context).
     return best ? MUREO.t(best[1]) : humanizeFlagWords(raw);
   }
 
-  // Severity class for a flag's coloured chip. Object flags carry an explicit
-  // level; a bare string uses its base entry's curated severity, falling back
-  // to keyword inference (flagChipKind) for unmapped flags.
+  // A `custom` flag's label is either a plain string or a {locale: text} map.
+  // Pick the active configure-UI locale (mirrored onto <html lang>), falling
+  // back to English, then to any provided string.
+  function pickLocalizedLabel(label) {
+    if (typeof label === "string") return label;
+    if (label && typeof label === "object") {
+      const loc = document.documentElement.lang || "en";
+      if (typeof label[loc] === "string") return label[loc];
+      if (typeof label.en === "string") return label.en;
+      const first = Object.keys(label)
+        .map(function (k) {
+          return label[k];
+        })
+        .filter(function (v) {
+          return typeof v === "string" && v;
+        })[0];
+      return first || "";
+    }
+    return "";
+  }
+
+  // Canonical severity (action/watch/info/positive) → chip CSS class. Kept
+  // separate from the legacy keyword inference in flagChipKind so a positive
+  // ("goals met") or informational ("baseline not yet established") flag is
+  // never coloured like an alarm.
+  const SEVERITY_CHIP = {
+    action: "is-danger",
+    watch: "is-warn",
+    info: "is-info",
+    positive: "is-success",
+  };
+
+  // Severity class for a flag's coloured chip. An object flag carries an
+  // explicit canonical severity; a bare string uses its base entry's curated
+  // severity, falling back to keyword inference (flagChipKind) for unmapped
+  // flags.
   function reportFlagKind(flag) {
     if (flag && typeof flag === "object") {
-      return flagChipKind(flag.level || flag.kind);
+      const sev = flag.severity || flag.level || flag.kind;
+      return SEVERITY_CHIP[sev] || flagChipKind(sev);
     }
     const best = matchReportFlagBase(String(flag == null ? "" : flag));
     return (best && best[2]) || flagChipKind(flag);
+  }
+
+  // Build the drill-down detail string for a structured flag from its
+  // `params` (adspot ids, yen, ctr, …). Returns "" when there is nothing to
+  // show — the chip then renders as a plain, non-interactive tag.
+  function buildFlagDetail(flag) {
+    if (!flag || typeof flag !== "object") return "";
+    const params = flag.params;
+    if (!params || typeof params !== "object") return "";
+    const parts = [];
+    Object.keys(params).forEach(function (key) {
+      const value = formatFlagParam(key, params[key]);
+      if (value === "") return;
+      parts.push(flagParamLabel(key) + ": " + value);
+    });
+    return parts.join(" · ");
+  }
+
+  // Localized label for a param key (dashboard.reports_param_<key>), humanized
+  // as a fallback so an unlocalized key never shows a raw i18n token.
+  function flagParamLabel(key) {
+    const k = "dashboard.reports_param_" + key;
+    const label = MUREO.t(k);
+    return label !== k ? label : humanizeFlagWords(key);
+  }
+
+  // Format a single param value: arrays join with commas, ctr renders as a
+  // percentage, other numbers get thousands separators (no currency symbol —
+  // the value may be any platform's spend), everything else is stringified.
+  function formatFlagParam(key, value) {
+    if (Array.isArray(value)) {
+      return value
+        .map(function (v) {
+          return formatFlagParam(key, v);
+        })
+        .filter(Boolean)
+        .join(", ");
+    }
+    if (typeof value === "boolean") {
+      return MUREO.t(
+        value ? "dashboard.reports_param_yes" : "dashboard.reports_param_no"
+      );
+    }
+    if (key === "ctr" && typeof value === "number" && Number.isFinite(value)) {
+      return formatKpi("ctr", value);
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return formatNumber(value);
+    }
+    return value == null ? "" : String(value);
+  }
+
+  // Build one flag chip element. A flag with drill-down detail becomes an
+  // interactive <button> that toggles a detail line (an ARIA disclosure);
+  // a flag without detail is a plain, non-interactive <span> tag.
+  let reportFlagDetailSeq = 0;
+  function buildFlagChipElement(flag) {
+    const label = String(humanizeReportFlag(flag));
+    const kind = reportFlagKind(flag);
+    const detail = buildFlagDetail(flag);
+    if (!detail) {
+      const chip = document.createElement("span");
+      chip.className = "report-chip " + kind;
+      chip.textContent = label;
+      return chip;
+    }
+    // Detail present → the chip stays coarse and the adspot / yen / ctr detail
+    // is one click away (and also visible in the narrative below).
+    const wrap = document.createElement("span");
+    wrap.className = "report-chip-wrap";
+    const detailId = "report-flag-detail-" + ++reportFlagDetailSeq;
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "report-chip is-interactive " + kind;
+    chip.textContent = label;
+    chip.setAttribute("aria-expanded", "false");
+    chip.setAttribute("aria-controls", detailId);
+    const det = document.createElement("span");
+    det.className = "report-flag-detail";
+    det.id = detailId;
+    det.hidden = true;
+    det.textContent = detail;
+    chip.addEventListener("click", function () {
+      const show = det.hidden;
+      det.hidden = !show;
+      chip.setAttribute("aria-expanded", show ? "true" : "false");
+    });
+    wrap.appendChild(chip);
+    wrap.appendChild(det);
+    return wrap;
   }
 
   // The selected window. Default = YESTERDAY (daily-check runs every day, so
@@ -2032,16 +2182,7 @@
       const chips = document.createElement("div");
       chips.className = "report-flags";
       flags.forEach(function (flag) {
-        const isObj = flag && typeof flag === "object";
-        // Object flags carry their own author-written label; a bare string is
-        // a free-form snake_case code we humanize into a friendly label.
-        const label = isObj
-          ? flag.label || flag.message || flag.level || ""
-          : humanizeReportFlag(flag);
-        const chip = document.createElement("span");
-        chip.className = "report-chip " + reportFlagKind(flag);
-        chip.textContent = String(label);
-        chips.appendChild(chip);
+        chips.appendChild(buildFlagChipElement(flag));
       });
       body.appendChild(chips);
     }
@@ -2169,8 +2310,8 @@
     return r && Array.isArray(r.flags) ? r.flags : [];
   }
 
-  // Sort flags danger → warn → success → neutral (most urgent first).
-  const REPORTS_FLAG_SEVERITY_ORDER = ["is-danger", "is-warn", "is-success", ""];
+  // Sort flags danger → warn → success → info → neutral (most urgent first).
+  const REPORTS_FLAG_SEVERITY_ORDER = ["is-danger", "is-warn", "is-success", "is-info", ""];
   function flagSeverityRank(flag) {
     const idx = REPORTS_FLAG_SEVERITY_ORDER.indexOf(reportFlagKind(flag));
     return idx === -1 ? REPORTS_FLAG_SEVERITY_ORDER.length : idx;
