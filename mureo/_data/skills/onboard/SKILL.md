@@ -101,13 +101,24 @@ Guide me through setting up mureo for a new marketing account.
    - For goals involving organic search, note Search Console as the data source
    - Create `## Goal: <title>` sections in STRATEGY.md with Target, Deadline, Current (TBD), Platform, and Priority fields
 
-7. **Initial diagnosis**: Run health checks on each configured ad platform:
+7. **Offer budget guardrails** (optional but recommended): mureo can enforce **hard** budget limits deterministically — the built-in `StrategyPolicyGate` refuses any native `google_ads_*` / `meta_ads_*` budget mutation that violates a `## Guardrails` section in STRATEGY.md, *before* dispatch, regardless of what the AI decides. Without the section the gate is fail-open (no enforcement), so most operators never get guardrails unless they know to ask — offer them here.
+   - Explain in one line: "hard limits mureo enforces before any budget change, regardless of the AI."
+   - Offer to set the machine-readable keys, seeding defaults from what you already discovered (the Target Audience **Budget Range**, and the current per-campaign budgets from step 5) — but **let me confirm every number**, never auto-decide:
+     - `max_daily_budget_per_campaign` — suggest from the current max campaign daily budget (e.g. current max × 1.5) or the Budget Range.
+     - `max_daily_budget_increase_pct` — suggest a conservative default (e.g. 20).
+     - `max_total_daily_budget` — suggest from the Budget Range upper bound.
+     - `blocked_operations` — offer common destructive ops opt-in (e.g. `google_ads_campaigns_remove`, `meta_ads_campaigns_delete`).
+   - On confirmation, write the `## Guardrails` section to STRATEGY.md (`Write` on Code / `mureo_strategy_set` on Desktop / Cowork) using the exact format in `../_mureo-strategy/SKILL.md` → *Guardrails (machine-enforced hard rules)*.
+   - **Skippable**: if I say "no guardrails for now", leave the section absent (fail-open, unchanged behaviour) and note I can add them later just by asking.
+   - **Honest scope**: hard enforcement only covers mureo-dispatched native `google_ads` / `meta_ads`. Hosted / official MCPs (TikTok `tt-ads-*`, `google-ads-official`, `meta-ads-official`) go client→platform and bypass the gate, so for those guardrails stay best-effort until the MCP gateway (#359) lands — say so.
+
+8. **Initial diagnosis**: Run health checks on each configured ad platform:
    - **Google Ads**: prefer mureo native — `google_ads_performance_report` (LAST_30_DAYS), `google_ads_campaigns_list`, `google_ads_health_check_all`. Iterate the campaigns and call `google_ads_monitoring_zero_conversions` per campaign_id for any with conv = 0. If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's equivalent campaign-list and performance-report tools, then **skip the mureo-only anomaly-detection tools** (`google_ads_health_check_all`, `google_ads_monitoring_zero_conversions`) and identify zero-conversion campaigns manually from the raw conv numbers; note: "anomaly detection requires mureo's native MCP — install or re-enable via `mureo setup claude-code` for full onboarding coverage."
    - **Meta Ads**: prefer mureo native — `meta_ads_insights_report` (LAST_30_DAYS) — surface `result_indicator` per campaign so the operator sees up front whether any campaigns are optimizing for `link_click` instead of true leads. If mureo's Meta Ads tools are unavailable, fall back to the official `meta-ads-official` hosted MCP for raw insights; note that the `result_indicator` field is mureo-specific — inspect each campaign's optimization goal / actions list yourself and warn the operator about any `link_click`-optimized campaigns where the user expects real leads.
    - **TikTok Ads (hosted connector, `tiktok_ads`)**: call the connector's own reporting tools (e.g. `tt-ads-*`) for LAST_30_DAYS and record baseline per-campaign spend/conversions. mureo-only anomaly detection / RSA audit do not apply — report `analytics_not_available_for_tiktok_ads` and keep the diagnosis to the raw numbers. See `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
    - mureo BYOD data is centralized in the workspace `byod/` directory (or `~/.mureo/byod/` for legacy CLI users) and is only accessible through mureo MCP tools — do **not** look for raw CSVs in the project directory.
    - If Search Console is available, run a top-queries check to establish an organic baseline. If GA4 is available, check overall site conversion metrics.
 
-8. **Summary**: Show what was set up — platforms discovered, data sources available, goals defined — and recommend next steps.
+9. **Summary**: Show what was set up — platforms discovered, data sources available, goals defined, guardrails offered — and recommend next steps.
 
 IMPORTANT: Ask me questions interactively — don't assume answers. Each STRATEGY.md section should reflect MY actual business, not generic examples.
