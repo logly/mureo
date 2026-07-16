@@ -477,8 +477,8 @@ def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     """Parallel to :func:`_open_google_ads_client` for Meta Ads.
 
     Returns ``(client, resolved_account_id)`` — the resolved id is
-    canonicalized to the ``act_`` form when tenant-scoped, so callers use the
-    same value the client was opened with (#435). A workspace-scope refusal
+    canonicalized to the ``act_`` form (tenant-scoped or not), so callers use
+    the same value the client was opened with (#435). A workspace-scope refusal
     raises :class:`AccountNotAvailableError`.
 
     Workspace scoping (#411/#413): ``account_id`` is bound to the active
@@ -491,7 +491,10 @@ def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     from mureo.auth import load_meta_ads_credentials
     from mureo.byod.runtime import byod_has
     from mureo.mcp._client_factory import get_meta_ads_client
-    from mureo.mcp._handlers_meta_ads import _resolve_account_id
+    from mureo.mcp._handlers_meta_ads import (
+        _canonical_meta_account_id,
+        _resolve_account_id,
+    )
 
     # Bind the account to the workspace allow-list (#411/#413) before it
     # reaches the client factory; a refusal degrades gracefully (#435).
@@ -499,6 +502,12 @@ def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
         account_id = _resolve_account_id(account_id, None)
     except ValueError as exc:
         raise AccountNotAvailableError(str(exc)) from exc
+
+    # Canonicalize to the ``act_`` form the Meta client requires. The
+    # tenant-scoped resolver already does this, but the non-scoped path returns
+    # the id verbatim — a bare id would otherwise raise a raw ValueError from
+    # the client factory, escaping the adapters' graceful handler (#435).
+    account_id = _canonical_meta_account_id(account_id)
 
     if byod_has("meta_ads"):
         return get_meta_ads_client(creds=None, account_id=account_id), account_id
