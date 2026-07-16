@@ -47,7 +47,22 @@ class NoCredentialsError(RuntimeError):
 
     Distinct subclass so the adapter can catch this case and return an
     honest empty result rather than surfacing a noisy error to the
-    workflow.
+    workflow. Subclasses signal other "cannot fetch this account, degrade
+    gracefully" conditions (see :class:`AccountNotAvailableError`) and are
+    caught by the same ``except NoCredentialsError`` in every adapter method.
+    """
+
+
+class AccountNotAvailableError(NoCredentialsError):
+    """The account cannot be fetched in the active workspace scope (#413/#435).
+
+    Raised when the #411 allow-list refuses the ``account_id`` (out-of-set,
+    empty allow-list, or an ambiguous multi-account default). A subclass of
+    :class:`NoCredentialsError` so every adapter's existing
+    ``except NoCredentialsError`` renders the same graceful "not available"
+    sentinel — a workspace-scope violation degrades like missing credentials
+    rather than propagating a raw ``ValueError`` out of the AnalyticsModule
+    Protocol method.
     """
 
 
@@ -101,8 +116,13 @@ def _aggregate_google_metrics(
     )
 
 
-def _open_google_ads_client(account_id: str) -> object:
+def _open_google_ads_client(account_id: str) -> tuple[object, str]:
     """Resolve credentials + open a Google Ads client (live or BYOD).
+
+    Returns ``(client, resolved_account_id)`` — the resolved id (possibly
+    canonicalized) so callers label / look up conversions with the same value
+    the client was opened with (#435). A workspace-scope refusal raises
+    :class:`AccountNotAvailableError`.
 
     Workspace scoping (#411/#413): ``account_id`` is bound to the active
     client's allow-list via ``_resolve_customer_id`` before use — a
@@ -128,16 +148,19 @@ def _open_google_ads_client(account_id: str) -> object:
     from mureo.mcp._handlers_google_ads import _resolve_customer_id
 
     # Bind the account to the workspace allow-list (#411/#413) before it
-    # reaches the client factory — see the workspace-scoping note above.
-    account_id = _resolve_customer_id(account_id, None)
+    # reaches the client factory; a refusal degrades gracefully (#435).
+    try:
+        account_id = _resolve_customer_id(account_id, None)
+    except ValueError as exc:
+        raise AccountNotAvailableError(str(exc)) from exc
 
     if byod_has("google_ads"):
-        return get_google_ads_client(creds=None, customer_id=account_id)
+        return get_google_ads_client(creds=None, customer_id=account_id), account_id
 
     creds = load_google_ads_credentials()
     if creds is None:
         raise NoCredentialsError("google_ads credentials not configured")
-    return get_google_ads_client(creds, account_id)
+    return get_google_ads_client(creds, account_id), account_id
 
 
 async def fetch_google_ads_metrics(
@@ -157,7 +180,7 @@ async def fetch_google_ads_metrics(
     fan-out is a follow-up; the trade-off is documented and tested
     in ``test_live_clients.py``.
     """
-    client = _open_google_ads_client(account_id)
+    client, account_id = _open_google_ads_client(account_id)
 
     # Local import defers the google_ads analysis module until first use (the
     # registry import must stay cheap; see the module docstring).
@@ -196,7 +219,7 @@ async def fetch_google_ads_performance_rows(
     :func:`fetch_google_ads_metrics` so the adapter renders a single
     sentinel headline rather than diverging on the same condition.
     """
-    client = _open_google_ads_client(account_id)
+    client, account_id = _open_google_ads_client(account_id)
     return await client.get_performance_report(period=period)  # type: ignore[attr-defined,no-any-return]
 
 
@@ -291,7 +314,7 @@ async def fetch_google_ads_per_campaign_metrics(
     Raises :class:`NoCredentialsError` uniformly with
     :func:`fetch_google_ads_metrics`.
     """
-    client = _open_google_ads_client(account_id)
+    client, account_id = _open_google_ads_client(account_id)
     from mureo.google_ads._analysis_constants import _get_comparison_date_ranges
 
     period_token = _GOOGLE_WINDOW_TO_PERIOD.get(window_days, "LAST_7_DAYS")
@@ -362,7 +385,7 @@ async def fetch_google_ads_list(
     Used by :meth:`GoogleAdsAnalyticsModule.audit_creative`. Raises
     :class:`NoCredentialsError` in live mode when creds are missing.
     """
-    client = _open_google_ads_client(account_id)
+    client, account_id = _open_google_ads_client(account_id)
     return await client.list_ads()  # type: ignore[attr-defined,no-any-return]
 
 
@@ -370,7 +393,7 @@ async def fetch_meta_ads_list(
     account_id: str,
 ) -> list[dict[str, object]]:
     """Return ``list_ads`` results for one Meta account."""
-    client = _open_meta_ads_client(account_id)
+    client, account_id = _open_meta_ads_client(account_id)
     return await client.list_ads()  # type: ignore[attr-defined,no-any-return]
 
 
@@ -382,7 +405,7 @@ async def fetch_meta_ads_per_campaign_metrics(
     """Per-campaign fan-out for Meta — parallel to
     :func:`fetch_google_ads_per_campaign_metrics`.
     """
-    client = _open_meta_ads_client(account_id)
+    client, account_id = _open_meta_ads_client(account_id)
     from mureo.meta_ads._period import previous_period
 
     current_period = _META_WINDOW_TO_PERIOD.get(window_days, "last_7d")
@@ -450,8 +473,13 @@ def _aggregate_meta_metrics(
     )
 
 
-def _open_meta_ads_client(account_id: str) -> object:
+def _open_meta_ads_client(account_id: str) -> tuple[object, str]:
     """Parallel to :func:`_open_google_ads_client` for Meta Ads.
+
+    Returns ``(client, resolved_account_id)`` — the resolved id is
+    canonicalized to the ``act_`` form when tenant-scoped, so callers use the
+    same value the client was opened with (#435). A workspace-scope refusal
+    raises :class:`AccountNotAvailableError`.
 
     Workspace scoping (#411/#413): ``account_id`` is bound to the active
     client's allow-list via ``_resolve_account_id`` before use — a
@@ -466,16 +494,19 @@ def _open_meta_ads_client(account_id: str) -> object:
     from mureo.mcp._handlers_meta_ads import _resolve_account_id
 
     # Bind the account to the workspace allow-list (#411/#413) before it
-    # reaches the client factory — see the workspace-scoping note above.
-    account_id = _resolve_account_id(account_id, None)
+    # reaches the client factory; a refusal degrades gracefully (#435).
+    try:
+        account_id = _resolve_account_id(account_id, None)
+    except ValueError as exc:
+        raise AccountNotAvailableError(str(exc)) from exc
 
     if byod_has("meta_ads"):
-        return get_meta_ads_client(creds=None, account_id=account_id)
+        return get_meta_ads_client(creds=None, account_id=account_id), account_id
 
     creds = load_meta_ads_credentials()
     if creds is None:
         raise NoCredentialsError("meta_ads credentials not configured")
-    return get_meta_ads_client(creds, account_id)
+    return get_meta_ads_client(creds, account_id), account_id
 
 
 async def fetch_meta_ads_metrics(
@@ -489,7 +520,7 @@ async def fetch_meta_ads_metrics(
     in live mode. Shares the per-campaign aggregation limitation
     documented on :func:`fetch_google_ads_metrics`.
     """
-    client = _open_meta_ads_client(account_id)
+    client, account_id = _open_meta_ads_client(account_id)
     from mureo.meta_ads._period import previous_period
 
     current_period = _META_WINDOW_TO_PERIOD.get(window_days, "last_7d")
@@ -513,11 +544,12 @@ async def fetch_meta_ads_performance_rows(
     period: str,
 ) -> list[dict[str, object]]:
     """Return raw performance rows for ``account_id`` over ``period``."""
-    client = _open_meta_ads_client(account_id)
+    client, account_id = _open_meta_ads_client(account_id)
     return await client.get_performance_report(period=period)  # type: ignore[attr-defined,no-any-return]
 
 
 __all__ = [
+    "AccountNotAvailableError",
     "NoCredentialsError",
     "fetch_google_ads_list",
     "fetch_google_ads_metrics",
