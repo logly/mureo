@@ -122,6 +122,20 @@ def test_meta_returns_and_uses_canonical_resolved_id(
     assert calls["meta"] == "act_111"
 
 
+def test_meta_bare_id_canonicalized_even_when_unscoped(
+    monkeypatch, stub_factories
+) -> None:
+    """A bare numeric id is canonicalized to the ``act_`` form even when NOT
+    tenant-scoped, so it never reaches ``MetaAdsApiClient`` (which requires the
+    prefix) as a raw id that would raise past the adapters' graceful handler."""
+    _sg, sentinel_m, calls = stub_factories
+    _scope_meta(monkeypatch, None)  # not tenant-scoped
+    client, resolved = _live_clients._open_meta_ads_client("111")
+    assert client is sentinel_m
+    assert resolved == "act_111"
+    assert calls["meta"] == "act_111"
+
+
 # --- #435 WARNING 1: a scope refusal degrades gracefully -------------------
 
 
