@@ -27,8 +27,7 @@ def _reset_registry() -> Iterator[None]:
 
 @pytest.mark.unit
 def test_tool_definition_is_zero_arg() -> None:
-    [tool] = TOOLS
-    assert tool.name == "mureo_analytics_modules_list"
+    tool = next(t for t in TOOLS if t.name == "mureo_analytics_modules_list")
     assert tool.inputSchema == {"type": "object", "properties": {}}
 
 

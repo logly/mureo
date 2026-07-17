@@ -41,7 +41,7 @@ The mureo plugin ABI consists of exactly the following:
 | Plugin tool-call safety semantics: mureo reads **standard MCP** `Tool.annotations.readOnlyHint` (a non-read tool ⇒ *mutating*, conservative default) and the optional `Tool` `_meta["mureo"]` keys `reversal` / `throttle` / `observation_days`. No new required Protocol surface — purely additive & opt-in; undeclared behaviour is unchanged from Phase 1 (audited + throttled). A mutating plugin call additionally receives *structural* strategy parity (confirm + STRATEGY-gate are skill-mediated; action_log promotion + observation window + rollback-intent are mechanical) — not mureo's platform-specific analytics. | `mureo.mcp.{server,plugin_semantics}` | Stable (Phase 2/4; additive — these meta key names are the only contract) |
 | Model dataclass shapes (`Campaign`, `Ad`, `Keyword`, ...) | `mureo.core.providers.models` | Stable (Phase 1; additive evolution allowed) |
 | Status / Kind / MatchType / BidStrategy **enum values** | `mureo.core.providers.models` | Stable |
-| Entry-point group names (`mureo.providers`, `mureo.skills`) | `mureo.core.providers.registry` | Stable |
+| Entry-point group names (`mureo.providers`, `mureo.skills`, `mureo.native_skills`) | `mureo.core.providers.registry` | Stable |
 | `ProviderEntry` field set and order | `mureo.core.providers.registry` | Stable |
 | `SkillEntry` field set | `mureo.core.skills.models` | Stable |
 | SKILL.md frontmatter keys (`name`, `description`, `capabilities.required`, `capabilities.advisory_mode`) | n/a (data format) | Stable |
@@ -193,7 +193,9 @@ Protocol shipped under its own entry-point group
 (`mureo.analytics`). It is opt-in: a plugin that does not implement
 it remains fully supported, and skills detect the absence via
 `mureo_analytics_modules_list` and report
-`analytics_not_available_for_<platform>` honestly.
+`analytics_not_available_for_<platform>` honestly. Skills execute an
+advertised capability via the `mureo_analytics_run` MCP tool (Issue #440),
+which drives the Protocol methods directly — no per-plugin tool ABI.
 
 The contract:
 
@@ -324,11 +326,12 @@ Four group names are part of the ABI:
 |---|---|---|
 | `PROVIDERS_ENTRY_POINT_GROUP` | `"mureo.providers"` | `Registry.discover` |
 | `SKILLS_ENTRY_POINT_GROUP` | `"mureo.skills"` | `discover_skills` |
+| `NATIVE_SKILLS_ENTRY_POINT_GROUP` | `"mureo.native_skills"` | `mureo.cli.native_skills.install_native_skills` |
 | `ANALYTICS_ENTRY_POINT_GROUP` | `"mureo.analytics"` | `AnalyticsRegistry.discover` |
 | (literal) | `"mureo.policy_gates"` | `mureo.mcp.server._load_policy_gates` |
 
-`PROVIDERS_…` / `SKILLS_…` are exported from
-`mureo.core.providers.registry` (re-exported from
+`PROVIDERS_…` / `SKILLS_…` / `NATIVE_SKILLS_…` are exported from
+`mureo.core.providers.registry` (the first two re-exported from
 `mureo.core.skills`); `ANALYTICS_…` is exported from
 `mureo.analytics`. The `mureo.policy_gates` literal is documented
 here (no exported constant) because policy gates are loaded by the

@@ -96,6 +96,12 @@ if TYPE_CHECKING:
 
 PROVIDERS_ENTRY_POINT_GROUP: Final[str] = "mureo.providers"
 SKILLS_ENTRY_POINT_GROUP: Final[str] = "mureo.skills"
+# Native slash skills a plugin wants *deployed* into ~/.claude/skills and
+# ~/.codex/skills (so they appear as /<name>). Distinct from
+# SKILLS_ENTRY_POINT_GROUP, which is for context skills discovered and
+# matched at runtime and never copied to the host skill dirs. See
+# mureo.cli.native_skills and Issue #439.
+NATIVE_SKILLS_ENTRY_POINT_GROUP: Final[str] = "mureo.native_skills"
 
 
 class RegistryWarning(UserWarning):
@@ -696,6 +702,7 @@ def get_oauth_account_lister(provider: object) -> Callable[..., object] | None:
 
 
 __all__ = [
+    "NATIVE_SKILLS_ENTRY_POINT_GROUP",
     "PROVIDERS_ENTRY_POINT_GROUP",
     "SKILLS_ENTRY_POINT_GROUP",
     "ProviderEntry",
