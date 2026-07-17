@@ -76,6 +76,11 @@ class _BtoBAnalysisMixin:
         try:
             schedules = await self.list_schedule_targeting(campaign_id)
         except Exception:
+            logger.warning(
+                "B2B schedule check failed for campaign %s",
+                campaign_id,
+                exc_info=True,
+            )
             return
 
         if not schedules:
@@ -116,6 +121,11 @@ class _BtoBAnalysisMixin:
         try:
             device_result = await self.analyze_device_performance(campaign_id, period)
         except Exception:
+            logger.warning(
+                "B2B device check failed for campaign %s",
+                campaign_id,
+                exc_info=True,
+            )
             return
 
         devices = device_result.get("devices", [])
@@ -174,6 +184,11 @@ class _BtoBAnalysisMixin:
                 campaign_id=campaign_id, period=period
             )
         except Exception:
+            logger.warning(
+                "B2B search terms check failed for campaign %s",
+                campaign_id,
+                exc_info=True,
+            )
             return
 
         if not search_terms:

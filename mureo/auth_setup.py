@@ -39,7 +39,7 @@ from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 # ``mureo.auth_setup._terminal_fd`` keep working now that the canonical
 # implementation lives in :mod:`mureo.core.terminal` (#227 follow-up).
 from mureo.core.terminal import terminal_fd as _terminal_fd
-from mureo.fsutil import backup_file
+from mureo.fsutil import backup_file, file_lock, lock_path_for
 
 # Backward-compat re-exports of the platform-level account-discovery
 # helpers that used to live in this module. The canonical homes are
@@ -740,6 +740,94 @@ def install_credential_guard() -> Path | None:
 # ---------------------------------------------------------------------------
 
 
+def _merge_google_section(
+    existing: dict[str, Any],
+    google: GoogleAdsCredentials,
+    customer_id: str | None,
+) -> None:
+    """Merge the ``google_ads`` block into ``existing`` in place."""
+    prior_google = existing.get("google_ads")
+    prior_google = prior_google if isinstance(prior_google, dict) else {}
+    google_data: dict[str, Any] = {
+        "developer_token": google.developer_token,
+        "client_id": google.client_id,
+        "client_secret": google.client_secret,
+        "refresh_token": google.refresh_token,
+    }
+    # login_customer_id: authentication context (MCC for child accounts,
+    # otherwise the account itself)
+    google_data["login_customer_id"] = google.login_customer_id
+    # customer_id: the account that operations target. Falls back to
+    # login_customer_id when not explicitly specified, and finally to any
+    # previously-saved customer_id so a re-auth whose account listing
+    # transiently failed does not wipe the operator's prior selection.
+    google_data["customer_id"] = (
+        customer_id
+        or google.customer_id
+        or google.login_customer_id
+        or prior_google.get("customer_id")
+    )
+    existing["google_ads"] = google_data
+
+
+def _merge_meta_section(
+    existing: dict[str, Any],
+    meta: MetaAdsCredentials,
+    account_id: str | None,
+) -> None:
+    """Merge the ``meta_ads`` block into ``existing`` in place."""
+    prior_meta = existing.get("meta_ads")
+    prior_meta = prior_meta if isinstance(prior_meta, dict) else {}
+    access_token = getattr(meta, "access_token", "")
+    meta_data: dict[str, Any] = {"access_token": access_token}
+    app_id = getattr(meta, "app_id", None)
+    if app_id is not None:
+        meta_data["app_id"] = app_id
+    app_secret = getattr(meta, "app_secret", None)
+    if app_secret is not None:
+        meta_data["app_secret"] = app_secret
+    # Preserve a previously-saved account_id when this call couldn't resolve
+    # one (e.g. the account listing failed): the whole meta_ads section is
+    # replaced below, so without this a transient failure would silently drop
+    # the operator's prior selection.
+    if account_id is not None:
+        meta_data["account_id"] = account_id
+    elif prior_meta.get("account_id"):
+        meta_data["account_id"] = prior_meta["account_id"]
+    token_obtained_at = _resolve_token_obtained_at(meta, access_token, prior_meta)
+    if token_obtained_at is not None:
+        meta_data["token_obtained_at"] = token_obtained_at
+    existing["meta_ads"] = meta_data
+
+
+def _resolve_token_obtained_at(
+    meta: MetaAdsCredentials,
+    access_token: str,
+    prior_meta: dict[str, Any],
+) -> str | None:
+    """When the Meta token was obtained, for the 53-day refresh clock.
+
+    Without a persisted ``token_obtained_at`` the background refresh
+    (auth.refresh_meta_token_if_needed) never fires and the long-lived token
+    silently expires at ~60 days. Prefer an explicit timestamp on the
+    credentials object; keep the prior timestamp when the token is unchanged
+    (a metadata-only re-save must not reset the clock); otherwise stamp now.
+    Returns ``None`` when there is no token to stamp (empty ``access_token``
+    and no explicit timestamp), so no key is written — matching the prior
+    behaviour exactly.
+    """
+    obtained_at = getattr(meta, "token_obtained_at", None)
+    if obtained_at:
+        return str(obtained_at)
+    if not access_token:
+        return None
+    if access_token == prior_meta.get("access_token"):
+        prior_ts = prior_meta.get("token_obtained_at")
+        if prior_ts:
+            return str(prior_ts)
+    return datetime.now(tz=timezone.utc).isoformat()
+
+
 def save_credentials(
     path: Path | None = None,
     google: GoogleAdsCredentials | None = None,
@@ -770,82 +858,22 @@ def save_credentials(
     # write can't brick all providers.
     from mureo.providers.config_writer import _atomic_write_json, _load_existing
 
-    existing: dict[str, Any] = _load_existing(resolved)
+    # Hold the whole read-modify-write under a cross-process ``file_lock`` so
+    # a concurrent Meta 53-day auto-refresh (auth._save_meta_token) or another
+    # CLI/web wizard run cannot last-writer-wins away the section this call is
+    # not touching (both take the same ``credentials.json.lock``).
+    with file_lock(lock_path_for(resolved)):
+        existing: dict[str, Any] = _load_existing(resolved)
 
-    # Merge Google Ads credentials
-    if google is not None:
-        prior_google = existing.get("google_ads")
-        prior_google = prior_google if isinstance(prior_google, dict) else {}
-        google_data: dict[str, Any] = {
-            "developer_token": google.developer_token,
-            "client_id": google.client_id,
-            "client_secret": google.client_secret,
-            "refresh_token": google.refresh_token,
-        }
-        # login_customer_id: authentication context (MCC for child accounts,
-        # otherwise the account itself)
-        google_data["login_customer_id"] = google.login_customer_id
-        # customer_id: the account that operations target. Falls back to
-        # login_customer_id when not explicitly specified, and finally to any
-        # previously-saved customer_id so a re-auth whose account listing
-        # transiently failed does not wipe the operator's prior selection.
-        target_cid = (
-            customer_id
-            or google.customer_id
-            or google.login_customer_id
-            or prior_google.get("customer_id")
-        )
-        google_data["customer_id"] = target_cid
-        existing["google_ads"] = google_data
+        if google is not None:
+            _merge_google_section(existing, google, customer_id)
+        if meta is not None:
+            _merge_meta_section(existing, meta, account_id)
 
-    # Merge Meta Ads credentials
-    if meta is not None:
-        prior_meta = existing.get("meta_ads")
-        prior_meta = prior_meta if isinstance(prior_meta, dict) else {}
-        access_token = getattr(meta, "access_token", "")
-        meta_data: dict[str, Any] = {
-            "access_token": access_token,
-        }
-        app_id = getattr(meta, "app_id", None)
-        if app_id is not None:
-            meta_data["app_id"] = app_id
-        app_secret = getattr(meta, "app_secret", None)
-        if app_secret is not None:
-            meta_data["app_secret"] = app_secret
-        # Preserve a previously-saved account_id when this call couldn't
-        # resolve one (e.g. the account listing failed): the whole meta_ads
-        # section is replaced below, so without this a transient failure would
-        # silently drop the operator's prior selection.
-        if account_id is not None:
-            meta_data["account_id"] = account_id
-        elif prior_meta.get("account_id"):
-            meta_data["account_id"] = prior_meta["account_id"]
-        # Record when this token was obtained so the background 53-day refresh
-        # (auth.refresh_meta_token_if_needed) can actually fire. Without a
-        # persisted token_obtained_at, _should_refresh always returns False and
-        # the long-lived token silently expires at ~60 days. Prefer an explicit
-        # timestamp on the credentials object; keep the prior timestamp when the
-        # token is unchanged (a metadata-only re-save must not reset the clock);
-        # otherwise stamp now for a new/changed token.
-        obtained_at = getattr(meta, "token_obtained_at", None)
-        if obtained_at:
-            meta_data["token_obtained_at"] = obtained_at
-        elif access_token and access_token == prior_meta.get("access_token"):
-            prior_ts = prior_meta.get("token_obtained_at")
-            if prior_ts:
-                meta_data["token_obtained_at"] = prior_ts
-            else:
-                meta_data["token_obtained_at"] = datetime.now(
-                    tz=timezone.utc
-                ).isoformat()
-        elif access_token:
-            meta_data["token_obtained_at"] = datetime.now(tz=timezone.utc).isoformat()
-        existing["meta_ads"] = meta_data
-
-    # Keep a .bak of the prior good file, then write atomically. The atomic
-    # writer also applies owner-only (0o600) permissions.
-    backup_file(resolved)
-    _atomic_write_json(existing, resolved)
+        # Keep a .bak of the prior good file, then write atomically. The
+        # atomic writer also applies owner-only (0o600) permissions.
+        backup_file(resolved)
+        _atomic_write_json(existing, resolved)
 
     logger.info("Credentials saved: %s", resolved)
 
@@ -1083,10 +1111,14 @@ async def _exchange_code_for_short_token(
     }
 
     try:
+        # POST so the client_secret and authorization code sit in the request
+        # body, not the URL. Meta's Graph ``/oauth/access_token`` accepts these
+        # parameters via POST as well as GET, and httpx logs ``request.url`` at
+        # INFO — a GET would leak the secret and code into any INFO-level log.
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            response = await client.get(
+            response = await client.post(
                 f"{_META_GRAPH_API_BASE}/oauth/access_token",
-                params=params,
+                data=params,
             )
             response.raise_for_status()
             data = response.json()
@@ -1127,10 +1159,15 @@ async def _exchange_short_for_long_token(
     }
 
     try:
+        # POST so the client_secret and the short-lived token travel in the
+        # request body, not the URL. Meta's Graph ``/oauth/access_token``
+        # accepts these parameters via POST as well as GET, and httpx logs
+        # ``request.url`` at INFO — a GET would leak the secret and token into
+        # any INFO-level log.
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            response = await client.get(
+            response = await client.post(
                 f"{_META_GRAPH_API_BASE}/oauth/access_token",
-                params=params,
+                data=params,
             )
             response.raise_for_status()
             data = response.json()

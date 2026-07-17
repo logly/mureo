@@ -211,16 +211,23 @@ async def fetch_google_ads_metrics(
 async def fetch_google_ads_performance_rows(
     account_id: str,
     period: str,
-) -> list[dict[str, object]]:
-    """Return raw performance rows for ``account_id`` over ``period``.
+) -> tuple[list[dict[str, object]], str]:
+    """Return ``(rows, resolved_account_id)`` for ``account_id`` over ``period``.
 
-    Used by :meth:`GoogleAdsAnalyticsModule.diagnose_performance`.
+    Used by :meth:`GoogleAdsAnalyticsModule.diagnose_performance`. The resolved
+    (possibly canonicalized / allow-list-bound) account id is returned alongside
+    the rows so the caller labels its :class:`PerformanceDiagnosis` with the same
+    value the client was opened with, rather than the raw input (#435).
+
     Raises :class:`NoCredentialsError` uniformly with
     :func:`fetch_google_ads_metrics` so the adapter renders a single
     sentinel headline rather than diverging on the same condition.
     """
     client, account_id = _open_google_ads_client(account_id)
-    return await client.get_performance_report(period=period)  # type: ignore[attr-defined,no-any-return]
+    rows: list[dict[str, object]] = await client.get_performance_report(  # type: ignore[attr-defined]
+        period=period
+    )
+    return rows, account_id
 
 
 def _row_to_campaign_metrics(
@@ -379,22 +386,30 @@ def _index_meta_rows_by_campaign(
 
 async def fetch_google_ads_list(
     account_id: str,
-) -> list[dict[str, object]]:
-    """Return ``list_ads`` results for ``account_id`` (live or BYOD).
+) -> tuple[list[dict[str, object]], str]:
+    """Return ``(ads, resolved_account_id)`` for ``account_id`` (live or BYOD).
 
-    Used by :meth:`GoogleAdsAnalyticsModule.audit_creative`. Raises
-    :class:`NoCredentialsError` in live mode when creds are missing.
+    Used by :meth:`GoogleAdsAnalyticsModule.audit_creative`. The resolved id is
+    returned so the caller labels its :class:`CreativeAudit` with the canonical
+    value (#435). Raises :class:`NoCredentialsError` in live mode when creds are
+    missing.
     """
     client, account_id = _open_google_ads_client(account_id)
-    return await client.list_ads()  # type: ignore[attr-defined,no-any-return]
+    ads: list[dict[str, object]] = await client.list_ads()  # type: ignore[attr-defined]
+    return ads, account_id
 
 
 async def fetch_meta_ads_list(
     account_id: str,
-) -> list[dict[str, object]]:
-    """Return ``list_ads`` results for one Meta account."""
+) -> tuple[list[dict[str, object]], str]:
+    """Return ``(ads, resolved_account_id)`` for one Meta account.
+
+    The resolved id is canonicalized to the ``act_`` form so the caller labels
+    its :class:`CreativeAudit` with the canonical value (#435).
+    """
     client, account_id = _open_meta_ads_client(account_id)
-    return await client.list_ads()  # type: ignore[attr-defined,no-any-return]
+    ads: list[dict[str, object]] = await client.list_ads()  # type: ignore[attr-defined]
+    return ads, account_id
 
 
 async def fetch_meta_ads_per_campaign_metrics(
@@ -551,10 +566,18 @@ async def fetch_meta_ads_metrics(
 async def fetch_meta_ads_performance_rows(
     account_id: str,
     period: str,
-) -> list[dict[str, object]]:
-    """Return raw performance rows for ``account_id`` over ``period``."""
+) -> tuple[list[dict[str, object]], str]:
+    """Return ``(rows, resolved_account_id)`` for ``account_id`` over ``period``.
+
+    The resolved id is canonicalized to the ``act_`` form so the caller labels
+    its :class:`PerformanceDiagnosis` with the same value the client was opened
+    with (#435).
+    """
     client, account_id = _open_meta_ads_client(account_id)
-    return await client.get_performance_report(period=period)  # type: ignore[attr-defined,no-any-return]
+    rows: list[dict[str, object]] = await client.get_performance_report(  # type: ignore[attr-defined]
+        period=period
+    )
+    return rows, account_id
 
 
 __all__ = [

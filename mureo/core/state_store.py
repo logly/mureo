@@ -32,16 +32,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from mureo.context.state import (
-    append_action_log as _legacy_append_action_log,
-)
-from mureo.context.state import (
+    _state_lock_path,
     read_state_file,
     write_state_file,
+)
+from mureo.context.state import (
+    append_action_log as _legacy_append_action_log,
 )
 from mureo.context.strategy import (
     read_strategy_file,
     write_strategy_file,
 )
+from mureo.fsutil import file_lock
 
 if TYPE_CHECKING:
     from mureo.context.models import ActionLogEntry, StateDocument, StrategyEntry
@@ -100,7 +102,16 @@ class FilesystemStateStore:
         return read_state_file(self.state_path)
 
     def write_state(self, doc: StateDocument) -> None:
-        write_state_file(self.state_path, doc)
+        # Take the same cross-process lock every STATE.json mutator holds
+        # (``_locked_state_mutation``) so a blind full-document write cannot
+        # interleave with a concurrent read-modify-write and resurrect the #115
+        # lost-update race. This store's own read/modify/write callers go
+        # through ``append_action_log`` (already locked); guarding the plain
+        # ``write_state`` too closes the design trap of a naive future caller.
+        # The write stays atomic via ``write_state_file``.
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        with file_lock(_state_lock_path(self.state_path)):
+            write_state_file(self.state_path, doc)
 
     def read_strategy(self) -> list[StrategyEntry]:
         # ``read_strategy_file`` already returns a fresh list from

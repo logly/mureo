@@ -166,7 +166,11 @@ class MetaAdsAnalyticsModule(AnalyticsModule):
             rows = await self._performance_fetcher(account_id, period)
         else:
             try:
-                rows = await fetch_meta_ads_performance_rows(account_id, period)
+                # Resolved (canonical ``act_``) account id propagates so the
+                # diagnosis is labelled with the canonical value (#435).
+                rows, account_id = await fetch_meta_ads_performance_rows(
+                    account_id, period
+                )
             except NoCredentialsError:
                 return PerformanceDiagnosis(
                     platform=self.platform,
@@ -189,7 +193,9 @@ class MetaAdsAnalyticsModule(AnalyticsModule):
             ads = await self._ads_list_fetcher(account_id)
         else:
             try:
-                ads = await fetch_meta_ads_list(account_id)
+                # Resolved (canonical ``act_``) account id propagates so the
+                # audit is labelled with the canonical value (#435).
+                ads, account_id = await fetch_meta_ads_list(account_id)
             except NoCredentialsError:
                 return CreativeAudit(
                     platform=self.platform,
@@ -213,7 +219,11 @@ class MetaAdsAnalyticsModule(AnalyticsModule):
             rows = await self._performance_fetcher(account_id, period)
         else:
             try:
-                rows = await fetch_meta_ads_performance_rows(account_id, period)
+                # Resolved (canonical ``act_``) account id propagates so the
+                # result is labelled with the canonical value (#435).
+                rows, account_id = await fetch_meta_ads_performance_rows(
+                    account_id, period
+                )
             except NoCredentialsError:
                 return BudgetEfficiency(
                     platform=self.platform,

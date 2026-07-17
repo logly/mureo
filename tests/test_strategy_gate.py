@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
 from mureo.policy.strategy_gate import (
@@ -358,3 +361,99 @@ class TestDispatcherIntegration:
     # The fail-open allow path (no guardrails ⇒ dispatch proceeds) is covered by
     # the unit test_fail_open_when_no_strategy above and by
     # test_policy_gate.py::test_no_gates_registered_dispatches_as_today.
+
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_STRATEGY_SKILL = _REPO_ROOT / "skills" / "_mureo-strategy" / "SKILL.md"
+_ONBOARD_SKILL = _REPO_ROOT / "skills" / "onboard" / "SKILL.md"
+
+
+def _real_tool_names() -> frozenset[str]:
+    """Every native Google/Meta MCP tool name the dispatcher can route.
+
+    Imported straight from the ``TOOLS`` lists (not ``server._ALL_TOOLS``) so
+    the set is independent of the ``MUREO_DISABLE_*`` env gating that can hide
+    a platform's tools in some environments.
+    """
+    from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
+    from mureo.mcp.tools_meta_ads import TOOLS as META_ADS_TOOLS
+
+    return frozenset(t.name for t in (*GOOGLE_ADS_TOOLS, *META_ADS_TOOLS))
+
+
+class TestBlockedOperationsExamplesAreReal:
+    """C4 regression: the ``blocked_operations`` tool names the skills recommend
+    MUST exist in the real MCP tool registry.
+
+    ``evaluate_guardrails`` blocks on an EXACT string match against the
+    dispatched tool name, so a recommended example that names a non-existent
+    tool (the original ``google_ads_campaigns_remove`` /
+    ``meta_ads_campaigns_delete``) can never fire — the guardrail is silently
+    dead. These tests couple the skill docs to the tool definitions so that
+    drift is caught in CI rather than by a surprised operator.
+    """
+
+    #: Distinct single-purpose destructive tools the _mureo-strategy skill lists
+    #: as good ``blocked_operations`` examples. Keep in sync with that skill.
+    RECOMMENDED = (
+        "google_ads_keywords_remove",
+        "google_ads_conversions_remove",
+        "google_ads_negative_keywords_remove",
+        "meta_ads_audiences_delete",
+        "meta_ads_catalogs_delete",
+        "meta_ads_ad_rules_delete",
+    )
+
+    def test_copy_paste_example_line_names_only_real_tools(self) -> None:
+        """The ``- blocked_operations: A, B`` example a user would copy-paste
+        must reference only tools that actually exist."""
+        real = _real_tool_names()
+        text = _STRATEGY_SKILL.read_text(encoding="utf-8")
+        m = re.search(r"^- blocked_operations:\s*(.+)$", text, re.MULTILINE)
+        assert m is not None, "blocked_operations example bullet not found in skill"
+        names = [n.strip() for n in m.group(1).split(",") if n.strip()]
+        assert names, "example bullet lists no tool names"
+        missing = [n for n in names if n not in real]
+        assert not missing, (
+            f"blocked_operations example names not in the MCP tool registry: "
+            f"{missing}"
+        )
+
+    def test_recommended_examples_all_exist(self) -> None:
+        real = _real_tool_names()
+        missing = [n for n in self.RECOMMENDED if n not in real]
+        assert not missing, f"recommended block examples do not exist: {missing}"
+
+    def test_recommended_examples_are_cited_in_skill(self) -> None:
+        """Guards the coupling the other direction: every name this test
+        blesses is actually the one the skill recommends."""
+        text = _STRATEGY_SKILL.read_text(encoding="utf-8")
+        missing = [n for n in self.RECOMMENDED if n not in text]
+        assert not missing, f"skill no longer cites recommended examples: {missing}"
+
+    def test_note_documents_that_campaign_delete_tools_are_absent(self) -> None:
+        """The design-limit note claims there is no standalone campaign-delete
+        tool. Pin that the claim stays true and that the redirect target
+        (``google_ads_campaigns_update_status``) really is the real tool."""
+        real = _real_tool_names()
+        assert "google_ads_campaigns_remove" not in real
+        assert "meta_ads_campaigns_delete" not in real
+        # The note tells operators campaign removal goes through this tool.
+        assert "google_ads_campaigns_update_status" in real
+
+    def test_onboard_offer_names_only_real_tools(self) -> None:
+        """onboard's opt-in offer must not resurrect the phantom tool names."""
+        real = _real_tool_names()
+        text = _ONBOARD_SKILL.read_text(encoding="utf-8")
+        m = re.search(r"`blocked_operations`.*?(?=\n     - |\n\d+\. |\Z)", text, re.S)
+        assert m is not None, "blocked_operations offer not found in onboard skill"
+        cited = set(re.findall(r"`(google_ads_[a-z_]+|meta_ads_[a-z_]+)`", m.group(0)))
+        # The offer example tools must exist; the phantom names appear only in
+        # the "there is no ..." clause, so assert the two we recommend exist and
+        # the phantom pair is correctly described as absent.
+        assert "google_ads_keywords_remove" in cited
+        assert "meta_ads_audiences_delete" in cited
+        for name in ("google_ads_keywords_remove", "meta_ads_audiences_delete"):
+            assert name in real
+        assert "google_ads_campaigns_remove" not in real
+        assert "meta_ads_campaigns_delete" not in real

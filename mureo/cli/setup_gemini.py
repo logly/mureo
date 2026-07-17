@@ -15,14 +15,50 @@ tracked as follow-up work.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import os
 import sys
+import tempfile
 from importlib import metadata
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write ``content`` to ``path`` atomically and durably (temp + fsync +
+    rename).
+
+    Mirrors ``setup_codex._atomic_write_text``. A crash mid-write leaves the
+    prior manifest intact rather than a half-written / zero-length file that
+    would fail the JSON re-parse on the next ``mureo setup gemini`` run.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+        try:
+            dir_fd = os.open(str(path.parent), os.O_RDONLY)
+        except OSError:
+            dir_fd = None
+        if dir_fd is not None:
+            try:
+                os.fsync(dir_fd)
+            except OSError:
+                pass
+            finally:
+                os.close(dir_fd)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
 
 
 _EXTENSION_NAME = "mureo"
@@ -96,9 +132,9 @@ def install_gemini_extension() -> Path:
     mcp_servers["mureo"] = {"command": sys.executable, "args": ["-m", "mureo.mcp"]}
     existing["mcpServers"] = mcp_servers
 
-    manifest.write_text(
+    _atomic_write_text(
+        manifest,
         json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
     )
     logger.info("Gemini extension manifest written: %s", manifest)
     return manifest

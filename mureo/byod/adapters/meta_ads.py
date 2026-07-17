@@ -55,6 +55,8 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ._csv_safe import sanitize_cell as _sanitize_cell
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -1090,8 +1092,8 @@ class MetaAdsAdapter:
                         "conversions": _round2(m["conv"]),
                         "reach": int(m["reach"]),
                         "frequency": freq_value,
-                        "result_indicator": metrics_result_indicator.get(
-                            (day, cid), ""
+                        "result_indicator": _sanitize_cell(
+                            metrics_result_indicator.get((day, cid), "")
                         ),
                     }
                 )
@@ -1323,19 +1325,3 @@ def _resolve_spend_idx(header: list[str]) -> int | None:
         return idx
     stripped = [_strip_currency_suffix(h) for h in header]
     return _resolve_alias(stripped, _SPEND_ALIASES)
-
-
-# Cells starting with one of these characters are treated as formulas
-# by Excel / Google Sheets when the CSV is re-opened. A campaign named
-# ``=cmd|...`` would auto-execute on re-open, exfiltrating data. We
-# sanitize untrusted cell values by prefixing a single quote.
-# OWASP "CSV Injection" — the leading quote is stripped on display by
-# Excel and renders as a literal at the start of the field elsewhere.
-_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
-
-
-def _sanitize_cell(value: str) -> str:
-    """Defang user-controlled cell content against CSV-injection."""
-    if value and value[0] in _FORMULA_PREFIXES:
-        return "'" + value
-    return value

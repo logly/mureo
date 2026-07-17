@@ -7,18 +7,19 @@ prices, estimated industry, etc.
 
 from __future__ import annotations
 
+import asyncio
 import copy
-import ipaddress
 import json
 import logging
 import re
-import socket
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
+
+from mureo.core.url_guard import validate_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -62,25 +63,10 @@ _INDUSTRY_KEYWORDS: dict[str, tuple[str, ...]] = {
 # HTML elements to exclude
 _EXCLUDE_TAGS = frozenset({"script", "style", "nav", "footer", "header", "noscript"})
 
-# SSRF protection: allowed URL schemes
-_ALLOWED_SCHEMES = frozenset({"http", "https"})
-
 # SSRF protection: max redirect hops. Each hop is validated BEFORE it is
 # followed (we do not let httpx auto-follow), so a public URL cannot bounce the
 # fetch to an internal host.
 _MAX_REDIRECTS = 5
-
-# SSRF protection: blocked hostnames
-_BLOCKED_HOSTS = frozenset(
-    {
-        "localhost",
-        "127.0.0.1",
-        "0.0.0.0",  # nosec B104
-        "::1",
-        "169.254.169.254",  # Cloud metadata service
-        "metadata.google.internal",
-    }
-)
 
 
 # ---------------------------------------------------------------------------
@@ -146,48 +132,21 @@ class LPAnalyzer:
 
     @staticmethod
     def _validate_url(url: str) -> None:
-        """SSRF protection: validate a URL.
+        """SSRF protection: delegate to the canonical URL guard.
 
-        Blocks requests to private IPs, localhost, cloud metadata endpoints, etc.
+        Uses :func:`mureo.core.url_guard.validate_public_url`, the single
+        source of truth for outbound-fetch SSRF checks. It blocks non-http(s)
+        schemes, cloud-metadata hosts, and private/loopback/link-local/
+        reserved/multicast/unspecified addresses for both literal IPs and DNS
+        names — closing the ``is_multicast``/``is_unspecified`` gap the previous
+        in-module reimplementation had. Kept as a thin static wrapper so
+        existing callers — including
+        :class:`mureo.google_ads._message_match.LPScreenshotter` — keep working.
+
+        Raises:
+            ValueError: (an ``UnsafeUrlError`` subclass) if the URL is unsafe.
         """
-        parsed = urlparse(url)
-
-        # Scheme validation
-        if parsed.scheme not in _ALLOWED_SCHEMES:
-            raise ValueError(f"URL scheme not allowed: {parsed.scheme}")
-
-        hostname = parsed.hostname
-        if not hostname:
-            raise ValueError("URL does not contain a hostname")
-
-        # Block known dangerous hosts
-        if hostname in _BLOCKED_HOSTS:
-            raise ValueError("Internal network URLs are not allowed")
-
-        # Block private/loopback/link-local IP addresses
-        try:
-            ip = ipaddress.ip_address(hostname)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                raise ValueError("Internal network URLs are not allowed")
-        except ValueError as exc:
-            if "Internal network" in str(exc):
-                raise
-            # If hostname is not an IP address, resolve via DNS and check
-            try:
-                resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)
-                for _, _, _, _, addr in resolved:
-                    ip = ipaddress.ip_address(addr[0])
-                    if (
-                        ip.is_private
-                        or ip.is_loopback
-                        or ip.is_link_local
-                        or ip.is_reserved
-                    ):
-                        raise ValueError(
-                            "URLs that resolve to internal networks are not allowed"
-                        )
-            except socket.gaierror:
-                pass  # DNS resolution failure will error at HTTP request time
+        validate_public_url(url)
 
     async def _fetch_html(self, url: str) -> str:
         """Fetch HTML via HTTP, validating every redirect hop for SSRF.
@@ -199,8 +158,13 @@ class LPAnalyzer:
         before the destination could be re-validated — a blind-SSRF gap. A
         residual DNS-rebinding TOCTOU remains (httpx re-resolves the validated
         hostname), acceptable for this read-only analyzer.
+
+        The body is read as a stream and truncated at ``_MAX_BODY_BYTES`` (see
+        :meth:`_read_capped_body`) so an oversized response cannot balloon
+        memory. Validation runs in a worker thread to keep its blocking DNS
+        lookup off the event loop.
         """
-        self._validate_url(url)
+        await asyncio.to_thread(self._validate_url, url)
         async with httpx.AsyncClient(
             timeout=_TIMEOUT_SECONDS,
             follow_redirects=False,
@@ -208,26 +172,41 @@ class LPAnalyzer:
         ) as client:
             current_url = url
             for _ in range(_MAX_REDIRECTS + 1):
-                response = await client.get(current_url)
-                # has_redirect_location (not is_redirect) is True only for a 3xx
-                # that actually carries a Location — so a 304/300 without one is
-                # treated as a terminal response rather than a phantom redirect.
-                if response.has_redirect_location:
-                    location = response.headers["location"]
-                    # Resolve a possibly-relative Location against the current
-                    # URL, then validate BEFORE following it.
-                    next_url = str(httpx.URL(current_url).join(location))
-                    self._validate_url(next_url)
-                    current_url = next_url
-                    continue
-                response.raise_for_status()
-                # Size limit
-                if len(response.content) > _MAX_BODY_BYTES:
-                    return response.content[:_MAX_BODY_BYTES].decode(
-                        response.encoding or "utf-8", errors="replace"
-                    )
-                return response.text
+                async with client.stream("GET", current_url) as response:
+                    # has_redirect_location (not is_redirect) is True only for a
+                    # 3xx that actually carries a Location — so a 304/300 without
+                    # one is a terminal response rather than a phantom redirect.
+                    if response.has_redirect_location:
+                        location = response.headers["location"]
+                        # Resolve a possibly-relative Location against the
+                        # current URL, then validate BEFORE following it.
+                        next_url = str(httpx.URL(current_url).join(location))
+                        await asyncio.to_thread(self._validate_url, next_url)
+                        current_url = next_url
+                        continue
+                    response.raise_for_status()
+                    return await self._read_capped_body(response)
             raise ValueError(f"Too many redirects (>{_MAX_REDIRECTS}) fetching {url}")
+
+    @staticmethod
+    async def _read_capped_body(response: httpx.Response) -> str:
+        """Read a streamed response body, stopping once the size cap is hit.
+
+        Accumulates chunks until ``_MAX_BODY_BYTES`` is reached, then stops
+        pulling from the stream (the ``async with`` in :meth:`_fetch_html`
+        closes it on exit) instead of materialising an unbounded body via
+        ``response.content``. Decoding mirrors the previous truncation path:
+        header charset if present, else UTF-8, with undecodable bytes replaced.
+        """
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in response.aiter_bytes():
+            chunks.append(chunk)
+            total += len(chunk)
+            if total >= _MAX_BODY_BYTES:
+                break
+        body = b"".join(chunks)[:_MAX_BODY_BYTES]
+        return body.decode(response.encoding or "utf-8", errors="replace")
 
     def _parse_html(self, url: str, html: str) -> LPContent:
         """Parse HTML and build an LPContent."""

@@ -65,6 +65,32 @@ def test_plugin_version_matches_pyproject() -> None:
 
 
 # ---------------------------------------------------------------------------
+# gemini-extension.json (repo-root manifest for the Gemini CLI install kit)
+# ---------------------------------------------------------------------------
+
+
+def test_gemini_extension_json_is_valid_and_named_mureo() -> None:
+    ext = _load_json("gemini-extension.json")
+    assert ext["name"] == "mureo"
+    assert "version" in ext
+    assert "description" in ext
+
+
+def test_gemini_extension_version_matches_pyproject() -> None:
+    """The repo-root ``gemini-extension.json`` version is overwritten at
+    install time by ``install_gemini_extension`` (it stamps the installed
+    package version), so a stale value has no runtime effect — but the
+    checked-in file should still match ``pyproject.toml`` so the repo never
+    ships an obviously outdated manifest. This is the same drift guard as
+    ``test_plugin_version_matches_pyproject``."""
+    ext = _load_json("gemini-extension.json")
+    assert ext["version"] == _pyproject_version(), (
+        f"gemini-extension.json version ({ext['version']}) != pyproject.toml "
+        f"({_pyproject_version()}). Bump both."
+    )
+
+
+# ---------------------------------------------------------------------------
 # .claude-plugin/marketplace.json
 # ---------------------------------------------------------------------------
 

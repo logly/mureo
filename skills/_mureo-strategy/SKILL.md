@@ -181,7 +181,7 @@ keys (all optional):
 - max_daily_budget_increase_pct: 20
 - max_total_daily_budget: 300000
 - max_lifetime_budget_per_campaign: 900000
-- blocked_operations: google_ads_campaigns_remove, meta_ads_campaigns_delete
+- blocked_operations: google_ads_keywords_remove, meta_ads_audiences_delete
 ```
 
 - `max_daily_budget_per_campaign` — a budget mutation proposing more than this
@@ -204,6 +204,24 @@ keys (all optional):
   have distinct semantics, so declare this cap separately — a daily cap
   alone does not constrain lifetime-budget mutations.
 - `blocked_operations` — comma-separated tool names that are always refused.
+  Each name must **exactly match the dispatched MCP tool name**; the gate does a
+  literal string match, so a typo or a non-existent name silently never fires.
+  Distinct single-purpose destructive tools that DO exist include
+  `google_ads_keywords_remove`, `google_ads_conversions_remove`,
+  `google_ads_negative_keywords_remove`, `meta_ads_audiences_delete`,
+  `meta_ads_catalogs_delete`, and `meta_ads_ad_rules_delete`.
+
+  **Whole-tool granularity only (design limit).** The match is on the tool name,
+  never its arguments, so you cannot block a single argument value. In
+  particular there is **no** `google_ads_campaigns_remove` or
+  `meta_ads_campaigns_delete` tool: a Google Ads campaign is removed via
+  `google_ads_campaigns_update_status` with `status=REMOVED` — the SAME tool that
+  also pauses and enables campaigns — and Meta has no campaign-delete tool at all
+  (pausing is `meta_ads_campaigns_pause`). Blocking
+  `google_ads_campaigns_update_status` would therefore also block pausing and
+  enabling; refusing *only* the `status=REMOVED` case is not currently possible.
+  To target deletion, block a distinct destructive tool (e.g.
+  `google_ads_keywords_remove`) instead.
 
 Absent section (or an unparseable value) ⇒ no enforcement for that rule
 (fail-open); mureo never blocks on a rule the operator did not write. When a

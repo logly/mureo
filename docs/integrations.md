@@ -57,6 +57,7 @@ Add both mureo and the GA4 MCP to your `.mcp.json` (project-level) or `~/.claude
 | `/budget-rebalance` | Conversion quality by traffic source to inform allocation decisions |
 | `/competitive-scan` | Brand/direct traffic trends — competitor mind share signals |
 | `/rescue` | Site-side vs platform-side diagnosis before making ad changes |
+| `/tracking-health` | Ads-reported conversions vs GA4 conversions cross-check (>20% divergence flagged) |
 | `/weekly-report` | Website-level metrics for holistic cross-platform reporting |
 | `/onboard` | Site conversion metric baseline |
 | `/sync-state` | Connectivity verification |
@@ -96,7 +97,7 @@ Search Console is built into mureo as a first-party integration. It reuses the s
 
 ### Workflow Integration
 
-All 10 mureo workflow commands can leverage Search Console data. Key use cases:
+mureo ships 20 workflow commands; the ones that draw on Search Console data are summarized below. Key use cases:
 
 | Command | Search Console Value |
 |---------|---------------------|
@@ -108,6 +109,7 @@ All 10 mureo workflow commands can leverage Search Console data. Key use cases:
 | `/rescue` | Identify terms better served by organic instead of paid |
 | `/goal-review` | Organic metrics for SEO-related goals |
 | `/weekly-report` | Organic trend summary (WoW changes) |
+| `/monthly-report` | Organic search trend (clicks/impressions/CTR MoM) and paid/organic overlap shifts |
 | `/onboard` | Organic baseline establishment |
 | `/sync-state` | Site access verification |
 

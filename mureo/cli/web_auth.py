@@ -1200,8 +1200,16 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
         return bool(supplied) and _secrets.compare_digest(supplied, expected)
 
     def _read_form(self) -> dict[str, str] | None:
-        length = int(self.headers.get("Content-Length", "0") or 0)
-        if length > self._MAX_FORM_BYTES:
+        try:
+            length = int(self.headers.get("Content-Length", "0") or 0)
+        except ValueError:
+            # Non-numeric Content-Length — refuse rather than let the
+            # ValueError bubble to a 500.
+            return None
+        # A negative length would make rfile.read(-1) drain the socket to
+        # EOF, hanging the keep-alive worker thread; the upper bound is a
+        # DoS guard. Reject both without reading the body.
+        if length < 0 or length > self._MAX_FORM_BYTES:
             return None
         body = self.rfile.read(length) if length else b""
         try:

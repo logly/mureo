@@ -501,16 +501,39 @@ def evaluate_guardrails(
 
         current = inputs.current
         pct_cap = guardrails.max_daily_budget_increase_pct
-        if pct_cap is not None and current is not None and current > 0:
-            increase_pct = (proposed - current) / current * 100
-            if increase_pct > pct_cap:
+        if pct_cap is not None and current is not None:
+            if current > 0:
+                increase_pct = (proposed - current) / current * 100
+                if increase_pct > pct_cap:
+                    return PolicyDecision(
+                        allowed=False,
+                        reason=(
+                            f"Proposed daily budget raises spend {increase_pct:.0f}% "
+                            f"({current:,.0f} → {proposed:,.0f}), over the STRATEGY.md "
+                            f"Guardrails limit of {pct_cap:.0f}% "
+                            f"(max_daily_budget_increase_pct)."
+                        ),
+                    )
+            elif proposed > 0:
+                # current == 0 (a paused / zero-budget campaign). A percentage
+                # increase from a zero baseline is unbounded — NO finite raise
+                # can satisfy a percentage cap — so the old ``current > 0`` guard
+                # let a 0 → any-amount jump skip max_daily_budget_increase_pct
+                # entirely. When a percentage cap is the only budget rule the
+                # operator wrote, that raise then hit no cap at all. Fail CLOSED,
+                # consistent with the rest of this gate: refuse it and let the
+                # operator resume from zero via an explicit
+                # max_daily_budget_per_campaign, or without passing a zero
+                # ``current_daily_budget`` baseline. (``proposed == 0`` is a
+                # decrease-to-zero, not an increase, so it is left to pass.)
                 return PolicyDecision(
                     allowed=False,
                     reason=(
-                        f"Proposed daily budget raises spend {increase_pct:.0f}% "
-                        f"({current:,.0f} → {proposed:,.0f}), over the STRATEGY.md "
-                        f"Guardrails limit of {pct_cap:.0f}% "
-                        f"(max_daily_budget_increase_pct)."
+                        f"Proposed daily budget raises spend from 0 to "
+                        f"{proposed:,.0f}, an unbounded increase from a zero "
+                        f"baseline that the {pct_cap:.0f}% STRATEGY.md Guardrails "
+                        f"limit (max_daily_budget_increase_pct) cannot bound. "
+                        f"Refusing it."
                     ),
                 )
 

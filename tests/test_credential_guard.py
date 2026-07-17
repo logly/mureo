@@ -109,6 +109,30 @@ class TestPathGuardBehavior:
         proc = run_guard(_path_guard_command(), {"file_path": str(link)}, fake_home)
         assert deny_decision(proc) == "deny"
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="symlink creation needs privileges"
+    )
+    def test_denies_outbound_symlink_credentials_file(self, tmp_path: Path) -> None:
+        """``~/.mureo/credentials.json`` that is ITSELF a symlink pointing OUT
+        must still be blocked.
+
+        Its realpath escapes ``~/.mureo`` (so the realpath check alone would
+        allow the read), but the requested path is logically under ``~/.mureo``
+        — the logical-path check must catch it. Regression for the inside-out
+        symlink evasion.
+        """
+        home = tmp_path / "home"
+        mureo_dir = home / ".mureo"
+        mureo_dir.mkdir(parents=True)
+        external = tmp_path / "outside" / "stolen.json"
+        external.parent.mkdir(parents=True)
+        external.write_text('{"access_token": "secret"}', encoding="utf-8")
+        cred = mureo_dir / "credentials.json"
+        cred.symlink_to(external)
+
+        proc = run_guard(_path_guard_command(), {"file_path": str(cred)}, home)
+        assert deny_decision(proc) == "deny"
+
     def test_allows_files_outside_mureo(self, fake_home: Path) -> None:
         project_file = fake_home / "project" / "main.py"
         project_file.parent.mkdir()

@@ -19,6 +19,7 @@ import httpx
 from google.oauth2.credentials import Credentials
 
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
+from mureo.fsutil import file_lock, lock_path_for
 from mureo.google_ads import GoogleAdsApiClient
 from mureo.meta_ads import MetaAdsApiClient
 from mureo.search_console import SearchConsoleApiClient
@@ -376,8 +377,14 @@ async def _call_refresh_api(
         "fb_exchange_token": credentials.access_token,
     }
 
+    # POST (not GET) so the client_secret and the token itself travel in the
+    # request body, never the URL. The Meta Graph ``/oauth/access_token``
+    # endpoint accepts these token-grant parameters via POST as well as GET,
+    # and httpx logs ``request.url`` at INFO — a GET would leak the secret and
+    # ``fb_exchange_token`` into any INFO-level log. Mirrors the body-based
+    # exchange in ``mureo.oauth_authcode``.
     async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
-        resp = await client.get(_META_GRAPH_TOKEN_URL, params=params)
+        resp = await client.post(_META_GRAPH_TOKEN_URL, data=params)
 
     if resp.status_code != 200:
         raise ValueError(
@@ -408,22 +415,30 @@ def _save_meta_token(
     caller (:func:`refresh_meta_token_if_needed`) skips the save and warns,
     leaving the file intact. ``_atomic_write_json`` writes via tmp + fsync +
     ``os.replace`` at ``0o600`` so a crash mid-write is durable and safe.
+
+    The load -> mutate -> write cycle runs under a cross-process ``file_lock``
+    so the background 53-day refresh and a concurrent CLI/web
+    ``save_credentials`` cannot last-writer-wins away each other's sections
+    (e.g. a wizard re-auth dropping the just-refreshed access_token, or this
+    refresh dropping a freshly-saved google_ads block).
     """
     # Lazy import mirrors ``auth_setup.save_credentials`` and avoids any
     # import-time coupling to the providers package.
     from mureo.providers.config_writer import _atomic_write_json, _load_existing
 
-    data = _load_existing(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(lock_path_for(path)):
+        data = _load_existing(path)
 
-    meta_section = data.get("meta_ads", {})
-    if not isinstance(meta_section, dict):
-        meta_section = {}
+        meta_section = data.get("meta_ads", {})
+        if not isinstance(meta_section, dict):
+            meta_section = {}
 
-    meta_section["access_token"] = new_token
-    meta_section["token_obtained_at"] = new_obtained_at
-    data["meta_ads"] = meta_section
+        meta_section["access_token"] = new_token
+        meta_section["token_obtained_at"] = new_obtained_at
+        data["meta_ads"] = meta_section
 
-    _atomic_write_json(data, path)
+        _atomic_write_json(data, path)
 
 
 # ---------------------------------------------------------------------------

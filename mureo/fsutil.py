@@ -139,6 +139,18 @@ def _release_lock(fd: int) -> None:
         logger.debug("file_lock release best-effort skip", exc_info=True)
 
 
+def lock_path_for(path: Path) -> Path:
+    """Sidecar lock-file path for ``path`` (``x.json`` -> ``x.json.lock``).
+
+    A single naming convention so every process serialising a read-modify-write
+    on ``path`` (e.g. ``credentials.json``: the Meta 53-day auto-refresh vs. the
+    CLI/web setup wizard) opens the *same* lock file and therefore contends.
+    Mirrors the ``STATE.json`` -> ``STATE.json.lock`` scheme in
+    :mod:`mureo.context.state`.
+    """
+    return path.with_name(path.name + ".lock")
+
+
 @contextlib.contextmanager
 def file_lock(lock_path: str | os.PathLike[str]) -> Iterator[None]:
     """Hold an exclusive, cross-platform advisory lock on ``lock_path``.
@@ -167,4 +179,10 @@ def file_lock(lock_path: str | os.PathLike[str]) -> Iterator[None]:
         os.close(fd)
 
 
-__all__ = ["backup_file", "file_lock", "secure_chmod", "secure_fchmod"]
+__all__ = [
+    "backup_file",
+    "file_lock",
+    "lock_path_for",
+    "secure_chmod",
+    "secure_fchmod",
+]

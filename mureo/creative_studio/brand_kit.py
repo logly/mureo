@@ -145,13 +145,35 @@ def _resolve_logo(raw: Any, kit_dir: Path) -> Path | None:
 
     Returns ``None`` (with a warning) for anything that is not a valid,
     supported, in-bounds image file.
+
+    The path is treated as *strictly relative* to the BRAND_KIT directory: an
+    absolute path is rejected, and a path whose resolved target escapes the
+    directory (via ``..`` or a symlink pointing outside it) is rejected. The
+    ``".."`` string check in :func:`validate_image_file` is blind to absolute
+    paths and to symlink escapes, so a hostile kit (e.g. a client-supplied kit
+    in an agency workspace) could otherwise point ``logo`` at an arbitrary file
+    on disk such as ``/etc/hosts``.
     """
     if raw is None:
         return None
     if not isinstance(raw, str) or not raw.strip():
         _warn(f"brand kit 'logo' is not a path string ({raw!r}); ignoring")
         return None
-    candidate = kit_dir / raw.strip()
+    rel = raw.strip()
+    if Path(rel).is_absolute():
+        _warn(
+            f"brand kit logo {raw!r} must be relative to the BRAND_KIT dir, "
+            "not an absolute path; treating as absent"
+        )
+        return None
+    kit_root = kit_dir.resolve()
+    candidate = (kit_dir / rel).resolve()
+    # Symlink-aware containment: the resolved target must live inside the
+    # resolved BRAND_KIT dir. This catches ``..`` traversal and symlink escapes
+    # that the string-level ".." check in validate_image_file cannot.
+    if not candidate.is_relative_to(kit_root):
+        _warn(f"brand kit logo {raw!r} escapes the BRAND_KIT dir; treating as absent")
+        return None
     try:
         validated = validate_image_file(
             str(candidate),

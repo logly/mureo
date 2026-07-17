@@ -147,7 +147,11 @@ ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["mureo"]
-omit = ["tests/*", "mureo/mcp/*"]
+# mureo/mcp/* (the MCP dispatch layer, including server.py input
+# validation at the real-spend boundary) is intentionally NOT excluded
+# so its security-critical paths count toward fail_under. Only test
+# code is omitted.
+omit = ["tests/*"]
 
 [tool.coverage.report]
 fail_under = 80

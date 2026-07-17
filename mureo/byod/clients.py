@@ -142,6 +142,15 @@ _MUTATION_PREFIXES = (
     "cancel_",
     "set_",
     "patch_",
+    # Meta-specific mutation verbs whose method names do not match any
+    # of the generic prefixes above: boost_post / boost_instagram_post,
+    # end_split_test, duplicate_lead_form, and export_leads_to_csv (the
+    # last writes a local file only, but is still a state-producing
+    # operation that must not silently no-op as an empty read).
+    "boost_",
+    "end_",
+    "duplicate_",
+    "export_",
 )
 
 

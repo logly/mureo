@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 from mureo.context.errors import ContextFileError
 from mureo.context.models import StrategyEntry
 from mureo.context.state import _atomic_write
+from mureo.fsutil import file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -154,15 +155,32 @@ def write_strategy_file(path: Path, entries: list[StrategyEntry]) -> None:
     _atomic_write(path, text)
 
 
+def _strategy_lock_path(path: Path) -> Path:
+    """Sidecar lock file for ``path`` (``STRATEGY.md`` -> ``STRATEGY.md.lock``).
+
+    Mirrors ``mureo.context.state._state_lock_path`` so both context files
+    serialise their read-modify-write mutations the same way.
+    """
+    return path.with_name(path.name + ".lock")
+
+
 def add_strategy_entry(path: Path, entry: StrategyEntry) -> list[StrategyEntry]:
     """Append an entry to the existing file.
+
+    The read -> append -> write cycle runs inside the cross-process
+    ``file_lock`` so two concurrent callers cannot last-writer-wins away each
+    other's append (a lost update). This mirrors
+    ``mureo.context.state._locked_state_mutation`` — STATE.json was already
+    protected (issue #115) while STRATEGY.md was not; the write itself stays
+    atomic via ``write_strategy_file``.
 
     Returns:
         Updated list of entries.
     """
-    entries = read_strategy_file(path)
-    entries = [*entries, entry]
-    write_strategy_file(path, entries)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(_strategy_lock_path(path)):
+        entries = [*read_strategy_file(path), entry]
+        write_strategy_file(path, entries)
     return entries
 
 
@@ -177,16 +195,22 @@ def remove_strategy_entry(
     If title is specified, only entries matching both context_type and title are removed.
     If title is not specified, all entries matching context_type are removed.
 
+    The read -> filter -> write cycle runs inside the same cross-process
+    ``file_lock`` as :func:`add_strategy_entry` so a concurrent add/remove
+    pair cannot clobber each other's change.
+
     Returns:
         Updated list of entries.
     """
-    entries = read_strategy_file(path)
 
     def _should_keep(e: StrategyEntry) -> bool:
         if e.context_type != context_type:
             return True
         return bool(title is not None and e.title != title)
 
-    filtered = [e for e in entries if _should_keep(e)]
-    write_strategy_file(path, filtered)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(_strategy_lock_path(path)):
+        entries = read_strategy_file(path)
+        filtered = [e for e in entries if _should_keep(e)]
+        write_strategy_file(path, filtered)
     return filtered

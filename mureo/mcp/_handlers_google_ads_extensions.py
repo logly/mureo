@@ -353,6 +353,8 @@ async def handle_location_targeting_update(
         val = _opt(args, key)
         if val is not None:
             params[key] = val
+    if len(params) == 1:
+        raise ValueError("one of 'add_locations' or 'remove_criterion_ids' is required")
     result = await client.update_location_targeting(params)
     return _json_result(result)
 
@@ -382,6 +384,8 @@ async def handle_schedule_targeting_update(
         val = _opt(args, key)
         if val is not None:
             params[key] = val
+    if len(params) == 1:
+        raise ValueError("one of 'add_schedules' or 'remove_criterion_ids' is required")
     result = await client.update_schedule_targeting(params)
     return _json_result(result)
 

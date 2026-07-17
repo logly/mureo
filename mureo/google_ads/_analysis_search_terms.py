@@ -92,10 +92,14 @@ class _SearchTermsAnalysisMixin:
         self, campaign_id: str
     ) -> list[dict[str, Any]]: ...
 
-    # Method from PerformanceAnalysisMixin
-    async def _resolve_target_cpa(  # type: ignore[empty-body]
-        self, campaign_id: str, explicit: float | None = None
-    ) -> tuple[float | None, str]: ...
+    # Method from PerformanceAnalysisMixin. Declared under TYPE_CHECKING only:
+    # a runtime empty stub here would shadow the real implementation depending
+    # on the MRO order of the composed analysis class.
+    if TYPE_CHECKING:
+
+        async def _resolve_target_cpa(
+            self, campaign_id: str, explicit: float | None = None
+        ) -> tuple[float | None, str]: ...
 
     # =================================================================
     # Common: Search terms retrieval with previous period / new term routing

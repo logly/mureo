@@ -1525,7 +1525,7 @@ async def test_exchange_code_for_short_token() -> None:
 
     with patch("httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
-        instance.get = AsyncMock(return_value=mock_response)
+        instance.post = AsyncMock(return_value=mock_response)
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         MockClient.return_value = instance
@@ -1548,7 +1548,7 @@ async def test_exchange_code_for_short_token_error() -> None:
 
     with patch("httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
-        instance.get = AsyncMock(side_effect=RuntimeError("connection error"))
+        instance.post = AsyncMock(side_effect=RuntimeError("connection error"))
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         MockClient.return_value = instance
@@ -1577,7 +1577,7 @@ async def test_exchange_short_for_long_token() -> None:
 
     with patch("httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
-        instance.get = AsyncMock(return_value=mock_response)
+        instance.post = AsyncMock(return_value=mock_response)
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         MockClient.return_value = instance
@@ -1601,7 +1601,7 @@ async def test_exchange_short_for_long_token_error() -> None:
 
     with patch("httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
-        instance.get = AsyncMock(side_effect=RuntimeError("api error"))
+        instance.post = AsyncMock(side_effect=RuntimeError("api error"))
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         MockClient.return_value = instance

@@ -75,7 +75,7 @@ async def test_exchange_code_for_short_token() -> None:
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.post = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -88,8 +88,8 @@ async def test_exchange_code_for_short_token() -> None:
         )
 
     assert token == "short-lived-token-abc"
-    mock_client.get.assert_called_once()
-    call_args = mock_client.get.call_args
+    mock_client.post.assert_called_once()
+    call_args = mock_client.post.call_args
     assert f"{_GRAPH_API_BASE}/oauth/access_token" in call_args[0][0] or (
         call_args[1].get("url", call_args[0][0])
         == f"{_GRAPH_API_BASE}/oauth/access_token"
@@ -112,7 +112,7 @@ async def test_exchange_code_for_short_token_error() -> None:
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.post = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -145,7 +145,7 @@ async def test_exchange_short_for_long_token() -> None:
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.post = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -173,7 +173,7 @@ async def test_exchange_short_for_long_token_error() -> None:
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.post = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -1044,7 +1044,7 @@ async def test_meta_short_token_exchange_uses_timeout() -> None:
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.post = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -1074,7 +1074,7 @@ async def test_meta_long_token_exchange_uses_timeout() -> None:
 
     with patch("mureo.auth_setup.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.post = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
