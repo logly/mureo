@@ -22,8 +22,11 @@ if TYPE_CHECKING:
 # Google Ads IDs are int64; 20 digits is comfortably above the real max
 # while still capping attacker payloads at a trivial size.
 _MAX_ID_LENGTH = 20
-_ID_PATTERN = re.compile(r"\d+")
-_DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
+# Use explicit ASCII ``[0-9]`` (not ``\d``) so Unicode digits — full-width
+# ``１２３`` or Arabic-Indic ``٣٤٥`` — are rejected, not silently accepted as
+# "numeric" and interpolated into a GAQL clause.
+_ID_PATTERN = re.compile(r"[0-9]+")
+_DATE_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 # Whitelist of Google Ads date range constants.
 # Source: https://developers.google.com/google-ads/api/docs/query/date-ranges

@@ -65,11 +65,19 @@ def hash_phone(phone: str) -> str:
     """Hash a phone number with SHA-256.
 
     Meta API requirements:
-    - Remove non-digit characters (hyphens, spaces, parentheses, +)
+    - Remove non-digit characters (hyphens, spaces, parentheses, ``+``)
     - Hash with SHA-256
 
+    This function deliberately does NOT add a country code or strip a
+    national trunk prefix: a country code cannot be inferred safely
+    without knowing the caller's region, and guessing would corrupt the
+    hash. For a good match rate the caller is responsible for passing an
+    E.164 / country-code-included number (e.g. ``+81 90-1234-5678`` for
+    Japan) rather than a national-format number (e.g. ``090-1234-5678``).
+
     Args:
-        phone: Phone number (plaintext, may include country code)
+        phone: Phone number in E.164 / country-code-included form
+            (plaintext). Symbols are tolerated and stripped.
 
     Returns:
         SHA-256 hash value (64-character hex string)

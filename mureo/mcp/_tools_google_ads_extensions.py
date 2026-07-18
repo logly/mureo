@@ -858,6 +858,10 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "anyOf": [
+                {"required": ["add_locations"]},
+                {"required": ["remove_criterion_ids"]},
+            ],
         },
     ),
     # === Ad schedules ===
@@ -985,6 +989,10 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "anyOf": [
+                {"required": ["add_schedules"]},
+                {"required": ["remove_criterion_ids"]},
+            ],
         },
     ),
     # === Change History ===

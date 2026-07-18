@@ -43,6 +43,8 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ._csv_safe import sanitize_cell as _sanitize_cell
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -230,7 +232,9 @@ class GoogleAdsAdapter:
                 writer.writerow(
                     {
                         "campaign_id": cid,
-                        "name": name,
+                        # Campaign name is user-controlled (free-text in
+                        # the source Sheet) — defang against CSV injection.
+                        "name": _sanitize_cell(name),
                         # The Apps Script tab does not export state / budget.
                         # Empty strings keep the CSV column-stable; the
                         # client's _to_float / _to_int helpers tolerate them.
@@ -295,7 +299,9 @@ class GoogleAdsAdapter:
                         {
                             "ad_group_id": agid,
                             "campaign_id": campaign_ids[camp_name],
-                            "name": ag_name,
+                            # Ad-group name is user-controlled — defang
+                            # against CSV injection.
+                            "name": _sanitize_cell(ag_name),
                         }
                     )
             files_written.append("ad_groups.csv")
@@ -316,6 +322,7 @@ class GoogleAdsAdapter:
                     "cost",
                     "conversions",
                 ),
+                sanitize=("keyword", "campaign", "ad_group", "match_type"),
             )
             files_written.append("keywords.csv")
 
@@ -332,6 +339,7 @@ class GoogleAdsAdapter:
                     "cost",
                     "conversions",
                 ),
+                sanitize=("search_term", "campaign", "ad_group"),
             )
             files_written.append("search_terms.csv")
 
@@ -361,12 +369,31 @@ def _passthrough_tab(
     tab_label: str,
     required: tuple[str, ...],
     optional: tuple[str, ...],
+    sanitize: tuple[str, ...] = (),
 ) -> None:
-    """Validate required columns then write the tab to CSV verbatim."""
+    """Validate required columns then write the tab to CSV.
+
+    Columns listed in ``sanitize`` carry user-controlled free text
+    (keyword / search term / campaign / ad-group / match-type) and are
+    defanged against CSV injection via :func:`_sanitize_cell`. Numeric
+    columns (impressions / clicks / cost / conversions / quality_score)
+    are passed through verbatim — they are re-parsed numerically by the
+    BYOD client and are out of scope for the injection guard.
+    """
     idx = _require_columns(sheet, tab_label, required)
     out_columns = [c for c in (*required, *optional) if c in idx]
+    sanitize_set = frozenset(sanitize)
     with out_path.open("w", encoding="utf-8", newline="") as f:
         writer = _csv.DictWriter(f, fieldnames=out_columns)
         writer.writeheader()
         for raw in _iter_data_rows(sheet):
-            writer.writerow({c: _cell(raw, idx, c) for c in out_columns})
+            writer.writerow(
+                {
+                    c: (
+                        _sanitize_cell(_cell(raw, idx, c))
+                        if c in sanitize_set
+                        else _cell(raw, idx, c)
+                    )
+                    for c in out_columns
+                }
+            )

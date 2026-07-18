@@ -861,6 +861,10 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     @_wrap_mutate_error("ad group update")
     async def update_ad_group(self, params: dict[str, Any]) -> dict[str, Any]:
         """Update ad group."""
+        # Validate the ID before it reaches either the GAQL pre-check query
+        # (_check_ad_group_supports_manual_bid) or ad_group_path(), so a
+        # non-numeric value can never be interpolated into a query string.
+        self._validate_id(params["ad_group_id"], "ad_group_id")
         # Pre-check: cpc_bid_micros only works under manual bidding
         # strategies. Bail out with a clear error before hitting the
         # Google Ads API, which would otherwise return the unhelpful

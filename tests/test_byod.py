@@ -343,10 +343,12 @@ def test_byod_google_ads_client_aggregates_float_metrics(tmp_path, fake_home):
         "campaign_id,name,status,daily_budget_jpy\ncamp_a,Brand Search,,\n",
         encoding="utf-8",
     )
-    # LAST_30_DAYS is [today - 30, today - 1] (excludes today). Use
-    # yesterday so the row falls inside the window regardless of
-    # when the test runs.
-    yesterday_iso = (date.today() - timedelta(days=1)).isoformat()
+    # BYOD windows anchor to the dataset's own latest row date
+    # (_period_to_range(anchor=_max_date(rows))), never wall-clock, so a
+    # fixed anchor keeps the row inside LAST_30_DAYS deterministically —
+    # no date.today() read that could straddle a midnight boundary.
+    anchor = date(2026, 6, 15)
+    yesterday_iso = (anchor - timedelta(days=1)).isoformat()
     (data_dir / "metrics_daily.csv").write_text(
         "date,campaign_id,impressions,clicks,cost_jpy,conversions\n"
         f"{yesterday_iso},camp_a,98.0,4.0,8905.30,0.0\n",
@@ -653,7 +655,10 @@ def test_byod_meta_get_performance_report_exposes_result_indicator(
         "camp_none,No-Indicator CP,,,\n",
         encoding="utf-8",
     )
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    # Fixed anchor: BYOD windows anchor to the data's latest row date,
+    # not wall-clock, so this stays deterministic across a midnight boundary.
+    anchor = date(2026, 6, 15)
+    yesterday = (anchor - timedelta(days=1)).isoformat()
     (data_dir / "metrics_daily.csv").write_text(
         "date,campaign_id,impressions,clicks,cost_jpy,conversions,reach,frequency,"
         "result_indicator\n"
@@ -695,12 +700,12 @@ def test_byod_meta_client_phase3_readers(tmp_path, fake_home):
     from mureo.byod.clients import ByodMetaAdsClient
     from mureo.byod.runtime import byod_data_dir
 
-    # _period_to_range("LAST_30_DAYS") excludes today (advertising data
-    # is not complete intra-day); use yesterday + day-before so the
-    # period filter actually intersects the fixture rows.
-    today = date.today()
-    d1 = (today - timedelta(days=1)).strftime("%Y-%m-%d")
-    d2 = (today - timedelta(days=2)).strftime("%Y-%m-%d")
+    # BYOD period filters anchor to the data's own latest row date, not
+    # wall-clock, so a fixed anchor keeps d1/d2 inside the window
+    # deterministically (no midnight-straddling date.today() read).
+    anchor = date(2026, 6, 15)
+    d1 = (anchor - timedelta(days=1)).strftime("%Y-%m-%d")
+    d2 = (anchor - timedelta(days=2)).strftime("%Y-%m-%d")
 
     wb = Workbook()
     default = wb.active

@@ -298,6 +298,26 @@ def _error(message: str) -> list[TextContent]:
     return _json_result({"error": message})
 
 
+def _coerce_count(raw: Any) -> int | None:
+    """Coerce the ``n`` argument to an int in ``[1, 6]``, or ``None`` if invalid.
+
+    The schema declares an integer, but the enum/constraints are advisory: a
+    direct handler call can pass ``null`` (``int(None)`` would raise
+    ``TypeError``), a non-numeric value, or an out-of-range count that would
+    reach a provider. Rejecting here lets the handler return a structured
+    error envelope instead. ``bool`` is rejected even though it is an ``int``.
+    """
+    if isinstance(raw, bool):
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if value < 1 or value > 6:
+        return None
+    return value
+
+
 def _safe_is_configured(provider: ImageProvider) -> bool:
     try:
         return bool(provider.is_configured())
@@ -341,7 +361,6 @@ async def _handle_providers_list(_arguments: dict[str, Any]) -> list[TextContent
 async def _handle_generate_visual(arguments: dict[str, Any]) -> list[TextContent]:
     prompt = _require(arguments, "prompt")
     aspect = _opt(arguments, "aspect", "square")
-    n = int(_opt(arguments, "n", 2))
     provider_arg = _opt(arguments, "provider")
     template = _opt(arguments, "template")
 
@@ -353,6 +372,18 @@ async def _handle_generate_visual(arguments: dict[str, Any]) -> list[TextContent
     if template is not None and template not in composer.TEMPLATES:
         valid = ", ".join(composer.TEMPLATES)
         return _error(f"unknown template {template!r}. Valid templates: {valid}")
+
+    # Validate ``aspect`` symmetrically: an unknown value would raise ValueError
+    # from ``generation_size_for_aspect`` below, escaping the error envelope.
+    if aspect not in _ASPECTS:
+        valid = ", ".join(_ASPECTS)
+        return _error(f"unknown aspect {aspect!r}. Valid aspects: {valid}")
+
+    # Validate ``n`` before it reaches ``int(...)``: ``null`` / non-numeric /
+    # out-of-range values must become a structured error, not a raw TypeError.
+    n = _coerce_count(_opt(arguments, "n", 2))
+    if n is None:
+        return _error("n must be an integer between 1 and 6")
 
     providers = _resolve_providers(provider_arg)
     if not providers:
@@ -599,7 +630,12 @@ async def _handle_compose(arguments: dict[str, Any]) -> list[TextContent]:
     body = _opt(arguments, "body")
     badge = _opt(arguments, "badge")
     template = _opt(arguments, "template", "hero_overlay")
-    formats = _opt(arguments, "formats") or ["meta_feed_1x1"]
+    # Apply the default only when 'formats' is unspecified (absent or null).
+    # An explicit ``[]`` must reach the non-empty check below rather than being
+    # silently replaced by the default, so ``formats or [...]`` cannot be used.
+    formats = arguments.get("formats")
+    if formats is None:
+        formats = ["meta_feed_1x1"]
 
     try:
         vpath = validate_image_file(

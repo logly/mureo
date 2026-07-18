@@ -996,7 +996,7 @@ class TestAnalysisMixin:
 
     @pytest.mark.asyncio
     async def test_investigate_cost_previous_window_does_not_overlap_current(
-        self, client
+        self, client, monkeypatch
     ) -> None:
         """Issue #134 regression: the pre-fix code mapped
         ``last_7d``-as-current to ``last_30d``-as-previous, which is a
@@ -1006,9 +1006,23 @@ class TestAnalysisMixin:
         We capture the ``period`` strings passed to
         ``get_performance_report`` and verify the previous one parses
         to a 7-day range immediately before today's last 7 days."""
-        from datetime import date
+        from datetime import date, timedelta
 
+        from mureo.meta_ads import _period
         from mureo.meta_ads._period import resolve_period
+
+        # Freeze the anchor date the code resolves ``last_7d`` against so
+        # the assertions compare against the SAME "today" the code used.
+        # Otherwise a second date.today() read in the test could straddle a
+        # midnight boundary and race the code's read.
+        frozen = date(2026, 6, 15)
+
+        class _FrozenDate(date):
+            @classmethod
+            def today(cls) -> date:
+                return frozen
+
+        monkeypatch.setattr(_period, "date", _FrozenDate)
 
         captured: list[str] = []
 
@@ -1026,11 +1040,13 @@ class TestAnalysisMixin:
             "last_7d (pre-#134 bug)"
         )
         prev_rp = resolve_period(prev_str)
-        # And the parsed window must be 7 days long and end before today.
+        # last_7d spans [frozen-7, frozen-1]; the prior 7-day block ends at
+        # frozen-8, so it is 7 days long and ends before "today".
         assert prev_rp.days == 7
         assert prev_rp.time_range is not None
-        prev_until_str = prev_rp.time_range[1]
-        assert date.fromisoformat(prev_until_str) < date.today()
+        prev_until = date.fromisoformat(prev_rp.time_range[1])
+        assert prev_until == frozen - timedelta(days=8)
+        assert prev_until < frozen
 
     @pytest.mark.asyncio
     async def test_compare_ads_no_data(self, client) -> None:

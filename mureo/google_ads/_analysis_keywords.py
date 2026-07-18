@@ -29,10 +29,14 @@ class _KeywordsAnalysisMixin:
     def _period_to_date_clause(self, period: str) -> str: ...  # type: ignore[empty-body]
     async def _search(self, query: str) -> list[Any]: ...  # type: ignore[empty-body]
 
-    # Method from PerformanceAnalysisMixin
-    async def _resolve_target_cpa(  # type: ignore[empty-body]
-        self, campaign_id: str, explicit: float | None = None
-    ) -> tuple[float | None, str]: ...
+    # Method from PerformanceAnalysisMixin. Declared under TYPE_CHECKING only:
+    # a runtime empty stub here would shadow the real implementation depending
+    # on the MRO order of the composed analysis class.
+    if TYPE_CHECKING:
+
+        async def _resolve_target_cpa(
+            self, campaign_id: str, explicit: float | None = None
+        ) -> tuple[float | None, str]: ...
 
     # =================================================================
     # Keyword performance retrieval

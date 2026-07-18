@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from mureo.fsutil import secure_fchmod
+from mureo.fsutil import file_lock, secure_fchmod
 
 HostedConnectivity = Literal["connected", "not_connected", "unknown"]
 
@@ -77,6 +77,19 @@ def _default_settings_path() -> Path:
     fallback target; the primary path delegates to the ``claude`` CLI.
     """
     return Path.home() / ".claude.json"
+
+
+def _settings_lock_path(settings_path: Path) -> Path:
+    """Sidecar lock file for ``settings_path`` (``<name>.lock``).
+
+    Mirrors ``mureo.context.state._state_lock_path``. Serialises the
+    read-modify-write of ``~/.claude.json`` across mureo processes so two
+    concurrent provider add/remove calls cannot last-writer-wins away each
+    other's ``mcpServers`` edit. Advisory (a non-mureo writer such as Claude
+    Code itself is not obliged to honor it), but it protects mureo's own
+    fallback file-mode writers.
+    """
+    return settings_path.with_name(settings_path.name + ".lock")
 
 
 def _load_existing(settings_path: Path) -> dict[str, Any]:
@@ -325,36 +338,41 @@ def add_provider_to_claude_settings(
         return AddResult(changed=True)
 
     target = settings_path or _default_settings_path()
-    existing = _load_existing(target)
+    # Hold the cross-process lock across the read-modify-write so a concurrent
+    # add/remove cannot clobber this edit (the atomic replace only makes the
+    # write itself atomic, not the surrounding read + write).
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(_settings_lock_path(target)):
+        existing = _load_existing(target)
 
-    mcp_servers_raw = existing.get("mcpServers")
-    if mcp_servers_raw is None:
-        mcp_servers: dict[str, Any] = {}
-    elif isinstance(mcp_servers_raw, dict):
-        mcp_servers = mcp_servers_raw
-    else:
-        raise ConfigWriteError(
-            f"existing settings at {target} has a non-object 'mcpServers' "
-            f"value (got {type(mcp_servers_raw).__name__}); refusing to "
-            f"overwrite to protect user data."
-        )
+        mcp_servers_raw = existing.get("mcpServers")
+        if mcp_servers_raw is None:
+            mcp_servers: dict[str, Any] = {}
+        elif isinstance(mcp_servers_raw, dict):
+            mcp_servers = mcp_servers_raw
+        else:
+            raise ConfigWriteError(
+                f"existing settings at {target} has a non-object 'mcpServers' "
+                f"value (got {type(mcp_servers_raw).__name__}); refusing to "
+                f"overwrite to protect user data."
+            )
 
-    # ``desired_config`` was normalized through a JSON round-trip above so
-    # the comparison key matches what would actually be written to disk:
-    # ``_freeze_config`` converts nested lists to tuples for catalog
-    # immutability, but JSON has no tuple type — the on-disk shape (and
-    # the value re-read by ``_load_existing``) is always list-form. A
-    # direct ``current == dict(spec.mcp_server_config)`` would compare
-    # ``[..] != (..)`` and report ``changed=True`` on every re-add,
-    # breaking the idempotency contract documented above.
-    current = mcp_servers.get(spec.id)
-    if current == desired_config:
-        return AddResult(changed=False)
+        # ``desired_config`` was normalized through a JSON round-trip above so
+        # the comparison key matches what would actually be written to disk:
+        # ``_freeze_config`` converts nested lists to tuples for catalog
+        # immutability, but JSON has no tuple type — the on-disk shape (and
+        # the value re-read by ``_load_existing``) is always list-form. A
+        # direct ``current == dict(spec.mcp_server_config)`` would compare
+        # ``[..] != (..)`` and report ``changed=True`` on every re-add,
+        # breaking the idempotency contract documented above.
+        current = mcp_servers.get(spec.id)
+        if current == desired_config:
+            return AddResult(changed=False)
 
-    mcp_servers[spec.id] = desired_config
-    existing["mcpServers"] = mcp_servers
+        mcp_servers[spec.id] = desired_config
+        existing["mcpServers"] = mcp_servers
 
-    _atomic_write_json(existing, target)
+        _atomic_write_json(existing, target)
     return AddResult(changed=True)
 
 
@@ -394,14 +412,17 @@ def remove_provider_from_claude_settings(
     if not target.exists():
         return RemoveResult(changed=False)
 
-    existing = _load_existing(target)
-    mcp_servers = existing.get("mcpServers")
-    if not isinstance(mcp_servers, dict) or provider_id not in mcp_servers:
-        return RemoveResult(changed=False)
+    # Same cross-process lock as the add path so the read-modify-write is
+    # serialised against a concurrent provider edit.
+    with file_lock(_settings_lock_path(target)):
+        existing = _load_existing(target)
+        mcp_servers = existing.get("mcpServers")
+        if not isinstance(mcp_servers, dict) or provider_id not in mcp_servers:
+            return RemoveResult(changed=False)
 
-    del mcp_servers[provider_id]
-    existing["mcpServers"] = mcp_servers
-    _atomic_write_json(existing, target)
+        del mcp_servers[provider_id]
+        existing["mcpServers"] = mcp_servers
+        _atomic_write_json(existing, target)
     return RemoveResult(changed=True)
 
 

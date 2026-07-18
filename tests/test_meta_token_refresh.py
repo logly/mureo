@@ -96,7 +96,7 @@ async def test_refresh_when_token_expiring_soon() -> None:
 
     with patch("mureo.auth.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
+        mock_client.post.return_value = mock_response
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -188,7 +188,7 @@ async def test_refresh_updates_credentials_file(tmp_path: Path) -> None:
 
     with patch("mureo.auth.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
+        mock_client.post.return_value = mock_response
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -213,7 +213,7 @@ async def test_refresh_failure_returns_original() -> None:
 
     with patch("mureo.auth.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get.side_effect = httpx.HTTPError("Network error")
+        mock_client.post.side_effect = httpx.HTTPError("Network error")
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -236,7 +236,7 @@ async def test_refresh_failure_on_non_200_returns_original() -> None:
 
     with patch("mureo.auth.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
+        mock_client.post.return_value = mock_response
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -268,16 +268,16 @@ async def test_refresh_api_call_parameters() -> None:
 
     with patch("mureo.auth.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
+        mock_client.post.return_value = mock_response
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
 
         await refresh_meta_token_if_needed(creds)
 
-    mock_client.get.assert_called_once_with(
+    mock_client.post.assert_called_once_with(
         "https://graph.facebook.com/v21.0/oauth/access_token",
-        params={
+        data={
             "grant_type": "fb_exchange_token",
             "client_id": "app-123",
             "client_secret": "secret-456",
@@ -308,7 +308,7 @@ async def test_refresh_at_exact_threshold() -> None:
 
     with patch("mureo.auth.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
+        mock_client.post.return_value = mock_response
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -365,7 +365,7 @@ async def test_refresh_preserves_other_credential_sections(
 
     with patch("mureo.auth.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
+        mock_client.post.return_value = mock_response
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client_cls.return_value = mock_client

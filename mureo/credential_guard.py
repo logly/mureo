@@ -14,11 +14,15 @@ interpreter crash (exit 1) can never be mistaken for an intentional block.
 
 Two guards are installed:
 
-* Path guard (``Read|Edit|Write|Grep|Glob|NotebookEdit``): resolves the
-  tool's target path with ``os.path.realpath`` (after ``expanduser``) and
-  denies when it lands inside ``~/.mureo`` — covering every file in the
-  directory and closing the symlink/relative-path evasions of the old
-  substring check.
+* Path guard (``Read|Edit|Write|Grep|Glob|NotebookEdit``): denies when
+  *either* the realpath-resolved target (``os.path.realpath`` after
+  ``expanduser``) *or* the logical target (``os.path.abspath`` after
+  ``expanduser``, no symlink resolution) lands inside ``~/.mureo``. The
+  realpath check closes the outside-in evasion (a link outside the dir that
+  resolves into it); the logical check closes the inside-out evasion (a
+  ``~/.mureo/credentials.json`` that is itself a symlink pointing OUT — its
+  realpath escapes the dir, but the requested path is still under it). Both
+  cover every file in the directory, not just ``credentials.json``.
 * Bash guard: denies any command whose text references ``.mureo``.  A
   substring check is all a command string allows, but anchoring on the
   directory name (not ``credentials``) also catches wildcard forms like
@@ -80,10 +84,14 @@ _PATH_GUARD_CODE = (
     "d=json.loads(sys.stdin.read() or '{}'); "
     "i=d.get('tool_input') or {}; "
     "p=str(i.get('file_path') or i.get('path') or i.get('notebook_path') or ''); "
+    "e=os.path.expanduser(p); "
     "b=os.path.realpath(os.path.expanduser('~/.mureo')).lower(); "
-    "r=os.path.realpath(os.path.expanduser(p)).lower() if p else ''; "
+    "bl=os.path.abspath(os.path.expanduser('~/.mureo')).lower(); "
+    "r=os.path.realpath(e).lower() if p else ''; "
+    "lp=os.path.abspath(e).lower() if p else ''; "
     + _deny_expr("mureo credential guard: files under ~/.mureo are protected")
-    + " if r==b or r.startswith(b+os.sep) else None"
+    + " if p and (r==b or r.startswith(b+os.sep)"
+    " or lp==bl or lp.startswith(bl+os.sep)) else None"
 )
 
 _BASH_GUARD_CODE = (

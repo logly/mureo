@@ -591,6 +591,7 @@ class _TargetingMixin:
 
         Note: BudgetGuard targeting expansion guard (validate_targeting_expansion) is performed on the Managed side.
         """
+        self._validate_id(params["campaign_id"], "campaign_id")
         cc_service = self._get_service("CampaignCriterionService")
         operations = []
 
@@ -601,15 +602,17 @@ class _TargetingMixin:
             criterion.campaign = self._client.get_service(
                 "CampaignService"
             ).campaign_path(self._customer_id, params["campaign_id"])
-            # Accept both "geoTargetConstants/2392" and "2392" formats
-            loc_str = str(loc_id)
-            if not loc_str.startswith("geoTargetConstants/"):
-                loc_str = f"geoTargetConstants/{loc_str}"
-            criterion.location.geo_target_constant = loc_str
+            # Accept both "geoTargetConstants/2392" and "2392" formats. Validate
+            # the bare numeric part so a non-numeric ID cannot be injected into
+            # the resource path.
+            numeric_id = str(loc_id).removeprefix("geoTargetConstants/")
+            self._validate_id(numeric_id, "geo_target_constant")
+            criterion.location.geo_target_constant = f"geoTargetConstants/{numeric_id}"
             operations.append(op)
 
         # Remove
         for cid in params.get("remove_criterion_ids", []):
+            self._validate_id(str(cid), "criterion_id")
             op = self._client.get_type("CampaignCriterionOperation")
             op.remove = self._client.get_service(
                 "CampaignCriterionService"
@@ -665,6 +668,7 @@ class _TargetingMixin:
         self, params: dict[str, Any]
     ) -> list[dict[str, Any]]:
         """Update ad schedule."""
+        self._validate_id(params["campaign_id"], "campaign_id")
         cc_service = self._get_service("CampaignCriterionService")
         operations = []
 
@@ -688,6 +692,7 @@ class _TargetingMixin:
 
         # Remove
         for cid in params.get("remove_criterion_ids", []):
+            self._validate_id(str(cid), "criterion_id")
             op = self._client.get_type("CampaignCriterionOperation")
             op.remove = self._client.get_service(
                 "CampaignCriterionService"

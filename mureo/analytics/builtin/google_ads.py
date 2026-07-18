@@ -195,7 +195,12 @@ class GoogleAdsAnalyticsModule(AnalyticsModule):
             rows = await self._performance_fetcher(account_id, period)
         else:
             try:
-                rows = await fetch_google_ads_performance_rows(account_id, period)
+                # The live fetcher returns the resolved (allow-list-bound)
+                # account id so the diagnosis is labelled with the canonical
+                # value, not the raw input (#435).
+                rows, account_id = await fetch_google_ads_performance_rows(
+                    account_id, period
+                )
             except NoCredentialsError:
                 return PerformanceDiagnosis(
                     platform=self.platform,
@@ -225,7 +230,9 @@ class GoogleAdsAnalyticsModule(AnalyticsModule):
             ads = await self._ads_list_fetcher(account_id)
         else:
             try:
-                ads = await fetch_google_ads_list(account_id)
+                # Resolved account id propagates so the audit is labelled with
+                # the canonical value (#435).
+                ads, account_id = await fetch_google_ads_list(account_id)
             except NoCredentialsError:
                 return CreativeAudit(
                     platform=self.platform,
@@ -254,7 +261,11 @@ class GoogleAdsAnalyticsModule(AnalyticsModule):
             rows = await self._performance_fetcher(account_id, period)
         else:
             try:
-                rows = await fetch_google_ads_performance_rows(account_id, period)
+                # Resolved account id propagates so the result is labelled with
+                # the canonical value (#435).
+                rows, account_id = await fetch_google_ads_performance_rows(
+                    account_id, period
+                )
             except NoCredentialsError:
                 return BudgetEfficiency(
                     platform=self.platform,
