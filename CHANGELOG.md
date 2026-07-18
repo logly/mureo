@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.29] - 2026-07-19
+
+### Fixed
+
+- **Search Console `site_url` is optional at the schema level so tenant
+  auto-resolution works (#447).** Every Search Console tool declared `site_url`
+  in its `inputSchema` `required`, so the MCP server rejected an omitted
+  `site_url` during schema validation — before the handler ran — making the
+  documented single-property auto-resolution (for a tenant-scoped multi-account
+  client) unreachable. `site_url` is now an optional property on every tool;
+  enforcement is unchanged and lives in `_resolve_site_url` (standalone still
+  requires it; a multi-account backend binds it to the active client's
+  allow-listed property — single → auto-resolve, multiple / out-of-scope /
+  unconfigured → refuse, fail-closed). Cross-tenant isolation is unaffected.
+
+### Documentation
+
+- **Full documentation refresh against the codebase (#446).** Corrected the
+  MCP tool inventory to 199 across README / `docs/mcp-server.md` /
+  `docs/architecture.md` (added the four previously-undocumented tool
+  categories and the four missing Google Ads tools, an Analytics Registry
+  section, and a `feedpath` fix for `sitemaps_submit`); refreshed the AGENTS.md
+  and architecture package/module trees (native skills, analytics dispatcher,
+  the many unlisted packages) and removed stale references; updated the BYOD
+  docs (read-only prefixes, shared sanitizer, EU-locale dates, Phase-3 CSVs),
+  moved GA4 to the official `ga4-official` MCP, switched the Meta token-exchange
+  example to a POST body, and corrected the supported version, `mureo configure`
+  command, native tool counts, and skills paths across the guides.
+
 ## [0.10.28] - 2026-07-18
 
 ### Added
