@@ -109,8 +109,8 @@ mureo setup gemini
 # Authentication only (terminal prompts)
 mureo auth setup
 
-# Browser-based auth wizard (no terminal input — for users directed here by an AI agent)
-mureo auth setup --web
+# Browser-based setup UI (no terminal input — OAuth, credentials, providers, host setup)
+mureo configure
 ```
 
 ## Using mureo via CLI

@@ -18,6 +18,15 @@ mureo <subcommand-group> <command> [options]
 |-------|-------------|
 | `setup` | Environment setup (Claude Code, Cursor, Codex, Gemini) |
 | `auth` | Authentication management |
+| `configure` | Open the local web configuration UI (credential entry + host setup) |
+| `open` | Bring an already-running configure dashboard to the front |
+| `service` | Install / inspect / remove the always-on configure service |
+| `upgrade` | Upgrade mureo and its plugins (also re-deploys skills) |
+| `byod` | Bring Your Own Data — analyse ad-account data locally, no OAuth |
+| `demo` | Scaffold a self-contained demo workspace |
+| `providers` | Install / list / remove official MCP providers (Google Ads, Meta, GA4) |
+| `install-desktop` | Wire mureo into Claude Desktop chat (macOS) |
+| `learn` | Append insights to the diagnostic knowledge base |
 | `rollback` | Inspect reversible actions recorded in STATE.json |
 
 Run `mureo --help` to see all available groups.
@@ -34,8 +43,10 @@ One-command setup that handles:
 1. Google Ads / Meta Ads authentication (OAuth)
 2. MCP server configuration (`~/.claude/settings.json`)
 3. Credential guard (blocks AI agents from reading secrets)
-4. Workflow commands (`~/.claude/commands/`)
-5. Skills (`~/.claude/skills/`)
+4. Workflow commands as native slash skills (`~/.claude/skills/`)
+5. Skills (`~/.claude/skills/`) — bundled operational + shared skills, plus any plugin-provided native slash skills discovered via the `mureo.native_skills` entry-point group (#439)
+
+`mureo configure` (the browser UI) deploys the same skills — bundled and plugin native — when it runs basic setup.
 
 Use `--skip-auth` to install commands, skills, MCP config, and credential guard without running OAuth:
 
@@ -148,7 +159,10 @@ Notes:
 mureo upgrade              # upgrade mureo itself
 mureo upgrade --all        # upgrade mureo + every installed `mureo-*` plugin
 mureo upgrade --dry-run    # print the pip command without running it
+mureo upgrade --no-refresh # upgrade the package(s) only; skip the post-upgrade refresh
 ```
+
+After a successful upgrade, mureo runs a **post-upgrade refresh** so the new code actually takes effect: it re-deploys the bundled skills into `~/.claude/skills/` and any plugin-provided native slash skills (the `mureo.native_skills` entry-point group, #439) into both `~/.claude/skills/` and `~/.codex/skills/`, upgrades the installed credential-guard hooks, and restarts the always-on service. The refresh only touches a host that already has a skills directory, so it never force-installs skills you removed on purpose. Pass `--no-refresh` to upgrade the package(s) alone.
 
 The configure UI's **About mureo** tab surfaces the same capability for GUI users: it shows installed versions, checks the index for newer mureo / plugin releases in the background, and offers a one-click "update all" button.
 

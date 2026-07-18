@@ -81,18 +81,34 @@ excluded — Google Ads Scripts cannot reach them. Use
 
 In Ads Manager: **Reports → Customize → Export**.
 
-Configure the report once with these columns (one row per
-day × ad-set × ad):
+Save the report once under a name like **mureo BYOD** so that after the
+first setup you can re-export in two clicks via **Saved reports → mureo
+BYOD → Export**.
 
-- **Breakdowns:** *By Time → Day*
+**Recommended report setup** (one row per day × ad-set × ad, plus
+breakdown rows):
+
 - **Level:** *Ad* (gives the full Campaign / Ad set / Ad hierarchy)
-- **Metrics:** Day, Campaign name, Ad set name, Ad name,
-  Impressions, Clicks (all), Amount spent, Results
+- **Breakdowns:** *By Time → Day* **plus** *By Delivery → Placement /
+  Platform / Device platform* — these feed the per-placement /
+  per-platform / per-device drill-down CSVs
+- **Columns:** Campaign name, Ad set name, Ad name, Results, Result
+  indicator, Amount spent, Impressions, Reach, Link clicks, Frequency
 - **Account language:** any of the 9 supported locales (see the
   multilingual section below) — Ads Manager always emits the spend
   header as `Amount spent (XXX)` where `XXX` is the account's ISO
   currency code (`JPY` / `USD` / `EUR` / …); mureo strips the
   currency suffix automatically
+
+> **EU-locale dates are not supported.** mureo recognizes only ISO
+> (`YYYY-MM-DD`), slash-ISO (`YYYY/MM/DD`), and US-locale
+> (`MM/DD/YYYY`) date cells. Column *headers* are recognized in all 9
+> locales, but the date *format* is separate: a `DD/MM/YYYY` export is
+> indistinguishable from `MM/DD/YYYY` for days ≤ 12, so it would
+> silently mis-aggregate (or drop) daily metrics. If your account
+> language is a European locale that emits `DD/MM/YYYY`, switch
+> **Reports → Account language** to **English** so the export uses
+> `MM/DD/YYYY`.
 
 Click **Export → Excel (.xlsx)**. Save the file alongside the Google
 Ads Sheet's XLSX export.
@@ -221,7 +237,13 @@ name prefixes returns `{"status": "skipped_in_byod_readonly", ...}`:
 `create_`, `update_`, `delete_`, `remove_`, `add_`, `send_`,
 `upload_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`,
 `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`,
-`cancel_`, `set_`, `patch_`.
+`cancel_`, `set_`, `patch_`, `boost_`, `end_`, `duplicate_`,
+`export_`.
+
+The last four (`boost_` / `end_` / `duplicate_` / `export_`) cover
+Meta-specific mutations whose method names don't match the generic
+verbs above — `boost_post`, `end_split_test`, `duplicate_lead_form`,
+and `export_leads_to_csv`.
 
 ---
 
@@ -255,6 +277,14 @@ run `mureo auth setup` (or `mureo configure`) to populate
   for the BYOD path.
 - **Path-traversal defense.** The bundle importer refuses to write
   outside `~/.mureo/byod/`.
+- **CSV-injection sanitized.** Every BYOD adapter (Google Ads and
+  Meta) runs user-controlled cell values — campaign / ad-set / ad
+  names, keywords, search terms, creative copy — through a shared
+  sanitizer (`mureo/byod/adapters/_csv_safe.py`) that neutralizes
+  spreadsheet-formula payloads: any cell starting with `=`, `+`, `-`,
+  `@`, tab, or carriage-return is prefixed with a single quote, so it
+  can't auto-execute if the generated CSV is re-opened in Excel /
+  Sheets.
 
 ---
 
@@ -274,6 +304,13 @@ detects a Meta Ads Manager export-style header. The two adapters are
 disjoint — Google Ads tabs use `campaign` (short form) while Meta
 uses `Campaign name` (long form), so a workbook can carry only one
 adapter's data.
+
+When the Meta export includes delivery or demographic breakdowns
+(the Step 2b *Placement / Platform / Device platform* and age/gender
+rows), the adapter additionally writes `ad_set_metrics_daily.csv`,
+`ad_metrics_daily.csv`, `demographics_daily.csv`, and `creatives.csv`
+alongside the four core files, for per-ad-set / per-ad / per-demographic
+drill-down and creative metadata.
 
 ---
 

@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 189 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 175 advertising and SEO operation tools across Google Ads (83), Meta Ads (82), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 8 mureo-context tools (strategy / state), 1 analytics-registry tool, and 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
+mureo exposes 199 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 178 advertising and SEO operation tools across Google Ads (86), Meta Ads (82), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
 
 ## Starting the Server
 
@@ -208,6 +208,8 @@ Or use `uv` to run it:
 | `google_ads_schedule_targeting_list` | List ad schedule targeting | `customer_id`, `campaign_id` |
 | `google_ads_schedule_targeting_update` | Update ad schedule targeting | `customer_id`, `campaign_id` |
 | `google_ads_change_history_list` | List account change history | `customer_id` |
+| `google_ads_demographic_targeting_list` | List explicit demographic criteria (age range, gender, parental status, household income) set on ad groups | `customer_id` |
+| `google_ads_audience_targeting_list` | List audience-type criteria (user interests, remarketing / customer-match lists, custom / combined audiences) attached to ad groups | `customer_id` |
 
 #### Analysis & Reporting
 
@@ -223,6 +225,7 @@ Or use `uv` to run it:
 | `google_ads_budget_efficiency` | Analyze budget utilization efficiency | `customer_id` |
 | `google_ads_budget_reallocation` | Suggest budget reallocation across campaigns | `customer_id` |
 | `google_ads_auction_insights_get` | Get auction insights (competitor analysis) | `customer_id`, `campaign_id` |
+| `google_ads_auction_insights_analyze` | Interpret impression-share metrics into human-readable competitive-position insights | `customer_id`, `campaign_id` |
 | `google_ads_rsa_assets_analyze` | Analyze RSA asset performance | `customer_id`, `ad_group_id` |
 | `google_ads_rsa_assets_audit` | Audit RSA assets for best practices | `customer_id`, `campaign_id` |
 | `google_ads_search_terms_review` | Review search terms with rule-based scoring | `customer_id`, `campaign_id` |
@@ -267,6 +270,7 @@ Or use `uv` to run it:
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `google_ads_assets_upload_image` | Upload a local image file as a Google Ads asset | `customer_id`, `file_path` |
+| `google_ads_image_assets_list` | List existing image assets with their names and dimensions (width/height, file size, serving URL) | `customer_id` |
 
 ### Meta Ads
 
@@ -467,7 +471,7 @@ Search Console tools reuse the same Google OAuth2 credentials as Google Ads -- n
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `search_console_sitemaps_list` | List sitemaps for a site | `site_url` |
-| `search_console_sitemaps_submit` | Submit a sitemap | `site_url`, `sitemap_url` |
+| `search_console_sitemaps_submit` | Submit a sitemap | `site_url`, `feedpath` |
 
 #### URL Inspection
 
@@ -495,6 +499,52 @@ Cross-platform anomaly detection that operates on STATE.json's `action_log` hist
 | `analysis_anomalies_check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). | `current` (`current.campaign_id` and `current.cost` required) |
 
 `had_prior_spend` (default `true`) suppresses the zero-spend alert for fresh campaigns. `min_baseline_entries` (default `7`) controls how many history entries are required before a baseline is built; below this, `baseline` is `null` and only zero-spend is evaluated. Numeric fields accept int / float / numeric-string and reject `"N/A"` or booleans. `state_file` is sandboxed the same way as for the rollback tools. A parseable-but-corrupt `STATE.json` produces a `baseline_warning` in the response without silencing live zero-spend detection.
+
+### Mureo Context
+
+Read and write the strategy context files (`STRATEGY.md`, `STATE.json`) directly through the MCP server. These tools exist for hosts that have no direct filesystem access (Claude Desktop chat, web, remote MCP); every write is atomic and validated before it replaces the file.
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `mureo_strategy_get` | Read STRATEGY.md — raw markdown plus an `exists` flag (empty markdown when absent) | *(none)* |
+| `mureo_strategy_set` | Atomically replace STRATEGY.md (parsed for well-formedness before writing) | `markdown` |
+| `mureo_state_get` | Read STATE.json as a parsed v2 document (version, platforms, campaigns, action_log) | *(none)* |
+| `mureo_state_action_log_append` | Atomically append a single action_log entry for later evaluation | `entry` |
+| `mureo_state_upsert_campaign` | Upsert a CampaignSnapshot (with optional performance `metrics`) into STATE.json | `campaign` |
+| `mureo_state_report_set` | Persist a structured daily / weekly / goal report summary for the read-only dashboard | `report`, `summary` |
+| `mureo_state_platform_metrics_set` | Set a platform-level metric rollup (feeds the YESTERDAY / LAST_30_DAYS dashboard toggle) | `platform`, `account_id` |
+| `mureo_state_set_conversion_events` | Declare which Meta Insights `action_type` rows count as this account's conversions | `platform`, `account_id` |
+| `mureo_outcome_evaluate` | Deterministically score a logged action's outcome (improved / regressed / inconclusive) from before/after metrics | `before`, `after` |
+
+### Analytics Registry
+
+Discover and invoke the analytics modules registered for each platform (built-in `google_ads` / `meta_ads`, plus any supplied by provider plugins via the `mureo.analytics` entry-point group). Both tools are read-only diagnostics and route through the standard analysis dispatcher (#440).
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `mureo_analytics_modules_list` | List analytics modules per platform and the capabilities each advertises (`detect_anomalies`, `diagnose_performance`, `audit_creative`, `analyze_budget_efficiency`) | *(none)* |
+| `mureo_analytics_run` | Run one capability of a platform's analytics module and return its structured result; degrades to a structured status (`no_analytics_module` / `capability_not_available` / `error`) instead of failing the workflow | `platform`, `capability`, `account_id` |
+
+### Learning
+
+Retrieve accumulated practitioner know-how before drawing diagnostic conclusions — the operator's own `/learn` history and, optionally, federated retrieval against external advisor MCP servers (see [`insight-federation.md`](insight-federation.md)).
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `mureo_learning_insights_get` | Load every insight previously saved via `/learn` as raw Markdown | *(none)* |
+| `mureo_consult_advisor` | Query external advisor MCP servers (vector search) enriched with local campaign state; advisor responses are treated as untrusted external content | `question` |
+
+### Creative Studio
+
+Generate creator-quality ad creatives — text-free key visuals plus copy composed over them into per-format banners. Image generation runs through configured providers; banner composition renders HTML/CSS with headless Chromium and requires the `creative` extra (`pip install 'mureo[creative]'`). See [`creative-studio.md`](creative-studio.md).
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `creative_studio_providers_list` | List image-generation providers, whether each has an API key configured, its capabilities, and model ids | *(none)* |
+| `creative_studio_generate_visual` | Generate text-free key-visual PNGs from a visual-only prompt (a hard no-text constraint is appended) | `prompt` |
+| `creative_studio_brand_kit_get` | Return the loaded brand kit (colours, fonts, logo, clear-space) or tasteful defaults | *(none)* |
+| `creative_studio_edit_visual` | Refine an existing key visual through a provider's edit path (art-direction loop) | `path`, `instruction` |
+| `creative_studio_compose` | Composite ad copy + brand kit over a key visual into per-format banner PNGs | `visual_path`, `headline`, `cta` |
 
 ### Plugin-Provided Tools (third-party providers)
 

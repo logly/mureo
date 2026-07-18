@@ -561,7 +561,7 @@ mureo works alongside any MCP server in the same client session. Add them to you
 
 ### Writing your own provider plugin
 
-mureo's provider abstraction lets any pip-installable package add a new ad-platform provider (Microsoft/Bing Ads, Apple Search Ads, TikTok, LinkedIn, X, in-house platforms, ...) without touching mureo's source tree. A plugin is a Python package that implements one or more of the Phase 1 Protocols (`CampaignProvider`, `KeywordProvider`, `AudienceProvider`, `ExtensionProvider`), declares which `Capability` members it supports, and registers its class under the `mureo.providers` entry-points group in `pyproject.toml`. Plugins can also ship their own `SKILL.md` files via the `mureo.skills` group.
+mureo's provider abstraction lets any pip-installable package add a new ad-platform provider (Microsoft/Bing Ads, Apple Search Ads, TikTok, LinkedIn, X, in-house platforms, ...) without touching mureo's source tree. A plugin is a Python package that implements one or more of the Phase 1 Protocols (`CampaignProvider`, `KeywordProvider`, `AudienceProvider`, `ExtensionProvider`), declares which `Capability` members it supports, and registers its class under the `mureo.providers` entry-points group in `pyproject.toml`. Plugins can also ship their own `SKILL.md` files via two entry-point groups: `mureo.skills` registers *runtime context skills* that mureo discovers and matches during a workflow, while `mureo.native_skills` (#439) registers *native slash skills* that mureo deploys into `~/.claude/skills` / `~/.codex/skills` so they are directly invocable as `/<name>`.
 
 - [docs/plugin-authoring.md](docs/plugin-authoring.md) — full plugin authoring guide (quick start, Protocols, capabilities, models, skill matching, distribution patterns, security)
 - [docs/ABI-stability.md](docs/ABI-stability.md) — ABI stability promise (what is breaking, what is not, deprecation policy)
@@ -1090,6 +1090,72 @@ Cross-platform detection tools that operate on STATE.json's `action_log` history
 | Tool | Description |
 |------|-------------|
 | `analysis_anomalies_check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). Sample-size gates follow the `_mureo-learning` skill's statistical-thinking rules. Returns `baseline=null` when history is shorter than `min_baseline_entries` (default 7); `baseline_warning` surfaces a parseable-but-corrupt `STATE.json` without silencing live zero-spend detection. |
+
+</details>
+
+#### Mureo Context
+
+<details>
+<summary>Click to expand Mureo Context tools</summary>
+
+Read and write mureo's strategy / state context layer (STRATEGY.md / STATE.json) over MCP, so hosts without direct filesystem access (Claude Desktop chat, claude.ai web, Codex/Cursor) can still drive strategy-aware workflows. Paths are resolved strictly inside the MCP server's CWD; paths outside it are refused.
+
+| Tool | Description |
+|------|-------------|
+| `mureo_strategy_get` | Read STRATEGY.md and return its raw markdown plus an `exists` flag (empty markdown when the file is absent). |
+| `mureo_strategy_set` | Atomically replace STRATEGY.md; the content is parsed before writing, so a malformed input raises rather than corrupts the file. |
+| `mureo_state_get` | Read STATE.json and return the parsed v2 document (version, `last_synced_at`, per-platform campaigns, legacy campaigns, `action_log`). |
+| `mureo_state_upsert_campaign` | Atomically upsert a `CampaignSnapshot` — optionally with a performance `metrics` object — into STATE.json for the reporting dashboard. |
+| `mureo_state_platform_metrics_set` | Atomically set a platform-level metric rollup (`totals` plus per-window `periods` for the dashboard's YESTERDAY / LAST_30_DAYS toggle); campaigns and other platforms are preserved. |
+| `mureo_state_set_conversion_events` | Declare which Meta `action_type` rows count as this account's conversions, overriding the built-in generic set (e.g. a custom pixel event); an empty list clears the override. |
+| `mureo_state_action_log_append` | Atomically append a single `action_log` entry so an action (budget change, pause, negative-keyword add) can be evaluated later. |
+| `mureo_state_report_set` | Persist a structured daily / weekly / goal report summary into STATE.json's `reports` section so the read-only dashboard can render it without re-running the agent. |
+| `mureo_outcome_evaluate` | Deterministically score whether a logged action's outcome improved, regressed, or is inconclusive — direction-aware (lower-is-better CPA vs higher-is-better CVR) with a ±noise band. |
+
+</details>
+
+#### Analytics Registry
+
+<details>
+<summary>Click to expand analytics registry tools</summary>
+
+Discover and invoke the analytics module registered for each platform. Read-only diagnostics — built-in (`google_ads`, `meta_ads`) and plugin-supplied modules appear in the same shape.
+
+| Tool | Description |
+|------|-------------|
+| `mureo_analytics_modules_list` | List analytics modules per platform and the capabilities each advertises (`detect_anomalies`, `diagnose_performance`, `audit_creative`, `analyze_budget_efficiency`). |
+| `mureo_analytics_run` | Run one capability of a platform's analytics module and return its structured result; degrades to a structured status (`no_analytics_module` / `capability_not_available` / `error`) instead of failing the workflow. |
+
+</details>
+
+#### Learning
+
+<details>
+<summary>Click to expand learning tools</summary>
+
+Surface accumulated practitioner know-how — locally saved `/learn` insights and external advisor MCP servers — for diagnostic workflows to consult before drawing conclusions.
+
+| Tool | Description |
+|------|-------------|
+| `mureo_consult_advisor` | Consult external advisor MCP servers (vector search) for operational expertise the LLM lacks, enriched with local campaign state; advisor responses are untrusted external content. |
+| `mureo_learning_insights_get` | Load every insight previously saved via `/learn` from the operator-tier knowledge base as raw Markdown; returns a guidance string when nothing has been saved yet. |
+
+</details>
+
+#### Creative Studio
+
+<details>
+<summary>Click to expand Creative Studio tools</summary>
+
+Generate creator-quality ad creatives: text-free key visuals plus copy / brand composited into per-format banners. Composition requires the `creative` extra (`pip install 'mureo[creative]'`).
+
+| Tool | Description |
+|------|-------------|
+| `creative_studio_providers_list` | List the configured image-generation providers, whether each has an API key, its capabilities (edit support + max size), and its model ids. |
+| `creative_studio_generate_visual` | Generate text-free key-visual PNGs (a no-text constraint is appended automatically) into a new run directory with a provenance manifest. |
+| `creative_studio_brand_kit_get` | Return the loaded brand kit (colours, fonts, logo) from `./BRAND_KIT/kit.yml`, or tasteful neutral defaults when none exists. |
+| `creative_studio_edit_visual` | Refine an existing key visual through a provider's edit path (the art-direction loop), writing the edited PNG next to the input. |
+| `creative_studio_compose` | Composite headline / body / CTA / badge / logo over a key visual into per-format banner PNGs via headless-Chromium HTML/CSS rendering (pixel-perfect Japanese text). |
 
 </details>
 

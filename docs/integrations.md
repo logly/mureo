@@ -19,32 +19,19 @@ Every mureo workflow command follows this pattern:
 
 ## GA4 (Google Analytics 4)
 
-### Status: Community MCP available
+### Status: Official MCP — first-class mureo support
 
-A community-maintained GA4 MCP server exists at https://github.com/nicholasf/ga4-mcp. Google may release an official MCP in the future.
-
-> **Note**: The exact package name and installation method may change. Check the repository or official Google documentation for the latest instructions before configuring.
+Google publishes an official **Analytics MCP** (`analytics-mcp` on PyPI, repo [github.com/googleanalytics/google-analytics-mcp](https://github.com/googleanalytics/google-analytics-mcp)). mureo ships it as an official provider (`ga4-official`), so you don't wire it by hand — add it from `mureo configure` (both the dashboard and the setup wizard list GA4) or with the CLI. It provides **read-only** access to the GA4 Reporting and Admin APIs.
 
 ### Configuration
 
-Add both mureo and the GA4 MCP to your `.mcp.json` (project-level) or `~/.claude/settings.json` (global):
+Add the provider with the CLI:
 
-```json
-{
-  "mcpServers": {
-    "mureo": {
-      "command": "python",
-      "args": ["-m", "mureo.mcp"]
-    },
-    "ga4": {
-      "command": "npx",
-      "args": ["@anthropic-ai/ga4-mcp"]
-    }
-  }
-}
+```bash
+mureo providers add ga4-official
 ```
 
-> **Important**: The `@anthropic-ai/ga4-mcp` package name above is a placeholder. Check the official GA4 MCP documentation for the correct package name and any required environment variables (e.g., service account credentials, property ID).
+mureo installs the official server via `pipx` (`pipx install analytics-mcp`) and registers it in your MCP client config alongside mureo — no `.mcp.json` hand-editing required. `mureo configure` walks you through the same step from the dashboard or the setup wizard.
 
 ### What GA4 Data Adds to mureo Workflows
 
@@ -64,7 +51,12 @@ Add both mureo and the GA4 MCP to your `.mcp.json` (project-level) or `~/.claude
 
 ### Authentication
 
-GA4 MCP servers typically require Google Cloud service account credentials or OAuth tokens. Refer to the GA4 MCP documentation for setup instructions. These credentials are separate from mureo's Google Ads credentials.
+The official GA4 MCP authenticates with a Google Cloud **service-account JSON** (read-only). `mureo providers add ga4-official` prompts for the two required environment variables:
+
+- `GOOGLE_APPLICATION_CREDENTIALS` — path to a service-account JSON key. The service account must be granted access to the GA4 property and the key's scope must include `https://www.googleapis.com/auth/analytics.readonly`.
+- `GOOGLE_PROJECT_ID` — the Google Cloud project id.
+
+The GA4 property id is passed per request, not via an environment variable. These credentials are separate from mureo's Google Ads credentials.
 
 ## Google Search Console
 
