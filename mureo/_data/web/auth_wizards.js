@@ -515,7 +515,7 @@
           state.providerChoice.google_ads === "official") ||
         (platform === "meta_ads" && state.platforms.meta_ads &&
           state.providerChoice.meta_ads === "official") ||
-        (platform === "ga4" && state.platforms.ga4) ||
+        (platform === "ga4" && state.platforms.ga4 && !state.multiAccountAuth) ||
         (platform === "tiktok_ads" && state.platforms.tiktok_ads);
       if (needsOfficial) {
         host.appendChild(buildProviderInstallSlot(state, platform, render));

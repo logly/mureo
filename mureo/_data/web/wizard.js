@@ -249,6 +249,13 @@
     STATE.existing.google.has_oauth = Boolean(oauth.google);
     STATE.existing.meta.has_oauth = Boolean(oauth.meta);
     STATE.multiAccountAuth = Boolean(status.multi_account_auth);
+    // #442: a multi-account backend wires GA4 per-account, so the shared-SA
+    // GA4 flow is removed from Setup entirely. Force the platform off here so
+    // the selection checkbox, the provider-install instructions, and the auth
+    // slot all drop out (the server also refuses a ga4 write, _post_env_var).
+    if (STATE.multiAccountAuth) {
+      STATE.platforms.ga4 = false;
+    }
   }
 
   // ------------------------------------------------------------------
@@ -347,6 +354,9 @@
       '<h2>' + MUREO.t("wizard.platforms.title") + "</h2>" +
       '<p>' + MUREO.t("wizard.platforms.desc") + "</p>";
     PLATFORMS.forEach(function (p) {
+      // #442: no shared GA4 service account under a multi-account backend, so
+      // GA4 is not selectable here (that layer wires it per-account instead).
+      if (p === "ga4" && STATE.multiAccountAuth) return;
       const label = document.createElement("label");
       label.style.display = "block";
       const checkbox = document.createElement("input");

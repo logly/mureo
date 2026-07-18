@@ -46,3 +46,25 @@ def test_auth_wizard_hides_ga4_slot_under_multi_account() -> None:
     multi-account backend the single-shared-SA GA4 slot is not offered."""
     assert "state.multiAccountAuth" in _read("auth_wizards.js")
     assert "STATE.multiAccountAuth" in _read("wizard.js")
+
+
+@pytest.mark.unit
+def test_wizard_removes_ga4_entirely_under_multi_account() -> None:
+    """#442 (full removal): under a multi-account backend GA4 must not appear
+    anywhere in Setup, not just the auth slot. The wizard forces the ga4
+    platform off on hydration (so every step-relevance check drops it) and the
+    platform-selection step skips its checkbox."""
+    wizard = _read("wizard.js")
+    # Forced off on hydration -> hasAuthQueued / hasOfficialProviderQueued /
+    # the summary all see ga4 = false.
+    assert "STATE.platforms.ga4 = false" in wizard
+    # Selection checkbox is not rendered (cannot be re-enabled by the user).
+    assert 'p === "ga4" && STATE.multiAccountAuth' in wizard
+
+
+@pytest.mark.unit
+def test_providers_install_hides_ga4_under_multi_account() -> None:
+    """#442: the provider-install ("official MCP setup instructions") step also
+    drops the GA4 entry under a multi-account backend."""
+    aw = _read("auth_wizards.js")
+    assert 'platform === "ga4" && state.platforms.ga4 && !state.multiAccountAuth' in aw
