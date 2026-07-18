@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.28] - 2026-07-18
+
+### Added
+
+- **Plugins can ship native slash skills via `mureo.native_skills` (#439).** A
+  new entry-point group lets a plugin deploy `/<name>` workflow skills into
+  `~/.claude/skills` **and** `~/.codex/skills` alongside mureo's own bundle, so
+  a platform-specific workflow the operator invokes directly can be
+  distributed by a plugin. Distinct from `mureo.skills` (runtime *context*
+  skills that are never copied to the host skill dirs). Deployment runs during
+  setup (`claude-code` / `codex`), `mureo configure`, and `mureo upgrade`, and
+  removal runs from clear-setup. Safety: built-in-first (a plugin can never
+  shadow a core `/slash`), first-wins between plugins, per-skill fault
+  isolation, and a recursive symlink-containment check so a plugin cannot
+  exfiltrate a file from outside its package through `copytree`.
+- **`mureo_analytics_run` executes a plugin's `AnalyticsModule` (#440).** A new
+  read-only MCP tool actually invokes a registered module's `detect_anomalies`
+  / `diagnose_performance` / `audit_creative` / `analyze_budget_efficiency` and
+  returns the structured result. Previously a plugin could *advertise* a
+  capability via `mureo_analytics_modules_list` but had no way to run it — the
+  analysis was dead code. Credential-lazy, read-only, and fault-isolated (a
+  broken or non-serializable module returns a structured `error` status instead
+  of crashing the workflow). The `daily-check`, `rescue`, and `_mureo-shared`
+  skills now run advertised capabilities through it. No new plugin ABI.
+- **`/onboard` proactively offers to set the STRATEGY.md `## Guardrails` (#364).**
+  The onboarding flow now offers to seed the guardrail section so budget and
+  blocked-operation limits are in place from the start.
+
+### Fixed
+
+- **GA4 credential wizard is gated under a multi-account backend (#442).** GA4
+  auth is a single service account; under a multi-account backend that one SA
+  would reach every account/property. The configure server now refuses a write
+  whose effective section resolves to `ga4` (HTTP 403), mirroring the Search
+  Console multi-account fail-closed (#375), and the Setup UI removes GA4
+  entirely (auth slot, selection checkbox, and provider-install instructions).
+  Standalone OSS is unaffected.
+- **Configure host + host_paths are captured as one atomic snapshot (#407).**
+  Closes a race where the detected host and its derived paths could be read
+  from two different points in time.
+- **Live-client analytics `account_id` is scoped through the #411 allow-list
+  (#413, #435).** The analytics live clients now resolve `account_id` through
+  the tenant allow-list (fail-closed on a workspace-scope refusal), canonicalize
+  a Meta `account_id` to its `act_` form on the unscoped path, and thread the
+  resolved id back to callers so cross-account exposure cannot slip through the
+  analytics seam.
+
+### Security
+
+- **Full-codebase security & correctness review fixes (#441).** Fixes surfaced
+  by an adversarial review across the codebase: a GAQL injection reachable via
+  `google_ads_ad_groups.update` (unvalidated `ad_group_id`) and missing ID
+  validation on location/schedule-targeting updates; CSV formula injection in
+  the Google Ads BYOD export (a shared `_csv_safe` sanitizer now covers every
+  adapter); SSRF via un-re-validated redirect hops in the landing-page
+  screenshot tool and duplicated/incomplete SSRF guards in `lp_analyzer`; a
+  `blocked_operations` guardrail whose documented examples named non-existent
+  tools so it never fired; Meta OAuth secrets moved from the query string to the
+  POST body; locked read-modify-write on `credentials.json` / `STRATEGY.md` /
+  the Claude settings file; a credential-guard symlink-evasion gap; a
+  BRAND_KIT logo path sandbox escape; image-header dimension validation to bound
+  decompression; a zero-budget path that bypassed the increase-pct guardrail;
+  and the coverage gate no longer excludes `mureo/mcp/*`. CI actions are now
+  pinned to commit SHAs.
+
 ## [0.10.27] - 2026-07-16
 
 ### Added
