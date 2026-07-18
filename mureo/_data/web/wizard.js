@@ -55,6 +55,13 @@
     host: "claude-code",
     basicInstallCompleted: false,
     basicInstallSkippedByAdvanced: false,
+    // #442: a multi-account backend (e.g. the agency layer) advertises
+    // multi_account_auth via /api/status. GA4 auth is a single service
+    // account, so under a multi-account backend the Setup-tab GA4 slot is
+    // hidden (buildAuthQueue) and the write is refused server-side
+    // (_post_env_var) -- GA4 is wired per-account by that layer, not as one
+    // shared SA.
+    multiAccountAuth: false,
     platforms: {
       google_ads: false,
       meta_ads: false,
@@ -241,6 +248,7 @@
     const oauth = status.credentials_oauth || {};
     STATE.existing.google.has_oauth = Boolean(oauth.google);
     STATE.existing.meta.has_oauth = Boolean(oauth.meta);
+    STATE.multiAccountAuth = Boolean(status.multi_account_auth);
   }
 
   // ------------------------------------------------------------------

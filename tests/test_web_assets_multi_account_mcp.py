@@ -37,3 +37,12 @@ def test_dashboard_gates_basic_mcp_on_multi_account() -> None:
     snapshot declares ``multi_account_auth``."""
     js = _read("dashboard.js")
     assert "multi_account_auth" in js
+
+
+@pytest.mark.unit
+def test_auth_wizard_hides_ga4_slot_under_multi_account() -> None:
+    """#442: ``auth_wizards.js`` gates the GA4 auth slot on the multi-account
+    flag, and ``wizard.js`` hydrates it from the status snapshot -- so under a
+    multi-account backend the single-shared-SA GA4 slot is not offered."""
+    assert "state.multiAccountAuth" in _read("auth_wizards.js")
+    assert "STATE.multiAccountAuth" in _read("wizard.js")

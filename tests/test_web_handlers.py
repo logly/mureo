@@ -884,6 +884,87 @@ class TestPostEnvVar:
                 )
             assert exc.value.code == 500
 
+    def test_ga4_write_refused_under_multi_account(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        # #442: GA4 auth is a single service account. Under a multi-account
+        # backend, writing it into the shared credentials.json would let one SA
+        # reach every account/property -- refuse it (mirrors Search Console's
+        # multi-account fail-closed). The write must NOT be attempted.
+        with (
+            patch(
+                "mureo.web.handlers.ConfigureHandler._multi_account_active",
+                return_value=True,
+            ),
+            patch("mureo.web.handlers.write_credential_env_var") as mock_write,
+        ):
+            with pytest.raises(urllib.error.HTTPError) as exc:
+                _post(
+                    wizard,
+                    "/api/credentials/env-var",
+                    {"name": "GOOGLE_APPLICATION_CREDENTIALS", "value": "/p/sa.json"},
+                )
+            assert exc.value.code == 403
+        mock_write.assert_not_called()
+
+    def test_ga4_project_id_refused_under_multi_account(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        with (
+            patch(
+                "mureo.web.handlers.ConfigureHandler._multi_account_active",
+                return_value=True,
+            ),
+            patch("mureo.web.handlers.write_credential_env_var") as mock_write,
+        ):
+            with pytest.raises(urllib.error.HTTPError) as exc:
+                _post(
+                    wizard,
+                    "/api/credentials/env-var",
+                    {"name": "GOOGLE_PROJECT_ID", "value": "proj-1"},
+                )
+            assert exc.value.code == 403
+        mock_write.assert_not_called()
+
+    def test_google_ads_sa_path_allowed_under_multi_account(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        # The GA4 guard keys off the EFFECTIVE section, not the env NAME:
+        # GOOGLE_APPLICATION_CREDENTIALS is shared with google_ads, whose
+        # service-account path (section="google_ads") must still be writable.
+        with (
+            patch(
+                "mureo.web.handlers.ConfigureHandler._multi_account_active",
+                return_value=True,
+            ),
+            patch("mureo.web.handlers.write_credential_env_var") as mock_write,
+        ):
+            resp = _post(
+                wizard,
+                "/api/credentials/env-var",
+                {
+                    "name": "GOOGLE_APPLICATION_CREDENTIALS",
+                    "value": "/p/ads-sa.json",
+                    "section": "google_ads",
+                },
+            )
+        assert json.loads(resp.read().decode("utf-8"))["status"] == "ok"
+        mock_write.assert_called_once()
+
+    def test_ga4_write_allowed_when_not_multi_account(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        # Standalone OSS (no multi-account backend): the GA4 wizard writes
+        # exactly as before -- the guard must not regress the single-tenant path.
+        with patch("mureo.web.handlers.write_credential_env_var") as mock_write:
+            resp = _post(
+                wizard,
+                "/api/credentials/env-var",
+                {"name": "GOOGLE_APPLICATION_CREDENTIALS", "value": "/p/sa.json"},
+            )
+        assert json.loads(resp.read().decode("utf-8"))["status"] == "ok"
+        mock_write.assert_called_once()
+
 
 @pytest.mark.unit
 class TestPostCredentialsRemove:
