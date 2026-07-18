@@ -1349,6 +1349,47 @@ plugin. The shadow attempt emits a `SkillDiscoveryWarning`. Pick
 plugin-prefixed skill names (e.g. `acme-budget-rebalance`) to avoid
 collisions.
 
+### Native slash skills (`mureo.native_skills`)
+
+The `mureo.skills` group above is for **context** skills — discovered
+and matched at runtime; they are never copied to `~/.claude/skills` and
+so do **not** appear as a `/slash` command. If you want your plugin to
+ship a **native slash skill** — a `/<name>` workflow the operator runs
+explicitly — register the directory under the separate
+**`mureo.native_skills`** group instead. The group name is a fixed ABI
+constant (`mureo.core.providers.registry.NATIVE_SKILLS_ENTRY_POINT_GROUP`).
+
+```toml
+[project.entry-points."mureo.native_skills"]
+mureo-acme-ads = "mureo_acme_ads.native_skills:SKILLS_DIR"
+```
+
+The value is a module-level `Path` pointing at a directory of
+`<skill>/SKILL.md` subdirs (same shape and locator pattern as the
+`mureo.skills` example above). mureo **deploys** those subdirs alongside
+its own bundle into `~/.claude/skills` **and** `~/.codex/skills` during
+setup (`mureo setup claude-code` / `codex`, `mureo configure`) and
+re-deploys them on `mureo upgrade`.
+
+Guarantees (`mureo.cli.native_skills`):
+
+- **Built-in-first** — a native skill whose directory name collides with a
+  mureo bundle skill is skipped; a plugin can never shadow a core `/slash`.
+- **First-wins between plugins** — the earliest contributor of a given
+  skill name wins; later duplicates are skipped with a
+  `NativeSkillDeployWarning`. Prefix your skill names (`acme-…`) to avoid
+  collisions with the bundle and with other plugins.
+- **Fault isolation** — a broken entry point (load error, non-directory
+  value, missing dir, escaping symlink) is warned and skipped; the rest
+  still deploy, and setup/upgrade never fail because of a plugin.
+- **Plugin-owned removal** — `remove_native_skills` only removes names the
+  *currently installed* plugins contribute (minus any bundle collision), so
+  it never touches the bundle or user-authored skills.
+
+Choose the group by intent: `mureo.skills` for platform-bound *context*
+the agent consults, `mureo.native_skills` for operator-invoked `/slash`
+workflows.
+
 ---
 
 ## 10. Security considerations
@@ -2146,6 +2187,23 @@ Skills must respect that result: if a platform is not in the list, or
 its module does not advertise the needed capability, skills emit
 `analytics_not_available_for_<platform>` instead of inventing
 heuristics.
+
+Skills then **run** an advertised capability via the MCP tool
+`mureo_analytics_run` (Issue #440), passing `platform`, `capability`, and
+`account_id` (plus `window_days` for `detect_anomalies` or `scope` for
+`diagnose_performance`). The dispatcher looks up your module, invokes the
+method credential-lazily, and returns `status: ok` with a JSON-serialized
+`result` — or a structured non-`ok` status the skill reports without failing:
+
+- `no_analytics_module` — no module registered for that platform.
+- `capability_not_available` — module registered but does not advertise it
+  (includes an `available_capabilities` list).
+- `error` — your method raised (or returned something unserializable); carries
+  `error_type` and `detail`. It is isolated here, never crashing the workflow.
+
+This is the **only** path skills use to run your analysis. You do not — and
+must not — ship a separate MCP tool to expose it (see below): implement the
+`AnalyticsModule` methods and `mureo_analytics_run` drives them.
 
 ### What you do NOT need to do
 

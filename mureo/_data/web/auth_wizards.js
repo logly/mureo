@@ -515,7 +515,7 @@
           state.providerChoice.google_ads === "official") ||
         (platform === "meta_ads" && state.platforms.meta_ads &&
           state.providerChoice.meta_ads === "official") ||
-        (platform === "ga4" && state.platforms.ga4) ||
+        (platform === "ga4" && state.platforms.ga4 && !state.multiAccountAuth) ||
         (platform === "tiktok_ads" && state.platforms.tiktok_ads);
       if (needsOfficial) {
         host.appendChild(buildProviderInstallSlot(state, platform, render));
@@ -561,7 +561,10 @@
     // by Claude itself on first connect (RFC 9728) — configure cannot and
     // must not do it. The provider-choice "next page" (providers_install
     // step) shows the manual setup instructions instead.
-    if (state.platforms.ga4) {
+    if (state.platforms.ga4 && !state.multiAccountAuth) {
+      // #442: under a multi-account backend GA4 is wired per-account, not as
+      // one shared service account, so the Setup-tab GA4 slot is hidden. The
+      // server also refuses the write (_post_env_var); this is the UX half.
       // Each input carries the credentials.json-backed env var NAME it
       // persists to (POSTed to /api/credentials/env-var on Done) plus a
       // localized label key. GA4-official reads these env vars at

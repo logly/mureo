@@ -428,7 +428,21 @@ def install_workflow_skills(
         logger.exception("install_workflow_skills failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
-    return ActionResult(status="ok", detail=f"installed {count} skills at {dest}")
+    # Plugin native slash skills (Issue #439). Best-effort and isolated from
+    # the bundle install: a broken plugin must not turn a successful bundle
+    # install into an error.
+    native = 0
+    try:
+        from mureo.cli.native_skills import install_native_skills
+
+        native, _ = install_native_skills(dest)
+    except Exception:  # noqa: BLE001 — plugin deploy is best-effort
+        logger.exception("install_workflow_skills: plugin native skills skipped")
+
+    detail = f"installed {count} skills at {dest}"
+    if native:
+        detail += f" (+{native} plugin native skills)"
+    return ActionResult(status="ok", detail=detail)
 
 
 def install_basic_setup(
@@ -1157,9 +1171,24 @@ def remove_workflow_skills(
         logger.exception("remove_workflow_skills failed")
         return ActionResult(status="error", detail=type(exc).__name__)
 
-    if count == 0:
+    # Plugin native slash skills (Issue #439) are deployed alongside the bundle,
+    # so "clear setup" must remove them too. Best-effort and isolated from the
+    # bundle removal: a broken plugin must not turn a successful clear into an
+    # error, and leaving the plugin's skills behind would defeat the uninstall.
+    native = 0
+    try:
+        from mureo.cli.native_skills import remove_native_skills
+
+        native, _ = remove_native_skills(dest)
+    except Exception:  # noqa: BLE001 — plugin removal is best-effort
+        logger.exception("remove_workflow_skills: plugin native skills skipped")
+
+    if count == 0 and native == 0:
         return ActionResult(status="noop", detail=f"no skills found at {dest}")
-    return ActionResult(status="ok", detail=f"removed {count} skills from {dest}")
+    detail = f"removed {count} skills from {dest}"
+    if native:
+        detail += f" (+{native} plugin native skills)"
+    return ActionResult(status="ok", detail=detail)
 
 
 def _installed_official_providers(

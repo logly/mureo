@@ -230,6 +230,37 @@ def _refresh_deployed_skills() -> None:
         )
 
 
+def _refresh_native_skills() -> None:
+    """Re-deploy plugin ``mureo.native_skills`` after an upgrade (#439).
+
+    A plugin upgrade may ship new/changed native slash skills, but the
+    deployed copies under ``~/.claude/skills`` / ``~/.codex/skills`` are only
+    written at setup time — an upgrade alone leaves them stale. Re-deploy into
+    whichever host skill dir already exists, so an upgrade never force-creates
+    one the operator does not use. Symmetric across both hosts (unlike the
+    bundle refresh, which only targets Claude today). Best-effort: a failure is
+    reported but never fails the upgrade.
+    """
+    from mureo.cli.native_skills import install_native_skills
+
+    for dest in (
+        Path.home() / ".claude" / "skills",
+        Path.home() / ".codex" / "skills",
+    ):
+        if not dest.exists():
+            continue
+        try:
+            count, where = install_native_skills(dest)
+            if count:
+                typer.echo(f"Refreshed {count} plugin native skills at {where}.")
+        except Exception as exc:  # noqa: BLE001 — refresh is best-effort
+            typer.echo(
+                f"Plugin native-skill refresh skipped for {dest} "
+                f"({type(exc).__name__}).",
+                err=True,
+            )
+
+
 def _restart_managed_service() -> None:
     """Restart the always-on configure daemon so it loads the new code.
 
@@ -335,13 +366,14 @@ def _refresh_credential_guard() -> None:
 def _post_upgrade_refresh() -> None:
     """Make a successful upgrade actually take effect.
 
-    The deployed skills, the installed credential-guard hooks, and any
-    always-on daemon otherwise keep the pre-upgrade version: skills are not
-    re-copied, stale hooks stay in the host configs, and the daemon holds
-    old code in memory. Refresh all three so ``mureo upgrade`` is a single,
-    reliable step.
+    The deployed skills (bundle + plugin native), the installed
+    credential-guard hooks, and any always-on daemon otherwise keep the
+    pre-upgrade version: skills are not re-copied, stale hooks stay in the host
+    configs, and the daemon holds old code in memory. Refresh all of them so
+    ``mureo upgrade`` is a single, reliable step.
     """
     _refresh_deployed_skills()
+    _refresh_native_skills()
     _refresh_credential_guard()
     _restart_managed_service()
 

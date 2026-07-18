@@ -63,11 +63,14 @@ class TestListTools:
 
     async def test_list_tools_returns_all_tools(self) -> None:
         """list_tools returns all tools (Google Ads 86 + Meta Ads 82 + Search Console 10
-        + Rollback 2 + Analysis 1 + Mureo Context 9 + Analytics Registry 1
-        + Learning 2 + Creative Studio 5 = 198)."""
+        + Rollback 2 + Analysis 1 + Mureo Context 9 + Analytics Registry 2
+        + Learning 2 + Creative Studio 5 = 199).
+
+        Analytics Registry is 2: mureo_analytics_modules_list +
+        mureo_analytics_run (#440)."""
         mod = _import_server_module()
         tools = await mod.handle_list_tools()
-        assert len(tools) == 198
+        assert len(tools) == 199
 
     async def test_list_tools_contains_google_and_meta(self) -> None:
         """Google Ads and Meta Ads tools are included."""

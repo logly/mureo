@@ -172,6 +172,27 @@ def remove_skills(target_dir: Path | None = None) -> tuple[int, Path]:
     return count, dest
 
 
+def _deploy_plugin_native_skills(dest: Path) -> None:
+    """Best-effort deploy of plugin ``mureo.native_skills`` into ``dest``.
+
+    Runs right after the bundle install so plugin-provided ``/slash`` skills
+    land next to mureo's own (Issue #439). A broken plugin never fails setup:
+    the deployer isolates per-entry-point faults and this call swallows the
+    rest, printing a one-line note instead.
+    """
+    try:
+        from mureo.cli.native_skills import install_native_skills
+
+        count, _ = install_native_skills(dest)
+        if count:
+            typer.echo(f"  {count} plugin native skills installed to {dest}")
+    except Exception as exc:  # noqa: BLE001 — plugin deploy is best-effort
+        typer.echo(
+            f"  Note: plugin native skills skipped ({type(exc).__name__}).",
+            err=True,
+        )
+
+
 @setup_app.command("claude-code")  # type: ignore[untyped-decorator, unused-ignore]
 def setup_claude_code(
     skip_auth: bool = typer.Option(
@@ -254,6 +275,7 @@ def setup_claude_code(
     try:
         skill_count, skill_path = install_skills()
         typer.echo(f"  {skill_count} skills installed to {skill_path}")
+        _deploy_plugin_native_skills(skill_path)
     except FileNotFoundError as e:
         typer.echo(f"  Warning: {e}", err=True)
 
@@ -410,6 +432,7 @@ def setup_codex(
     try:
         skill_count, skill_path = install_codex_skills()
         typer.echo(f"  {skill_count} skills installed to {skill_path}")
+        _deploy_plugin_native_skills(skill_path)
     except FileNotFoundError as e:
         typer.echo(f"  Warning: {e}", err=True)
 
