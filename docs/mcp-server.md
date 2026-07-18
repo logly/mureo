@@ -449,35 +449,37 @@ Or use `uv` to run it:
 
 Search Console tools reuse the same Google OAuth2 credentials as Google Ads -- no additional authentication is required.
 
+> **`site_url`** is an optional parameter on every tool below, not a schema-required one. It is resolved (and tenant-scoped) at runtime: in standalone use you pass it explicitly; under a multi-account backend it is bound to the active client's configured property (and a single-property client may omit it). The "Required Parameters" column lists only the schema-required fields.
+
 #### Sites
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `search_console_sites_list` | List verified sites | *(none)* |
-| `search_console_sites_get` | Get site details | `site_url` |
+| `search_console_sites_get` | Get site details | *(none; `site_url` optional)* |
 
 #### Analytics
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `search_console_analytics_query` | Query search analytics data | `site_url` |
-| `search_console_analytics_top_queries` | Get top search queries | `site_url` |
-| `search_console_analytics_top_pages` | Get top pages by clicks/impressions | `site_url` |
-| `search_console_analytics_device_breakdown` | Get performance breakdown by device | `site_url` |
-| `search_console_analytics_compare_periods` | Compare search performance across time periods | `site_url` |
+| `search_console_analytics_query` | Query search analytics data | `start_date`, `end_date` |
+| `search_console_analytics_top_queries` | Get top search queries | `start_date`, `end_date` |
+| `search_console_analytics_top_pages` | Get top pages by clicks/impressions | `start_date`, `end_date` |
+| `search_console_analytics_device_breakdown` | Get performance breakdown by device | `start_date`, `end_date` |
+| `search_console_analytics_compare_periods` | Compare search performance across time periods | `start_date_1`, `end_date_1`, `start_date_2`, `end_date_2` |
 
 #### Sitemaps
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `search_console_sitemaps_list` | List sitemaps for a site | `site_url` |
-| `search_console_sitemaps_submit` | Submit a sitemap | `site_url`, `feedpath` |
+| `search_console_sitemaps_list` | List sitemaps for a site | *(none; `site_url` optional)* |
+| `search_console_sitemaps_submit` | Submit a sitemap | `feedpath` |
 
 #### URL Inspection
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `search_console_url_inspection_inspect` | Inspect a URL for indexing status | `site_url`, `inspection_url` |
+| `search_console_url_inspection_inspect` | Inspect a URL for indexing status | `inspection_url` |
 
 ### Rollback
 
