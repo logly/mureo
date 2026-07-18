@@ -130,53 +130,76 @@ mureo/
 │   ├── state.py             # STATE.json parser / renderer
 │   └── errors.py            # Context-specific exceptions
 ├── cli/                     # Typer CLI (setup + auth + rollback inspection; ad operations are via MCP)
-│   ├── main.py              # Entry point (mureo command)
+│   ├── main.py              # Entry point (mureo command) — registers all 12 sub-command groups
 │   ├── setup_cmd.py         # mureo setup claude-code / cursor / codex / gemini (Typer handlers)
 │   ├── setup_codex.py       # Codex install-kit (MCP config, credential guard, workflow-command skills, shared skills)
 │   ├── setup_gemini.py      # Gemini extension manifest (~/.gemini/extensions/mureo/gemini-extension.json)
+│   ├── native_skills.py     # Deploy/remove plugin `mureo.native_skills` slash skills (#439)
 │   ├── auth_cmd.py          # mureo auth setup (terminal) / status / check-*
 │   ├── configure_cmd.py     # mureo configure — launches the local browser configuration UI
+│   ├── service_cmd.py       # mureo service install / status / restart / uninstall (auto-start daemon)
+│   ├── upgrade_cmd.py       # mureo upgrade [--all] — upgrades mureo + plugins, re-deploys skills
+│   ├── byod_cmd.py          # mureo byod import / status / remove / clear (Bring Your Own Data)
+│   ├── demo_cmd.py          # mureo demo — scaffold a self-contained demo workspace
+│   ├── providers_cmd.py     # mureo providers install / list / remove (official MCP providers)
+│   ├── open_cmd.py          # mureo open — surface the running configure dashboard
+│   ├── learn_cmd.py         # mureo learn — append insights to the knowledge base
+│   ├── install_desktop_cmd.py # mureo install-desktop — wire mureo into Claude Desktop chat (macOS)
 │   ├── rollback_cmd.py      # mureo rollback list / show (inspection only; apply routes through MCP)
 │   ├── _tty.py              # TTY-safe helpers (confirm_or_default, is_tty) for non-interactive setup
 │   └── web_auth.py          # OAuth handoff server used by `mureo configure` (Google + Meta) — was `auth setup --web`
-└── mcp/                     # MCP server
-    ├── __main__.py                        # python -m mureo.mcp entry point
-    ├── server.py                          # MCP server setup (stdio transport)
-    ├── _helpers.py                        # Shared handler utilities
-    ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
-    ├── _tools_google_ads_*.py             # Tool definition sub-modules
-    ├── _handlers_google_ads.py            # Google Ads base handlers
-    ├── _handlers_google_ads_extensions.py # Extensions handlers
-    ├── _handlers_google_ads_analysis.py   # Analysis handlers
-    ├── tools_meta_ads.py                  # Meta Ads tool definitions (aggregator)
-    ├── _tools_meta_ads_*.py               # Tool definition sub-modules
-    ├── _handlers_meta_ads.py              # Meta Ads base handlers
-    ├── _handlers_meta_ads_extended.py     # Extended handlers
-    ├── _handlers_meta_ads_other.py        # Other handlers
-    ├── tools_search_console.py            # Search Console tool definitions
-    ├── _handlers_search_console.py        # Search Console handlers
-    ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
-    ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
-    ├── tools_analysis.py                  # analysis_anomalies_check
-    └── _handlers_analysis.py              # Anomaly detector composition handler
+├── mcp/                     # MCP server
+│   ├── __main__.py                        # python -m mureo.mcp entry point
+│   ├── server.py                          # MCP server setup (stdio transport)
+│   ├── _helpers.py                        # Shared handler utilities
+│   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
+│   ├── _tools_google_ads_*.py             # Tool definition sub-modules
+│   ├── _handlers_google_ads.py            # Google Ads base handlers
+│   ├── _handlers_google_ads_extensions.py # Extensions handlers
+│   ├── _handlers_google_ads_analysis.py   # Analysis handlers
+│   ├── tools_meta_ads.py                  # Meta Ads tool definitions (aggregator)
+│   ├── _tools_meta_ads_*.py               # Tool definition sub-modules
+│   ├── _handlers_meta_ads.py              # Meta Ads base handlers
+│   ├── _handlers_meta_ads_extended.py     # Extended handlers
+│   ├── _handlers_meta_ads_other.py        # Other handlers
+│   ├── tools_search_console.py            # Search Console tool definitions
+│   ├── _handlers_search_console.py        # Search Console handlers
+│   ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
+│   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
+│   ├── tools_analysis.py                  # analysis_anomalies_check
+│   ├── _handlers_analysis.py              # Anomaly detector composition handler
+│   ├── tools_mureo_context.py            # STRATEGY.md / STATE.json read-write + outcome eval
+│   ├── _handlers_mureo_context.py        # Mureo-context handlers (atomic file writes)
+│   ├── tools_analytics_registry.py       # mureo_analytics_modules_list / _run (#440)
+│   ├── tools_learning.py                 # mureo_learning_insights_get / mureo_consult_advisor
+│   └── tools_creative_studio.py          # creative_studio_* (generate / edit / compose)
+├── core/                    # Provider registry + shared entry-point plumbing (mureo.native_skills group)
+├── policy/                  # Deterministic policy gate (STRATEGY.md → allow / deny / require-approval)
+├── providers/              # Official-MCP provider catalog (Google Ads / Meta / GA4 install kits)
+├── learning/                # /learn knowledge base + advisor federation client
+├── creative_studio/         # Creative Studio: image providers, art-direction scoring, HTML/CSS composer
+├── analytics/               # Analytics-module protocol + registry (mureo.analytics entry-point group)
+├── byod/                    # Bring Your Own Data (XLSX bundle importer + CSV-backed read-only clients)
+├── adapters/                # BYOD per-platform header-signature adapters
+├── demo/                    # Synthetic demo workspace scaffolding
+└── web/                     # `mureo configure` local dashboard (stdlib http.server + static assets)
 
-.claude/commands/                # Workflow slash commands for Claude Code
-├── onboard.md                   # Account setup + STRATEGY.md generation
-├── daily-check.md               # Mode-aware daily health monitoring
-├── rescue.md                    # Emergency performance rescue
-├── search-term-cleanup.md       # Strategy-aligned search term hygiene
-├── creative-refresh.md          # Persona/USP-driven ad copy refresh
-├── lead-form-create.md          # Interview-then-create Meta Instant Form (Lead Ad form)
-├── budget-rebalance.md          # Mode-guided budget reallocation
-├── competitive-scan.md          # Auction analysis with Market Context
-├── sync-state.md                # Manual STATE.json synchronization
-└── learn.md           # Save diagnostic insights to knowledge base
-
-│   └── SKILL.md                 # Orchestration paradigm + Operation Mode reference
-skills/_mureo-learning/           # Evidence-based decision framework
-│   └── SKILL.md                 # Statistical thinking for marketing decisions
-skills/_mureo-pro-diagnosis/      # Learnable diagnostic knowledge base
-│   └── SKILL.md                 # Diagnostic insights (grows with /learn)
+skills/                          # Native slash skills — deployed to ~/.claude/skills/ and ~/.codex/skills/
+├── onboard/                     # Account setup + STRATEGY.md generation
+├── daily-check/                 # Mode-aware daily health monitoring
+├── rescue/                      # Emergency performance rescue
+├── search-term-cleanup/         # Strategy-aligned search term hygiene
+├── creative-refresh/            # Persona/USP-driven ad copy refresh
+├── creative-generate/           # Strategy-grounded creative generation (Creative Studio)
+├── lead-form-create/            # Interview-then-create Meta Instant Form (Lead Ad form)
+├── budget-rebalance/            # Mode-guided budget reallocation
+├── competitive-scan/            # Auction analysis with Market Context
+├── sync-state/                  # Manual STATE.json synchronization
+├── learn/                       # Save diagnostic insights to knowledge base
+├── ... (26 skill dirs total)    # weekly-report, goal-review, monthly-report, tracking-health, …
+├── _mureo-strategy/             # Shared: STRATEGY.md / STATE.json conventions
+├── _mureo-learning/             # Shared: evidence-based decision framework
+└── _mureo-pro-diagnosis/        # Shared: learnable diagnostic knowledge base (grows with /learn)
 ```
 
 ## Design Principles
@@ -307,28 +330,28 @@ server.py :: _create_server()
   │
   └── call_tool(name, arguments)
         │
-        ├── name in _GOOGLE_ADS_NAMES? → handle_google_ads_tool(name, args)
+    │   ├── name in _GOOGLE_ADS_NAMES? → handle_google_ads_tool(name, args)
         │     │
         │     └── _HANDLERS[name](args)
         │           │
-        │           ├── load_google_ads_credentials()
-        │           ├── create_google_ads_client(creds, customer_id)
+        │       │   ├── load_google_ads_credentials()
+        │       │   ├── create_google_ads_client(creds, customer_id)
         │           └── client.method() → list[TextContent]
         │
-        ├── name in _META_ADS_NAMES? → handle_meta_ads_tool(name, args)
+    │   ├── name in _META_ADS_NAMES? → handle_meta_ads_tool(name, args)
         │     │
         │     └── _HANDLERS[name](args)
         │           │
-        │           ├── load_meta_ads_credentials()
-        │           ├── create_meta_ads_client(creds, account_id)
+        │       │   ├── load_meta_ads_credentials()
+        │       │   ├── create_meta_ads_client(creds, account_id)
         │           └── client.method() → list[TextContent]
         │
-        ├── name in _SEARCH_CONSOLE_NAMES? → handle_search_console_tool(name, args)
+    │   ├── name in _SEARCH_CONSOLE_NAMES? → handle_search_console_tool(name, args)
         │     │
         │     └── _HANDLERS[name](args)
         │           │
-        │           ├── load_google_ads_credentials()  (reuses Google OAuth2)
-        │           ├── create_search_console_client(creds)
+        │       │   ├── load_google_ads_credentials()  (reuses Google OAuth2)
+        │       │   ├── create_search_console_client(creds)
         │           └── client.method() → list[TextContent]
         │
         └── else → ValueError("Unknown tool")
@@ -373,7 +396,7 @@ Each platform throttler combines two mechanisms:
      │
 2. load_google_ads_credentials() / load_meta_ads_credentials()
      │
-     ├── Try ~/.mureo/credentials.json
+ │   ├── Try ~/.mureo/credentials.json
      │     └── Parse JSON → extract platform section
      │
      └── Fallback to environment variables
@@ -381,7 +404,7 @@ Each platform throttler combines two mechanisms:
      │
 3. If credentials found:
      │
-     ├── Google Ads: build OAuth2 Credentials → GoogleAdsClient → GoogleAdsApiClient
+ │   ├── Google Ads: build OAuth2 Credentials → GoogleAdsClient → GoogleAdsApiClient
      └── Meta Ads: MetaAdsApiClient(access_token, ad_account_id)
      │
 4. If no credentials: return error TextContent (no exception)
@@ -395,7 +418,7 @@ When loading Meta Ads credentials, `mureo/auth.py` checks the `token_obtained_at
 
 ## Command-Based Workflow System
 
-In addition to the 169 individual MCP tools, mureo provides **workflow commands** as Claude Code slash commands (`.claude/commands/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
+In addition to the 199 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 
@@ -409,7 +432,7 @@ User runs /daily-check in Claude Code
   │   (no hardcoded platform assumptions — adapts to whatever is configured)
   │
   ├── Check availability of enrichment data sources:
-  │     ├── Search Console (built-in) → organic search pulse
+  │ │   ├── Search Console (built-in) → organic search pulse
   │     └── GA4 (external MCP) → on-site behavior correlation
   │
   ├── Execute selected tools across all discovered platforms

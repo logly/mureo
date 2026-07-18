@@ -28,9 +28,12 @@ mureo/
 │   ├── _ads.py          # AdsMixin (RSA create/update/status/list)
 │   ├── _ads_display.py  # DisplayAdsMixin (RDA create + RDAUploadError)
 │   ├── _keywords.py     # KeywordsMixin (add/remove/suggest/diagnose)
-│   ├── _analysis.py     # AnalysisMixin (auction/CPC/device/BtoB/RSA)
+│   ├── _analysis.py     # AnalysisMixin aggregator, composing the split modules below
+│   ├── _analysis_auction.py / _analysis_btob.py / _analysis_budget.py    # + _analysis_constants.py
+│   ├── _analysis_keywords.py / _analysis_performance.py / _analysis_rsa.py / _analysis_search_terms.py
 │   ├── _diagnostics.py  # DiagnosticsMixin (campaign diagnosis)
-│   ├── _extensions.py   # ExtensionsMixin (sitelinks/callouts/conversions/targeting)
+│   ├── _extensions.py   # ExtensionsMixin aggregator, composing the split modules below
+│   ├── _extensions_callouts.py / _extensions_conversions.py / _extensions_sitelinks.py / _extensions_targeting.py
 │   ├── _monitoring.py   # MonitoringMixin (anomaly detection/reporting)
 │   ├── _creative.py     # CreativeMixin (LP analysis/message match)
 │   ├── _media.py        # MediaMixin (image asset upload)
@@ -38,7 +41,9 @@ mureo/
 │   ├── _rda_validator.py     # RDA input validator (display ads)
 │   ├── _rsa_insights.py      # RSA asset performance insights
 │   ├── _intent_classifier.py # Search term intent classification
-│   └── _message_match.py     # Message match evaluator
+│   ├── _message_match.py     # Message match evaluator
+│   ├── _gaql_validator.py    # GAQL input validators (ASCII-only ID/date whitelists — see below)
+│   └── accounts.py           # Accessible-customer / account listing
 ├── meta_ads/            # Meta Ads API client (Mixin composition)
 │   ├── client.py        # MetaAdsApiClient (main entry)
 │   ├── mappers.py       # Response mapping
@@ -57,10 +62,13 @@ mureo/
 │   ├── _page_posts.py   # PagePostsMixin (page posts/boost)
 │   ├── _instagram.py    # InstagramMixin (accounts/media/boost)
 │   ├── _split_test.py   # SplitTestMixin (A/B split tests)
-│   └── _ad_rules.py     # AdRulesMixin (automated rules)
+│   ├── _ad_rules.py     # AdRulesMixin (automated rules)
+│   ├── _conversion_count.py  # Conversion-count parsing helper
+│   ├── _period.py       # Date-period resolution helper
+│   └── accounts.py      # Ad-account listing
 ├── search_console/      # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py        # SearchConsoleApiClient
-├── mcp/                 # MCP server (Google Ads + Meta Ads + Search Console + Rollback + Analysis)
+├── mcp/                 # MCP server (Google/Meta/Search Console + Rollback/Analysis + Analytics registry, Creative Studio, Learning, mureo Context)
 │   ├── server.py                          # MCP Server entry point (stdio-based)
 │   ├── _helpers.py                        # Shared handler utilities
 │   ├── tools_google_ads.py                # Google Ads tool definitions (aggregator)
@@ -78,16 +86,29 @@ mureo/
 │   ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
 │   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
 │   ├── tools_analysis.py                  # analysis_anomalies_check
-│   └── _handlers_analysis.py              # Anomaly detector composition handler
-├── cli/                 # Typer CLI (setup + auth + rollback inspection; ad operations are via MCP)
+│   ├── _handlers_analysis.py              # Anomaly detector composition handler
+│   ├── tools_analytics_registry.py        # mureo_analytics_modules_list / mureo_analytics_run (#440)
+│   ├── tools_creative_studio.py           # creative_studio_* (visual generation + compose)
+│   ├── tools_learning.py                  # mureo_learning_insights_get / mureo_consult_advisor
+│   ├── tools_mureo_context.py             # STRATEGY.md / STATE.json + mureo_outcome_evaluate tools
+│   ├── _handlers_mureo_context.py         # Context (STRATEGY/STATE) handlers
+│   ├── _client_factory.py                 # Per-platform BYOD-vs-live client factory
+│   └── tool_provider.py                   # Third-party plugin → MCP tool exposure layer (#89)
+├── cli/                 # Typer CLI (setup + auth + configure + BYOD + providers + rollback; ad ops are via MCP)
 │   ├── main.py          # CLI entry point (`mureo` command)
 │   ├── setup_cmd.py     # `mureo setup claude-code` / `cursor` / `codex` / `gemini`
-│   ├── setup_codex.py   # Codex install-kit: MCP, credential guard, workflow command skills, shared skills
+│   ├── setup_codex.py   # Codex install-kit: MCP, credential guard, operational + foundation skills
 │   ├── setup_gemini.py  # Gemini extension manifest at ~/.gemini/extensions/mureo/
-│   ├── auth_cmd.py      # `mureo auth setup` (+ `--web`) / `status` / `check-*`
+│   ├── native_skills.py # Deploy/remove plugin native slash skills via `mureo.native_skills` group (#439)
+│   ├── configure_cmd.py # `mureo configure` — open the local web configuration UI
+│   ├── byod_cmd.py      # `mureo byod import` / `status` / `remove` / `clear`
+│   ├── providers_cmd.py # `mureo providers list` / `install` / `uninstall` (official MCP catalog)
+│   ├── service_cmd.py   # `mureo service` — install/restart the auto-start configure daemon (#241)
+│   ├── upgrade_cmd.py   # `mureo upgrade` — pipx venv-aware bulk upgrade of mureo + plugins
+│   ├── auth_cmd.py      # `mureo auth setup` / `status` / `check-*` / `upgrade-google`
 │   ├── rollback_cmd.py  # `mureo rollback list` / `show` (inspection only; apply routes through MCP)
 │   ├── _tty.py          # TTY-safe helpers for non-interactive setup
-│   └── web_auth.py      # `mureo auth setup --web` — browser-based OAuth wizard
+│   └── web_auth.py      # Browser-based OAuth wizard spawned by `mureo configure` (per-platform creds)
 ├── context/             # File-based strategy context (no DB)
 │   ├── strategy.py      # STRATEGY.md parser/writer
 │   ├── state.py         # STATE.json parser/writer
@@ -100,27 +121,30 @@ mureo/
 │   ├── models.py        # RollbackStatus enum + RollbackPlan dataclass
 │   ├── planner.py       # plan_rollback(ActionLogEntry) -> RollbackPlan | None
 │   └── executor.py      # execute_rollback(...) -> appends ActionLogEntry(rollback_of=index)
-.claude/commands/            # Workflow slash commands (11 orchestration commands)
-│   ├── onboard.md           # Platform discovery + strategy setup
-│   ├── daily-check.md       # Cross-platform health monitoring (ad platforms + SC + GA4)
-│   ├── rescue.md            # Multi-platform emergency rescue (with GA4 site-side diagnosis)
-│   ├── search-term-cleanup.md # Cross-platform keyword hygiene (with paid/organic overlap)
-│   ├── creative-refresh.md  # Multi-platform creative refresh (with organic keyword insights)
-│   ├── budget-rebalance.md  # Cross-platform budget optimization (with organic intelligence)
-│   ├── competitive-scan.md  # Paid + organic competitive landscape analysis
-│   ├── goal-review.md       # Multi-source goal evaluation
-│   ├── weekly-report.md     # Cross-platform weekly operations report
-│   ├── sync-state.md        # Multi-platform STATE.json synchronization
-│   └── learn.md   # Save diagnostic insights to knowledge base
-│   └── SKILL.md             # Orchestration paradigm + Operation Mode reference
-skills/_mureo-learning/       # Evidence-based decision framework
-│   └── SKILL.md             # Statistical thinking for marketing decisions
-skills/_mureo-pro-diagnosis/  # Learnable diagnostic knowledge base
-│   └── SKILL.md             # Diagnostic insights (grows with /learn)
-docs/integrations.md         # Platform discovery + external MCP integration guide
+├── adapters/            # Provider adapters wrapping each ad-platform client as a registry Protocol
+├── analytics/           # Analytics-module registry for external MCP / plugin platforms (#120)
+├── core/                # Extension Protocols + file-backed impls + RuntimeContext; provider & skill discovery
+├── providers/           # Official MCP provider catalog + one-command install helpers (#86)
+├── policy/              # Built-in policy gates (strategy_gate) — ship with OSS, run by default
+├── learning/            # Read-side /learn companion: insight federation across configured sources
+├── creative_studio/     # Creator-grade ad-creative (image) generation via pluggable providers
+├── byod/                # Bring Your Own Data — CSV-backed offline analysis (see BYOD Mode below)
+├── web/                 # Local `mureo configure` UI — stdlib http.server on 127.0.0.1 (no web framework)
+├── demo/                # `mureo demo init` synthetic-bundle bootstrap (round-trips through BYOD)
 ├── auth.py              # Credentials management (~/.mureo/credentials.json + env vars + Meta token auto-refresh)
 ├── auth_setup.py        # Interactive setup wizard (browser OAuth flow)
+├── credential_guard.py  # Blocks AI agents from reading ~/.mureo/credentials.json
 └── throttle.py          # Rate limiting (token bucket + rolling hourly cap)
+
+skills/                       # Native slash skills — one `<name>/SKILL.md` per skill (migrated from
+│                             #   .claude/commands in #439; invocable as `/<name>`). Plugins contribute
+│                             #   more via the `mureo.native_skills` entry-point group, deployed/removed
+│                             #   by `mureo/cli/native_skills.py`.
+├── onboard/, daily-check/, rescue/, budget-rebalance/, …   # ~20 operational (workflow) skills
+│   └── SKILL.md
+└── _mureo-*/                 # 6 foundation skills: _mureo-shared / _mureo-strategy / _mureo-google-ads /
+    └── SKILL.md              #   _mureo-meta-ads / _mureo-learning / _mureo-pro-diagnosis
+docs/integrations.md          # Platform discovery + external MCP integration guide
 ```
 
 ## MCP Tools
@@ -181,6 +205,19 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 | Sitemaps | `sitemaps.list`, `sitemaps.submit` |
 | URL Inspection | `url_inspection.inspect` |
 
+### mureo Core Tools (platform-independent)
+
+These families are not tied to a single ad platform. Tool names are the exact MCP tool ids.
+
+| Family | Tools |
+|--------|-------|
+| Analytics Registry (#440) | `mureo_analytics_modules_list`, `mureo_analytics_run` |
+| Rollback | `rollback_plan_get`, `rollback_apply` |
+| Analysis | `analysis_anomalies_check` |
+| Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
+| Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
+| mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_platform_metrics_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate` |
+
 ## Design Constraints
 
 - **Strategy-driven** — all operations are guided by STRATEGY.md context.
@@ -192,7 +229,7 @@ docs/integrations.md         # Platform discovery + external MCP integration gui
 - **Tools return structured JSON data only** — no formatted text, no Markdown in tool responses.
 - **All data models use frozen dataclasses** — immutable by default.
 - **Credentials via file or env vars** — `~/.mureo/credentials.json` with environment variable fallback.
-- **Built-in rate limiting** — token bucket throttling per platform prevents API bans from high-speed agent requests (Google Ads: 10 QPS, Meta Ads: 20 QPS + 50K/hr cap, Search Console: 5 QPS). See `mureo/throttle.py`.
+- **Built-in rate limiting** — token bucket throttling per platform prevents API bans from high-speed agent requests (Google Ads: 10 QPS, Meta Ads: 20 QPS + 50K/hr cap, Search Console: 5 QPS, Creative Studio: 1 QPS + 120/hr cap, Plugin tools: 5 QPS). See `mureo/throttle.py`.
 - **Meta token auto-refresh** — Long-Lived Tokens are automatically refreshed when 53+ days old (requires `app_id` and `app_secret`). See `mureo/auth.py`.
 
 ## Coding Standards
@@ -253,8 +290,8 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 
 When working on mureo:
 - New ad-platform handlers MUST call `mureo/mcp/_client_factory.get_*_client(...)` for the BYOD path; real-mode dispatch can call `create_*_client` directly to keep test mocks at `mureo.mcp._handlers_*.create_*_client` working.
-- BYOD clients are read-only. Mutation method name prefixes (`create_`, `update_`, `delete_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, `patch_`, `add_`, `remove_`, `send_`, `upload_`) return `{"status": "skipped_in_byod_readonly"}`.
-- New bundle adapters live in `mureo/byod/adapters/<platform>.py` and must implement `has_tab(workbook)` (returns True when the workbook contains the adapter's required sheet/header signature) and `normalize_from_workbook(workbook, dst_dir)` (writes CSVs to `dst_dir`, returns an `ImportResult`). Each adapter sanitizes user-controlled cells against CSV injection (`_sanitize_cell` prefixes formula triggers `=`, `+`, `-`, `@`, tab, CR with a single quote) and writes to the mureo internal schema documented in `docs/byod.md`.
+- BYOD clients are read-only. Mutation method name prefixes (`create_`, `update_`, `delete_`, `pause_`, `resume_`, `enable_`, `disable_`, `apply_`, `publish_`, `submit_`, `attach_`, `detach_`, `approve_`, `reject_`, `cancel_`, `set_`, `patch_`, `add_`, `remove_`, `send_`, `upload_`, `boost_`, `end_`, `duplicate_`, `export_`) return `{"status": "skipped_in_byod_readonly"}`. The authoritative list is `_MUTATION_PREFIXES` in `mureo/byod/clients.py` (25 prefixes).
+- New bundle adapters live in `mureo/byod/adapters/<platform>.py` and must implement `has_tab(workbook)` (returns True when the workbook contains the adapter's required sheet/header signature) and `normalize_from_workbook(workbook, dst_dir)` (writes CSVs to `dst_dir`, returns an `ImportResult`). Both adapters (Google Ads and Meta Ads) import the shared helper `sanitize_cell` from `mureo/byod/adapters/_csv_safe.py` and apply it to every user-controlled cell against CSV injection (it prefixes formula triggers `=`, `+`, `-`, `@`, tab, CR with a single quote), then write to the mureo internal schema documented in `docs/byod.md`.
 - Bundle imports MUST never escape `~/.mureo/byod/` — `bundle.py` and `installer.remove_platform` both enforce path-traversal guards.
 - See `docs/byod.md` for the user-facing walkthrough and the recommended Saved Report configuration for Meta Ads (multilingual: 9 locales).
 
@@ -264,3 +301,4 @@ Google Ads queries use GAQL (Google Ads Query Language). When constructing queri
 - Never interpolate user input directly into GAQL strings
 - Use parameterized values for customer_id, campaign_id, etc.
 - Validate ID formats before use (numeric strings only)
+- Route all IDs/dates through the dedicated validator `mureo/google_ads/_gaql_validator.py`. Its ID pattern uses ASCII `[0-9]+` (not `\d`), so full-width / Unicode digits (e.g. `１２３`, `٣٤٥`) are rejected rather than silently accepted and interpolated (#441).

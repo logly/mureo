@@ -191,12 +191,18 @@ Notes:
 2. Exchange it for a long-lived token (60 days):
 
 ```bash
-curl -X GET "https://graph.facebook.com/v21.0/oauth/access_token?\
-grant_type=fb_exchange_token&\
-client_id=YOUR_APP_ID&\
-client_secret=YOUR_APP_SECRET&\
-fb_exchange_token=SHORT_LIVED_TOKEN"
+curl -X POST "https://graph.facebook.com/v21.0/oauth/access_token" \
+  -d "grant_type=fb_exchange_token" \
+  -d "client_id=YOUR_APP_ID" \
+  -d "client_secret=YOUR_APP_SECRET" \
+  -d "fb_exchange_token=SHORT_LIVED_TOKEN"
 ```
+
+> **Use POST, not GET.** The Graph `/oauth/access_token` endpoint
+> accepts these parameters via the request body, keeping `client_secret`
+> and the token out of the URL (and out of any request/proxy logs).
+> mureo's own token exchange posts them as a form body for the same
+> reason.
 
 **Option C: System User Token (recommended for automation)**
 

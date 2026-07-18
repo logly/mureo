@@ -4,8 +4,11 @@
 
 | Version | Supported          |
 |---------|--------------------|
-| 0.6.x   | :white_check_mark: |
-| < 0.6   | :x:                |
+| 0.10.x  | :white_check_mark: |
+| < 0.10  | :x:                |
+
+We support the latest minor release line. Upgrade to the current version to
+receive security fixes before reporting an issue.
 
 ## Reporting a Vulnerability
 
@@ -175,7 +178,7 @@ Additional hardening on the executor:
   response returns a generic message (only `type(exc).__name__`) so
   tokens and account identifiers cannot leak into model context.
 
-### Browser-based auth wizard (`mureo auth setup --web`)
+### Browser-based auth wizard (`mureo configure`)
 
 Non-technical operators completing OAuth setup use the browser
 wizard, which runs its own short-lived HTTP server on the machine.
