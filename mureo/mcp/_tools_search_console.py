@@ -90,7 +90,7 @@ TOOLS: list[Tool] = [
             "properties": {
                 "site_url": _SITE_URL_PARAM,
             },
-            "required": ["site_url"],
+            "required": [],
         },
     ),
     # === Search Analytics ===
@@ -154,7 +154,7 @@ TOOLS: list[Tool] = [
                     ),
                 },
             },
-            "required": ["site_url", "start_date", "end_date"],
+            "required": ["start_date", "end_date"],
         },
     ),
     Tool(
@@ -183,7 +183,7 @@ TOOLS: list[Tool] = [
                     "description": "Max rows (default: 100)",
                 },
             },
-            "required": ["site_url", "start_date", "end_date"],
+            "required": ["start_date", "end_date"],
         },
     ),
     Tool(
@@ -212,7 +212,7 @@ TOOLS: list[Tool] = [
                     "description": "Max rows (default: 100)",
                 },
             },
-            "required": ["site_url", "start_date", "end_date"],
+            "required": ["start_date", "end_date"],
         },
     ),
     Tool(
@@ -241,7 +241,7 @@ TOOLS: list[Tool] = [
                     "description": "Max rows (default: 100)",
                 },
             },
-            "required": ["site_url", "start_date", "end_date"],
+            "required": ["start_date", "end_date"],
         },
     ),
     Tool(
@@ -324,7 +324,6 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [
-                "site_url",
                 "start_date_1",
                 "end_date_1",
                 "start_date_2",
@@ -352,7 +351,7 @@ TOOLS: list[Tool] = [
             "properties": {
                 "site_url": _SITE_URL_PARAM,
             },
-            "required": ["site_url"],
+            "required": [],
         },
     ),
     Tool(
@@ -399,7 +398,7 @@ TOOLS: list[Tool] = [
                     ),
                 },
             },
-            "required": ["site_url", "feedpath"],
+            "required": ["feedpath"],
         },
     ),
     # === URL Inspection ===
@@ -440,7 +439,7 @@ TOOLS: list[Tool] = [
                     ),
                 },
             },
-            "required": ["site_url", "inspection_url"],
+            "required": ["inspection_url"],
         },
     ),
 ]

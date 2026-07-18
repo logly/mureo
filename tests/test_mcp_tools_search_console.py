@@ -77,39 +77,42 @@ class TestSearchConsoleToolDefinitions:
     @pytest.mark.parametrize(
         "tool_name,expected_required",
         [
+            # site_url is intentionally NOT required at the schema level: it is
+            # resolved (and tenant-scoped) at runtime by _resolve_site_url, so a
+            # single-property multi-account client can omit it (H1). It stays an
+            # optional property on every tool that takes it.
             ("search_console_sites_list", []),
-            ("search_console_sites_get", ["site_url"]),
+            ("search_console_sites_get", []),
             (
                 "search_console_analytics_query",
-                ["site_url", "start_date", "end_date"],
+                ["start_date", "end_date"],
             ),
             (
                 "search_console_analytics_top_queries",
-                ["site_url", "start_date", "end_date"],
+                ["start_date", "end_date"],
             ),
             (
                 "search_console_analytics_top_pages",
-                ["site_url", "start_date", "end_date"],
+                ["start_date", "end_date"],
             ),
             (
                 "search_console_analytics_device_breakdown",
-                ["site_url", "start_date", "end_date"],
+                ["start_date", "end_date"],
             ),
             (
                 "search_console_analytics_compare_periods",
                 [
-                    "site_url",
                     "start_date_1",
                     "end_date_1",
                     "start_date_2",
                     "end_date_2",
                 ],
             ),
-            ("search_console_sitemaps_list", ["site_url"]),
-            ("search_console_sitemaps_submit", ["site_url", "feedpath"]),
+            ("search_console_sitemaps_list", []),
+            ("search_console_sitemaps_submit", ["feedpath"]),
             (
                 "search_console_url_inspection_inspect",
-                ["site_url", "inspection_url"],
+                ["inspection_url"],
             ),
         ],
     )
