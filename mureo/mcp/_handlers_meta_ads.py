@@ -188,7 +188,13 @@ async def handle_campaigns_create(args: dict[str, Any]) -> list[TextContent]:
         "name": _require(args, "name"),
         "objective": _require(args, "objective"),
     }
-    for key in ("status", "daily_budget", "lifetime_budget"):
+    for key in (
+        "status",
+        "daily_budget",
+        "lifetime_budget",
+        "bid_strategy",
+        "is_adset_budget_sharing_enabled",
+    ):
         val = _opt(args, key)
         if val is not None:
             kwargs[key] = val
@@ -204,7 +210,7 @@ async def handle_campaigns_update(args: dict[str, Any]) -> list[TextContent]:
         return _no_meta_creds()
     campaign_id = _require(args, "campaign_id")
     update_kwargs: dict[str, Any] = {}
-    for key in ("name", "status", "daily_budget"):
+    for key in ("name", "status", "daily_budget", "bid_strategy"):
         val = _opt(args, key)
         if val is not None:
             update_kwargs[key] = val
@@ -246,6 +252,9 @@ async def handle_ad_sets_create(args: dict[str, Any]) -> list[TextContent]:
         "targeting",
         "status",
         "bid_amount",
+        "bid_strategy",
+        "bid_constraints",
+        "promoted_object",
     ):
         val = _opt(args, key)
         if val is not None:
@@ -305,14 +314,24 @@ def _validate_ad_set_schedule_and_budget(args: dict[str, Any]) -> int | str | No
 
 @api_error_handler
 async def handle_ad_sets_update(args: dict[str, Any]) -> list[TextContent]:
-    _validate_positive_money(args, "daily_budget", "lifetime_budget")
+    _validate_positive_money(args, "daily_budget", "lifetime_budget", "bid_amount")
     end_time = _validate_ad_set_schedule_and_budget(args)
     client = await _get_client(args)
     if client is None:
         return _no_meta_creds()
     ad_set_id = _require(args, "ad_set_id")
     update_kwargs: dict[str, Any] = {}
-    for key in ("name", "status", "daily_budget", "lifetime_budget", "targeting"):
+    for key in (
+        "name",
+        "status",
+        "daily_budget",
+        "lifetime_budget",
+        "targeting",
+        "bid_strategy",
+        "bid_amount",
+        "bid_constraints",
+        "promoted_object",
+    ):
         val = _opt(args, key)
         if val is not None:
             update_kwargs[key] = val
@@ -902,6 +921,7 @@ from mureo.mcp._handlers_meta_ads_other import (  # noqa: E402, F401
     handle_instagram_media,
     handle_page_posts_boost,
     handle_page_posts_list,
+    handle_pages_list,
     handle_split_tests_create,
     handle_split_tests_end,
     handle_split_tests_get,

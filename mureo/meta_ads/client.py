@@ -24,6 +24,8 @@ from mureo.meta_ads._pixels import PixelsMixin
 from mureo.meta_ads._split_test import SplitTestMixin
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from mureo.throttle import Throttler
 
 logger = logging.getLogger(__name__)
@@ -277,6 +279,32 @@ class MetaAdsApiClient(
                 usage_header[:200],
             )
 
+    async def _iter_page_batches(
+        self, fields: str
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """Yield batches of accessible pages, personal source first.
+
+        Shared two-step page discovery used by both
+        :meth:`get_page_access_token` (which short-circuits once it finds
+        its target) and :meth:`list_pages` (which consumes every batch):
+        ``/me/accounts`` (personal pages) then ``/me/businesses`` ->
+        ``/{business_id}/owned_pages`` (business-owned pages). Lazy so the
+        token lookup can stop before the business calls are made.
+
+        Args:
+            fields: Comma-separated Graph field list to request per page.
+        """
+        result = await self._get("/me/accounts", {"fields": fields})
+        yield result.get("data", [])
+
+        biz_result = await self._get("/me/businesses", {"fields": "id"})
+        for biz in biz_result.get("data", []):
+            pages_result = await self._get(
+                f"/{biz['id']}/owned_pages",
+                {"fields": fields},
+            )
+            yield pages_result.get("data", [])
+
     async def get_page_access_token(self, page_id: str) -> str:
         """Get a Page Access Token for the given page.
 
@@ -295,31 +323,44 @@ class MetaAdsApiClient(
         if page_id in self._page_tokens:
             return self._page_tokens[page_id]
 
-        # Try personal pages first
-        result = await self._get("/me/accounts", {"fields": "id,access_token"})
-        for page in result.get("data", []):
-            self._page_tokens[page["id"]] = page["access_token"]
-
-        if page_id in self._page_tokens:
-            return self._page_tokens[page_id]
-
-        # Fall back to business-owned pages
-        biz_result = await self._get("/me/businesses", {"fields": "id"})
-        for biz in biz_result.get("data", []):
-            pages_result = await self._get(
-                f"/{biz['id']}/owned_pages",
-                {"fields": "id,access_token"},
-            )
-            for page in pages_result.get("data", []):
+        async for batch in self._iter_page_batches("id,access_token"):
+            for page in batch:
                 self._page_tokens[page["id"]] = page["access_token"]
+            # Short-circuit: stop before the business calls if we already
+            # have the token from the personal-pages batch.
+            if page_id in self._page_tokens:
+                return self._page_tokens[page_id]
 
-        if page_id not in self._page_tokens:
-            raise RuntimeError(
-                f"Page {page_id} not accessible with current token. "
-                f"Ensure the user has admin access to this page "
-                f"and the page is owned by a connected business portfolio."
-            )
-        return self._page_tokens[page_id]
+        raise RuntimeError(
+            f"Page {page_id} not accessible with current token. "
+            f"Ensure the user has admin access to this page "
+            f"and the page is owned by a connected business portfolio."
+        )
+
+    async def list_pages(self) -> list[dict[str, Any]]:
+        """List Facebook Pages the current token can manage.
+
+        Aggregates personal (``/me/accounts``) and business-owned
+        (``/me/businesses`` -> ``/{business_id}/owned_pages``) pages via
+        the shared :meth:`_iter_page_batches` helper. Read-only.
+
+        Returns:
+            A list of ``{"id", "name", "category"?}`` dicts (``category``
+            is included only when Graph returns it for that page). A Page
+            that appears in both sources (a common overlap when the user
+            has a role on a Page that a Business Portfolio also owns) is
+            listed once, keyed on id, preserving first-seen order.
+        """
+        pages: dict[str, dict[str, Any]] = {}
+        async for batch in self._iter_page_batches("id,name,category"):
+            for page in batch:
+                entry: dict[str, Any] = {"id": page["id"], "name": page.get("name")}
+                if "category" in page:
+                    entry["category"] = page["category"]
+                # setdefault keeps the first-seen entry (personal batch
+                # wins) and dedupes ids shared across both sources.
+                pages.setdefault(page["id"], entry)
+        return list(pages.values())
 
     async def _get_as_page(
         self, page_id: str, path: str, params: dict[str, Any] | None = None

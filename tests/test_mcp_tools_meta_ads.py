@@ -54,9 +54,46 @@ class TestMetaAdsToolDefinitions:
     """Verify the Meta Ads tool list is defined correctly."""
 
     def test_tool_count(self) -> None:
-        """All 83 tools are defined (82 + meta_ads_pixels_create)."""
+        """All 84 tools are defined (83 + meta_ads_pages_list)."""
         mod = _import_meta_ads_tools()
-        assert len(mod.TOOLS) == 83
+        assert len(mod.TOOLS) == 84
+
+    def test_bidding_control_schema_properties(self) -> None:
+        """The four touched write tools expose the new bidding-control
+        properties and are strict (additionalProperties: false)."""
+        mod = _import_meta_ads_tools()
+        by_name = {t.name: t for t in mod.TOOLS}
+
+        cc = by_name["meta_ads_campaigns_create"].inputSchema
+        assert cc["additionalProperties"] is False
+        assert set(cc["properties"]["bid_strategy"]["enum"]) == {
+            "LOWEST_COST_WITHOUT_CAP",
+            "LOWEST_COST_WITH_BID_CAP",
+            "COST_CAP",
+            "LOWEST_COST_WITH_MIN_ROAS",
+        }
+        assert cc["properties"]["is_adset_budget_sharing_enabled"]["type"] == "boolean"
+
+        cu = by_name["meta_ads_campaigns_update"].inputSchema
+        assert cu["additionalProperties"] is False
+        assert "bid_strategy" in cu["properties"]
+
+        ac = by_name["meta_ads_ad_sets_create"].inputSchema
+        assert ac["additionalProperties"] is False
+        assert "bid_strategy" in ac["properties"]
+        assert ac["properties"]["bid_constraints"]["type"] == "object"
+        assert ac["properties"]["promoted_object"]["type"] == "object"
+
+        au = by_name["meta_ads_ad_sets_update"].inputSchema
+        assert au["additionalProperties"] is False
+        for key in ("bid_strategy", "bid_amount", "bid_constraints", "promoted_object"):
+            assert key in au["properties"], key
+
+    def test_pages_list_tool_registered(self) -> None:
+        mod = _import_meta_ads_tools()
+        names = {t.name for t in mod.TOOLS}
+        assert "meta_ads_pages_list" in names
+        assert "meta_ads_pages_list" in mod._HANDLERS
 
     def test_all_tool_names(self) -> None:
         """Every tool name starts with meta_ads_ (underscore-separated, per MCP spec)."""
@@ -216,6 +253,92 @@ class TestMetaAdsCampaignHandlers:
             )
 
         client.update_campaign.assert_awaited_once()
+
+    async def test_campaigns_create_forwards_bid_strategy(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.create_campaign.return_value = {"id": "789"}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "meta_ads_campaigns_create",
+                {
+                    "account_id": "act_123",
+                    "name": "New Camp",
+                    "objective": "OUTCOME_SALES",
+                    "bid_strategy": "COST_CAP",
+                },
+            )
+
+        kwargs = client.create_campaign.await_args.kwargs
+        assert kwargs["bid_strategy"] == "COST_CAP"
+
+    async def test_campaigns_create_forwards_budget_sharing_false(self) -> None:
+        """is_adset_budget_sharing_enabled=False must reach the client, not be
+        dropped by a falsy check."""
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.create_campaign.return_value = {"id": "789"}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "meta_ads_campaigns_create",
+                {
+                    "account_id": "act_123",
+                    "name": "New Camp",
+                    "objective": "OUTCOME_SALES",
+                    "is_adset_budget_sharing_enabled": False,
+                },
+            )
+
+        kwargs = client.create_campaign.await_args.kwargs
+        assert kwargs["is_adset_budget_sharing_enabled"] is False
+
+    async def test_campaigns_update_forwards_bid_strategy(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.update_campaign.return_value = {"success": True}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "meta_ads_campaigns_update",
+                {
+                    "account_id": "act_123",
+                    "campaign_id": "456",
+                    "bid_strategy": "LOWEST_COST_WITH_MIN_ROAS",
+                },
+            )
+
+        kwargs = client.update_campaign.await_args.kwargs
+        assert kwargs["bid_strategy"] == "LOWEST_COST_WITH_MIN_ROAS"
+
+    async def test_campaigns_create_rejects_unknown_param(self) -> None:
+        """additionalProperties:false makes an undeclared param a schema
+        validation error (via the real dispatcher path)."""
+        from mureo.mcp import server as mcp_server
+
+        with pytest.raises(ValueError, match="not_a_real_param|additional"):
+            await mcp_server.handle_call_tool(
+                "meta_ads_campaigns_create",
+                {
+                    "account_id": "act_123",
+                    "name": "C",
+                    "objective": "OUTCOME_SALES",
+                    "not_a_real_param": "x",
+                },
+            )
 
     async def test_campaigns_create_rejects_zero_daily_budget(self) -> None:
         """A 0 daily budget halts delivery — refuse before any API call (#277)."""
@@ -473,6 +596,64 @@ class TestMetaAdsAdSetHandlers:
                 },
             )
 
+    async def test_ad_sets_create_forwards_bidding_and_promoted_object(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.create_ad_set.return_value = {"id": "20"}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "meta_ads_ad_sets_create",
+                {
+                    "account_id": "act_123",
+                    "campaign_id": "456",
+                    "name": "AS",
+                    "bid_strategy": "LOWEST_COST_WITH_MIN_ROAS",
+                    "bid_constraints": {"roas_average_floor": 12000},
+                    "promoted_object": {"pixel_id": "1", "custom_event_type": "LEAD"},
+                },
+            )
+
+        kwargs = client.create_ad_set.await_args.kwargs
+        assert kwargs["bid_strategy"] == "LOWEST_COST_WITH_MIN_ROAS"
+        assert kwargs["bid_constraints"] == {"roas_average_floor": 12000}
+        assert kwargs["promoted_object"] == {
+            "pixel_id": "1",
+            "custom_event_type": "LEAD",
+        }
+
+    async def test_ad_sets_update_forwards_bidding_and_promoted_object(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.update_ad_set.return_value = {"success": True}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "meta_ads_ad_sets_update",
+                {
+                    "account_id": "act_123",
+                    "ad_set_id": "20",
+                    "bid_strategy": "LOWEST_COST_WITH_BID_CAP",
+                    "bid_amount": 500,
+                    "bid_constraints": {"roas_average_floor": 15000},
+                    "promoted_object": {"pixel_id": "9"},
+                },
+            )
+
+        kwargs = client.update_ad_set.await_args.kwargs
+        assert kwargs["bid_strategy"] == "LOWEST_COST_WITH_BID_CAP"
+        assert kwargs["bid_amount"] == 500
+        assert kwargs["bid_constraints"] == {"roas_average_floor": 15000}
+        assert kwargs["promoted_object"] == {"pixel_id": "9"}
+
 
 # ---------------------------------------------------------------------------
 # Handler tests — ads
@@ -627,6 +808,45 @@ class TestMetaAdsAudienceHandlers:
             )
 
         client.create_custom_audience.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Handler tests — pages
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestMetaAdsPageHandlers:
+    """Page-listing handler tests."""
+
+    async def test_pages_list_success(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.list_pages.return_value = [
+            {"id": "p1", "name": "Page One", "category": "Business"}
+        ]
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            result = await mod.handle_tool(
+                "meta_ads_pages_list", {"account_id": "act_123"}
+            )
+
+        client.list_pages.assert_awaited_once()
+        parsed = json.loads(result[0].text)
+        assert parsed[0]["id"] == "p1"
+
+    async def test_pages_list_no_credentials(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        with patch.object(handlers, "load_meta_ads_credentials", return_value=None):
+            result = await mod.handle_tool(
+                "meta_ads_pages_list", {"account_id": "act_123"}
+            )
+        assert "Credentials not found" in result[0].text
 
 
 # ---------------------------------------------------------------------------

@@ -485,6 +485,25 @@ TOOLS: list[Tool] = [
             "required": ["page_id", "post_id", "ad_set_id"],
         },
     ),
+    # === Pages ===
+    Tool(
+        name="meta_ads_pages_list",
+        description=(
+            "Lists Facebook Pages the current access token can manage, "
+            "aggregating personal Pages (/me/accounts) and business-owned "
+            "Pages (/me/businesses -> owned_pages). Returns id, name, and "
+            "category (when present) per Page. Read-only. Use this to find "
+            "a page_id before creating lead forms, boosting posts, or "
+            "attaching a Page to an ad set's promoted_object."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "account_id": _ACCOUNT_ID_PARAM,
+            },
+            "required": [],
+        },
+    ),
     # === Instagram ===
     Tool(
         name="meta_ads_instagram_accounts",

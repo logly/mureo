@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Meta Ads bidding controls on campaign / ad-set write tools.**
+  `meta_ads_campaigns_create` and `meta_ads_campaigns_update` gain
+  `bid_strategy` (`LOWEST_COST_WITHOUT_CAP`, `LOWEST_COST_WITH_BID_CAP`,
+  `COST_CAP`, `LOWEST_COST_WITH_MIN_ROAS`); `campaigns_create` also gains
+  `is_adset_budget_sharing_enabled` (required by Meta when creating a
+  campaign without campaign budget optimization). `meta_ads_ad_sets_create`
+  and `meta_ads_ad_sets_update` gain `bid_strategy`, `bid_constraints`
+  (carrying `roas_average_floor` for the min-ROAS strategy), and
+  `promoted_object` (the pixel/event conversion target); `ad_sets_update`
+  additionally exposes `bid_amount` (previously create-only, needed when
+  switching to a capped strategy). Combinations are passed through to Graph
+  rather than pre-validated, with the tool descriptions documenting the
+  cross-field requirements. Read paths now surface
+  `is_adset_budget_sharing_enabled` (campaigns) and `promoted_object`
+  (ad sets).
+- **`meta_ads_pages_list` MCP tool.** Read-only listing of the Facebook
+  Pages the current token can manage, aggregating personal
+  (`/me/accounts`) and business-owned (`/me/businesses` → `owned_pages`)
+  Pages. Backed by a new `MetaAdsApiClient.list_pages` method that shares
+  the two-step page-discovery logic with `get_page_access_token`.
+
+### Changed
+
+- **Stricter input validation on the four Meta Ads campaign / ad-set write
+  tools.** `meta_ads_campaigns_create`, `meta_ads_campaigns_update`,
+  `meta_ads_ad_sets_create`, and `meta_ads_ad_sets_update` now declare
+  `additionalProperties: false`, so an unknown / misspelled parameter is
+  rejected with a clear schema error instead of being silently dropped.
+
 - **`meta_ads_pixels_create` MCP tool.** Creates a Meta Pixel on an ad
   account via Graph API `POST /act_{ad_account_id}/adspixels` with a required
   `name`. Returns the created pixel id. Mutating and not automatically

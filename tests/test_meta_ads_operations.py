@@ -127,6 +127,47 @@ class TestCampaignsMixin:
         data = client._post.call_args[0][1]
         assert data["status"] == "ACTIVE"
 
+    @pytest.mark.asyncio
+    async def test_create_campaign_with_bid_strategy(self, client) -> None:
+        await client.create_campaign("Test", "OUTCOME_SALES", bid_strategy="COST_CAP")
+        data = client._post.call_args[0][1]
+        assert data["bid_strategy"] == "COST_CAP"
+
+    @pytest.mark.asyncio
+    async def test_create_campaign_omits_bid_strategy_when_none(self, client) -> None:
+        await client.create_campaign("Test", "OUTCOME_SALES")
+        data = client._post.call_args[0][1]
+        assert "bid_strategy" not in data
+
+    @pytest.mark.asyncio
+    async def test_create_campaign_budget_sharing_false_serialized(
+        self, client
+    ) -> None:
+        # A False value is meaningful (per-ad-set budgets) and must be
+        # forwarded, not dropped by a falsy check.
+        await client.create_campaign(
+            "Test", "OUTCOME_SALES", is_adset_budget_sharing_enabled=False
+        )
+        data = client._post.call_args[0][1]
+        assert data["is_adset_budget_sharing_enabled"] is False
+
+    @pytest.mark.asyncio
+    async def test_create_campaign_budget_sharing_true_serialized(self, client) -> None:
+        await client.create_campaign(
+            "Test", "OUTCOME_SALES", is_adset_budget_sharing_enabled=True
+        )
+        data = client._post.call_args[0][1]
+        assert data["is_adset_budget_sharing_enabled"] is True
+
+    @pytest.mark.asyncio
+    async def test_create_campaign_omits_budget_sharing_when_none(self, client) -> None:
+        await client.create_campaign("Test", "OUTCOME_SALES")
+        data = client._post.call_args[0][1]
+        assert "is_adset_budget_sharing_enabled" not in data
+
+    def test_campaign_fields_include_budget_sharing(self, client) -> None:
+        assert "is_adset_budget_sharing_enabled" in client._CAMPAIGN_FIELDS
+
 
 # ===========================================================================
 # AdSetsMixin tests
@@ -266,6 +307,176 @@ class TestAdSetsMixin:
         await client.enable_ad_set("1")
         data = client._post.call_args[0][1]
         assert data["status"] == "ACTIVE"
+
+    @pytest.mark.asyncio
+    async def test_create_ad_set_with_bid_strategy(self, client) -> None:
+        await client.create_ad_set(
+            "camp1", "AS", 3000, bid_strategy="LOWEST_COST_WITH_BID_CAP"
+        )
+        data = client._post.call_args[0][1]
+        assert data["bid_strategy"] == "LOWEST_COST_WITH_BID_CAP"
+
+    @pytest.mark.asyncio
+    async def test_create_ad_set_bid_constraints_json_serialized(self, client) -> None:
+        constraints = {"roas_average_floor": 12000}
+        await client.create_ad_set("camp1", "AS", 3000, bid_constraints=constraints)
+        data = client._post.call_args[0][1]
+        # Nested dicts are form-encoded via json.dumps (same idiom as targeting).
+        assert json.loads(data["bid_constraints"]) == constraints
+
+    @pytest.mark.asyncio
+    async def test_create_ad_set_promoted_object_json_serialized(self, client) -> None:
+        promoted = {"pixel_id": "123", "custom_event_type": "LEAD"}
+        await client.create_ad_set("camp1", "AS", 3000, promoted_object=promoted)
+        data = client._post.call_args[0][1]
+        assert json.loads(data["promoted_object"]) == promoted
+
+    @pytest.mark.asyncio
+    async def test_create_ad_set_omits_new_fields_when_none(self, client) -> None:
+        await client.create_ad_set("camp1", "AS", 3000)
+        data = client._post.call_args[0][1]
+        assert "bid_strategy" not in data
+        assert "bid_constraints" not in data
+        assert "promoted_object" not in data
+
+    @pytest.mark.asyncio
+    async def test_update_ad_set_serializes_bid_constraints(self, client) -> None:
+        constraints = {"roas_average_floor": 15000}
+        await client.update_ad_set("1", bid_constraints=constraints)
+        data = client._post.call_args[0][1]
+        assert json.loads(data["bid_constraints"]) == constraints
+
+    @pytest.mark.asyncio
+    async def test_update_ad_set_serializes_promoted_object(self, client) -> None:
+        promoted = {"pixel_id": "999", "custom_event_type": "PURCHASE"}
+        await client.update_ad_set("1", promoted_object=promoted)
+        data = client._post.call_args[0][1]
+        assert json.loads(data["promoted_object"]) == promoted
+
+    @pytest.mark.asyncio
+    async def test_update_ad_set_forwards_bid_strategy_and_amount(self, client) -> None:
+        await client.update_ad_set("1", bid_strategy="COST_CAP", bid_amount=500)
+        data = client._post.call_args[0][1]
+        assert data["bid_strategy"] == "COST_CAP"
+        assert data["bid_amount"] == 500
+
+    def test_ad_set_fields_include_promoted_object(self, client) -> None:
+        assert "promoted_object" in client._AD_SET_FIELDS
+
+
+# ===========================================================================
+# Client-level page listing tests
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestClientListPages:
+    """list_pages lives on MetaAdsApiClient (not a mixin) — it shares the
+    two-step /me/accounts -> /me/businesses page-fetch with
+    get_page_access_token."""
+
+    def _make_client(self):
+        from mureo.meta_ads.client import MetaAdsApiClient
+
+        return MetaAdsApiClient("token", "act_123")
+
+    @pytest.mark.asyncio
+    async def test_list_pages_happy_path(self) -> None:
+        client = self._make_client()
+
+        async def fake_get(path, params=None):
+            if path == "/me/accounts":
+                return {
+                    "data": [
+                        {"id": "p1", "name": "Page One", "category": "Business"},
+                        {"id": "p2", "name": "Page Two"},
+                    ]
+                }
+            if path == "/me/businesses":
+                return {"data": []}
+            return {"data": []}
+
+        client._get = AsyncMock(side_effect=fake_get)
+        pages = await client.list_pages()
+        ids = {p["id"] for p in pages}
+        assert ids == {"p1", "p2"}
+        assert pages[0]["name"] == "Page One"
+        assert pages[0]["category"] == "Business"
+
+    @pytest.mark.asyncio
+    async def test_list_pages_business_fallback(self) -> None:
+        client = self._make_client()
+
+        async def fake_get(path, params=None):
+            if path == "/me/accounts":
+                return {"data": []}
+            if path == "/me/businesses":
+                return {"data": [{"id": "biz1"}]}
+            if path == "/biz1/owned_pages":
+                return {"data": [{"id": "p3", "name": "Owned Page"}]}
+            return {"data": []}
+
+        client._get = AsyncMock(side_effect=fake_get)
+        pages = await client.list_pages()
+        assert [p["id"] for p in pages] == ["p3"]
+        assert pages[0]["name"] == "Owned Page"
+
+    @pytest.mark.asyncio
+    async def test_list_pages_dedupes_overlap(self) -> None:
+        # A Page the user has a role on AND that a Business Portfolio owns
+        # appears in both /me/accounts and owned_pages. It must be listed
+        # once, keyed on id, preserving first-seen (personal) order.
+        client = self._make_client()
+
+        async def fake_get(path, params=None):
+            if path == "/me/accounts":
+                return {
+                    "data": [
+                        {"id": "p1", "name": "Shared Page", "category": "Business"},
+                        {"id": "p2", "name": "Personal Only"},
+                    ]
+                }
+            if path == "/me/businesses":
+                return {"data": [{"id": "biz1"}]}
+            if path == "/biz1/owned_pages":
+                return {
+                    "data": [
+                        # Same id as p1 — the overlap the reviewer flagged.
+                        {"id": "p1", "name": "Shared Page", "category": "Business"},
+                        {"id": "p3", "name": "Business Only"},
+                    ]
+                }
+            return {"data": []}
+
+        client._get = AsyncMock(side_effect=fake_get)
+        pages = await client.list_pages()
+        ids = [p["id"] for p in pages]
+        assert ids.count("p1") == 1
+        # First-seen (personal-batch) order is preserved.
+        assert ids == ["p1", "p2", "p3"]
+
+    @pytest.mark.asyncio
+    async def test_get_page_access_token_short_circuits_on_personal_page(self) -> None:
+        # When the target page resolves from the first /me/accounts batch,
+        # the business-portfolio calls must NOT be made.
+        client = self._make_client()
+
+        async def fake_get(path, params=None):
+            if path == "/me/accounts":
+                return {"data": [{"id": "p1", "access_token": "tok-p1"}]}
+            if path == "/me/businesses":
+                raise AssertionError(
+                    "/me/businesses must not be queried when the page "
+                    "resolves from /me/accounts (short-circuit broken)"
+                )
+            return {"data": []}
+
+        get_mock = AsyncMock(side_effect=fake_get)
+        client._get = get_mock
+        token = await client.get_page_access_token("p1")
+        assert token == "tok-p1"
+        called_paths = [call.args[0] for call in get_mock.call_args_list]
+        assert "/me/businesses" not in called_paths
 
 
 # ===========================================================================

@@ -193,6 +193,7 @@ docs/integrations.md          # Platform discovery + external MCP integration gu
 | Videos | `videos.upload`, `videos.upload_file` |
 | Split Tests | `split_tests.list`, `split_tests.get`, `split_tests.create`, `split_tests.end` |
 | Ad Rules | `ad_rules.list`, `ad_rules.get`, `ad_rules.create`, `ad_rules.update`, `ad_rules.delete` |
+| Pages | `pages.list` |
 | Page Posts | `page_posts.list`, `page_posts.boost` |
 | Instagram | `instagram.accounts`, `instagram.media`, `instagram.boost` |
 

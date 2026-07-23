@@ -49,6 +49,21 @@ async def handle_page_posts_boost(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
+# Page handlers
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_pages_list(args: dict[str, Any]) -> list[TextContent]:
+    """List Facebook Pages the current token can manage (read-only)."""
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    result = await client.list_pages()
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
 # Instagram handlers
 # ---------------------------------------------------------------------------
 
