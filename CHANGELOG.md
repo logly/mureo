@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`meta_ads_pixels_create` MCP tool.** Creates a Meta Pixel on an ad
+  account via Graph API `POST /act_{ad_account_id}/adspixels` with a required
+  `name`. Returns the created pixel id. Mutating and not automatically
+  reversible — pixels cannot be deleted through the Graph API — so the tool
+  description recommends calling `meta_ads_pixels_list` first (ad accounts
+  have a pixel limit) and recording the change with
+  `mureo_state_action_log_append`. Backed by a new `PixelsMixin.create_ad_pixel`
+  client method (previously the mixin was read-only).
+
 ## [0.10.29] - 2026-07-19
 
 ### Fixed

@@ -191,6 +191,7 @@ _MUTATING_CATALOGUE: frozenset[str] = frozenset(
         "meta_ads_lead_forms_duplicate",  # CRITICAL round-2 fix
         "meta_ads_lead_forms_update",
         "meta_ads_page_posts_boost",
+        "meta_ads_pixels_create",
         "meta_ads_products_add",
         "meta_ads_products_delete",
         "meta_ads_products_update",

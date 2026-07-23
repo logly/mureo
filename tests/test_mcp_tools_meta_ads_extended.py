@@ -549,3 +549,74 @@ class TestPixelHandlers:
         client.get_pixel_events.assert_awaited_once_with("px_1")
         parsed = json.loads(result[0].text)
         assert parsed[0]["event"] == "PageView"
+
+    async def test_pixels_create(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.create_ad_pixel.return_value = {"id": "px_new"}
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            result = await mod.handle_tool(
+                "meta_ads_pixels_create",
+                {"account_id": "act_123", "name": "Main Pixel"},
+            )
+
+        client.create_ad_pixel.assert_awaited_once_with("Main Pixel")
+        parsed = json.loads(result[0].text)
+        assert parsed["id"] == "px_new"
+
+    async def test_pixels_create_requires_name(self) -> None:
+        """name is the sole required parameter — omit it and the handler
+        must raise rather than POST a malformed payload."""
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            pytest.raises(ValueError, match="name"),
+        ):
+            await mod.handle_tool(
+                "meta_ads_pixels_create",
+                {"account_id": "act_123"},
+            )
+        client.create_ad_pixel.assert_not_called()
+
+    async def test_pixels_create_no_credentials(self) -> None:
+        """Returns error text when no credentials are present."""
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        with patch.object(handlers, "load_meta_ads_credentials", return_value=None):
+            result = await mod.handle_tool(
+                "meta_ads_pixels_create",
+                {"account_id": "act_123", "name": "Main Pixel"},
+            )
+        assert len(result) == 1
+        assert "Credentials not found" in result[0].text
+
+    async def test_pixels_create_api_error(self) -> None:
+        """A non-ValueError raised by the client (e.g. a Graph API
+        failure) round-trips through @api_error_handler into the
+        API_ERROR_PREFIX envelope rather than propagating."""
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.create_ad_pixel.side_effect = RuntimeError("Meta API request failed")
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            result = await mod.handle_tool(
+                "meta_ads_pixels_create",
+                {"account_id": "act_123", "name": "Main Pixel"},
+            )
+
+        assert len(result) == 1
+        assert "API error" in result[0].text
+        assert "Meta API request failed" in result[0].text

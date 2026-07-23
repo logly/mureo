@@ -1,6 +1,7 @@
 """Meta Ads pixel operations mixin.
 
-Pixel listing, details, statistics, and event checking (read-only).
+Pixel listing, details, statistics, event checking, and creation.
+Read paths are read-only; ``create_ad_pixel`` is the sole write.
 """
 
 from __future__ import annotations
@@ -28,7 +29,10 @@ _PERIOD_DAYS: dict[str, int] = {
 
 
 class PixelsMixin:
-    """Meta Ads pixel operations mixin (read-only)
+    """Meta Ads pixel operations mixin
+
+    Read paths (list / get / stats / events) are read-only;
+    ``create_ad_pixel`` is the single write method.
 
     Used via multiple inheritance with MetaAdsApiClient.
     """
@@ -37,6 +41,10 @@ class PixelsMixin:
 
     async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]: ...
+
+    async def _post(  # type: ignore[empty-body]
+        self, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
     async def list_ad_pixels(
@@ -111,3 +119,24 @@ class PixelsMixin:
         }
         result = await self._get(f"/{pixel_id}/stats", params)
         return result.get("data", [])  # type: ignore[no-any-return]
+
+    async def create_ad_pixel(self, name: str) -> dict[str, Any]:
+        """Create a Meta Pixel on the ad account.
+
+        Args:
+            name: Pixel name shown in Events Manager. Must be
+                non-empty (leading / trailing whitespace is stripped).
+
+        Returns:
+            Created pixel info dict — Meta returns ``{"id": "..."}``.
+
+        Raises:
+            ValueError: ``name`` is empty or whitespace-only.
+        """
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("name must be a non-empty string")
+        logger.info("Pixel creation: name=%s", clean_name)
+        return await self._post(
+            f"/{self._ad_account_id}/adspixels", {"name": clean_name}
+        )
