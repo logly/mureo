@@ -54,9 +54,9 @@ class TestMetaAdsToolDefinitions:
     """Verify the Meta Ads tool list is defined correctly."""
 
     def test_tool_count(self) -> None:
-        """All 84 tools are defined (83 + meta_ads_pages_list)."""
+        """All 86 tools are defined (84 + targeting search / categories)."""
         mod = _import_meta_ads_tools()
-        assert len(mod.TOOLS) == 84
+        assert len(mod.TOOLS) == 86
 
     def test_bidding_control_schema_properties(self) -> None:
         """The four touched write tools expose the new bidding-control
@@ -847,6 +847,168 @@ class TestMetaAdsPageHandlers:
                 "meta_ads_pages_list", {"account_id": "act_123"}
             )
         assert "Credentials not found" in result[0].text
+
+
+@pytest.mark.unit
+class TestMetaAdsTargetingToolDefinitions:
+    """Targeting-discovery tool schema tests."""
+
+    def test_targeting_tools_present_and_strict(self) -> None:
+        mod = _import_meta_ads_tools()
+        by_name = {t.name: t for t in mod.TOOLS}
+        for name in ("meta_ads_targeting_search", "meta_ads_targeting_categories"):
+            assert name in by_name, f"{name} missing"
+            assert by_name[name].inputSchema["additionalProperties"] is False
+
+    def test_targeting_search_required_and_limit_bounds(self) -> None:
+        mod = _import_meta_ads_tools()
+        tool = next(t for t in mod.TOOLS if t.name == "meta_ads_targeting_search")
+        schema = tool.inputSchema
+        assert set(schema["required"]) == {"query"}
+        assert schema["properties"]["limit"]["maximum"] == 100
+        # account_id stays optional (credential fallback).
+        assert "account_id" in schema["properties"]
+        assert "account_id" not in schema.get("required", [])
+
+    def test_targeting_categories_class_enum(self) -> None:
+        mod = _import_meta_ads_tools()
+        tool = next(t for t in mod.TOOLS if t.name == "meta_ads_targeting_categories")
+        schema = tool.inputSchema
+        assert set(schema["required"]) == {"category_class"}
+        assert set(schema["properties"]["category_class"]["enum"]) == {
+            "behaviors",
+            "demographics",
+            "life_events",
+            "industries",
+            "income",
+            "family_statuses",
+            "user_device",
+            "user_os",
+        }
+
+
+@pytest.mark.unit
+class TestMetaAdsTargetingHandlers:
+    """Targeting-discovery handler tests."""
+
+    async def test_targeting_search_success(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.search_targeting_interests.return_value = [
+            {"id": "6003", "name": "Camping", "audience_size_lower_bound": 1000}
+        ]
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            result = await mod.handle_tool(
+                "meta_ads_targeting_search",
+                {"account_id": "act_123", "query": "camping", "limit": 10},
+            )
+
+        client.search_targeting_interests.assert_awaited_once()
+        call = client.search_targeting_interests.await_args
+        assert call.args[0] == "camping"
+        assert call.kwargs["limit"] == 10
+        parsed = json.loads(result[0].text)
+        assert parsed[0]["id"] == "6003"
+
+    async def test_targeting_search_forwards_locale(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.search_targeting_interests.return_value = []
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            await mod.handle_tool(
+                "meta_ads_targeting_search",
+                {"account_id": "act_123", "query": "camping", "locale": "ja_JP"},
+            )
+        assert client.search_targeting_interests.await_args.kwargs["locale"] == "ja_JP"
+
+    async def test_targeting_search_missing_query(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            pytest.raises(ValueError),
+        ):
+            await mod.handle_tool(
+                "meta_ads_targeting_search", {"account_id": "act_123"}
+            )
+
+    async def test_targeting_search_no_credentials(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        with patch.object(handlers, "load_meta_ads_credentials", return_value=None):
+            result = await mod.handle_tool(
+                "meta_ads_targeting_search",
+                {"account_id": "act_123", "query": "camping"},
+            )
+        assert "Credentials not found" in result[0].text
+
+    async def test_targeting_categories_success(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        client.list_targeting_categories.return_value = [
+            {"id": "6002", "name": "Facebook Page admins"}
+        ]
+
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+        ):
+            result = await mod.handle_tool(
+                "meta_ads_targeting_categories",
+                {"account_id": "act_123", "category_class": "behaviors"},
+            )
+
+        client.list_targeting_categories.assert_awaited_once()
+        assert client.list_targeting_categories.await_args.args[0] == "behaviors"
+        parsed = json.loads(result[0].text)
+        assert parsed[0]["id"] == "6002"
+
+    async def test_targeting_categories_missing_class(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        creds, client = _mock_meta_ads_context()
+        with (
+            patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+            patch.object(handlers, "create_meta_ads_client", return_value=client),
+            pytest.raises(ValueError),
+        ):
+            await mod.handle_tool(
+                "meta_ads_targeting_categories", {"account_id": "act_123"}
+            )
+
+    async def test_targeting_categories_no_credentials(self) -> None:
+        mod = _import_meta_ads_tools()
+        handlers = _import_handlers()
+        with patch.object(handlers, "load_meta_ads_credentials", return_value=None):
+            result = await mod.handle_tool(
+                "meta_ads_targeting_categories",
+                {"account_id": "act_123", "category_class": "behaviors"},
+            )
+        assert "Credentials not found" in result[0].text
+
+    async def test_targeting_search_rejects_unknown_param(self) -> None:
+        """additionalProperties:false rejects an undeclared param through
+        the real validating dispatcher path."""
+        from mureo.mcp import server as mcp_server
+
+        with pytest.raises(ValueError, match="not_a_real_param|additional"):
+            await mcp_server.handle_call_tool(
+                "meta_ads_targeting_search",
+                {"account_id": "act_123", "query": "camping", "not_a_real_param": "x"},
+            )
 
 
 # ---------------------------------------------------------------------------

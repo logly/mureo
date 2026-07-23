@@ -1393,3 +1393,124 @@ class TestAnalysisMixin:
         result = await client.suggest_creative_improvements("camp1")
         high_cpa = [s for s in result["suggestions"] if s["type"] == "high_cpa"]
         assert len(high_cpa) >= 1
+
+
+# ===========================================================================
+# TargetingMixin tests
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestTargetingMixin:
+    """Read-only targeting-discovery mixin — interest search and category
+    catalogues via the API-root ``/search`` endpoint (NOT act_-scoped)."""
+
+    @pytest.fixture
+    def client(self):
+        from mureo.meta_ads._targeting import TargetingMixin
+
+        return _make_mock_class(TargetingMixin)()
+
+    async def test_search_interests_passes_type_q_limit(self, client) -> None:
+        client._get = AsyncMock(
+            return_value={"data": [{"id": "6003", "name": "Camping"}]}
+        )
+        result = await client.search_targeting_interests("camping", limit=10)
+
+        client._get.assert_awaited_once()
+        path, params = client._get.call_args[0]
+        assert path == "/search"
+        assert params["type"] == "adinterest"
+        assert params["q"] == "camping"
+        assert params["limit"] == 10
+        assert "locale" not in params
+        assert result == [{"id": "6003", "name": "Camping"}]
+
+    async def test_search_interests_default_limit(self, client) -> None:
+        client._get = AsyncMock(return_value={"data": []})
+        await client.search_targeting_interests("yoga")
+        params = client._get.call_args[0][1]
+        assert params["limit"] == 25
+
+    async def test_search_interests_passes_locale_when_set(self, client) -> None:
+        client._get = AsyncMock(return_value={"data": []})
+        await client.search_targeting_interests("camping", locale="ja_JP")
+        params = client._get.call_args[0][1]
+        assert params["locale"] == "ja_JP"
+
+    async def test_search_interests_omits_locale_when_none(self, client) -> None:
+        client._get = AsyncMock(return_value={"data": []})
+        await client.search_targeting_interests("camping", locale=None)
+        params = client._get.call_args[0][1]
+        assert "locale" not in params
+
+    async def test_search_interests_strips_query(self, client) -> None:
+        client._get = AsyncMock(return_value={"data": []})
+        await client.search_targeting_interests("  camping  ")
+        params = client._get.call_args[0][1]
+        assert params["q"] == "camping"
+
+    async def test_search_interests_empty_query_raises(self, client) -> None:
+        with pytest.raises(ValueError):
+            await client.search_targeting_interests("   ")
+        client._get.assert_not_called()
+
+    async def test_search_interests_returns_empty_on_missing_data(self, client) -> None:
+        client._get = AsyncMock(return_value={})
+        result = await client.search_targeting_interests("camping")
+        assert result == []
+
+    async def test_list_categories_passes_class_type_limit(self, client) -> None:
+        client._get = AsyncMock(
+            return_value={"data": [{"id": "6002", "name": "Facebook Page admins"}]}
+        )
+        result = await client.list_targeting_categories("behaviors", limit=50)
+
+        path, params = client._get.call_args[0]
+        assert path == "/search"
+        assert params["type"] == "adTargetingCategory"
+        assert params["class"] == "behaviors"
+        assert params["limit"] == 50
+        assert "q" not in params
+        assert result == [{"id": "6002", "name": "Facebook Page admins"}]
+
+    async def test_list_categories_default_limit(self, client) -> None:
+        client._get = AsyncMock(return_value={"data": []})
+        await client.list_targeting_categories("demographics")
+        params = client._get.call_args[0][1]
+        assert params["limit"] == 200
+
+    async def test_list_categories_passes_locale_when_set(self, client) -> None:
+        client._get = AsyncMock(return_value={"data": []})
+        await client.list_targeting_categories("industries", locale="ja_JP")
+        params = client._get.call_args[0][1]
+        assert params["locale"] == "ja_JP"
+
+    async def test_list_categories_omits_locale_when_none(self, client) -> None:
+        client._get = AsyncMock(return_value={"data": []})
+        await client.list_targeting_categories("industries", locale=None)
+        params = client._get.call_args[0][1]
+        assert "locale" not in params
+
+    @pytest.mark.parametrize(
+        "cls",
+        [
+            "behaviors",
+            "demographics",
+            "life_events",
+            "industries",
+            "income",
+            "family_statuses",
+            "user_device",
+            "user_os",
+        ],
+    )
+    async def test_list_categories_accepts_all_valid_classes(self, client, cls) -> None:
+        client._get = AsyncMock(return_value={"data": []})
+        await client.list_targeting_categories(cls)
+        assert client._get.call_args[0][1]["class"] == cls
+
+    async def test_list_categories_unknown_class_raises(self, client) -> None:
+        with pytest.raises(ValueError):
+            await client.list_targeting_categories("not_a_class")
+        client._get.assert_not_called()

@@ -402,4 +402,105 @@ TOOLS: list[Tool] = [
             "required": ["name"],
         },
     ),
+    # === Targeting discovery ===
+    Tool(
+        name="meta_ads_targeting_search",
+        description=(
+            "Searches Meta's interest-targeting catalogue by keyword and "
+            "resolves interest names to the internal IDs used in an ad "
+            "set's targeting spec (targeting.flexible_spec / interests). "
+            "Returns id, name, audience_size_lower_bound, "
+            "audience_size_upper_bound, path, and topic per interest. "
+            "Read-only. Use this to look up an interest ID before "
+            "meta_ads_ad_sets_create / update — agents cannot invent these "
+            "IDs. For behaviors / demographics (which keyword search does "
+            "not cover) use meta_ads_targeting_categories instead."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Interest keyword to search for (e.g. 'camping', "
+                        "'yoga'). Must be non-empty."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": ("Maximum interests returned. Default 25, max 100."),
+                },
+                "locale": {
+                    "type": "string",
+                    "description": (
+                        "Optional Graph locale (e.g. 'ja_JP') to return "
+                        "localized interest names. Omitted when unset."
+                    ),
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="meta_ads_targeting_categories",
+        description=(
+            "Lists a full Meta targeting category catalogue for the given "
+            "class — behaviors (e.g. 'Facebook Page admins'), demographics, "
+            "life_events, industries, income, family_statuses, "
+            "user_device, or user_os — with the internal IDs used in an ad "
+            "set's targeting spec. Returns id, name, "
+            "audience_size_lower_bound, audience_size_upper_bound, path, "
+            "and an optional description per category. Read-only. Use this "
+            "for behavior / demographic targeting, where keyword search "
+            "(meta_ads_targeting_search) is not supported — the catalogue "
+            "is finite, so this returns the whole class."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "category_class": {
+                    "type": "string",
+                    "enum": [
+                        "behaviors",
+                        "demographics",
+                        "life_events",
+                        "industries",
+                        "income",
+                        "family_statuses",
+                        "user_device",
+                        "user_os",
+                    ],
+                    "description": (
+                        "Targeting category class to enumerate. Maps to "
+                        "Graph's 'class' query param (renamed here because "
+                        "'class' is a Python keyword)."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500,
+                    "description": (
+                        "Maximum categories returned. Default 200 — larger "
+                        "than search results because catalogues are finite "
+                        "but sizeable."
+                    ),
+                },
+                "locale": {
+                    "type": "string",
+                    "description": (
+                        "Optional Graph locale (e.g. 'ja_JP') to return "
+                        "localized category names. Omitted when unset."
+                    ),
+                },
+            },
+            "required": ["category_class"],
+            "additionalProperties": False,
+        },
+    ),
 ]

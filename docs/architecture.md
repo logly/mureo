@@ -286,7 +286,7 @@ The base class (`GoogleAdsApiClient`) provides:
 - Input validation: `_validate_id()`, `_validate_status()`, `_validate_match_type()`, `_validate_date()`
 - Error handling: `_wrap_mutate_error()` decorator that catches `GoogleAdsException` and returns user-friendly messages
 
-### Meta Ads Client -- 15 Mixins
+### Meta Ads Client -- 16 Mixins
 
 ```python
 class MetaAdsApiClient(
@@ -305,6 +305,7 @@ class MetaAdsApiClient(
     InstagramMixin,    # Instagram accounts, media, boosting
     SplitTestMixin,    # A/B test creation and management
     AdRulesMixin,      # Automated rules (alerts, auto-pause, etc.)
+    TargetingMixin,    # Interest / category targeting-ID discovery (read-only)
 ):
 ```
 

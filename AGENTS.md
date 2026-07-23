@@ -185,6 +185,7 @@ docs/integrations.md          # Platform discovery + external MCP integration gu
 | Images | `images.upload_file` |
 | Insights | `insights.report`, `insights.breakdown` |
 | Audiences | `audiences.list`, `audiences.create`, `audiences.get`, `audiences.delete`, `audiences.create_lookalike` |
+| Targeting | `targeting.search`, `targeting.categories` |
 | Conversions API | `conversions.send`, `conversions.send_purchase`, `conversions.send_lead` |
 | Pixels | `pixels.list`, `pixels.get`, `pixels.stats`, `pixels.events`, `pixels.create` |
 | Analysis | `analysis.performance`, `analysis.audience`, `analysis.placements`, `analysis.cost`, `analysis.compare_ads`, `analysis.suggest_creative` |

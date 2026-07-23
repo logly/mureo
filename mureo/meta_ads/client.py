@@ -22,6 +22,7 @@ from mureo.meta_ads._leads import LeadsMixin
 from mureo.meta_ads._page_posts import PagePostsMixin
 from mureo.meta_ads._pixels import PixelsMixin
 from mureo.meta_ads._split_test import SplitTestMixin
+from mureo.meta_ads._targeting import TargetingMixin
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -54,6 +55,7 @@ class MetaAdsApiClient(
     InstagramMixin,
     SplitTestMixin,
     AdRulesMixin,
+    TargetingMixin,
 ):
     """Meta Marketing API client.
 

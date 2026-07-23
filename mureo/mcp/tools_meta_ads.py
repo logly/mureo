@@ -95,6 +95,8 @@ from mureo.mcp._handlers_meta_ads_extended import (
     handle_pixels_get,
     handle_pixels_list,
     handle_pixels_stats,
+    handle_targeting_categories,
+    handle_targeting_search,
 )
 from mureo.mcp._handlers_meta_ads_other import (
     handle_ad_rules_create,
@@ -248,6 +250,9 @@ _HANDLERS: dict[str, Any] = {
     "meta_ads_pixels_stats": handle_pixels_stats,
     "meta_ads_pixels_events": handle_pixels_events,
     "meta_ads_pixels_create": handle_pixels_create,
+    # Targeting discovery
+    "meta_ads_targeting_search": handle_targeting_search,
+    "meta_ads_targeting_categories": handle_targeting_categories,
     # Analysis
     "meta_ads_analysis_performance": handle_analysis_performance,
     "meta_ads_analysis_audience": handle_analysis_audience,

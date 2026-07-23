@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 201 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 180 advertising and SEO operation tools across Google Ads (86), Meta Ads (84), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
+mureo exposes 203 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 182 advertising and SEO operation tools across Google Ads (86), Meta Ads (86), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
 
 ## Starting the Server
 
@@ -341,6 +341,13 @@ Or use `uv` to run it:
 | `meta_ads_audiences_get` | Get audience details | `account_id`, `audience_id` |
 | `meta_ads_audiences_delete` | Delete a custom audience | `account_id`, `audience_id` |
 | `meta_ads_audiences_create_lookalike` | Create a lookalike audience | `account_id`, `source_audience_id`, `country` |
+
+#### Targeting Discovery
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `meta_ads_targeting_search` | Resolve interest names to internal targeting IDs (with audience-size bounds and path) | `query` |
+| `meta_ads_targeting_categories` | List a full targeting category catalogue (behaviors / demographics / etc.) with internal IDs | `category_class` |
 
 #### Conversions API (CAPI)
 

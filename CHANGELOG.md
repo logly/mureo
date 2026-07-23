@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Meta Ads targeting-discovery tools (`meta_ads_targeting_search`,
+  `meta_ads_targeting_categories`).** Two read-only tools that resolve
+  Meta's internal targeting IDs needed to build an ad-set `targeting`
+  spec. `meta_ads_targeting_search` searches the interest catalogue by
+  keyword (`query`, optional `limit` / `locale`) and returns interest
+  ids with audience-size bounds and path, for use in
+  `targeting.flexible_spec` / `interests`. `meta_ads_targeting_categories`
+  lists a full category catalogue for one `category_class` (behaviors,
+  demographics, life_events, industries, income, family_statuses,
+  user_device, user_os — mapped to Graph's `class` param) for behavior /
+  demographic targeting where keyword search is unavailable. Both hit the
+  API-root `/search` endpoint (not account-scoped) via a new
+  `TargetingMixin`; the class name is validated at the boundary. Meta Ads
+  tool count 84 → 86 (aggregate 201 → 203).
+
 - **Meta Ads bidding controls on campaign / ad-set write tools.**
   `meta_ads_campaigns_create` and `meta_ads_campaigns_update` gain
   `bid_strategy` (`LOWEST_COST_WITHOUT_CAP`, `LOWEST_COST_WITH_BID_CAP`,

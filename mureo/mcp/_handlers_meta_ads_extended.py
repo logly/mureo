@@ -334,6 +334,39 @@ async def handle_pixels_create(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ---------------------------------------------------------------------------
+# Targeting discovery (interest search / category catalogues)
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_targeting_search(args: dict[str, Any]) -> list[TextContent]:
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    query = _require(args, "query")
+    kwargs: dict[str, Any] = {"limit": _opt(args, "limit", 25)}
+    locale = _opt(args, "locale")
+    if locale is not None:
+        kwargs["locale"] = locale
+    result = await client.search_targeting_interests(query, **kwargs)
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_targeting_categories(args: dict[str, Any]) -> list[TextContent]:
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    category_class = _require(args, "category_class")
+    kwargs: dict[str, Any] = {"limit": _opt(args, "limit", 200)}
+    locale = _opt(args, "locale")
+    if locale is not None:
+        kwargs["locale"] = locale
+    result = await client.list_targeting_categories(category_class, **kwargs)
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
 # Analysis handlers
 # ---------------------------------------------------------------------------
 
