@@ -277,7 +277,7 @@ def _register_plugin_budget_declarations(
     (no per-plugin hand-rolled gate). Best-effort: a registry failure must
     not take the server down.
     """
-    from mureo.policy.strategy_gate import register_budget_declaration
+    from mureo.policy.declarations import register_budget_declaration
 
     for name, sem in semantics.items():
         if sem.budget is None:
@@ -304,7 +304,7 @@ def _register_plugin_bid_declarations(
     gate's registry, so the ONE built-in gate enforces them. Best-effort: a
     registry failure must not take the server down.
     """
-    from mureo.policy.strategy_gate import register_bid_declaration
+    from mureo.policy.declarations import register_bid_declaration
 
     for name, sem in semantics.items():
         if sem.bid is None:

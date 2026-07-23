@@ -35,7 +35,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from mureo.policy.strategy_gate import BidDeclaration, BudgetDeclaration
+from mureo.policy.declarations import BidDeclaration, BudgetDeclaration
 from mureo.throttle import ThrottleConfig
 
 if TYPE_CHECKING:

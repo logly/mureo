@@ -75,6 +75,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Internal refactor: split the plugin declaration machinery out of
+  `mureo.policy.strategy_gate`.** `BudgetDeclaration`, `BidDeclaration`, their
+  registries, and the register / lookup / reset helpers now live in the new
+  `mureo.policy.declarations` module, keeping `strategy_gate.py` within the
+  project file-size budget. No API change: every name is re-exported from
+  `mureo.policy.strategy_gate`, so all existing import paths remain stable.
+
 - **Strict input schemas across the entire builtin MCP tool registry.**
   Every builtin tool (all 203 across Google Ads, Meta Ads, Search Console,
   rollback, analysis, mureo-context, analytics-registry, learning, and
