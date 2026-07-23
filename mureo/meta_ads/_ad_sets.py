@@ -6,6 +6,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Dict-valued update kwargs that Meta requires form-encoded as JSON
+# (like ``targeting``). ``targeting`` itself is handled separately
+# because it also carries the read-modify-write merge.
+_JSON_DICT_KWARGS: frozenset[str] = frozenset({"bid_constraints", "promoted_object"})
+
 
 class AdSetsMixin:
     """Meta Ads ad set operations mixin
@@ -27,7 +32,7 @@ class AdSetsMixin:
     _AD_SET_FIELDS = (
         "id,name,status,campaign_id,daily_budget,lifetime_budget,"
         "billing_event,optimization_goal,targeting,start_time,end_time,"
-        "created_time,updated_time,bid_amount,bid_strategy"
+        "created_time,updated_time,bid_amount,bid_strategy,promoted_object"
     )
 
     async def list_ad_sets(
@@ -82,6 +87,9 @@ class AdSetsMixin:
         status: str = "PAUSED",
         use_dynamic_creative: bool = False,
         bid_amount: int | None = None,
+        bid_strategy: str | None = None,
+        bid_constraints: dict[str, Any] | None = None,
+        promoted_object: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create an ad set
 
@@ -97,6 +105,15 @@ class AdSetsMixin:
             use_dynamic_creative: Enable dynamic creative
             bid_amount: Bid amount in the currency's minor units (cents for
                 USD, whole yen for JPY; required for some optimization goals)
+            bid_strategy: Ad-set bid strategy. One of
+                LOWEST_COST_WITHOUT_CAP, LOWEST_COST_WITH_BID_CAP,
+                COST_CAP, LOWEST_COST_WITH_MIN_ROAS.
+            bid_constraints: Bid constraints dict, e.g.
+                ``{"roas_average_floor": 12000}`` for
+                LOWEST_COST_WITH_MIN_ROAS. Form-encoded via json.dumps.
+            promoted_object: Conversion target dict, e.g.
+                ``{"pixel_id": "123", "custom_event_type": "LEAD"}``.
+                Required for conversion optimization. json.dumps-encoded.
 
         Returns:
             Created ad set information.
@@ -114,6 +131,12 @@ class AdSetsMixin:
             data["daily_budget"] = daily_budget
         if bid_amount is not None:
             data["bid_amount"] = bid_amount
+        if bid_strategy is not None:
+            data["bid_strategy"] = bid_strategy
+        if bid_constraints is not None:
+            data["bid_constraints"] = json.dumps(bid_constraints)
+        if promoted_object is not None:
+            data["promoted_object"] = json.dumps(promoted_object)
         if targeting is not None:
             data["targeting"] = json.dumps(targeting)
         else:
@@ -160,6 +183,10 @@ class AdSetsMixin:
                 if not replace_targeting:
                     targeting = await self._merge_targeting(ad_set_id, value)
                 data[key] = json.dumps(targeting)
+            elif key in _JSON_DICT_KWARGS and isinstance(value, dict):
+                # Nested dict fields must be form-encoded via json.dumps,
+                # same as targeting (Meta rejects a bare Python-repr dict).
+                data[key] = json.dumps(value)
             else:
                 data[key] = value
 

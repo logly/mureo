@@ -33,6 +33,94 @@ _LIMIT_PARAM = {
     ),
 }
 
+# Bid strategy enum shared by campaign and ad-set write tools. The
+# description documents the cross-field requirements each strategy
+# imposes; combinations are NOT pre-validated in handlers — invalid
+# pairings surface as Graph's own error (consistent tool philosophy).
+_BID_STRATEGY_PARAM = {
+    "type": "string",
+    "enum": [
+        "LOWEST_COST_WITHOUT_CAP",
+        "LOWEST_COST_WITH_BID_CAP",
+        "COST_CAP",
+        "LOWEST_COST_WITH_MIN_ROAS",
+    ],
+    "description": (
+        "Bid strategy for automatic auction bidding. "
+        "LOWEST_COST_WITHOUT_CAP is fully automatic (do NOT set "
+        "bid_amount). LOWEST_COST_WITH_BID_CAP and COST_CAP both require "
+        "a bid_amount on the ad set (the cap). LOWEST_COST_WITH_MIN_ROAS "
+        "requires bid_constraints.roas_average_floor on the ad set. When "
+        "set on the campaign, budgets typically live at the campaign (CBO) "
+        "level; when set on the ad set, at the ad-set level."
+    ),
+}
+
+# Ad-set bid constraints. roas_average_floor is the minimum-ROAS floor
+# scaled x10000 (e.g. 1.2x ROAS -> 12000), used with
+# LOWEST_COST_WITH_MIN_ROAS.
+_BID_CONSTRAINTS_PARAM = {
+    "type": "object",
+    "properties": {
+        "roas_average_floor": {
+            "type": "integer",
+            "minimum": 1,
+            "description": (
+                "Minimum average ROAS floor, scaled x10000 (e.g. a 1.2x "
+                "ROAS target is 12000). Required when bid_strategy is "
+                "LOWEST_COST_WITH_MIN_ROAS."
+            ),
+        },
+    },
+    "description": (
+        "Bid constraints object. Currently carries roas_average_floor "
+        "for the LOWEST_COST_WITH_MIN_ROAS strategy."
+    ),
+}
+
+# Ad-set promoted_object: the conversion target for conversion
+# optimization. All members are standard Graph promoted_object fields.
+_PROMOTED_OBJECT_PARAM = {
+    "type": "object",
+    "properties": {
+        "pixel_id": {
+            "type": "string",
+            "description": "Meta Pixel ID to optimize conversions toward.",
+        },
+        "custom_event_type": {
+            "type": "string",
+            "description": (
+                "Standard conversion event to optimize for. Common values: "
+                "LEAD, PURCHASE, COMPLETE_REGISTRATION, ADD_TO_CART, "
+                "INITIATED_CHECKOUT, CONTENT_VIEW. Graph accepts many "
+                "values — passed through unchanged."
+            ),
+        },
+        "page_id": {
+            "type": "string",
+            "description": "Facebook Page ID (for page-based optimization goals).",
+        },
+        "application_id": {
+            "type": "string",
+            "description": "App ID (for app-install / app-event optimization).",
+        },
+        "object_store_url": {
+            "type": "string",
+            "description": "App store URL (paired with application_id).",
+        },
+        "custom_conversion_id": {
+            "type": "string",
+            "description": "Custom Conversion ID to optimize toward.",
+        },
+    },
+    "description": (
+        "Conversion target for conversion optimization, e.g. "
+        '{"pixel_id": "123", "custom_event_type": "LEAD"}. Required for '
+        "conversion optimization (e.g. OUTCOME_LEADS + optimization_goal "
+        "OFFSITE_CONVERSIONS optimizing to a pixel event)."
+    ),
+}
+
 TOOLS: list[Tool] = [
     # === Campaigns ===
     Tool(
@@ -164,8 +252,19 @@ TOOLS: list[Tool] = [
                         "Mutually exclusive with daily_budget."
                     ),
                 },
+                "bid_strategy": _BID_STRATEGY_PARAM,
+                "is_adset_budget_sharing_enabled": {
+                    "type": "boolean",
+                    "description": (
+                        "Required by Meta when creating a campaign WITHOUT "
+                        "campaign budget optimization (i.e. budgets live on "
+                        "the ad sets). Set false for per-ad-set budgets; set "
+                        "true to let ad sets share a campaign-level budget."
+                    ),
+                },
             },
             "required": ["name", "objective"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -211,8 +310,10 @@ TOOLS: list[Tool] = [
                         "budgets must be edited via meta_ads_ad_sets_update."
                     ),
                 },
+                "bid_strategy": _BID_STRATEGY_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === Campaign pause / enable ===
@@ -373,13 +474,17 @@ TOOLS: list[Tool] = [
                     "minimum": 1,
                     "description": (
                         "Bid cap in account currency minor units. Required "
-                        "for bid-strategy optimization goals such as "
-                        "LINK_CLICKS with TARGET_COST. Omit for automatic "
-                        "bidding."
+                        "when bid_strategy is LOWEST_COST_WITH_BID_CAP or "
+                        "COST_CAP. Omit for LOWEST_COST_WITHOUT_CAP "
+                        "(automatic bidding)."
                     ),
                 },
+                "bid_strategy": _BID_STRATEGY_PARAM,
+                "bid_constraints": _BID_CONSTRAINTS_PARAM,
+                "promoted_object": _PROMOTED_OBJECT_PARAM,
             },
             "required": ["campaign_id", "name"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -466,8 +571,21 @@ TOOLS: list[Tool] = [
                         "false (safe merge)."
                     ),
                 },
+                "bid_strategy": _BID_STRATEGY_PARAM,
+                "bid_amount": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": (
+                        "Bid cap in account currency minor units. Set when "
+                        "switching to a capped strategy "
+                        "(LOWEST_COST_WITH_BID_CAP or COST_CAP)."
+                    ),
+                },
+                "bid_constraints": _BID_CONSTRAINTS_PARAM,
+                "promoted_object": _PROMOTED_OBJECT_PARAM,
             },
             "required": ["ad_set_id"],
+            "additionalProperties": False,
         },
     ),
     # === Ad set get / pause / enable ===

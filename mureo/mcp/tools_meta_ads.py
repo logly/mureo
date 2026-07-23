@@ -107,6 +107,7 @@ from mureo.mcp._handlers_meta_ads_other import (
     handle_instagram_media,
     handle_page_posts_boost,
     handle_page_posts_list,
+    handle_pages_list,
     handle_split_tests_create,
     handle_split_tests_end,
     handle_split_tests_get,
@@ -265,6 +266,8 @@ _HANDLERS: dict[str, Any] = {
     "meta_ads_ad_rules_create": handle_ad_rules_create,
     "meta_ads_ad_rules_update": handle_ad_rules_update,
     "meta_ads_ad_rules_delete": handle_ad_rules_delete,
+    # Pages
+    "meta_ads_pages_list": handle_pages_list,
     # Page posts
     "meta_ads_page_posts_list": handle_page_posts_list,
     "meta_ads_page_posts_boost": handle_page_posts_boost,

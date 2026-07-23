@@ -27,7 +27,8 @@ class CampaignsMixin:
     _CAMPAIGN_FIELDS = (
         "id,name,status,objective,daily_budget,lifetime_budget,"
         "created_time,updated_time,start_time,stop_time,"
-        "special_ad_categories,bid_strategy,budget_remaining"
+        "special_ad_categories,bid_strategy,budget_remaining,"
+        "is_adset_budget_sharing_enabled"
     )
 
     async def list_campaigns(
@@ -79,6 +80,8 @@ class CampaignsMixin:
         daily_budget: int | None = None,
         lifetime_budget: int | None = None,
         special_ad_categories: list[str] | None = None,
+        bid_strategy: str | None = None,
+        is_adset_budget_sharing_enabled: bool | None = None,
     ) -> dict[str, Any]:
         """Create a campaign.
 
@@ -91,6 +94,14 @@ class CampaignsMixin:
             lifetime_budget: Lifetime budget in the currency's minor units
                 (cents for USD, whole yen for JPY)
             special_ad_categories: Special ad categories (HOUSING, CREDIT, etc.)
+            bid_strategy: Campaign-level bid strategy. One of
+                LOWEST_COST_WITHOUT_CAP, LOWEST_COST_WITH_BID_CAP,
+                COST_CAP, LOWEST_COST_WITH_MIN_ROAS. Forwarded only when
+                set; Graph validates it against the objective.
+            is_adset_budget_sharing_enabled: Meta requires this flag when
+                creating a campaign WITHOUT campaign budget optimization
+                (ad-set-level budgets). Set False for per-ad-set budgets.
+                Forwarded only when not None (False is a meaningful value).
 
         Returns:
             Created campaign information
@@ -105,6 +116,12 @@ class CampaignsMixin:
             data["daily_budget"] = daily_budget
         if lifetime_budget is not None:
             data["lifetime_budget"] = lifetime_budget
+        if bid_strategy is not None:
+            data["bid_strategy"] = bid_strategy
+        if is_adset_budget_sharing_enabled is not None:
+            # httpx form-encodes Python bools to "true"/"false" (Graph's
+            # expected wire form), so forward the bool as-is.
+            data["is_adset_budget_sharing_enabled"] = is_adset_budget_sharing_enabled
         if special_ad_categories is not None:
             data["special_ad_categories"] = json.dumps(special_ad_categories)
         else:

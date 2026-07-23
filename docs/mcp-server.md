@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 200 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 179 advertising and SEO operation tools across Google Ads (86), Meta Ads (83), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
+mureo exposes 201 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 180 advertising and SEO operation tools across Google Ads (86), Meta Ads (84), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
 
 ## Starting the Server
 
@@ -400,6 +400,12 @@ Or use `uv` to run it:
 | `meta_ads_leads_get` | Get lead data (per form) | `account_id`, `form_id` |
 | `meta_ads_leads_get_by_ad` | Get lead data (per ad) | `account_id`, `ad_id` |
 | `meta_ads_pages_upload_photo` | Upload a Page photo, returns the `photo_id` for an Instant Form intro `context_card.cover_photo_id` (needs `pages_manage_posts`) | `account_id`, `page_id`, `file_path` \| `image_url` |
+
+#### Pages
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `meta_ads_pages_list` | List manageable Facebook Pages (personal + business-owned) | `account_id` |
 
 #### Videos
 
