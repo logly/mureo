@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Bid-cap guardrails in `StrategyPolicyGate`.** The built-in gate now
+  enforces two new `## Guardrails` rules alongside the budget caps:
+  `max_bid_amount_per_ad_set` refuses a `meta_ads_ad_sets_create` /
+  `meta_ads_ad_sets_update` whose `bid_amount` (account-currency minor units,
+  identical to Meta's field) exceeds the cap, and `max_cpc_bid_per_ad_group`
+  refuses a `google_ads_ad_groups_create` / `google_ads_ad_groups_update`
+  whose `cpc_bid_micros` (converted from micros to currency units) exceeds the
+  cap. Bids are per-auction ceilings with distinct semantics from spend
+  budgets, so they get their own caps. The `bid_constraints.roas_average_floor`
+  (a min-ROAS floor) and Google `bid_modifier` (a bid-adjustment multiplier)
+  are not spend amounts and are deliberately not constrained. Both fields are
+  optional and default to no check (backward compatible); an oversized bid
+  saturates to infinity and is refused rather than silently abstained.
+
 - **Meta Ads targeting-discovery tools (`meta_ads_targeting_search`,
   `meta_ads_targeting_categories`).** Two read-only tools that resolve
   Meta's internal targeting IDs needed to build an ad-set `targeting`

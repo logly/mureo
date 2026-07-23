@@ -181,6 +181,8 @@ keys (all optional):
 - max_daily_budget_increase_pct: 20
 - max_total_daily_budget: 300000
 - max_lifetime_budget_per_campaign: 900000
+- max_bid_amount_per_ad_set: 5000   # minor units: 5000 = $50.00 (USD) but ¥5,000 (JPY)
+- max_cpc_bid_per_ad_group: 100      # currency units: 100 = $100 (USD) or ¥100 (JPY)
 - blocked_operations: google_ads_keywords_remove, meta_ads_audiences_delete
 ```
 
@@ -203,6 +205,20 @@ keys (all optional):
   `total_amount_micros` converted from micros. Lifetime and daily budgets
   have distinct semantics, so declare this cap separately — a daily cap
   alone does not constrain lifetime-budget mutations.
+- `max_bid_amount_per_ad_set` — an ad-set mutation proposing a bid *cap* above
+  this is **refused** (`meta_ads_ad_sets_create` / `meta_ads_ad_sets_update`
+  `bid_amount`). A bid is a per-auction ceiling, not a spend budget, so it is
+  capped separately from the budget rules above. Compared against Meta's native
+  `bid_amount` in Meta's **minor units** (= currency units for JPY-like
+  zero-decimal currencies, cents for USD-like). The `bid_constraints`
+  `roas_average_floor` is a min-ROAS floor, not a spend amount, so it is **not**
+  constrained by this cap.
+- `max_cpc_bid_per_ad_group` — an ad-group mutation proposing a CPC bid above
+  this is **refused** (`google_ads_ad_groups_create` /
+  `google_ads_ad_groups_update` `cpc_bid_micros`). Given in account-currency
+  **units**; the tool's `cpc_bid_micros` is converted from micros before
+  comparison. A `bid_modifier` (a bid-adjustment multiplier) is not a spend
+  amount and is not constrained by this cap.
 - `blocked_operations` — comma-separated tool names that are always refused.
   Each name must **exactly match the dispatched MCP tool name**; the gate does a
   literal string match, so a typo or a non-existent name silently never fires.

@@ -44,6 +44,12 @@ GUARDRAILS_HEADING = "guardrails"
 # different vocabulary declares its own keys instead — see BudgetDeclaration.
 _BUDGET_KEYS = ("daily_budget", "proposed_daily_budget", "amount")
 _CURRENT_BUDGET_KEYS = ("current_daily_budget", "current")
+#: Argument keys carrying a proposed *bid cap* (distinct from a spend budget).
+#: ``bid_amount`` is Meta's ad-set bid cap in account-currency minor units
+#: (meta_ads_ad_sets_create / _update). Deliberately scalar-only: the sibling
+#: ``bid_constraints`` dict carries a ``roas_average_floor`` (a min-ROAS floor,
+#: not a spend amount) and must NOT be read as a proposed bid.
+_BID_AMOUNT_KEYS = ("bid_amount",)
 #: The cross-provider convention keys for the two budget figures the CALLER
 #: supplies rather than the tool: the *existing* daily budget and the
 #: account-wide projected total (both in currency units), which the skills pass
@@ -328,6 +334,14 @@ class Guardrails:
     max_daily_budget_increase_pct: float | None = None
     max_total_daily_budget: float | None = None
     max_lifetime_budget_per_campaign: float | None = None
+    #: Bid caps. Distinct from budgets: a bid is a per-auction ceiling, not a
+    #: spend budget, so it gets its own cap. ``max_bid_amount_per_ad_set`` is
+    #: in account-currency MINOR units — identical to Meta's ``bid_amount``
+    #: argument (yen for JPY, cents for USD). ``max_cpc_bid_per_ad_group`` is in
+    #: account-currency units — Google's ``cpc_bid_micros`` is converted from
+    #: micros before comparison, mirroring the budget-micros convention.
+    max_bid_amount_per_ad_set: float | None = None
+    max_cpc_bid_per_ad_group: float | None = None
     blocked_operations: frozenset[str] = field(default_factory=frozenset)
 
     def is_empty(self) -> bool:
@@ -336,6 +350,8 @@ class Guardrails:
             and self.max_daily_budget_increase_pct is None
             and self.max_total_daily_budget is None
             and self.max_lifetime_budget_per_campaign is None
+            and self.max_bid_amount_per_ad_set is None
+            and self.max_cpc_bid_per_ad_group is None
             and not self.blocked_operations
         )
 
@@ -358,6 +374,8 @@ def parse_guardrails(content: str) -> Guardrails:
     max_increase_pct: float | None = None
     max_total: float | None = None
     max_lifetime: float | None = None
+    max_bid_amount: float | None = None
+    max_cpc_bid: float | None = None
     blocked: set[str] = set()
 
     for line in content.splitlines():
@@ -374,6 +392,10 @@ def parse_guardrails(content: str) -> Guardrails:
             max_total = _to_float(raw)
         elif key == "max_lifetime_budget_per_campaign":
             max_lifetime = _to_float(raw)
+        elif key == "max_bid_amount_per_ad_set":
+            max_bid_amount = _to_float(raw)
+        elif key == "max_cpc_bid_per_ad_group":
+            max_cpc_bid = _to_float(raw)
         elif key == "blocked_operations":
             blocked = {op.strip() for op in raw.split(",") if op.strip()}
 
@@ -382,6 +404,8 @@ def parse_guardrails(content: str) -> Guardrails:
         max_daily_budget_increase_pct=max_increase_pct,
         max_total_daily_budget=max_total,
         max_lifetime_budget_per_campaign=max_lifetime,
+        max_bid_amount_per_ad_set=max_bid_amount,
+        max_cpc_bid_per_ad_group=max_cpc_bid,
         blocked_operations=frozenset(blocked),
     )
 
@@ -435,6 +459,81 @@ def _current_budget(arguments: dict[str, Any]) -> float | None:
         if isinstance(v, (int, float)) and not isinstance(v, bool):
             return _saturate(v)
     return None
+
+
+def _proposed_bid_amount(arguments: dict[str, Any]) -> float | None:
+    """Extract a proposed ad-set bid cap in account-currency minor units.
+
+    Mirrors :func:`_proposed_budget`: scans the built-in Meta spelling
+    (``bid_amount``) and saturates an oversized int to ``inf`` so it exceeds any
+    finite cap and denies rather than raising. Only the scalar ``bid_amount`` is
+    a spend cap; the sibling ``bid_constraints`` dict carries a
+    ``roas_average_floor`` (a min-ROAS floor, not a spend amount) and is
+    deliberately not read here — see :data:`_BID_AMOUNT_KEYS`.
+    """
+    for key in _BID_AMOUNT_KEYS:
+        v = arguments.get(key)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return _saturate(v)
+    return None
+
+
+def _proposed_cpc_bid(arguments: dict[str, Any]) -> float | None:
+    """Extract a proposed Google ad-group CPC bid in account-currency units.
+
+    ``cpc_bid_micros`` (google_ads_ad_groups_create / _update) is in micros, so
+    it is divided by 1e6 to currency units before comparison — the same micros
+    convention :func:`_proposed_budget` applies to Google budgets. A
+    ``bid_modifier`` (google_ads_bid_adjustments_update) is a 0.1–10.0
+    multiplier, not a spend amount, so it is deliberately not read here.
+    """
+    micros = arguments.get("cpc_bid_micros")
+    if isinstance(micros, (int, float)) and not isinstance(micros, bool):
+        return _saturate(micros) / 1_000_000
+    return None
+
+
+@dataclass(frozen=True)
+class _BidInputs:
+    """The bid channels one evaluation needs, already resolved.
+
+    The bid analogue of :class:`_BudgetInputs` (#419). Every value here is
+    either ``None`` (no bid proposed on that channel) or a FINITE float. A
+    present-but-non-finite value — an oversized int that saturated to ``inf``, a
+    bare ``NaN`` / ``Infinity`` token ``json.loads`` accepts off the wire, or a
+    ``nan`` surviving the micros→currency division — collapses into
+    :attr:`unreadable_key` so the caller fails closed once, before any
+    ``bid > cap`` comparison (where ``nan > cap`` is always False and would
+    silently defeat the cap). ``bid_amount`` is in account-currency minor units;
+    ``cpc_bid`` is in currency units (post-division).
+    """
+
+    bid_amount: float | None = None
+    cpc_bid: float | None = None
+    #: The first bid key that was present but non-finite (⇒ deny).
+    unreadable_key: str | None = None
+
+
+def _bid_inputs(arguments: dict[str, Any]) -> _BidInputs:
+    """Resolve the bid channels, failing closed on any non-finite value.
+
+    Mirrors :func:`_budget_inputs` (#419) at a single choke point rather than
+    per-comparison: a proposed bid that is ``inf`` / ``nan`` is refused instead
+    of silently sailing past the cap. Both channels are checked AFTER the
+    micros→currency division, so a non-finite ``cpc_bid_micros`` cannot slip
+    through post-division. Only reachable once the operator has written some
+    guardrail (``evaluate_guardrails`` returns early on an empty ``Guardrails``),
+    so the fail-open default is preserved.
+    """
+    channels: list[tuple[str, float | None]] = [
+        ("bid_amount", _proposed_bid_amount(arguments)),
+        ("cpc_bid_micros", _proposed_cpc_bid(arguments)),
+    ]
+    for label, value in channels:
+        if value is not None and not math.isfinite(value):
+            return _BidInputs(unreadable_key=label)
+    bid_amount, cpc_bid = (v for _, v in channels)
+    return _BidInputs(bid_amount=bid_amount, cpc_bid=cpc_bid)
 
 
 def evaluate_guardrails(
@@ -564,6 +663,48 @@ def evaluate_guardrails(
                 f"Projected total daily budget {total:,.0f} exceeds the "
                 f"STRATEGY.md Guardrails cap of {total_cap:,.0f} "
                 f"(max_total_daily_budget)."
+            ),
+        )
+
+    # Bid caps have distinct semantics from budgets — a bid is a per-auction
+    # ceiling, not a spend budget — so they get their own caps rather than
+    # reusing the budget ones. Resolved through the same single-choke-point
+    # discipline as budgets (#419): a non-finite proposed bid (oversized int
+    # saturated to inf, or a bare NaN/Infinity the wire allows) fails CLOSED
+    # here, before any ``bid > cap`` comparison where ``nan > cap`` (False)
+    # would silently defeat the cap.
+    bids = _bid_inputs(arguments)
+    if bids.unreadable_key is not None:
+        return PolicyDecision(
+            allowed=False,
+            reason=(
+                f"Bid argument '{bids.unreadable_key}' is not a usable "
+                f"number, so the STRATEGY.md Guardrails bid caps cannot be "
+                f"verified for this call. Refusing it."
+            ),
+        )
+
+    bid = bids.bid_amount
+    bid_cap = guardrails.max_bid_amount_per_ad_set
+    if bid_cap is not None and bid is not None and bid > bid_cap:
+        return PolicyDecision(
+            allowed=False,
+            reason=(
+                f"Proposed bid amount {bid:,.0f} exceeds the "
+                f"STRATEGY.md Guardrails cap of {bid_cap:,.0f} "
+                f"(max_bid_amount_per_ad_set)."
+            ),
+        )
+
+    cpc_bid = bids.cpc_bid
+    cpc_cap = guardrails.max_cpc_bid_per_ad_group
+    if cpc_cap is not None and cpc_bid is not None and cpc_bid > cpc_cap:
+        return PolicyDecision(
+            allowed=False,
+            reason=(
+                f"Proposed CPC bid {cpc_bid:,.0f} exceeds the "
+                f"STRATEGY.md Guardrails cap of {cpc_cap:,.0f} "
+                f"(max_cpc_bid_per_ad_group)."
             ),
         )
 
