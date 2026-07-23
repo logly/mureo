@@ -372,4 +372,34 @@ TOOLS: list[Tool] = [
             "required": ["pixel_id"],
         },
     ),
+    Tool(
+        name="meta_ads_pixels_create",
+        description=(
+            "Creates a new Meta Pixel on the ad account. Returns the new "
+            "pixel id. Mutating — not automatically reversible; pixels "
+            "cannot be deleted via the Graph API once created, so record "
+            "before-state with mureo_state_action_log_append if you may "
+            "need to audit the change. Call meta_ads_pixels_list first to "
+            "check for an existing pixel — ad accounts have a pixel limit, "
+            "and reusing an existing pixel is almost always preferable to "
+            "creating a duplicate. After creation, install the pixel's "
+            "code on the site and use meta_ads_pixels_stats / events to "
+            "confirm it is firing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "name": {
+                    "type": "string",
+                    "description": (
+                        "Pixel name shown in Events Manager. Pick "
+                        "something descriptive (e.g. the site or brand) "
+                        "so it is easy to identify later."
+                    ),
+                },
+            },
+            "required": ["name"],
+        },
+    ),
 ]

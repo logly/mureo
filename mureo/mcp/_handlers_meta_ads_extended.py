@@ -323,6 +323,16 @@ async def handle_pixels_events(args: dict[str, Any]) -> list[TextContent]:
     return _json_result(result)
 
 
+@api_error_handler
+async def handle_pixels_create(args: dict[str, Any]) -> list[TextContent]:
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    name = _require(args, "name")
+    result = await client.create_ad_pixel(name)
+    return _json_result(result)
+
+
 # ---------------------------------------------------------------------------
 # Analysis handlers
 # ---------------------------------------------------------------------------

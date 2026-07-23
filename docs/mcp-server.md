@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 199 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 178 advertising and SEO operation tools across Google Ads (86), Meta Ads (82), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
+mureo exposes 200 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 179 advertising and SEO operation tools across Google Ads (86), Meta Ads (83), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
 
 ## Starting the Server
 
@@ -358,6 +358,7 @@ Or use `uv` to run it:
 | `meta_ads_pixels_get` | Get pixel details | `account_id`, `pixel_id` |
 | `meta_ads_pixels_stats` | Get pixel firing statistics | `account_id`, `pixel_id` |
 | `meta_ads_pixels_events` | List pixel events | `account_id`, `pixel_id` |
+| `meta_ads_pixels_create` | Create a pixel | `account_id`, `name` |
 
 #### Analysis
 

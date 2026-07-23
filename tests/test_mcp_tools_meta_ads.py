@@ -54,9 +54,9 @@ class TestMetaAdsToolDefinitions:
     """Verify the Meta Ads tool list is defined correctly."""
 
     def test_tool_count(self) -> None:
-        """All 82 tools are defined (81 + meta_ads_pages_upload_photo, #151)."""
+        """All 83 tools are defined (82 + meta_ads_pixels_create)."""
         mod = _import_meta_ads_tools()
-        assert len(mod.TOOLS) == 82
+        assert len(mod.TOOLS) == 83
 
     def test_all_tool_names(self) -> None:
         """Every tool name starts with meta_ads_ (underscore-separated, per MCP spec)."""
@@ -101,6 +101,7 @@ class TestMetaAdsToolDefinitions:
             ),
             ("meta_ads_audiences_list", []),
             ("meta_ads_audiences_create", ["name"]),
+            ("meta_ads_pixels_create", ["name"]),
         ],
     )
     def test_required_fields(

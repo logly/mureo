@@ -105,7 +105,7 @@ from mureo native.
   assets (copy, images, carousels, collections, dynamic ads); Instagram-specific
   actions.
 
-### mureo native — Meta Ads (82 tools)
+### mureo native — Meta Ads (83 tools)
 
 Covers the same operational class as the official MCP **plus** every documented
 gap above:
@@ -114,7 +114,7 @@ gap above:
 - Audiences + **lookalikes**
 - Creatives — single / carousel / collection / dynamic / lead — + image/video upload
 - Insights + breakdowns; analysis (performance / audience / placements / cost / compare / suggest creative)
-- Pixels (list / get / stats / events) and **Conversions API send** (purchase / lead)
+- Pixels (list / get / stats / events / **create**) and **Conversions API send** (purchase / lead)
 - Catalogs / products / feeds
 - **Lead forms + lead retrieval + CSV export**
 - **Split tests**, **automated rules**, page-post boost, **Instagram** (accounts / media / boost)

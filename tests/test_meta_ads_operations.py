@@ -755,6 +755,28 @@ class TestPixelsMixin:
         result = await client.get_pixel_events("px1")
         assert len(result) == 1
 
+    @pytest.mark.asyncio
+    async def test_create_ad_pixel(self, client) -> None:
+        client._post = AsyncMock(return_value={"id": "px_new"})
+        result = await client.create_ad_pixel("Main Pixel")
+        client._post.assert_awaited_once()
+        call_args = client._post.call_args
+        assert "/act_123/adspixels" in call_args[0][0]
+        assert call_args[0][1] == {"name": "Main Pixel"}
+        assert result["id"] == "px_new"
+
+    @pytest.mark.asyncio
+    async def test_create_ad_pixel_strips_whitespace(self, client) -> None:
+        client._post = AsyncMock(return_value={"id": "px_new"})
+        await client.create_ad_pixel("  Main Pixel  ")
+        assert client._post.call_args[0][1] == {"name": "Main Pixel"}
+
+    @pytest.mark.asyncio
+    async def test_create_ad_pixel_rejects_empty_name(self, client) -> None:
+        with pytest.raises(ValueError, match="name"):
+            await client.create_ad_pixel("   ")
+        client._post.assert_not_called()
+
 
 # ===========================================================================
 # InsightsMixin tests
