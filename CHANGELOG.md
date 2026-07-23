@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Plugin bid declarations.** A plugin tool can now declare where it carries
+  its proposed bid in standard MCP metadata
+  (`_meta={"mureo": {"bid": {"cpc_bid": "<key>", "unit": "micros"}}}`), so the
+  built-in `StrategyPolicyGate` enforces `max_bid_amount_per_ad_set` /
+  `max_cpc_bid_per_ad_group` on a plugin whose argument vocabulary differs from
+  the built-in Meta/Google keys — closing the bid twin of the silent-
+  underenforcement gap `BudgetDeclaration` closed for budgets (#414). The
+  declaration names one or both channels (`bid_amount`, minor units, direct;
+  `cpc_bid`, currency units, ÷1e6 when `unit: micros`), replaces the built-in
+  bid scan for that tool, and feeds the same `_bid_inputs` fail-closed choke
+  point — a present-but-unreadable declared key (`inf`/`nan`/bool/non-numeric/
+  nested) denies rather than sails through. Purely additive and opt-in:
+  undeclared tools keep today's behavior byte-identical.
+
 - **Bid-cap guardrails in `StrategyPolicyGate`.** The built-in gate now
   enforces two new `## Guardrails` rules alongside the budget caps:
   `max_bid_amount_per_ad_set` refuses a `meta_ads_ad_sets_create` /

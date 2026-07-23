@@ -292,7 +292,35 @@ def _register_plugin_budget_declarations(
             )
 
 
+def _register_plugin_bid_declarations(
+    semantics: dict[str, ToolSemantics],
+) -> None:
+    """Publish plugin bid declarations to the StrategyPolicyGate.
+
+    The bid twin of :func:`_register_plugin_budget_declarations`: the gate's
+    built-in bid scan only knows the Meta/Google spellings, so a plugin bid
+    tool's ``bid_amount`` / ``cpc_bid`` cap was silently unenforced. A plugin
+    declares its keys in standard MCP metadata and this wires them into the
+    gate's registry, so the ONE built-in gate enforces them. Best-effort: a
+    registry failure must not take the server down.
+    """
+    from mureo.policy.strategy_gate import register_bid_declaration
+
+    for name, sem in semantics.items():
+        if sem.bid is None:
+            continue
+        try:
+            register_bid_declaration(name, sem.bid)
+        except Exception:  # noqa: BLE001 — never break startup on a hint
+            logger.warning(
+                "could not register bid declaration for plugin tool '%s'",
+                name,
+                exc_info=True,
+            )
+
+
 _register_plugin_budget_declarations(_PLUGIN_SEMANTICS)
+_register_plugin_bid_declarations(_PLUGIN_SEMANTICS)
 
 
 # Guardrail parity (#114 follow-up): top-level ``inputSchema`` property names

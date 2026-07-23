@@ -642,6 +642,11 @@ mureo-specific Protocol method:
     "current": "<key>", "unit": "currency"|"micros"}` — **declare where
     your tool carries its budget so `STRATEGY.md` `## Guardrails` caps
     are enforced on your platform too** (#414). See the next section.
+  - `"bid": {"bid_amount": "<key>", "cpc_bid": "<key>",
+    "unit": "currency"|"micros"}` — the bid twin of `budget`: **declare
+    where your tool carries its proposed bid so the `max_bid_amount_per_ad_set`
+    / `max_cpc_bid_per_ad_group` caps are enforced on your platform too**.
+    See the bid-declarations section below.
 
 ##### Budget declarations — getting your platform under the Guardrails
 
@@ -728,6 +733,67 @@ If a declaration fits your tools, you do **not** need to register your own
 `mureo.policy_gates` entry for budget enforcement — declare the keys and the
 one built-in gate does it. Some tool shapes it cannot fit; the next section
 is for those.
+
+##### Bid declarations — getting your bids under the Guardrails
+
+Bids have the same gap budgets did, and the same fix. The built-in gate also
+enforces two **bid** caps — `max_bid_amount_per_ad_set` (a per-auction ceiling
+in account-currency **minor** units, like Meta's `bid_amount`) and
+`max_cpc_bid_per_ad_group` (in account-currency units, like Google's
+`cpc_bid_micros` after ÷1e6). A bid is a per-auction ceiling, not a spend
+budget, so it gets its own caps. To find the proposed bid the gate scans the
+built-in Meta/Google keys; if your tool spells its bid any other way, the call
+is treated as "no bid proposed" and **allowed through with no error and no
+warning**. Declare your keys and that gap closes too:
+
+```python
+Tool(
+    name="acme_ads_update_bid",
+    description="Update an ad group's max CPC bid.",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "ad_group_id": {"type": "string"},
+            "bid_cap_micros": {"type": "integer"},
+        },
+        "required": ["ad_group_id", "bid_cap_micros"],
+    },
+    _meta={"mureo": {"bid": {"cpc_bid": "bid_cap_micros", "unit": "micros"}}},
+)
+```
+
+- `bid_amount` — the argument key carrying a bid capped by
+  `max_bid_amount_per_ad_set`, compared in account-currency **minor** units
+  (direct, like Meta's `bid_amount`).
+- `cpc_bid` — the argument key carrying a bid capped by
+  `max_cpc_bid_per_ad_group`, compared in account-currency units (like
+  Google's `cpc_bid_micros` after ÷1e6). At least one of `bid_amount` /
+  `cpc_bid` is required.
+- `unit` — `"currency"` (default) or `"micros"` (the value is divided by
+  1,000,000). The channel you name decides **which** cap constrains the bid;
+  `unit` decides its **units** — set `micros` when your value is in micros so
+  it lands in the cap's comparison unit, exactly as the built-in
+  `cpc_bid_micros` path does. Stringified numbers (`"20000"`) are accepted.
+  One declaration carries one unit for both channels; a bid tool proposes a
+  single bid, so the common case names exactly one channel.
+
+The rest of the semantics match a budget declaration:
+
+- **A declaration replaces the built-in bid key scan for that tool**, so an
+  unrelated field spelled `bid_amount` cannot false-trip a cap. (Unlike
+  budgets there are no caller-supplied convention keys, so it replaces the
+  whole bid scan.)
+- **A declared key that is present but unreadable makes the gate deny.** `inf`,
+  `nan`, a bool, a non-numeric string, or a nested object under your declared
+  key ⇒ the cap cannot be verified, so the call is refused rather than waved
+  through, through the same fail-closed choke point the built-in scan uses. An
+  *absent* key — or `null` / a blank string — simply means "no bid proposed".
+- **A malformed declaration is rejected whole**, never half-applied, and
+  undeclared tools keep today's behavior byte-identical.
+
+A bid whose value is nested (inside a request `body`) or derived is outside
+what a top-level-key declaration can express — use the normalize-and-delegate
+`mureo.policy_gates` gate below for those, exactly as for a nested budget.
 
 ##### When a declaration cannot reach your budget
 
