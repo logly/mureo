@@ -135,6 +135,76 @@ def reset_budget_declarations() -> None:
     _BUDGET_DECLARATIONS.clear()
 
 
+@dataclass(frozen=True)
+class BidDeclaration:
+    """Where one tool carries its *bid* arguments — the bid twin of #414.
+
+    ``BudgetDeclaration`` closed the gap for budgets; bids had the same hole.
+    The gate's bid extraction (:func:`_bid_inputs`) scans only the built-in
+    Google/Meta spellings — Meta's ``bid_amount`` (minor units) and Google's
+    ``cpc_bid_micros`` (micros) — so a plugin bid tool whose argument is spelled
+    anything else was read as "no bid proposed" and sailed past
+    ``max_bid_amount_per_ad_set`` / ``max_cpc_bid_per_ad_group``, silently: no
+    startup error, no warning, on a surface where real money moves. A plugin
+    closes that by declaring its keys in standard MCP metadata::
+
+        Tool(
+            name="acme_ads_update_bid",
+            _meta={"mureo": {"bid": {"cpc_bid": "bid_cap_micros",
+                                     "unit": "micros"}}},
+            ...
+        )
+
+    A declaration names one or both of the two bid channels, mirroring how a
+    ``BudgetDeclaration`` names its daily / lifetime / current channels:
+
+    - ``bid_amount_key`` — capped by ``max_bid_amount_per_ad_set``, compared in
+      account-currency MINOR units (like Meta's ``bid_amount``, direct).
+    - ``cpc_bid_key`` — capped by ``max_cpc_bid_per_ad_group``, compared in
+      account-currency units (like Google's ``cpc_bid_micros`` after ÷1e6).
+
+    The channel a key names decides WHICH cap constrains it; ``micros`` decides
+    the UNIT (``value / 1e6`` when set, direct otherwise) — the two are declared
+    independently so a plugin states both "which guardrail caps this" and
+    "is my value micros" explicitly. Like ``BudgetDeclaration``'s single
+    ``micros`` flag, one declaration carries one unit for both channels: a bid
+    tool proposes a single bid, so the common case names exactly one channel.
+
+    A declaration REPLACES the built-in key scan for that tool (there are no
+    caller-supplied convention keys for bids, so it replaces the whole bid
+    scan): the plugin owns its argument vocabulary, so an unrelated field
+    spelled ``bid_amount`` cannot false-trip a cap. A declared key that is
+    present but unreadable (``inf``, ``nan``, a bool, a non-numeric string, a
+    nested object) makes the gate DENY through the same :func:`_bid_inputs`
+    choke point the built-in scan uses — see :func:`_declared_amount`.
+    """
+
+    bid_amount_key: str | None = None
+    cpc_bid_key: str | None = None
+    micros: bool = False
+
+
+# Tool name → bid declaration. Populated by the MCP server from plugin tool
+# metadata at import (see ``mureo.mcp.server``), exactly like the budget
+# registry above, so the pure decision layer stays I/O-free.
+_BID_DECLARATIONS: dict[str, BidDeclaration] = {}
+
+
+def register_bid_declaration(tool_name: str, declaration: BidDeclaration) -> None:
+    """Bind ``tool_name``'s bid argument keys (last registration wins)."""
+    _BID_DECLARATIONS[tool_name] = declaration
+
+
+def bid_declaration_for(tool_name: str) -> BidDeclaration | None:
+    """The bid declaration registered for ``tool_name``, or ``None``."""
+    return _BID_DECLARATIONS.get(tool_name)
+
+
+def reset_bid_declarations() -> None:
+    """Drop every bid registration (tests; a re-discovery re-registers)."""
+    _BID_DECLARATIONS.clear()
+
+
 class _Unreadable:
     """Sentinel: a declared budget key is PRESENT but not a usable number."""
 
@@ -514,8 +584,10 @@ class _BidInputs:
     unreadable_key: str | None = None
 
 
-def _bid_inputs(arguments: dict[str, Any]) -> _BidInputs:
-    """Resolve the bid channels, failing closed on any non-finite value.
+def _bid_inputs(
+    arguments: dict[str, Any], declaration: BidDeclaration | None = None
+) -> _BidInputs:
+    """Resolve the bid channels from declared keys, else the built-in scan.
 
     Mirrors :func:`_budget_inputs` (#419) at a single choke point rather than
     per-comparison: a proposed bid that is ``inf`` / ``nan`` is refused instead
@@ -524,15 +596,34 @@ def _bid_inputs(arguments: dict[str, Any]) -> _BidInputs:
     through post-division. Only reachable once the operator has written some
     guardrail (``evaluate_guardrails`` returns early on an empty ``Guardrails``),
     so the fail-open default is preserved.
+
+    ``declaration`` (the bid twin of #414) names a plugin tool's bid argument
+    keys. When given it REPLACES the built-in Meta/Google key scan for that
+    tool — the plugin owns its argument vocabulary, so a stray ``bid_amount``
+    field cannot false-trip a cap. Unlike budgets there are no caller-supplied
+    convention keys, so a declaration replaces the whole bid scan. Declared keys
+    feed the SAME fail-closed logic as the built-in scan via
+    :func:`_declared_amount`: a present-but-unreadable declared key returns
+    :data:`_UNREADABLE`, collapsing into :attr:`_BidInputs.unreadable_key` so
+    the caller denies once — no second comparison path.
     """
-    channels: list[tuple[str, float | None]] = [
-        ("bid_amount", _proposed_bid_amount(arguments)),
-        ("cpc_bid_micros", _proposed_cpc_bid(arguments)),
-    ]
-    for label, value in channels:
-        if value is not None and not math.isfinite(value):
-            return _BidInputs(unreadable_key=label)
-    bid_amount, cpc_bid = (v for _, v in channels)
+    if declaration is None:
+        channels: list[tuple[str, float | None]] = [
+            ("bid_amount", _proposed_bid_amount(arguments)),
+            ("cpc_bid_micros", _proposed_cpc_bid(arguments)),
+        ]
+        for label, value in channels:
+            if value is not None and not math.isfinite(value):
+                return _BidInputs(unreadable_key=label)
+        bid_amount, cpc_bid = (v for _, v in channels)
+        return _BidInputs(bid_amount=bid_amount, cpc_bid=cpc_bid)
+    resolved: list[float | None] = []
+    for key in (declaration.bid_amount_key, declaration.cpc_bid_key):
+        declared = _declared_amount(arguments, key, micros=declaration.micros)
+        if isinstance(declared, _Unreadable):
+            return _BidInputs(unreadable_key=key)
+        resolved.append(declared)
+    bid_amount, cpc_bid = resolved
     return _BidInputs(bid_amount=bid_amount, cpc_bid=cpc_bid)
 
 
@@ -542,6 +633,7 @@ def evaluate_guardrails(
     guardrails: Guardrails,
     *,
     budget_declaration: BudgetDeclaration | None = None,
+    bid_declaration: BidDeclaration | None = None,
 ) -> PolicyDecision:
     """Pure decision: does ``tool_name(arguments)`` violate ``guardrails``?
 
@@ -558,6 +650,12 @@ def evaluate_guardrails(
     cannot switch ``max_daily_budget_increase_pct`` or ``max_total_daily_budget``
     off (see :class:`BudgetDeclaration`). Omitted (every built-in tool, and any
     plugin that has not declared) ⇒ unchanged behavior.
+
+    ``bid_declaration`` is the bid twin of the above: it names the keys carrying
+    this tool's proposed bid and REPLACES the built-in Meta/Google bid scan for
+    that tool, so a plugin bid tool is enforced by ``max_bid_amount_per_ad_set``
+    / ``max_cpc_bid_per_ad_group`` (see :class:`BidDeclaration`). Omitted ⇒
+    unchanged behavior.
     """
     if guardrails.is_empty():
         return PolicyDecision(allowed=True)
@@ -673,7 +771,7 @@ def evaluate_guardrails(
     # saturated to inf, or a bare NaN/Infinity the wire allows) fails CLOSED
     # here, before any ``bid > cap`` comparison where ``nan > cap`` (False)
     # would silently defeat the cap.
-    bids = _bid_inputs(arguments)
+    bids = _bid_inputs(arguments, bid_declaration)
     if bids.unreadable_key is not None:
         return PolicyDecision(
             allowed=False,
@@ -770,6 +868,9 @@ class StrategyPolicyGate:
                 # #414: a plugin tool that declared its budget keys is now
                 # enforced by THIS gate — no hand-rolled per-plugin gate.
                 budget_declaration=budget_declaration_for(tool_name),
+                # The bid twin of #414: a plugin tool that declared its bid keys
+                # is enforced by the same gate through the same choke point.
+                bid_declaration=bid_declaration_for(tool_name),
             )
         except Exception:  # noqa: BLE001 — abstain on any unexpected error
             logger.debug("StrategyPolicyGate: abstaining on error", exc_info=True)

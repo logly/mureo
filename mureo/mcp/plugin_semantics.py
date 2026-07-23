@@ -35,7 +35,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from mureo.policy.strategy_gate import BudgetDeclaration
+from mureo.policy.strategy_gate import BidDeclaration, BudgetDeclaration
 from mureo.throttle import ThrottleConfig
 
 if TYPE_CHECKING:
@@ -57,6 +57,12 @@ _DEFAULT_OBSERVATION_DAYS = 14
 #: Accepted ``budget.unit`` spellings → whether the value is in micros.
 _BUDGET_UNITS = {"currency": False, "micros": True}
 
+#: Accepted ``bid.unit`` spellings → whether the value is in micros. Shares the
+#: budget vocabulary: ``currency`` means "compare as-is" (minor units for the
+#: ``bid_amount`` channel, currency units for ``cpc_bid``), ``micros`` divides
+#: by 1e6 — exactly like the built-in ``cpc_bid_micros`` path.
+_BID_UNITS = {"currency": False, "micros": True}
+
 
 @dataclass(frozen=True)
 class ToolSemantics:
@@ -67,6 +73,7 @@ class ToolSemantics:
     throttle: ThrottleConfig | None = None
     observation_days: int | None = None
     budget: BudgetDeclaration | None = None
+    bid: BidDeclaration | None = None
 
 
 def _parse_budget(raw: Any) -> BudgetDeclaration | None:
@@ -105,6 +112,44 @@ def _parse_budget(raw: Any) -> BudgetDeclaration | None:
         lifetime_key=lifetime,
         current_key=_key("current"),
         micros=_BUDGET_UNITS[unit],
+    )
+
+
+def _parse_bid(raw: Any) -> BidDeclaration | None:
+    """Parse ``meta["mureo"]["bid"]``, or ``None`` when unusable.
+
+    The bid twin of :func:`_parse_budget`, held to the identical whole-or-
+    nothing discipline: a partial declaration would re-create the exact silent
+    underenforcement this seam exists to remove. Requires a dict carrying at
+    least one of ``bid_amount`` / ``cpc_bid`` as a non-blank string key name;
+    ``unit`` is ``currency`` (default) or ``micros``.
+    """
+    if not isinstance(raw, dict):
+        return None
+    unit = raw.get("unit", "currency")
+    if not isinstance(unit, str) or unit not in _BID_UNITS:
+        return None
+
+    def _key(name: str) -> str | None:
+        value = raw.get(name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+    bid_amount = _key("bid_amount")
+    cpc_bid = _key("cpc_bid")
+    if bid_amount is None and cpc_bid is None:
+        return None
+    # A declared-but-unusable key name (non-str) is a mistake, not an
+    # omission — refuse the whole declaration so it surfaces in testing
+    # rather than silently dropping one cap.
+    for name in ("bid_amount", "cpc_bid"):
+        if name in raw and _key(name) is None:
+            return None
+    return BidDeclaration(
+        bid_amount_key=bid_amount,
+        cpc_bid_key=cpc_bid,
+        micros=_BID_UNITS[unit],
     )
 
 
@@ -166,6 +211,7 @@ def derive_semantics(tool: Tool) -> ToolSemantics:
         throttle=throttle,
         observation_days=observation_days,
         budget=_parse_budget(section.get("budget")),
+        bid=_parse_bid(section.get("bid")),
     )
 
 
