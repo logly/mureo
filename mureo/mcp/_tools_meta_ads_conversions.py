@@ -155,6 +155,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["pixel_id", "events"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -230,6 +231,7 @@ TOOLS: list[Tool] = [
                 "currency",
                 "value",
             ],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -269,6 +271,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["pixel_id", "event_time", "user_data"],
+            "additionalProperties": False,
         },
     ),
 ]

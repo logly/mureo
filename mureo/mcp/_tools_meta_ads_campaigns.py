@@ -157,6 +157,7 @@ TOOLS: list[Tool] = [
                 "limit": _LIMIT_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -182,6 +183,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -338,6 +340,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -360,6 +363,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === Ad sets ===
@@ -388,6 +392,7 @@ TOOLS: list[Tool] = [
                 "limit": _LIMIT_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -611,6 +616,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_set_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -632,6 +638,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_set_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -654,6 +661,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_set_id"],
+            "additionalProperties": False,
         },
     ),
     # === Ads ===
@@ -682,6 +690,7 @@ TOOLS: list[Tool] = [
                 "limit": _LIMIT_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -726,6 +735,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_set_id", "name", "creative_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -762,6 +772,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_id"],
+            "additionalProperties": False,
         },
     ),
     # === Ad get / pause / enable ===
@@ -786,6 +797,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -808,6 +820,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -828,6 +841,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_id"],
+            "additionalProperties": False,
         },
     ),
 ]

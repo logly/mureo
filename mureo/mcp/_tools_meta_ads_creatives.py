@@ -68,6 +68,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -161,6 +162,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["name", "page_id", "link_url"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -285,6 +287,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["name", "page_id", "form_id", "link_url"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -382,6 +385,7 @@ TOOLS: list[Tool] = [
                 "titles",
                 "link_url",
             ],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -408,6 +412,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["image_url"],
+            "additionalProperties": False,
         },
     ),
     # === Carousel & Collection ===
@@ -497,6 +502,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["page_id", "cards", "link"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -553,6 +559,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["page_id", "product_ids", "link"],
+            "additionalProperties": False,
         },
     ),
     # === Image upload ===
@@ -586,6 +593,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["file_path"],
+            "additionalProperties": False,
         },
     ),
     # === Video Upload ===
@@ -621,6 +629,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["video_url"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -653,6 +662,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["file_path"],
+            "additionalProperties": False,
         },
     ),
 ]

@@ -51,13 +51,15 @@ class TestLearningInsightsToolDefinition:
         """The tool takes no arguments — its job is to surface every
         insight in the operator-tier knowledge base. Callers must not
         be tempted to pass a filter / scope hint that we silently
-        ignore."""
+        ignore. ``additionalProperties: false`` now enforces that: an
+        unknown key is rejected at validation instead of dropped."""
         mod = _import_learning_tools()
         tool = next(t for t in mod.TOOLS if t.name == "mureo_learning_insights_get")
         assert tool.inputSchema == {
             "type": "object",
             "properties": {},
             "required": [],
+            "additionalProperties": False,
         }
 
     def test_tool_description_references_learn_skill(self) -> None:
@@ -166,8 +168,7 @@ diagnostic workflow.
         # scaffold-only — guards against a regression where the
         # derived marker drifts and starts catching everything.
         insight = (
-            "### Use micro-conversions when CV is sparse\n\n"
-            "**Situation:** ...\n"
+            "### Use micro-conversions when CV is sparse\n\n" "**Situation:** ...\n"
         )
         assert _is_scaffold_only(_OPERATOR_SCAFFOLD + insight) is False
 

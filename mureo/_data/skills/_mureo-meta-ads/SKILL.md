@@ -677,7 +677,7 @@ Step 2: Create ad set with targeting (CONFIRM WITH USER)
   -> meta_ads_ad_sets_create {account_id, campaign_id, name, daily_budget, targeting}
 
 Step 3: Upload image and create creative
-  -> meta_ads_creatives_upload_image {account_id, file_path}
+  -> meta_ads_creatives_upload_image {account_id, image_url}
   -> meta_ads_creatives_create {account_id, name, image_hash, link_url, page_id}
 
 Step 4: Create ad linking to creative (CONFIRM WITH USER)
@@ -720,8 +720,8 @@ Step 2: Add products or create a feed
   -> meta_ads_products_add {account_id, catalog_id, retailer_id, name, ...}
   -> meta_ads_feeds_create {account_id, catalog_id, name, feed_url}
 
-Step 3: Create a dynamic product ad creative (CONFIRM WITH USER)
-  -> meta_ads_creatives_create_dynamic {account_id, catalog_id}
+Step 3: Create a dynamic creative (multi-asset optimization) (CONFIRM WITH USER)
+  -> meta_ads_creatives_create_dynamic {account_id, name, page_id, image_hashes, bodies, titles, link_url}
 ```
 
 ### 6. Lead Generation (Instant Form, end-to-end)

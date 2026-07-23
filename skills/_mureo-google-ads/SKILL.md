@@ -361,7 +361,7 @@ immediate request but is not remembered.
 
 - `create` -- Create a sitelink extension. **Requires user confirmation.**
   ```
-  Required: customer_id, campaign_id, sitelink_text, final_url (string)
+  Required: customer_id, campaign_id, link_text, final_url (string)
   ```
 
 - `remove` -- Remove a sitelink extension. **Requires user confirmation.**
@@ -712,7 +712,7 @@ Step 6: Add campaign-level negative keywords
   -> google_ads_negative_keywords_add {customer_id, campaign_id, keywords: [...]}
 
 Step 7: Add sitelink extensions
-  -> google_ads_sitelinks_create {customer_id, campaign_id, sitelink_text, final_url}
+  -> google_ads_sitelinks_create {customer_id, campaign_id, link_text, final_url}
 
 Step 8: Add callout extensions
   -> google_ads_callouts_create {customer_id, campaign_id, callout_text}
@@ -846,7 +846,7 @@ Improving responsive search ad performance:
 
 ```
 Step 1: Analyze RSA asset performance
-  -> google_ads_rsa_assets_analyze {customer_id, ad_group_id}
+  -> google_ads_rsa_assets_analyze {customer_id, campaign_id}
 
 Step 2: Audit RSA assets for best practices
   -> google_ads_rsa_assets_audit {customer_id, campaign_id}
@@ -855,7 +855,7 @@ Step 3: Compare ad variants
   -> google_ads_ad_performance_compare {customer_id, ad_group_id}
 
 Step 4: Check landing page relevance
-  -> google_ads_landing_page_analyze {customer_id, campaign_id}
+  -> google_ads_landing_page_analyze {customer_id, url}
 ```
 
 ### 8. Account Audit

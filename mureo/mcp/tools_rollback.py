@@ -47,6 +47,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["index"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -80,6 +81,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["index", "confirm"],
+            "additionalProperties": False,
         },
     ),
 ]

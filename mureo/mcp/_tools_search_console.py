@@ -68,6 +68,7 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {},
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -91,6 +92,7 @@ TOOLS: list[Tool] = [
                 "site_url": _SITE_URL_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     # === Search Analytics ===
@@ -155,6 +157,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["start_date", "end_date"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -184,6 +187,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["start_date", "end_date"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -213,6 +217,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["start_date", "end_date"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -242,6 +247,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["start_date", "end_date"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -329,6 +335,7 @@ TOOLS: list[Tool] = [
                 "start_date_2",
                 "end_date_2",
             ],
+            "additionalProperties": False,
         },
     ),
     # === Sitemaps ===
@@ -352,6 +359,7 @@ TOOLS: list[Tool] = [
                 "site_url": _SITE_URL_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -399,6 +407,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["feedpath"],
+            "additionalProperties": False,
         },
     ),
     # === URL Inspection ===
@@ -440,6 +449,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["inspection_url"],
+            "additionalProperties": False,
         },
     ),
 ]
