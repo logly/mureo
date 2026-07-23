@@ -56,7 +56,7 @@ TOOLS: list[Tool] = [
             "Built-in (google_ads, meta_ads) and plugin-supplied "
             "modules appear in the same shape."
         ),
-        inputSchema={"type": "object", "properties": {}},
+        inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
     Tool(
         name="mureo_analytics_run",
@@ -112,6 +112,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["platform", "capability", "account_id"],
+            "additionalProperties": False,
         },
     ),
 ]

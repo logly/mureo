@@ -47,6 +47,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Strict input schemas across the entire builtin MCP tool registry.**
+  Every builtin tool (all 203 across Google Ads, Meta Ads, Search Console,
+  rollback, analysis, mureo-context, analytics-registry, learning, and
+  creative-studio) now declares `additionalProperties: false` on its
+  top-level `inputSchema`. Previously an unknown or misspelled parameter
+  passed server-side validation and was then silently discarded by the
+  handler's whitelist — a typo like `budgett` became a no-op. Such a call
+  now fails validation with a clear error naming the offending key.
+  **Breaking for any caller that relied on typo-tolerance / passing extra
+  keys.** Nested object properties (e.g. Meta's `targeting` blob) are
+  intentionally left open so they stay forward-compatible with the
+  platform Graph/GAQL sub-object surfaces, which evolve independently of
+  mureo releases. A new enforcement test
+  (`tests/test_mcp_strict_input_schemas.py`) guards the invariant so any
+  future tool that omits it fails CI. Generalizes the earlier four-tool
+  change below to the whole registry.
+
 - **Stricter input validation on the four Meta Ads campaign / ad-set write
   tools.** `meta_ads_campaigns_create`, `meta_ads_campaigns_update`,
   `meta_ads_ad_sets_create`, and `meta_ads_ad_sets_update` now declare

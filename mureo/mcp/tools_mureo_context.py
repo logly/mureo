@@ -135,6 +135,7 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {"path": _PATH_PROPERTY},
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -156,6 +157,7 @@ TOOLS: list[Tool] = [
                 "path": _PATH_PROPERTY,
             },
             "required": ["markdown"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -169,6 +171,7 @@ TOOLS: list[Tool] = [
         inputSchema={
             "type": "object",
             "properties": {"path": _PATH_PROPERTY},
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -186,6 +189,7 @@ TOOLS: list[Tool] = [
                 "path": _PATH_PROPERTY,
             },
             "required": ["entry"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -206,6 +210,7 @@ TOOLS: list[Tool] = [
                 "path": _PATH_PROPERTY,
             },
             "required": ["campaign"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -256,6 +261,7 @@ TOOLS: list[Tool] = [
                 "path": _PATH_PROPERTY,
             },
             "required": ["report", "summary"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -321,6 +327,7 @@ TOOLS: list[Tool] = [
                 "path": _PATH_PROPERTY,
             },
             "required": ["platform", "account_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -373,6 +380,7 @@ TOOLS: list[Tool] = [
                 "path": _PATH_PROPERTY,
             },
             "required": ["platform", "account_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -415,6 +423,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["before", "after"],
+            "additionalProperties": False,
         },
     ),
 ]

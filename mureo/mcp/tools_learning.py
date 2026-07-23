@@ -121,6 +121,7 @@ TOOLS: list[Tool] = [
             "type": "object",
             "properties": {},
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -172,6 +173,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["question"],
+            "additionalProperties": False,
         },
     ),
 ]

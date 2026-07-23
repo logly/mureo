@@ -72,6 +72,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": _CAMPAIGN_ID_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -131,6 +132,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "link_text", "final_url"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -161,6 +163,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "asset_id"],
+            "additionalProperties": False,
         },
     ),
     # === Callouts ===
@@ -182,6 +185,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": _CAMPAIGN_ID_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -215,6 +219,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "callout_text"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -243,6 +248,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "asset_id"],
+            "additionalProperties": False,
         },
     ),
     # === Conversions ===
@@ -265,6 +271,7 @@ TOOLS: list[Tool] = [
                 "customer_id": _CUSTOMER_ID_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -288,6 +295,7 @@ TOOLS: list[Tool] = [
                 "conversion_action_id": _CONVERSION_ACTION_ID_PARAM,
             },
             "required": ["conversion_action_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -325,6 +333,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -440,6 +449,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["name"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -539,6 +549,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["conversion_action_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -559,6 +570,7 @@ TOOLS: list[Tool] = [
                 "conversion_action_id": _CONVERSION_ACTION_ID_PARAM,
             },
             "required": ["conversion_action_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -581,6 +593,7 @@ TOOLS: list[Tool] = [
                 "conversion_action_id": _CONVERSION_ACTION_ID_PARAM,
             },
             "required": ["conversion_action_id"],
+            "additionalProperties": False,
         },
     ),
     # === Recommendations ===
@@ -621,6 +634,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -654,6 +668,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["resource_name"],
+            "additionalProperties": False,
         },
     ),
     # === Device Targeting ===
@@ -681,6 +696,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": _CAMPAIGN_ID_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -724,6 +740,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "enabled_devices"],
+            "additionalProperties": False,
         },
     ),
     # === Bid adjustments ===
@@ -749,6 +766,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": _CAMPAIGN_ID_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -791,6 +809,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "criterion_id", "bid_modifier"],
+            "additionalProperties": False,
         },
     ),
     # === Geographic Targeting ===
@@ -815,6 +834,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": _CAMPAIGN_ID_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -862,6 +882,7 @@ TOOLS: list[Tool] = [
                 {"required": ["add_locations"]},
                 {"required": ["remove_criterion_ids"]},
             ],
+            "additionalProperties": False,
         },
     ),
     # === Ad schedules ===
@@ -909,6 +930,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -993,6 +1015,7 @@ TOOLS: list[Tool] = [
                 {"required": ["add_schedules"]},
                 {"required": ["remove_criterion_ids"]},
             ],
+            "additionalProperties": False,
         },
     ),
     # === Change History ===
@@ -1039,6 +1062,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
 ]

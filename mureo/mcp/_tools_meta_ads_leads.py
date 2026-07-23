@@ -52,6 +52,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["page_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -79,6 +80,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["form_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -233,6 +235,7 @@ TOOLS: list[Tool] = [
                 "questions",
                 "privacy_policy_url",
             ],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -269,6 +272,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["form_id", "status"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -312,6 +316,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["form_id", "page_id", "new_name"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -364,6 +369,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["form_id", "output_path"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -396,6 +402,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["form_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -430,6 +437,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -481,6 +489,7 @@ TOOLS: list[Tool] = [
                 {"required": ["file_path"]},
                 {"required": ["image_url"]},
             ],
+            "additionalProperties": False,
         },
     ),
 ]

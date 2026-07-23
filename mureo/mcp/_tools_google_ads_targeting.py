@@ -55,6 +55,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": _CAMPAIGN_ID_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -82,6 +83,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": _CAMPAIGN_ID_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
 ]

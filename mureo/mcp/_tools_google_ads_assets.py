@@ -57,6 +57,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["file_path"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -85,6 +86,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
 ]

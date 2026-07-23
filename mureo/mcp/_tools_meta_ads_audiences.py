@@ -49,6 +49,7 @@ TOOLS: list[Tool] = [
                 "limit": _LIMIT_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -140,6 +141,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["name"],
+            "additionalProperties": False,
         },
     ),
     # === Audience get / delete / lookalike ===
@@ -166,6 +168,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["audience_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -191,6 +194,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["audience_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -271,6 +275,7 @@ TOOLS: list[Tool] = [
                 "country",
                 "ratio",
             ],
+            "additionalProperties": False,
         },
     ),
     # === Pixels ===
@@ -291,6 +296,7 @@ TOOLS: list[Tool] = [
                 "limit": _LIMIT_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -314,6 +320,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["pixel_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -345,6 +352,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["pixel_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -370,6 +378,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["pixel_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -400,6 +409,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["name"],
+            "additionalProperties": False,
         },
     ),
     # === Targeting discovery ===

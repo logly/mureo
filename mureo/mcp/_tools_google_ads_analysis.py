@@ -119,6 +119,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -161,6 +162,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -205,6 +207,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -233,6 +236,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -264,6 +268,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -294,6 +299,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === Network performance report ===
@@ -321,6 +327,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     # === Per-ad report ===
@@ -350,6 +357,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     # === Search Term Analysis ===
@@ -378,6 +386,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === Performance analysis ===
@@ -412,6 +421,7 @@ TOOLS: list[Tool] = [
                 "period": _SHORT_PERIOD_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -442,6 +452,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": _CAMPAIGN_ID_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -468,6 +479,7 @@ TOOLS: list[Tool] = [
                 "customer_id": _CUSTOMER_ID_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -503,6 +515,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": ["ad_group_id"],
+            "additionalProperties": False,
         },
     ),
     # === Budget analysis ===
@@ -530,6 +543,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -561,6 +575,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     # === Auction insights ===
@@ -589,6 +604,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === RSA analysis ===
@@ -617,6 +633,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -646,6 +663,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === BtoB ===
@@ -674,6 +692,7 @@ TOOLS: list[Tool] = [
                 "period": _PERIOD_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === Creative ===
@@ -718,6 +737,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["url"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -761,6 +781,7 @@ TOOLS: list[Tool] = [
                 "ad_group_id": _AD_GROUP_ID_FILTER_PARAM,
             },
             "required": ["campaign_id", "url"],
+            "additionalProperties": False,
         },
     ),
     # === Monitoring ===
@@ -789,6 +810,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": _CAMPAIGN_ID_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -826,6 +848,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "target_cpa"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -864,6 +887,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "target_cv_daily"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -897,6 +921,7 @@ TOOLS: list[Tool] = [
                 "campaign_id": _CAMPAIGN_ID_PARAM,
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === Capture ===
@@ -909,6 +934,7 @@ TOOLS: list[Tool] = [
                 "url": {"type": "string", "description": "URL to capture"},
             },
             "required": ["url"],
+            "additionalProperties": False,
         },
     ),
 ]

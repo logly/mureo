@@ -48,6 +48,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["business_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -77,6 +78,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["business_id", "name"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -101,6 +103,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["catalog_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -124,6 +127,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["catalog_id"],
+            "additionalProperties": False,
         },
     ),
     # === Products ===
@@ -156,6 +160,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["catalog_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -277,6 +282,7 @@ TOOLS: list[Tool] = [
                 "url",
                 "image_url",
             ],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -303,6 +309,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["product_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -375,6 +382,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["product_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -401,6 +409,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["product_id"],
+            "additionalProperties": False,
         },
     ),
     # === Feeds ===
@@ -425,6 +434,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["catalog_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -476,6 +486,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["catalog_id", "name", "feed_url"],
+            "additionalProperties": False,
         },
     ),
 ]

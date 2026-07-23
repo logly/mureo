@@ -58,6 +58,7 @@ TOOLS: list[Tool] = [
                 "limit": _LIMIT_50,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -83,6 +84,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["study_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -173,6 +175,7 @@ TOOLS: list[Tool] = [
                 "start_time",
                 "end_time",
             ],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -196,6 +199,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["study_id"],
+            "additionalProperties": False,
         },
     ),
     # === Automated Rules (Ad Rules) ===
@@ -217,6 +221,7 @@ TOOLS: list[Tool] = [
                 "limit": _LIMIT_50,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -243,6 +248,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["rule_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -311,6 +317,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["name", "evaluation_spec", "execution_spec"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -381,6 +388,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["rule_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -406,6 +414,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["rule_id"],
+            "additionalProperties": False,
         },
     ),
     # === Page Posts ===
@@ -436,6 +445,7 @@ TOOLS: list[Tool] = [
                 "limit": _LIMIT_25,
             },
             "required": ["page_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -483,6 +493,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["page_id", "post_id", "ad_set_id"],
+            "additionalProperties": False,
         },
     ),
     # === Pages ===
@@ -502,6 +513,7 @@ TOOLS: list[Tool] = [
                 "account_id": _ACCOUNT_ID_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     # === Instagram ===
@@ -520,6 +532,7 @@ TOOLS: list[Tool] = [
                 "account_id": _ACCOUNT_ID_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -546,6 +559,7 @@ TOOLS: list[Tool] = [
                 "limit": _LIMIT_25,
             },
             "required": ["ig_user_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -587,6 +601,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ig_user_id", "media_id", "ad_set_id"],
+            "additionalProperties": False,
         },
     ),
 ]

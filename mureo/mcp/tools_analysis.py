@@ -92,6 +92,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["current"],
+            "additionalProperties": False,
         },
     ),
 ]

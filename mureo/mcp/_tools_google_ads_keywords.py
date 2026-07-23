@@ -84,6 +84,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -121,6 +122,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_group_id", "keywords"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -152,6 +154,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_group_id", "criterion_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -199,6 +202,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["seed_keywords"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -225,6 +229,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === Negative Keywords ===
@@ -247,6 +252,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -285,6 +291,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "keywords"],
+            "additionalProperties": False,
         },
     ),
     # === Keyword pause ===
@@ -319,6 +326,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_group_id", "criterion_id"],
+            "additionalProperties": False,
         },
     ),
     # === Negative keyword removal ===
@@ -351,6 +359,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "criterion_id"],
+            "additionalProperties": False,
         },
     ),
     # === Ad group-level negative keyword addition ===
@@ -389,6 +398,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_group_id", "keywords"],
+            "additionalProperties": False,
         },
     ),
     # === Automatic negative keyword suggestions ===
@@ -439,6 +449,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === Keyword Inventory ===
@@ -482,6 +493,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === Cross-ad-group keyword duplicate detection ===
@@ -515,6 +527,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
 ]

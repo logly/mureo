@@ -48,6 +48,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -73,6 +74,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -136,6 +138,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["name"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -181,6 +184,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -214,6 +218,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "status"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -238,6 +243,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     # === Ad Groups ===
@@ -273,6 +279,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -316,6 +323,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id", "name"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -361,6 +369,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_group_id"],
+            "additionalProperties": False,
         },
     ),
     # === Ads ===
@@ -394,6 +403,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -463,6 +473,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_group_id", "headlines", "descriptions"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -573,6 +584,7 @@ TOOLS: list[Tool] = [
                 "square_marketing_image_paths",
                 "final_url",
             ],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -632,6 +644,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_group_id", "ad_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -666,6 +679,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_group_id", "ad_id", "status"],
+            "additionalProperties": False,
         },
     ),
     # === Ad policy details ===
@@ -694,6 +708,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["ad_group_id", "ad_id"],
+            "additionalProperties": False,
         },
     ),
     # === Budgets ===
@@ -723,6 +738,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["campaign_id"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -798,6 +814,7 @@ TOOLS: list[Tool] = [
                 {"required": ["total_amount"]},
                 {"required": ["total_amount_micros"]},
             ],
+            "additionalProperties": False,
         },
     ),
     # === Budget creation ===
@@ -874,6 +891,7 @@ TOOLS: list[Tool] = [
                 {"required": ["total_amount"]},
                 {"required": ["total_amount_micros"]},
             ],
+            "additionalProperties": False,
         },
     ),
     # === Account ===
@@ -895,6 +913,7 @@ TOOLS: list[Tool] = [
                 "customer_id": _CUSTOMER_ID_PARAM,
             },
             "required": [],
+            "additionalProperties": False,
         },
     ),
 ]

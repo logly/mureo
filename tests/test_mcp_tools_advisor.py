@@ -80,6 +80,7 @@ class TestConsultAdvisorToolDefinition:
             "type": "object",
             "properties": {},
             "required": [],
+            "additionalProperties": False,
         }
 
 

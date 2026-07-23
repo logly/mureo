@@ -117,7 +117,7 @@ TOOLS: list[Tool] = [
             "creative_studio_generate_visual to see which providers can be "
             "selected."
         ),
-        inputSchema={"type": "object", "properties": {}},
+        inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
     Tool(
         name="creative_studio_generate_visual",
@@ -179,6 +179,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["prompt"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -189,7 +190,7 @@ TOOLS: list[Tool] = [
             "tasteful neutral defaults are returned and 'defaults_used' is "
             "true. Use this to judge brand fit before composing banners."
         ),
-        inputSchema={"type": "object", "properties": {}},
+        inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
     Tool(
         name="creative_studio_edit_visual",
@@ -226,6 +227,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["path", "instruction"],
+            "additionalProperties": False,
         },
     ),
     Tool(
@@ -288,6 +290,7 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["visual_path", "headline", "cta"],
+            "additionalProperties": False,
         },
     ),
 ]
