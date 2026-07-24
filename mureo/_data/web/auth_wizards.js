@@ -802,11 +802,158 @@
       });
       wrap.appendChild(btn);
       wrap.appendChild(status);
+
+      // #458: Live-mode Meta apps cannot complete localhost OAuth and
+      // dev-mode apps cannot create creatives (subcode 1885183). Offer a
+      // first-class "paste a system-user token" path next to the button.
+      if (slot.oauthProvider === "meta") {
+        wrap.appendChild(buildMetaTokenCard(onAllDone));
+      }
     }
 
     if (doneBtn) wrap.appendChild(doneBtn);
 
     return wrap;
+  }
+
+  function buildMetaTokenCard(onDone) {
+    // Collapsible secondary option: paste a Business Manager system-user
+    // token instead of running the browser OAuth. Framework-free — a native
+    // <details> element, plain inputs, and MUREO.postJson to the #458 route.
+    const details = document.createElement("details");
+    details.className = "meta-token-card";
+
+    const summary = document.createElement("summary");
+    summary.textContent = MUREO.t("wizard.auth.meta_token_card_title");
+    summary.setAttribute("data-i18n", "wizard.auth.meta_token_card_title");
+    details.appendChild(summary);
+
+    const intro = document.createElement("p");
+    intro.textContent = MUREO.t("wizard.auth.meta_token_card_intro");
+    intro.setAttribute("data-i18n", "wizard.auth.meta_token_card_intro");
+    details.appendChild(intro);
+
+    // The 4-step Business Manager token guide.
+    const guide = document.createElement("ol");
+    ["wizard.auth.meta_token_guide_1", "wizard.auth.meta_token_guide_2",
+      "wizard.auth.meta_token_guide_3", "wizard.auth.meta_token_guide_4"
+    ].forEach(function (key) {
+      const li = document.createElement("li");
+      li.textContent = MUREO.t(key);
+      li.setAttribute("data-i18n", key);
+      guide.appendChild(li);
+    });
+    details.appendChild(guide);
+
+    // Token entry — password-typed and opted out of autofill (a
+    // never-expiring secret must not be remembered by the browser).
+    const tokenLabel = document.createElement("label");
+    tokenLabel.style.display = "block";
+    tokenLabel.textContent = MUREO.t("wizard.auth.meta_token_label");
+    tokenLabel.setAttribute("data-i18n", "wizard.auth.meta_token_label");
+    const tokenInput = document.createElement("input");
+    tokenInput.type = "password";
+    tokenInput.autocomplete = "new-password";
+    tokenLabel.appendChild(tokenInput);
+    details.appendChild(tokenLabel);
+
+    const validateBtn = document.createElement("button");
+    validateBtn.type = "button";
+    validateBtn.className = "btn btn-secondary";
+    validateBtn.textContent = MUREO.t("wizard.auth.meta_token_validate_button");
+    validateBtn.setAttribute("data-i18n", "wizard.auth.meta_token_validate_button");
+    details.appendChild(validateBtn);
+
+    // Probe results (scopes + account picker) — hidden until validated.
+    const results = document.createElement("div");
+    results.hidden = true;
+    const grantedP = document.createElement("p");
+    const missingP = document.createElement("p");
+    const accountLabel = document.createElement("label");
+    accountLabel.style.display = "block";
+    accountLabel.textContent = MUREO.t("wizard.auth.meta_token_account_label");
+    accountLabel.setAttribute("data-i18n", "wizard.auth.meta_token_account_label");
+    const accountSelect = document.createElement("select");
+    accountLabel.appendChild(accountSelect);
+    results.appendChild(grantedP);
+    results.appendChild(missingP);
+    results.appendChild(accountLabel);
+    details.appendChild(results);
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "btn btn-primary";
+    saveBtn.textContent = MUREO.t("wizard.auth.meta_token_save_button");
+    saveBtn.setAttribute("data-i18n", "wizard.auth.meta_token_save_button");
+    saveBtn.disabled = true;
+    details.appendChild(saveBtn);
+
+    const status = document.createElement("p");
+    status.className = "wizard-shared-with-sc-note";
+    details.appendChild(status);
+
+    function renderProbe(body) {
+      const granted = (body.scopes || []).join(", ");
+      const missing = (body.missing_scopes || []).join(", ");
+      grantedP.textContent =
+        MUREO.t("wizard.auth.meta_token_scopes_granted") + ": " + granted;
+      missingP.textContent =
+        MUREO.t("wizard.auth.meta_token_scopes_missing") + ": " + (missing || "-");
+      accountSelect.innerHTML = "";
+      (body.accounts || []).forEach(function (acct) {
+        const opt = document.createElement("option");
+        opt.value = acct.id;
+        opt.textContent = (acct.name || acct.id) + " (" + acct.id + ")";
+        accountSelect.appendChild(opt);
+      });
+      accountLabel.hidden = (body.accounts || []).length === 0;
+      results.hidden = false;
+      saveBtn.disabled = false;
+    }
+
+    validateBtn.addEventListener("click", async function () {
+      const token = tokenInput.value.trim();
+      if (!token) return;
+      validateBtn.disabled = true;
+      status.textContent = "";
+      const res = await MUREO.postJson("/api/credentials/meta/token", {
+        access_token: token,
+        validate_only: true,
+      });
+      validateBtn.disabled = false;
+      if (res.ok && res.body) {
+        renderProbe(res.body);
+      } else {
+        const msg = (res.body && res.body.detail) ||
+          MUREO.t("wizard.auth.oauth_failed");
+        status.textContent = msg;
+        MUREO.toast(msg, "error");
+      }
+    });
+
+    saveBtn.addEventListener("click", async function () {
+      const token = tokenInput.value.trim();
+      if (!token) return;
+      saveBtn.disabled = true;
+      const res = await MUREO.postJson("/api/credentials/meta/token", {
+        access_token: token,
+        account_id: accountSelect.value || null,
+      });
+      if (res.ok && res.body && res.body.status === "ok") {
+        const msg = MUREO.t("wizard.auth.meta_token_saved");
+        status.textContent = msg;
+        MUREO.toast(msg, "success");
+        onDone();
+      } else {
+        const msg = (res.body && res.body.detail) ||
+          MUREO.t("wizard.auth.oauth_failed");
+        status.textContent = msg;
+        MUREO.toast(msg, "error");
+        saveBtn.disabled = false;
+      }
+    });
+
+    return details;
   }
 
   function pollOAuth(provider, statusNode, btn, onFinished) {
@@ -820,7 +967,12 @@
       if (cancelled) return;
       if (Date.now() > deadline) {
         cancelled = true;
-        statusNode.textContent = "";
+        // #458: a Live-mode Meta app never fires our callback (the failure
+        // happens on Facebook's localhost-redirect rejection), so the silent
+        // reset just looks broken — point the operator at the token option.
+        statusNode.textContent = provider === "meta"
+          ? MUREO.t("wizard.auth.meta_oauth_localhost_hint")
+          : "";
         if (btn) btn.disabled = false;
         return;
       }
@@ -832,7 +984,11 @@
             cancelled = true;
             onFinished();
           } else if (data && data.error) {
-            const msg = MUREO.t("wizard.auth.oauth_failed");
+            // #458: for Meta, surface the localhost-OAuth dead-end guidance
+            // instead of the generic failure; Google keeps the generic text.
+            const msg = provider === "meta"
+              ? MUREO.t("wizard.auth.meta_oauth_localhost_hint")
+              : MUREO.t("wizard.auth.oauth_failed");
             statusNode.textContent = msg;
             MUREO.toast(msg, "error");
             cancelled = true;
