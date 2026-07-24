@@ -26,8 +26,6 @@ sensitive, and the configure-UI layer honours it.
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import inspect
 import logging
 from collections.abc import Mapping
@@ -40,6 +38,7 @@ from mureo.core.providers import (
     get_oauth_account_lister,
 )
 from mureo.core.secret_store import FilesystemSecretStore, SecretStore
+from mureo.web._helpers import run_coroutine
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -224,23 +223,6 @@ def _oauth_to_dict(provider_class: type) -> dict[str, Any] | None:
     return block
 
 
-def _run_coroutine(coro: Any) -> Any:
-    """Run an awaitable to completion from a synchronous caller (#336).
-
-    The configure HTTP handler is synchronous (no running loop), so the
-    common path is a plain :func:`asyncio.run`. When a loop *is* already
-    running (a caller that bridges this from async code), the coroutine is
-    run on a fresh loop in a worker thread to avoid the ``asyncio.run()
-    cannot be called from a running event loop`` error.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, coro).result()
-
-
 def list_oauth_accounts(
     provider_name: str,
     *,
@@ -311,7 +293,7 @@ def list_oauth_accounts(
     try:
         result: Any = lister(credentials)
         if inspect.isawaitable(result):
-            result = _run_coroutine(result)
+            result = run_coroutine(result)
         for row in result or ():
             if not isinstance(row, Mapping):
                 continue

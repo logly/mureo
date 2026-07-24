@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Meta system-user token in the configure UI.** The Meta Ads authentication
+  step now offers a first-class **"Paste a system-user token"** option next to
+  *Login with Facebook*, closing the gap where Live-mode Meta apps cannot
+  complete OAuth from the localhost configure page (Facebook rejects the
+  localhost redirect on its own consent screen) and dev-mode apps cannot create
+  ad creatives (Marketing API subcode `1885183`). A new probe
+  (`validate_meta_access_token`) reports the token's granted vs required scopes
+  and the ad accounts it can reach; the operator validates, picks an account,
+  and saves via `POST /api/credentials/meta/token`. A never-expiring system-user
+  token is stored **without** `app_id` / `app_secret` so it never enters the
+  53-day auto-refresh path. The Facebook-login timeout branch now points Meta
+  users at this option instead of silently resetting (#458).
+
 - **Plugin bid declarations.** A plugin tool can now declare where it carries
   its proposed bid in standard MCP metadata
   (`_meta={"mureo": {"bid": {"cpc_bid": "<key>", "unit": "micros"}}}`), so the

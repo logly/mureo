@@ -7,6 +7,8 @@ header attachment. Reused by every endpoint in ``handlers.py``.
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import contextlib
 import json
 import logging
@@ -23,6 +25,26 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def run_coroutine(coro: Any) -> Any:
+    """Run an awaitable to completion from a synchronous caller (#336).
+
+    The configure HTTP handler is synchronous (no running loop), so the
+    common path is a plain :func:`asyncio.run`. When a loop *is* already
+    running (a caller that bridges this from async code), the coroutine is
+    run on a fresh loop in a worker thread to avoid the ``asyncio.run()
+    cannot be called from a running event loop`` error — importantly this
+    keeps a future running-loop context from raising ``RuntimeError``,
+    which callers may otherwise misclassify (e.g. as an invalid token).
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
 
 # Cap form bodies to a small size — the configure UI only ever POSTs
 # short JSON payloads (tens of bytes).
