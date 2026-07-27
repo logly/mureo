@@ -5,6 +5,7 @@ Covers AdCreative creation, image upload, and dynamic creative support.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from typing import Any
@@ -18,6 +19,11 @@ logger = logging.getLogger(__name__)
 # Meta Ads image upload limits
 _META_MAX_IMAGE_SIZE_BYTES = 30 * 1024 * 1024  # 30MB
 _META_ALLOWED_IMAGE_EXTENSIONS = frozenset({"jpg", "jpeg", "png", "gif", "bmp", "tiff"})
+
+# Per-request timeout for image uploads. The file may be up to 30MB (base64 of
+# that is ~40MB of request body), so this overrides the shared client's shorter
+# default to avoid timing out large uploads on slow links.
+_META_UPLOAD_TIMEOUT_SECONDS = 60.0
 
 # Max redirect hops when downloading a remote image (each hop is SSRF-validated
 # before it is followed; see upload_ad_image).
@@ -53,7 +59,10 @@ class CreativesMixin:
     ) -> dict[str, Any]: ...
 
     async def _post(  # type: ignore[empty-body]
-        self, path: str, data: dict[str, Any] | None = None
+        self,
+        path: str,
+        data: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]: ...
 
     async def list_ad_creatives(
@@ -305,8 +314,6 @@ class CreativesMixin:
         Returns:
             {"hash": "...", "url": "..."} or {"error": "..."}
         """
-        import base64
-
         from mureo.core.url_guard import UnsafeUrlError, validate_public_url
 
         # SSRF guard: image_url originates from LLM/MCP tool arguments, so a
@@ -374,7 +381,9 @@ class CreativesMixin:
 
         Args:
             file_path: Local image file path
-            name: Image name (defaults to filename)
+            name: Accepted for API compatibility but NOT sent on the wire. The
+                base64 ``bytes`` form of /adimages has no documented ``name``
+                field, so Meta assigns the image identifier itself.
 
         Returns:
             {"hash": "...", "url": "..."} or {"error": "..."}
@@ -390,22 +399,36 @@ class CreativesMixin:
             allowed_extensions=_META_ALLOWED_IMAGE_EXTENSIONS,
         )
 
-        upload_name = name or path.name
-        url = f"{self.BASE_URL}/{self._ad_account_id}/adimages"
+        # Multipart uploads to /adimages were rejected by Meta with
+        # ``FileTypeNotSupported`` (error_subcode 1487411) even when the
+        # multipart body was provably well-formed (correct boundary, image/png
+        # part header, raw magic bytes, no double base64), so the multipart
+        # approach is a dead end for this endpoint. Instead we use the base64
+        # ``bytes`` form-body variant -- the same shape the URL-based
+        # ``upload_ad_image`` path above already uses successfully in production.
+        # Routing through the shared ``_post``/``_request`` machinery adds Meta's
+        # error JSON surfacing, retries, 429 and rate-limit handling, and puts
+        # auth on the Bearer header (no access_token form field).
+        with open(path, "rb") as f:
+            image_bytes = base64.b64encode(f.read()).decode("utf-8")
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            with open(path, "rb") as f:
-                files = {"filename": (upload_name, f, "application/octet-stream")}
-                data = {"access_token": self._access_token}
-                response = await client.post(url, files=files, data=data)
+        data: dict[str, Any] = {"bytes": image_bytes}
 
-        response.raise_for_status()
-        result = response.json()
+        # The file is validated up to 30MB; base64 of that is ~40MB of body, so
+        # keep a 60s timeout rather than the shared client's 30s default so a
+        # large image on a slow link does not time out.
+        result = await self._post(
+            f"/{self._ad_account_id}/adimages",
+            data,
+            timeout=_META_UPLOAD_TIMEOUT_SECONDS,
+        )
 
         images = result.get("images")
         if not images or not isinstance(images, dict):
             return {"error": "Image upload failed"}
 
+        # images is in {<key>: {hash, url}} format; parse by value (the single
+        # entry), so the response key does not matter.
         first_image = next(iter(images.values()))
         return {
             "hash": first_image.get("hash", ""),

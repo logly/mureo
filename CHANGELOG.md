@@ -118,6 +118,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`meta_ads_images_upload_file` returned 400 for every file, and swallowed
+  Meta's error detail.** The ad-image uploader (`upload_ad_image_file`) sent the
+  file as a `multipart/form-data` upload to Graph `/adimages`, which Meta
+  rejected with `FileTypeNotSupported` (`error_subcode` 1487411) for every file
+  regardless of format — even after the multipart body was verified to be
+  provably well-formed (correct boundary, `image/png` part header, raw magic
+  bytes, no double base64). Multipart to this endpoint is a dead end, so the
+  uploader now sends the image via the base64 `bytes` form-body variant — the
+  same shape the URL-based `upload_ad_image` path already uses successfully in
+  production: it reads the file, base64-encodes it, and posts
+  `{"bytes": <base64>}` as a plain form body. Separately, the method built its
+  own one-off `httpx.AsyncClient` and called `raise_for_status()`, so the user
+  only ever saw httpx's generic `Client error '400 Bad Request'` while Meta's
+  real diagnostics were discarded. It now routes through the shared `_request`
+  machinery (retries, 429/backoff and rate-limit monitoring included), and that
+  machinery now surfaces `error_subcode` and `fbtrace_id` alongside the existing
+  `error.message`, so a failed upload reports Meta's actual reason (this
+  error-surfacing portion is field-confirmed working). The upload's auth shape
+  also changed to match the shared machinery: the access token is no longer sent
+  as an `access_token` form field and instead rides the `Authorization: Bearer`
+  header only. The `name` parameter is retained for API compatibility but is no
+  longer transmitted (the `bytes` variant has no documented `name` field).
+
 - **Search Console `site_url` is optional at the schema level so tenant
   auto-resolution works (#447).** Every Search Console tool declared `site_url`
   in its `inputSchema` `required`, so the MCP server rejected an omitted

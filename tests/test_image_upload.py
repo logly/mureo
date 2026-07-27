@@ -7,6 +7,7 @@ MCP tools: meta_ads_images_upload_file, google_ads_assets_upload_image
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 from typing import Any
@@ -29,12 +30,15 @@ def _standalone_account_scoping():
     such a plugin would break these standalone assertions. Neutralize both
     seams; scoped behavior lives in test_account_id_tenant_scope.py.
     """
-    with patch(
-        "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
-        return_value=None,
-    ), patch(
-        "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
-        return_value=None,
+    with (
+        patch(
+            "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+            return_value=None,
+        ),
+        patch(
+            "mureo.mcp._handlers_meta_ads.runtime_meta_account_ids",
+            return_value=None,
+        ),
     ):
         yield
 
@@ -66,69 +70,218 @@ def sample_jpg(tmp_path: Path) -> Path:
     return img
 
 
+def _mock_shared_http(
+    status_code: int = 200, payload: dict[str, Any] | None = None
+) -> Any:
+    """Mock the client's shared ``self._http`` (the ``_request`` seam).
+
+    ``upload_ad_image_file`` routes through the shared ``_request``/``_post``
+    machinery (so Meta's error JSON, retries and rate-limit handling apply)
+    instead of building a one-off ``httpx.AsyncClient``. Tests therefore mock
+    ``client._http.post`` rather than ``_creatives.httpx.AsyncClient``.
+    """
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.json.return_value = payload if payload is not None else {}
+    resp.text = json.dumps(payload if payload is not None else {})
+    resp.headers = {}
+    http = MagicMock()
+    http.post = AsyncMock(return_value=resp)
+    http.get = AsyncMock(return_value=resp)
+    http.delete = AsyncMock(return_value=resp)
+    return http
+
+
 class TestMetaUploadAdImageFile:
-    """Tests for Meta Ads upload_ad_image_file."""
+    """Tests for Meta Ads upload_ad_image_file.
+
+    The uploader sends the image as a base64 ``bytes`` form field (the same
+    shape the URL-based ``upload_ad_image`` path uses in production). Multipart
+    uploads to /adimages were rejected by Meta with ``FileTypeNotSupported``
+    (subcode 1487411) even when provably well-formed, so the multipart approach
+    was abandoned.
+    """
 
     @pytest.mark.asyncio()
     async def test_upload_ad_image_file(
         self, meta_client: Any, sample_image: Path
     ) -> None:
         """Successful upload returns hash/url."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "images": {
-                "test_image.png": {
-                    "hash": "abc123hash",
-                    "url": "https://example.com/image.png",
+        meta_client._http = _mock_shared_http(
+            200,
+            {
+                "images": {
+                    "bytes": {
+                        "hash": "abc123hash",
+                        "url": "https://example.com/image.png",
+                    }
                 }
-            }
-        }
-        mock_response.raise_for_status = MagicMock()
+            },
+        )
 
-        mock_http_client = AsyncMock()
-        mock_http_client.post.return_value = mock_response
-        mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
-        mock_http_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch(
-            "mureo.meta_ads._creatives.httpx.AsyncClient", return_value=mock_http_client
-        ):
-            result = await meta_client.upload_ad_image_file(str(sample_image))
+        result = await meta_client.upload_ad_image_file(str(sample_image))
 
         assert result["hash"] == "abc123hash"
         assert result["url"] == "https://example.com/image.png"
 
     @pytest.mark.asyncio()
-    async def test_upload_ad_image_file_with_name(
+    async def test_upload_ad_image_file_bytes_form_body(
         self, meta_client: Any, sample_image: Path
     ) -> None:
-        """When `name` is provided, that value is used."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "images": {
-                "custom_name.png": {
-                    "hash": "abc123hash",
-                    "url": "https://example.com/image.png",
+        """The file is uploaded as a base64 ``bytes`` form field (not multipart).
+
+        Multipart to /adimages was rejected by Meta with ``FileTypeNotSupported``
+        (subcode 1487411) even when the multipart body was provably well-formed,
+        so the uploader uses the documented base64 ``bytes`` form-body variant --
+        the same shape the URL-based ``upload_ad_image`` path already uses
+        successfully in production.
+        """
+        meta_client._http = _mock_shared_http(
+            200, {"images": {"bytes": {"hash": "h", "url": "u"}}}
+        )
+
+        await meta_client.upload_ad_image_file(str(sample_image))
+
+        _, kwargs = meta_client._http.post.call_args
+        expected_b64 = base64.b64encode(sample_image.read_bytes()).decode("utf-8")
+        # Plain form body carrying only the base64 bytes -- no multipart.
+        assert kwargs["data"] == {"bytes": expected_b64}
+        assert kwargs.get("files") is None
+        # Auth on the Bearer header only; never as an access_token form field.
+        assert kwargs["headers"]["Authorization"] == "Bearer test-token"
+        assert "access_token" not in kwargs["data"]
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_image_file_name_not_sent_on_wire(
+        self, meta_client: Any, sample_image: Path
+    ) -> None:
+        """``name`` is accepted for API compatibility but not transmitted.
+
+        The base64 ``bytes`` variant of /adimages has no documented ``name``
+        form field, so the parameter is kept in the signature but dropped from
+        the request body.
+        """
+        meta_client._http = _mock_shared_http(
+            200, {"images": {"bytes": {"hash": "h", "url": "u"}}}
+        )
+
+        await meta_client.upload_ad_image_file(str(sample_image), name="my custom name")
+
+        _, kwargs = meta_client._http.post.call_args
+        assert list(kwargs["data"].keys()) == ["bytes"]
+        assert "my custom name" not in str(kwargs["data"])
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_image_file_uses_60s_timeout(
+        self, meta_client: Any, sample_image: Path
+    ) -> None:
+        """The upload is issued with the explicit 60s per-request timeout.
+
+        validate_image_file allows files up to 30MB; base64 of that is ~40MB of
+        body, and the shared client's default timeout is only 30s. Routing
+        uploads through _request must not drop the previous standalone 60s
+        timeout, or a large image on a slow link that used to succeed would now
+        time out.
+        """
+        meta_client._http = _mock_shared_http(
+            200, {"images": {"bytes": {"hash": "h", "url": "u"}}}
+        )
+
+        await meta_client.upload_ad_image_file(str(sample_image))
+
+        _, kwargs = meta_client._http.post.call_args
+        assert kwargs["timeout"] == 60.0
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_image_file_retry_resends_body(
+        self, meta_client: Any, sample_image: Path
+    ) -> None:
+        """A 429-then-200 retry re-sends the identical, non-empty base64 body.
+
+        ``_request`` reuses the same ``data`` dict across retry attempts; both
+        attempts must carry the full base64 image body.
+        """
+        resp_429 = MagicMock()
+        resp_429.status_code = 429
+        resp_429.headers = {}
+        resp_429.json.return_value = {}
+        resp_200 = MagicMock()
+        resp_200.status_code = 200
+        resp_200.headers = {}
+        resp_200.json.return_value = {"images": {"bytes": {"hash": "h", "url": "u"}}}
+        responses = [resp_429, resp_200]
+
+        sent_bodies: list[str] = []
+
+        def _capture(*_args: Any, **kwargs: Any) -> Any:
+            sent_bodies.append(kwargs["data"]["bytes"])
+            return responses.pop(0)
+
+        meta_client._http = MagicMock()
+        meta_client._http.post = AsyncMock(side_effect=_capture)
+
+        # Don't actually sleep through the 429 backoff.
+        with patch("mureo.meta_ads.client.asyncio.sleep", new=AsyncMock()):
+            result = await meta_client.upload_ad_image_file(str(sample_image))
+
+        expected_b64 = base64.b64encode(sample_image.read_bytes()).decode("utf-8")
+        assert result == {"hash": "h", "url": "u"}
+        assert len(sent_bodies) == 2  # 429 attempt + 200 retry
+        assert sent_bodies[0] == expected_b64  # non-empty, full body
+        assert sent_bodies[0] == sent_bodies[1]  # identical on retry
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_image_file_non_ascii_path(
+        self, meta_client: Any, tmp_path: Path
+    ) -> None:
+        """A non-ASCII file path still uploads and parses back.
+
+        The filename never travels on the wire in the ``bytes`` variant (only
+        the base64 content does), so a Japanese path must upload fine.
+        """
+        img = tmp_path / "テスト画像.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+        meta_client._http = _mock_shared_http(
+            200, {"images": {"bytes": {"hash": "jp-hash", "url": "jp-url"}}}
+        )
+
+        result = await meta_client.upload_ad_image_file(str(img))
+
+        assert result == {"hash": "jp-hash", "url": "jp-url"}
+        _, kwargs = meta_client._http.post.call_args
+        expected_b64 = base64.b64encode(img.read_bytes()).decode("utf-8")
+        assert kwargs["data"]["bytes"] == expected_b64
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_image_file_surfaces_meta_error(
+        self, meta_client: Any, sample_image: Path
+    ) -> None:
+        """A 400 carrying Meta's error JSON surfaces message + fbtrace_id.
+
+        Regression for the error-swallowing complaint: the old code called
+        ``response.raise_for_status()`` directly, so the user only ever saw
+        httpx's generic ``Client error '400 Bad Request'`` and Meta's real
+        diagnostics (error.message / error_subcode / fbtrace_id) were lost.
+        Routing through ``_request`` must surface them.
+        """
+        meta_client._http = _mock_shared_http(
+            400,
+            {
+                "error": {
+                    "message": "Invalid parameter",
+                    "error_subcode": 1487411,
+                    "fbtrace_id": "AbCdEf123XYZ",
                 }
-            }
-        }
-        mock_response.raise_for_status = MagicMock()
+            },
+        )
 
-        mock_http_client = AsyncMock()
-        mock_http_client.post.return_value = mock_response
-        mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
-        mock_http_client.__aexit__ = AsyncMock(return_value=False)
+        with pytest.raises(RuntimeError) as excinfo:
+            await meta_client.upload_ad_image_file(str(sample_image))
 
-        with patch(
-            "mureo.meta_ads._creatives.httpx.AsyncClient", return_value=mock_http_client
-        ):
-            result = await meta_client.upload_ad_image_file(
-                str(sample_image), name="custom_name.png"
-            )
-
-        assert result["hash"] == "abc123hash"
+        message = str(excinfo.value)
+        assert "status=400" in message
+        assert "Invalid parameter" in message
+        assert "AbCdEf123XYZ" in message
 
     @pytest.mark.asyncio()
     async def test_upload_ad_image_file_not_found(self, meta_client: Any) -> None:
@@ -173,26 +326,21 @@ class TestMetaUploadAdImageFile:
     async def test_upload_ad_image_file_supported_formats(
         self, meta_client: Any, tmp_path: Path
     ) -> None:
-        """jpg, jpeg, png, gif, bmp, tiff are all allowed."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"images": {"img": {"hash": "h", "url": "u"}}}
-        mock_response.raise_for_status = MagicMock()
-
-        mock_http_client = AsyncMock()
-        mock_http_client.post.return_value = mock_response
-        mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
-        mock_http_client.__aexit__ = AsyncMock(return_value=False)
-
+        """jpg, jpeg, png, gif, bmp, tiff all upload as base64 ``bytes``."""
         for ext in ("jpg", "jpeg", "png", "gif", "bmp", "tiff"):
             img = tmp_path / f"test.{ext}"
-            img.write_bytes(b"\x00" * 100)
-            with patch(
-                "mureo.meta_ads._creatives.httpx.AsyncClient",
-                return_value=mock_http_client,
-            ):
-                result = await meta_client.upload_ad_image_file(str(img))
-                assert "hash" in result
+            content = b"\x00" * 100
+            img.write_bytes(content)
+            meta_client._http = _mock_shared_http(
+                200, {"images": {"bytes": {"hash": "h", "url": "u"}}}
+            )
+            result = await meta_client.upload_ad_image_file(str(img))
+            assert "hash" in result
+            _, kwargs = meta_client._http.post.call_args
+            assert kwargs["data"] == {
+                "bytes": base64.b64encode(content).decode("utf-8")
+            }
+            assert kwargs.get("files") is None
 
 
 # ---------------------------------------------------------------------------
