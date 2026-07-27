@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Cross-platform allocation & learning-state diagnostic discipline.** The
+  pro-diagnosis framework catalogue (`skills/_mureo-pro-diagnosis`) gains an
+  *Allocation & Learning-State Discipline* section covering three principles
+  that hold identically on Meta and Google Ads: **judge by marginal efficiency,
+  not averages** (a bad average is a candidate, not a verdict — saturated
+  winners scale badly and suppressed losers look worse than they are);
+  **respect learning states** (a Meta ad set in its learning phase or a Google
+  Ads bid strategy in "Learning" is Watch-only, its cost per result is not
+  steady-state, and edits that reset the clock need a reason worth the reset —
+  prefer target steps of ~20% or less); and **don't hand-optimize inside an
+  auto-allocated unit** (per-breakdown rows are outcomes of the platform's own
+  allocation, not levers — Smart Bidding ignores manual bid adjustments except
+  a −100% device opt-out, so cutting an expensive-looking row shrinks the
+  optimizer's inventory rather than redirecting its budget). Each principle
+  ships with per-platform manifestations and "what to say instead" phrasing for
+  recommendations. Guard notes pointing back at the section were added across
+  the operational skills: `daily-check` (learning-state entities are Watch, not
+  Action-needed), `budget-rebalance` (every reallocation reason must be
+  marginal, not an average ranking), `audience-review` (no breakdown-average
+  exclusions; validate via `/experiment` and act at the platform's optimization
+  unit), `ad-fatigue-check` (learning-phase instability is not creative
+  fatigue), and `search-term-cleanup` (systematic waste vs low-volume terms with
+  a bad average). `/experiment` now advertises breakdown-exclusion and
+  reallocation hypotheses as things it validates.
+
 ## [0.10.30] - 2026-07-27
 
 ### Added

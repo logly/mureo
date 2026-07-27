@@ -47,6 +47,8 @@ Run a daily health check on all marketing accounts using the strategy context.
    - **CREATIVE_TESTING**: Audit ad asset performance across all platforms. Flag underperforming creatives.
    - **LTV_QUALITY_FOCUS**: Review search term quality and audience alignment across all platforms.
 
+   **Learning-state guard (all modes)**: An entity inside a platform learning state — a Meta ad set in its learning phase, a Google Ads bid strategy showing "Learning" after a strategy or target change — is **Watch at most, never Action needed on efficiency grounds**. Its cost per result is not steady-state, so do not read it as performance and do not propose edits that would reset the clock. See `../_mureo-pro-diagnosis/SKILL.md` → *Allocation & Learning-State Discipline*.
+
 6. **Organic search pulse** (if Search Console is available): Check top organic queries for the site. Identify any organic ranking drops that may need paid coverage, or organic gains where paid spend can be reduced.
 
 7. **On-site behavior check** (if GA4 is available): Correlate ad platform metrics with on-site behavior — LP conversion rates, bounce rates, session quality. Flag discrepancies between ad platform and GA4 conversion data.
