@@ -534,3 +534,46 @@ class TestMetaSystemUserTokenKeys:
         data = _load_i18n()
         for key in self._KEYS:
             assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+
+@pytest.mark.unit
+class TestMetaConnectionMethodChooserKeys:
+    """The Meta auth step's either/or connection-method chooser.
+
+    Purely ADDITIVE to the #458 key set above — the token card's own keys
+    keep their names because a downstream extension binds to the
+    ``wizard.auth.meta_token_account`` prefix.
+    """
+
+    _KEYS = (
+        "wizard.auth.meta_method_chooser_title",
+        "wizard.auth.meta_method_chooser_subtitle",
+        "wizard.auth.meta_method_recommended_badge",
+        "wizard.auth.meta_method_token_title",
+        "wizard.auth.meta_method_token_desc",
+        "wizard.auth.meta_method_oauth_title",
+        "wizard.auth.meta_method_oauth_desc",
+    )
+
+    def test_keys_present_and_nonempty_in_both_locales(self) -> None:
+        data = _load_i18n()
+        for locale in ("en", "ja"):
+            block = data[locale]
+            for key in self._KEYS:
+                assert key in block, f"{key} missing from i18n.json '{locale}'"
+                assert (
+                    isinstance(block[key], str) and block[key].strip()
+                ), f"{key} empty in '{locale}'"
+
+    def test_keys_are_distinct_translations(self) -> None:
+        data = _load_i18n()
+        for key in self._KEYS:
+            assert data["en"][key] != data["ja"][key], f"{key} not localized"
+
+    def test_subtitle_states_only_one_path_is_needed(self) -> None:
+        """The subline is the whole point of the restructure: the two paths
+        are alternatives, not steps."""
+        data = _load_i18n()
+        key = "wizard.auth.meta_method_chooser_subtitle"
+        assert "not need both" in data["en"][key]
+        assert "どちらか一方" in data["ja"][key]

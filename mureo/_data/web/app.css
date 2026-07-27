@@ -549,6 +549,105 @@ a {
   color: var(--ink-soft);
 }
 
+/* ---- Meta connection-method chooser --------------------------------- */
+/* Two mutually exclusive auth paths presented as an explicit either/or.
+   A framework-free radiogroup (role + aria-checked on plain divs), styled
+   in the same hairline-card / accent-ring language as .reports-client-card
+   so it reads as one system. Tokens only — dark mode follows for free. */
+.auth-method-chooser {
+  margin: 18px 0 14px;
+}
+
+.auth-method-chooser-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.auth-method-chooser-sub {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.auth-method-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.auth-method-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 13px 14px;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+}
+
+.auth-method-option:hover {
+  border-color: var(--hairline-strong);
+}
+
+.auth-method-option:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+.auth-method-option[aria-checked="true"] {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.auth-method-option-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.auth-method-option-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.auth-method-option-badge {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  background: var(--success-tint);
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.auth-method-option-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* `.auth-method-panel` deliberately carries NO `display`, so the UA rule
+   `[hidden] { display: none }` alone keeps both flows off screen until an
+   option is picked. Giving the class a display later would override that and
+   the panel would then need its own targeted hidden rule — the same trap the
+   button and toast hidden rules further down this file document. */
+
+/* The chooser reveals the token card already expanded, so its disclosure
+   toggle is redundant chrome — quieted down, never removed (it stays the
+   card's summary element and a pinned downstream hook). */
+.meta-token-card-summary {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+}
+
 /* ---- dashboard ------------------------------------------------------ */
 .dashboard {
   padding: clamp(26px, 4vw, 40px);

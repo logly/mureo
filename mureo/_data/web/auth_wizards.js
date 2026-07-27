@@ -800,14 +800,42 @@
           btn.disabled = false;
         }
       });
-      wrap.appendChild(btn);
-      wrap.appendChild(status);
-
-      // #458: Live-mode Meta apps cannot complete localhost OAuth and
-      // dev-mode apps cannot create creatives (subcode 1885183). Offer a
-      // first-class "paste a system-user token" path next to the button.
       if (slot.oauthProvider === "meta") {
-        wrap.appendChild(buildMetaTokenCard(onAllDone));
+        // #458 / field feedback: the two Meta auth paths are mutually
+        // exclusive ALTERNATIVES, not a primary plus a fallback. A Live-mode
+        // app can never complete localhost OAuth (Facebook rejects the
+        // redirect) and a Development-mode app cannot create creatives
+        // (subcode 1885183). Rendering the Facebook button up front with the
+        // token card collapsed underneath made token-bound operators click
+        // the loud button and dead-end, so the step now opens with an
+        // explicit either/or chooser and reveals ONLY the chosen flow.
+        //
+        // Both panels are built once and toggled, so switching options does
+        // not discard a token the operator already typed.
+        const oauthPanel = document.createElement("div");
+        oauthPanel.className = "auth-method-panel";
+        oauthPanel.setAttribute("data-auth-method-panel", "oauth");
+        oauthPanel.hidden = true;
+        oauthPanel.appendChild(btn);
+        oauthPanel.appendChild(status);
+
+        const tokenCard = buildMetaTokenCard(onAllDone);
+        const tokenPanel = document.createElement("div");
+        tokenPanel.className = "auth-method-panel";
+        tokenPanel.setAttribute("data-auth-method-panel", "token");
+        tokenPanel.hidden = true;
+        tokenPanel.appendChild(tokenCard);
+
+        // Chooser FIRST, then the panels — the pollOAuth timeout hint tells
+        // the operator to switch to the token option *above*.
+        wrap.appendChild(
+          buildMetaMethodChooser(tokenPanel, oauthPanel, tokenCard)
+        );
+        wrap.appendChild(tokenPanel);
+        wrap.appendChild(oauthPanel);
+      } else {
+        wrap.appendChild(btn);
+        wrap.appendChild(status);
       }
     }
 
@@ -816,14 +844,202 @@
     return wrap;
   }
 
+  // The two Meta connection methods, in the order the operator sees them.
+  // The system-user token leads and carries the Recommended badge: it is the
+  // only path that works for a Live-mode app, which is the common case once
+  // an account leaves development.
+  const META_AUTH_METHODS = [
+    {
+      method: "token",
+      titleKey: "wizard.auth.meta_method_token_title",
+      descKey: "wizard.auth.meta_method_token_desc",
+      badgeKey: "wizard.auth.meta_method_recommended_badge",
+    },
+    {
+      method: "oauth",
+      titleKey: "wizard.auth.meta_method_oauth_title",
+      descKey: "wizard.auth.meta_method_oauth_desc",
+      badgeKey: null,
+    },
+  ];
+
+  const META_CHOOSER_TITLE_ID = "meta-method-chooser-title";
+
+  // Heading, subline and the (empty) radiogroup the option cards go into.
+  function buildChooserFrame() {
+    const chooser = document.createElement("div");
+    chooser.className = "auth-method-chooser";
+
+    const heading = document.createElement("h4");
+    heading.className = "auth-method-chooser-title";
+    heading.id = META_CHOOSER_TITLE_ID;
+    heading.textContent = MUREO.t("wizard.auth.meta_method_chooser_title");
+    heading.setAttribute("data-i18n", "wizard.auth.meta_method_chooser_title");
+    chooser.appendChild(heading);
+
+    const sub = document.createElement("p");
+    sub.className = "auth-method-chooser-sub";
+    sub.textContent = MUREO.t("wizard.auth.meta_method_chooser_subtitle");
+    sub.setAttribute("data-i18n", "wizard.auth.meta_method_chooser_subtitle");
+    chooser.appendChild(sub);
+
+    const group = document.createElement("div");
+    group.className = "auth-method-options";
+    group.setAttribute("role", "radiogroup");
+    // Labelled by the heading NODE rather than an aria-label string, so the
+    // locale switcher (applyTranslations rewrites [data-i18n] text) keeps the
+    // accessible name in sync for free.
+    group.setAttribute("aria-labelledby", META_CHOOSER_TITLE_ID);
+    chooser.appendChild(group);
+
+    return { chooser: chooser, group: group };
+  }
+
+  // Title row (+ optional Recommended badge) and description. Each string is
+  // its own leaf node: applyTranslations assigns textContent to every
+  // [data-i18n] element, so a key on the card itself would wipe its children
+  // on a locale switch.
+  function fillMethodOptionCard(card, spec) {
+    const head = document.createElement("div");
+    head.className = "auth-method-option-head";
+    const title = document.createElement("span");
+    title.className = "auth-method-option-title";
+    title.textContent = MUREO.t(spec.titleKey);
+    title.setAttribute("data-i18n", spec.titleKey);
+    head.appendChild(title);
+    if (spec.badgeKey) {
+      const badge = document.createElement("span");
+      badge.className = "auth-method-option-badge";
+      badge.textContent = MUREO.t(spec.badgeKey);
+      badge.setAttribute("data-i18n", spec.badgeKey);
+      head.appendChild(badge);
+    }
+    card.appendChild(head);
+
+    const desc = document.createElement("span");
+    desc.className = "auth-method-option-desc";
+    desc.textContent = MUREO.t(spec.descKey);
+    desc.setAttribute("data-i18n", spec.descKey);
+    card.appendChild(desc);
+  }
+
+  // The WAI-ARIA radio keyboard contract: Space/Enter select, arrows step,
+  // Home/End jump to the edges. Unhandled keys fall through untouched.
+  function handleMethodOptionKey(ev, method, handlers) {
+    const key = ev.key;
+    if (key === " " || key === "Spacebar" || key === "Enter") {
+      handlers.select(method);
+    } else if (key === "ArrowDown" || key === "ArrowRight") {
+      handlers.moveFocus(1);
+    } else if (key === "ArrowUp" || key === "ArrowLeft") {
+      handlers.moveFocus(-1);
+    } else if (key === "Home") {
+      handlers.toEdge(0);
+    } else if (key === "End") {
+      handlers.toEdge(-1);
+    } else {
+      return;
+    }
+    ev.preventDefault();
+  }
+
+  // One option card. `handlers` supplies the group-level behavior the card
+  // cannot know about: {select(method), moveFocus(delta), toEdge(index)}.
+  function buildMethodOptionCard(spec, index, handlers) {
+    const card = document.createElement("div");
+    card.className = "auth-method-option";
+    card.setAttribute("role", "radio");
+    card.setAttribute("aria-checked", "false");
+    card.setAttribute("data-auth-method", spec.method);
+    // With no radio checked, the first option is the group's tab stop.
+    card.tabIndex = index === 0 ? 0 : -1;
+    fillMethodOptionCard(card, spec);
+
+    card.addEventListener("click", function () {
+      // Safari does not focus a clicked tabindex div, which would leave the
+      // roving-tabindex "current" item behind the visible selection and make
+      // the next arrow key step from the wrong place.
+      card.focus();
+      handlers.select(spec.method);
+    });
+    card.addEventListener("keydown", function (ev) {
+      handleMethodOptionKey(ev, spec.method, handlers);
+    });
+    return card;
+  }
+
+  function buildMetaMethodChooser(tokenPanel, oauthPanel, tokenCard) {
+    // Framework-free radiogroup: plain divs carrying role/aria-checked and a
+    // roving tabindex, so it behaves like a native radio group for keyboard
+    // and screen-reader users without pulling in a UI library.
+    const frame = buildChooserFrame();
+    const cards = [];
+    // NOTHING is preselected — this is the actual fix. Any default makes one
+    // path look like "the" path, which is exactly how token-bound operators
+    // ended up in the OAuth dead end.
+    let selectedMethod = null;
+
+    function select(method) {
+      selectedMethod = method;
+      cards.forEach(function (card) {
+        const isOn = card.getAttribute("data-auth-method") === selectedMethod;
+        card.setAttribute("aria-checked", isOn ? "true" : "false");
+        // Roving tabindex: the checked option is the group's single tab stop.
+        card.tabIndex = isOn ? 0 : -1;
+      });
+      // Both panels are derived from the selection rather than one being
+      // toggled, so re-picking the same option is idempotent and switching
+      // swaps the visible flow instead of stacking a second one.
+      tokenPanel.hidden = method !== "token";
+      oauthPanel.hidden = method !== "oauth";
+      // The token flow is the destination, not another disclosure to hunt
+      // for — reveal the card already expanded.
+      if (method === "token" && tokenCard) tokenCard.open = true;
+    }
+
+    function focusCard(card) {
+      card.focus();
+      select(card.getAttribute("data-auth-method"));
+    }
+
+    function moveFocus(delta) {
+      const current = cards.indexOf(document.activeElement);
+      focusCard(current === -1
+        ? cards[0]
+        : cards[(current + delta + cards.length) % cards.length]);
+    }
+
+    // Home/End: index 0 or -1 (last), completing the WAI-ARIA radio pattern.
+    function toEdge(index) {
+      focusCard(index < 0 ? cards[cards.length - 1] : cards[index]);
+    }
+
+    const handlers = { select: select, moveFocus: moveFocus, toEdge: toEdge };
+    META_AUTH_METHODS.forEach(function (spec, index) {
+      const card = buildMethodOptionCard(spec, index, handlers);
+      cards.push(card);
+      frame.group.appendChild(card);
+    });
+
+    return frame.chooser;
+  }
+
   function buildMetaTokenCard(onDone) {
-    // Collapsible secondary option: paste a Business Manager system-user
-    // token instead of running the browser OAuth. Framework-free — a native
-    // <details> element, plain inputs, and MUREO.postJson to the #458 route.
+    // Paste a Business Manager system-user token instead of running the
+    // browser OAuth. Framework-free — a native <details> element, plain
+    // inputs, and MUREO.postJson to the #458 route.
+    //
+    // Still a <details class="meta-token-card">: the chooser opens it on
+    // selection, and downstream extensions locate the card (and its optional
+    // account picker) through exactly this tag + class.
     const details = document.createElement("details");
     details.className = "meta-token-card";
 
     const summary = document.createElement("summary");
+    // De-emphasized, not removed: the chooser already reveals the card
+    // expanded, so the toggle is redundant chrome — but it stays in the DOM
+    // as the disclosure control and as a pinned downstream hook.
+    summary.className = "meta-token-card-summary";
     summary.textContent = MUREO.t("wizard.auth.meta_token_card_title");
     summary.setAttribute("data-i18n", "wizard.auth.meta_token_card_title");
     details.appendChild(summary);
