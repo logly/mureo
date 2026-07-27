@@ -64,6 +64,8 @@ from mureo.mcp._handlers_meta_ads import (
     handle_products_get,
     handle_products_list,
     handle_products_update,
+    handle_videos_get,
+    handle_videos_thumbnails,
     handle_videos_upload,
     handle_videos_upload_file,
 )
@@ -236,6 +238,8 @@ _HANDLERS: dict[str, Any] = {
     # Videos
     "meta_ads_videos_upload": handle_videos_upload,
     "meta_ads_videos_upload_file": handle_videos_upload_file,
+    "meta_ads_videos_get": handle_videos_get,
+    "meta_ads_videos_thumbnails": handle_videos_thumbnails,
     # Creatives
     "meta_ads_creatives_list": handle_creatives_list,
     "meta_ads_creatives_create": handle_creatives_create,

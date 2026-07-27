@@ -54,9 +54,9 @@ class TestMetaAdsToolDefinitions:
     """Verify the Meta Ads tool list is defined correctly."""
 
     def test_tool_count(self) -> None:
-        """All 86 tools are defined (84 + targeting search / categories)."""
+        """All 88 tools are defined (86 + videos get / thumbnails)."""
         mod = _import_meta_ads_tools()
-        assert len(mod.TOOLS) == 86
+        assert len(mod.TOOLS) == 88
 
     def test_bidding_control_schema_properties(self) -> None:
         """The four touched write tools expose the new bidding-control

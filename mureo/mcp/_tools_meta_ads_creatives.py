@@ -74,15 +74,25 @@ TOOLS: list[Tool] = [
     Tool(
         name="meta_ads_creatives_create",
         description=(
-            "Creates a single-image Meta Ads AdCreative. Returns the new "
-            "creative's id and object_story_id. Mutating — not "
+            "Creates a single image or video Meta Ads AdCreative. Returns "
+            "the new creative's id and object_story_id. Mutating — not "
             "automatically reversible; record before-state with "
             "mureo_state_action_log_append if you may need to roll back. "
-            "Supply "
+            "Image mode: supply "
             "exactly one of image_url or image_hash — image_url triggers "
             "Meta to fetch and host the image; image_hash references an "
             "image already uploaded via meta_ads_creatives_upload_image or "
-            "meta_ads_images_upload_file. For multi-image carousels use "
+            "meta_ads_images_upload_file. Video mode: supply video_id plus "
+            "exactly one of video_thumbnail_image_hash / "
+            "video_thumbnail_image_url — Meta requires a thumbnail on every "
+            "video creative. The video must already be fully processed: "
+            "poll meta_ads_videos_get until status.video_status reports "
+            "ready (typically a few minutes after upload), and pick a "
+            "thumbnail via meta_ads_videos_thumbnails. Video and image "
+            "parameters are mutually exclusive. Video mode also REQUIRES "
+            "call_to_action: Meta's video_data has no link field, so the "
+            "destination is carried inside the CTA and a video creative "
+            "without one is rejected. For multi-image carousels use "
             "meta_ads_creatives_create_carousel; for dynamic / automatic "
             "optimization use meta_ads_creatives_create_dynamic."
         ),
@@ -123,26 +133,66 @@ TOOLS: list[Tool] = [
                         "with image_url."
                     ),
                 },
+                "video_id": {
+                    "type": "string",
+                    "description": (
+                        "Pre-uploaded video ID from "
+                        "meta_ads_videos_upload / "
+                        "meta_ads_videos_upload_file. Switches the "
+                        "creative to video mode "
+                        "(object_story_spec.video_data). The video must be "
+                        "fully processed first — poll meta_ads_videos_get. "
+                        "Mutually exclusive with image_url / image_hash. "
+                        "Setting it makes two otherwise-optional "
+                        "parameters mandatory: one of the "
+                        "video_thumbnail_image_* parameters, and "
+                        "call_to_action."
+                    ),
+                },
+                "video_thumbnail_image_hash": {
+                    "type": "string",
+                    "description": (
+                        "Thumbnail image hash for the video creative, from "
+                        "meta_ads_creatives_upload_image / "
+                        "meta_ads_images_upload_file. Requires video_id; "
+                        "mutually exclusive with "
+                        "video_thumbnail_image_url."
+                    ),
+                },
+                "video_thumbnail_image_url": {
+                    "type": "string",
+                    "description": (
+                        "Thumbnail image URL for the video creative — "
+                        "typically a uri from meta_ads_videos_thumbnails "
+                        "(prefer the entry flagged is_preferred). Requires "
+                        "video_id; mutually exclusive with "
+                        "video_thumbnail_image_hash."
+                    ),
+                },
                 "message": {
                     "type": "string",
                     "description": (
-                        "Primary ad body text shown above the image. "
-                        "Plain text, emoji allowed. Meta recommends ≤125 "
-                        "characters to avoid truncation on mobile."
+                        "Primary ad body text shown above the image or "
+                        "video. Plain text, emoji allowed. Meta recommends "
+                        "≤125 characters to avoid truncation on mobile."
                     ),
                 },
                 "headline": {
                     "type": "string",
                     "description": (
-                        "Headline shown below the image. ~40 characters "
-                        "fits most placements without truncation."
+                        "Headline shown below the media. ~40 characters "
+                        "fits most placements without truncation. Maps to "
+                        "link_data.name in image mode and video_data.title "
+                        "in video mode."
                     ),
                 },
                 "description": {
                     "type": "string",
                     "description": (
                         "Description / link-caption text shown below the "
-                        "headline. Optional; not all placements render it."
+                        "headline. Optional; not all placements render it. "
+                        "Maps to link_data.description in image mode and "
+                        "video_data.link_description in video mode."
                     ),
                 },
                 "call_to_action": {
@@ -158,7 +208,14 @@ TOOLS: list[Tool] = [
                         "BOOK_TRAVEL",
                         "APPLY_NOW",
                     ],
-                    "description": _CTA_DESCRIPTION,
+                    "description": (
+                        _CTA_DESCRIPTION + " REQUIRED when video_id is set: "
+                        "the destination link is carried inside this button "
+                        "(video_data.call_to_action.value.link) because "
+                        "Meta's video_data has no link field of its own. "
+                        "link_url is filled in there automatically — pass "
+                        "only the button label."
+                    ),
                 },
             },
             "required": ["name", "page_id", "link_url"],
@@ -603,10 +660,13 @@ TOOLS: list[Tool] = [
             "Uploads a video to the Meta Ads account by fetching it from "
             "a public HTTPS URL. Returns the video_id to reference in "
             "creative-construction tools. Mutating — the asset is "
-            "persisted. Meta performs asynchronous processing after "
-            "upload; newly-uploaded videos may take a few minutes before "
-            "they can be attached to ads. For uploads from local files "
-            "use meta_ads_videos_upload_file."
+            "persisted. Meta fetches the URL itself and then processes "
+            "the video asynchronously: poll meta_ads_videos_get until "
+            "status.video_status reports ready (typically a few minutes) "
+            "before attaching it to a creative. Supported formats: MP4, "
+            "MOV, AVI, WMV, MKV, up to 1 GB via this tool; larger files "
+            "need resumable upload (not yet supported). For uploads from "
+            "local files use meta_ads_videos_upload_file."
         ),
         inputSchema={
             "type": "object",
@@ -617,7 +677,8 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Public HTTPS URL of the video. Meta fetches it "
                         "once at upload time. Supported formats: MP4, "
-                        "MOV. Recommended max 4 GB."
+                        "MOV, AVI, WMV, MKV, up to 1 GB; larger files "
+                        "need resumable upload (not yet supported)."
                     ),
                 },
                 "title": {
@@ -638,9 +699,12 @@ TOOLS: list[Tool] = [
             "Uploads a video from a local file path to the Meta Ads "
             "account library. Returns the video_id to reference in "
             "creative-construction tools. Mutating. Meta processes the "
-            "video asynchronously after upload — allow a few minutes "
-            "before attaching the video to ads. For uploads from public "
-            "URLs use meta_ads_videos_upload."
+            "video asynchronously after upload — poll meta_ads_videos_get "
+            "until status.video_status reports ready (typically a few "
+            "minutes) before attaching it to a creative. Supported "
+            "formats: MP4, MOV, AVI, WMV, MKV, up to 1 GB via this tool; "
+            "larger files need resumable upload (not yet supported). For "
+            "uploads from public URLs use meta_ads_videos_upload."
         ),
         inputSchema={
             "type": "object",
@@ -650,7 +714,9 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Path to the video file on the agent's filesystem. "
-                        "Supported formats: MP4, MOV. Recommended max 4 GB."
+                        "Supported formats: MP4, MOV, AVI, WMV, MKV, up "
+                        "to 1 GB; larger files need resumable upload (not "
+                        "yet supported)."
                     ),
                 },
                 "title": {
@@ -662,6 +728,67 @@ TOOLS: list[Tool] = [
                 },
             },
             "required": ["file_path"],
+            "additionalProperties": False,
+        },
+    ),
+    # === Video read (processing status / thumbnails) ===
+    Tool(
+        name="meta_ads_videos_get",
+        description=(
+            "Gets an uploaded video's processing status and metadata "
+            "(status, id, title, length, created_time). Read-only — does "
+            "not modify the account. Meta processes uploads "
+            "asynchronously and rejects creatives that reference a video "
+            "still in progress, so poll this tool until the nested "
+            "status object reports the video is ready "
+            "(status.video_status, with per-stage detail in "
+            "status.processing_phase) before calling "
+            "meta_ads_creatives_create with video_id. Typical processing "
+            "takes minutes, scaling with file size and length. Once "
+            "ready, pick a thumbnail via meta_ads_videos_thumbnails."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "video_id": {
+                    "type": "string",
+                    "description": (
+                        "Video ID returned by meta_ads_videos_upload / "
+                        "meta_ads_videos_upload_file."
+                    ),
+                },
+            },
+            "required": ["video_id"],
+            "additionalProperties": False,
+        },
+    ),
+    Tool(
+        name="meta_ads_videos_thumbnails",
+        description=(
+            "Lists the thumbnails Meta auto-generated for an uploaded "
+            "video. Returns id, uri, is_preferred, height, and width per "
+            "thumbnail. Read-only — does not modify the account. Pick one "
+            "(prefer the entry with is_preferred true) and pass its uri "
+            "as video_thumbnail_image_url to "
+            "meta_ads_creatives_create. Thumbnails only exist once "
+            "processing has finished, so check meta_ads_videos_get "
+            "first — an empty list usually means the video is still "
+            "processing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "account_id": _ACCOUNT_ID_PARAM,
+                "video_id": {
+                    "type": "string",
+                    "description": (
+                        "Video ID returned by meta_ads_videos_upload / "
+                        "meta_ads_videos_upload_file."
+                    ),
+                },
+            },
+            "required": ["video_id"],
             "additionalProperties": False,
         },
     ),

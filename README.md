@@ -986,12 +986,14 @@ Add to `.cursor/mcp.json`:
 | `meta_ads_leads_get` | Get leads (per form) |
 | `meta_ads_leads_get_by_ad` | Get leads (per ad) |
 
-**Videos (2)**
+**Videos (4)**
 
 | Tool | Description |
 |------|-------------|
 | `meta_ads_videos_upload` | Upload a video from URL |
 | `meta_ads_videos_upload_file` | Upload a video from local file |
+| `meta_ads_videos_get` | Get video processing status / metadata |
+| `meta_ads_videos_thumbnails` | List auto-generated video thumbnails |
 
 **Split Tests (4)**
 

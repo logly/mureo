@@ -49,56 +49,63 @@ metadata:
 | 29 | `meta_ads_audiences_create` | Audience | Write | Create a custom audience |
 | 30 | `meta_ads_audiences_delete` | Audience | Write | Delete a custom audience |
 | 31 | `meta_ads_audiences_create_lookalike` | Audience | Write | Create a lookalike audience |
-| 32 | `meta_ads_pixels_list` | Pixel | Read | List pixels |
-| 33 | `meta_ads_pixels_get` | Pixel | Read | Get pixel details |
-| 34 | `meta_ads_pixels_stats` | Pixel | Read | Get pixel firing statistics |
-| 35 | `meta_ads_pixels_events` | Pixel | Read | List pixel events |
-| 36 | `meta_ads_conversions_send` | CAPI | Write | Send conversion events (generic) |
-| 37 | `meta_ads_conversions_send_purchase` | CAPI | Write | Send a purchase event |
-| 38 | `meta_ads_conversions_send_lead` | CAPI | Write | Send a lead event |
-| 39 | `meta_ads_creatives_list` | Creative | Read | List ad creatives |
-| 40 | `meta_ads_creatives_create` | Creative | Write | Create a standard ad creative |
-| 41 | `meta_ads_creatives_create_dynamic` | Creative | Write | Create a dynamic product ad creative |
-| 42 | `meta_ads_creatives_upload_image` | Creative | Write | Upload an image for use in creatives |
-| 43 | `meta_ads_creatives_create_carousel` | Creative | Write | Create a carousel creative (2-10 cards) |
-| 44 | `meta_ads_creatives_create_collection` | Creative | Write | Create a collection creative |
-| 45 | `meta_ads_images_upload_file` | Image | Write | Upload an image from local file |
-| 46 | `meta_ads_catalogs_list` | Catalog | Read | List product catalogs |
-| 47 | `meta_ads_catalogs_get` | Catalog | Read | Get catalog details |
-| 48 | `meta_ads_catalogs_create` | Catalog | Write | Create a product catalog |
-| 49 | `meta_ads_catalogs_delete` | Catalog | Write | Delete a product catalog |
-| 50 | `meta_ads_products_list` | Catalog | Read | List products in a catalog |
-| 51 | `meta_ads_products_get` | Catalog | Read | Get product details |
-| 52 | `meta_ads_products_add` | Catalog | Write | Add a product to a catalog |
-| 53 | `meta_ads_products_update` | Catalog | Write | Update a product |
-| 54 | `meta_ads_products_delete` | Catalog | Write | Delete a product |
-| 55 | `meta_ads_feeds_list` | Catalog | Read | List feeds for a catalog |
-| 56 | `meta_ads_feeds_create` | Catalog | Write | Create a feed (URL-based, scheduled import) |
-| 57 | `meta_ads_lead_forms_list` | Lead | Read | List lead forms (per page) |
-| 58 | `meta_ads_lead_forms_get` | Lead | Read | Get lead form details |
-| 59 | `meta_ads_lead_forms_create` | Lead | Write | Create a lead form |
-| 60 | `meta_ads_leads_get` | Lead | Read | Get lead data (per form) |
-| 61 | `meta_ads_leads_get_by_ad` | Lead | Read | Get lead data (per ad) |
-| 62 | `meta_ads_videos_upload` | Video | Write | Upload a video from URL |
-| 63 | `meta_ads_videos_upload_file` | Video | Write | Upload a video from local file |
-| 64 | `meta_ads_split_tests_list` | Split Test | Read | List split tests |
-| 65 | `meta_ads_split_tests_get` | Split Test | Read | Get split test details and results |
-| 66 | `meta_ads_split_tests_create` | Split Test | Write | Create a split test |
-| 67 | `meta_ads_split_tests_end` | Split Test | Write | End a split test |
-| 68 | `meta_ads_ad_rules_list` | Ad Rule | Read | List automated rules |
-| 69 | `meta_ads_ad_rules_get` | Ad Rule | Read | Get rule details |
-| 70 | `meta_ads_ad_rules_create` | Ad Rule | Write | Create an automated rule |
-| 71 | `meta_ads_ad_rules_update` | Ad Rule | Write | Update an automated rule |
-| 72 | `meta_ads_ad_rules_delete` | Ad Rule | Write | Delete an automated rule |
-| 73 | `meta_ads_page_posts_list` | Page Post | Read | List Facebook page posts |
-| 74 | `meta_ads_page_posts_boost` | Page Post | Write | Boost a page post (create ad from post) |
-| 75 | `meta_ads_instagram_accounts` | Instagram | Read | List connected Instagram accounts |
-| 76 | `meta_ads_instagram_media` | Instagram | Read | List Instagram posts |
-| 77 | `meta_ads_instagram_boost` | Instagram | Write | Boost an Instagram post |
-| 78 | `meta_ads_creatives_create_lead` | Lead / Creative | Write | Create a Lead Ad AdCreative attached to an Instant Form |
-| 79 | `meta_ads_lead_forms_update` | Lead | Write | Change a lead form status (ACTIVE / ARCHIVED) |
-| 80 | `meta_ads_lead_forms_duplicate` | Lead | Write | Duplicate a lead form under a Page with a new name |
-| 81 | `meta_ads_leads_export_csv` | Lead | Write (local) | Export form leads to a local CSV file |
+| 32 | `meta_ads_targeting_search` | Targeting | Read | Search targeting interests / behaviors by keyword |
+| 33 | `meta_ads_targeting_categories` | Targeting | Read | List targeting category catalogues (behaviors, demographics, etc.) |
+| 34 | `meta_ads_pixels_list` | Pixel | Read | List pixels |
+| 35 | `meta_ads_pixels_get` | Pixel | Read | Get pixel details |
+| 36 | `meta_ads_pixels_stats` | Pixel | Read | Get pixel firing statistics |
+| 37 | `meta_ads_pixels_events` | Pixel | Read | List pixel events |
+| 38 | `meta_ads_pixels_create` | Pixel | Write | Create a pixel |
+| 39 | `meta_ads_conversions_send` | CAPI | Write | Send conversion events (generic) |
+| 40 | `meta_ads_conversions_send_purchase` | CAPI | Write | Send a purchase event |
+| 41 | `meta_ads_conversions_send_lead` | CAPI | Write | Send a lead event |
+| 42 | `meta_ads_creatives_list` | Creative | Read | List ad creatives |
+| 43 | `meta_ads_creatives_create` | Creative | Write | Create a standard ad creative (single image or video) |
+| 44 | `meta_ads_creatives_create_dynamic` | Creative | Write | Create a dynamic product ad creative |
+| 45 | `meta_ads_creatives_upload_image` | Creative | Write | Upload an image for use in creatives |
+| 46 | `meta_ads_creatives_create_carousel` | Creative | Write | Create a carousel creative (2-10 cards) |
+| 47 | `meta_ads_creatives_create_collection` | Creative | Write | Create a collection creative |
+| 48 | `meta_ads_images_upload_file` | Image | Write | Upload an image from local file |
+| 49 | `meta_ads_catalogs_list` | Catalog | Read | List product catalogs |
+| 50 | `meta_ads_catalogs_get` | Catalog | Read | Get catalog details |
+| 51 | `meta_ads_catalogs_create` | Catalog | Write | Create a product catalog |
+| 52 | `meta_ads_catalogs_delete` | Catalog | Write | Delete a product catalog |
+| 53 | `meta_ads_products_list` | Catalog | Read | List products in a catalog |
+| 54 | `meta_ads_products_get` | Catalog | Read | Get product details |
+| 55 | `meta_ads_products_add` | Catalog | Write | Add a product to a catalog |
+| 56 | `meta_ads_products_update` | Catalog | Write | Update a product |
+| 57 | `meta_ads_products_delete` | Catalog | Write | Delete a product |
+| 58 | `meta_ads_feeds_list` | Catalog | Read | List feeds for a catalog |
+| 59 | `meta_ads_feeds_create` | Catalog | Write | Create a feed (URL-based, scheduled import) |
+| 60 | `meta_ads_lead_forms_list` | Lead | Read | List lead forms (per page) |
+| 61 | `meta_ads_lead_forms_get` | Lead | Read | Get lead form details |
+| 62 | `meta_ads_lead_forms_create` | Lead | Write | Create a lead form |
+| 63 | `meta_ads_leads_get` | Lead | Read | Get lead data (per form) |
+| 64 | `meta_ads_leads_get_by_ad` | Lead | Read | Get lead data (per ad) |
+| 65 | `meta_ads_videos_upload` | Video | Write | Upload a video from URL |
+| 66 | `meta_ads_videos_upload_file` | Video | Write | Upload a video from local file |
+| 67 | `meta_ads_split_tests_list` | Split Test | Read | List split tests |
+| 68 | `meta_ads_split_tests_get` | Split Test | Read | Get split test details and results |
+| 69 | `meta_ads_split_tests_create` | Split Test | Write | Create a split test |
+| 70 | `meta_ads_split_tests_end` | Split Test | Write | End a split test |
+| 71 | `meta_ads_ad_rules_list` | Ad Rule | Read | List automated rules |
+| 72 | `meta_ads_ad_rules_get` | Ad Rule | Read | Get rule details |
+| 73 | `meta_ads_ad_rules_create` | Ad Rule | Write | Create an automated rule |
+| 74 | `meta_ads_ad_rules_update` | Ad Rule | Write | Update an automated rule |
+| 75 | `meta_ads_ad_rules_delete` | Ad Rule | Write | Delete an automated rule |
+| 76 | `meta_ads_page_posts_list` | Page Post | Read | List Facebook page posts |
+| 77 | `meta_ads_page_posts_boost` | Page Post | Write | Boost a page post (create ad from post) |
+| 78 | `meta_ads_instagram_accounts` | Instagram | Read | List connected Instagram accounts |
+| 79 | `meta_ads_instagram_media` | Instagram | Read | List Instagram posts |
+| 80 | `meta_ads_instagram_boost` | Instagram | Write | Boost an Instagram post |
+| 81 | `meta_ads_pages_list` | Page | Read | List manageable Facebook Pages (personal + business-owned) |
+| 82 | `meta_ads_pages_upload_photo` | Page | Write | Upload a Page photo (returns a Page photo id) |
+| 83 | `meta_ads_creatives_create_lead` | Lead / Creative | Write | Create a Lead Ad AdCreative attached to an Instant Form |
+| 84 | `meta_ads_lead_forms_update` | Lead | Write | Change a lead form status (ACTIVE / ARCHIVED) |
+| 85 | `meta_ads_lead_forms_duplicate` | Lead | Write | Duplicate a lead form under a Page with a new name |
+| 86 | `meta_ads_leads_export_csv` | Lead | Write (local) | Export form leads to a local CSV file |
+| 87 | `meta_ads_videos_get` | Video | Read | Get video processing status / metadata |
+| 88 | `meta_ads_videos_thumbnails` | Video | Read | List auto-generated video thumbnails |
 
 ## Key Differences from Google Ads
 
@@ -380,11 +387,20 @@ counter. Pass an empty list to clear it and restore the default.
   Optional: limit (integer, default: 50)
   ```
 
-- `create` -- Create a standard ad creative. **Requires user confirmation.**
+- `create` -- Create a standard ad creative (single image OR video). **Requires user confirmation.**
   ```
-  Required: account_id, name
-  Optional: image_hash, link_url, message, page_id
+  Required: account_id, name, page_id, link_url
+  Image mode: image_hash OR image_url (exactly one)
+  Video mode: video_id + (video_thumbnail_image_hash OR video_thumbnail_image_url)
+              + call_to_action (required in this mode)
+  Optional: message, headline, description, call_to_action (image mode)
   ```
+  Video and image parameters are mutually exclusive. Meta requires a
+  thumbnail on every video creative, and the video must be fully
+  processed first (see the Video creative flow below). `call_to_action`
+  is mandatory in video mode: Meta's `video_data` has no `link` field, so
+  the destination rides inside `call_to_action.value.link`. `link_url` is
+  injected there automatically -- pass only the button label.
 
 - `create_dynamic` -- Create a dynamic product ad creative. **Requires user confirmation.**
   ```
@@ -553,17 +569,49 @@ counter. Pass an empty list to clear it and restore the default.
 
 ### videos
 
-- `upload` -- Upload a video from URL.
+Supported formats: MP4, MOV, AVI, WMV, MKV. Up to 1 GB per file through
+these tools; larger files need Meta's resumable (chunked) upload, which
+mureo does not implement yet.
+
+- `upload` -- Upload a video from URL. **Requires user confirmation.**
   ```
   Required: account_id, video_url
-  Optional: title, description
+  Optional: title
   ```
 
-- `upload_file` -- Upload a video from local file.
+- `upload_file` -- Upload a video from local file. **Requires user confirmation.**
   ```
   Required: account_id, file_path
-  Optional: title, description
+  Optional: title
   ```
+
+- `get` -- Get video processing status / metadata.
+  ```
+  Required: account_id, video_id
+  ```
+  Returns `status` (nested: `video_status`, `processing_phase`), `id`,
+  `title`, `length`, `created_time`. Poll until the video is ready --
+  a creative that references a still-processing video is rejected.
+
+- `thumbnails` -- List auto-generated video thumbnails.
+  ```
+  Required: account_id, video_id
+  ```
+  Returns `id`, `uri`, `is_preferred`, `height`, `width` per thumbnail.
+  Prefer the `is_preferred` entry and pass its `uri` as
+  `video_thumbnail_image_url` to `creatives_create`. An empty list
+  usually means the video is still processing.
+
+#### Video creative flow
+
+1. `videos_upload` / `videos_upload_file` -> `video_id`
+2. `videos_get` -> poll until `status.video_status` reports ready
+   (typically minutes; scales with file size and length)
+3. `videos_thumbnails` -> pick a `uri` (prefer `is_preferred: true`)
+4. `creatives_create` with `video_id` + `video_thumbnail_image_url`
+   (or `video_thumbnail_image_hash`) + `call_to_action` (required in
+   video mode -- it carries the destination link) -> `creative_id`
+5. `ads_create` with that `creative_id`
 
 ### split_tests
 

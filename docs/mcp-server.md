@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 203 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 182 advertising and SEO operation tools across Google Ads (86), Meta Ads (86), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
+mureo exposes 205 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 184 advertising and SEO operation tools across Google Ads (86), Meta Ads (88), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
 
 ## Starting the Server
 
@@ -312,7 +312,7 @@ Or use `uv` to run it:
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `meta_ads_creatives_list` | List ad creatives | `account_id` |
-| `meta_ads_creatives_create` | Create a standard ad creative | `account_id`, `name` |
+| `meta_ads_creatives_create` | Create a standard ad creative (single image **or video**) | `account_id`, `name` |
 | `meta_ads_creatives_create_carousel` | Create a carousel creative (2-10 cards) | `account_id`, `page_id`, `cards`, `link` |
 | `meta_ads_creatives_create_collection` | Create a collection creative | `account_id`, `page_id`, `product_ids`, `link` |
 | `meta_ads_creatives_create_dynamic` | Create a dynamic product ad creative | `account_id`, `catalog_id` |
@@ -420,6 +420,8 @@ Or use `uv` to run it:
 |------|-------------|-------------------|
 | `meta_ads_videos_upload` | Upload a video from URL | `account_id`, `video_url` |
 | `meta_ads_videos_upload_file` | Upload a video from local file | `account_id`, `file_path` |
+| `meta_ads_videos_get` | Get video processing status / metadata (poll before creating a creative) | `account_id`, `video_id` |
+| `meta_ads_videos_thumbnails` | List auto-generated video thumbnails | `account_id`, `video_id` |
 
 #### Creatives (Carousel & Collection)
 
