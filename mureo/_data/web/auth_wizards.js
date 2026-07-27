@@ -229,7 +229,6 @@
     // (no-DCR, native-coexisting) hosted provider is ever added, extend
     // this check.
     const isHosted = providerId === "meta-ads-official";
-    const onDesktop = state.host === "claude-desktop";
 
     // Hosted MCP (Meta): mureo never registers it locally on EITHER
     // host. Meta's hosted MCP has no OAuth dynamic client registration,
