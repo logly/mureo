@@ -105,10 +105,13 @@ Skills and commands describe "Read STRATEGY.md", "Update STATE.json", and "Appen
 | Read STRATEGY.md | `Read` tool | `mureo_strategy_get` MCP tool |
 | Replace STRATEGY.md | `Write` / `Edit` tool | `mureo_strategy_set` MCP tool |
 | Read STATE.json | `Read` tool | `mureo_state_get` MCP tool |
+| Establish the current date | `mureo_state_get` MCP tool (`server_now`) | `mureo_state_get` MCP tool (`server_now`) |
 | Append action_log entry | `mureo_state_action_log_append` MCP tool | `mureo_state_action_log_append` MCP tool |
 | Upsert campaign snapshot | `mureo_state_upsert_campaign` MCP tool | `mureo_state_upsert_campaign` MCP tool |
 
 When you don't have direct filesystem tools (Desktop / Cowork / web), always reach for the corresponding `mureo_*` MCP tool — they encode the same atomic-write semantics so you can't corrupt the file mid-edit.
+
+**Any skill whose work depends on "today" must call `mureo_state_get` (or `mureo_strategy_get`) and take the current date from the response's `server_now` field — on EVERY host, including Code, where you would otherwise just `Read` the file.** `server_now` is the server's own clock as ISO 8601 with UTC offset (e.g. `2026-07-28T10:12:33+09:00`) and is the **only** source of today: the dates *inside* the files (`last_synced_at`, `reports.*.period`, `action_log` timestamps) are history, and treating them as now is how a daily run ends up reporting a days-old date. Do not shell out to `date` — these skills must run in Bash-less headless hosts — and never write `server_now` back into STATE.json (it is a response field; a persisted copy becomes tomorrow's stale "today"). Relatedly, `mureo_state_action_log_append` stamps each entry's `timestamp` server-side, so never compute one yourself.
 
 For STATE.json **mutations** (`Upsert campaign snapshot` / `Append action_log entry`) prefer the `mureo_state_*` MCP tool on **every** host, **including Code**: they apply the correct schema atomically. A raw `Edit` easily omits the required `platforms[<platform>]` / `account_id`, and a platform/campaign missing those is **dropped** by the dashboard — the workspace then renders **empty / "not yet bootstrapped"** even after you wrote campaigns. Separately, `mureo_state_upsert_campaign` (and the metrics / report setters) stamp the top-level **`last_synced_at`** — the dashboard's "Synced N ago" freshness — which a hand-edit leaves stale (`mureo_state_action_log_append` does **not** re-stamp it). Hand-writing STATE.json directly with `Write` on Code is reserved for the **bulk-snapshot** flows (`sync-state` / `daily-check`); on that path you own replicating the full **STATE.json Schema** below, **including a fresh `last_synced_at`**.
 

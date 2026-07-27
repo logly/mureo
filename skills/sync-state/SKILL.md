@@ -18,7 +18,9 @@ Synchronize STATE.json with the current state of all marketing platforms.
 
 > Note: the **Diagnostic preamble** (learning insights + advisor consult) from `../_mureo-shared/SKILL.md` is intentionally **not** required here — sync-state is mechanical data synchronization with no judgement calls.
 
-1. **Read current STATE.json** (if exists) to track changes.
+0. **Establish today**: call `mureo_state_get` **first, on every host** (including Claude Code, where you would otherwise `Read` the file) and take `server_now` from its response — ISO 8601 with UTC offset, e.g. `2026-07-28T10:12:33+09:00`. Its date is the **only source of the current date** for this sync (no shelling out — this skill must run in Bash-less headless hosts). The dates inside the document — `last_synced_at`, `reports.*.period`, `action_log` timestamps — are **history**: use them to describe what changed, never to decide what "now" is or whether a sync is still needed. **Never write `server_now` into STATE.json**; it is a response field, and a persisted copy becomes tomorrow's stale "today".
+
+1. **Read current STATE.json** (if exists) to track changes — the same `mureo_state_get` response from step 0 on MCP hosts.
 
 2. **Discover platforms**: Identify all platforms registered in STATE.json `platforms` — built-in AND plugin/bridge platforms. Per `../_mureo-shared/SKILL.md` → *Plugin platforms*, also enumerate any installed entry-point plugin that exposes `mcp__mureo__<plugin>_*` tools; its STATE.json platform key is `plugin:<dist>` (the same convention mureo uses when promoting plugin mutations into `action_log`). Also enumerate any **hosted official-MCP connector** present in the session (e.g. TikTok's `tt-ads-*` tools) — its key is a first-class ad-platform key such as `tiktok_ads`; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
@@ -44,6 +46,6 @@ Synchronize STATE.json with the current state of all marketing platforms.
    - Status changes
    - Bidding strategy changes
 
-9. **Update `last_synced_at`** timestamp.
+9. **Update `last_synced_at`** timestamp — use `server_now` from step 0 (the `mureo_state_*` write tools stamp it for you; on the Code `Write` path write that value yourself).
 
 If STATE.json doesn't exist yet, suggest running `/onboard` first.

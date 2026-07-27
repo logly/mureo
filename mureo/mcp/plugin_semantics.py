@@ -31,10 +31,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mureo.core import clock
 from mureo.policy.declarations import BidDeclaration, BudgetDeclaration
 from mureo.throttle import ThrottleConfig
 
@@ -245,7 +246,8 @@ def record_mutation_action_log(
         from mureo.context.models import ActionLogEntry
         from mureo.context.state import append_action_log
 
-        now = datetime.now(timezone.utc)
+        # Server clock (#460) — same stamp/format as every other writer.
+        now = clock.server_now()
         days = observation_days or _DEFAULT_OBSERVATION_DAYS
         entry = ActionLogEntry(
             timestamp=now.isoformat(timespec="seconds"),

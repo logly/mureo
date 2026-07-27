@@ -18,6 +18,7 @@ Coverage:
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -807,3 +808,181 @@ async def test_set_conversion_events_read_write_path_agree(cwd_to_tmp) -> None:
     assert load_conversion_action_types("act_42") == ("offsite_conversion.custom.7",)
     # act_ prefix tolerance: a bare-id live resolve still matches.
     assert load_conversion_action_types("42") == ("offsite_conversion.custom.7",)
+
+
+# ---------------------------------------------------------------------------
+# Server clock injection (#460)
+#
+# /daily-check ran with a days-old notion of "today": the agent read
+# STATE.json, saw old dates (reports.daily.period, last_synced_at,
+# action_log timestamps) and short-circuited with "today's data is already
+# fetched". Nothing in the stack ever told it the real date, and the
+# action_log timestamps it read back as fact were its own drifted values.
+# Fix: the read entry points carry a ``server_now`` envelope field, and the
+# action_log append stamps the timestamp server-side.
+# ---------------------------------------------------------------------------
+
+
+_FROZEN_NOW = datetime(2026, 7, 28, 10, 12, 33, tzinfo=timezone(timedelta(hours=9)))
+_FROZEN_ISO = "2026-07-28T10:12:33+09:00"
+
+
+@pytest.fixture
+def frozen_clock(monkeypatch):
+    """Freeze the injected server clock (the single documented seam)."""
+    import mureo.core.clock as clock
+
+    monkeypatch.setattr(clock, "server_now", lambda: _FROZEN_NOW)
+    return _FROZEN_ISO
+
+
+async def test_state_get_returns_server_now(cwd_to_tmp, frozen_clock) -> None:
+    (cwd_to_tmp / "STATE.json").write_text(
+        json.dumps({"version": "2", "platforms": {}, "action_log": []}),
+        encoding="utf-8",
+    )
+    mod = _import_tools()
+    result = await mod.handle_tool("mureo_state_get", {})
+    payload = json.loads(result[0].text)
+    assert payload["server_now"] == frozen_clock
+
+
+async def test_state_get_server_now_is_parseable_and_offset_bearing(
+    cwd_to_tmp,
+) -> None:
+    """Real (unfrozen) clock: ISO 8601 WITH a UTC offset, close to now."""
+    mod = _import_tools()
+    result = await mod.handle_tool("mureo_state_get", {})
+    payload = json.loads(result[0].text)
+    parsed = datetime.fromisoformat(payload["server_now"])
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() is not None
+    assert abs(parsed - datetime.now(timezone.utc)) < timedelta(minutes=5)
+
+
+async def test_state_get_server_now_present_when_file_absent(
+    cwd_to_tmp, frozen_clock
+) -> None:
+    """The empty-default branch must carry the clock too — an onboarding
+    run has no STATE.json yet and still needs to know the date."""
+    mod = _import_tools()
+    result = await mod.handle_tool("mureo_state_get", {})
+    assert json.loads(result[0].text)["server_now"] == frozen_clock
+
+
+async def test_state_get_server_now_ignores_a_stale_value_on_disk(
+    cwd_to_tmp, frozen_clock
+) -> None:
+    """A ``server_now`` that leaked into STATE.json (an agent echoing a read
+    response back through a raw Write) must never be served as the clock."""
+    (cwd_to_tmp / "STATE.json").write_text(
+        json.dumps(
+            {
+                "version": "2",
+                "server_now": "1999-01-01T00:00:00+09:00",
+                "platforms": {},
+                "action_log": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    mod = _import_tools()
+    result = await mod.handle_tool("mureo_state_get", {})
+    assert json.loads(result[0].text)["server_now"] == frozen_clock
+
+
+async def test_server_now_is_not_persisted_by_a_later_write(cwd_to_tmp) -> None:
+    """Round-trip guard: echo the whole read response back into STATE.json
+    (what a Code-path bulk `Write` does), then let any mureo write touch the
+    file — the response-only ``server_now`` key must not survive into the
+    persisted document."""
+    (cwd_to_tmp / "STATE.json").write_text(
+        json.dumps({"version": "2", "platforms": {}, "action_log": []}),
+        encoding="utf-8",
+    )
+    mod = _import_tools()
+    read = json.loads((await mod.handle_tool("mureo_state_get", {}))[0].text)
+    assert "server_now" in read
+    # The agent echoes the response verbatim into the file.
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(read), encoding="utf-8")
+
+    await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {"entry": {"action": "test", "platform": "google_ads"}},
+    )
+    on_disk = json.loads((cwd_to_tmp / "STATE.json").read_text(encoding="utf-8"))
+    assert "server_now" not in on_disk
+
+
+async def test_strategy_get_returns_server_now(cwd_to_tmp, frozen_clock) -> None:
+    """STRATEGY.md is the other step-1 read; keep the clock consistent so a
+    skill that starts there does not have to make a second call."""
+    (cwd_to_tmp / "STRATEGY.md").write_text("# Strategy\n", encoding="utf-8")
+    mod = _import_tools()
+    result = await mod.handle_tool("mureo_strategy_get", {})
+    assert json.loads(result[0].text)["server_now"] == frozen_clock
+
+
+async def test_strategy_get_server_now_present_when_file_absent(
+    cwd_to_tmp, frozen_clock
+) -> None:
+    mod = _import_tools()
+    result = await mod.handle_tool("mureo_strategy_get", {})
+    payload = json.loads(result[0].text)
+    assert payload["exists"] is False
+    assert payload["server_now"] == frozen_clock
+
+
+async def test_action_log_append_ignores_client_timestamp(
+    cwd_to_tmp, frozen_clock
+) -> None:
+    """A model-supplied timestamp is accepted by the schema but IGNORED —
+    a drifted date must not be persisted and read back later as fact."""
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {
+            "entry": {
+                "timestamp": "1999-01-01T00:00:00+00:00",
+                "action": "Increased budget +20%",
+                "platform": "google_ads",
+            }
+        },
+    )
+    payload = json.loads(result[0].text)
+    assert payload["action_log"][0]["timestamp"] == frozen_clock
+    on_disk = json.loads((cwd_to_tmp / "STATE.json").read_text(encoding="utf-8"))
+    assert on_disk["action_log"][0]["timestamp"] == frozen_clock
+
+
+async def test_action_log_append_stamps_timestamp_when_omitted(
+    cwd_to_tmp, frozen_clock
+) -> None:
+    """``timestamp`` is no longer a required input — the server supplies it."""
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {"entry": {"action": "Paused campaign", "platform": "meta_ads"}},
+    )
+    payload = json.loads(result[0].text)
+    assert payload["action_log"][0]["timestamp"] == frozen_clock
+
+
+async def test_action_log_schema_documents_server_stamping() -> None:
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_action_log_append")
+    entry = tool.inputSchema["properties"]["entry"]
+    # Kept for schema compatibility (additionalProperties: false), but no
+    # longer required and explicitly documented as ignored.
+    assert "timestamp" in entry["properties"]
+    assert "timestamp" not in entry["required"]
+    description = entry["properties"]["timestamp"]["description"].lower()
+    assert "server" in description
+    assert "ignored" in description
+
+
+@pytest.mark.parametrize("name", ["mureo_state_get", "mureo_strategy_get"])
+async def test_read_tool_descriptions_advertise_server_now(name: str) -> None:
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == name)
+    assert "server_now" in tool.description

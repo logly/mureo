@@ -45,13 +45,23 @@ _PATH_PROPERTY = {
 _ACTION_LOG_ENTRY_PROPERTY = {
     "type": "object",
     "description": (
-        "An action_log entry. Required: timestamp (ISO 8601), action "
-        "(short description), platform (google_ads / meta_ads / etc.). "
-        "Optional: campaign_id, summary, command, metrics_at_action, "
-        "observation_due, reversible_params, rollback_of."
+        "An action_log entry. Required: action (short description), "
+        "platform (google_ads / meta_ads / etc.). The ``timestamp`` is "
+        "stamped by the server — do not compute it. Optional: campaign_id, "
+        "summary, command, metrics_at_action, observation_due, "
+        "reversible_params, rollback_of."
     ),
     "properties": {
-        "timestamp": {"type": "string"},
+        "timestamp": {
+            "type": "string",
+            "description": (
+                "IGNORED — the server stamps the entry with its own clock "
+                "(ISO 8601 with UTC offset). Accepted only for backward "
+                "compatibility with existing callers; any value supplied "
+                "here is discarded, so a drifted client date can never be "
+                "persisted and later read back as evidence of 'today'."
+            ),
+        },
         "action": {"type": "string"},
         "platform": {"type": "string"},
         "campaign_id": {"type": "string"},
@@ -62,7 +72,7 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "reversible_params": {"type": "object"},
         "rollback_of": {"type": "integer"},
     },
-    "required": ["timestamp", "action", "platform"],
+    "required": ["action", "platform"],
 }
 
 
@@ -127,10 +137,13 @@ TOOLS: list[Tool] = [
         name="mureo_strategy_get",
         description=(
             "Read STRATEGY.md and return its raw markdown text plus an "
-            "exists flag. Returns empty markdown when the file is "
+            "exists flag and ``server_now`` (the server's clock as ISO 8601 "
+            "with UTC offset). Returns empty markdown when the file is "
             "absent (skills should treat that as 'no strategy yet', "
             "not as an error). Use this when the host has no direct "
-            "filesystem access (Claude Desktop chat, web, remote MCP)."
+            "filesystem access (Claude Desktop chat, web, remote MCP). "
+            "Treat ``server_now`` as the current date — never infer today "
+            "from dates found inside the context files."
         ),
         inputSchema={
             "type": "object",
@@ -166,7 +179,13 @@ TOOLS: list[Tool] = [
             "Read STATE.json and return its parsed v2 document: "
             "version, last_synced_at, platforms (per-platform "
             "campaigns), legacy v1 campaigns, and action_log. Returns "
-            "an empty default doc when the file is absent."
+            "an empty default doc when the file is absent. The response "
+            "also carries ``server_now`` — the server's clock as ISO 8601 "
+            "with UTC offset (e.g. 2026-07-28T10:12:33+09:00). It is the "
+            "authoritative current date: every OTHER date in the document "
+            "(last_synced_at, reports.*.period, action_log timestamps) is "
+            "history and must never be read as 'today'. ``server_now`` is a "
+            "response field only — do not write it back into STATE.json."
         ),
         inputSchema={
             "type": "object",

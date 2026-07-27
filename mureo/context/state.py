@@ -131,6 +131,12 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     skips nonconforming campaign / action_log entries and defaults a missing
     platform ``account_id`` to ``""`` for the read-only Reports view. Invalid
     JSON always raises regardless of ``strict``.
+
+    Unknown top-level keys are ignored (and :func:`render_state` emits only
+    the known ones), which is what keeps the ``mureo_state_get`` response
+    field ``server_now`` from ever being persisted: a document echoed back
+    into STATE.json with that key loses it on the next write instead of
+    fossilising a stale "today" (#460).
     """
     data = json.loads(text)
     campaigns_raw = data.get("campaigns", [])

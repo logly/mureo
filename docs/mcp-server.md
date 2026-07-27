@@ -522,12 +522,14 @@ Cross-platform anomaly detection that operates on STATE.json's `action_log` hist
 
 Read and write the strategy context files (`STRATEGY.md`, `STATE.json`) directly through the MCP server. These tools exist for hosts that have no direct filesystem access (Claude Desktop chat, web, remote MCP); every write is atomic and validated before it replaces the file.
 
+Both read tools carry a **`server_now`** field — the server's clock as ISO 8601 with a UTC offset (e.g. `2026-07-28T10:12:33+09:00`). It is the authoritative current date for an agent that cannot run `date` (headless / Bash-less hosts): every other date in the document is history. `server_now` is a response field only and is never persisted — the parser ignores unknown top-level keys, so a copy echoed back into `STATE.json` is dropped by the next mureo write.
+
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `mureo_strategy_get` | Read STRATEGY.md — raw markdown plus an `exists` flag (empty markdown when absent) | *(none)* |
+| `mureo_strategy_get` | Read STRATEGY.md — raw markdown plus an `exists` flag (empty markdown when absent) and `server_now` | *(none)* |
 | `mureo_strategy_set` | Atomically replace STRATEGY.md (parsed for well-formedness before writing) | `markdown` |
-| `mureo_state_get` | Read STATE.json as a parsed v2 document (version, platforms, campaigns, action_log) | *(none)* |
-| `mureo_state_action_log_append` | Atomically append a single action_log entry for later evaluation | `entry` |
+| `mureo_state_get` | Read STATE.json as a parsed v2 document (version, platforms, campaigns, action_log) plus `server_now` | *(none)* |
+| `mureo_state_action_log_append` | Atomically append a single action_log entry for later evaluation (`timestamp` is stamped server-side) | `entry` |
 | `mureo_state_upsert_campaign` | Upsert a CampaignSnapshot (with optional performance `metrics`) into STATE.json | `campaign` |
 | `mureo_state_report_set` | Persist a structured daily / weekly / goal report summary for the read-only dashboard | `report`, `summary` |
 | `mureo_state_platform_metrics_set` | Set a platform-level metric rollup (feeds the YESTERDAY / LAST_30_DAYS dashboard toggle) | `platform`, `account_id` |

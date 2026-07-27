@@ -54,7 +54,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a bad average). `/experiment` now advertises breakdown-exclusion and
   reallocation hypotheses as things it validates.
 
+### Changed
+
+- **`action_log` timestamps are stamped server-side (#460).**
+  `mureo_state_action_log_append` now writes the entry `timestamp` from
+  mureo's own clock (ISO 8601 with UTC offset); a value supplied by the caller
+  is still accepted by the schema — the property could not be removed without
+  breaking existing callers under `additionalProperties: false` — but is
+  **ignored**, and `timestamp` is no longer a required input. This closes the
+  loop that let a drifted model date be persisted and read back later as
+  evidence of the current date. The other action_log writers (native status
+  toggles, plugin mutations, creative-studio audits, rollback reversals) moved
+  onto the same clock, so every entry now carries a consistent offset-bearing
+  local timestamp instead of a UTC one.
+
 ### Fixed
+
+- **`/daily-check` no longer runs on a stale notion of "today" (#460).**
+  Nothing in the stack ever told the agent the current date, so it inferred
+  one from STATE.json — `reports.daily.period`, `last_synced_at`, `action_log`
+  timestamps — and sometimes short-circuited with "today's data is already
+  fetched, re-displaying" against a date days in the past. The two context
+  read tools now return **`server_now`**, the server's clock as ISO 8601 with
+  a UTC offset (`2026-07-28T10:12:33+09:00`, host-local because ad operations
+  reason in local days): `mureo_state_get` and `mureo_strategy_get` both carry
+  it, so a skill can establish the date from whichever file it reads first —
+  and a Bash-less headless host never needs to shell out to `date`.
+  `server_now` is a response-envelope field only: the STATE.json parser
+  ignores unknown top-level keys, so a copy echoed back into the file is
+  dropped by the next mureo write instead of fossilising a "today".
+  `daily-check`, `sync-state` and `budget-pacing` gain an explicit first step
+  that makes `server_now` the only source of the current date, forbids the
+  already-fetched short-circuit (a daily check always fetches fresh platform
+  data for the period ending on `server_now`'s date), and — for
+  `budget-pacing` — derives the pacing month and the elapsed / remaining day
+  counts from it.
 
 - **Meta video file upload rebuilt on the shared client machinery.**
   `meta_ads_videos_upload_file` used to open its own `httpx.AsyncClient` and

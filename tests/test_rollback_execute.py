@@ -314,6 +314,33 @@ class TestExecutorWiringContract:
         assert "0" in (new_entry.summary or "")
 
     @pytest.mark.asyncio
+    async def test_new_log_entry_uses_the_shared_server_clock(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """#460 — the reversal entry is stamped with the same server clock,
+        in the same offset-bearing format, as every other action_log writer."""
+        from datetime import datetime, timedelta, timezone
+
+        import mureo.core.clock as clock
+
+        frozen = datetime(2026, 7, 28, 10, 12, 33, tzinfo=timezone(timedelta(hours=9)))
+        monkeypatch.setattr(clock, "server_now", lambda: frozen)
+        state_file = tmp_path / "STATE.json"
+        _write_state(state_file, [_budget_update_entry()])
+
+        await execute_rollback(
+            state_file=state_file,
+            index=0,
+            confirm=True,
+            dispatcher=_FakeDispatcher(),
+        )
+
+        assert (
+            read_state_file(state_file).action_log[1].timestamp
+            == "2026-07-28T10:12:33+09:00"
+        )
+
+    @pytest.mark.asyncio
     async def test_state_file_is_valid_json_after_success(self, tmp_path: Path) -> None:
         state_file = tmp_path / "STATE.json"
         _write_state(state_file, [_budget_update_entry()])
