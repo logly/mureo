@@ -20,7 +20,9 @@ Track month-to-date spend against the monthly budget target, project the month-e
 
 **Before you start**: Run the **Diagnostic preamble** from ../_mureo-shared/SKILL.md — load learning insights (mureo_learning_insights_get) and consult advisors (mureo_consult_advisor) before drawing conclusions.
 
-1. **Load context**: Read STRATEGY.md (Operation Mode, `## Guardrails`, any `## Custom: Monthly Budget` section, Goal sections) and STATE.json.
+0. **Establish today**: call `mureo_state_get` **first, on every host** (including Claude Code, where you would otherwise `Read` the file) and take `server_now` from its response — ISO 8601 with UTC offset, e.g. `2026-07-28T10:12:33+09:00`. Pacing is date arithmetic, so this is load-bearing: `server_now`'s date is the **only source of the current date** — it fixes the pacing month, today's date, and therefore every elapsed/remaining-day count below. Do not shell out (this skill must run in Bash-less headless hosts) and do not read the date off STATE.json: `last_synced_at`, `reports.*.period` and `action_log` timestamps are **history**, and pacing against a stale month silently mis-states the landing. **Never write `server_now` into STATE.json** — it is a response field, and a persisted copy becomes tomorrow's stale "today".
+
+1. **Load context**: Read STRATEGY.md (Operation Mode, `## Guardrails`, any `## Custom: Monthly Budget` section, Goal sections) and STATE.json (the same `mureo_state_get` response from step 0 on MCP hosts).
 
 2. **Discover platforms**: Identify all configured platforms from STATE.json `platforms`. Also include any **hosted official-MCP connector** present in the session (e.g. TikTok, key `tiktok_ads`) and `mcp__mureo__<plugin>_*` plugin platforms — drive each via its own tools, best-effort; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms* and *Plugin platforms*.
 
@@ -44,8 +46,8 @@ Track month-to-date spend against the monthly budget target, project the month-e
 
 5. **Compute pacing** per platform and in total:
    - **MTD spend** — from step 4.
-   - **Elapsed days** — completed days this month. **Exclude today**: today's numbers are a partial, still-accumulating day and would bias the run-rate downward. Daily run-rate = MTD spend ÷ elapsed (completed) days.
-   - **Projected month-end landing** = MTD spend + run-rate × (days remaining, counting today forward).
+   - **Elapsed days** — completed days this month, derived from `server_now`: `server_now`'s day-of-month minus 1. **Exclude today**: today's numbers are a partial, still-accumulating day and would bias the run-rate downward. Daily run-rate = MTD spend ÷ elapsed (completed) days.
+   - **Projected month-end landing** = MTD spend + run-rate × (days remaining, counting today forward) — days remaining = days in `server_now`'s month − elapsed days.
    - **% vs target** = projected landing ÷ monthly target.
 
 6. **Seasonality / confidence caution**: early-month run-rates are noisy — a single big-spend or zero-spend day swings the projection hard. When **fewer than 5 days have elapsed**, label the projection **low confidence** and lead with that caveat; prefer *watch* over *act*. Also note known intra-month seasonality from STRATEGY.md (e.g. a `## Custom` seasonal ramp, weekend dips) that makes a flat run-rate misleading.
@@ -72,8 +74,8 @@ Track month-to-date spend against the monthly budget target, project the month-e
 11. **Record outcome context**: for each campaign modified, log to `action_log` (via `mureo_state_action_log_append`) with `metrics_at_action` (current MTD spend, run-rate, daily budget, projected landing) and `observation_due` **7 days** from today, so daily-check's evidence step verifies the change actually bent the trajectory toward target.
 
 12. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="pacing"` and a concise `summary` object so the read-only dashboard can render pacing without re-running you. Follow this convention:
-    - `generated_at`: ISO 8601 timestamp of this run
-    - `period`: the pacing month (e.g. `"2026-07"`) and elapsed/total days
+    - `generated_at`: ISO 8601 timestamp of this run — use `server_now`
+    - `period`: the pacing month from `server_now` (e.g. `"2026-07"`) and elapsed/total days
     - `kpis`: per-platform + total `{monthly_target, mtd_spend, run_rate, projected_landing, pct_vs_target}`
     - `flags`: notable items (e.g. `["google_ads_overpacing_18pct", "low_confidence_early_month"]`)
     - `narrative`: the 1-2 sentence pacing verdict (on-pace / overpacing / underpacing, with confidence)

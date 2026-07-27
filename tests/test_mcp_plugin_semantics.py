@@ -4,7 +4,7 @@ mutating-call promotion into STATE.json's action_log.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import pytest
@@ -120,31 +120,42 @@ class TestRecordMutationActionLog:
         assert e.observation_due is not None  # structural strategy parity
         return date.fromisoformat(e.observation_due)
 
+    def _freeze_clock(self, monkeypatch: pytest.MonkeyPatch) -> date:
+        """Freeze the shared server clock and return its LOCAL date.
+
+        The window is counted off ``mureo.core.clock.server_now`` (#460),
+        which is host-local. Comparing against a real ``datetime.now(utc)``
+        would be flaky on any positive-offset host: at 02:00 JST the local
+        date is already the next UTC day, so the delta reads N+1 and the
+        test fails for a reason that has nothing to do with the window.
+        Freezing at exactly that hour keeps the case covered — and pinned.
+        """
+        import mureo.core.clock as clock
+
+        frozen = datetime(2026, 7, 28, 2, 0, tzinfo=timezone(timedelta(hours=9)))
+        monkeypatch.setattr(clock, "server_now", lambda: frozen)
+        return frozen.date()
+
     def test_default_observation_window_when_undeclared(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from datetime import datetime, timezone
-
         from mureo.mcp.plugin_semantics import _DEFAULT_OBSERVATION_DAYS
 
+        today = self._freeze_clock(monkeypatch)
         self._seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         record_mutation_action_log(tool="acme_ads_pause", source="d", reversal=None)
-        today = datetime.now(timezone.utc).date()
-        delta = (self._due_date(tmp_path / "STATE.json") - today).days
-        # tolerate a UTC midnight roll-over during the test
-        assert _DEFAULT_OBSERVATION_DAYS - 1 <= delta <= _DEFAULT_OBSERVATION_DAYS
+        assert self._due_date(tmp_path / "STATE.json") == today + timedelta(
+            days=_DEFAULT_OBSERVATION_DAYS
+        )
 
     def test_declared_observation_days_honored(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from datetime import datetime, timezone
-
+        today = self._freeze_clock(monkeypatch)
         self._seed_state(tmp_path)
         monkeypatch.chdir(tmp_path)
         record_mutation_action_log(
             tool="acme_ads_pause", source="d", reversal=None, observation_days=3
         )
-        today = datetime.now(timezone.utc).date()
-        delta = (self._due_date(tmp_path / "STATE.json") - today).days
-        assert 2 <= delta <= 3
+        assert self._due_date(tmp_path / "STATE.json") == today + timedelta(days=3)

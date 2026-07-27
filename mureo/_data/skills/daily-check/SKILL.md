@@ -19,7 +19,11 @@ Run a daily health check on all marketing accounts using the strategy context.
 **Before you start**: Run the **Diagnostic preamble** from ../_mureo-shared/SKILL.md — load learning insights (mureo_learning_insights_get) and consult advisors (mureo_consult_advisor) before drawing conclusions.
 
 
-1. **Load context**: Read STRATEGY.md (especially Operation Mode, Data Sources, and all Goal sections) and STATE.json.
+0. **Establish today**: call `mureo_state_get` **first, on every host** (including Claude Code, where you would otherwise `Read` the file) and take `server_now` from its response — an ISO 8601 timestamp with UTC offset, e.g. `2026-07-28T10:12:33+09:00`. Its date is the **only source of the current date** for this run; do not ask the user, do not guess, and do not shell out (this skill must run in Bash-less headless hosts). Every other date you will see — `reports.daily.period`, `last_synced_at`, `action_log` timestamps — is **history**, never evidence of what day it is now. Also **never write `server_now` into STATE.json**: it is a response field, and a persisted copy becomes tomorrow's stale "today".
+
+   **Never short-circuit on history.** Do not conclude "today's report is already fetched — re-displaying it" (or skip a step) because a stored `period` / `last_synced_at` looks like today. A daily check **always fetches fresh platform data** for the period ending on `server_now`'s date; a stored report is at best a prior run to compare against.
+
+1. **Load context**: Read STRATEGY.md (especially Operation Mode, Data Sources, and all Goal sections) and STATE.json (the same `mureo_state_get` response from step 0 on MCP hosts).
 
 2. **Discover available platforms**: Identify all configured platforms from STATE.json `platforms` and check which data sources (Search Console, GA4) are accessible. Also enumerate installed **plugin** platforms (`mcp__mureo__<plugin>_*` tools) and any **hosted official-MCP connector** present in the session (e.g. TikTok's `tt-ads-*` tools, STATE.json key `tiktok_ads`); include them best-effort — see `_mureo-shared` → *Plugin platforms* and *Hosted-connector platforms*.
 
@@ -60,7 +64,7 @@ Run a daily health check on all marketing accounts using the strategy context.
    Goal: Organic clicks +20% -- Search Console: +12% IN PROGRESS
    ```
 
-9. **Evidence check**: Review `action_log` entries that have `observation_due` dates:
+9. **Evidence check**: Review `action_log` entries that have `observation_due` dates — compare each one against `server_now`'s date, never against another `action_log` timestamp:
    - For entries whose observation window has passed: collect current metrics for the same campaign and call **`mureo_outcome_evaluate`** with `before` = the entry's `metrics_at_action` and `after` = the current metrics. It returns a deterministic per-metric + overall **improved / regressed / inconclusive** verdict (applying the ±noise band and metric directions for you) — use it instead of eyeballing the numbers, then report with the confidence it implies (see `_mureo-learning` skill). This tool is pure/platform-agnostic, so it works for **any** platform including hosted connectors and plugins — for those, first **normalize the connector's metric names to the standard keys** (`cpa`, `conversions`, `ctr`, `cost`, …) so they can be scored (unknown names are treated as neutral/no-verdict).
    - For entries still within their observation window: note them as "pending observation" and do NOT recommend further changes to those campaigns.
    - `platform="plugin:<dist>"` entries participate in this loop on equal footing with built-ins; they have no `metrics_at_action` baseline, so evaluate them **qualitatively/advisory** (see `_mureo-shared` → *Mutating plugin tools — structural strategy parity*).
@@ -73,11 +77,11 @@ Run a daily health check on all marketing accounts using the strategy context.
 
     For each issue, suggest specific actions aligned with the current Operation Mode. Do NOT recommend actions based on single-day fluctuations — at least 7 consecutive days of critical metrics (>30% off target) before suggesting rescue.
 
-11. **Update STATE.json**: Update campaign snapshots, add notes for flagged issues, and log this daily check to the `action_log` with a summary of findings. On the Code `Write` path, use the canonical STATE.json field names — `campaign_name` (NOT the tool-output `name`), `campaign_id`, and each platform's `account_id`; a snapshot/platform missing a required field is dropped by the reporting dashboard. On the Code `Write` path also **stamp the top-level `last_synced_at` to now** so the dashboard's "Synced N ago" freshness reflects this run (the `mureo_state_upsert_campaign` / `_platform_metrics_set` tools set it for you). See `../_mureo-shared/SKILL.md` → *STATE.json Schema*.
+11. **Update STATE.json**: Update campaign snapshots, add notes for flagged issues, and log this daily check to the `action_log` with a summary of findings. On the Code `Write` path, use the canonical STATE.json field names — `campaign_name` (NOT the tool-output `name`), `campaign_id`, and each platform's `account_id`; a snapshot/platform missing a required field is dropped by the reporting dashboard. On the Code `Write` path also **stamp the top-level `last_synced_at` to `server_now`** so the dashboard's "Synced N ago" freshness reflects this run (the `mureo_state_upsert_campaign` / `_platform_metrics_set` tools set it for you). See `../_mureo-shared/SKILL.md` → *STATE.json Schema*.
 
 12. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="daily"` and a concise `summary` object so the read-only dashboard can render this report without re-running you. Follow this convention:
-    - `generated_at`: ISO 8601 timestamp of this run
-    - `period`: the day reviewed (e.g. `"2026-06-17"`)
+    - `generated_at`: ISO 8601 timestamp of this run — use `server_now`
+    - `period`: the day reviewed, derived from `server_now` (e.g. `"2026-06-17"`)
     - `kpis`: per-platform and/or totals headline numbers (spend, conversions, cpa, ctr)
     - `flags`: a list of **structured** flags — each a small object `{code, severity, params}` so the dashboard renders a coarse, localizable chip with the numbers on drill-down:
         - `code`: a canonical vocabulary key — one of `goals_met`, `cpa_over_target`, `cpa_under_target`, `cv_below_target`, `cv_above_target`, `spend_spike`, `cpa_spike`, `invalid_traffic_suspected`, `zero_cv_adspots`, `budget_overspend`, `budget_drift`, `tracking_suspect`, `zero_conversions`, `supply_tools_unconfigured`, `anomaly_baseline_insufficient`, `pending_observations`, `search_console_no_property`, `ga4_not_configured`.

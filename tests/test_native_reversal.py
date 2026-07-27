@@ -250,6 +250,30 @@ class TestRecordNativeMutation:
             "params": {"campaign_id": "c1"},
         }
 
+    def test_timestamp_comes_from_the_shared_server_clock(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """#460 — every action_log writer stamps the same clock, in the same
+        offset-bearing format, so entries from the native promotion path and
+        from ``mureo_state_action_log_append`` are directly comparable."""
+        from datetime import datetime, timedelta, timezone
+
+        import mureo.core.clock as clock
+        from mureo.context.state import read_state_file
+
+        frozen = datetime(2026, 7, 28, 10, 12, 33, tzinfo=timezone(timedelta(hours=9)))
+        monkeypatch.setattr(clock, "server_now", lambda: frozen)
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        nr.record_native_mutation(
+            "meta_ads_campaigns_pause", {"campaign_id": "c1"}, "ACTIVE"
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.timestamp == "2026-07-28T10:12:33+09:00"
+        # observation_due is a LOCAL calendar date derived from the same clock.
+        assert entry.observation_due is not None
+        assert entry.observation_due.startswith("2026-08-")
+
     def test_records_audit_only_when_status_unknown(
         self, tmp_path, monkeypatch
     ) -> None:

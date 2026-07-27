@@ -23,6 +23,21 @@ Atomic write semantics come from ``mureo.context.state._atomic_write``
 and the equivalent path in ``context.strategy``: write to a temp file
 in the same directory, then ``os.replace`` over the target. A failure
 mid-flight leaves the original intact.
+
+Server clock (#460)
+-------------------
+The two read entry points (``mureo_strategy_get`` / ``mureo_state_get``)
+carry a ``server_now`` field — the host's clock as ISO 8601 with a UTC
+offset. Skills use it as their only source of "today"; a Bash-less
+headless host cannot shell out to ``date``, and the dates *inside*
+STATE.json are history, not now. ``server_now`` lives on the RESPONSE
+envelope only: ``parse_state`` ignores unknown top-level keys and
+``render_state`` emits only the known ones, so a stray ``server_now``
+echoed back into STATE.json is dropped by the next mureo write rather
+than becoming a fossilised "today". Symmetrically,
+``mureo_state_action_log_append`` stamps the entry ``timestamp``
+server-side: a model-supplied value is ignored, so a drifted date can no
+longer be persisted and read back later as fact.
 """
 
 from __future__ import annotations
@@ -43,6 +58,7 @@ from mureo.context.state import (
     upsert_campaign,
 )
 from mureo.context.strategy import RAW_HEADING_TYPE, parse_strategy, write_strategy_file
+from mureo.core.clock import server_now_iso
 from mureo.core.runtime_context import get_runtime_context
 from mureo.fsutil import backup_file
 from mureo.mcp._helpers import _json_result, _require
@@ -109,10 +125,27 @@ def _resolve_path(
 
 async def handle_strategy_get(arguments: dict[str, Any]) -> list[TextContent]:
     path = _resolve_path(arguments, "STRATEGY.md", store_attr="strategy_path")
+    # ``server_now`` on both branches: a skill that starts from STRATEGY.md
+    # (or runs before onboarding, when neither file exists) must still be
+    # able to establish the current date without a second call.
     if not path.exists():
-        return _json_result({"markdown": "", "exists": False, "path": str(path)})
+        return _json_result(
+            {
+                "markdown": "",
+                "exists": False,
+                "path": str(path),
+                "server_now": server_now_iso(),
+            }
+        )
     text = path.read_text(encoding="utf-8")
-    return _json_result({"markdown": text, "exists": True, "path": str(path)})
+    return _json_result(
+        {
+            "markdown": text,
+            "exists": True,
+            "path": str(path),
+            "server_now": server_now_iso(),
+        }
+    )
 
 
 async def handle_strategy_set(arguments: dict[str, Any]) -> list[TextContent]:
@@ -163,7 +196,15 @@ async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
     # the file is absent; round-trip through render_state to keep the
     # missing-file and present-file branches in lockstep.
     doc = read_state_file(path)
-    return _json_result(_state_to_dict(doc))
+    payload = _state_to_dict(doc)
+    # Response-envelope only (#460). ``_state_to_dict`` renders the parsed
+    # document, so this key is added AFTER serialization and is never part of
+    # what gets written back: ``parse_state`` ignores unknown top-level keys
+    # and ``render_state`` emits only known ones, so an agent that echoes this
+    # response into STATE.json loses the key on the next mureo write instead
+    # of leaving a stale "today" behind.
+    payload["server_now"] = server_now_iso()
+    return _json_result(payload)
 
 
 async def handle_state_action_log_append(
@@ -173,11 +214,15 @@ async def handle_state_action_log_append(
     if not isinstance(raw, dict):
         raise ValueError("entry must be an object")
     # Required per ActionLogEntry contract.
-    timestamp = _require(raw, "timestamp")
     action = _require(raw, "action")
     platform = _require(raw, "platform")
+    # ``timestamp`` is stamped SERVER-side (#460). A model-supplied value is
+    # accepted by the schema (dropping the property would break existing
+    # callers under ``additionalProperties: false``) but deliberately ignored:
+    # it is exactly how a drifted date used to get persisted and then read
+    # back out of the action_log as evidence of "today".
     entry = ActionLogEntry(
-        timestamp=timestamp,
+        timestamp=server_now_iso(),
         action=action,
         platform=platform,
         campaign_id=raw.get("campaign_id"),

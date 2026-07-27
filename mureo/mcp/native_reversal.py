@@ -23,9 +23,11 @@ no-ops when there is no STATE.json in the current working directory.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
+
+from mureo.core import clock
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +212,11 @@ def record_native_mutation(
         from mureo.context.models import ActionLogEntry
         from mureo.context.state import append_action_log
 
-        now = datetime.now(timezone.utc)
+        # Server clock (#460): the same offset-bearing local timestamp
+        # ``mureo_state_action_log_append`` stamps, so entries from both
+        # promotion paths are directly comparable — and ``observation_due``
+        # lands on the operator's local calendar day.
+        now = clock.server_now()
         entry = ActionLogEntry(
             timestamp=now.isoformat(timespec="seconds"),
             action=name,

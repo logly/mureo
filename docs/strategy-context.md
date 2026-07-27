@@ -185,7 +185,7 @@ Each entry in `action_log` records an action taken by a workflow command, with o
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `timestamp` | `string` | Yes | ISO 8601 timestamp of the action |
+| `timestamp` | `string` | No — server-stamped | ISO 8601 timestamp of the action, with UTC offset. Written by `mureo_state_action_log_append` from the **server's** clock — a value supplied by the caller is ignored, so a drifted agent date is never persisted. Always present in a stored entry |
 | `action` | `string` | Yes | Description of the action taken |
 | `platform` | `string` | Yes | Platform the action was taken on |
 | `campaign_id` | `string` | No | Campaign affected |

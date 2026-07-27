@@ -34,11 +34,11 @@ from __future__ import annotations
 
 import contextvars
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from mureo.context.models import ActionLogEntry
 from mureo.context.state import append_action_log, read_state_file
+from mureo.core.clock import server_now_iso
 from mureo.rollback.models import RollbackStatus
 from mureo.rollback.planner import plan_rollback
 
@@ -192,7 +192,7 @@ async def execute_rollback(
         }
 
     new_entry = ActionLogEntry(
-        timestamp=_utc_now_iso(),
+        timestamp=server_now_iso(),
         action=plan.operation,
         platform=plan.platform,
         campaign_id=entry.campaign_id,
@@ -209,7 +209,3 @@ async def execute_rollback(
         "caveats": list(plan.caveats),
         "rollback_of": index,
     }
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat()

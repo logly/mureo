@@ -25,6 +25,7 @@ from typing import Any
 from mcp.types import TextContent, Tool
 
 from mureo._image_validation import validate_image_file
+from mureo.core.clock import server_now_iso
 from mureo.creative_studio import composer
 from mureo.creative_studio.brand_kit import DEFAULT_BRAND_KIT, BrandKit, load_brand_kit
 from mureo.creative_studio.formats import FORMATS_BY_ID, generation_size_for_aspect
@@ -495,9 +496,9 @@ def _record_audit(run_id: str, manifest_path: Path) -> None:
         from mureo.context.models import ActionLogEntry
         from mureo.context.state import append_action_log
 
-        now = datetime.now(timezone.utc)
         entry = ActionLogEntry(
-            timestamp=now.isoformat(timespec="seconds"),
+            # Server clock (#460) — same stamp/format as every other writer.
+            timestamp=server_now_iso(),
             action="creative_studio_generate_visual",
             platform="creative_studio",
             summary=f"Generated key visuals (run {run_id})",
@@ -727,9 +728,9 @@ def _studio_audit(action: str, summary: str, metrics: dict[str, Any]) -> None:
         from mureo.context.models import ActionLogEntry
         from mureo.context.state import append_action_log
 
-        now = datetime.now(timezone.utc)
         entry = ActionLogEntry(
-            timestamp=now.isoformat(timespec="seconds"),
+            # Server clock (#460) — same stamp/format as every other writer.
+            timestamp=server_now_iso(),
             action=action,
             platform="creative_studio",
             summary=summary,
