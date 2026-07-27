@@ -42,6 +42,8 @@ Review and clean up search terms and keywords across all platforms.
    - **Add candidates**: High-converting terms not yet added as keywords, terms matching USP themes
    - **Reduce candidates**: Terms well-covered by organic rankings
 
+   **Negative keywords are a marginal decision, not an average ranking.** Distinguish **systematic waste** — an n-gram or intent pattern that is wrong for the Persona at any volume, where a negative genuinely removes future spend — from a **low-volume term with a bad average**, where a handful of clicks and zero conversions is a sample-size fact, not evidence of waste. Excluding the long tail one term at a time mostly narrows match reach without saving meaningful spend. Prefer pattern-level negatives with a stated marginal saving; leave thin terms to accumulate. See `../_mureo-pro-diagnosis/SKILL.md` → *Allocation & Learning-State Discipline*.
+
 7. **Present recommendations** in a table:
    | Term | Platform | Action | Reason | Score | Campaign |
    |------|----------|--------|--------|-------|----------|

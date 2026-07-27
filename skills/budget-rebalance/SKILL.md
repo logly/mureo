@@ -58,6 +58,8 @@ Analyze budget allocation and suggest rebalancing across all campaigns.
     | Platform | Campaign | Current Budget | Proposed Budget | Change | Reason |
     |----------|----------|---------------|-----------------|--------|--------|
 
+    **Every `Reason` must be marginal, not average.** A rank by average CPA identifies *candidates*; it does not justify the move. State what the next (or removed) unit of spend is expected to do — a top-average campaign that is not budget-limited is usually saturated, and a bad-average campaign may simply be spend-suppressed. Where the marginal effect is genuinely unknown, say so and offer `/experiment` instead of asserting it. See `../_mureo-pro-diagnosis/SKILL.md` → *Allocation & Learning-State Discipline*.
+
 12. **Risk assessment**: Flag any budget changes >20% (smart bidding learning risk).
 
 13. **Ask for approval** before any changes.

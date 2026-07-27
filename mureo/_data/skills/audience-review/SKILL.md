@@ -45,11 +45,13 @@ Reconcile **who you say you want** (the STRATEGY.md Persona / Target Audience) w
 
    | Platform | Segment / Placement | Current | Signal | Recommendation | Persona/Goal rationale |
    |----------|---------------------|---------|--------|----------------|------------------------|
-   | Meta | Audience Network | on, ¥18k spend | 0 conv | Exclude placement | Persona converts on IG Feed; AN is waste |
+   | Meta | Audience Network | on, ¥18k spend | 0 conv | Flag as hypothesis — validate the exclusion via /experiment (see Allocation & Learning-State Discipline) | Persona converts on IG Feed; AN looks like waste, but the row is an allocation outcome |
    | Google | Mobile | +0% modifier | CPA 1.8× Desktop | −20% device bid | Protect Goal CPA |
    | Meta | (Persona lookalike) | none | — | Create 1% LAL of purchasers | Persona = past-buyer profile |
 
    Recommendation types: **exclusions**, **bid adjustments**, **lookalike creation**, **placement pruning**. Reference past `action_log` outcomes — if a device bid adjustment was previously REJECTED as no-impact, note that before proposing it again.
+
+   **A breakdown average is never on its own grounds for an exclusion.** Where the platform allocates delivery inside the unit automatically (Meta ad-set delivery across audiences/placements; Google Ads Smart Bidding, where manual bid adjustments are ignored except a −100% device opt-out), these rows are outcomes of that allocation, not levers — cutting an expensive-looking row shrinks the optimizer's inventory and can worsen the unit. Present such rows as **hypotheses to validate via `/experiment`**, and act at the level the platform optimizes (a separate ad set, not a row exclusion). See `../_mureo-pro-diagnosis/SKILL.md` → *Allocation & Learning-State Discipline*.
 
 8. **Approval gate before ANY write**: Apply the *Confirm Before Write Operations* rule from `../_mureo-shared/SKILL.md` — show current-vs-proposed for every change and get explicit **approval**. Respect Operation Mode and `## Guardrails`; a targeting change during `ONBOARDING_LEARNING` / `CREATIVE_TESTING` is discouraged — warn and ask before proceeding.
 

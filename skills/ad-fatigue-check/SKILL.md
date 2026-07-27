@@ -41,6 +41,7 @@ Find the ads whose audience has seen them too many times. Creative fatigue is a 
 5. **Noise guards (apply before assigning any verdict)**:
    - **Minimum impressions per window**: require **≥ 1,000 impressions in each** of the two adjacent windows before reading a CTR trend (the CTR sample floor from `../_mureo-learning/SKILL.md`). Below that, the ad is **insufficient-data**, not fatigued.
    - **Single-day dips never count** — the comparison is week-over-week on 7-day windows precisely so one bad Tuesday cannot trigger a rotation.
+   - **Learning-state noise is not fatigue.** An ad whose ad set is in its Meta learning phase (new, or recently reset by a significant edit), or whose Google Ads bid strategy shows "Learning", has unstable delivery by design — soft CTR and drifting CPM there are the learning window, not a worn-out creative. Mark those **insufficient-data / re-check after the window**, never FATIGUED, and do not rotate creative on that basis (a creative swap resets the phase again). See `../_mureo-pro-diagnosis/SKILL.md` → *Allocation & Learning-State Discipline*.
    - Note confounders: a new competitor, a seasonal lull, or a landing-page change can mimic fatigue — flag them rather than blaming the creative.
 
 6. **Ranked table** — worst first:
