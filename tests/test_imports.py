@@ -69,6 +69,7 @@ _ALL_MODULES: list[str] = [
     "mureo.meta_ads._ad_sets",
     "mureo.meta_ads._ads",
     "mureo.meta_ads._creatives",
+    "mureo.meta_ads._videos",
     "mureo.meta_ads._audiences",
     "mureo.meta_ads._pixels",
     "mureo.meta_ads._insights",

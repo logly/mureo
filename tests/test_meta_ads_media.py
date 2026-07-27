@@ -185,17 +185,64 @@ class TestUploadAdVideoFile:
         video MIME is what got the sibling /adimages multipart body rejected
         with ``FileTypeNotSupported``, so the per-extension MIME is pinned here.
         """
-        meta_client._http = _mock_shared_http(200, {"id": "v"})
+        seen: list[Any] = []
+
+        def _capture(*_args: Any, **kwargs: Any) -> Any:
+            filename, part, mime = kwargs["files"]["source"]
+            seen.append((filename, part.read(), mime))
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.headers = {}
+            resp.json.return_value = {"id": "v"}
+            return resp
+
+        meta_client._http = MagicMock()
+        meta_client._http.post = AsyncMock(side_effect=_capture)
 
         await meta_client.upload_ad_video_file(str(sample_video))
 
         _, kwargs = meta_client._http.post.call_args
-        files = kwargs["files"]
-        assert set(files) == {"source"}
-        filename, content, mime = files["source"]
+        assert set(kwargs["files"]) == {"source"}
+        filename, content, mime = seen[0]
         assert filename == "test_video.mp4"
         assert content == sample_video.read_bytes()
         assert mime == "video/mp4"
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_video_file_streams_open_file_object(
+        self, meta_client: Any, sample_video: Path
+    ) -> None:
+        """The part carries an OPEN file object, never materialized bytes.
+
+        A 1 GB video read into a ``bytes`` object would sit in memory for the
+        whole upload. httpx streams a file handle instead, so the object that
+        reaches the ``_http.post`` seam must still be readable/seekable — and
+        must still be open at that moment, which is what pins the ``with``
+        block around the ``_post`` await rather than around the ``open()``.
+        """
+        parts: list[Any] = []
+
+        def _capture(*_args: Any, **kwargs: Any) -> Any:
+            part = kwargs["files"]["source"][1]
+            parts.append((part, part.closed, part.read()))
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.headers = {}
+            resp.json.return_value = {"id": "v"}
+            return resp
+
+        meta_client._http = MagicMock()
+        meta_client._http.post = AsyncMock(side_effect=_capture)
+
+        await meta_client.upload_ad_video_file(str(sample_video))
+
+        part, closed_at_seam, streamed = parts[0]
+        assert not isinstance(part, (bytes, bytearray))
+        assert hasattr(part, "read") and hasattr(part, "seek")
+        assert closed_at_seam is False
+        assert streamed == sample_video.read_bytes()
+        # The handle is released once the upload returns.
+        assert part.closed is True
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_file_bearer_header_no_token_field(
@@ -233,9 +280,10 @@ class TestUploadAdVideoFile:
     ) -> None:
         """A 429-then-200 retry re-sends the identical, non-empty file part.
 
-        ``_request`` reuses the same ``files`` mapping across retry attempts, so
-        the part must carry materialized bytes — a still-open file handle would
-        be exhausted by the first attempt and the retry would send an empty body.
+        ``_request`` reuses the same ``files`` mapping across retry attempts and
+        the part carries a streamed file handle, so ``_request`` must rewind it
+        before every attempt — otherwise the first attempt exhausts the handle
+        and the retry POSTs an empty body.
         """
         resp_429 = MagicMock()
         resp_429.status_code = 429
@@ -247,10 +295,12 @@ class TestUploadAdVideoFile:
         resp_200.json.return_value = {"id": "video_retry"}
         responses = [resp_429, resp_200]
 
-        sent_parts: list[Any] = []
+        sent_bodies: list[bytes] = []
 
         def _capture(*_args: Any, **kwargs: Any) -> Any:
-            sent_parts.append(kwargs["files"]["source"])
+            # Reading the part is what httpx does when it renders the body,
+            # and it is what consumes a file handle.
+            sent_bodies.append(kwargs["files"]["source"][1].read())
             return responses.pop(0)
 
         meta_client._http = MagicMock()
@@ -260,9 +310,10 @@ class TestUploadAdVideoFile:
             result = await meta_client.upload_ad_video_file(str(sample_video))
 
         assert result == {"id": "video_retry"}
-        assert len(sent_parts) == 2  # 429 attempt + 200 retry
-        assert sent_parts[0][1] == sample_video.read_bytes()  # full body
-        assert sent_parts[0] == sent_parts[1]  # identical on retry
+        assert len(sent_bodies) == 2  # 429 attempt + 200 retry
+        assert sent_bodies[0] == sample_video.read_bytes()  # full body
+        assert sent_bodies[0]  # non-empty
+        assert sent_bodies[0] == sent_bodies[1]  # identical on retry
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_file_surfaces_meta_error(
@@ -334,13 +385,13 @@ class TestUploadAdVideoFileTooLarge:
             fh.truncate(1024 * 1024 * 1024)  # exactly 1GB, sparse
 
         from mureo._image_validation import validate_video_file
-        from mureo.meta_ads._creatives import (
+        from mureo.meta_ads._videos import (
             _META_ALLOWED_VIDEO_EXTENSIONS,
             _META_MAX_VIDEO_SIZE_BYTES,
         )
 
         assert _META_MAX_VIDEO_SIZE_BYTES == 1024 * 1024 * 1024
-        # Validation only (uploading would read 1GB into memory).
+        # Validation only — this test is about the size boundary, not the wire.
         validate_video_file(
             str(at_cap),
             max_size_bytes=_META_MAX_VIDEO_SIZE_BYTES,

@@ -56,6 +56,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Meta video upload no longer buffers the whole file in memory.**
+  `upload_ad_video_file` hands httpx the open file handle instead of reading
+  the file into a `bytes` object first, so a 1 GB upload streams off disk
+  rather than allocating 1 GB of RSS. The handle is kept open for the whole
+  request, and the shared `_request` retry loop now rewinds every seekable
+  part of a `files` mapping to byte 0 before **each** attempt — so a 429 or
+  transport retry provably re-sends an identical, non-empty body. Behaviour on
+  the wire is unchanged (`source` part, real filename, real container MIME,
+  600s timeout), and the image path (base64 `bytes` form body) is untouched.
+  Resumable/chunked upload for files above the 1 GB Graph ceiling remains
+  unimplemented; oversized files still fail validation locally.
+
+- **Internal: Meta AdVideo operations split into their own mixin.** The video
+  upload/read machinery (`upload_ad_video`, `upload_ad_video_file`,
+  `get_ad_video`, `list_ad_video_thumbnails` and their constants/MIME map)
+  moves from `mureo/meta_ads/_creatives.py` to a new sibling
+  `mureo/meta_ads/_videos.py` (`VideosMixin`, registered on
+  `MetaAdsApiClient`), bringing `_creatives.py` from 939 lines back under the
+  800-line budget. The split follows the Graph node each module talks to:
+  `/advideos` + `/{video-id}` here, `/adcreatives` there — so the
+  video-*creative* build helpers stay with `create_ad_creative` and neither
+  module imports the other. Pure move, no behaviour change; every public
+  client method keeps its name and signature.
+
 - **Configure-UI asset split: `auth_wizards_meta.js` (internal).** The Meta
   halves of the auth wizards — the hosted-connector setup card, the
   connection-method chooser and the system-user token card — moved out of
