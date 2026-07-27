@@ -88,6 +88,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The Meta authentication step now opens with an explicit connection-method
+  chooser.** The step used to render the prominent *"Login with Facebook"*
+  button with the system-user token card collapsed underneath, so operators
+  running a **Live** Meta app — for whom browser OAuth can never succeed,
+  Facebook rejects the localhost redirect — clicked the loud button anyway and
+  dead-ended. The two paths are mutually exclusive alternatives, so the step
+  now leads with *"Choose a connection method"* / *"Pick one — you do not need
+  both."* and two selectable option cards: **Paste a system-user token**
+  (listed first, badged *Recommended*: for Live apps and automation, never
+  expires, no browser login) and **Log in with Facebook** (for
+  Development-mode apps, renews about every 60 days). Nothing is preselected —
+  until the operator picks, **neither** the OAuth button nor the token form is
+  on screen — and choosing one reveals only that flow, with the token card
+  already expanded. The chooser is a framework-free radiogroup (`role="radio"`
+  + `aria-checked`, roving tabindex, Space/Enter, arrows and Home/End),
+  switching is idempotent and preserves typed-but-unsaved token text, and the
+  OAuth timeout guidance now points at the token option *above*. The card keeps
+  its
+  `<details class="meta-token-card">` shape and every existing
+  `wizard.auth.meta_token_*` key, so downstream markup hooks are unaffected.
+
 - **The ad account in the Meta system-user token card is now explicitly
   optional.** After *Validate*, the account `<select>` was populated with the
   probed accounts only — no placeholder — so the browser silently pre-selected

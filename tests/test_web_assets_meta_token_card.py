@@ -149,3 +149,67 @@ def test_localhost_hint_shown_for_meta_only() -> None:
     assert "meta_oauth_localhost_hint" in js
     # Guarded on the meta provider inside pollOAuth.
     assert 'provider === "meta"' in js
+
+
+@pytest.mark.unit
+class TestLocalhostHintMatchesTheChooser:
+    """The OAuth dead-end guidance names the chooser the operator can
+    actually see. It used to say "the option below", which described the
+    old collapsed-card layout; the token option now sits ABOVE the Facebook
+    flow, inside the connection-method chooser."""
+
+    def test_hint_points_at_the_option_above(self) -> None:
+        data = json.loads(_read("i18n.json"))
+        en = data["en"]["wizard.auth.meta_oauth_localhost_hint"]
+        assert "above" in en.lower()
+        assert "below" not in en.lower(), (
+            "the token option is rendered above the Facebook flow now — "
+            "'below' describes the pre-chooser layout"
+        )
+
+    def test_japanese_hint_points_upward_too(self) -> None:
+        data = json.loads(_read("i18n.json"))
+        ja = data["ja"]["wizard.auth.meta_oauth_localhost_hint"]
+        assert "上" in ja
+        assert "下" not in ja
+
+
+@pytest.mark.unit
+class TestDownstreamMarkupContract:
+    """Hooks a downstream extension binds to. These are NOT free to move:
+    the card is located by ``details.meta-token-card`` and its account row by
+    the ``wizard.auth.meta_token_account`` key prefix, and the picker is
+    hidden by walking from the ``<select>`` to its enclosing ``<label>``."""
+
+    def test_card_is_still_a_details_element_with_the_pinned_class(self) -> None:
+        js = _read("auth_wizards.js")
+        assert 'createElement("details")' in js
+        assert 'className = "meta-token-card"' in js
+
+    def test_summary_toggle_element_is_retained(self) -> None:
+        """De-emphasized visually once the token option is chosen, but the
+        element (and its data-i18n key) must survive."""
+        js = _read("auth_wizards.js")
+        assert 'createElement("summary")' in js
+        assert "wizard.auth.meta_token_card_title" in js
+
+    def test_account_select_stays_inside_its_label(self) -> None:
+        js = _read("auth_wizards.js")
+        assert "accountLabel.appendChild(accountSelect)" in js
+
+    def test_account_scoped_i18n_keys_are_all_still_present(self) -> None:
+        js = _read("auth_wizards.js")
+        for key in (
+            "wizard.auth.meta_token_account_label",
+            "wizard.auth.meta_token_account_hint",
+            "wizard.auth.meta_token_account_placeholder",
+        ):
+            assert key in js, f"{key} dropped — downstream picker hook breaks"
+
+
+@pytest.mark.unit
+def test_card_is_expanded_when_the_token_method_is_chosen() -> None:
+    """Choosing the token option must not leave the operator with a second
+    collapsed disclosure to discover — the card opens with the choice."""
+    js = _read("auth_wizards.js")
+    assert "tokenCard.open = true;" in js
