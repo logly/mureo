@@ -1,6 +1,12 @@
 """Meta Ads creative operations mixin.
 
 Covers AdCreative creation, image upload, and dynamic creative support.
+
+The AdVideo node (upload / status / thumbnails) lives in the sibling
+:mod:`mureo.meta_ads._videos`. The video-creative *build* helpers below
+(``_validate_video_creative_mode`` / ``_build_video_data``) stay here because
+they shape an ``/adcreatives`` payload, not an ``/advideos`` request -- which
+is why neither module imports the other.
 """
 
 from __future__ import annotations
@@ -12,7 +18,7 @@ from typing import Any, cast
 
 import httpx
 
-from mureo._image_validation import validate_image_file, validate_video_file
+from mureo._image_validation import validate_image_file
 
 logger = logging.getLogger(__name__)
 
@@ -28,35 +34,6 @@ _META_UPLOAD_TIMEOUT_SECONDS = 60.0
 # Max redirect hops when downloading a remote image (each hop is SSRF-validated
 # before it is followed; see upload_ad_image).
 _MAX_IMAGE_REDIRECTS = 5
-
-# Meta Ads video upload limits. 1GB is Graph's documented ceiling for the
-# non-resumable (single-request) /advideos upload; larger files require the
-# chunked resumable upload protocol, which mureo does not implement yet.
-_META_MAX_VIDEO_SIZE_BYTES = 1024 * 1024 * 1024  # 1GB
-_META_MAX_VIDEO_SIZE_LABEL = "1GB"
-_META_ALLOWED_VIDEO_EXTENSIONS = frozenset({"mp4", "mov", "avi", "wmv", "mkv"})
-
-# Real container MIME per allowed extension. Meta inspects the multipart part
-# header, so a generic ``application/octet-stream`` risks the same
-# ``FileTypeNotSupported`` rejection the /adimages multipart attempt hit.
-_META_VIDEO_MIME_TYPES: dict[str, str] = {
-    "mp4": "video/mp4",
-    "mov": "video/quicktime",
-    "avi": "video/x-msvideo",
-    "wmv": "video/x-ms-wmv",
-    "mkv": "video/x-matroska",
-}
-
-# Per-request timeout for video uploads. A file may be up to 1GB, so this
-# overrides the shared client's 30s default by a wide margin.
-_META_VIDEO_UPLOAD_TIMEOUT_SECONDS = 600.0
-
-# AdVideo retrieval fields. ``status`` is a nested object carrying
-# ``video_status`` ("processing" / "ready" / "error") and ``processing_phase``.
-_VIDEO_FIELDS = "status,id,title,length,created_time"
-
-# AdVideo thumbnail fields.
-_VIDEO_THUMBNAIL_FIELDS = "id,uri,is_preferred,height,width"
 
 # Carousel card count limits
 _CAROUSEL_MIN_CARDS = 2
@@ -694,133 +671,6 @@ class CreativesMixin:
         }
 
         return await self._post(f"/{self._ad_account_id}/adcreatives", data)
-
-    # ------------------------------------------------------------------
-    # Video upload
-    # ------------------------------------------------------------------
-
-    async def upload_ad_video(
-        self, video_url: str, title: str | None = None
-    ) -> dict[str, Any]:
-        """Upload a video from URL
-
-        Args:
-            video_url: Source video URL
-            title: Video title (optional)
-
-        Returns:
-            Response in {"id": "..."} format
-        """
-        data: dict[str, Any] = {
-            "file_url": video_url,
-        }
-        if title:
-            data["title"] = title
-
-        return await self._post(f"/{self._ad_account_id}/advideos", data)
-
-    async def upload_ad_video_file(
-        self, file_path: str, title: str | None = None
-    ) -> dict[str, Any]:
-        """Upload a video from a local file (multipart /advideos).
-
-        Routes through the shared ``_post``/``_request`` machinery instead of a
-        one-off ``httpx.AsyncClient``, so Meta's error JSON (message /
-        error_subcode / fbtrace_id), retries, 429 handling and rate-limit
-        monitoring all apply, and auth rides the Bearer header rather than an
-        ``access_token`` form field.
-
-        Files up to 1GB are accepted -- Graph's documented ceiling for this
-        non-resumable single-request form. Larger files need the chunked
-        resumable upload protocol, which is not implemented.
-
-        Args:
-            file_path: Local video file path
-            title: Video title (optional)
-
-        Returns:
-            Response in {"id": "..."} format
-
-        Raises:
-            FileNotFoundError: If the file does not exist.
-            ValueError: Validation error
-            RuntimeError: If the API request fails.
-        """
-        path = validate_video_file(
-            file_path,
-            max_size_bytes=_META_MAX_VIDEO_SIZE_BYTES,
-            max_size_label=_META_MAX_VIDEO_SIZE_LABEL,
-            allowed_extensions=_META_ALLOWED_VIDEO_EXTENSIONS,
-        )
-
-        extension = path.suffix.lower().lstrip(".")
-        # validate_video_file already restricted the extension to the allowed
-        # set, which is exactly the MIME map's key set.
-        mime_type = _META_VIDEO_MIME_TYPES[extension]
-
-        # Read the whole file up front rather than handing httpx an open
-        # handle: ``_request`` re-sends the same ``files`` mapping on a 429 /
-        # transport retry, and a consumed handle would make the retry POST an
-        # empty body.
-        with open(path, "rb") as f:
-            video_bytes = f.read()
-
-        # ``source`` is the documented field name for the non-resumable
-        # /advideos upload; the real filename and container MIME travel with it
-        # so Meta can identify the format.
-        files = {"source": (path.name, video_bytes, mime_type)}
-
-        data: dict[str, Any] = {}
-        if title:
-            data["title"] = title
-
-        return await self._post(
-            f"/{self._ad_account_id}/advideos",
-            data,
-            timeout=_META_VIDEO_UPLOAD_TIMEOUT_SECONDS,
-            files=files,
-        )
-
-    # ------------------------------------------------------------------
-    # Video read operations (node-level paths -- NOT act_-scoped)
-    # ------------------------------------------------------------------
-
-    async def get_ad_video(self, video_id: str) -> dict[str, Any]:
-        """Get an uploaded video's processing status and metadata.
-
-        Meta processes uploads asynchronously; a creative referencing a video
-        that is still processing is rejected. Poll this until
-        ``status.video_status`` reports the video is ready.
-
-        Args:
-            video_id: Video ID from ``upload_ad_video`` /
-                ``upload_ad_video_file``.
-
-        Returns:
-            ``{"id", "status", "title", "length", "created_time"}``. ``status``
-            is returned raw -- it is a nested object carrying ``video_status``
-            and ``processing_phase``, and Meta has extended its shape over
-            time, so it is passed through rather than flattened.
-        """
-        return await self._get(f"/{video_id}", {"fields": _VIDEO_FIELDS})
-
-    async def list_ad_video_thumbnails(self, video_id: str) -> list[dict[str, Any]]:
-        """List the auto-generated thumbnails for an uploaded video.
-
-        Args:
-            video_id: Video ID from ``upload_ad_video`` /
-                ``upload_ad_video_file``.
-
-        Returns:
-            List of ``{"id", "uri", "is_preferred", "height", "width"}``.
-            Meta flags one entry with ``is_preferred: true``; its ``uri`` is
-            the natural input for ``create_ad_creative``'s
-            ``video_thumbnail_image_url``.
-        """
-        result = await self._get(
-            f"/{video_id}/thumbnails", {"fields": _VIDEO_THUMBNAIL_FIELDS}
-        )
-        return result.get("data", [])  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
     # Carousel creative

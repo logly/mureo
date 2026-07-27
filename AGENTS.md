@@ -51,6 +51,7 @@ mureo/
 │   ├── _ad_sets.py      # AdSetsMixin
 │   ├── _ads.py          # AdsMixin
 │   ├── _creatives.py    # CreativesMixin (image/carousel/collection/dynamic)
+│   ├── _videos.py       # VideosMixin (AdVideo upload/status/thumbnails)
 │   ├── _audiences.py    # AudiencesMixin
 │   ├── _pixels.py       # PixelsMixin
 │   ├── _insights.py     # InsightsMixin

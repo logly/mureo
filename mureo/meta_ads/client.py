@@ -23,6 +23,7 @@ from mureo.meta_ads._page_posts import PagePostsMixin
 from mureo.meta_ads._pixels import PixelsMixin
 from mureo.meta_ads._split_test import SplitTestMixin
 from mureo.meta_ads._targeting import TargetingMixin
+from mureo.meta_ads._videos import VideosMixin
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -39,11 +40,54 @@ _MAX_RETRIES = 3
 _INITIAL_BACKOFF_SECONDS = 1.0
 
 
+def _rewind_file_parts(files: dict[str, Any] | None) -> None:
+    """Seek every seekable part in an httpx ``files`` mapping back to byte 0.
+
+    Multipart callers (``upload_ad_video_file``) hand httpx an OPEN file object
+    rather than materialized bytes, so a 1GB upload streams instead of sitting
+    in memory. ``_request`` re-sends the same mapping on a 429 / transport
+    retry, and a handle left at EOF by the previous attempt would make the
+    retry POST an empty body.
+
+    Values may be a bare file-like object or an httpx part tuple
+    (``(filename, fileobj, content_type)``); anything without ``seek`` (e.g. a
+    ``bytes`` part) is left untouched -- immutable bytes re-render identically
+    on every attempt and need no rewind.
+
+    A part that cannot be rewound is a hard error, NOT something to skip past:
+    resuming a retry from a stale cursor would have httpx render a truncated or
+    empty multipart body, Meta can accept that upload and only surface the
+    damage later as an async video-processing failure. Failing here instead
+    turns a corrupt upload into a clear local error. Raising before the first
+    attempt (rather than only on retries) makes the failure deterministic for
+    such a caller instead of a heisenbug that appears only under rate limiting.
+
+    Raises:
+        RuntimeError: A file part reports ``seekable() is False``. Any other
+            exception from ``seek`` propagates unchanged, for the same reason.
+    """
+    if not files:
+        return
+    for value in files.values():
+        candidates = value if isinstance(value, (tuple, list)) else (value,)
+        for candidate in candidates:
+            seek = getattr(candidate, "seek", None)
+            if not callable(seek):
+                continue
+            seekable = getattr(candidate, "seekable", None)
+            if callable(seekable) and seekable() is False:
+                raise RuntimeError(
+                    "Cannot retry multipart upload: file part is not seekable"
+                )
+            seek(0)
+
+
 class MetaAdsApiClient(
     CampaignsMixin,
     AdSetsMixin,
     AdsMixin,
     CreativesMixin,
+    VideosMixin,
     AudiencesMixin,
     PixelsMixin,
     InsightsMixin,
@@ -162,16 +206,19 @@ class MetaAdsApiClient(
                 (httpx per-request timeout override semantics).
             files: Optional httpx ``files`` mapping (POST only). Passed
                 straight through so the request is encoded as multipart with
-                ``data`` as the accompanying form fields. Parts must carry
-                materialized ``bytes`` rather than an open file object — the
-                same mapping is re-sent on every retry attempt below, and a
-                consumed file handle would make the retry send an empty body.
+                ``data`` as the accompanying form fields. Parts may carry an
+                open file object so large uploads stream instead of being
+                buffered: the same mapping is re-sent on every retry attempt
+                below, and every file part is rewound to byte 0 before each
+                attempt so the retry sends an identical body. A part that
+                cannot be rewound is rejected rather than sent truncated.
 
         Returns:
             API response JSON
 
         Raises:
-            RuntimeError: If the maximum retry count is exceeded
+            RuntimeError: If the maximum retry count is exceeded, or if a
+                ``files`` part is not seekable (see ``_rewind_file_parts``).
         """
         if self._throttler is not None:
             await self._throttler.acquire()
@@ -197,6 +244,10 @@ class MetaAdsApiClient(
 
         last_error: Exception | None = None
         for attempt in range(_MAX_RETRIES):
+            # Before EVERY attempt, not just retries: on the first pass the
+            # handle is already at 0 and this is a no-op, and doing it
+            # unconditionally keeps the invariant in one place.
+            _rewind_file_parts(files)
             try:
                 if method == "GET":
                     resp = await self._http.get(

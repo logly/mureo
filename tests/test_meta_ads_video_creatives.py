@@ -10,6 +10,7 @@ TDD: tests are written first; the implementation follows.
 
 from __future__ import annotations
 
+import io
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -663,3 +664,123 @@ class TestRequestFilesSupport:
 
         _, kwargs = meta_client._http.post.call_args
         assert "files" not in kwargs
+
+    @staticmethod
+    def _resp(status_code: int, payload: dict[str, Any]) -> Any:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.headers = {}
+        resp.json.return_value = payload
+        resp.text = json.dumps(payload)
+        return resp
+
+    @pytest.mark.asyncio()
+    async def test_request_rewinds_file_parts_before_every_attempt(
+        self, meta_client: Any
+    ) -> None:
+        """Seekable ``files`` parts are rewound before each attempt.
+
+        ``upload_ad_video_file`` hands httpx an OPEN file object so a 1 GB
+        upload streams instead of sitting in memory. httpx's own ``FileField``
+        seeks per render, but ``_request`` must not lean on that alone: it
+        rewinds every seekable part itself, which keeps a 429 re-attempt
+        provably re-sending identical bytes and survives a future httpx change.
+
+        The handle here starts positioned at EOF, so the FIRST attempt already
+        proves the rewind happens before every attempt, not just retries.
+        """
+        payload = b"streamed-video-bytes"
+        handle = io.BytesIO(payload)
+        handle.seek(0, io.SEEK_END)
+
+        responses = [
+            self._resp(429, {}),
+            self._resp(200, {"id": "video_stream"}),
+        ]
+        sent: list[bytes] = []
+
+        def _capture(*_args: Any, **kwargs: Any) -> Any:
+            # Stand in for httpx rendering the multipart body: reading the
+            # stream consumes it, so without a rewind the next attempt sends
+            # an empty part.
+            sent.append(kwargs["files"]["source"][1].read())
+            return responses.pop(0)
+
+        meta_client._http = MagicMock()
+        meta_client._http.post = AsyncMock(side_effect=_capture)
+
+        with patch("mureo.meta_ads.client.asyncio.sleep", new=AsyncMock()):
+            result = await meta_client._post(
+                "/act_123456/advideos",
+                {},
+                files={"source": ("a.mp4", handle, "video/mp4")},
+            )
+
+        assert result == {"id": "video_stream"}
+        assert sent == [payload, payload]
+
+    @pytest.mark.asyncio()
+    async def test_request_rejects_an_unseekable_file_part(
+        self, meta_client: Any
+    ) -> None:
+        """An unseekable stream part fails loud instead of being sent.
+
+        A pipe- or socket-backed stream cannot be rewound, so this client
+        cannot honour its own retry contract for it: a 429 would resume from
+        wherever the previous attempt left the cursor and httpx would render a
+        truncated or empty multipart body. Meta can *accept* such an upload and
+        only surface the damage later as an async video-processing error, so a
+        silently-skipped rewind is strictly worse than a local failure.
+
+        The check runs before the first attempt, so the request is refused
+        outright rather than after a corrupt retry — a caller passing an
+        unseekable stream gets a deterministic error on every call instead of a
+        heisenbug that only appears under rate limiting.
+        """
+
+        class _Unseekable(io.RawIOBase):
+            def seekable(self) -> bool:
+                return False
+
+            def seek(self, *_args: Any, **_kwargs: Any) -> int:
+                raise io.UnsupportedOperation("not seekable")
+
+            def read(self, *_args: Any, **_kwargs: Any) -> bytes:
+                return b"piped"
+
+        # Queued so the test would still catch a corrupt second attempt if the
+        # guard were ever moved to run only on retries.
+        responses = [self._resp(429, {}), self._resp(200, {"id": "v"})]
+        meta_client._http = MagicMock()
+        meta_client._http.post = AsyncMock(
+            side_effect=lambda *_a, **_k: responses.pop(0)
+        )
+
+        with (
+            patch("mureo.meta_ads.client.asyncio.sleep", new=AsyncMock()),
+            pytest.raises(RuntimeError, match="not seekable"),
+        ):
+            await meta_client._post(
+                "/act_123456/advideos",
+                {},
+                files={"source": ("a.mp4", _Unseekable(), "video/mp4")},
+            )
+
+        # No attempt at all, so no truncated body ever reached the wire.
+        assert meta_client._http.post.call_count == 0
+
+    @pytest.mark.asyncio()
+    async def test_request_leaves_bytes_parts_alone(self, meta_client: Any) -> None:
+        """A ``bytes`` part has no ``seek`` and must pass through untouched.
+
+        Immutable bytes are re-rendered identically on every attempt, so they
+        need no rewind and must not trip the unseekable guard.
+        """
+        meta_client._http = MagicMock()
+        meta_client._http.post = AsyncMock(return_value=self._resp(200, {"ok": True}))
+
+        files = {"source": ("a.mp4", b"raw-bytes", "video/mp4")}
+        await meta_client._post("/act_123456/advideos", {}, files=files)
+
+        _, kwargs = meta_client._http.post.call_args
+        assert kwargs["files"]["source"] == ("a.mp4", b"raw-bytes", "video/mp4")

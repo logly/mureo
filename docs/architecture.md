@@ -97,12 +97,13 @@ mureo/
 │   ├── _rda_validator.py    # RDA input validator (display ads)
 │   └── _gaql_validator.py   # GAQL input validators (IDs, dates, date ranges, IN clauses)
 ├── meta_ads/                # Meta Ads API client
-│   ├── client.py            # MetaAdsApiClient (15 Mixins)
+│   ├── client.py            # MetaAdsApiClient (17 Mixins)
 │   ├── mappers.py           # Response mapping
 │   ├── _campaigns.py        # CampaignsMixin
 │   ├── _ad_sets.py          # AdSetsMixin
 │   ├── _ads.py              # AdsMixin
 │   ├── _creatives.py        # CreativesMixin (carousel, collection, image upload)
+│   ├── _videos.py           # VideosMixin (AdVideo upload, status, thumbnails)
 │   ├── _audiences.py        # AudiencesMixin
 │   ├── _pixels.py           # PixelsMixin
 │   ├── _insights.py         # InsightsMixin
@@ -286,7 +287,7 @@ The base class (`GoogleAdsApiClient`) provides:
 - Input validation: `_validate_id()`, `_validate_status()`, `_validate_match_type()`, `_validate_date()`
 - Error handling: `_wrap_mutate_error()` decorator that catches `GoogleAdsException` and returns user-friendly messages
 
-### Meta Ads Client -- 16 Mixins
+### Meta Ads Client -- 17 Mixins
 
 ```python
 class MetaAdsApiClient(
@@ -294,6 +295,7 @@ class MetaAdsApiClient(
     AdSetsMixin,       # Ad set CRUD
     AdsMixin,          # Ad CRUD
     CreativesMixin,    # Creative management, image/carousel/collection
+    VideosMixin,       # AdVideo upload (URL/file), status polling, thumbnails
     AudiencesMixin,    # Custom/lookalike audiences
     PixelsMixin,       # Pixel stats and events
     InsightsMixin,     # Performance reports, breakdowns

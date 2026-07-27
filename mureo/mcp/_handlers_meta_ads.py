@@ -865,7 +865,7 @@ async def handle_videos_upload_file(args: dict[str, Any]) -> list[TextContent]:
     file_path = _require(args, "file_path")
     if not os.path.isfile(file_path):
         raise ValueError(f"File not found: {file_path}")
-    # Mirrors mureo.meta_ads._creatives._META_ALLOWED_VIDEO_EXTENSIONS, which is
+    # Mirrors mureo.meta_ads._videos._META_ALLOWED_VIDEO_EXTENSIONS, which is
     # the source of truth. ``.flv`` used to be listed here only, so an .flv file
     # passed this gate and was then rejected one layer deeper.
     _allowed_video_ext = (".mp4", ".mov", ".avi", ".wmv", ".mkv")
