@@ -75,6 +75,147 @@ def _redact(message: str, secret: str) -> str:
     return message.replace(secret, "***REDACTED***")
 
 
+class MetaTokenValidationError(RuntimeError):
+    """Base class for :func:`validate_meta_access_token` failures.
+
+    Subclasses ``RuntimeError`` so existing callers (and tests) that catch
+    ``RuntimeError`` keep working, while the two subclasses below let the
+    configure handler distinguish an invalid token from a valid token whose
+    account listing failed.
+    """
+
+
+class MetaTokenInvalidError(MetaTokenValidationError):
+    """The token itself is invalid/expired — the /me/permissions probe failed."""
+
+
+class MetaAccountFetchError(MetaTokenValidationError):
+    """The token is valid but /me/adaccounts could not be listed."""
+
+
+def _required_oauth_scopes() -> list[str]:
+    """The OAuth scopes a fully-provisioned Meta token should carry.
+
+    Sourced lazily from :data:`mureo.auth_setup._META_OAUTH_SCOPES` (the
+    single source of truth for the interactive wizard) so this module has
+    exactly one definition of "required scopes". The import is deferred to
+    call time because ``mureo.auth_setup`` imports *this* module at load —
+    a top-level import here would be circular.
+    """
+
+    from mureo.auth_setup import _META_OAUTH_SCOPES
+
+    return [s.strip() for s in _META_OAUTH_SCOPES.split(",") if s.strip()]
+
+
+def _format_graph_error(payload: Any, fallback: str) -> str:
+    """Render a Meta Graph API error body the way ``client._request`` does.
+
+    Prefers ``error.message`` and appends ``subcode=`` / ``fbtrace_id=``
+    when Graph supplies them so operators can quote them in a support
+    ticket. Falls back to ``fallback`` (typically the raw response text)
+    when the body is not the expected error envelope.
+    """
+
+    err = payload.get("error", {}) if isinstance(payload, dict) else {}
+    if not isinstance(err, dict):
+        return fallback
+    parts: list[str] = []
+    if err.get("message"):
+        parts.append(str(err["message"]))
+    if err.get("error_subcode"):
+        parts.append(f"subcode={err['error_subcode']}")
+    if err.get("fbtrace_id"):
+        parts.append(f"fbtrace_id={err['fbtrace_id']}")
+    return " | ".join(parts) if parts else fallback
+
+
+async def validate_meta_access_token(access_token: str) -> dict[str, Any]:
+    """Validate a Meta access token and report scopes + reachable accounts.
+
+    Backs the configure-UI "paste a system-user token" path. Runs two
+    read-only Graph calls:
+
+    * ``GET /me/permissions`` — the scopes actually granted to the token,
+      compared against :func:`_required_oauth_scopes` to compute what is
+      missing (e.g. a token minted without ``ads_management`` cannot create
+      creatives).
+    * ``GET /me/adaccounts`` — the ad accounts the token can reach, reduced
+      to ``{id, name}`` so the UI can render an account picker.
+
+    Args:
+        access_token: Meta Ads access token (System User or User token).
+
+    Returns:
+        ``{"scopes": [...granted...], "missing_scopes": [...],
+        "accounts": [{"id", "name"}, ...]}``.
+
+    Raises:
+        MetaTokenInvalidError: When the token is invalid/expired (the
+            /me/permissions probe fails). The message carries Meta's
+            ``error.message`` plus ``subcode`` / ``fbtrace_id`` when present,
+            with the access token scrubbed out.
+        MetaAccountFetchError: When the token is valid but the ad-account
+            listing (/me/adaccounts) fails — a distinct condition so the
+            caller does not mislabel it as an invalid token.
+    """
+
+    if not access_token:
+        raise MetaTokenInvalidError(
+            "Meta token validation failed: access_token is required"
+        )
+
+    granted: list[str] = []
+    try:
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+            response = await client.get(
+                f"{_META_GRAPH_API_BASE}/me/permissions",
+                params={"access_token": access_token},
+            )
+            try:
+                payload = response.json()
+            except Exception:
+                payload = {}
+            if response.status_code != 200:
+                detail = _redact(
+                    _format_graph_error(payload, response.text[:500]), access_token
+                )
+                raise MetaTokenInvalidError(f"Meta token validation failed: {detail}")
+            for row in payload.get("data", []) or []:
+                if row.get("status") == "granted" and row.get("permission"):
+                    granted.append(row["permission"])
+    except MetaTokenInvalidError:
+        # Already scrubbed + framed above — do not re-wrap.
+        raise
+    except Exception as exc:
+        scrubbed = _redact(str(exc), access_token)
+        raise MetaTokenInvalidError(
+            f"Meta token validation failed: {scrubbed}"
+        ) from None
+
+    required = _required_oauth_scopes()
+    missing = [scope for scope in required if scope not in granted]
+
+    # Reuse the paginated account walk. The permissions probe above already
+    # proved the token is valid, so any failure here is an account-listing
+    # problem (permissions, transient Graph error) — surfaced as a DISTINCT
+    # error type so the caller never mislabels it as an invalid token.
+    try:
+        raw_accounts = await list_meta_ad_accounts(access_token)
+    except Exception as exc:
+        scrubbed = _redact(str(exc), access_token)
+        raise MetaAccountFetchError(
+            f"Meta ad-account listing failed: {scrubbed}"
+        ) from None
+    accounts = [
+        {"id": acct.get("id"), "name": acct.get("name")}
+        for acct in raw_accounts
+        if acct.get("id")
+    ]
+
+    return {"scopes": granted, "missing_scopes": missing, "accounts": accounts}
+
+
 async def list_meta_ad_accounts(access_token: str) -> list[dict[str, Any]]:
     """Retrieve the list of Meta ad accounts the access token can reach.
 
@@ -144,4 +285,10 @@ async def list_meta_ad_accounts(access_token: str) -> list[dict[str, Any]]:
         raise RuntimeError(f"Failed to retrieve ad account list: {scrubbed}") from None
 
 
-__all__ = ["list_meta_ad_accounts"]
+__all__ = [
+    "MetaAccountFetchError",
+    "MetaTokenInvalidError",
+    "MetaTokenValidationError",
+    "list_meta_ad_accounts",
+    "validate_meta_access_token",
+]

@@ -204,13 +204,42 @@ curl -X POST "https://graph.facebook.com/v21.0/oauth/access_token" \
 > mureo's own token exchange posts them as a form body for the same
 > reason.
 
-**Option C: System User Token (recommended for automation)**
+**Option C: System User Token (recommended for automation — and required for Live apps)**
 
-1. Go to [Business Settings](https://business.facebook.com/settings/) > **System Users**.
-2. Create a System User with **Admin** role.
-3. Assign the ad account to the system user.
-4. Generate a token with at least `ads_management` + `ads_read` (add the `pages_*` / `leads_retrieval` scopes from the table above for Page / Lead Ads / Instant Form features).
-5. System User tokens do not expire.
+A Business Manager **system-user token** is the most robust Meta credential,
+and for many operators it is the *only* one that works end to end:
+
+- **Live-mode apps cannot complete OAuth from the localhost configure UI.**
+  Facebook rejects the `http://localhost` redirect on its own consent page,
+  so the failure happens before mureo's callback is ever reached — the browser
+  login simply dead-ends. A system-user token needs no browser redirect.
+- **Dev-mode apps cannot create ad creatives.** Uploading the image asset may
+  succeed, but publishing a **new** creative to Meta requires a **Live app** —
+  a development-mode app is blocked with error subcode **1885183**. A
+  system-user token minted on the Live app clears this.
+
+Generate one (4 steps):
+
+1. **Business settings → System users** → create a system user with the
+   **Admin** role.
+2. Assign the **ad account** (Manage ads) and the **Page** (Manage content) to
+   that system user.
+3. Generate a token **for your Live app**, choose **Never expire**, and select
+   the scopes `ads_management`, `ads_read`, `business_management`,
+   `pages_manage_ads`, `pages_read_engagement` (add the remaining `pages_*` /
+   `leads_retrieval` scopes from the table above for Page / Lead Ads / Instant
+   Form features).
+4. Copy the generated token.
+
+**Entering the token in the configure UI.** In the Meta Ads authentication step
+of `mureo configure`, open **"Paste a system-user token"** (next to *Login with
+Facebook*), paste the token, click **Validate token** (this reports the granted
+vs missing scopes and lists the ad accounts the token can reach), pick the ad
+account, then **Save**. Because the token never expires, mureo stores it
+**without** `app_id` / `app_secret`, which keeps it out of the auto-refresh path
+below — nothing to rotate, nothing to expire.
+
+System User tokens do not expire.
 
 ### App ID and App Secret
 

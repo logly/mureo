@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Meta system-user token in the configure UI.** The Meta Ads authentication
+  step now offers a first-class **"Paste a system-user token"** option next to
+  *Login with Facebook*, closing the gap where Live-mode Meta apps cannot
+  complete OAuth from the localhost configure page (Facebook rejects the
+  localhost redirect on its own consent screen) and dev-mode apps cannot create
+  ad creatives (Marketing API subcode `1885183`). A new probe
+  (`validate_meta_access_token`) reports the token's granted vs required scopes
+  and the ad accounts it can reach; the operator validates, picks an account,
+  and saves via `POST /api/credentials/meta/token`. A never-expiring system-user
+  token is stored **without** `app_id` / `app_secret` so it never enters the
+  53-day auto-refresh path. The Facebook-login timeout branch now points Meta
+  users at this option instead of silently resetting (#458).
+
 - **Plugin bid declarations.** A plugin tool can now declare where it carries
   its proposed bid in standard MCP metadata
   (`_meta={"mureo": {"bid": {"cpc_bid": "<key>", "unit": "micros"}}}`), so the
@@ -74,6 +87,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the two-step page-discovery logic with `get_page_access_token`.
 
 ### Changed
+
+- **The Meta authentication step now opens with an explicit connection-method
+  chooser.** The step used to render the prominent *"Login with Facebook"*
+  button with the system-user token card collapsed underneath, so operators
+  running a **Live** Meta app — for whom browser OAuth can never succeed,
+  Facebook rejects the localhost redirect — clicked the loud button anyway and
+  dead-ended. The two paths are mutually exclusive alternatives, so the step
+  now leads with *"Choose a connection method"* / *"Pick one — you do not need
+  both."* and two selectable option cards: **Paste a system-user token**
+  (listed first, badged *Recommended*: for Live apps and automation, never
+  expires, no browser login) and **Log in with Facebook** (for
+  Development-mode apps, renews about every 60 days). Nothing is preselected —
+  until the operator picks, **neither** the OAuth button nor the token form is
+  on screen — and choosing one reveals only that flow, with the token card
+  already expanded. The chooser is a framework-free radiogroup (`role="radio"`
+  + `aria-checked`, roving tabindex, Space/Enter, arrows and Home/End),
+  switching is idempotent and preserves typed-but-unsaved token text, and the
+  OAuth timeout guidance now points at the token option *above*. The card keeps
+  its
+  `<details class="meta-token-card">` shape and every existing
+  `wizard.auth.meta_token_*` key, so downstream markup hooks are unaffected.
+
+- **The ad account in the Meta system-user token card is now explicitly
+  optional.** After *Validate*, the account `<select>` was populated with the
+  probed accounts only — no placeholder — so the browser silently pre-selected
+  the **first** account and *Save* persisted it even if the operator never
+  opened the dropdown. The picker now opens on a *"Select an ad account
+  (optional)"* placeholder and carries a helper line explaining that the
+  selection can be left unset when the ad account is assigned elsewhere. Saving with the placeholder selected
+  posts `account_id: null` and writes a `meta_ads` block with no `account_id`
+  key (a previously saved selection is still carried forward). Also fixes the
+  route rejecting that `null` as `account_not_accessible` — `str(None)` is the
+  truthy string `"None"`, so the optional path was unreachable (#459).
 
 - **Internal refactor: split the plugin declaration machinery out of
   `mureo.policy.strategy_gate`.** `BudgetDeclaration`, `BidDeclaration`, their

@@ -27,6 +27,7 @@ Routes
 ``POST /api/advisors/add``       → add one external advisor MCP entry
 ``POST /api/advisors/remove``    → remove one external advisor MCP entry
 ``POST /api/credentials/env-var``→ write one env var into credentials
+``POST /api/credentials/meta/token`` → validate/save a Meta system-user token
 ``GET  /api/credentials/plugins``→ list plugins declaring per-account fields
 ``POST /api/credentials/plugins/save`` → save one plugin's credentials
 ``POST /api/oauth/<p>/start``    → spawn WebAuthWizard, return consent URL
@@ -65,12 +66,18 @@ from mureo.core.runtime_context import (
     runtime_ui_plugin_credential_fields,
 )
 from mureo.core.secret_store import FilesystemSecretStore, SecretStoreError
+from mureo.meta_ads.accounts import (
+    MetaAccountFetchError,
+    MetaTokenInvalidError,
+    validate_meta_access_token,
+)
 from mureo.oauth_authcode import parse_loopback_callback_url
 from mureo.web._helpers import (
     compare_csrf,
     host_header_ok,
     parse_json_body,
     read_body,
+    run_coroutine,
     send_bytes,
     send_error_json,
     send_json,
@@ -1179,6 +1186,127 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             },
         )
 
+    def _post_credentials_meta_token(self, payload: dict[str, Any]) -> None:
+        """Validate and/or persist a pasted Meta system-user token (#458).
+
+        Live-mode Meta apps cannot complete OAuth from the localhost
+        configure UI (Facebook rejects the localhost redirect), and
+        dev-mode apps cannot create ad creatives (subcode 1885183). The
+        working escape is a Business Manager system-user token entered by
+        hand; this route makes that path first-class.
+
+        Body: ``{access_token, account_id?, validate_only?}``.
+
+        * ``validate_only: true`` runs the read-only probe (granted vs
+          required scopes + reachable ad accounts) and returns it WITHOUT
+          saving, so the UI can show the scope report and let the operator
+          pick an account first.
+        * Otherwise the token is validated and then saved. A valid token
+          that is missing some scopes is saved anyway with the warning
+          echoed back (``missing_scopes``) — the operator may fix the BM
+          grant later without re-pasting.
+
+        The token is persisted via ``save_credentials`` with NO
+        ``app_id`` / ``app_secret``: a never-expiring system-user token
+        must not enter the 53-day auto-refresh path (``auth._should_refresh``
+        returns False when either is absent).
+        """
+        access_token = str(payload.get("access_token", "")).strip()
+        if not access_token:
+            send_error_json(self, 400, "access_token_required")
+            return
+        # ``or ""`` BEFORE str(): the card posts ``account_id: null`` when the
+        # (optional) picker is left on its placeholder, and ``str(None)`` is
+        # the truthy string "None" — which the accessibility cross-check below
+        # would then reject as account_not_accessible.
+        account_id = str(payload.get("account_id") or "").strip() or None
+        validate_only = bool(payload.get("validate_only", False))
+
+        # The configure handler is synchronous with no running event loop.
+        # Use the shared run_coroutine helper (not a bare asyncio.run) so a
+        # future running-loop caller does not raise RuntimeError — which the
+        # except arms below would otherwise misreport as an invalid token.
+        # Re-run the probe even on the save path (not just validate_only):
+        # the account list and scopes are a SERVER-SIDE trust boundary — never
+        # trust a client-echoed probe result, which could claim access the
+        # token does not actually have.
+        try:
+            probe = run_coroutine(validate_meta_access_token(access_token))
+        except MetaAccountFetchError as exc:
+            # Token is valid but /me/adaccounts failed — a DISTINCT condition
+            # from an invalid token so the UI can tell the operator to retry
+            # rather than re-paste a "bad" token.
+            send_json(
+                self,
+                {"error": "account_fetch_failed", "detail": str(exc)},
+                status=400,
+            )
+            return
+        except MetaTokenInvalidError as exc:
+            # Surface Meta's own error.message (already scrubbed of the
+            # token) under a stable machine code so the UI can branch.
+            send_json(
+                self,
+                {"error": "token_invalid", "detail": str(exc)},
+                status=400,
+            )
+            return
+        except Exception:  # noqa: BLE001
+            logger.exception("Meta token validation failed")
+            send_error_json(self, 500, "internal_error")
+            return
+
+        if validate_only:
+            send_json(
+                self,
+                {
+                    "scopes": probe["scopes"],
+                    "missing_scopes": probe["missing_scopes"],
+                    "accounts": probe["accounts"],
+                },
+            )
+            return
+
+        # Cross-check the submitted account against the probe's own account
+        # list (server-derived, not client-supplied). A stale/forged account
+        # id that the token cannot actually reach is rejected rather than
+        # persisted, which would otherwise fail opaquely at first API call.
+        if account_id is not None:
+            accessible = {acct.get("id") for acct in probe["accounts"]}
+            if account_id not in accessible:
+                send_json(
+                    self,
+                    {"error": "account_not_accessible", "account_id": account_id},
+                    status=400,
+                )
+                return
+
+        from mureo.auth import MetaAdsCredentials
+        from mureo.auth_setup import save_credentials
+
+        try:
+            save_credentials(
+                path=self.wizard.host_paths.credentials_path,
+                # No app_id / app_secret: keep this never-expiring
+                # system-user token out of the refresh clock.
+                meta=MetaAdsCredentials(access_token=access_token),
+                account_id=account_id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Meta token save failed")
+            send_error_json(self, 500, "internal_error")
+            return
+
+        send_json(
+            self,
+            {
+                "status": "ok",
+                "account_id": account_id,
+                "scopes": probe["scopes"],
+                "missing_scopes": probe["missing_scopes"],
+            },
+        )
+
     def _post_legacy_cleanup(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         removed = remove_legacy_commands(self.wizard.host_paths.commands_dir)
         send_json(self, {"removed": removed})
@@ -1557,6 +1685,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/advisors/remove": _post_advisors_remove,
         "/api/credentials/env-var": _post_env_var,
         "/api/credentials/remove": _post_credentials_remove,
+        "/api/credentials/meta/token": _post_credentials_meta_token,
         "/api/credentials/plugins/save": _post_plugin_credentials_save,
         "/api/legacy/cleanup": _post_legacy_cleanup,
         "/api/demo/init": _post_demo_init,

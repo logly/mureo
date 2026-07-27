@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import os
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -57,11 +57,17 @@ class GoogleAdsCredentials:
 
 @dataclass(frozen=True)
 class MetaAdsCredentials:
-    """Meta Ads credentials (immutable)."""
+    """Meta Ads credentials (immutable).
 
-    access_token: str
+    ``access_token`` and ``app_secret`` are excluded from ``repr`` so an
+    accidental ``repr()`` / log / traceback never prints them. This class now
+    also carries hand-entered, never-expiring system-user tokens (#458),
+    which raises the stakes on inadvertent disclosure.
+    """
+
+    access_token: str = field(repr=False)
     app_id: str | None = None
-    app_secret: str | None = None
+    app_secret: str | None = field(default=None, repr=False)
     token_obtained_at: str | None = None  # ISO 8601 timestamp
     account_id: str | None = None  # act_XXXX format
 
