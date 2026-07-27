@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.30] - 2026-07-27
+
 ### Added
 
 - **Meta system-user token in the configure UI.** The Meta Ads authentication
@@ -80,11 +82,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cross-field requirements. Read paths now surface
   `is_adset_budget_sharing_enabled` (campaigns) and `promoted_object`
   (ad sets).
+
 - **`meta_ads_pages_list` MCP tool.** Read-only listing of the Facebook
   Pages the current token can manage, aggregating personal
   (`/me/accounts`) and business-owned (`/me/businesses` → `owned_pages`)
   Pages. Backed by a new `MetaAdsApiClient.list_pages` method that shares
   the two-step page-discovery logic with `get_page_access_token`.
+
+- **`meta_ads_pixels_create` MCP tool.** Creates a Meta Pixel on an ad
+  account via Graph API `POST /act_{ad_account_id}/adspixels` with a required
+  `name`. Returns the created pixel id. Mutating and not automatically
+  reversible — pixels cannot be deleted through the Graph API — so the tool
+  description recommends calling `meta_ads_pixels_list` first (ad accounts
+  have a pixel limit) and recording the change with
+  `mureo_state_action_log_append`. Backed by a new `PixelsMixin.create_ad_pixel`
+  client method (previously the mixin was read-only).
 
 ### Changed
 
@@ -151,17 +163,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `additionalProperties: false`, so an unknown / misspelled parameter is
   rejected with a clear schema error instead of being silently dropped.
 
-- **`meta_ads_pixels_create` MCP tool.** Creates a Meta Pixel on an ad
-  account via Graph API `POST /act_{ad_account_id}/adspixels` with a required
-  `name`. Returns the created pixel id. Mutating and not automatically
-  reversible — pixels cannot be deleted through the Graph API — so the tool
-  description recommends calling `meta_ads_pixels_list` first (ad accounts
-  have a pixel limit) and recording the change with
-  `mureo_state_action_log_append`. Backed by a new `PixelsMixin.create_ad_pixel`
-  client method (previously the mixin was read-only).
-
-## [0.10.29] - 2026-07-19
-
 ### Fixed
 
 - **`meta_ads_images_upload_file` returned 400 for every file, and swallowed
@@ -186,6 +187,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as an `access_token` form field and instead rides the `Authorization: Bearer`
   header only. The `name` parameter is retained for API compatibility but is no
   longer transmitted (the `bytes` variant has no documented `name` field).
+
+## [0.10.29] - 2026-07-19
+
+### Fixed
 
 - **Search Console `site_url` is optional at the schema level so tenant
   auto-resolution works (#447).** Every Search Console tool declared `site_url`

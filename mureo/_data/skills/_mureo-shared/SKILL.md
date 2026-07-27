@@ -2,7 +2,7 @@
 name: _mureo-shared
 description: "mureo: Shared patterns for authentication, security rules, and output formatting."
 metadata:
-  version: 0.10.29
+  version: 0.10.30
   openclaw:
     category: "advertising"
     requires:
