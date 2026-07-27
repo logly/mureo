@@ -113,6 +113,7 @@ class MetaAdsApiClient(
         path: str,
         data: dict[str, Any] | None = None,
         timeout: float | None = None,
+        files: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """POST request (with rate limit handling).
 
@@ -122,6 +123,9 @@ class MetaAdsApiClient(
             timeout: Optional per-request timeout in seconds. ``None`` uses the
                 shared client default; a value overrides it for this call (e.g.
                 large image uploads need a longer window than the default).
+            files: Optional httpx ``files`` mapping. Supplying it turns the
+                request into a multipart upload, with ``data`` carried as the
+                accompanying form fields (see ``upload_ad_video_file``).
 
         Returns:
             API response JSON
@@ -129,7 +133,9 @@ class MetaAdsApiClient(
         Raises:
             RuntimeError: If the API request fails
         """
-        return await self._request("POST", path, data=data, timeout=timeout)
+        return await self._request(
+            "POST", path, data=data, timeout=timeout, files=files
+        )
 
     async def _delete(self, path: str) -> dict[str, Any]:
         """DELETE request (with rate limit handling)."""
@@ -142,6 +148,7 @@ class MetaAdsApiClient(
         params: dict[str, Any] | None = None,
         data: dict[str, Any] | None = None,
         timeout: float | None = None,
+        files: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Execute an HTTP request (with rate limit handling and exponential backoff retry).
 
@@ -153,6 +160,12 @@ class MetaAdsApiClient(
             timeout: Optional per-request timeout in seconds. ``None`` uses the
                 shared client's default; a value overrides it for this call
                 (httpx per-request timeout override semantics).
+            files: Optional httpx ``files`` mapping (POST only). Passed
+                straight through so the request is encoded as multipart with
+                ``data`` as the accompanying form fields. Parts must carry
+                materialized ``bytes`` rather than an open file object — the
+                same mapping is re-sent on every retry attempt below, and a
+                consumed file handle would make the retry send an empty body.
 
         Returns:
             API response JSON
@@ -176,6 +189,12 @@ class MetaAdsApiClient(
         if timeout is not None:
             extra["timeout"] = timeout
 
+        # Same rule for ``files``: httpx encodes multipart only when the kwarg
+        # is actually supplied, so non-multipart callers must not receive it.
+        post_extra: dict[str, Any] = dict(extra)
+        if files is not None:
+            post_extra["files"] = files
+
         last_error: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
@@ -185,7 +204,7 @@ class MetaAdsApiClient(
                     )
                 elif method == "POST":
                     resp = await self._http.post(
-                        url, params=params, data=data, headers=headers, **extra
+                        url, params=params, data=data, headers=headers, **post_extra
                     )
                 elif method == "DELETE":
                     resp = await self._http.delete(

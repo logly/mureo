@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -29,9 +29,34 @@ _META_UPLOAD_TIMEOUT_SECONDS = 60.0
 # before it is followed; see upload_ad_image).
 _MAX_IMAGE_REDIRECTS = 5
 
-# Meta Ads video upload limits
-_META_MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024  # 100MB (practical limit)
+# Meta Ads video upload limits. 1GB is Graph's documented ceiling for the
+# non-resumable (single-request) /advideos upload; larger files require the
+# chunked resumable upload protocol, which mureo does not implement yet.
+_META_MAX_VIDEO_SIZE_BYTES = 1024 * 1024 * 1024  # 1GB
+_META_MAX_VIDEO_SIZE_LABEL = "1GB"
 _META_ALLOWED_VIDEO_EXTENSIONS = frozenset({"mp4", "mov", "avi", "wmv", "mkv"})
+
+# Real container MIME per allowed extension. Meta inspects the multipart part
+# header, so a generic ``application/octet-stream`` risks the same
+# ``FileTypeNotSupported`` rejection the /adimages multipart attempt hit.
+_META_VIDEO_MIME_TYPES: dict[str, str] = {
+    "mp4": "video/mp4",
+    "mov": "video/quicktime",
+    "avi": "video/x-msvideo",
+    "wmv": "video/x-ms-wmv",
+    "mkv": "video/x-matroska",
+}
+
+# Per-request timeout for video uploads. A file may be up to 1GB, so this
+# overrides the shared client's 30s default by a wide margin.
+_META_VIDEO_UPLOAD_TIMEOUT_SECONDS = 600.0
+
+# AdVideo retrieval fields. ``status`` is a nested object carrying
+# ``video_status`` ("processing" / "ready" / "error") and ``processing_phase``.
+_VIDEO_FIELDS = "status,id,title,length,created_time"
+
+# AdVideo thumbnail fields.
+_VIDEO_THUMBNAIL_FIELDS = "id,uri,is_preferred,height,width"
 
 # Carousel card count limits
 _CAROUSEL_MIN_CARDS = 2
@@ -42,6 +67,108 @@ _CREATIVE_FIELDS = (
     "id,name,status,title,body,image_url,image_hash,"
     "thumbnail_url,object_story_spec,url_tags"
 )
+
+
+def _validate_video_creative_mode(
+    *,
+    video_id: str | None,
+    image_url: str | None,
+    image_hash: str | None,
+    thumbnail_image_hash: str | None,
+    thumbnail_image_url: str | None,
+    call_to_action: str | None,
+) -> None:
+    """Reject ambiguous or incomplete image/video parameter combinations.
+
+    Runs before any network call so a mis-specified creative never reaches
+    Meta -- and never triggers the image auto-upload, which would persist an
+    asset for a request that cannot succeed.
+
+    Raises:
+        ValueError: Both thumbnail forms supplied; a thumbnail without
+            ``video_id``; ``video_id`` combined with image parameters; a
+            video without a thumbnail (Meta requires one); or a video
+            without ``call_to_action`` (the only carrier of the link).
+    """
+    if thumbnail_image_hash and thumbnail_image_url:
+        raise ValueError(
+            "video_thumbnail_image_hash and video_thumbnail_image_url "
+            "are mutually exclusive — supply exactly one"
+        )
+    if (thumbnail_image_hash or thumbnail_image_url) and not video_id:
+        raise ValueError(
+            "video_thumbnail_image_hash / video_thumbnail_image_url "
+            "require video_id — they are only used for video creatives"
+        )
+    if not video_id:
+        return
+
+    conflicting = [
+        key
+        for key, value in (("image_url", image_url), ("image_hash", image_hash))
+        if value
+    ]
+    if conflicting:
+        raise ValueError(
+            f"video_id cannot be combined with {', '.join(conflicting)} — "
+            f"a creative is either a video or an image. Use "
+            f"video_thumbnail_image_hash / video_thumbnail_image_url for "
+            f"the video thumbnail."
+        )
+    if not (thumbnail_image_hash or thumbnail_image_url):
+        raise ValueError(
+            "video creatives require a thumbnail — supply "
+            "video_thumbnail_image_hash or video_thumbnail_image_url "
+            "(list candidates via list_ad_video_thumbnails)"
+        )
+    if not call_to_action:
+        raise ValueError(
+            "video creatives require call_to_action — video_data carries "
+            "the destination link only inside call_to_action.value.link, "
+            "so without it the required link_url would be silently "
+            "discarded and the video would render with no clickable "
+            "destination"
+        )
+
+
+def _build_video_data(
+    *,
+    video_id: str,
+    link_url: str,
+    thumbnail_image_hash: str | None,
+    thumbnail_image_url: str | None,
+    message: str | None,
+    headline: str | None,
+    description: str | None,
+    call_to_action: str,
+) -> dict[str, Any]:
+    """Build ``object_story_spec.video_data`` for a video creative.
+
+    Follows the same idiom as the Lead Ad video branch
+    (:meth:`CreativesMixin.create_lead_ad_creative`) minus the lead-form
+    specifics: the destination link rides inside
+    ``call_to_action.value.link``, which is the only slot Meta's
+    ``video_data`` offers for it. ``link_url`` is injected there
+    automatically -- the caller passes only the CTA type, exactly as on the
+    image path. ``call_to_action`` is mandatory here; the caller is expected
+    to have run :func:`_validate_video_creative_mode` first.
+    """
+    video_data: dict[str, Any] = {"video_id": video_id}
+    if thumbnail_image_hash:
+        video_data["image_hash"] = thumbnail_image_hash
+    else:
+        video_data["image_url"] = thumbnail_image_url
+    if headline:
+        video_data["title"] = headline
+    if message:
+        video_data["message"] = message
+    if description:
+        video_data["link_description"] = description
+    video_data["call_to_action"] = {
+        "type": call_to_action,
+        "value": {"link": link_url},
+    }
+    return video_data
 
 
 class CreativesMixin:
@@ -63,6 +190,7 @@ class CreativesMixin:
         path: str,
         data: dict[str, Any] | None = None,
         timeout: float | None = None,
+        files: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
     async def list_ad_creatives(
@@ -90,27 +218,103 @@ class CreativesMixin:
         *,
         image_url: str | None = None,
         image_hash: str | None = None,
+        video_id: str | None = None,
+        video_thumbnail_image_hash: str | None = None,
+        video_thumbnail_image_url: str | None = None,
         message: str | None = None,
         headline: str | None = None,
         description: str | None = None,
         call_to_action: str | None = None,
     ) -> dict[str, Any]:
-        """Create an AdCreative (specify image_url or image_hash)
+        """Create a single-image or single-video AdCreative.
+
+        Image mode (default): builds ``object_story_spec.link_data``.
+
+        Video mode (``video_id`` supplied): builds
+        ``object_story_spec.video_data``. Two parameters that are
+        optional in image mode become **mandatory** here:
+
+        * a thumbnail — exactly one of ``video_thumbnail_image_hash`` /
+          ``video_thumbnail_image_url``, because Meta requires one on
+          every video creative;
+        * ``call_to_action`` — ``video_data`` has no ``link`` field, so
+          the destination travels inside
+          ``call_to_action.value.link`` and there is nowhere else to put
+          it. ``link_url`` is injected there automatically; the caller
+          passes only the CTA type, exactly as on the image path.
 
         Args:
             name: Creative name
             page_id: Facebook page ID
             link_url: Destination link URL
-            image_url: Image URL (mutually exclusive with image_hash)
-            image_hash: Uploaded image hash (mutually exclusive with image_url)
+            image_url: Image URL (mutually exclusive with image_hash).
+                Image mode only — auto-uploaded to an image_hash.
+            image_hash: Uploaded image hash (mutually exclusive with
+                image_url). Image mode only.
+            video_id: Pre-uploaded, fully processed video ID from
+                ``upload_ad_video`` / ``upload_ad_video_file``. Poll
+                ``get_ad_video`` until ``status.video_status`` is ready
+                before creating the creative. Mutually exclusive with
+                ``image_url`` / ``image_hash``.
+            video_thumbnail_image_hash: Thumbnail image hash for video
+                mode (from ``upload_ad_image`` / ``upload_ad_image_file``).
+                Mutually exclusive with ``video_thumbnail_image_url``.
+            video_thumbnail_image_url: Thumbnail image URL for video mode
+                — e.g. a ``uri`` from ``list_ad_video_thumbnails``.
+                Mutually exclusive with ``video_thumbnail_image_hash``.
             message: Ad body text
-            headline: Headline
-            description: Description text
-            call_to_action: CTA button type (LEARN_MORE, SIGN_UP, etc.)
+            headline: Headline. Mapped to ``link_data.name`` in image
+                mode and ``video_data.title`` in video mode.
+            description: Description text. Mapped to
+                ``link_data.description`` in image mode and
+                ``video_data.link_description`` in video mode.
+            call_to_action: CTA button type (LEARN_MORE, SIGN_UP, etc.).
+                Optional in image mode; **required** in video mode,
+                where it also carries the destination link.
 
         Returns:
             Created AdCreative information.
+
+        Raises:
+            ValueError: ``video_id`` combined with image parameters; a
+                video without a thumbnail; a video without
+                ``call_to_action``; both thumbnail forms supplied; or a
+                thumbnail supplied without ``video_id``.
         """
+        _validate_video_creative_mode(
+            video_id=video_id,
+            image_url=image_url,
+            image_hash=image_hash,
+            thumbnail_image_hash=video_thumbnail_image_hash,
+            thumbnail_image_url=video_thumbnail_image_url,
+            call_to_action=call_to_action,
+        )
+
+        if video_id:
+            video_data = _build_video_data(
+                video_id=video_id,
+                link_url=link_url,
+                thumbnail_image_hash=video_thumbnail_image_hash,
+                thumbnail_image_url=video_thumbnail_image_url,
+                message=message,
+                headline=headline,
+                description=description,
+                # cast: the validator above rejects a video creative
+                # without a CTA, so it is a str on this path.
+                call_to_action=cast("str", call_to_action),
+            )
+            video_story_spec = {
+                "page_id": page_id,
+                "video_data": video_data,
+            }
+            video_creative_data: dict[str, Any] = {
+                "name": name,
+                "object_story_spec": json.dumps(video_story_spec),
+            }
+            return await self._post(
+                f"/{self._ad_account_id}/adcreatives", video_creative_data
+            )
+
         link_data: dict[str, Any] = {
             "link": link_url,
         }
@@ -518,7 +722,17 @@ class CreativesMixin:
     async def upload_ad_video_file(
         self, file_path: str, title: str | None = None
     ) -> dict[str, Any]:
-        """Upload a video from a local file
+        """Upload a video from a local file (multipart /advideos).
+
+        Routes through the shared ``_post``/``_request`` machinery instead of a
+        one-off ``httpx.AsyncClient``, so Meta's error JSON (message /
+        error_subcode / fbtrace_id), retries, 429 handling and rate-limit
+        monitoring all apply, and auth rides the Bearer header rather than an
+        ``access_token`` form field.
+
+        Files up to 1GB are accepted -- Graph's documented ceiling for this
+        non-resumable single-request form. Larger files need the chunked
+        resumable upload protocol, which is not implemented.
 
         Args:
             file_path: Local video file path
@@ -530,26 +744,83 @@ class CreativesMixin:
         Raises:
             FileNotFoundError: If the file does not exist.
             ValueError: Validation error
+            RuntimeError: If the API request fails.
         """
         path = validate_video_file(
             file_path,
             max_size_bytes=_META_MAX_VIDEO_SIZE_BYTES,
-            max_size_label="100MB",
+            max_size_label=_META_MAX_VIDEO_SIZE_LABEL,
             allowed_extensions=_META_ALLOWED_VIDEO_EXTENSIONS,
         )
 
-        url = f"{self.BASE_URL}/{self._ad_account_id}/advideos"
-        upload_data: dict[str, str] = {"access_token": self._access_token}
+        extension = path.suffix.lower().lstrip(".")
+        # validate_video_file already restricted the extension to the allowed
+        # set, which is exactly the MIME map's key set.
+        mime_type = _META_VIDEO_MIME_TYPES[extension]
+
+        # Read the whole file up front rather than handing httpx an open
+        # handle: ``_request`` re-sends the same ``files`` mapping on a 429 /
+        # transport retry, and a consumed handle would make the retry POST an
+        # empty body.
+        with open(path, "rb") as f:
+            video_bytes = f.read()
+
+        # ``source`` is the documented field name for the non-resumable
+        # /advideos upload; the real filename and container MIME travel with it
+        # so Meta can identify the format.
+        files = {"source": (path.name, video_bytes, mime_type)}
+
+        data: dict[str, Any] = {}
         if title:
-            upload_data["title"] = title
+            data["title"] = title
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            with open(path, "rb") as f:
-                files = {"source": (path.name, f, "application/octet-stream")}
-                response = await client.post(url, files=files, data=upload_data)
+        return await self._post(
+            f"/{self._ad_account_id}/advideos",
+            data,
+            timeout=_META_VIDEO_UPLOAD_TIMEOUT_SECONDS,
+            files=files,
+        )
 
-        response.raise_for_status()
-        return response.json()  # type: ignore[no-any-return]
+    # ------------------------------------------------------------------
+    # Video read operations (node-level paths -- NOT act_-scoped)
+    # ------------------------------------------------------------------
+
+    async def get_ad_video(self, video_id: str) -> dict[str, Any]:
+        """Get an uploaded video's processing status and metadata.
+
+        Meta processes uploads asynchronously; a creative referencing a video
+        that is still processing is rejected. Poll this until
+        ``status.video_status`` reports the video is ready.
+
+        Args:
+            video_id: Video ID from ``upload_ad_video`` /
+                ``upload_ad_video_file``.
+
+        Returns:
+            ``{"id", "status", "title", "length", "created_time"}``. ``status``
+            is returned raw -- it is a nested object carrying ``video_status``
+            and ``processing_phase``, and Meta has extended its shape over
+            time, so it is passed through rather than flattened.
+        """
+        return await self._get(f"/{video_id}", {"fields": _VIDEO_FIELDS})
+
+    async def list_ad_video_thumbnails(self, video_id: str) -> list[dict[str, Any]]:
+        """List the auto-generated thumbnails for an uploaded video.
+
+        Args:
+            video_id: Video ID from ``upload_ad_video`` /
+                ``upload_ad_video_file``.
+
+        Returns:
+            List of ``{"id", "uri", "is_preferred", "height", "width"}``.
+            Meta flags one entry with ``is_preferred: true``; its ``uri`` is
+            the natural input for ``create_ad_creative``'s
+            ``video_thumbnail_image_url``.
+        """
+        result = await self._get(
+            f"/{video_id}/thumbnails", {"fields": _VIDEO_THUMBNAIL_FIELDS}
+        )
+        return result.get("data", [])  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
     # Carousel creative

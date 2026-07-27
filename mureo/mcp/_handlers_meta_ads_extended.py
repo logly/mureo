@@ -201,6 +201,9 @@ async def handle_creatives_create(args: dict[str, Any]) -> list[TextContent]:
     for key in (
         "image_url",
         "image_hash",
+        "video_id",
+        "video_thumbnail_image_hash",
+        "video_thumbnail_image_url",
         "message",
         "headline",
         "description",

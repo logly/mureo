@@ -66,6 +66,31 @@ def sample_mov(tmp_path: Path) -> Path:
     return video
 
 
+def _mock_shared_http(
+    status_code: int = 200, payload: dict[str, Any] | None = None
+) -> Any:
+    """Mock the client's shared ``self._http`` (the ``_request`` seam).
+
+    ``upload_ad_video_file`` routes through the shared ``_request``/``_post``
+    machinery (Meta error JSON surfacing, retries, rate-limit handling, Bearer
+    auth) instead of building a one-off ``httpx.AsyncClient``, so tests pin the
+    wire shape at ``client._http.post`` rather than at
+    ``_creatives.httpx.AsyncClient``. Mocking the whole httpx client (what this
+    module used to do) pins nothing about the actual request — the blind spot
+    that let the /adimages multipart bug ship.
+    """
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.json.return_value = payload if payload is not None else {}
+    resp.text = json.dumps(payload if payload is not None else {})
+    resp.headers = {}
+    http = MagicMock()
+    http.post = AsyncMock(return_value=resp)
+    http.get = AsyncMock(return_value=resp)
+    http.delete = AsyncMock(return_value=resp)
+    return http
+
+
 # ---------------------------------------------------------------------------
 # 1. test_upload_ad_video — upload video via URL
 # ---------------------------------------------------------------------------
@@ -119,55 +144,154 @@ class TestUploadAdVideo:
 
 @pytest.mark.unit
 class TestUploadAdVideoFile:
-    """Upload video from a local file."""
+    """Upload video from a local file (multipart via the shared client)."""
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_file(
         self, meta_client: Any, sample_video: Path
     ) -> None:
         """Successful upload returns a video_id."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"id": "video_789"}
-        mock_response.raise_for_status = MagicMock()
+        meta_client._http = _mock_shared_http(200, {"id": "video_789"})
 
-        mock_http_client = AsyncMock()
-        mock_http_client.post.return_value = mock_response
-        mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
-        mock_http_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch(
-            "mureo.meta_ads._creatives.httpx.AsyncClient",
-            return_value=mock_http_client,
-        ):
-            result = await meta_client.upload_ad_video_file(str(sample_video))
+        result = await meta_client.upload_ad_video_file(str(sample_video))
 
         assert result["id"] == "video_789"
+        args, kwargs = meta_client._http.post.call_args
+        assert args[0].endswith("/act_123456/advideos")
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_file_with_title(
         self, meta_client: Any, sample_video: Path
     ) -> None:
-        """When title is supplied, that value is sent."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"id": "video_789"}
-        mock_response.raise_for_status = MagicMock()
+        """When title is supplied, that value travels as a form field."""
+        meta_client._http = _mock_shared_http(200, {"id": "video_789"})
 
-        mock_http_client = AsyncMock()
-        mock_http_client.post.return_value = mock_response
-        mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
-        mock_http_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch(
-            "mureo.meta_ads._creatives.httpx.AsyncClient",
-            return_value=mock_http_client,
-        ):
-            result = await meta_client.upload_ad_video_file(
-                str(sample_video), title="カスタムタイトル"
-            )
+        result = await meta_client.upload_ad_video_file(
+            str(sample_video), title="カスタムタイトル"
+        )
 
         assert result["id"] == "video_789"
+        _, kwargs = meta_client._http.post.call_args
+        assert kwargs["data"]["title"] == "カスタムタイトル"
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_video_file_multipart_wire_shape(
+        self, meta_client: Any, sample_video: Path
+    ) -> None:
+        """The multipart part is ``source`` / real filename / real video MIME.
+
+        Meta's /advideos non-resumable upload documents the file part as
+        ``source``. Sending ``application/octet-stream`` instead of the real
+        video MIME is what got the sibling /adimages multipart body rejected
+        with ``FileTypeNotSupported``, so the per-extension MIME is pinned here.
+        """
+        meta_client._http = _mock_shared_http(200, {"id": "v"})
+
+        await meta_client.upload_ad_video_file(str(sample_video))
+
+        _, kwargs = meta_client._http.post.call_args
+        files = kwargs["files"]
+        assert set(files) == {"source"}
+        filename, content, mime = files["source"]
+        assert filename == "test_video.mp4"
+        assert content == sample_video.read_bytes()
+        assert mime == "video/mp4"
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_video_file_bearer_header_no_token_field(
+        self, meta_client: Any, sample_video: Path
+    ) -> None:
+        """Auth rides the Bearer header only — never an access_token form field."""
+        meta_client._http = _mock_shared_http(200, {"id": "v"})
+
+        await meta_client.upload_ad_video_file(str(sample_video), title="t")
+
+        _, kwargs = meta_client._http.post.call_args
+        assert kwargs["headers"]["Authorization"] == "Bearer test-token"
+        assert "access_token" not in kwargs["data"]
+        assert "test-token" not in str(kwargs["data"])
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_video_file_uses_600s_timeout(
+        self, meta_client: Any, sample_video: Path
+    ) -> None:
+        """The upload overrides the shared 30s default with a 600s timeout.
+
+        Files up to 1 GB are accepted; the shared client default would time out
+        long before such an upload finishes on a slow link.
+        """
+        meta_client._http = _mock_shared_http(200, {"id": "v"})
+
+        await meta_client.upload_ad_video_file(str(sample_video))
+
+        _, kwargs = meta_client._http.post.call_args
+        assert kwargs["timeout"] == 600.0
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_video_file_retry_resends_body(
+        self, meta_client: Any, sample_video: Path
+    ) -> None:
+        """A 429-then-200 retry re-sends the identical, non-empty file part.
+
+        ``_request`` reuses the same ``files`` mapping across retry attempts, so
+        the part must carry materialized bytes — a still-open file handle would
+        be exhausted by the first attempt and the retry would send an empty body.
+        """
+        resp_429 = MagicMock()
+        resp_429.status_code = 429
+        resp_429.headers = {}
+        resp_429.json.return_value = {}
+        resp_200 = MagicMock()
+        resp_200.status_code = 200
+        resp_200.headers = {}
+        resp_200.json.return_value = {"id": "video_retry"}
+        responses = [resp_429, resp_200]
+
+        sent_parts: list[Any] = []
+
+        def _capture(*_args: Any, **kwargs: Any) -> Any:
+            sent_parts.append(kwargs["files"]["source"])
+            return responses.pop(0)
+
+        meta_client._http = MagicMock()
+        meta_client._http.post = AsyncMock(side_effect=_capture)
+
+        with patch("mureo.meta_ads.client.asyncio.sleep", new=AsyncMock()):
+            result = await meta_client.upload_ad_video_file(str(sample_video))
+
+        assert result == {"id": "video_retry"}
+        assert len(sent_parts) == 2  # 429 attempt + 200 retry
+        assert sent_parts[0][1] == sample_video.read_bytes()  # full body
+        assert sent_parts[0] == sent_parts[1]  # identical on retry
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_video_file_surfaces_meta_error(
+        self, meta_client: Any, sample_video: Path
+    ) -> None:
+        """A 400 carrying Meta's error JSON surfaces message + subcode + fbtrace_id.
+
+        The old standalone-httpx uploader called ``raise_for_status()`` and threw
+        Meta's diagnostics away; routing through ``_request`` must surface them.
+        """
+        meta_client._http = _mock_shared_http(
+            400,
+            {
+                "error": {
+                    "message": "Invalid video file",
+                    "error_subcode": 1363037,
+                    "fbtrace_id": "VidTrace123",
+                }
+            },
+        )
+
+        with pytest.raises(RuntimeError) as excinfo:
+            await meta_client.upload_ad_video_file(str(sample_video))
+
+        message = str(excinfo.value)
+        assert "status=400" in message
+        assert "Invalid video file" in message
+        assert "subcode=1363037" in message
+        assert "VidTrace123" in message
 
 
 # ---------------------------------------------------------------------------
@@ -177,19 +301,52 @@ class TestUploadAdVideoFile:
 
 @pytest.mark.unit
 class TestUploadAdVideoFileTooLarge:
-    """Video file size limit."""
+    """Video file size limit (Graph's documented non-resumable ceiling)."""
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_file_too_large(
         self, meta_client: Any, tmp_path: Path
     ) -> None:
-        """Raises ValueError for files larger than 100MB."""
-        large_file = tmp_path / "large.mp4"
-        # 100MB + 1 byte
-        large_file.write_bytes(b"\x00" * (100 * 1024 * 1024 + 1))
+        """Raises ValueError locally for files larger than 1 GB.
 
-        with pytest.raises(ValueError, match="100MB"):
+        The check is a stat() on the path, so the oversized file is created
+        sparse — no gigabyte is actually written to the test tmp dir.
+        """
+        large_file = tmp_path / "large.mp4"
+        with open(large_file, "wb") as fh:
+            fh.truncate(1024 * 1024 * 1024 + 1)  # 1GB + 1 byte, sparse
+
+        with pytest.raises(ValueError, match="1GB"):
             await meta_client.upload_ad_video_file(str(large_file))
+
+    @pytest.mark.asyncio()
+    async def test_upload_ad_video_file_at_cap_is_accepted(
+        self, meta_client: Any, tmp_path: Path
+    ) -> None:
+        """A file exactly at the 1 GB cap passes validation.
+
+        Guards the boundary: the previous 100 MB cap rejected everything above
+        it, and an off-by-one on the new cap would silently keep rejecting
+        legitimate 1 GB uploads.
+        """
+        at_cap = tmp_path / "at_cap.mp4"
+        with open(at_cap, "wb") as fh:
+            fh.truncate(1024 * 1024 * 1024)  # exactly 1GB, sparse
+
+        from mureo._image_validation import validate_video_file
+        from mureo.meta_ads._creatives import (
+            _META_ALLOWED_VIDEO_EXTENSIONS,
+            _META_MAX_VIDEO_SIZE_BYTES,
+        )
+
+        assert _META_MAX_VIDEO_SIZE_BYTES == 1024 * 1024 * 1024
+        # Validation only (uploading would read 1GB into memory).
+        validate_video_file(
+            str(at_cap),
+            max_size_bytes=_META_MAX_VIDEO_SIZE_BYTES,
+            max_size_label="1GB",
+            allowed_extensions=_META_ALLOWED_VIDEO_EXTENSIONS,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -213,29 +370,41 @@ class TestUploadAdVideoFileInvalidFormat:
             await meta_client.upload_ad_video_file(str(txt_file))
 
     @pytest.mark.asyncio()
+    async def test_upload_ad_video_file_flv_rejected(
+        self, meta_client: Any, tmp_path: Path
+    ) -> None:
+        """``.flv`` is not in the client's allow-list and is rejected."""
+        flv = tmp_path / "legacy.flv"
+        flv.write_bytes(b"FLV\x01" + b"\x00" * 100)
+
+        with pytest.raises(ValueError, match="Unsupported video format"):
+            await meta_client.upload_ad_video_file(str(flv))
+
+    @pytest.mark.asyncio()
     async def test_upload_ad_video_file_supported_formats(
         self, meta_client: Any, tmp_path: Path
     ) -> None:
-        """mp4, mov, avi, wmv, mkv are all allowed."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"id": "v1"}
-        mock_response.raise_for_status = MagicMock()
+        """mp4, mov, avi, wmv, mkv upload with their real per-format MIME."""
+        expected_mimes = {
+            "mp4": "video/mp4",
+            "mov": "video/quicktime",
+            "avi": "video/x-msvideo",
+            "wmv": "video/x-ms-wmv",
+            "mkv": "video/x-matroska",
+        }
 
-        mock_http_client = AsyncMock()
-        mock_http_client.post.return_value = mock_response
-        mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
-        mock_http_client.__aexit__ = AsyncMock(return_value=False)
-
-        for ext in ("mp4", "mov", "avi", "wmv", "mkv"):
+        for ext, expected_mime in expected_mimes.items():
             video = tmp_path / f"test.{ext}"
             video.write_bytes(b"\x00" * 100)
-            with patch(
-                "mureo.meta_ads._creatives.httpx.AsyncClient",
-                return_value=mock_http_client,
-            ):
-                result = await meta_client.upload_ad_video_file(str(video))
-                assert "id" in result
+            meta_client._http = _mock_shared_http(200, {"id": f"v_{ext}"})
+
+            result = await meta_client.upload_ad_video_file(str(video))
+
+            assert result["id"] == f"v_{ext}"
+            _, kwargs = meta_client._http.post.call_args
+            filename, _content, mime = kwargs["files"]["source"]
+            assert filename == f"test.{ext}"
+            assert mime == expected_mime
 
     @pytest.mark.asyncio()
     async def test_upload_ad_video_file_not_found(self, meta_client: Any) -> None:
@@ -635,6 +804,40 @@ class TestMetaAdsMediaHandlers:
         assert len(result) == 1
         data = json.loads(result[0].text)
         assert data["id"] == "video_file_1"
+
+    @pytest.mark.asyncio()
+    async def test_handle_videos_upload_file_rejects_flv(self, tmp_path: Path) -> None:
+        """``.flv`` is rejected at the handler too.
+
+        The handler's extension tuple used to allow ``.flv`` while the client's
+        allow-list did not, so an .flv upload passed the handler gate only to be
+        rejected one layer deeper with a different message. The client set is the
+        single source of truth.
+        """
+        from mureo.mcp.tools_meta_ads import handle_tool
+
+        flv = tmp_path / "legacy.flv"
+        flv.write_bytes(b"FLV\x01" + b"\x00" * 100)
+
+        mock_client = AsyncMock()
+
+        with (
+            patch(
+                "mureo.mcp._handlers_meta_ads.load_meta_ads_credentials",
+                return_value=MetaAdsCredentials(access_token="tok"),
+            ),
+            patch(
+                "mureo.mcp._handlers_meta_ads.create_meta_ads_client",
+                return_value=mock_client,
+            ),
+            pytest.raises(ValueError, match="Unsupported video format"),
+        ):
+            await handle_tool(
+                "meta_ads_videos_upload_file",
+                {"account_id": "act_123", "file_path": str(flv)},
+            )
+
+        mock_client.upload_ad_video_file.assert_not_awaited()
 
     @pytest.mark.asyncio()
     async def test_handle_creatives_create_carousel(self) -> None:
