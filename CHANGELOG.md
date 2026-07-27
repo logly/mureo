@@ -56,6 +56,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Configure-UI asset split: `auth_wizards_meta.js` (internal).** The Meta
+  halves of the auth wizards — the hosted-connector setup card, the
+  connection-method chooser and the system-user token card — moved out of
+  `auth_wizards.js` (1248 lines, over the 800-line house budget) into a new
+  `mureo/_data/web/auth_wizards_meta.js`, loaded immediately before it and
+  reached through `window.MUREO_AUTH_META`, the same plain-global sharing
+  pattern the other configure-UI assets already use. A pure move: no renamed
+  functions, i18n keys, DOM classes or logic, and no behavior change for
+  operators.
+
 - **`action_log` timestamps are stamped server-side (#460).**
   `mureo_state_action_log_append` now writes the entry `timestamp` from
   mureo's own clock (ISO 8601 with UTC offset); a value supplied by the caller

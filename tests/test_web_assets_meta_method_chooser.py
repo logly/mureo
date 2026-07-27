@@ -28,6 +28,17 @@ def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
 
 
+# The auth wizards ship as two assets: ``auth_wizards_meta.js`` (the Meta
+# connector card, method chooser and token card) is loaded before
+# ``auth_wizards.js`` (queue + step wiring). Grep the pair as one source so
+# the contracts below stay indifferent to which half holds them.
+_AUTH_WIZARD_ASSETS = ("auth_wizards_meta.js", "auth_wizards.js")
+
+
+def _read_auth_js() -> str:
+    return "\n".join(_read(name) for name in _AUTH_WIZARD_ASSETS)
+
+
 # Every data-i18n key the chooser introduces. ADDITIVE only — no existing
 # ``wizard.auth.meta_token_*`` key is renamed (downstream extensions bind to
 # them; see tests/test_web_assets_meta_token_card.py).
@@ -59,7 +70,7 @@ def _chooser_source(js: str) -> str:
 
 @pytest.mark.unit
 def test_chooser_helper_exists() -> None:
-    js = _read("auth_wizards.js")
+    js = _read_auth_js()
     assert "function buildMetaMethodChooser(" in js
 
 
@@ -68,13 +79,13 @@ def test_option_card_construction_is_its_own_helper() -> None:
     """Card markup is built by a dedicated helper so the chooser body stays
     wiring-only (group + selection + keyboard) rather than growing past a
     readable length."""
-    js = _read("auth_wizards.js")
+    js = _read_auth_js()
     assert "function buildMethodOptionCard(" in js
 
 
 @pytest.mark.unit
 def test_chooser_data_i18n_keys_present_in_js() -> None:
-    chooser = _chooser_source(_read("auth_wizards.js"))
+    chooser = _chooser_source(_read_auth_js())
     for key in _CHOOSER_KEYS:
         assert key in chooser, f"{key} missing from buildMetaMethodChooser"
 
@@ -95,28 +106,28 @@ class TestRadioSemantics:
     assistive tech, not two divs that happen to look clickable."""
 
     def test_options_are_grouped_as_a_radiogroup(self) -> None:
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         assert '"radiogroup"' in chooser
 
     def test_each_option_declares_the_radio_role(self) -> None:
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         assert '"role", "radio"' in chooser
 
     def test_options_expose_aria_checked(self) -> None:
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         assert "aria-checked" in chooser
 
     def test_options_are_focusable_and_key_operable(self) -> None:
         """Keyboard parity with a native radio group: the options are in the
         tab order and respond to keys (Space/Enter + arrows)."""
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         assert "tabIndex" in chooser
         assert '"keydown"' in chooser
 
     def test_home_and_end_jump_to_the_edges(self) -> None:
         """WAI-ARIA radiogroup pattern: Home/End select the first/last
         option, not just the arrow keys."""
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         assert '"Home"' in chooser
         assert '"End"' in chooser
 
@@ -125,7 +136,7 @@ class TestRadioSemantics:
         without an explicit focus() the roving-tabindex "current" item lags
         the visible selection and the next arrow key jumps from the wrong
         place."""
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         assert "card.focus();" in chooser
 
 
@@ -135,24 +146,24 @@ class TestNoDefaultSelection:
     screen, so there is no prominent-by-default button to click through."""
 
     def test_selection_starts_null(self) -> None:
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         assert "let selectedMethod = null;" in chooser
 
     def test_no_option_is_checked_at_build_time(self) -> None:
         """Both options render ``aria-checked="false"``; nothing sets an
         option checked until a click/keypress handler runs."""
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         assert '"aria-checked", "false"' in chooser
 
     def test_both_panels_start_hidden(self) -> None:
-        js = _read("auth_wizards.js")
+        js = _read_auth_js()
         assert "tokenPanel.hidden = true;" in js
         assert "oauthPanel.hidden = true;" in js
 
     def test_choosing_swaps_which_panel_is_visible(self) -> None:
         """Idempotent either/or: a selection derives BOTH panels' visibility
         from the chosen method rather than only revealing one."""
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         assert 'tokenPanel.hidden = method !== "token";' in chooser
         assert 'oauthPanel.hidden = method !== "oauth";' in chooser
 
@@ -163,11 +174,11 @@ class TestTokenOptionIsRecommendedAndFirst:
     leads and carries the Recommended badge."""
 
     def test_token_option_precedes_the_oauth_option(self) -> None:
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         assert chooser.index(_TOKEN_TITLE_KEY) < chooser.index(_OAUTH_TITLE_KEY)
 
     def test_recommended_badge_belongs_to_the_token_option(self) -> None:
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         assert chooser.index(_BADGE_KEY) < chooser.index(_OAUTH_TITLE_KEY)
 
 
@@ -183,7 +194,7 @@ class TestChooserStyling:
     )
 
     def test_classes_are_applied_in_js(self) -> None:
-        chooser = _chooser_source(_read("auth_wizards.js"))
+        chooser = _chooser_source(_read_auth_js())
         for cls in self._CLASSES:
             assert cls.lstrip(".") in chooser, f"{cls} not applied in JS"
 
