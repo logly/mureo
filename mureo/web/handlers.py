@@ -1215,7 +1215,11 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         if not access_token:
             send_error_json(self, 400, "access_token_required")
             return
-        account_id = str(payload.get("account_id", "")).strip() or None
+        # ``or ""`` BEFORE str(): the card posts ``account_id: null`` when the
+        # (optional) picker is left on its placeholder, and ``str(None)`` is
+        # the truthy string "None" — which the accessibility cross-check below
+        # would then reject as account_not_accessible.
+        account_id = str(payload.get("account_id") or "").strip() or None
         validate_only = bool(payload.get("validate_only", False))
 
         # The configure handler is synchronous with no running event loop.

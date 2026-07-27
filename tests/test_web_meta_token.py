@@ -129,6 +129,81 @@ class TestMetaTokenRoute:
         assert "app_id" not in meta
         assert "app_secret" not in meta
 
+    def test_save_without_account_id_persists_token_and_omits_the_key(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """The ad account is OPTIONAL: the card's placeholder option posts
+        ``account_id: null``. The token is still saved, and the ``meta_ads``
+        block carries NO ``account_id`` key (``_merge_meta_section`` only
+        writes one when resolved or previously saved) — and still no
+        refresh-clock fields."""
+
+        async def _fake(token: str) -> dict[str, Any]:
+            return _VALID
+
+        with patch(_PROBE, side_effect=_fake):
+            resp = _post(
+                wizard,
+                "/api/credentials/meta/token",
+                {"access_token": "sys-tok"},
+            )
+        assert resp.status == 200
+        body = _body(resp)
+        assert body["status"] == "ok"
+        data = json.loads(wizard.host_paths.credentials_path.read_text())
+        meta = data["meta_ads"]
+        assert meta["access_token"] == "sys-tok"
+        assert "account_id" not in meta
+        assert "app_id" not in meta
+        assert "app_secret" not in meta
+
+    @pytest.mark.parametrize("account_id", [None, ""])
+    def test_blank_account_id_is_treated_as_absent(
+        self, wizard: ConfigureWizard, account_id: str | None
+    ) -> None:
+        """``accountSelect.value || null`` posts ``null``; a stricter client
+        could post ``""``. Both mean "no account" — neither is cross-checked
+        against the probe list nor persisted."""
+
+        async def _fake(token: str) -> dict[str, Any]:
+            return _VALID
+
+        with patch(_PROBE, side_effect=_fake):
+            resp = _post(
+                wizard,
+                "/api/credentials/meta/token",
+                {"access_token": "sys-tok", "account_id": account_id},
+            )
+        assert resp.status == 200
+        assert _body(resp)["status"] == "ok"
+        meta = json.loads(wizard.host_paths.credentials_path.read_text())["meta_ads"]
+        assert "account_id" not in meta
+
+    def test_save_without_account_id_keeps_a_prior_selection(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """Re-saving a token with the placeholder selected must not wipe an
+        account_id the operator already stored — ``_merge_meta_section``
+        carries the prior value forward when none is submitted."""
+
+        async def _fake(token: str) -> dict[str, Any]:
+            return _VALID
+
+        with patch(_PROBE, side_effect=_fake):
+            _post(
+                wizard,
+                "/api/credentials/meta/token",
+                {"access_token": "sys-tok", "account_id": "act_1"},
+            )
+            _post(
+                wizard,
+                "/api/credentials/meta/token",
+                {"access_token": "sys-tok-2"},
+            )
+        meta = json.loads(wizard.host_paths.credentials_path.read_text())["meta_ads"]
+        assert meta["access_token"] == "sys-tok-2"
+        assert meta["account_id"] == "act_1"
+
     def test_save_with_missing_scopes_warns_but_saves(
         self, wizard: ConfigureWizard
     ) -> None:

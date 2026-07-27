@@ -875,9 +875,17 @@
     accountLabel.setAttribute("data-i18n", "wizard.auth.meta_token_account_label");
     const accountSelect = document.createElement("select");
     accountLabel.appendChild(accountSelect);
+    // The account is OPTIONAL — say so under the picker rather than leaving
+    // the operator to guess (some deployments assign the ad account through a
+    // separate management surface, so a global selection is unnecessary).
+    const accountHint = document.createElement("small");
+    accountHint.className = "field-hint";
+    accountHint.textContent = MUREO.t("wizard.auth.meta_token_account_hint");
+    accountHint.setAttribute("data-i18n", "wizard.auth.meta_token_account_hint");
     results.appendChild(grantedP);
     results.appendChild(missingP);
     results.appendChild(accountLabel);
+    results.appendChild(accountHint);
     details.appendChild(results);
 
     const saveBtn = document.createElement("button");
@@ -900,13 +908,27 @@
       missingP.textContent =
         MUREO.t("wizard.auth.meta_token_scopes_missing") + ": " + (missing || "-");
       accountSelect.innerHTML = "";
+      // Placeholder FIRST so it is the default selection: a <select> with no
+      // explicit selection defaults to its first option, which without this
+      // silently pre-selects the first probed account and Save would persist
+      // an account the operator never chose. Its empty value makes the save
+      // handler's `accountSelect.value || null` post account_id: null.
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = MUREO.t(
+        "wizard.auth.meta_token_account_placeholder");
+      placeholder.setAttribute(
+        "data-i18n", "wizard.auth.meta_token_account_placeholder");
+      accountSelect.appendChild(placeholder);
       (body.accounts || []).forEach(function (acct) {
         const opt = document.createElement("option");
         opt.value = acct.id;
         opt.textContent = (acct.name || acct.id) + " (" + acct.id + ")";
         accountSelect.appendChild(opt);
       });
-      accountLabel.hidden = (body.accounts || []).length === 0;
+      const noAccounts = (body.accounts || []).length === 0;
+      accountLabel.hidden = noAccounts;
+      accountHint.hidden = noAccounts;
       results.hidden = false;
       saveBtn.disabled = false;
     }
