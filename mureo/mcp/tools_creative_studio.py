@@ -18,7 +18,6 @@ Self-contained in one module (mirroring ``tools_analytics_registry``):
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -423,7 +422,8 @@ async def _handle_generate_visual(arguments: dict[str, Any]) -> list[TextContent
     )
     manifest_data: dict[str, Any] = {
         "run_id": run_id,
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # Server clock (#460) — same stamp/format as every other writer.
+        "created_at": server_now_iso(),
         "provider": provider_arg or providers[0].name,
         "model": model,
         "prompt": prompt,
@@ -685,7 +685,8 @@ async def _handle_compose(arguments: dict[str, Any]) -> list[TextContent]:
     manifest_data: dict[str, Any] = {
         "kind": "compose",
         "run_id": run_id,
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # Server clock (#460) — same stamp/format as every other writer.
+        "created_at": server_now_iso(),
         "template": template,
         "inputs": {
             "visual_path": str(vpath),

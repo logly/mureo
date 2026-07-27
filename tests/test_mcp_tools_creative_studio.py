@@ -10,6 +10,7 @@ network call is made and no credential file is read.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -708,3 +709,82 @@ async def test_edit_visual_rejects_bad_path(
         {"path": str(bad), "instruction": "x"},
     )
     assert "error" in _payload(result)
+
+
+# ---------------------------------------------------------------------------
+# Generation-manifest clock (#460 follow-up)
+#
+# Both manifests stamped ``created_at`` from their own
+# ``datetime.now(timezone.utc)`` call while every other timestamp writer in
+# the tree (including this module's own audit entries) had already moved to
+# ``mureo.core.clock``. Two clocks means two answers for "when did this run"
+# — and a UTC-only stamp rolls the day at the wrong moment for an operator
+# on a positive offset, so a run made in the local evening is filed under
+# tomorrow. Pin both manifests onto the single injected clock.
+# ---------------------------------------------------------------------------
+
+
+_MANIFEST_FROZEN_NOW = datetime(
+    2026, 7, 28, 10, 12, 33, tzinfo=timezone(timedelta(hours=9))
+)
+_MANIFEST_FROZEN_ISO = "2026-07-28T10:12:33+09:00"
+
+
+@pytest.fixture
+def frozen_clock(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Freeze the injected server clock (the single documented seam)."""
+    import mureo.core.clock as clock
+
+    monkeypatch.setattr(clock, "server_now", lambda: _MANIFEST_FROZEN_NOW)
+    return _MANIFEST_FROZEN_ISO
+
+
+@pytest.mark.unit
+async def test_generate_visual_manifest_created_at_uses_the_server_clock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, frozen_clock: str
+) -> None:
+    fake = _FakeProvider(images=[b"IMG-A"])
+    monkeypatch.setattr(mod, "available_providers", lambda: [fake])
+    monkeypatch.chdir(tmp_path)
+
+    result = await mod.handle_tool(
+        "creative_studio_generate_visual",
+        {"prompt": "a cat", "n": 1},
+    )
+    manifest_path = Path(_payload(result)["manifest"])
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["created_at"] == frozen_clock
+
+
+@pytest.mark.unit
+async def test_compose_manifest_created_at_uses_the_server_clock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, frozen_clock: str
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mod.composer, "compose", _fake_compose)
+    visual = tmp_path / "v.png"
+    visual.write_bytes(b"\x89PNG raw visual")
+
+    result = await mod.handle_tool(
+        "creative_studio_compose",
+        {
+            "visual_path": str(visual),
+            "headline": "H",
+            "cta": "C",
+            "template": "split",
+            "formats": ["meta_feed_1x1"],
+        },
+    )
+    manifest_path = Path(_payload(result)["manifest"])
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["created_at"] == frozen_clock
+
+
+@pytest.mark.unit
+def test_module_has_no_second_clock() -> None:
+    """No ``datetime.now`` may survive in this module: a second clock is a
+    second answer, and it is invisible to the ``server_now`` test seam."""
+    source = Path(mod.__file__).read_text(encoding="utf-8")
+    assert "datetime.now(" not in source

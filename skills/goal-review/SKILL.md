@@ -20,7 +20,9 @@ Review progress toward all marketing goals across all platforms.
 **Before you start**: Run the **Diagnostic preamble** from ../_mureo-shared/SKILL.md — load learning insights (mureo_learning_insights_get) and consult advisors (mureo_consult_advisor) before drawing conclusions.
 
 
-1. **Load context**: Read STRATEGY.md (all Goal sections, Data Sources) and STATE.json.
+0. **Establish today**: call `mureo_state_get` **first, on every host** (including Claude Code, where you would otherwise `Read` the file) and take `server_now` from its response — ISO 8601 with UTC offset, e.g. `2026-07-28T10:12:33+09:00`. Its date is the **only source of the current date** for this run: every "days remaining until deadline" and required-pace calculation in step 4 is measured from it, so a stale date silently flips on-track / at-risk / off-track. Do not shell out (this skill must run in Bash-less headless hosts) and do not read the date off STATE.json — `last_synced_at`, `reports.*.period` and `action_log` timestamps are **history**, never evidence of what day it is now. **Never write `server_now` into STATE.json**: it is a response field, and a persisted copy becomes tomorrow's stale "today".
+
+1. **Load context**: Read STRATEGY.md (all Goal sections, Data Sources) and STATE.json (the same `mureo_state_get` response from step 0 on MCP hosts).
 
 2. **Discover platforms**: Identify all configured platforms and available data sources. Also include any **hosted official-MCP connector** present in the session (e.g. TikTok, key `tiktok_ads`) — drive it via its own tools and skip mureo-only value-adds; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
@@ -35,7 +37,7 @@ Review progress toward all marketing goals across all platforms.
 4. **Evaluate progress** for each Goal:
    - Compare current value against target
    - Calculate % of target achieved
-   - Calculate days remaining until deadline
+   - Calculate days remaining until deadline — the Goal's `Deadline` minus `server_now`'s date
    - Assess trajectory: on-track / at-risk / off-track
 
 5. **Present Goal dashboard**:
@@ -64,8 +66,8 @@ Review progress toward all marketing goals across all platforms.
    - Update Current values in STRATEGY.md Goal sections if approved
 
 9. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="goal"` and a concise `summary` object so the read-only dashboard can render this review without re-running you. Follow this convention:
-   - `generated_at`: ISO 8601 timestamp of this run
-   - `period`: the assessment window or "as of" date
+   - `generated_at`: ISO 8601 timestamp of this run — use `server_now`
+   - `period`: the assessment window or "as of" date — the "as of" date is `server_now`'s date
    - `kpis`: per-Goal headline numbers (target, current, % of target achieved)
    - `flags`: a list of **structured** flags — each a small object `{code, severity, params}` so the dashboard renders a coarse, localizable chip with the numbers on drill-down:
        - `code`: a canonical vocabulary key — one of `goals_met`, `cpa_over_target`, `cpa_under_target`, `cv_below_target`, `cv_above_target`, `spend_spike`, `cpa_spike`, `invalid_traffic_suspected`, `zero_cv_adspots`, `budget_overspend`, `budget_drift`, `tracking_suspect`, `zero_conversions`, `supply_tools_unconfigured`, `anomaly_baseline_insufficient`, `pending_observations`, `search_console_no_property`, `ga4_not_configured`.
