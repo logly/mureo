@@ -19,7 +19,9 @@ Analyze budget allocation and suggest rebalancing across all campaigns.
 **Before you start**: Run the **Diagnostic preamble** from ../_mureo-shared/SKILL.md — load learning insights (mureo_learning_insights_get) and consult advisors (mureo_consult_advisor) before drawing conclusions.
 
 
-1. **Load context**: Read STRATEGY.md (Operation Mode, Market Context, Goal sections, Data Sources) and STATE.json.
+0. **Establish today**: call `mureo_state_get` **first, on every host** (including Claude Code, where you would otherwise `Read` the file) and take `server_now` from its response — ISO 8601 with UTC offset, e.g. `2026-07-28T10:12:33+09:00`. Its date is the **only source of the current date** for this run: the `observation_due` you write in step 16, and every "is a previous change still inside its observation window?" check in step 14, are measured from it. Do not shell out (this skill must run in Bash-less headless hosts) and do not read the date off STATE.json — `last_synced_at`, `reports.*.period` and `action_log` timestamps are **history**, never evidence of what day it is now. **Never write `server_now` into STATE.json**: it is a response field, and a persisted copy becomes tomorrow's stale "today".
+
+1. **Load context**: Read STRATEGY.md (Operation Mode, Market Context, Goal sections, Data Sources) and STATE.json (the same `mureo_state_get` response from step 0 on MCP hosts).
 
 2. **Discover platforms**: Identify all configured ad platforms from STATE.json `platforms`. Also include any **hosted official-MCP connector** present in the session (e.g. TikTok, key `tiktok_ads`) — drive it via its own tools and skip mureo-only value-adds; see `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
 
@@ -68,6 +70,6 @@ Analyze budget allocation and suggest rebalancing across all campaigns.
 
 15. **Execute**: Use each platform's budget update tools to apply approved changes.
 
-16. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current cost, impressions, clicks, conversions, CPA, budget utilization) and `observation_due` (7 days from today for budget changes).
+16. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current cost, impressions, clicks, conversions, CPA, budget utilization) and `observation_due` (7 days from `server_now`'s date for budget changes).
 
 17. **Update STATE.json** with new budget values, notes, and log the rebalancing action to `action_log`.

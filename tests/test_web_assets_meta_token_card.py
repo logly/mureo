@@ -22,6 +22,17 @@ def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
 
 
+# The auth wizards ship as two assets: ``auth_wizards_meta.js`` (the Meta
+# connector card, method chooser and token card) is loaded before
+# ``auth_wizards.js`` (queue + step wiring). Grep the pair as one source so
+# the contracts below stay indifferent to which half holds them.
+_AUTH_WIZARD_ASSETS = ("auth_wizards_meta.js", "auth_wizards.js")
+
+
+def _read_auth_js() -> str:
+    return "\n".join(_read(name) for name in _AUTH_WIZARD_ASSETS)
+
+
 # data-i18n keys the card introduces; every one must exist in BOTH locales.
 _CARD_KEYS = (
     "wizard.auth.meta_token_card_title",
@@ -57,7 +68,7 @@ def _render_probe_source(js: str) -> str:
 
 @pytest.mark.unit
 def test_card_posts_to_the_new_route() -> None:
-    js = _read("auth_wizards.js")
+    js = _read_auth_js()
     assert "/api/credentials/meta/token" in js
 
 
@@ -65,7 +76,7 @@ def test_card_posts_to_the_new_route() -> None:
 def test_card_uses_password_input_with_new_password_autocomplete() -> None:
     """The token field must not be a plain text box and must opt out of
     autofill (never-expiring secret)."""
-    js = _read("auth_wizards.js")
+    js = _read_auth_js()
     assert "new-password" in js
     # A password-typed input is used for the token entry.
     assert 'type = "password"' in js or 'type="password"' in js
@@ -73,13 +84,13 @@ def test_card_uses_password_input_with_new_password_autocomplete() -> None:
 
 @pytest.mark.unit
 def test_card_sends_validate_only_probe_then_save() -> None:
-    js = _read("auth_wizards.js")
+    js = _read_auth_js()
     assert "validate_only" in js
 
 
 @pytest.mark.unit
 def test_card_data_i18n_keys_present_in_js() -> None:
-    js = _read("auth_wizards.js")
+    js = _read_auth_js()
     for key in _CARD_KEYS:
         assert key in js, f"{key} missing from auth_wizards.js"
 
@@ -105,7 +116,7 @@ class TestAccountPickerIsOptional:
     """
 
     def test_placeholder_option_is_rendered(self) -> None:
-        render = _render_probe_source(_read("auth_wizards.js"))
+        render = _render_probe_source(_read_auth_js())
         assert (
             _PLACEHOLDER_KEY in render
         ), f"renderProbe must build a placeholder option from {_PLACEHOLDER_KEY}"
@@ -113,7 +124,7 @@ class TestAccountPickerIsOptional:
     def test_placeholder_carries_an_empty_value(self) -> None:
         """An empty value is what makes ``accountSelect.value || null`` post
         ``account_id: null`` when the placeholder is left selected."""
-        render = _render_probe_source(_read("auth_wizards.js"))
+        render = _render_probe_source(_read_auth_js())
         assert '.value = "";' in render, (
             "the placeholder option must have an empty value so saving "
             "without a choice posts account_id: null"
@@ -122,7 +133,7 @@ class TestAccountPickerIsOptional:
     def test_placeholder_precedes_the_real_accounts(self) -> None:
         """Appended FIRST, so it is the default selection: a <select> with
         no explicit selection defaults to its first option."""
-        render = _render_probe_source(_read("auth_wizards.js"))
+        render = _render_probe_source(_read_auth_js())
         placeholder_at = render.index(_PLACEHOLDER_KEY)
         accounts_at = render.index("(body.accounts || []).forEach")
         assert placeholder_at < accounts_at, (
@@ -131,13 +142,13 @@ class TestAccountPickerIsOptional:
         )
 
     def test_optional_helper_line_rendered_with_the_picker(self) -> None:
-        js = _read("auth_wizards.js")
+        js = _read_auth_js()
         assert _ACCOUNT_HINT_KEY in js
         # Rendered as a data-i18n node so the locale switcher re-translates it.
         assert f'"{_ACCOUNT_HINT_KEY}"' in js
 
     def test_save_still_maps_empty_selection_to_null(self) -> None:
-        js = _read("auth_wizards.js")
+        js = _read_auth_js()
         assert "account_id: accountSelect.value || null" in js
 
 
@@ -145,7 +156,7 @@ class TestAccountPickerIsOptional:
 def test_localhost_hint_shown_for_meta_only() -> None:
     """The pollOAuth timeout/failure branch surfaces the system-user-token
     hint for the meta provider (Google keeps the generic message)."""
-    js = _read("auth_wizards.js")
+    js = _read_auth_js()
     assert "meta_oauth_localhost_hint" in js
     # Guarded on the meta provider inside pollOAuth.
     assert 'provider === "meta"' in js
@@ -182,23 +193,23 @@ class TestDownstreamMarkupContract:
     hidden by walking from the ``<select>`` to its enclosing ``<label>``."""
 
     def test_card_is_still_a_details_element_with_the_pinned_class(self) -> None:
-        js = _read("auth_wizards.js")
+        js = _read_auth_js()
         assert 'createElement("details")' in js
         assert 'className = "meta-token-card"' in js
 
     def test_summary_toggle_element_is_retained(self) -> None:
         """De-emphasized visually once the token option is chosen, but the
         element (and its data-i18n key) must survive."""
-        js = _read("auth_wizards.js")
+        js = _read_auth_js()
         assert 'createElement("summary")' in js
         assert "wizard.auth.meta_token_card_title" in js
 
     def test_account_select_stays_inside_its_label(self) -> None:
-        js = _read("auth_wizards.js")
+        js = _read_auth_js()
         assert "accountLabel.appendChild(accountSelect)" in js
 
     def test_account_scoped_i18n_keys_are_all_still_present(self) -> None:
-        js = _read("auth_wizards.js")
+        js = _read_auth_js()
         for key in (
             "wizard.auth.meta_token_account_label",
             "wizard.auth.meta_token_account_hint",
@@ -211,5 +222,5 @@ class TestDownstreamMarkupContract:
 def test_card_is_expanded_when_the_token_method_is_chosen() -> None:
     """Choosing the token option must not leave the operator with a second
     collapsed disclosure to discover — the card opens with the choice."""
-    js = _read("auth_wizards.js")
+    js = _read_auth_js()
     assert "tokenCard.open = true;" in js

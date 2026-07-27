@@ -80,6 +80,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   module imports the other. Pure move, no behaviour change; every public
   client method keeps its name and signature.
 
+- **Configure-UI asset split: `auth_wizards_meta.js` (internal).** The Meta
+  halves of the auth wizards — the hosted-connector setup card, the
+  connection-method chooser and the system-user token card — moved out of
+  `auth_wizards.js` (1248 lines, over the 800-line house budget) into a new
+  `mureo/_data/web/auth_wizards_meta.js`, loaded immediately before it and
+  reached through `window.MUREO_AUTH_META`, the same plain-global sharing
+  pattern the other configure-UI assets already use. A pure move: no renamed
+  functions, i18n keys, DOM classes or logic, and no behavior change for
+  operators.
+
 - **`action_log` timestamps are stamped server-side (#460).**
   `mureo_state_action_log_append` now writes the entry `timestamp` from
   mureo's own clock (ISO 8601 with UTC offset); a value supplied by the caller
@@ -91,6 +101,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   toggles, plugin mutations, creative-studio audits, rollback reversals) moved
   onto the same clock, so every entry now carries a consistent offset-bearing
   local timestamp instead of a UTC one.
+
+- **Creative Studio generation manifests use the shared clock too (#460).**
+  The `created_at` field of both `manifest.json` writers
+  (`creative_studio_generate_visual` and `creative_studio_compose`) was the
+  last `datetime.now(timezone.utc)` left in the tree — a second clock in the
+  same module whose audit entries already used `mureo.core.clock`, and one
+  that rolled the day at the wrong moment for an operator on a positive UTC
+  offset (an evening run filed under tomorrow). Both now stamp
+  `server_now_iso()`, so the manifest and its audit entry agree and the value
+  is reachable by the same test seam. The only consumer, the read-only
+  creative gallery, passes `created_at` through as a display string and orders
+  runs by run id, so the format change is presentational.
 
 ### Fixed
 
@@ -113,6 +135,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   data for the period ending on `server_now`'s date), and — for
   `budget-pacing` — derives the pacing month and the elapsed / remaining day
   counts from it.
+
+- **The same date discipline now covers every date-sensitive skill (#460).**
+  The first three skills were the ones the bug was observed in; twelve more
+  derive a date from "today" and were equally exposed. Each gains the same
+  step-0 "establish today from `server_now`", adapted to what it actually
+  computes: `weekly-report` ends its 7-day window on `server_now`'s date
+  instead of "7 days from today"; `monthly-report` names the previous full
+  calendar month, the MTD cut-off and the explicit `YYYY-MM-DD..YYYY-MM-DD`
+  month-before-last range from the clock; `goal-review` measures days-remaining
+  against each Goal's `Deadline` from it (a drifted date silently flips
+  on-track / at-risk / off-track); `experiment` derives `start_time`,
+  `end_time` and the "has the window closed?" gate from it, so the no-peeking
+  rule cannot be defeated by an early evaluation; and `incident-postmortem`
+  only scores an action whose `observation_due` has genuinely passed. The seven
+  skills that write an `observation_due` counted forward from today —
+  `budget-rebalance`, `creative-refresh`, `search-term-cleanup`,
+  `audience-review`, `ad-fatigue-check`, `rescue`, `tracking-health` — now
+  count it from `server_now`'s date, so an outcome review is never scheduled
+  for the wrong day. `generated_at` in each persisted report summary comes from
+  the same value. `ad-fatigue-check` additionally records that its
+  week-over-week windows are platform-side period tokens (`last_7d` /
+  `LAST_7_DAYS`), resolved by the platform's own clock, and must not be
+  hand-built as date ranges.
 
 - **Meta video file upload rebuilt on the shared client machinery.**
   `meta_ads_videos_upload_file` used to open its own `httpx.AsyncClient` and
