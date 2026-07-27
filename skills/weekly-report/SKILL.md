@@ -19,11 +19,13 @@ Generate a weekly marketing operations report.
 
 **Before you start**: Run the **Diagnostic preamble** from ../_mureo-shared/SKILL.md — load learning insights (mureo_learning_insights_get) and consult advisors (mureo_consult_advisor) before drawing conclusions.
 
-1. **Load context**: Read STRATEGY.md and STATE.json.
+0. **Establish today**: call `mureo_state_get` **first, on every host** (including Claude Code, where you would otherwise `Read` the file) and take `server_now` from its response — ISO 8601 with UTC offset, e.g. `2026-07-28T10:12:33+09:00`. Its date is the **only source of the current date** for this run: it fixes the 7-day reporting window in step 3, which `action_log` entries fall inside it, and every observation-window comparison below. Do not shell out (this skill must run in Bash-less headless hosts) and do not read the date off STATE.json — `last_synced_at`, `reports.*.period` and `action_log` timestamps are **history**, never evidence of what day it is now. **Never write `server_now` into STATE.json**: it is a response field, and a persisted copy becomes tomorrow's stale "today".
+
+1. **Load context**: Read STRATEGY.md and STATE.json (the same `mureo_state_get` response from step 0 on MCP hosts).
 
 2. **Discover platforms**: Identify all configured platforms and available data sources — built-in, `mcp__mureo__<plugin>_*` plugin platforms, and any **hosted official-MCP connector** present in the session (e.g. TikTok's `tt-ads-*` tools, key `tiktok_ads`). See `../_mureo-shared/SKILL.md` → *Plugin platforms* and *Hosted-connector platforms*; pull a hosted connector's numbers from its own reporting tools and omit mureo-only value-adds.
 
-3. **Period**: Determine the reporting period (last 7 days from today).
+3. **Period**: Determine the reporting period — the last 7 days ending on `server_now`'s date from step 0, never on a date inferred from STATE.json.
 
 4. **Goal progress**: For each Goal, pull performance data from the relevant platforms:
    - **Google Ads**: prefer mureo native `google_ads_performance_report` (with `period: "LAST_7_DAYS"` then `period: "LAST_14_DAYS"` and subtract the first 7 from the next 7 for previous-week comparison). If mureo's Google Ads tools are unavailable (e.g. `MUREO_DISABLE_GOOGLE_ADS=1` after `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's equivalent performance-report tool over the same two windows and perform the WoW subtraction the same way.
@@ -52,7 +54,7 @@ Generate a weekly marketing operations report.
    - Suggest Operation Mode change if appropriate (e.g., "Goals on track — consider switching from TURNAROUND_RESCUE to EFFICIENCY_STABILIZE")
 
 9. **Evidence pipeline**: Include an evidence assessment section:
-   - List actions with `observation_due` dates that passed this week — evaluate their outcomes by comparing `metrics_at_action` with current metrics
+   - List actions with `observation_due` dates that passed this week — "this week" is the step-3 window derived from `server_now`, so compare each `observation_due` against `server_now`'s date, never against another `action_log` timestamp — then evaluate their outcomes by comparing `metrics_at_action` with current metrics
    - List actions still in observation — note them as "pending, do not draw conclusions"
    - Rate confidence in reported improvements: low (< 1 week data), medium (1 observation period), high (2+ consistent periods)
    - Do NOT present pending observations as confirmed wins
@@ -68,8 +70,8 @@ Generate a weekly marketing operations report.
 11. **Log to action_log** in STATE.json that a weekly report was generated, including the reporting period.
 
 12. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="weekly"` and a concise `summary` object so the read-only dashboard can render this report without re-running you. Follow this convention:
-    - `generated_at`: ISO 8601 timestamp of this run
-    - `period`: the reporting window (e.g. `"LAST_7_DAYS"` or an explicit date range)
+    - `generated_at`: ISO 8601 timestamp of this run — use `server_now`
+    - `period`: the reporting window from step 3 (e.g. `"LAST_7_DAYS"` or an explicit date range ending on `server_now`'s date)
     - `kpis`: per-platform and/or totals headline numbers (spend, conversions, cpa, week-over-week change)
     - `flags`: a list of **structured** flags — each a small object `{code, severity, params}` so the dashboard renders a coarse, localizable chip with the numbers on drill-down:
         - `code`: a canonical vocabulary key — one of `goals_met`, `cpa_over_target`, `cpa_under_target`, `cv_below_target`, `cv_above_target`, `spend_spike`, `cpa_spike`, `invalid_traffic_suspected`, `zero_cv_adspots`, `budget_overspend`, `budget_drift`, `tracking_suspect`, `zero_conversions`, `supply_tools_unconfigured`, `anomaly_baseline_insufficient`, `pending_observations`, `search_console_no_property`, `ga4_not_configured`.
