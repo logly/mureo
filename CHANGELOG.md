@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Meta video creatives, end to end.** `meta_ads_creatives_create` now builds
+  a video creative as well as an image one: pass `video_id` plus exactly one of
+  `video_thumbnail_image_hash` / `video_thumbnail_image_url` and the tool emits
+  `object_story_spec.video_data` (thumbnail, `title`, `message`,
+  `link_description`, and the destination link nested under
+  `call_to_action.value.link`) instead of `link_data`. Video and image
+  parameters are mutually exclusive. Two parameters that are optional for an
+  image creative are enforced as hard requirements in video mode: a thumbnail
+  (Meta requires one) and `call_to_action` — `video_data` has no `link` field,
+  so the CTA is the only carrier of the destination and accepting a CTA-less
+  video would silently discard the required `link_url`. `link_url` is injected
+  into `call_to_action.value.link` automatically; callers pass only the button
+  label. Two read-only tools complete the flow:
+  **`meta_ads_videos_get`** returns the raw nested processing `status`
+  (`video_status` / `processing_phase`) so an agent can poll until the upload is
+  ready before creating a creative, and **`meta_ads_videos_thumbnails`** lists
+  the auto-generated thumbnails (`id`, `uri`, `is_preferred`, `height`,
+  `width`) to pick one from. Both are node-level Graph reads, not
+  `act_`-scoped. Meta tool count 86 -> 88 (205 total).
+
 - **Cross-platform allocation & learning-state diagnostic discipline.** The
   pro-diagnosis framework catalogue (`skills/_mureo-pro-diagnosis`) gains an
   *Allocation & Learning-State Discipline* section covering three principles
@@ -33,6 +53,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fatigue), and `search-term-cleanup` (systematic waste vs low-volume terms with
   a bad average). `/experiment` now advertises breakdown-exclusion and
   reallocation hypotheses as things it validates.
+
+### Fixed
+
+- **Meta video file upload rebuilt on the shared client machinery.**
+  `meta_ads_videos_upload_file` used to open its own `httpx.AsyncClient` and
+  call a bare `raise_for_status()`, so Meta's error JSON (message /
+  `error_subcode` / `fbtrace_id`) was discarded and the caller only saw httpx's
+  generic `400 Bad Request`; retries, 429 handling and rate-limit monitoring
+  did not apply either. The upload now routes through `_post`/`_request` (which
+  regained optional `files=` multipart support), surfacing Meta's diagnostics
+  for free. The multipart part keeps its documented `source` field name and the
+  real filename but now declares the real container MIME per extension
+  (`video/mp4`, `video/quicktime`, `video/x-msvideo`, `video/x-ms-wmv`,
+  `video/x-matroska`) instead of `application/octet-stream`; the file bytes are
+  materialized so a retry re-sends the full body; auth moved from an
+  `access_token` form field to the Bearer header; and the per-request timeout
+  went from 120s to 600s.
+- **Meta video size cap raised from 100 MB to 1 GB**, matching Graph's
+  documented ceiling for the non-resumable upload. Both video upload tool
+  descriptions now state the truth — supported formats MP4 / MOV / AVI / WMV /
+  MKV, up to 1 GB via these tools, larger files needing resumable upload (not
+  yet supported) — replacing the inaccurate "MP4, MOV. Recommended max 4 GB".
+- **`.flv` no longer accepted by the video upload handler.** The MCP handler's
+  extension tuple allowed `.flv` while the client's allow-list did not, so an
+  `.flv` file passed the handler gate only to be rejected one layer deeper with
+  a different message. The client set is now the single source of truth.
+- **Meta Ads skill docs corrected** for the video tools: the `### videos`
+  section documented a `description` parameter that neither tool accepts, and
+  stated neither the real format list nor the size cap. The `creatives.create`
+  entry also understated its required parameters (`page_id` / `link_url`).
+- **Meta Ads skill Tool Summary table completed.** Five shipped tools were
+  missing from the numbered table — `meta_ads_pages_list`,
+  `meta_ads_pages_upload_photo`, `meta_ads_pixels_create`,
+  `meta_ads_targeting_search` and `meta_ads_targeting_categories` — so it
+  listed 81 of 86 tools. The table now covers all 88 and is renumbered
+  sequentially.
 
 ## [0.10.30] - 2026-07-27
 

@@ -19,7 +19,7 @@ The practical differences for Google and Meta:
 | Official MCP | `googleads/google-ads-mcp` (pipx, ADC) | hosted `https://mcp.facebook.com/ads` (OAuth) |
 | Official tool count | **3 — read-only** | **29 — read + write** |
 | Official can mutate? | No | Yes (direct to live account, no undo/draft/confirm) |
-| mureo native tool count | **86** | **82** |
+| mureo native tool count | **86** | **88** |
 | mureo native can mutate? | Yes | Yes |
 | Safety (rollback, action_log, strategy gating) | native only | native only |
 | BYOD / `mureo demo` (CSV, no live API) | native only | native only |
@@ -105,7 +105,7 @@ from mureo native.
   assets (copy, images, carousels, collections, dynamic ads); Instagram-specific
   actions.
 
-### mureo native — Meta Ads (86 tools)
+### mureo native — Meta Ads (88 tools)
 
 Covers the same operational class as the official MCP **plus** every documented
 gap above:
@@ -114,7 +114,7 @@ gap above:
 - **Page discovery** (`pages_list`)
 - Audiences + **lookalikes**
 - **Targeting discovery** — interest search + category catalogues (behaviors / demographics / etc.) that resolve Meta's internal targeting IDs
-- Creatives — single / carousel / collection / dynamic / lead — + image/video upload
+- Creatives — single image **or video** / carousel / collection / dynamic / lead — + image/video upload, **video processing-status polling and thumbnail selection**
 - Insights + breakdowns; analysis (performance / audience / placements / cost / compare / suggest creative)
 - Pixels (list / get / stats / events / **create**) and **Conversions API send** (purchase / lead)
 - Catalogs / products / feeds

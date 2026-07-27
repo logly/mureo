@@ -865,13 +865,38 @@ async def handle_videos_upload_file(args: dict[str, Any]) -> list[TextContent]:
     file_path = _require(args, "file_path")
     if not os.path.isfile(file_path):
         raise ValueError(f"File not found: {file_path}")
-    _allowed_video_ext = (".mp4", ".mov", ".avi", ".wmv", ".flv", ".mkv")
+    # Mirrors mureo.meta_ads._creatives._META_ALLOWED_VIDEO_EXTENSIONS, which is
+    # the source of truth. ``.flv`` used to be listed here only, so an .flv file
+    # passed this gate and was then rejected one layer deeper.
+    _allowed_video_ext = (".mp4", ".mov", ".avi", ".wmv", ".mkv")
     if not file_path.lower().endswith(_allowed_video_ext):
         raise ValueError(
             f"Unsupported video format. Allowed: {', '.join(_allowed_video_ext)}"
         )
     title = _opt(args, "title")
     result = await client.upload_ad_video_file(file_path, title=title)
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_videos_get(args: dict[str, Any]) -> list[TextContent]:
+    """Get a video's processing status (poll before creating a creative)."""
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    video_id = _require(args, "video_id")
+    result = await client.get_ad_video(video_id)
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_videos_thumbnails(args: dict[str, Any]) -> list[TextContent]:
+    """List a video's auto-generated thumbnails."""
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    video_id = _require(args, "video_id")
+    result = await client.list_ad_video_thumbnails(video_id)
     return _json_result(result)
 
 
