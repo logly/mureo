@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.31] - 2026-07-28
+
 ### Added
 
 - **Meta video creatives, end to end.** `meta_ads_creatives_create` now builds
