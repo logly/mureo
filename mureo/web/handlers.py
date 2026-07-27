@@ -271,6 +271,7 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "app.js",
     "landing.js",
     "wizard.js",
+    "auth_wizards_meta.js",
     "auth_wizards.js",
     "dashboard.js",
     "extensions.js",

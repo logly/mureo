@@ -21,6 +21,17 @@ def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
 
 
+# The auth wizards ship as two assets: ``auth_wizards_meta.js`` (the Meta
+# connector card, method chooser and token card) is loaded before
+# ``auth_wizards.js`` (queue + step wiring). Grep the pair as one source so
+# the contracts below cover the wizard regardless of which half holds them.
+_AUTH_WIZARD_ASSETS = ("auth_wizards_meta.js", "auth_wizards.js")
+
+
+def _read_auth_js() -> str:
+    return "\n".join(_read(name) for name in _AUTH_WIZARD_ASSETS)
+
+
 # ---------------------------------------------------------------------------
 # #183 — Dashboard provider rows look like cards (border + padding + radius)
 # ---------------------------------------------------------------------------
@@ -120,7 +131,7 @@ def test_auth_wizard_error_sites_also_toast() -> None:
     long Dashboard who triggers a wizard failure sees the toast at
     bottom-right regardless of where the inline status node sits.
     """
-    js = _read("auth_wizards.js")
+    js = _read_auth_js()
     assert js.count("MUREO.toast(") >= 5, (
         "auth_wizards.js must call MUREO.toast() on every inline "
         "error site; expected at least five (finalize, save x2, "
