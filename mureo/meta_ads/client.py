@@ -109,13 +109,19 @@ class MetaAdsApiClient(
         return await self._request("GET", path, params=params)
 
     async def _post(
-        self, path: str, data: dict[str, Any] | None = None
+        self,
+        path: str,
+        data: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """POST request (with rate limit handling).
 
         Args:
             path: API path
-            data: Request body
+            data: Request body (form fields)
+            timeout: Optional per-request timeout in seconds. ``None`` uses the
+                shared client default; a value overrides it for this call (e.g.
+                large image uploads need a longer window than the default).
 
         Returns:
             API response JSON
@@ -123,7 +129,7 @@ class MetaAdsApiClient(
         Raises:
             RuntimeError: If the API request fails
         """
-        return await self._request("POST", path, data=data)
+        return await self._request("POST", path, data=data, timeout=timeout)
 
     async def _delete(self, path: str) -> dict[str, Any]:
         """DELETE request (with rate limit handling)."""
@@ -135,6 +141,7 @@ class MetaAdsApiClient(
         path: str,
         params: dict[str, Any] | None = None,
         data: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """Execute an HTTP request (with rate limit handling and exponential backoff retry).
 
@@ -142,7 +149,10 @@ class MetaAdsApiClient(
             method: HTTP method
             path: API path
             params: Query parameters
-            data: Request body
+            data: Request body (form fields)
+            timeout: Optional per-request timeout in seconds. ``None`` uses the
+                shared client's default; a value overrides it for this call
+                (httpx per-request timeout override semantics).
 
         Returns:
             API response JSON
@@ -159,17 +169,28 @@ class MetaAdsApiClient(
         if params is None:
             params = {}
 
+        # httpx treats ``timeout=None`` as "disable timeout"; to mean "use the
+        # client default" the kwarg must be omitted entirely. So only forward a
+        # timeout when the caller explicitly set one.
+        extra: dict[str, Any] = {}
+        if timeout is not None:
+            extra["timeout"] = timeout
+
         last_error: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
                 if method == "GET":
-                    resp = await self._http.get(url, params=params, headers=headers)
+                    resp = await self._http.get(
+                        url, params=params, headers=headers, **extra
+                    )
                 elif method == "POST":
                     resp = await self._http.post(
-                        url, params=params, data=data, headers=headers
+                        url, params=params, data=data, headers=headers, **extra
                     )
                 elif method == "DELETE":
-                    resp = await self._http.delete(url, params=params, headers=headers)
+                    resp = await self._http.delete(
+                        url, params=params, headers=headers, **extra
+                    )
                 else:
                     raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -208,6 +229,10 @@ class MetaAdsApiClient(
                             parts.append(err["error_user_title"])
                         if err.get("error_user_msg"):
                             parts.append(err["error_user_msg"])
+                        if err.get("error_subcode"):
+                            parts.append(f"subcode={err['error_subcode']}")
+                        if err.get("fbtrace_id"):
+                            parts.append(f"fbtrace_id={err['fbtrace_id']}")
                         if parts:
                             detail = " | ".join(parts)
                     except Exception:
