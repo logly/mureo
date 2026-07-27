@@ -19,17 +19,19 @@ Generate a client-facing monthly marketing operations report. This mirrors `/wee
 
 **Before you start**: Run the **Diagnostic preamble** from ../_mureo-shared/SKILL.md — load learning insights (mureo_learning_insights_get) and consult advisors (mureo_consult_advisor) before drawing conclusions.
 
-1. **Load context**: Read STRATEGY.md (Goals, Operation Mode, Persona, any `## Custom: Monthly Budget`) and STATE.json.
+0. **Establish today**: call `mureo_state_get` **first, on every host** (including Claude Code, where you would otherwise `Read` the file) and take `server_now` from its response — ISO 8601 with UTC offset, e.g. `2026-07-28T10:12:33+09:00`. Its date is the **only source of the current date** for this run, and this report is entirely calendar-driven: it decides which month is "the previous full month", the MTD cut-off date, the explicit `YYYY-MM-DD..YYYY-MM-DD` range you build for the month-before-last, and whether an `observation_due` window has closed. Do not shell out (this skill must run in Bash-less headless hosts) and do not read the date off STATE.json — `last_synced_at`, `reports.*.period` and `action_log` timestamps are **history**, never evidence of what day it is now; reporting a month late is exactly the failure this step prevents. **Never write `server_now` into STATE.json**: it is a response field, and a persisted copy becomes tomorrow's stale "today".
+
+1. **Load context**: Read STRATEGY.md (Goals, Operation Mode, Persona, any `## Custom: Monthly Budget`) and STATE.json (the same `mureo_state_get` response from step 0 on MCP hosts).
 
 2. **Discover platforms**: Identify all configured platforms and available data sources — built-in, `mcp__mureo__<plugin>_*` plugin platforms, and any **hosted official-MCP connector** present in the session (e.g. TikTok's `tt-ads-*` tools, key `tiktok_ads`). See `../_mureo-shared/SKILL.md` → *Plugin platforms* and *Hosted-connector platforms*; pull a hosted connector's numbers from its own reporting tools and omit mureo-only value-adds.
 
-3. **Reporting window**: Default to the **previous full calendar month**. If the user explicitly asks for a mid-month / month-to-date view, use MTD instead — and **state clearly at the top of the report which window it is** (a partial month is not comparable to a full one).
+3. **Reporting window**: Default to the **previous full calendar month** — the month before `server_now`'s month, named from `server_now` and never inferred from a stored `reports.*.period`. If the user explicitly asks for a mid-month / month-to-date view, use MTD instead — and **state clearly at the top of the report which window it is** (a partial month is not comparable to a full one).
    - **Previous full month**: Google Ads `google_ads_performance_report` with `period="LAST_MONTH"`; Meta Ads `meta_ads_insights_report` with `period="last_month"`.
-   - **Month-to-date** (only when explicitly asked): Google Ads `period="THIS_MONTH"`; Meta Ads `period="this_month"`. Label it "MTD (through <date>)".
+   - **Month-to-date** (only when explicitly asked): Google Ads `period="THIS_MONTH"`; Meta Ads `period="this_month"`. Label it "MTD (through <date>)" — that date is `server_now`'s date.
    - Native-preferred with official fallback: if mureo's Google Ads / Meta Ads tools are unavailable (`MUREO_DISABLE_GOOGLE_ADS=1` / `MUREO_DISABLE_META_ADS=1` after `mureo providers add …-official`), fall back to the official `google-ads-official` / `meta-ads-official` MCP over the equivalent window; note that mureo-only value-adds (`result_indicator` CV-mismatch) are absent from the official surface.
 
 4. **Month-over-month (MoM) comparison** — the reporting month vs the month **before** it, using only windows the tools genuinely support (same honesty rule as the period above):
-   - **Meta Ads**: `meta_ads_insights_report` supports an explicit `'YYYY-MM-DD..YYYY-MM-DD'` range, so pull the month-before with its exact date range and compare against `last_month`. A true Meta MoM is available.
+   - **Meta Ads**: `meta_ads_insights_report` supports an explicit `'YYYY-MM-DD..YYYY-MM-DD'` range, so pull the month-before with its exact date range — computed by stepping back two months from `server_now`'s month, not from any date found in STATE.json — and compare against `last_month`. A true Meta MoM is available.
    - **Google Ads**: `google_ads_performance_report`'s `period` is a **fixed enum** (`LAST_MONTH`, `THIS_MONTH`, `LAST_30/90_DAYS`, …) with **no custom date range and no "month-before-last" preset**. So a native Google Ads figure for the month-before-last is **not directly available**. Use, in order: (a) STATE.json's persisted prior-month rollup (`platforms[<p>].periods[...]`) or the previous monthly report's `kpis` (from `mureo_state_report_set` history) as the MoM baseline; (b) if neither exists, **state that the Google Ads MoM comparison is unavailable this month** rather than mislabel `LAST_90_DAYS` (a 3-month blend) as "the prior month". Never silently substitute a different window.
    - Show MoM change (absolute and %) for spend, conversions, CPA, and CTR per platform.
 
@@ -71,7 +73,7 @@ Generate a client-facing monthly marketing operations report. This mirrors `/wee
 13. **Log to action_log** (via `mureo_state_action_log_append`) that a monthly report was generated, including the reporting month.
 
 14. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="monthly"` and a concise `summary` object so the read-only dashboard can render this report without re-running you. Follow this convention:
-    - `generated_at`: ISO 8601 timestamp of this run
+    - `generated_at`: ISO 8601 timestamp of this run — use `server_now`
     - `period`: the reporting month (e.g. `"2026-06"`), and whether full-month or MTD
     - `kpis`: per-platform + totals headline numbers (spend, conversions, cpa, MoM change)
     - `flags`: notable items (e.g. `["cv_goal_missed", "meta_cpa_up_12pct_mom"]`)

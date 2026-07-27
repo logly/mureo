@@ -18,6 +18,8 @@ Find the ads whose audience has seen them too many times. Creative fatigue is a 
 
 **Before you start**: Run the **Diagnostic preamble** from ../_mureo-shared/SKILL.md — load learning insights (mureo_learning_insights_get) and consult advisors (mureo_consult_advisor) before drawing conclusions.
 
+0. **Establish today**: call `mureo_state_get` **first, on every host** (including Claude Code, where you would otherwise `Read` the file) and take `server_now` from its response — ISO 8601 with UTC offset, e.g. `2026-07-28T10:12:33+09:00`. Its date is the **only source of the current date** for this run: the `observation_due` you write in step 9 is `server_now`'s date + 14 days. (The week-over-week windows in step 3 are platform-side period tokens — `last_7d` / `LAST_7_DAYS` — so the platform resolves those against its own clock; do not hand-build date ranges for them.) Do not shell out (this skill must run in Bash-less headless hosts) and do not read the date off STATE.json — `last_synced_at`, `reports.*.period` and `action_log` timestamps are **history**, never evidence of what day it is now. **Never write `server_now` into STATE.json**: it is a response field, and a persisted copy becomes tomorrow's stale "today".
+
 1. **Load context**: Read STRATEGY.md (Goals, Operation Mode) and STATE.json. Note any learning insights about fatigue thresholds — a VALIDATED insight ("this account tolerates frequency 5 before CTR drops") **overrides** the default rubric in step 4.
 
 2. **Discover active ads per platform**:
@@ -59,10 +61,10 @@ Find the ads whose audience has seen them too many times. Creative fatigue is a 
 
 8. **Pausing a clearly-fatigued ad — approval gate**: Pausing is a write. Apply the *Confirm Before Write Operations* rule from `../_mureo-shared/SKILL.md`: list the ad(s), their current spend/frequency/CTR, and confirm before pausing via `meta_ads_ads_pause` (Meta) or `google_ads_ads_update_status` (Google Ads). Prefer **rotate-in-a-replacement over pause-into-a-gap** unless the ad is actively harmful — pausing without a fresh creative ready starves delivery. Never bulk-pause without listing the total impact first.
 
-9. **Record outcome context**: For each ad paused or queued for refresh, append to `action_log` via `mureo_state_action_log_append` with `metrics_at_action` (frequency, ctr, cpm, impressions, conversions, cpa) and `observation_due` **14 days** out (the creative-change window from `../_mureo-learning/SKILL.md`). A pure diagnostic run with no writes still logs a summary entry (the verdict table), with no `observation_due`.
+9. **Record outcome context**: For each ad paused or queued for refresh, append to `action_log` via `mureo_state_action_log_append` with `metrics_at_action` (frequency, ctr, cpm, impressions, conversions, cpa) and `observation_due` **14 days** out from `server_now`'s date (the creative-change window from `../_mureo-learning/SKILL.md`). A pure diagnostic run with no writes still logs a summary entry (the verdict table), with no `observation_due`.
 
 10. **Persist the report summary** (best-effort): Call `mureo_state_report_set` with `report="fatigue"` and a concise `summary` object so the read-only dashboard can render this check without re-running you. Follow this convention:
-    - `generated_at`: ISO 8601 timestamp of this run
+    - `generated_at`: ISO 8601 timestamp of this run — use `server_now`
     - `period`: the two adjacent windows compared (this week / prior week)
     - `kpis`: counts by verdict (fatigued / watch / fresh / insufficient-data) and the worst-frequency + worst-CTR-decline ads
     - `flags`: notable items (e.g. `["3_ads_fatigued", "meta_reach_missing_frequency_undefined", "google_display_ctr_only"]`)
