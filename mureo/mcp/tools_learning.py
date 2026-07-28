@@ -1,18 +1,39 @@
 """mureo's learned-insights MCP tool surface.
 
 A single tool — :data:`TOOLS` exposes ``mureo_learning_insights_get``
-— that returns the operator-tier knowledge base for diagnostic
-workflows to consult. The data flow is the read-side counterpart to
+— that returns the knowledge base for diagnostic workflows to
+consult. The data flow is the read-side counterpart to
 ``mureo learn add``:
 
     /learn skill (markdown)
-      → mureo learn add "<insight>"  (mureo/cli/learn_cmd.py)
-      → KnowledgeStore.append_operator_knowledge()
+      → mureo learn tiers            (which tiers exist?)
+      → mureo learn add "<insight>" --scope operator|workspace
+      → KnowledgeStore.append_{operator,workspace}_knowledge()
       ↑ write side already shipped
       ↓ this module — read side
       → KnowledgeStore.read_operator_knowledge()
+      → KnowledgeStore.read_workspace_knowledge()
       → mureo_learning_insights_get  (this tool)
       → /daily-check / /rescue / /budget-rebalance / …
+
+Both KnowledgeStore tiers are read. The operator tier is shared
+across every workspace the operator opens; the workspace tier is
+optional and scoped to the current workspace. When the workspace
+tier is absent or empty the payload is byte-identical to the
+operator-only payload this tool has always returned. When it has
+content, both tiers are returned in one payload under labelled
+headings, prefixed by the rule that workspace-tier insights win over
+operator-tier insights on conflict — the workspace tier is the more
+specific evidence.
+
+Note for third-party ``KnowledgeStore`` backend authors: BOTH
+``read_operator_knowledge()`` and ``read_workspace_knowledge()`` are
+called on every ``mureo_learning_insights_get`` invocation, and the
+seven bundled diagnostic workflows each call that tool near their
+start. Keep both reads cheap — a remote-backed store should cache
+per-session rather than issuing a network round-trip per call. A read
+that raises is tolerated (the tier is skipped and a warning is logged),
+but it is not a substitute for a fast path.
 
 The tool deliberately takes no arguments: its job is to surface
 every saved insight so the agent treats them as authoritative
@@ -88,6 +109,34 @@ def _is_scaffold_only(text: str) -> bool:
     return not tail.strip()
 
 
+# --- Two-tier payload composition -----------------------------------------
+#
+# When the resolved KnowledgeStore exposes a workspace tier with real
+# content, the handler returns both tiers in one labelled payload
+# instead of the operator tier alone. The headings are module-level
+# constants so tests (and any downstream consumer that wants to split
+# the payload back apart) pin the same strings the handler emits.
+
+_OPERATOR_SECTION_HEADING = "## Operator knowledge (all workspaces)"
+
+_WORKSPACE_SECTION_HEADING = "## Workspace knowledge (current workspace)"
+
+# Stated once, at the top, before either section: the agent has to know
+# how to resolve a contradiction before it starts reading the insights.
+_PRECEDENCE_NOTE = (
+    "Workspace-tier insights take precedence over operator-tier "
+    "insights when the two conflict."
+)
+
+# Used instead of the operator body when the workspace tier has content
+# but the operator tier is empty / scaffold-only. Returning
+# ``_NO_INSIGHTS_MESSAGE`` there would hide the workspace insights.
+_NO_OPERATOR_INSIGHTS_NOTE = (
+    "(No operator-tier insights saved yet — everything below is scoped "
+    "to the current workspace.)"
+)
+
+
 _NO_ADVISORS_MESSAGE = (
     "(No external advisor sources configured. Set up "
     "~/.mureo/insight_sources.json with the MCP servers you want "
@@ -106,16 +155,20 @@ TOOLS: list[Tool] = [
     Tool(
         name="mureo_learning_insights_get",
         description=(
-            "Load every insight previously saved via /learn from the "
-            "operator-tier knowledge base. Returns the raw Markdown so "
-            "the agent can apply the lessons when forming a "
-            "diagnostic answer. Read-only. Call this near the start "
-            "of every diagnostic workflow (/daily-check, /rescue, "
-            "/budget-rebalance, /creative-refresh, /goal-review, "
-            "/competitive-scan, /search-term-cleanup) BEFORE drawing "
-            "conclusions, so accumulated practitioner know-how "
-            "informs the analysis instead of being ignored. Returns "
-            "a guidance string when no insights have been saved yet."
+            "Load every insight previously saved via /learn. Returns "
+            "both knowledge tiers as raw Markdown in one payload: the "
+            "operator tier (shared across all workspaces) and, when a "
+            "workspace tier is configured and non-empty, the workspace "
+            "tier (scoped to the current workspace) in a separate "
+            "labelled section. Workspace-tier insights take precedence "
+            "over operator-tier insights when they conflict. Read-only. "
+            "Call this near the start of every diagnostic workflow "
+            "(/daily-check, /rescue, /budget-rebalance, "
+            "/creative-refresh, /goal-review, /competitive-scan, "
+            "/search-term-cleanup) BEFORE drawing conclusions, so "
+            "accumulated practitioner know-how informs the analysis "
+            "instead of being ignored. Returns a guidance string when "
+            "no insights have been saved in either tier."
         ),
         inputSchema={
             "type": "object",
@@ -198,24 +251,123 @@ async def handle_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]
     raise ValueError(f"Unknown tool: {name}")
 
 
+def _workspace_content(store: Any) -> str | None:
+    """Return the workspace tier's text, or ``None`` when it does not
+    contribute anything.
+
+    ``None`` covers four cases the caller treats identically:
+
+    - no workspace tier is configured (the Protocol's documented
+      ``None`` return),
+    - the tier is configured but still empty / whitespace-only (a
+      configured-but-never-written file reads as ``""``),
+    - the backend returned something outside the Protocol's
+      ``str | None`` contract,
+    - the read *raised*.
+
+    The last two matter because ``KnowledgeStore`` is implementable by
+    third parties via the ``mureo.runtime_context_factory`` entry-point
+    group: a remote- or DB-backed store can fail transiently. The
+    operator tier has already been read successfully by then, and it is
+    what every diagnostic workflow actually depends on — so a broken
+    workspace tier degrades to the legacy operator-only payload instead
+    of taking the whole tool down.
+    """
+    try:
+        text = store.read_workspace_knowledge()
+    except Exception:  # noqa: BLE001 — must never break the tool
+        logger.warning(
+            "learning insights: KnowledgeStore.read_workspace_knowledge "
+            "raised — ignoring the workspace tier",
+            exc_info=True,
+        )
+        return None
+    if text is None:
+        return None
+    if not isinstance(text, str):
+        logger.warning(
+            "learning insights: KnowledgeStore.read_workspace_knowledge "
+            "returned %s, expected str | None — ignoring the workspace tier",
+            type(text).__name__,
+        )
+        return None
+    if not text.strip():
+        return None
+    return text
+
+
+def _compose_two_tier_payload(operator_text: str, workspace_text: str) -> str:
+    """Render both tiers as one labelled Markdown payload.
+
+    The precedence note comes first so the agent knows how to resolve a
+    contradiction before it reads either section. Sections are plain
+    ``##`` headings rather than ``---``-separated blocks because the
+    operator tier's raw Markdown starts with a YAML frontmatter fence,
+    which a horizontal rule would be indistinguishable from.
+
+    TRUST MODEL: both tiers are operator-authored — they only ever
+    contain text the operator approved through ``/learn`` — so they are
+    embedded verbatim, deliberately unlike advisor fragments in
+    :func:`_format_advisor_response`, which are untrusted external
+    content and go through :func:`_sanitize`. Do not drop this
+    distinction: if a tier ever becomes writable by anything other than
+    the operator (a synced/shared knowledge base, a hosted backend that
+    merges in third-party content), these bodies must be sanitized the
+    same way advisor fragments are.
+    """
+    # ``.strip()`` here is a deliberate difference from the legacy
+    # single-tier path, which returns the operator text byte-for-byte.
+    # Composing sections needs predictable spacing around the headings;
+    # the legacy path has no headings and must stay byte-identical.
+    operator_body = (
+        _NO_OPERATOR_INSIGHTS_NOTE
+        if _is_scaffold_only(operator_text)
+        else operator_text.strip()
+    )
+    return (
+        f"{_PRECEDENCE_NOTE}\n\n"
+        f"{_OPERATOR_SECTION_HEADING}\n\n"
+        f"{operator_body}\n\n"
+        f"{_WORKSPACE_SECTION_HEADING}\n\n"
+        f"{workspace_text.strip()}\n"
+    )
+
+
 async def _handle_learning_insights_get(
     arguments: dict[str, Any],  # noqa: ARG001
 ) -> list[TextContent]:
-    """Return the operator-tier knowledge base as a single
-    ``TextContent``.
+    """Return both knowledge tiers as a single ``TextContent``.
 
     Defers to the runtime context's ``KnowledgeStore`` so an
     alternate backend registered via
     ``mureo.runtime_context_factory`` (filesystem-backed by default;
     could be DB-backed or remote-fetch-backed under a third-party
     runtime context factory) works transparently.
+
+    When the workspace tier contributes nothing — absent, empty, or
+    whitespace-only — the payload is byte-identical to the
+    operator-only payload this tool has always returned, so existing
+    consumers see no change. When it does have content, both tiers are
+    composed into one labelled payload with the workspace-wins
+    precedence rule stated up front.
     """
     store = get_runtime_context().knowledge_store
-    text = store.read_operator_knowledge()
-    if _is_scaffold_only(text):
-        logger.debug("learning insights: knowledge base empty / scaffold-only")
-        return [TextContent(type="text", text=_NO_INSIGHTS_MESSAGE)]
-    return [TextContent(type="text", text=text)]
+    operator_text = store.read_operator_knowledge()
+    workspace_text = _workspace_content(store)
+
+    if workspace_text is None:
+        if _is_scaffold_only(operator_text):
+            logger.debug("learning insights: knowledge base empty / scaffold-only")
+            return [TextContent(type="text", text=_NO_INSIGHTS_MESSAGE)]
+        return [TextContent(type="text", text=operator_text)]
+
+    logger.debug("learning insights: composing operator + workspace tiers")
+    return [
+        TextContent(
+            type="text",
+            text=_compose_two_tier_payload(operator_text, workspace_text),
+        )
+    ]
 
 
 async def _handle_consult_advisor(

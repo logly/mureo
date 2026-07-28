@@ -22,6 +22,11 @@ prior file layout); an alternate backend registered via the
 `mureo.runtime_context_factory` entry-point group can redirect or
 split the write without changing this skill.
 
+The knowledge base has two tiers — an **operator** tier shared across
+every workspace, and an optional **workspace** tier scoped to the
+current one. Use `mureo learn tiers` to find out which are available
+before deciding where an insight belongs (step 4).
+
 ## When to use
 
 - The user runs `/learn` followed by an insight, e.g.:
@@ -57,24 +62,58 @@ split the write without changing this skill.
    generalized lesson only — never record account IDs, credentials,
    access tokens, or personal data in the knowledge base.
 
-4. **Save by invoking the CLI.** Pass the approved insight verbatim
-   (including its leading blank line and trailing newline) to:
+4. **Choose the scope.** Before saving, detect which knowledge tiers
+   this installation exposes. The command is read-only — it creates
+   and modifies nothing:
 
    ```bash
-   mureo learn add "$INSIGHT_MARKDOWN"
+   mureo learn tiers
    ```
 
-   - The default `--scope operator` writes the cross-workspace tier
-     read by every diagnostic skill. Use this for general practitioner
-     know-how that applies to every account the operator runs.
-   - Pass `--scope workspace` when the insight is specific to the
-     active account and should not leak to other workspaces (only
-     meaningful when a workspace-aware KnowledgeStore backend is
-     installed; the command exits with a helpful message otherwise).
+   It prints one line per tier, e.g.:
 
-5. **Confirm.** Tell the user the insight was saved and that it will
-   be applied in future `/daily-check`, `/rescue`, `/budget-rebalance`,
-   and other diagnostic workflows.
+   ```
+   operator: configured
+   workspace: configured
+   ```
+
+   - **`workspace: configured`** — ask the user which tier to save to,
+     and present **workspace as the recommended default**. Most
+     insights worth recording are account-specific: product quirks,
+     measurement and conversion-tracking quirks, seasonality, campaign
+     history, what has already been tried on this account. Those are
+     true here and often false elsewhere, so writing them to the
+     operator tier makes every other account inherit them and the
+     agent will confidently misapply them. Reserve the operator tier
+     for genuinely generalizable cross-account know-how — platform
+     mechanics, statistical reasoning, structural rules of thumb.
+   - **`workspace: absent`** — no workspace tier is installed on this
+     machine. Save to the operator tier without asking the user.
+
+5. **Save by invoking the CLI.** Pass the approved insight verbatim
+   (including its leading blank line and trailing newline), with the
+   scope from step 4 stated explicitly:
+
+   ```bash
+   # Run ONE of these — the scope you settled on in step 4.
+   mureo learn add "$INSIGHT_MARKDOWN" --scope workspace
+   mureo learn add "$INSIGHT_MARKDOWN" --scope operator
+   ```
+
+   - `--scope operator` writes the cross-workspace tier read by every
+     diagnostic skill.
+   - `--scope workspace` writes the workspace-scoped tier, so the
+     insight stays with the active account and never leaks to other
+     workspaces. The command exits with a helpful message when no
+     workspace tier is configured — step 4 rules that case out.
+
+   Both tiers are handed to diagnostic workflows by
+   `mureo_learning_insights_get`; when the two conflict, workspace-tier
+   insights take precedence over operator-tier insights.
+
+6. **Confirm.** Tell the user the insight was saved, which tier it went
+   to, and that it will be applied in future `/daily-check`,
+   `/rescue`, `/budget-rebalance`, and other diagnostic workflows.
 
 IMPORTANT: Always save through `mureo learn add`, never by writing the
 file path manually. Going through the CLI keeps the skill compatible
