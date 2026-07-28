@@ -1,3 +1,5 @@
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Flogly%2Fmureo.svg)](https://mcptoplist.com/server/glama%2Flogly%2Fmureo)
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/img/logo-dark.png">
