@@ -18,11 +18,11 @@
   <a href="https://github.com/logly/mureo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/logly/mureo/actions/workflows/ci.yml/badge.svg"></a>
 </p>
 
-**mureo** は、ローカルで動くAI広告運用チームです。無駄を見つけ、変更を監査し、安全に運用します。
+**mureo** は、オープンソースでローカルに動くAI広告運用チームです。無駄を見つけ、変更を監査し、安全に運用します。
 
 _お手元のPCで完結。戦略に基づく。安全に運用。_
 
-Claude Code、Cursor、Codex、Gemini で動きます。mureo は各広告プラットフォームの公式 MCP の上に乗り、AI に、守るべき戦略と、測るべき成果と、誰にでも見せられる監査証跡を持たせます。**認証情報はお手元のPCから出ません。**
+Claude Code、Cursor、Codex、Gemini で動きます。mureo は各広告プラットフォームの公式 [MCP](https://modelcontextprotocol.io/) の上に乗り、AI に、守るべき戦略と、測るべき成果と、誰にでも見せられる監査証跡を持たせます。**認証情報はお手元のPCから出ません。**
 
 > チームや代理店向けの商用版（クラウド版と、ローカルで動く Agency 版）もご用意しています。詳しくは **[mureo.jp](https://mureo.jp)** をご覧ください。
 
@@ -36,7 +36,7 @@ Claude Code、Cursor、Codex、Gemini で動きます。mureo は各広告プラ
 
 mureo は、**AI 広告運用のための、ローカルで動く制御基盤（control plane）** です。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）が Google 広告、Meta 広告、TikTok 広告、Search Console、GA4 を *mureo を経由して* 操作できるようになります。すべての判断はあなたの事業戦略に基づき、実際の成果に紐づき、後から再生できる監査ログに残ります。
 
-各広告プラットフォームの公式 MCP（Meta Ads MCP や Google Ads MCP など）が出揃うと、mureo はそれらをドライバとして利用します。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
+mureo は Google 広告、Meta 広告、Search Console の接続を自前で同梱しており、各プラットフォームが公式 MCP を公開すればそれをドライバとして利用します（TikTok の公式 MCP には対応済みです）。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
 
 - **戦略準拠**：すべての判断が `STRATEGY.md`（ペルソナ、USP、ブランドボイス、目標）を読み込む
 - **セーフティゲート**：rollback allow-list、GAQL ガード、BYOD は既定で read-only、認証情報ガード、プラットフォーム別スロットリング
@@ -47,16 +47,16 @@ mureo は、**AI 広告運用のための、ローカルで動く制御基盤（
 
 ## クイックスタート（2分で動きを見る）
 
-広告アカウントの認証情報も、OAuth も、サインアップも要りません。
+必要なのは Python 3.10 以上と [Claude Code](https://claude.com/claude-code) だけです（Cursor、Codex CLI、Gemini CLI でも動きます。詳しくは[そのほかのエージェントとホスト](#そのほかのエージェントとホスト)）。**デモシナリオ**は合成データで動くため、広告アカウントの認証情報も、OAuth も、サインアップも要りません。
 
 ```bash
 pip install mureo
 mureo configure
 ```
 
-`mureo configure` はローカル（`127.0.0.1` にバインド。外部からはアクセス不可）にブラウザ UI を起動し、ターミナルに秘密情報を貼り付けることなくすべてを案内します。Claude アプリを選び、1クリックの基本セットアップを実行し、同じダッシュボードから合成データの**デモシナリオ**を用意できます。（ターミナルでは `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap` で同じことができます。）
+`mureo configure` はローカル（`127.0.0.1` にバインド。外部からはアクセス不可）にブラウザ UI を起動します。Claude アプリを選び、1クリックの基本セットアップを実行したら、Demo / BYOD セクションで**デモシナリオ**を選んでください。UI にはプラットフォーム接続（OAuth）の項目もありますが、**ここでは飛ばして構いません**。デモに認証情報は不要です。（ターミナルでは `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap` で同じことができます。）
 
-生成されたデモディレクトリを Claude Code で開いて、こう聞いてください。
+生成されたデモディレクトリ（パスは UI に表示されます）を Claude Code で開いて、こう聞いてください。
 
 ```
 /daily-check
@@ -64,29 +64,33 @@ mureo configure
 
 エージェントがデモ用の `STRATEGY.md` を読み、キャンペーンデータを取得し、数値だけを見るツールが見落とす「季節性の罠」に踏み込んでいく様子を見られます。次は `/search-term-cleanup` を試してみてください。
 
-自分のデータで使う準備ができたら、次の 2 つの道から選びます。
+自分のデータで使う準備ができたら、次のどちらかに進んでください。
 
-### 道 A: 自分のデータで試す（BYOD、5〜10分、OAuth 不要）
+### まず自分のデータで試す（BYOD、5〜10分、OAuth 不要）
 
 **Google Ads / Meta Ads から XLSX として書き出して mureo に取り込むだけで、媒体をまたいだ戦略レベルの診断が手に入ります。** OAuth も Developer Token の審査待ちも要りません。取り込みは `mureo configure` のダッシュボード（デモと同じ Demo / BYOD セクション）から、またはターミナルからできます。
 
 ```bash
 mureo byod import ~/Downloads/mureo-google-ads.xlsx
 mureo byod import ~/Downloads/mureo-meta-ads.xlsx   # 媒体は互いに独立。片方だけでも、後から追加でも可
-# Claude Code を開いて「/daily-check を実行して」と聞く
+# Claude Code を開いて /onboard を実行し、続けて /daily-check
 ```
+
+最初に `/onboard` を一度実行すると、対話形式で `STRATEGY.md`（戦略）と `STATE.json`（状態）が生成されます。以降のコマンドはすべてこの戦略を読んで動きます。デモでこの手順が要らないのは、デモに `STRATEGY.md` が同梱されているためです。
 
 XLSX の生成は媒体ごとに一回だけのセットアップです。Google Ads は Apps Script テンプレートで約5分、Meta Ads は広告マネージャの保存済みレポートから2クリックで書き出せます（9言語のUIに対応しているため、広告マネージャを英語に切り替える必要はありません）。**[BYOD ガイド →](docs/byod.ja.md)**
 
 BYOD は**設計上、読み取り専用**です。すべての変更系ツールは `{"status": "skipped_in_byod_readonly"}` を返します。エージェントは分析と提案はしますが、実アカウントへの書き込みは決してしません。
 
-### 道 B: 本番接続する（Live API OAuth、全機能）
+### 本番のアカウントに接続する（Live API OAuth、全機能）
 
-mureo を Google Ads / Meta Ads API に直接接続します。実際に変更を実行する場合（`/rescue`、`/budget-rebalance`、`/creative-refresh`、rollback）と、GA4 / Search Console を使う場合はこちらが必須です。
+mureo を Google Ads / Meta Ads API に直接接続します。実際に変更を実行する場合（`/rescue`、`/budget-rebalance`、`/creative-refresh` の実行や、`rollback_apply` ツールによるロールバックの適用）と、GA4 / Search Console を使う場合はこちらが必須です。
 
 同じ `mureo configure` の UI で「プラットフォーム接続」を開くと、各コンソールへのディープリンク付きで Google / Meta の OAuth をブラウザ内で完了でき、公式 MCP プロバイダの登録もできます。（ターミナルでは `mureo auth setup` で同じことができます。）**[認証ガイド →](docs/authentication.md)**
 
 前提として、Google Ads の Developer Token と OAuth クライアント、Meta の App ID と Secret が必要です（開発モードのままで構いません）。取得手順もウィザードが案内します。
+
+接続できたら、運用に使うディレクトリを Claude Code で開き、最初に `/onboard` を一度実行して `STRATEGY.md`（戦略）と `STATE.json`（状態）を生成してください。戦略に基づく運用は、この2つのファイルがあって初めて動きます。
 
 > **Google Cloud Console や Meta for Developers に慣れていない方へ。** OAuth フローや Developer Token の発行は、これらのコンソールを使ったことがない方には難しく感じるかもしれません。**まずはデモか BYOD から始めてください。**数分で mureo がどう動くかが分かるので、Live API のセットアップに踏み込むかどうかはそれから判断すれば大丈夫です。
 
@@ -152,7 +156,7 @@ Google広告、Meta広告、TikTok広告、Search Console、GA4を1つのワー�
 エージェントの分析を修正したり、運用で気づいたことを `/learn` でナレッジベースに保存できます。保存した知識は次回以降のセッションで自動的に読み込まれるため、同じ間違いを繰り返しません。1つのキャンペーンで得た知見が、アカウント内の似た状況にも活かされます。
 
 ```
-あなた: 「それは本当のCPA悪化じゃない。この業界はGW期間は毎年こうなる」
+あなた: /learn それは本当のCPA悪化じゃない。この業界はGW期間は毎年こうなる
 エージェント: 保存します。次回同じパターンを検知したら季節要因として報告します。
 
 → ナレッジベースに記録
