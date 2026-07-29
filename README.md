@@ -82,7 +82,7 @@ BYOD is **read-only by construction**: every mutation tool returns `{"status": "
 
 ### Path B: Go live (OAuth) — full functionality
 
-Connect mureo directly to the Google Ads / Meta Ads APIs. Required to actually execute changes (`/rescue`, `/budget-rebalance`, `/creative-refresh`, rollback) and for GA4 / Search Console support.
+Connect mureo directly to the Google Ads / Meta Ads APIs. Required to actually execute changes (running `/rescue`, `/budget-rebalance`, `/creative-refresh`, or applying a rollback via the `rollback_apply` tool) and for GA4 / Search Console support.
 
 In the same `mureo configure` UI, open **Connect platforms**: interactive Google / Meta OAuth in the browser, with each field deep-linking to the right console page, plus official-MCP provider registration. (Terminal equivalent: `mureo auth setup`.) **[Authentication guide →](docs/authentication.md)**
 
