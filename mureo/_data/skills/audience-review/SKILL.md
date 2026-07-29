@@ -32,7 +32,7 @@ Reconcile **who you say you want** (the STRATEGY.md Persona / Target Audience) w
 
 4. **Inventory current targeting — Meta Ads** (prefer mureo native):
    - **Custom Audiences**: `meta_ads_audiences_list` — id, name, subtype (WEBSITE / CUSTOM / LOOKALIKE / …), approximate_count, retention_days.
-   - **Ad-set targeting**: `meta_ads_ad_sets_list` — each ad set's `targeting_summary`, budget, and optimization_goal (targeting lives at the ad-set level on Meta).
+   - **Ad-set targeting**: `meta_ads_ad_sets_list` — each ad set's `targeting_summary`, budget, and optimization_goal (targeting lives at the ad-set level on Meta). In BYOD mode this response is wrapped as `{"source": "byod_import", "as_of": <import time>, "data": [...]}` — take the rows from `data` and treat them as of `as_of`, not as live.
    - **Placement & segment analysis**: `meta_ads_analysis_placements` (per-placement spend / CPA / CTR with keep / exclude / scale recommendations) and `meta_ads_analysis_audience` (age × gender efficiency scoring). For raw slices use `meta_ads_insights_breakdown` with `breakdown` = `age,gender`, `publisher_platform`, `placement`, or `device_platform`.
    - If mureo's Meta tools are unavailable, fall back to the official `meta-ads-official` hosted MCP for its targeting / breakdown surface, and self-apply the guardrail/confirm rules yourself.
 

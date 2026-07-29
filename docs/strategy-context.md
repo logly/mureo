@@ -178,6 +178,20 @@ STATE.json is a JSON file containing campaign state snapshots across platforms, 
 | `device_targeting` | `array` | No | Device bid modifiers |
 | `campaign_goal` | `string` | No | Human-readable campaign goal |
 | `notes` | `string` | No | Free-form notes |
+| `metrics` | `object` | No | Performance numbers for the reporting dashboard (`spend`, `impressions`, `clicks`, `conversions`, `cpa`, `ctr`, `result_indicator`, `period`, `fetched_at`) |
+| `ads` | `array` | No | Ad-level delivery state (see below). Absent means ad-level status was never fetched — distinct from `[]`, which means "fetched, this campaign has no ads" |
+
+#### Ad State
+
+Each entry in a campaign's `ads` array records one ad's delivery state, so a change made **outside** mureo (an ad paused by hand in the platform UI, stopped by its ad set/campaign, or rejected by policy) is stored as fact and can be diffed on the next `/sync-state` or `/daily-check`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ad_id` | `string` | Yes | Platform ad ID |
+| `name` | `string` | No | Ad name |
+| `status` | `string` | No | What the ad is **configured** as (e.g. ACTIVE, PAUSED) |
+| `effective_status` | `string` | No | Whether the ad is **actually delivering**, where the platform reports it (Meta: ACTIVE / ADSET_PAUSED / CAMPAIGN_PAUSED / DISAPPROVED / ...). `status` and `effective_status` disagreeing is the signal that the ad was stopped somewhere other than on the ad itself |
+| `as_of` | `string` | No — server-stamped | ISO 8601 timestamp with UTC offset at which the status was observed. Written by `mureo_state_upsert_campaign` from the **server's** clock; a caller-supplied value is ignored |
 
 #### Action Log Entry
 
@@ -189,6 +203,7 @@ Each entry in `action_log` records an action taken by a workflow command, with o
 | `action` | `string` | Yes | Description of the action taken |
 | `platform` | `string` | Yes | Platform the action was taken on |
 | `campaign_id` | `string` | No | Campaign affected |
+| `ad_id` | `string` | No | Ad affected, for ad-level actions — lets a later run tell an ad mureo stopped from one an operator stopped by hand |
 | `command` | `string` | No | Slash command that initiated the action |
 | `summary` | `string` | No | Human-readable summary |
 | `metrics_at_action` | `object` | No | Key metrics at the time of action (e.g., `{"cpa": 5200, "conversions": 45}`) |

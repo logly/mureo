@@ -1846,3 +1846,403 @@ class TestConversionActionTypesOverride:
         set_conversion_action_types(p, "meta_ads", "123456", ["lead"])
         # Live counters resolve with the act_* form.
         assert load_conversion_action_types("act_123456", path=p) == ("lead",)
+
+
+# ---------------------------------------------------------------------------
+# #468 — ad-level state
+# ---------------------------------------------------------------------------
+
+
+class TestAdState:
+    """Ad-level delivery status persisted under its campaign.
+
+    Without this, ``/sync-state`` and ``/daily-check`` have nowhere to record
+    what each ad's status was, so every run re-discovers (or misses) a manual
+    pause and no run can diff against the previous one.
+    """
+
+    @pytest.mark.unit
+    def test_ad_state_is_frozen(self) -> None:
+        from mureo.context.models import AdState
+
+        ad = AdState(ad_id="ad_1")
+        with pytest.raises(Exception):
+            ad.ad_id = "ad_2"  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_ad_state_optional_fields_default_to_none(self) -> None:
+        from mureo.context.models import AdState
+
+        ad = AdState(ad_id="ad_1")
+        assert ad.name is None
+        assert ad.status is None
+        assert ad.effective_status is None
+        assert ad.as_of is None
+
+    @pytest.mark.unit
+    def test_campaign_ads_round_trip(self) -> None:
+        """A campaign's ads survive render -> parse unchanged."""
+        from mureo.context.models import AdState
+
+        doc = StateDocument(
+            version="2",
+            platforms={
+                "meta_ads": PlatformState(
+                    account_id="act_1",
+                    campaigns=(
+                        CampaignSnapshot(
+                            campaign_id="c1",
+                            campaign_name="Prospecting",
+                            status="ACTIVE",
+                            ads=(
+                                AdState(
+                                    ad_id="ad_1",
+                                    name="Creative A",
+                                    status="ACTIVE",
+                                    effective_status="ADSET_PAUSED",
+                                    as_of="2026-07-29T10:00:00+09:00",
+                                ),
+                            ),
+                        ),
+                    ),
+                )
+            },
+        )
+        reparsed = parse_state(render_state(doc))
+        ads = reparsed.platforms["meta_ads"].campaigns[0].ads
+        assert ads is not None
+        assert ads[0].ad_id == "ad_1"
+        assert ads[0].name == "Creative A"
+        assert ads[0].status == "ACTIVE"
+        assert ads[0].effective_status == "ADSET_PAUSED"
+        assert ads[0].as_of == "2026-07-29T10:00:00+09:00"
+
+    @pytest.mark.unit
+    def test_ads_is_a_tuple_after_construction(self) -> None:
+        """Defensive copy: a caller-supplied list becomes an immutable tuple."""
+        from mureo.context.models import AdState
+
+        snap = CampaignSnapshot(
+            campaign_id="c1",
+            campaign_name="C",
+            status="ACTIVE",
+            ads=[AdState(ad_id="ad_1")],  # type: ignore[arg-type]
+        )
+        assert isinstance(snap.ads, tuple)
+
+    @pytest.mark.unit
+    def test_legacy_state_without_ads_loads_and_emits_no_ads_key(self) -> None:
+        """Backward compatibility: a STATE.json written before this field
+        parses unchanged AND does not gain an ``ads`` key on the next write
+        (no diff churn for accounts that never fetched ad-level status)."""
+        legacy = {
+            "version": "2",
+            "last_synced_at": "2026-07-01T00:00:00+09:00",
+            "customer_id": None,
+            "campaigns": [
+                {
+                    "campaign_id": "c1",
+                    "campaign_name": "Legacy",
+                    "status": "ENABLED",
+                    "bidding_strategy_type": None,
+                    "bidding_details": None,
+                    "daily_budget": 5000.0,
+                    "device_targeting": None,
+                    "campaign_goal": None,
+                    "notes": None,
+                }
+            ],
+            "platforms": None,
+            "action_log": [
+                {
+                    "timestamp": "2026-07-01T00:00:00+09:00",
+                    "action": "budget_update",
+                    "platform": "meta_ads",
+                }
+            ],
+        }
+        doc = parse_state(json.dumps(legacy))
+        assert doc.campaigns[0].ads is None
+        assert doc.action_log[0].ad_id is None
+        rendered = json.loads(render_state(doc))
+        assert "ads" not in rendered["campaigns"][0]
+        assert "ad_id" not in rendered["action_log"][0]
+        # Byte-stable round-trip of the legacy document.
+        assert rendered == legacy
+
+    @pytest.mark.unit
+    def test_parse_ads_requires_ad_id(self) -> None:
+        data = {
+            "version": "2",
+            "campaigns": [
+                {
+                    "campaign_id": "c1",
+                    "campaign_name": "C",
+                    "status": "ACTIVE",
+                    "ads": [{"name": "no id"}],
+                }
+            ],
+        }
+        with pytest.raises(ValueError, match="ad_id"):
+            parse_state(json.dumps(data))
+
+    @pytest.mark.unit
+    def test_parse_ads_tolerant_mode_skips_malformed_entry(self) -> None:
+        """The read-only Reports view must not blank a whole document over a
+        single hand-authored ad entry."""
+        data = {
+            "version": "2",
+            "campaigns": [
+                {
+                    "campaign_id": "c1",
+                    "campaign_name": "C",
+                    "status": "ACTIVE",
+                    "ads": [{"name": "no id"}, {"ad_id": "ad_ok"}],
+                }
+            ],
+        }
+        doc = parse_state(json.dumps(data), strict=False)
+        ads = doc.campaigns[0].ads
+        assert ads is not None
+        assert [a.ad_id for a in ads] == ["ad_ok"]
+
+    @pytest.mark.unit
+    def test_action_log_entry_carries_ad_id(self) -> None:
+        """An ad-level pause must be attributable to a specific ad, so a later
+        run can match the observed status against what mureo itself did."""
+        entry = ActionLogEntry(
+            timestamp="2026-07-29T10:00:00+09:00",
+            action="ad_pause",
+            platform="meta_ads",
+            campaign_id="c1",
+            ad_id="ad_1",
+        )
+        doc = StateDocument(version="2", action_log=(entry,))
+        reparsed = parse_state(render_state(doc))
+        assert reparsed.action_log[0].ad_id == "ad_1"
+
+    @pytest.mark.unit
+    def test_upsert_campaign_persists_ads(self, tmp_path: Path) -> None:
+        from mureo.context.models import AdState
+
+        path = tmp_path / "STATE.json"
+        campaign = CampaignSnapshot(
+            campaign_id="c1",
+            campaign_name="Prospecting",
+            status="ACTIVE",
+            ads=(AdState(ad_id="ad_1", status="ACTIVE", effective_status="ACTIVE"),),
+        )
+        upsert_campaign(path, campaign, platform="meta_ads", account_id="act_1")
+        doc = read_state_file(path)
+        ads = doc.platforms["meta_ads"].campaigns[0].ads
+        assert ads is not None
+        assert ads[0].ad_id == "ad_1"
+
+    @pytest.mark.unit
+    def test_upsert_campaign_preserves_ads_when_not_resupplied(
+        self, tmp_path: Path
+    ) -> None:
+        """A later upsert that carries no ``ads`` must not wipe the ad-level
+        state a prior run recorded.
+
+        ``/sync-state`` and ``/daily-check`` fetch ads only for ACTIVE
+        campaigns (an API-cost guard), so the very moment a campaign is
+        paused — exactly when "what were its ads doing?" matters most — the
+        next metrics-only upsert would otherwise reset ``ads`` from "last
+        known statuses" back to "never fetched", silently destroying the
+        audit trail this issue exists to create. Each ad carries its own
+        ``as_of``, so an inherited value stays honestly dated.
+        """
+        from mureo.context.models import AdState
+
+        path = tmp_path / "STATE.json"
+        upsert_campaign(
+            path,
+            CampaignSnapshot(
+                campaign_id="c1",
+                campaign_name="Prospecting",
+                status="ACTIVE",
+                ads=(
+                    AdState(
+                        ad_id="ad_1",
+                        status="ACTIVE",
+                        effective_status="ACTIVE",
+                        as_of="2026-07-28T10:00:00+09:00",
+                    ),
+                ),
+            ),
+            platform="meta_ads",
+            account_id="act_1",
+        )
+        # Second write: campaign now PAUSED, no ad-level fetch this run.
+        upsert_campaign(
+            path,
+            CampaignSnapshot(
+                campaign_id="c1", campaign_name="Prospecting", status="PAUSED"
+            ),
+            platform="meta_ads",
+            account_id="act_1",
+        )
+
+        doc = read_state_file(path)
+        snap = doc.platforms["meta_ads"].campaigns[0]
+        assert snap.status == "PAUSED"
+        assert snap.ads is not None, "prior ad-level state must survive"
+        assert snap.ads[0].ad_id == "ad_1"
+        assert snap.ads[0].as_of == "2026-07-28T10:00:00+09:00"
+        # The legacy v1 flat list is platform-blind, so it deliberately does
+        # NOT inherit — see test_legacy_flat_list_does_not_bleed_ads_across_
+        # platforms. The v2 platforms section is the one the dashboard and the
+        # skills read.
+        assert doc.campaigns[0].status == "PAUSED"
+        assert doc.campaigns[0].ads is None
+
+    @pytest.mark.unit
+    def test_upsert_campaign_replaces_ads_when_resupplied(self, tmp_path: Path) -> None:
+        """Preservation must not become stickiness: a fresh fetch replaces the
+        stored ads wholesale, including removing ads that no longer exist."""
+        from mureo.context.models import AdState
+
+        path = tmp_path / "STATE.json"
+        upsert_campaign(
+            path,
+            CampaignSnapshot(
+                campaign_id="c1",
+                campaign_name="P",
+                status="ACTIVE",
+                ads=(AdState(ad_id="ad_1"), AdState(ad_id="ad_2")),
+            ),
+            platform="meta_ads",
+            account_id="act_1",
+        )
+        upsert_campaign(
+            path,
+            CampaignSnapshot(
+                campaign_id="c1",
+                campaign_name="P",
+                status="ACTIVE",
+                ads=(AdState(ad_id="ad_1", status="PAUSED"),),
+            ),
+            platform="meta_ads",
+            account_id="act_1",
+        )
+
+        doc = read_state_file(path)
+        ads = doc.platforms["meta_ads"].campaigns[0].ads
+        assert ads is not None
+        assert [a.ad_id for a in ads] == ["ad_1"]
+        assert ads[0].status == "PAUSED"
+
+    @pytest.mark.unit
+    def test_upsert_campaign_empty_ads_list_clears_stored_ads(
+        self, tmp_path: Path
+    ) -> None:
+        """``()`` means "fetched, this campaign has no ads" and is a real
+        observation — it must overwrite, not be treated as 'not supplied'."""
+        from mureo.context.models import AdState
+
+        path = tmp_path / "STATE.json"
+        upsert_campaign(
+            path,
+            CampaignSnapshot(
+                campaign_id="c1",
+                campaign_name="P",
+                status="ACTIVE",
+                ads=(AdState(ad_id="ad_1"),),
+            ),
+            platform="meta_ads",
+            account_id="act_1",
+        )
+        upsert_campaign(
+            path,
+            CampaignSnapshot(
+                campaign_id="c1", campaign_name="P", status="ACTIVE", ads=()
+            ),
+            platform="meta_ads",
+            account_id="act_1",
+        )
+
+        doc = read_state_file(path)
+        assert doc.platforms["meta_ads"].campaigns[0].ads == ()
+
+    @pytest.mark.unit
+    def test_legacy_flat_list_does_not_bleed_ads_across_platforms(
+        self, tmp_path: Path
+    ) -> None:
+        """Ad inheritance must be platform-scoped.
+
+        The legacy v1 flat ``campaigns`` list is matched on ``campaign_id``
+        ALONE — it has no platform dimension — so two platforms that happen to
+        reuse an id (Google and Meta ids are independent namespaces; a bare
+        numeric collision is entirely possible) match each other there. If the
+        flat list inherited ``ads``, a Google campaign upsert would silently
+        adopt the Meta campaign's ad statuses and mureo would report ads that
+        belong to a different account. Inheritance therefore lives only in the
+        platform-scoped v2 path; the legacy list keeps full-replace semantics.
+        """
+        from mureo.context.models import AdState
+
+        path = tmp_path / "STATE.json"
+        upsert_campaign(
+            path,
+            CampaignSnapshot(
+                campaign_id="c1",
+                campaign_name="Meta Prospecting",
+                status="ACTIVE",
+                ads=(AdState(ad_id="meta_ad_1", status="ACTIVE"),),
+            ),
+            platform="meta_ads",
+            account_id="act_1",
+        )
+        # Same campaign_id under a DIFFERENT platform, with no ad-level fetch.
+        upsert_campaign(
+            path,
+            CampaignSnapshot(
+                campaign_id="c1", campaign_name="Google Brand", status="ENABLED"
+            ),
+            platform="google_ads",
+            account_id="123",
+        )
+
+        doc = read_state_file(path)
+        # v2: per-platform isolation — Google gains nothing, Meta keeps its own.
+        assert doc.platforms["google_ads"].campaigns[0].ads is None
+        meta_ads_state = doc.platforms["meta_ads"].campaigns[0].ads
+        assert meta_ads_state is not None
+        assert meta_ads_state[0].ad_id == "meta_ad_1"
+        # v1 legacy flat list: full replace, no cross-platform inheritance.
+        flat = [c for c in doc.campaigns if c.campaign_id == "c1"]
+        assert len(flat) == 1
+        assert flat[0].campaign_name == "Google Brand"
+        assert flat[0].ads is None, "legacy flat list must not inherit ads"
+
+    @pytest.mark.unit
+    def test_v2_inheritance_still_works_for_the_same_platform(
+        self, tmp_path: Path
+    ) -> None:
+        """Guard against over-correcting: scoping inheritance to v2 must not
+        disable it for repeat upserts on the SAME platform."""
+        from mureo.context.models import AdState
+
+        path = tmp_path / "STATE.json"
+        upsert_campaign(
+            path,
+            CampaignSnapshot(
+                campaign_id="c1",
+                campaign_name="P",
+                status="ACTIVE",
+                ads=(AdState(ad_id="ad_1", status="ACTIVE"),),
+            ),
+            platform="meta_ads",
+            account_id="act_1",
+        )
+        upsert_campaign(
+            path,
+            CampaignSnapshot(campaign_id="c1", campaign_name="P", status="PAUSED"),
+            platform="meta_ads",
+            account_id="act_1",
+        )
+
+        doc = read_state_file(path)
+        ads = doc.platforms["meta_ads"].campaigns[0].ads
+        assert ads is not None and ads[0].ad_id == "ad_1"

@@ -240,3 +240,78 @@ class TestContextManager:
 
         await client.close()
         client._http.aclose.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# #468 — ad-level delivery status: wire-level request + passthrough
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAdDeliveryStatusWire:
+    """End-to-end over an ``httpx.MockTransport``: the ad-status fields must
+    be asked for on the wire AND survive unchanged into the client's result.
+
+    A mixin-level assertion only proves the ``fields`` string; this proves
+    that what Meta returns for those fields reaches the MCP response, which
+    is what makes an out-of-mureo pause visible to the agent.
+    """
+
+    @staticmethod
+    def _client(handler) -> MetaAdsApiClient:
+        client = MetaAdsApiClient("token", "act_123")
+        client._http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        return client
+
+    _AD_PAYLOAD = {
+        "id": "ad_1",
+        "name": "Creative A",
+        "status": "ACTIVE",
+        "effective_status": "CAMPAIGN_PAUSED",
+        "configured_status": "ACTIVE",
+        "issues_info": [{"level": "AD", "error_summary": "Ad set is paused"}],
+        "ad_review_feedback": {"global": {"CIRCUMVENTION": "Policy hit"}},
+    }
+
+    @pytest.mark.asyncio
+    async def test_list_ads_requests_and_returns_delivery_status(self) -> None:
+        seen: dict[str, str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["fields"] = request.url.params["fields"]
+            return httpx.Response(200, json={"data": [self._AD_PAYLOAD]})
+
+        client = self._client(handler)
+        try:
+            ads = await client.list_ads()
+        finally:
+            await client._http.aclose()
+
+        for name in (
+            "effective_status",
+            "configured_status",
+            "issues_info",
+            "ad_review_feedback",
+        ):
+            assert name in seen["fields"]
+        assert ads[0]["effective_status"] == "CAMPAIGN_PAUSED"
+        assert ads[0]["configured_status"] == "ACTIVE"
+        assert ads[0]["issues_info"][0]["error_summary"] == "Ad set is paused"
+        assert ads[0]["ad_review_feedback"]["global"]["CIRCUMVENTION"] == "Policy hit"
+
+    @pytest.mark.asyncio
+    async def test_get_ad_requests_and_returns_delivery_status(self) -> None:
+        seen: dict[str, str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["fields"] = request.url.params["fields"]
+            return httpx.Response(200, json=self._AD_PAYLOAD)
+
+        client = self._client(handler)
+        try:
+            ad = await client.get_ad("ad_1")
+        finally:
+            await client._http.aclose()
+
+        assert "effective_status" in seen["fields"]
+        assert ad["effective_status"] == "CAMPAIGN_PAUSED"

@@ -189,3 +189,27 @@ def byod_platform_info(platform: str) -> dict[str, Any] | None:
     if not isinstance(info, dict):
         return None
     return info
+
+
+def byod_freshness(platform: str) -> dict[str, Any] | None:
+    """Return the freshness marker for a BYOD-served response (#468).
+
+    A CSV-backed read is a snapshot taken when the user ran ``mureo byod
+    import``, not the live account. Without a marker on the response an agent
+    cannot tell a months-old import from a fresh fetch, so it reasons about
+    delivery statuses that may have changed since — the failure mode this
+    marker exists to prevent. ``imported_at`` was already written into the
+    manifest; this is what finally reads it.
+
+    Returns ``None`` when the platform is not in BYOD mode (absence of the
+    marker on a response therefore means "live"). ``as_of`` is omitted rather
+    than invented when the manifest entry carries no usable ``imported_at``.
+    """
+    info = byod_platform_info(platform)
+    if info is None:
+        return None
+    marker: dict[str, Any] = {"source": "byod_import"}
+    imported_at = info.get("imported_at")
+    if isinstance(imported_at, str) and imported_at.strip():
+        marker["as_of"] = imported_at
+    return marker

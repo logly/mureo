@@ -29,10 +29,15 @@ class AdSetsMixin:
     ) -> dict[str, Any]: ...
 
     # Common field definitions
+    # ``effective_status`` / ``issues_info``: an ad set paused (or stopped by
+    # its campaign / schedule / budget) is the level at which an ACTIVE ad
+    # silently stops delivering, so the status the tool descriptions already
+    # advertised has to be requested here too (#468).
     _AD_SET_FIELDS = (
-        "id,name,status,campaign_id,daily_budget,lifetime_budget,"
-        "billing_event,optimization_goal,targeting,start_time,end_time,"
-        "created_time,updated_time,bid_amount,bid_strategy,promoted_object"
+        "id,name,status,effective_status,campaign_id,daily_budget,"
+        "lifetime_budget,billing_event,optimization_goal,targeting,start_time,"
+        "end_time,created_time,updated_time,bid_amount,bid_strategy,"
+        "issues_info,promoted_object"
     )
 
     async def list_ad_sets(

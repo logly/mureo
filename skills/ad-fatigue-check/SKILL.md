@@ -23,7 +23,7 @@ Find the ads whose audience has seen them too many times. Creative fatigue is a 
 1. **Load context**: Read STRATEGY.md (Goals, Operation Mode) and STATE.json. Note any learning insights about fatigue thresholds — a VALIDATED insight ("this account tolerates frequency 5 before CTR drops") **overrides** the default rubric in step 4.
 
 2. **Discover active ads per platform**:
-   - **Meta**: `meta_ads_ads_list` (filter to ACTIVE/effective_status delivering).
+   - **Meta**: `meta_ads_ads_list`, and keep only ads whose `effective_status` is `ACTIVE` — that is the field that says an ad is really delivering. An ad can read `status: ACTIVE` while its `effective_status` is `PAUSED` / `ADSET_PAUSED` / `CAMPAIGN_PAUSED` / `DISAPPROVED`; those are not fatigued, they are not running, so exclude them and say so rather than scoring them. In BYOD mode this response is wrapped as `{"source": "byod_import", "as_of": <import time>, "data": [...]}` — take the rows from `data` and treat them as of `as_of`, not as live.
    - **Google Ads**: `google_ads_ad_performance_report` scoped to ENABLED ads.
    - Also include any **hosted connector** (TikTok, key `tiktok_ads`) / `mcp__mureo__<plugin>_*` plugin platform best-effort, reporting only what its own tools expose and emitting `analytics_not_available_for_<platform>` for the fatigue value-adds below (see `../_mureo-shared/SKILL.md`). BYOD data is reachable only through mureo MCP tools — do not look for raw CSVs in the project directory.
 

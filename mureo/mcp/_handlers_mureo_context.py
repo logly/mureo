@@ -47,7 +47,12 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.report_flags import normalize_flags
 from mureo.context.errors import ContextFileError
-from mureo.context.models import ActionLogEntry, CampaignSnapshot, StateDocument
+from mureo.context.models import (
+    ActionLogEntry,
+    AdState,
+    CampaignSnapshot,
+    StateDocument,
+)
 from mureo.context.state import (
     append_action_log,
     read_state_file,
@@ -226,6 +231,7 @@ async def handle_state_action_log_append(
         action=action,
         platform=platform,
         campaign_id=raw.get("campaign_id"),
+        ad_id=raw.get("ad_id"),
         summary=raw.get("summary"),
         command=raw.get("command"),
         metrics_at_action=raw.get("metrics_at_action"),
@@ -236,6 +242,43 @@ async def handle_state_action_log_append(
     path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
     doc = append_action_log(path, entry)
     return _json_result(_state_to_dict(doc))
+
+
+def _parse_ads_argument(raw: Any) -> tuple[AdState, ...] | None:
+    """Build the ad-level state from an upsert payload (#468).
+
+    ``as_of`` is stamped SERVER-side for every ad, mirroring how
+    ``mureo_state_action_log_append`` stamps its ``timestamp`` (#460): a
+    model-supplied value is accepted by the schema but discarded, so a
+    drifted client date cannot be persisted and then read back later as when
+    the status was actually observed.
+
+    ``None`` (key absent) means "ad-level status was not fetched" and is kept
+    distinct from ``[]`` ("fetched, no ads") — the two justify different
+    advice, and only the former should be silent.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError("ads must be an array of ad objects")
+    observed_at = server_now_iso()
+    ads: list[AdState] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("each entry in ads must be an object")
+        ad_id = item.get("ad_id")
+        if not ad_id or not isinstance(ad_id, str):
+            raise ValueError("each entry in ads requires a non-empty ad_id")
+        ads.append(
+            AdState(
+                ad_id=ad_id,
+                name=item.get("name"),
+                status=item.get("status"),
+                effective_status=item.get("effective_status"),
+                as_of=observed_at,
+            )
+        )
+    return tuple(ads)
 
 
 async def handle_state_upsert_campaign(
@@ -264,6 +307,7 @@ async def handle_state_upsert_campaign(
         campaign_goal=raw.get("campaign_goal"),
         notes=raw.get("notes"),
         metrics=raw.get("metrics"),
+        ads=_parse_ads_argument(raw.get("ads")),
     )
     path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
     try:

@@ -168,6 +168,13 @@ class TestCampaignsMixin:
     def test_campaign_fields_include_budget_sharing(self, client) -> None:
         assert "is_adset_budget_sharing_enabled" in client._CAMPAIGN_FIELDS
 
+    def test_campaign_fields_include_delivery_status(self, client) -> None:
+        """#468 — the campaign tool descriptions promise effective_status /
+        issues_info; request them so a campaign stopped outside mureo (policy,
+        budget exhaustion, manual pause) is visible instead of reading ACTIVE."""
+        assert "effective_status" in client._CAMPAIGN_FIELDS
+        assert "issues_info" in client._CAMPAIGN_FIELDS
+
 
 # ===========================================================================
 # AdSetsMixin tests
@@ -363,6 +370,12 @@ class TestAdSetsMixin:
     def test_ad_set_fields_include_promoted_object(self, client) -> None:
         assert "promoted_object" in client._AD_SET_FIELDS
 
+    def test_ad_set_fields_include_delivery_status(self, client) -> None:
+        """#468 — the ad-set tool descriptions promise effective_status; an ad
+        set paused outside mureo is what silently stops its ACTIVE ads."""
+        assert "effective_status" in client._AD_SET_FIELDS
+        assert "issues_info" in client._AD_SET_FIELDS
+
 
 # ===========================================================================
 # Client-level page listing tests
@@ -509,6 +522,46 @@ class TestAdsMixin:
         client._get = AsyncMock(return_value={"id": "1"})
         result = await client.get_ad("1")
         assert result["id"] == "1"
+
+    # --- #468: ad-level delivery status must actually be requested ---------
+
+    def test_ad_fields_include_delivery_status(self, client) -> None:
+        """The ad-status fields the tool descriptions promise must be part of
+        the requested field set. Without them a pause made outside mureo — in
+        the platform UI, at the ad-set/campaign level, or by policy rejection —
+        leaves ``status`` at ACTIVE and stays invisible (#468)."""
+        for name in (
+            "effective_status",
+            "configured_status",
+            "issues_info",
+            "ad_review_feedback",
+        ):
+            assert name in client._AD_FIELDS
+
+    @pytest.mark.asyncio
+    async def test_list_ads_requests_delivery_status_fields(self, client) -> None:
+        await client.list_ads()
+        params = client._get.call_args[0][1]
+        for name in (
+            "effective_status",
+            "configured_status",
+            "issues_info",
+            "ad_review_feedback",
+        ):
+            assert name in params["fields"]
+
+    @pytest.mark.asyncio
+    async def test_get_ad_requests_delivery_status_fields(self, client) -> None:
+        client._get = AsyncMock(return_value={"id": "1"})
+        await client.get_ad("1")
+        params = client._get.call_args[0][1]
+        for name in (
+            "effective_status",
+            "configured_status",
+            "issues_info",
+            "ad_review_feedback",
+        ):
+            assert name in params["fields"]
 
     @pytest.mark.asyncio
     async def test_create_ad(self, client) -> None:
