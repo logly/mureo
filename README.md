@@ -34,28 +34,29 @@ Works with Claude Code, Cursor, Codex & Gemini. mureo sits on top of the officia
 
 ## What is mureo?
 
-mureo is a **local-first control plane for AI ad ops**. Once installed, AI agents (Claude Code, Cursor, Codex, Gemini, etc.) operate Google Ads, Meta Ads, Search Console, and GA4 *through mureo* — which keeps every action grounded in your business strategy, tied to real outcomes, and recorded in an audit log you can replay.
+mureo is a **local-first control plane for AI ad ops**. Once installed, AI agents (Claude Code, Cursor, Codex, Gemini, etc.) operate Google Ads, Meta Ads, TikTok Ads, Search Console, and GA4 *through mureo* — which keeps every action grounded in your business strategy, tied to real outcomes, and recorded in an audit log you can replay.
 
 When official ad-platform MCPs ship (Meta Ads MCP, Google Ads MCP, etc.), mureo uses them as drivers. mureo's value is not the API connection — it is **what happens around it**:
 
 - **Strategy-grounded** — every decision reads `STRATEGY.md` (persona, USP, brand voice, goals)
 - **Safety-gated** — rollback allow-list, GAQL guards, BYOD read-only by default, credential guard, per-platform throttle
-- **Cross-platform** — Google Ads / Meta Ads / Search Console / GA4 in one workflow
+- **Cross-platform** — Google Ads / Meta Ads / TikTok Ads / Search Console / GA4 in one workflow
 - **Auditable** — append-only action log with rollback
 - **Local-first** — credentials never leave your machine
 - **Learnable** — `/learn` builds account-specific knowledge over time
 
 ## Quick start — see it work in 2 minutes
 
-No ad-account credentials, no OAuth, no sign-up. Three commands scaffold a synthetic demo account and wire mureo into Claude Code:
+No ad-account credentials, no OAuth, no sign-up:
 
 ```bash
 pip install mureo
-mureo setup claude-code --skip-auth
-mureo demo init --scenario seasonality-trap
+mureo configure
 ```
 
-Then open the generated `mureo-demo/` directory in Claude Code and ask:
+`mureo configure` opens a local browser UI (bound to `127.0.0.1`, no remote access) that walks you through everything without pasting a single secret into a terminal: pick your Claude app, run the one-click basic setup, and scaffold a synthetic **demo scenario** from the same dashboard. (Terminal equivalent: `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap`.)
+
+Then open the generated demo directory in Claude Code and ask:
 
 ```
 /daily-check
@@ -67,7 +68,7 @@ When you're ready to point mureo at *your* data, pick one of the two paths below
 
 ### Path A: Bring your own data (BYOD) — 5–10 min, no OAuth
 
-**Export your real account data as an XLSX, drop it into mureo, and get a strategy-grounded multi-platform diagnosis** — no OAuth flow, no developer-token approval.
+**Export your real account data as an XLSX, drop it into mureo, and get a strategy-grounded multi-platform diagnosis** — no OAuth flow, no developer-token approval. Import the bundle from the `mureo configure` dashboard (the same Demo / BYOD section), or from the terminal:
 
 ```bash
 mureo byod import ~/Downloads/mureo-google-ads.xlsx
@@ -83,11 +84,7 @@ BYOD is **read-only by construction**: every mutation tool returns `{"status": "
 
 Connect mureo directly to the Google Ads / Meta Ads APIs. Required to actually execute changes (`/rescue`, `/budget-rebalance`, `/creative-refresh`, rollback) and for GA4 / Search Console support.
 
-```bash
-mureo configure
-```
-
-`mureo configure` opens a local browser UI (bound to `127.0.0.1`, no remote access) that walks you through everything: pick your Claude app, one-click basic setup, interactive Google / Meta OAuth with deep links to each console, and official-MCP provider registration. Prefer the terminal? `mureo auth setup` + `mureo setup claude-code` do the same. **[Authentication guide →](docs/authentication.md)**
+In the same `mureo configure` UI, open **Connect platforms**: interactive Google / Meta OAuth in the browser, with each field deep-linking to the right console page, plus official-MCP provider registration. (Terminal equivalent: `mureo auth setup`.) **[Authentication guide →](docs/authentication.md)**
 
 Prerequisites: a Google Ads Developer Token + OAuth Client, and/or a Meta App ID + Secret (development mode is fine). Both wizards walk you through obtaining them.
 
@@ -111,7 +108,7 @@ The presence of `~/.mureo/byod/manifest.json` is the switch — imported platfor
 
 ### Other agents and hosts
 
-Claude Code is the reference host, but every setup has a one-command equivalent:
+`mureo configure` covers the Claude hosts (Claude Code / Claude Desktop) end to end. The commands below are the scriptable equivalents, plus the non-Claude hosts:
 
 | Host | Command | Notes |
 |------|---------|-------|
@@ -138,13 +135,13 @@ Every operation starts from `STRATEGY.md` -- your persona, USP, brand voice, goa
 
 ### Cross-platform analysis
 
-mureo orchestrates across Google Ads, Meta Ads, Search Console, and GA4 in a single workflow:
+mureo orchestrates across Google Ads, Meta Ads, TikTok Ads, Search Console, and GA4 in a single workflow:
 
 - `/daily-check` -- pulls delivery status, ad performance, organic search trends, and site behavior across all platforms, then correlates them into one health report.
 - `/search-term-cleanup` -- compares paid keywords against organic rankings to eliminate wasteful overlap.
 - `/competitive-scan` -- combines auction insights with organic position data for a complete competitive picture.
 
-The agent auto-discovers your configured platforms. Add Meta Ads later? Every command adapts automatically.
+The agent auto-discovers your configured platforms. Add Meta Ads or TikTok Ads later? Every command adapts automatically.
 
 ### Built-in marketing expertise
 
@@ -337,7 +334,9 @@ Two local files drive strategy-aware operations. Run `/onboard` to generate them
 - **STRATEGY.md** -- Persona, USP, Brand Voice, Goals, Operation Mode. See [docs/strategy-context.md](docs/strategy-context.md).
 - **STATE.json** -- Campaign snapshots, action log. Updated automatically by workflow commands.
 
-### Connecting GA4 and other MCP servers
+### Connecting TikTok Ads, GA4, and other MCP servers
+
+**TikTok Ads** is supported through TikTok's official hosted MCP (the "TikTok for Business MCP Server"). mureo ships it as the `tiktok-ads-official` provider — add it from the `mureo configure` dashboard or with `mureo providers add`, then authenticate in the browser with your TikTok for Business account on first connect (no developer token required). Once connected, workflow commands treat `tiktok_ads` as a first-class platform: `/daily-check` and the reports include it, and confirmed changes are recorded in the action log. mureo-native analytics (anomaly baselines, RSA audit) remain Google / Meta specific.
 
 mureo's workflow commands leverage GA4 data (conversion rates, user behavior, landing page performance) when a GA4 MCP server — e.g. [Google Analytics MCP](https://github.com/googleanalytics/google-analytics-mcp) — is configured alongside mureo. GA4 is optional; all commands work without it. mureo also works alongside any other MCP server in the same session, and workflow commands incorporate their data when available. Setup walkthroughs: **[Integrations Guide →](docs/integrations.md)**
 
