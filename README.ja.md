@@ -34,13 +34,13 @@ Claude Code、Cursor、Codex、Gemini に対応。mureo は各広告プラット
 
 ## mureoとは
 
-mureoは、**AI 広告運用のためのローカル制御平面（control plane）** です。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）が Google 広告・Meta 広告・Search Console・GA4 を *mureo を経由して* 操作できるようになります。すべての判断はあなたの事業戦略に基づき、実際の成果に紐づき、後から再生可能な監査ログに残ります。
+mureoは、**AI 広告運用のためのローカル制御平面（control plane）** です。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）が Google 広告・Meta 広告・TikTok 広告・Search Console・GA4 を *mureo を経由して* 操作できるようになります。すべての判断はあなたの事業戦略に基づき、実際の成果に紐づき、後から再生可能な監査ログに残ります。
 
 各広告プラットフォームの公式 MCP（Meta Ads MCP / Google Ads MCP など）が出揃うと、mureo はそれらをドライバとして利用します。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
 
 - **戦略準拠** — すべての判断が `STRATEGY.md`（ペルソナ・USP・ブランドボイス・目標）を読み込む
 - **セーフティゲート** — rollback allow-list、GAQL ガード、BYOD 既定 read-only、認証情報ガード、プラットフォーム別スロットリング
-- **クロスプラットフォーム** — Google 広告 / Meta 広告 / Search Console / GA4 を 1 つのワークフローで
+- **クロスプラットフォーム** — Google 広告 / Meta 広告 / TikTok 広告 / Search Console / GA4 を 1 つのワークフローで
 - **監査可能** — 追記専用 action log、rollback 対応
 - **ローカルファースト** — 認証情報は端末の外に出ない
 - **学習可能** — `/learn` でアカウント固有のナレッジを継続的に蓄積
@@ -134,13 +134,13 @@ mureo configure
 
 ### 媒体横断の分析
 
-Google広告、Meta広告、Search Console、GA4を1つのワークフローでまとめて処理します。
+Google広告、Meta広告、TikTok広告、Search Console、GA4を1つのワークフローでまとめて処理します。
 
 - `/daily-check` -- 全媒体の配信状況・広告パフォーマンス・自然検索のトレンド・サイト内行動を一括取得し、相関させて1つのレポートにまとめます。
 - `/search-term-cleanup` -- 有料キーワードと自然検索の順位を突き合わせ、無駄な重複出稿を洗い出します。
 - `/competitive-scan` -- オークション分析と自然検索の順位データを統合して、競合の全体像を把握します。
 
-設定済みの媒体はエージェントが自動検出します。後からMeta広告を追加しても、全コマンドがそのまま対応します。
+設定済みの媒体はエージェントが自動検出します。後からMeta広告やTikTok広告を追加しても、全コマンドがそのまま対応します。
 
 ### 広告運用の専門知識
 
@@ -303,7 +303,9 @@ mureo auth check-meta      # Meta広告の認証情報を表示（マスク済�
 - **STRATEGY.md** — ペルソナ、USP、ブランドボイス、目標、運用モード。詳細は [docs/strategy-context.md](docs/strategy-context.md)。
 - **STATE.json** — キャンペーンのスナップショット、action log。ワークフローコマンドが自動で更新します。
 
-### GA4 とその他の MCP サーバーの接続
+### TikTok 広告、GA4、その他の MCP サーバーの接続
+
+**TikTok 広告**は、TikTok の公式ホスト型 MCP（TikTok for Business MCP Server）経由で対応しています。mureo は公式プロバイダ `tiktok-ads-official` として同梱しており、`mureo configure` のダッシュボードまたは `mureo providers add` で追加し、初回接続時にブラウザで TikTok for Business アカウントにサインインして認可するだけです（Developer Token は不要）。接続後は `tiktok_ads` が他媒体と同格のプラットフォームとして扱われ、`/daily-check` やレポートに含まれ、承認済みの変更は action log に記録されます。mureo ネイティブの分析（異常検知の基準値、RSA 監査）は引き続き Google / Meta 向けです。
 
 GA4 の MCP サーバー（例: [Google Analytics MCP](https://github.com/googleanalytics/google-analytics-mcp)）を mureo と併設すると、ワークフローコマンドが GA4 のデータ（CVR、ユーザー行動、LP パフォーマンス）も取り込みます。GA4 はオプションで、なくても全コマンドが動作します。mureo は同じセッション内の任意の MCP サーバーと共存でき、利用可能なデータをワークフローが自動的に取り込みます。セットアップ手順: **[連携ガイド →](docs/integrations.md)**（英語）
 
