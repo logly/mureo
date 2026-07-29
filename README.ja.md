@@ -22,7 +22,7 @@
 
 _お手元のPCで完結。戦略に基づく。安全に運用。_
 
-Claude Code、Cursor、Codex、Gemini で動きます。mureo は各広告プラットフォームの公式 [MCP](https://modelcontextprotocol.io/) の上に乗り、AI に、守るべき戦略と、測るべき成果と、誰にでも見せられる監査証跡を持たせます。**認証情報はお手元のPCから出ません。**ライセンスは Apache 2.0 で、無料で使えます。
+Claude Code、Cursor、Codex、Gemini で動きます。mureo は各広告プラットフォームの公式 [MCP](https://modelcontextprotocol.io/) の上に乗り、AI に、守るべき戦略と、測るべき成果と、誰にでも見せられる監査証跡を持たせます。**認証情報はお手元のPCから出ません。**
 
 > チームや代理店向けの商用版（クラウド版と、ローカルで動く Agency 版）もご用意しています。詳しくは **[mureo.jp](https://mureo.jp)** をご覧ください。
 
