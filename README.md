@@ -47,15 +47,16 @@ When official ad-platform MCPs ship (Meta Ads MCP, Google Ads MCP, etc.), mureo 
 
 ## Quick start — see it work in 2 minutes
 
-No ad-account credentials, no OAuth, no sign-up. Three commands scaffold a synthetic demo account and wire mureo into Claude Code:
+No ad-account credentials, no OAuth, no sign-up:
 
 ```bash
 pip install mureo
-mureo setup claude-code --skip-auth
-mureo demo init --scenario seasonality-trap
+mureo configure
 ```
 
-Then open the generated `mureo-demo/` directory in Claude Code and ask:
+`mureo configure` opens a local browser UI (bound to `127.0.0.1`, no remote access) that walks you through everything without pasting a single secret into a terminal: pick your Claude app, run the one-click basic setup, and scaffold a synthetic **demo scenario** from the same dashboard. (Terminal equivalent: `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap`.)
+
+Then open the generated demo directory in Claude Code and ask:
 
 ```
 /daily-check
@@ -67,7 +68,7 @@ When you're ready to point mureo at *your* data, pick one of the two paths below
 
 ### Path A: Bring your own data (BYOD) — 5–10 min, no OAuth
 
-**Export your real account data as an XLSX, drop it into mureo, and get a strategy-grounded multi-platform diagnosis** — no OAuth flow, no developer-token approval.
+**Export your real account data as an XLSX, drop it into mureo, and get a strategy-grounded multi-platform diagnosis** — no OAuth flow, no developer-token approval. Import the bundle from the `mureo configure` dashboard (the same Demo / BYOD section), or from the terminal:
 
 ```bash
 mureo byod import ~/Downloads/mureo-google-ads.xlsx
@@ -83,11 +84,7 @@ BYOD is **read-only by construction**: every mutation tool returns `{"status": "
 
 Connect mureo directly to the Google Ads / Meta Ads APIs. Required to actually execute changes (`/rescue`, `/budget-rebalance`, `/creative-refresh`, rollback) and for GA4 / Search Console support.
 
-```bash
-mureo configure
-```
-
-`mureo configure` opens a local browser UI (bound to `127.0.0.1`, no remote access) that walks you through everything: pick your Claude app, one-click basic setup, interactive Google / Meta OAuth with deep links to each console, and official-MCP provider registration. Prefer the terminal? `mureo auth setup` + `mureo setup claude-code` do the same. **[Authentication guide →](docs/authentication.md)**
+In the same `mureo configure` UI, open **Connect platforms**: interactive Google / Meta OAuth in the browser, with each field deep-linking to the right console page, plus official-MCP provider registration. (Terminal equivalent: `mureo auth setup`.) **[Authentication guide →](docs/authentication.md)**
 
 Prerequisites: a Google Ads Developer Token + OAuth Client, and/or a Meta App ID + Secret (development mode is fine). Both wizards walk you through obtaining them.
 
@@ -111,7 +108,7 @@ The presence of `~/.mureo/byod/manifest.json` is the switch — imported platfor
 
 ### Other agents and hosts
 
-Claude Code is the reference host, but every setup has a one-command equivalent:
+`mureo configure` covers the Claude hosts (Claude Code / Claude Desktop) end to end. The commands below are the scriptable equivalents, plus the non-Claude hosts:
 
 | Host | Command | Notes |
 |------|---------|-------|
