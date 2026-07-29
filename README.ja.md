@@ -18,11 +18,11 @@
   <a href="https://github.com/logly/mureo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/logly/mureo/actions/workflows/ci.yml/badge.svg"></a>
 </p>
 
-**mureo** は、ローカルで動くAI広告運用チームです。無駄を見つけ、変更を監査し、安全に運用します。
+**mureo** は、オープンソースでローカルに動くAI広告運用チームです。無駄を見つけ、変更を監査し、安全に運用します。
 
 _お手元のPCで完結。戦略に基づく。安全に運用。_
 
-Claude Code、Cursor、Codex、Gemini で動きます。mureo は各広告プラットフォームの公式 MCP の上に乗り、AI に、守るべき戦略と、測るべき成果と、誰にでも見せられる監査証跡を持たせます。**認証情報はお手元のPCから出ません。**
+Claude Code、Cursor、Codex、Gemini で動きます。mureo は各広告プラットフォームの公式 [MCP](https://modelcontextprotocol.io/) の上に乗り、AI に、守るべき戦略と、測るべき成果と、誰にでも見せられる監査証跡を持たせます。**認証情報はお手元のPCから出ません。**ライセンスは Apache 2.0 で、無料で使えます。
 
 > チームや代理店向けの商用版（クラウド版と、ローカルで動く Agency 版）もご用意しています。詳しくは **[mureo.jp](https://mureo.jp)** をご覧ください。
 
@@ -36,7 +36,7 @@ Claude Code、Cursor、Codex、Gemini で動きます。mureo は各広告プラ
 
 mureo は、**AI 広告運用のための、ローカルで動く制御基盤（control plane）** です。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）が Google 広告、Meta 広告、TikTok 広告、Search Console、GA4 を *mureo を経由して* 操作できるようになります。すべての判断はあなたの事業戦略に基づき、実際の成果に紐づき、後から再生できる監査ログに残ります。
 
-各広告プラットフォームの公式 MCP（Meta Ads MCP や Google Ads MCP など）が出揃うと、mureo はそれらをドライバとして利用します。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
+mureo は Google 広告、Meta 広告、Search Console の接続を自前で同梱しており、各プラットフォームが公式 MCP を公開すればそれをドライバとして利用します（TikTok の公式 MCP には対応済みです）。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
 
 - **戦略準拠**：すべての判断が `STRATEGY.md`（ペルソナ、USP、ブランドボイス、目標）を読み込む
 - **セーフティゲート**：rollback allow-list、GAQL ガード、BYOD は既定で read-only、認証情報ガード、プラットフォーム別スロットリング
@@ -47,7 +47,7 @@ mureo は、**AI 広告運用のための、ローカルで動く制御基盤（
 
 ## クイックスタート（2分で動きを見る）
 
-**デモシナリオ**は合成データで動くため、広告アカウントの認証情報も、OAuth も、サインアップも要りません。
+必要なのは Python 3.10 以上と [Claude Code](https://claude.com/claude-code) だけです（Cursor、Codex CLI、Gemini CLI でも動きます。詳しくは[そのほかのエージェントとホスト](#そのほかのエージェントとホスト)）。**デモシナリオ**は合成データで動くため、広告アカウントの認証情報も、OAuth も、サインアップも要りません。
 
 ```bash
 pip install mureo
@@ -56,7 +56,7 @@ mureo configure
 
 `mureo configure` はローカル（`127.0.0.1` にバインド。外部からはアクセス不可）にブラウザ UI を起動します。Claude アプリを選び、1クリックの基本セットアップを実行したら、Demo / BYOD セクションで**デモシナリオ**を選んでください。UI にはプラットフォーム接続（OAuth）の項目もありますが、**ここでは飛ばして構いません**。デモに認証情報は不要です。（ターミナルでは `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap` で同じことができます。）
 
-生成されたデモディレクトリを Claude Code で開いて、こう聞いてください。
+生成されたデモディレクトリ（パスは UI に表示されます）を Claude Code で開いて、こう聞いてください。
 
 ```
 /daily-check
