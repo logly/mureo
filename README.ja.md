@@ -73,8 +73,10 @@ mureo configure
 ```bash
 mureo byod import ~/Downloads/mureo-google-ads.xlsx
 mureo byod import ~/Downloads/mureo-meta-ads.xlsx   # 媒体は互いに独立。片方だけでも、後から追加でも可
-# Claude Code を開いて「/daily-check を実行して」と聞く
+# Claude Code を開いて /onboard を実行し、続けて /daily-check
 ```
+
+最初に `/onboard` を一度実行すると、対話形式で `STRATEGY.md`（戦略）と `STATE.json`（状態）が生成されます。以降のコマンドはすべてこの戦略を読んで動きます。デモでこの手順が要らないのは、デモに `STRATEGY.md` が同梱されているためです。
 
 XLSX の生成は媒体ごとに一回だけのセットアップです。Google Ads は Apps Script テンプレートで約5分、Meta Ads は広告マネージャの保存済みレポートから2クリックで書き出せます（9言語のUIに対応しているため、広告マネージャを英語に切り替える必要はありません）。**[BYOD ガイド →](docs/byod.ja.md)**
 
@@ -87,6 +89,8 @@ mureo を Google Ads / Meta Ads API に直接接続します。実際に変更�
 同じ `mureo configure` の UI で「プラットフォーム接続」を開くと、各コンソールへのディープリンク付きで Google / Meta の OAuth をブラウザ内で完了でき、公式 MCP プロバイダの登録もできます。（ターミナルでは `mureo auth setup` で同じことができます。）**[認証ガイド →](docs/authentication.md)**
 
 前提として、Google Ads の Developer Token と OAuth クライアント、Meta の App ID と Secret が必要です（開発モードのままで構いません）。取得手順もウィザードが案内します。
+
+接続できたら、運用に使うディレクトリを Claude Code で開き、最初に `/onboard` を一度実行して `STRATEGY.md`（戦略）と `STATE.json`（状態）を生成してください。戦略に基づく運用は、この2つのファイルがあって初めて動きます。
 
 > **Google Cloud Console や Meta for Developers に慣れていない方へ。** OAuth フローや Developer Token の発行は、これらのコンソールを使ったことがない方には難しく感じるかもしれません。**まずはデモか BYOD から始めてください。**数分で mureo がどう動くかが分かるので、Live API のセットアップに踏み込むかどうかはそれから判断すれば大丈夫です。
 
@@ -152,7 +156,7 @@ Google広告、Meta広告、TikTok広告、Search Console、GA4を1つのワー�
 エージェントの分析を修正したり、運用で気づいたことを `/learn` でナレッジベースに保存できます。保存した知識は次回以降のセッションで自動的に読み込まれるため、同じ間違いを繰り返しません。1つのキャンペーンで得た知見が、アカウント内の似た状況にも活かされます。
 
 ```
-あなた: 「それは本当のCPA悪化じゃない。この業界はGW期間は毎年こうなる」
+あなた: /learn それは本当のCPA悪化じゃない。この業界はGW期間は毎年こうなる
 エージェント: 保存します。次回同じパターンを検知したら季節要因として報告します。
 
 → ナレッジベースに記録

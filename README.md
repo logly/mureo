@@ -73,8 +73,10 @@ When you're ready to point mureo at *your* data, pick one of the two paths below
 ```bash
 mureo byod import ~/Downloads/mureo-google-ads.xlsx
 mureo byod import ~/Downloads/mureo-meta-ads.xlsx   # platforms are independent — add either, or both
-# Open Claude Code and ask: "Run /daily-check"
+# Open Claude Code, run /onboard once, then: "Run /daily-check"
 ```
+
+The first `/onboard` run interviews you and generates `STRATEGY.md` (your strategy) and `STATE.json` (state) — the context every later command reads. The demo skips this step because it ships with a ready-made `STRATEGY.md`.
 
 Producing the XLSX is a one-time setup per platform — Google Ads via an Apps Script template (~5 min), Meta Ads via a 2-click Saved Report export (recognized in 9 languages). **[BYOD guide →](docs/byod.md)**
 
@@ -87,6 +89,8 @@ Connect mureo directly to the Google Ads / Meta Ads APIs. Required to actually e
 In the same `mureo configure` UI, open **Connect platforms**: interactive Google / Meta OAuth in the browser, with each field deep-linking to the right console page, plus official-MCP provider registration. (Terminal equivalent: `mureo auth setup`.) **[Authentication guide →](docs/authentication.md)**
 
 Prerequisites: a Google Ads Developer Token + OAuth Client, and/or a Meta App ID + Secret (development mode is fine). Both wizards walk you through obtaining them.
+
+Once connected, open your working directory in Claude Code and run `/onboard` once — it generates `STRATEGY.md` and `STATE.json`, and commands become strategy-grounded only after those exist.
 
 > **Not familiar with Google Cloud Console or Meta for Developers?** OAuth flows and developer-token registration can feel intimidating. **Start with the demo or BYOD** — see what mureo can do in minutes, then decide whether the Live API path is worth setting up.
 
@@ -156,7 +160,7 @@ Campaign diagnostics that pinpoint *why* ads aren't delivering -- budget constra
 When you correct the agent or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is loaded at the start of every future session, so the agent doesn't repeat the same mistakes and applies what it learned to similar situations across your account.
 
 ```
-You: "That's not a real CPA spike -- this industry always dips in Golden Week."
+You: /learn That's not a real CPA spike -- this industry always dips in Golden Week.
 Agent: Saved. I'll flag this as seasonal next time.
 
 → Written to the diagnostic knowledge base.
