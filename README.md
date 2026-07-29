@@ -47,14 +47,14 @@ When official ad-platform MCPs ship (Meta Ads MCP, Google Ads MCP, etc.), mureo 
 
 ## Quick start — see it work in 2 minutes
 
-No ad-account credentials, no OAuth, no sign-up:
+The **demo scenario** runs on synthetic data, so it needs no ad-account credentials, no OAuth, and no sign-up:
 
 ```bash
 pip install mureo
 mureo configure
 ```
 
-`mureo configure` opens a local browser UI (bound to `127.0.0.1`, no remote access) that walks you through everything without pasting a single secret into a terminal: pick your Claude app, run the one-click basic setup, and scaffold a synthetic **demo scenario** from the same dashboard. (Terminal equivalent: `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap`.)
+`mureo configure` opens a local browser UI (bound to `127.0.0.1`, no remote access). Pick your Claude app, run the one-click basic setup, and then choose a **demo scenario** in the Demo / BYOD section. The UI also offers a platform-connection (OAuth) step — **skip it for now**; the demo doesn't need it. (Terminal equivalent: `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap`.)
 
 Then open the generated demo directory in Claude Code and ask:
 

@@ -47,14 +47,14 @@ mureo は、**AI 広告運用のための、ローカルで動く制御基盤（
 
 ## クイックスタート（2分で動きを見る）
 
-広告アカウントの認証情報も、OAuth も、サインアップも要りません。
+**デモシナリオ**は合成データで動くため、広告アカウントの認証情報も、OAuth も、サインアップも要りません。
 
 ```bash
 pip install mureo
 mureo configure
 ```
 
-`mureo configure` はローカル（`127.0.0.1` にバインド。外部からはアクセス不可）にブラウザ UI を起動し、ターミナルに秘密情報を貼り付けることなくすべてを案内します。Claude アプリを選び、1クリックの基本セットアップを実行し、同じダッシュボードから合成データの**デモシナリオ**を用意できます。（ターミナルでは `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap` で同じことができます。）
+`mureo configure` はローカル（`127.0.0.1` にバインド。外部からはアクセス不可）にブラウザ UI を起動します。Claude アプリを選び、1クリックの基本セットアップを実行したら、Demo / BYOD セクションで**デモシナリオ**を選んでください。UI にはプラットフォーム接続（OAuth）の項目もありますが、**ここでは飛ばして構いません**。デモに認証情報は不要です。（ターミナルでは `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap` で同じことができます。）
 
 生成されたデモディレクトリを Claude Code で開いて、こう聞いてください。
 
