@@ -64,9 +64,9 @@ mureo configure
 
 エージェントがデモ用の `STRATEGY.md` を読み、キャンペーンデータを取得し、数値だけを見るツールが見落とす「季節性の罠」に踏み込んでいく様子を見られます。次は `/search-term-cleanup` を試してみてください。
 
-自分のデータで使う準備ができたら、次の 2 つの道から選びます。
+自分のデータで使う準備ができたら、次のどちらかに進んでください。
 
-### 道 A: 自分のデータで試す（BYOD、5〜10分、OAuth 不要）
+### まず自分のデータで試す（BYOD、5〜10分、OAuth 不要）
 
 **Google Ads / Meta Ads から XLSX として書き出して mureo に取り込むだけで、媒体をまたいだ戦略レベルの診断が手に入ります。** OAuth も Developer Token の審査待ちも要りません。取り込みは `mureo configure` のダッシュボード（デモと同じ Demo / BYOD セクション）から、またはターミナルからできます。
 
@@ -80,7 +80,7 @@ XLSX の生成は媒体ごとに一回だけのセットアップです。Google
 
 BYOD は**設計上、読み取り専用**です。すべての変更系ツールは `{"status": "skipped_in_byod_readonly"}` を返します。エージェントは分析と提案はしますが、実アカウントへの書き込みは決してしません。
 
-### 道 B: 本番接続する（Live API OAuth、全機能）
+### 本番のアカウントに接続する（Live API OAuth、全機能）
 
 mureo を Google Ads / Meta Ads API に直接接続します。実際に変更を実行する場合（`/rescue`、`/budget-rebalance`、`/creative-refresh`、rollback）と、GA4 / Search Console を使う場合はこちらが必須です。
 
