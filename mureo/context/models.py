@@ -17,6 +17,32 @@ class StrategyEntry:
 
 
 @dataclass(frozen=True)
+class AdState:
+    """Ad-level (creative-level) delivery state under a campaign (#468).
+
+    Platform-agnostic by design: ``status`` is what the ad is configured as
+    and ``effective_status`` is whether it is actually delivering, which is
+    the pair every platform expresses in some form (Meta
+    ``status``/``effective_status``, Google Ads ``ad_group_ad.status`` plus
+    its policy review status). Only ``ad_id`` is required — a platform that
+    exposes no delivery status simply omits the field rather than having one
+    invented for it.
+
+    ``as_of`` is the ISO 8601 timestamp at which this status was observed,
+    stamped SERVER-side by the MCP handler (the #460 pattern). It is what
+    makes a stored status auditable: an agent comparing today's fetch against
+    the stored one needs to know when the stored one was true, and a
+    model-supplied date would reintroduce exactly the drift #460 fixed.
+    """
+
+    ad_id: str
+    name: str | None = None
+    status: str | None = None
+    effective_status: str | None = None
+    as_of: str | None = None
+
+
+@dataclass(frozen=True)
 class CampaignSnapshot:
     """Campaign state snapshot.
 
@@ -40,9 +66,17 @@ class CampaignSnapshot:
     #   period (e.g. "LAST_30_DAYS"), fetched_at (ISO 8601).
     # Optional with a None default so old STATE.json files parse unchanged.
     metrics: dict[str, Any] | None = None
+    # Ad-level delivery state (#468). ``None`` means "never fetched" and is
+    # deliberately distinct from ``()`` ("fetched, this campaign has no ads")
+    # — the two lead to different advice, and only ``None`` should be silent.
+    # Optional with a None default so old STATE.json files parse unchanged and
+    # gain no new key on the next write.
+    ads: tuple[AdState, ...] | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable fields."""
+        if self.ads is not None and not isinstance(self.ads, tuple):
+            object.__setattr__(self, "ads", tuple(self.ads))
         if self.bidding_details is not None:
             object.__setattr__(
                 self, "bidding_details", copy.deepcopy(self.bidding_details)
@@ -73,12 +107,17 @@ class ActionLogEntry:
         values outside it — including destructive verbs like ``.delete`` — are refused
         so a prompt-injected or buggy agent cannot smuggle a privileged call through
         the rollback path.
+    ad_id: The ad this action targeted, when it was ad-level (#468). Without it an
+        ad-level pause could only be recorded as free text, so a later run could not
+        match what mureo did against the ad statuses it observes — and would have to
+        guess whether a stopped ad was its own doing or an operator's manual change.
     """
 
     timestamp: str
     action: str
     platform: str
     campaign_id: str | None = None
+    ad_id: str | None = None
     summary: str | None = None
     command: str | None = None
     metrics_at_action: dict[str, Any] | None = None

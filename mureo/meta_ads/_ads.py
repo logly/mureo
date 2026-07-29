@@ -23,10 +23,20 @@ class AdsMixin:
     ) -> dict[str, Any]: ...
 
     # Common field definitions
+    #
+    # ``status`` is only what the ad is CONFIGURED as. An ad whose ad set or
+    # campaign was paused, whose creative was rejected, or whose budget ran
+    # out still reports ``status: ACTIVE`` — so a delivery stop made outside
+    # mureo (typically in the platform UI, which is how most accounts are run
+    # early on) was invisible to every read tool. ``effective_status`` is the
+    # field that actually says whether the ad is delivering, with
+    # ``issues_info`` / ``ad_review_feedback`` explaining why it is not, and
+    # ``configured_status`` preserving the operator's own setting so the two
+    # can be told apart (#468).
     _AD_FIELDS = (
-        "id,name,status,adset_id,campaign_id,"
+        "id,name,status,effective_status,configured_status,adset_id,campaign_id,"
         "creative{id,name,title,body,image_url,thumbnail_url,object_story_spec},"
-        "created_time,updated_time"
+        "issues_info,ad_review_feedback,created_time,updated_time"
     )
 
     async def list_ads(

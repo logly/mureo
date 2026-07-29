@@ -625,9 +625,7 @@ def test_bundle_import_makes_no_network_calls(google_ads_xlsx, fake_home, monkey
 # ---------------------------------------------------------------------------
 
 
-def test_byod_meta_get_performance_report_exposes_result_indicator(
-    tmp_path, fake_home
-):
+def test_byod_meta_get_performance_report_exposes_result_indicator(tmp_path, fake_home):
     """ByodMetaAdsClient.get_performance_report must surface the Meta
     ``result_indicator`` value in its output dict so downstream skills
     (``/daily-check``) can detect CV-definition mismatches across
@@ -673,9 +671,9 @@ def test_byod_meta_get_performance_report_exposes_result_indicator(
     rep = asyncio.run(client.get_performance_report(period="LAST_30_DAYS"))
 
     by_id = {r["campaign_id"]: r for r in rep}
-    assert (
-        by_id["camp_link"]["result_indicator"] == "actions:link_click"
-    ), by_id["camp_link"]
+    assert by_id["camp_link"]["result_indicator"] == "actions:link_click", by_id[
+        "camp_link"
+    ]
     assert (
         by_id["camp_lead"]["result_indicator"]
         == "actions:offsite_conversion.fb_pixel_lead"
@@ -843,3 +841,153 @@ def test_byod_status_warns_about_stale_manifest_entries(fake_home):
     assert res.exit_code == 0, res.output
     assert "Stale BYOD entries" in res.output
     assert "search_console" in res.output
+
+
+# ---------------------------------------------------------------------------
+# #468 item 5 — BYOD-served reads must be distinguishable from live reads
+# ---------------------------------------------------------------------------
+
+
+def _seed_meta_byod(fake_home, imported_at: str = "2026-07-01T09:00:00+09:00"):
+    """Register a Meta BYOD import with one ad and return the data dir."""
+    import csv
+    import json
+
+    from mureo.byod.runtime import byod_data_dir
+
+    data_dir = byod_data_dir() / "meta_ads"
+    data_dir.mkdir(parents=True)
+    with (data_dir / "ads.csv").open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["ad_id", "ad_set_id", "name", "status"])
+        w.writeheader()
+        w.writerow(
+            {"ad_id": "a1", "ad_set_id": "s1", "name": "Creative A", "status": "ACTIVE"}
+        )
+    with (data_dir / "campaigns.csv").open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(
+            f,
+            fieldnames=[
+                "campaign_id",
+                "name",
+                "status",
+                "objective",
+                "daily_budget_jpy",
+            ],
+        )
+        w.writeheader()
+        w.writerow(
+            {
+                "campaign_id": "c1",
+                "name": "Prospecting",
+                "status": "ACTIVE",
+                "objective": "OUTCOME_LEADS",
+                "daily_budget_jpy": "5000",
+            }
+        )
+    (byod_data_dir() / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "platforms": {
+                    "meta_ads": {"files": ["ads.csv"], "imported_at": imported_at}
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return data_dir
+
+
+async def test_byod_ads_list_carries_freshness_marker(fake_home):
+    """A CSV-backed read is a snapshot from import time, not the live account.
+
+    Without a marker the agent cannot tell a months-old import from a live
+    fetch, so it reasons about delivery status that may have changed since
+    (#468 item 5).
+    """
+    import json
+
+    from mureo.mcp import tools_meta_ads
+
+    _seed_meta_byod(fake_home, imported_at="2026-07-01T09:00:00+09:00")
+
+    result = await tools_meta_ads.handle_tool("meta_ads_ads_list", {})
+    payload = json.loads(result[0].text)
+
+    assert payload["source"] == "byod_import"
+    assert payload["as_of"] == "2026-07-01T09:00:00+09:00"
+    # Row data itself is untouched by the annotation.
+    assert payload["data"][0]["id"] == "a1"
+    assert payload["data"][0]["status"] == "ACTIVE"
+
+
+async def test_byod_campaigns_list_carries_freshness_marker(fake_home):
+    import json
+
+    from mureo.mcp import tools_meta_ads
+
+    _seed_meta_byod(fake_home)
+
+    result = await tools_meta_ads.handle_tool("meta_ads_campaigns_list", {})
+    payload = json.loads(result[0].text)
+
+    assert payload["source"] == "byod_import"
+    assert payload["data"][0]["id"] == "c1"
+
+
+async def test_byod_marker_omits_as_of_when_manifest_lacks_it(fake_home):
+    """A manifest without ``imported_at`` must not invent a timestamp — the
+    source marker alone still tells the agent this is not live data."""
+    import json
+
+    from mureo.byod.runtime import byod_data_dir
+
+    _seed_meta_byod(fake_home)
+    (byod_data_dir() / "manifest.json").write_text(
+        json.dumps(
+            {"schema_version": 1, "platforms": {"meta_ads": {"files": ["ads.csv"]}}}
+        ),
+        encoding="utf-8",
+    )
+
+    from mureo.mcp import tools_meta_ads
+
+    result = await tools_meta_ads.handle_tool("meta_ads_ads_list", {})
+    payload = json.loads(result[0].text)
+
+    assert payload["source"] == "byod_import"
+    assert "as_of" not in payload
+
+
+async def test_live_meta_ads_list_is_not_annotated(fake_home):
+    """Live responses stay exactly as they were — absence of a marker means
+    live, so no existing consumer or test shape changes."""
+    import json
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from mureo.mcp import _handlers_meta_ads as handlers
+    from mureo.mcp import tools_meta_ads
+
+    client = MagicMock()
+    client.list_ads = AsyncMock(return_value=[{"id": "a1", "status": "ACTIVE"}])
+    creds = MagicMock(account_id="act_123")
+
+    with (
+        patch.object(handlers, "byod_has", return_value=False),
+        patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
+        patch.object(
+            handlers, "runtime_meta_account_ids", return_value=frozenset({"act_123"})
+        ),
+        patch.object(
+            handlers, "refresh_meta_token_if_needed", new=AsyncMock(return_value=creds)
+        ),
+        patch.object(handlers, "register_client_for_cleanup"),
+        patch.object(handlers, "create_meta_ads_client", return_value=client),
+    ):
+        result = await tools_meta_ads.handle_tool(
+            "meta_ads_ads_list", {"account_id": "act_123"}
+        )
+
+    payload = json.loads(result[0].text)
+    assert isinstance(payload, list)
+    assert payload[0]["id"] == "a1"

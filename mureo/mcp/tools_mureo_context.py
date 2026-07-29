@@ -48,7 +48,7 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "An action_log entry. Required: action (short description), "
         "platform (google_ads / meta_ads / etc.). The ``timestamp`` is "
         "stamped by the server — do not compute it. Optional: campaign_id, "
-        "summary, command, metrics_at_action, observation_due, "
+        "ad_id, summary, command, metrics_at_action, observation_due, "
         "reversible_params, rollback_of."
     ),
     "properties": {
@@ -65,6 +65,14 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "action": {"type": "string"},
         "platform": {"type": "string"},
         "campaign_id": {"type": "string"},
+        "ad_id": {
+            "type": "string",
+            "description": (
+                "The ad this action targeted, for ad-level actions (pause / "
+                "enable / creative swap). Record it so a later run can tell "
+                "an ad mureo stopped from one an operator stopped by hand."
+            ),
+        },
         "summary": {"type": "string"},
         "command": {"type": "string"},
         "metrics_at_action": {"type": "object"},
@@ -73,6 +81,52 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "rollback_of": {"type": "integer"},
     },
     "required": ["action", "platform"],
+}
+
+
+_ADS_PROPERTY = {
+    "type": "array",
+    "description": (
+        "Ad-level (creative-level) delivery state for this campaign. Send it "
+        "so a change made OUTSIDE mureo — an ad paused by hand in the "
+        "platform UI, stopped by its ad set/campaign, or rejected by policy "
+        "— is recorded as fact and can be diffed on the next run. "
+        "``status`` is what the ad is configured as; ``effective_status`` is "
+        "whether it is actually delivering, and the two disagreeing is the "
+        "signal. Omit the whole field when you did not fetch ad-level status "
+        "(that is different from sending an empty list, which means "
+        "'fetched, this campaign has no ads')."
+    ),
+    "items": {
+        "type": "object",
+        "properties": {
+            "ad_id": {"type": "string", "description": "Platform ad id."},
+            "name": {"type": "string", "description": "Ad name."},
+            "status": {
+                "type": "string",
+                "description": "Configured status (e.g. ACTIVE / PAUSED).",
+            },
+            "effective_status": {
+                "type": "string",
+                "description": (
+                    "Actual delivery status where the platform exposes one "
+                    "(Meta: ACTIVE / ADSET_PAUSED / CAMPAIGN_PAUSED / "
+                    "DISAPPROVED / …). Omit when the platform does not "
+                    "report it rather than copying ``status`` into it."
+                ),
+            },
+            "as_of": {
+                "type": "string",
+                "description": (
+                    "IGNORED — the server stamps each ad with its own clock "
+                    "(ISO 8601 with UTC offset), so a drifted client date "
+                    "can never be persisted and later read back as when the "
+                    "status was observed."
+                ),
+            },
+        },
+        "required": ["ad_id"],
+    },
 }
 
 
@@ -121,6 +175,7 @@ _CAMPAIGN_PROPERTY = {
                 "``LAST_30_DAYS``), fetched_at (ISO 8601)."
             ),
         },
+        "ads": _ADS_PROPERTY,
     },
     "required": [
         "campaign_id",
@@ -220,7 +275,9 @@ TOOLS: list[Tool] = [
             "MCPs or BYOD imports. Pass the optional ``metrics`` object to "
             "persist the campaign's performance numbers (spend, clicks, "
             "conversions, cpa, ctr, …) so the reporting dashboard can "
-            "render KPIs from STATE.json."
+            "render KPIs from STATE.json. Pass the optional ``ads`` array to "
+            "persist ad-level delivery status, so a pause applied outside "
+            "mureo is recorded and can be diffed on the next run."
         ),
         inputSchema={
             "type": "object",

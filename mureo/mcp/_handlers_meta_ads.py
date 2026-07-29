@@ -18,7 +18,7 @@ from mureo.auth import (
     load_meta_ads_credentials,
     refresh_meta_token_if_needed,
 )
-from mureo.byod.runtime import byod_has
+from mureo.byod.runtime import byod_freshness, byod_has
 from mureo.core.runtime_context import runtime_meta_account_ids
 from mureo.mcp._client_factory import get_meta_ads_client
 from mureo.mcp._helpers import (
@@ -151,6 +151,27 @@ def _no_meta_creds() -> list[TextContent]:
     return _no_creds_result(_NO_CREDS_MSG)
 
 
+def _entity_result(payload: Any) -> list[TextContent]:
+    """JSON result for an entity read, marked when it came from BYOD (#468).
+
+    In BYOD mode these tools read the CSVs ``mureo byod import`` wrote, not
+    the Graph API — so what they report is the state at import time. The
+    response is wrapped as ``{"source": "byod_import", "as_of": <imported_at>,
+    "data": <rows>}`` so the agent can see that its picture of delivery status
+    is a snapshot and may have moved since. Row data is untouched inside
+    ``data``.
+
+    A live response is returned exactly as before (no wrapper): the ABSENCE of
+    a marker means live. Wrapping live responses too would be more explicit,
+    but would change the shape every existing caller, skill, and test expects
+    — not worth it for information the absence already conveys.
+    """
+    marker = byod_freshness("meta_ads") if byod_has("meta_ads") else None
+    if marker is None:
+        return _json_result(payload)
+    return _json_result({**marker, "data": payload})
+
+
 # ---------------------------------------------------------------------------
 # Campaign handlers
 # ---------------------------------------------------------------------------
@@ -165,7 +186,7 @@ async def handle_campaigns_list(args: dict[str, Any]) -> list[TextContent]:
         status_filter=_opt(args, "status_filter"),
         limit=_opt(args, "limit", 50),
     )
-    return _json_result(result)
+    return _entity_result(result)
 
 
 @api_error_handler
@@ -175,7 +196,7 @@ async def handle_campaigns_get(args: dict[str, Any]) -> list[TextContent]:
         return _no_meta_creds()
     campaign_id = _require(args, "campaign_id")
     result = await client.get_campaign(campaign_id)
-    return _json_result(result)
+    return _entity_result(result)
 
 
 @api_error_handler
@@ -232,7 +253,7 @@ async def handle_ad_sets_list(args: dict[str, Any]) -> list[TextContent]:
         campaign_id=_opt(args, "campaign_id"),
         limit=_opt(args, "limit", 50),
     )
-    return _json_result(result)
+    return _entity_result(result)
 
 
 @api_error_handler
@@ -360,7 +381,7 @@ async def handle_ads_list(args: dict[str, Any]) -> list[TextContent]:
         ad_set_id=_opt(args, "ad_set_id"),
         limit=_opt(args, "limit", 50),
     )
-    return _json_result(result)
+    return _entity_result(result)
 
 
 @api_error_handler

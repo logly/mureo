@@ -258,6 +258,41 @@ class TestMapAd:
         assert result["creative_id"] == ""
         assert result["creative_name"] == ""
 
+    def test_配信ステータスを引き継ぐ(self) -> None:
+        """#468 — delivery status must survive mapping.
+
+        ``status`` alone reports what the ad is *configured* as; a pause made
+        at the ad-set/campaign level or a policy rejection only shows up in
+        ``effective_status`` / ``issues_info`` / ``ad_review_feedback``.
+        """
+        raw = {
+            "id": "ad_1",
+            "name": "A",
+            "status": "ACTIVE",
+            "effective_status": "ADSET_PAUSED",
+            "configured_status": "ACTIVE",
+            "issues_info": [{"level": "AD", "error_summary": "Ad set is paused"}],
+            "ad_review_feedback": {"global": {"CIRCUMVENTION": "Policy hit"}},
+        }
+
+        result = map_ad(raw)
+
+        assert result["effective_status"] == "ADSET_PAUSED"
+        assert result["configured_status"] == "ACTIVE"
+        assert result["issues_info"] == raw["issues_info"]
+        assert result["ad_review_feedback"] == raw["ad_review_feedback"]
+
+    def test_配信ステータス欠落時はキーを増やさない(self) -> None:
+        """A response without the structural status fields keeps the mapped
+        shape unchanged — no empty ``issues_info`` that reads as 'checked, no
+        issues' when it was in fact never returned."""
+        result = map_ad({"id": "ad_1", "name": "A", "status": "ACTIVE"})
+
+        assert result["effective_status"] == ""
+        assert result["configured_status"] == ""
+        assert "issues_info" not in result
+        assert "ad_review_feedback" not in result
+
 
 # ---------------------------------------------------------------------------
 # map_insights

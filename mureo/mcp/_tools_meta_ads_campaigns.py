@@ -129,7 +129,7 @@ TOOLS: list[Tool] = [
             "Lists campaigns in a Meta Ads account with optional status "
             "filtering. Returns id, name, status (ACTIVE / PAUSED / "
             "DELETED / ARCHIVED), effective_status, objective "
-            "(OUTCOME_SALES / OUTCOME_LEADS / etc.), buying_type, "
+            "(OUTCOME_SALES / OUTCOME_LEADS / etc.), bid_strategy, "
             "daily_budget, and lifetime_budget per campaign. Read-only. "
             "Use this to find a campaign_id before calling campaigns.get "
             "or the pause/enable helpers. For a single campaign's full "
@@ -165,8 +165,8 @@ TOOLS: list[Tool] = [
         description=(
             "Fetches the full detail record for a single campaign by ID. "
             "Returns the same fields as campaigns.list plus "
-            "special_ad_categories, spend_cap, start_time, stop_time, and "
-            "issues_info (non-empty when status is WITH_ISSUES). "
+            "special_ad_categories, budget_remaining, start_time, stop_time, "
+            "and issues_info (non-empty when status is WITH_ISSUES). "
             "Read-only. Use this when a campaign_id is already known; for "
             "discovery use meta_ads_campaigns_list."
         ),
@@ -601,10 +601,10 @@ TOOLS: list[Tool] = [
             "the complete targeting spec and budget/bidding configuration. "
             "Returns id, name, campaign_id, status, effective_status, "
             "daily_budget, lifetime_budget, optimization_goal, billing_event, "
-            "targeting (full spec), start_time, end_time, and "
-            "delivery_estimate (if available). Read-only. Call this before "
-            "meta_ads_ad_sets_update when you plan to modify targeting, so "
-            "you can merge instead of overwrite."
+            "targeting (full spec), start_time, end_time, and issues_info "
+            "(non-empty when the ad set is not delivering). Read-only. Call "
+            "this before meta_ads_ad_sets_update when you plan to modify "
+            "targeting, so you can merge instead of overwrite."
         ),
         inputSchema={
             "type": "object",
@@ -670,8 +670,14 @@ TOOLS: list[Tool] = [
         description=(
             "Lists ads in a Meta Ads account, optionally scoped to one ad "
             "set. Returns id, name, ad_set_id, campaign_id, status, "
-            "effective_status, creative_id, and ad_review_feedback per ad. "
-            "Read-only. Use this to find an ad_id before calling "
+            "effective_status and configured_status per ad, plus issues_info "
+            "and ad_review_feedback (populated only when Meta reports a "
+            "delivery or policy problem — absent means nothing was reported, "
+            "not that the ad was checked and cleared). ``status`` is only "
+            "what the ad is configured as; ``effective_status`` is whether it "
+            "is actually delivering, so it is what reveals a pause applied in "
+            "the platform UI outside mureo, or one inherited from the ad set "
+            "/ campaign. Read-only. Use this to find an ad_id before calling "
             "ads.update / pause / enable, or to audit which creatives are "
             "in flight. For the creative itself (image URL, copy), follow "
             "up with meta_ads_creatives_list."

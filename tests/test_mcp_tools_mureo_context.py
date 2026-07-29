@@ -986,3 +986,185 @@ async def test_read_tool_descriptions_advertise_server_now(name: str) -> None:
     mod = _import_tools()
     tool = next(t for t in mod.TOOLS if t.name == name)
     assert "server_now" in tool.description
+
+
+# ---------------------------------------------------------------------------
+# #468 — ad-level status travels through mureo_state_upsert_campaign
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_campaign_schema_accepts_ads() -> None:
+    """The ads list rides on the existing upsert (``additionalProperties:
+    false`` means an undeclared key would be rejected outright)."""
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_upsert_campaign")
+    campaign = tool.inputSchema["properties"]["campaign"]
+    ads = campaign["properties"]["ads"]
+    assert ads["type"] == "array"
+    item_props = ads["items"]["properties"]
+    for name in ("ad_id", "name", "status", "effective_status", "as_of"):
+        assert name in item_props
+    assert ads["items"]["required"] == ["ad_id"]
+
+
+def test_action_log_schema_accepts_ad_id() -> None:
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_action_log_append")
+    entry = tool.inputSchema["properties"]["entry"]
+    assert "ad_id" in entry["properties"]
+
+
+async def test_upsert_campaign_persists_ads(cwd_to_tmp) -> None:
+    initial = {"version": "2", "platforms": {}, "action_log": []}
+    (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
+    mod = _import_tools()
+    campaign = {
+        "campaign_id": "camp_1",
+        "campaign_name": "Prospecting",
+        "status": "ACTIVE",
+        "platform": "meta_ads",
+        "account_id": "act_123",
+        "ads": [
+            {
+                "ad_id": "ad_1",
+                "name": "Creative A",
+                "status": "ACTIVE",
+                "effective_status": "ADSET_PAUSED",
+            },
+            {"ad_id": "ad_2", "name": "Creative B", "status": "PAUSED"},
+        ],
+    }
+    await mod.handle_tool("mureo_state_upsert_campaign", {"campaign": campaign})
+
+    result = await mod.handle_tool("mureo_state_get", {})
+    payload = json.loads(result[0].text)
+    snap = payload["platforms"]["meta_ads"]["campaigns"][0]
+    ads = {a["ad_id"]: a for a in snap["ads"]}
+    assert ads["ad_1"]["effective_status"] == "ADSET_PAUSED"
+    assert ads["ad_2"]["status"] == "PAUSED"
+    # An ad whose effective_status the platform did not report must not gain
+    # an invented one.
+    assert "effective_status" not in ads["ad_2"]
+
+
+async def test_upsert_campaign_stamps_ad_as_of_server_side(
+    cwd_to_tmp, frozen_clock
+) -> None:
+    """#460 pattern: ``as_of`` is the server's clock, never the model's. A
+    drifted client date persisted here would later be read back as evidence of
+    when the status was last observed."""
+    mod = _import_tools()
+    campaign = {
+        "campaign_id": "camp_1",
+        "campaign_name": "Prospecting",
+        "status": "ACTIVE",
+        "platform": "meta_ads",
+        "account_id": "act_123",
+        "ads": [{"ad_id": "ad_1", "as_of": "1999-01-01T00:00:00+09:00"}],
+    }
+    result = await mod.handle_tool(
+        "mureo_state_upsert_campaign", {"campaign": campaign}
+    )
+    payload = json.loads(result[0].text)
+    snap = payload["platforms"]["meta_ads"]["campaigns"][0]
+    assert snap["ads"][0]["as_of"] == frozen_clock
+
+
+async def test_upsert_campaign_without_ads_emits_no_ads_key(cwd_to_tmp) -> None:
+    """Regression: campaigns that never had ad-level data stay unchanged."""
+    mod = _import_tools()
+    campaign = {
+        "campaign_id": "camp_2",
+        "campaign_name": "Brand",
+        "status": "ACTIVE",
+        "platform": "meta_ads",
+        "account_id": "act_123",
+    }
+    result = await mod.handle_tool(
+        "mureo_state_upsert_campaign", {"campaign": campaign}
+    )
+    payload = json.loads(result[0].text)
+    snap = payload["platforms"]["meta_ads"]["campaigns"][0]
+    assert "ads" not in snap
+
+
+async def test_upsert_campaign_rejects_non_object_ad_entry(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    campaign = {
+        "campaign_id": "camp_3",
+        "campaign_name": "Brand",
+        "status": "ACTIVE",
+        "platform": "meta_ads",
+        "account_id": "act_123",
+        "ads": ["ad_1"],
+    }
+    with pytest.raises(ValueError, match="ads"):
+        await mod.handle_tool("mureo_state_upsert_campaign", {"campaign": campaign})
+
+
+async def test_action_log_append_persists_ad_id(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {
+            "entry": {
+                "action": "ad_pause",
+                "platform": "meta_ads",
+                "campaign_id": "camp_1",
+                "ad_id": "ad_1",
+            }
+        },
+    )
+    result = await mod.handle_tool("mureo_state_get", {})
+    payload = json.loads(result[0].text)
+    assert payload["action_log"][0]["ad_id"] == "ad_1"
+
+
+async def test_upsert_campaign_ads_merge_semantics_end_to_end(cwd_to_tmp) -> None:
+    """The three ``ads`` states, exercised through the MCP tool itself.
+
+    The Python-API tests cover the merge rule; this pins that it survives the
+    handler path an agent actually drives — omitting ``ads`` inherits the last
+    known statuses (so pausing a campaign does not erase its ad history), while
+    an explicit empty list is a real observation that clears them.
+    """
+    mod = _import_tools()
+    base = {
+        "campaign_id": "camp_1",
+        "campaign_name": "Prospecting",
+        "platform": "meta_ads",
+        "account_id": "act_123",
+    }
+
+    # 1. First sync while ACTIVE: ad-level status fetched and stored.
+    await mod.handle_tool(
+        "mureo_state_upsert_campaign",
+        {
+            "campaign": {
+                **base,
+                "status": "ACTIVE",
+                "ads": [
+                    {"ad_id": "ad_1", "status": "ACTIVE", "effective_status": "ACTIVE"}
+                ],
+            }
+        },
+    )
+
+    # 2. Campaign now PAUSED, so the flows skip the ad-level call (cost guard)
+    #    and send no ``ads`` — the stored statuses must survive.
+    result = await mod.handle_tool(
+        "mureo_state_upsert_campaign",
+        {"campaign": {**base, "status": "PAUSED"}},
+    )
+    snap = json.loads(result[0].text)["platforms"]["meta_ads"]["campaigns"][0]
+    assert snap["status"] == "PAUSED"
+    assert [a["ad_id"] for a in snap["ads"]] == ["ad_1"]
+    assert snap["ads"][0]["as_of"], "inherited ad keeps its original observation time"
+
+    # 3. An explicit empty list is an observation ("no ads"), so it clears.
+    result = await mod.handle_tool(
+        "mureo_state_upsert_campaign",
+        {"campaign": {**base, "status": "ACTIVE", "ads": []}},
+    )
+    snap = json.loads(result[0].text)["platforms"]["meta_ads"]["campaigns"][0]
+    assert snap["ads"] == []

@@ -154,6 +154,17 @@ def map_ad_set(raw: dict[str, Any], *, currency: str) -> dict[str, Any]:
 def map_ad(raw: dict[str, Any]) -> dict[str, Any]:
     """Convert a Meta API ad response to a common format.
 
+    Delivery status is carried through verbatim (#468): ``status`` alone says
+    what the ad is *configured* as, so a pause applied at the ad-set/campaign
+    level, a policy rejection, or an exhausted budget would otherwise be
+    dropped here and the ad would read as ACTIVE.
+
+    ``effective_status`` / ``configured_status`` are always present, defaulting
+    to ``""`` like the neighbouring scalar fields. The two structural fields
+    ``issues_info`` / ``ad_review_feedback`` are instead emitted only when Meta
+    actually returned them: an always-present empty list/object would read as
+    "checked, no issues found" when in truth nothing was reported.
+
     Args:
         raw: Meta API raw response
 
@@ -165,12 +176,20 @@ def map_ad(raw: dict[str, Any]) -> dict[str, Any]:
         "ad_id": raw.get("id", ""),
         "ad_name": raw.get("name", ""),
         "status": raw.get("status", ""),
+        "effective_status": raw.get("effective_status", ""),
+        "configured_status": raw.get("configured_status", ""),
         "ad_set_id": raw.get("adset_id", ""),
         "campaign_id": raw.get("campaign_id", ""),
         "creative_id": creative.get("id", ""),
         "creative_name": creative.get("name", ""),
         "created_time": raw.get("created_time", ""),
         "updated_time": raw.get("updated_time", ""),
+        **({"issues_info": raw["issues_info"]} if "issues_info" in raw else {}),
+        **(
+            {"ad_review_feedback": raw["ad_review_feedback"]}
+            if "ad_review_feedback" in raw
+            else {}
+        ),
     }
 
 

@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import tempfile
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 from mureo.context.errors import ContextFileError
 from mureo.context.models import (
     ActionLogEntry,
+    AdState,
     CampaignSnapshot,
     PlatformState,
     StateDocument,
@@ -34,6 +36,54 @@ _CAMPAIGN_REQUIRED_FIELDS: tuple[str, ...] = (
 )
 
 
+def _parse_ad(a: dict[str, Any]) -> AdState:
+    """Create an :class:`AdState` from a dict (``ad_id`` required).
+
+    ``ad_id`` is type-checked, not merely present-checked: it is the key every
+    later run matches on to diff statuses, so a hand-edited numeric id would
+    silently never match the string ids the platforms return.
+    """
+    if not isinstance(a, dict) or "ad_id" not in a:
+        raise ValueError(f"Ad is missing required field 'ad_id': {a}")
+    if not isinstance(a["ad_id"], str) or not a["ad_id"]:
+        raise ValueError(f"Ad 'ad_id' must be a non-empty string: {a}")
+    return AdState(
+        ad_id=a["ad_id"],
+        name=a.get("name"),
+        status=a.get("status"),
+        effective_status=a.get("effective_status"),
+        as_of=a.get("as_of"),
+    )
+
+
+def _parse_ads(raw: Any, *, strict: bool) -> tuple[AdState, ...] | None:
+    """Parse a campaign's ``ads`` list (#468).
+
+    Returns ``None`` when the key is absent — "ad-level status was never
+    fetched", which must stay distinguishable from ``()`` ("fetched, no ads").
+    ``strict=True`` raises on a nonconforming entry (the writer contract);
+    ``strict=False`` skips it, so one hand-authored ad cannot blank out a
+    whole document for the read-only Reports view.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        if strict:
+            raise ValueError(f"Campaign 'ads' must be a list: {raw!r}")
+        logger.debug("skipping non-list campaign 'ads' value: %r", raw)
+        return None
+    if strict:
+        return tuple(_parse_ad(a) for a in raw)
+    parsed: list[AdState] = []
+    for a in raw:
+        try:
+            parsed.append(_parse_ad(a))
+        except (ValueError, KeyError, TypeError) as exc:
+            # DEBUG, not WARNING — see _parse_campaigns.
+            logger.debug("skipping unparseable ad entry: %s", exc)
+    return tuple(parsed)
+
+
 def _parse_campaigns(
     raw: list[dict[str, Any]], *, strict: bool
 ) -> tuple[CampaignSnapshot, ...]:
@@ -46,11 +96,11 @@ def _parse_campaigns(
     (whose platforms/periods/reports the dashboard actually renders).
     """
     if strict:
-        return tuple(_parse_campaign(c) for c in raw)
+        return tuple(_parse_campaign(c, strict=True) for c in raw)
     parsed: list[CampaignSnapshot] = []
     for c in raw:
         try:
-            parsed.append(_parse_campaign(c))
+            parsed.append(_parse_campaign(c, strict=False))
         except (ValueError, KeyError, TypeError) as exc:
             # DEBUG, not WARNING: the read-only Reports view re-parses on every
             # poll, so a per-entry WARNING would flood the log for a STATE.json
@@ -186,6 +236,7 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         action=e["action"],
         platform=e["platform"],
         campaign_id=e.get("campaign_id"),
+        ad_id=e.get("ad_id"),
         summary=e.get("summary"),
         command=e.get("command"),
         metrics_at_action=e.get("metrics_at_action"),
@@ -195,7 +246,7 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
     )
 
 
-def _parse_campaign(c: dict[str, Any]) -> CampaignSnapshot:
+def _parse_campaign(c: dict[str, Any], *, strict: bool = True) -> CampaignSnapshot:
     """Create a CampaignSnapshot from a dict (with required field validation)."""
     for field_name in _CAMPAIGN_REQUIRED_FIELDS:
         if field_name not in c:
@@ -215,6 +266,7 @@ def _parse_campaign(c: dict[str, Any]) -> CampaignSnapshot:
         campaign_goal=c.get("campaign_goal"),
         notes=c.get("notes"),
         metrics=c.get("metrics"),
+        ads=_parse_ads(c.get("ads"), strict=strict),
     )
 
 
@@ -277,6 +329,8 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
     }
     if e.campaign_id is not None:
         result["campaign_id"] = e.campaign_id
+    if e.ad_id is not None:
+        result["ad_id"] = e.ad_id
     if e.summary is not None:
         result["summary"] = e.summary
     if e.command is not None:
@@ -312,6 +366,29 @@ def _snapshot_to_dict(c: CampaignSnapshot) -> dict[str, Any]:
     # gain a new key (no diff churn / bloat).
     if c.metrics is not None:
         result["metrics"] = copy.deepcopy(c.metrics)
+    # Ad-level state (#468): emit only when it was actually fetched, so a
+    # campaign that predates this field stays byte-stable on round-trip.
+    if c.ads is not None:
+        result["ads"] = [_ad_state_to_dict(a) for a in c.ads]
+    return result
+
+
+def _ad_state_to_dict(a: AdState) -> dict[str, Any]:
+    """Convert an :class:`AdState` to a dictionary.
+
+    Optional fields are emitted only when set: an absent ``effective_status``
+    must stay absent rather than becoming an empty string a later run could
+    read as an observed value.
+    """
+    result: dict[str, Any] = {"ad_id": a.ad_id}
+    for key, value in (
+        ("name", a.name),
+        ("status", a.status),
+        ("effective_status", a.effective_status),
+        ("as_of", a.as_of),
+    ):
+        if value is not None:
+            result[key] = value
     return result
 
 
@@ -408,16 +485,49 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _merge_ads(
+    existing: CampaignSnapshot, incoming: CampaignSnapshot
+) -> CampaignSnapshot:
+    """Inherit ``ads`` from ``existing`` when ``incoming`` did not supply it.
+
+    An upsert replaces the whole snapshot, but ad-level state has no input on
+    most calls: the standard flows fetch ads only for ACTIVE campaigns (an
+    API-cost guard), so the first upsert after a campaign is paused — exactly
+    when "what were its ads doing?" matters most — would otherwise reset
+    ``ads`` from the last known statuses back to ``None`` ("never fetched"),
+    silently destroying the audit trail #468 exists to create.
+
+    Only ``None`` ("not supplied") inherits. An empty tuple is a real
+    observation ("fetched, this campaign has no ads") and overwrites, as does
+    any non-empty list. Each :class:`AdState` carries its own ``as_of``, so an
+    inherited entry stays honestly dated rather than passing for fresh.
+    """
+    if incoming.ads is not None or existing.ads is None:
+        return incoming
+    return replace(incoming, ads=existing.ads)
+
+
 def _upsert_into(
-    campaigns: tuple[CampaignSnapshot, ...], campaign: CampaignSnapshot
+    campaigns: tuple[CampaignSnapshot, ...],
+    campaign: CampaignSnapshot,
+    *,
+    inherit_ads: bool = False,
 ) -> tuple[CampaignSnapshot, ...]:
     """Return ``campaigns`` with ``campaign`` replacing any same-id entry
-    (or appended when new), preserving order."""
+    (or appended when new), preserving order.
+
+    ``inherit_ads`` enables the :func:`_merge_ads` carry-over and is safe ONLY
+    for a platform-scoped list. The legacy v1 flat list matches on
+    ``campaign_id`` alone — Google and Meta ids are independent namespaces, so
+    a collision there matches two unrelated campaigns — and inheriting across
+    that blind match would attach one account's ads to another's campaign.
+    The flat list therefore keeps plain full-replace semantics.
+    """
     result: list[CampaignSnapshot] = []
     found = False
     for c in campaigns:
         if c.campaign_id == campaign.campaign_id:
-            result.append(campaign)
+            result.append(_merge_ads(c, campaign) if inherit_ads else campaign)
             found = True
         else:
             result.append(c)
@@ -443,7 +553,10 @@ def upsert_campaign(
 
     The legacy v1 flat ``campaigns`` list is updated in lockstep so
     readers still on the v1 shape keep working (the field is retained
-    for backward compatibility — see :class:`StateDocument`).
+    for backward compatibility — see :class:`StateDocument`). That list
+    is platform-blind, so it takes the snapshot as given; ad-level state
+    is inherited only in the platform-scoped v2 section (see
+    :func:`_upsert_into`).
 
     Args:
         path: STATE.json location.
@@ -470,7 +583,11 @@ def upsert_campaign(
         platforms[platform] = PlatformState(
             account_id=account_id,
             campaigns=_upsert_into(
-                existing.campaigns if existing is not None else (), campaign
+                existing.campaigns if existing is not None else (),
+                campaign,
+                # Platform-scoped: a same-id match here IS the same campaign,
+                # so carrying its ad-level state over is safe (#468).
+                inherit_ads=True,
             ),
             # Preserve the platform-level rollup: it has no upsert input, so
             # a campaign upsert must inherit it rather than reset it to None

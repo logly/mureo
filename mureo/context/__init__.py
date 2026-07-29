@@ -3,6 +3,7 @@
 from mureo.context.errors import ContextFileError
 from mureo.context.models import (
     ActionLogEntry,
+    AdState,
     CampaignSnapshot,
     PlatformState,
     StateDocument,
@@ -31,6 +32,7 @@ __all__ = [
     "ContextFileError",
     # models
     "ActionLogEntry",
+    "AdState",
     "CampaignSnapshot",
     "PlatformState",
     "StateDocument",

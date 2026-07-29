@@ -24,10 +24,15 @@ class CampaignsMixin:
     ) -> dict[str, Any]: ...
 
     # Common field definitions
+    # ``effective_status`` / ``issues_info``: a campaign the tool descriptions
+    # already promised these for. They are what distinguishes "configured
+    # ACTIVE" from "actually delivering" — a campaign stopped by policy,
+    # budget exhaustion, or a manual pause is the usual reason an ACTIVE ad
+    # underneath it serves nothing (#468).
     _CAMPAIGN_FIELDS = (
-        "id,name,status,objective,daily_budget,lifetime_budget,"
+        "id,name,status,effective_status,objective,daily_budget,lifetime_budget,"
         "created_time,updated_time,start_time,stop_time,"
-        "special_ad_categories,bid_strategy,budget_remaining,"
+        "special_ad_categories,bid_strategy,budget_remaining,issues_info,"
         "is_adset_budget_sharing_enabled"
     )
 
