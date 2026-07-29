@@ -291,3 +291,161 @@ def test_byod_wrapped_call_sites_document_the_unwrap(skill: str, tool: str) -> N
         f"{skill} calls {tool} without telling the agent that a BYOD response "
         f"is wrapped in a data envelope:\n" + "\n".join(unqualified)
     )
+
+
+# ---------------------------------------------------------------------------
+# Part D — delivery-state gating (#479)
+# ---------------------------------------------------------------------------
+
+
+def _lines_containing(body: str, needle: str) -> list[str]:
+    lowered = needle.lower()
+    return [line for line in body.splitlines() if lowered in line.lower()]
+
+
+def test_daily_check_has_a_delivery_state_guard() -> None:
+    """A partially-delivering entity has the same defect as a learning-state
+    one — its cost per result is not steady-state — so it needs the same
+    protection the learning-state guard already gives (#479)."""
+    body = _skill_body("daily-check")
+    guards = _lines_containing(body, "Delivery-state guard")
+    assert guards, (
+        "/daily-check has no delivery-state guard: an entity that stopped "
+        "delivering mid-period is still scored on its depressed numbers."
+    )
+    guard = "\n".join(guards)
+    assert "Watch at most, never Action needed on efficiency grounds" in guard, (
+        "The delivery-state guard must cap a not-fully-delivering entity at "
+        "Watch, exactly like the learning-state guard."
+    )
+    assert (
+        "partial" in guard.lower()
+    ), "The guard must require the report to state that the figures are partial."
+    assert "effective_status" in guard and "`status`" in guard, (
+        "The guard must key on either delivery-status field — effective_status "
+        "when present, otherwise status — so single-status platforms are covered."
+    )
+    assert "pausing" in guard.lower() or "pause" in guard.lower(), (
+        "The guard must forbid recommending a pause for an entity that is "
+        "already not delivering."
+    )
+
+
+def test_ad_fatigue_not_running_exclusion_is_platform_independent() -> None:
+    """'Not running is not fatigued' is a platform-independent truth, so it
+    belongs to the step, not to the Meta bullet (#479)."""
+    body = _skill_body("ad-fatigue-check")
+    rule_lines = _lines_containing(body, "not running is not fatigued")
+    assert rule_lines, (
+        "/ad-fatigue-check states the not-running exclusion only per platform; "
+        "it must be stated once, platform-independently."
+    )
+    for line in rule_lines:
+        assert "**Meta**" not in line, (
+            "The platform-independent exclusion must live outside the Meta "
+            f"bullet:\n{line}"
+        )
+    rule = "\n".join(rule_lines)
+    assert "effective_status" in rule and "`status`" in rule, (
+        "The exclusion must key on either delivery-status field — "
+        "effective_status when present, otherwise status."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Part E — the diff surfaces every out-of-mureo status change (#480)
+# ---------------------------------------------------------------------------
+
+
+def _ad_diff_limb(skill: str) -> str:
+    """The diff sentence itself — the persist instruction shares daily-check's
+    line and names the same fields, so slice from the diff heading onward."""
+    marker = "Ad-level status changes"
+    lines = _lines_containing(_skill_body(skill), marker)
+    assert lines, f"{skill} no longer names the ad-level diff"
+    return "\n".join(line[line.index(marker) :] for line in lines)
+
+
+@pytest.mark.parametrize("skill", ["sync-state", "daily-check"])
+def test_ad_diff_names_status_as_a_diff_key(skill: str) -> None:
+    """Binding the 'stopped delivering' limb to ``effective_status`` alone
+    means it can never fire on a platform that reports only ``status`` —
+    which ``AdState`` explicitly permits (#480b)."""
+    limb = _ad_diff_limb(skill)
+    assert "`status`" in limb, (
+        f"{skill}'s ad-level diff never names `status` as a diff key, so a "
+        "single-status platform falls through it entirely."
+    )
+    assert "effective_status" in limb
+
+
+@pytest.mark.parametrize("skill", ["sync-state", "daily-check"])
+def test_ad_diff_is_vocabulary_agnostic(skill: str) -> None:
+    """A plugin platform persists its own vocabulary (``enabled`` per the
+    provider ABI), so a literal ``ACTIVE`` comparison silently never matches
+    (#480c)."""
+    limb = _ad_diff_limb(skill).lower()
+    assert "case-insensitiv" in limb or "vocabulary" in limb, (
+        f"{skill}'s ad-level diff compares against a literal value with no "
+        "case-insensitive / vocabulary-contract wording."
+    )
+    assert "enabled" in limb, (
+        f"{skill}'s ad-level diff should show that a non-Meta active value "
+        "(ENABLED / enabled) counts as delivering."
+    )
+
+
+def test_daily_check_diffs_campaign_status_too() -> None:
+    """``CampaignSnapshot.status`` is required on every write, so a campaign
+    paused outside mureo is always diffable — /daily-check just never said to
+    diff it (#480a)."""
+    body = _skill_body("daily-check")
+    lines = _lines_containing(body, "Campaign-level status changes")
+    assert lines, (
+        "/daily-check step 11 diffs only the ads array; a campaign paused "
+        "outside mureo is not surfaced at all."
+    )
+    limb = "\n".join(lines)
+    assert "`status`" in limb
+    assert "CampaignSnapshot" in limb or "campaign snapshot" in limb.lower()
+
+
+@pytest.mark.parametrize("skill", ["sync-state", "daily-check"])
+def test_ad_listing_skip_is_reported_not_silent(skill: str) -> None:
+    """A silent skip makes a missed or mis-inferred plugin tool
+    indistinguishable from a platform with nothing to report (#480d)."""
+    body = _skill_body(skill)
+    skip_lines = _lines_containing(body, "ad-listing tool")
+    assert skip_lines, f"{skill} no longer describes the plugin ad-listing path"
+    clause = "\n".join(skip_lines)
+    assert "skip silently" not in clause, (
+        f"{skill} still tells the agent to skip silently when a plugin "
+        "platform has no ad-listing tool."
+    )
+    assert "report the skip" in clause.lower(), (
+        f"{skill} must say to report the skip, naming the platform and that "
+        "no ad-listing tool was found."
+    )
+
+
+def test_shared_documents_the_status_vocabulary_contract() -> None:
+    """Nothing documented which spelling a plugin platform is expected to
+    write into STATE.json, so the diff's comparison had nothing to agree with
+    (#480c)."""
+    body = _skill_body("_mureo-shared")
+    assert "Status vocabulary contract" in body, (
+        "_mureo-shared documents no status-vocabulary contract, so a plugin "
+        "author cannot know which spelling lands in STATE.json."
+    )
+    lowered = body.lower()
+    assert (
+        "verbatim" in lowered
+    ), "The contract must state that mureo persists status strings verbatim."
+    assert "adstatus" in lowered and "`enabled`" in lowered, (
+        "The contract must name the provider ABI's lowercase vocabulary "
+        "(AdStatus: enabled / paused / removed)."
+    )
+    assert "case-insensitiv" in lowered, (
+        "The contract must state that the diff compares stored-previous vs "
+        "stored-current case-insensitively."
+    )

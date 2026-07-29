@@ -347,6 +347,32 @@ Canonical STATE.json shape (note `campaign_name`, `account_id`, `last_synced_at`
 }
 ```
 
+### Status vocabulary contract
+
+STATE.json stores delivery-status strings **verbatim** — mureo never
+normalizes them. Whatever a platform's own tools emit is what lands in the
+campaign snapshot's `status` and in each `ads[]` entry's `status` /
+`effective_status`:
+
+- **Built-in platforms** persist the vendor's vocabulary as returned — Meta
+  `ACTIVE` / `PAUSED` / `ADSET_PAUSED` / `DISAPPROVED`, Google Ads `ENABLED` /
+  `PAUSED` / `REMOVED`.
+- **Plugin platforms** persist the status strings **their own tools emit,
+  verbatim**. A Protocol-based plugin emits the provider ABI's **lowercase**
+  vocabulary — `enabled` / `paused` / `removed` (`AdStatus` in
+  `mureo/core/providers/models.py`, whose values are the public ABI) — so
+  those lowercase values are what its STATE.json carries. Do not translate
+  them into another platform's spelling.
+- **A platform that exposes no delivery status omits the field** rather than
+  having one invented for it: only `ad_id` is required on an `ads[]` entry.
+
+The `/daily-check` and `/sync-state` diffs compare the **stored previous**
+value against the **stored current** value **case-insensitively**, so any
+consistent vocabulary works — `ACTIVE`, `ENABLED` and `enabled` all read as
+delivering. What matters is writing the **same field the same way every
+run**: switching vocabulary between runs, or writing `status` one day and
+`effective_status` the next, manufactures a status change that never happened.
+
 ## CLI Quick Reference
 
 > **The `mureo` CLI covers setup, auth, and service management only — it has NO
