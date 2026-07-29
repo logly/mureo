@@ -34,90 +34,65 @@ Claude Code、Cursor、Codex、Gemini に対応。mureo は各広告プラット
 
 ## mureoとは
 
-mureoは、**AI 広告運用のためのローカル制御平面（control plane）** です。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）が Google 広告・Meta 広告・Search Console・GA4 を *mureo を経由して* 操作できるようになります。すべての判断はあなたの事業戦略に基づき、実際の成果に紐づき、後から再生可能な監査ログに残ります。
+mureoは、**AI 広告運用のためのローカル制御平面（control plane）** です。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）が Google 広告・Meta 広告・TikTok 広告・Search Console・GA4 を *mureo を経由して* 操作できるようになります。すべての判断はあなたの事業戦略に基づき、実際の成果に紐づき、後から再生可能な監査ログに残ります。
 
 各広告プラットフォームの公式 MCP（Meta Ads MCP / Google Ads MCP など）が出揃うと、mureo はそれらをドライバとして利用します。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
 
 - **戦略準拠** — すべての判断が `STRATEGY.md`（ペルソナ・USP・ブランドボイス・目標）を読み込む
 - **セーフティゲート** — rollback allow-list、GAQL ガード、BYOD 既定 read-only、認証情報ガード、プラットフォーム別スロットリング
-- **クロスプラットフォーム** — Google 広告 / Meta 広告 / Search Console / GA4 を 1 つのワークフローで
+- **クロスプラットフォーム** — Google 広告 / Meta 広告 / TikTok 広告 / Search Console / GA4 を 1 つのワークフローで
 - **監査可能** — 追記専用 action log、rollback 対応
 - **ローカルファースト** — 認証情報は端末の外に出ない
 - **学習可能** — `/learn` でアカウント固有のナレッジを継続的に蓄積
 
-## セットアップを選ぶ
+## クイックスタート（2分で動きを見る）
 
-### 簡単な方法: `pip install` + `mureo configure`
-
-ほとんどの場合、Claude 向けの mureo セットアップは 2 コマンドで完了します — **ターミナルで秘密情報を貼り付ける必要も、JSON を手で編集する必要もありません**:
+広告アカウントの認証情報も、OAuth も、サインアップも不要です。
 
 ```bash
 pip install mureo
 mureo configure
 ```
 
-`mureo configure` はローカル（`127.0.0.1` のランダムポートにバインド — 外部からはアクセス不可）にブラウザ UI を起動し、すべての手順を案内します:
+`mureo configure` はローカル（`127.0.0.1` にバインド。外部からはアクセス不可）にブラウザ UI を起動し、ターミナルに秘密情報を貼り付けることなくすべてを案内します。Claude アプリを選び、1クリックの基本セットアップを実行し、同じダッシュボードから合成データの**デモシナリオ**を用意できます。（ターミナル派には `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap` が同じことをします。）
 
-- **Claude アプリを選ぶ** — *Claude Code (CLI / Desktop アプリ)* または *Claude Desktop アプリ (Chat, Cowork)*; mureo がそのホスト用の正しい設定ファイルを書き込みます。
-- **基本セットアップ** — mureo MCP サーバ、認証情報ガードフック (Claude Code 用)、ワークフロースキルを 1 クリックで登録。
-- **プラットフォーム接続** — Google / Meta OAuth を同じウィンドウで対話的に完了（各コンソールへのディープリンクあり）、または GA4 サービスアカウントのパス / project id を貼り付け。値は `~/.mureo/credentials.json` に書き込まれます。
-- **公式 MCP プロバイダ** — Google Ads / GA4 の公式 MCP を `~/.claude.json` に登録。（Meta は OAuth dynamic client registration を持たない hosted MCP のため Claude Code の user-scope サーバとして接続できません。UI には代わりに Claude.ai のアカウントコネクタとして追加する方法が表示されます — 一度設定すれば Claude Code と Claude Desktop の両方で動作します。）
-- **プラットフォーム別ツールソース** — ダッシュボードのトグルで、各プラットフォームを mureo-native ツールと公式 MCP の間で切り替え。
-- **Demo / BYOD** — デモシナリオのスキャフォールド、または XLSX バンドルの取込みを同じ UI から実行。
+生成されたデモディレクトリを Claude Code で開いて、こう聞いてください。
 
-下記のターミナルフローも引き続き利用可能です（スクリプト化したい場合に有用）。`mureo configure` は同じ操作を行うフレンドリーな入口です。
+```
+/daily-check
+```
 
-### 手動 / スクリプト用 (3 モード × 3 ホスト)
+エージェントがデモ用の `STRATEGY.md` を読み、キャンペーンデータを取得し、数値だけを見るツールが見落とす「季節性の罠」に踏み込んでいく様子を見られます。次は `/search-term-cleanup` を試してみてください。
 
-mureo は **3 つのモード**(どのデータを使うか)× **3 つのホスト**(どこでエージェントを動かすか)で利用できます。該当するセルのコマンドを実行 — もしくは上記の `mureo configure` を使うだけでも OK:
+自分のデータに mureo を向ける準備ができたら、下の 2 つの道のどちらかを選びます。
 
-| | Claude Code | Claude Desktop チャット | Cowork (Desktop) |
-|---|---|---|---|
-| **デモ** (合成データ) | `mureo setup claude-code --skip-auth` + `mureo demo init --scenario seasonality-trap` | `mureo install-desktop --with-demo seasonality-trap` | チャットと同じ + ワークスペースフォルダを接続 |
-| **BYOD** (自前 XLSX) | `mureo setup claude-code --skip-auth` + `mureo byod import bundle.xlsx` | `mureo install-desktop` + `mureo byod import bundle.xlsx` | チャットと同じ + フォルダ接続 |
-| **認証** (Live API) | `mureo setup claude-code` (OAuth ウィザード) | `mureo install-desktop` + `mureo configure` | チャットと同じ + フォルダ接続 |
+### 道 A: 自分のデータで試す（BYOD、5〜10分、OAuth 不要）
 
-各行の詳細手順(XLSX の取得方法、置き場所、取込み方を含む): **[はじめかた →](docs/getting-started.ja.md)**
-
-## BYOD と Live API の違い
-
-> **Google Cloud Console や Meta for Developers に慣れていない方へ。** OAuth フロー / Developer Token の発行 / Business app 登録は、これらのコンソールを使ったことがない方には難しく感じるかもしれません。**まずは BYOD から始めてください** — 数分で mureo がどう動くかが分かります。それから Live API のセットアップに踏み込むかどうか判断すれば OK です。
-
-### モード A: BYOD — 5分で最初の診断、OAuth 不要
-
-**Google Ads / Meta Ads から XLSX（エクセルファイル）として書き出して mureo に取り込むだけで、媒体をまたいだ戦略レベルの診断が手に入ります。** OAuth・Developer Token・SaaSサインアップは一切不要です。
+**Google Ads / Meta Ads から XLSX として書き出して mureo に取り込むだけで、媒体をまたいだ戦略レベルの診断が手に入ります。** OAuth も Developer Token の審査待ちも一切不要です。取り込みは `mureo configure` のダッシュボード（デモと同じ Demo / BYOD セクション）から、またはターミナルからできます。
 
 ```bash
-pip install mureo
-mureo setup claude-code --skip-auth
 mureo byod import ~/Downloads/mureo-google-ads.xlsx
-mureo byod import ~/Downloads/mureo-meta-ads.xlsx     # Meta は後から追加可 — 互いに独立
+mureo byod import ~/Downloads/mureo-meta-ads.xlsx   # 媒体は互いに独立。片方だけでも、後から追加でも可
 # Claude Code を開いて「/daily-check を実行して」と聞く
 ```
 
-XLSX の生成はプラットフォームごとの一回限りのセットアップです:
+XLSX の生成は媒体ごとに一回だけのセットアップです。Google Ads は Apps Script テンプレートで約5分、Meta Ads は広告マネージャの保存済みレポートから2クリックで書き出せます（9言語のUIに対応。広告マネージャを英語に切り替える必要はありません）。**[BYOD ガイド →](docs/byod.ja.md)**
 
-- **Google Ads** — Apps Script テンプレートで自分の Google スプレッドシートに出力 → XLSX としてダウンロード（約5分）。[ガイドを見る →](docs/byod.ja.md#step-2a--google-ads-script-を実行任意)
-- **Meta Ads** — 広告マネージャの保存済みレポート → 2クリックで書き出し。**9言語に対応**（English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français）。広告マネージャUIを英語に切り替える必要はありません。[ガイドを見る →](docs/byod.ja.md#step-2b--meta-広告マネージャからエクスポート任意)
+BYOD は**設計として読み取り専用**です。すべての変更系ツールは `{"status": "skipped_in_byod_readonly"}` を返します。エージェントは分析と提案はしますが、実アカウントへの書き込みは決してしません。
 
-**設計として読み取り専用**。すべての変更系ツール（`/rescue`、`/budget-rebalance`、`/creative-refresh`）は `{"status": "skipped_in_byod_readonly"}` を返します — エージェントは分析・提案はしますが、実アカウントへの書き込みは決してしません。後から Live API に切り替えるには `mureo byod remove --google-ads`（プラットフォーム単位）または `mureo byod clear`（全削除）。
+### 道 B: 本番接続する（Live API OAuth、全機能）
 
-### モード B: Live API OAuth — 全機能対応
+mureo を Google Ads / Meta Ads API に直接接続します。実際に変更を実行する場合（`/rescue`、`/budget-rebalance`、`/creative-refresh`、rollback）、および GA4 / Search Console を使う場合はこちらが必須です。
 
-mureo を Google Ads / Meta Ads API に直接接続します。**実際に変更を実行する場合**（`/rescue`、`/budget-rebalance`、`/creative-refresh`、`mureo rollback apply`）、および GA4 / Search Console を使う場合は**必須**です。
+同じ `mureo configure` の UI で「プラットフォーム接続」を開くと、各コンソールへのディープリンク付きで Google / Meta OAuth をブラウザ内で完了でき、公式 MCP プロバイダの登録もできます。（ターミナル派には `mureo auth setup` が同じことをします。）**[認証ガイド →](docs/authentication.md)**
 
-```bash
-pip install mureo
-mureo auth setup           # ブラウザベースのOAuthウィザード
-mureo setup claude-code    # MCP + ワークフローコマンド
-# Claude Code を開いて「/daily-check を実行して」と聞く
-```
+前提: Google Ads の Developer Token と OAuth クライアント、Meta の App ID と Secret（開発モードのままで構いません）。取得手順もウィザードが案内します。
 
-前提: Google Ads Developer Token + OAuth クライアント、Meta App ID + Secret。ウィザードが両方を案内します — 下記の[認証](#認証)を参照。
+> **Google Cloud Console や Meta for Developers に慣れていない方へ。** OAuth フローや Developer Token の発行は、これらのコンソールを使ったことがない方には難しく感じるかもしれません。**まずはデモか BYOD から始めてください。**数分で mureo がどう動くかが分かり、それから Live API のセットアップに踏み込むかどうか判断すれば大丈夫です。
 
 ### どちらのモードが合うか
 
-| 機能                                                | モード A: BYOD                          | モード B: Live API |
+| 機能                                                | BYOD                                    | Live API |
 |----------------------------------------------------|-----------------------------------------|------------------|
 | **初回セットアップ時間**                           | **プラットフォームごとに5〜10分**      | 30〜60分 |
 | **承認・待機リスク**                              | **なし**                                 | Google審査1〜3週間、却下される場合あり |
@@ -125,16 +100,26 @@ mureo setup claude-code    # MCP + ワークフローコマンド
 | `/goal-review`、`/sync-state`                     | ✅                                      | ✅ |
 | `/rescue` / `/budget-rebalance`（提案）           | ✅                                      | ✅ |
 | `/search-term-cleanup`（分析）                    | ✅ Google Ads のみ                      | ✅ |
-| `/search-term-cleanup`（実行）                    | 🛡️ プレビューのみ                       | ✅ 実アカウントで実行 |
-| `/rescue` / `/budget-rebalance`（実行）           | 🛡️ プレビューのみ                       | ✅ 実アカウントで実行 |
-| `/creative-refresh`（実行）                       | 🛡️ プレビューのみ                       | ✅ 実アカウントで実行 |
+| 実行（`/rescue`、`/budget-rebalance`、`/creative-refresh`、`/search-term-cleanup`） | 🛡️ プレビューのみ | ✅ 実アカウントで実行 |
 | `/competitive-scan`                               | ⚠️ Google Ads BYOD は auction insights 非対応（Apps Script の制約） | ✅ |
 | GA4 / Search Console                              | ❌（BYOD バンドルに含まれず）           | ✅ |
 
-**おすすめの始め方:** まず1つのプラットフォームでモード A を試す → `/daily-check` を実行 → 2つ目のプラットフォームを BYOD で追加するか、モード B にアップグレードするか判断する。`~/.mureo/byod/manifest.json` があるかどうかでモードが切り替わります — 設定フラグもグローバル切替もありません。
+`~/.mureo/byod/manifest.json` があるかどうかでモードが切り替わります。取り込んだ媒体は BYOD、それ以外は Live API で動作し、`mureo byod remove --google-ads`（媒体単位）や `mureo byod clear`（全削除）でいつでも切り替えられます。
 
-詳細は [docs/byod.ja.md](docs/byod.ja.md) を参照してください — 完全ガイド、保存済みレポート設定、プラットフォーム別エクスポート手順を掲載しています。
+### そのほかのエージェントとホスト
 
+Claude 系ホスト（Claude Code / Claude Desktop）は `mureo configure` だけで最後まで設定できます。下の表はスクリプト化したい場合の同等コマンドと、Claude 以外のホストの一覧です。
+
+| ホスト | コマンド | 補足 |
+|------|---------|-------|
+| Claude Code | `mureo setup claude-code` | MCP サーバ＋認証情報ガード＋ワークフロースキル |
+| Claude Desktop（Chat / Cowork） | `mureo install-desktop` | Cowork ではワークスペースフォルダを接続 |
+| Cursor | `mureo setup cursor` | MCP ツールのみ（ワークフロースキルなし） |
+| Codex CLI | `mureo setup codex` | Claude Code と同等。スキルは `~/.codex/skills/` に配置、`$daily-check` で起動 |
+| Gemini CLI | `mureo setup gemini` | 拡張マニフェスト形式。PreToolUse フックは非対応 |
+| 任意の MCP クライアント / CI | Docker | **[Docker ガイド →](docs/docker.md)** |
+
+ホスト別の詳細手順（各ホストのデモ / BYOD / Live の組み合わせを含む）: **[はじめかた →](docs/getting-started.ja.md)**
 
 ## 特徴
 
@@ -146,13 +131,13 @@ mureo setup claude-code    # MCP + ワークフローコマンド
 
 ### 媒体横断の分析
 
-Google広告、Meta広告、Search Console、GA4を1つのワークフローでまとめて処理します。
+Google広告、Meta広告、TikTok広告、Search Console、GA4を1つのワークフローでまとめて処理します。
 
 - `/daily-check` -- 全媒体の配信状況・広告パフォーマンス・自然検索のトレンド・サイト内行動を一括取得し、相関させて1つのレポートにまとめます。
 - `/search-term-cleanup` -- 有料キーワードと自然検索の順位を突き合わせ、無駄な重複出稿を洗い出します。
 - `/competitive-scan` -- オークション分析と自然検索の順位データを統合して、競合の全体像を把握します。
 
-設定済みの媒体はエージェントが自動検出します。後からMeta広告を追加しても、全コマンドがそのまま対応します。
+設定済みの媒体はエージェントが自動検出します。後からMeta広告やTikTok広告を追加しても、全コマンドがそのまま対応します。
 
 ### 広告運用の専門知識
 
@@ -189,22 +174,6 @@ AIエージェントに広告アカウントを任せる以上、認証情報の
 
 脅威モデルと脆弱性報告の手順は [SECURITY.md](SECURITY.md) を参照してください。
 
-<details>
-<summary>全機能一覧を展開</summary>
-
-| 領域 | 機能 |
-|------|------|
-| **診断** | 配信停止・低下の原因自動特定、学習期間の検出、入札戦略の分類、CV未発生キャンペーンの原因分析 |
-| **パフォーマンス** | 期間比較、コスト急騰の原因調査、アカウント全体の健全性チェック、CPA/CV目標の進捗追跡 |
-| **検索語** | N-gram分布、検索意図の分類、追加/除外候補の自動評価、有料 vs 自然検索の重複分析 |
-| **クリエイティブ** | RSA入稿チェック（禁止表現、文字幅、広告の有効性予測）、アセット別の成果分析、LP解析、広告とLPの一貫性チェック |
-| **予算** | キャンペーン横断の配分分析、再配分の提案、予算効率の評価 |
-| **競合** | オークション分析、インプレッションシェアの推移、自然検索順位との相関 |
-| **Meta広告** | 配置別分析（Facebook/Instagram/Audience Network）、コスト悪化の原因調査、A/B比較、クリエイティブ改善提案 |
-| **モニタリング** | 配信目標の達成度評価、CPA/CV目標の追跡、デバイス別分析、B2B向けチェック |
-
-</details>
-
 ## ワークフローコマンド
 
 | コマンド | できること |
@@ -219,7 +188,7 @@ AIエージェントに広告アカウントを任せる以上、認証情報の
 | `/creative-generate` | 戦略ブリーフからクリエイター品質の広告クリエイティブ（キービジュアル＋合成バナー）を生成。アートディレクションの採点ループ付き（[Creative Studio](docs/creative-studio.ja.md)） |
 | `/ad-fatigue-check` | クリエイティブ疲弊の検知（フリークエンシー・前週比CTR低下・CPM上昇）。FATIGUED/WATCH/FRESH で判定し `/creative-generate`・`/creative-refresh` へ差し替えを連携 |
 | `/experiment` | A/Bスプリットテストの設計・実行・評価。1変数・反証可能な仮説・固定期間で、バリアント別に 勝者/差なし/判定不能 を評価 |
-| `/lead-form-create` | Meta インスタントフォーム（Lead 広告フォーム）を1問1答インタビュー形式で作成。カバー画像の有無もエージェントが個別に確認 |
+| `/lead-form-create` | Meta インスタントフォーム（Lead 広告フォーム)を1問1答インタビュー形式で作成。カバー画像の有無もエージェントが個別に確認 |
 | `/budget-rebalance` | 自然検索でカバーできている領域を考慮した予算の再配分 |
 | `/budget-pacing` | 月初来の消化額と月次予算目標を比較し、着地を予測してペース警告（総消化の推移管理。`/budget-rebalance` と併用） |
 | `/competitive-scan` | 広告と自然検索の両面から競合状況を分析 |
@@ -229,18 +198,6 @@ AIエージェントに広告アカウントを任せる以上、認証情報の
 | `/monthly-report` | クライアント向けの月次ダイジェスト。前月比・目標達成度・実施アクション・予算消化をまとめる |
 | `/sync-state` | STATE.jsonを各媒体の最新データで更新 |
 | `/learn` | 運用で得た知見をナレッジベースに保存。次回以降のセッションに自動で反映 |
-
-### はじめ方
-
-```bash
-pip install mureo
-mureo setup claude-code
-
-# Claude Code上で：
-/onboard          # 初回：戦略と状態をセットアップ
-/daily-check      # 日次：全キャンペーンをチェック
-/rescue           # パフォーマンス悪化時
-```
 
 ### 例：`/creative-refresh` の実行フロー
 
@@ -287,277 +244,46 @@ STATE.jsonから接続媒体を検出:
 
 なぜ意味があるのか: `link_click` 最適化と `pixel_lead` 最適化の違いは、ダッシュボード上の数値だけ見ても気づけません。mureo は `result_indicator` をキャンペーン単位で取得するため、エージェントは「結果」列を比較する**前**に単位の違いを認識し、予算判断の前にトラッキング設定の問題として正しく分類できます。
 
-## クイックスタート
-
-### 事前に必要なもの
-
-- **Google広告** — [Google Ads API の Developer Token](https://developers.google.com/google-ads/api/docs/get-started/dev-token) と、OAuth用の Client ID / Client Secret
-- **Meta広告** — [Meta for Developers](https://developers.facebook.com/) でアプリを作成し、App ID / App Secret を取得（開発モードのままで構いません）
-
-いずれも `mureo configure`（ブラウザ）と `mureo auth setup`（ターミナル）の双方が手順を案内します。
-
-### ブラウザベースの設定 UI (`mureo configure`)
-
-> `mureo auth setup --web` は**削除**されました — ブラウザフローは統合された **`mureo configure`** UI に取り込まれています。
-
-ターミナルに長い秘密情報を貼り付けるのはミスしやすいので、`mureo configure` を実行してください。短命のローカル UI が `http://127.0.0.1:<ランダムポート>/` で起動し、ブラウザが自動で開きます。Credentials の入力だけでなく、Claude セットアップ全体をカバーします:
-
-- Claude ホストを選択（Claude Code / Claude Desktop）— mureo が該当ホストの config を書き込みます;
-- ワンクリックの **basic setup**（mureo MCP server + credential-guard hook + workflow skills）;
-- **プラットフォーム接続** — Google / Meta OAuth を同じウィンドウで対話的に完了（各欄のリンクから Google Cloud Console / Google Ads API Center / Meta for Developers の該当ページに飛べます）、または GA4 サービスアカウントのパス / project id を入力。`~/.mureo/credentials.json` に書き込まれます;
-- **公式 MCP プロバイダ**（Google Ads / GA4）を `~/.claude.json` に登録。Meta は OAuth dynamic client registration を持たない hosted MCP のため、UI にはローカル登録の代わりに Claude.ai のアカウントコネクタとして追加する方法が表示されます（Claude Code / Claude Desktop の両方で動作）;
-- ステータス確認、プラットフォームごとに mureo-native ↔ 公式 MCP を切替、**Demo / BYOD** のスキャフォールドを提供する **ダッシュボード**。
-
-フラグ: `--no-browser`（タブの自動オープンを抑止）、`--timeout-seconds N`（アイドル時の自動シャットダウン、デフォルト 600）。
+### 分析・ドメイン知識（組み込み）
 
 <details>
-<summary>ウィザードをローカル実行しても安全な理由</summary>
+<summary>全機能一覧を展開</summary>
 
-サーバは `127.0.0.1` のランダムポートにのみバインドします。フォームは CSRF トークンで保護（submit成功後に自動ローテーション）、OAuth の `state` パラメータはコールバック時に `secrets.compare_digest` で検証、`Host` ヘッダのアローリストでDNSリバインディング攻撃をブロック、リダイレクト先は `https://accounts.google.com/` と `https://www.facebook.com/` にピン留めしてあるためオープンリダイレクトは成立せず、認証情報の保存後は session 上の秘密情報をゼロクリアします。POST ボディは 16 KiB で打ち切り、`/done` 画面が配信されたらサーバを停止します。依存は標準ライブラリのみで、外部 Web フレームワークのサプライチェーン侵害を受ける面はありません。
+| 領域 | 機能 |
+|------|------|
+| **診断** | 配信停止・低下の原因自動特定、学習期間の検出、入札戦略の分類、CV未発生キャンペーンの原因分析 |
+| **パフォーマンス** | 期間比較、コスト急騰の原因調査、アカウント全体の健全性チェック、CPA/CV目標の進捗追跡 |
+| **検索語** | N-gram分布、検索意図の分類、追加/除外候補の自動評価、有料 vs 自然検索の重複分析 |
+| **クリエイティブ** | RSA入稿チェック（禁止表現、文字幅、広告の有効性予測）、アセット別の成果分析、LP解析、広告とLPの一貫性チェック |
+| **予算** | キャンペーン横断の配分分析、再配分の提案、予算効率の評価 |
+| **競合** | オークション分析、インプレッションシェアの推移、自然検索順位との相関 |
+| **Meta広告** | 配置別分析（Facebook/Instagram/Audience Network）、コスト悪化の原因調査、A/B比較、クリエイティブ改善提案 |
+| **モニタリング** | 配信目標の達成度評価、CPA/CV目標の追跡、デバイス別分析、B2B向けチェック |
 
 </details>
 
-### Claude Code（推奨）
+## リファレンス
 
-```bash
-pip install mureo
-mureo setup claude-code
-```
+### MCP サーバーとツール一覧
 
-このコマンド1つですべて完了します：
-1. Google広告 / Meta広告の認証（OAuth）
-2. Claude Code用のMCPサーバー設定
-3. 認証情報ガード（AIエージェントが認証ファイルを読めないようにブロック）
-4. ワークフローコマンド（`/daily-check`、`/rescue`、`/learn` など）
-5. スキル（ツールリファレンス、戦略ガイド、判断の仕組み、診断ナレッジ）
-
-セットアップ後、Claude Codeで `/onboard` を実行してください。
-
-### Cursor
-
-```bash
-pip install mureo
-mureo setup cursor
-```
-
-CursorはMCPツールを利用できますが、ワークフローコマンドとスキルには対応していません。
-
-### Codex CLI
-
-```bash
-pip install mureo
-mureo setup codex
-```
-
-Claude Codeと同じく4層すべて（MCPサーバー、認証情報ガード（PreToolUseフック）、ワークフローコマンド、スキル）を `~/.codex/` 配下にインストールします。ワークフローコマンドは Codex スキル形式（`~/.codex/skills/<command>/SKILL.md`）としてインストールされ、`$daily-check` または `/skills` ピッカーから呼び出せます（Codex CLI 0.117.0 以降は `~/.codex/prompts/` を読み込まなくなりました。[openai/codex#15941](https://github.com/openai/codex/issues/15941)）。
-
-### Gemini CLI
-
-```bash
-pip install mureo
-mureo setup gemini
-```
-
-mureoをGemini CLIのextensionとして `~/.gemini/extensions/mureo/` に登録し、MCPサーバー設定と `CONTEXT.md` をコンテキストファイルとして指定します。Gemini CLIはPreToolUseフックと`.md`形式のコマンドに対応していないため、これらのレイヤーはインストールされません。
-
-### CLIのみ（認証管理）
-
-```bash
-pip install mureo
-mureo auth setup
-mureo auth status
-```
-
-### Docker
-
-mureoのMCPサーバーを隔離されたコンテナで動かせます。想定ユースケース:
-
-- **Claude Code以外のMCPクライアント**: Cursor, Codex CLI, Gemini CLI, Continue, Cline, Zed など
-- **CI/CDパイプライン**: 異常検知、ロールバック dry-run、週次レポートの自動実行
-- **マルチテナント / 代理店運用**: クライアントごとにコンテナ・認証情報を分離
-- **MCPレジストリの健全性チェック**（Glama 等）
-
-> スラッシュコマンド（`/daily-check`, `/rescue` など）と credential-guard フックは Claude Code 固有のUXです。これらを使う場合は `pip install mureo` + `mureo setup claude-code` を使ってください。
-
-#### ビルドと起動
-
-```bash
-docker build -t mureo .
-docker run --rm -v ~/.mureo:/home/mureo/.mureo mureo
-```
-
-MCPクライアント側の設定で上記 `docker run` をコマンドとして指定してください。
-
-#### 認証
-
-認証情報は `/home/mureo/.mureo/credentials.json`（コンテナ内、bind mount 経由）または環境変数から読み込まれます。3つの方式から選べます:
-
-**1. マウントした認証ファイル** — ホストに `~/.mureo/credentials.json` が既にある場合（`mureo auth setup` 実行済、チーム共有、手書き等）、上記の bind mount だけで十分です。
-
-手書き用スキーマ:
+mureo は **205 の MCP ツール** を stdio で公開します。Google広告（86）、Meta広告（88）、Search Console（10）に加え、rollback、異常検知、戦略・状態コンテキスト、分析モジュールレジストリ、学習、Creative Studio を含みます。MCP 対応クライアントなら何からでも接続できます。
 
 ```json
 {
-  "google_ads": {
-    "developer_token": "...",
-    "client_id": "...apps.googleusercontent.com",
-    "client_secret": "...",
-    "refresh_token": "...",
-    "login_customer_id": "1234567890"
-  },
-  "meta_ads": { "access_token": "..." }
-}
-```
-
-必須フィールド: Google は `developer_token` / `client_id` / `client_secret` / `refresh_token`、Meta は `access_token`。Search Console は Google の OAuth 認証情報を共用（OAuth アプリに `https://www.googleapis.com/auth/webmasters` スコープが必要）。
-
-**2. 環境変数** — CI/CDで secret manager から渡す場合に便利:
-
-```bash
-docker run --rm \
-  -e GOOGLE_ADS_DEVELOPER_TOKEN=... \
-  -e GOOGLE_ADS_CLIENT_ID=... \
-  -e GOOGLE_ADS_CLIENT_SECRET=... \
-  -e GOOGLE_ADS_REFRESH_TOKEN=... \
-  -e GOOGLE_ADS_LOGIN_CUSTOMER_ID=... \
-  -e META_ADS_ACCESS_TOKEN=... \
-  mureo
-```
-
-対応環境変数: `GOOGLE_ADS_{DEVELOPER_TOKEN, CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN, LOGIN_CUSTOMER_ID, CUSTOMER_ID}`, `META_ADS_{ACCESS_TOKEN, APP_ID, APP_SECRET, TOKEN_OBTAINED_AT, ACCOUNT_ID}`。
-
-**3. Docker内で対話型ウィザード実行** — OAuthトークンをまだ持っておらず、ホストにmureoをインストールしたくない場合:
-
-```bash
-docker run -it --rm -v ~/.mureo:/home/mureo/.mureo mureo mureo auth setup
-```
-
-ターミナル上でOAuthフローを案内します。`credentials.json` はマウントボリュームに書き出されるので、次回以降は方式1で起動できます。
-
-mureo以外でOAuthトークンを取得する方法:
-
-- Google Ads OAuth 2.0: https://developers.google.com/google-ads/api/docs/oauth/overview
-- Meta 長期アクセストークン: https://developers.facebook.com/docs/facebook-login/guides/access-tokens/get-long-lived
-
-### インストール内容
-
-| 構成要素 | `mureo setup claude-code` | `mureo setup cursor` | `mureo setup codex` | `mureo setup gemini` | `mureo auth setup` |
-|---------|:---:|:---:|:---:|:---:|:---:|
-| 認証（~/.mureo/credentials.json） | Yes | Yes | Yes | Yes | Yes |
-| MCP設定 | Yes | Yes | Yes | Yes | Yes |
-| 認証情報ガード（PreToolUseフック） | Yes | N/A | Yes | N/A | Yes |
-| ワークフローコマンド | Yes（~/.claude/commands/） | N/A | Yes（~/.codex/skills/ — `$cmd`または`/skills`で起動） | N/A | No |
-| スキル | Yes（~/.claude/skills/） | N/A | Yes（~/.codex/skills/） | N/A | No |
-| Extensionマニフェスト（contextFileName） | N/A | N/A | N/A | Yes（~/.gemini/extensions/mureo/） | No |
-
-### スキル一覧
-
-| スキル | 内容 |
-|-------|------|
-| `_mureo-google-ads` | Google広告ツールのリファレンス |
-| `_mureo-meta-ads` | Meta広告ツールのリファレンス |
-| `_mureo-shared` | 認証、セキュリティルール、出力フォーマット |
-| `_mureo-strategy` | STRATEGY.md / STATE.json の仕様と使い方 |
-| `_mureo-learning` | データに基づく判断の仕組み（観察期間、サンプルサイズ、ノイズの排除） |
-| `_mureo-pro-diagnosis` | 運用で蓄積するナレッジベース（`/learn` で記録） |
-
-### GA4（Google Analytics 4）の接続
-
-GA4のMCPサーバーを接続すると、ワークフローコマンドがコンバージョン率やユーザー行動のデータも自動で取り込みます。GA4がなくても全コマンドは動作します。
-
-[Google Analytics MCP](https://github.com/googleanalytics/google-analytics-mcp) を使ったセットアップ手順：
-
-1. GCPプロジェクトで以下のAPIを有効化（リンクをクリックして「有効にする」）：
-   - [Google Analytics Admin API](https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com)
-   - [Google Analytics Data API](https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com)
-
-2. インストールと認証：
-
-   ```bash
-   pipx install analytics-mcp
-
-   gcloud auth application-default login \
-     --scopes https://www.googleapis.com/auth/analytics.readonly,https://www.googleapis.com/auth/cloud-platform
-   ```
-
-3. `~/.claude/settings.json` にmureoと並列で追加：
-
-   ```json
-   {
-     "mcpServers": {
-       "mureo": {
-         "command": "python",
-         "args": ["-m", "mureo.mcp"]
-       },
-       "analytics-mcp": {
-         "command": "pipx",
-         "args": ["run", "analytics-mcp"],
-         "env": {
-           "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/application_default_credentials.json",
-           "GOOGLE_PROJECT_ID": "your-gcp-project-id"
-         }
-       }
-     }
-   }
-   ```
-
-### その他のMCPサーバー
-
-mureoは他のMCPサーバーと併用できます。CRMツールなどのMCPを同じセッションに追加すれば、ワークフローコマンドがそのデータも活用します。詳細は [docs/integrations.md](docs/integrations.md) を参照してください。
-
-## 認証
-
-### セットアップ（推奨）
-
-```bash
-mureo auth setup
-```
-
-対話型のウィザードが案内します：
-
-1. **Google広告** — Developer Token + Client ID/Secret を入力 → ブラウザでOAuth → アカウント選択
-2. **Meta広告** — App ID/Secret を入力 → ブラウザでOAuth → 広告アカウント選択。Metaアプリは**開発モードのまま**で問題ありません（App Reviewは不要です）。OAuthの際に `business_management` の権限警告が表示されますが、ビジネスポートフォリオ経由のページ管理に必要なため、そのまま承認してください。
-3. **MCP設定** — Claude Code / Cursor / Codex / Gemini用の設定ファイルを自動生成
-
-認証情報は `~/.mureo/credentials.json` に保存されます。Search ConsoleはGoogle広告と同じOAuth認証を使うため、追加の設定は不要です。
-
-### credentials.json
-
-ウィザードを使わずに直接編集する場合のスキーマ（CI/CD や手書きでチームに配布する場合に有用）:
-
-```json
-{
-  "google_ads": {
-    "developer_token": "...",
-    "client_id": "...apps.googleusercontent.com",
-    "client_secret": "...",
-    "refresh_token": "...",
-    "login_customer_id": "1234567890"
-  },
-  "meta_ads": {
-    "access_token": "...",
-    "app_id": "...",
-    "app_secret": "..."
+  "mcpServers": {
+    "mureo": {
+      "command": "python",
+      "args": ["-m", "mureo.mcp"]
+    }
   }
 }
 ```
 
-必須フィールド: Google は `developer_token` / `client_id` / `client_secret` / `refresh_token`、Meta は `access_token`。`app_id` / `app_secret` を入れておくと Meta の長期アクセストークンが期限間近に自動更新されます（53日経過時点）。Search Console は Google の OAuth 認証情報を共用します（OAuth アプリに `https://www.googleapis.com/auth/webmasters` スコープが必要）。
+全ツールの一覧とクライアント設定: **[MCP サーバーガイド →](docs/mcp-server.md)**（英語）
 
-### 環境変数（代替手段）
+### 認証
 
-| 媒体 | 変数 | 必須 |
-|------|------|-----|
-| Google広告 | `GOOGLE_ADS_DEVELOPER_TOKEN` | はい |
-| Google広告 | `GOOGLE_ADS_CLIENT_ID` | はい |
-| Google広告 | `GOOGLE_ADS_CLIENT_SECRET` | はい |
-| Google広告 | `GOOGLE_ADS_REFRESH_TOKEN` | はい |
-| Google広告 | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | いいえ |
-| Meta広告 | `META_ADS_ACCESS_TOKEN` | はい |
-| Meta広告 | `META_ADS_APP_ID` | いいえ |
-| Meta広告 | `META_ADS_APP_SECRET` | いいえ |
-
-### 確認
+`mureo configure`（ブラウザ）または `mureo auth setup`（ターミナル）が Google 広告と Meta 広告の認証手順を案内し、いずれも `~/.mureo/credentials.json` に書き込みます。CI 用途には環境変数でも設定できます。Search Console は Google の OAuth 認証情報を共用します。確認はいつでも次のコマンドでできます。
 
 ```bash
 mureo auth status          # 認証状態の確認
@@ -565,131 +291,37 @@ mureo auth check-google    # Google広告の認証情報を表示（マスク済
 mureo auth check-meta      # Meta広告の認証情報を表示（マスク済み）
 ```
 
-## MCP サーバー
+スキーマ、環境変数の一覧、ホスト別のセットアップ手順: **[認証ガイド →](docs/authentication.md)**（英語）
 
-`mureo setup claude-code` / `mureo setup cursor` などのコマンドが自動で設定ファイルを書き込むため、通常は手で編集する必要はありません。手動で設定したい場合や、対応されていない MCP クライアントから利用したい場合のスニペットを以下に示します。
-
-### Claude Code 用の設定
-
-**プロジェクト単位（推奨）** — プロジェクトルートの `.mcp.json` に追加:
-
-```json
-{
-  "mcpServers": {
-    "mureo": {
-      "command": "python",
-      "args": ["-m", "mureo.mcp"]
-    }
-  }
-}
-```
-
-**グローバル設定** — `~/.claude/settings.json` に追加:
-
-```json
-{
-  "mcpServers": {
-    "mureo": {
-      "command": "python",
-      "args": ["-m", "mureo.mcp"]
-    }
-  }
-}
-```
-
-> ヒント: `mureo auth setup` がこの設定を自動で書き込むので、通常はこのスニペットを使う必要はありません。
-
-### Cursor 用の設定
-
-`.cursor/mcp.json` に追加:
-
-```json
-{
-  "mcpServers": {
-    "mureo": {
-      "command": "python",
-      "args": ["-m", "mureo.mcp"]
-    }
-  }
-}
-```
-
-## ツール一覧
-
-- **Google広告** — キャンペーン（検索/ディスプレイ）、広告グループ、検索広告（RSA）、ディスプレイ広告（RDA）、キーワード、予算、検索語、分析、RSA監査、B2B最適化、モニタリングなど
-- **Meta広告** — キャンペーン、広告セット、広告、クリエイティブ、オーディエンス、Conversions API、商品カタログ、リード広告など
-- **Search Console** — サイト管理、検索アナリティクス、URL検査、サイトマップ
-- **クリエイティブ生成（Creative Studio）** — テキストなしキービジュアルの生成、ブランドキット、画像編集、コピー/ブランドの合成によるバナー生成
-- **戦略・状態コンテキスト** — STRATEGY.md / STATE.json の読み書き、プラットフォーム別メトリクス、レポート永続化、アウトカム評価
-- **分析・学習** — 分析モジュールレジストリ（異常検知・診断・クリエイティブ監査・予算効率）、`/learn` ナレッジ、外部 advisor 連携
-
-全ツールの詳細は [英語版README](README.md#tool-list) を参照してください。
-
-## CLI
-
-```bash
-mureo setup claude-code    # Claude Code 用のワンコマンドセットアップ
-mureo setup cursor         # Cursor 用のセットアップ
-mureo auth status          # 認証状態の確認
-mureo auth check-google    # Google 広告の認証情報を表示（マスク済み）
-mureo auth check-meta      # Meta 広告の認証情報を表示（マスク済み）
-```
-
-## 戦略コンテキスト
+### 戦略コンテキスト
 
 2 つのローカルファイルが戦略準拠の運用を駆動します。`/onboard` を実行すると対話的に生成されます。
 
 - **STRATEGY.md** — ペルソナ、USP、ブランドボイス、目標、運用モード。詳細は [docs/strategy-context.md](docs/strategy-context.md)。
 - **STATE.json** — キャンペーンのスナップショット、action log。ワークフローコマンドが自動で更新します。
 
-## アーキテクチャ
+### TikTok 広告、GA4、その他の MCP サーバーの接続
 
-```
-mureo/
-├── __init__.py              # パッケージ root
-├── auth.py                  # 認証情報のロード（~/.mureo/credentials.json + 環境変数 + Meta トークン自動更新）
-├── auth_setup.py            # 対話型セットアップウィザード（OAuth + MCP 設定）
-├── throttle.py              # レート制限（token bucket + 1時間ローリング上限）
-├── google_ads/              # Google Ads API クライアント（Mixin 構成）
-│   ├── client.py            # GoogleAdsApiClient
-│   ├── mappers.py           # レスポンスを構造化 dict にマッピング
-│   └── _*.py                # Ads / Keywords / Analysis / Diagnostics / Extensions / Monitoring / Creative / Media など Mixin 群
-├── meta_ads/                # Meta Ads API クライアント（15 Mixin、httpx ベース）
-│   ├── client.py            # MetaAdsApiClient
-│   ├── mappers.py           # レスポンスマッピング
-│   └── _*.py                # Campaigns / AdSets / Ads / Creatives / Audiences / Pixels / Insights /
-│                            #   Analysis / Catalog / Conversions / Leads / PagePosts / Instagram /
-│                            #   SplitTest / AdRules
-├── search_console/          # Search Console API クライアント（Google OAuth を共用）
-├── analytics/               # 分析モジュール Protocol + レジストリ（#120）
-│   ├── protocol.py          # AnalyticsModule Protocol + AnalyticsCapability
-│   ├── registry.py          # entry-point ベースの discovery（mureo.analytics group）
-│   ├── models.py            # Anomaly / PerformanceDiagnosis / CreativeAudit / BudgetEfficiency
-│   └── builtin/             # google_ads / meta_ads 用の組込 adapter
-├── analysis/                # 媒体横断の分析ユーティリティ
-│   ├── anomaly_detector.py  # サンプルサイズで防御した異常検知（pure function）
-│   └── lp_analyzer.py       # LP 分析エンジン
-├── context/                 # ファイルベースのコンテキスト（STRATEGY.md, STATE.json）
-│   ├── models.py            # 不変な dataclass 群（StrategyEntry, StateDocument, ActionLogEntry）
-│   ├── strategy.py          # STRATEGY.md のパーサ／ライター
-│   └── state.py             # STATE.json のパーサ／ライター
-├── rollback/                # ロールバック（allow-list 制、追記専用 audit trail）
-├── byod/                    # BYOD（XLSX バンドル取込）
-├── cli/                     # Typer CLI（setup + auth）
-└── mcp/                     # MCP サーバー（stdio ベース）
-    ├── server.py            # エントリポイント
-    ├── tool_provider.py     # MCPToolProvider Protocol（#89、プラグイン用）
-    └── _handlers_*.py       # プラットフォーム別ハンドラ
-```
+**TikTok 広告**は、TikTok の公式ホスト型 MCP（TikTok for Business MCP Server）経由で対応しています。mureo は公式プロバイダ `tiktok-ads-official` として同梱しており、`mureo configure` のダッシュボードまたは `mureo providers add` で追加し、初回接続時にブラウザで TikTok for Business アカウントにサインインして認可するだけです（Developer Token は不要）。接続後は `tiktok_ads` が他媒体と同格のプラットフォームとして扱われ、`/daily-check` やレポートに含まれ、承認済みの変更は action log に記録されます。mureo ネイティブの分析（異常検知の基準値、RSA 監査）は引き続き Google / Meta 向けです。
 
-**設計方針:**
+GA4 の MCP サーバー（例: [Google Analytics MCP](https://github.com/googleanalytics/google-analytics-mcp)）を mureo と併設すると、ワークフローコマンドが GA4 のデータ（CVR、ユーザー行動、LP パフォーマンス）も取り込みます。GA4 はオプションで、なくても全コマンドが動作します。mureo は同じセッション内の任意の MCP サーバーと共存でき、利用可能なデータをワークフローが自動的に取り込みます。セットアップ手順: **[連携ガイド →](docs/integrations.md)**（英語）
+
+### プロバイダプラグインの自作
+
+pip でインストール可能なパッケージなら、mureo のソースツリーに触れずに新しい広告プラットフォーム（Microsoft/Bing 広告、Apple Search Ads、TikTok、LinkedIn、自社プラットフォームなど）を追加できます。プロバイダ Protocol を実装し、対応 capability を宣言して、entry-point group `mureo.providers` に登録するだけです。プラグインは独自のスキルや分析モジュールも同梱できます。
+
+- [docs/plugin-authoring.md](docs/plugin-authoring.md) — プラグイン開発ガイド（英語）
+- [docs/ABI-stability.md](docs/ABI-stability.md) — ABI 安定性の約束と非推奨化ポリシー（英語）
+
+### アーキテクチャ
 
 - **データベース不要** — 状態は広告プラットフォームの API またはローカルファイル（`STRATEGY.md` / `STATE.json`）に保持
 - **LLM を内蔵しない** — mureo はデータの取得と分析を担当し、推論・計画・判断はエージェント側が行います
+- **Web フレームワーク不要** — CLI（Typer）と MCP（stdio）のみ。`mureo configure` の UI も標準ライブラリの `http.server` を `127.0.0.1` で動かすだけです
 - **データは不変** — すべての dataclass で `frozen=True` を使用し、意図しない変更を防止
 - **認証情報はローカルに保存** — `~/.mureo/credentials.json` または環境変数から読み込み、公式の広告プラットフォーム API 以外には一切送信しません
 
-詳細は [docs/architecture.md](docs/architecture.md) を参照してください。
+モジュール構成とシステム図: **[アーキテクチャガイド →](docs/architecture.md)**（英語）
 
 ## 開発
 
