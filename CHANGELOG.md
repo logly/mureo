@@ -7,6 +7,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.32] - 2026-07-29
+
+### Added
+
+- **Two-tier `/learn` is complete — workspace-tier insights are finally read
+  (#475).** The KnowledgeStore Protocol has accepted workspace-scoped writes
+  (`mureo learn add --scope workspace`) since the two-tier split landed, but
+  nothing on the read side ever consumed them, so a workspace insight was
+  invisible to every diagnostic workflow. `mureo_learning_insights_get` now
+  reads both tiers. With no workspace tier — or an empty one — the output is
+  **byte-identical to the legacy operator-only behavior**, guidance string
+  included, so single-tier installs see zero change. When the workspace tier
+  has content the tool returns a composed payload: a precedence note
+  (**workspace-tier insights win when the two conflict**) above an
+  `## Operator knowledge (all workspaces)` section and a
+  `## Workspace knowledge (current workspace)` section — and an empty operator
+  tier no longer suppresses workspace content. A workspace backend that raises
+  or returns a non-`str` degrades to the legacy payload with a logged warning,
+  so a broken third-party store can never break the tool call. The tool schema
+  is unchanged (still zero arguments).
+
+- **`mureo learn tiers` (#475).** A new read-only subcommand reporting
+  `operator: configured` and `workspace: configured|absent` (exit 0), so the
+  `/learn` skill can branch without touching disk. An inconclusive probe — the
+  store raised — exits 1 with a one-line error rather than guessing `absent`
+  and silently misrouting a workspace-scoped insight into the operator tier.
+  The `/learn` skill gains the matching **"Choose the scope"** step: when a
+  workspace tier is configured it asks where to save, with **workspace scope as
+  the recommended default** (an account-specific lesson filed in the operator
+  tier risks being misapplied on every other account). Without a workspace tier
+  the legacy operator-only flow is unchanged — no new prompt — and
+  `mureo learn add` keeps its `--scope operator` default.
+
+- **Ad-level audit trail in STATE.json (#477).** A new `AdState` (`ad_id`,
+  `name`, `status`, `effective_status`, `as_of`) records what each ad looked
+  like when it was last seen. Only `ad_id` is required, so a platform that
+  exposes no delivery status omits the field instead of having one invented for
+  it, and `as_of` is stamped **server-side** from mureo's own clock (the #460
+  convention) — a caller-supplied value is ignored, because a stored status is
+  only auditable if you know when it was true. `ActionLogEntry` gains an
+  optional `ad_id` so an action can be tied to the creative it touched.
+  `mureo_state_upsert_campaign` accepts an `ads` array whose merge semantics
+  are deliberate: an absent field **inherits** the previously stored ads, an
+  explicit `[]` clears them. Inheritance matters because ads are fetched only
+  for ACTIVE campaigns — without it the first upsert after a pause would erase
+  the audit trail exactly when it is needed. The legacy v1 flat list keeps
+  full-replace semantics: it matches on `campaign_id` alone, and inheriting
+  through that platform-blind match could bleed one platform's ads into
+  another's campaign that happens to share an id string. Legacy STATE.json
+  files round-trip byte-identically.
+
+### Changed
+
+- **BYOD responses carry a freshness envelope (#477).** When
+  `meta_ads_ads_list`, `meta_ads_campaigns_list`, `meta_ads_campaigns_get` or
+  `meta_ads_ad_sets_list` serve imported CSV data instead of the live API, the
+  response is wrapped as
+  `{"source": "byod_import", "as_of": <imported_at>, "data": [...]}` — the
+  absence of the wrapper means live. A CSV-backed read is a snapshot taken when
+  the user ran `mureo byod import`, and without a marker an agent cannot tell a
+  months-old import from a fresh fetch, so it reasons about delivery statuses
+  that may long since have changed. `as_of` is omitted rather than invented
+  when the manifest entry carries no usable `imported_at`. Every skill bullet
+  that consumes rows from a wrapped tool documents the unwrap, and a
+  parametrized guard pins all seven call sites so a future bullet cannot
+  reintroduce the gap.
+
+### Fixed
+
+- **Ad-level delivery status is now fetched in the standard flows (#468).**
+  Creative-level delivery status was never requested, so a pause made by hand
+  in the platform UI stayed invisible: mureo kept treating the ad as delivering
+  and its advice could mislead. Meta's ad read now requests
+  `effective_status` (whether the ad is actually delivering),
+  `configured_status` (the operator's own setting, so the two can be told
+  apart) and `issues_info` / `ad_review_feedback` (why it is not delivering);
+  the ad-set and campaign reads gain `effective_status` + `issues_info`. Ad-set
+  and campaign-level stops, policy rejections and budget exhaustion are
+  therefore visible on the ad itself, not only in its own `status`.
+  `/sync-state` and `/daily-check` gain an ad-level fetch / persist / diff step
+  (ACTIVE campaigns only, to bound API cost) and a **Mixed operation** section
+  built on the premise that manual and mureo-driven operation coexist —
+  especially during onboarding: a status change with no matching `action_log`
+  entry was made outside mureo and must be surfaced in the report, not silently
+  absorbed. `/ad-fatigue-check`'s `effective_status` filter is now genuinely
+  workable on Meta and names the non-delivering values. Google Ads already
+  fetched ad-level status correctly and is untouched.
+
+- **Untrue field claims removed from Meta tool descriptions (#477).**
+  `delivery_estimate` was advertised although it is an ad-set edge and never an
+  Ad-node field; `campaigns_list` claimed `buying_type` and `campaigns_get`
+  claimed `spend_cap`, neither of which was requested. All three claims are
+  gone. A new truthfulness test extracts **every** field name claimed in those
+  descriptions and asserts it appears in the requested-fields string, closing
+  the recurring class of drift (see #274) rather than only these instances.
+
 ## [0.10.31] - 2026-07-28
 
 ### Added

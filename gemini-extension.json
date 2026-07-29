@@ -1,6 +1,6 @@
 {
   "name": "mureo",
-  "version": "0.10.31",
+  "version": "0.10.32",
   "description": "Your local-first AI ad ops crew. Works with Claude Code, Cursor, Codex & Gemini.",
   "contextFileName": "CONTEXT.md"
 }
