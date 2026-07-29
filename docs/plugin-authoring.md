@@ -2164,7 +2164,7 @@ A plugin ships **one class** with these members (see
 
 | Member | Required | Purpose |
 |--------|----------|---------|
-| `platform: str` (class attribute) | yes | Stable identifier matching STATE.json `platforms` and your provider's `name`. |
+| `platform: str` (class attribute) | yes | **Registry name** — the stable identifier this module registers itself under, conventionally your provider's `name`. It is **not** the STATE.json platform key; see *Canonical platform key* below. |
 | `capabilities() -> frozenset[AnalyticsCapability]` | yes | Which of the four methods this module actually supports. |
 | `async detect_anomalies(account_id, *, window_days=7) -> tuple[Anomaly, ...]` | when capability advertised | Anomaly detection over the trailing window. MUST gate by sample size. |
 | `async diagnose_performance(account_id, *, scope) -> PerformanceDiagnosis` | when capability advertised | Headline + findings + structured metrics. |
@@ -2186,6 +2186,40 @@ acme_ads = "mureo_acme_ads.analytics:AcmeAdsAnalyticsModule"
 `mureo.analytics` is independent of `mureo.providers`: a package may
 ship a provider only, an analytics module only, or both. The two
 groups have separate discovery paths and separate fault isolation.
+
+### Canonical platform key (Issue #481)
+
+Your plugin platform has exactly **one** key that mureo joins on:
+`plugin:<distribution>`, built from your **pip distribution name**
+(`mureo-acme-ads` → `plugin:mureo-acme-ads`). It is the STATE.json
+`platforms` key, the `platform` value on promoted `action_log` entries,
+the key the reporting dashboard resolves a display label from, and the
+`platform` field `mureo_analytics_modules_list` reports — so a skill
+holding a STATE.json key finds your analytics.
+
+Your module's `platform` attribute is the **registry name** and need not
+equal the distribution name. `mureo_analytics_modules_list` reports it
+separately as `registry_name` (with `source_distribution` alongside);
+neither is a key, and nothing persists them. `mureo_analytics_run`
+accepts either, but pass the canonical key — that is what the listing
+reports.
+
+The `plugin:` namespace is **reserved**: a module whose `platform`
+starts with `plugin:` is refused at registration (with an
+`AnalyticsModuleWarning`) and never reaches the registry, because such a
+name could shadow another distribution's canonical key. Use a plain
+registry name — `acme_ads`, not `plugin:mureo-acme-ads`.
+
+Ship **one** analytics module per distribution. Two modules from the
+same distribution collapse onto the same canonical key: both are still
+listed, but `mureo_analytics_run` resolves the alphabetically-first
+registry name and mureo logs a warning.
+
+You do not build the key yourself: mureo derives it from the
+distribution that shipped the entry point. If you write STATE.json
+through mureo's tools, use `platform="plugin:<your-distribution>"`
+verbatim — mixing the two identifiers is exactly the silent join failure
+this convention prevents. See `mureo/core/platform_keys.py`.
 
 ### Minimal example
 

@@ -130,6 +130,19 @@ Honest scope for a plugin platform:
 - Plugin tool calls are already audited by mureo, and successful mutations promoted into `action_log` (`platform="plugin:<dist>"`) when run in a strategy workspace (a `STATE.json` exists). Treat plugin **read** findings as **advisory**; do not assume mureo's strategy/rollback guarantees beyond what `action_log` records (an arbitrary plugin operation is not auto-reversible).
 - Plugin tool-name mapping is **best-effort** (infer from the live tool list), not deterministic. Never fail the whole workflow because a plugin tool is missing — report it and continue with the built-ins.
 
+#### Canonical platform key — `plugin:<dist>` (Issue #481)
+
+A plugin platform has exactly **one** key, and every mureo surface joins on it: **`plugin:<dist>`**, where `<dist>` is the plugin's pip **distribution** name (`mureo-logly-bridge` → `plugin:mureo-logly-bridge`). Use it verbatim for:
+
+- STATE.json — the `platforms` map key and every campaign snapshot written under it (`mureo_state_upsert_campaign` / `mureo_state_platform_metrics_set` with `platform="plugin:<dist>"`).
+- `action_log` — the `platform` value mureo promotes plugin mutations under.
+- The reporting dashboard — the key it resolves a display label from; a key of any other shape renders raw or drops.
+- `mureo_analytics_modules_list` — its `platform` field, and the `platform` you pass to `mureo_analytics_run`.
+
+The **entry-point name** an analytics module registered itself under is reported separately as `registry_name` (with the distribution in `source_distribution`). It is **not** a key: nothing persists it, and a lookup by it will not join with STATE.json. For a built-in module `registry_name` equals `platform`, so the two fields are always present. Never mix the two — writing state under one and reading it back under the other is exactly the silent join failure this contract exists to prevent.
+
+When a skill reports `analytics_not_available_for_<platform>`, `<platform>` is this canonical key (`analytics_not_available_for_plugin:mureo-logly-bridge`), not the registry name — so the notice names the same platform the rest of the output does.
+
 ### Mutating plugin tools — structural strategy parity
 
 A **mutating** plugin tool (anything not declared `readOnlyHint`) is subject to the *same structural strategy handling as a built-in write*, even though mureo has no platform-specific analytics for it:
@@ -144,7 +157,7 @@ What does **not** reach parity (by design, state it in output): mureo's platform
 
 A plugin author OR an official-MCP wrapper can opt into mureo's analytics surface by registering an `AnalyticsModule` (entry-point group `mureo.analytics`; see `docs/plugin-authoring.md` → *Shipping analytics with your plugin*). When a module is registered:
 
-- The MCP tool `mureo_analytics_modules_list` reports which platforms have analytics and which capabilities each advertises (`detect_anomalies`, `diagnose_performance`, `audit_creative`, `analyze_budget_efficiency`).
+- The MCP tool `mureo_analytics_modules_list` reports which platforms have analytics and which capabilities each advertises (`detect_anomalies`, `diagnose_performance`, `audit_creative`, `analyze_budget_efficiency`). Match its `platform` field against the platform keys you hold — it is the **canonical key** (`plugin:<dist>` for a plugin module; see *Canonical platform key* above), the same key STATE.json and `action_log` use. `registry_name` / `source_distribution` are identifiers, not keys — never look a platform up by them.
 - The MCP tool `mureo_analytics_run` **executes** one advertised capability and returns its structured result (Issue #440). Pass `platform`, `capability`, `account_id` (plus `window_days` for `detect_anomalies` or `scope` for `diagnose_performance`); it is credential-lazy, read-only, and fault-isolated. It returns `status: ok` with a `result`, or a non-`ok` status (`no_analytics_module` / `capability_not_available` / `error`) the skill reports without failing the workflow. This is the only supported way to run a plugin module's analysis — never reach into a plugin's own tools to reconstruct it.
 - Workflow skills (daily-check, rescue, …) consult `modules_list` **before** running deep diagnostics on an external-integration platform, then run the advertised capability via `mureo_analytics_run`. If the platform has no module or the needed capability is missing, the skill must say `analytics_not_available_for_<platform>` in its output rather than invent heuristics from the integration's tool schemas. Auto-deriving analytics is unsafe (would produce plausible-but-wrong analysis) and is explicitly out of scope.
 - Built-in google_ads and meta_ads ship analytics modules for the capabilities they support today; new platforms get parity by **hand-authoring** a module, not by code generation.

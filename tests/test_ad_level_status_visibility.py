@@ -230,9 +230,16 @@ def test_standard_flow_persists_ads_via_upsert(skill: str) -> None:
 
 @pytest.mark.parametrize("skill", ["sync-state", "daily-check"])
 def test_standard_flow_bounds_ad_fetch_to_active_campaigns(skill: str) -> None:
-    """API cost guard: ad-level fetch is scoped to ACTIVE campaigns."""
+    """API cost guard: ad-level fetch is scoped to *active* campaigns.
+
+    The filter must be stated in a **platform-agnostic** way — a bare
+    ``ACTIVE`` literal is Meta's vocabulary and silently excludes Google
+    Ads' ``ENABLED`` and a Protocol plugin's ``enabled`` (see
+    ``_mureo-shared`` → *Status vocabulary contract*).
+    """
     body = _skill_body(skill)
-    assert "ACTIVE campaign" in body
+    assert "active campaigns only" in body.lower()
+    assert "Status vocabulary contract" in body
 
 
 @pytest.mark.parametrize("skill", ["sync-state", "daily-check"])

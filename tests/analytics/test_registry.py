@@ -87,6 +87,13 @@ class _DuplicatePlatformModule(_WellFormedModule):
     platform = "fake_platform"  # collides with _WellFormedModule
 
 
+class _ReservedPrefixModule(_WellFormedModule):
+    # Issue #481: ``plugin:`` is reserved for canonical platform keys, which
+    # mureo derives from the distribution — a module may not claim that shape
+    # as its own registry name.
+    platform = "plugin:some-dist"
+
+
 class _NoPlatformAttr:
     def capabilities(self) -> frozenset[AnalyticsCapability]:
         return frozenset()
@@ -160,6 +167,31 @@ def test_register_skips_module_without_platform_attribute() -> None:
     reg = AnalyticsRegistry()
     with pytest.warns(AnalyticsModuleWarning, match="platform"):
         reg.register(_NoPlatformAttr())  # type: ignore[arg-type]
+    assert reg.platforms() == ()
+
+
+@pytest.mark.unit
+def test_register_rejects_reserved_plugin_prefix_as_registry_name() -> None:
+    """Issue #481 — ``plugin:<dist>`` is a reserved canonical-key shape.
+
+    A module's ``platform`` is its **registry name**. Letting one claim a
+    ``plugin:``-shaped name would let it shadow another distribution's
+    canonical platform key, so registration is fail-closed on the reserved
+    namespace.
+    """
+    reg = AnalyticsRegistry()
+    with pytest.warns(AnalyticsModuleWarning, match="reserved"):
+        reg.register(_ReservedPrefixModule())  # type: ignore[arg-type]
+    assert reg.platforms() == ()
+    assert reg.get("plugin:some-dist") is None
+
+
+@pytest.mark.unit
+def test_discover_rejects_reserved_plugin_prefix_as_registry_name() -> None:
+    """The entry-point path applies the same reserved-namespace rule."""
+    reg = AnalyticsRegistry()
+    with pytest.warns(AnalyticsModuleWarning, match="reserved"):
+        reg.discover(loader=_loader(_ep("evil", load_result=_ReservedPrefixModule)))
     assert reg.platforms() == ()
 
 

@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import logging
 from enum import Enum
 from typing import Any
 
@@ -40,7 +41,14 @@ from mureo.analytics.registry import (
     get_analytics_module,
     plugin_source,
 )
+from mureo.core.platform_keys import (
+    is_plugin_platform_key,
+    plugin_distribution,
+    plugin_platform_key,
+)
 from mureo.mcp._helpers import _require
+
+logger = logging.getLogger(__name__)
 
 TOOLS: list[Tool] = [
     Tool(
@@ -54,7 +62,15 @@ TOOLS: list[Tool] = [
             "to decide whether to run deep analytics for a platform or "
             "honestly report `analytics_not_available_for_<platform>`. "
             "Built-in (google_ads, meta_ads) and plugin-supplied "
-            "modules appear in the same shape."
+            "modules appear in the same shape. `platform` is the "
+            "canonical platform key — the same key STATE.json's "
+            "`platforms` map and action_log entries use, which for a "
+            "plugin-supplied module is `plugin:<distribution>`; look "
+            "analytics up by that key. `registry_name` is the "
+            "entry-point name the module registered itself under and "
+            "`source_distribution` the pip distribution that shipped "
+            "it; neither is a key (for a built-in, `registry_name` "
+            "equals `platform`)."
         ),
         inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
@@ -81,8 +97,10 @@ TOOLS: list[Tool] = [
                 "platform": {
                     "type": "string",
                     "description": (
-                        "Platform identifier (e.g. google_ads, meta_ads, or "
-                        "a plugin platform). Must match STATE.json platforms."
+                        "Canonical platform key (e.g. google_ads, meta_ads, "
+                        "or plugin:<distribution> for a plugin platform). "
+                        "Pass the `platform` value mureo_analytics_modules_list "
+                        "reported — the same key STATE.json platforms uses."
                     ),
                 },
                 "capability": {
@@ -122,22 +140,29 @@ async def _handle_modules_list(
     _arguments: dict[str, Any],
 ) -> list[TextContent]:
     """Return registered analytics modules as JSON text."""
-    # Trigger entry-point discovery (idempotent, cached).
-    discover_analytics_modules()
-
-    registry = default_analytics_registry()
     all_capabilities = sorted(c.value for c in AnalyticsCapability)
     payload: list[dict[str, Any]] = []
-    for platform in registry.platforms():
-        module = registry.get(platform)
-        if module is None:  # pragma: no cover — defensive
-            continue
+    # Shared traversal (triggers discovery, sorted, warns on a distribution
+    # claimed by two registry names) so the listing and the resolver can
+    # never disagree about membership or the tie-break.
+    for registry_name, module, distribution in _registry_entries():
         caps = module.capabilities()
+        # Issue #481: report the CANONICAL platform key, not the name the
+        # module happens to be registered under. For a plugin-supplied
+        # module that key is ``plugin:<dist>`` — what STATE.json, the
+        # action_log promoter, and the dashboard all join on — so a skill
+        # holding a STATE.json key resolves analytics for it. The registry
+        # name travels alongside as ``registry_name`` (it is what
+        # ``mureo_analytics_run`` was historically keyed by), and a
+        # built-in, having no plugin source, keeps its registry name as
+        # the platform key so both fields are always present.
+        platform = plugin_platform_key(distribution) if distribution else registry_name
         payload.append(
             {
                 "platform": platform,
+                "registry_name": registry_name,
                 "capabilities": sorted(c.value for c in caps),
-                "source_distribution": plugin_source(module),
+                "source_distribution": distribution,
                 "all_capabilities": all_capabilities,
             }
         )
@@ -194,6 +219,96 @@ def _text(payload: dict[str, Any]) -> list[TextContent]:
     return [TextContent(type="text", text=json.dumps(payload))]
 
 
+def _registry_entries() -> list[tuple[str, Any, str]]:
+    """Return ``(registry_name, module, distribution)`` in sorted-name order.
+
+    One traversal shared by the listing and the resolver so both agree on
+    membership and on the tie-break. ``registry.platforms()`` is already
+    sorted, which is what makes duplicate-distribution resolution
+    deterministic (see :func:`_warn_on_duplicate_distributions`).
+    """
+    # Idempotent + cached; the resolver may be the first caller in-process.
+    discover_analytics_modules()
+
+    registry = default_analytics_registry()
+    entries: list[tuple[str, Any, str]] = []
+    for registry_name in registry.platforms():
+        module = registry.get(registry_name)
+        if module is None:  # pragma: no cover — defensive
+            continue
+        entries.append((registry_name, module, plugin_source(module)))
+
+    _warn_on_duplicate_distributions(entries)
+    return entries
+
+
+def _warn_on_duplicate_distributions(entries: list[tuple[str, Any, str]]) -> None:
+    """Log when one distribution ships modules under several registry names.
+
+    Those modules all collapse onto the SAME canonical platform key
+    (``plugin:<dist>``), so the key can no longer name exactly one module.
+    mureo does not guess: the listing still emits every entry (the
+    ambiguity stays visible, with each module's own ``registry_name``),
+    and :func:`_resolve_module` deterministically takes the
+    alphabetically-first registry name. Log it rather than absorb it —
+    silently running one of two modules is the failure mode Issue #481 is
+    about. Once per call; this is a packaging mistake, not a hot path.
+    """
+    by_distribution: dict[str, list[str]] = {}
+    for registry_name, _module, distribution in entries:
+        if distribution:
+            by_distribution.setdefault(distribution, []).append(registry_name)
+
+    for distribution, registry_names in by_distribution.items():
+        if len(registry_names) > 1:
+            logger.warning(
+                "analytics distribution %r registered %d modules (%s) — they "
+                "share the canonical platform key %r, so %r wins by sorted "
+                "registry name; ship one analytics module per distribution",
+                distribution,
+                len(registry_names),
+                ", ".join(registry_names),
+                plugin_platform_key(distribution),
+                registry_names[0],
+            )
+
+
+def _resolve_module(platform: str) -> Any | None:
+    """Resolve the module a ``platform`` value names (#481).
+
+    ``mureo_analytics_modules_list`` reports the canonical key
+    (``plugin:<dist>`` for a plugin module) and the tool contract says to
+    call ``mureo_analytics_run`` with what that listing reported — but
+    the registry is keyed by each module's own registry name, so the two
+    need reconciling.
+
+    The two input shapes are resolved by **disjoint** paths, never by
+    falling through from one to the other:
+
+    - A canonical ``plugin:<dist>`` key resolves **only** by matching the
+      source distribution, which is authoritative because mureo derives
+      it from the entry point rather than taking it from the module.
+      Unmatched ⇒ ``None``. Crucially there is no direct-registry attempt
+      first: a module registered under a *literal* ``plugin:<other-dist>``
+      name would otherwise win by name and hijack that distribution's
+      key. (Registration now refuses that shape outright — this is the
+      second, independent layer.)
+    - Anything else (a registry name, a built-in key) uses the direct
+      registry lookup, unchanged.
+
+    ``None`` means no module — the caller turns that into the
+    ``no_analytics_module`` status.
+    """
+    if is_plugin_platform_key(platform):
+        distribution = plugin_distribution(platform)
+        for _registry_name, module, module_distribution in _registry_entries():
+            if module_distribution == distribution:
+                return module
+        return None
+
+    return get_analytics_module(platform)
+
+
 async def _handle_analytics_run(arguments: dict[str, Any]) -> list[TextContent]:
     """Invoke one capability of a platform's analytics module (#440).
 
@@ -212,7 +327,7 @@ async def _handle_analytics_run(arguments: dict[str, Any]) -> list[TextContent]:
     scope = PerformanceScope(arguments.get("scope", PerformanceScope.ACCOUNT.value))
 
     # Credential-lazy: the module builds its client only when a method runs.
-    module = get_analytics_module(platform)
+    module = _resolve_module(platform)
     if module is None:
         return _text(
             {
