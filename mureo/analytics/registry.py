@@ -43,6 +43,8 @@ import warnings
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any
 
+from mureo.core.platform_keys import PLUGIN_PLATFORM_PREFIX
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -121,6 +123,20 @@ def _module_validation_error(instance: object) -> str | None:
     platform = getattr(instance, "platform", None)
     if not isinstance(platform, str) or not platform:
         return "`platform` attribute must be a non-empty string"
+
+    # Issue #481: ``platform`` is the module's REGISTRY NAME, not a platform
+    # key. The ``plugin:`` namespace is reserved for canonical platform keys
+    # (``plugin:<distribution>``), which mureo derives from the distribution
+    # that shipped the entry point — never from a value the module supplies.
+    # Fail closed: a module allowed to name itself ``plugin:<other-dist>``
+    # could shadow another distribution's key on any name-keyed lookup.
+    if platform.startswith(PLUGIN_PLATFORM_PREFIX):
+        return (
+            f"`platform` must not start with {PLUGIN_PLATFORM_PREFIX!r} — that "
+            f"shape is reserved for canonical plugin platform keys "
+            f"({PLUGIN_PLATFORM_PREFIX}<distribution>), which mureo derives "
+            f"from your distribution; use a plain registry name instead"
+        )
 
     capabilities = getattr(instance, "capabilities", None)
     if not callable(capabilities):

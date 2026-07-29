@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mureo.core import clock
+from mureo.core.platform_keys import plugin_platform_key
 from mureo.policy.declarations import BidDeclaration, BudgetDeclaration
 from mureo.throttle import ThrottleConfig
 
@@ -252,7 +253,9 @@ def record_mutation_action_log(
         entry = ActionLogEntry(
             timestamp=now.isoformat(timespec="seconds"),
             action=tool,
-            platform=f"plugin:{source or 'unknown'}",
+            # Issue #481: the canonical key every surface joins on — see
+            # mureo.core.platform_keys.
+            platform=plugin_platform_key(source or "unknown"),
             summary=f"plugin tool {tool} (mutating)",
             command=tool,
             observation_due=(now + timedelta(days=days)).date().isoformat(),

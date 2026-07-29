@@ -41,6 +41,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from mureo.context.state import read_state_file
+from mureo.core.platform_keys import is_plugin_platform_key, plugin_distribution
 from mureo.core.runtime_context import get_runtime_context
 
 if TYPE_CHECKING:
@@ -94,8 +95,6 @@ _BUILTIN_DISPLAY_NAMES: dict[str, str] = {
     "tiktok_ads": "TikTok Ads",
 }
 
-_PLUGIN_PREFIX = "plugin:"
-
 # Canonical period tokens in dashboard-toggle order. The default view is the
 # most recent day (``YESTERDAY``) — daily-check runs every day, so the prior
 # day's state is what an operator checks first; ``LAST_30_DAYS`` is the
@@ -125,9 +124,9 @@ def platform_display_name(key: str) -> str:
     builtin = _BUILTIN_DISPLAY_NAMES.get(key)
     if builtin is not None:
         return builtin
-    if key.startswith(_PLUGIN_PREFIX):
-        dist = key[len(_PLUGIN_PREFIX) :]
-        label = _humanize_dist(dist)
+    # Issue #481: the canonical plugin key — see mureo.core.platform_keys.
+    if is_plugin_platform_key(key):
+        label = _humanize_dist(plugin_distribution(key))
         return f"{label} (plugin)" if label else key
     return key
 
@@ -138,8 +137,8 @@ def _humanize_dist(dist: str) -> str:
     ``mureo-logly-bridge`` → ``Logly``; ``acme-ads`` → ``Acme Ads``. A
     leading ``mureo-`` and a trailing ``-bridge`` are mureo packaging
     conventions, not part of the brand, so they are stripped. An empty
-    result (e.g. ``plugin:`` with nothing after) yields ``""`` and the
-    caller falls back to the raw key.
+    result (e.g. ``plugin:mureo-``, which is nothing but conventions)
+    yields ``""`` and the caller falls back to the raw key.
     """
     name = dist.strip()
     if name.startswith("mureo-"):
