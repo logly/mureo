@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.33] - 2026-07-29
+
+### Fixed
+
+- **Advice is gated on delivery state (#479).** `/daily-check` gains a
+  **Delivery-state guard** next to the learning-state one: an entity that was
+  **not delivering for part of the period** — paused, disapproved or
+  budget-exhausted, read off `effective_status` where the platform reports one
+  and `status` otherwise — is **Watch at most, never Action needed on
+  efficiency grounds**. Its cost per result is not steady-state either: the
+  spend and results cover only the hours it actually ran, so the report must
+  state that its figures are **partial** instead of reading them as
+  performance. And pausing an entity that is already not delivering is never
+  recommended — the pause has happened; what it needs is an explanation, not
+  the same action again. `/ad-fatigue-check`'s not-running exclusion moves out
+  of the Meta bullet into a platform-independent rule — **not running is not
+  fatigued, on every platform** — keyed on `effective_status` where the
+  platform reports one and `status` otherwise; the Meta bullet keeps only its
+  `status`-vs-`effective_status` specifics.
+
+- **The external-change diff no longer falls through silently (#480).**
+  `/daily-check` step 11 now also diffs **campaign-level** status against the
+  `status` the previous run stored on the `CampaignSnapshot` — until now only
+  ad-level state was compared. The "stopped delivering" limb in `/daily-check`
+  and `/sync-state` no longer requires an `effective_status` or the literal
+  `ACTIVE`: both skills compare each stored status field against the previous
+  run's value for that **same** field, **case-insensitively**, so a platform
+  that reports a single status in its own vocabulary (the provider ABI's
+  lowercase `enabled` / `paused` / `removed`) fires the diff instead of falling
+  through. A new **Status vocabulary contract** section in `_mureo-shared`
+  documents what makes that safe: statuses are persisted **verbatim** and never
+  normalized, a platform exposing none omits the field rather than having one
+  invented for it, and the same field must be written the same way every run —
+  switching vocabulary between runs manufactures a status change that never
+  happened. The plugin / hosted-connector ad-listing clause now **reports its
+  skip**, naming the platform and saying no ad-listing tool was found, so a
+  missed or mis-inferred tool is distinguishable from a platform that genuinely
+  has nothing to report.
+
+- **`plugin:<dist>` is the one canonical plugin platform key (#481).** A plugin
+  platform's data could be written into STATE.json under one key and read back
+  under another: STATE.json, the `action_log` and the reporting dashboard all
+  agreed on `plugin:<distribution>`, while the analytics registry reported the
+  entry-point name the module registered itself under — two identifiers that
+  never reconciled, so persisted state and analytics results silently failed to
+  join. The convention is now single-sourced in `mureo/core/platform_keys.py`
+  (`plugin_platform_key()`, idempotent, plus `is_plugin_platform_key()` and
+  `plugin_distribution()`), with the `action_log` promoter and the dashboard's
+  label resolver refactored onto it and their behavior pinned byte-identical.
+  `mureo_analytics_modules_list` now reports the **canonical key** as
+  `platform` and carries the entry-point name in a new **`registry_name`**
+  field — a built-in has no plugin source and keeps `platform` equal to
+  `registry_name`, so every entry shares one shape. `mureo_analytics_run`
+  resolves a canonical key by **distribution match only**: the two input
+  shapes take disjoint paths with no fall-through, so a module that names
+  itself like another distribution's key cannot hijack it (the review
+  reproduced that hijack; a regression test now pins it), and registration
+  refuses a registry name starting with the reserved `plugin:` prefix as a
+  second, independent layer. One distribution shipping two analytics modules
+  is no longer absorbed: every entry is still listed (the ambiguity stays
+  visible via `registry_name`), the alphabetically-first registry name wins
+  deterministically, and the collision is logged. Follow-up from the #482
+  review: the "active campaigns only" ad-fetch filter in `/daily-check` and
+  `/sync-state` is now vocabulary-agnostic (`ACTIVE` / `ENABLED` / `enabled`,
+  case-insensitive).
+
 ## [0.10.32] - 2026-07-29
 
 ### Added
