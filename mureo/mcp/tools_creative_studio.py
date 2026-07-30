@@ -111,11 +111,12 @@ TOOLS: list[Tool] = [
         name="creative_studio_providers_list",
         description=(
             "List the image-generation providers available to Creative "
-            "Studio. Each entry reports its name, whether an API key is "
-            "configured (credential store or env var), its capabilities "
-            "(edit support + max size), and its model ids. Call this before "
-            "creative_studio_generate_visual to see which providers can be "
-            "selected."
+            "Studio. Each entry reports its name, whether it is configured "
+            "(an API key in the credential store / env var, or — for the "
+            "local Codex CLI provider — no key at all, just `codex login`), "
+            "its capabilities (edit support + max size), and its model ids. "
+            "Call this before creative_studio_generate_visual to see which "
+            "providers can be selected."
         ),
         inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
