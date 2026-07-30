@@ -605,14 +605,14 @@ def _register_user_scope_mcp() -> Path:
     # hardened atomic, refuse-malformed writer (mkstemp+0o600+fsync+
     # os.replace; raises ConfigWriteError rather than clobbering a
     # corrupt-but-recoverable file) instead of a plain truncating write.
-    from mureo.providers.config_writer import _atomic_write_json, _load_existing
+    from mureo.core.atomic_json import atomic_write_json, load_existing_json
 
     path = _claude_user_config_path()
-    existing = _load_existing(path)  # {} if absent; raises on malformed
+    existing = load_existing_json(path)  # {} if absent; raises on malformed
     mcp_servers = existing.setdefault("mcpServers", {})
     mcp_servers["mureo"] = _MCP_SERVER_CONFIG
     existing["mcpServers"] = mcp_servers
-    _atomic_write_json(existing, path)
+    atomic_write_json(existing, path)
     logger.info("mureo MCP registered (user scope) via fallback merge: %s", path)
     return path
 
@@ -906,20 +906,20 @@ def save_credentials(
     resolved.parent.mkdir(parents=True, exist_ok=True)
 
     # Load existing data. Reuse the hardened reader/writer from
-    # config_writer: ``_load_existing`` returns {} only when the file is
-    # absent and RAISES ConfigWriteError on malformed JSON, instead of the
-    # old ``existing = {}`` reset that silently erased every other provider's
-    # auth on a slightly-corrupt file. ``_atomic_write_json`` (tmp + fsync +
-    # os.replace + 0o600) replaces the old truncating write so a crash mid-
-    # write can't brick all providers.
-    from mureo.providers.config_writer import _atomic_write_json, _load_existing
+    # mureo.core.atomic_json: ``load_existing_json`` returns {} only when the
+    # file is absent and RAISES ConfigWriteError on malformed JSON, instead of
+    # the old ``existing = {}`` reset that silently erased every other
+    # provider's auth on a slightly-corrupt file. ``atomic_write_json`` (tmp +
+    # fsync + os.replace + 0o600) replaces the old truncating write so a crash
+    # mid-write can't brick all providers.
+    from mureo.core.atomic_json import atomic_write_json, load_existing_json
 
     # Hold the whole read-modify-write under a cross-process ``file_lock`` so
     # a concurrent Meta 53-day auto-refresh (auth._save_meta_token) or another
     # CLI/web wizard run cannot last-writer-wins away the section this call is
     # not touching (both take the same ``credentials.json.lock``).
     with file_lock(lock_path_for(resolved)):
-        existing: dict[str, Any] = _load_existing(resolved)
+        existing: dict[str, Any] = load_existing_json(resolved)
 
         if google is not None:
             _merge_google_section(existing, google, customer_id)
@@ -929,7 +929,7 @@ def save_credentials(
         # Keep a .bak of the prior good file, then write atomically. The
         # atomic writer also applies owner-only (0o600) permissions.
         backup_file(resolved)
-        _atomic_write_json(existing, resolved)
+        atomic_write_json(existing, resolved)
 
     logger.info("Credentials saved: %s", resolved)
 

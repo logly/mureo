@@ -231,7 +231,7 @@ def test_add_provider_writes_atomically(tmp_path: Path) -> None:
         captured["dst"] = os.fspath(dst)
         real_replace(src, dst)
 
-    with patch("mureo.providers.config_writer.os.replace", side_effect=_spy_replace):
+    with patch("mureo.core.atomic_json.os.replace", side_effect=_spy_replace):
         add_provider_to_claude_settings(spec, settings_path=settings_path)
 
     src = Path(captured["src"])
@@ -272,7 +272,7 @@ def test_add_provider_cleans_up_tmp_file_on_write_failure(tmp_path: Path) -> Non
         raise OSError("simulated atomic replace failure")
 
     with (
-        patch("mureo.providers.config_writer.os.replace", side_effect=_boom),
+        patch("mureo.core.atomic_json.os.replace", side_effect=_boom),
         pytest.raises(OSError),
     ):
         add_provider_to_claude_settings(spec, settings_path=settings_path)
@@ -433,7 +433,7 @@ def test_add_provider_tmp_file_is_mode_0600(tmp_path: Path) -> None:
         captured["mode"] = stat.S_IMODE(os.stat(src).st_mode)
         real_replace(src, dst)
 
-    with patch("mureo.providers.config_writer.os.replace", side_effect=_spy_replace):
+    with patch("mureo.core.atomic_json.os.replace", side_effect=_spy_replace):
         add_provider_to_claude_settings(_make_spec(), settings_path=settings_path)
 
     assert captured["mode"] == 0o600

@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.amazon_ads.endpoints import endpoint_url, request_headers
 from mureo.core import clock
-from mureo.providers.config_writer import _atomic_write_json
+from mureo.core.atomic_json import atomic_write_json
 
 if TYPE_CHECKING:
     from mureo.auth import AmazonAdsCredentials
@@ -213,7 +213,7 @@ async def generate_manifest(
     # sibling chmodded BEFORE the data is written, fsynced, then
     # ``os.replace``d, so a reader never sees a half-written manifest,
     # the file is never world-readable, and a failure leaves no debris.
-    _atomic_write_json(doc, out)
+    atomic_write_json(doc, out)
     return out
 
 

@@ -37,8 +37,8 @@ from mureo.auth import (
     load_amazon_ads_credentials,
     save_amazon_access_token,
 )
+from mureo.core.atomic_json import ConfigWriteError
 from mureo.mcp.plugin_audit import _scrub as _scrub_secrets
-from mureo.providers.config_writer import ConfigWriteError
 
 amazon_app = typer.Typer(name="amazon", help="Amazon Ads official-MCP bridge setup")
 
