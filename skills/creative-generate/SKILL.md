@@ -22,9 +22,11 @@ setup.
 
 - STRATEGY.md must exist (run the `onboard` skill first). Persona / USP / Brand
   Voice are the grounding for both copy and visuals.
-- At least one image provider key configured — `creative_studio` credentials
-  section, or the `OPENAI_API_KEY` / `GEMINI_API_KEY` / `FAL_KEY` env vars.
-  Call `creative_studio_providers_list` to see what is available.
+- At least one image provider available — either an API key configured
+  (`creative_studio` credentials section, or the `OPENAI_API_KEY` /
+  `GEMINI_API_KEY` / `FAL_KEY` env vars), **or** the local **Codex CLI**
+  provider (`codex` on PATH + `codex login`), which needs no API key. Call
+  `creative_studio_providers_list` to see what is available.
 - **Composition** (step 5) requires the optional extra:
   `pip install 'mureo[creative]'` then `playwright install chromium`. Without it
   `creative_studio_compose` returns a clear pip-hint error — you can still run
@@ -213,6 +215,7 @@ Different backends reward slightly different prompt styles:
 | **FLUX** (fal.ai) | Concrete photographic vocabulary — exact lens (85mm), aperture, and named lighting rigs land precisely | crisp product and photoreal shots where you can name the optics |
 | **gpt-image** (OpenAI) | Understands natural-language intent and complex scene logic; be explicit about mood and relationships | multi-element scenes, conceptual / abstract briefs, "the feeling of…" |
 | **Gemini image** (Google) | Strong at photoreal product / scene consistency; iterate via the edit path | consistent product renders you refine with `creative_studio_edit_visual` |
+| **codex** (local Codex CLI) | Same GPT Image engine as gpt-image, driven through your local `codex login` — no API key; generate-only (no edit path, and 1-3 min per image) | zero-setup generation when you have the Codex CLI but no image API key |
 
 When unsure which will land, **fan out with `provider="all"`** (one candidate per
 configured provider) and let the step-4 scoring loop pick the winner — do not

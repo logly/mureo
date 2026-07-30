@@ -1,16 +1,18 @@
 """Image-provider abstraction + registry for Creative Studio.
 
-An :class:`ImageProvider` is a thin, swappable adapter over a hosted
-image-generation API. mureo ships three built-ins (OpenAI, Google Gemini,
-fal.ai); third parties can register more under the
-``mureo.image_providers`` entry-point group. Discovery is fault-isolated —
-a broken plugin is skipped with an :class:`ImageProviderWarning`, never
-breaking the built-ins.
+An :class:`ImageProvider` is a thin, swappable adapter over an
+image-generation backend. mureo ships four built-ins: three hosted-API
+providers (OpenAI, Google Gemini, fal.ai) plus a local Codex CLI provider
+that needs no API key (only ``codex login``); third parties can register
+more under the ``mureo.image_providers`` entry-point group. Discovery is
+fault-isolated — a broken plugin is skipped with an
+:class:`ImageProviderWarning`, never breaking the built-ins.
 
-Provider secrets live in the ``creative_studio`` section of the credential
-store (``OPENAI_API_KEY`` / ``GEMINI_API_KEY`` / ``FAL_KEY`` also work as
-environment-variable fallbacks). Keys are read via
-:func:`_creative_studio_secret` and are NEVER logged.
+Hosted-provider secrets live in the ``creative_studio`` section of the
+credential store (``OPENAI_API_KEY`` / ``GEMINI_API_KEY`` / ``FAL_KEY`` also
+work as environment-variable fallbacks). Keys are read via
+:func:`_creative_studio_secret` and are NEVER logged. The Codex CLI provider
+has no secret — auth is the user's local ``codex login``.
 """
 
 from __future__ import annotations
@@ -162,11 +164,17 @@ def provider_error(
 
 def _builtin_providers() -> list[ImageProvider]:
     """Instantiate the built-in providers (import-local to avoid cycles)."""
+    from mureo.creative_studio.providers.codex_cli import CodexCliImageProvider
     from mureo.creative_studio.providers.fal import FalImageProvider
     from mureo.creative_studio.providers.google_images import GoogleImageProvider
     from mureo.creative_studio.providers.openai_images import OpenAIImageProvider
 
-    return [OpenAIImageProvider(), GoogleImageProvider(), FalImageProvider()]
+    return [
+        OpenAIImageProvider(),
+        GoogleImageProvider(),
+        FalImageProvider(),
+        CodexCliImageProvider(),
+    ]
 
 
 def _is_valid_provider(instance: object) -> bool:
