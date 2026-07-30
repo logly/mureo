@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -158,6 +159,10 @@ class TestGenerateManifest:
         assert p.name == "amazon_tools.json"
         assert p.parent.name == ".mureo"
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="POSIX 0o600; Windows perms are documented best-effort (NTFS ACL)",
+    )
     def test_written_file_is_0600(self, tmp_path: Path) -> None:
         import stat
 
