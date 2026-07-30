@@ -295,7 +295,7 @@ class TestRemoveMcpConfig:
             captured["dst"] = os.fspath(dst)
             real_replace(src, dst)
 
-        with patch("mureo.cli.settings_remove.os.replace", side_effect=_spy_replace):
+        with patch("mureo.core.atomic_json.os.replace", side_effect=_spy_replace):
             remove_mcp_config(settings_path=settings_path)
 
         src = Path(captured["src"])
@@ -323,7 +323,7 @@ class TestRemoveMcpConfig:
             raise OSError("simulated atomic replace failure")
 
         with (
-            patch("mureo.cli.settings_remove.os.replace", side_effect=_boom),
+            patch("mureo.core.atomic_json.os.replace", side_effect=_boom),
             pytest.raises(OSError),
         ):
             remove_mcp_config(settings_path=settings_path)
@@ -399,7 +399,7 @@ class TestRemoveMcpConfig:
             captured["mode"] = stat.S_IMODE(os.stat(src).st_mode)
             real_replace(src, dst)
 
-        with patch("mureo.cli.settings_remove.os.replace", side_effect=_spy_replace):
+        with patch("mureo.core.atomic_json.os.replace", side_effect=_spy_replace):
             remove_mcp_config(settings_path=settings_path)
 
         assert captured["mode"] == 0o600
@@ -616,7 +616,7 @@ class TestRemoveCredentialGuard:
             raise OSError("simulated replace failure")
 
         with (
-            patch("mureo.cli.settings_remove.os.replace", side_effect=_boom),
+            patch("mureo.core.atomic_json.os.replace", side_effect=_boom),
             pytest.raises(OSError),
         ):
             remove_credential_guard(settings_path=settings_path)
@@ -647,7 +647,7 @@ class TestRemoveCredentialGuard:
             captured["dst"] = os.fspath(dst)
             real_replace(src, dst)
 
-        with patch("mureo.cli.settings_remove.os.replace", side_effect=_spy_replace):
+        with patch("mureo.core.atomic_json.os.replace", side_effect=_spy_replace):
             remove_credential_guard(settings_path=settings_path)
 
         src = Path(captured["src"])
@@ -785,3 +785,11 @@ class TestRemoveResultShape:
 
         assert RemoveResult(changed=True).changed is True
         assert RemoveResult(changed=False).changed is False
+
+
+def test_config_write_error_is_core_class() -> None:
+    """settings_remove re-exports the core ConfigWriteError (post-#500)."""
+    from mureo.cli import settings_remove
+    from mureo.core.atomic_json import ConfigWriteError
+
+    assert settings_remove.ConfigWriteError is ConfigWriteError

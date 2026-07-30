@@ -1,8 +1,8 @@
 """Shared helpers for the configure-UI HTTP server.
 
 Stdlib-only utilities for request parsing, response writing, Host
-header validation, CSRF comparison, atomic JSON writes, and security
-header attachment. Reused by every endpoint in ``handlers.py``.
+header validation, CSRF comparison, and security header attachment.
+Reused by every endpoint in ``handlers.py``.
 """
 
 from __future__ import annotations
@@ -12,13 +12,9 @@ import concurrent.futures
 import contextlib
 import json
 import logging
-import os
 import secrets as _secrets
-import tempfile
 import urllib.parse
 from typing import TYPE_CHECKING, Any
-
-from mureo.fsutil import secure_chmod
 
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler
@@ -188,31 +184,6 @@ def send_bytes(
 def send_error_json(handler: BaseHTTPRequestHandler, status: int, message: str) -> None:
     """Emit a JSON error envelope rather than the default text body."""
     send_json(handler, {"error": message}, status=status)
-
-
-def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Write ``payload`` to ``path`` atomically (temp file + rename).
-
-    Sets mode 0o600 on the final file so credential-adjacent JSON does
-    not become world-readable. Parent directory is created if absent.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=path.name + ".",
-        suffix=".tmp",
-        dir=str(path.parent),
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh, ensure_ascii=False, indent=2)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp_name, path)
-        secure_chmod(path)
-    except Exception:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_name)
-        raise
 
 
 def read_json_safe(path: Path) -> dict[str, Any]:

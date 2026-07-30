@@ -17,9 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from mureo.core.atomic_json import load_existing_json
+from mureo.core.atomic_json import atomic_write_json, load_existing_json
 from mureo.fsutil import backup_file
-from mureo.web._helpers import atomic_write_json, read_json_safe
+from mureo.web._helpers import read_json_safe
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -232,7 +232,7 @@ def write_credential_env_var(
     merged[target.section] = section_payload
 
     backup_file(path)  # keep the prior good file before the overwrite
-    atomic_write_json(path, merged)
+    atomic_write_json(merged, path)
     # Log the field, not the value.
     logger.info("Wrote credential env var %s into %s", name, target.section)
 
@@ -283,6 +283,6 @@ def remove_credential_section(
     merged: dict[str, Any] = dict(existing)
     merged.pop(section, None)
     backup_file(path)  # keep the prior good file before the overwrite
-    atomic_write_json(path, merged)
+    atomic_write_json(merged, path)
     logger.info("Removed mureo credential section %s", section)
     return True
