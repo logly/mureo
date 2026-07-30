@@ -116,6 +116,12 @@ mureo/
 │   ├── _page_posts.py       # PagePostsMixin (page posts, boost)
 │   ├── _instagram.py        # InstagramMixin (accounts, media, boost)
 │   └── _hash_utils.py       # SHA-256 hashing utilities for CAPI user data
+├── amazon_ads/              # Amazon Ads official-MCP bridge (mureo-mediated, #113/#121)
+│   ├── bridge.py            # AmazonAdsBridge — MCPToolProvider (pure mcp_tools() + forwarding handler)
+│   ├── endpoints.py         # Regional endpoint URLs (na / eu / fe) + request headers
+│   ├── lwa.py               # Login with Amazon token exchange (mint / refresh)
+│   ├── manifest.py          # `mureo amazon refresh-manifest` → ~/.mureo/amazon_tools.json
+│   └── provider.py          # Registry registration for the in-tree bridge (first-wins on `amazon_ads`)
 ├── search_console/          # Google Search Console API client (reuses Google OAuth2 credentials)
 │   └── client.py            # SearchConsoleApiClient
 ├── analysis/                # Cross-platform analysis utilities
@@ -329,7 +335,8 @@ Agent (Claude Code / Cursor / etc.)
   ▼
 server.py :: _create_server()
   │
-  ├── list_tools()  → returns _ALL_TOOLS (GOOGLE_ADS_TOOLS + META_ADS_TOOLS + SEARCH_CONSOLE_TOOLS)
+  ├── list_tools()  → returns _ALL_TOOLS (GOOGLE_ADS_TOOLS + META_ADS_TOOLS + SEARCH_CONSOLE_TOOLS
+  │                                        + … + plugin / bridge tools appended last)
   │
   └── call_tool(name, arguments)
         │
@@ -357,6 +364,14 @@ server.py :: _create_server()
         │       │   ├── create_search_console_client(creds)
         │           └── client.method() → list[TextContent]
         │
+    │   ├── name in _PLUGIN_NAMES? → provider.handle_mcp_tool(name, args)
+        │     │   (entry-point provider plugins AND the in-tree Amazon Ads bridge)
+        │     │
+        │       │   ├── plugin throttle (shared bucket, per-tool for read-only)
+        │       │   ├── forward to the provider / the official Amazon MCP endpoint
+        │       │   ├── record_plugin_call(...) → append-only jsonl audit (secrets scrubbed)
+        │           └── successful mutation → action_log (platform="plugin:<dist>")
+        │
         └── else → ValueError("Unknown tool")
 ```
 
@@ -366,6 +381,7 @@ Key implementation details:
 2. **Handler dispatch** uses a `dict[str, Callable]` mapping tool names to async handler functions.
 3. **Error handling**: the `@api_error_handler` decorator catches exceptions and converts them to `TextContent` error messages, so the agent always gets a text response.
 4. **Credential loading** happens per-request. Each handler call loads credentials from file/env, creates a fresh client, and executes the operation.
+5. **Plugin / bridge branch.** Tool families that are not built in are collected once at server start via `collect_plugin_tools()` and appended to `_ALL_TOOLS`; a name collision with a built-in is dropped. Both third-party `mureo.providers` entry-point plugins and the in-tree **Amazon Ads bridge** (`mureo/amazon_ads/`, registered by `register_amazon_provider()` before entry-point discovery so the in-tree bridge wins the `amazon_ads` name) ride this one path, so they get the same audit / throttle / strategy-gate / `action_log` treatment. The bridge's `mcp_tools()` is pure — it reads `~/.mureo/amazon_tools.json` only, with no credentials and no network — so a missing or broken manifest means "no Amazon tools", never a startup failure.
 
 ## Rate Limiting
 
@@ -385,6 +401,7 @@ Each platform throttler combines two mechanisms:
 | Google Ads | 10 | 5 | *(none)* | Conservative defaults; Google uses dynamic server-side limits |
 | Meta Ads | 20 | 10 | 50,000 | Tuned to stay within the Business Use Case (BUC) quota |
 | Search Console | 5 | 5 | *(none)* | Reuses Google OAuth2 credentials |
+| Plugin / bridge tools | 5 | 5 | *(none)* | One shared conservative bucket for provider plugins and the Amazon Ads bridge; a tool that declares its own throttle hint gets a private bucket |
 
 ### Integration
 
@@ -398,17 +415,20 @@ Each platform throttler combines two mechanisms:
 1. Handler receives tool call arguments
      │
 2. load_google_ads_credentials() / load_meta_ads_credentials()
+   / load_amazon_ads_credentials()
      │
  │   ├── Try ~/.mureo/credentials.json
      │     └── Parse JSON → extract platform section
      │
      └── Fallback to environment variables
-           └── GOOGLE_ADS_* / META_ADS_*
+           └── GOOGLE_ADS_* / META_ADS_* / AMAZON_ADS_*
      │
 3. If credentials found:
      │
  │   ├── Google Ads: build OAuth2 Credentials → GoogleAdsClient → GoogleAdsApiClient
-     └── Meta Ads: MetaAdsApiClient(access_token, ad_account_id)
+ │   ├── Meta Ads: MetaAdsApiClient(access_token, ad_account_id)
+     └── Amazon Ads: mint/refresh the LwA access token → Bearer header → forward
+           to the regional official-MCP endpoint
      │
 4. If no credentials: return error TextContent (no exception)
 ```
@@ -418,6 +438,10 @@ The credential resolution logic is centralized in `mureo/auth.py`. Both the CLI 
 ### Meta Ads Token Auto-Refresh
 
 When loading Meta Ads credentials, `mureo/auth.py` checks the `token_obtained_at` timestamp in `credentials.json`. If the Long-Lived Token is 53+ days old (7-day safety margin before the 60-day expiry), mureo automatically exchanges it for a fresh token via the Meta Graph API. This requires `app_id` and `app_secret` to be present in the credentials. The refresh is protected by an `asyncio.Lock` to prevent concurrent refresh races, and the updated token is written atomically to `credentials.json` with `0600` file permissions. If the refresh fails (network error, invalid app credentials, etc.), mureo falls back to the existing token and logs a warning.
+
+### Amazon Ads Token Minting and Refresh
+
+The Amazon bridge is the reason mureo sits in the request path rather than letting the host talk to Amazon's official MCP directly. When both `refresh_token` and `client_secret` are present in the `amazon_ads` section, `mureo/amazon_ads/lwa.py` performs a Login-with-Amazon exchange (`grant_type=refresh_token` against the regional token host) before the first forwarded call when no access token is stored, and exactly one refresh-and-retry on the first failure of a forwarded call — one exchange per dispatch, never a loop. The new token is persisted through `save_amazon_access_token()`, which takes the same cross-process `credentials.json.lock` and atomic `0600` write path as every other credentials writer, and refuses to overwrite a malformed file rather than dropping other providers' sections. See [amazon-ads.md](amazon-ads.md).
 
 ## Command-Based Workflow System
 

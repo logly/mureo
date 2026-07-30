@@ -100,7 +100,7 @@ EFFICIENCY_STABILIZE
 - Target: CPA < 5,000 JPY
 - Deadline: 2026-06-30
 - Current: CPA 6,200 JPY
-- Platform: Google Ads, Meta Ads
+- Platform: Google Ads, Meta Ads, Amazon Ads
 - Priority: HIGH
 
 ## Goal: Increase monthly leads to 100
@@ -136,7 +136,7 @@ Goal sections define quantitative marketing objectives. Each goal uses the `## G
 | `Target` | Yes | Measurable success criterion (e.g., `CPA < 5,000 JPY`) |
 | `Deadline` | Yes | Target date in `YYYY-MM-DD` format |
 | `Current` | No | Current baseline value for tracking progress |
-| `Platform` | No | Applicable ad platforms (e.g., `Google Ads, Meta Ads`) |
+| `Platform` | No | Applicable ad platforms (e.g., `Google Ads, Meta Ads`, `Amazon Ads`, `TikTok Ads`, or a plugin platform) |
 | `Priority` | No | `HIGH`, `MEDIUM`, or `LOW` |
 
 Multiple goals can coexist in a single STRATEGY.md. Agents should reference goals when making optimization decisions to ensure actions are aligned with measurable business objectives.
@@ -161,16 +161,34 @@ An **optional** `## Guardrails` section lets the operator declare hard limits
 that mureo enforces **deterministically, before dispatch, regardless of what
 the LLM decides** — via the built-in `StrategyPolicyGate` (a
 `mureo.core.policy.PolicyGate` that ships in OSS). This is stronger than a
-prose instruction the model could overlook.
+prose instruction the model could overlook. How strong depends on the platform
+— read *Coverage* below before promising an operator a hard cap.
 
-**Coverage:** the gate runs inside mureo's own MCP dispatch, so it hard-enforces
-every **mureo-dispatched** tool call — native `google_ads_*` / `meta_ads_*`,
-`mureo_*`, and plugin tools routed through mureo. It does **NOT** cover a
-**hosted connector** (e.g. TikTok's `tt-ads-*`, or an official Google/Meta MCP
-used directly as a connector): those calls go client→platform and never reach
-mureo's dispatcher, so the hard gate cannot see them. For hosted connectors,
-guardrail adherence remains an instruction the skill must follow (or, when
-available, an advisory pre-check the skill calls before mutating).
+**Coverage:** the gate runs inside mureo's own MCP dispatch, so it **reaches**
+every **mureo-dispatched** tool call — but the **strength of the check differs
+by platform**: exact argument keys on native `google_ads_*` / `meta_ads_*`
+(**hard enforcement**), best-effort pattern-matched keys on plugin / bridged
+platforms (**strong but not guaranteed**), and hosted connectors bypass mureo
+entirely (**no gate at all**). In detail:
+
+- **Native `google_ads_*` / `meta_ads_*`** (and `mureo_*`) — the gate reads the
+  **exact argument keys** it knows (`daily_budget`, `bid_amount`,
+  `cpc_bid_micros`, …). This is the hard, deterministic case.
+- **Plugin / bridged platforms** routed through mureo (including **Amazon
+  Ads**, `plugin:mureo-amazon-ads-bridge`) — the gate matches **budget/bid-like
+  argument keys best-effort**, by pattern. A tool that declares its budget / bid
+  keys in its MCP metadata is matched **exactly** and that declaration takes
+  precedence; otherwise coverage depends on how the tool happens to name its
+  arguments. So this is **not** the hard case: treat plugin-platform caps as
+  **strong but not guaranteed**, tell the operator so, and verify the resulting
+  values after the first mutations on a new platform.
+
+It does **NOT** cover a **hosted connector** (e.g. TikTok's `tt-ads-*`, or an
+official Google/Meta MCP used directly as a connector): those calls go
+client→platform and never reach mureo's dispatcher, so the hard gate cannot see
+them. For hosted connectors, guardrail adherence remains an instruction the
+skill must follow (or, when available, an advisory pre-check the skill calls
+before mutating).
 
 The section is machine-readable: one `- key: value` bullet per rule. Recognized
 keys (all optional):
@@ -267,6 +285,18 @@ should surface it to the operator rather than retrying.
           "notes": "Learning period ends ~April 5. Do not change bids."
         }
       ]
+    },
+    "plugin:mureo-amazon-ads-bridge": {
+      "account_id": "ENTITY1A2B3C4D5E",
+      "campaigns": [
+        {
+          "campaign_id": "444555666",
+          "campaign_name": "SP - Brand Defense",
+          "status": "ENABLED",
+          "daily_budget": 12000.0,
+          "campaign_goal": "Defend brand terms on the product detail page"
+        }
+      ]
     }
   },
   "action_log": [
@@ -279,10 +309,25 @@ should surface it to the operator rather than retrying.
       "summary": "Excluded informational queries misaligned with Persona",
       "metrics_at_action": {"cpa": 5200, "conversions": 45, "clicks": 1200},
       "observation_due": "2026-04-15"
+    },
+    {
+      "timestamp": "2026-04-01T11:05:00+09:00",
+      "action": "Raised daily budget 10000 -> 12000",
+      "platform": "plugin:mureo-amazon-ads-bridge",
+      "campaign_id": "444555666",
+      "command": "/budget-rebalance",
+      "summary": "Shifted spend toward the brand-defense campaign",
+      "observation_due": "2026-04-15"
     }
   ]
 }
 ```
+
+> The second platform key shows the canonical `plugin:<dist>` shape used for
+> every mureo-dispatched plugin / bridged platform — Amazon Ads is
+> `plugin:mureo-amazon-ads-bridge`. Use the identical string in the
+> `platforms` map and in each `action_log` entry's `platform`; see
+> `../_mureo-shared/SKILL.md` → *Canonical platform key*.
 
 ### Campaign Snapshot Fields
 

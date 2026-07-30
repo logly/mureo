@@ -241,8 +241,9 @@ decided.
 
 Credentials are loaded from `~/.mureo/credentials.json` or
 environment variables and never transmitted anywhere except the
-official Google Ads, Meta Ads, and Search Console APIs. mureo itself
-has no telemetry or phone-home behavior.
+official Google Ads, Meta Ads, and Search Console APIs, the Login with
+Amazon token endpoint, and the official Amazon Ads MCP endpoint. mureo
+itself has no telemetry or phone-home behavior.
 
 Each successful save keeps a single rolling backup of the previous
 file at `~/.mureo/credentials.json.bak` (owner-only `0o600`, covered
@@ -250,6 +251,46 @@ by the credential-guard hook like every file under `~/.mureo`). The
 backup therefore holds the *previous* generation of your keys: when
 you rotate credentials, revoke the old key at the platform — do not
 rely on overwriting the file alone to retire it.
+
+### Amazon Ads credential handling (LwA)
+
+Amazon Ads is reached through a **mureo-mediated bridge** to Amazon's
+official MCP, so the Login with Amazon (LwA) credentials are mureo's
+responsibility rather than the AI host's — they never enter the host's
+own MCP configuration. See [docs/amazon-ads.md](docs/amazon-ads.md).
+
+**Storage.** `client_id`, `refresh_token`, `client_secret`, and the
+minted `access_token` live in the `amazon_ads` section of
+`~/.mureo/credentials.json` at `0o600`, alongside every other
+provider's section and covered by the same credential-guard hook.
+Every write — including the automatic access-token refresh — goes
+through the shared hardened writer: it takes the cross-process
+`credentials.json.lock` so a concurrent CLI / web save cannot
+last-writer-wins away another provider's section, and writes via
+temp file + `fsync` + `os.replace` so a crash mid-write cannot leave a
+truncated file. A malformed existing `credentials.json` aborts the
+write with an error instead of being reset, so a slightly-corrupt file
+never silently erases your Google / Meta credentials.
+
+**Log and error scrubbing.** LwA secrets are pattern-scrubbed before
+anything is written or printed: `Bearer <…>`, `Atza|…` (access tokens)
+and `Atzr|…` (refresh tokens) are replaced with `***` in the plugin
+audit log (`mureo/mcp/plugin_audit.py`) and in the `mureo amazon` CLI's
+error output, which reuses the same scrubber. Tokens and secrets do not
+appear in tool error messages.
+
+**Rotation.** LwA refresh tokens are long-lived but **not permanent** —
+plan on re-authorizing roughly annually. Amazon signals a dead refresh
+token with `invalid_grant`, and mureo surfaces that verbatim; there is
+nothing it can do automatically at that point. To rotate: re-authorize
+your LwA app in the Login with Amazon console to obtain a **new**
+refresh token, paste it into the **Refresh Token** field of the Amazon
+Ads card in `mureo configure` (or update `AMAZON_ADS_REFRESH_TOKEN` /
+the credentials file), and the next Amazon tool call mints a fresh
+access token from it. Revoke the old token at Amazon — the previous
+generation persists in `~/.mureo/credentials.json.bak` until the next
+save overwrites it. Rotate the `client_secret` the same way if it may
+have been exposed.
 
 ## Security Best Practices for Users
 

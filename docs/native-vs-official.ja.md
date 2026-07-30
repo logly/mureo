@@ -1,4 +1,4 @@
-# mureo標準ツール と 公式MCP の違い（Google / Meta）
+# mureo標準ツール と 公式MCP の違い（Google / Meta / Amazon）
 
 > 状態: 2026-06-16。各広告プラットフォームの公式MCPはベータであり、提供ツール
 > は時期によって変化します。特定機能に依存する前に最新状態を再確認してください。
@@ -12,6 +12,22 @@ Console、Yahoo、LINE、Logly）を提供します。一方で各広告プラ�
 インストール・登録できます。両者は排他ではありません。mureo がコントロール
 プレーン（司令塔）であり、公式MCP はプラットフォーム自身のAPIへの薄い
 ドライバです。
+
+現在の mureo には、接続方式が **3 種類** あります。
+
+| 方式 | 認証情報の保管場所 | リクエスト経路 | 例 |
+|---|---|---|---|
+| **mureo標準（native）** | mureo（`~/.mureo/credentials.json`） | mureo → プラットフォームAPI | Google Ads、Meta Ads、Search Console |
+| **公式MCP・ホスト登録型** | AIホスト / コネクタ側 | クライアント → プラットフォームMCP（mureo を経由しない） | `google-ads-official`、`meta-ads-official`、TikTok のホスト型MCP |
+| **公式MCP・mureo 中継（ブリッジ）型** | mureo（`~/.mureo/credentials.json`） | mureo → プラットフォームMCP | **Amazon Ads** |
+
+3 つ目が重要なのは、2 つ目では mureo の安全機構が働かないからです。ホストに
+登録された公式MCPの呼び出しは mureo のディスパッチャに届かないため、ハード
+ゲート、監査、`action_log` への記録のいずれも適用できません。ブリッジは、
+mureo が標準クライアントを持たないプラットフォームに対してもそれらを維持する
+ための仕組みです。詳細は
+[Amazon Ads — mureo 中継（ブリッジ）型](#amazon-ads--mureo-中継ブリッジ型)
+を参照してください。
 
 Google と Meta における実務上の違い:
 
@@ -144,6 +160,51 @@ CAPI送信、リード、テスト、ルール）があります。mureo標準�
 
 ---
 
+## Amazon Ads — mureo 中継（ブリッジ）型
+
+mureo には **Amazon Ads の標準クライアントがありません**。Amazon は公式MCPを
+公開しており、mureo はそれを AI ホストに渡すのではなく、*ユーザーに代わって*
+接続します。
+
+```
+Claude  →  ローカルの mureo MCP  →  Amazon のホスト型MCPエンドポイント
+```
+
+### ブリッジにする理由
+
+- **認証情報がホストの設定に入らない。** Login with Amazon（LwA）の client id /
+  refresh token / client secret は `~/.mureo/credentials.json` の `amazon_ads`
+  セクション（`0600`）に留まります。ホスト登録型ならホスト側のMCP設定に置く
+  必要がありました。
+- **トークンの自動更新には mureo が経路上にいる必要がある。** LwA のアクセス
+  トークンは約60分で失効します。mureo は最初の転送前に発行し、失効による失敗
+  時にはちょうど1回だけ更新して再試行します。失敗を観測し、refresh token を
+  交換し、再試行するのは経路上にいる mureo だけです。
+- **安全機構にフル参加する。** mureo のディスパッチャを通るため、Amazon の
+  ツール呼び出しも監査・スロットリング・戦略ゲートの対象になり、成功した変更
+  操作は `platform="plugin:mureo-amazon-ads-bridge"` として `STATE.json` の
+  `action_log` に観測期限付きで記録されます。ホスト登録型の公式MCPでは実現
+  できない点です。
+
+### 何が得られ、何が得られないか
+
+| | mureo標準（Google / Meta） | 公式MCP・ホスト登録型 | Amazon ブリッジ |
+|---|:---:|:---:|:---:|
+| 認証情報が `~/.mureo/credentials.json` に留まる | ○ | × | ○ |
+| mureo によるトークン自動更新 | ○ | × | ○ |
+| 監査ログ / `action_log` への記録 | ○ | × | ○ |
+| ディスパッチ前のハードなガードレール適用 | ○（引数キーの厳密一致） | × | ベストエフォート（引数キーのパターン一致） |
+| ロールバック | 許可リスト対象の操作は自動反転可能 | × | エージェントが書いた反転ヒントは記録される。変更前状態の自動取得は未実装 |
+| ツール名・分類体系 | mureo のもの | プラットフォームのもの | プラットフォームのもの（`campaign_management-*`、`account_management-*`） |
+| mureo の詳細分析（異常検知の基準値、RSA監査、CV定義の不一致検出） | ○ | × | 未対応（#120） |
+| mureo MCP サーバーが停止していても使える | × | ○ | × |
+| BYOD / `mureo demo`（CSV、ライブAPI不要） | ○ | × | ×（設計上、対象外） |
+
+セットアップ手順、環境変数、注意点の全容は
+[amazon-ads.ja.md](./amazon-ads.ja.md) を参照してください。
+
+---
+
 ## 共存のしくみ
 
 mureo が標準で対応するプラットフォームの公式プロバイダをインストールすると、
@@ -166,3 +227,7 @@ mureo は自身のMCPサーバーブロックに `MUREO_DISABLE_<PLATFORM>=1` �
   データ面（GoogleでのGAQL生クエリ）が欲しいとき、または Meta のホスト型
   コネクタ経由でライブ運用を動かしたいとき — 欠落とガードレールを補うため、
   mureo標準と併用するのが理想です。
+- **mureo 中継（ブリッジ）型を使う場面:** mureo に標準クライアントが無い
+  プラットフォームでも、認証情報・監査証跡・ゲートを mureo 側に置いておきたい
+  とき。現時点の該当例は Amazon Ads で、mureo が Amazon に対応する唯一の
+  方式でもあります。

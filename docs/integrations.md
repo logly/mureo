@@ -1,6 +1,6 @@
 # External Tool Integration Guide
 
-mureo's core value is orchestration — knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads, Meta Ads, and Google Search Console. For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
+mureo's core value is orchestration — knowing *what* to do, *when*, and *why* across multiple marketing platforms. mureo includes built-in integrations for Google Ads, Meta Ads, and Google Search Console, plus official-MCP platforms it brings in itself: **Amazon Ads** (bridged through mureo) and **TikTok Ads** (hosted connector). For analytics and CRM data that mureo does not cover directly, you can connect third-party MCP servers alongside mureo in the same client. This guide explains how.
 
 ## How It Works
 
@@ -165,6 +165,40 @@ Then run `/mcp` in Claude Code, select `tiktok-ads`, choose **Authenticate**, an
 
 Interactive browser OAuth via your TikTok for Business account on first connect. mureo never stores or handles a TikTok token — Claude Code (or a Claude.ai custom connector) brokers the sign-in. These credentials are separate from your other platform credentials.
 
+## Amazon Ads
+
+### Status: Official MCP — first-class mureo support (mureo-mediated bridge)
+
+Amazon publishes an official **Amazon Ads MCP**. Unlike TikTok's, it is not registered with your AI host: mureo connects to it **on your behalf**, so the request path is
+
+```
+Claude  →  local mureo MCP  →  Amazon hosted MCP endpoint
+```
+
+Two things follow from that. Your Login with Amazon (LwA) credentials stay in the `amazon_ads` section of `~/.mureo/credentials.json` and **never enter the host's own MCP configuration**; and because mureo is in the path, it can mint and **auto-refresh** the short-lived LwA access token for you (one exchange per dispatch, never a loop). The trade-off is that Amazon's tools are available only while the mureo MCP server is running.
+
+Every Amazon call rides mureo's normal safety layer — audit, throttling, strategy gating, and `action_log` promotion for mutations (`platform=plugin:mureo-amazon-ads-bridge`) with an observation window.
+
+### Configuration
+
+1. Obtain a Login with Amazon app and Amazon Ads API access: `client_id`, plus (recommended) `refresh_token` + `client_secret`.
+2. Enter them in the **Amazon Ads** card of the **Plugin credentials** section of the `mureo configure` dashboard — or set the `AMAZON_ADS_*` environment variables, or edit the `amazon_ads` section of `~/.mureo/credentials.json` by hand.
+3. Build the local tool manifest, then restart the MCP server:
+
+```bash
+mureo amazon refresh-manifest
+```
+
+Amazon's tools then appear under **Amazon's own names** (e.g. `campaign_management-*`, `account_management-*`) — mureo does not remap official-MCP tool names.
+
+> **Note**: there is no browser sign-in wizard for Amazon yet — the configure card is a paste form. LwA refresh tokens also expire roughly annually; re-authorize and paste the new one when Amazon answers with `invalid_grant`.
+
+### Authentication
+
+`client_id` plus **either** `access_token` **or both** of `refresh_token` and `client_secret`. With the pair, mureo mints the access token before the first forwarded call and refreshes it once on expiry, persisting it atomically at `0600`. Full walkthrough, environment-variable table, and caveats: [`amazon-ads.md`](amazon-ads.md).
+
+> **Scope**: mureo's deep per-platform analytics (anomaly baselines, `result_indicator` CV-mismatch, RSA audit) are not available for Amazon yet — tracked in issue #120. Treat Amazon read findings as advisory. Amazon is also not part of BYOD by design.
+
 ## Future Platforms
 
 The following platforms are planned for integration as their official or community MCP servers mature:
@@ -172,7 +206,6 @@ The following platforms are planned for integration as their official or communi
 | Platform | Status | Expected Value |
 |----------|--------|----------------|
 | LinkedIn Ads | Planned | B2B audience targeting coordination, ABM campaign alignment |
-| Amazon Ads | Planned | E-commerce ad spend coordination, product-level ROAS |
 | Microsoft Ads | Planned | Search campaign coordination alongside Google Ads |
 
 **Pattern**: As official MCPs become available from these platforms, add them to your `.mcp.json` alongside mureo. mureo's workflow commands will incorporate the additional data opportunistically -- no code changes required.

@@ -130,7 +130,7 @@ Detailed step-by-step:
 - [`docs/byod.md#google-ads-setup`](byod.md#google-ads-setup) — Google Ads template + filling instructions
 - [`docs/byod.md#meta-ads-setup`](byod.md#meta-ads-setup) — Meta Ads Saved Report (recognized in 9 languages: English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français)
 
-The exports are independent — you can start with one platform and add the other later. Search Console and GA4 are not part of BYOD; they require the Live API path.
+The exports are independent — you can start with one platform and add the other later. Search Console, GA4, Amazon Ads, and TikTok Ads are not part of BYOD; they require the Live API path. (Amazon Ads is bridged through the official Amazon Ads MCP and has no BYOD bundle by design — see [`docs/amazon-ads.md`](amazon-ads.md).)
 
 > **BYOD and Demo run on mureo-native only.** They are served by mureo's CSV-backed MCP tools; the official platform MCPs (`mureo providers add …` / the Claude.ai Meta connector) are the Live-API path and cannot read BYOD/demo data. Don't route a platform to the official MCP (or `mureo providers add` it) if you analyze it via BYOD or the demo — keep mureo-native enabled for it. See [docs/byod.md](byod.md#why-byod) → *Compatibility*.
 
@@ -189,7 +189,7 @@ Same as chat. If you connected the workspace folder, Cowork can also open `<work
 
 # Auth (Live API)
 
-Connect mureo directly to Google Ads / Meta Ads APIs. Required for actually executing changes (`/rescue`, `/budget-rebalance`, `/creative-refresh`, `mureo rollback apply`) and for GA4 / Search Console support.
+Connect mureo directly to Google Ads / Meta Ads APIs. Required for actually executing changes (`/rescue`, `/budget-rebalance`, `/creative-refresh`, `mureo rollback apply`) and for GA4 / Search Console support. **Amazon Ads** joins here too, but through a different route: mureo bridges the official Amazon Ads MCP rather than calling an ad API directly — see [`docs/amazon-ads.md`](amazon-ads.md).
 
 ## Step 1 — Get credentials
 
@@ -197,6 +197,7 @@ Connect mureo directly to Google Ads / Meta Ads APIs. Required for actually exec
 |---|---|
 | **Google Ads** | [Developer Token](https://developers.google.com/google-ads/api/docs/get-started/dev-token) + OAuth Client ID + Client Secret |
 | **Meta Ads** | [Meta for Developers](https://developers.facebook.com/) App ID + App Secret (development mode is fine) |
+| **Amazon Ads** | A Login with Amazon (LwA) app: Client ID + (recommended) Refresh Token + Client Secret. See [`docs/amazon-ads.md`](amazon-ads.md) |
 | **GA4 / Search Console** | OAuth login (no developer token); the wizard handles this |
 
 > **Approval timing**: Google Ads developer-token approval can take 1–3 weeks. Use BYOD in the meantime — switch to Auth once approved.
@@ -215,6 +216,8 @@ mureo setup claude-code             # interactive OAuth wizard runs as part of s
 ```
 
 The setup command opens a local web wizard at `http://127.0.0.1:<random-port>/`, where you paste each token / secret in the appropriate field and complete the OAuth flow in the same browser. Skip individual platforms with `--no-google-ads` / `--no-meta-ads` if you only want one of them.
+
+> **Amazon Ads** has no browser sign-in wizard yet. Open `mureo configure`, scroll the dashboard to **Plugin credentials**, fill the **Amazon Ads** card by hand (or set the `AMAZON_ADS_*` env vars), then run `mureo amazon refresh-manifest` once and restart the MCP server. Full walkthrough: [`docs/amazon-ads.md`](amazon-ads.md).
 
 ### B. Auth in Claude Desktop chat
 
