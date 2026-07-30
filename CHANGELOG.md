@@ -7,6 +7,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.34] - 2026-07-30
+
+### Added
+
+- **`mureo --version` and a `mureo version` subcommand (#490, fixes #487).**
+  The first thing a developer runs after `pip install mureo` had no answer:
+  neither an eager `--version` flag nor a `version` subcommand existed, so the
+  installed version was reachable only through `pip show`. Both now print the
+  same single `mureo <version>` line from one resolver — **installed
+  distribution metadata first** (`importlib.metadata.version("mureo")`),
+  falling back to the in-tree `mureo.__version__` when that metadata is
+  unavailable, so a source checkout or a vendored copy answers instead of
+  raising. `--version` is an eager option on the root callback: it is handled
+  before any subcommand runs, and needs no credentials, no config and no
+  network. Because that fallback would let a release bump touching only
+  `pyproject.toml` make the CLI lie about its own version, a new **drift
+  guard** pins `mureo.__version__` to `pyproject.toml` — the same guard shape
+  `tests/test_plugin_manifests.py` already applies to the plugin manifests —
+  and the `--help` tagline is pinned by test alongside it. 11 new tests.
+
+- **A quickstart smoke test now guards the README's first-run path (#493,
+  fixes #488).** The no-credentials quickstart — `pip install mureo`, `mureo
+  setup claude-code --skip-auth`, `mureo demo init --scenario
+  seasonality-trap` — is the funnel entry for every first-time user, and
+  nothing guarded it: the unit suite mocks the filesystem and never installs
+  the wheel, so a broken console entry point, a setup step that wrote nowhere,
+  or a demo bundle that stopped importing would have been reported by
+  strangers rather than by CI. `scripts/quickstart_smoke.sh` now runs that
+  path end to end in a **throwaway virtualenv and a throwaway `HOME`** — the
+  `~/.claude.json`, `~/.claude/settings.json`, `~/.claude/skills/` and
+  `~/.mureo/byod/` writes are asserted inside the sandbox, so the assertions
+  are meaningful and the developer's real Claude Code config is never touched
+  — and every step is gated on output free of `FutureWarning`,
+  `DeprecationWarning` and `Traceback`. All the logic lives in the script so a
+  red CI run reproduces locally with one command; the new
+  `.github/workflows/quickstart-smoke.yml` only picks the interpreter and the
+  install spec, running the checkout under **Python 3.10 and 3.12** on every
+  push and pull request to `main`. A weekly **from-PyPI variant** runs the
+  same assertions against the published wheel, catching breakage a checkout
+  install cannot see (missing package data, a bad dependency pin); it is
+  schedule- and dispatch-only, so it never blocks a pull request.
+
+### Fixed
+
+- **The CLI no longer imports the Google SDKs eagerly (#493, fixes #486).**
+  Under Python 3.10, two `google.api_core` `FutureWarning` blocks printed
+  ahead of any mureo output on **every** command — `--help`, `demo init`,
+  `byod status`, `setup <agent> --skip-auth`, `configure` — so the first thing
+  a new user saw after `pip install mureo` was four lines of vendor warning
+  noise. The cause was import placement, not the warnings themselves:
+  `mureo.cli.main` reaches `mureo.auth` through `mureo.cli.auth_cmd`, and both
+  `mureo.auth` and `mureo.auth_setup` pulled the platform SDKs in at module
+  scope, directly and through the account-discovery re-exports whose packages
+  load the Google Ads SDK on import. Credential *loading* needs no SDK; only
+  client *construction* does. The SDK imports now sit inside
+  `create_google_ads_client`, `create_search_console_client`,
+  `create_meta_ads_client` and `build_google_flow`, and the
+  `list_accessible_accounts` / `list_meta_ad_accounts` re-exports resolve on
+  first access through a module-level `__getattr__` (PEP 562) on both
+  `mureo.auth_setup` and `mureo.cli.web_auth`. Deferring in `auth_setup` alone
+  was not enough for `mureo configure`: a top-level `from mureo.auth_setup
+  import list_accessible_accounts` *triggers* that `__getattr__` at import
+  time and loads the SDK anyway. **This is a root fix — no warnings filter was
+  added, and nothing is being suppressed.**
+
+  **Backward compatibility is behavioral, not just nominal.** The long-
+  documented patch targets `mureo.auth_setup.list_accessible_accounts` /
+  `list_meta_ad_accounts` and their `mureo.cli.web_auth` counterparts still
+  *intercept* the wizards, because the in-module call sites resolve each name
+  through module-namespace attribute lookup rather than a function-local
+  `from mureo.<platform>.accounts import ...`. Both forms are lazy, but only
+  attribute lookup lets a `mock.patch` / `monkeypatch.setattr` binding shadow
+  `__getattr__`; the function-local import silently bypasses the patch and
+  lets the real networked call run while the mock reports zero calls. Code
+  review reproduced exactly that bypass — mocked tests making live API calls
+  — and it is now pinned by mutation-verified behavioral tests in
+  `tests/test_public_account_listing.py`.
+
+  The hygiene itself is guarded by `tests/test_cli_import_hygiene.py`, which
+  runs in subprocesses because `sys.modules` state is global: importing
+  `mureo.cli.main`, `mureo.auth`, `mureo.auth_setup` or `mureo.cli.web_auth`
+  must leave every Google module out of `sys.modules` and write nothing to
+  stderr, `mureo --help` / `--version` / `byod --help` must be noise-free
+  under `python -W default`, and the deferred paths must still work — building
+  a Google Ads client, a Search Console client, a Meta client, and the Google
+  OAuth flow each import their SDK on demand.
+
+### Docs
+
+- **TikTok Ads is documented, and setup leads with `mureo configure` (#489).**
+  Two follow-ups to the README restructure (#485), applied to `README.md` and
+  `README.ja.md` alike. TikTok Ads shipped as the `tiktok-ads-official`
+  provider — TikTok's official hosted MCP server, browser OAuth on first
+  connect, no developer token, `tiktok_ads` a first-class platform key in
+  workflow commands, reports and the action log — but neither README
+  mentioned it. It now appears in the platform lists (intro and
+  cross-platform sections) and in a new connector paragraph in the reference
+  section, renamed to cover TikTok Ads alongside GA4 and other MCP servers,
+  with the scope stated honestly: mureo-native analytics (anomaly baselines,
+  RSA audit) remain Google- and Meta-specific. Separately, the quick start,
+  BYOD, Live API and hosts sections led with raw CLI commands even though
+  `mureo configure` is the recommended flow; they now lead with the browser UI
+  everywhere it applies — the quick start is `pip install mureo` + `mureo
+  configure`, with the demo scaffold and the BYOD import reached from that
+  same dashboard and OAuth from its Connect-platforms view — and each
+  terminal command is kept as a one-line scriptable equivalent. Docs only; no
+  code, schema or behavior changed.
+
 ## [0.10.33] - 2026-07-29
 
 ### Fixed
