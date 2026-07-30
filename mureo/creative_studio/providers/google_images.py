@@ -20,6 +20,7 @@ import httpx
 
 from mureo.creative_studio.providers import (
     _creative_studio_secret,
+    _size_capabilities,
     provider_error,
 )
 
@@ -33,6 +34,10 @@ _URL = (
 _MODEL = "gemini-2.5-flash-image"
 _KEY_FIELD = "gemini_api_key"
 _TIMEOUT = 60.0
+
+# The model takes no size argument and always renders one square size, so the
+# "menu" is a single entry (and ``max_size`` derives from it).
+_SIZES: tuple[tuple[int, int], ...] = ((1024, 1024),)
 
 
 def _default_client_factory() -> httpx.AsyncClient:
@@ -56,7 +61,8 @@ class GoogleImageProvider:
         return _creative_studio_secret(_KEY_FIELD) is not None
 
     def capabilities(self) -> dict[str, Any]:
-        return {"edit": True, "max_size": [1024, 1024]}
+        # One fixed size, so the exact menu and the per-axis maximum coincide.
+        return {"edit": True, **_size_capabilities(_SIZES)}
 
     def _require_key(self) -> str:
         key = _creative_studio_secret(_KEY_FIELD)

@@ -114,9 +114,14 @@ TOOLS: list[Tool] = [
             "Studio. Each entry reports its name, whether it is configured "
             "(an API key in the credential store / env var, or — for the "
             "local Codex CLI provider — no key at all, just `codex login`), "
-            "its capabilities (edit support + max size), and its model ids. "
-            "Call this before creative_studio_generate_visual to see which "
-            "providers can be selected."
+            "its capabilities, and its model ids. In capabilities, 'edit' is "
+            "edit-path support, 'max_size' is the per-axis maximum ([max "
+            "width, max height]) and NOT necessarily a generatable size, and "
+            "the optional 'supported_sizes' is the exact [width, height] menu "
+            "the provider renders (other requests are clamped to it); its "
+            "absence means arbitrary sizes up to max_size. Call this before "
+            "creative_studio_generate_visual to see which providers can be "
+            "selected."
         ),
         inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
     ),

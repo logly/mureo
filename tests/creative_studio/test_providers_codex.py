@@ -260,6 +260,24 @@ def test_capabilities_advertise_no_api_key() -> None:
 
 
 @pytest.mark.unit
+def test_capabilities_report_the_gpt_image_size_menu() -> None:
+    caps = codex_mod.CodexCliImageProvider().capabilities()
+    # GPT Image's exact menu: square, landscape, portrait.
+    assert caps["supported_sizes"] == [[1024, 1024], [1536, 1024], [1024, 1536]]
+    # Backward compatible per-axis maxima — not a jointly achievable size.
+    assert caps["max_size"] == [1536, 1536]
+    assert [1536, 1536] not in caps["supported_sizes"]
+
+
+@pytest.mark.unit
+def test_clamp_only_targets_advertised_sizes() -> None:
+    caps = codex_mod.CodexCliImageProvider().capabilities()
+    advertised = {f"{width}x{height}" for width, height in caps["supported_sizes"]}
+    for width, height in ((1024, 1024), (1920, 1080), (1080, 1920), (2000, 500)):
+        assert codex_mod._clamp_size(width, height) in advertised
+
+
+@pytest.mark.unit
 def test_capabilities_edit_is_false() -> None:
     # The CLI edit path is agent-mediated and not reliable enough to ship
     # (see the live-validation note in the module docstring).

@@ -41,6 +41,18 @@ _FIELD_TO_ENV: dict[str, str] = {
     "fal_key": "FAL_KEY",
 }
 
+#: GPT Image's exact output-size menu, ordered square, landscape, portrait.
+#: Single source of truth for both providers that drive that model — the
+#: hosted OpenAI ``gpt-image-1`` adapter and the local Codex CLI one — so the
+#: sizes they advertise and the sizes they clamp to can never drift apart.
+#: Note there is no 1536x1536 square: see ``max_size`` in
+#: :meth:`ImageProvider.capabilities`.
+_GPT_IMAGE_SIZES: tuple[tuple[int, int], ...] = (
+    (1024, 1024),
+    (1536, 1024),
+    (1024, 1536),
+)
+
 
 class NotSupportedError(Exception):
     """Raised when a provider does not implement an optional capability.
@@ -75,7 +87,23 @@ class ImageProvider(Protocol):
         ...
 
     def capabilities(self) -> dict[str, Any]:
-        """Return ``{"edit": bool, "max_size": [width, height]}``."""
+        """Return ``{"edit": bool, "max_size": [width, height], ...}``.
+
+        ``max_size`` is the **per-axis maximum** — the largest width and the
+        largest height the provider can produce — NOT a jointly achievable
+        size: a provider may max out at 1536 on each axis while offering no
+        1536x1536 square. It is a bound, never a menu.
+
+        ``supported_sizes`` is optional and, when present, is the exact menu:
+        a list of ``[width, height]`` pairs the provider actually renders,
+        every other request being clamped to one of them. Its absence means
+        the provider takes arbitrary sizes up to ``max_size`` rather than a
+        fixed menu. Consumers needing exact sizes MUST read
+        ``supported_sizes`` and must not infer one from ``max_size``.
+
+        Providers may add further honest keys (the Codex CLI one reports
+        ``requires_api_key`` / ``auth``); consumers ignore unknown keys.
+        """
         ...
 
     async def generate(
@@ -88,6 +116,27 @@ class ImageProvider(Protocol):
         """Edit ``image`` per ``instruction``; raise :class:`NotSupportedError`
         when the provider has no edit path."""
         ...
+
+
+# ---------------------------------------------------------------------------
+# Capability helpers (shared by the built-in providers)
+# ---------------------------------------------------------------------------
+
+
+def _size_capabilities(sizes: tuple[tuple[int, int], ...]) -> dict[str, Any]:
+    """Return the ``supported_sizes`` / ``max_size`` pair for a discrete menu.
+
+    ``max_size`` is derived as the per-axis maximum across ``sizes``, matching
+    the contract documented on :meth:`ImageProvider.capabilities`. Fresh lists
+    are built on every call so a caller cannot mutate a provider's constants.
+    """
+    return {
+        "supported_sizes": [[width, height] for width, height in sizes],
+        "max_size": [
+            max(width for width, _ in sizes),
+            max(height for _, height in sizes),
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------
