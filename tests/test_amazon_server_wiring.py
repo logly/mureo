@@ -366,3 +366,77 @@ class TestBuiltInShadowingPolicy:
         ConfigureWizard._discover_providers_safely()
 
         assert default_registry.get("amazon_ads").provider_class is AmazonAdsBridge
+
+
+@pytest.mark.unit
+class TestAmazonDisableEnvVar:
+    """``MUREO_DISABLE_AMAZON_ADS=1`` steps the bridge aside (audit #53).
+
+    Google / Meta / GA4 all have a ``MUREO_DISABLE_*`` coexistence control;
+    Amazon had none, so an operator who wired Amazon's MCP up directly in
+    their host had no way to stop mureo from ALSO exposing the same tools.
+    The two processes that register the provider — the MCP server and the
+    configure UI — must agree, or the dashboard would advertise a card for a
+    bridge the server does not serve.
+    """
+
+    def test_mcp_discovery_omits_amazon_when_disabled(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from mureo.core.providers import default_registry
+        from mureo.mcp import server as mod
+
+        monkeypatch.setattr(default_registry, "_entries", {})
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers", _no_thirdparty
+        )
+        monkeypatch.setenv("MUREO_DISABLE_AMAZON_ADS", "1")
+
+        entries = mod._discover_with_amazon()
+
+        assert [e for e in entries if e.name == "amazon_ads"] == []
+        # Not registered either: a disabled bridge must not linger in the
+        # registry for the configure UI to render a card from.
+        assert "amazon_ads" not in default_registry
+
+    def test_mcp_server_exposes_no_amazon_tools_when_disabled(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from mureo.core.providers import default_registry
+
+        monkeypatch.setattr(default_registry, "_entries", {})
+        monkeypatch.setenv("MUREO_DISABLE_AMAZON_ADS", "1")
+        mod = _reload_server(monkeypatch, tmp_path, with_manifest=True)
+        try:
+            assert "campaign_management-create_campaign" not in mod._PLUGIN_NAMES
+        finally:
+            monkeypatch.delenv("MUREO_DISABLE_AMAZON_ADS", raising=False)
+            importlib.reload(mod)
+
+    def test_configure_process_omits_amazon_when_disabled(self, monkeypatch) -> None:
+        from mureo.core.providers import default_registry
+        from mureo.web.server import ConfigureWizard
+
+        monkeypatch.setattr(default_registry, "_entries", {})
+        monkeypatch.setattr("mureo.web.server.discover_providers", _no_thirdparty)
+        monkeypatch.setenv("MUREO_DISABLE_AMAZON_ADS", "1")
+
+        ConfigureWizard._discover_providers_safely()
+
+        assert "amazon_ads" not in default_registry
+
+    @pytest.mark.parametrize("value", ["0", "", "true", "  1  ", "yes"])
+    def test_truthy_coercion_does_not_disable(self, monkeypatch, value) -> None:
+        """Exact-string ``"1"``, matching every other MUREO_DISABLE_* gate."""
+        from mureo.core.providers import default_registry
+        from mureo.mcp import server as mod
+
+        monkeypatch.setattr(default_registry, "_entries", {})
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers", _no_thirdparty
+        )
+        monkeypatch.setenv("MUREO_DISABLE_AMAZON_ADS", value)
+
+        entries = mod._discover_with_amazon()
+
+        assert [e.name for e in entries if e.name == "amazon_ads"] == ["amazon_ads"]

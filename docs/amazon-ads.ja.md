@@ -159,10 +159,15 @@ Amazon のツールが Amazon 自身の名前（例 `campaign_management-*`,
   壊れているケース。他プロバイダの認証情報を失わないよう mureo は
   壊れたファイルを上書きしません）、黙って再試行せずその理由を
   付けて失敗します。
-- `mureo amazon refresh-manifest` は自動更新**しません**。保存済みの
-  `access_token` をそのまま使います。発行・更新はツール実行経路でのみ
-  発生するため、有効な access トークンが保存されている状態（または
-  ツール呼び出しで 1 度発行された後）で実行してください。
+- `mureo amazon refresh-manifest` も同じ方法でトークンを発行します。
+  `access_token` が未保存で `refresh_token` ＋ `client_secret` がある
+  場合、LwA 交換を 1 回だけ実行してトークンを保存してからマニフェスト
+  を生成します。そのため refresh トークンのみの構成でも、最初の
+  コマンドからそのまま動作します（access トークンを貼り付ける必要は
+  ありません）。なお、保存済みの access トークンが失効している場合の
+  再発行は行いません。401 で失敗したら、ツール呼び出しでトークンが
+  更新されたあとに再実行するか、`access_token` を空にして新規発行を
+  促してください。
 
 `refresh_token` ＋ `client_secret` が無い場合は、失効時に
 `access_token` を手動で更新してください（設定 UI の Amazon Ads
