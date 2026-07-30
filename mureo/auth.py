@@ -227,46 +227,73 @@ def load_meta_ads_credentials(
 def load_amazon_ads_credentials(
     path: Path | None = None,
 ) -> AmazonAdsCredentials | None:
-    """Load Amazon Ads credentials from the ``amazon_ads`` section.
+    """Load Amazon Ads credentials with environment variable fallback.
 
-    Phase 1 of #113: credentials.json only — no environment-variable
-    fallback yet (Amazon env-var names are not an established contract).
-    ``client_id`` + ``access_token`` are required; an unknown
-    ``region`` / ``account_mode`` falls back to the safe defaults
-    (``na`` / ``dynamic``) rather than failing the load.
+    Priority:
+        1. ``amazon_ads`` section from the resolved
+           :class:`mureo.core.secret_store.SecretStore` (see
+           :func:`load_google_ads_credentials` for the full resolution
+           rules — same shape).
+        2. Environment variables (``AMAZON_ADS_*``, #121).
+
+    ``client_id`` is required, plus token material: EITHER a stored
+    ``access_token`` OR the ``refresh_token`` + ``client_secret`` pair
+    the bridge mints one from on first use (#121). An unknown ``region``
+    / ``account_mode`` falls back to the safe defaults (``na`` /
+    ``dynamic``) rather than failing the load.
 
     Returns:
-        AmazonAdsCredentials, or None if the section/required fields
-        are absent or the file is missing/invalid.
+        AmazonAdsCredentials, or None when neither source supplies a
+        usable combination.
     """
-    data = load_credentials(path)
-    section = data.get("amazon_ads")
-    if not isinstance(section, dict):
-        return None
+    section = _resolve_secret_store(path).load("amazon_ads")
+    credentials = _amazon_ads_from_mapping(section)
+    if credentials is not None:
+        return credentials
 
-    client_id = section.get("client_id", "")
-    access_token = section.get("access_token", "")
-    if not (client_id and access_token):
-        return None
+    # Environment variable fallback
+    return _load_amazon_ads_from_env()
 
-    region = str(section.get("region", "na")).strip().lower()
-    if region not in _AMAZON_REGIONS:
-        region = "na"
-    account_mode = str(section.get("account_mode", "dynamic")).strip().lower()
-    if account_mode not in _AMAZON_ACCOUNT_MODES:
-        account_mode = "dynamic"
+
+def _amazon_ads_from_mapping(section: dict[str, Any]) -> AmazonAdsCredentials | None:
+    """Build credentials from a raw ``amazon_ads`` mapping, or ``None``.
+
+    Shared by the file/secret-store path and the env-var path so the
+    "what counts as usable" rule has exactly one definition.
+    """
+    client_id = section.get("client_id") or ""
+    access_token = section.get("access_token") or ""
+    refresh_token = section.get("refresh_token") or None
+    client_secret = section.get("client_secret") or None
+    if not client_id:
+        return None
+    if not (access_token or (refresh_token and client_secret)):
+        return None
 
     return AmazonAdsCredentials(
         client_id=client_id,
         access_token=access_token,
-        region=region,
-        account_mode=account_mode,
-        refresh_token=section.get("refresh_token") or None,
-        client_secret=section.get("client_secret") or None,
+        region=_amazon_region(section.get("region")),
+        account_mode=_amazon_account_mode(section.get("account_mode")),
+        refresh_token=refresh_token,
+        client_secret=client_secret,
         profile_id=section.get("profile_id") or None,
         account_id=section.get("account_id") or None,
         manager_account_id=section.get("manager_account_id") or None,
     )
+
+
+def _amazon_region(value: object) -> str:
+    """Normalize a region to ``na`` / ``eu`` / ``fe`` (default ``na``)."""
+    region = str(value if value is not None else "na").strip().lower()
+    return region if region in _AMAZON_REGIONS else "na"
+
+
+def _amazon_account_mode(value: object) -> str:
+    """Normalize an account mode to ``dynamic`` / ``fixed`` (default
+    ``dynamic``)."""
+    mode = str(value if value is not None else "dynamic").strip().lower()
+    return mode if mode in _AMAZON_ACCOUNT_MODES else "dynamic"
 
 
 # ---------------------------------------------------------------------------
@@ -664,3 +691,25 @@ def _load_meta_ads_from_env() -> MetaAdsCredentials | None:
         app_secret=os.environ.get("META_ADS_APP_SECRET"),
         token_obtained_at=os.environ.get("META_ADS_TOKEN_OBTAINED_AT"),
     )
+
+
+def _load_amazon_ads_from_env() -> AmazonAdsCredentials | None:
+    """Load Amazon Ads credentials from environment variables (#121).
+
+    One env var per ``amazon_ads`` section key, so a container /
+    CI deployment can configure the bridge without a credentials file.
+    Usability is decided by :func:`_amazon_ads_from_mapping`, which is
+    also what the file path uses — the two sources cannot drift.
+    """
+    section = {
+        "client_id": os.environ.get("AMAZON_ADS_CLIENT_ID", ""),
+        "access_token": os.environ.get("AMAZON_ADS_ACCESS_TOKEN", ""),
+        "refresh_token": os.environ.get("AMAZON_ADS_REFRESH_TOKEN", ""),
+        "client_secret": os.environ.get("AMAZON_ADS_CLIENT_SECRET", ""),
+        "region": os.environ.get("AMAZON_ADS_REGION", ""),
+        "account_mode": os.environ.get("AMAZON_ADS_ACCOUNT_MODE", ""),
+        "profile_id": os.environ.get("AMAZON_ADS_PROFILE_ID", ""),
+        "account_id": os.environ.get("AMAZON_ADS_ACCOUNT_ID", ""),
+        "manager_account_id": os.environ.get("AMAZON_ADS_MANAGER_ACCOUNT_ID", ""),
+    }
+    return _amazon_ads_from_mapping(section)

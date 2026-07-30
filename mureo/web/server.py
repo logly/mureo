@@ -156,8 +156,19 @@ class ConfigureWizard:
         with the MCP path: a plugin whose discovery hook raises
         ``SystemExit`` must not tear down configure startup. Only
         ``KeyboardInterrupt`` is honoured so Ctrl+C still works.
+
+        #121 — the in-tree Amazon Ads bridge is not a ``mureo.providers``
+        entry point, so it is registered explicitly (idempotently, from
+        the same single source the MCP startup path uses) or the Amazon
+        credentials card never renders. It goes FIRST so a wholesale
+        entry-point failure cannot take the built-in card down with it.
+        Imported lazily to keep the bridge — and the mcp SDK types it
+        pulls in — off the configure-UI import path.
         """
         try:
+            from mureo.amazon_ads.provider import register_amazon_provider
+
+            register_amazon_provider()
             discover_providers()
         except KeyboardInterrupt:
             raise

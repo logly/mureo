@@ -150,7 +150,28 @@ def _detect_credentials_present(credentials_path: Path) -> dict[str, bool]:
     for section in sections:
         value = payload.get(section)
         out[section] = isinstance(value, dict) and bool(value)
+    out["amazon_ads"] = _amazon_credentials_usable(payload.get("amazon_ads"))
     return out
+
+
+def _amazon_credentials_usable(section: Any) -> bool:
+    """Amazon needs more than a non-empty section to be configured (#121).
+
+    A half-filled ``amazon_ads`` block (say a ``region`` and nothing
+    else) would light up the dashboard pill while every Amazon call
+    still fails, so presence mirrors
+    :func:`mureo.auth.load_amazon_ads_credentials`: a ``client_id`` plus
+    either a stored ``access_token`` or the ``refresh_token`` +
+    ``client_secret`` pair mureo mints one from.
+    """
+    if not isinstance(section, dict):
+        return False
+    if not section.get("client_id"):
+        return False
+    return bool(
+        section.get("access_token")
+        or (section.get("refresh_token") and section.get("client_secret"))
+    )
 
 
 def _detect_credentials_oauth(credentials_path: Path) -> dict[str, bool]:
