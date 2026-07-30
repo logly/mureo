@@ -152,6 +152,7 @@ _CREATIVE_STUDIO_NAMES: frozenset[str] = (
     else frozenset()
 )
 
+
 # ---------------------------------------------------------------------------
 # Third-party plugin tools (entry-point–discovered providers implementing
 # MCPToolProvider). Purely additive: built-in platforms keep their static
@@ -160,6 +161,36 @@ _CREATIVE_STUDIO_NAMES: frozenset[str] = (
 # before. Built-in tool names are reserved so a plugin can never shadow a
 # core tool. Discovery faults are contained (PluginToolWarning), never fatal.
 # ---------------------------------------------------------------------------
+def _discover_with_amazon() -> tuple[Any, ...]:
+    """Registry-discovered entry-point providers PLUS the internal
+    Amazon Ads bridge (#113).
+
+    The Amazon bridge is in-tree (not an entry point), but it satisfies
+    the same ``MCPToolProvider`` shape, so feeding it through the
+    SAME collection makes it inherit the #114 safety layer (audit /
+    throttle / Phase 2/4 strategy promotion) with zero dispatch
+    changes. ``registry.discover_providers`` is resolved live here so a
+    monkeypatched registry / module reload is still honoured. When the
+    Amazon manifest is absent, ``AmazonAdsBridge.mcp_tools()`` returns
+    ``()`` → no tools added → behaviour is byte-identical to before.
+    """
+    from mureo.amazon_ads.bridge import AmazonAdsBridge
+    from mureo.core.providers import registry as _registry
+    from mureo.core.providers.registry import ProviderEntry
+
+    entries = list(_registry.discover_providers())
+    entries.append(
+        ProviderEntry(
+            name="amazon_ads",
+            display_name="Amazon Ads",
+            capabilities=frozenset(),
+            provider_class=AmazonAdsBridge,
+            source_distribution="mureo-amazon-ads-bridge",
+        )
+    )
+    return tuple(entries)
+
+
 _PLUGIN_TOOLS: list[Tool]
 _PLUGIN_DISPATCH: dict[str, MCPToolProvider]
 _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
@@ -174,6 +205,7 @@ _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
         | _LEARNING_NAMES
         | _CREATIVE_STUDIO_NAMES
     ),
+    discover=_discover_with_amazon,
 )
 _ALL_TOOLS.extend(_PLUGIN_TOOLS)
 _PLUGIN_NAMES: frozenset[str] = frozenset(_PLUGIN_DISPATCH)

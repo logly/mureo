@@ -82,6 +82,33 @@ class MetaAdsCredentials:
     account_id: str | None = None  # act_XXXX format
 
 
+# Amazon Ads official-MCP bridge (#113 Phase 1). region picks the
+# endpoint; account_mode picks Dynamic vs Fixed account context.
+_AMAZON_REGIONS = frozenset({"na", "eu", "fe"})
+_AMAZON_ACCOUNT_MODES = frozenset({"dynamic", "fixed"})
+
+
+@dataclass(frozen=True)
+class AmazonAdsCredentials:
+    """Amazon Ads credentials for the official-MCP bridge (immutable).
+
+    ``client_id`` + ``access_token`` are the minimum (Dynamic account
+    context). ``refresh_token`` / ``client_secret`` enable LwA token
+    refresh (Phase 2). The ``profile_id`` / ``account_id`` /
+    ``manager_account_id`` triple is only used in Fixed account mode.
+    """
+
+    client_id: str
+    access_token: str
+    region: str = "na"  # na | eu | fe
+    account_mode: str = "dynamic"  # dynamic | fixed
+    refresh_token: str | None = None
+    client_secret: str | None = None
+    profile_id: str | None = None  # Amazon-Advertising-API-Scope (Fixed)
+    account_id: str | None = None  # Amazon-Ads-AccountID (Fixed)
+    manager_account_id: str | None = None  # Amazon-Ads-Manager-AccountID
+
+
 # ---------------------------------------------------------------------------
 # Loading functions
 # ---------------------------------------------------------------------------
@@ -195,6 +222,51 @@ def load_meta_ads_credentials(
 
     # Environment variable fallback
     return _load_meta_ads_from_env()
+
+
+def load_amazon_ads_credentials(
+    path: Path | None = None,
+) -> AmazonAdsCredentials | None:
+    """Load Amazon Ads credentials from the ``amazon_ads`` section.
+
+    Phase 1 of #113: credentials.json only — no environment-variable
+    fallback yet (Amazon env-var names are not an established contract).
+    ``client_id`` + ``access_token`` are required; an unknown
+    ``region`` / ``account_mode`` falls back to the safe defaults
+    (``na`` / ``dynamic``) rather than failing the load.
+
+    Returns:
+        AmazonAdsCredentials, or None if the section/required fields
+        are absent or the file is missing/invalid.
+    """
+    data = load_credentials(path)
+    section = data.get("amazon_ads")
+    if not isinstance(section, dict):
+        return None
+
+    client_id = section.get("client_id", "")
+    access_token = section.get("access_token", "")
+    if not (client_id and access_token):
+        return None
+
+    region = str(section.get("region", "na")).strip().lower()
+    if region not in _AMAZON_REGIONS:
+        region = "na"
+    account_mode = str(section.get("account_mode", "dynamic")).strip().lower()
+    if account_mode not in _AMAZON_ACCOUNT_MODES:
+        account_mode = "dynamic"
+
+    return AmazonAdsCredentials(
+        client_id=client_id,
+        access_token=access_token,
+        region=region,
+        account_mode=account_mode,
+        refresh_token=section.get("refresh_token") or None,
+        client_secret=section.get("client_secret") or None,
+        profile_id=section.get("profile_id") or None,
+        account_id=section.get("account_id") or None,
+        manager_account_id=section.get("manager_account_id") or None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -472,6 +544,55 @@ def _save_meta_token(
         data["meta_ads"] = meta_section
 
         _atomic_write_json(data, path)
+
+
+def save_amazon_access_token(
+    access_token: str,
+    refresh_token: str | None = None,
+    path: Path | None = None,
+) -> None:
+    """Atomically persist a refreshed Amazon access token (#113 Phase 2A).
+
+    Mirrors :func:`_save_meta_token` exactly, reusing the same hardened
+    ``config_writer`` helpers instead of a local read-modify-write:
+    ``_load_existing`` returns ``{}`` only when the file is absent and
+    RAISES ``ConfigWriteError`` on malformed JSON, so a slightly-corrupt
+    credentials.json is left untouched rather than reset to ``{}`` —
+    which would silently erase every other provider's section
+    (google_ads etc.). ``_atomic_write_json`` writes via tmp + fsync +
+    ``os.replace`` at ``0o600``, so a crash mid-write is durable and the
+    file is never world-readable.
+
+    The load -> mutate -> write cycle runs under the same cross-process
+    ``credentials.json.lock`` every other credentials writer holds, so
+    an LwA refresh and a concurrent CLI/web ``save_credentials`` cannot
+    last-writer-wins away each other's sections.
+
+    ``refresh_token`` is written only when given (LwA returns the same
+    one, but write it through for robustness).
+
+    Raises:
+        ConfigWriteError: the existing credentials.json is malformed;
+            nothing is written.
+    """
+    # Lazy import mirrors ``_save_meta_token`` and avoids any import-time
+    # coupling to the providers package.
+    from mureo.providers.config_writer import _atomic_write_json, _load_existing
+
+    resolved = path if path is not None else _resolve_default_path()
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(lock_path_for(resolved)):
+        data = _load_existing(resolved)
+
+        section = data.get("amazon_ads", {})
+        if not isinstance(section, dict):
+            section = {}
+        section["access_token"] = access_token
+        if refresh_token:
+            section["refresh_token"] = refresh_token
+        data["amazon_ads"] = section
+
+        _atomic_write_json(data, resolved)
 
 
 # ---------------------------------------------------------------------------

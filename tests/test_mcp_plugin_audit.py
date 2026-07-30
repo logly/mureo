@@ -106,3 +106,27 @@ class TestRecordPluginCall:
         monkeypatch.setattr(plugin_audit, "_audit_path", _boom)
         # Must swallow — auditing can never break the tool call.
         record_plugin_call(tool="t", arguments={}, source="s", ok=True)  # no exception
+
+    def test_error_string_secret_shapes_scrubbed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """M1: ``error`` is free text (not key/value-masked). Bearer /
+        LwA token shapes in it must be redacted — the Amazon bridge is
+        the first credentialed plugin path."""
+        log = tmp_path / "audit.jsonl"
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
+        record_plugin_call(
+            tool="t",
+            arguments={},
+            source="s",
+            ok=False,
+            error=(
+                "HTTPError 401: Authorization: Bearer Atza|SECRETTOKEN.abc "
+                "refresh Atzr|SECRETREFRESH-xyz failed"
+            ),
+        )
+        rec = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+        assert "SECRETTOKEN" not in rec["error"]
+        assert "SECRETREFRESH" not in rec["error"]
+        assert "***" in rec["error"]
+        assert "HTTPError 401" in rec["error"]  # non-secret text preserved
