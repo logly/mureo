@@ -52,6 +52,22 @@ _ENV_VAR_TO_FIELD: dict[str, EnvVarTarget] = {
     # GA4
     "GOOGLE_APPLICATION_CREDENTIALS": EnvVarTarget("ga4", "service_account_path"),
     "GOOGLE_PROJECT_ID": EnvVarTarget("ga4", "project_id"),
+    # Amazon Ads (official-MCP bridge). One name per field the bridge
+    # declares in ``account_credential_fields`` / the loader reads in
+    # ``mureo.auth._load_amazon_ads_from_env`` — the two must not drift.
+    # Amazon renders a first-class credential card, so these names are
+    # filtered out of the dashboard's generic env list (same treatment as
+    # Creative Studio); they are listed here for the WRITE path and for the
+    # status snapshot's ``env_vars`` row.
+    "AMAZON_ADS_CLIENT_ID": EnvVarTarget("amazon_ads", "client_id"),
+    "AMAZON_ADS_ACCESS_TOKEN": EnvVarTarget("amazon_ads", "access_token"),
+    "AMAZON_ADS_REFRESH_TOKEN": EnvVarTarget("amazon_ads", "refresh_token"),
+    "AMAZON_ADS_CLIENT_SECRET": EnvVarTarget("amazon_ads", "client_secret"),
+    "AMAZON_ADS_REGION": EnvVarTarget("amazon_ads", "region"),
+    "AMAZON_ADS_ACCOUNT_MODE": EnvVarTarget("amazon_ads", "account_mode"),
+    "AMAZON_ADS_PROFILE_ID": EnvVarTarget("amazon_ads", "profile_id"),
+    "AMAZON_ADS_ACCOUNT_ID": EnvVarTarget("amazon_ads", "account_id"),
+    "AMAZON_ADS_MANAGER_ACCOUNT_ID": EnvVarTarget("amazon_ads", "manager_account_id"),
     # Creative Studio (image-generation providers)
     "OPENAI_API_KEY": EnvVarTarget("creative_studio", "openai_api_key"),
     "GEMINI_API_KEY": EnvVarTarget("creative_studio", "gemini_api_key"),
@@ -228,7 +244,7 @@ def write_credential_env_var(
 # google_ads. The dashboard surfaces that relationship rather than a
 # misleading standalone SC remove.
 _REMOVABLE_SECTIONS: frozenset[str] = frozenset(
-    {"google_ads", "meta_ads", "ga4", "creative_studio"}
+    {"google_ads", "meta_ads", "ga4", "creative_studio", "amazon_ads"}
 )
 
 
