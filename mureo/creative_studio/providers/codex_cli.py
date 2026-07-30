@@ -18,9 +18,15 @@ Design notes:
 - Each image is produced in its own private temp dir (:func:`tempfile.mkdtemp`)
   via :func:`asyncio.create_subprocess_exec` — an argv array, never a shell
   string, so a prompt full of shell metacharacters cannot inject anything.
+  That guarantee only holds for a real executable, so on Windows a resolved
+  ``.bat``/``.cmd`` shim is refused outright (launching it would make
+  ``CreateProcess`` re-invoke ``cmd.exe``, which re-parses the command line):
+  :meth:`is_configured` reports False and :meth:`generate` raises with a hint
+  to install ``codex.exe`` or run under WSL.
 - The run is bounded by a timeout (default 300s, override with the
   ``MUREO_CODEX_TIMEOUT`` environment variable, in seconds). On timeout the
-  process is killed and a clear error raised.
+  process is killed and a clear error raised — the whole process group on
+  POSIX, the direct child only on Windows (no ``killpg`` there).
 - ``n > 1`` runs **sequentially** — concurrent Codex CLI sessions are not
   proven safe, so the provider does not parallelise them.
 - Editing is not supported: a live end-to-end check showed the CLI's edit path
@@ -36,6 +42,7 @@ import contextlib
 import os
 import shutil
 import signal
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -93,6 +100,23 @@ _INSTALL_HINT = (
     "on PATH. Install the Codex CLI and run `codex login` (no API key needed)"
 )
 
+# Windows batch-file shims are refused, never launched. ``CreateProcess`` with
+# a NULL ``lpApplicationName`` and a ``.bat``/``.cmd`` target implicitly
+# re-invokes ``cmd.exe /c`` on the command line Python assembled with
+# ``list2cmdline`` quoting — but cmd.exe's own parser does not honour those
+# rules, so metacharacters (`"` `&` `^` `|` `%`) inside an argument can break
+# out of the quoting and start new commands (the "BatBadBut" class,
+# CVE-2024-27980). Our final argv element carries untrusted prompt text, so
+# there is no safe escaping to apply here: fail closed instead. Do NOT "fix"
+# this by passing ``executable=`` or ``shell=True`` — both keep the reparse.
+_BATCH_SUFFIXES: tuple[str, ...] = (".bat", ".cmd")
+_WINDOWS_SHIM_HINT = (
+    "codex provider refuses to run the Codex CLI batch shim on Windows "
+    "({path}): cmd.exe re-parses the command line, so prompt text could break "
+    "out into separate commands. Install the native Codex CLI executable "
+    "(codex.exe) on PATH, or run mureo under WSL."
+)
+
 # Child-process environment allow-list. The Codex CLI is spawned with ONLY
 # these variables (plus any ``CODEX_`` / ``XDG_`` / ``LC_`` prefixed ones) so no
 # image-provider API key or other ambient secret leaks into the sandboxed
@@ -120,6 +144,29 @@ _ENV_ALLOWLIST: frozenset[str] = frozenset(
         "https_proxy",
         "no_proxy",
         "all_proxy",
+        # Windows system infrastructure (non-secret; needed by cmd.exe and the
+        # npm .cmd shim). Same class as PATH / HOME / TMPDIR above: a Windows
+        # child breaks networking and crypto without SYSTEMROOT, the real Codex
+        # CLI ships as an npm ``.cmd`` shim that needs COMSPEC / PATHEXT to
+        # launch, and its login state lives under USERPROFILE / APPDATA /
+        # LOCALAPPDATA. Listed unconditionally — they simply do not exist on
+        # POSIX, where the filter drops them anyway.
+        "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "SYSTEMDRIVE",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "PROGRAMDATA",
+        "NUMBER_OF_PROCESSORS",
+        "PROCESSOR_ARCHITECTURE",
+        "OS",
     }
 )
 _ENV_ALLOW_PREFIXES: tuple[str, ...] = ("LC_", "XDG_", "CODEX_")
@@ -140,6 +187,38 @@ def _timeout_seconds() -> float:
         if value > 0:
             return value
     return _DEFAULT_TIMEOUT
+
+
+def _is_windows_batch_shim(path: str) -> bool:
+    """Return whether ``path`` is a Windows batch shim we must refuse to run.
+
+    Uses :func:`os.path.splitext` rather than :class:`pathlib.Path` so the
+    check is a pure string operation on every platform. A ``.exe`` (or an
+    extensionless binary) is launched directly by ``CreateProcess`` with no
+    ``cmd.exe`` reparse, so it stays allowed.
+    """
+    if os.name != "nt":
+        return False
+    return os.path.splitext(path)[1].lower() in _BATCH_SUFFIXES
+
+
+def _spawn_kwargs() -> dict[str, Any]:
+    """Return the platform's process-isolation kwargs for the codex spawn.
+
+    POSIX: ``start_new_session=True`` makes codex its own session/process-group
+    leader so a timeout can reap the whole tree.
+
+    Windows: sessions do not exist and ``start_new_session`` is unsupported, so
+    the nearest equivalent (a new process group) is requested instead. Note the
+    weaker guarantee — see :meth:`CodexCliImageProvider._terminate`.
+    """
+    if os.name == "nt":
+        # ``subprocess.CREATE_NEW_PROCESS_GROUP`` exists (and is declared by
+        # typeshed) only on Windows, so resolve it dynamically to keep this
+        # module importable and mypy-clean on POSIX. The fallback is
+        # unreachable on Windows and means "no special flags" elsewhere.
+        return {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
+    return {"start_new_session": True}
 
 
 def _clamp_size(width: int, height: int) -> str:
@@ -171,6 +250,11 @@ def _child_env() -> dict[str, str]:
     """
     env: dict[str, str] = {}
     for key, value in os.environ.items():
+        # Deny-list first, allow-list second: a future name collision (a secret
+        # env var that also matches an allow-listed name or prefix) then fails
+        # closed instead of leaking. Comparison is case-sensitive by design —
+        # Windows normalises ``os.environ`` keys to upper case, which is how the
+        # Windows entries in ``_ENV_ALLOWLIST`` are spelled.
         if key in _SECRET_ENV_NAMES:
             continue  # never forward an image-provider API key
         if key in _ENV_ALLOWLIST or key.startswith(_ENV_ALLOW_PREFIXES):
@@ -212,7 +296,10 @@ class CodexCliImageProvider:
 
     def is_configured(self) -> bool:
         # Cheap discovery: presence of the binary only, never a subprocess.
-        return shutil.which(_BINARY) is not None
+        # Fail closed on a Windows batch shim — the provider will always refuse
+        # to launch it, so it must not be advertised as usable.
+        path = shutil.which(_BINARY)
+        return path is not None and not _is_windows_batch_shim(path)
 
     def capabilities(self) -> dict[str, Any]:
         # ``requires_api_key`` / ``auth`` are extra, honest metadata: unlike the
@@ -228,6 +315,10 @@ class CodexCliImageProvider:
         path = shutil.which(_BINARY)
         if not path:
             raise RuntimeError(_INSTALL_HINT)
+        # Refuse a .bat/.cmd shim before anything is spawned — see the
+        # _WINDOWS_SHIM_HINT comment for the cmd.exe reparse mechanism.
+        if _is_windows_batch_shim(path):
+            raise RuntimeError(_WINDOWS_SHIM_HINT.format(path=path))
         return path
 
     async def _run_codex(self, work_dir: Path, instruction: str) -> bytes:
@@ -262,7 +353,9 @@ class CodexCliImageProvider:
                 env=_child_env(),
                 # Own session/process group so a timeout can reap the whole
                 # tree (codex spawns child helper processes of its own).
-                start_new_session=True,
+                # Platform-conditional: POSIX sessions vs. Windows process
+                # groups — see :func:`_spawn_kwargs`.
+                **_spawn_kwargs(),
             )
         except OSError as exc:
             raise RuntimeError(
@@ -290,15 +383,24 @@ class CodexCliImageProvider:
 
     @staticmethod
     def _terminate(proc: asyncio.subprocess.Process) -> None:
-        """Kill the whole process group of a codex run (race-guarded).
+        """Kill a timed-out codex run (race-guarded, platform-conditional).
 
-        ``start_new_session=True`` makes ``proc`` a group leader, so signalling
-        its group reaps codex's child helper processes too. Guards for the
-        process already having exited between the timeout and the signal.
+        POSIX: ``start_new_session=True`` makes ``proc`` a group leader, so
+        signalling its group reaps codex's child helper processes too.
+
+        Windows: there is no ``killpg`` — only the direct child is killed, on a
+        best-effort basis. Helper processes codex spawned may survive the kill;
+        that is accepted, since the provider neither waits on nor reads from
+        them after the timeout.
+
+        Guards for the process already having exited between the timeout and
+        the signal.
         """
-        with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        # Fallback: also signal the direct process in case the group is gone.
+        if os.name != "nt":
+            with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        # Fallback on POSIX (the group may be gone), and the only option on
+        # Windows: signal the direct process.
         with contextlib.suppress(Exception):
             proc.kill()
 
