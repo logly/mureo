@@ -30,6 +30,7 @@ Routes
 ``POST /api/credentials/meta/token`` → validate/save a Meta system-user token
 ``GET  /api/credentials/plugins``→ list plugins declaring per-account fields
 ``POST /api/credentials/plugins/save`` → save one plugin's credentials
+``POST /api/amazon/refresh-manifest`` → regenerate the Amazon tool manifest
 ``POST /api/oauth/<p>/start``    → spawn WebAuthWizard, return consent URL
 ``POST /api/legacy/cleanup``     → delete legacy slash commands
 ``GET  /api/demo/scenarios``     → list registered demo scenarios
@@ -50,6 +51,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib
+import json
 import logging
 import os
 import re
@@ -387,6 +389,22 @@ def _static_content_type(filename: str) -> str:
         if filename.endswith(suffix):
             return ct
     return "application/octet-stream"
+
+
+def _amazon_manifest_tool_count(path: Path) -> int:
+    """How many tools the freshly written Amazon manifest carries.
+
+    Best-effort: the refresh already succeeded by the time this runs, so an
+    unreadable/odd file must degrade to ``0`` rather than turn a successful
+    generation into an error. Only the count leaves this function — the
+    manifest itself is tool metadata, never credentials.
+    """
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return 0
+    tools = doc.get("tools") if isinstance(doc, dict) else None
+    return len(tools) if isinstance(tools, list) else 0
 
 
 class ConfigureHandler(BaseHTTPRequestHandler):
@@ -1308,6 +1326,75 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             },
         )
 
+    def _post_amazon_refresh_manifest(
+        self,
+        payload: dict[str, Any],  # noqa: ARG002
+    ) -> None:
+        """Regenerate ``amazon_tools.json`` from the dashboard's Amazon card.
+
+        Amazon's tools are served from a locally generated manifest, so
+        credentials alone leave the bridge toolless until the manifest is
+        (re)built. This is the same generator ``mureo amazon
+        refresh-manifest`` runs — one authenticated MCP session to the
+        region endpoint — reached from the configure UI so a UI-only
+        operator never has to drop into a terminal.
+
+        Failure detail is scrubbed with the plugin-audit scrubber (the
+        upstream error can quote an ``Authorization: Bearer …`` header)
+        and capped at the same length that scrubber's callers use, and no
+        field of the credential set is ever echoed back. A ``502``
+        distinguishes "Amazon/network said no" from the ``400`` "you have
+        not configured Amazon yet".
+
+        The SAME scrubbed string is what reaches the log: an HTTP client's
+        error text can embed the bearer token, so a ``logger.exception``
+        traceback here would persist the credential to disk — exactly the
+        leak the response is careful to avoid.
+        """
+        from mureo.amazon_ads import manifest as amazon_manifest
+        from mureo.auth import load_amazon_ads_credentials
+        from mureo.mcp.plugin_audit import _MAX_STR, _scrub
+
+        credentials_path = self.wizard.host_paths.credentials_path
+        creds = load_amazon_ads_credentials(credentials_path)
+        if creds is None:
+            send_error_json(self, 400, "amazon_credentials_missing")
+            return
+
+        # Write the manifest beside the credentials file the bridge reads
+        # its own credentials from, so a non-default home stays coherent.
+        out_path = credentials_path.parent / "amazon_tools.json"
+        try:
+            written = run_coroutine(
+                amazon_manifest.generate_manifest(creds, out_path=out_path)
+            )
+        except Exception as exc:  # noqa: BLE001 — any transport/auth failure
+            # Scrub + cap ONCE, then reuse for both sinks — no traceback, so
+            # the token can't reach the log file through a nested frame's
+            # repr either.
+            detail = _scrub(f"{type(exc).__name__}: {exc}")[:_MAX_STR]
+            logger.warning("Amazon manifest refresh failed: %s", detail)
+            send_json(
+                self,
+                {
+                    "error": "manifest_refresh_failed",
+                    "region": creds.region,
+                    "detail": detail,
+                },
+                status=502,
+            )
+            return
+
+        send_json(
+            self,
+            {
+                "status": "ok",
+                "region": creds.region,
+                "path": str(written),
+                "tool_count": _amazon_manifest_tool_count(written),
+            },
+        )
+
     def _post_legacy_cleanup(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
         removed = remove_legacy_commands(self.wizard.host_paths.commands_dir)
         send_json(self, {"removed": removed})
@@ -1688,6 +1775,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/credentials/remove": _post_credentials_remove,
         "/api/credentials/meta/token": _post_credentials_meta_token,
         "/api/credentials/plugins/save": _post_plugin_credentials_save,
+        "/api/amazon/refresh-manifest": _post_amazon_refresh_manifest,
         "/api/legacy/cleanup": _post_legacy_cleanup,
         "/api/demo/init": _post_demo_init,
         "/api/byod/import": _post_byod_import,

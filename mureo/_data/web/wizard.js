@@ -11,6 +11,7 @@
     "search_console",
     "ga4",
     "tiktok_ads",
+    "amazon_ads",
   ];
 
   // Platforms whose official provider is a hosted_http catalog entry AND
@@ -68,6 +69,7 @@
       search_console: false,
       ga4: false,
       tiktok_ads: false,
+      amazon_ads: false,
     },
     providerChoice: {
       google_ads: null, // "official" | "native"
@@ -84,6 +86,11 @@
     existing: {
       google: { has_oauth: false },
       meta: { has_oauth: false },
+      // Amazon has no OAuth handshake mureo can run — its credentials are
+      // Login-with-Amazon material typed into a form — so its "already
+      // configured?" probe is the backend's own usability verdict
+      // (credentials_present.amazon_ads), not a token flag.
+      amazon: { configured: false },
     },
     stepIndex: 0,
   };
@@ -143,12 +150,17 @@
     // Meta: only the native path is queued here; official Meta is a
     // hosted MCP whose OAuth is the HTTP-transport handshake Claude
     // performs on first connect (handled on the providers_install page).
+    // Amazon: mureo brokers the official Amazon MCP itself (no separate
+    // provider install, no native↔official choice), so selecting it queues
+    // exactly one thing — the credential slot that fills the ``amazon_ads``
+    // section the bridge reads.
     return (
       STATE.platforms.google_ads ||
       (STATE.platforms.meta_ads &&
         STATE.providerChoice.meta_ads === "native") ||
       STATE.platforms.search_console ||
-      STATE.platforms.ga4
+      STATE.platforms.ga4 ||
+      STATE.platforms.amazon_ads
     );
   }
 
@@ -248,6 +260,8 @@
     const oauth = status.credentials_oauth || {};
     STATE.existing.google.has_oauth = Boolean(oauth.google);
     STATE.existing.meta.has_oauth = Boolean(oauth.meta);
+    const present = status.credentials_present || {};
+    STATE.existing.amazon.configured = Boolean(present.amazon_ads);
     STATE.multiAccountAuth = Boolean(status.multi_account_auth);
     // #442: a multi-account backend wires GA4 per-account, so the shared-SA
     // GA4 flow is removed from Setup entirely. Force the platform off here so
@@ -524,6 +538,11 @@
     // surfaced as a pending reminder rather than a "saved" summary row.
     // Not applicable on Codex, where it is not wired.
     const tiktokPending = STATE.host !== "codex" && STATE.platforms.tiktok_ads;
+    // Amazon's tools come from a locally generated manifest, so saved
+    // credentials alone do not yet expose a single tool. That is a real
+    // remaining step on every host — surfaced as a reminder rather than a
+    // "saved" row that would overstate what is working.
+    const amazonPending = STATE.platforms.amazon_ads;
 
     const summary = document.createElement("ul");
     summary.className = "wizard-completed-summary";
@@ -533,6 +552,7 @@
       // TikTok is never a "saved" row: pending (Code/Desktop) → shown as a
       // reminder below; on Codex it is omitted (not available there).
       if (p === "tiktok_ads") return;
+      if (p === "amazon_ads" && amazonPending) return;
       const li = document.createElement("li");
       li.textContent = MUREO.t("wizard.platforms." + p);
       li.setAttribute("data-i18n", "wizard.platforms." + p);
@@ -562,6 +582,19 @@
       const body = document.createElement("span");
       body.textContent = MUREO.t("wizard.completed.pending_tiktok");
       body.setAttribute("data-i18n", "wizard.completed.pending_tiktok");
+      reminder.appendChild(head);
+      reminder.appendChild(body);
+      wrap.appendChild(reminder);
+    }
+    if (amazonPending) {
+      const reminder = document.createElement("div");
+      reminder.className = "wizard-pending-reminder";
+      const head = document.createElement("strong");
+      head.textContent = MUREO.t("wizard.platforms.amazon_ads");
+      head.setAttribute("data-i18n", "wizard.platforms.amazon_ads");
+      const body = document.createElement("span");
+      body.textContent = MUREO.t("wizard.completed.pending_amazon");
+      body.setAttribute("data-i18n", "wizard.completed.pending_amazon");
       reminder.appendChild(head);
       reminder.appendChild(body);
       wrap.appendChild(reminder);

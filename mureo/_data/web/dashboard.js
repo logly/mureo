@@ -85,6 +85,30 @@
   },
   {});
 
+  // Same de-duping treatment for Amazon Ads: every AMAZON_ADS_* name binds
+  // to the ``amazon_ads`` credentials section (env_var_writer's allow-list),
+  // which is exactly what the first-class Amazon card in the plugin
+  // credentials section already edits — with proper labels, hints and
+  // secret masking. Listing them AGAIN in the generic advanced form would
+  // give the operator a second, worse way to write the same fields. The
+  // allow-list entries still exist for the WRITE path (the wizard and this
+  // card both persist through it) and for the status snapshot.
+  const AMAZON_ENV_NAMES = {
+    AMAZON_ADS_CLIENT_ID: true,
+    AMAZON_ADS_ACCESS_TOKEN: true,
+    AMAZON_ADS_REFRESH_TOKEN: true,
+    AMAZON_ADS_CLIENT_SECRET: true,
+    AMAZON_ADS_REGION: true,
+    AMAZON_ADS_ACCOUNT_MODE: true,
+    AMAZON_ADS_PROFILE_ID: true,
+    AMAZON_ADS_ACCOUNT_ID: true,
+    AMAZON_ADS_MANAGER_ACCOUNT_ID: true,
+  };
+
+  // Registry name of the Amazon bridge — the provider_name its generic
+  // credentials card is keyed by (mirrors AmazonAdsBridge.name).
+  const AMAZON_PROVIDER_NAME = "amazon_ads";
+
   // Colored ✓ / ✗ status mark as its own element (kept separate from any
   // data-i18n text node so a locale re-translation can't wipe it).
   function statusMark(ok) {
@@ -553,9 +577,10 @@
     const envVars = (status && status.env_vars) || {};
     const names = Object.keys(envVars)
       .filter(function (name) {
-        // Creative Studio keys have their own first-class section — don't
-        // list them a second time in the generic advanced list.
-        return !CREATIVE_STUDIO_ENV_NAMES[name];
+        // Creative Studio keys and Amazon Ads fields have their own
+        // first-class cards — don't list them a second time in the generic
+        // advanced list.
+        return !CREATIVE_STUDIO_ENV_NAMES[name] && !AMAZON_ENV_NAMES[name];
       })
       .sort();
     names.forEach(function (name) {
@@ -1069,6 +1094,21 @@
         return Boolean(
           s && s.credentials_oauth && s.credentials_oauth.google
         );
+      },
+    },
+    {
+      // Amazon Ads reaches Amazon's official MCP through the mureo-mediated
+      // bridge, so it belongs in this list for the same reason the others
+      // do: mureo holds the credentials and serves the tools. ``configured``
+      // reuses the backend's own usability rule (status_collector's
+      // amazon_ads row is true only for a client_id PLUS either an access
+      // token or the refresh/secret pair) rather than re-deriving it here.
+      key: "amazon_ads",
+      section: "amazon_ads",
+      labelKey: "wizard.platforms.amazon_ads",
+      removable: true,
+      configured: function (s, present) {
+        return present.amazon_ads === true;
       },
     },
   ];
@@ -3052,7 +3092,74 @@
       appendManualSave(form, plugin);
     }
     wrap.appendChild(form);
+    // Amazon-only extra control (keyed off the provider name so no other
+    // plugin card grows it): saved credentials alone leave the bridge
+    // toolless until the local tool manifest is generated.
+    if (plugin.provider_name === AMAZON_PROVIDER_NAME) {
+      wrap.appendChild(buildAmazonManifestRefresh());
+    }
     return wrap;
+  }
+
+  // Amazon tool-manifest refresh: POSTs to the server, which runs the same
+  // generator as `mureo amazon refresh-manifest` (one authenticated session
+  // to the region endpoint) and replies with a tool count. The response
+  // carries no credential material, and neither does the status line — a
+  // failure is reported as localized prose plus the server's machine code.
+  function buildAmazonManifestRefresh() {
+    const box = document.createElement("div");
+    box.className = "plugin-amazon-manifest";
+
+    const hint = document.createElement("small");
+    hint.className = "field-hint";
+    hint.textContent = MUREO.t("dashboard.amazon_refresh_manifest_hint");
+    hint.setAttribute("data-i18n", "dashboard.amazon_refresh_manifest_hint");
+    box.appendChild(hint);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-secondary";
+    btn.textContent = MUREO.t("dashboard.amazon_refresh_manifest");
+    btn.setAttribute("data-i18n", "dashboard.amazon_refresh_manifest");
+    box.appendChild(btn);
+
+    const status = document.createElement("span");
+    status.className = "plugin-amazon-manifest-status muted";
+    box.appendChild(status);
+
+    btn.addEventListener("click", function () {
+      refreshAmazonManifest(btn, status);
+    });
+    return box;
+  }
+
+  async function refreshAmazonManifest(btn, status) {
+    btn.disabled = true;
+    status.textContent = MUREO.t("dashboard.amazon_refresh_manifest_running");
+    let res;
+    try {
+      res = await MUREO.postJson("/api/amazon/refresh-manifest", {});
+    } catch (_e) {
+      res = null;
+    }
+    btn.disabled = false;
+    if (res && res.ok && res.body && res.body.status === "ok") {
+      const msg = MUREO.t("dashboard.amazon_refresh_manifest_done", {
+        count: res.body.tool_count,
+      });
+      status.textContent = msg;
+      MUREO.toast(msg, "success");
+      return;
+    }
+    // "Not configured yet" is a distinct, actionable state — don't collapse
+    // it into the generic failure.
+    const err = res && res.body ? res.body.error : null;
+    const key =
+      err === "amazon_credentials_missing"
+        ? "dashboard.amazon_refresh_manifest_no_credentials"
+        : "dashboard.amazon_refresh_manifest_failed";
+    status.textContent = MUREO.t(key);
+    MUREO.toast(MUREO.t(key), "error");
   }
 
   // #336 — post-auth account picker for an OAuth provider's accounts_field.
