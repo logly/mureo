@@ -7,17 +7,19 @@ only (no env fallback in Phase 1 — documented).
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 from pathlib import Path
 
 import pytest
 
+import mureo.auth as auth_mod
 from mureo.auth import (
-    AmazonAdsCredentials,
     load_amazon_ads_credentials,
     save_amazon_access_token,
 )
+from mureo.providers.config_writer import ConfigWriteError
 
 
 def _write(tmp_path: Path, payload: dict) -> Path:
@@ -162,3 +164,45 @@ class TestSaveAmazonAccessToken:
         save_amazon_access_token("Atza|NEW", path=cf)
         c = load_amazon_ads_credentials(path=cf)
         assert c is not None and c.access_token == "Atza|NEW"
+
+    def test_malformed_file_raises_and_leaves_it_untouched(
+        self, tmp_path: Path
+    ) -> None:
+        """A slightly-corrupt credentials.json must NOT be overwritten.
+
+        Same contract as ``_save_meta_token``: ``_load_existing`` raises
+        ``ConfigWriteError`` rather than resetting to ``{}``, which would
+        silently erase every other provider's section.
+        """
+        cf = tmp_path / "credentials.json"
+        original = '{"google_ads": {"developer_token": "keep"}, "meta_ads": {,}'
+        cf.write_text(original, encoding="utf-8")
+
+        with pytest.raises(ConfigWriteError):
+            save_amazon_access_token("Atza|NEW", "Atzr|NEW", path=cf)
+
+        assert cf.read_text(encoding="utf-8") == original  # byte-for-byte
+
+    def test_read_modify_write_runs_under_the_credentials_file_lock(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The whole cycle is serialised by the shared credentials lock.
+
+        A true concurrency test lives in ``test_credentials_concurrency``;
+        here we only pin that this writer contends on the SAME sidecar
+        lock every other credentials.json writer uses, so it cannot
+        last-writer-wins away a concurrent wizard save.
+        """
+        entered: list[Path] = []
+
+        @contextlib.contextmanager
+        def _recording_lock(lock_path):  # type: ignore[no-untyped-def]
+            entered.append(Path(lock_path))
+            yield
+
+        monkeypatch.setattr(auth_mod, "file_lock", _recording_lock)
+
+        cf = _write(tmp_path, {"amazon_ads": {"client_id": "cid"}})
+        save_amazon_access_token("Atza|NEW", path=cf)
+
+        assert entered == [tmp_path / "credentials.json.lock"]

@@ -13,10 +13,6 @@ transport.
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import json
-import os
-import tempfile
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import datetime, timezone
@@ -24,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mureo.amazon_ads.endpoints import endpoint_url, request_headers
+from mureo.providers.config_writer import _atomic_write_json
 
 if TYPE_CHECKING:
     from mureo.auth import AmazonAdsCredentials
@@ -95,19 +92,11 @@ async def generate_manifest(
         "tools": [_tool_to_dict(t) for t in tools],
     }
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic + 0600: write a temp sibling, then replace, so a reader
-    # never sees a half-written manifest and the file is not world-read.
-    fd, tmp = tempfile.mkstemp(dir=str(out.parent), prefix=".amazon_tools.")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(doc, fh, ensure_ascii=False, indent=2)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, out)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
+    # Atomic + 0600 via the repo's shared writer: an unpredictable temp
+    # sibling chmodded BEFORE the data is written, fsynced, then
+    # ``os.replace``d, so a reader never sees a half-written manifest,
+    # the file is never world-readable, and a failure leaves no debris.
+    _atomic_write_json(doc, out)
     return out
 
 

@@ -34,6 +34,7 @@ from mureo.auth import (
     load_amazon_ads_credentials,
     save_amazon_access_token,
 )
+from mureo.providers.config_writer import ConfigWriteError
 
 ConnectFactory = Callable[[str, dict[str, str]], AbstractAsyncContextManager[Any]]
 CredsLoader = Callable[[], AmazonAdsCredentials | None]
@@ -109,24 +110,50 @@ class AmazonAdsBridge:
             # chained (``from first_exc``) so it is never lost.
             if not (creds.refresh_token and creds.client_secret):
                 raise
-            try:
-                tokens = self._refresher(creds)
-            except _LwaAuthError as auth_exc:
-                raise AmazonBridgeError(
-                    f"Amazon access token expired and refresh failed: {auth_exc}"
-                ) from first_exc
+            return await self._refresh_and_retry(creds, name, arguments, first_exc)
+
+    async def _refresh_and_retry(
+        self,
+        creds: AmazonAdsCredentials,
+        name: str,
+        arguments: dict[str, Any],
+        first_exc: BaseException,
+    ) -> list[Any]:
+        """Refresh the LwA token once, persist it, and retry ``name``.
+
+        Every failure mode is reported as an ``AmazonBridgeError`` with an
+        actionable message, always chaining ``first_exc`` so the original
+        call failure is never lost.
+        """
+        try:
+            tokens = self._refresher(creds)
+        except _LwaAuthError as auth_exc:
+            raise AmazonBridgeError(
+                f"Amazon access token expired and refresh failed: {auth_exc}"
+            ) from first_exc
+        try:
             self._token_saver(tokens.access_token, tokens.refresh_token)
-            refreshed = dataclasses.replace(
-                creds,
-                access_token=tokens.access_token,
-                refresh_token=tokens.refresh_token,
-            )
-            try:
-                return await self._call(refreshed, name, arguments)
-            except KeyboardInterrupt:
-                raise
-            except BaseException as retry_exc:
-                raise retry_exc from first_exc
+        except (ConfigWriteError, OSError) as save_exc:
+            # The refreshed token is valid but is not on disk, so every later
+            # call would re-refresh from a refresh token Amazon has already
+            # rotated against. Surface the underlying reason — typically a
+            # malformed credentials.json that mureo deliberately refuses to
+            # overwrite — instead of letting a raw traceback out.
+            raise AmazonBridgeError(
+                f"Amazon access token was refreshed but could not be saved to "
+                f"~/.mureo/credentials.json: {save_exc}"
+            ) from first_exc
+        refreshed = dataclasses.replace(
+            creds,
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
+        )
+        try:
+            return await self._call(refreshed, name, arguments)
+        except KeyboardInterrupt:
+            raise
+        except BaseException as retry_exc:
+            raise retry_exc from first_exc
 
     async def _call(
         self,

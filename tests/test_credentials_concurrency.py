@@ -1,13 +1,14 @@
 """Concurrency safety for credentials.json read-modify-write (M2).
 
-``auth._save_meta_token`` (the background Meta 53-day auto-refresh) and
+``auth._save_meta_token`` (the background Meta 53-day auto-refresh),
+``auth.save_amazon_access_token`` (the Amazon LwA refresh, #113) and
 ``auth_setup.save_credentials`` (the CLI / web setup wizard) each do
 read -> mutate -> ``_atomic_write_json``. ``_atomic_write_json`` makes only the
 file *replace* atomic; the surrounding read-modify-write is not. Run
 concurrently they can last-writer-wins away each other's section (e.g. the
 wizard re-auth dropping a just-refreshed access_token, or the refresh dropping
-a freshly-saved google_ads block). Both paths now hold the same cross-process
-``credentials.json.lock`` across the whole cycle.
+a freshly-saved google_ads block). All three paths now hold the same
+cross-process ``credentials.json.lock`` across the whole cycle.
 
 The test instruments ``config_writer._load_existing`` /
 ``_atomic_write_json`` to count how many read-modify-write cycles are ever
@@ -27,7 +28,11 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 import mureo.providers.config_writer as config_writer
-from mureo.auth import GoogleAdsCredentials, _save_meta_token
+from mureo.auth import (
+    GoogleAdsCredentials,
+    _save_meta_token,
+    save_amazon_access_token,
+)
 from mureo.auth_setup import save_credentials
 
 if TYPE_CHECKING:
@@ -134,6 +139,103 @@ def test_meta_refresh_and_wizard_save_are_mutually_exclusive(
     assert data["google_ads"]["developer_token"].startswith("g-")
     # The section each worker type does not touch is preserved, not dropped.
     assert data["meta_ads"]["app_id"] == "app"
+
+
+@pytest.mark.unit
+def test_amazon_refresh_contends_with_meta_refresh_and_wizard_save(
+    tmp_path: Path, monitor: _SectionMonitor
+) -> None:
+    """The Amazon LwA refresh joins the same one-lock contention (#113).
+
+    ``save_amazon_access_token`` is the third writer of credentials.json.
+    With all three interleaved on real threads, no writer's section may be
+    lost: each ends at a value one of its own workers wrote, and the fields
+    nobody writes (``client_id`` / ``region`` / ``app_id``) survive intact
+    rather than being dropped by a competing whole-file replace.
+    """
+    cred_path = tmp_path / "credentials.json"
+    cred_path.write_text(
+        json.dumps(
+            {
+                "google_ads": {"developer_token": "SEED"},
+                "meta_ads": {
+                    "access_token": "SEED",
+                    "app_id": "app",
+                    "app_secret": "secret",
+                },
+                "amazon_ads": {
+                    "client_id": "amzn-cid",
+                    "access_token": "SEED",
+                    "region": "eu",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def meta_worker(thread_id: int) -> None:
+        for j in range(_PER_THREAD):
+            _save_meta_token(
+                cred_path, f"m-{thread_id}-{j}", "2026-07-18T00:00:00+00:00"
+            )
+
+    def google_worker(thread_id: int) -> None:
+        for j in range(_PER_THREAD):
+            save_credentials(path=cred_path, google=_google(f"g-{thread_id}-{j}"))
+
+    def amazon_worker(thread_id: int) -> None:
+        for j in range(_PER_THREAD):
+            save_amazon_access_token(
+                f"Atza|a-{thread_id}-{j}",
+                f"Atzr|a-{thread_id}-{j}",
+                path=cred_path,
+            )
+
+    workers = (meta_worker, google_worker, amazon_worker)
+    with ThreadPoolExecutor(max_workers=_THREADS) as pool:
+        futures = [
+            pool.submit(workers[tid % len(workers)], tid) for tid in range(_THREADS)
+        ]
+        for f in futures:
+            f.result()
+
+    # The read-modify-write cycles were serialised: never two at once.
+    assert monitor.max_active == 1
+
+    data = json.loads(cred_path.read_text(encoding="utf-8"))
+    # Every writer's own section survived to a value it wrote.
+    assert data["meta_ads"]["access_token"].startswith("m-")
+    assert data["google_ads"]["developer_token"].startswith("g-")
+    assert data["amazon_ads"]["access_token"].startswith("Atza|a-")
+    assert data["amazon_ads"]["refresh_token"].startswith("Atzr|a-")
+    # Fields no worker touches are preserved, not dropped.
+    assert data["meta_ads"]["app_id"] == "app"
+    assert data["amazon_ads"]["client_id"] == "amzn-cid"
+    assert data["amazon_ads"]["region"] == "eu"
+
+
+@pytest.mark.unit
+def test_concurrent_amazon_refreshes_never_overlap(
+    tmp_path: Path, monitor: _SectionMonitor
+) -> None:
+    """Amazon <-> Amazon: two LwA refreshes on one file never interleave."""
+    cred_path = tmp_path / "credentials.json"
+    cred_path.write_text(
+        json.dumps({"amazon_ads": {"client_id": "amzn-cid", "access_token": "SEED"}}),
+        encoding="utf-8",
+    )
+
+    def worker(thread_id: int) -> None:
+        for j in range(_PER_THREAD):
+            save_amazon_access_token(f"Atza|t-{thread_id}-{j}", path=cred_path)
+
+    with ThreadPoolExecutor(max_workers=_THREADS) as pool:
+        list(pool.map(worker, range(_THREADS)))
+
+    assert monitor.max_active == 1
+    data = json.loads(cred_path.read_text(encoding="utf-8"))
+    assert data["amazon_ads"]["access_token"].startswith("Atza|t-")
+    assert data["amazon_ads"]["client_id"] == "amzn-cid"
 
 
 @pytest.mark.unit

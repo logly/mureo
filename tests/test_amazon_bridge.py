@@ -251,6 +251,38 @@ class TestTokenRefreshRetry:
         with pytest.raises(AmazonBridgeError, match="re-authorize"):
             asyncio.run(b.handle_mcp_tool("x", {}))
 
+    def test_unpersistable_token_raises_clear_bridge_error(
+        self, tmp_path: Path
+    ) -> None:
+        """A malformed credentials.json must surface, not blow up raw.
+
+        ``save_amazon_access_token`` refuses to overwrite a corrupt
+        credentials.json (``ConfigWriteError``) rather than erasing the
+        other providers' sections. The bridge turns that into an
+        actionable ``AmazonBridgeError`` carrying the underlying reason,
+        with the original call failure still chained and no token text.
+        """
+        from mureo.amazon_ads.lwa import LwaTokens
+        from mureo.providers.config_writer import ConfigWriteError
+
+        def saver(access: str, refresh: str | None) -> None:
+            raise ConfigWriteError(
+                "existing settings file at /x/credentials.json is malformed "
+                "JSON (refusing to overwrite to protect user data)"
+            )
+
+        b = self._mk(
+            tmp_path,
+            self._creds(),
+            self._connect_seq([], fail_first=1),
+            refresher=lambda c: LwaTokens("Atza|NEW", "Atzr|R", 3600),
+            token_saver=saver,
+        )
+        with pytest.raises(AmazonBridgeError, match="malformed") as ei:
+            asyncio.run(b.handle_mcp_tool("x", {}))
+        assert "Atza|" not in str(ei.value)  # no token material in the message
+        assert isinstance(ei.value.__cause__, RuntimeError)  # original chained
+
     def test_retry_after_refresh_still_failing_raises(self, tmp_path: Path) -> None:
         from mureo.amazon_ads.lwa import LwaTokens
 

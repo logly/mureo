@@ -553,42 +553,46 @@ def save_amazon_access_token(
 ) -> None:
     """Atomically persist a refreshed Amazon access token (#113 Phase 2A).
 
-    Mirrors ``_save_meta_token``: read-modify-write the ``amazon_ads``
-    section via a temp file + ``os.replace`` (0600), preserving every
-    other field/section. ``refresh_token`` is written only when given
-    (LwA returns the same one, but write it through for robustness).
+    Mirrors :func:`_save_meta_token` exactly, reusing the same hardened
+    ``config_writer`` helpers instead of a local read-modify-write:
+    ``_load_existing`` returns ``{}`` only when the file is absent and
+    RAISES ``ConfigWriteError`` on malformed JSON, so a slightly-corrupt
+    credentials.json is left untouched rather than reset to ``{}`` —
+    which would silently erase every other provider's section
+    (google_ads etc.). ``_atomic_write_json`` writes via tmp + fsync +
+    ``os.replace`` at ``0o600``, so a crash mid-write is durable and the
+    file is never world-readable.
+
+    The load -> mutate -> write cycle runs under the same cross-process
+    ``credentials.json.lock`` every other credentials writer holds, so
+    an LwA refresh and a concurrent CLI/web ``save_credentials`` cannot
+    last-writer-wins away each other's sections.
+
+    ``refresh_token`` is written only when given (LwA returns the same
+    one, but write it through for robustness).
+
+    Raises:
+        ConfigWriteError: the existing credentials.json is malformed;
+            nothing is written.
     """
+    # Lazy import mirrors ``_save_meta_token`` and avoids any import-time
+    # coupling to the providers package.
+    from mureo.providers.config_writer import _atomic_write_json, _load_existing
+
     resolved = path if path is not None else _resolve_default_path()
-
-    data: dict[str, Any] = {}
-    if resolved.exists():
-        try:
-            data = json.loads(resolved.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            data = {}
-    if not isinstance(data, dict):
-        data = {}
-
-    section = data.get("amazon_ads", {})
-    if not isinstance(section, dict):
-        section = {}
-    section["access_token"] = access_token
-    if refresh_token:
-        section["refresh_token"] = refresh_token
-    data["amazon_ads"] = section
-
-    content = json.dumps(data, indent=2, ensure_ascii=False)
     resolved.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(dir=resolved.parent, suffix=".tmp")
-    os.fchmod(fd, 0o600)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
-        os.replace(tmp_path, resolved)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_path)
-        raise
+    with file_lock(lock_path_for(resolved)):
+        data = _load_existing(resolved)
+
+        section = data.get("amazon_ads", {})
+        if not isinstance(section, dict):
+            section = {}
+        section["access_token"] = access_token
+        if refresh_token:
+            section["refresh_token"] = refresh_token
+        data["amazon_ads"] = section
+
+        _atomic_write_json(data, resolved)
 
 
 # ---------------------------------------------------------------------------

@@ -25,6 +25,7 @@ mureo <subcommand-group> <command> [options]
 | `byod` | Bring Your Own Data — analyse ad-account data locally, no OAuth |
 | `demo` | Scaffold a self-contained demo workspace |
 | `providers` | Install / list / remove official MCP providers (Google Ads, Meta, GA4) |
+| `amazon` | Amazon Ads official-MCP bridge setup |
 | `install-desktop` | Wire mureo into Claude Desktop chat (macOS) |
 | `learn` | Append insights to the diagnostic knowledge base |
 | `rollback` | Inspect reversible actions recorded in STATE.json |
@@ -123,6 +124,19 @@ Credential entry has two front doors:
 Both end at the same destination: `~/.mureo/credentials.json` is populated and Claude (or any other MCP client) picks up mureo after a restart.
 
 See [authentication.md](authentication.md) for details on credentials.
+
+## Amazon Ads Commands
+
+`mureo amazon` sets up the Amazon Ads official-MCP bridge. Amazon credentials are added to `~/.mureo/credentials.json` by hand (the `amazon_ads` section) rather than through a wizard.
+
+```bash
+# Discover Amazon's MCP tools and (re)write ~/.mureo/amazon_tools.json
+mureo amazon refresh-manifest
+```
+
+`refresh-manifest` connects once, authenticated, lists the official Amazon Ads MCP's tools, and writes the local manifest the mureo MCP server reads at start. Re-run it when Amazon's tool surface changes or after you re-authorize; a routine access-token refresh is handled automatically and needs no CLI action.
+
+See [amazon-ads.md](amazon-ads.md) for the full walkthrough.
 
 ## Configure UI & Always-On Service
 
