@@ -33,6 +33,7 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any
 
+from mureo.core.tool_names import READ_ONLY_PREFIXES, is_read_only_tool_name
 from mureo.rollback.models import RollbackPlan, RollbackStatus
 
 if TYPE_CHECKING:
@@ -78,16 +79,26 @@ _DESTRUCTIVE_VERBS: tuple[str, ...] = (
     "_transfer",
 )
 
-_READ_ONLY_PREFIXES: tuple[str, ...] = (
-    "list_",
-    "get_",
-    "analyze_",
-    "diagnose_",
-    "inspect_",
-    "report_",
-    "check_",
-    "search_",
-)
+# The read-verb vocabulary lives in :mod:`mureo.core.tool_names`, shared with
+# the MCP server's guardrail pattern-fallback registration. Two copies would
+# drift, and the drift would be silent on both sides — an unrollback-able read
+# here, a heuristically denied read there. Re-exported under the historical
+# private name so this module's import surface is unchanged.
+_READ_ONLY_PREFIXES = READ_ONLY_PREFIXES
+
+
+def _normalize_separators(name: str) -> str:
+    """Treat a hyphen namespace separator as an underscore.
+
+    A bridged MCP server commonly namespaces its tools
+    (``campaign_management-delete_campaign``), and against those names the
+    underscore-anchored verbs above matched NOTHING: ``_delete`` is not in
+    ``…management-delete_campaign``, so a delete read as a harmless write and
+    the destructive-verb safety net was off for the entire bridge. Native tool
+    names contain no hyphen, so this is a no-op for them and their behaviour is
+    byte-identical.
+    """
+    return name.replace("-", "_")
 
 
 def _plugin_reversal_keys(operation: str) -> tuple[bool, frozenset[str] | None]:
@@ -157,7 +168,8 @@ def plan_rollback(entry: ActionLogEntry) -> RollbackPlan | None:
             notes="reversible_params is missing a dict 'params' key.",
         )
 
-    if any(verb in operation for verb in _DESTRUCTIVE_VERBS):
+    normalized_operation = _normalize_separators(operation)
+    if any(verb in normalized_operation for verb in _DESTRUCTIVE_VERBS):
         return _not_supported(
             entry,
             notes=(
@@ -213,8 +225,16 @@ def plan_rollback(entry: ActionLogEntry) -> RollbackPlan | None:
 
 
 def _is_read_only(action: str) -> bool:
-    lowered = action.lower()
-    return any(lowered.startswith(prefix) for prefix in _READ_ONLY_PREFIXES)
+    """Does ``action`` name a read? (shared matcher — see the import above)
+
+    The prefixes anchor at the start of a *namespace segment*, not just of the
+    whole name: a bridged server's ``campaign_management-list_campaigns`` is as
+    much a read as a native ``list_campaigns``, and treating it as a write made
+    the planner emit a NOT_SUPPORTED plan for an action with nothing to undo.
+    A name with no hyphen is one segment, so native behaviour is unchanged —
+    including the deliberate non-match of mid-word hits like ``listing_update``.
+    """
+    return is_read_only_tool_name(action)
 
 
 def _not_supported(entry: ActionLogEntry, *, notes: str) -> RollbackPlan:

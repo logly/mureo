@@ -16,7 +16,7 @@ used by AWS / Stripe surface UIs.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from mureo.web._helpers import read_json_safe
@@ -74,6 +74,15 @@ class StatusSnapshot:
     # ``home is None`` gate and relayed through here; defaults False so
     # standalone OSS and direct callers are unchanged.
     multi_account_auth: bool = False
+    # Audit #47: the Amazon tool manifest's freshness —
+    # ``{"present": bool, "stale": bool, "age_days": float | None}``. The
+    # manifest is a snapshot of a tool surface mureo does not own, so an old
+    # one means the exposed tool list has quietly drifted from reality.
+    # ``age_days`` is ``None`` when it cannot be determined (absent manifest,
+    # or an unusable ``generated_at``), and an unknown age is never reported
+    # as stale. Defaults to an empty dict so direct constructions of this
+    # snapshot (tests, alternate callers) keep working.
+    amazon_manifest: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -86,6 +95,7 @@ class StatusSnapshot:
             "legacy_commands_present": self.legacy_commands_present,
             "mureo_disable": dict(self.mureo_disable),
             "multi_account_auth": self.multi_account_auth,
+            "amazon_manifest": dict(self.amazon_manifest),
         }
 
 
@@ -172,6 +182,36 @@ def _amazon_credentials_usable(section: Any) -> bool:
         section.get("access_token")
         or (section.get("refresh_token") and section.get("client_secret"))
     )
+
+
+def _detect_amazon_manifest(credentials_path: Path) -> dict[str, Any]:
+    """Freshness of ``~/.mureo/amazon_tools.json`` (audit #47).
+
+    The manifest lives beside ``credentials.json``, so the path is derived
+    from ``credentials_path`` rather than from ``Path.home()`` — the collector
+    reads exactly the tree it was handed, which is what keeps a test (or a
+    non-default home) from being answered with the operator's real manifest.
+
+    Read-only and never raises, like every other detector here: an unreadable
+    or timestamp-less manifest reports ``present`` with an unknown age, and an
+    unknown age is never called stale.
+    """
+    from mureo.amazon_ads.manifest import (
+        MANIFEST_FILENAME,
+        is_stale,
+        manifest_age_days,
+    )
+
+    path = credentials_path.parent / MANIFEST_FILENAME
+    present = path.exists()
+    age = manifest_age_days(path) if present else None
+    return {
+        "present": present,
+        "stale": is_stale(age),
+        # Rounded for display: the dashboard shows "N days old", and a raw
+        # float carries a precision this figure does not have.
+        "age_days": None if age is None else round(age, 1),
+    }
 
 
 def _detect_credentials_oauth(credentials_path: Path) -> dict[str, bool]:
@@ -337,6 +377,7 @@ def collect_status(
     env_vars = _collect_env_vars(resolved.credentials_path)
     legacy = _detect_legacy_commands(resolved.commands_dir)
     mureo_disable = _detect_mureo_disable(resolved.mcp_registry_path)
+    amazon_manifest = _detect_amazon_manifest(resolved.credentials_path)
     return StatusSnapshot(
         host=resolved.host,
         setup_parts=setup_parts,
@@ -347,4 +388,5 @@ def collect_status(
         legacy_commands_present=legacy,
         mureo_disable=mureo_disable,
         multi_account_auth=multi_account_auth,
+        amazon_manifest=amazon_manifest,
     )

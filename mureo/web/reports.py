@@ -95,6 +95,22 @@ _BUILTIN_DISPLAY_NAMES: dict[str, str] = {
     "tiktok_ads": "TikTok Ads",
 }
 
+# Distribution → display name for OFFICIAL, in-tree bridges (audit #30).
+# These ride the ``plugin:<dist>`` dispatch path to reuse the plugin safety
+# layer, but that is an implementation detail: they ship inside mureo, so
+# labelling them "(plugin)" would tell the operator a first-party integration
+# is third-party. Only in-tree bridges belong here; a genuine third-party
+# distribution keeps the suffix.
+#
+# The key is spelled out rather than imported from
+# ``mureo.amazon_ads.provider.AMAZON_SOURCE_DISTRIBUTION`` on purpose: that
+# module pulls the bridge (and the mcp SDK types it imports) onto the
+# configure-UI import path, which the wizard deliberately avoids. A test pins
+# the two strings together.
+_OFFICIAL_BRIDGE_DISPLAY_NAMES: dict[str, str] = {
+    "mureo-amazon-ads-bridge": "Amazon Ads",
+}
+
 # Canonical period tokens in dashboard-toggle order. The default view is the
 # most recent day (``YESTERDAY``) — daily-check runs every day, so the prior
 # day's state is what an operator checks first; ``LAST_30_DAYS`` is the
@@ -113,8 +129,12 @@ def platform_display_name(key: str) -> str:
     Rules:
     - A built-in key (``google_ads`` / ``meta_ads`` / ``search_console`` /
       ``ga4``) → its registered name.
-    - A ``plugin:<dist>`` key → a humanized label from ``<dist>``: drop a
-      leading ``mureo-`` and a trailing ``-bridge``, title-case the
+    - A ``plugin:<dist>`` key naming an OFFICIAL in-tree bridge → its
+      registered name, with no ``" (plugin)"`` suffix (e.g.
+      ``plugin:mureo-amazon-ads-bridge`` → ``"Amazon Ads"``). See
+      :data:`_OFFICIAL_BRIDGE_DISPLAY_NAMES`.
+    - Any other ``plugin:<dist>`` key → a humanized label from ``<dist>``:
+      drop a leading ``mureo-`` and a trailing ``-bridge``, title-case the
       hyphen-separated words, and suffix ``" (plugin)"`` (e.g.
       ``plugin:mureo-logly-bridge`` → ``"Logly (plugin)"``,
       ``plugin:acme-ads`` → ``"Acme Ads (plugin)"``).
@@ -126,7 +146,11 @@ def platform_display_name(key: str) -> str:
         return builtin
     # Issue #481: the canonical plugin key — see mureo.core.platform_keys.
     if is_plugin_platform_key(key):
-        label = _humanize_dist(plugin_distribution(key))
+        dist = plugin_distribution(key)
+        official = _OFFICIAL_BRIDGE_DISPLAY_NAMES.get(dist)
+        if official is not None:
+            return official
+        label = _humanize_dist(dist)
         return f"{label} (plugin)" if label else key
     return key
 

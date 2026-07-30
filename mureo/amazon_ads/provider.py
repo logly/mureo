@@ -41,6 +41,8 @@ returns the foreign entry.
 
 from __future__ import annotations
 
+import os
+
 from mureo.amazon_ads.bridge import AmazonAdsBridge
 from mureo.core.providers.registry import ProviderEntry, default_registry
 
@@ -53,6 +55,25 @@ AMAZON_SOURCE_DISTRIBUTION = "mureo-amazon-ads-bridge"
 #: Registry key of the bridge — mirrors ``AmazonAdsBridge.name`` and the
 #: ``amazon_ads`` section of ``~/.mureo/credentials.json``.
 AMAZON_PROVIDER_NAME = "amazon_ads"
+
+#: Coexistence control, matching ``MUREO_DISABLE_GOOGLE_ADS`` and friends
+#: (:mod:`mureo.providers.mureo_env`). Set to the exact string ``"1"`` to keep
+#: mureo from registering the bridge at all — the escape hatch for an operator
+#: who has wired Amazon's own MCP into their host directly and does not want
+#: the same tools exposed twice.
+AMAZON_DISABLE_ENV_VAR = "MUREO_DISABLE_AMAZON_ADS"
+
+
+def amazon_ads_disabled() -> bool:
+    """Is the bridge switched off via :data:`AMAZON_DISABLE_ENV_VAR`?
+
+    Exact-string ``== "1"``, the contract every other ``MUREO_DISABLE_*`` gate
+    holds (``"0"`` / ``""`` / ``"true"`` / ``"  1  "`` leave it enabled). Read
+    at CALL time rather than at import so both startup paths — the MCP server,
+    which calls this during module import, and the configure UI, which calls it
+    when the wizard is constructed — observe the same environment.
+    """
+    return os.environ.get(AMAZON_DISABLE_ENV_VAR) == "1"
 
 
 def provider_entry() -> ProviderEntry:
@@ -98,8 +119,10 @@ def register_amazon_provider() -> ProviderEntry:
 
 
 __all__ = [
+    "AMAZON_DISABLE_ENV_VAR",
     "AMAZON_PROVIDER_NAME",
     "AMAZON_SOURCE_DISTRIBUTION",
+    "amazon_ads_disabled",
     "provider_entry",
     "register_amazon_provider",
 ]

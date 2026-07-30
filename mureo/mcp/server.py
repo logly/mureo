@@ -17,6 +17,9 @@ before launching the server (typically written by ``mureo providers add
   ships no native GA4 tools yet).
 - ``MUREO_DISABLE_CREATIVE_STUDIO`` — skip the ``creative_studio_*`` tool
   family (image-generation providers + visual generation).
+- ``MUREO_DISABLE_AMAZON_ADS`` — do not register the in-tree Amazon Ads
+  bridge, so none of its manifest tools are exposed (see
+  ``mureo.amazon_ads.provider.amazon_ads_disabled``).
 
 The env vars are read **once at module import time**; the server starts
 once per process and the gate is a startup decision. Search Console is
@@ -193,8 +196,17 @@ def _discover_with_amazon() -> tuple[Any, ...]:
     function runs at all) still wins, which is the documented
     first-wins contract.
     """
-    from mureo.amazon_ads.provider import register_amazon_provider
+    from mureo.amazon_ads.provider import amazon_ads_disabled, register_amazon_provider
     from mureo.core.providers import registry as _registry
+
+    if amazon_ads_disabled():
+        # ``MUREO_DISABLE_AMAZON_ADS=1`` — the bridge is neither registered nor
+        # appended, so no Amazon tools are exposed AND the configure UI does
+        # not render a card for a bridge this server will not serve. A
+        # third-party ``amazon_ads`` entry point (were one installed) is left
+        # to discovery, exactly as the other MUREO_DISABLE_* gates leave the
+        # official MCP they step aside for.
+        return tuple(_registry.discover_providers())
 
     amazon = register_amazon_provider()
     entries = list(_registry.discover_providers())
@@ -363,8 +375,65 @@ def _register_plugin_bid_declarations(
             )
 
 
+def _register_plugin_pattern_fallbacks(
+    semantics: dict[str, ToolSemantics],
+) -> None:
+    """Mark MUTATING plugin tools for the gate's pattern fallback.
+
+    The two registrations above only help a plugin that CAN declare. A bridged
+    tool surface — someone else's tool definitions forwarded verbatim, e.g. from
+    a manifest snapshot — carries no mureo ``_meta`` at all, so it declares
+    nothing and every ``## Guardrails`` budget/bid cap was silently unenforced
+    for its mutations. Registering the mutating tools here lets the gate fall
+    back to the best-effort key-shape scan
+    (:mod:`mureo.policy.pattern_scan`) for the channels no declaration covers.
+
+    Reads are deliberately excluded — they move no money, so scanning their
+    arguments could only produce false denials — and "read" is decided by TWO
+    signals, because on this surface neither is sufficient alone:
+
+    - ``annotations.readOnlyHint``, when the tool declares it; and
+    - the tool NAME, via the shared read vocabulary in
+      :mod:`mureo.core.tool_names` (the same list and matcher the rollback
+      planner uses, single-sourced so the two cannot drift).
+
+    The name check is what matters here. ``derive_semantics`` defaults an
+    undeclared tool to *mutating* — correct for auditing, where over-recording
+    is harmless — and a manifest snapshot declares nothing, so every read from
+    a bridged surface arrives as "mutating". Without the name check, a listing
+    call carrying a numeric budget-shaped FILTER argument would be refused
+    outright. The error costs are asymmetric: platform mutations are
+    consistently verb-named (``create_`` / ``update_`` / ``delete_`` /
+    ``set_``), so a read-shaped name is almost never a mutation, whereas a
+    mutation-shaped name that is really a read costs only a wasted scan of
+    arguments that carry no budget.
+
+    TODO (Wave 2): replace this name heuristic with the tools' verified
+    ``readOnlyHint`` / ``destructiveHint`` annotations once a real bridged
+    manifest has been inspected and its annotation coverage is known.
+
+    Best-effort: a registry failure must not take the server down.
+    """
+    from mureo.core.tool_names import is_read_only_tool_name
+    from mureo.policy.pattern_scan import register_pattern_fallback_tool
+
+    for name, sem in semantics.items():
+        if not sem.mutating or is_read_only_tool_name(name):
+            continue
+        try:
+            register_pattern_fallback_tool(name)
+        except Exception:  # noqa: BLE001 — never break startup on a hint
+            logger.warning(
+                "could not register the guardrail pattern fallback for "
+                "plugin tool '%s'",
+                name,
+                exc_info=True,
+            )
+
+
 _register_plugin_budget_declarations(_PLUGIN_SEMANTICS)
 _register_plugin_bid_declarations(_PLUGIN_SEMANTICS)
+_register_plugin_pattern_fallbacks(_PLUGIN_SEMANTICS)
 
 
 # Guardrail parity (#114 follow-up): top-level ``inputSchema`` property names
