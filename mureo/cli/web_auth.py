@@ -39,6 +39,7 @@ import http.server
 import logging
 import secrets as _secrets
 import socketserver
+import sys
 import threading
 import urllib.parse
 from dataclasses import dataclass, field
@@ -51,8 +52,6 @@ from mureo.auth_setup import (
     exchange_google_code,
     exchange_meta_code,
     google_auth_url,
-    list_accessible_accounts,
-    list_meta_ad_accounts,
     save_credentials,
 )
 from mureo.core.secret_store import FilesystemSecretStore
@@ -62,7 +61,53 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from pathlib import Path
 
+    # Typed views of the deferred re-exports resolved by ``__getattr__``.
+    from mureo.google_ads.accounts import (
+        list_accessible_accounts as list_accessible_accounts,
+    )
+    from mureo.meta_ads.accounts import (
+        list_meta_ad_accounts as list_meta_ad_accounts,
+    )
+
 logger = logging.getLogger(__name__)
+
+#: Account-listing helpers this module exposes as patchable attributes.
+#:
+#: Importing them at module scope would defeat #486: they live in packages
+#: whose ``__init__`` loads the Google Ads SDK, and ``mureo configure``
+#: imports this module at startup. Note that a top-level ``from
+#: mureo.auth_setup import list_accessible_accounts`` is NOT lazy either — it
+#: *triggers* that module's ``__getattr__`` at import time.
+#:
+#: They stay real module attributes for ``patch("mureo.cli.web_auth.<name>")``
+#: (six existing tests rely on it, one of which asserts the probe is NOT
+#: called and would silently pass if the patch were bypassed) — see
+#: :func:`_reexport`.
+_LAZY_REEXPORTS = ("list_accessible_accounts", "list_meta_ad_accounts")
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve the deferred account-listing re-exports on first access."""
+    if name not in _LAZY_REEXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from mureo import auth_setup
+
+    # ``mureo.auth_setup`` owns the module map; going through it keeps a
+    # single source of truth for where each helper actually lives.
+    return getattr(auth_setup, name)
+
+
+def _reexport(name: str) -> Any:
+    """Return the *current* binding of a deferred re-export.
+
+    Resolved through this module's attribute lookup, never a function-local
+    source import: unpatched it falls through to :func:`__getattr__` (still
+    lazy), while a patched module attribute shadows ``__getattr__`` so
+    ``patch("mureo.cli.web_auth.<name>")`` intercepts the probe. A
+    function-local import would silently bypass the patch and let the real
+    networked call run.
+    """
+    return getattr(sys.modules[__name__], name)
 
 
 # ---------------------------------------------------------------------------
@@ -751,7 +796,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         try:
-            accounts = _run_async(list_accessible_accounts(probe_creds))
+            accounts = _run_async(_reexport("list_accessible_accounts")(probe_creds))
         except Exception as exc:  # noqa: BLE001
             # Log only the exception class — the google-ads SDK
             # sometimes embeds request arguments (which could include
@@ -1001,7 +1046,7 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         try:
-            accounts = _run_async(list_meta_ad_accounts(access_token))
+            accounts = _run_async(_reexport("list_meta_ad_accounts")(access_token))
         except Exception as exc:  # noqa: BLE001
             # See Google-side comment above: don't emit the traceback
             # because it may contain the access_token in the request

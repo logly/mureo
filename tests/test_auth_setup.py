@@ -469,7 +469,7 @@ async def test_setup_google_ads_flow(tmp_path: Path) -> None:
             return_value=mock_oauth_result,
         ),
         patch(
-            "mureo.auth_setup.list_accessible_accounts",
+            "mureo.google_ads.accounts.list_accessible_accounts",
             new_callable=AsyncMock,
             return_value=mock_accounts,
         ),
@@ -517,7 +517,7 @@ async def test_setup_google_ads_flow_no_accounts(tmp_path: Path) -> None:
             return_value=mock_oauth_result,
         ),
         patch(
-            "mureo.auth_setup.list_accessible_accounts",
+            "mureo.google_ads.accounts.list_accessible_accounts",
             new_callable=AsyncMock,
             return_value=[],
         ),
@@ -579,7 +579,7 @@ async def test_setup_google_ads_flow_selects_mcc_child(tmp_path: Path) -> None:
             return_value=mock_oauth_result,
         ),
         patch(
-            "mureo.auth_setup.list_accessible_accounts",
+            "mureo.google_ads.accounts.list_accessible_accounts",
             new_callable=AsyncMock,
             return_value=mock_accounts,
         ),
@@ -616,7 +616,10 @@ async def test_run_google_oauth() -> None:
     mock_flow.run_local_server.return_value = mock_credentials
 
     with patch(
-        "mureo.auth_setup.InstalledAppFlow.from_client_config",
+        # Source-module patch target: InstalledAppFlow is imported lazily
+        # inside build_google_flow (#486), so it is never an attribute
+        # of mureo.auth_setup.
+        "google_auth_oauthlib.flow.InstalledAppFlow.from_client_config",
         return_value=mock_flow,
     ) as mock_from_config:
         result = await run_google_oauth(
@@ -657,7 +660,10 @@ async def test_run_google_oauth_no_refresh_token() -> None:
     mock_flow.run_local_server.return_value = mock_credentials
 
     with patch(
-        "mureo.auth_setup.InstalledAppFlow.from_client_config",
+        # Source-module patch target: InstalledAppFlow is imported lazily
+        # inside build_google_flow (#486), so it is never an attribute
+        # of mureo.auth_setup.
+        "google_auth_oauthlib.flow.InstalledAppFlow.from_client_config",
         return_value=mock_flow,
     ):
         with pytest.raises(RuntimeError, match="Failed to obtain refresh_token"):
@@ -842,7 +848,10 @@ async def test_run_google_oauth_flow_exception() -> None:
     mock_flow.run_local_server.side_effect = Exception("Cannot open browser")
 
     with patch(
-        "mureo.auth_setup.InstalledAppFlow.from_client_config",
+        # Source-module patch target: InstalledAppFlow is imported lazily
+        # inside build_google_flow (#486), so it is never an attribute
+        # of mureo.auth_setup.
+        "google_auth_oauthlib.flow.InstalledAppFlow.from_client_config",
         return_value=mock_flow,
     ):
         with pytest.raises(Exception, match="Cannot open browser"):
@@ -1062,7 +1071,9 @@ def test_install_credential_guard_preserves_existing_hooks(tmp_path: Path) -> No
     pre_tool_use = settings["hooks"]["PreToolUse"]
     assert len(pre_tool_use) == 3
     assert pre_tool_use[0]["matcher"] == "Write"  # original
-    assert pre_tool_use[1]["matcher"] == "Read|Edit|Write|Grep|Glob|NotebookEdit"  # mureo
+    assert (
+        pre_tool_use[1]["matcher"] == "Read|Edit|Write|Grep|Glob|NotebookEdit"
+    )  # mureo
     assert pre_tool_use[2]["matcher"] == "Bash"  # mureo
 
 
@@ -1099,9 +1110,7 @@ def test_install_credential_guard_upgrades_stale_hooks(tmp_path: Path) -> None:
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()
     settings_path = claude_dir / "settings.json"
-    stale_cmd = (
-        'python3 -c "import sys,json; sys.exit(1)" # [mureo-credential-guard]'
-    )
+    stale_cmd = 'python3 -c "import sys,json; sys.exit(1)" # [mureo-credential-guard]'
     settings_path.write_text(
         json.dumps(
             {
@@ -1770,7 +1779,7 @@ async def test_setup_meta_ads_flow(tmp_path: Path) -> None:
             return_value=mock_oauth_result,
         ),
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts",
+            "mureo.meta_ads.accounts.list_meta_ad_accounts",
             new_callable=AsyncMock,
             return_value=mock_accounts,
         ),
@@ -1813,7 +1822,7 @@ async def test_setup_meta_ads_single_account(tmp_path: Path) -> None:
             return_value=mock_oauth_result,
         ),
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts",
+            "mureo.meta_ads.accounts.list_meta_ad_accounts",
             new_callable=AsyncMock,
             return_value=mock_accounts,
         ),
@@ -1847,7 +1856,7 @@ async def test_setup_meta_ads_no_accounts(tmp_path: Path) -> None:
             return_value=mock_oauth_result,
         ),
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts",
+            "mureo.meta_ads.accounts.list_meta_ad_accounts",
             new_callable=AsyncMock,
             return_value=[],
         ),
@@ -1884,7 +1893,7 @@ async def test_setup_meta_ads_cancel_selection(tmp_path: Path) -> None:
             return_value=mock_oauth_result,
         ),
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts",
+            "mureo.meta_ads.accounts.list_meta_ad_accounts",
             new_callable=AsyncMock,
             return_value=mock_accounts,
         ),

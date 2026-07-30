@@ -1,0 +1,89 @@
+# Quickstart smoke test (#488).
+#
+# The README leads with a no-credentials quickstart — pip install, `mureo
+# setup claude-code --skip-auth`, `mureo demo init` — and that path is the
+# funnel entry for every first-time user. Nothing else guards it: the unit
+# suite mocks the filesystem and never installs the wheel, so a broken
+# console entry point, a setup step that writes nowhere, or a demo bundle
+# that stops importing would be reported by strangers rather than by CI.
+#
+# Every step also asserts its output is free of FutureWarning /
+# DeprecationWarning / Traceback. That is #486 concretely: two
+# google-api-core FutureWarning blocks printed before any mureo output, on
+# every command, under Python 3.10.
+#
+# All of the logic lives in scripts/quickstart_smoke.sh so a developer can
+# reproduce a red run locally with one command. This workflow only picks the
+# interpreter and what to install.
+#
+# Scope: ubuntu-latest only for now. The script is POSIX-shell and runs fine
+# on macOS (it was developed there), but a macOS matrix leg is deliberately
+# out of scope until there is evidence of a platform-specific quickstart
+# break — ci.yml already carries the Windows compat tripwire.
+name: Quickstart smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Weekly PyPI variant: catches breakage that only shows up in the
+  # published wheel (missing package data, a bad dependency pin) or in a
+  # dependency that moved under us, neither of which a checkout install sees.
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The checkout under test — the gate that runs on every PR.
+  from-checkout:
+    if: github.event_name != 'schedule'
+    name: quickstart (checkout, py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is the supported floor (and the interpreter #486 reproduced
+        # on); 3.12 is the recommended current version.
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run quickstart smoke
+        env:
+          MUREO_SMOKE_PYTHON: python
+          # Defaults to this checkout. The script builds its own venv and
+          # its own sandbox HOME under this directory, so nothing it does
+          # can touch the runner's real home.
+          MUREO_SMOKE_WORKDIR: ${{ runner.temp }}/quickstart-smoke
+        run: bash scripts/quickstart_smoke.sh
+
+  # The published wheel — same assertions, installed from PyPI.
+  from-pypi:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: quickstart (PyPI, py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      # Checked out for scripts/quickstart_smoke.sh only — the package
+      # under test is the one pip pulls from PyPI.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run quickstart smoke against the published wheel
+        env:
+          MUREO_SMOKE_PYTHON: python
+          MUREO_SMOKE_INSTALL_SPEC: mureo
+          MUREO_SMOKE_WORKDIR: ${{ runner.temp }}/quickstart-smoke
+        run: bash scripts/quickstart_smoke.sh
