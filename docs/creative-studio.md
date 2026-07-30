@@ -55,17 +55,30 @@ the extra is missing.
 
 ## Provider keys (bring your own)
 
-Creative Studio is **BYO-API-key**: you choose the image provider and pay the
-provider directly. Only providers with a configured key are selectable; the agent
-lists them with `creative_studio_providers_list` and you pick one (or fan out
-across all of them). mureo ships three built-ins and third parties can register
-more under the `mureo.image_providers` entry-point group.
+Most providers are **BYO-API-key**: you choose the image provider and pay the
+provider directly. Only providers that are actually configured are selectable;
+the agent lists them with `creative_studio_providers_list` and you pick one (or
+fan out across all of them). mureo ships four built-ins — three BYO-key hosted
+APIs plus a **local Codex CLI** provider that needs no API key — and third
+parties can register more under the `mureo.image_providers` entry-point group.
 
 | Provider | Key (credential field) | Env-var fallback | Edit path |
 |---|---|---|---|
 | OpenAI (gpt-image) | `creative_studio.openai_api_key` | `OPENAI_API_KEY` | yes |
 | Google (Gemini image / Imagen) | `creative_studio.gemini_api_key` | `GEMINI_API_KEY` | yes |
 | fal.ai (FLUX / Recraft …) | `creative_studio.fal_key` | `FAL_KEY` | no |
+| Codex CLI (`codex`, gpt-image) | — (no API key; local `codex login`) | — | no |
+
+The **Codex CLI** provider (`name: codex`) is different: it needs **no API key**.
+Instead of calling a REST endpoint it shells out to the locally installed
+[Codex CLI](https://developers.openai.com/codex/cli) (`codex exec`) and uses its
+built-in GPT Image tool, authenticated by your `codex login` (ChatGPT account).
+It shows up as configured whenever the `codex` binary is on `PATH`; login
+problems surface at generate time with a hint to run `codex login`. Each image
+takes ~1-3 minutes (an agent session, not a single API call), `n > 1` runs
+sequentially, and there is no edit path — use OpenAI or Google for the
+art-direction edit loop. Override the per-image timeout (default 300s) with the
+`MUREO_CODEX_TIMEOUT` environment variable.
 
 The recommended way to add keys is the `mureo configure` dashboard: open the
 **Setup** tab and use the **Creative Studio (image generation)** section, which
@@ -235,10 +248,11 @@ Install the extra and the browser: `pip install 'mureo[creative]'` then
 composition needs it.
 
 **`No image provider is configured…`**
-No provider key is set. Add one in the `mureo configure` dashboard's
-`creative_studio` section, or export `OPENAI_API_KEY` / `GEMINI_API_KEY` /
-`FAL_KEY`, then re-run `creative_studio_providers_list` to confirm it shows as
-configured.
+No provider is available. Either set a provider key (add one in the `mureo
+configure` dashboard's `creative_studio` section, or export `OPENAI_API_KEY` /
+`GEMINI_API_KEY` / `FAL_KEY`), or install the Codex CLI and run `codex login`
+(no key needed). Then re-run `creative_studio_providers_list` to confirm a
+provider shows as configured.
 
 **`provider '<name>' does not support image editing`**
 Not every provider has an edit path (fal.ai does not). Use OpenAI or Google for

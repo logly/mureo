@@ -55,18 +55,31 @@ playwright install chromium       # Playwright 用の Chromium を初回のみ�
 
 ## プロバイダキー（自分のキーを持ち込む）
 
-Creative Studio は **BYO-API-key** です。画像プロバイダは自分で選び、料金は
-プロバイダに直接支払います。キーが設定されたプロバイダだけが「選択可能」になり、
+多くのプロバイダは **BYO-API-key** です。画像プロバイダは自分で選び、料金は
+プロバイダに直接支払います。実際に設定済みのプロバイダだけが「選択可能」になり、
 エージェントは `creative_studio_providers_list` で一覧を出し、オペレーターが 1 つ
-選びます（複数設定時は全プロバイダへのファンアウトも可能）。mureo は 3 つの
-ビルトインを同梱し、サードパーティは `mureo.image_providers` エントリーポイント
-グループで追加できます。
+選びます（複数設定時は全プロバイダへのファンアウトも可能）。mureo は 4 つの
+ビルトイン（BYO キーのホスト型 API が 3 つと、API キー不要のローカル **Codex
+CLI** プロバイダ）を同梱し、サードパーティは `mureo.image_providers`
+エントリーポイントグループで追加できます。
 
 | プロバイダ | キー（認証フィールド） | 環境変数フォールバック | 編集パス |
 |---|---|---|---|
 | OpenAI（gpt-image） | `creative_studio.openai_api_key` | `OPENAI_API_KEY` | あり |
 | Google（Gemini image / Imagen） | `creative_studio.gemini_api_key` | `GEMINI_API_KEY` | あり |
 | fal.ai（FLUX / Recraft 等） | `creative_studio.fal_key` | `FAL_KEY` | なし |
+| Codex CLI（`codex`、gpt-image） | —（API キー不要。ローカルの `codex login`） | — | なし |
+
+**Codex CLI** プロバイダ（`name: codex`）は他とは異なり、**API キーが不要**です。
+REST エンドポイントを呼ぶ代わりに、ローカルにインストールされた
+[Codex CLI](https://developers.openai.com/codex/cli)（`codex exec`）を起動し、
+その組み込み GPT Image ツールを、`codex login`（ChatGPT アカウント）の認証で
+使います。`codex` バイナリが `PATH` にあれば「設定済み」と表示され、ログインの
+問題は生成時に `codex login` を促すエラーで surfacing されます。1 枚あたり
+約 1〜3 分（単一 API 呼び出しではなくエージェントのセッション）かかり、`n > 1`
+は逐次実行、編集パスはありません（アートディレクションの編集ループには OpenAI
+または Google を使ってください）。1 枚あたりのタイムアウト（既定 300 秒）は
+`MUREO_CODEX_TIMEOUT` 環境変数で上書きできます。
 
 推奨は `mureo configure` ダッシュボードでの登録です。**Setup** タブの
 **Creative Studio（画像生成）** セクションを開くと、プロバイダごとにラベル付きの
@@ -235,9 +248,11 @@ extra とブラウザを入れてください：`pip install 'mureo[creative]'` 
 extra が必要なのは合成だけです。
 
 **`No image provider is configured…`**
-プロバイダキーが未設定です。`mureo configure` ダッシュボードの `creative_studio`
-セクションで登録するか、`OPENAI_API_KEY` / `GEMINI_API_KEY` / `FAL_KEY` を
-export し、`creative_studio_providers_list` で「configured」表示を確認してください。
+利用可能なプロバイダがありません。プロバイダキーを設定する（`mureo configure`
+ダッシュボードの `creative_studio` セクションで登録、または `OPENAI_API_KEY` /
+`GEMINI_API_KEY` / `FAL_KEY` を export）か、Codex CLI をインストールして
+`codex login`（キー不要）を実行してください。その後
+`creative_studio_providers_list` で「configured」表示を確認してください。
 
 **`provider '<name>' does not support image editing`**
 すべてのプロバイダに編集パスがあるわけではありません（fal.ai には無し）。編集
