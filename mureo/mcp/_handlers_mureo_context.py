@@ -195,6 +195,85 @@ def _state_to_dict(doc: StateDocument) -> dict[str, Any]:
     return parsed
 
 
+#: Fields whose value is the positional index of an entry they CLOSE — a
+#: later rollback reverses the action, a later evaluation record reviews its
+#: outcome. Either takes the target out of the pending set. Shared by the
+#: pending filter and the append-time index validation so the two can never
+#: disagree about what "closes" an observation.
+_CLOSURE_INDEX_FIELDS = ("rollback_of", "evaluation_of")
+
+
+def _closed_indices(entries: list[dict[str, Any]]) -> set[int]:
+    """Positional indices closed by a later ``rollback_of`` / ``evaluation_of``.
+
+    ``entries`` is the full rendered list, so positional indices here match
+    the indices the rollback executor and the daily-check evaluation records
+    write.
+    """
+    closed: set[int] = set()
+    for entry in entries:
+        for field_name in _CLOSURE_INDEX_FIELDS:
+            value = entry.get(field_name)
+            if isinstance(value, int) and not isinstance(value, bool):
+                closed.add(value)
+    return closed
+
+
+def _pending_action_log(
+    entries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return the OPEN observation entries from a rendered action_log.
+
+    "Pending" is defined truthfully from the fields the model actually
+    carries (there is no separate "evaluated" flag to read):
+
+    - the entry has a non-null ``observation_due`` — the only field marking
+      an action as one whose outcome is meant to be reviewed later. Both a
+      past-due window (the daily-check still owes it an evaluation) and a
+      future-due window (still under observation) count.
+    - the entry has NOT been closed. ``mureo_outcome_evaluate`` is pure, so a
+      past-due observation only leaves the set once a LATER entry records its
+      closure: a rollback (``rollback_of=<index>``, see rollback.executor) or
+      an evaluation record (``evaluation_of=<index>``, appended by daily-check
+      after it evaluates the outcome). Without the latter a past-due entry
+      would be re-evaluated on every run and the pending set would grow
+      without bound.
+
+    Each returned entry gains an ``index`` field — its position in the FULL
+    log — so a caller working from the pending subset can close it (append an
+    entry with ``evaluation_of=<index>``) without loading the whole history.
+    ``index`` is a response-only field: ``_parse_action_log_entry`` never reads
+    it, so an echoed copy is dropped on the next write.
+    """
+    closed = _closed_indices(entries)
+    result: list[dict[str, Any]] = []
+    for index, entry in enumerate(entries):
+        if entry.get("observation_due") is not None and index not in closed:
+            result.append({**entry, "index": index})
+    return result
+
+
+def _apply_action_log_scope(payload: dict[str, Any], scope: Any) -> None:
+    """Filter ``payload['action_log']`` in place per the requested scope.
+
+    ``all`` (the default) is a no-op, so the response stays byte-identical to
+    the legacy behaviour. ``pending`` / ``none`` add ``action_log_scope`` +
+    ``action_log_total`` markers so a filtered log is never mistaken for the
+    complete history.
+    """
+    if scope == "all":
+        return
+    if scope not in ("pending", "none"):
+        raise ValueError("action_log must be one of 'all', 'pending', 'none'")
+    entries = payload.get("action_log") or []
+    payload["action_log_scope"] = scope
+    payload["action_log_total"] = len(entries)
+    if scope == "none":
+        payload.pop("action_log", None)
+    else:  # pending
+        payload["action_log"] = _pending_action_log(entries)
+
+
 async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
     path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
     # read_state_file already returns an empty default StateDocument when
@@ -209,7 +288,31 @@ async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
     # response into STATE.json loses the key on the next mureo write instead
     # of leaving a stale "today" behind.
     payload["server_now"] = server_now_iso()
+    # Optional action_log scoping (context weight-reduction). Applied AFTER
+    # server_now, and only ``pending`` / ``none`` mutate the payload — ``all``
+    # (the default) keeps the response byte-identical to the legacy shape.
+    _apply_action_log_scope(payload, arguments.get("action_log", "all"))
     return _json_result(payload)
+
+
+def _validate_closure_index(raw: dict[str, Any], key: str, log_len: int) -> None:
+    """Validate a ``rollback_of`` / ``evaluation_of`` index when supplied.
+
+    These fields now carry behavioral weight — either takes its target out of
+    the pending set — so a stray index would silently hide an OPEN observation
+    from the daily-check evidence loop. Require a non-negative integer that
+    points at an existing entry (``bool`` is rejected even though it is an
+    ``int`` subclass). Absent is fine — the field is optional.
+    """
+    value = raw.get(key)
+    if value is None:
+        return
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"{key} must be a non-negative integer index into action_log")
+    if value >= log_len:
+        raise ValueError(
+            f"{key}={value} is out of range (action_log has {log_len} entries)"
+        )
 
 
 async def handle_state_action_log_append(
@@ -221,6 +324,15 @@ async def handle_state_action_log_append(
     # Required per ActionLogEntry contract.
     action = _require(raw, "action")
     platform = _require(raw, "platform")
+    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    # Validate the closure indices against the CURRENT log length before the
+    # append. The log is append-only so its length only grows; an index that
+    # is valid now stays valid, and reading once here avoids a stray value
+    # silently hiding an open observation. (A benign race can only make a
+    # just-appended sibling entry un-referenceable, never mis-close another.)
+    log_len = len(read_state_file(path).action_log)
+    _validate_closure_index(raw, "rollback_of", log_len)
+    _validate_closure_index(raw, "evaluation_of", log_len)
     # ``timestamp`` is stamped SERVER-side (#460). A model-supplied value is
     # accepted by the schema (dropping the property would break existing
     # callers under ``additionalProperties: false``) but deliberately ignored:
@@ -238,8 +350,8 @@ async def handle_state_action_log_append(
         observation_due=raw.get("observation_due"),
         reversible_params=raw.get("reversible_params"),
         rollback_of=raw.get("rollback_of"),
+        evaluation_of=raw.get("evaluation_of"),
     )
-    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
     doc = append_action_log(path, entry)
     return _json_result(_state_to_dict(doc))
 

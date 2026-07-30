@@ -1168,3 +1168,336 @@ async def test_upsert_campaign_ads_merge_semantics_end_to_end(cwd_to_tmp) -> Non
     )
     snap = json.loads(result[0].text)["platforms"]["meta_ads"]["campaigns"][0]
     assert snap["ads"] == []
+
+
+# ---------------------------------------------------------------------------
+# mureo_state_get — action_log scoping (Part A: context weight-reduction)
+#
+# The full action_log is the single biggest context cost of a mureo_state_get.
+# ``action_log`` scopes the returned log: "all" (default, byte-identical to the
+# historical behaviour), "pending" (only entries with an OPEN observation_due),
+# "none" (omit the log). When filtered, ``action_log_scope`` + ``action_log_total``
+# mark the response so nothing pretends the log is complete.
+# ---------------------------------------------------------------------------
+
+
+# A STATE.json action_log with the four cases "pending" must discriminate:
+#   [0] observation_due in the PAST   -> pending (must be evaluated this run)
+#   [1] observation_due in the FUTURE -> pending (still under observation)
+#   [2] NO observation_due            -> not pending (a plain log entry)
+#   [3] observation_due, but ROLLED BACK by [4] -> closed, not pending
+#   [4] the rollback entry (rollback_of=3, no observation_due) -> not pending
+_MIXED_ACTION_LOG = [
+    {
+        "timestamp": "2026-01-01T00:00:00+00:00",
+        "action": "Increased budget +20%",
+        "platform": "google_ads",
+        "campaign_id": "c1",
+        "observation_due": "2026-01-08",
+        "metrics_at_action": {"cpa": 5000},
+    },
+    {
+        "timestamp": "2026-07-20T00:00:00+00:00",
+        "action": "Swapped creative",
+        "platform": "meta_ads",
+        "campaign_id": "c2",
+        "observation_due": "2099-01-01",
+    },
+    {
+        "timestamp": "2026-07-25T00:00:00+00:00",
+        "action": "Ran daily check",
+        "platform": "google_ads",
+    },
+    {
+        "timestamp": "2026-07-26T00:00:00+00:00",
+        "action": "Paused campaign",
+        "platform": "google_ads",
+        "campaign_id": "c3",
+        "observation_due": "2026-08-01",
+    },
+    {
+        "timestamp": "2026-07-27T00:00:00+00:00",
+        "action": "campaigns_update_status",
+        "platform": "google_ads",
+        "campaign_id": "c3",
+        "rollback_of": 3,
+        "summary": "Rolled back #3: Paused campaign",
+    },
+]
+
+
+def _write_mixed_state(root) -> None:
+    state = {
+        "version": "2",
+        "last_synced_at": "2026-07-27T00:00:00+00:00",
+        "platforms": {
+            "google_ads": {
+                "account_id": "act_123",
+                "campaigns": [
+                    {
+                        "campaign_id": "c1",
+                        "campaign_name": "Brand",
+                        "status": "ENABLED",
+                    }
+                ],
+            }
+        },
+        "action_log": _MIXED_ACTION_LOG,
+        "reports": {"daily": {"period": "2026-07-27", "narrative": "healthy"}},
+    }
+    (root / "STATE.json").write_text(json.dumps(state), encoding="utf-8")
+
+
+async def test_state_get_action_log_default_is_all_and_byte_identical(cwd_to_tmp):
+    """Omitting ``action_log`` (and passing ``"all"``) is the historical
+    behaviour verbatim: the full log, no scope markers, byte-for-byte equal."""
+    _write_mixed_state(cwd_to_tmp)
+    mod = _import_tools()
+    default = (await mod.handle_tool("mureo_state_get", {}))[0].text
+    explicit_all = (await mod.handle_tool("mureo_state_get", {"action_log": "all"}))[
+        0
+    ].text
+    assert default == explicit_all
+    payload = json.loads(default)
+    assert len(payload["action_log"]) == len(_MIXED_ACTION_LOG)
+    assert "action_log_scope" not in payload
+    assert "action_log_total" not in payload
+
+
+async def test_state_get_action_log_pending_filters_correctly(cwd_to_tmp):
+    """``pending`` keeps only entries with an OPEN observation_due — past-due
+    and future-due — and drops entries with no observation_due AND entries a
+    later rollback already closed."""
+    _write_mixed_state(cwd_to_tmp)
+    mod = _import_tools()
+    result = await mod.handle_tool("mureo_state_get", {"action_log": "pending"})
+    payload = json.loads(result[0].text)
+    assert payload["action_log_scope"] == "pending"
+    assert payload["action_log_total"] == len(_MIXED_ACTION_LOG)
+    kept = payload["action_log"]
+    campaign_ids = {e.get("campaign_id") for e in kept}
+    # c1 (past-due) and c2 (future) survive; c3's pause is closed by its
+    # rollback, and the plain log entry / rollback entry have no observation_due.
+    assert campaign_ids == {"c1", "c2"}
+    assert all(e.get("observation_due") for e in kept)
+    assert not any(e.get("rollback_of") is not None for e in kept)
+
+
+async def test_state_get_action_log_none_omits(cwd_to_tmp):
+    """``none`` omits the log entirely but still marks the scope + total so a
+    reader knows the log was withheld, not empty."""
+    _write_mixed_state(cwd_to_tmp)
+    mod = _import_tools()
+    result = await mod.handle_tool("mureo_state_get", {"action_log": "none"})
+    payload = json.loads(result[0].text)
+    assert "action_log" not in payload
+    assert payload["action_log_scope"] == "none"
+    assert payload["action_log_total"] == len(_MIXED_ACTION_LOG)
+
+
+@pytest.mark.parametrize("scope", ["pending", "none"])
+async def test_state_get_rest_of_response_unchanged_when_filtered(cwd_to_tmp, scope):
+    """Filtering the log must not touch anything else: platforms (incl.
+    campaigns), reports, last_synced_at and server_now are identical."""
+    _write_mixed_state(cwd_to_tmp)
+    mod = _import_tools()
+    full = json.loads((await mod.handle_tool("mureo_state_get", {}))[0].text)
+    filtered = json.loads(
+        (await mod.handle_tool("mureo_state_get", {"action_log": scope}))[0].text
+    )
+    for key in ("version", "platforms", "campaigns", "reports", "last_synced_at"):
+        assert filtered.get(key) == full.get(key)
+    assert filtered["server_now"] == full["server_now"]
+
+
+def test_state_get_schema_documents_action_log_scope() -> None:
+    """The inputSchema exposes the enum, keeps the top-level closed, and the
+    description documents the parameter and the subset marker."""
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_get")
+    assert tool.inputSchema["additionalProperties"] is False
+    prop = tool.inputSchema["properties"]["action_log"]
+    assert prop["enum"] == ["all", "pending", "none"]
+    assert "action_log_scope" in tool.description
+    assert "pending" in tool.description
+
+
+async def test_state_get_rejects_unknown_action_log_scope(cwd_to_tmp) -> None:
+    """A value outside the enum reaching the handler directly (bypassing the
+    server's schema validation) raises a clear ValueError, not a silent
+    mis-scope."""
+    _write_mixed_state(cwd_to_tmp)
+    mod = _import_tools()
+    with pytest.raises(ValueError, match="action_log must be one of"):
+        await mod.handle_tool("mureo_state_get", {"action_log": "bogus"})
+
+
+# ---------------------------------------------------------------------------
+# mureo_state_get — pending closes on a later evaluation record (evaluation_of)
+#
+# ``mureo_outcome_evaluate`` is pure (writes nothing), so a past-due entry
+# would otherwise stay pending forever — re-evaluated every day, the set
+# growing without bound. An evaluation record (a later action_log entry
+# tagged ``evaluation_of=<index>``) closes the observation, mirroring how
+# ``rollback_of`` closes a reversed action.
+# ---------------------------------------------------------------------------
+
+
+def _write_state_with_action_log(root, action_log) -> None:
+    state = {
+        "version": "2",
+        "platforms": {},
+        "action_log": action_log,
+    }
+    (root / "STATE.json").write_text(json.dumps(state), encoding="utf-8")
+
+
+async def test_state_get_pending_excludes_evaluation_closed(cwd_to_tmp) -> None:
+    """A past-due entry whose observation was evaluated (a later entry carries
+    ``evaluation_of`` pointing at it) leaves the pending set — otherwise it is
+    re-evaluated forever."""
+    _write_state_with_action_log(
+        cwd_to_tmp,
+        [
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "action": "Increased budget +20%",
+                "platform": "google_ads",
+                "campaign_id": "c1",
+                "observation_due": "2026-01-08",
+                "metrics_at_action": {"cpa": 5000},
+            },
+            {
+                "timestamp": "2026-01-09T00:00:00+00:00",
+                "action": "Evaluated budget change: improved",
+                "platform": "google_ads",
+                "campaign_id": "c1",
+                "evaluation_of": 0,
+            },
+        ],
+    )
+    mod = _import_tools()
+    result = await mod.handle_tool("mureo_state_get", {"action_log": "pending"})
+    payload = json.loads(result[0].text)
+    assert payload["action_log_scope"] == "pending"
+    assert payload["action_log_total"] == 2
+    # Index 0 is closed by index 1's evaluation_of; index 1 has no
+    # observation_due of its own. Pending is therefore empty.
+    assert payload["action_log"] == []
+
+
+async def test_state_get_pending_entries_carry_their_full_log_index(
+    cwd_to_tmp,
+) -> None:
+    """Each returned pending entry carries an ``index`` field — its position in
+    the FULL log — so the agent can reference it in ``evaluation_of`` without
+    ever loading the whole history."""
+    _write_mixed_state(cwd_to_tmp)
+    mod = _import_tools()
+    result = await mod.handle_tool("mureo_state_get", {"action_log": "pending"})
+    payload = json.loads(result[0].text)
+    by_campaign = {e["campaign_id"]: e for e in payload["action_log"]}
+    # c1 is at full-log index 0, c2 at index 1 (see _MIXED_ACTION_LOG).
+    assert by_campaign["c1"]["index"] == 0
+    assert by_campaign["c2"]["index"] == 1
+
+
+async def test_action_log_append_round_trips_evaluation_of(cwd_to_tmp) -> None:
+    """An evaluation record persists its ``evaluation_of`` and reads back."""
+    _write_state_with_action_log(
+        cwd_to_tmp,
+        [
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "action": "Increased budget +20%",
+                "platform": "google_ads",
+                "campaign_id": "c1",
+                "observation_due": "2026-01-08",
+            }
+        ],
+    )
+    mod = _import_tools()
+    await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {
+            "entry": {
+                "action": "Evaluated budget change: regressed",
+                "platform": "google_ads",
+                "campaign_id": "c1",
+                "evaluation_of": 0,
+            }
+        },
+    )
+    result = await mod.handle_tool("mureo_state_get", {})
+    payload = json.loads(result[0].text)
+    assert payload["action_log"][1]["evaluation_of"] == 0
+    # And that entry now closes index 0's observation.
+    pending = json.loads(
+        (await mod.handle_tool("mureo_state_get", {"action_log": "pending"}))[0].text
+    )
+    assert pending["action_log"] == []
+
+
+@pytest.mark.parametrize("field", ["evaluation_of", "rollback_of"])
+async def test_action_log_append_rejects_out_of_range_index(cwd_to_tmp, field) -> None:
+    """A behavioral-index field must point at a real entry — an out-of-range
+    value would silently hide an open observation from the pending set."""
+    _write_state_with_action_log(
+        cwd_to_tmp,
+        [
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "action": "Increased budget +20%",
+                "platform": "google_ads",
+            }
+        ],
+    )
+    mod = _import_tools()
+    with pytest.raises(ValueError, match=f"{field}"):
+        await mod.handle_tool(
+            "mureo_state_action_log_append",
+            {
+                "entry": {
+                    "action": "bad record",
+                    "platform": "google_ads",
+                    field: 99,
+                }
+            },
+        )
+
+
+@pytest.mark.parametrize("field", ["evaluation_of", "rollback_of"])
+async def test_action_log_append_accepts_valid_index(cwd_to_tmp, field) -> None:
+    """A valid in-range index is accepted."""
+    _write_state_with_action_log(
+        cwd_to_tmp,
+        [
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "action": "Increased budget +20%",
+                "platform": "google_ads",
+            }
+        ],
+    )
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {"entry": {"action": "record", "platform": "google_ads", field: 0}},
+    )
+    payload = json.loads(result[0].text)
+    assert payload["action_log"][1][field] == 0
+
+
+def test_action_log_schema_accepts_evaluation_of() -> None:
+    """``evaluation_of`` rides on the append schema (top-level
+    ``additionalProperties: false`` would reject an undeclared key)."""
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_action_log_append")
+    entry = tool.inputSchema["properties"]["entry"]
+    assert "evaluation_of" in entry["properties"]
+
+
+def test_state_get_description_documents_index_field() -> None:
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_get")
+    assert "index" in tool.description
