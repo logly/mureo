@@ -18,11 +18,11 @@
   <a href="https://github.com/logly/mureo/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/logly/mureo/actions/workflows/ci.yml/badge.svg"></a>
 </p>
 
-**mureo** — your local-first AI ad ops crew. Find waste, audit changes, run ad accounts safely.
+**mureo** — your open-source, local-first AI ad ops crew. Find waste, audit changes, run ad accounts safely.
 
 _Local-first. Strategy-grounded. Safety-gated._
 
-Works with Claude Code, Cursor, Codex & Gemini. mureo sits on top of the official ad-platform MCPs and gives your AI a strategy to follow, an outcome to be measured against, and an audit trail you can show to anyone — **credentials never leave your machine**.
+Works with Claude Code, Cursor, Codex & Gemini. mureo sits on top of the official ad-platform [MCPs](https://modelcontextprotocol.io/) and gives your AI a strategy to follow, an outcome to be measured against, and an audit trail you can show to anyone — **credentials never leave your machine**.
 
 > Commercial editions are also available — including a cloud-hosted service and a local Agency edition for teams and agencies. See **[mureo.jp](https://mureo.jp)**.
 
@@ -36,7 +36,7 @@ Works with Claude Code, Cursor, Codex & Gemini. mureo sits on top of the officia
 
 mureo is a **local-first control plane for AI ad ops**. Once installed, AI agents (Claude Code, Cursor, Codex, Gemini, etc.) operate Google Ads, Meta Ads, TikTok Ads, Search Console, and GA4 *through mureo* — which keeps every action grounded in your business strategy, tied to real outcomes, and recorded in an audit log you can replay.
 
-When official ad-platform MCPs ship (Meta Ads MCP, Google Ads MCP, etc.), mureo uses them as drivers. mureo's value is not the API connection — it is **what happens around it**:
+mureo ships its own connectors for Google Ads, Meta Ads, and Search Console today, and plugs in official ad-platform MCPs as platforms release them (TikTok's is already supported). mureo's value is not the API connection — it is **what happens around it**:
 
 - **Strategy-grounded** — every decision reads `STRATEGY.md` (persona, USP, brand voice, goals)
 - **Safety-gated** — rollback allow-list, GAQL guards, BYOD read-only by default, credential guard, per-platform throttle
@@ -47,16 +47,16 @@ When official ad-platform MCPs ship (Meta Ads MCP, Google Ads MCP, etc.), mureo 
 
 ## Quick start — see it work in 2 minutes
 
-No ad-account credentials, no OAuth, no sign-up:
+All you need is Python 3.10+ and [Claude Code](https://claude.com/claude-code) (Cursor, Codex CLI, and Gemini CLI work too — see [Other agents and hosts](#other-agents-and-hosts)). The **demo scenario** runs on synthetic data, so it needs no ad-account credentials, no OAuth, and no sign-up:
 
 ```bash
 pip install mureo
 mureo configure
 ```
 
-`mureo configure` opens a local browser UI (bound to `127.0.0.1`, no remote access) that walks you through everything without pasting a single secret into a terminal: pick your Claude app, run the one-click basic setup, and scaffold a synthetic **demo scenario** from the same dashboard. (Terminal equivalent: `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap`.)
+`mureo configure` opens a local browser UI (bound to `127.0.0.1`, no remote access). Pick your Claude app, run the one-click basic setup, and then choose a **demo scenario** in the Demo / BYOD section. The UI also offers a platform-connection (OAuth) step — **skip it for now**; the demo doesn't need it. (Terminal equivalent: `mureo setup claude-code --skip-auth && mureo demo init --scenario seasonality-trap`.)
 
-Then open the generated demo directory in Claude Code and ask:
+Then open the generated demo directory (the UI shows its path) in Claude Code and ask:
 
 ```
 /daily-check
@@ -73,8 +73,10 @@ When you're ready to point mureo at *your* data, pick one of the two paths below
 ```bash
 mureo byod import ~/Downloads/mureo-google-ads.xlsx
 mureo byod import ~/Downloads/mureo-meta-ads.xlsx   # platforms are independent — add either, or both
-# Open Claude Code and ask: "Run /daily-check"
+# Open Claude Code, run /onboard once, then: "Run /daily-check"
 ```
+
+The first `/onboard` run interviews you and generates `STRATEGY.md` (your strategy) and `STATE.json` (state) — the context every later command reads. The demo skips this step because it ships with a ready-made `STRATEGY.md`.
 
 Producing the XLSX is a one-time setup per platform — Google Ads via an Apps Script template (~5 min), Meta Ads via a 2-click Saved Report export (recognized in 9 languages). **[BYOD guide →](docs/byod.md)**
 
@@ -82,11 +84,13 @@ BYOD is **read-only by construction**: every mutation tool returns `{"status": "
 
 ### Path B: Go live (OAuth) — full functionality
 
-Connect mureo directly to the Google Ads / Meta Ads APIs. Required to actually execute changes (`/rescue`, `/budget-rebalance`, `/creative-refresh`, rollback) and for GA4 / Search Console support.
+Connect mureo directly to the Google Ads / Meta Ads APIs. Required to actually execute changes (running `/rescue`, `/budget-rebalance`, `/creative-refresh`, or applying a rollback via the `rollback_apply` tool) and for GA4 / Search Console support.
 
 In the same `mureo configure` UI, open **Connect platforms**: interactive Google / Meta OAuth in the browser, with each field deep-linking to the right console page, plus official-MCP provider registration. (Terminal equivalent: `mureo auth setup`.) **[Authentication guide →](docs/authentication.md)**
 
 Prerequisites: a Google Ads Developer Token + OAuth Client, and/or a Meta App ID + Secret (development mode is fine). Both wizards walk you through obtaining them.
+
+Once connected, open your working directory in Claude Code and run `/onboard` once — it generates `STRATEGY.md` and `STATE.json`, and commands become strategy-grounded only after those exist.
 
 > **Not familiar with Google Cloud Console or Meta for Developers?** OAuth flows and developer-token registration can feel intimidating. **Start with the demo or BYOD** — see what mureo can do in minutes, then decide whether the Live API path is worth setting up.
 
@@ -156,7 +160,7 @@ Campaign diagnostics that pinpoint *why* ads aren't delivering -- budget constra
 When you correct the agent or share an operational insight, `/learn` saves it to a persistent knowledge base. That knowledge is loaded at the start of every future session, so the agent doesn't repeat the same mistakes and applies what it learned to similar situations across your account.
 
 ```
-You: "That's not a real CPA spike -- this industry always dips in Golden Week."
+You: /learn That's not a real CPA spike -- this industry always dips in Golden Week.
 Agent: Saved. I'll flag this as seasonal next time.
 
 → Written to the diagnostic knowledge base.
