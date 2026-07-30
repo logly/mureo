@@ -9,17 +9,28 @@ into the wizard's internal module.
 These tests pin the public import paths and the backward-compat
 aliases so a future refactor can't silently strand callers.
 
-Behavioural correctness is exercised by ``tests/test_auth_setup.py``
-(via the legacy import path) and stays the canonical functional
-test surface — these tests assert *only* the public-API shape, plus
-one regression test for separately-linked-MCC name resolution.
+Beyond import identity, these also pin that the legacy patch targets still
+*intercept* — the wizards must resolve the helpers through the module
+attribute, not a function-local source import. That distinction is not
+academic: while deferring these imports for #486, a function-local import
+silently bypassed ``patch("mureo.auth_setup.list_meta_ad_accounts")`` and the
+test suite made a real HTTP call to graph.facebook.com with a mock that
+reported zero calls.
+
+Broader behavioural correctness is exercised by ``tests/test_auth_setup.py``
+and stays the canonical functional test surface; this file covers the
+public-API shape, the backward-compat interception guarantee, and one
+regression test for separately-linked-MCC name resolution.
 """
 
 from __future__ import annotations
 
 import inspect
-from typing import Any
-from unittest.mock import MagicMock, patch
+from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pytest
 
@@ -76,6 +87,112 @@ def test_auth_setup_alias_for_list_meta_ad_accounts() -> None:
     from mureo.meta_ads.accounts import list_meta_ad_accounts as canonical
 
     assert legacy is canonical
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_legacy_patch_target_intercepts_google_wizard(tmp_path: Path) -> None:
+    """Patching the LEGACY name must still intercept the wizard's call.
+
+    Identity aliasing is not enough to keep the promise: downstream code and
+    tests have patched ``mureo.auth_setup.list_accessible_accounts`` for years
+    to stop the wizard hitting the network. If ``setup_google_ads`` resolved
+    the callable any way that bypasses the module attribute — a
+    function-local ``from mureo.google_ads.accounts import ...``, say — the
+    patch would rebind an attribute nobody reads and the REAL networked
+    function would run while the mock reported zero calls.
+    """
+    from mureo.auth_setup import OAuthResult, setup_google_ads
+
+    mock_lister = AsyncMock(
+        return_value=[
+            {
+                "id": "1234567890",
+                "name": "Account 1234567890",
+                "is_manager": False,
+                "parent_id": None,
+            }
+        ]
+    )
+
+    with (
+        patch(
+            "mureo.auth_setup.input_func",
+            side_effect=iter(["dev-token", "client-id", "client-secret"]),
+        ),
+        patch("mureo.auth_setup._select_account", return_value="1234567890"),
+        patch(
+            "mureo.auth_setup.run_google_oauth",
+            new_callable=AsyncMock,
+            return_value=OAuthResult(
+                refresh_token="1//refresh", access_token="ya29.access"
+            ),
+        ),
+        # The legacy patch target — the whole point of this test.
+        patch("mureo.auth_setup.list_accessible_accounts", mock_lister),
+        patch("builtins.print"),
+    ):
+        await setup_google_ads(credentials_path=tmp_path / "credentials.json")
+
+    assert mock_lister.called, (
+        "patching mureo.auth_setup.list_accessible_accounts no longer "
+        "intercepts setup_google_ads — the real network function ran"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_legacy_patch_target_intercepts_meta_wizard(tmp_path: Path) -> None:
+    """Same backward-compat promise for the Meta wizard."""
+    from mureo.auth_setup import MetaOAuthResult, setup_meta_ads
+
+    mock_lister = AsyncMock(
+        return_value=[{"id": "act_111", "name": "Account 1", "account_status": 1}]
+    )
+
+    with (
+        patch(
+            "mureo.auth_setup.input_func", side_effect=["my-app-id", "my-app-secret"]
+        ),
+        patch("mureo.auth_setup._select_account", return_value="act_111"),
+        patch(
+            "mureo.auth_setup.run_meta_oauth",
+            new_callable=AsyncMock,
+            return_value=MetaOAuthResult(
+                access_token="long-lived-token", expires_in=5184000
+            ),
+        ),
+        patch("mureo.auth_setup.list_meta_ad_accounts", mock_lister),
+        patch("builtins.print"),
+    ):
+        await setup_meta_ads(credentials_path=tmp_path / "credentials.json")
+
+    assert mock_lister.called, (
+        "patching mureo.auth_setup.list_meta_ad_accounts no longer "
+        "intercepts setup_meta_ads — the real network function ran"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name", ["list_accessible_accounts", "list_meta_ad_accounts"])
+def test_legacy_patch_target_intercepts_web_auth_probe(name: str) -> None:
+    """``mureo.cli.web_auth`` resolves the probes through its own attribute.
+
+    The configure wizard patches ``mureo.cli.web_auth.<name>`` in six tests,
+    one of which (``test_web_auth_multi_account``) uses a ``side_effect`` that
+    FAILS if called — i.e. it asserts the probe does *not* run. If the module
+    resolved the callable via a function-local source import, that patch would
+    be bypassed, the assertion would never fire, and the test would pass while
+    the real network probe ran. Pin the resolution mechanism directly.
+    """
+    from mureo.cli import web_auth
+
+    sentinel = MagicMock(name=name)
+    with patch.object(web_auth, name, sentinel):
+        assert web_auth._reexport(name) is sentinel, (
+            f"mureo.cli.web_auth._reexport({name!r}) bypassed the patched "
+            "module attribute"
+        )
 
 
 @pytest.mark.unit

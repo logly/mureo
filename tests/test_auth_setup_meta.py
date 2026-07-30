@@ -533,7 +533,7 @@ async def test_setup_meta_ads_flow(tmp_path: Path) -> None:
         patch("mureo.auth_setup._select_account", return_value="act_111"),
         patch("mureo.auth_setup.run_meta_oauth", new_callable=AsyncMock) as mock_oauth,
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts", new_callable=AsyncMock
+            "mureo.meta_ads.accounts.list_meta_ad_accounts", new_callable=AsyncMock
         ) as mock_list_accounts,
         patch("builtins.print"),
     ):
@@ -576,7 +576,7 @@ async def test_setup_meta_ads_single_account(tmp_path: Path) -> None:
         patch("mureo.auth_setup.input_func", side_effect=["app-id-1", "app-secret-1"]),
         patch("mureo.auth_setup.run_meta_oauth", new_callable=AsyncMock) as mock_oauth,
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts", new_callable=AsyncMock
+            "mureo.meta_ads.accounts.list_meta_ad_accounts", new_callable=AsyncMock
         ) as mock_list_accounts,
         patch("builtins.print"),
     ):
@@ -614,7 +614,7 @@ async def test_save_credentials_meta(tmp_path: Path) -> None:
         ),
         patch("mureo.auth_setup.run_meta_oauth", new_callable=AsyncMock) as mock_oauth,
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts", new_callable=AsyncMock
+            "mureo.meta_ads.accounts.list_meta_ad_accounts", new_callable=AsyncMock
         ) as mock_list_accounts,
         patch("builtins.print"),
     ):
@@ -663,7 +663,7 @@ async def test_save_credentials_meta_preserves_existing(tmp_path: Path) -> None:
         ),
         patch("mureo.auth_setup.run_meta_oauth", new_callable=AsyncMock) as mock_oauth,
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts", new_callable=AsyncMock
+            "mureo.meta_ads.accounts.list_meta_ad_accounts", new_callable=AsyncMock
         ) as mock_list_accounts,
         patch("builtins.print"),
     ):
@@ -897,7 +897,7 @@ async def test_setup_meta_ads_invalid_account_choice(tmp_path: Path) -> None:
         patch("mureo.auth_setup._select_account", return_value="act_111"),
         patch("mureo.auth_setup.run_meta_oauth", new_callable=AsyncMock) as mock_oauth,
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts", new_callable=AsyncMock
+            "mureo.meta_ads.accounts.list_meta_ad_accounts", new_callable=AsyncMock
         ) as mock_list_accounts,
         patch("builtins.print"),
     ):
@@ -933,7 +933,7 @@ async def test_setup_meta_ads_out_of_range_choice(tmp_path: Path) -> None:
         ),
         patch("mureo.auth_setup.run_meta_oauth", new_callable=AsyncMock) as mock_oauth,
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts", new_callable=AsyncMock
+            "mureo.meta_ads.accounts.list_meta_ad_accounts", new_callable=AsyncMock
         ) as mock_list_accounts,
         patch("builtins.print"),
     ):
@@ -973,7 +973,7 @@ async def test_setup_meta_ads_file_permissions(tmp_path: Path) -> None:
         patch("mureo.auth_setup.input_func", side_effect=["app-id", "app-secret"]),
         patch("mureo.auth_setup.run_meta_oauth", new_callable=AsyncMock) as mock_oauth,
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts", new_callable=AsyncMock
+            "mureo.meta_ads.accounts.list_meta_ad_accounts", new_callable=AsyncMock
         ) as mock_list_accounts,
         patch("builtins.print"),
     ):
@@ -1135,7 +1135,7 @@ async def test_setup_meta_ads_uses_input_func(tmp_path: Path) -> None:
         patch("mureo.auth_setup.input_func", side_effect=["aid", "asec"]) as mock_input,
         patch("mureo.auth_setup.run_meta_oauth", new_callable=AsyncMock) as mock_oauth,
         patch(
-            "mureo.auth_setup.list_meta_ad_accounts", new_callable=AsyncMock
+            "mureo.meta_ads.accounts.list_meta_ad_accounts", new_callable=AsyncMock
         ) as mock_list,
         patch("builtins.print"),
     ):

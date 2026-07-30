@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import html
 import http.server
+import importlib
 import json
 import logging
 import secrets
@@ -27,10 +28,9 @@ except ImportError:  # pragma: no cover - Windows (Unix-only stdlib)
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
-from google_auth_oauthlib.flow import Flow, InstalledAppFlow
 
 from mureo import credential_guard
 from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
@@ -41,23 +41,74 @@ from mureo.auth import GoogleAdsCredentials, MetaAdsCredentials
 from mureo.core.terminal import terminal_fd as _terminal_fd
 from mureo.fsutil import backup_file, file_lock, lock_path_for
 
-# Backward-compat re-exports of the platform-level account-discovery
-# helpers that used to live in this module. The canonical homes are
-# now :mod:`mureo.google_ads.accounts` and :mod:`mureo.meta_ads.accounts`
-# (public-API surface for configure-wizard tooling and third-party
-# setup utilities). The legacy import paths
-# ``mureo.auth_setup.list_accessible_accounts`` /
-# ``mureo.auth_setup.list_meta_ad_accounts`` remain stable via these
-# aliases — existing callers do not need to change.
-#
-# ``as <same-name>`` is the PEP 484 explicit-re-export form mypy --strict
-# requires before a downstream module can import the symbol back out.
-from mureo.google_ads.accounts import (
-    list_accessible_accounts as list_accessible_accounts,
-)
-from mureo.meta_ads.accounts import list_meta_ad_accounts as list_meta_ad_accounts
+if TYPE_CHECKING:
+    from google_auth_oauthlib.flow import Flow
+
+    # Typed views of the lazily-resolved re-exports below. ``as <same-name>``
+    # is the PEP 484 explicit-re-export form mypy --strict requires before a
+    # downstream module can import the symbol back out.
+    from mureo.google_ads.accounts import (
+        list_accessible_accounts as list_accessible_accounts,
+    )
+    from mureo.meta_ads.accounts import (
+        list_meta_ad_accounts as list_meta_ad_accounts,
+    )
 
 logger = logging.getLogger(__name__)
+
+# Backward-compat re-exports of the platform-level account-discovery helpers
+# that used to live in this module. The canonical homes are
+# :mod:`mureo.google_ads.accounts` and :mod:`mureo.meta_ads.accounts`; the
+# legacy paths ``mureo.auth_setup.list_accessible_accounts`` /
+# ``mureo.auth_setup.list_meta_ad_accounts`` stay stable via the module-level
+# ``__getattr__`` below (PEP 562), including for ``monkeypatch.setattr`` and
+# ``unittest.mock.patch``, which both getattr-then-setattr the module. The two
+# in-module call sites go through :func:`_reexport` rather than importing from
+# the source module, so those legacy patch targets keep intercepting the
+# wizards — see that helper's docstring.
+#
+# They are resolved on first access rather than at import time (#486): they
+# live in packages whose ``__init__`` loads the Google Ads SDK, and this
+# module is on the startup path of ``mureo setup <agent> --skip-auth`` (for
+# ``install_mcp_config`` / ``install_credential_guard``, neither of which
+# touches Google). Under Python 3.10 that eager chain printed two
+# ``google.api_core`` FutureWarnings in the middle of the setup output.
+_LAZY_REEXPORTS = {
+    "list_accessible_accounts": "mureo.google_ads.accounts",
+    "list_meta_ad_accounts": "mureo.meta_ads.accounts",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve the deferred account-listing re-exports on first access."""
+    module_name = _LAZY_REEXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(importlib.import_module(module_name), name)
+
+
+def _reexport(name: str) -> Any:
+    """Return the *current* binding of a deferred re-export.
+
+    Resolved through this module's attribute lookup — deliberately NOT via a
+    function-local ``from mureo.<platform>.accounts import ...``. Both stay
+    lazy, but only attribute lookup preserves the backward-compat promise:
+
+    - unpatched, the name is not in the module ``__dict__``, so lookup falls
+      through to :func:`__getattr__` and imports the canonical function on
+      demand (the #486 laziness);
+    - patched, ``mock.patch`` / ``monkeypatch.setattr`` have setattr'd a real
+      module attribute, which shadows ``__getattr__`` — so the long-documented
+      ``patch("mureo.auth_setup.list_accessible_accounts")`` target intercepts
+      the wizard again.
+
+    A function-local source import silently defeats the second case: the patch
+    rebinds an attribute nobody reads and the real networked function runs
+    while the mock reports zero calls. Guarded by the behavioural tests in
+    ``tests/test_public_account_listing.py``.
+    """
+    return getattr(sys.modules[__name__], name)
+
 
 _GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
 _SEARCH_CONSOLE_SCOPE = "https://www.googleapis.com/auth/webmasters"
@@ -365,6 +416,11 @@ def build_google_flow(
     Both variants receive the same scopes so a single refresh_token
     drives both Google Ads and Search Console.
     """
+    # Lazy import (#486): google-auth-oauthlib pulls google.auth /
+    # google.oauth2 in, and this module is imported by
+    # ``mureo setup <agent> --skip-auth``, which never runs an OAuth flow.
+    from google_auth_oauthlib.flow import Flow, InstalledAppFlow
+
     config = build_google_client_config(client_id, client_secret)
     if redirect_uri is None:
         return InstalledAppFlow.from_client_config(config, scopes=_GOOGLE_SCOPES)
@@ -935,7 +991,7 @@ async def setup_google_ads(
         refresh_token=oauth_result.refresh_token,
     )
 
-    accounts = await list_accessible_accounts(temp_creds)
+    accounts = await _reexport("list_accessible_accounts")(temp_creds)
 
     selected_id: str | None = None
     login_customer_id: str | None = None
@@ -1315,7 +1371,9 @@ async def setup_meta_ads(
 
     # Retrieve ad account list
     print("\nRetrieving ad account list...")
-    accounts = await list_meta_ad_accounts(access_token=oauth_result.access_token)
+    accounts = await _reexport("list_meta_ad_accounts")(
+        access_token=oauth_result.access_token
+    )
 
     if not accounts:
         raise RuntimeError(

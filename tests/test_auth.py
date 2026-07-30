@@ -295,8 +295,11 @@ def test_create_google_ads_client() -> None:
     )
 
     with (
-        patch("mureo.auth.Credentials") as mock_cred_cls,
-        patch("mureo.auth.GoogleAdsApiClient") as mock_client_cls,
+        # Patched at the source module, not on ``mureo.auth``: the SDK is
+        # imported lazily inside the factory (#486) so it is never a
+        # ``mureo.auth`` module attribute.
+        patch("google.oauth2.credentials.Credentials") as mock_cred_cls,
+        patch("mureo.google_ads.GoogleAdsApiClient") as mock_client_cls,
     ):
         mock_cred_cls.return_value = MagicMock()
         mock_client_instance = MagicMock()
@@ -331,8 +334,11 @@ def test_create_google_ads_client_without_login_customer_id() -> None:
     )
 
     with (
-        patch("mureo.auth.Credentials") as mock_cred_cls,
-        patch("mureo.auth.GoogleAdsApiClient") as mock_client_cls,
+        # Patched at the source module, not on ``mureo.auth``: the SDK is
+        # imported lazily inside the factory (#486) so it is never a
+        # ``mureo.auth`` module attribute.
+        patch("google.oauth2.credentials.Credentials") as mock_cred_cls,
+        patch("mureo.google_ads.GoogleAdsApiClient") as mock_client_cls,
     ):
         mock_cred_cls.return_value = MagicMock()
         mock_client_cls.return_value = MagicMock()
@@ -361,7 +367,8 @@ def test_create_meta_ads_client() -> None:
         app_secret="secret456",
     )
 
-    with patch("mureo.auth.MetaAdsApiClient") as mock_client_cls:
+    # Source-module patch target — lazily imported inside the factory (#486).
+    with patch("mureo.meta_ads.MetaAdsApiClient") as mock_client_cls:
         mock_client_instance = MagicMock()
         mock_client_cls.return_value = mock_client_instance
 
