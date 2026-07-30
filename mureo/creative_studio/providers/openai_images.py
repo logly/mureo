@@ -15,7 +15,9 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from mureo.creative_studio.providers import (
+    _GPT_IMAGE_SIZES,
     _creative_studio_secret,
+    _size_capabilities,
     provider_error,
 )
 
@@ -28,11 +30,13 @@ _MODEL = "gpt-image-1"
 _KEY_FIELD = "openai_api_key"
 _TIMEOUT = 60.0
 
-# Sizes gpt-image-1 supports, one per aspect class. A requested width/height
-# is clamped to the nearest of these by orientation.
-_SIZE_SQUARE = "1024x1024"
-_SIZE_LANDSCAPE = "1536x1024"
-_SIZE_PORTRAIT = "1024x1536"
+# Sizes gpt-image-1 supports, one per aspect class, derived from the shared
+# GPT Image menu (ordered square, landscape, portrait) so the sizes this
+# provider clamps to and the ones it advertises cannot drift apart. A
+# requested width/height is clamped to the nearest of these by orientation.
+_SIZE_SQUARE, _SIZE_LANDSCAPE, _SIZE_PORTRAIT = (
+    f"{width}x{height}" for width, height in _GPT_IMAGE_SIZES
+)
 
 
 def _default_client_factory() -> httpx.AsyncClient:
@@ -56,7 +60,10 @@ class OpenAIImageProvider:
         return _creative_studio_secret(_KEY_FIELD) is not None
 
     def capabilities(self) -> dict[str, Any]:
-        return {"edit": True, "max_size": [1536, 1536]}
+        # ``supported_sizes`` is the exact menu gpt-image-1 renders; the
+        # accompanying ``max_size`` is the per-axis maximum across it (1536
+        # wide, 1536 tall) — a 1536x1536 square is NOT generatable.
+        return {"edit": True, **_size_capabilities(_GPT_IMAGE_SIZES)}
 
     @staticmethod
     def _clamp_size(width: int, height: int) -> str:
