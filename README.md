@@ -34,13 +34,13 @@ Works with Claude Code, Cursor, Codex & Gemini. mureo sits on top of the officia
 
 ## What is mureo?
 
-mureo is a **local-first control plane for AI ad ops**. Once installed, AI agents (Claude Code, Cursor, Codex, Gemini, etc.) operate Google Ads, Meta Ads, TikTok Ads, Search Console, and GA4 *through mureo* — which keeps every action grounded in your business strategy, tied to real outcomes, and recorded in an audit log you can replay.
+mureo is a **local-first control plane for AI ad ops**. Once installed, AI agents (Claude Code, Cursor, Codex, Gemini, etc.) operate Google Ads, Meta Ads, Amazon Ads, TikTok Ads, Search Console, and GA4 *through mureo* — which keeps every action grounded in your business strategy, tied to real outcomes, and recorded in an audit log you can replay.
 
-mureo ships its own connectors for Google Ads, Meta Ads, and Search Console today, and plugs in official ad-platform MCPs as platforms release them (TikTok's is already supported). mureo's value is not the API connection — it is **what happens around it**:
+mureo ships its own connectors for Google Ads, Meta Ads, and Search Console today, and plugs in official ad-platform MCPs as platforms release them (TikTok's is already supported, and **Amazon Ads (official MCP bridge)** is bridged through mureo so your credentials never enter the host's MCP config — see [docs/amazon-ads.md](docs/amazon-ads.md)). mureo's value is not the API connection — it is **what happens around it**:
 
 - **Strategy-grounded** — every decision reads `STRATEGY.md` (persona, USP, brand voice, goals)
 - **Safety-gated** — rollback allow-list, GAQL guards, BYOD read-only by default, credential guard, per-platform throttle
-- **Cross-platform** — Google Ads / Meta Ads / TikTok Ads / Search Console / GA4 in one workflow
+- **Cross-platform** — Google Ads / Meta Ads / Amazon Ads / TikTok Ads / Search Console / GA4 in one workflow
 - **Auditable** — append-only action log with rollback
 - **Local-first** — credentials never leave your machine
 - **Learnable** — `/learn` builds account-specific knowledge over time
@@ -139,13 +139,13 @@ Every operation starts from `STRATEGY.md` -- your persona, USP, brand voice, goa
 
 ### Cross-platform analysis
 
-mureo orchestrates across Google Ads, Meta Ads, TikTok Ads, Search Console, and GA4 in a single workflow:
+mureo orchestrates across Google Ads, Meta Ads, Amazon Ads, TikTok Ads, Search Console, and GA4 in a single workflow:
 
 - `/daily-check` -- pulls delivery status, ad performance, organic search trends, and site behavior across all platforms, then correlates them into one health report.
 - `/search-term-cleanup` -- compares paid keywords against organic rankings to eliminate wasteful overlap.
 - `/competitive-scan` -- combines auction insights with organic position data for a complete competitive picture.
 
-The agent auto-discovers your configured platforms. Add Meta Ads or TikTok Ads later? Every command adapts automatically.
+The agent auto-discovers your configured platforms. Add Meta Ads, Amazon Ads, or TikTok Ads later? Every command adapts automatically.
 
 ### Built-in marketing expertise
 
@@ -304,7 +304,7 @@ Why this matters: `link_click` vs `pixel_lead` optimization is a tracking distin
 
 ### MCP server & tool list
 
-mureo exposes **205 MCP tools** over stdio: Google Ads (86), Meta Ads (88), Search Console (10), plus rollback, anomaly detection, strategy/state context, analytics registry, learning, and Creative Studio. Any MCP-compatible client can connect:
+mureo exposes **205 MCP tools** over stdio: Google Ads (86), Meta Ads (88), Search Console (10), plus rollback, anomaly detection, strategy/state context, analytics registry, learning, and Creative Studio. When Amazon Ads is configured, the bridged Amazon tools are added on top from the local manifest (their names and count are Amazon's, not mureo's — see [docs/amazon-ads.md](docs/amazon-ads.md)). Any MCP-compatible client can connect:
 
 ```json
 {
@@ -321,7 +321,7 @@ Full tool list and client configuration: **[MCP Server Guide →](docs/mcp-serve
 
 ### Authentication
 
-`mureo configure` (browser) or `mureo auth setup` (terminal) walk you through Google Ads and Meta Ads credentials; both write `~/.mureo/credentials.json`. Environment variables work as a fallback for CI. Search Console reuses the Google OAuth credentials. Verify any time:
+`mureo configure` (browser) or `mureo auth setup` (terminal) walk you through Google Ads and Meta Ads credentials; both write `~/.mureo/credentials.json`. Environment variables work as a fallback for CI. Search Console reuses the Google OAuth credentials. Amazon Ads credentials go in the **Amazon Ads** card of the configure dashboard's *Plugin credentials* section (a paste form — there is no browser sign-in wizard for Amazon yet) or via the `AMAZON_ADS_*` environment variables. Verify any time:
 
 ```bash
 mureo auth status
@@ -338,7 +338,9 @@ Two local files drive strategy-aware operations. Run `/onboard` to generate them
 - **STRATEGY.md** -- Persona, USP, Brand Voice, Goals, Operation Mode. See [docs/strategy-context.md](docs/strategy-context.md).
 - **STATE.json** -- Campaign snapshots, action log. Updated automatically by workflow commands.
 
-### Connecting TikTok Ads, GA4, and other MCP servers
+### Connecting Amazon Ads, TikTok Ads, GA4, and other MCP servers
+
+**Amazon Ads** is supported through the official Amazon Ads MCP, **bridged by mureo** rather than registered with your AI host: `Claude → local mureo MCP → Amazon's hosted MCP endpoint`. Your Login with Amazon credentials live in the `amazon_ads` section of `~/.mureo/credentials.json` (entered in the **Amazon Ads** card of `mureo configure`, or via `AMAZON_ADS_*` env vars) and never enter the host's MCP config; mureo mints and auto-refreshes the short-lived access token for you. Run `mureo amazon refresh-manifest` once to build the local tool manifest, then restart the MCP server — Amazon's own tools (`campaign_management-*`, `account_management-*`) appear and are audited, throttled, and strategy-gated like the built-in platforms, with mutations recorded in `action_log` under `platform=plugin:mureo-amazon-ads-bridge`. mureo's deep per-platform analytics (anomaly baselines, RSA audit) are not available for Amazon yet, so treat Amazon findings as advisory. **[Amazon Ads guide →](docs/amazon-ads.md)**
 
 **TikTok Ads** is supported through TikTok's official hosted MCP (the "TikTok for Business MCP Server"). mureo ships it as the `tiktok-ads-official` provider — add it from the `mureo configure` dashboard or with `mureo providers add`, then authenticate in the browser with your TikTok for Business account on first connect (no developer token required). Once connected, workflow commands treat `tiktok_ads` as a first-class platform: `/daily-check` and the reports include it, and confirmed changes are recorded in the action log. mureo-native analytics (anomaly baselines, RSA audit) remain Google / Meta specific.
 

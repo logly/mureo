@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 205 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 184 advertising and SEO operation tools across Google Ads (86), Meta Ads (88), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number).
+mureo exposes 205 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 184 advertising and SEO operation tools across Google Ads (86), Meta Ads (88), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
 
 ## Starting the Server
 
@@ -566,13 +566,47 @@ Generate creator-quality ad creatives — text-free key visuals plus copy compos
 | `creative_studio_edit_visual` | Refine an existing key visual through a provider's edit path (art-direction loop) | `path`, `instruction` |
 | `creative_studio_compose` | Composite ad copy + brand kit over a key visual into per-format banner PNGs | `visual_path`, `headline`, `cta` |
 
+### Amazon Ads (official-MCP bridge)
+
+Amazon Ads is **not** a mureo-native tool family, so it has no table above.
+mureo bridges the **official Amazon Ads MCP**: the tools it exposes come from
+the operator's own local manifest (`~/.mureo/amazon_tools.json`, written by
+`mureo amazon refresh-manifest`), and their surface is defined by Amazon, not
+by mureo. That means the exact tool list **cannot be enumerated here** — it is
+whatever your account's manifest holds, and it changes when Amazon changes it.
+
+What is stable:
+
+- **Names are Amazon's own** — mureo does not remap official-MCP tool names.
+  They are namespaced by Amazon's own taxonomy, e.g. `campaign_management-*`
+  and `account_management-*`.
+- **Read at start, pure.** The bridge reads the manifest file only — no
+  credentials, no network — so a missing or malformed manifest means "no
+  Amazon tools", never a startup failure. Re-run `refresh-manifest` and
+  restart the server after Amazon's surface changes.
+- **Same safety layer as a plugin tool.** Amazon calls ride the plugin
+  dispatch branch below: audited to the append-only jsonl log (secrets
+  scrubbed), throttled, strategy-gated, and — for successful mutations —
+  promoted into `STATE.json` `action_log` under
+  `platform="plugin:mureo-amazon-ads-bridge"` with an observation window.
+- **Env gate.** `MUREO_DISABLE_AMAZON_ADS=1` suppresses the bridged Amazon
+  family the same way `MUREO_DISABLE_GOOGLE_ADS` / `MUREO_DISABLE_META_ADS`
+  suppress their built-in families.
+
+Credential setup (configure UI card, `AMAZON_ADS_*` env vars, or the
+`amazon_ads` section of `~/.mureo/credentials.json`), access-token minting and
+auto-refresh, and the honest scope of what Amazon support does *not* include
+are all covered in [`amazon-ads.md`](amazon-ads.md).
+
 ### Plugin-Provided Tools (third-party providers)
 
 Beyond the built-in platforms above, the server also exposes tools from
 **third-party provider plugins** discovered via the `mureo.providers`
 entry-point group. A plugin opts in by implementing the
 `MCPToolProvider` Protocol (`mcp_tools()` + `async handle_mcp_tool()`);
-see [`plugin-authoring.md`](plugin-authoring.md) §3.
+see [`plugin-authoring.md`](plugin-authoring.md) §3. The in-tree Amazon
+Ads bridge implements the same Protocol, so everything below applies to
+it too.
 
 Server behaviour:
 
@@ -593,7 +627,9 @@ Server behaviour:
 
 Plugin tools obey the same `MUREO_DISABLE_*` reasoning only insofar as
 the plugin chooses; the disable env vars gate the built-in families,
-not third-party plugins.
+not third-party plugins. The in-tree **Amazon Ads bridge** rides this
+same dispatch branch but *is* mureo's own code, so it does have a gate:
+`MUREO_DISABLE_AMAZON_ADS=1`.
 
 ## Workflow Commands
 

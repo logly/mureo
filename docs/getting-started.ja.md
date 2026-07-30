@@ -130,7 +130,7 @@ BYOD は、実際の Google Ads / Meta Ads データを **読み取り専用エ�
 - [`docs/byod.ja.md#google-ads-setup`](byod.ja.md#google-ads-setup) — Google Ads テンプレート + 入力手順
 - [`docs/byod.ja.md#meta-ads-setup`](byod.ja.md#meta-ads-setup) — Meta Ads 保存済みレポート (9 言語対応: English / 日本語 / 简体中文 / 繁體中文 / 한국어 / Español / Português / Deutsch / Français)
 
-エクスポートは独立しているので、片方だけでも開始できます(あとから追加可)。Search Console / GA4 は BYOD 非対応 — Live API のみ。
+エクスポートは独立しているので、片方だけでも開始できます(あとから追加可)。Search Console / GA4 / Amazon Ads / TikTok Ads は BYOD 非対応 — Live API のみ。(Amazon Ads は公式 Amazon Ads MCP をブリッジする方式のため、設計上 BYOD バンドルはありません。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md)。)
 
 > **BYOD とデモは mureo-native 専用。** これらは mureo の CSV ベース MCP ツールで提供され、公式プラットフォーム MCP（`mureo providers add …` / Claude.ai の Meta コネクタ）は Live API 経路のため BYOD/デモ データを読めません。BYOD やデモで分析するプラットフォームは公式 MCP に切り替えない（`mureo providers add` しない）でください — mureo-native を有効のままに。詳細は [docs/byod.ja.md](byod.ja.md#なぜ-byod-なのか) → *対応範囲*。
 
@@ -189,7 +189,7 @@ mureo byod import ~/Downloads/mureo-meta-ads.xlsx     # Meta は後から追加 
 
 # 認証 (Live API)
 
-mureo を Google Ads / Meta Ads API に直結する方式。**実際にキャンペーンを変更する** (`/rescue` / `/budget-rebalance` / `/creative-refresh` / `mureo rollback apply`) には必須。GA4 / Search Console もこの経路でのみ使えます。
+mureo を Google Ads / Meta Ads API に直結する方式。**実際にキャンペーンを変更する** (`/rescue` / `/budget-rebalance` / `/creative-refresh` / `mureo rollback apply`) には必須。GA4 / Search Console もこの経路でのみ使えます。**Amazon Ads** もここに含まれますが経路が異なり、広告 API を直接叩くのではなく mureo が公式 Amazon Ads MCP をブリッジします。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md)。
 
 ## Step 1 — 認証情報を取得
 
@@ -197,6 +197,7 @@ mureo を Google Ads / Meta Ads API に直結する方式。**実際にキャン
 |---|---|
 | **Google Ads** | [Developer Token](https://developers.google.com/google-ads/api/docs/get-started/dev-token) + OAuth Client ID + Client Secret |
 | **Meta Ads** | [Meta for Developers](https://developers.facebook.com/) の App ID + App Secret(開発モードで OK) |
+| **Amazon Ads** | Login with Amazon (LwA) アプリの Client ID + (推奨) Refresh Token + Client Secret。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md) |
 | **GA4 / Search Console** | OAuth ログインのみ(developer token 不要、ウィザードが処理) |
 
 > **承認の所要時間**: Google Ads developer token の承認は 1〜3 週間かかることがあります。待ちの間は BYOD で運用 → 承認後に Auth へ移行が現実的。
@@ -215,6 +216,8 @@ mureo setup claude-code             # interactive OAuth wizard が setup の一�
 ```
 
 setup コマンドはローカル Web ウィザードを `http://127.0.0.1:<random-port>/` で起動し、各 token / secret を入力するフォームを表示。同じブラウザ内で OAuth フローも完結します。`--no-google-ads` / `--no-meta-ads` で個別に skip 可能。
+
+> **Amazon Ads** にはまだブラウザでのサインインウィザードがありません。`mureo configure` を開き、ダッシュボードの **Plugin credentials** にある **Amazon Ads** カードに値を入力する(または `AMAZON_ADS_*` 環境変数を設定する)→ `mureo amazon refresh-manifest` を一度実行 → MCP サーバーを再起動、の順です。詳細は [`docs/amazon-ads.ja.md`](amazon-ads.ja.md)。
 
 ### B. Desktop チャットで認証
 

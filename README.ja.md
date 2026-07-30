@@ -34,13 +34,13 @@ Claude Code、Cursor、Codex、Gemini で動きます。mureo は各広告プラ
 
 ## mureoとは
 
-mureo は、**AI 広告運用のための、ローカルで動く制御基盤（control plane）** です。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）が Google 広告、Meta 広告、TikTok 広告、Search Console、GA4 を *mureo を経由して* 操作できるようになります。すべての判断はあなたの事業戦略に基づき、実際の成果に紐づき、後から再生できる監査ログに残ります。
+mureo は、**AI 広告運用のための、ローカルで動く制御基盤（control plane）** です。インストールすると、AIエージェント（Claude Code、Cursor、Codex、Geminiなど）が Google 広告、Meta 広告、Amazon 広告、TikTok 広告、Search Console、GA4 を *mureo を経由して* 操作できるようになります。すべての判断はあなたの事業戦略に基づき、実際の成果に紐づき、後から再生できる監査ログに残ります。
 
-mureo は Google 広告、Meta 広告、Search Console の接続を自前で同梱しており、各プラットフォームが公式 MCP を公開すればそれをドライバとして利用します（TikTok の公式 MCP には対応済みです）。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
+mureo は Google 広告、Meta 広告、Search Console の接続を自前で同梱しており、各プラットフォームが公式 MCP を公開すればそれをドライバとして利用します（TikTok の公式 MCP には対応済みで、**Amazon 広告（公式 MCP ブリッジ）** は mureo が中継するため認証情報がホストの MCP 設定に入りません。詳細は [docs/amazon-ads.ja.md](docs/amazon-ads.ja.md)）。mureo の価値は API 接続そのものではなく、**その周辺で起きること**にあります。
 
 - **戦略準拠**：すべての判断が `STRATEGY.md`（ペルソナ、USP、ブランドボイス、目標）を読み込む
 - **セーフティゲート**：rollback allow-list、GAQL ガード、BYOD は既定で read-only、認証情報ガード、プラットフォーム別スロットリング
-- **クロスプラットフォーム**：Google 広告 / Meta 広告 / TikTok 広告 / Search Console / GA4 を 1 つのワークフローで
+- **クロスプラットフォーム**：Google 広告 / Meta 広告 / Amazon 広告 / TikTok 広告 / Search Console / GA4 を 1 つのワークフローで
 - **監査可能**：追記専用の action log、rollback 対応
 - **ローカルファースト**：認証情報はお手元のPCから出ない
 - **学習可能**：`/learn` でアカウント固有のナレッジを継続的に蓄積
@@ -135,13 +135,13 @@ Claude 系のホスト（Claude Code / Claude Desktop）は `mureo configure` �
 
 ### 媒体横断の分析
 
-Google広告、Meta広告、TikTok広告、Search Console、GA4を1つのワークフローでまとめて処理します。
+Google広告、Meta広告、Amazon広告、TikTok広告、Search Console、GA4を1つのワークフローでまとめて処理します。
 
 - `/daily-check`：全媒体の配信状況、広告パフォーマンス、自然検索のトレンド、サイト内行動を一括取得し、相関させて1つのレポートにまとめます。
 - `/search-term-cleanup`：有料キーワードと自然検索の順位を突き合わせ、無駄な重複出稿を洗い出します。
 - `/competitive-scan`：オークション分析と自然検索の順位データを統合して、競合の全体像を把握します。
 
-設定済みの媒体はエージェントが自動検出します。後からMeta広告やTikTok広告を追加しても、全コマンドがそのまま対応します。
+設定済みの媒体はエージェントが自動検出します。後からMeta広告、Amazon広告、TikTok広告を追加しても、全コマンドがそのまま対応します。
 
 ### 広告運用の専門知識
 
@@ -270,7 +270,7 @@ STATE.jsonから接続媒体を検出:
 
 ### MCP サーバーとツール一覧
 
-mureo は **205 の MCP ツール** を stdio で公開します。Google広告（86）、Meta広告（88）、Search Console（10）に加え、rollback、異常検知、戦略と状態のコンテキスト、分析モジュールレジストリ、学習、Creative Studio を含みます。MCP 対応クライアントなら何からでも接続できます。
+mureo は **205 の MCP ツール** を stdio で公開します。Google広告（86）、Meta広告（88）、Search Console（10）に加え、rollback、異常検知、戦略と状態のコンテキスト、分析モジュールレジストリ、学習、Creative Studio を含みます。Amazon 広告を設定している場合は、ローカルのマニフェストからブリッジされた Amazon のツールがこれに加わります（ツール名も本数も Amazon 側のもので、mureo が定義するものではありません。詳細は [docs/amazon-ads.ja.md](docs/amazon-ads.ja.md)）。MCP 対応クライアントなら何からでも接続できます。
 
 ```json
 {
@@ -287,7 +287,7 @@ mureo は **205 の MCP ツール** を stdio で公開します。Google広告�
 
 ### 認証
 
-`mureo configure`（ブラウザ）または `mureo auth setup`（ターミナル）が Google 広告と Meta 広告の認証手順を案内し、いずれも `~/.mureo/credentials.json` に書き込みます。CI 用途には環境変数でも設定できます。Search Console は Google の OAuth 認証情報を共用します。確認はいつでも次のコマンドでできます。
+`mureo configure`（ブラウザ）または `mureo auth setup`（ターミナル）が Google 広告と Meta 広告の認証手順を案内し、いずれも `~/.mureo/credentials.json` に書き込みます。CI 用途には環境変数でも設定できます。Search Console は Google の OAuth 認証情報を共用します。Amazon 広告の認証情報は、`mureo configure` ダッシュボードの *Plugin credentials* にある **Amazon Ads** カード（ブラウザでのサインインウィザードはまだないため、値を貼り付けるフォームです）か、`AMAZON_ADS_*` 環境変数で設定します。確認はいつでも次のコマンドでできます。
 
 ```bash
 mureo auth status          # 認証状態の確認
@@ -304,7 +304,9 @@ mureo auth check-meta      # Meta広告の認証情報を表示（マスク済�
 - **STRATEGY.md**：ペルソナ、USP、ブランドボイス、目標、運用モード。詳細は [docs/strategy-context.md](docs/strategy-context.md)
 - **STATE.json**：キャンペーンのスナップショットと action log。ワークフローコマンドが自動で更新します
 
-### TikTok 広告、GA4、その他の MCP サーバーの接続
+### Amazon 広告、TikTok 広告、GA4、その他の MCP サーバーの接続
+
+**Amazon 広告**は、Amazon の公式 MCP を **mureo が中継（ブリッジ）** する形で対応しています。ホストに直接登録するのではなく、`Claude → ローカルの mureo MCP → Amazon のホスト型 MCP エンドポイント` という経路になります。Login with Amazon の認証情報は `~/.mureo/credentials.json` の `amazon_ads` セクション（`mureo configure` の **Amazon Ads** カード、または `AMAZON_ADS_*` 環境変数で設定）に保存され、ホストの MCP 設定には入りません。短命なアクセストークンの発行と自動更新は mureo が行います。初回に `mureo amazon refresh-manifest` を一度実行してローカルのツールマニフェストを作り、MCP サーバーを再起動すると、Amazon 側のツール名（`campaign_management-*`、`account_management-*`）がそのまま現れ、組み込みプラットフォームと同じように監査・スロットリング・戦略ゲートの対象になります。変更操作は `platform=plugin:mureo-amazon-ads-bridge` として action log に記録されます。mureo ネイティブの詳細分析（異常検知の基準値、RSA 監査）は Amazon にはまだ用意されていないため、Amazon の分析結果は参考情報として扱ってください。**[Amazon 広告ガイド →](docs/amazon-ads.ja.md)**
 
 **TikTok 広告**は、TikTok の公式ホスト型 MCP（TikTok for Business MCP Server）経由で対応しています。mureo は公式プロバイダ `tiktok-ads-official` として同梱しており、`mureo configure` のダッシュボードまたは `mureo providers add` で追加し、初回接続時にブラウザで TikTok for Business アカウントにサインインして認可するだけです（Developer Token は不要）。接続後は `tiktok_ads` が他媒体と同格のプラットフォームとして扱われ、`/daily-check` やレポートに含まれ、承認済みの変更は action log に記録されます。mureo ネイティブの分析（異常検知の基準値、RSA 監査）は引き続き Google / Meta 向けです。
 

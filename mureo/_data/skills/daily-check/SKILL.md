@@ -1,6 +1,6 @@
 ---
 name: daily-check
-description: "Run a daily health check on all configured ad accounts (Google Ads, Meta Ads, Search Console, GA4). Use when the user asks for a daily review, health check, status update, anomaly detection, or 'how are my campaigns doing today'. Reads STRATEGY.md and STATE.json, runs platform-specific health diagnostics, checks goal progress, evaluates pending action_log observations, and reports findings as Healthy / Watch / Action-needed. Also use when the user asks in Japanese (デイリーチェック / 今日のアカウント状況は / 異常がないか確認して / 日次ヘルスチェック)."
+description: "Run a daily health check on all configured ad accounts (Google Ads, Meta Ads, Amazon Ads, TikTok Ads, Search Console, GA4, and any configured plugin platform). Use when the user asks for a daily review, health check, status update, anomaly detection, or 'how are my campaigns doing today'. Reads STRATEGY.md and STATE.json, runs platform-specific health diagnostics, checks goal progress, evaluates pending action_log observations, and reports findings as Healthy / Watch / Action-needed. Also use when the user asks in Japanese (デイリーチェック / 今日のアカウント状況は / 異常がないか確認して / 日次ヘルスチェック)."
 metadata:
   version: 0.10.35
 ---
@@ -37,7 +37,7 @@ Manual operation in the platform UI and mureo-driven operation coexist — most 
 
 1. **Load context**: Read STRATEGY.md (especially Operation Mode, Data Sources, and all Goal sections) and STATE.json (the same `mureo_state_get` response from step 0 on MCP hosts). In incremental mode that response's `action_log` is the `pending` subset (marked by `action_log_scope`) — all the evidence loop in step 9 needs; deep mode carries the full log.
 
-2. **Discover available platforms**: Identify all configured platforms from STATE.json `platforms` and check which data sources (Search Console, GA4) are accessible. Also enumerate installed **plugin** platforms (`mcp__mureo__<plugin>_*` tools) and any **hosted official-MCP connector** present in the session (e.g. TikTok's `tt-ads-*` tools, STATE.json key `tiktok_ads`); include them best-effort — see `_mureo-shared` → *Plugin platforms* and *Hosted-connector platforms*.
+2. **Discover available platforms**: Identify all configured platforms from STATE.json `platforms` and check which data sources (Search Console, GA4) are accessible. Also enumerate installed **plugin / bridged** platforms (`mcp__mureo__<plugin>_*` tools, plus **Amazon Ads** under Amazon's own tool names — STATE.json key `plugin:mureo-amazon-ads-bridge`) and any **hosted official-MCP connector** present in the session (e.g. TikTok's `tt-ads-*` tools, STATE.json key `tiktok_ads`); include them best-effort — see `_mureo-shared` → *Plugin platforms* and *Hosted-connector platforms*.
 
 3. **Sync state**: For each platform in STATE.json `platforms`, fetch current campaign data and update STATE.json.
    - **Google Ads**: prefer mureo native `google_ads_campaigns_list`. If mureo's Google Ads tools are unavailable (i.e. `MUREO_DISABLE_GOOGLE_ADS=1` was set when the user installed the official MCP via `mureo providers add google-ads-official`), fall back to the official `google-ads-official` MCP's equivalent campaign-list tool (typically `list_campaigns` or `report_campaigns`).

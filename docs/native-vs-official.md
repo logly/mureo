@@ -1,4 +1,4 @@
-# mureo native tools vs. official MCP providers (Google & Meta)
+# mureo native tools vs. official MCP providers (Google, Meta & Amazon)
 
 > Status: 2026-06-16. The official ad-platform MCPs are in beta and their tool
 > surface changes over time — re-verify before relying on a specific capability.
@@ -11,6 +11,21 @@ Console, Yahoo, LINE, Logly). The ad platforms now also publish **official MCP
 servers**, and mureo can install and register those as *drivers*. They are not
 mutually exclusive: mureo is the control plane, and an official MCP is a thin
 driver onto the platform's own API.
+
+There are **three** connection models in mureo today:
+
+| Model | Who holds the credentials | Who is in the request path | Example |
+|---|---|---|---|
+| **mureo-native** | mureo (`~/.mureo/credentials.json`) | mureo → platform API | Google Ads, Meta Ads, Search Console |
+| **Official, host-registered** | the AI host / connector | client → platform MCP (mureo is bypassed) | `google-ads-official`, `meta-ads-official`, TikTok's hosted MCP |
+| **Official, mureo-mediated bridge** | mureo (`~/.mureo/credentials.json`) | mureo → platform MCP | **Amazon Ads** |
+
+The third model matters because the second one costs you mureo's safety layer:
+a host-registered official MCP never reaches mureo's dispatcher, so its calls
+cannot be hard-gated, audited, or promoted into `action_log`. The bridge keeps
+those properties for a platform mureo has no native client for. See
+[Amazon Ads — the mureo-mediated bridge](#amazon-ads--the-mureo-mediated-bridge)
+below.
 
 The practical differences for Google and Meta:
 
@@ -147,6 +162,50 @@ strategy layer.
 
 ---
 
+## Amazon Ads — the mureo-mediated bridge
+
+mureo has **no native Amazon Ads client**. Amazon publishes an official MCP, and
+mureo connects to it *on your behalf* instead of handing it to your AI host:
+
+```
+Claude  →  local mureo MCP  →  Amazon hosted MCP endpoint
+```
+
+### Why the bridge exists
+
+- **Credentials never enter the host config.** The Login with Amazon (LwA)
+  client id / refresh token / client secret stay in the `amazon_ads` section of
+  `~/.mureo/credentials.json` (`0600`). A host-registered official MCP would
+  need them in the host's own MCP configuration instead.
+- **Token auto-refresh requires mureo in the path.** LwA access tokens expire in
+  ~60 minutes. mureo mints one before the first forwarded call and performs
+  exactly one refresh-and-retry when a call fails on expiry — it is what
+  observes the failure, exchanges the refresh token, and retries. Nothing
+  outside the request path can do that for you.
+- **Full participation in the safety layer.** Because the call goes through
+  mureo's dispatcher, Amazon tools are audited, throttled, strategy-gated, and
+  successful mutations are promoted into `STATE.json` `action_log` under
+  `platform="plugin:mureo-amazon-ads-bridge"` with an observation window —
+  exactly what a host-registered official MCP cannot offer.
+
+### What that costs, and what it does not buy
+
+| | mureo-native (Google / Meta) | Official, host-registered | Amazon bridge |
+|---|:---:|:---:|:---:|
+| Credentials stay in `~/.mureo/credentials.json` | Yes | No | Yes |
+| Automatic token refresh by mureo | Yes | No | Yes |
+| Audit log / `action_log` promotion | Yes | No | Yes |
+| Hard guardrail enforcement before dispatch | Yes (exact argument keys) | No | Best-effort (pattern-matched argument keys) |
+| Rollback | Allow-listed operations are auto-reversible | No | Agent-authored reversal hints are recorded; automatic before-state capture is not implemented |
+| mureo tool names / taxonomy | mureo's | the platform's | the platform's (`campaign_management-*`, `account_management-*`) |
+| Deep mureo analytics (anomaly baselines, RSA audit, CV-mismatch) | Yes | No | Not yet (#120) |
+| Works while the mureo MCP server is stopped | No | Yes | No |
+| BYOD / `mureo demo` (CSV, no live API) | Yes | No | No (out of scope by design) |
+
+Setup, environment variables, and the full caveat list: [amazon-ads.md](./amazon-ads.md).
+
+---
+
 ## How they coexist
 
 When you install an official provider for a platform mureo also serves natively,
@@ -168,3 +227,7 @@ re-enables native tools.
 - **Add the official MCP** when you want: the platform's first-party data surface
   (raw GAQL on Google), or to drive Meta live operations through Meta's hosted
   connector — ideally alongside mureo native for the gaps and guardrails.
+- **Use the mureo-mediated bridge** when mureo has no native client for the
+  platform but you still want the credentials, audit trail, and gating to stay
+  with mureo. Amazon Ads is the current example, and it is the only way mureo
+  supports Amazon today.

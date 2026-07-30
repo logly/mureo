@@ -135,6 +135,17 @@ STATE.json is a JSON file containing campaign state snapshots across platforms, 
           "campaign_goal": "Maximize conversions at target CPA"
         }
       ]
+    },
+    "plugin:mureo-amazon-ads-bridge": {
+      "account_id": "ENTITY1A2B3C4D5E",
+      "campaigns": [
+        {
+          "campaign_id": "444555666",
+          "campaign_name": "SP - Brand Defense",
+          "status": "ENABLED",
+          "daily_budget": 12000
+        }
+      ]
     }
   },
   "action_log": [
@@ -147,10 +158,36 @@ STATE.json is a JSON file containing campaign state snapshots across platforms, 
       "summary": "Excluded informational queries",
       "metrics_at_action": {"cpa": 5200, "conversions": 45, "clicks": 1200},
       "observation_due": "2026-04-15"
+    },
+    {
+      "timestamp": "2026-04-01T11:05:00+09:00",
+      "action": "Raised daily budget 10000 -> 12000",
+      "platform": "plugin:mureo-amazon-ads-bridge",
+      "campaign_id": "444555666",
+      "command": "/budget-rebalance",
+      "summary": "Shifted spend toward the brand-defense campaign",
+      "observation_due": "2026-04-15"
     }
   ]
 }
 ```
+
+### Platform keys
+
+A platform key is one of:
+
+- a **first-class ad-platform key** — `google_ads`, `meta_ads`, `tiktok_ads`,
+  `search_console`;
+- a **`plugin:<dist>` key** for any platform mureo dispatches through the
+  plugin / bridge path, where `<dist>` is the provider's pip **distribution**
+  name. Amazon Ads is `plugin:mureo-amazon-ads-bridge`.
+
+The same key is used everywhere — the `platforms` map, each `action_log`
+entry's `platform`, `mureo_state_upsert_campaign` / `mureo_state_platform_metrics_set`,
+the reporting dashboard's label lookup, and `mureo_analytics_modules_list` /
+`mureo_analytics_run`. Writing state under one spelling and reading it back
+under another is a silent join failure; see
+`skills/_mureo-shared/SKILL.md` → *Canonical platform key*.
 
 ### Fields
 
