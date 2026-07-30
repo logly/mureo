@@ -228,16 +228,14 @@ def _register_provider(spec: ProviderSpec) -> bool:
 
 def _mureo_block_exists() -> bool:
     """Return True iff ``mcpServers.mureo`` exists in the default settings file."""
-    from mureo.providers.config_writer import (
-        _default_settings_path,
-        _load_existing,
-    )
+    from mureo.core.atomic_json import load_existing_json
+    from mureo.providers.config_writer import _default_settings_path
 
     target = _default_settings_path()
     if not target.exists():
         return False
     try:
-        existing = _load_existing(target)
+        existing = load_existing_json(target)
     except Exception:  # noqa: BLE001 — defensive: degraded message is acceptable
         return False
     mcp_servers = existing.get("mcpServers")

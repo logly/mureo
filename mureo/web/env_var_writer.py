@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mureo.core.atomic_json import load_existing_json
 from mureo.fsutil import backup_file
-from mureo.providers.config_writer import _load_existing
 from mureo.web._helpers import atomic_write_json, read_json_safe
 
 if TYPE_CHECKING:
@@ -221,7 +221,7 @@ def write_credential_env_var(
     # Strict read: {} only when the file is absent; raises ConfigWriteError on
     # malformed JSON so a corrupt file is never clobbered into a one-section
     # dict that erases other providers.
-    existing = _load_existing(path)
+    existing = load_existing_json(path)
 
     section_payload_raw = existing.get(target.section)
     section_payload: dict[str, Any] = (

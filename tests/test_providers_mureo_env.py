@@ -168,7 +168,7 @@ def test_set_mureo_disable_env_returns_mureo_block_absent_when_no_mureo_entry(
     )
     pre_bytes = settings_path.read_bytes()
 
-    with patch("mureo.providers.config_writer.os.replace") as mock_replace:
+    with patch("mureo.core.atomic_json.os.replace") as mock_replace:
         result = set_mureo_disable_env("google_ads", settings_path=settings_path)
 
     assert result.changed is False
@@ -260,7 +260,7 @@ def test_set_mureo_disable_env_writes_atomically(tmp_path: Path) -> None:
         captured["dst"] = _os.fspath(dst)
         real_replace(src, dst)
 
-    with patch("mureo.providers.config_writer.os.replace", side_effect=_spy):
+    with patch("mureo.core.atomic_json.os.replace", side_effect=_spy):
         set_mureo_disable_env("google_ads", settings_path=settings_path)
 
     src = Path(captured["src"])
@@ -383,7 +383,7 @@ def test_unset_mureo_disable_env_noop_when_key_absent(tmp_path: Path) -> None:
     )
     pre_bytes = settings_path.read_bytes()
 
-    with patch("mureo.providers.config_writer.os.replace") as mock_replace:
+    with patch("mureo.core.atomic_json.os.replace") as mock_replace:
         result = unset_mureo_disable_env("google_ads", settings_path=settings_path)
 
     assert result.changed is False
@@ -403,7 +403,7 @@ def test_unset_mureo_disable_env_noop_when_mureo_absent(tmp_path: Path) -> None:
     )
     pre_bytes = settings_path.read_bytes()
 
-    with patch("mureo.providers.config_writer.os.replace") as mock_replace:
+    with patch("mureo.core.atomic_json.os.replace") as mock_replace:
         result = unset_mureo_disable_env("google_ads", settings_path=settings_path)
 
     assert result.changed is False
@@ -449,7 +449,7 @@ def test_add_provider_and_disable_in_mureo_single_atomic_write(
         call_count["n"] += 1
         real_replace(src, dst)
 
-    with patch("mureo.providers.config_writer.os.replace", side_effect=_spy):
+    with patch("mureo.core.atomic_json.os.replace", side_effect=_spy):
         add_provider_and_disable_in_mureo(spec, settings_path=settings_path)
 
     assert call_count["n"] == 1, (
@@ -493,9 +493,7 @@ def test_add_provider_and_disable_in_mureo_injects_extra_env(
     )
 
     payload = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert payload["mcpServers"][spec.id]["env"] == {
-        "GOOGLE_ADS_DEVELOPER_TOKEN": "DT"
-    }
+    assert payload["mcpServers"][spec.id]["env"] == {"GOOGLE_ADS_DEVELOPER_TOKEN": "DT"}
     assert payload["mcpServers"]["mureo"]["env"]["MUREO_DISABLE_GOOGLE_ADS"] == "1"
     assert result.changed is True
 

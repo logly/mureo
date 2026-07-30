@@ -40,8 +40,8 @@ from mureo.auth import (
     load_amazon_ads_credentials,
     save_amazon_access_token,
 )
+from mureo.core.atomic_json import ConfigWriteError
 from mureo.core.providers.credentials import AccountCredentialField
-from mureo.providers.config_writer import ConfigWriteError
 
 logger = logging.getLogger(__name__)
 

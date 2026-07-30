@@ -35,8 +35,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from mureo.core.atomic_json import atomic_write_json, load_existing_json
 from mureo.fsutil import backup_file
-from mureo.providers.config_writer import _atomic_write_json, _load_existing
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +233,7 @@ def add_insight_source(
     Read-modify-write with the #276-hardened safe-write stack:
 
     - the existing file is read FAIL-CLOSED via
-      :func:`mureo.providers.config_writer._load_existing` — a malformed
+      :func:`mureo.core.atomic_json.load_existing_json` — a malformed
       file raises :class:`ConfigWriteError` (NOT the tolerant
       :func:`load_insight_sources`, which would silently drop a corrupt
       file and let us clobber it);
@@ -275,14 +275,14 @@ def remove_insight_source(name: str, *, path: Path | None = None) -> bool:
 def _load_existing_sources(cfg_path: Path) -> list[dict[str, Any]]:
     """Return the on-disk ``sources`` list, reading the file FAIL-CLOSED.
 
-    Reuses :func:`mureo.providers.config_writer._load_existing` so a
+    Reuses :func:`mureo.core.atomic_json.load_existing_json` so a
     malformed file raises :class:`ConfigWriteError` (never the tolerant
     reader). A missing file yields ``[]``; a present-but-non-list
     ``sources`` value is normalised to ``[]`` so the writer rebuilds a
     well-formed file rather than refusing — only malformed JSON / a
     non-object top level fail closed.
     """
-    loaded = _load_existing(cfg_path)
+    loaded = load_existing_json(cfg_path)
     entries = loaded.get("sources")
     if not isinstance(entries, list):
         return []
@@ -292,7 +292,7 @@ def _load_existing_sources(cfg_path: Path) -> list[dict[str, Any]]:
 def _write_sources(cfg_path: Path, sources: list[dict[str, Any]]) -> None:
     """Back up the prior file then atomically write the new sources list."""
     backup_file(cfg_path)  # rolling .bak before any overwrite (no-op if absent)
-    _atomic_write_json({"sources": sources}, cfg_path)
+    atomic_write_json({"sources": sources}, cfg_path)
 
 
 def _build_source(entry: dict[str, Any]) -> InsightSource:

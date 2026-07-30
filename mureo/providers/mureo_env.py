@@ -22,8 +22,8 @@ time; the lookup ``KeyError`` defends against dynamic callers that bypass
 mypy strict.
 
 Atomic-write machinery is *not* duplicated here — both helpers reuse the
-private ``_load_existing`` and ``_atomic_write_json`` functions from
-:mod:`mureo.providers.config_writer` so a single contract governs all writes
+``load_existing_json`` and ``atomic_write_json`` functions from
+:mod:`mureo.core.atomic_json` so a single contract governs all writes
 to ``~/.claude/settings.json``.
 """
 
@@ -32,13 +32,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from mureo.core.atomic_json import (
+    ConfigWriteError,
+    atomic_write_json,
+    load_existing_json,
+)
 from mureo.providers.config_writer import (
     AddResult,
-    ConfigWriteError,
-    _atomic_write_json,
     _build_desired_config,
     _default_settings_path,
-    _load_existing,
 )
 
 if TYPE_CHECKING:
@@ -116,7 +118,7 @@ def set_mureo_disable_env(
     - If ``mcpServers.mureo.env`` already contains the exact desired
       ``{<key>: "1"}`` pair: no-op. Returns ``changed=False``.
     - Otherwise: merges the key and atomically rewrites the file via
-      :func:`mureo.providers.config_writer._atomic_write_json` (single
+      :func:`mureo.core.atomic_json.atomic_write_json` (single
       ``os.replace`` call).
 
     Raises:
@@ -130,7 +132,7 @@ def set_mureo_disable_env(
     if not target.exists():
         return SetEnvResult(changed=False, mureo_block_present=False)
 
-    existing = _load_existing(target)
+    existing = load_existing_json(target)
     mcp_servers = existing.get("mcpServers")
     if not isinstance(mcp_servers, dict):
         return SetEnvResult(changed=False, mureo_block_present=False)
@@ -149,7 +151,7 @@ def set_mureo_disable_env(
 
     mcp_servers["mureo"] = mureo_block
     existing["mcpServers"] = mcp_servers
-    _atomic_write_json(existing, target)
+    atomic_write_json(existing, target)
     return SetEnvResult(changed=True, mureo_block_present=True)
 
 
@@ -180,7 +182,7 @@ def unset_mureo_disable_env(
     if not target.exists():
         return UnsetEnvResult(changed=False)
 
-    existing = _load_existing(target)
+    existing = load_existing_json(target)
     mcp_servers = existing.get("mcpServers")
     if not isinstance(mcp_servers, dict):
         return UnsetEnvResult(changed=False)
@@ -197,7 +199,7 @@ def unset_mureo_disable_env(
     mureo_block["env"] = env_block
     mcp_servers["mureo"] = mureo_block
     existing["mcpServers"] = mcp_servers
-    _atomic_write_json(existing, target)
+    atomic_write_json(existing, target)
     return UnsetEnvResult(changed=True)
 
 
@@ -235,7 +237,7 @@ def add_provider_and_disable_in_mureo(
             a non-object ``mcpServers`` value.
     """
     target = settings_path or _default_settings_path()
-    existing = _load_existing(target)
+    existing = load_existing_json(target)
 
     mcp_servers_raw = existing.get("mcpServers")
     if mcp_servers_raw is None:
@@ -263,7 +265,7 @@ def add_provider_and_disable_in_mureo(
         return AddResult(changed=False)
 
     existing["mcpServers"] = mcp_servers
-    _atomic_write_json(existing, target)
+    atomic_write_json(existing, target)
     return AddResult(changed=True)
 
 
