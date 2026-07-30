@@ -539,13 +539,13 @@ def _save_meta_token(
 ) -> None:
     """Atomically update the meta_ads token in credentials.json.
 
-    Reuses the hardened ``config_writer`` helpers rather than a local
-    read-modify-write: ``_load_existing`` returns ``{}`` only when the file is
-    absent and RAISES ``ConfigWriteError`` on malformed JSON — instead of the
+    Reuses the hardened ``mureo.core.atomic_json`` helpers rather than a local
+    read-modify-write: ``load_existing_json`` returns ``{}`` only when the file
+    is absent and RAISES ``ConfigWriteError`` on malformed JSON — instead of the
     old ``data = {}`` reset that silently erased every other provider's
     credentials (google_ads etc.) on a slightly-corrupt file. On that raise the
     caller (:func:`refresh_meta_token_if_needed`) skips the save and warns,
-    leaving the file intact. ``_atomic_write_json`` writes via tmp + fsync +
+    leaving the file intact. ``atomic_write_json`` writes via tmp + fsync +
     ``os.replace`` at ``0o600`` so a crash mid-write is durable and safe.
 
     The load -> mutate -> write cycle runs under a cross-process ``file_lock``
@@ -554,13 +554,13 @@ def _save_meta_token(
     (e.g. a wizard re-auth dropping the just-refreshed access_token, or this
     refresh dropping a freshly-saved google_ads block).
     """
-    # Lazy import mirrors ``auth_setup.save_credentials`` and avoids any
-    # import-time coupling to the providers package.
-    from mureo.providers.config_writer import _atomic_write_json, _load_existing
+    # Lazy import mirrors ``auth_setup.save_credentials`` and keeps the
+    # module import graph flat.
+    from mureo.core.atomic_json import atomic_write_json, load_existing_json
 
     path.parent.mkdir(parents=True, exist_ok=True)
     with file_lock(lock_path_for(path)):
-        data = _load_existing(path)
+        data = load_existing_json(path)
 
         meta_section = data.get("meta_ads", {})
         if not isinstance(meta_section, dict):
@@ -570,7 +570,7 @@ def _save_meta_token(
         meta_section["token_obtained_at"] = new_obtained_at
         data["meta_ads"] = meta_section
 
-        _atomic_write_json(data, path)
+        atomic_write_json(data, path)
 
 
 def save_amazon_access_token(
@@ -581,12 +581,12 @@ def save_amazon_access_token(
     """Atomically persist a refreshed Amazon access token (#113 Phase 2A).
 
     Mirrors :func:`_save_meta_token` exactly, reusing the same hardened
-    ``config_writer`` helpers instead of a local read-modify-write:
-    ``_load_existing`` returns ``{}`` only when the file is absent and
+    ``mureo.core.atomic_json`` helpers instead of a local read-modify-write:
+    ``load_existing_json`` returns ``{}`` only when the file is absent and
     RAISES ``ConfigWriteError`` on malformed JSON, so a slightly-corrupt
     credentials.json is left untouched rather than reset to ``{}`` —
     which would silently erase every other provider's section
-    (google_ads etc.). ``_atomic_write_json`` writes via tmp + fsync +
+    (google_ads etc.). ``atomic_write_json`` writes via tmp + fsync +
     ``os.replace`` at ``0o600``, so a crash mid-write is durable and the
     file is never world-readable.
 
@@ -602,14 +602,14 @@ def save_amazon_access_token(
         ConfigWriteError: the existing credentials.json is malformed;
             nothing is written.
     """
-    # Lazy import mirrors ``_save_meta_token`` and avoids any import-time
-    # coupling to the providers package.
-    from mureo.providers.config_writer import _atomic_write_json, _load_existing
+    # Lazy import mirrors ``_save_meta_token`` and keeps the module import
+    # graph flat.
+    from mureo.core.atomic_json import atomic_write_json, load_existing_json
 
     resolved = path if path is not None else _resolve_default_path()
     resolved.parent.mkdir(parents=True, exist_ok=True)
     with file_lock(lock_path_for(resolved)):
-        data = _load_existing(resolved)
+        data = load_existing_json(resolved)
 
         section = data.get("amazon_ads", {})
         if not isinstance(section, dict):
@@ -619,7 +619,7 @@ def save_amazon_access_token(
             section["refresh_token"] = refresh_token
         data["amazon_ads"] = section
 
-        _atomic_write_json(data, resolved)
+        atomic_write_json(data, resolved)
 
 
 # ---------------------------------------------------------------------------

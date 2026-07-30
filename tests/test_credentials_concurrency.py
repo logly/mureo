@@ -3,15 +3,15 @@
 ``auth._save_meta_token`` (the background Meta 53-day auto-refresh),
 ``auth.save_amazon_access_token`` (the Amazon LwA refresh, #113) and
 ``auth_setup.save_credentials`` (the CLI / web setup wizard) each do
-read -> mutate -> ``_atomic_write_json``. ``_atomic_write_json`` makes only the
+read -> mutate -> ``atomic_write_json``. ``atomic_write_json`` makes only the
 file *replace* atomic; the surrounding read-modify-write is not. Run
 concurrently they can last-writer-wins away each other's section (e.g. the
 wizard re-auth dropping a just-refreshed access_token, or the refresh dropping
 a freshly-saved google_ads block). All three paths now hold the same
 cross-process ``credentials.json.lock`` across the whole cycle.
 
-The test instruments ``config_writer._load_existing`` /
-``_atomic_write_json`` to count how many read-modify-write cycles are ever
+The test instruments ``mureo.core.atomic_json.load_existing_json`` /
+``atomic_write_json`` to count how many read-modify-write cycles are ever
 in-flight at once and widens the window with a sleep. A correct lock keeps the
 concurrency at exactly 1; removing the lock lets it climb past 1 and the test
 fails. Mirrors ``tests/test_state_concurrency.py``.
@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-import mureo.providers.config_writer as config_writer
+import mureo.core.atomic_json as atomic_json
 from mureo.auth import (
     GoogleAdsCredentials,
     _save_meta_token,
@@ -57,19 +57,19 @@ class _SectionMonitor:
         self._guard = threading.Lock()
         self.active = 0
         self.max_active = 0
-        self._real_load = config_writer._load_existing
-        self._real_write = config_writer._atomic_write_json
+        self._real_load = atomic_json.load_existing_json
+        self._real_write = atomic_json.atomic_write_json
 
-    def load(self, settings_path: Path) -> dict[str, Any]:
-        data = self._real_load(settings_path)
+    def load(self, path: Path) -> dict[str, Any]:
+        data = self._real_load(path)
         with self._guard:
             self.active += 1
             self.max_active = max(self.max_active, self.active)
         time.sleep(_SECTION_DELAY_S)
         return data
 
-    def write(self, payload: dict[str, Any], settings_path: Path) -> None:
-        self._real_write(payload, settings_path)
+    def write(self, payload: dict[str, Any], path: Path) -> None:
+        self._real_write(payload, path)
         with self._guard:
             self.active -= 1
 
@@ -77,8 +77,8 @@ class _SectionMonitor:
 @pytest.fixture
 def monitor(monkeypatch: pytest.MonkeyPatch) -> _SectionMonitor:
     mon = _SectionMonitor()
-    monkeypatch.setattr(config_writer, "_load_existing", mon.load)
-    monkeypatch.setattr(config_writer, "_atomic_write_json", mon.write)
+    monkeypatch.setattr(atomic_json, "load_existing_json", mon.load)
+    monkeypatch.setattr(atomic_json, "atomic_write_json", mon.write)
     return mon
 
 
