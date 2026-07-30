@@ -127,7 +127,7 @@ See [authentication.md](authentication.md) for details on credentials.
 
 ## Amazon Ads Commands
 
-`mureo amazon` sets up the Amazon Ads official-MCP bridge. Amazon credentials are added to `~/.mureo/credentials.json` by hand (the `amazon_ads` section) rather than through a wizard.
+`mureo amazon` sets up the Amazon Ads official-MCP bridge. Enter the Amazon credentials first — in the **Amazon Ads** card of the **Plugin credentials** section of `mureo configure` (recommended), via the `AMAZON_ADS_*` environment variables, or by hand in the `amazon_ads` section of `~/.mureo/credentials.json`. There is no browser sign-in wizard for Amazon yet; the card is a paste form.
 
 ```bash
 # Discover Amazon's MCP tools and (re)write ~/.mureo/amazon_tools.json

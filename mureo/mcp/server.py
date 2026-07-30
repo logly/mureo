@@ -173,21 +173,33 @@ def _discover_with_amazon() -> tuple[Any, ...]:
     monkeypatched registry / module reload is still honoured. When the
     Amazon manifest is absent, ``AmazonAdsBridge.mcp_tools()`` returns
     ``()`` → no tools added → behaviour is byte-identical to before.
-    """
-    from mureo.amazon_ads.bridge import AmazonAdsBridge
-    from mureo.core.providers import registry as _registry
-    from mureo.core.providers.registry import ProviderEntry
 
+    #121: the entry is now built AND registered by
+    ``mureo.amazon_ads.provider`` — one definition shared with the
+    ``mureo configure`` UI, which needs it in ``default_registry`` to
+    render the Amazon credentials card. ``discover_providers`` returns
+    only what the entry-point pass registered, so the registration does
+    not by itself put Amazon in ``entries``; the explicit append below
+    is still what exposes the tools, guarded so an ``amazon_ads`` entry
+    point (were one ever installed) cannot double-expose them.
+
+    ORDER MATTERS: the built-in is registered BEFORE entry-point
+    discovery, matching ``ConfigureWizard._discover_providers_safely``.
+    The registry is first-wins, so registering first is what makes the
+    in-tree bridge deterministically beat a third-party plugin that
+    claims the ``amazon_ads`` name — in both processes, not just
+    whichever happened to run its registration earlier. A genuinely
+    pre-registered foreign ``amazon_ads`` (registered before this
+    function runs at all) still wins, which is the documented
+    first-wins contract.
+    """
+    from mureo.amazon_ads.provider import register_amazon_provider
+    from mureo.core.providers import registry as _registry
+
+    amazon = register_amazon_provider()
     entries = list(_registry.discover_providers())
-    entries.append(
-        ProviderEntry(
-            name="amazon_ads",
-            display_name="Amazon Ads",
-            capabilities=frozenset(),
-            provider_class=AmazonAdsBridge,
-            source_distribution="mureo-amazon-ads-bridge",
-        )
-    )
+    if not any(entry.name == amazon.name for entry in entries):
+        entries.append(amazon)
     return tuple(entries)
 
 

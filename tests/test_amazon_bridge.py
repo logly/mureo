@@ -357,3 +357,158 @@ class TestTokenRefreshRetry:
         # original first failure preserved as the explicit cause
         assert isinstance(ei.value.__cause__, RuntimeError)
         assert "401 token expired" in str(ei.value.__cause__)
+
+
+@pytest.mark.unit
+class TestProactiveTokenMint:
+    """#121 — an empty ``access_token`` is minted BEFORE the first call.
+
+    The configure-UI / env-var setup path stores only the durable LwA
+    material (``client_id`` + ``refresh_token`` + ``client_secret``).
+    Spending a guaranteed-to-fail forwarded call just to discover that
+    would be wasteful and confusing, so the bridge mints first. The
+    one-refresh bound still holds: minting counts as the single LwA
+    exchange, so a failure afterwards is NOT retried.
+    """
+
+    def _creds(self, **kw):
+        base = dict(
+            client_id="cid",
+            access_token="",
+            refresh_token="Atzr|R",
+            client_secret="sec",
+        )
+        base.update(kw)
+        return AmazonAdsCredentials(**base)
+
+    def _mk(self, tmp_path: Path, creds, connect, **kw):
+        mp = tmp_path / "amazon_tools.json"
+        mp.write_text(json.dumps(_MANIFEST))
+        return AmazonAdsBridge(
+            manifest_path=mp,
+            creds_loader=lambda: creds,
+            connect=connect,
+            refresher=kw.get("refresher"),
+            token_saver=kw.get("token_saver"),
+        )
+
+    def test_empty_access_token_is_minted_persisted_and_used(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.amazon_ads.lwa import LwaTokens
+
+        calls: list = []
+        captured: dict = {}
+        saved: list = []
+        b = self._mk(
+            tmp_path,
+            self._creds(),
+            _connect(calls, captured, ["RESULT"]),
+            refresher=lambda c: LwaTokens("Atza|MINTED", "Atzr|R2", 3600),
+            token_saver=lambda a, r: saved.append((a, r)),
+        )
+        out = asyncio.run(b.handle_mcp_tool("campaign_management-x", {}))
+
+        assert out == ["RESULT"]
+        assert saved == [("Atza|MINTED", "Atzr|R2")]
+        assert captured["headers"]["Authorization"] == "Bearer Atza|MINTED"
+        # Exactly one forwarded call — no wasted first attempt.
+        assert calls == [("initialize",), ("call_tool", "campaign_management-x", {})]
+
+    def test_stored_access_token_is_used_as_is_without_minting(
+        self, tmp_path: Path
+    ) -> None:
+        refreshed: list = []
+        captured: dict = {}
+        b = self._mk(
+            tmp_path,
+            self._creds(access_token="Atza|STORED"),
+            _connect([], captured, ["RESULT"]),
+            refresher=lambda c: refreshed.append(1),
+            token_saver=lambda a, r: None,
+        )
+        asyncio.run(b.handle_mcp_tool("x", {}))
+        assert refreshed == []
+        assert captured["headers"]["Authorization"] == "Bearer Atza|STORED"
+
+    def test_mint_failure_surfaces_an_actionable_error_without_token_text(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.amazon_ads.lwa import AmazonAuthError
+
+        def refresher(c):
+            raise AmazonAuthError(
+                "LwA refresh token is invalid_grant — the advertiser must "
+                "re-authorize (see docs/amazon-ads.md)"
+            )
+
+        b = self._mk(
+            tmp_path,
+            self._creds(),
+            _connect([], {}, ["RESULT"]),
+            refresher=refresher,
+            token_saver=lambda a, r: None,
+        )
+        with pytest.raises(AmazonBridgeError, match="re-authorize") as ei:
+            asyncio.run(b.handle_mcp_tool("x", {}))
+        assert "Atzr|" not in str(ei.value)
+
+    def test_unpersistable_minted_token_raises_a_clear_error(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.amazon_ads.lwa import LwaTokens
+        from mureo.providers.config_writer import ConfigWriteError
+
+        def saver(access: str, refresh: str | None) -> None:
+            raise ConfigWriteError("credentials.json is malformed")
+
+        b = self._mk(
+            tmp_path,
+            self._creds(),
+            _connect([], {}, ["RESULT"]),
+            refresher=lambda c: LwaTokens("Atza|MINTED", "Atzr|R", 3600),
+            token_saver=saver,
+        )
+        with pytest.raises(AmazonBridgeError, match="malformed") as ei:
+            asyncio.run(b.handle_mcp_tool("x", {}))
+        assert "Atza|" not in str(ei.value)
+
+    def test_call_failure_after_a_mint_is_not_retried(self, tmp_path: Path) -> None:
+        """One LwA exchange per dispatch — minting consumes the budget."""
+        from mureo.amazon_ads.lwa import LwaTokens
+
+        attempts: list[str] = []
+        refreshed: list = []
+
+        class _Sess:
+            async def initialize(s):
+                pass
+
+            async def call_tool(s, name, arguments):
+                raise RuntimeError("401 token expired")
+
+        class _CM:
+            def __init__(s, url, headers):
+                attempts.append(headers["Authorization"])
+
+            async def __aenter__(s):
+                return _Sess()
+
+            async def __aexit__(s, *e):
+                return False
+
+        def refresher(c):
+            refreshed.append(1)
+            return LwaTokens("Atza|MINTED", "Atzr|R", 3600)
+
+        b = self._mk(
+            tmp_path,
+            self._creds(),
+            lambda url, headers: _CM(url, headers),
+            refresher=refresher,
+            token_saver=lambda a, r: None,
+        )
+        with pytest.raises(RuntimeError, match="401 token expired"):
+            asyncio.run(b.handle_mcp_tool("x", {}))
+        assert refreshed == [1]  # minted once, never refreshed again
+        assert attempts == ["Bearer Atza|MINTED"]  # exactly one forwarded call

@@ -285,6 +285,7 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 - Credentials are loaded from `~/.mureo/credentials.json` (priority) or environment variables (fallback)
 - Google Ads: `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`
 - Meta Ads: `META_ADS_ACCESS_TOKEN`, `META_ADS_APP_ID`, `META_ADS_APP_SECRET`
+- Amazon Ads: `AMAZON_ADS_CLIENT_ID` plus either `AMAZON_ADS_ACCESS_TOKEN` or both of `AMAZON_ADS_REFRESH_TOKEN` / `AMAZON_ADS_CLIENT_SECRET`; optional `AMAZON_ADS_REGION`, `AMAZON_ADS_ACCOUNT_MODE`, `AMAZON_ADS_PROFILE_ID`, `AMAZON_ADS_ACCOUNT_ID`, `AMAZON_ADS_MANAGER_ACCOUNT_ID`
 - The `auth_setup.py` wizard writes credentials to `~/.mureo/credentials.json`
 
 ## BYOD Mode (Bring Your Own Data)

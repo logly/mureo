@@ -235,6 +235,64 @@ class TestCredentialsOauth:
 
 
 @pytest.mark.unit
+class TestAmazonCredentialsPresence:
+    """#121 — the Amazon bridge gets a ``credentials_present`` row.
+
+    Unlike the other sections (present ⇔ non-empty), Amazon needs a
+    ``client_id`` PLUS token material to be usable, so presence mirrors
+    ``mureo.auth.load_amazon_ads_credentials``.
+    """
+
+    def _present(self, tmp_path: Path, section: dict[str, object] | None) -> bool:
+        paths = _paths(tmp_path)
+        if section is not None:
+            _write_json(paths.credentials_path, {"amazon_ads": section})
+        snapshot = collect_status(
+            "claude-code", home=_build_home(tmp_path), paths=paths
+        )
+        return snapshot.credentials_present["amazon_ads"]
+
+    def test_missing_file_reports_absent(self, tmp_path: Path) -> None:
+        assert self._present(tmp_path, None) is False
+
+    def test_access_token_material_reports_present(self, tmp_path: Path) -> None:
+        assert (
+            self._present(tmp_path, {"client_id": "cid", "access_token": "Atza|T"})
+            is True
+        )
+
+    def test_refresh_trio_reports_present(self, tmp_path: Path) -> None:
+        assert (
+            self._present(
+                tmp_path,
+                {"client_id": "cid", "refresh_token": "Atzr|R", "client_secret": "s"},
+            )
+            is True
+        )
+
+    def test_client_id_without_token_material_reports_absent(
+        self, tmp_path: Path
+    ) -> None:
+        assert self._present(tmp_path, {"client_id": "cid", "region": "eu"}) is False
+
+    def test_token_without_client_id_reports_absent(self, tmp_path: Path) -> None:
+        assert self._present(tmp_path, {"access_token": "Atza|T"}) is False
+
+    def test_no_secret_value_reaches_the_serialized_snapshot(
+        self, tmp_path: Path
+    ) -> None:
+        paths = _paths(tmp_path)
+        _write_json(
+            paths.credentials_path,
+            {"amazon_ads": {"client_id": "cid", "access_token": "REDACTED-AMZ"}},
+        )
+        snapshot = collect_status(
+            "claude-code", home=_build_home(tmp_path), paths=paths
+        )
+        assert "REDACTED-AMZ" not in json.dumps(snapshot.as_dict(), ensure_ascii=False)
+
+
+@pytest.mark.unit
 class TestStatusSnapshotShape:
     def test_snapshot_is_frozen_dataclass(self, tmp_path: Path) -> None:
         snapshot = collect_status(

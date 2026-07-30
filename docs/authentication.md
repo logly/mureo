@@ -37,7 +37,7 @@ Each subcommand also exposes explicit `--google-ads/--no-google-ads` and `--meta
 
 > `mureo auth setup --web` was **removed**; its browser credential flow is now part of the unified `mureo configure` UI.
 
-Prefer `mureo configure` when you were pointed to mureo by an AI agent that cannot safely receive terminal input, or you simply want a GUI. It starts a short-lived HTTP server on a random localhost port, opens your browser at it, and — beyond Google Ads / Meta Ads / GA4 credential entry via HTML forms and standard OAuth redirects (every field deep-linked to the right console) — also lets you pick the Claude host, run basic setup (MCP server + credential-guard hook + skills), add the official MCP providers, switch each platform between mureo-native and the official MCP, and scaffold Demo/BYOD. Flags: `--no-browser`, `--timeout-seconds N` (idle shutdown, default 600). The same security hardening (CSRF rotation, OAuth `state` re-validation, DNS-rebinding guard, localhost-pinned redirect verification, generic error surface, POST size cap, CSP) applies — see `SECURITY.md`.
+Prefer `mureo configure` when you were pointed to mureo by an AI agent that cannot safely receive terminal input, or you simply want a GUI. It starts a short-lived HTTP server on a random localhost port, opens your browser at it, and — beyond Google Ads / Meta Ads / GA4 credential entry via HTML forms and standard OAuth redirects (every field deep-linked to the right console), plus an **Amazon Ads** card in the dashboard's *Plugin credentials* section (a paste form — Amazon has no browser sign-in wizard yet; see [amazon-ads.md](amazon-ads.md)) — also lets you pick the Claude host, run basic setup (MCP server + credential-guard hook + skills), add the official MCP providers, switch each platform between mureo-native and the official MCP, and scaffold Demo/BYOD. Flags: `--no-browser`, `--timeout-seconds N` (idle shutdown, default 600). The same security hardening (CSRF rotation, OAuth `state` re-validation, DNS-rebinding guard, localhost-pinned redirect verification, generic error surface, POST size cap, CSP) applies — see `SECURITY.md`.
 
 ## How Credentials Work
 
@@ -105,6 +105,22 @@ If `~/.mureo/credentials.json` is missing or lacks the required fields, mureo fa
 | `META_ADS_ACCESS_TOKEN` | Yes | Graph API access token |
 | `META_ADS_APP_ID` | No | Meta App ID |
 | `META_ADS_APP_SECRET` | No | Meta App Secret |
+
+### Amazon Ads
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AMAZON_ADS_CLIENT_ID` | Yes | Login with Amazon (LwA) application client ID |
+| `AMAZON_ADS_REFRESH_TOKEN` | Conditional | LwA refresh token — with the client secret, mureo mints and refreshes access tokens for you |
+| `AMAZON_ADS_CLIENT_SECRET` | Conditional | LwA application client secret |
+| `AMAZON_ADS_ACCESS_TOKEN` | Conditional | LwA access token (expires in ~60 min) |
+| `AMAZON_ADS_REGION` | No | `na` / `eu` / `fe` (default `na`) |
+| `AMAZON_ADS_ACCOUNT_MODE` | No | `dynamic` / `fixed` (default `dynamic`) |
+| `AMAZON_ADS_PROFILE_ID` | No | Fixed account mode only |
+| `AMAZON_ADS_ACCOUNT_ID` | No | Fixed account mode only |
+| `AMAZON_ADS_MANAGER_ACCOUNT_ID` | No | Fixed account mode only |
+
+"Conditional" means the client ID plus **either** `AMAZON_ADS_ACCESS_TOKEN` **or both** of `AMAZON_ADS_REFRESH_TOKEN` and `AMAZON_ADS_CLIENT_SECRET`. See [amazon-ads.md](amazon-ads.md).
 
 **Resolution order**: credentials.json takes priority. Environment variables are only checked if the corresponding section in credentials.json is missing or incomplete.
 
