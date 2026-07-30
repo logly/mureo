@@ -111,6 +111,15 @@ class ActionLogEntry:
         ad-level pause could only be recorded as free text, so a later run could not
         match what mureo did against the ad statuses it observes — and would have to
         guess whether a stopped ad was its own doing or an operator's manual change.
+    evaluation_of: Positional index (into the full, append-only action_log) of the
+        action whose ``observation_due`` this entry evaluates and closes. Same
+        index semantics as ``rollback_of``: the log is append-only, so an entry's
+        index never shifts. ``mureo_outcome_evaluate`` is pure and writes nothing,
+        so without this marker a past-due observation would stay "pending" forever
+        (re-evaluated every daily-check, the set growing unbounded). Appending an
+        entry with ``evaluation_of=<index>`` records that the outcome was reviewed
+        and takes the source out of the pending set. ``None`` means this entry is
+        not an evaluation record.
     """
 
     timestamp: str
@@ -124,6 +133,7 @@ class ActionLogEntry:
     observation_due: str | None = None
     reversible_params: dict[str, Any] | None = None
     rollback_of: int | None = None
+    evaluation_of: int | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""

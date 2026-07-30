@@ -49,7 +49,7 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "platform (google_ads / meta_ads / etc.). The ``timestamp`` is "
         "stamped by the server — do not compute it. Optional: campaign_id, "
         "ad_id, summary, command, metrics_at_action, observation_due, "
-        "reversible_params, rollback_of."
+        "reversible_params, rollback_of, evaluation_of."
     ),
     "properties": {
         "timestamp": {
@@ -78,7 +78,27 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "metrics_at_action": {"type": "object"},
         "observation_due": {"type": "string"},
         "reversible_params": {"type": "object"},
-        "rollback_of": {"type": "integer"},
+        "rollback_of": {
+            "type": "integer",
+            "description": (
+                "Positional index (into the full action_log) of the action "
+                "this entry reverses. Normally written by the rollback surface "
+                "(``rollback_apply``), not by hand. Must point at an existing "
+                "entry."
+            ),
+        },
+        "evaluation_of": {
+            "type": "integer",
+            "description": (
+                "Positional index (into the full action_log) of the action "
+                "whose ``observation_due`` this entry evaluates and CLOSES. "
+                "Append this after running ``mureo_outcome_evaluate`` on a "
+                "past-due observation so the source entry leaves the pending "
+                "set (``mureo_outcome_evaluate`` is pure and records nothing "
+                "itself). Must point at an existing entry — the daily-check's "
+                "pending scope reads the returned ``index`` field to fill it."
+            ),
+        },
     },
     "required": ["action", "platform"],
 }
@@ -240,11 +260,41 @@ TOOLS: list[Tool] = [
             "authoritative current date: every OTHER date in the document "
             "(last_synced_at, reports.*.period, action_log timestamps) is "
             "history and must never be read as 'today'. ``server_now`` is a "
-            "response field only — do not write it back into STATE.json."
+            "response field only — do not write it back into STATE.json. "
+            "``action_log`` scopes the returned log to cut context cost: "
+            "``all`` (default) returns the full history unchanged; "
+            "``pending`` returns only entries with an OPEN ``observation_due`` "
+            "— past-due ones you still owe an outcome evaluation, and "
+            "future-due ones still under observation — dropping plain log "
+            "entries and entries a later rollback (``rollback_of``) or "
+            "evaluation record (``evaluation_of``) already closed; ``none`` "
+            "omits the log entirely. Each ``pending`` entry carries an "
+            "``index`` field (its position in the FULL log) so you can close "
+            "it after evaluating — append an entry with "
+            "``evaluation_of: <index>`` — without ever loading the whole "
+            "history. When filtered (``pending`` / ``none``) the response "
+            "carries ``action_log_scope`` (the mode) and ``action_log_total`` "
+            "(the full pre-filter entry count) so the log you were shown is "
+            "never mistaken for the complete history."
         ),
         inputSchema={
             "type": "object",
-            "properties": {"path": _PATH_PROPERTY},
+            "properties": {
+                "path": _PATH_PROPERTY,
+                "action_log": {
+                    "type": "string",
+                    "enum": ["all", "pending", "none"],
+                    "description": (
+                        "Scope of the returned action_log. ``all`` (default) "
+                        "= the full history, byte-identical to the legacy "
+                        "behaviour. ``pending`` = only entries with an open "
+                        "``observation_due`` (past-due + future-due), for the "
+                        "daily-check evidence loop. ``none`` = omit the log. "
+                        "Filtered responses add ``action_log_scope`` + "
+                        "``action_log_total`` markers."
+                    ),
+                },
+            },
             "additionalProperties": False,
         },
     ),
