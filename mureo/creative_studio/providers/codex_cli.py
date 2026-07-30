@@ -49,9 +49,11 @@ from typing import Any
 
 from mureo.creative_studio.providers import (
     _FIELD_TO_ENV,
+    _GPT_IMAGE_SIZES,
     NotSupportedError,
     _creative_studio_secret,
     _redact,
+    _size_capabilities,
 )
 
 _BINARY = "codex"
@@ -70,12 +72,14 @@ _STDERR_TAIL = 2000
 #: The 8-byte PNG signature — the output must start with it to be accepted.
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
-# GPT Image's supported output sizes, one per aspect class. An arbitrary
-# width/height is clamped to the nearest of these by orientation — the same
-# convention the OpenAI ``gpt-image-1`` provider uses.
-_SIZE_SQUARE = "1024x1024"
-_SIZE_LANDSCAPE = "1536x1024"
-_SIZE_PORTRAIT = "1024x1536"
+# GPT Image's supported output sizes, one per aspect class, derived from the
+# shared menu (ordered square, landscape, portrait) that the OpenAI
+# ``gpt-image-1`` provider also uses — so the sizes asked of the CLI and the
+# ones advertised in ``capabilities()`` cannot drift apart. An arbitrary
+# width/height is clamped to the nearest of these by orientation.
+_SIZE_SQUARE, _SIZE_LANDSCAPE, _SIZE_PORTRAIT = (
+    f"{width}x{height}" for width, height in _GPT_IMAGE_SIZES
+)
 
 # stderr substrings (matched case-insensitively) that indicate an auth /
 # login problem, so the error can append the `codex login` hint.
@@ -304,9 +308,11 @@ class CodexCliImageProvider:
     def capabilities(self) -> dict[str, Any]:
         # ``requires_api_key`` / ``auth`` are extra, honest metadata: unlike the
         # hosted providers this one needs no key, only a local `codex login`.
+        # ``supported_sizes`` is GPT Image's exact menu; ``max_size`` is the
+        # per-axis maximum across it — a 1536x1536 square is NOT generatable.
         return {
             "edit": False,
-            "max_size": [1536, 1536],
+            **_size_capabilities(_GPT_IMAGE_SIZES),
             "requires_api_key": False,
             "auth": "codex_cli_login",
         }

@@ -67,6 +67,9 @@ class FalImageProvider:
         return _creative_studio_secret(_KEY_FIELD) is not None
 
     def capabilities(self) -> dict[str, Any]:
+        # No ``supported_sizes``: the requested width/height is forwarded to the
+        # API verbatim, so there is no fixed menu — any size up to the per-axis
+        # ``max_size`` bound is accepted, and absence says exactly that.
         return {"edit": False, "max_size": [1440, 1440]}
 
     def _require_key(self) -> str:

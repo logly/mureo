@@ -70,6 +70,17 @@ CLI** プロバイダ）を同梱し、サードパーティは `mureo.image_pro
 | fal.ai（FLUX / Recraft 等） | `creative_studio.fal_key` | `FAL_KEY` | なし |
 | Codex CLI（`codex`、gpt-image） | —（API キー不要。ローカルの `codex login`） | — | なし |
 
+`creative_studio_providers_list` は各プロバイダの生成サイズも報告します。
+`supported_sizes` がある場合、それはそのプロバイダが実際にレンダリングする
+**厳密な** `[幅, 高さ]` のメニューです。OpenAI と Codex CLI はどちらも GPT Image
+を使っており、そのメニューは `1024x1024` / `1536x1024` / `1024x1536` です
+（1536x1536 の正方形は**存在しません**）。Google は常に `1024x1024` を生成します。
+それ以外のサイズを要求した場合は、向き（縦横）に応じて最も近いものにクランプ
+されます。fal.ai は任意の幅・高さをそのまま API に渡すため `supported_sizes` を
+報告しません（＝「固定メニューではない」という意味です）。`max_size` は軸ごとの
+上限（最大の幅・最大の高さ）にすぎず、そのまま指定できるサイズとは限りません。
+厳密なサイズが必要なときは `supported_sizes` を参照してください。
+
 **Codex CLI** プロバイダ（`name: codex`）は他とは異なり、**API キーが不要**です。
 REST エンドポイントを呼ぶ代わりに、ローカルにインストールされた
 [Codex CLI](https://developers.openai.com/codex/cli)（`codex exec`）を起動し、

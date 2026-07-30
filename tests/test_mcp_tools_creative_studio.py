@@ -183,6 +183,32 @@ async def test_providers_list_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
 
 
+@pytest.mark.unit
+async def test_providers_list_surfaces_supported_sizes_verbatim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    caps = {
+        "edit": True,
+        "max_size": [1536, 1536],
+        "supported_sizes": [[1024, 1024], [1536, 1024], [1024, 1536]],
+    }
+
+    class _MenuProvider(_FakeProvider):
+        def capabilities(self) -> dict:
+            return dict(caps)
+
+    monkeypatch.setattr(mod, "available_providers", lambda: [_MenuProvider()])
+    result = await mod.handle_tool("creative_studio_providers_list", {})
+    payload = _payload(result)
+    assert payload["providers"][0]["capabilities"] == caps
+
+
+@pytest.mark.unit
+def test_providers_list_description_documents_supported_sizes() -> None:
+    tool = next(t for t in mod.TOOLS if t.name == "creative_studio_providers_list")
+    assert "supported_sizes" in tool.description
+
+
 # ---------------------------------------------------------------------------
 # generate_visual handler
 # ---------------------------------------------------------------------------

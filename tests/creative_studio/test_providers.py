@@ -70,6 +70,70 @@ def test_available_providers_first_wins_dedupe() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Capabilities contract (supported_sizes / max_size)
+# ---------------------------------------------------------------------------
+
+#: The exact size menu GPT Image offers — square, landscape, portrait. A
+#: 1536x1536 square is NOT generatable, which is why ``max_size`` is defined
+#: as the per-axis maximum rather than a jointly achievable size.
+_GPT_IMAGE_TRIO = [[1024, 1024], [1536, 1024], [1024, 1536]]
+
+
+@pytest.mark.unit
+def test_supported_sizes_when_present_are_pairs_and_bound_max_size() -> None:
+    for provider in available_providers():
+        caps = provider.capabilities()
+        supported = caps.get("supported_sizes")
+        if supported is None:
+            continue  # absence means "not a fixed menu" (see fal)
+        assert isinstance(supported, list) and supported
+        for pair in supported:
+            assert isinstance(pair, list) and len(pair) == 2
+            assert all(isinstance(value, int) for value in pair)
+        # ``max_size`` is the per-axis maximum across the menu.
+        assert caps["max_size"] == [
+            max(width for width, _ in supported),
+            max(height for _, height in supported),
+        ]
+
+
+@pytest.mark.unit
+def test_openai_capabilities_report_the_gpt_image_size_menu() -> None:
+    caps = openai_mod.OpenAIImageProvider().capabilities()
+    assert caps["supported_sizes"] == _GPT_IMAGE_TRIO
+    # Backward compatible per-axis maxima — not a jointly achievable size.
+    assert caps["max_size"] == [1536, 1536]
+    assert [1536, 1536] not in caps["supported_sizes"]
+
+
+@pytest.mark.unit
+def test_openai_clamp_only_targets_advertised_sizes() -> None:
+    provider = openai_mod.OpenAIImageProvider()
+    advertised = {
+        f"{width}x{height}"
+        for width, height in provider.capabilities()["supported_sizes"]
+    }
+    for width, height in ((1024, 1024), (1920, 1080), (1080, 1920), (2000, 500)):
+        assert provider._clamp_size(width, height) in advertised
+
+
+@pytest.mark.unit
+def test_google_capabilities_report_its_single_size() -> None:
+    caps = google_mod.GoogleImageProvider().capabilities()
+    assert caps["supported_sizes"] == [[1024, 1024]]
+    assert caps["max_size"] == [1024, 1024]
+
+
+@pytest.mark.unit
+def test_fal_capabilities_omit_supported_sizes() -> None:
+    # fal forwards an arbitrary width/height to the API, so there is no fixed
+    # menu to advertise — absence is the honest answer.
+    caps = fal_mod.FalImageProvider().capabilities()
+    assert "supported_sizes" not in caps
+    assert caps["max_size"] == [1440, 1440]
+
+
+# ---------------------------------------------------------------------------
 # Secret resolution
 # ---------------------------------------------------------------------------
 

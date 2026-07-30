@@ -69,6 +69,17 @@ parties can register more under the `mureo.image_providers` entry-point group.
 | fal.ai (FLUX / Recraft …) | `creative_studio.fal_key` | `FAL_KEY` | no |
 | Codex CLI (`codex`, gpt-image) | — (no API key; local `codex login`) | — | no |
 
+`creative_studio_providers_list` also reports each provider's sizes.
+`supported_sizes`, when present, is the **exact** `[width, height]` menu the
+provider renders — OpenAI and Codex CLI both drive GPT Image, whose menu is
+`1024x1024` / `1536x1024` / `1024x1536` (there is **no** 1536x1536 square), and
+Google always renders `1024x1024`. Any other requested size is clamped to the
+nearest entry by orientation. fal.ai forwards an arbitrary width/height to its
+API, so it reports no `supported_sizes` — absence means "not a fixed menu".
+`max_size` is only a per-axis bound (largest width, largest height) and is not
+necessarily a size you can ask for; read `supported_sizes` when you need exact
+sizes.
+
 The **Codex CLI** provider (`name: codex`) is different: it needs **no API key**.
 Instead of calling a REST endpoint it shells out to the locally installed
 [Codex CLI](https://developers.openai.com/codex/cli) (`codex exec`) and uses its
