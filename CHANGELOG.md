@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.35] - 2026-07-30
+
+### Changed
+
+- **`/daily-check` is incremental by default (#495).** Every run pulled raw
+  campaign and insights rows from every platform and then re-listed items that
+  had not moved since yesterday, burning context and drowning the signal. The
+  previous run's summary was already persisted to `reports.daily`; it is now
+  the diff anchor. The skill has **two modes**. *Incremental* (the default)
+  gathers **analytics-first** — it consumes `mureo_analytics_run`'s compact
+  server-side findings instead of raw rows, falling back to a raw pull only
+  where no analytics module exists — reads a **scoped** action_log, and emits a
+  **diff-first** report: only verdict transitions, new or resolved findings,
+  external changes, newly-due evidence verdicts and threshold-crossing goal
+  moves. Everything unchanged collapses to a single line, and raw tool tables
+  are never reproduced. One safety rule overrides the diff: a current **Action
+  needed** item is always reported in full even when unchanged, so an
+  unresolved problem never goes quiet. *Deep* is the full run — on request
+  (`deep` / `full`), on the first-ever run, or when the previous summary is
+  missing or older than 7 days — and a weekly deep run is recommended.
+
+  Two supporting mechanisms land with it. `mureo_state_get` gains an optional
+  `action_log` scope — `all` (default, byte-identical to the legacy response),
+  `pending` (only entries with an OPEN `observation_due`, excluding any a later
+  rollback (`rollback_of`) or evaluation record (`evaluation_of`) has closed),
+  or `none`. Filtered responses carry `action_log_scope` and
+  `action_log_total` markers so a subset is never mistaken for the whole
+  history, and each `pending` entry carries its full-log `index`. And
+  `ActionLogEntry` gains an optional `evaluation_of` closure field (same
+  stable-index semantics as `rollback_of`): because `mureo_outcome_evaluate` is
+  pure and records nothing, a past-due observation would otherwise stay pending
+  forever and be re-evaluated on every run — step 9 now appends an evaluation
+  record that takes the source entry out of the pending set. The append handler
+  validates both `rollback_of` and `evaluation_of` against the current log
+  length now that the indices carry behavioral weight.
+
 ## [0.10.34] - 2026-07-30
 
 ### Added
