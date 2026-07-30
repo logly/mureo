@@ -283,6 +283,59 @@ class TestTokenRefreshRetry:
         assert "Atza|" not in str(ei.value)  # no token material in the message
         assert isinstance(ei.value.__cause__, RuntimeError)  # original chained
 
+    def test_a_save_error_carrying_token_text_is_scrubbed(self, tmp_path: Path) -> None:
+        """The nested error's text is not mureo's to trust.
+
+        ``_token_saver`` is injectable and an ``OSError`` carries whatever the
+        OS put in it, so the underlying message can contain token material —
+        and this string lands in an agent-visible tool result. It goes through
+        the same secret-shape redactor the audit trail and the CLI use.
+        """
+        from mureo.amazon_ads.lwa import LwaTokens
+
+        def saver(access: str, refresh: str | None) -> None:
+            raise OSError(
+                "failed writing credentials.json: payload was "
+                "Atza|LEAKED-access-token-abc123"
+            )
+
+        b = self._mk(
+            tmp_path,
+            self._creds(),
+            self._connect_seq([], fail_first=1),
+            refresher=lambda c: LwaTokens("Atza|NEW", "Atzr|R", 3600),
+            token_saver=saver,
+        )
+        with pytest.raises(AmazonBridgeError) as ei:
+            asyncio.run(b.handle_mcp_tool("x", {}))
+        message = str(ei.value)
+        assert "LEAKED" not in message
+        assert "Atza|" not in message
+        assert "***" in message
+        # The actionable part survives the scrub.
+        assert "could not be saved" in message
+
+    def test_an_lwa_error_carrying_token_text_is_scrubbed(self, tmp_path: Path) -> None:
+        """Same discipline on the mint/refresh failure path."""
+        from mureo.amazon_ads.lwa import AmazonAuthError
+
+        def refresher(creds):
+            raise AmazonAuthError("invalid_grant for Atzr|LEAKED-refresh-xyz789")
+
+        b = self._mk(
+            tmp_path,
+            self._creds(),
+            self._connect_seq([], fail_first=1),
+            refresher=refresher,
+            token_saver=lambda a, r: None,
+        )
+        with pytest.raises(AmazonBridgeError) as ei:
+            asyncio.run(b.handle_mcp_tool("x", {}))
+        message = str(ei.value)
+        assert "LEAKED" not in message
+        assert "Atzr|" not in message
+        assert "***" in message
+
     def test_retry_after_refresh_still_failing_raises(self, tmp_path: Path) -> None:
         from mureo.amazon_ads.lwa import LwaTokens
 
@@ -512,3 +565,34 @@ class TestProactiveTokenMint:
             asyncio.run(b.handle_mcp_tool("x", {}))
         assert refreshed == [1]  # minted once, never refreshed again
         assert attempts == ["Bearer Atza|MINTED"]  # exactly one forwarded call
+
+
+@pytest.mark.unit
+def test_importing_the_bridge_first_does_not_break_plugin_discovery() -> None:
+    """Regression: the bridge must not import ``mureo.mcp`` at module level.
+
+    ``mureo.mcp.__init__`` imports the server, which builds its plugin tool
+    list AT IMPORT TIME by reaching this bridge through
+    ``mureo.amazon_ads.provider``. Any module-level ``mureo.mcp.*`` import here
+    re-enters a partially-initialized bridge, and the failure is quiet: plugin
+    discovery degrades to a warning and mureo starts with ZERO plugin tools —
+    including every Amazon tool. Run in a subprocess so the import order is the
+    real one rather than whatever the test session already cached.
+    """
+    import subprocess
+    import sys
+
+    source = (
+        "import warnings\n"
+        "warnings.simplefilter('error')\n"
+        "import mureo.amazon_ads.bridge\n"  # bridge FIRST — the risky order
+        "import mureo.mcp.server as s\n"
+        "assert s._PLUGIN_DISPATCH is not None\n"
+        "print('ok')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", source], capture_output=True, text=True, timeout=120
+    )
+    assert result.returncode == 0, result.stderr
+    assert "ok" in result.stdout
+    assert "circular import" not in result.stderr

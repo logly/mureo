@@ -358,3 +358,97 @@ class TestPluginReversalEscapeHatch:
         assert plan.status == RollbackStatus.NOT_SUPPORTED
         assert "destructive" in plan.notes.lower()
         assert consulted == []  # hook never reached for a destructive op
+
+
+@pytest.mark.unit
+class TestHyphenNamespacedToolNames:
+    """A bridged MCP server may namespace its tools with a hyphen
+    (``campaign_management-delete_campaign``). The verb / read-only
+    detection keyed on ``_delete`` and ``list_`` never matched those, so a
+    destructive reversal read as harmless and a read-only action read as a
+    write. Native (hyphen-free) names are unaffected.
+    """
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "campaign_management-list_campaigns",
+            "reporting-get_report",
+            "campaign_management-search_keywords",
+        ],
+    )
+    def test_hyphen_namespaced_reads_are_read_only(self, action: str) -> None:
+        assert plan_rollback(_entry(action=action, reversible_params=None)) is None
+
+    def test_a_hyphen_namespaced_read_with_a_hint_is_flagged(self) -> None:
+        entry = _entry(
+            action="campaign_management-list_campaigns",
+            reversible_params={"operation": "x", "params": {}},
+        )
+        plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.NOT_SUPPORTED
+        assert "Read-only action" in plan.notes
+
+    @pytest.mark.parametrize(
+        "operation",
+        [
+            "campaign_management-delete_campaign",
+            "campaign_management-remove_keywords",
+            "billing-transfer_funds",
+        ],
+    )
+    def test_hyphen_namespaced_destructive_verbs_are_refused(
+        self, operation: str, monkeypatch
+    ) -> None:
+        consulted: list[str] = []
+
+        def _spy(op: str):
+            consulted.append(op)
+            return (True, None)
+
+        monkeypatch.setattr("mureo.rollback.planner._plugin_reversal_keys", _spy)
+        entry = _entry(
+            action="campaign_management-update_campaign",
+            reversible_params={"operation": operation, "params": {}},
+        )
+        plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.NOT_SUPPORTED
+        assert "destructive" in plan.notes.lower()
+        assert consulted == []
+
+    def test_a_hyphen_namespaced_write_is_still_plannable(self, monkeypatch) -> None:
+        """Generalizing the match must not turn every namespaced name into a
+        refusal — a harmless namespaced reversal still plans."""
+        monkeypatch.setattr(
+            "mureo.rollback.planner._plugin_reversal_keys",
+            lambda op: (True, frozenset({"campaign_id"})),
+        )
+        entry = _entry(
+            action="campaign_management-update_campaign",
+            platform="plugin:acme-dist",
+            reversible_params={
+                "operation": "campaign_management-update_campaign",
+                "params": {"campaign_id": "123"},
+            },
+        )
+        plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.SUPPORTED
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            # Native names keep their exact behaviour: the read-only prefixes
+            # anchor at the start of the name, never mid-word.
+            "google_ads_campaigns_list",
+            "update_budget",
+            "listing_update",
+        ],
+    )
+    def test_native_names_are_unchanged(self, action: str) -> None:
+        entry = _entry(action=action, reversible_params=None)
+        plan = plan_rollback(entry)
+        assert plan is not None
+        assert plan.status == RollbackStatus.NOT_SUPPORTED

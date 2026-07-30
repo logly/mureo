@@ -293,6 +293,66 @@ class TestAmazonCredentialsPresence:
 
 
 @pytest.mark.unit
+class TestAmazonManifestRow:
+    """Audit #47 — the tool manifest's age is surfaced, not just written.
+
+    The manifest is a snapshot of Amazon's tool surface; a months-old one
+    silently exposes a stale tool list. The row reports present/absent, the
+    age in days, and whether that age is past the threshold.
+    """
+
+    def _row(self, tmp_path: Path, generated_at: object | None) -> dict:
+        paths = _paths(tmp_path)
+        if generated_at is not None:
+            _write_json(
+                paths.credentials_path.parent / "amazon_tools.json",
+                {"generated_at": generated_at, "tools": []},
+            )
+        snapshot = collect_status(
+            "claude-code", home=_build_home(tmp_path), paths=paths
+        )
+        return snapshot.amazon_manifest
+
+    def _iso(self, days_ago: float) -> str:
+        from datetime import datetime, timedelta, timezone
+
+        moment = datetime.now(timezone.utc) - timedelta(days=days_ago)
+        return moment.isoformat(timespec="seconds")
+
+    def test_absent_manifest(self, tmp_path: Path) -> None:
+        row = self._row(tmp_path, None)
+        assert row == {"present": False, "stale": False, "age_days": None}
+
+    def test_fresh_manifest(self, tmp_path: Path) -> None:
+        row = self._row(tmp_path, self._iso(2))
+        assert row["present"] is True
+        assert row["stale"] is False
+        assert 1.9 < row["age_days"] < 2.1
+
+    def test_stale_manifest(self, tmp_path: Path) -> None:
+        row = self._row(tmp_path, self._iso(60))
+        assert row["present"] is True
+        assert row["stale"] is True
+
+    def test_unreadable_timestamp_is_present_with_unknown_age(
+        self, tmp_path: Path
+    ) -> None:
+        row = self._row(tmp_path, "not-a-date")
+        assert row == {"present": True, "stale": False, "age_days": None}
+
+    def test_the_row_survives_serialization(self, tmp_path: Path) -> None:
+        paths = _paths(tmp_path)
+        _write_json(
+            paths.credentials_path.parent / "amazon_tools.json",
+            {"generated_at": self._iso(1), "tools": []},
+        )
+        snapshot = collect_status(
+            "claude-code", home=_build_home(tmp_path), paths=paths
+        )
+        assert snapshot.as_dict()["amazon_manifest"] == snapshot.amazon_manifest
+
+
+@pytest.mark.unit
 class TestStatusSnapshotShape:
     def test_snapshot_is_frozen_dataclass(self, tmp_path: Path) -> None:
         snapshot = collect_status(

@@ -19,6 +19,29 @@ Fail-open by contract: when there is no ``## Guardrails`` section, or it is
 empty, or STRATEGY.md is unreadable, the gate **allows** (abstains). It only
 ever denies on an explicit, machine-readable rule the operator wrote. This
 keeps mureo's default behaviour identical to "no enforcement".
+
+Three ways a budget/bid reaches a cap
+-------------------------------------
+
+1. The **built-in key scan** — the Google/Meta argument spellings hard-coded
+   below (``daily_budget``, ``amount_micros``, ``bid_amount``,
+   ``cpc_bid_micros``, …).
+2. An **exact-key declaration** (:mod:`mureo.policy.declarations`) — a plugin
+   names the keys its tools carry, in standard MCP metadata. Authoritative:
+   it REPLACES the built-in scan for the channels it covers.
+3. The **pattern fallback** (:mod:`mureo.policy.pattern_scan`) — for a
+   registered MUTATING plugin tool that declared nothing, budget-shaped and
+   bid-shaped argument keys are read heuristically (recursively, micros-aware)
+   and held to the same caps, with the same fail-closed handling of a
+   non-finite figure and the same deny envelope.
+
+The fallback is **best-effort by construction**: it matches on key *shape*, so
+it can miss a budget spelled without the word (and it can over-block a
+budget-named field that is not a proposal). It exists because a bridged tool
+surface — someone else's tool definitions, forwarded verbatim — cannot carry
+mureo declarations at all, and "no declaration" must not mean "no cap" where
+real money moves. **Exact-key declarations always take precedence**: for a
+channel that has one, the scan is not consulted.
 """
 
 from __future__ import annotations
@@ -56,6 +79,13 @@ from mureo.policy.declarations import (
     reset_bid_declarations,
     reset_budget_declarations,
 )
+from mureo.policy.pattern_scan import (
+    has_pattern_fallback,
+    register_pattern_fallback_tool,
+    reset_pattern_fallback_tools,
+    scan_bid_amount,
+    scan_budget_amount,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +112,9 @@ __all__ = [
     "_BUDGET_DECLARATIONS",
     "_BID_DECLARATIONS",
     "_UNREADABLE",
+    "has_pattern_fallback",
+    "register_pattern_fallback_tool",
+    "reset_pattern_fallback_tools",
 ]
 
 # The (case-insensitive) STRATEGY.md section that carries machine-readable
@@ -147,8 +180,26 @@ class _BudgetInputs:
     unreadable_key: str | None = None
 
 
+def _merge_pattern(channel: float | None, pattern: float | None) -> float | None:
+    """Fold a pattern-scanned amount into a resolved channel (larger wins).
+
+    Additive, never subtractive: the built-in scan keeps whatever it found, and
+    the fallback can only raise the figure a cap is checked against. Taking the
+    larger of the two is the conservative direction — the check must see the
+    biggest amount the call proposes.
+    """
+    if pattern is None:
+        return channel
+    if channel is None:
+        return pattern
+    return max(channel, pattern)
+
+
 def _budget_inputs(
-    arguments: dict[str, Any], declaration: BudgetDeclaration | None
+    arguments: dict[str, Any],
+    declaration: BudgetDeclaration | None,
+    *,
+    pattern_fallback: bool = False,
 ) -> _BudgetInputs:
     """Resolve the budget channels from declared keys, else the built-in scan.
 
@@ -182,6 +233,20 @@ def _budget_inputs(
             if value is not None and not math.isfinite(value):
                 return _BudgetInputs(unreadable_key=label)
         proposed, current, lifetime, total = (v for _, v in channels)
+        if pattern_fallback:
+            # Best-effort key-shape scan for a declaration-less plugin
+            # mutation. Folded into BOTH proposal channels because a matched
+            # key's channel is exactly what the scan cannot know: the amount is
+            # held to every budget cap the operator configured rather than
+            # slipping past the one it happens not to be named for. The two
+            # CALLER-supplied channels (current / projected total) are
+            # deliberately untouched — they are mureo's own convention keys,
+            # already read above, and are never a proposal.
+            scanned = scan_budget_amount(arguments)
+            if scanned.unreadable_key is not None:
+                return _BudgetInputs(unreadable_key=scanned.unreadable_key)
+            proposed = _merge_pattern(proposed, scanned.value)
+            lifetime = _merge_pattern(lifetime, scanned.value)
         return _BudgetInputs(
             proposed=proposed, current=current, lifetime=lifetime, total=total
         )
@@ -422,7 +487,10 @@ class _BidInputs:
 
 
 def _bid_inputs(
-    arguments: dict[str, Any], declaration: BidDeclaration | None = None
+    arguments: dict[str, Any],
+    declaration: BidDeclaration | None = None,
+    *,
+    pattern_fallback: bool = False,
 ) -> _BidInputs:
     """Resolve the bid channels from declared keys, else the built-in scan.
 
@@ -453,6 +521,16 @@ def _bid_inputs(
             if value is not None and not math.isfinite(value):
                 return _BidInputs(unreadable_key=label)
         bid_amount, cpc_bid = (v for _, v in channels)
+        if pattern_fallback:
+            # The bid twin of the budget fallback above, folded into both bid
+            # channels for the same reason: a heuristically matched key does
+            # not announce whether it is an ad-set bid cap or a CPC bid, so it
+            # is held to whichever caps the operator configured.
+            scanned = scan_bid_amount(arguments)
+            if scanned.unreadable_key is not None:
+                return _BidInputs(unreadable_key=scanned.unreadable_key)
+            bid_amount = _merge_pattern(bid_amount, scanned.value)
+            cpc_bid = _merge_pattern(cpc_bid, scanned.value)
         return _BidInputs(bid_amount=bid_amount, cpc_bid=cpc_bid)
     resolved: list[float | None] = []
     for key in (declaration.bid_amount_key, declaration.cpc_bid_key):
@@ -471,6 +549,7 @@ def evaluate_guardrails(
     *,
     budget_declaration: BudgetDeclaration | None = None,
     bid_declaration: BidDeclaration | None = None,
+    pattern_fallback: bool = False,
 ) -> PolicyDecision:
     """Pure decision: does ``tool_name(arguments)`` violate ``guardrails``?
 
@@ -493,6 +572,14 @@ def evaluate_guardrails(
     that tool, so a plugin bid tool is enforced by ``max_bid_amount_per_ad_set``
     / ``max_cpc_bid_per_ad_group`` (see :class:`BidDeclaration`). Omitted ⇒
     unchanged behavior.
+
+    ``pattern_fallback`` turns on the best-effort key-shape scan
+    (:mod:`mureo.policy.pattern_scan`) for the channels that have NO
+    declaration — the only enforcement available to a tool surface that cannot
+    carry declarations at all. It is additive: the built-in scan still runs and
+    the larger figure wins. Per-family, so declaring a budget does not switch
+    the bid fallback off (or vice versa). Default ``False`` ⇒ every existing
+    caller is byte-identical.
     """
     if guardrails.is_empty():
         return PolicyDecision(allowed=True)
@@ -506,7 +593,9 @@ def evaluate_guardrails(
             ),
         )
 
-    inputs = _budget_inputs(arguments, budget_declaration)
+    inputs = _budget_inputs(
+        arguments, budget_declaration, pattern_fallback=pattern_fallback
+    )
     if inputs.unreadable_key is not None:
         # Fail CLOSED: the operator wrote a cap and the tool's declared
         # budget argument carries garbage, so the cap CANNOT be checked.
@@ -608,7 +697,7 @@ def evaluate_guardrails(
     # saturated to inf, or a bare NaN/Infinity the wire allows) fails CLOSED
     # here, before any ``bid > cap`` comparison where ``nan > cap`` (False)
     # would silently defeat the cap.
-    bids = _bid_inputs(arguments, bid_declaration)
+    bids = _bid_inputs(arguments, bid_declaration, pattern_fallback=pattern_fallback)
     if bids.unreadable_key is not None:
         return PolicyDecision(
             allowed=False,
@@ -708,6 +797,10 @@ class StrategyPolicyGate:
                 # The bid twin of #414: a plugin tool that declared its bid keys
                 # is enforced by the same gate through the same choke point.
                 bid_declaration=bid_declaration_for(tool_name),
+                # A MUTATING plugin tool that declared NOTHING (a bridged tool
+                # surface cannot) falls back to the best-effort key-shape scan
+                # rather than to no enforcement at all.
+                pattern_fallback=has_pattern_fallback(tool_name),
             )
         except Exception:  # noqa: BLE001 — abstain on any unexpected error
             logger.debug("StrategyPolicyGate: abstaining on error", exc_info=True)

@@ -182,6 +182,25 @@ def test_platform_display_name_labels() -> None:
 
 
 @pytest.mark.unit
+def test_official_bridge_dists_render_without_the_plugin_suffix() -> None:
+    """Audit #30 — the Amazon bridge ships inside mureo.
+
+    It rides the plugin dispatch path for safety-layer reuse, which is an
+    implementation detail; labelling it "(plugin)" tells the operator it is
+    third-party when it is first-party. Other dists keep the suffix.
+    """
+    from mureo.amazon_ads.provider import AMAZON_SOURCE_DISTRIBUTION
+    from mureo.web.reports import _OFFICIAL_BRIDGE_DISPLAY_NAMES, platform_display_name
+
+    assert platform_display_name("plugin:mureo-amazon-ads-bridge") == "Amazon Ads"
+    # The override is keyed on the real distribution name, not a guess.
+    assert AMAZON_SOURCE_DISTRIBUTION in _OFFICIAL_BRIDGE_DISPLAY_NAMES
+    # Every other plugin dist is unchanged.
+    assert platform_display_name("plugin:mureo-logly-bridge") == "Logly (plugin)"
+    assert platform_display_name("plugin:acme-ads") == "Acme Ads (plugin)"
+
+
+@pytest.mark.unit
 def test_summary_carries_totals_period_and_campaign_count(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

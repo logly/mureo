@@ -159,10 +159,15 @@ tokens/secrets never appear in error messages or logs.
   it is malformed — mureo refuses to overwrite a corrupt file and lose
   your other providers' credentials), the call fails with that reason
   rather than a silent retry loop.
-- `mureo amazon refresh-manifest` does **not** auto-refresh; it uses
-  the stored `access_token` as-is. Minting and refresh only happen on
-  the tool dispatch path, so run `refresh-manifest` while a valid
-  access token is stored (or after a tool call has minted one).
+- `mureo amazon refresh-manifest` mints a token the same way: if no
+  `access_token` is stored and `refresh_token` + `client_secret` are,
+  it performs one LwA exchange, saves the token, and then generates the
+  manifest. So the refresh-token-only setup works from the very first
+  command — no need to paste an access token just to discover the
+  tools. (It does not *re-*mint an already-stored token that has since
+  expired; if the command fails with a 401, run it again after a tool
+  call has refreshed the token, or clear `access_token` to force a
+  fresh mint.)
 
 Without `refresh_token` + `client_secret`, update `access_token` (in
 the configure UI's Amazon Ads card, via `AMAZON_ADS_ACCESS_TOKEN`, or

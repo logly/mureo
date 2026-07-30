@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from pathlib import Path
@@ -28,7 +29,12 @@ from mcp.types import Tool
 from mureo.amazon_ads.endpoints import endpoint_url, request_headers
 from mureo.amazon_ads.lwa import AmazonAuthError as _LwaAuthError
 from mureo.amazon_ads.lwa import LwaTokens, refresh_access_token
-from mureo.amazon_ads.manifest import _default_connect, manifest_path
+from mureo.amazon_ads.manifest import (
+    _default_connect,
+    document_age_days,
+    is_stale,
+    manifest_path,
+)
 from mureo.auth import (
     AmazonAdsCredentials,
     load_amazon_ads_credentials,
@@ -37,10 +43,72 @@ from mureo.auth import (
 from mureo.core.providers.credentials import AccountCredentialField
 from mureo.providers.config_writer import ConfigWriteError
 
+logger = logging.getLogger(__name__)
+
 ConnectFactory = Callable[[str, dict[str, str]], AbstractAsyncContextManager[Any]]
 CredsLoader = Callable[[], AmazonAdsCredentials | None]
 Refresher = Callable[[AmazonAdsCredentials], LwaTokens]
 TokenSaver = Callable[[str, str | None], None]
+
+#: Process-wide latch for the stale-manifest warning. ``mcp_tools()`` runs at
+#: server start and on every tool-list refresh, so warning per call would be
+#: spam; the latch arms only when a warning is actually emitted, so a fresh
+#: read never silences a later stale one.
+_stale_manifest_warned = False
+
+
+def _scrub_secrets(text: str) -> str:
+    """Redact secret-shaped substrings from an operator-facing error string.
+
+    Delegates to the audit trail's redactor so there is ONE definition of
+    "what a token looks like" across every string mureo shows a human or an
+    agent (the audit log, the CLI, and here).
+
+    Imported lazily, and that is load-bearing rather than stylistic:
+    ``mureo.mcp.__init__`` imports ``mureo.mcp.server``, which builds its
+    plugin tool list at import time and reaches this bridge through
+    ``mureo.amazon_ads.provider``. A module-level ``from mureo.mcp.plugin_audit
+    import _scrub`` therefore re-enters a partially-initialized
+    ``mureo.amazon_ads.bridge`` and collapses plugin discovery to an
+    ImportError — observed, not hypothetical. Resolving it at call time breaks
+    the cycle; by then both modules are fully imported.
+
+    Fail-safe: if the redactor cannot be resolved at all, the text is dropped
+    rather than passed through unredacted. An unhelpful message is a much
+    smaller problem than a leaked token.
+    """
+    try:
+        from mureo.mcp.plugin_audit import _scrub
+    except Exception:  # noqa: BLE001 — never leak because an import failed
+        return "<error text withheld: redactor unavailable>"
+    return _scrub(text)
+
+
+def _warn_once_if_stale(path: Path, doc: Any) -> None:
+    """Warn (once per process) that the served manifest is stale.
+
+    Deliberately advisory: the tools are still exposed. The manifest is a
+    snapshot of a tool surface mureo does not own, so an old one means the
+    exposed list has probably drifted — worth saying out loud, not worth
+    refusing to work over. Never raises; ``mcp_tools()`` runs at server start.
+    """
+    global _stale_manifest_warned
+    if _stale_manifest_warned:
+        return
+    try:
+        age = document_age_days(doc)
+        if not is_stale(age):
+            return
+        logger.warning(
+            "Amazon tool manifest is stale (%.0f days old, %s); the exposed "
+            "tool list may no longer match Amazon's. Run `mureo amazon "
+            "refresh-manifest` to regenerate it.",
+            age,
+            path,
+        )
+    except Exception:  # noqa: BLE001 — a freshness hint must never break start
+        return
+    _stale_manifest_warned = True
 
 
 # Per-account credentials the operator supplies (#121). One field per
@@ -324,6 +392,7 @@ class AmazonAdsBridge:
             items = raw.get("tools", []) if isinstance(raw, dict) else []
         except (OSError, ValueError, TypeError):
             return ()  # missing / unreadable / malformed ⇒ no Amazon tools
+        _warn_once_if_stale(Path(self._manifest_path), raw)
         tools: list[Tool] = []
         for entry in items if isinstance(items, list) else []:
             try:
@@ -399,9 +468,9 @@ class AmazonAdsBridge:
         try:
             tokens = self._refresher(creds)
         except _LwaAuthError as auth_exc:
-            raise AmazonBridgeError(f"{auth_failure_prefix}: {auth_exc}") from (
-                cause if cause is not None else auth_exc
-            )
+            raise AmazonBridgeError(
+                f"{auth_failure_prefix}: {_scrub_secrets(str(auth_exc))}"
+            ) from (cause if cause is not None else auth_exc)
         try:
             self._token_saver(tokens.access_token, tokens.refresh_token)
         except (ConfigWriteError, OSError) as save_exc:
@@ -410,9 +479,17 @@ class AmazonAdsBridge:
             # against. Surface the underlying reason — typically a malformed
             # credentials.json that mureo deliberately refuses to overwrite —
             # instead of letting a raw traceback out.
+            #
+            # Both nested messages are scrubbed on the way into ours. mureo's
+            # own LwA and writer errors are token-free by construction, but
+            # neither is guaranteed to be: ``_token_saver`` is injectable, an
+            # OSError carries whatever filename or payload the OS put in it,
+            # and this text lands in an agent-visible tool result. Scrubbing at
+            # the point the string is BUILT is the only place that stays true
+            # as those inputs change.
             raise AmazonBridgeError(
                 f"Amazon access token was refreshed but could not be saved to "
-                f"~/.mureo/credentials.json: {save_exc}"
+                f"~/.mureo/credentials.json: {_scrub_secrets(str(save_exc))}"
             ) from (cause if cause is not None else save_exc)
         return dataclasses.replace(
             creds,
