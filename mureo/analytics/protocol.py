@@ -63,10 +63,17 @@ class AnalyticsModule(Protocol):
     """
 
     platform: str
-    """Stable platform identifier (e.g. ``"google_ads"``, ``"amazon_ads"``).
+    """Stable platform identifier (e.g. ``"google_ads"``, ``"meta_ads"``).
 
     MUST match the platform name used in STATE.json ``platforms`` and in
     the corresponding provider's ``name`` so a skill can join the two.
+
+    For a platform mureo reaches through a **plugin or bridge** rather than
+    natively, that key is the canonical ``plugin:<distribution>`` form built by
+    :func:`mureo.core.platform_keys.plugin_platform_key` — NOT the provider's
+    short registry name. The two differ, and writing the short name here would
+    produce analytics that silently never join with the action log or the
+    ``platforms`` snapshots the bridge's own dispatch records.
     """
 
     def capabilities(self) -> frozenset[AnalyticsCapability]:

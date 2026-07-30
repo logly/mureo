@@ -951,6 +951,21 @@ class TestPostEnvVar:
         assert json.loads(resp.read().decode("utf-8"))["status"] == "ok"
         mock_write.assert_called_once()
 
+    def test_amazon_env_var_is_accepted(self, wizard: ConfigureWizard) -> None:
+        """Amazon fields write through the same single-field route as every
+        other platform; the value is never echoed back."""
+        resp = _post(
+            wizard,
+            "/api/credentials/env-var",
+            {"name": "AMAZON_ADS_CLIENT_ID", "value": "amzn1.app.cid"},
+        )
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok", "name": "AMAZON_ADS_CLIENT_ID"}
+        payload = json.loads(
+            wizard.host_paths.credentials_path.read_text(encoding="utf-8")
+        )
+        assert payload["amazon_ads"] == {"client_id": "amzn1.app.cid"}
+
     def test_ga4_write_allowed_when_not_multi_account(
         self, wizard: ConfigureWizard
     ) -> None:
@@ -985,6 +1000,28 @@ class TestPostCredentialsRemove:
         assert body == {"status": "ok", "section": "google_ads"}
         payload = json.loads(creds.read_text(encoding="utf-8"))
         assert "google_ads" not in payload
+        assert payload["meta_ads"] == {"access_token": "Y"}
+
+    def test_removes_amazon_section(self, wizard: ConfigureWizard) -> None:
+        """The dashboard's Amazon row posts the same generic remove route as
+        Google/Meta — it needs no dedicated endpoint, only the section on the
+        writer's allow-list."""
+        creds = wizard.host_paths.credentials_path
+        creds.parent.mkdir(parents=True, exist_ok=True)
+        creds.write_text(
+            json.dumps(
+                {
+                    "amazon_ads": {"client_id": "cid", "access_token": "Atza|tok"},
+                    "meta_ads": {"access_token": "Y"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        resp = _post(wizard, "/api/credentials/remove", {"section": "amazon_ads"})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok", "section": "amazon_ads"}
+        payload = json.loads(creds.read_text(encoding="utf-8"))
+        assert "amazon_ads" not in payload
         assert payload["meta_ads"] == {"access_token": "Y"}
 
     def test_absent_section_is_noop(self, wizard: ConfigureWizard) -> None:

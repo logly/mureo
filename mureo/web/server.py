@@ -164,11 +164,20 @@ class ConfigureWizard:
         entry-point failure cannot take the built-in card down with it.
         Imported lazily to keep the bridge — and the mcp SDK types it
         pulls in — off the configure-UI import path.
+
+        Audit #53 — ``MUREO_DISABLE_AMAZON_ADS=1`` skips that registration,
+        matching the MCP server's own gate. Both processes must agree: a card
+        rendered here for a bridge the server does not serve would invite the
+        operator to configure credentials that go nowhere.
         """
         try:
-            from mureo.amazon_ads.provider import register_amazon_provider
+            from mureo.amazon_ads.provider import (
+                amazon_ads_disabled,
+                register_amazon_provider,
+            )
 
-            register_amazon_provider()
+            if not amazon_ads_disabled():
+                register_amazon_provider()
             discover_providers()
         except KeyboardInterrupt:
             raise

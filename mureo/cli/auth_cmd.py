@@ -1,6 +1,7 @@
 """Authentication management commands
 
 ``mureo auth status`` / ``mureo auth check-google`` / ``mureo auth check-meta``
+/ ``mureo auth check-amazon``
 """
 
 from __future__ import annotations
@@ -9,9 +10,38 @@ import json
 
 import typer
 
-from mureo.auth import load_google_ads_credentials, load_meta_ads_credentials
+from mureo.auth import (
+    AmazonAdsCredentials,
+    load_amazon_ads_credentials,
+    load_google_ads_credentials,
+    load_meta_ads_credentials,
+)
 
 auth_app = typer.Typer(name="auth", help="Authentication management")
+
+# Where an operator actually finishes the Amazon setup. Amazon has no
+# terminal OAuth flow of its own (its credentials are LwA material entered
+# in the configure UI's Amazon card), so every Amazon auth surface points
+# here rather than offering a prompt that cannot complete.
+_AMAZON_SETUP_HINT = "Configure it from the Amazon Ads card in `mureo configure`."
+#: The step that turns saved Amazon credentials into usable tools.
+_AMAZON_NEXT_STEP = "mureo amazon refresh-manifest"
+
+
+def _amazon_token_shape(creds: AmazonAdsCredentials) -> str:
+    """Describe HOW usable an Amazon credential set is.
+
+    A stored access token works until it expires and then needs manual
+    replacement; the refresh-token + client-secret pair lets mureo mint a
+    fresh one on demand. The operator needs to know which one they have.
+    """
+    if creds.refresh_token and creds.client_secret:
+        return (
+            "access token + refresh token stored"
+            if creds.access_token
+            else "refresh token stored (access token minted automatically)"
+        )
+    return "access token stored (no refresh pair — renew it manually)"
 
 
 @auth_app.command("status")  # type: ignore[untyped-decorator, unused-ignore]
@@ -19,6 +49,7 @@ def auth_status() -> None:
     """Display authentication status."""
     google_creds = load_google_ads_credentials()
     meta_creds = load_meta_ads_credentials()
+    amazon_creds = load_amazon_ads_credentials()
 
     typer.echo("=== Authentication Status ===")
     typer.echo("")
@@ -41,6 +72,14 @@ def auth_status() -> None:
         typer.echo(f"Meta Ads: Authenticated (account_id: {aid})")
     else:
         typer.echo("Meta Ads: Not authenticated")
+
+    if amazon_creds is not None:
+        typer.echo(
+            f"Amazon Ads: Authenticated (region: {amazon_creds.region}, "
+            f"{_amazon_token_shape(amazon_creds)})"
+        )
+    else:
+        typer.echo("Amazon Ads: Not authenticated")
 
 
 @auth_app.command("check-google")  # type: ignore[untyped-decorator, unused-ignore]
@@ -79,6 +118,38 @@ def check_meta() -> None:
     typer.echo(json.dumps(info, indent=2, ensure_ascii=False))
 
 
+@auth_app.command("check-amazon")  # type: ignore[untyped-decorator, unused-ignore]
+def check_amazon() -> None:
+    """Check Amazon Ads credentials.
+
+    Local read only — the same depth as ``check-google`` / ``check-meta``:
+    it never contacts Amazon. Reaching this point means the credentials
+    are USABLE (the loader returns ``None`` for a half-filled section), so
+    the report also names the step that turns them into working tools.
+    """
+    creds = load_amazon_ads_credentials()
+    if creds is None:
+        typer.echo(
+            f"Error: Amazon Ads credentials not found. {_AMAZON_SETUP_HINT}", err=True
+        )
+        raise typer.Exit(1)
+
+    info = {
+        "client_id": creds.client_id,
+        "access_token": _mask(creds.access_token) if creds.access_token else None,
+        "refresh_token": _mask(creds.refresh_token) if creds.refresh_token else None,
+        "client_secret": _mask(creds.client_secret) if creds.client_secret else None,
+        "region": creds.region,
+        "account_mode": creds.account_mode,
+        "profile_id": creds.profile_id,
+        "account_id": creds.account_id,
+        "manager_account_id": creds.manager_account_id,
+        "token_status": _amazon_token_shape(creds),
+        "next_step": _AMAZON_NEXT_STEP,
+    }
+    typer.echo(json.dumps(info, indent=2, ensure_ascii=False))
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -90,6 +161,12 @@ def auth_setup() -> None:
     import asyncio
 
     typer.echo("=== mureo Setup Wizard ===")
+    typer.echo("")
+    # Amazon Ads gets no prompt here on purpose: it authenticates with
+    # Login-with-Amazon material that is entered (and validated) in the
+    # configure UI's Amazon Ads card, not through a terminal OAuth dance.
+    # Say so instead of leaving the platform unmentioned.
+    typer.echo(f"Amazon Ads: {_AMAZON_SETUP_HINT}")
     typer.echo("")
 
     google = typer.confirm("Configure Google Ads?", default=True)

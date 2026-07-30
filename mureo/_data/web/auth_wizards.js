@@ -417,7 +417,176 @@
         ],
       });
     }
+    if (state.platforms.amazon_ads) {
+      // Amazon has no OAuth dance and no separate provider install: mureo
+      // brokers Amazon's official MCP itself, reading the ``amazon_ads``
+      // credentials section. The slot therefore renders the SAME declarative
+      // field list the dashboard's Amazon card uses — fetched from
+      // /api/credentials/plugins, which derives it from the bridge's
+      // ``account_credential_fields``. Nothing about the fields is copied
+      // into this file, so the wizard cannot drift from the loader.
+      queue.push({ key: "amazon_ads", pluginProvider: "amazon_ads" });
+    }
     return queue;
+  }
+
+  // ------------------------------------------------------------------
+  // Plugin-provider credential slot (server-declared fields)
+  // ------------------------------------------------------------------
+
+  // Fetch one provider's descriptor from the shared plugin-credentials
+  // list endpoint. Returns null when the request fails or the provider is
+  // not registered, so the caller can show an actionable message instead
+  // of an empty step.
+  async function fetchPluginDescriptor(providerName) {
+    let body;
+    try {
+      const res = await fetch("/api/credentials/plugins", {
+        credentials: "same-origin",
+      });
+      if (!res.ok) return null;
+      body = await res.json();
+    } catch (_e) {
+      return null;
+    }
+    const plugins = body && Array.isArray(body.plugins) ? body.plugins : [];
+    for (let i = 0; i < plugins.length; i += 1) {
+      if (plugins[i].provider_name === providerName) return plugins[i];
+    }
+    return null;
+  }
+
+  // One input per declared field. Mirrors the dashboard card's rules: a
+  // secret never round-trips, so a configured secret shows the
+  // leave-blank-to-keep placeholder; a non-secret pre-fills its stored
+  // value so a resumed wizard shows the current config.
+  function appendDeclaredField(host, field, inputs) {
+    const label = document.createElement("label");
+    label.style.display = "block";
+    const labelText = document.createElement("span");
+    labelText.textContent = field.display_name + (field.required ? " *" : "");
+    label.appendChild(labelText);
+
+    const input = document.createElement("input");
+    input.name = field.key;
+    input.type = field.secret ? "password" : "text";
+    input.autocomplete = field.secret ? "new-password" : "off";
+    if (field.secret) {
+      input.placeholder = field.configured
+        ? MUREO.t("dashboard.plugin_credentials_secret_placeholder")
+        : field.placeholder || "";
+    } else {
+      if (field.value) input.value = field.value;
+      if (field.placeholder) input.placeholder = field.placeholder;
+    }
+    label.appendChild(input);
+
+    if (field.description) {
+      const hint = document.createElement("small");
+      hint.className = "field-hint";
+      hint.textContent = field.description;
+      label.appendChild(hint);
+    }
+    host.appendChild(label);
+    inputs.push({ key: field.key, input: input, field: field });
+  }
+
+  // Enable Done once every required field has a value — either typed now
+  // or already stored (a configured secret may legitimately stay blank).
+  function requiredFieldsSatisfied(inputs) {
+    return inputs.every(function (item) {
+      if (!item.field.required) return true;
+      return Boolean(item.input.value) || Boolean(item.field.configured);
+    });
+  }
+
+  function renderPluginCredentialSlot(wrap, slot, state, onAllDone) {
+    const descKey = "wizard.auth." + slot.key + "_desc";
+    const descText = MUREO.t(descKey);
+    if (descText && descText !== descKey) {
+      const desc = document.createElement("p");
+      desc.textContent = descText;
+      desc.setAttribute("data-i18n", descKey);
+      wrap.appendChild(desc);
+    }
+    // Configured state comes from the wizard's hydrated /api/status view —
+    // the same backend verdict the dashboard row uses.
+    if (
+      slot.key === "amazon_ads" &&
+      state.existing &&
+      state.existing.amazon &&
+      state.existing.amazon.configured
+    ) {
+      const done = document.createElement("p");
+      done.className = "wizard-shared-with-sc-note";
+      done.textContent = MUREO.t("wizard.step_already_done");
+      done.setAttribute("data-i18n", "wizard.step_already_done");
+      wrap.appendChild(done);
+    }
+
+    const fieldHost = document.createElement("div");
+    wrap.appendChild(fieldHost);
+    const status = document.createElement("p");
+    status.className = "wizard-shared-with-sc-note";
+    status.hidden = true;
+    wrap.appendChild(status);
+
+    const doneBtn = document.createElement("button");
+    doneBtn.type = "button";
+    doneBtn.className = "btn btn-primary";
+    doneBtn.textContent = MUREO.t("wizard.auth.done_button");
+    doneBtn.setAttribute("data-i18n", "wizard.auth.done_button");
+    doneBtn.disabled = true;
+    wrap.appendChild(doneBtn);
+
+    const inputs = [];
+    fetchPluginDescriptor(slot.pluginProvider).then(function (plugin) {
+      if (!plugin) {
+        // The provider is unreachable/unregistered — say so and let the
+        // operator move on rather than stranding the wizard on an empty
+        // step (they can finish from the dashboard card).
+        status.hidden = false;
+        status.textContent = MUREO.t("wizard.auth.save_failed");
+        doneBtn.disabled = false;
+        doneBtn.addEventListener("click", onAllDone);
+        return;
+      }
+      plugin.fields.forEach(function (field) {
+        appendDeclaredField(fieldHost, field, inputs);
+      });
+      inputs.forEach(function (item) {
+        item.input.addEventListener("input", function () {
+          doneBtn.disabled = !requiredFieldsSatisfied(inputs);
+        });
+      });
+      doneBtn.disabled = !requiredFieldsSatisfied(inputs);
+      doneBtn.addEventListener("click", async function () {
+        doneBtn.disabled = true;
+        status.hidden = false;
+        status.textContent = MUREO.t("wizard.auth.saving");
+        const values = {};
+        inputs.forEach(function (item) {
+          values[item.key] = item.input.value;
+        });
+        let res;
+        try {
+          res = await MUREO.postJson("/api/credentials/plugins/save", {
+            provider_name: slot.pluginProvider,
+            values: values,
+          });
+        } catch (_e) {
+          res = null;
+        }
+        if (res && res.ok && res.body && res.body.status === "ok") {
+          onAllDone();
+          return;
+        }
+        const msg = MUREO.t("wizard.auth.save_failed");
+        status.textContent = msg;
+        MUREO.toast(msg, "error");
+        doneBtn.disabled = false;
+      });
+    });
   }
 
   function renderSequentialQueue(host, state, render) {
@@ -531,6 +700,14 @@
       const desc = document.createElement("p");
       desc.textContent = MUREO.t("auth_wizard.search_console.step1_desc");
       wrap.appendChild(desc);
+    }
+
+    // Declarative slot (Amazon Ads): fields are fetched from the provider
+    // registry rather than declared here, so it owns the whole card and
+    // returns before the OAuth / static-input branches below.
+    if (slot.pluginProvider) {
+      renderPluginCredentialSlot(wrap, slot, outerState || state, onAllDone);
+      return wrap;
     }
 
     // Input-based slots (e.g. GA4) need an explicit "Done" button
