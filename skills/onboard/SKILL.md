@@ -2,7 +2,7 @@
 name: onboard
 description: "Initial account setup — create STRATEGY.md and STATE.json from scratch, import platform data, and establish baseline metrics. Use when the user is starting fresh with mureo, has no STRATEGY.md yet, or asks to set up a new account. Also use when the user asks in Japanese (初期セットアップ / STRATEGY.mdを作成して / mureoを使い始めたい / アカウントの立ち上げ)."
 metadata:
-  version: 0.10.35
+  version: 0.10.36
 ---
 
 # Onboard
@@ -88,7 +88,7 @@ Guide me through setting up mureo for a new marketing account.
 4. **Discover platforms and data sources**:
    - For each advertising platform with configured credentials, discover accessible accounts and list campaigns
    - **Hosted-connector platforms**: if a hosted official-MCP connector is present in the session (e.g. TikTok's `tt-ads-*` tools — `mureo providers add tiktok-ads-official` registers it as a Claude.ai connector), treat it as a discoverable platform under the key `tiktok_ads` and list its campaigns via the connector's own tools. See `../_mureo-shared/SKILL.md` → *Hosted-connector platforms*.
-   - **Amazon Ads (official-MCP bridge)**: if Amazon's bridged tools are present in the session (Amazon's own names, e.g. `campaign_management-*` / `account_management-*`), treat it as a discoverable platform under the key `plugin:mureo-amazon-ads-bridge` and list its campaigns best-effort via those tools. If they are absent and the user wants Amazon, point them at the setup: enter the Login with Amazon credentials in the **Amazon Ads** card of the **Plugin credentials** section of `mureo configure` (or the `AMAZON_ADS_*` environment variables), then run `mureo amazon refresh-manifest` once and restart the MCP server. There is no browser sign-in wizard for Amazon yet — the card is a paste form. See `../_mureo-shared/SKILL.md` → *Plugin platforms* and `docs/amazon-ads.md`.
+   - **Amazon Ads (official-MCP bridge)**: if Amazon's bridged tools are present in the session (Amazon's own names, e.g. `campaign_management-*` / `account_management-*`), treat it as a discoverable platform under the key `plugin:mureo-amazon-ads-bridge` and list its campaigns best-effort via those tools. If they are absent and the user wants Amazon, point them at the setup: enter the Login with Amazon client id/secret in the **Amazon Ads** card of the **Plugin credentials** section of `mureo configure` (or the `AMAZON_ADS_*` environment variables), then run the card's **Authorize with Amazon** flow — Amazon's consent has no loopback callback, so it is a guided paste-code flow: mureo opens the consent page and the user pastes the redirected address back. It stores both tokens and refreshes the tool list; restart the MCP server afterwards. See `../_mureo-shared/SKILL.md` → *Plugin platforms* and `docs/amazon-ads.md`.
    - Check if Search Console credentials are available — if so, run site discovery and list verified sites
    - Check if GA4 MCP is available by probing for analytics tools
    - Record all available platforms and data sources in STRATEGY.md under a `## Data Sources` section

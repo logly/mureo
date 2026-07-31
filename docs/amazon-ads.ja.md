@@ -24,12 +24,19 @@ Amazon のツール名はそのまま公開（taxonomy へ改名しない）— 
 のある Amazon Developer アカウントが必要です。そこから:
 
 - `client_id`（LwA アプリの client id）— 常に必須
-- `refresh_token` ＋ `client_secret` — **推奨**。この 2 つが揃うと
-  mureo が短命な access トークンを自動で発行・更新するため、以後
-  貼り替える作業がなくなります
-- `access_token` — 上記ペアがあれば任意。LwA access トークンで
-  **約 60 分で失効**します。refresh トークンを使わない場合のみ設定し、
-  失効のたびに手で貼り替えてください。
+- `client_secret`（LwA アプリの client secret）— 下記の認可ウィザード
+  に必須。その後の access トークン自動更新にも使われます
+
+LwA のセキュリティプロファイルでもう 1 つだけ設定があります。
+**リターン URL** を *Allowed Return URLs*（Login with Amazon ＞
+対象のセキュリティプロファイル ＞ ウェブ設定）に登録してください。
+Amazon が案内する直接広告主向けの方式は「自分が管理する任意の有効な
+URL」で、mureo の既定は `https://amazon.com` です（そのまま登録すれば
+十分）。同意後はそこへリダイレクトされ、アドレスバーからコードを
+コピーするだけで、その URL 上で何かを配信する必要はありません。
+
+`refresh_token` を自分で取得する必要は**ありません**。手順 2 の
+ウィザードが発行します。
 
 ## 2. 設定 UI でセットアップ（推奨）
 
@@ -42,15 +49,34 @@ mureo configure
 1. **ダッシュボード**を開き、**プラグイン認証情報**セクションまで
    スクロールします。
 2. **Amazon Ads** のカードを見つけます。
-3. **クライアント ID** と、**リフレッシュトークン** ＋
-   **クライアントシークレット**（推奨）または
-   **アクセストークン**のいずれかを入力します。
+3. **クライアント ID** と**クライアントシークレット**を入力します。
 4. 必要に応じて**リージョン**（`na` / `eu` / `fe`、既定 `na`）と
    **アカウントモード**（`dynamic` / `fixed`、既定 `dynamic`）を
    設定します。`fixed` の場合は**プロファイル ID** /
    **アカウント ID** / **マネージャーアカウント ID** のうち
    1 つ以上も入力してください。
 5. **保存**をクリックします。
+6. フォームの下にある **Amazon で認可する** で
+   **Amazon の同意ページを開く**をクリックします。新しいタブで
+   Amazon が開きます。
+7. アクセスを許可すると、リターン URL にリダイレクトされます。
+   ただのページ（404 のこともあります）で問題ありません。
+8. ブラウザのアドレスバーから**アドレスを丸ごと**コピーし
+   （`https://amazon.com/?code=ANxxxxx&scope=…` のような形）、
+   **リダイレクト先のアドレス**欄に貼り付けて**認可を完了する**を
+   クリックします。`code=` の値だけを貼り付けても動作します。
+
+> アドレスは**そのまま**コピーしてください（mureo が `code`
+> パラメータを読み取ります）。手で打ち直したり一部を削ったりすると、
+> 「コードがありません」で失敗する典型的な原因になります。
+
+mureo がコードを access トークン**と** refresh トークンに交換して
+両方を保存し、同じ操作でツール一覧も更新します。認可コードの有効
+期限は **5 分**です。過ぎてしまったら
+**Amazon の同意ページを開く**をもう一度クリックしてください。
+
+同じ **Amazon で認可する** ブロックは、セットアップウィザードの
+Amazon ステップでも認証情報を保存した直後に表示されます。
 
 値は `~/.mureo/credentials.json` の `amazon_ads` セクションに
 `0o600` で保存されます。シークレット項目は書き込み専用で、次回の
@@ -58,11 +84,21 @@ mureo configure
 せん）。リージョンだけ変えたいときにトークンを打ち直す必要は
 ありません。
 
-> Amazon のブラウザサインイン（ワンクリックの OAuth 同意）ウィザードは
-> まだありません。カードは貼り付け式のフォームです。Google / Meta の
-> カードとの違いはこの点だけです。
+> **どういう種類のウィザードか。** Amazon の直接広告主向け同意には
+> ローカルツールが待ち受けられるループバックコールバックがないため、
+> これは Google / Meta のカードのような「自動で戻ってくる」方式では
+> なく、**コード貼り付け方式**の誘導フローです。mureo が同意 URL を
+> 生成して開き、あなたはリダイレクト先のアドレスを貼り付けます。
+> 貼り付けたあとはすべて自動です。
 
-続けて手順 5（ツールマニフェスト生成）へ進んでください。
+すでに他の経路で `refresh_token` を持っている場合は、カードの
+**リフレッシュトークン**欄に（クライアントシークレットとあわせて）
+貼り付ければ認可ブロックは不要です。ターミナルだけで完結させたい
+場合は[手動での認可](#付録-手動での認可フォールバック)を参照して
+ください。
+
+続けて手順 5（ツールマニフェスト生成）へ進んでください。認可
+ウィザードを使った場合はツール一覧が更新済みなので省略できます。
 
 ## 3. 代替手段: 環境変数
 
@@ -114,6 +150,7 @@ UI も環境変数も結局このセクションを作るだけなので、手�
 | `region` | 任意（既定 `na`） | `na` / `eu` / `fe`。エンドポイント選択 |
 | `account_mode` | 任意（既定 `dynamic`） | `dynamic`（都度 LLM に確認）/ `fixed` |
 | `profile_id`, `account_id`, `manager_account_id` | 任意 | **Fixed** 専用（Fixed 発動には1つ以上必須） |
+| `refresh_token_obtained_at` | 任意 | 認可ウィザードが書き込む、現在の refresh トークンを取得した同意時刻（ISO 8601・UTC）。認証情報ではなくメタデータで、後述の再認可リマインドに使われる。無い場合は「不明」として扱い、警告も出さない |
 
 ## 5. ツールマニフェストを生成
 
@@ -174,24 +211,43 @@ Amazon のツールが Amazon 自身の名前（例 `campaign_management-*`,
 カード、`AMAZON_ADS_ACCESS_TOKEN`、または
 `~/.mureo/credentials.json` のいずれか）。
 
-## refresh トークンも失効します（およそ 1 年ごと）
+## refresh トークンも失効します（365 日）
 
-Amazon の LwA refresh トークンは長寿命ですが**永続ではありません**。
-おおむね年 1 回の再認可を見込んでください。refresh トークンが無効に
-なると Amazon はトークン交換に `invalid_grant` を返し、mureo は
-「再認可が必要」であることを明示します。この時点で mureo が自動で
-できることはありません。
+Amazon の LwA refresh トークンは長寿命ですが**永続ではありません**:
 
-復旧手順:
+- **2026-07-30 以降**に発行された refresh トークンは、広告主が同意
+  してから **365 日**で失効します。
+- それ以前に発行されたトークンには固定の有効期限がないため、
+  カウントダウンする対象がありません。
 
-1. LwA アプリを Amazon で再認可し、**新しい** `refresh_token` を
-   取得します。
-2. `mureo configure` の Amazon Ads カードの**リフレッシュトークン**
-   欄に貼り付けて保存します（または `AMAZON_ADS_REFRESH_TOKEN` /
-   `~/.mureo/credentials.json` を更新）。
-3. 次の Amazon ツール呼び出しで、そこから新しい access トークンが
-   自動発行されます。Amazon のツール構成も変わっている場合は
-   `mureo amazon refresh-manifest` も再実行してください。
+Amazon は発行時刻をクライアントに伝えないので、mureo が自分で記録
+します。認可ウィザードが交換の時点で
+`amazon_ads.refresh_token_obtained_at`（ISO 8601・UTC）を書き込み、
+そのトークンが **335 日**を超えるとダッシュボードの Amazon カードに
+**再認可の案内**が表示されます（Amazon が失効させる 30 日前の余裕）。
+
+この記録が無い場合（ウィザード導入前の設定や、手で貼り付けた
+refresh トークン）、mureo は**何も表示しません**。発行時刻が不明な
+トークンは失効しない 2026-07-30 より前のものかもしれず、毎年警告を
+出すのは誤りだからです。
+
+実際に refresh トークンが失効すると、Amazon はトークン交換に
+`invalid_grant` を返し、mureo はそれを明示します。この時点で mureo が
+自動でできることはありません。
+
+再認可の手順（失効前でも後でも）:
+
+1. `mureo configure` の Amazon Ads カードを開き、**Amazon で認可する**
+   のフロー（上の手順 2）をもう一度実行します。新しいトークンと新しい
+   `refresh_token_obtained_at` で置き換わります。
+2. UI を使わない場合は、**新しい** `refresh_token` を取得し
+   （[手動での認可](#付録-手動での認可フォールバック)を参照）、
+   カードの**リフレッシュトークン**欄／`AMAZON_ADS_REFRESH_TOKEN`／
+   `~/.mureo/credentials.json` を更新します。次の Amazon ツール
+   呼び出しで新しい access トークンが自動発行されます。
+3. Amazon のツール構成も変わっている場合は
+   `mureo amazon refresh-manifest` も再実行してください（UI の
+   フローでは自動で実行されます）。
 
 ## なぜ mureo が経路に入るのか
 
@@ -203,11 +259,59 @@ Amazon の LwA refresh トークンは長寿命ですが**永続ではありま�
 refresh トークンを交換し、再試行するのは mureo です）。代償として、
 Amazon のツールは mureo MCP サーバが動いている間だけ利用できます。
 
+## 付録: 手動での認可（フォールバック）
+
+設定 UI が行っているのと同じ手順です。ターミナルだけで完結させたい
+場合、コンテナ環境、デバッグ用に全文を載せます。どちらの手順も
+リージョン別のホストを使います:
+
+| リージョン | 認可 URL の接頭辞 | トークンエンドポイント |
+|-----------|------------------|----------------------|
+| `na` | `https://www.amazon.com/ap/oa` | `https://api.amazon.com/auth/o2/token` |
+| `eu` | `https://eu.account.amazon.com/ap/oa` | `https://api.amazon.co.uk/auth/o2/token` |
+| `fe` | `https://apac.account.amazon.com/ap/oa` | `https://api.amazon.co.jp/auth/o2/token` |
+
+1. 次の URL をブラウザで開きます（1 行。`redirect_uri` はセキュリティ
+   プロファイルの Allowed Return URLs に登録済みであること）:
+
+   ```
+   https://www.amazon.com/ap/oa?client_id=YOUR_CLIENT_ID&scope=advertising::campaign_management&response_type=code&redirect_uri=https%3A%2F%2Famazon.com
+   ```
+
+2. アクセスを許可し、リダイレクト先のアドレスバーから `code=` の値を
+   コピーします。**有効期限は 5 分**です。
+
+3. その 5 分以内に交換します:
+
+   ```bash
+   curl -X POST https://api.amazon.com/auth/o2/token \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "grant_type=authorization_code" \
+     -d "code=THE_CODE" \
+     -d "redirect_uri=https://amazon.com" \
+     -d "client_id=YOUR_CLIENT_ID" \
+     -d "client_secret=YOUR_CLIENT_SECRET"
+   ```
+
+   レスポンスに `access_token`（`Atza|…`）、`refresh_token`
+   （`Atzr|…`）、`expires_in` が含まれます。
+
+4. `refresh_token`（と `client_secret`）を `amazon_ads` セクションに
+   設定します（設定 UI のカード、`AMAZON_ADS_*` 環境変数、手編集の
+   いずれか）。再認可リマインドを正しい日付から数えたい場合は、
+   `refresh_token_obtained_at` に現在の UTC 時刻
+   （例 `2026-07-31T09:15:00+00:00`）も入れてください。省略した場合、
+   mureo は失効について何も言いません。
+
+5. `mureo amazon refresh-manifest` を一度実行します。
+
 ## 注意
 
-- **ブラウザサインインは未対応**: 設定 UI の Amazon カードは貼り付け
-  式フォームです。Google / Meta のカードにあるワンクリック OAuth 同意
-  ウィザードは今後の対応です。
+- **コード貼り付け方式の認可（自動で戻る方式ではない）**: Amazon の
+  直接広告主向け同意にはループバックコールバックがないため、設定 UI は
+  Amazon の同意ページを開き、リダイレクト先のアドレスを貼り付けて
+  もらいます。Google / Meta のカードとの違いはこの形だけで、
+  トークンの取得・保存・自動更新はどちらも mureo が行います。
 - **改名なし**: ツールは Amazon の名前のまま（mureo は公式 MCP の
   ツールを改名しない＝Google/Meta 公式と同じ）。
 - **深い mureo 分析なし**: mureo の native ツール名に紐づく

@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from mureo.core import clock
 from mureo.web._helpers import read_json_safe
 from mureo.web.env_var_writer import allowed_env_var_names, get_env_var_target
 from mureo.web.host_paths import HostPaths, get_host_paths
@@ -50,6 +52,15 @@ _SECRET_NAME_RE = re.compile(r"(TOKEN|SECRET|KEY|PASSWORD)", re.IGNORECASE)
 # leaking a short secret whose last-4-chars effectively *is* the
 # secret. Mirrors AWS console's "shorter than threshold → all bullets".
 _MASK_MIN_LENGTH = 8
+
+# Amazon's stated lifetime for refresh tokens issued on/after 2026-07-30,
+# counted from advertiser consent. Tokens issued earlier have no fixed
+# expiry, which is why an unknown issue date is never warned about.
+AMAZON_REFRESH_TOKEN_LIFETIME_DAYS = 365
+
+# Warn once a refresh token is older than this — 30 days of headroom to
+# re-authorize before Amazon revokes it mid-operation.
+AMAZON_REFRESH_TOKEN_WARN_DAYS = 335
 
 
 @dataclass(frozen=True)
@@ -83,6 +94,14 @@ class StatusSnapshot:
     # as stale. Defaults to an empty dict so direct constructions of this
     # snapshot (tests, alternate callers) keep working.
     amazon_manifest: dict[str, Any] = field(default_factory=dict)
+    # #121: the Amazon refresh token's re-authorization clock —
+    # ``{"refresh_token_age_days": int | None, "refresh_token_expiring":
+    # bool}``. Amazon expires refresh tokens issued on/after 2026-07-30 a
+    # year after consent, so the dashboard nudges before that lands. An
+    # unknown age (legacy setup, or a token mureo did not obtain itself)
+    # is never reported as expiring — older tokens have no fixed expiry.
+    # Defaults to an empty dict so direct constructions keep working.
+    amazon_token: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -96,6 +115,7 @@ class StatusSnapshot:
             "mureo_disable": dict(self.mureo_disable),
             "multi_account_auth": self.multi_account_auth,
             "amazon_manifest": dict(self.amazon_manifest),
+            "amazon_token": dict(self.amazon_token),
         }
 
 
@@ -212,6 +232,58 @@ def _detect_amazon_manifest(credentials_path: Path) -> dict[str, Any]:
         # float carries a precision this figure does not have.
         "age_days": None if age is None else round(age, 1),
     }
+
+
+def _detect_amazon_token(credentials_path: Path) -> dict[str, Any]:
+    """Amazon refresh-token age + expiry warning (#121).
+
+    Amazon expires refresh tokens issued **on/after 2026-07-30** exactly
+    :data:`AMAZON_REFRESH_TOKEN_LIFETIME_DAYS` days after the advertiser
+    consented, and never tells the client when that was. The only issue
+    date mureo can trust is the one the authorization wizard recorded
+    itself (``amazon_ads.refresh_token_obtained_at``), so an absent or
+    unparseable stamp reports an unknown age — and an unknown age is
+    never warned about, because a pre-2026-07-30 token has no fixed
+    expiry and nagging its owner annually would be false.
+
+    Read-only and never raises, like every other detector here.
+    """
+    payload = read_json_safe(credentials_path)
+    section = payload.get("amazon_ads")
+    raw = (
+        section.get("refresh_token_obtained_at") if isinstance(section, dict) else None
+    )
+    age = _refresh_token_age_days(raw)
+    return {
+        "refresh_token_age_days": age,
+        "refresh_token_expiring": age is not None
+        and age > AMAZON_REFRESH_TOKEN_WARN_DAYS,
+    }
+
+
+def _refresh_token_age_days(raw: Any) -> int | None:
+    """Whole days since ``raw`` (ISO 8601), or ``None`` when unknowable.
+
+    Accepts what the wizard writes (an explicit UTC offset) plus the two
+    shapes a hand-edited file may carry: a ``Z`` suffix (rejected by
+    ``datetime.fromisoformat`` before 3.11) and a naive timestamp, read
+    as host-local — the same tolerance
+    :mod:`mureo.amazon_ads.manifest` applies to ``generated_at``. A
+    future stamp (clock skew) clamps to ``0`` rather than going negative.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    text = raw.strip()
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    try:
+        obtained = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if obtained.tzinfo is None:
+        obtained = obtained.astimezone()
+    delta = clock.server_now() - obtained
+    return max(0, int(delta.total_seconds() // 86_400))
 
 
 def _detect_credentials_oauth(credentials_path: Path) -> dict[str, bool]:
@@ -378,6 +450,7 @@ def collect_status(
     legacy = _detect_legacy_commands(resolved.commands_dir)
     mureo_disable = _detect_mureo_disable(resolved.mcp_registry_path)
     amazon_manifest = _detect_amazon_manifest(resolved.credentials_path)
+    amazon_token = _detect_amazon_token(resolved.credentials_path)
     return StatusSnapshot(
         host=resolved.host,
         setup_parts=setup_parts,
@@ -389,4 +462,5 @@ def collect_status(
         mureo_disable=mureo_disable,
         multi_account_auth=multi_account_auth,
         amazon_manifest=amazon_manifest,
+        amazon_token=amazon_token,
     )

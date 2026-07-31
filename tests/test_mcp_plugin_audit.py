@@ -130,3 +130,74 @@ class TestRecordPluginCall:
         assert "SECRETREFRESH" not in rec["error"]
         assert "***" in rec["error"]
         assert "HTTPError 401" in rec["error"]  # non-secret text preserved
+
+    def test_error_string_key_value_secrets_scrubbed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An HTTP client that echoes the form body it POSTed spills the
+        client secret in plain text — a shape the token-prefix patterns
+        cannot see, because an LwA client secret has no prefix."""
+        log = tmp_path / "audit.jsonl"
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
+        record_plugin_call(
+            tool="t",
+            arguments={},
+            source="s",
+            ok=False,
+            error=(
+                "POST failed with body grant_type=authorization_code&"
+                "code=ANsecretCode123&client_secret=SECRET-CLIENT-VALUE"
+            ),
+        )
+        rec = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+        assert "SECRET-CLIENT-VALUE" not in rec["error"]
+        assert "ANsecretCode123" not in rec["error"]
+        # The keys survive so the message still says what failed.
+        assert "client_secret=***" in rec["error"]
+        assert "code=***" in rec["error"]
+        assert "grant_type=authorization_code" in rec["error"]
+
+
+@pytest.mark.unit
+class TestScrubFreeText:
+    """``_scrub`` must redact credential VALUES without eating the
+    diagnostic around them — an over-eager scrubber makes every error
+    unactionable, which is its own kind of failure."""
+
+    @pytest.mark.parametrize(
+        ("text", "leaked"),
+        [
+            ("client_secret=amzn1.oa2-cs.v1.abcdef", "amzn1.oa2-cs.v1.abcdef"),
+            ("client_secret: amzn1.oa2-cs.v1.abcdef", "amzn1.oa2-cs.v1.abcdef"),
+            ("{'client_secret': 'shhhh-value'}", "shhhh-value"),
+            ("refresh_token=Atzr-plain-shaped-value", "Atzr-plain-shaped-value"),
+            ("access_token = plain-shaped-value", "plain-shaped-value"),
+            ("api_key=sk-1234567890", "sk-1234567890"),
+            ("api-key=sk-1234567890", "sk-1234567890"),
+            ("password=hunter2hunter2", "hunter2hunter2"),
+            ("?code=ANabcdefgh12&scope=x", "ANabcdefgh12"),
+            ("{'code': 'ANabcdefgh12'}", "ANabcdefgh12"),
+            ("Authorization: Bearer Atza|abc", "Atza|abc"),
+        ],
+    )
+    def test_credential_values_are_redacted(self, text: str, leaked: str) -> None:
+        scrubbed = plugin_audit._scrub(text)
+        assert leaked not in scrubbed
+        assert "***" in scrubbed
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # ``code`` is the false-positive minefield: ordinary prose
+            # about HTTP/errno codes must survive intact.
+            "HTTP 400 status code= 400 for the request",
+            "response status_code=400 and code=17",
+            "error code: 12345678 from upstream",
+            "LwA authorization-code exchange failed (HTTP 500, error='server_error')",
+            "cannot exchange: no client_secret in amazon_ads credentials",
+            "Amazon rejected the authorization code (error='invalid_grant'). "
+            "Codes are single-use and expire 5 minutes after consent",
+        ],
+    )
+    def test_ordinary_diagnostics_survive_unchanged(self, text: str) -> None:
+        assert plugin_audit._scrub(text) == text
