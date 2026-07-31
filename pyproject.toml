@@ -126,6 +126,7 @@ asyncio_mode = "auto"
 markers = [
     "unit: Unit tests",
     "integration: Integration tests",
+    "real_save: Opt out of the credentials-write stub and save for real (tmp_path)",
 ]
 
 [tool.mypy]

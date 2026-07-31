@@ -430,6 +430,12 @@ async def refresh_meta_token_if_needed(
     - token_obtained_at is known
     - Token will expire within 7 days (53+ days old)
 
+    ``path=None`` resolves the destination of the resulting write through
+    :func:`_resolve_write_path`, the same seam
+    :func:`save_amazon_access_token` uses — see that function for why a
+    ``path``-less writer must not hardcode the legacy default (#510). An
+    explicit ``path`` is never redirected.
+
     Returns original credentials if refresh is not needed or not possible.
     """
     if not _should_refresh(credentials):
@@ -452,7 +458,7 @@ async def refresh_meta_token_if_needed(
             token_obtained_at=new_obtained_at,
         )
 
-        resolved = path if path is not None else _resolve_default_path()
+        resolved = path if path is not None else _resolve_write_path()
         try:
             _save_meta_token(resolved, new_token, new_obtained_at)
         except Exception:
@@ -613,6 +619,22 @@ def save_amazon_access_token(
     leaves an existing stamp — and a legacy section's absence of one —
     untouched, which is what keeps the expiry signal honest.
 
+    ``path=None`` resolves the destination through
+    :func:`~mureo.core.runtime_context.runtime_credentials_path` — the
+    same store-capability seam the configure UI writes through (#194 /
+    #196) — instead of hardcoding the legacy default. The bridge's
+    automatic refresh (its default ``token_saver``) and ``mureo amazon``
+    both call in with no path, while
+    :func:`load_amazon_ads_credentials` reads through the active
+    ``RuntimeContext``'s ``SecretStore``; a runtime that relocates the
+    credentials file therefore used to get a token written where the
+    reader never looks — a silent read/write split-brain that made every
+    later call re-mint against an already-rotated refresh token (#510).
+    Without a registered ``mureo.runtime_context_factory`` the resolver
+    returns the legacy default unchanged, so single-backend installs are
+    byte-for-byte unaffected. An explicit ``path`` (the authorization
+    wizard's exchange, which owns its file) is never redirected.
+
     Raises:
         ConfigWriteError: the existing credentials.json is malformed;
             nothing is written.
@@ -621,7 +643,7 @@ def save_amazon_access_token(
     # graph flat.
     from mureo.core.atomic_json import atomic_write_json, load_existing_json
 
-    resolved = path if path is not None else _resolve_default_path()
+    resolved = path if path is not None else _resolve_write_path()
     resolved.parent.mkdir(parents=True, exist_ok=True)
     with file_lock(lock_path_for(resolved)):
         data = load_existing_json(resolved)
@@ -647,6 +669,35 @@ def save_amazon_access_token(
 def _resolve_default_path() -> Path:
     """Resolve the default credentials.json path."""
     return Path.home() / ".mureo" / "credentials.json"
+
+
+def _resolve_write_path() -> Path:
+    """Resolve where a ``path``-less credentials write should land.
+
+    The counterpart of :func:`_resolve_secret_store` for writers, shared
+    by the two token-refresh writers in this module
+    (:func:`save_amazon_access_token` and
+    :func:`refresh_meta_token_if_needed`) and mirrored by
+    :func:`mureo.auth_setup._resolve_write_path` for the third writer,
+    the interactive setup wizard's
+    :func:`mureo.auth_setup.save_credentials`: the loaders read through
+    the active ``RuntimeContext``'s ``SecretStore``, so a writer that
+    always targets :func:`_resolve_default_path` would write somewhere
+    the reader never consults whenever a ``mureo.runtime_context_factory``
+    relocates that store (#510).
+
+    Delegates to :func:`mureo.core.runtime_context.runtime_credentials_path`
+    — the same resolver the configure UI's write path goes through — so
+    the store-capability rules (declared ``credentials_write_path`` first,
+    then a built-in ``FilesystemSecretStore``'s ``path``, else the
+    default) have exactly one definition. With no factory registered it
+    returns :func:`_resolve_default_path` unchanged.
+
+    Imported lazily for the same reason as :func:`_resolve_secret_store`.
+    """
+    from mureo.core.runtime_context import runtime_credentials_path
+
+    return runtime_credentials_path(_resolve_default_path())
 
 
 def _resolve_secret_store(path: Path | None) -> SecretStore:
