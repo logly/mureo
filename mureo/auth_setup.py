@@ -783,9 +783,9 @@ def install_credential_guard() -> Path | None:
     # Write back (preserve all existing content). Same atomic writer the
     # removal path uses on this file — upgrades now rewrite a populated
     # settings.json, so a crash mid-write must not truncate it.
-    from mureo.cli.settings_remove import _atomic_write_json
+    from mureo.core.atomic_json import atomic_write_json
 
-    _atomic_write_json(existing, settings_path)
+    atomic_write_json(existing, settings_path)
 
     logger.info("Credential guard hooks installed: %s", settings_path)
     return settings_path

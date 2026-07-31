@@ -9,39 +9,44 @@ Both removers:
 
 - default ``settings_path`` to ``Path.home() / ".claude" / "settings.json"``
   computed *inside* the function so monkeypatched ``Path.home`` is honored;
-- write via a same-directory unpredictable ``tempfile``-allocated file
-  followed by ``os.fsync`` + ``os.replace`` so a crash mid-write cannot
-  corrupt the existing file and data is durably on disk before the rename;
-- refuse to silently overwrite malformed JSON (``ConfigWriteError`` is
-  raised — the operator must repair the file manually);
+- write via :func:`mureo.core.atomic_json.atomic_write_json` (a same-directory
+  unpredictable ``tempfile`` + ``os.fsync`` + ``os.replace``) so a crash
+  mid-write cannot corrupt the existing file and data is durably on disk
+  before the rename;
+- refuse to silently overwrite malformed JSON: reads go through
+  :func:`mureo.core.atomic_json.load_existing_json`, which raises
+  ``ConfigWriteError`` — the operator must repair the file manually;
 - are idempotent: a second call on an already-removed state returns
   ``RemoveResult(changed=False)`` without rewriting the file.
+
+``ConfigWriteError`` is re-exported from :mod:`mureo.core.atomic_json` for
+import compatibility (callers and tests import it from this module).
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import os
 import shutil
 import subprocess  # noqa: S404 - fixed argv, shell=False (claude mcp remove)
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from mureo.core.atomic_json import (
+    ConfigWriteError,
+    atomic_write_json,
+    load_existing_json,
+)
 from mureo.credential_guard import GUARD_TAG as _MUREO_HOOK_TAG
-from mureo.fsutil import secure_fchmod
 
 logger = logging.getLogger(__name__)
 
-
-class ConfigWriteError(Exception):
-    """Raised when ``settings.json`` cannot be safely updated.
-
-    Used specifically when an existing file contains malformed JSON — we
-    refuse to silently overwrite the file to protect user data.
-    """
+__all__ = [
+    "ConfigWriteError",
+    "RemoveResult",
+    "remove_mcp_config",
+    "remove_credential_guard",
+]
 
 
 @dataclass(frozen=True)
@@ -63,90 +68,6 @@ def _default_user_mcp_path() -> Path:
     ``mureo.auth_setup._claude_user_config_path``.
     """
     return Path.home() / ".claude.json"
-
-
-def _load_existing(settings_path: Path) -> dict[str, Any] | None:
-    """Load ``settings.json`` as a dict, or ``None`` if the file is absent.
-
-    Raises:
-        ConfigWriteError: when the existing file is malformed JSON or not a
-            JSON object. The exception message includes the path so the
-            operator can locate and fix the file manually.
-    """
-    if not settings_path.exists():
-        return None
-    try:
-        text = settings_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise ConfigWriteError(
-            f"failed to read existing settings at {settings_path}: {exc}"
-        ) from exc
-    try:
-        loaded = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ConfigWriteError(
-            f"existing settings file at {settings_path} is malformed JSON "
-            f"(refusing to overwrite to protect user data): {exc}"
-        ) from exc
-    if not isinstance(loaded, dict):
-        raise ConfigWriteError(
-            f"existing settings at {settings_path} is not a JSON object "
-            f"(got {type(loaded).__name__}); refusing to overwrite."
-        )
-    return loaded
-
-
-def _fsync_directory(parent: Path) -> None:
-    """Best-effort ``fsync`` of ``parent`` so a rename is durable."""
-    try:
-        dir_fd = os.open(str(parent), os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(dir_fd)
-    except OSError:
-        pass
-    finally:
-        os.close(dir_fd)
-
-
-def _atomic_write_json(payload: dict[str, Any], settings_path: Path) -> None:
-    """Serialize ``payload`` and atomically replace ``settings_path``.
-
-    Uses :func:`tempfile.mkstemp` to allocate an unpredictable same-directory
-    tmp file, sets its mode to ``0o600`` before writing, ``fsync``s the data
-    to disk, then ``os.replace``s it into place. On failure the tmp file is
-    unlinked so no debris remains.
-    """
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    serialized = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
-
-    tmp_fd, tmp_name = tempfile.mkstemp(
-        prefix=settings_path.name + ".",
-        suffix=".tmp",
-        dir=str(settings_path.parent),
-    )
-    tmp_path = Path(tmp_name)
-    try:
-        secure_fchmod(tmp_fd)
-        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
-            tmp_fd = -1  # ownership transferred to ``fh``
-            fh.write(serialized)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp_path, settings_path)
-        _fsync_directory(settings_path.parent)
-    except (OSError, ValueError):
-        try:
-            if tmp_fd != -1:
-                os.close(tmp_fd)
-        except OSError:
-            pass
-        try:
-            tmp_path.unlink(missing_ok=True)
-        except OSError:
-            logger.warning("failed to remove tmp file %s", tmp_path)
-        raise
 
 
 def remove_mcp_config(*, settings_path: Path | None = None) -> RemoveResult:
@@ -199,9 +120,9 @@ def remove_mcp_config(*, settings_path: Path | None = None) -> RemoveResult:
             return RemoveResult(changed=True)
 
     target = settings_path or _default_user_mcp_path()
-    existing = _load_existing(target)
-    if existing is None:
+    if not target.exists():
         return RemoveResult(changed=False)
+    existing = load_existing_json(target)
 
     mcp_servers = existing.get("mcpServers")
     if not isinstance(mcp_servers, dict):
@@ -210,7 +131,7 @@ def remove_mcp_config(*, settings_path: Path | None = None) -> RemoveResult:
         return RemoveResult(changed=False)
 
     mcp_servers.pop("mureo")
-    _atomic_write_json(existing, target)
+    atomic_write_json(existing, target)
     logger.info("mureo MCP block removed from %s", target)
     return RemoveResult(changed=True)
 
@@ -281,9 +202,9 @@ def remove_credential_guard(*, settings_path: Path | None = None) -> RemoveResul
         ConfigWriteError: existing settings file is malformed JSON.
     """
     target = settings_path or _default_settings_path()
-    existing = _load_existing(target)
-    if existing is None:
+    if not target.exists():
         return RemoveResult(changed=False)
+    existing = load_existing_json(target)
 
     hooks = existing.get("hooks")
     if not isinstance(hooks, dict):
@@ -297,6 +218,6 @@ def remove_credential_guard(*, settings_path: Path | None = None) -> RemoveResul
         return RemoveResult(changed=False)
 
     hooks["PreToolUse"] = filtered
-    _atomic_write_json(existing, target)
+    atomic_write_json(existing, target)
     logger.info("mureo credential guard hooks removed from %s", target)
     return RemoveResult(changed=True)
