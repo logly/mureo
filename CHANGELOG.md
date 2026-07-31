@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.37] - 2026-07-31
+
+### Changed
+
+- **Atomic-JSON consolidation completed** (#507). The two remaining
+  independent copies of the fail-closed reader / atomic writer
+  (`mureo/cli/settings_remove.py` and the web helpers) now delegate to
+  `mureo.core.atomic_json`, finishing the extraction started in #505.
+  Pure refactor; no user-visible behavior change.
+
+### Fixed
+
+- **All credential writers now follow the runtime-resolved credentials
+  path** (#512, closes #510). The Amazon LwA access-token refresh, the
+  Meta long-lived token refresh, and the interactive setup wizard
+  resolved their default destination to the legacy per-user file while
+  every loader reads through the runtime secret-store seam — so in
+  multi-tenant runtime contexts a refreshed token was written where no
+  reader looks and appeared to never refresh. All three writers now
+  resolve through `runtime_credentials_path`; behavior without a
+  runtime context is byte-identical, and explicit paths still win.
+
 ## [0.10.36] - 2026-07-31
 
 ### Added
