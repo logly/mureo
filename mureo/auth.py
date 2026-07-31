@@ -260,6 +260,11 @@ def _amazon_ads_from_mapping(section: dict[str, Any]) -> AmazonAdsCredentials | 
 
     Shared by the file/secret-store path and the env-var path so the
     "what counts as usable" rule has exactly one definition.
+
+    Keys outside that rule are ignored, notably
+    ``refresh_token_obtained_at`` (#121): it is re-authorization
+    *metadata* read by the status collector, not credential material the
+    bridge needs, so it stays off the frozen credentials dataclass.
     """
     client_id = section.get("client_id") or ""
     access_token = section.get("access_token") or ""
@@ -577,6 +582,8 @@ def save_amazon_access_token(
     access_token: str,
     refresh_token: str | None = None,
     path: Path | None = None,
+    *,
+    refresh_token_obtained_at: str | None = None,
 ) -> None:
     """Atomically persist a refreshed Amazon access token (#113 Phase 2A).
 
@@ -598,6 +605,14 @@ def save_amazon_access_token(
     ``refresh_token`` is written only when given (LwA returns the same
     one, but write it through for robustness).
 
+    ``refresh_token_obtained_at`` (#121) is the ISO-8601 UTC moment the
+    advertiser consented, written only when given: Amazon expires refresh
+    tokens issued on/after 2026-07-30 exactly 365 days after consent and
+    tells nobody when that was, so the authorization wizard records it
+    here. A routine access-token refresh passes nothing and therefore
+    leaves an existing stamp — and a legacy section's absence of one —
+    untouched, which is what keeps the expiry signal honest.
+
     Raises:
         ConfigWriteError: the existing credentials.json is malformed;
             nothing is written.
@@ -617,6 +632,8 @@ def save_amazon_access_token(
         section["access_token"] = access_token
         if refresh_token:
             section["refresh_token"] = refresh_token
+        if refresh_token_obtained_at:
+            section["refresh_token_obtained_at"] = refresh_token_obtained_at
         data["amazon_ads"] = section
 
         atomic_write_json(data, resolved)

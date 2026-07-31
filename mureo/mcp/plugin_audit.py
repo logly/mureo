@@ -52,10 +52,58 @@ _SECRET_VALUE = re.compile(
     re.IGNORECASE,
 )
 
+# Second shape: ``key=value`` / ``key: value`` credential leaks. An HTTP
+# client that echoes the form body it POSTed spills the client secret in
+# plain text, which the token-prefix patterns above do not match (an LwA
+# client secret has no distinguishing prefix). The KEY and separator are
+# kept so the diagnostic still reads "client_secret=***" rather than
+# losing the context of what failed.
+#
+# The value stops at the first separator that cannot be part of a token
+# (whitespace, quote, comma, ``&``, or a closing bracket), so only the
+# credential — not the rest of the sentence — is redacted.
+# The optional quotes around the separator catch the dict/JSON rendering
+# an exception's ``repr`` produces (``{'client_secret': 'shh'}``) as well
+# as the bare form-encoded one.
+_SECRET_KEY_VALUE = re.compile(
+    r"((?:client_secret|refresh_token|access_token|api[_-]?key|password)"
+    r"['\"]?\s*[:=]\s*['\"]?)[^\s,;&'\"}\])]+",
+    re.IGNORECASE,
+)
+
+# ``code`` on its own is far too common in ordinary error prose ("status
+# code = 400", "error code: 17"), so it gets a deliberately narrow rule.
+# Only two shapes count, both with a word boundary in front (never
+# ``status_code=``):
+#   - ``code=…`` with NO space before the ``=`` (the query-string /
+#     form-body shape an authorization code actually leaks in), and
+#   - the QUOTED dict-key shape ``'code': '…'`` that an exception repr
+#     produces.
+# Bare ``code: 12345678`` prose is deliberately NOT matched. The value
+# must also be at least _MIN_CODE_VALUE_LEN token characters — Amazon's
+# authorization codes are long alphanumerics; status codes and errnos
+# are not.
+_MIN_CODE_VALUE_LEN = 8
+_CODE_KEY_VALUE = re.compile(
+    r"((?<![\w-])(?:code=['\"]?|code['\"]\s*:\s*['\"]))[^\s,;&'\"}\])]{"
+    + str(_MIN_CODE_VALUE_LEN)
+    + r",}",
+    re.IGNORECASE,
+)
+
 
 def _scrub(text: str) -> str:
-    """Redact secret-shaped substrings from a free-text error string."""
-    return _SECRET_VALUE.sub("***", text)
+    """Redact secret-shaped substrings from a free-text error string.
+
+    Three passes, all value-only: token prefixes (``Bearer …``,
+    ``Atza|…``, ``Atzr|…``), ``key=value`` credential pairs, and the
+    narrowly-anchored ``code=<authorization code>``. Everything else —
+    HTTP status, exception type, the failing operation — survives, so a
+    scrubbed message is still a usable diagnostic.
+    """
+    scrubbed = _SECRET_VALUE.sub("***", text)
+    scrubbed = _SECRET_KEY_VALUE.sub(r"\1***", scrubbed)
+    return _CODE_KEY_VALUE.sub(r"\1***", scrubbed)
 
 
 def _audit_path() -> Path:

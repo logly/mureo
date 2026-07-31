@@ -3092,11 +3092,21 @@
       appendManualSave(form, plugin);
     }
     wrap.appendChild(form);
-    // Amazon-only extra control (keyed off the provider name so no other
-    // plugin card grows it): saved credentials alone leave the bridge
-    // toolless until the local tool manifest is generated.
+    // Amazon-only extra controls (keyed off the provider name so no other
+    // plugin card grows them): saved credentials alone leave the bridge
+    // toolless until the local tool manifest is generated, and the
+    // paste-code authorization flow is what obtains the tokens in the
+    // first place (#121). Both live in amazon_oauth.js, shared with the
+    // setup wizard's Amazon step.
     if (plugin.provider_name === AMAZON_PROVIDER_NAME) {
       wrap.appendChild(buildAmazonManifestRefresh());
+      if (window.MUREO_AMAZON_OAUTH) {
+        wrap.appendChild(window.MUREO_AMAZON_OAUTH.buildAuthorizeSection());
+        const expiring = window.MUREO_AMAZON_OAUTH.buildExpiringHint(
+          MUREO.state.status
+        );
+        if (expiring) wrap.appendChild(expiring);
+      }
     }
     return wrap;
   }

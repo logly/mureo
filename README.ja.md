@@ -287,7 +287,7 @@ mureo は **205 の MCP ツール** を stdio で公開します。Google広告�
 
 ### 認証
 
-`mureo configure`（ブラウザ）または `mureo auth setup`（ターミナル）が Google 広告と Meta 広告の認証手順を案内し、いずれも `~/.mureo/credentials.json` に書き込みます。CI 用途には環境変数でも設定できます。Search Console は Google の OAuth 認証情報を共用します。Amazon 広告の認証情報は、`mureo configure` ダッシュボードの *Plugin credentials* にある **Amazon Ads** カード（ブラウザでのサインインウィザードはまだないため、値を貼り付けるフォームです）か、`AMAZON_ADS_*` 環境変数で設定します。確認はいつでも次のコマンドでできます。
+`mureo configure`（ブラウザ）または `mureo auth setup`（ターミナル）が Google 広告と Meta 広告の認証手順を案内し、いずれも `~/.mureo/credentials.json` に書き込みます。CI 用途には環境変数でも設定できます。Search Console は Google の OAuth 認証情報を共用します。Amazon 広告の認証情報は、`mureo configure` ダッシュボードの *Plugin credentials* にある **Amazon Ads** カード（Login with Amazon のクライアント ID とシークレットを入力し、カードの **Amazon で認可する** を実行します。Amazon にはループバックコールバックがないため、mureo が同意ページを開き、リダイレクト先のアドレスを貼り付けてもらうコード貼り付け方式の誘導フローです）か、`AMAZON_ADS_*` 環境変数で設定します。確認はいつでも次のコマンドでできます。
 
 ```bash
 mureo auth status          # 認証状態の確認

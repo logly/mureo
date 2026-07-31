@@ -321,7 +321,7 @@ Full tool list and client configuration: **[MCP Server Guide →](docs/mcp-serve
 
 ### Authentication
 
-`mureo configure` (browser) or `mureo auth setup` (terminal) walk you through Google Ads and Meta Ads credentials; both write `~/.mureo/credentials.json`. Environment variables work as a fallback for CI. Search Console reuses the Google OAuth credentials. Amazon Ads credentials go in the **Amazon Ads** card of the configure dashboard's *Plugin credentials* section (a paste form — there is no browser sign-in wizard for Amazon yet) or via the `AMAZON_ADS_*` environment variables. Verify any time:
+`mureo configure` (browser) or `mureo auth setup` (terminal) walk you through Google Ads and Meta Ads credentials; both write `~/.mureo/credentials.json`. Environment variables work as a fallback for CI. Search Console reuses the Google OAuth credentials. Amazon Ads credentials go in the **Amazon Ads** card of the configure dashboard's *Plugin credentials* section — enter the Login with Amazon client id/secret, then run the card's **Authorize with Amazon** flow (Amazon has no loopback callback, so it is a guided paste-code flow: mureo opens Amazon's consent page and you paste the redirected address back) — or via the `AMAZON_ADS_*` environment variables. Verify any time:
 
 ```bash
 mureo auth status

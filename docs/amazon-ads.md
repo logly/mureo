@@ -24,13 +24,19 @@ You need a **Login with Amazon (LwA) app** + an Amazon Developer
 account with **Amazon Ads API** access. From those, obtain:
 
 - `client_id` (the LwA application client id) — always required
-- `refresh_token` + `client_secret` — **recommended**: together they
-  let mureo mint and refresh the short-lived access token for you, so
-  there is nothing to paste again later
-- `access_token` — optional when you have the pair above. It is an LwA
-  access token that **expires after ~60 minutes**; supply it only if
-  you are not using a refresh token, in which case you must paste a
-  fresh one by hand each time.
+- `client_secret` (the LwA application client secret) — required for
+  the authorization wizard below, and for the automatic access-token
+  refresh afterwards
+
+One more setting in the LwA security profile: add your **return URL**
+to *Allowed Return URLs* (Login with Amazon → your Security Profile →
+Web Settings). The documented direct-advertiser pattern is any valid
+URL you control — mureo defaults to `https://amazon.com`, so adding
+exactly that is enough. Consent redirects there and you copy the code
+out of the address bar; nothing is served on it.
+
+You do **not** have to obtain a `refresh_token` by hand — the wizard in
+step 2 mints one for you.
 
 ## 2. Set up in the configure UI (recommended)
 
@@ -44,13 +50,32 @@ That opens the local configuration UI in your browser (bound to
 1. Open the **dashboard** and scroll to the **Plugin credentials**
    section.
 2. Find the **Amazon Ads** card.
-3. Fill in **Client ID**, plus either **Refresh Token** + **Client
-   Secret** (recommended) or **Access Token**.
+3. Fill in **Client ID** and **Client Secret**.
 4. Optionally set **Region** (`na` / `eu` / `fe`, default `na`) and
    **Account Mode** (`dynamic` / `fixed`, default `dynamic`). In
    `fixed` mode also fill at least one of **Profile ID**, **Account
    ID**, **Manager Account ID**.
 5. Click **Save**.
+6. In the **Authorize with Amazon** block below the form, click
+   **Open Amazon consent page**. Amazon opens in a new tab.
+7. Approve access. Amazon redirects you to your return URL — an
+   ordinary page, possibly a 404. That is expected.
+8. Copy the **full address** from the browser's address bar (it looks
+   like `https://amazon.com/?code=ANxxxxx&scope=…`) and paste it into
+   **Redirected address**, then click **Finish authorization**. Pasting
+   just the `code=` value works too.
+
+> Copy the address **as-is** — mureo reads the `code` parameter out of
+> it. Don't retype or trim it: a hand-edited URL is the usual reason an
+> exchange fails with "no code".
+
+mureo exchanges the code for an access token **and** a refresh token,
+stores both, and refreshes the tool list in the same step. The
+authorization code is valid for **5 minutes** — if you take longer,
+just click **Open Amazon consent page** again.
+
+The same **Authorize with Amazon** block appears in the setup wizard's
+Amazon step, right after you save the credentials there.
 
 The values land in the `amazon_ads` section of
 `~/.mureo/credentials.json` at `0o600`. Secret fields are write-only in
@@ -58,11 +83,20 @@ the form: leaving one blank on a later edit **keeps** the stored value
 rather than clearing it, so you never have to re-type a token to change
 the region.
 
-> The Amazon browser sign-in wizard (one-click OAuth consent) is not
-> built yet — the card is a form you paste into. That is the only
-> difference from the Google / Meta cards.
+> **What kind of wizard this is.** Amazon's direct-advertiser consent
+> has no loopback callback for a local tool to listen on, so this is a
+> guided **paste-code** flow, not the one-click redirect-back flow the
+> Google / Meta cards use: mureo builds the consent URL and opens it,
+> you paste the redirected address back. Everything after the paste is
+> automatic.
 
-Then continue with step 4 (build the tool manifest).
+Already hold a `refresh_token` from somewhere else? Paste it (with the
+client secret) into the card's **Refresh Token** field instead and skip
+the authorization block — see [manual authorization](#appendix-manual-authorization-fallback)
+for the terminal-only route.
+
+Then continue with step 5 (build the tool manifest) — or skip it: the
+authorization wizard already refreshed the tool list for you.
 
 ## 3. Alternative: environment variables
 
@@ -114,6 +148,7 @@ section, so hand-editing still works:
 | `region` | no (default `na`) | `na` / `eu` / `fe` — picks the endpoint |
 | `account_mode` | no (default `dynamic`) | `dynamic` (LLM is asked per call) or `fixed` |
 | `profile_id`, `account_id`, `manager_account_id` | no | **Fixed** mode only (≥1 required to engage Fixed) |
+| `refresh_token_obtained_at` | no | Written by the authorization wizard: ISO 8601 UTC timestamp of the consent that produced the current refresh token. Metadata, not a credential — it drives the re-authorization reminder below. Absent = unknown, and unknown is never warned about |
 
 ## 5. Build the tool manifest
 
@@ -173,24 +208,43 @@ Without `refresh_token` + `client_secret`, update `access_token` (in
 the configure UI's Amazon Ads card, via `AMAZON_ADS_ACCESS_TOKEN`, or
 in `~/.mureo/credentials.json`) by hand when it expires.
 
-## Refresh tokens expire too (about once a year)
+## Refresh tokens expire too (365 days)
 
-Amazon's LwA refresh tokens are long-lived but **not permanent** —
-plan on re-authorizing roughly annually. When a refresh token dies,
-Amazon answers the token exchange with `invalid_grant` and mureo says
-so explicitly, telling you to re-authorize. There is nothing mureo can
+Amazon's LwA refresh tokens are long-lived but **not permanent**:
+
+- Refresh tokens issued **on or after 2026-07-30** expire **365 days
+  after the advertiser consented**.
+- Tokens issued **before** that have no fixed expiry, so there is no
+  countdown to show for them.
+
+Amazon does not tell a client when a token was issued, so mureo records
+it itself: the authorization wizard writes
+`amazon_ads.refresh_token_obtained_at` (ISO 8601, UTC) at the moment of
+the exchange. The dashboard's Amazon card then shows a **re-authorize
+hint** once that token passes **335 days** — 30 days of headroom before
+Amazon revokes it mid-operation.
+
+If the stamp is absent (a setup that predates the wizard, or a refresh
+token you pasted in by hand), mureo shows **nothing**: an unknown issue
+date could belong to a pre-2026-07-30 token that never expires, and
+warning about it annually would be false.
+
+When a refresh token does die, Amazon answers the token exchange with
+`invalid_grant` and mureo says so explicitly. There is nothing mureo can
 do automatically at that point.
 
-To recover:
+To re-authorize (before or after it dies):
 
-1. Re-authorize your LwA app with Amazon and obtain a **new**
-   `refresh_token`.
-2. Paste it into the **Refresh Token** field of the Amazon Ads card in
-   `mureo configure` (or update `AMAZON_ADS_REFRESH_TOKEN` /
-   `~/.mureo/credentials.json`) and save.
-3. The next Amazon tool call mints a fresh access token from it
-   automatically. Re-run `mureo amazon refresh-manifest` too if
-   Amazon's tool surface has changed since.
+1. Open the **Amazon Ads** card in `mureo configure` and run the
+   **Authorize with Amazon** flow again (step 2 above). The new tokens
+   and a fresh `refresh_token_obtained_at` replace the old ones.
+2. Or, without the UI: obtain a **new** `refresh_token` (see the
+   [manual appendix](#appendix-manual-authorization-fallback)) and
+   paste it into the card's **Refresh Token** field / update
+   `AMAZON_ADS_REFRESH_TOKEN` / `~/.mureo/credentials.json`. The next
+   Amazon tool call mints a fresh access token from it automatically.
+3. Re-run `mureo amazon refresh-manifest` too if Amazon's tool surface
+   has changed since (the UI flow does this for you).
 
 ## Why mureo sits in the request path
 
@@ -203,11 +257,59 @@ mureo in the request path — it is what observes the failure, exchanges
 the refresh token, and retries. The trade-off is that Amazon tools are
 available only while the mureo MCP server is running.
 
+## Appendix: manual authorization (fallback)
+
+The configure UI does exactly this for you; here it is in full for
+terminal-only setups, containers, and debugging. Both steps use the
+regional hosts:
+
+| Region | Authorize prefix | Token endpoint |
+|--------|------------------|----------------|
+| `na` | `https://www.amazon.com/ap/oa` | `https://api.amazon.com/auth/o2/token` |
+| `eu` | `https://eu.account.amazon.com/ap/oa` | `https://api.amazon.co.uk/auth/o2/token` |
+| `fe` | `https://apac.account.amazon.com/ap/oa` | `https://api.amazon.co.jp/auth/o2/token` |
+
+1. Open this URL in a browser (one line, `redirect_uri` must be in your
+   security profile's Allowed Return URLs):
+
+   ```
+   https://www.amazon.com/ap/oa?client_id=YOUR_CLIENT_ID&scope=advertising::campaign_management&response_type=code&redirect_uri=https%3A%2F%2Famazon.com
+   ```
+
+2. Approve access, then copy the `code=` value out of the address bar
+   you are redirected to. **It expires in 5 minutes.**
+
+3. Exchange it (within those 5 minutes):
+
+   ```bash
+   curl -X POST https://api.amazon.com/auth/o2/token \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "grant_type=authorization_code" \
+     -d "code=THE_CODE" \
+     -d "redirect_uri=https://amazon.com" \
+     -d "client_id=YOUR_CLIENT_ID" \
+     -d "client_secret=YOUR_CLIENT_SECRET"
+   ```
+
+   The response carries `access_token` (`Atza|…`), `refresh_token`
+   (`Atzr|…`) and `expires_in`.
+
+4. Put `refresh_token` (and `client_secret`) into the `amazon_ads`
+   section — via the configure card, the `AMAZON_ADS_*` env vars, or by
+   hand. Optionally add `refresh_token_obtained_at` with the current
+   UTC timestamp (e.g. `2026-07-31T09:15:00+00:00`) so the
+   re-authorization reminder can count from the right day; leave it out
+   and mureo simply stays quiet about the expiry.
+
+5. Run `mureo amazon refresh-manifest` once.
+
 ## Caveats
 
-- **No browser sign-in yet:** the configure UI's Amazon card is a paste
-  form. The one-click OAuth consent wizard the Google / Meta cards have
-  is a later change.
+- **Paste-code authorization, not a redirect-back wizard:** Amazon's
+  direct-advertiser consent has no loopback callback, so the configure
+  UI opens Amazon's consent page and you paste the redirected address
+  back. That is the only shape difference from the Google / Meta cards
+  — the tokens are obtained, stored and refreshed for you either way.
 - **No taxonomy remap:** tools keep Amazon's names (mureo does not
   rename official-MCP tools — same as Google/Meta official).
 - **No deep mureo analytics:** the per-platform analysis keyed to

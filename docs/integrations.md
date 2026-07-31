@@ -191,7 +191,7 @@ mureo amazon refresh-manifest
 
 Amazon's tools then appear under **Amazon's own names** (e.g. `campaign_management-*`, `account_management-*`) — mureo does not remap official-MCP tool names.
 
-> **Note**: there is no browser sign-in wizard for Amazon yet — the configure card is a paste form. LwA refresh tokens also expire roughly annually; re-authorize and paste the new one when Amazon answers with `invalid_grant`.
+> **Note**: Amazon's consent has no loopback callback, so the configure card's **Authorize with Amazon** flow is a guided paste-code one — mureo opens Amazon's consent page and you paste the redirected address back; it then stores both tokens and refreshes the tool list. LwA refresh tokens issued on/after 2026-07-30 expire 365 days after consent; the dashboard nudges you to re-authorize at 335 days.
 
 ### Authentication
 
