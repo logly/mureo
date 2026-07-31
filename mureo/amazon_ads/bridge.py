@@ -84,6 +84,45 @@ def _scrub_secrets(text: str) -> str:
     return _scrub(text)
 
 
+def _runtime_token_saver(access_token: str, refresh_token: str | None) -> None:
+    """Persist a runtime-refreshed LwA token, honoring the active runtime.
+
+    The default ``token_saver`` when none is injected at construction —
+    which is every deployment, since the plugin collection path builds the
+    bridge zero-arg. Two destinations, decided at persist time (#511):
+
+    - The active ``RuntimeContext``'s ``SecretStore`` offers an
+      ``amazon_token_saver`` capability ⇒ write through it. A multi-tenant
+      host binds the refresh to the ACTIVE tenant's store, which is the
+      only place its own reads will look. Without this, refreshes land in
+      the operator-shared base whose reads strip per-client token fields,
+      so every dispatch would re-mint from a refresh token Amazon has
+      already rotated.
+    - No capability (single-tenant OSS, or a backend that did not opt in)
+      ⇒ :func:`mureo.auth.save_amazon_access_token`, i.e. the
+      runtime-resolved ``credentials.json`` exactly as before (#512).
+
+    Resolved per call, not at construction: the capability belongs to the
+    runtime context, which a host may install after the bridge is built.
+
+    The import is deliberately at call time, for the same load-bearing
+    reason as :func:`_scrub_secrets` — this module is reached from
+    ``mureo.mcp.server``'s import-time plugin collection, so a module-level
+    import into that graph risks re-entering a partially-initialized module.
+
+    Raises whatever the chosen saver raises; ``_refresh_and_persist`` maps
+    ``ConfigWriteError`` / ``OSError`` onto :class:`AmazonBridgeError` for
+    both destinations alike.
+    """
+    from mureo.core.runtime_context import runtime_amazon_token_saver
+
+    saver = runtime_amazon_token_saver()
+    if saver is not None:
+        saver(access_token, refresh_token)
+        return
+    save_amazon_access_token(access_token, refresh_token)
+
+
 def _warn_once_if_stale(path: Path, doc: Any) -> None:
     """Warn (once per process) that the served manifest is stale.
 
@@ -382,7 +421,9 @@ class AmazonAdsBridge:
         self._creds_loader: CredsLoader = creds_loader or load_amazon_ads_credentials
         self._connect: ConnectFactory = connect or _default_connect
         self._refresher: Refresher = refresher or refresh_access_token
-        self._token_saver: TokenSaver = token_saver or save_amazon_access_token
+        # An injected saver always wins; the default routes through the
+        # runtime capability seam (see ``_runtime_token_saver``).
+        self._token_saver: TokenSaver = token_saver or _runtime_token_saver
 
     # -- collection-time (pure, never raises) -------------------------------
 
@@ -464,6 +505,15 @@ class AmazonAdsBridge:
         raised :class:`AmazonBridgeError` so it is never lost — and
         ``None`` on the mint path, where the LwA error is its own cause.
         ``auth_failure_prefix`` names which of the two situations failed.
+
+        Where the token lands is the ``_token_saver``'s business: an
+        injected saver (tests, embedders) is used verbatim, while the
+        default binds the write to the active runtime — the ACTIVE tenant's
+        store when a multi-tenant host offers one, and the
+        runtime-resolved ``credentials.json`` otherwise (#511; see
+        :func:`_runtime_token_saver`). Single-tenant installs are
+        unaffected. Either destination's ``ConfigWriteError`` / ``OSError``
+        is mapped to the same :class:`AmazonBridgeError` below.
         """
         try:
             tokens = self._refresher(creds)
