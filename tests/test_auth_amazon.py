@@ -15,6 +15,7 @@ import dataclasses
 import json
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -23,7 +24,14 @@ from mureo.auth import (
     load_amazon_ads_credentials,
     save_amazon_access_token,
 )
+from mureo.core.runtime_context import (
+    default_runtime_context,
+    reset_runtime_context,
+)
 from mureo.providers.config_writer import ConfigWriteError
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def _write(tmp_path: Path, payload: dict) -> Path:
@@ -378,3 +386,164 @@ class TestSaveAmazonAccessToken:
         save_amazon_access_token("Atza|NEW", path=cf)
 
         assert entered == [tmp_path / "credentials.json.lock"]
+
+
+# ---------------------------------------------------------------------------
+# #510 — a ``path=None`` save must land where the loader reads
+#
+# ``load_amazon_ads_credentials()`` resolves through
+# ``_resolve_secret_store`` (the active ``RuntimeContext``'s store), while
+# the saver used to fall back to the legacy ``~/.mureo/credentials.json``
+# unconditionally. In a multi-tenant runtime (an entry-point-provided
+# store that relocates the credentials file) the bridge's automatic
+# access-token refresh therefore wrote a file nobody ever read — a silent
+# read/write split-brain. The saver now resolves its default destination
+# through ``runtime_credentials_path``, the same store-capability seam
+# the configure UI uses (#194 / #196).
+#
+# Entry-point stubs and the fake stores mirror
+# ``tests/test_web_credentials_runtime_alignment.py``.
+# ---------------------------------------------------------------------------
+
+
+class _FakeEP:
+    def __init__(self, name: str, target: Any) -> None:
+        self.name = name
+        self._target = target
+
+    def load(self) -> Any:
+        return self._target
+
+
+def _patch_entry_points(monkeypatch: pytest.MonkeyPatch, eps: list[_FakeEP]) -> None:
+    """Stub ``mureo.core.runtime_context.entry_points`` for the
+    runtime-context factory group."""
+
+    def fake_entry_points(*, group: str) -> list[_FakeEP]:
+        assert group == "mureo.runtime_context_factory"
+        return eps
+
+    monkeypatch.setattr("mureo.core.runtime_context.entry_points", fake_entry_points)
+
+
+@pytest.fixture()
+def _reset_runtime_ctx() -> Iterator[None]:
+    """Each test starts and ends with a clean resolver cache so the
+    process-wide singleton cannot bleed between tests."""
+    reset_runtime_context()
+    yield
+    reset_runtime_context()
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_clean_amazon_env", "_reset_runtime_ctx")
+class TestSaveAmazonAccessTokenFollowsRuntimeContext:
+    @staticmethod
+    def _pin_legacy_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+        """Point the legacy fallback at a tmp file so the real
+        ``~/.mureo/credentials.json`` is never touched by these tests."""
+        legacy = tmp_path / "legacy" / "credentials.json"
+        monkeypatch.setattr(auth_mod, "_resolve_default_path", lambda: legacy)
+        return legacy
+
+    def test_writes_to_the_store_declared_credentials_write_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A store advertising ``credentials_write_path`` steers the
+        ``path=None`` save; the legacy default stays untouched."""
+        legacy = self._pin_legacy_default(monkeypatch, tmp_path)
+        tenant = tmp_path / "tenant-a" / "credentials.json"
+
+        class _LayeredSecretStore:
+            """Filesystem-backed, but not a ``FilesystemSecretStore``."""
+
+            credentials_write_path = tenant
+
+            def load(self, key: str) -> dict:
+                if not tenant.exists():
+                    return {}
+                return dict(json.loads(tenant.read_text(encoding="utf-8")).get(key, {}))
+
+            def save(self, key: str, value: dict) -> None:  # pragma: no cover
+                return None
+
+            def delete(self, key: str) -> None:  # pragma: no cover
+                return None
+
+        ctx = dataclasses.replace(
+            default_runtime_context(), secret_store=_LayeredSecretStore()
+        )
+        _patch_entry_points(monkeypatch, [_FakeEP("tenant", lambda: ctx)])
+
+        save_amazon_access_token("Atza|NEW", "Atzr|NEW")
+
+        doc = json.loads(tenant.read_text(encoding="utf-8"))
+        assert doc["amazon_ads"]["access_token"] == "Atza|NEW"
+        assert doc["amazon_ads"]["refresh_token"] == "Atzr|NEW"
+        assert not legacy.exists()
+
+    def test_round_trips_through_the_runtime_store(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Save then load with ``path=None`` must see the same token —
+        the read and the write agree on one location."""
+        legacy = self._pin_legacy_default(monkeypatch, tmp_path)
+        tenant = tmp_path / "tenant-b" / "credentials.json"
+        tenant.parent.mkdir(parents=True)
+        tenant.write_text(
+            json.dumps({"amazon_ads": {"client_id": "cid", "access_token": "OLD"}}),
+            encoding="utf-8",
+        )
+        _patch_entry_points(
+            monkeypatch,
+            [
+                _FakeEP(
+                    "tenant",
+                    lambda: default_runtime_context(credentials_path=tenant),
+                )
+            ],
+        )
+
+        save_amazon_access_token("Atza|NEW")
+
+        c = load_amazon_ads_credentials()
+        assert c is not None and c.access_token == "Atza|NEW"
+        assert c.client_id == "cid"  # preserved
+        assert not legacy.exists()
+
+    def test_no_override_keeps_the_legacy_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No factory registered → single-backend installs keep writing
+        ``~/.mureo/credentials.json`` exactly as before."""
+        legacy = self._pin_legacy_default(monkeypatch, tmp_path)
+        _patch_entry_points(monkeypatch, [])
+
+        save_amazon_access_token("Atza|NEW")
+
+        doc = json.loads(legacy.read_text(encoding="utf-8"))
+        assert doc["amazon_ads"]["access_token"] == "Atza|NEW"
+
+    def test_explicit_path_wins_over_the_runtime_override(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The explicit-path branch is unchanged: the wizard exchange
+        passes its own file and must not be redirected."""
+        legacy = self._pin_legacy_default(monkeypatch, tmp_path)
+        tenant = tmp_path / "tenant-c" / "credentials.json"
+        _patch_entry_points(
+            monkeypatch,
+            [
+                _FakeEP(
+                    "tenant",
+                    lambda: default_runtime_context(credentials_path=tenant),
+                )
+            ],
+        )
+
+        cf = _write(tmp_path, {"amazon_ads": {"client_id": "cid"}})
+        save_amazon_access_token("Atza|NEW", path=cf)
+
+        assert json.loads(cf.read_text())["amazon_ads"]["access_token"] == "Atza|NEW"
+        assert not tenant.exists()
+        assert not legacy.exists()

@@ -893,14 +893,21 @@ def save_credentials(
 ) -> None:
     """Save credentials to credentials.json (merged with existing data).
 
+    ``path=None`` resolves the destination through
+    :func:`_resolve_write_path` rather than hardcoding the legacy
+    default, so a runtime that relocates the ``SecretStore`` is honored
+    on write and the wizard stops saving where nobody reads (#510). An
+    explicit ``path`` is never redirected.
+
     Args:
-        path: Path to credentials.json. Uses default path if None.
+        path: Path to credentials.json. Uses the runtime-resolved
+            default path if None.
         google: Google Ads credentials
         meta: Meta Ads credentials
         customer_id: Google Ads account (login_customer_id)
         account_id: Meta Ads ad account ID
     """
-    resolved = path if path is not None else _resolve_default_path()
+    resolved = path if path is not None else _resolve_write_path()
 
     # Create directory
     resolved.parent.mkdir(parents=True, exist_ok=True)
@@ -1031,7 +1038,10 @@ async def setup_google_ads(
         google=final_creds,
     )
 
-    print(f"\nCredentials saved: {credentials_path or _resolve_default_path()}")
+    # Report the path ``save_credentials`` actually wrote to — resolving
+    # this any other way would print the legacy location while the write
+    # went to a runtime-relocated store (#510).
+    print(f"\nCredentials saved: {credentials_path or _resolve_write_path()}")
     print("Google Ads setup complete.\n")
 
     return final_creds
@@ -1345,8 +1355,13 @@ async def setup_meta_ads(
     Returns:
         MetaAdsCredentials
     """
+    # Resolved once, then passed to ``save_credentials`` as an explicit
+    # path and echoed to the operator. It must go through the same seam
+    # ``save_credentials`` would have used for ``path=None``, or this
+    # pre-resolution would silently pin the wizard to the legacy file and
+    # bypass a runtime-relocated store (#510).
     resolved_path = (
-        credentials_path if credentials_path is not None else _resolve_default_path()
+        credentials_path if credentials_path is not None else _resolve_write_path()
     )
 
     # Display guidance
@@ -1427,3 +1442,25 @@ async def setup_meta_ads(
 def _resolve_default_path() -> Path:
     """Resolve the default credentials.json path."""
     return Path.home() / ".mureo" / "credentials.json"
+
+
+def _resolve_write_path() -> Path:
+    """Resolve where a ``path``-less setup write should land.
+
+    The setup wizard's counterpart of :func:`mureo.auth._resolve_write_path`
+    (see it for the full rationale): ``mureo.auth``'s loaders read through
+    the active ``RuntimeContext``'s ``SecretStore``, so a writer that
+    always targets :func:`_resolve_default_path` saves where the runtime
+    never looks whenever a ``mureo.runtime_context_factory`` relocates
+    that store (#510).
+
+    Delegates to :func:`mureo.core.runtime_context.runtime_credentials_path`
+    so the store-capability rules have exactly one definition; with no
+    factory registered it returns :func:`_resolve_default_path`
+    unchanged. Imported lazily, mirroring this module's other
+    function-local ``mureo.core`` imports, so the CLI startup path does
+    not pay for it.
+    """
+    from mureo.core.runtime_context import runtime_credentials_path
+
+    return runtime_credentials_path(_resolve_default_path())

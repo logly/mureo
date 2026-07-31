@@ -2,17 +2,26 @@
 
 from __future__ import annotations
 
+import dataclasses
 import http.client
 import json
 import sys
 import threading
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from mureo.auth import GoogleAdsCredentials
+from mureo.core.runtime_context import (
+    default_runtime_context,
+    reset_runtime_context,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # Windows test shim: `simple_term_menu` imports Unix-only `termios` and
 # raises NotImplementedError at import on Windows, so even
@@ -1914,3 +1923,177 @@ def test_resolve_default_path() -> None:
     path = _resolve_default_path()
     assert path.name == "credentials.json"
     assert ".mureo" in str(path)
+
+
+# ---------------------------------------------------------------------------
+# #510 — a ``path=None`` setup save must land where the runtime reads
+#
+# ``mureo.auth``'s loaders resolve through the active ``RuntimeContext``'s
+# ``SecretStore``, so a writer defaulting to the legacy
+# ``~/.mureo/credentials.json`` writes where nobody reads whenever a
+# ``mureo.runtime_context_factory`` relocates that store — the interactive
+# setup wizard's flavour of the same split-brain the token-refresh writers
+# had. ``save_credentials`` now defaults through
+# ``auth_setup._resolve_write_path`` (``runtime_credentials_path``).
+#
+# Entry-point stubs and the fake stores mirror
+# ``tests/test_web_credentials_runtime_alignment.py``.
+# ---------------------------------------------------------------------------
+
+
+class _FakeEP:
+    def __init__(self, name: str, target: Any) -> None:
+        self.name = name
+        self._target = target
+
+    def load(self) -> Any:
+        return self._target
+
+
+def _patch_entry_points(monkeypatch: pytest.MonkeyPatch, eps: list[_FakeEP]) -> None:
+    """Stub ``mureo.core.runtime_context.entry_points`` for the
+    runtime-context factory group."""
+
+    def fake_entry_points(*, group: str) -> list[_FakeEP]:
+        assert group == "mureo.runtime_context_factory"
+        return eps
+
+    monkeypatch.setattr("mureo.core.runtime_context.entry_points", fake_entry_points)
+
+
+@pytest.fixture()
+def _reset_runtime_ctx() -> Iterator[None]:
+    """Each test starts and ends with a clean resolver cache so the
+    process-wide singleton cannot bleed between tests."""
+    reset_runtime_context()
+    yield
+    reset_runtime_context()
+
+
+def _pin_legacy_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Point the legacy fallback at a tmp file so the real
+    ``~/.mureo/credentials.json`` is never touched by these tests."""
+    from mureo import auth_setup
+
+    legacy = tmp_path / "legacy" / "credentials.json"
+    monkeypatch.setattr(auth_setup, "_resolve_default_path", lambda: legacy)
+    return legacy
+
+
+def _setup_google_creds() -> GoogleAdsCredentials:
+    return GoogleAdsCredentials(
+        developer_token="dev-tok",
+        client_id="cid",
+        client_secret="csec",
+        refresh_token="rtok",
+        login_customer_id="1234567890",
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_reset_runtime_ctx")
+def test_save_credentials_follows_declared_credentials_write_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A store advertising ``credentials_write_path`` steers the
+    ``path=None`` save; the legacy default stays untouched."""
+    from mureo.auth_setup import save_credentials
+
+    legacy = _pin_legacy_default(monkeypatch, tmp_path)
+    tenant = tmp_path / "tenant-a" / "credentials.json"
+
+    class _LayeredSecretStore:
+        """Filesystem-backed, but not a ``FilesystemSecretStore``."""
+
+        credentials_write_path = tenant
+
+        def load(self, key: str) -> dict[str, Any]:  # pragma: no cover
+            return {}
+
+        def save(self, key: str, value: dict[str, Any]) -> None:  # pragma: no cover
+            return None
+
+        def delete(self, key: str) -> None:  # pragma: no cover
+            return None
+
+    ctx = dataclasses.replace(
+        default_runtime_context(), secret_store=_LayeredSecretStore()
+    )
+    _patch_entry_points(monkeypatch, [_FakeEP("tenant", lambda: ctx)])
+
+    save_credentials(google=_setup_google_creds(), customer_id="1234567890")
+
+    data = json.loads(tenant.read_text(encoding="utf-8"))
+    assert data["google_ads"]["developer_token"] == "dev-tok"
+    assert not legacy.exists()
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_reset_runtime_ctx")
+def test_save_credentials_round_trips_through_the_runtime_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Save then load with ``path=None`` must see the same credentials —
+    the wizard write and the runtime read agree on one location."""
+    from mureo.auth import load_google_ads_credentials
+    from mureo.auth_setup import save_credentials
+
+    legacy = _pin_legacy_default(monkeypatch, tmp_path)
+    tenant = tmp_path / "tenant-b" / "credentials.json"
+    _patch_entry_points(
+        monkeypatch,
+        [_FakeEP("tenant", lambda: default_runtime_context(credentials_path=tenant))],
+    )
+
+    save_credentials(google=_setup_google_creds(), customer_id="1234567890")
+
+    reloaded = load_google_ads_credentials()
+    assert reloaded is not None
+    assert reloaded.developer_token == "dev-tok"
+    assert reloaded.customer_id == "1234567890"
+    assert not legacy.exists()
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_reset_runtime_ctx")
+def test_save_credentials_without_override_keeps_the_legacy_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No factory registered → single-backend installs keep writing
+    ``~/.mureo/credentials.json`` exactly as before."""
+    from mureo.auth_setup import save_credentials
+
+    legacy = _pin_legacy_default(monkeypatch, tmp_path)
+    _patch_entry_points(monkeypatch, [])
+
+    save_credentials(google=_setup_google_creds(), customer_id="1234567890")
+
+    data = json.loads(legacy.read_text(encoding="utf-8"))
+    assert data["google_ads"]["developer_token"] == "dev-tok"
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("_reset_runtime_ctx")
+def test_save_credentials_explicit_path_wins_over_the_runtime_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The explicit-path branch is unchanged: a caller that names its own
+    credentials file must not be redirected."""
+    from mureo.auth_setup import save_credentials
+
+    legacy = _pin_legacy_default(monkeypatch, tmp_path)
+    tenant = tmp_path / "tenant-c" / "credentials.json"
+    _patch_entry_points(
+        monkeypatch,
+        [_FakeEP("tenant", lambda: default_runtime_context(credentials_path=tenant))],
+    )
+
+    cred_path = tmp_path / "explicit" / "credentials.json"
+    save_credentials(
+        path=cred_path, google=_setup_google_creds(), customer_id="1234567890"
+    )
+
+    data = json.loads(cred_path.read_text(encoding="utf-8"))
+    assert data["google_ads"]["developer_token"] == "dev-tok"
+    assert not tenant.exists()
+    assert not legacy.exists()
