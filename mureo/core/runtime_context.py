@@ -22,7 +22,7 @@ strings are rejected at construction time.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -345,6 +345,52 @@ def runtime_ui_plugin_credential_fields() -> dict[str, frozenset[str]] | None:
             continue
         scoped[provider] = frozenset(str(k) for k in keys)
     return scoped or None
+
+
+def runtime_amazon_token_saver() -> Callable[[str, str | None], None] | None:
+    """Return the persister the active ``SecretStore`` offers for
+    runtime-refreshed Amazon LwA tokens, or ``None``.
+
+    The Amazon bridge mints and refreshes the short-lived LwA access token
+    on its own (one exchange per dispatch) and must persist the result so
+    the next call does not burn another exchange against a refresh token
+    Amazon has already rotated. Its default writer targets the
+    runtime-resolved ``credentials.json`` (#512) — correct for a
+    single-tenant install, but in a multi-tenant deployment that file is
+    the operator-shared base, whose reads strip the per-client token
+    fields, so refreshed tokens are written where nothing reads them back.
+
+    A host that keeps per-tenant tokens in its own store closes this by
+    exposing ``amazon_token_saver`` — a callable taking
+    ``(access_token, refresh_token | None)`` — on its ``SecretStore``. The
+    bridge then binds each refresh to the ACTIVE tenant's store. Joins the
+    store-capability family of :func:`runtime_credentials_path` (#196),
+    :func:`runtime_multi_account_auth` (#198), and
+    :func:`runtime_ui_plugin_credential_fields` (#207).
+
+    Resolution:
+
+    - **No factory registered** → ``None``. Single-tenant OSS keeps the
+      existing behavior byte-identically; the gate is on entry-point
+      *presence* so the default store is never consulted.
+    - **Store declares a callable ``amazon_token_saver``** → that callable.
+    - **Attribute absent or not callable** → ``None``. A mis-typed
+      declaration must not break the refresh path, so anything the resolver
+      cannot call collapses to "no capability" and the bridge falls back to
+      its default writer (mirroring the defensive reads of the siblings).
+
+    A registered-but-broken factory surfaces its
+    :class:`RuntimeContextFactoryError` here, as everywhere else in the
+    family — a packaging mistake is made visible rather than hidden.
+    """
+    if not list(entry_points(group=RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP)):
+        return None
+    store = get_runtime_context().secret_store
+    declared = getattr(store, "amazon_token_saver", None)
+    if not callable(declared):
+        return None
+    saver: Callable[[str, str | None], None] = declared
+    return saver
 
 
 def runtime_search_console_sites() -> frozenset[str] | None:

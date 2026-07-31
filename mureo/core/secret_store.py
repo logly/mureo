@@ -108,6 +108,23 @@ class SecretStore(Protocol):
       :func:`mureo.core.runtime_context.runtime_ui_plugin_credential_fields`;
       omit it for single-account stores so every declared field renders
       as today.
+
+    - ``search_console_sites`` / ``meta_account_ids`` /
+      ``google_ads_customer_ids: Collection[str]`` — per-client account
+      allow-lists a multi-tenant backend declares so cross-client reads
+      are constrained to the active client's accounts (#375/#411). Read
+      defensively via the matching
+      ``mureo.core.runtime_context.runtime_*`` resolvers; omit them for
+      single-account stores.
+
+    - ``amazon_token_saver: Callable[[str, str | None], None]`` — a
+      persistence callable ``(access_token, refresh_token)`` the Amazon
+      bridge's runtime token refresh uses instead of the default
+      credentials-file writer, so a multi-tenant backend can bind
+      refreshed tokens to the active tenant's own store (#511). Read
+      defensively (only a callable is honored) via
+      :func:`mureo.core.runtime_context.runtime_amazon_token_saver`;
+      omit it to keep the default write path.
     """
 
     def load(self, key: str) -> dict[str, Any]: ...
