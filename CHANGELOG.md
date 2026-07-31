@@ -7,6 +7,198 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.36] - 2026-07-31
+
+### Added
+
+- **Amazon Ads, through the official MCP, with mureo in the request path
+  (#499, closes #113).** Claude calls local mureo, mureo calls Amazon's hosted
+  MCP — the same shape as the mureo-native platforms, so credentials stay in
+  `~/.mureo/credentials.json` and Claude never sees them, and every Amazon call
+  inherits the existing safety layer (audit, throttle, `action_log`) with
+  **zero dispatch changes**. A one-time authenticated discovery run writes the
+  tool surface to `~/.mureo/amazon_tools.json` (atomic, `0600`, secret-free);
+  the bridge reads that manifest and never raises, so with no manifest there
+  are no Amazon tools and behavior is byte-identical to before. Endpoints cover
+  NA/EU/FE and both Dynamic and Fixed header modes, tool names are Amazon's own
+  (no taxonomy remap, consistent with how mureo treats other official MCPs),
+  and LwA access tokens refresh automatically — **exactly one refresh and one
+  retry** on a failed call, never a loop, with `invalid_grant` surfaced as a
+  re-authorize instruction and the original failure always chained. Every write
+  path (token save, manifest generation) goes through the shared locked,
+  atomic, `0600` credentials writer, so a concurrent Meta refresh or wizard
+  save cannot clobber it and a malformed credentials file raises instead of
+  being silently reset. `mureo amazon refresh-manifest` regenerates the
+  manifest. Honest limits, documented rather than implied: rollback is
+  agent-authored hints only (no automatic before-state capture) and
+  per-platform analytics are advisory (#120).
+
+- **Amazon credentials are entered in the browser, not hand-edited (#501).**
+  Setup previously meant hand-editing the credentials file with a
+  self-obtained, short-lived access token. The bridge now declares
+  `account_credential_fields` (nine keys, en/ja labels and descriptions,
+  secrets marked), so the configure UI's generic plugin-credentials card
+  renders an Amazon Ads form that persists to the `amazon_ads` section, and
+  `AMAZON_ADS_*` environment variables work as a fallback in the Google/Meta
+  pattern (the credentials-file section wins). A `client_id` plus either an
+  access token or a `refresh_token` / `client_secret` pair is enough: when no
+  access token is stored the bridge mints one over LwA before the first
+  forwarded call and persists it — no more copying short-lived tokens by hand.
+  The synthetic provider entry is single-sourced in
+  `mureo/amazon_ads/provider.py` and registered **before** entry-point
+  discovery in both the MCP server and the configure server, so first-wins
+  shadowing is deterministic and the built-in bridge always beats a same-named
+  entry-point plugin (under the old order a squatter actually won).
+
+- **Amazon has the operator surfaces Google and Meta have (#503).** The setup
+  wizard lists `amazon_ads` as a selectable platform, with a generic
+  plugin-provider credential step that fetches the server-declared fields at
+  runtime instead of duplicating them in JS; the Google and Meta wizard paths
+  are untouched. The dashboard gains an Amazon row in the connected-platforms
+  list, a credential **Remove** button, and a **Refresh tool list** button on
+  the Amazon card backed by `POST /api/amazon/refresh-manifest` — failure
+  detail is scrubbed with the audit redactor and length-capped in both the 502
+  response and the server log, so a token-shaped string can reach neither. The
+  env-var panel maps the nine `AMAZON_ADS_*` names to the `amazon_ads` section,
+  mirroring the loader exactly. On the CLI, `mureo auth status` reports Amazon
+  (region and masked token shape) and a new `mureo auth check-amazon` mirrors
+  `check-google` / `check-meta` in depth — local-only, no network.
+
+- **A guided Amazon authorization wizard, and a refresh-token expiry signal
+  (#508).** Amazon setup used to end at "obtain a refresh token yourself and
+  paste it". The dashboard card and the wizard slot now build the
+  region-correct LwA authorize URL and accept the pasted result — a full
+  redirect URL, a bare query string or a bare code all parse — exchange it for
+  tokens, persist them with a server-stamped `refresh_token_obtained_at`, and
+  refresh the tool manifest best-effort (a manifest failure never fails the
+  exchange).
+  This follows the documented direct-advertiser pattern: an allowed return URL
+  plus manual code copy, **no loopback callback**, whose support LwA does not
+  document. Errors quote only the machine error code, never
+  `error_description`, which can echo the rejected input, and a code-rejected
+  error is marked so the UI can explain the five-minute code lifetime. Both
+  routes inherit CSRF and Host gating. Because tokens issued on or after
+  2026-07-30 expire **365 days** after consent (first-party verified), the
+  status feed now reports token age and flags expiry past 335 days — only when
+  the obtained-at stamp exists, so legacy tokens without a fixed expiry never
+  warn, and the 60-minute access-token refresh cannot touch the stamp.
+  Audit-log scrubbing was hardened alongside: `key=value`-shaped secrets
+  (`client_secret=…`, `refresh_token=…`, quoted `code` dict entries) now
+  redact to `key=***`, with false-positive guards for ordinary text like
+  `status code= 400` — the review's decoy test proved the old pattern let a
+  bare `client_secret` value through.
+
+- **Codex CLI image provider for Creative Studio — no API key (#497).**
+  Creative Studio assumed a hosted-API key for every provider, so teams that
+  generate images through a locally installed Codex CLI (ChatGPT login, no API
+  key) had no way to point it there. The new built-in `codex` provider needs
+  nothing beyond the `codex` binary on `PATH` and a completed `codex login`,
+  and is registered after the three hosted providers, so it is the zero-config
+  fallback rather than the default pick. Each image shells out through an argv
+  array — never a shell, with a literal `--` end-of-options marker so a
+  leading-dash prompt cannot be parsed as a flag — into a private temp dir;
+  output must be a non-empty PNG (symlinks rejected without following them),
+  `n > 1` runs sequentially, and `MUREO_CODEX_TIMEOUT` (default 300s) kills the
+  whole process group. The child process gets a minimal allow-listed
+  environment, so the sibling providers' `OPENAI_API_KEY` / `GEMINI_API_KEY` /
+  `FAL_KEY` never reach it, and stderr tails are redacted before appearing in
+  any error. `edit()` is honestly unsupported — a live edit run regenerated at
+  a drifted size instead of editing — and `capabilities()` says so. **On
+  Windows a `codex` that resolves to a `.bat` / `.cmd` shim is refused before
+  any temp dir or process is created**: `CreateProcess` re-invokes `cmd.exe`
+  for batch files and `cmd.exe` re-parses the quoted command line, so untrusted
+  prompt text could escape its argv slot into separate commands (the BatBadBut
+  / CVE-2024-27980 class). Escaping `cmd.exe` correctly is not reliably
+  possible, so the provider fails closed with a remediation hint; a native
+  `codex.exe` has no such reparse and stays allowed.
+
+### Changed
+
+- **Budget and bid caps now reach plugin tools that carry no declaration
+  (#502).** Amazon rides the plugin dispatch path with a manifest that cannot
+  carry mureo `_meta` declarations, which left several safety surfaces
+  silently uncovered. A mutating plugin tool with no registered declaration is
+  now scanned (bounded recursion, depth 8) for budget/bid-shaped numeric
+  argument keys, and STRATEGY caps are enforced on matches. The scan is
+  **additive** to the built-in key scan; exact-key declarations still take
+  precedence per family, and a matched amount is held to both channels of its
+  family because over-blocking is the safe direction. False positives are
+  guarded: identifier-shaped keys are excluded, `bid` matches at word
+  boundaries, non-numeric values are ignored, non-finite numbers fail closed,
+  and comma-grouped numeric strings are accepted only in unambiguous thousands
+  form. Read-shaped tool names are exempt through a shared hyphen-aware
+  vocabulary (`mureo/core/tool_names.py`) that the rollback planner now shares,
+  so bridged names like `campaign_management-delete_x` are recognized as
+  destructive; native names are unchanged. This is a heuristic, to be replaced
+  with verified annotations once a real bridged manifest is inspected. Note
+  that the gate also runs on rollback legs, so a reversal restoring an
+  over-cap value is denied like any other write. Landing with it: the Amazon
+  manifest's `generated_at` is checked for staleness (default 30 days,
+  `MUREO_AMAZON_MANIFEST_MAX_AGE_DAYS`) and surfaced in the configure status
+  feed, the refresh CLI and a warn-once log; `mureo amazon refresh-manifest`
+  mints an access token over LwA when only the refresh pair is stored instead
+  of failing with a 401; `MUREO_DISABLE_AMAZON_ADS` gates the bridge in both
+  the MCP server and the configure server, following the existing disable-var
+  pattern; and bridge error text from token-save and mint failures is scrubbed
+  with the audit redactor through a call-time import (a module-level one
+  created a real circular-import failure that silently dropped **all** plugin
+  tools, now pinned by a subprocess regression test).
+
+- **Atomic-JSON helpers live in `mureo.core.atomic_json` (#505, closes #500).**
+  `mureo/providers/config_writer.py` is documented and default-pathed for
+  Claude Code MCP settings, yet ten unrelated writers had come to depend on its
+  private atomic-write internals. The public trio `load_existing_json` /
+  `atomic_write_json` / `ConfigWriteError` now lives in
+  `mureo/core/atomic_json.py` (stdlib plus `mureo.fsutil` only) and every
+  in-tree importer points at it. This is a **pure move with no behavior
+  change** — function bodies are unchanged apart from a parameter rename that
+  every call site passes positionally, and error strings are kept
+  byte-identical because they reach users through bridge error wrapping.
+  `config_writer` re-exports the old underscore names for import
+  compatibility, but they are **not a monkeypatch seam**: its own functions
+  call the public names directly, so patch `mureo.core.atomic_json` instead.
+
+### Fixed
+
+- **Creative Studio reports its size capabilities honestly (#506, closes
+  #498).** The `openai` and `codex` providers advertised a `max_size` of
+  1536x1536, but GPT Image cannot generate a 1536x1536 square — the real menu
+  is 1024x1024, 1536x1024 and 1024x1536. `capabilities()` gains an optional
+  **`supported_sizes`** key carrying the exact `[width, height]` menu for
+  providers with a discrete size set: `openai` and `codex` share one
+  single-sourced GPT Image trio, from which their size clamp also derives, so
+  the advertised menu and the clamp can never drift; `google` reports
+  `[[1024, 1024]]`; `fal` omits the key deliberately, because it forwards
+  width and height verbatim and its sizes are continuous up to the bound.
+  `max_size` is kept for compatibility, is now derived from the menu rather
+  than re-typed, and its Protocol contract is redefined honestly as **per-axis
+  maxima — a bound, not a jointly achievable size**. The values themselves are
+  byte-identical to before; no downstream code computed with them. The
+  `providers_list` tool description and `docs/creative-studio(.ja).md` state
+  the contract, and the `creative-generate` skill makes no size claims.
+
+### Docs
+
+- **Amazon Ads is presented as a first-class platform everywhere (#504).**
+  Amazon shipped as a mureo-mediated official-MCP bridge while the
+  documentation still called it absent or "Planned". Both READMEs,
+  getting-started, integrations, architecture, mcp-server, native-vs-official,
+  strategy-context and SECURITY now cover it in en and ja — platform
+  enumerations, a connection section, the credentials table, the module tree
+  and dispatch branch, the `plugin:mureo-amazon-ads-bridge` platform key, LwA
+  credential handling, and the third integration model (the mureo-mediated
+  bridge) added to the comparison with its limits stated. The `onboard`,
+  `_mureo-strategy`, `_mureo-shared`, `daily-check`, `budget-pacing` and
+  `tracking-health` skills (and their byte-identical mirrors) name Amazon in
+  discovery and examples, and their **guardrail-scope statements are corrected
+  to the three-tier truth**: the gate reaches every mureo-dispatched call, but
+  its strength differs — exact argument keys on native `google_ads` /
+  `meta_ads` are hard enforcement, best-effort pattern-matched keys on plugin
+  and bridged platforms are strong but not guaranteed, and hosted connectors
+  bypass mureo entirely. Every "amazon" occurrence was read against the code
+  in a consistency pass — no auto-reversal, deep-analytics or BYOD overclaims,
+  en/ja parity throughout, skills mirrors byte-identical.
+
 ## [0.10.35] - 2026-07-30
 
 ### Changed
