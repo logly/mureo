@@ -30,6 +30,7 @@ and which are not, see [ABI-stability.md](./ABI-stability.md).
 12. [Troubleshooting](#12-troubleshooting)
 13. [Web extensions](#13-web-extensions)
 14. [Shipping analytics with your plugin](#14-shipping-analytics-with-your-plugin)
+15. [Multi-tenant backend authoring](#15-multi-tenant-backend-authoring)
 
 ---
 
@@ -2314,6 +2315,303 @@ must not — ship a separate MCP tool to expose it (see below): implement the
   stable; the built-in adapters do exactly this).
 - Ship a separate MCP tool — the registry surface is mureo's, not
   yours; you only ship the `AnalyticsModule` class.
+
+---
+
+## 15. Multi-tenant backend authoring
+
+> Status: store-capability family as of 0.10.37 (#196, #198, #207,
+> #375, #411, #511). Audience: teams embedding mureo in a multi-tenant
+> host — an agency backend, a SaaS control plane — that supplies its
+> own credential storage instead of `~/.mureo/credentials.json`.
+
+The provider / skill / web-extension surfaces above extend what mureo
+can talk to. This section is about replacing where mureo keeps its own
+state: the `RuntimeContext` entry point swaps the file-backed default
+stores for yours, and a family of optional attributes on your
+`SecretStore` tells mureo how to behave in a deployment where one
+operator identity serves many client accounts.
+
+Everything here is opt-in behind a single switch — the
+`mureo.runtime_context_factory` entry-point group. Every resolver in
+the family checks entry-point **presence** before consulting the store,
+so an installation with no factory registered keeps single-backend OSS
+behaviour byte-identically; none of the capabilities below is ever
+read.
+
+### The `RuntimeContext` entry point
+
+`mureo.core.runtime_context.RuntimeContext` is a frozen dataclass
+bundling four pluggable backends plus a workspace identifier:
+
+| Field | Protocol | File-backed default |
+|---|---|---|
+| `secret_store` | `mureo.core.secret_store.SecretStore` | `FilesystemSecretStore` — `~/.mureo/credentials.json` |
+| `state_store` | `mureo.core.state_store.StateStore` | `FilesystemStateStore` — CWD-relative `STATE.json` / `STRATEGY.md` |
+| `knowledge_store` | `mureo.core.knowledge_store.KnowledgeStore` | `FilesystemKnowledgeStore` — the `/learn` knowledge file |
+| `throttle_store` | `mureo.core.throttle_store.ThrottleStore` | `ProcessLocalThrottleStore` |
+| `workspace_id` | `str` | `DEFAULT_WORKSPACE_ID` (`"default"`) |
+
+`workspace_id` is opaque to mureo — any non-empty, non-whitespace
+string works; an empty or whitespace-only value is rejected at
+construction time. Register a **zero-arg callable returning a
+`RuntimeContext`** under the entry-point group:
+
+```toml
+[project.entry-points."mureo.runtime_context_factory"]
+acme = "mureo_acme_backend.context:build_runtime_context"
+```
+
+`get_runtime_context()` resolves once per process and caches:
+
+- **0 entry points** → `default_runtime_context()` (the file-backed
+  defaults above).
+- **1 entry point** → your factory is loaded and called; the result
+  must be a `RuntimeContext`.
+- **more than one** → `RuntimeContextFactoryError`. Unlike providers
+  and skills there is **no first-wins**: the context is a process
+  singleton, and a packaging mistake should be loud, not silently
+  resolved.
+
+A factory that raises, or returns the wrong type, raises
+`RuntimeContextFactoryError` on **every** call — only a successfully
+constructed context is cached, so a broken factory stays visible until
+fixed rather than being masked by a silent fall-back to the defaults.
+`reset_runtime_context()` clears the cache; it is intended for tests.
+
+### How the store capabilities are read
+
+Each capability is an **optional attribute** on your `SecretStore`.
+There is no extra Protocol to implement — declaring the attribute is
+the opt-in, and every resolver reads it defensively via `getattr`. The
+consequence cuts both ways:
+
+- A store shipped before a capability existed keeps loading unchanged.
+- A **mistyped declaration is not an error**. Each resolver validates
+  the value's shape and, when it cannot trust it, collapses to that
+  capability's default — for most of the family the *permissive*
+  single-tenant behaviour, meaning your typo silently switches the
+  feature off. The account allow-lists are the deliberate exception:
+  on a multi-account backend an absent or unusable allow-list fails
+  **closed** (see below). mureo emits no warning either way — test
+  your declarations.
+
+The `SecretStore` base contract itself is three methods: `load(key)`
+returns the stored dict, or `{}` for unknown keys (it must not raise
+on missing keys); `save(key, value)` overwrites; `delete(key)` is
+idempotent. Keys are platform names (`"google_ads"`, `"meta_ads"`, …).
+
+| Attribute | Type | Resolver (`mureo.core.runtime_context`) | Consulted by |
+|---|---|---|---|
+| `credentials_write_path` | `Path` | `runtime_credentials_path` | Configure-UI credential writers (#196) |
+| `multi_account_auth` | `bool` | `runtime_multi_account_auth` | `mureo configure` OAuth flow (#198) |
+| `ui_plugin_credential_fields` | `Mapping[str, Collection[str]]` | `runtime_ui_plugin_credential_fields` | Dashboard "Plugin credentials" section (#207) |
+| `search_console_sites` | `Collection[str]` | `runtime_search_console_sites` | Search Console MCP handlers (#375) |
+| `meta_account_ids` | `Collection[str]` | `runtime_meta_account_ids` | Meta Ads MCP handlers (#411) |
+| `google_ads_customer_ids` | `Collection[str]` | `runtime_google_ads_customer_ids` | Google Ads MCP handlers (#411) |
+| `amazon_token_saver` | `Callable[[str, str \| None], None]` | `runtime_amazon_token_saver` | Amazon bridge token refresh (#511) |
+
+#### `credentials_write_path: Path` — where configure-UI writes land
+
+The configure-UI credential write functions are path-based, while the
+MCP runtime reads through the pluggable store. Without this capability
+the two can split-brain (#194): a non-default backend reads from one
+place while the UI writes to another. `runtime_credentials_path(default)`
+resolves, in order:
+
+1. No factory registered → `default`, unchanged.
+2. Store declares `credentials_write_path` as a `Path` → that path.
+3. Store *is* the built-in `FilesystemSecretStore` → its `path`
+   (back-compat; the concrete default store never declares the
+   attribute).
+4. Otherwise → `default`.
+
+Declare it when your store is filesystem-backed but not literally a
+`FilesystemSecretStore` — e.g. a composite that layers a per-tenant
+override file over a shared base — so the credential writers (#512
+routes all of them through this resolver) target the file your reads
+actually honour. Omit it for a non-filesystem backend: a `Path` cannot
+represent Vault or a database, so the path-based write helpers stay on
+the host default — the honest ceiling of that API. A non-`Path`
+declaration is ignored (step 2 falls through).
+
+#### `multi_account_auth: bool` — operator-shared OAuth, N clients
+
+Declare `multi_account_auth = True` when the store's credentials are
+operator-shared across many client accounts — e.g. one Google
+`developer_token` + OAuth client, one Meta app, serving N clients whose
+`customer_id` / `account_id` arrive per-request out of band. The
+`mureo configure` OAuth flow then persists only the shared credentials
+and skips the per-account picker (#198).
+
+The value is honoured **only when it is exactly `True`** — `"yes"`,
+`1`, and a non-empty list all resolve to `False`, because a mistyped
+store must not silently suppress the picker. Note that this flag also
+flips the account allow-lists into fail-closed mode (below) — the two
+capabilities are designed as a pair.
+
+#### `ui_plugin_credential_fields` — scoping the dashboard credential form
+
+A per-provider allow-list of the credential-field keys the configure
+dashboard's "Plugin credentials" section should render, e.g.
+`{"yahoo_ads": {"client_id", "client_secret", "refresh_token"}}`. A
+multi-account backend uses it to surface only operator-shared auth
+fields and hide per-account ids that belong on its own per-client
+form — without it, a stale shared `account_id` saved in the dashboard
+can hijack every client's calls (the #202 incident that motivated
+#207).
+
+Consumers treat the resolved mapping as: provider present → render
+only the listed keys (drop the card entirely when none remain);
+provider absent → keep all fields, so an unknown future plugin stays
+fully usable.
+
+Normalization is strict but silent: a non-`Mapping` declaration
+resolves to `None` (no scoping); non-`str` provider keys are skipped;
+a value that is a `str` / `bytes` or not a `Collection` is skipped;
+if nothing survives, the result is `None`. A mistype must never *hide*
+fields the operator needs.
+
+#### The account allow-lists — `search_console_sites`, `meta_account_ids`, `google_ads_customer_ids`
+
+The Search Console / Meta Ads / Google Ads MCP tools take their
+account argument (`site_url` / `account_id` / `customer_id`) as a free
+caller argument, while a multi-account backend's shared OAuth can
+reach **every** client's properties — nothing else stops one client's
+workspace from querying a sibling's account. A multi-tenant backend
+closes the gap by declaring, for the active client, the allow-list of
+accounts each platform may touch; the platform handlers then enforce
+the effective id against it (#375, #411).
+
+All three share one resolution contract:
+
+- **No factory registered** → `None` (standalone OSS, unrestricted).
+- **A usable declaration** — any `Collection[str]` that is not itself
+  a `str` / `bytes` → a `frozenset` of its non-blank string entries.
+  Declaring the attribute opts *into* scoping, so an empty (or
+  all-blank) collection is scoping ON with zero accounts — the
+  handlers fail fast with "not configured for this client".
+- **Absent or unusable, on a multi-account backend**
+  (`multi_account_auth is True`) → an **empty `frozenset`, not
+  `None`** — fail **closed**. A shared-OAuth backend that reaches many
+  clients must scope these platforms; a forgotten or mistyped
+  allow-list must not silently reopen the cross-client leak. This is
+  the one place in the family where a mistype blocks instead of
+  reverting to permissive.
+- **Absent or unusable, on a single-account backend** → `None`
+  (unrestricted — no shared-OAuth cross-client risk).
+
+A bare `str` is "unusable", never a one-element allow-list — iterating
+it would produce per-character entries. Handler-side comparison is
+forgiving about formatting: Meta entries may be `act_`-prefixed or
+bare numeric (compared prefix-insensitively); Google Ads entries may
+carry hyphens or not (compared hyphen-insensitively).
+
+#### `amazon_token_saver` — binding refreshed Amazon tokens to the tenant
+
+The Amazon bridge mints and refreshes the short-lived LwA access token
+itself (one exchange per dispatch) and must persist the result, or the
+next call burns another exchange against a refresh token Amazon may
+already have rotated. Its default writer targets the runtime-resolved
+`credentials.json` (#512) — correct for a single-tenant install, wrong
+for multi-tenant, where that file is the operator-shared base whose
+reads strip the per-client token fields: refreshed tokens land where
+nothing reads them back.
+
+Declare `amazon_token_saver` — a callable taking
+`(access_token, refresh_token)` where `refresh_token` may be `None` —
+and the bridge persists every refresh through it, binding the tokens
+to the **active tenant's** store (#511). Anything non-callable
+resolves to `None` and the bridge falls back to its default writer: a
+mistype must not break the refresh path.
+
+### Minimal example
+
+```python
+# mureo_acme_backend/context.py
+"""Multi-tenant RuntimeContext for the Acme host."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from typing import Any
+
+from mureo.core.runtime_context import RuntimeContext, default_runtime_context
+
+
+class AcmeSecretStore:
+    """Tenant-scoped SecretStore over the host's own storage."""
+
+    # Operator-shared OAuth serving N clients (#198). Also flips the
+    # allow-lists below into fail-closed mode.
+    multi_account_auth = True
+
+    # The dashboard renders only shared auth fields for this provider;
+    # per-account ids live on the host's own per-client forms (#207).
+    ui_plugin_credential_fields = {
+        "google_ads": {
+            "developer_token", "client_id", "client_secret", "refresh_token",
+        },
+    }
+
+    def __init__(self, tenant: AcmeTenant) -> None:
+        self._tenant = tenant
+
+    # Account allow-lists for the ACTIVE tenant (#375 / #411).
+    @property
+    def google_ads_customer_ids(self) -> frozenset[str]:
+        return self._tenant.google_ads_customer_ids
+
+    @property
+    def meta_account_ids(self) -> frozenset[str]:
+        return self._tenant.meta_account_ids
+
+    @property
+    def search_console_sites(self) -> frozenset[str]:
+        return self._tenant.search_console_sites
+
+    # Amazon LwA refresh persistence, bound to the tenant (#511).
+    def amazon_token_saver(
+        self, access_token: str, refresh_token: str | None
+    ) -> None:
+        self._tenant.save_amazon_tokens(access_token, refresh_token)
+
+    # --- SecretStore base contract -----------------------------------
+    def load(self, key: str) -> dict[str, Any]:
+        return dict(self._tenant.credentials.get(key, {}))
+
+    def save(self, key: str, value: dict[str, Any]) -> None:
+        self._tenant.store_credentials(key, dict(value))
+
+    def delete(self, key: str) -> None:
+        self._tenant.drop_credentials(key)  # idempotent
+
+
+def build_runtime_context() -> RuntimeContext:
+    tenant = resolve_active_tenant()  # however your host decides this
+    return replace(
+        default_runtime_context(),
+        secret_store=AcmeSecretStore(tenant),
+        workspace_id=tenant.id,
+    )
+```
+
+```toml
+[project.entry-points."mureo.runtime_context_factory"]
+acme = "mureo_acme_backend.context:build_runtime_context"
+```
+
+Two things worth noting:
+
+- `dataclasses.replace` on the frozen context keeps the file-backed
+  defaults for the state / knowledge / throttle stores while swapping
+  only the pieces the host owns; construct `RuntimeContext(...)`
+  directly to replace all four.
+- **One process, one tenant.** `get_runtime_context()` caches for the
+  process lifetime, matching mureo's "one directory = one session"
+  model — a host serving many tenants concurrently isolates them per
+  process. `reset_runtime_context()` exists for tests, not for
+  mid-run tenant switching.
 
 ---
 
