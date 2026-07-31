@@ -217,7 +217,7 @@ mureo setup claude-code             # interactive OAuth wizard runs as part of s
 
 The setup command opens a local web wizard at `http://127.0.0.1:<random-port>/`, where you paste each token / secret in the appropriate field and complete the OAuth flow in the same browser. Skip individual platforms with `--no-google-ads` / `--no-meta-ads` if you only want one of them.
 
-> **Amazon Ads** has no browser sign-in wizard yet. Open `mureo configure`, scroll the dashboard to **Plugin credentials**, fill the **Amazon Ads** card by hand (or set the `AMAZON_ADS_*` env vars), then run `mureo amazon refresh-manifest` once and restart the MCP server. Full walkthrough: [`docs/amazon-ads.md`](amazon-ads.md).
+> **Amazon Ads** uses a paste-code wizard rather than a redirect-back one — Amazon's consent has no loopback callback for a local tool to listen on. Open `mureo configure`, scroll the dashboard to **Plugin credentials**, enter the Login with Amazon **Client ID** + **Client Secret** in the **Amazon Ads** card (or set the `AMAZON_ADS_*` env vars), then click **Open Amazon consent page**, approve, and paste the address Amazon redirects you to back into the card. mureo stores both tokens and refreshes the tool list; restart the MCP server afterwards. Full walkthrough: [`docs/amazon-ads.md`](amazon-ads.md).
 
 ### B. Auth in Claude Desktop chat
 

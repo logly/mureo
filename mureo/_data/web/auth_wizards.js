@@ -578,7 +578,7 @@
           res = null;
         }
         if (res && res.ok && res.body && res.body.status === "ok") {
-          onAllDone();
+          appendAmazonAuthorization(wrap, slot, doneBtn, status, onAllDone);
           return;
         }
         const msg = MUREO.t("wizard.auth.save_failed");
@@ -587,6 +587,34 @@
         doneBtn.disabled = false;
       });
     });
+  }
+
+  // Amazon's credentials are only half the setup: the saved client
+  // id/secret still have to be turned into tokens by the paste-code
+  // authorization flow (#121). Rather than sending the operator to the
+  // dashboard for it, the wizard shows the SAME controls (built by
+  // amazon_oauth.js) inline once the save lands, and turns Done into a
+  // Continue that leaves the queue when they are finished. Authorization
+  // stays optional here — an operator who pasted a refresh token by hand
+  // is already done and can simply continue.
+  function appendAmazonAuthorization(wrap, slot, doneBtn, status, onAllDone) {
+    if (slot.pluginProvider !== "amazon_ads" || !window.MUREO_AMAZON_OAUTH) {
+      onAllDone();
+      return;
+    }
+    status.textContent = MUREO.t("wizard.auth.amazon_saved_now_authorize");
+    wrap.appendChild(window.MUREO_AMAZON_OAUTH.buildAuthorizeSection());
+    // Retire the Save button rather than re-labelling it: its click
+    // listener still saves, and a Continue that also re-submitted the
+    // form would be a surprise.
+    doneBtn.hidden = true;
+    const continueBtn = document.createElement("button");
+    continueBtn.type = "button";
+    continueBtn.className = "btn btn-primary";
+    continueBtn.textContent = MUREO.t("wizard.next");
+    continueBtn.setAttribute("data-i18n", "wizard.next");
+    continueBtn.addEventListener("click", onAllDone);
+    wrap.appendChild(continueBtn);
   }
 
   function renderSequentialQueue(host, state, render) {

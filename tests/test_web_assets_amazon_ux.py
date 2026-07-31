@@ -105,6 +105,69 @@ class TestWizardAmazonPlatform:
 
 
 @pytest.mark.unit
+class TestAmazonAuthorizeControls:
+    """The paste-code authorization flow (#121 phase B).
+
+    Amazon's direct-advertiser consent has no loopback callback, so the
+    UI walks the operator through opening consent and pasting the
+    redirected address back. The controls are shared by the dashboard
+    card and the wizard step, which is what these guards pin.
+    """
+
+    def test_shared_module_owns_the_endpoints(self) -> None:
+        js = _read("amazon_oauth.js")
+        assert "/api/amazon/oauth/authorize-url" in js
+        assert "/api/amazon/oauth/exchange" in js
+        assert "window.MUREO_AMAZON_OAUTH" in js
+        assert "buildAuthorizeSection" in js
+        assert "window.open(" in js
+
+    def test_both_surfaces_reuse_the_shared_module(self) -> None:
+        """No second copy of the flow: the dashboard card and the wizard
+        step must both go through amazon_oauth.js."""
+        for name in ("dashboard.js", "auth_wizards.js"):
+            js = _read(name)
+            assert "MUREO_AMAZON_OAUTH" in js, f"{name} does not reuse the module"
+            assert "/api/amazon/oauth/" not in js, f"{name} re-implements the flow"
+
+    def test_dashboard_authorize_stays_amazon_only(self) -> None:
+        js = _read("dashboard.js")
+        block = js.split("plugin.provider_name === AMAZON_PROVIDER_NAME")[1][:600]
+        assert "buildAuthorizeSection" in block
+
+    def test_module_is_served_and_loaded_before_its_consumers(self) -> None:
+        from mureo.web.handlers import _STATIC_ALLOWLIST
+
+        assert "amazon_oauth.js" in _STATIC_ALLOWLIST
+        html = _read("app.html")
+        position = html.index("/static/amazon_oauth.js")
+        for consumer in ("/static/auth_wizards.js", "/static/dashboard.js"):
+            assert position < html.index(consumer), f"{consumer} loads first"
+
+    def test_dynamic_strings_go_through_textcontent(self) -> None:
+        """Server detail / pasted input must never be interpolated as HTML."""
+        js = _read("amazon_oauth.js")
+        assert "innerHTML" not in js
+        assert "insertAdjacentHTML" not in js
+
+    def test_expiring_hint_reads_the_status_snapshot(self) -> None:
+        js = _read("amazon_oauth.js")
+        assert "amazon_token" in js
+        assert "refresh_token_expiring" in js
+        assert "dashboard.amazon_refresh_token_expiring" in js
+
+    def test_expired_code_has_its_own_message(self) -> None:
+        js = _read("amazon_oauth.js")
+        assert "authorization_code_invalid" in js
+        assert "dashboard.amazon_exchange_code_expired" in js
+
+    def test_missing_credentials_stays_actionable(self) -> None:
+        js = _read("amazon_oauth.js")
+        assert "amazon_client_id_missing" in js
+        assert "amazon_client_credentials_missing" in js
+
+
+@pytest.mark.unit
 class TestAmazonI18nParity:
     """Every new key must exist in BOTH locales, or the UI shows a bare key."""
 
@@ -116,6 +179,24 @@ class TestAmazonI18nParity:
         "dashboard.amazon_refresh_manifest_done",
         "dashboard.amazon_refresh_manifest_failed",
         "dashboard.amazon_refresh_manifest_no_credentials",
+        "dashboard.amazon_authorize_title",
+        "dashboard.amazon_authorize_hint",
+        "dashboard.amazon_authorize_button",
+        "dashboard.amazon_authorize_opening",
+        "dashboard.amazon_authorize_failed",
+        "dashboard.amazon_authorize_no_credentials",
+        "dashboard.amazon_exchange_label",
+        "dashboard.amazon_exchange_button",
+        "dashboard.amazon_exchange_running",
+        "dashboard.amazon_exchange_done",
+        "dashboard.amazon_exchange_done_manifest_failed",
+        "dashboard.amazon_exchange_code_expired",
+        "dashboard.amazon_exchange_code_required",
+        "dashboard.amazon_exchange_no_credentials",
+        "dashboard.amazon_exchange_invalid_redirect",
+        "dashboard.amazon_exchange_failed",
+        "dashboard.amazon_refresh_token_expiring",
+        "wizard.auth.amazon_saved_now_authorize",
         "wizard.auth.amazon_ads_title",
         "wizard.auth.amazon_ads_desc",
         "wizard.completed.pending_amazon",
@@ -124,8 +205,12 @@ class TestAmazonI18nParity:
     # The platform label. No ``wizard.provider_banner.amazon_ads``
     # counterpart: Amazon has neither a provider_choice card nor a
     # providers_install slot (mureo brokers the official MCP itself), so a
-    # banner key would be a dead string.
-    _PRESENCE_KEYS = ("wizard.platforms.amazon_ads",)
+    # banner key would be a dead string. The paste placeholder is an
+    # example URL — identical in both locales on purpose.
+    _PRESENCE_KEYS = (
+        "wizard.platforms.amazon_ads",
+        "dashboard.amazon_exchange_placeholder",
+    )
 
     def test_keys_present_and_nonempty_in_both_locales(self) -> None:
         data = _load_i18n()

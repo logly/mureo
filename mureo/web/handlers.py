@@ -31,6 +31,8 @@ Routes
 ``GET  /api/credentials/plugins``→ list plugins declaring per-account fields
 ``POST /api/credentials/plugins/save`` → save one plugin's credentials
 ``POST /api/amazon/refresh-manifest`` → regenerate the Amazon tool manifest
+``POST /api/amazon/oauth/authorize-url`` → build the LwA consent URL
+``POST /api/amazon/oauth/exchange`` → trade a pasted code for LwA tokens
 ``POST /api/oauth/<p>/start``    → spawn WebAuthWizard, return consent URL
 ``POST /api/legacy/cleanup``     → delete legacy slash commands
 ``GET  /api/demo/scenarios``     → list registered demo scenarios
@@ -59,6 +61,7 @@ import sys
 import threading
 import time
 import urllib.parse
+from datetime import timezone
 from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Any
 
@@ -273,6 +276,7 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "app.js",
     "landing.js",
     "wizard.js",
+    "amazon_oauth.js",
     "auth_wizards_meta.js",
     "auth_wizards.js",
     "dashboard.js",
@@ -405,6 +409,147 @@ def _amazon_manifest_tool_count(path: Path) -> int:
         return 0
     tools = doc.get("tools") if isinstance(doc, dict) else None
     return len(tools) if isinstance(tools, list) else 0
+
+
+def _amazon_credentials_section(credentials_path: Path) -> dict[str, Any]:
+    """The raw ``amazon_ads`` section of the credentials file.
+
+    NOT ``load_amazon_ads_credentials``: that loader demands token
+    material, and the authorization wizard runs precisely when there is
+    none yet — the operator has saved the LwA client id/secret and is
+    about to obtain the first tokens. Reading the section directly is
+    what lets the flow start. Never raises (a missing/corrupt file is an
+    empty section, per the store's read contract).
+    """
+    return FilesystemSecretStore(path=credentials_path).load("amazon_ads")
+
+
+def _amazon_redirect_uri(payload: dict[str, Any]) -> str | None:
+    """The return URL for the consent round trip, or ``None`` if unusable.
+
+    Defaults to Amazon's documented direct-advertiser pattern. A supplied
+    value is scheme-checked because it is echoed into a URL the browser
+    then opens — ``javascript:`` and friends have no business making that
+    round trip, whatever the (localhost-only, CSRF-gated) caller intends.
+    Amazon rejects the exchange anyway unless the URL is listed in the
+    LwA security profile's Allowed Return URLs.
+    """
+    from mureo.amazon_ads.lwa import DEFAULT_REDIRECT_URI
+
+    raw = str(payload.get("redirect_uri") or "").strip()
+    if not raw:
+        return DEFAULT_REDIRECT_URI
+    if urllib.parse.urlsplit(raw).scheme.lower() not in ("http", "https"):
+        return None
+    return raw
+
+
+def _amazon_authorization_code(raw: str) -> str:
+    """Extract the authorization code from a pasted code OR redirect URL.
+
+    Amazon's direct-advertiser flow ends at a plain web page: the code is
+    only visible in the browser's address bar, so operators paste the
+    whole URL far more often than they isolate the parameter. Three
+    accepted shapes, in order:
+
+    1. URL-shaped (has a scheme or a ``?``) → the ``code`` query param.
+    2. A bare query string (``code=…&scope=…``, no ``?``) — what you get
+       by copying only the tail of the address. Recognised by an actual
+       ``code=`` SEGMENT, so a bare code that merely happens to contain
+       ``=`` (base64 padding) is not mistaken for a query string.
+    3. Otherwise the text is the bare code.
+
+    Anything URL/query-shaped WITHOUT a ``code`` (a declined consent's
+    ``?error=access_denied``, or a code hidden behind a ``#`` fragment)
+    yields ``""``. The caller reports that as "no code" — sending the URL
+    to Amazon as if it were a code would turn a clear message into an
+    opaque upstream rejection.
+    """
+    text = raw.strip()
+    if not text:
+        return ""
+    if "://" in text or "?" in text:
+        query = urllib.parse.urlsplit(text).query
+    elif text.startswith("code=") or "&code=" in text:
+        query = text
+    else:
+        return text
+    values = urllib.parse.parse_qs(query).get("code") or []
+    return values[0].strip() if values else ""
+
+
+def _persist_amazon_authorization(credentials_path: Path, tokens: Any) -> None:
+    """Write the freshly obtained tokens + the re-authorization clock.
+
+    ``refresh_token_obtained_at`` is stamped in UTC from the server clock:
+    Amazon expires refresh tokens issued on/after 2026-07-30 365 days
+    after consent and never reports the issue date, so this write is the
+    only record of when the countdown started.
+    """
+    from mureo.auth import save_amazon_access_token
+    from mureo.core import clock
+
+    save_amazon_access_token(
+        tokens.access_token,
+        tokens.refresh_token,
+        path=credentials_path,
+        refresh_token_obtained_at=clock.server_now()
+        .astimezone(timezone.utc)
+        .isoformat(timespec="seconds"),
+    )
+
+
+def _generate_amazon_manifest(
+    creds: Any, credentials_path: Path
+) -> tuple[Path | None, str]:
+    """Run the Amazon manifest generator. Returns ``(written, detail)``.
+
+    Exactly one side is meaningful: ``(path, "")`` on success,
+    ``(None, scrubbed_detail)`` on failure. Shared by the dashboard's
+    refresh button and the post-authorization refresh so the failure
+    handling has ONE definition — the upstream error can quote an
+    ``Authorization: Bearer …`` header, so it is scrubbed and capped
+    exactly once and the SAME string is what reaches both the log and
+    the caller's response. No traceback is logged for the same reason:
+    a nested frame's repr would persist the credential to disk.
+
+    The manifest is written beside ``credentials_path`` (not under
+    ``Path.home()``) so a non-default home stays coherent.
+    """
+    from mureo.amazon_ads import manifest as amazon_manifest
+    from mureo.mcp.plugin_audit import _MAX_STR, _scrub
+
+    out_path = credentials_path.parent / "amazon_tools.json"
+    try:
+        written = run_coroutine(
+            amazon_manifest.generate_manifest(creds, out_path=out_path)
+        )
+    except Exception as exc:  # noqa: BLE001 — any transport/auth failure
+        detail = _scrub(f"{type(exc).__name__}: {exc}")[:_MAX_STR]
+        logger.warning("Amazon manifest refresh failed: %s", detail)
+        return None, detail
+    return written, ""
+
+
+def _amazon_manifest_refresh_result(credentials_path: Path) -> dict[str, Any]:
+    """Regenerate the Amazon tool manifest — best-effort, never raising.
+
+    Runs after a successful authorization so the operator ends the wizard
+    with tools rather than a credentialed-but-toolless bridge. The
+    authorization itself is already persisted by the time this runs, so a
+    failure here is REPORTED, not raised: telling the operator to redo a
+    consent that worked would be a lie, and the dashboard's
+    "Refresh tool list" button retries this exact generator.
+    """
+    from mureo.auth import load_amazon_ads_credentials
+
+    creds = load_amazon_ads_credentials(credentials_path)
+    if creds is None:  # pragma: no cover — tokens were just written
+        return {"manifest": "failed", "manifest_detail": "amazon_credentials_missing"}
+    written, detail = _generate_amazon_manifest(creds, credentials_path)
+    if written is None:
+        return {"manifest": "failed", "manifest_detail": detail}
+    return {"manifest": "ok", "tool_count": _amazon_manifest_tool_count(written)}
 
 
 class ConfigureHandler(BaseHTTPRequestHandler):
@@ -1339,21 +1484,13 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         region endpoint — reached from the configure UI so a UI-only
         operator never has to drop into a terminal.
 
-        Failure detail is scrubbed with the plugin-audit scrubber (the
-        upstream error can quote an ``Authorization: Bearer …`` header)
-        and capped at the same length that scrubber's callers use, and no
-        field of the credential set is ever echoed back. A ``502``
-        distinguishes "Amazon/network said no" from the ``400`` "you have
-        not configured Amazon yet".
-
-        The SAME scrubbed string is what reaches the log: an HTTP client's
-        error text can embed the bearer token, so a ``logger.exception``
-        traceback here would persist the credential to disk — exactly the
-        leak the response is careful to avoid.
+        Generation, scrubbing and logging live in
+        :func:`_generate_amazon_manifest`, shared with the
+        post-authorization refresh: no field of the credential set is
+        ever echoed back, and a ``502`` distinguishes "Amazon/network
+        said no" from the ``400`` "you have not configured Amazon yet".
         """
-        from mureo.amazon_ads import manifest as amazon_manifest
         from mureo.auth import load_amazon_ads_credentials
-        from mureo.mcp.plugin_audit import _MAX_STR, _scrub
 
         credentials_path = self.wizard.host_paths.credentials_path
         creds = load_amazon_ads_credentials(credentials_path)
@@ -1361,19 +1498,8 @@ class ConfigureHandler(BaseHTTPRequestHandler):
             send_error_json(self, 400, "amazon_credentials_missing")
             return
 
-        # Write the manifest beside the credentials file the bridge reads
-        # its own credentials from, so a non-default home stays coherent.
-        out_path = credentials_path.parent / "amazon_tools.json"
-        try:
-            written = run_coroutine(
-                amazon_manifest.generate_manifest(creds, out_path=out_path)
-            )
-        except Exception as exc:  # noqa: BLE001 — any transport/auth failure
-            # Scrub + cap ONCE, then reuse for both sinks — no traceback, so
-            # the token can't reach the log file through a nested frame's
-            # repr either.
-            detail = _scrub(f"{type(exc).__name__}: {exc}")[:_MAX_STR]
-            logger.warning("Amazon manifest refresh failed: %s", detail)
+        written, detail = _generate_amazon_manifest(creds, credentials_path)
+        if written is None:
             send_json(
                 self,
                 {
@@ -1393,6 +1519,135 @@ class ConfigureHandler(BaseHTTPRequestHandler):
                 "path": str(written),
                 "tool_count": _amazon_manifest_tool_count(written),
             },
+        )
+
+    def _post_amazon_oauth_authorize_url(self, payload: dict[str, Any]) -> None:
+        """Build the Login-with-Amazon consent URL for the saved client id.
+
+        Amazon's direct-advertiser flow has no loopback callback: consent
+        redirects to a URL the advertiser's own LwA security profile
+        allows (default ``https://amazon.com``) and the code is read from
+        the address bar. So this route only *builds* the URL — the
+        browser opens it, and ``/api/amazon/oauth/exchange`` finishes the
+        job.
+
+        Only the client id (not a secret, and already in the URL by
+        design) leaves this handler; no other credential field is read or
+        echoed. A missing client id is a distinct ``400`` because the
+        remedy is "save the card first", not "try again".
+        """
+        from mureo.amazon_ads.lwa import build_authorization_url, normalize_region
+
+        section = _amazon_credentials_section(self.wizard.host_paths.credentials_path)
+        client_id = str(section.get("client_id") or "").strip()
+        if not client_id:
+            send_error_json(self, 400, "amazon_client_id_missing")
+            return
+        redirect_uri = _amazon_redirect_uri(payload)
+        if redirect_uri is None:
+            send_error_json(self, 400, "invalid_redirect_uri")
+            return
+
+        region = normalize_region(section.get("region"))
+        send_json(
+            self,
+            {
+                "authorize_url": build_authorization_url(
+                    client_id=client_id, region=region, redirect_uri=redirect_uri
+                ),
+                "region": region,
+            },
+        )
+
+    def _post_amazon_oauth_exchange(self, payload: dict[str, Any]) -> None:
+        """Exchange a pasted authorization code for LwA tokens.
+
+        Accepts the bare code or the full redirected URL (operators paste
+        what the address bar shows). On success the tokens AND the
+        re-authorization clock are persisted through the same hardened
+        credentials writer the token refresh uses, the tool manifest is
+        rebuilt best-effort, and the response carries **no** token
+        material — only the region and the manifest outcome.
+
+        Failures are scrubbed and length-capped exactly like the manifest
+        route: a rejected code is a ``400`` (they expire 5 minutes after
+        consent — the operator re-authorizes), anything else a ``502``.
+        """
+        from mureo.amazon_ads import lwa
+
+        credentials_path = self.wizard.host_paths.credentials_path
+        section = _amazon_credentials_section(credentials_path)
+        client_id = str(section.get("client_id") or "").strip()
+        client_secret = str(section.get("client_secret") or "").strip()
+        if not client_id or not client_secret:
+            send_error_json(self, 400, "amazon_client_credentials_missing")
+            return
+        code = _amazon_authorization_code(str(payload.get("code_or_url") or ""))
+        if not code:
+            send_error_json(self, 400, "authorization_code_required")
+            return
+        redirect_uri = _amazon_redirect_uri(payload)
+        if redirect_uri is None:
+            send_error_json(self, 400, "invalid_redirect_uri")
+            return
+
+        region = lwa.normalize_region(section.get("region"))
+        try:
+            tokens = lwa.exchange_authorization_code(
+                code=code,
+                redirect_uri=redirect_uri,
+                client_id=client_id,
+                client_secret=client_secret,
+                region=region,
+            )
+        except lwa.AmazonAuthError as exc:
+            self._send_amazon_authorization_error(exc, region)
+            return
+
+        try:
+            _persist_amazon_authorization(credentials_path, tokens)
+        except Exception:  # noqa: BLE001 — malformed/unwritable credentials file
+            # No exception text: it can quote the document being written.
+            logger.warning("Amazon authorization could not be persisted")
+            send_error_json(self, 500, "credentials_write_failed")
+            return
+
+        send_json(
+            self,
+            {
+                "status": "ok",
+                "region": region,
+                **_amazon_manifest_refresh_result(credentials_path),
+            },
+        )
+
+    def _send_amazon_authorization_error(self, exc: Exception, region: str) -> None:
+        """Report a failed exchange without ever echoing credentials.
+
+        The SAME scrubbed, capped string reaches the response and the log
+        (no traceback — a transport's error text can embed the bearer
+        token). A rejected code gets its own machine code so the UI can
+        say "codes expire in 5 minutes, authorize again" instead of
+        sending the operator to check their client secret.
+        """
+        from mureo.amazon_ads.lwa import AmazonAuthCodeError
+        from mureo.mcp.plugin_audit import _MAX_STR, _scrub
+
+        detail = _scrub(str(exc))[:_MAX_STR]
+        logger.warning("Amazon authorization exchange failed: %s", detail)
+        rejected = isinstance(exc, AmazonAuthCodeError)
+        send_json(
+            self,
+            {
+                "error": (
+                    "authorization_code_invalid"
+                    if rejected
+                    else "amazon_authorization_failed"
+                ),
+                "region": region,
+                "detail": detail,
+            },
+            status=400 if rejected else 502,
         )
 
     def _post_legacy_cleanup(self, payload: dict[str, Any]) -> None:  # noqa: ARG002
@@ -1776,6 +2031,8 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/credentials/meta/token": _post_credentials_meta_token,
         "/api/credentials/plugins/save": _post_plugin_credentials_save,
         "/api/amazon/refresh-manifest": _post_amazon_refresh_manifest,
+        "/api/amazon/oauth/authorize-url": _post_amazon_oauth_authorize_url,
+        "/api/amazon/oauth/exchange": _post_amazon_oauth_exchange,
         "/api/legacy/cleanup": _post_legacy_cleanup,
         "/api/demo/init": _post_demo_init,
         "/api/byod/import": _post_byod_import,
