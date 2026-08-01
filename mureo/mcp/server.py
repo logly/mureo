@@ -397,20 +397,21 @@ def _register_plugin_pattern_fallbacks(
       :mod:`mureo.core.tool_names` (the same list and matcher the rollback
       planner uses, single-sourced so the two cannot drift).
 
-    The name check is what matters here. ``derive_semantics`` defaults an
-    undeclared tool to *mutating* — correct for auditing, where over-recording
-    is harmless — and a manifest snapshot declares nothing, so every read from
-    a bridged surface arrives as "mutating". Without the name check, a listing
-    call carrying a numeric budget-shaped FILTER argument would be refused
-    outright. The error costs are asymmetric: platform mutations are
-    consistently verb-named (``create_`` / ``update_`` / ``delete_`` /
-    ``set_``), so a read-shaped name is almost never a mutation, whereas a
-    mutation-shaped name that is really a read costs only a wasted scan of
-    arguments that carry no budget.
+    The name check still matters after #517, which taught ``derive_semantics``
+    the same vocabulary for tools that declare NO ``readOnlyHint``: a plugin is
+    free to declare ``readOnlyHint=False`` on a read-shaped name, and that
+    declaration is believed for auditing (over-recording is harmless) but must
+    not turn a listing call carrying a numeric budget-shaped FILTER argument
+    into an outright refusal. The error costs are asymmetric: platform
+    mutations are consistently verb-named (``create_`` / ``update_`` /
+    ``delete_`` / ``set_``), so a read-shaped name is almost never a mutation,
+    whereas a mutation-shaped name that is really a read costs only a wasted
+    scan of arguments that carry no budget.
 
-    TODO (Wave 2): replace this name heuristic with the tools' verified
-    ``readOnlyHint`` / ``destructiveHint`` annotations once a real bridged
-    manifest has been inspected and its annotation coverage is known.
+    Annotation coverage on a real bridged surface is now known rather than
+    assumed (#517): of 85 tools on one Amazon manifest, 83 declare
+    ``readOnlyHint`` and 2 omit it — good enough to lead with the declaration,
+    not good enough to drop the name fallback.
 
     Best-effort: a registry failure must not take the server down.
     """

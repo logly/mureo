@@ -513,13 +513,18 @@ def _generate_amazon_manifest(
     the caller's response. No traceback is logged for the same reason:
     a nested frame's repr would persist the credential to disk.
 
-    The manifest is written beside ``credentials_path`` (not under
-    ``Path.home()``) so a non-default home stays coherent.
+    The destination comes from :func:`mureo.amazon_ads.manifest.manifest_path_for`
+    — the single rule for where a manifest lives (beside the credentials
+    file that authorized it), shared with the bridge and the CLI. Deriving
+    it here instead is what produced #516: this writer followed the
+    runtime-resolved ``credentials_path`` while the readers hardcoded
+    ``~/.mureo``, so a relocating runtime got a written manifest and a
+    toolless bridge.
     """
     from mureo.amazon_ads import manifest as amazon_manifest
     from mureo.mcp.plugin_audit import _MAX_STR, _scrub
 
-    out_path = credentials_path.parent / "amazon_tools.json"
+    out_path = amazon_manifest.manifest_path_for(credentials_path)
     try:
         written = run_coroutine(
             amazon_manifest.generate_manifest(creds, out_path=out_path)

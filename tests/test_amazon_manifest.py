@@ -154,7 +154,21 @@ class TestGenerateManifest:
             )
         assert not (tmp_path / "m.json").exists()  # no partial file
 
-    def test_manifest_path_default_under_mureo_home(self) -> None:
+    def test_manifest_path_default_under_mureo_home(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The no-runtime-context default is unchanged by #516.
+
+        The entry-point group is stubbed empty because ``manifest_path``
+        is now runtime-aware: on a machine where a
+        ``mureo.runtime_context_factory`` IS installed it correctly
+        resolves elsewhere (covered in
+        ``tests/test_amazon_manifest_runtime_path.py``), and this test is
+        about the OSS default, not about whatever the host has installed.
+        """
+        monkeypatch.setattr(
+            "mureo.core.runtime_context.entry_points", lambda *, group: []
+        )
         p = manifest_path()
         assert p.name == "amazon_tools.json"
         assert p.parent.name == ".mureo"

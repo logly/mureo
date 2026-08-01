@@ -157,10 +157,16 @@ mureo amazon refresh-manifest
 ```
 
 This connects once (authenticated), lists Amazon's MCP tools, and
-writes `~/.mureo/amazon_tools.json`. The mureo MCP server reads that
-file **at start** (pure, no network, no credentials) to expose the
-Amazon tools — so a missing manifest simply means "no Amazon tools",
-never a startup failure.
+writes `amazon_tools.json` **beside your credentials file** —
+`~/.mureo/amazon_tools.json` in a standard install. The mureo MCP server
+reads that file **at start** (pure, no network, no credentials) to
+expose the Amazon tools — so a missing manifest simply means "no Amazon
+tools", never a startup failure.
+
+> The manifest always follows the credentials file. If a host plugin
+> relocates `credentials.json` (a multi-tenant runtime context), the
+> manifest moves with it and every reader — the bridge, this CLI, the
+> `mureo configure` dashboard — resolves the same single location.
 
 Re-run this command whenever Amazon's tool surface changes, or after
 you re-authorize. It is not needed for a routine token refresh — mureo

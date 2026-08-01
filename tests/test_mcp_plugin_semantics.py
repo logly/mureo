@@ -17,9 +17,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _tool(*, annotations=None, meta=None) -> Tool:
+def _tool(*, annotations=None, meta=None, name="acme_ads_x") -> Tool:
     return Tool(
-        name="acme_ads_x",
+        name=name,
         description="x",
         inputSchema={"type": "object", "properties": {}},
         annotations=annotations,
@@ -63,6 +63,69 @@ class TestDeriveSemantics:
         for bad_val in ("x", 0, -3, 1.5, None, True, False):
             sem = derive_semantics(_tool(meta={"mureo": {"observation_days": bad_val}}))
             assert sem.observation_days is None
+
+
+@pytest.mark.unit
+class TestHintLessToolsFallBackToTheNameVocabulary:
+    """#517: a bridged surface is not obliged to annotate.
+
+    On one real Amazon manifest 83 of 85 tools declare ``readOnlyHint``;
+    the two that do not are plainly ``list_`` reads, and the
+    undeclared-⇒-mutating default filed them in STATE.json's action_log
+    with a 14-day observation window.
+    """
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "billing-list_invoice_summaries",
+            "billing-list_billing_profile_usages",
+        ],
+    )
+    def test_the_two_real_hint_less_reads_are_not_mutating(self, name: str) -> None:
+        assert derive_semantics(_tool(name=name)).mutating is False
+
+    def test_a_hint_less_mutation_shaped_name_stays_mutating(self) -> None:
+        assert derive_semantics(
+            _tool(name="campaign_management-create_campaign")
+        ).mutating
+
+    def test_annotations_without_the_hint_also_fall_back_to_the_name(self) -> None:
+        sem = derive_semantics(
+            _tool(
+                name="billing-list_invoices",
+                annotations=ToolAnnotations(destructiveHint=False),
+            )
+        )
+        assert sem.mutating is False
+
+    def test_an_explicit_hint_always_wins_over_the_name(self) -> None:
+        """A plugin author saying ``readOnlyHint=False`` on a read-shaped
+        name is a declaration, not an omission."""
+        mutating = derive_semantics(
+            _tool(
+                name="billing-list_invoice_summaries",
+                annotations=ToolAnnotations(readOnlyHint=False),
+            )
+        )
+        assert mutating.mutating is True
+        read = derive_semantics(
+            _tool(
+                name="campaign_management-create_campaign",
+                annotations=ToolAnnotations(readOnlyHint=True),
+            )
+        )
+        assert read.mutating is False
+
+    def test_the_fallback_uses_the_shared_read_vocabulary(self) -> None:
+        """Same answer as the rollback planner and the guardrail
+        pattern-fallback registration — three surfaces, one list."""
+        from mureo.core.tool_names import is_read_only_tool_name
+
+        for name in ("billing-list_invoice_summaries", "acme-create_thing"):
+            assert derive_semantics(_tool(name=name)).mutating is not (
+                is_read_only_tool_name(name)
+            )
 
 
 @pytest.mark.unit

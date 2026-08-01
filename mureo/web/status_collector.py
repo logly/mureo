@@ -205,24 +205,25 @@ def _amazon_credentials_usable(section: Any) -> bool:
 
 
 def _detect_amazon_manifest(credentials_path: Path) -> dict[str, Any]:
-    """Freshness of ``~/.mureo/amazon_tools.json`` (audit #47).
+    """Freshness of the Amazon tool manifest (audit #47).
 
-    The manifest lives beside ``credentials.json``, so the path is derived
-    from ``credentials_path`` rather than from ``Path.home()`` — the collector
-    reads exactly the tree it was handed, which is what keeps a test (or a
-    non-default home) from being answered with the operator's real manifest.
+    The manifest lives beside ``credentials.json``, and
+    :func:`mureo.amazon_ads.manifest.manifest_path_for` is the one place
+    that says so (#516). Resolving from the handed-in ``credentials_path``
+    rather than from ``Path.home()`` is what keeps a test (or a non-default
+    home) from being answered with the operator's real manifest.
 
     Read-only and never raises, like every other detector here: an unreadable
     or timestamp-less manifest reports ``present`` with an unknown age, and an
     unknown age is never called stale.
     """
     from mureo.amazon_ads.manifest import (
-        MANIFEST_FILENAME,
         is_stale,
         manifest_age_days,
+        manifest_path_for,
     )
 
-    path = credentials_path.parent / MANIFEST_FILENAME
+    path = manifest_path_for(credentials_path)
     present = path.exists()
     age = manifest_age_days(path) if present else None
     return {

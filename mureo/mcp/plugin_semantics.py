@@ -4,11 +4,19 @@ promote *mutating* plugin calls into STATE.json's ``action_log``.
 A plugin opts into richer treatment purely through **standard MCP**
 metadata — no new mureo Protocol surface:
 
-- ``Tool.annotations.readOnlyHint is True`` → the tool is a read; it
-  stays in the dedicated plugin audit log only (no STATE.json write).
-- Anything else (no annotations, ``readOnlyHint`` absent/false, or
-  ``destructiveHint``) is treated as **mutating** (conservative
-  default — undeclared ⇒ mutating, matching Phase 1).
+- ``Tool.annotations.readOnlyHint`` → believed verbatim, either way:
+  ``True`` means the tool is a read and stays in the dedicated plugin
+  audit log only (no STATE.json write), ``False`` means it mutates.
+- **No** ``readOnlyHint`` at all (no annotations, or annotations that
+  omit it — e.g. ``destructiveHint`` only) → the name is consulted
+  through the shared read vocabulary
+  (:func:`mureo.core.tool_names.is_read_only_tool_name`), and only a
+  name that does not read as a read falls through to the conservative
+  **mutating** default (issue #517). A bridged surface is not obliged
+  to annotate: of 85 tools on one real Amazon manifest, two omit the
+  hint and both are plainly ``list_`` reads — promoting those to
+  STATE.json's ``action_log`` with a 14-day ``observation_due`` filed
+  invoice listings as changes to review.
 - Optional ``Tool.meta["mureo"]``:
     - ``reversal``: a dict recorded verbatim into the action_log
       entry's ``reversible_params`` so ``rollback_plan_get`` can see
@@ -37,6 +45,7 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.core import clock
 from mureo.core.platform_keys import plugin_platform_key
+from mureo.core.tool_names import is_read_only_tool_name
 from mureo.policy.declarations import BidDeclaration, BudgetDeclaration
 from mureo.throttle import ThrottleConfig
 
@@ -175,11 +184,25 @@ def _meta_mureo(tool: Tool) -> dict[str, Any]:
     return {}
 
 
+def _is_read(tool: Tool) -> bool:
+    """Is ``tool`` a read? Declaration first, name shape only as a fallback.
+
+    An explicit ``readOnlyHint`` always wins — including an explicit
+    ``False``, which is a plugin author saying "this mutates" and must not
+    be overturned by a read-shaped name. Only when the hint is ABSENT does
+    the name decide, through the same vocabulary the rollback planner and
+    the guardrail pattern-fallback registration already share, so the three
+    surfaces cannot answer "is this a read?" differently (#517).
+    """
+    hint = getattr(getattr(tool, "annotations", None), "readOnlyHint", None)
+    if hint is not None:
+        return hint is True
+    return is_read_only_tool_name(getattr(tool, "name", "") or "")
+
+
 def derive_semantics(tool: Tool) -> ToolSemantics:
     """Classify one plugin tool from standard MCP annotations + meta."""
-    ann = getattr(tool, "annotations", None)
-    read_only = bool(getattr(ann, "readOnlyHint", False) is True)
-    mutating = not read_only
+    mutating = not _is_read(tool)
 
     section = _meta_mureo(tool)
     reversal = section.get("reversal")

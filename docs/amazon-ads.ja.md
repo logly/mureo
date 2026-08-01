@@ -159,12 +159,18 @@ mureo amazon refresh-manifest
 ```
 
 認証付きで一度接続し、Amazon の MCP ツール一覧を取得して
-`~/.mureo/amazon_tools.json` に書き出します。mureo MCP サーバは
+**認証情報ファイルと同じ場所**に `amazon_tools.json` を書き出します
+（標準構成では `~/.mureo/amazon_tools.json`）。mureo MCP サーバは
 起動時にこのファイルを読むだけ（純粋・ネットワーク無し・資格情報
 不要）。マニフェスト不在＝「Amazon ツール無し」で、起動失敗には
 なりません。Amazon のツール構成が変わったときや再認可した後に
 再実行してください。通常のトークン更新のために実行する必要は
 ありません（mureo が自動で行います。後述）。
+
+> マニフェストは常に認証情報ファイルに追従します。ホスト側プラグインが
+> `credentials.json` の場所を変更する場合（マルチテナントのランタイム
+> コンテキスト）もマニフェストは一緒に移動し、ブリッジ・CLI・
+> `mureo configure` ダッシュボードのすべてが同じ 1 箇所を参照します。
 
 ## 6. Claude / mureo MCP サーバを再起動
 

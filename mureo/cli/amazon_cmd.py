@@ -3,9 +3,12 @@
 ``mureo amazon refresh-manifest`` performs the one-time (repeatable)
 authenticated discovery: it connects to the region endpoint using the
 ``amazon_ads`` credentials in ``~/.mureo/credentials.json``, lists
-Amazon's MCP tools, and writes ``~/.mureo/amazon_tools.json``. The
-mureo MCP server then reads that manifest at start (pure, no network)
-to expose the Amazon tools through mureo's safety layer.
+Amazon's MCP tools, and writes ``amazon_tools.json`` beside them
+(``~/.mureo/amazon_tools.json`` by default — a runtime context that
+relocates the credentials file moves both together, see
+:func:`mureo.amazon_ads.manifest.manifest_path`). The mureo MCP server
+then reads that manifest at start (pure, no network) to expose the
+Amazon tools through mureo's safety layer.
 
 Two things happen before the connection:
 
@@ -38,9 +41,25 @@ from mureo.auth import (
     save_amazon_access_token,
 )
 from mureo.core.atomic_json import ConfigWriteError
-from mureo.mcp.plugin_audit import _scrub as _scrub_secrets
 
 amazon_app = typer.Typer(name="amazon", help="Amazon Ads official-MCP bridge setup")
+
+
+def _scrub_secrets(text: str) -> str:
+    """Redact credential material from an error string.
+
+    Lazy import of ``mureo.mcp.plugin_audit`` (#486 pattern, guarded by
+    ``tests/test_cli_import_hygiene.py``): that package's ``__init__``
+    imports the MCP server, which collects plugin tools AT IMPORT — and
+    since #516 that collection resolves the active ``RuntimeContext``, so
+    a module-level import here made *every* CLI command (``--help``
+    included) load whatever a registered ``mureo.runtime_context_factory``
+    drags in, ad-platform SDKs and their import-time warnings included.
+    Scrubbing is only ever needed on an error path.
+    """
+    from mureo.mcp.plugin_audit import _scrub
+
+    return _scrub(text)
 
 
 def _echo_manifest_age() -> None:
