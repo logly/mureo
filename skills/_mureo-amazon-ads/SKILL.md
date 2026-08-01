@@ -2,7 +2,7 @@
 name: _mureo-amazon-ads
 description: "Amazon Ads (official MCP, bridged by mureo): query campaigns, ad groups, ads and targets, run reports, and manage account access under Amazon's own tool names."
 metadata:
-  version: 0.10.38
+  version: 0.10.39
   openclaw:
     category: "advertising"
     requires:
@@ -63,7 +63,7 @@ metadata:
 - **Guardrails reach these tools best-effort, not as the exact-key hard gate.**
   A bridged manifest carries no mureo declarations, so `STRATEGY.md`
   `## Guardrails` budget/bid caps are applied by a **pattern scan** of the
-  argument keys. It covers the real Amazon money shapes as of 0.10.38 —
+  argument keys. It covers the real Amazon money shapes as of 0.10.39 —
   `budgets[].budgetValue.monetaryBudgetValue.monetaryBudget.value`,
   `budgetCaps.countryMonetaryBudgetSettings.<CC>.value`, `bid.bid`,
   `bid.{baseBid,defaultBid,maxAverageBid}` — and an oversized or

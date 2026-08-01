@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.39] - 2026-08-02
+
 ### Added
 
 - **Amazon writes are now genuinely reversible** (#121). Amazon
