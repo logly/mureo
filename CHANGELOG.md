@@ -42,6 +42,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portfolios — a wrong inference makes that one tool never reversible
   (the pre-feature behaviour), never wrongly reversible.
 
+- **Amazon Ads has a foundation skill** (#121). `skills/_mureo-amazon-ads/SKILL.md`
+  is what the agent reads before touching the bridged official-MCP surface:
+  the 85-tool manifest grouped by namespace, the
+  `<namespace>-<verb>_<resource>` hyphen naming (which differs from the
+  all-underscore native tools), and the calling requirements that otherwise
+  burn turns — `accessRequestedAccount` (`advertiserAccountId` **or**
+  `profileId`), `adProductFilter.include` accepting exactly one ad product so
+  a full sweep is one call per product, the global-account rule that
+  `advertiserAccountId` fails with *"Multi marketplace query requests only
+  support query by primary resource id"*, and the `ARCHIVED` / `ENABLED` /
+  `PAUSED` state enum. Scope is stated honestly: no tool declares an
+  `outputSchema` (response shapes are learned by calling, and only the
+  `{"campaigns": …}` / `{"ads": …}` envelopes are confirmed), the surface comes
+  from the operator's own manifest and can drift (`mureo amazon
+  refresh-manifest` + the staleness warning), analytics are advisory (#120),
+  and guardrails apply through the best-effort pattern scan. The shared
+  plugin-platform contract is cross-referenced rather than duplicated, under
+  the canonical platform key `plugin:mureo-amazon-ads-bridge`.
+- **`/daily-check` and `/sync-state` now fetch Amazon ad-level state** (#121,
+  on the #468 / #477 stack). Amazon has an ad-listing tool —
+  `campaign_management-query_ad` — so both flows name it, with its required
+  filters, instead of reporting Amazon as "no ad-listing tool available".
+  Amazon exposes **one** state per ad (`state`, the configured state) and no
+  serving/review status, so the skills record it as the ad's `status` and
+  leave `effective_status` **unset**: `AdState` permits the omission, and
+  synthesising an effective status would manufacture a delivery fact Amazon
+  never reported. `/daily-check`'s delivery-state guard is generalized to
+  match: an entity stored with **no `effective_status` at all** has an
+  **unknown** delivery state — its `status` is only the configured state and is
+  never evidence that it served — with Amazon named as today's example rather
+  than as the condition. `tests/test_ad_level_status_visibility.py` pins the
+  wiring as a skill × ad-listing-tool matrix and the guard rule in its general
+  form.
+
 ## [0.10.38] - 2026-08-01
 
 ### Added

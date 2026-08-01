@@ -143,8 +143,8 @@ skills/                       # Native slash skills — one `<name>/SKILL.md` pe
 │                             #   by `mureo/cli/native_skills.py`.
 ├── onboard/, daily-check/, rescue/, budget-rebalance/, …   # ~20 operational (workflow) skills
 │   └── SKILL.md
-└── _mureo-*/                 # 6 foundation skills: _mureo-shared / _mureo-strategy / _mureo-google-ads /
-    └── SKILL.md              #   _mureo-meta-ads / _mureo-learning / _mureo-pro-diagnosis
+└── _mureo-*/                 # 7 foundation skills: _mureo-shared / _mureo-strategy / _mureo-google-ads /
+    └── SKILL.md              #   _mureo-meta-ads / _mureo-amazon-ads / _mureo-learning / _mureo-pro-diagnosis
 docs/integrations.md          # Platform discovery + external MCP integration guide
 ```
 

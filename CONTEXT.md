@@ -85,6 +85,15 @@ page posts, and Instagram.
 
 See `skills/_mureo-meta-ads/SKILL.md` for the full tool reference.
 
+### Amazon Ads Tools (official MCP, bridged — Amazon's own names)
+
+When the Amazon bridge is configured, Amazon's tools appear under their own
+hyphenated namespaces (`campaign_management-*`, `account_management-*`,
+`reporting-*`, `amc-*`, ...) rather than a `mureo` prefix.
+
+See `skills/_mureo-amazon-ads/SKILL.md` for the tool surface and calling
+requirements, and `docs/amazon-ads.md` for the setup.
+
 ### Search Console Tools (prefix: `search_console.`)
 
 Tools covering site management, search analytics, URL inspection, sitemaps, and indexing.

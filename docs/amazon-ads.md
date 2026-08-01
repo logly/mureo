@@ -248,6 +248,22 @@ that invents an id.
   (entities that ran out of time become caveats) or with no reversal at
   all. An unreversed write beats a delayed one.
 
+## What the agent knows about Amazon
+
+The bundled foundation skill
+[`skills/_mureo-amazon-ads/SKILL.md`](../skills/_mureo-amazon-ads/SKILL.md)
+is what the AI agent reads before touching this surface. It covers the
+85-tool manifest by namespace, the `<namespace>-<verb>_<resource>`
+hyphen naming, the calling requirements that otherwise waste turns
+(`accessRequestedAccount`, exactly one ad product per query, the
+global-account `profileId` rule, the `ARCHIVED` / `ENABLED` / `PAUSED`
+state enum), the asynchronous reporting flow, and the honest scope:
+no tool declares an output schema, analytics are advisory (#120), and
+guardrails apply best-effort. It also pins Amazon's single-state ad
+model — `state` is the *configured* state and there is no serving
+status — which `/daily-check` and `/sync-state` follow when they persist
+Amazon ads into `STATE.json`.
+
 ## Access tokens (minted and refreshed for you)
 
 When **both** `refresh_token` and `client_secret` are present, you never
