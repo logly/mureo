@@ -180,6 +180,74 @@ strategy-gated like built-in platforms. Mutating calls are promoted
 into `STATE.json` `action_log` (`platform=plugin:mureo-amazon-ads-bridge`)
 with an observation window, exactly like the #114 plugin safety layer.
 
+## Rollback: automatic before-state capture
+
+Amazon writes are **reversible**. Before one of the paired mutations
+below runs, mureo reads the entity's current state through the same
+authenticated bridge and records it as `reversible_params` on the
+`action_log` entry — so `rollback_apply` re-issues the *same Amazon
+tool* with the *previous* values instead of answering
+`NOT_SUPPORTED`. No agent-authored hint is involved.
+
+| Mutation | Read back with | Restores |
+|----------|----------------|----------|
+| `campaign_management-update_campaign_state` | `query_campaign` | `state` |
+| `campaign_management-update_campaign_budget` | `query_campaign` | `budgets` |
+| `campaign_management-update_campaign` | `query_campaign` | `state`, `budgets`, `name` |
+| `campaign_management-update_ad` | `query_ad` | `state`, `name` |
+| `campaign_management-update_ad_group` | `query_ad_group` | `state`, `name`, `bid` |
+| `campaign_management-update_target_bid` | `query_target` | `bid` |
+| `campaign_management-update_target` | `query_target` | `state`, `bid` |
+| `campaign_management-update_portfolio` | `query_portfolio` | `state`, `name`, `budget` |
+
+A pair exists only where the query tool can filter by the very id the
+mutation writes. Creates, deletes and account-level updates are
+**not** captured: their "reversal" would be a destructive call or one
+that invents an id.
+
+### The honest limits
+
+- **Best-effort, never blocking.** If the read fails — expired token,
+  network, an unexpected response — the mutation still runs and is
+  recorded audit-only (`reversible_params: null`). A capture failure
+  can never prevent or alter your write.
+- **Only the fields you changed, only if they came back.** A field the
+  mutation sets but the query response does not carry is *not*
+  reversed; a wrong reversal is worse than none. Such fields (and any
+  entity whose prior state could not be read at all) are listed as
+  plan **caveats**, so `rollback_plan_get` reports `partial` rather
+  than pretending the undo is complete.
+- **One risk is concentrated, not spread out.** mureo reads the
+  entities out of the response under a single expected key, and that
+  key is confirmed against a live account only for campaigns (`campaigns`)
+  and ads (`ads`). For ad groups, targets and portfolios it is inferred
+  from the write-side array name (`adGroups`, `targets`, `portfolios`).
+  If an inference is wrong, that tool is simply never reversible —
+  every capture for it records nothing, consistently, rather than
+  occasionally producing a partial one. You get the pre-feature
+  behaviour for that tool, never a wrong undo.
+- **Ad product.** Amazon's query tools require `adProductFilter` and
+  accept exactly **one** ad product per call, but no mutation payload
+  carries one. mureo never assumes a default: it probes, best-guess
+  first — an ad product already seen for that exact id, then the
+  `adProduct` your call declares, then the rest — and stops as soon as
+  every id is resolved. Worst case is five reads before one write;
+  repeat edits to the same entity cost one, because the id → ad-product
+  association is remembered for the life of the server process.
+  (`query_portfolio` needs no ad product, so a portfolio capture is
+  always exactly one read.) If no probe finds the id, nothing is
+  recorded rather than something wrong.
+- **The read itself** is an ordinary bridge call: it is authenticated
+  and token-refreshed like any other, and it is a read, so it changes
+  nothing. It runs inside the mutation's rate-limit slot, so a burst of
+  writes cannot emit unthrottled reads.
+- **Your write is never held hostage.** Two bounds apply: each read is
+  capped at **10 seconds**, and the whole capture at **15 seconds**
+  however many probes it needs. A slow Amazon costs you at most the
+  deadline — then the write goes ahead with whatever was captured
+  (entities that ran out of time become caveats) or with no reversal at
+  all. An unreversed write beats a delayed one.
+
 ## Access tokens (minted and refreshed for you)
 
 When **both** `refresh_token` and `client_secret` are present, you never

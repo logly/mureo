@@ -196,7 +196,7 @@ Claude  →  local mureo MCP  →  Amazon hosted MCP endpoint
 | Automatic token refresh by mureo | Yes | No | Yes |
 | Audit log / `action_log` promotion | Yes | No | Yes |
 | Hard guardrail enforcement before dispatch | Yes (exact argument keys) | No | Best-effort (pattern-matched argument keys) |
-| Rollback | Allow-listed operations are auto-reversible | No | Agent-authored reversal hints are recorded; automatic before-state capture is not implemented |
+| Rollback | Allow-listed operations are auto-reversible | No | Automatic before-state capture on eight paired campaign/ad/ad-group/target/portfolio updates; best-effort, see [amazon-ads.md](./amazon-ads.md#rollback-automatic-before-state-capture) |
 | mureo tool names / taxonomy | mureo's | the platform's | the platform's (`campaign_management-*`, `account_management-*`) |
 | Deep mureo analytics (anomaly baselines, RSA audit, CV-mismatch) | Yes | No | Not yet (#120) |
 | Works while the mureo MCP server is stopped | No | Yes | No |
