@@ -917,16 +917,25 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         provider = _PLUGIN_DISPATCH[name]
         source = plugin_source(provider)
         sem = _PLUGIN_SEMANTICS.get(name)
+        await _acquire_plugin_throttle(name)
         # Capture a runtime-correct reversal BEFORE the mutation (#327),
         # mirroring the native before-state capture: an opted-in provider reads
         # the entity's prior state and returns a reversal carrying the actual
         # id + prior value. Only for mutating tools; best-effort, never blocks.
+        #
+        # Deliberately AFTER the throttle acquisition: the capture issues real
+        # platform reads, so running it first would let a burst of mutations
+        # push out unthrottled traffic. Holding the mutation's slot means the
+        # capture + write are rate-limited as one group. The capture's own
+        # reads are bounded independently too — a per-read timeout, a probe
+        # cap of one call per ad product, and a learned id → ad-product cache
+        # that usually collapses the probe to a single read
+        # (:mod:`mureo.amazon_ads.reversal`).
         captured_reversal: dict[str, Any] | None = None
         if sem is None or sem.mutating:
             captured_reversal = await _capture_plugin_reversal(
                 provider, name, arguments
             )
-        await _acquire_plugin_throttle(name)
         try:
             result = await provider.handle_mcp_tool(name, arguments)
         except KeyboardInterrupt:

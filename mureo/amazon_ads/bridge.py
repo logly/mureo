@@ -13,6 +13,11 @@ strategy / rollback) as entry-point plugins:
   to the region endpoint (creds from ``~/.mureo/credentials.json``)
   and forwards the call. Tool names are Amazon's own (no taxonomy
   remap), consistent with how mureo treats other official MCPs.
+- ``capture_reversal()`` — the #327 ``MCPReversibleToolProvider`` hook
+  (#121): before a paired mutation, read the entity's current state
+  through this same dispatch so the recorded ``reversible_params`` are
+  executable by ``rollback_apply``. Best-effort — see
+  :mod:`mureo.amazon_ads.reversal` for the pair table and its limits.
 """
 
 from __future__ import annotations
@@ -36,6 +41,8 @@ from mureo.amazon_ads.manifest import (
     is_stale,
     manifest_path,
 )
+from mureo.amazon_ads.reversal import capture_reversal as _capture_reversal
+from mureo.amazon_ads.reversal import is_reversible_tool
 from mureo.auth import (
     AmazonAdsCredentials,
     load_amazon_ads_credentials,
@@ -489,6 +496,49 @@ class AmazonAdsBridge:
             if minted or not (creds.refresh_token and creds.client_secret):
                 raise
             return await self._refresh_and_retry(creds, name, arguments, first_exc)
+
+    # -- reversal capture (#121, MCPReversibleToolProvider) -----------------
+
+    async def capture_reversal(
+        self, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Capture the before-state of a mutation, as a runtime-correct reversal.
+
+        mureo's dispatch path calls this **before** a mutating Amazon tool
+        runs (see :class:`mureo.mcp.tool_provider.MCPReversibleToolProvider`).
+        The read is issued through :meth:`handle_mcp_tool`, so it inherits the
+        bridge's authentication and one-shot token refresh, and the returned
+        ``{"operation": <same tool>, "params": {...previous values...}}`` is
+        what lands in ``STATE.json``'s ``action_log`` — executable as-is by
+        the rollback planner. :mod:`mureo.amazon_ads.reversal` owns the pair
+        table and states plainly what is live-verified and what is inferred.
+
+        Best-effort, unconditionally: any failure returns ``None`` (the
+        mutation is then recorded audit-only) and NEVER prevents or alters
+        the write. The failure's *text* is never logged — only its exception
+        type, alongside the tool name. That is deliberately stronger than
+        redacting it: a capture failure is diagnosed from which tool failed
+        and how, and dropping the message (and the traceback with it) means
+        no credential material can reach the log even if it were shaped in a
+        way no redactor recognises.
+        """
+        # Cheap first: the vast majority of Amazon mutations have no query
+        # counterpart, and they must not pay for an exception handler or a
+        # dispatch-shaped call path to find that out.
+        if not is_reversible_tool(name):
+            return None
+        try:
+            return await _capture_reversal(self.handle_mcp_tool, name, arguments)
+        except KeyboardInterrupt:
+            raise
+        except BaseException as exc:  # noqa: BLE001 — capture never blocks a write
+            logger.warning(
+                "Amazon before-state capture failed for %r (%s); the mutation "
+                "is recorded without a reversal",
+                name,
+                type(exc).__name__,
+            )
+            return None
 
     def _refresh_and_persist(
         self,

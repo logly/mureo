@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Amazon writes are now genuinely reversible** (#121). Amazon
+  mutations reached `STATE.json`'s `action_log` with
+  `reversible_params=null`, so `rollback_apply` could only answer
+  NOT_SUPPORTED — the bridge forwards Amazon's own tools verbatim and
+  nothing authored a reversal hint. `AmazonAdsBridge` now implements the
+  `MCPReversibleToolProvider` hook: before a paired mutation it reads
+  the entity's current state through its own authenticated dispatch and
+  records a reversal that names the same Amazon tool with the previous
+  values, executable as-is by the rollback planner. Eight pairs are
+  covered — campaign state/budget/update, ad, ad group, target bid,
+  target and portfolio updates — each verified against both the
+  mutation's and the query's `inputSchema`, so a pair exists only where
+  the query can filter by the very id the mutation writes.
+
+  Deliberately conservative: the capture is best-effort and can never
+  block or alter the write; a field the query response does not carry is
+  not reversed but reported as a plan caveat (a wrong reversal is worse
+  than none); and because Amazon's query tools require an
+  `adProductFilter` that no mutation payload carries, mureo probes
+  best-guess first (an ad product already learned for that id, then the
+  one the call declares, then the rest) rather than assuming a default
+  and querying the wrong surface. The reads run inside the mutation's
+  rate-limit slot, and a learned id → ad-product cache collapses repeat
+  edits to a single read. They are bounded twice — 10 seconds per read
+  and 15 seconds for the capture as a whole — so a slow platform costs
+  at most the deadline and the write then proceeds with a partial
+  reversal (unresolved entities become caveats) or none at all.
+  One caveat is concentrated rather than spread out: the response
+  envelope key is live-verified only for campaigns and ads, and is
+  inferred from the write-side array name for ad groups, targets and
+  portfolios — a wrong inference makes that one tool never reversible
+  (the pre-feature behaviour), never wrongly reversible.
+
 ## [0.10.38] - 2026-08-01
 
 ### Added
