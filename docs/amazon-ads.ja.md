@@ -245,6 +245,22 @@ Amazon ツール**を**以前の値**で呼び直します。エージェント�
   あるいはロールバック情報なしで、書き込みはそのまま進みます。
   「反転できない書き込み」の方が「遅延する書き込み」よりましだからです。
 
+## エージェントが Amazon について知っていること
+
+同梱の foundation skill
+[`skills/_mureo-amazon-ads/SKILL.md`](../skills/_mureo-amazon-ads/SKILL.md)
+が、AI エージェントがこの面を触る前に読む資料です。85 ツールの
+namespace 別一覧、`<namespace>-<verb>_<resource>`（ハイフン区切り）の
+命名規則、無駄なターンを防ぐ呼び出し要件（`accessRequestedAccount`、
+1 リクエストにつき ad product はちょうど 1 つ、グローバルアカウントは
+`profileId` 必須、state 列挙は `ARCHIVED` / `ENABLED` / `PAUSED`）、
+非同期レポートの流れ、そして正直なスコープ（output schema はどのツール
+にも無い・分析は参考情報 #120・ガードレールは best-effort）を扱います。
+Amazon の ad は状態が 1 つだけ（`state` は「設定された状態」で、配信
+ステータスは存在しない）という点も明記しており、`/daily-check` と
+`/sync-state` が `STATE.json` へ Amazon の ad を保存するときはこれに
+従います。
+
 ## access トークンの自動発行・自動更新
 
 `refresh_token` と `client_secret` が**両方**ある場合、`access_token`

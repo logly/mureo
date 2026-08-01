@@ -211,11 +211,23 @@ def test_ad_fatigue_check_effective_status_filter_is_grounded() -> None:
 # ---------------------------------------------------------------------------
 
 
+# Every platform whose ad-listing tool the standard flows must name. A
+# platform missing from a flow is reported as "no ad-listing tool available"
+# forever, even when it has one — which is what happened to Amazon until #121.
+_AD_LISTING_TOOLS = (
+    "meta_ads_ads_list",
+    "google_ads_ads_list",
+    "campaign_management-query_ad",  # Amazon Ads (official-MCP bridge)
+)
+
+
+@pytest.mark.parametrize("tool", _AD_LISTING_TOOLS)
 @pytest.mark.parametrize("skill", ["sync-state", "daily-check"])
-def test_standard_flow_fetches_ad_level_status(skill: str) -> None:
-    """The flow must list ads with their status for ACTIVE campaigns."""
+def test_standard_flow_fetches_ad_level_status(skill: str, tool: str) -> None:
+    """The flow must list ads with their status for ACTIVE campaigns, naming
+    the ad-listing tool of every platform that has one."""
     body = _skill_body(skill)
-    assert "meta_ads_ads_list" in body
+    assert tool in body
     assert "effective_status" in body
 
 
@@ -456,3 +468,100 @@ def test_shared_documents_the_status_vocabulary_contract() -> None:
         "The contract must state that the diff compares stored-previous vs "
         "stored-current case-insensitively."
     )
+
+
+# ---------------------------------------------------------------------------
+# Part F — Amazon's ad-listing wiring, and its one-state honesty (#121)
+# ---------------------------------------------------------------------------
+
+
+def _amazon_ad_lines(skill: str) -> str:
+    """The bullet(s) that drive ``campaign_management-query_ad``."""
+    lines = _lines_containing(_skill_body(skill), "campaign_management-query_ad")
+    assert lines, f"{skill} no longer names Amazon's ad-listing tool"
+    return "\n".join(lines)
+
+
+@pytest.mark.parametrize("skill", ["sync-state", "daily-check"])
+def test_amazon_ad_fetch_names_its_required_filters(skill: str) -> None:
+    """``campaign_management-query_ad`` rejects a body without
+    ``accessRequestedAccount`` + ``adProductFilter``, and only ONE ad product
+    may be queried per call — an agent told the tool name and nothing else
+    burns its turns rediscovering that."""
+    bullet = _amazon_ad_lines(skill)
+    for required in ("accessRequestedAccount", "adProductFilter", "profileId"):
+        assert required in bullet, (
+            f"{skill}'s Amazon ad-listing bullet never names {required!r}, "
+            "which the call requires."
+        )
+    assert "exactly one" in bullet.lower(), (
+        f"{skill} must say that adProductFilter accepts exactly one ad "
+        "product, so a full sweep is one call per product."
+    )
+    assert "SPONSORED_PRODUCTS" in bullet
+
+
+@pytest.mark.parametrize("skill", ["sync-state", "daily-check"])
+def test_amazon_effective_status_is_not_synthesised(skill: str) -> None:
+    """Amazon exposes ONE state per ad — the configured one. Copying it into
+    ``effective_status`` would manufacture a serving fact the platform never
+    reported, and ``AdState`` exists to let the field be omitted instead."""
+    bullet = _amazon_ad_lines(skill)
+    lowered = bullet.lower()
+    assert "effective_status" in bullet
+    assert "unset" in lowered or "omit" in lowered, (
+        f"{skill} must tell the agent to leave Amazon's effective_status "
+        "unset rather than filling it in."
+    )
+    assert "unknown" in lowered, (
+        f"{skill} must state that Amazon's effective status is unknown, not "
+        "'delivering'."
+    )
+
+
+def test_delivery_state_guard_treats_missing_effective_status_as_unknown() -> None:
+    """The guard falls back to ``status`` when no ``effective_status`` is
+    stored — but that value is only the CONFIGURED state, so it must not be
+    read as evidence the entity delivered.
+
+    The rule is pinned in its GENERAL form (absence of ``effective_status`` ⇒
+    delivery state unknown), because it is a property of ``AdState`` — which
+    lets any platform omit the field — not of one platform. Amazon is checked
+    only as the named example.
+    """
+    guard = "\n".join(
+        _lines_containing(_skill_body("daily-check"), "Delivery-state guard")
+    )
+    lowered = guard.lower()
+    assert "effective_status" in guard
+    assert "unknown" in lowered, (
+        "The guard must say that an entity with no effective_status has an "
+        "unknown delivery state."
+    )
+    assert "configured" in lowered, (
+        "The guard must say the surviving value is the configured state, so "
+        "an agent knows why it is not delivery evidence."
+    )
+    assert "no `effective_status`" in guard or "no effective_status" in guard, (
+        "The rule must key on the ABSENCE of effective_status, not on a "
+        "platform name — any platform may omit the field (AdState)."
+    )
+    assert "amazon" in lowered, (
+        "Amazon should still appear as the concrete example of a "
+        "configured-state-only platform."
+    )
+
+
+def test_amazon_foundation_skill_documents_the_single_state() -> None:
+    """The foundation skill is where the agent looks up Amazon's model; the
+    one-state fact must live there too, not only in the workflow skills."""
+    body = _skill_body("_mureo-amazon-ads")
+    assert "campaign_management-query_ad" in body
+    assert "plugin:mureo-amazon-ads-bridge" in body, (
+        "_mureo-amazon-ads must use the canonical platform key so STATE.json / "
+        "action_log writes join."
+    )
+    lowered = body.lower()
+    assert "effective_status" in lowered and "unknown" in lowered
+    for state in ("ENABLED", "PAUSED", "ARCHIVED"):
+        assert state in body, f"the state enum must name {state}"

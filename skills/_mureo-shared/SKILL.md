@@ -123,7 +123,7 @@ The platform tools (`google_ads_*`, `meta_ads_*`, `search_console_*`) are the sa
 
 Beyond the built-in platforms, an entry-point provider installed as a mureo plugin can expose its own operations as `mcp__mureo__<plugin>_*` tools. When a workflow enumerates "all configured platforms", **also enumerate these plugin tools** and include each plugin platform on a **best-effort, clearly-labelled** line (e.g. `Acme Ads (plugin) — …`), driving it with the plugin's own tools as their names/descriptions imply.
 
-> **Amazon Ads (official-MCP bridge):** when configured, mureo bridges the official Amazon Ads MCP and exposes Amazon's own tool names (e.g. `campaign_management-*`, `account_management-*`). It rides this exact same provider-platform path — enumerate it best-effort, label it `Amazon Ads (official MCP) — …`, and apply the identical honest scope below. mureo's deep per-platform analytics are **not** available for it (tracked in #120); treat it as advisory.
+> **Amazon Ads (official-MCP bridge):** when configured, mureo bridges the official Amazon Ads MCP and exposes Amazon's own tool names (e.g. `campaign_management-*`, `account_management-*`). It rides this exact same provider-platform path — enumerate it best-effort, label it `Amazon Ads (official MCP) — …`, and apply the identical honest scope below. mureo's deep per-platform analytics are **not** available for it (tracked in #120); treat it as advisory. Its tool surface, the calling requirements that otherwise burn turns (`accessRequestedAccount`, one ad product per query, the global-account `profileId` rule) and its single-state ad model are documented in `../_mureo-amazon-ads/SKILL.md`.
 
 Honest scope for a plugin platform:
 
