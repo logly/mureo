@@ -4,10 +4,11 @@ Shape matches the #114 ``MCPToolProvider`` Protocol so it can ride the
 exact same collect/dispatch + safety layer (audit / throttle /
 strategy / rollback) as entry-point plugins:
 
-- ``mcp_tools()`` — PURE: reads ``~/.mureo/amazon_tools.json`` only.
-  No credentials, no network, and it NEVER raises (it runs at mureo
-  server start; a missing/broken manifest ⇒ no Amazon tools, not a
-  crash).
+- ``mcp_tools()`` — PURE: reads the tool manifest only (beside the
+  runtime-resolved ``credentials.json``, ``~/.mureo/amazon_tools.json``
+  by default — see :func:`mureo.amazon_ads.manifest.manifest_path`). No
+  credentials, no network, and it NEVER raises (it runs at mureo server
+  start; a missing/broken manifest ⇒ no Amazon tools, not a crash).
 - ``handle_mcp_tool()`` — lazily opens one authenticated MCP session
   to the region endpoint (creds from ``~/.mureo/credentials.json``)
   and forwards the call. Tool names are Amazon's own (no taxonomy
@@ -587,6 +588,9 @@ class AmazonAdsBridge:
 
 
 def _default_manifest_path() -> Path:
+    """Delegate — :func:`mureo.amazon_ads.manifest.manifest_path` owns the
+    location (runtime-aware since #516); this indirection only exists so
+    tests can patch one seam."""
     return manifest_path()
 
 

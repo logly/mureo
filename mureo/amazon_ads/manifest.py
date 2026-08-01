@@ -1,9 +1,10 @@
 """Generate — and age-check — the Amazon MCP tool manifest.
 
 Credentialed/network in production (one authenticated MCP session to
-the region endpoint). The result is written to
-``~/.mureo/amazon_tools.json`` so the bridge's ``mcp_tools()`` can be a
-pure, credential-free, network-free read at mureo server start.
+the region endpoint). The result is written beside ``credentials.json``
+(``~/.mureo/amazon_tools.json`` by default — see :func:`manifest_path`)
+so the bridge's ``mcp_tools()`` can be a pure, credential-free,
+network-free read at mureo server start.
 
 The MCP client session is dependency-injected (``connect``) so the
 core is unit-testable without a real Amazon connection or the mcp SDK
@@ -45,9 +46,8 @@ logger = logging.getLogger(__name__)
 # ``await initialize()`` and ``await list_tools()`` (mcp ClientSession).
 ConnectFactory = Callable[[str, dict[str, str]], AbstractAsyncContextManager[Any]]
 
-#: Manifest file name, in ``~/.mureo``. Named once so the status collector
-#: (which resolves it under an injected home) and :func:`manifest_path` cannot
-#: drift apart.
+#: Manifest file name, beside ``credentials.json``. Named once so every
+#: consumer resolves the same file — see :func:`manifest_path_for`.
 MANIFEST_FILENAME = "amazon_tools.json"
 
 #: How old a manifest may be before mureo calls it stale. Amazon's tool
@@ -60,9 +60,55 @@ DEFAULT_MANIFEST_MAX_AGE_DAYS = 30
 MANIFEST_MAX_AGE_ENV = "MUREO_AMAZON_MANIFEST_MAX_AGE_DAYS"
 
 
+def _default_credentials_path() -> Path:
+    """The legacy credentials location the manifest sits beside.
+
+    Local twin of :func:`mureo.auth._resolve_default_path` /
+    :func:`mureo.auth_setup._resolve_default_path` — the same one-line
+    default those two writers keep, so this module needs no import from
+    ``mureo.auth`` (which imports the credential dataclass this module
+    only references under ``TYPE_CHECKING``).
+    """
+    return Path.home() / ".mureo" / "credentials.json"
+
+
+def manifest_path_for(credentials_path: Path) -> Path:
+    """The manifest that belongs to ``credentials_path``.
+
+    THE one rule for where the manifest lives: beside the credentials
+    file that authorized it. Every consumer — the bridge, the CLI, the
+    configure-UI generator, the status collector — resolves through here
+    (directly, or via :func:`manifest_path` for the ones that have no
+    credentials path in hand), so writer and reader cannot disagree about
+    the location (#516).
+    """
+    return credentials_path.parent / MANIFEST_FILENAME
+
+
 def manifest_path() -> Path:
-    """Default manifest location: ``~/.mureo/amazon_tools.json``."""
-    return Path.home() / ".mureo" / MANIFEST_FILENAME
+    """The manifest location for the ACTIVE runtime context.
+
+    Resolves the credentials path the way every ``path``-less credentials
+    writer does — :func:`mureo.core.runtime_context.runtime_credentials_path`
+    (#512 precedent, mirrored from :func:`mureo.auth._resolve_write_path`)
+    — and puts the manifest beside it via :func:`manifest_path_for`.
+
+    Without a registered ``mureo.runtime_context_factory`` the resolver
+    returns :func:`_default_credentials_path` unchanged, so this is
+    byte-identical to the historical ``~/.mureo/amazon_tools.json``. WITH
+    one, the bridge and the CLI now read exactly the file the configure
+    UI writes: previously the writers derived the manifest from the
+    runtime-resolved credentials path while these readers hardcoded
+    ``~/.mureo``, so a relocating runtime left an 85-tool manifest on
+    disk and a bridge that served zero tools (#516).
+
+    Imported lazily for the same reason :mod:`mureo.auth` does it — this
+    module sits under the CLI/server start path and must not drag the
+    runtime-context resolver (and its entry-point scan) into every import.
+    """
+    from mureo.core.runtime_context import runtime_credentials_path
+
+    return manifest_path_for(runtime_credentials_path(_default_credentials_path()))
 
 
 def manifest_max_age_days() -> float:

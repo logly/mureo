@@ -578,9 +578,15 @@ You can refine this purely with **standard MCP `Tool` metadata** — no
 mureo-specific Protocol method:
 
 - `annotations=ToolAnnotations(readOnlyHint=True)` → the tool is a
-  read; it stays in the jsonl audit only. **Anything else (no
-  annotations / `readOnlyHint` absent or false) is treated as
-  *mutating* (conservative default).**
+  read; it stays in the jsonl audit only. `readOnlyHint=False` → it
+  mutates. **Either way the declaration is believed verbatim.**
+- **No `readOnlyHint` at all** (no annotations, or annotations that omit
+  it) → the tool NAME decides, via mureo's shared read vocabulary
+  (`list_` / `get_` / `analyze_` / `diagnose_` / `inspect_` / `report_` /
+  `check_` / `search_` / `query_`, anchored per hyphen-delimited
+  namespace segment). A name that does not read as a read falls through
+  to the conservative ***mutating*** default. Declare the hint if you
+  care — the name fallback exists for bridged surfaces that cannot.
 - A *mutating* call is additionally promoted into `STATE.json`'s
   `action_log` (`platform="plugin:<your-dist>"`) **only when a
   `STATE.json` already exists in the cwd** — mureo never creates one

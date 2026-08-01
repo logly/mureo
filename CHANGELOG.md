@@ -7,6 +7,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Amazon tool manifest now has exactly one location** (#516). The
+  configure UI wrote `amazon_tools.json` beside the *runtime-resolved*
+  credentials file while `AmazonAdsBridge` and `mureo amazon` read a
+  hardcoded `~/.mureo/amazon_tools.json`, so in a runtime context that
+  relocates credentials the writer and the reader used different files:
+  a manifest carrying 85 Amazon tools sat on disk while the bridge
+  served zero. `mureo.amazon_ads.manifest.manifest_path()` is now
+  runtime-aware (via `runtime_credentials_path`, the #512 seam) and
+  every consumer — bridge, CLI, configure-UI generator, OAuth-exchange
+  refresh, dashboard staleness row — resolves through the single
+  `manifest_path_for()` rule. Without a runtime context the location is
+  byte-identical to before.
+
+- **Budget guardrails now see the real bridged budget shape** (#517).
+  The best-effort pattern scan only read an amount from a key that
+  itself said "budget"/"bid", so a payload that names the family on an
+  *enclosing object* and the number on a generic leaf
+  (`…monetaryBudget.value`) proposed a budget the caps never checked —
+  real money, silently unenforced. A generically named numeric leaf
+  (exactly `value` / `amount`) now inherits the family of the nearest
+  budget/bid-named ancestor, within a bounded window of 3 object levels.
+  The window spans levels rather than one because the levels in between
+  are routinely opaque map keys with no vocabulary of their own —
+  country codes, marketplace ids — as in
+  `budgetCaps.countryMonetaryBudgetSettings.<CC>.value`, where one tool
+  declares 24 per-marketplace daily budgets two objects below the only
+  word that means anything. Every other guard is unchanged: only those
+  two generic names are ever credited by context, identifier-shaped keys
+  stay excluded (a ten-digit resource id still cannot be read as an
+  amount), and the two families never blur. `spend` joins the budget
+  vocabulary so a daily-minimum-spend argument matches by its own name.
+  Bid detection is unchanged.
+
+  The scan also stopped too shallow to reach the money it was looking
+  for: the depth bound doubled as a DoS guard at 8 levels, which
+  truncated every global-campaign (`marketplaceSettings[]`) and flight
+  budget the real manifest declares, so those proposals never met a cap
+  either. The two concerns are now separate: depth follows real schemas
+  (12, measured from the deepest real money leaf at 11, plus headroom)
+  and a total processed-node cap (100,000) is the actual bound on work —
+  the one that matters for a hostile payload, which can be a single flat
+  dict a million keys wide.
+
+  **An incompletely scanned payload is no longer answered with a
+  confident number.** `PatternAmount.value` means "the largest amount
+  found" and the gate compares exactly that against the cap, but the
+  scan used to return whatever it had when it stopped — and "nothing
+  found" reads to the gate as "nothing to check". Both halves were
+  exploitable: a 99,000,000 proposal buried in a 60,000-item collection
+  was answered as `1.0` and sailed past a 10,000 cap. What is guaranteed
+  now:
+
+  - **Traversal is deterministic and in document order.** Promising
+    children are collected in order and pushed as a block, so the front
+    of a collection — where a real proposal usually sits — is examined
+    first. Pushing them one at a time silently reversed each node's
+    promising children, walking big collections end→front.
+  - **Money-context branches are walked first.** A budget/bid-named
+    branch is never queued behind a large unrelated sibling.
+  - **Any truncation that could hide a larger amount fails closed.**
+    Reaching the node cap, or the depth cap inside a budget/bid-named
+    subtree, is reported as unreadable and the gate refuses the call —
+    regardless of whether a smaller figure had already been read.
+  - **A depth cut with no money context stays silent** and the call
+    proceeds: ordinary bounded-heuristic truncation on a subtree with
+    nothing money-shaped in it. Denying every deeply-nested honest call
+    would cost availability for no safety. Documented honest limit.
+
+  Denials name the actual cause (payload size vs. nesting depth) and the
+  way out: declare the tool's budget/bid argument keys in its MCP
+  metadata — a declaration is read directly and is affected by neither —
+  or flatten and split the call.
+
+  The node bound is sized off the **worst** realistic shape, not the
+  cheapest. Scan cost per campaign varies ~10x across the real Amazon
+  budget shapes, because a global campaign repeats its budget once per
+  marketplace: ~10 nodes/campaign with no `marketplaceSettings`, ~19 at
+  two marketplaces, ~31 at five, **~103 at the full 23-marketplace
+  enum**. Nothing schema-side caps a bulk call either — the `campaigns`
+  and `budgets` arrays of every money tool carry no `maxItems`. The
+  bound is therefore 1,000,000 nodes, which admits ~9,700 full-
+  marketplace campaigns in one call (a 1,000-campaign global bulk update
+  costs 10.3% of it, 2,000 costs 20.6%). Cost is linear at ~0.85 µs per
+  node, so the extra headroom buys bounded work, never safety: the truly
+  pathological payload still fails closed.
+
+  Net effect on a real 85-tool Amazon Ads manifest: **26 of 62 money
+  leaves were readable before, 62 of 62 now**, across all 13
+  money-carrying tools — each pinned per-path by a test. Re-verified by
+  running the scanner over a full synthetic payload for every one of the
+  85 tools: the wider reach adds **no false positives** — the only tools
+  that trip it are genuine budget/bid mutations.
+
+- **A bridged tool that declares no `readOnlyHint` is no longer assumed
+  to mutate** (#517). Undeclared ⇒ mutating promoted plain listing calls
+  into `STATE.json`'s `action_log` with a 14-day observation window —
+  on one real Amazon manifest, 83 of 85 tools declare the hint and the
+  two that omit it are `list_` reads. `derive_semantics` now consults
+  the shared read-name vocabulary (`mureo.core.tool_names`, already used
+  by the rollback planner and the guardrail pattern-fallback
+  registration) when — and only when — no `readOnlyHint` is declared. An
+  explicit hint, either way, still wins.
+
 ## [0.10.37] - 2026-07-31
 
 ### Changed

@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from mureo.policy.pattern_scan import (
+    SCAN_EXHAUSTED_DEPTH,
+    SCAN_EXHAUSTED_NODES,
     has_pattern_fallback,
     is_bid_key,
     is_budget_key,
@@ -74,6 +76,11 @@ class TestBudgetKeyPredicate:
             "BUDGET",
             "budget_amount_micros",
             "campaign_budget",
+            # A bridged surface caps daily outlay under "spend", not "budget"
+            # (Amazon: adGroups[].optimization.budgetSettings.dailyMinSpendValue).
+            "spend",
+            "daily_spend",
+            "dailyMinSpendValue",
         ],
     )
     def test_budget_shaped_keys_match(self, key: str) -> None:
@@ -82,8 +89,11 @@ class TestBudgetKeyPredicate:
     @pytest.mark.parametrize(
         "key",
         [
+            # Too generic to mean anything alone; only a budget-named ancestor
+            # can make it a budget (see TestAncestorContext).
             "amount",
-            "spend",
+            "value",
+            "spend_id",
             # mureo's own caller-supplied convention keys are context, not a
             # proposal — reading them as one would deny a decrease.
             "current_daily_budget",
@@ -208,10 +218,889 @@ class TestScan:
         assert scan_bid_amount({"ad_groups": [{"default_bid": 4.5}]}).value == 4.5
 
     def test_deeply_nested_beyond_the_depth_limit_is_ignored(self) -> None:
+        """Past the depth bound the amount is not read. Nothing about the
+        wrappers suggested money, so this stays SILENT — see TestScanBounds
+        for the case where the cut lands inside a money-named subtree."""
         node: dict[str, Any] = {"daily_budget": 99_999}
         for _ in range(20):
             node = {"wrap": node}
-        assert scan_budget_amount(node).value is None
+        result = scan_budget_amount(node)
+        assert result.value is None
+        assert result.unreadable_key is None
+
+
+# ---------------------------------------------------------------------------
+# The bounds: depth follows real schemas, nodes bound the work, and running
+# out of either is reported as UNKNOWN rather than as "no money" (issue #517)
+# ---------------------------------------------------------------------------
+
+
+def _buried(payload: dict[str, Any], wrappers: int) -> dict[str, Any]:
+    """``payload`` under ``wrappers`` layers of anonymous nesting."""
+    node = payload
+    for _ in range(wrappers):
+        node = {"wrap": node}
+    return node
+
+
+def _tiny_node_cap(monkeypatch: pytest.MonkeyPatch, cap: int = 200) -> int:
+    """Shrink the node bound so exhaustion BEHAVIOUR can be tested in
+    milliseconds.
+
+    ``_scan`` reads the module global at call time, so this is exact. The
+    tests below are about what happens when the bound is reached, not about
+    the shipped value — that is a separate concern, pinned by
+    :class:`TestNodeCapHeadroom` against the real constant.
+    """
+    monkeypatch.setattr("mureo.policy.pattern_scan._MAX_NODES", cap)
+    return cap
+
+
+@pytest.mark.unit
+class TestScanBounds:
+    def test_a_real_world_wrapper_depth_is_reachable(self) -> None:
+        """Six wrapper objects and two arrays is an ordinary bridged payload,
+        not a pathological one — the old bound of 8 truncated it."""
+        node: dict[str, Any] = {"monetaryBudget": {"value": 25_000}}
+        for wrapper in ("monetaryBudgetValue", "budgetValue"):
+            node = {wrapper: node}
+        node = {"budgets": [node]}
+        node = {"body": {"campaigns": [node]}}
+        assert scan_budget_amount(node).value == 25_000
+
+    # -- money must never be starved by an unrelated sibling ----------------
+
+    def test_a_huge_unrelated_sibling_does_not_starve_the_money(self) -> None:
+        """The regression that made this whole section necessary: with a plain
+        LIFO stack charged at PUSH time, the filler was drained first and
+        exhausted the budget, so the scan reported no budget at all — and the
+        gate reads 'no budget' as 'nothing to check'. A payload-order-dependent
+        silent bypass of every cap."""
+        args: dict[str, Any] = {
+            "budget_settings": {"value": 12345},
+            "unrelated_filler": [{"note": i} for i in range(15_000)],
+        }
+        assert scan_budget_amount(args).value == 12345
+
+    def test_the_same_holds_when_the_money_comes_last(self) -> None:
+        """Mirror of the above: the fix must not merely reverse which order
+        happens to win."""
+        args: dict[str, Any] = {
+            "unrelated_filler": [{"note": i} for i in range(15_000)],
+            "budget_settings": {"value": 12345},
+        }
+        assert scan_budget_amount(args).value == 12345
+
+    def test_a_bid_is_equally_un_starvable(self) -> None:
+        args: dict[str, Any] = {
+            "filler": [{"note": i} for i in range(15_000)],
+            "ad_group": {"defaultBid": 4.5},
+        }
+        assert scan_bid_amount(args).value == 4.5
+
+    # -- a realistic bulk payload stays well inside the bound ---------------
+
+    def test_a_realistic_bulk_payload_is_fully_scanned(self) -> None:
+        """Hundreds of campaigns, each with a budget: the largest must be the
+        one that meets the cap, and nothing may be reported as unreadable."""
+        args = {
+            "body": {
+                "campaigns": [
+                    {
+                        "campaignId": f"{i:010d}",
+                        "budgets": [{"budgetValue": _amazon_budget_value(100 + i)}],
+                    }
+                    for i in range(500)
+                ]
+            }
+        }
+        result = scan_budget_amount(args)
+        assert result.unreadable_key is None
+        assert result.value == 100 + 499
+
+    # -- document order within a priority group -----------------------------
+
+    def test_promising_children_keep_document_order(self) -> None:
+        """``appendleft`` per child while iterating forward REVERSED a node's
+        promising children, so a matching key's big collection was walked
+        end→front and its first entries were dropped under pressure. The leaf
+        of the first child must be examined before the leaf of the second."""
+        from mureo.policy.pattern_scan import _scan
+
+        seen: list[str] = []
+
+        def _matches(key: str) -> bool:
+            seen.append(key)
+            return is_budget_key(key)
+
+        _scan({"budget_a": {"leaf_a": 1}, "budget_b": {"leaf_b": 2}}, _matches)
+        assert seen.index("leaf_a") < seen.index("leaf_b")
+
+    def test_promising_list_items_keep_document_order(self) -> None:
+        from mureo.policy.pattern_scan import _scan
+
+        seen: list[str] = []
+
+        def _matches(key: str) -> bool:
+            seen.append(key)
+            return is_budget_key(key)
+
+        _scan({"budgets": [{"leaf_a": 1}, {"leaf_b": 2}]}, _matches)
+        assert seen.index("leaf_a") < seen.index("leaf_b")
+
+    # -- the reviewer's guardrail-bypass repro ------------------------------
+
+    def test_a_big_collection_under_a_matching_key_cannot_hide_a_proposal(
+        self,
+    ) -> None:
+        """Verbatim repro of the bypass. Order reversal walked this list
+        end→front so only the trailing ``1``s were seen, and that partial read
+        was returned as if it were the maximum — ``value=1.0``. Both fixes now
+        apply: document order reaches the front entry, and 60k items are
+        comfortably inside the node bound, so the TRUE maximum is reported."""
+        n = 60000
+        items = [{"value": 1} for _ in range(n)]
+        items[0] = {"value": 999_999_999}
+        result = scan_budget_amount({"monetaryBudget": items})
+        assert result.value == 999_999_999
+        assert result.unreadable_key is None
+
+    def test_the_same_holds_for_dict_children(self) -> None:
+        n = 60000
+        children: dict[str, Any] = {f"k{i}": {"value": 1} for i in range(n)}
+        children["k0"] = {"value": 999_999_999}
+        result = scan_budget_amount({"monetaryBudget": children})
+        assert result.value == 999_999_999
+        assert result.unreadable_key is None
+
+    def test_the_bypass_now_denies_end_to_end(self) -> None:
+        """The demonstrated bypass: 99,000,000 proposed against a 10,000 cap
+        returned ``allowed=True``. It is now denied — and for the RIGHT
+        reason: the proposal is read correctly and exceeds the cap, rather
+        than the call being refused for being unscannable. The bid channel is
+        declared so the budget channel is unambiguously the one deciding."""
+        n = 60000
+        items = [{"value": 1} for _ in range(n)]
+        items[0] = {"value": 99_000_000}
+        decision = evaluate_guardrails(
+            "acme-bulk_update",
+            {"monetaryBudget": items},
+            _CAPS,
+            bid_declaration=BidDeclaration(bid_amount_key="declared_bid"),
+            pattern_fallback=True,
+        )
+        assert decision.allowed is False
+        reason = decision.reason or ""
+        assert "99,000,000" in reason
+        assert "max_daily_budget_per_campaign" in reason
+
+    # -- exhaustion is UNKNOWN, not "no money" ------------------------------
+
+    def test_exhausting_the_node_cap_with_nothing_read_is_unreadable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A flat dict is depth 1, so only the node cap bounds it. Returning
+        ``value=None`` here would tell the gate 'no money in this call' when
+        the truth is 'I could not finish looking'."""
+        cap = _tiny_node_cap(monkeypatch)
+        wide: dict[str, Any] = {f"filler_{i}": i for i in range(cap + 50)}
+        result = scan_budget_amount(wide)
+        assert result.value is None
+        assert result.unreadable_key == SCAN_EXHAUSTED_NODES
+
+    def test_a_wide_list_is_bounded_the_same_way(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cap = _tiny_node_cap(monkeypatch)
+        args = {"campaigns": [{"n": i} for i in range(cap)]}
+        result = scan_budget_amount(args)
+        assert result.value is None
+        assert result.unreadable_key == SCAN_EXHAUSTED_NODES
+
+    def test_the_node_cap_fails_closed_with_or_without_a_money_context(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unlike the depth bound, the node cap stopped the walk GLOBALLY —
+        there is no subtree left to say anything about."""
+        cap = _tiny_node_cap(monkeypatch)
+        for wrapper in ("filler", "budgets"):
+            args: dict[str, Any] = {wrapper: [{"note": i} for i in range(cap)]}
+            assert scan_budget_amount(args).unreadable_key == SCAN_EXHAUSTED_NODES
+
+    # -- depth exhaustion: only inside a money context -----------------------
+
+    def test_a_depth_cut_with_no_money_context_stays_silent(self) -> None:
+        """An ordinary deeply-nested payload carrying nothing money-shaped is
+        bounded-heuristic truncation, not an unknown. Denying it would cost
+        availability for no safety."""
+        result = scan_budget_amount(_buried({"note": "x", "count": 3}, 20))
+        assert result.value is None
+        assert result.unreadable_key is None
+
+    def test_a_depth_cut_inside_a_money_subtree_is_unreadable(self) -> None:
+        """The cut lands under a budget-named key, whose leaf is never
+        reached: precisely where an unchecked amount would hide."""
+        buried = _buried({"budgets": {"inner": {"value": 999}}}, 11)
+        result = scan_budget_amount(buried)
+        assert result.value is None
+        assert result.unreadable_key == SCAN_EXHAUSTED_DEPTH
+
+    def test_the_gate_allows_a_deep_payload_with_no_money_context(self) -> None:
+        """The availability half of the contract, end to end."""
+        decision = evaluate_guardrails(
+            "acme-bulk_update",
+            _buried({"note": "x", "count": 3}, 20),
+            _CAPS,
+            pattern_fallback=True,
+        )
+        assert decision.allowed is True
+
+    def test_the_gate_denies_a_depth_cut_inside_a_money_subtree(self) -> None:
+        decision = evaluate_guardrails(
+            "acme-bulk_update",
+            _buried({"budgets": {"inner": {"value": 999}}}, 11),
+            _CAPS,
+            pattern_fallback=True,
+        )
+        assert decision.allowed is False
+        reason = decision.reason or ""
+        # Names the NESTING cause, not the size one.
+        assert "deeper than" in reason
+        assert "too large" not in reason
+        assert "_meta['mureo']['budget']" in reason
+        assert SCAN_EXHAUSTED_DEPTH not in reason  # never leak the sentinel
+
+    def test_a_partial_read_does_not_mask_exhaustion(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Deliberately replaces the earlier "a reading survives exhaustion"
+        behaviour. ``PatternAmount.value`` promises the LARGEST amount and the
+        gate compares exactly that against the cap, so a small figure found
+        before the walk stopped is not an answer — a larger one may sit in the
+        part never reached."""
+        cap = _tiny_node_cap(monkeypatch)
+        args: dict[str, Any] = {
+            "daily_budget": 777,
+            "filler": [{"note": i} for i in range(cap)],
+        }
+        result = scan_budget_amount(args)
+        assert result.value is None
+        assert result.unreadable_key == SCAN_EXHAUSTED_NODES
+
+    def test_a_depth_cut_in_context_outranks_a_reading_too(self) -> None:
+        buried = _buried({"budgets": {"inner": {"value": 999_999}}}, 11)
+        buried["daily_budget"] = 10
+        result = scan_budget_amount(buried)
+        assert result.value is None
+        assert result.unreadable_key == SCAN_EXHAUSTED_DEPTH
+
+    def test_an_ordinary_payload_is_never_reported_as_exhausted(self) -> None:
+        assert scan_budget_amount({"name": "x"}).unreadable_key is None
+        assert scan_budget_amount({"daily_budget": 5}).unreadable_key is None
+        assert scan_bid_amount({"nothing": {"here": 1}}).unreadable_key is None
+
+    # -- and the gate must DENY on it ---------------------------------------
+
+    def test_the_gate_denies_an_exhausted_scan_instead_of_allowing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cap = _tiny_node_cap(monkeypatch)
+        args: dict[str, Any] = {f"filler_{i}": i for i in range(cap + 50)}
+        decision = evaluate_guardrails(
+            "acme-bulk_update", args, _CAPS, pattern_fallback=True
+        )
+        assert decision.allowed is False
+        reason = decision.reason or ""
+        # Actionable: names the cause AND the way out.
+        assert "too large" in reason
+        assert "_meta['mureo']['budget']" in reason
+        assert SCAN_EXHAUSTED_NODES not in reason  # never leak the sentinel
+
+    def test_the_gate_denies_an_exhausted_bid_scan(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Budget is checked first and would deny on the same payload, so the
+        budget channel is declared here to isolate the bid message."""
+        cap = _tiny_node_cap(monkeypatch)
+        args: dict[str, Any] = {f"filler_{i}": i for i in range(cap + 50)}
+        decision = evaluate_guardrails(
+            "acme-bulk_update",
+            args,
+            _BID_CAPS,
+            budget_declaration=BudgetDeclaration(daily_key="declared_budget"),
+            pattern_fallback=True,
+        )
+        assert decision.allowed is False
+        assert "_meta['mureo']['bid']" in (decision.reason or "")
+
+    def test_a_declaration_is_unaffected_by_payload_size(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The documented way out actually works: a declared key is read
+        directly, so an oversized payload no longer denies."""
+        cap = _tiny_node_cap(monkeypatch)
+        args: dict[str, Any] = {f"filler_{i}": i for i in range(cap + 50)}
+        args["spend_limit"] = 100
+        decision = evaluate_guardrails(
+            "acme-bulk_update",
+            args,
+            _CAPS,
+            budget_declaration=BudgetDeclaration(daily_key="spend_limit"),
+            bid_declaration=BidDeclaration(bid_amount_key="declared_bid"),
+            pattern_fallback=True,
+        )
+        assert decision.allowed is True
+
+
+# ---------------------------------------------------------------------------
+# Parent-object context for generically named leaves (issue #517)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAncestorContext:
+    """A bridged surface wraps the number in a named object, so the family
+    lives on an ANCESTOR and the leaf is a bare ``value`` / ``amount``."""
+
+    def test_a_generic_leaf_takes_its_enclosing_objects_family(self) -> None:
+        assert scan_budget_amount({"monetaryBudget": {"value": 500}}).value == 500
+        assert scan_budget_amount({"budget": {"amount": 12}}).value == 12
+        assert scan_bid_amount({"bid": {"value": 3.0}}).value == 3.0
+
+    def test_a_list_passes_its_own_key_to_its_items(self) -> None:
+        assert scan_budget_amount({"budgets": [{"value": 700}]}).value == 700
+
+    def test_context_does_not_make_sibling_identifiers_readable(self) -> None:
+        """The whole reason the scan never credits everything under a match:
+        a ten-digit resource id would exceed every cap."""
+        args = {"monetaryBudget": {"value": 500, "campaignId": 1_234_567_890}}
+        assert scan_budget_amount(args).value == 500
+
+    def test_an_opaque_map_key_between_the_family_and_the_number(self) -> None:
+        """The real ``add_country_campaign`` shape: the only semantic word is
+        two objects above the number, and the level in between is a country
+        code that carries no vocabulary of its own."""
+        args = {
+            "budgetCaps": {"countryMonetaryBudgetSettings": {"US": {"value": 25_000}}}
+        }
+        assert scan_budget_amount(args).value == 25_000
+
+    def test_the_context_window_is_bounded(self) -> None:
+        """Inside the window the family carries; past it the context lapses,
+        so an arbitrarily distant ``value`` is not credited to it."""
+        from mureo.policy.pattern_scan import _MAX_CONTEXT_SPAN
+
+        node: dict[str, Any] = {"value": 25_000}
+        for _ in range(_MAX_CONTEXT_SPAN):
+            node = {"opaque": node}
+        assert scan_budget_amount({"budget": node}).value == 25_000
+
+        assert scan_budget_amount({"budget": {"opaque": node}}).value is None
+
+    def test_a_nearer_family_name_resets_the_window(self) -> None:
+        args = {"budget": {"a": {"b": {"monetaryBudget": {"value": 900}}}}}
+        assert scan_budget_amount(args).value == 900
+
+    def test_only_value_and_amount_are_contextual(self) -> None:
+        assert scan_budget_amount({"budget": {"threshold": 9_000}}).value is None
+        assert (
+            scan_budget_amount({"budgetCaps": {"US": {"threshold": 9_000}}}).value
+            is None
+        )
+
+    def test_context_does_not_make_a_distant_identifier_readable(self) -> None:
+        """Widening the window must not widen WHAT it credits: ids stay
+        excluded however close the family name is."""
+        args = {"budgetCaps": {"US": {"campaignId": 1_234_567_890, "value": 500}}}
+        assert scan_budget_amount(args).value == 500
+
+    def test_an_unrelated_parent_does_not_credit_its_leaves(self) -> None:
+        """Real Amazon shapes that must stay silent: ``tags[].value`` and
+        ``contentCategoriesWithRisk.value``."""
+        assert scan_budget_amount({"tags": [{"key": "env", "value": 7}]}).value is None
+        assert scan_bid_amount({"tags": [{"key": "env", "value": 7}]}).value is None
+        assert (
+            scan_budget_amount({"contentCategoriesWithRisk": {"value": 3}}).value
+            is None
+        )
+
+    def test_the_family_of_the_ancestor_is_what_decides(self) -> None:
+        assert scan_bid_amount({"monetaryBudget": {"value": 500}}).value is None
+        assert scan_budget_amount({"bid": {"value": 3.0}}).value is None
+
+    def test_the_two_families_never_blur_across_the_window(self) -> None:
+        """A bid ancestor never credits a budget leaf, at any span."""
+        args = {"bid": {"marketplaceSettings": {"JP": {"value": 4.0}}}}
+        assert scan_bid_amount(args).value == 4.0
+        assert scan_budget_amount(args).value is None
+
+    def test_micros_scaling_follows_the_matching_key(self) -> None:
+        assert (
+            scan_budget_amount({"budget_micros": {"value": 12_000_000}}).value == 12.0
+        )
+
+    def test_a_contextual_unreadable_reports_the_enclosing_key(self) -> None:
+        """``value`` names nothing in a deny message; ``monetaryBudget`` does."""
+        result = scan_budget_amount({"monetaryBudget": {"value": float("inf")}})
+        assert result.value is None
+        assert result.unreadable_key == "monetaryBudget"
+
+
+# ---------------------------------------------------------------------------
+# The REAL Amazon payload shapes (issue #517) — built from the shipped
+# manifest's inputSchema for each tool, trimmed to the asserted fields.
+# ---------------------------------------------------------------------------
+
+
+def _amazon_budget_value(amount: float) -> dict[str, Any]:
+    """``budgetValue`` as Amazon declares it: the number is a bare ``value``
+    under ``monetaryBudget``, three objects below the word "budget"."""
+    return {"monetaryBudgetValue": {"monetaryBudget": {"value": amount}}}
+
+
+@pytest.mark.unit
+class TestRealAmazonShapes:
+    def test_update_campaign_budget_is_read(self) -> None:
+        args = {
+            "body": {
+                "accessRequestedAccount": {"advertiserAccountId": "AD1"},
+                "campaigns": [
+                    {
+                        "campaignId": "1234567890",
+                        "budgets": [
+                            {
+                                "budgetType": "MONETARY",
+                                "budgetValue": _amazon_budget_value(25_000),
+                                "recurrenceTimePeriod": "DAILY",
+                            }
+                        ],
+                    }
+                ],
+            }
+        }
+        assert scan_budget_amount(args).value == 25_000
+
+    def test_update_ad_group_budget_and_daily_min_spend_are_read(self) -> None:
+        args = {
+            "body": {
+                "adGroups": [
+                    {
+                        "adGroupId": "AG1",
+                        "budgets": [
+                            {
+                                "budgetType": "MONETARY",
+                                "budgetValue": _amazon_budget_value(900),
+                                "recurrenceTimePeriod": "DAILY",
+                            }
+                        ],
+                        "optimization": {
+                            "bidStrategy": "AUTO_FOR_SALES",
+                            "budgetSettings": {
+                                "budgetAllocation": "UNRESTRICTED",
+                                "dailyMinSpendValue": 40,
+                            },
+                        },
+                    }
+                ]
+            }
+        }
+        assert scan_budget_amount(args).value == 900
+
+    def test_daily_min_spend_alone_is_read(self) -> None:
+        """``spend`` in the vocabulary — the key names itself, no context
+        needed."""
+        args = {
+            "body": {
+                "adGroups": [
+                    {"optimization": {"budgetSettings": {"dailyMinSpendValue": 12_000}}}
+                ]
+            }
+        }
+        assert scan_budget_amount(args).value == 12_000
+
+    def test_ad_group_bids_are_still_read(self) -> None:
+        """Bids already worked; the context rule must not regress them."""
+        args = {
+            "body": {
+                "adGroups": [
+                    {
+                        "adGroupId": "AG1",
+                        "bid": {
+                            "baseBid": 0.5,
+                            "defaultBid": 1.25,
+                            "maxAverageBid": 2.0,
+                        },
+                    }
+                ]
+            }
+        }
+        assert scan_bid_amount(args).value == 2.0
+
+    def test_target_bids_are_still_read(self) -> None:
+        args = {
+            "body": {
+                "targets": [
+                    {
+                        "targetId": "T1",
+                        "bid": {
+                            "bid": 3.5,
+                            "marketplaceSettings": [{"marketplace": "JP", "bid": 4.0}],
+                        },
+                    }
+                ]
+            }
+        }
+        assert scan_bid_amount(args).value == 4.0
+        assert scan_budget_amount(args).value is None
+
+    def test_the_gate_now_blocks_an_over_cap_amazon_budget(self) -> None:
+        """End to end: the shape that sailed past every cap until #517."""
+        decision = evaluate_guardrails(
+            "campaign_management-update_campaign_budget",
+            {
+                "body": {
+                    "campaigns": [
+                        {
+                            "campaignId": "1234567890",
+                            "budgets": [{"budgetValue": _amazon_budget_value(25_000)}],
+                        }
+                    ]
+                }
+            },
+            _CAPS,
+            pattern_fallback=True,
+        )
+        assert decision.allowed is False
+        assert "max_daily_budget_per_campaign" in (decision.reason or "")
+
+
+@pytest.mark.unit
+class TestNodeCapHeadroom:
+    """The SHIPPED :data:`_MAX_NODES`, against the worst realistic shape.
+
+    Cost per campaign varies ~10x across the real Amazon budget shapes,
+    because a global campaign repeats its budget once per marketplace
+    (23 in the enum): ~10 nodes/campaign without ``marketplaceSettings``,
+    ~103 with the full set. Sizing the bound off the cheap shape is how a
+    legitimate bulk call gets refused — at the previous 100,000 the
+    full-marketplace shape exhausted at only 971 campaigns, and no
+    ``maxItems`` anywhere in the money tools' schemas prevents such a call.
+    """
+
+    def _global_campaign(self, i: int, marketplaces: int) -> dict[str, Any]:
+        """One campaign in the deepest real budget shape."""
+        settings = [
+            {"marketplace": code, "monetaryBudget": {"value": 100 + i}}
+            for code in _ADD_COUNTRY_MARKETPLACES[:marketplaces]
+        ]
+        return {
+            "campaignId": f"{i:010d}",
+            "budgets": [
+                {
+                    "budgetType": "MONETARY",
+                    "budgetValue": {
+                        "monetaryBudgetValue": {
+                            "monetaryBudget": {"value": 100 + i},
+                            "marketplaceSettings": settings,
+                        }
+                    },
+                    "recurrenceTimePeriod": "DAILY",
+                }
+            ],
+        }
+
+    def _bulk(self, campaigns: int, marketplaces: int) -> dict[str, Any]:
+        return {
+            "body": {
+                "campaigns": [
+                    self._global_campaign(i, marketplaces) for i in range(campaigns)
+                ]
+            }
+        }
+
+    def test_a_full_marketplace_bulk_call_is_not_denied(self) -> None:
+        """2,000 global campaigns × 23 marketplaces ≈ 206k nodes ≈ 21% of the
+        shipped bound. This is the case the old 100,000 refused."""
+        result = scan_budget_amount(self._bulk(2_000, 23))
+        assert result.unreadable_key is None
+        assert result.value == 100 + 1_999
+
+    def test_the_cheap_shape_has_even_more_room(self) -> None:
+        result = scan_budget_amount(self._bulk(2_000, 0))
+        assert result.unreadable_key is None
+        assert result.value == 100 + 1_999
+
+    def test_the_bound_is_sized_off_the_worst_shape(self) -> None:
+        """Pins the decision, not just the constant: the shipped bound must
+        still admit a few thousand campaigns of the MOST expensive real
+        shape (~103 nodes each)."""
+        from mureo.policy.pattern_scan import _MAX_NODES
+
+        worst_nodes_per_campaign = 103
+        assert _MAX_NODES / worst_nodes_per_campaign > 5_000
+
+
+# ---------------------------------------------------------------------------
+# Reachability across the WHOLE real manifest (issue #517)
+#
+# Every numeric leaf that carries money on a real 85-tool Amazon Ads manifest,
+# as a dotted schema path (``[]`` = an array level). Enumerated once from the
+# manifest's own ``inputSchema`` blocks — the manifest itself is NOT vendored
+# here; only the paths are, so the table is readable and reviewable. Each path
+# is expanded into a minimal payload and the scan must find it: 62 of 62, no
+# unreachable money, across the 13 money-carrying tools.
+#
+# Two separate gaps are pinned here. Twelve of these (every
+# ``marketplaceSettings[]`` and ``flights[]`` budget) were out of reach at the
+# old DEPTH bound of 8; the 24 ``add_country_campaign`` country budgets were
+# out of reach of the old one-level CONTEXT rule. Both were real budgets that
+# sailed past every ``## Guardrails`` cap.
+# ---------------------------------------------------------------------------
+
+_REAL_MONEY_LEAVES: list[tuple[str, str, str]] = [
+    ("bid", "create_ad_group", "body.adGroups[].bid.baseBid"),
+    ("bid", "create_ad_group", "body.adGroups[].bid.defaultBid"),
+    ("bid", "create_ad_group", "body.adGroups[].bid.marketplaceSettings[].defaultBid"),
+    ("bid", "create_ad_group", "body.adGroups[].bid.maxAverageBid"),
+    (
+        "bid",
+        "create_singleshot_sp_campaign",
+        "body.oneshotCampaigns[].bid.marketplaceSettings[].defaultBid",
+    ),
+    ("bid", "create_target", "body.targets[].bid.bid"),
+    ("bid", "create_target", "body.targets[].bid.marketplaceSettings[].bid"),
+    ("bid", "update_ad_group", "body.adGroups[].bid.baseBid"),
+    ("bid", "update_ad_group", "body.adGroups[].bid.defaultBid"),
+    ("bid", "update_ad_group", "body.adGroups[].bid.marketplaceSettings[].defaultBid"),
+    ("bid", "update_ad_group", "body.adGroups[].bid.maxAverageBid"),
+    ("bid", "update_target", "body.targets[].bid.bid"),
+    ("bid", "update_target", "body.targets[].bid.marketplaceSettings[].bid"),
+    ("bid", "update_target_bid", "body.targets[].bid.bid"),
+    ("bid", "update_target_bid", "body.targets[].bid.marketplaceSettings[].bid"),
+    (
+        "budget",
+        "create_ad_group",
+        "body.adGroups[].budgets[].budgetValue.monetaryBudgetValue"
+        ".marketplaceSettings[].monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "create_ad_group",
+        "body.adGroups[].budgets[].budgetValue.monetaryBudgetValue"
+        ".monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "create_ad_group",
+        "body.adGroups[].optimization.budgetSettings.dailyMinSpendValue",
+    ),
+    (
+        "budget",
+        "create_campaign",
+        "body.campaigns[].budgets[].budgetValue.monetaryBudgetValue"
+        ".marketplaceSettings[].monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "create_campaign",
+        "body.campaigns[].budgets[].budgetValue.monetaryBudgetValue"
+        ".monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "create_campaign",
+        "body.campaigns[].flights[].budget.budgetValue.monetaryBudgetValue"
+        ".marketplaceSettings[].monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "create_campaign",
+        "body.campaigns[].flights[].budget.budgetValue.monetaryBudgetValue"
+        ".monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "create_portfolio",
+        "body.portfolios[].budget.budgetValue.monetaryBudgetValue"
+        ".marketplaceSettings[].monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "create_portfolio",
+        "body.portfolios[].budget.budgetValue.monetaryBudgetValue"
+        ".monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "create_singleshot_portfolio",
+        "body.portfolios[].budget.budgetValue.monetaryBudgetValue"
+        ".marketplaceSettings[].monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "create_singleshot_portfolio",
+        "body.portfolios[].budget.budgetValue.monetaryBudgetValue"
+        ".monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "create_singleshot_sp_campaign",
+        "body.oneshotCampaigns[].budgets.budgetValue"
+        ".marketplaceSettings[].monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "update_ad_group",
+        "body.adGroups[].budgets[].budgetValue.monetaryBudgetValue"
+        ".marketplaceSettings[].monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "update_ad_group",
+        "body.adGroups[].budgets[].budgetValue.monetaryBudgetValue"
+        ".monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "update_ad_group",
+        "body.adGroups[].optimization.budgetSettings.dailyMinSpendValue",
+    ),
+    (
+        "budget",
+        "update_campaign",
+        "body.campaigns[].budgets[].budgetValue.monetaryBudgetValue"
+        ".marketplaceSettings[].monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "update_campaign",
+        "body.campaigns[].budgets[].budgetValue.monetaryBudgetValue"
+        ".monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "update_campaign",
+        "body.campaigns[].flights[].budget.budgetValue.monetaryBudgetValue"
+        ".marketplaceSettings[].monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "update_campaign",
+        "body.campaigns[].flights[].budget.budgetValue.monetaryBudgetValue"
+        ".monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "update_campaign_budget",
+        "body.campaigns[].budgets[].budgetValue.monetaryBudgetValue"
+        ".marketplaceSettings[].monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "update_campaign_budget",
+        "body.campaigns[].budgets[].budgetValue.monetaryBudgetValue"
+        ".monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "update_portfolio",
+        "body.portfolios[].budget.budgetValue.monetaryBudgetValue"
+        ".marketplaceSettings[].monetaryBudget.value",
+    ),
+    (
+        "budget",
+        "update_portfolio",
+        "body.portfolios[].budget.budgetValue.monetaryBudgetValue"
+        ".monetaryBudget.value",
+    ),
+]
+
+#: ``add_country_campaign`` declares one daily budget PER marketplace, keyed by
+#: country code — 24 of them, each ``{"value": <number>}`` with its own
+#: ``minimum: 1, maximum: 1000000``. The country code is an opaque map key, so
+#: the nearest word with any meaning (``countryMonetaryBudgetSettings``) sits
+#: two objects above the number: the shape the bounded context window exists
+#: for. Generated rather than typed out — 24 identical paths differing by two
+#: letters is a table nobody would proofread.
+_ADD_COUNTRY_MARKETPLACES = (
+    "US",
+    "CA",
+    "UK",
+    "GB",
+    "DE",
+    "FR",
+    "IT",
+    "ES",
+    "IN",
+    "JP",
+    "AU",
+    "MX",
+    "AE",
+    "SA",
+    "BR",
+    "NL",
+    "SG",
+    "TR",
+    "PL",
+    "SE",
+    "EG",
+    "BE",
+    "ZA",
+    "IE",
+)
+_REAL_MONEY_LEAVES += [
+    (
+        "budget",
+        "add_country_campaign",
+        f"body.campaigns[].budgetCaps.countryMonetaryBudgetSettings.{code}.value",
+    )
+    for code in _ADD_COUNTRY_MARKETPLACES
+]
+
+
+def _payload_for(path: str, amount: float) -> dict[str, Any]:
+    """Expand one dotted schema path into the smallest payload carrying it.
+
+    ``a.b[].c`` → ``{"a": {"b": [{"c": amount}]}}``.
+    """
+    node: Any = amount
+    for segment in reversed(path.split(".")):
+        node = {segment[:-2]: [node]} if segment.endswith("[]") else {segment: node}
+    assert isinstance(node, dict)
+    return node
+
+
+@pytest.mark.unit
+class TestRealAmazonManifestReachability:
+    def test_the_table_covers_the_whole_manifest(self) -> None:
+        """Guards the table itself: 62 money leaves were enumerated across the
+        85 tools, so a silent truncation of this list cannot pass unnoticed."""
+        assert len(_REAL_MONEY_LEAVES) == 62
+        assert len(_ADD_COUNTRY_MARKETPLACES) == 24
+        assert len({t for _, t, _ in _REAL_MONEY_LEAVES}) == 13
+
+    @pytest.mark.parametrize(
+        ("family", "tool", "path"),
+        _REAL_MONEY_LEAVES,
+        ids=[f"{t}:{p}" for _, t, p in _REAL_MONEY_LEAVES],
+    )
+    def test_every_real_money_leaf_is_reachable(
+        self, family: str, tool: str, path: str
+    ) -> None:
+        scan = scan_budget_amount if family == "budget" else scan_bid_amount
+        assert scan(_payload_for(path, 4_321.0)).value == 4_321.0
+
+    @pytest.mark.parametrize(
+        ("family", "tool", "path"),
+        _REAL_MONEY_LEAVES,
+        ids=[f"{t}:{p}" for _, t, p in _REAL_MONEY_LEAVES],
+    )
+    def test_a_money_leaf_never_reads_as_the_other_family(
+        self, family: str, tool: str, path: str
+    ) -> None:
+        """Deeper reach must not blur budget and bid into each other."""
+        other = scan_bid_amount if family == "budget" else scan_budget_amount
+        assert other(_payload_for(path, 4_321.0)).value is None
 
 
 # ---------------------------------------------------------------------------

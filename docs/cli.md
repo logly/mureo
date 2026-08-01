@@ -130,7 +130,8 @@ See [authentication.md](authentication.md) for details on credentials.
 `mureo amazon` sets up the Amazon Ads official-MCP bridge. Enter the Amazon credentials first — in the **Amazon Ads** card of the **Plugin credentials** section of `mureo configure` (recommended), via the `AMAZON_ADS_*` environment variables, or by hand in the `amazon_ads` section of `~/.mureo/credentials.json`. The card also carries the **Authorize with Amazon** flow, which obtains the tokens for you: Amazon has no loopback callback, so it is a guided paste-code flow — mureo opens Amazon's consent page and you paste the redirected address back.
 
 ```bash
-# Discover Amazon's MCP tools and (re)write ~/.mureo/amazon_tools.json
+# Discover Amazon's MCP tools and (re)write amazon_tools.json beside
+# your credentials file (~/.mureo/amazon_tools.json by default)
 mureo amazon refresh-manifest
 ```
 

@@ -570,7 +570,8 @@ Generate creator-quality ad creatives — text-free key visuals plus copy compos
 
 Amazon Ads is **not** a mureo-native tool family, so it has no table above.
 mureo bridges the **official Amazon Ads MCP**: the tools it exposes come from
-the operator's own local manifest (`~/.mureo/amazon_tools.json`, written by
+the operator's own local manifest (`amazon_tools.json`, beside the
+credentials file — `~/.mureo/amazon_tools.json` by default, written by
 `mureo amazon refresh-manifest`), and their surface is defined by Amazon, not
 by mureo. That means the exact tool list **cannot be enumerated here** — it is
 whatever your account's manifest holds, and it changes when Amazon changes it.

@@ -80,7 +80,9 @@ from mureo.policy.declarations import (
     reset_budget_declarations,
 )
 from mureo.policy.pattern_scan import (
+    SCAN_EXHAUSTED_NODES,
     has_pattern_fallback,
+    is_scan_exhausted,
     register_pattern_fallback_tool,
     reset_pattern_fallback_tools,
     scan_bid_amount,
@@ -113,9 +115,45 @@ __all__ = [
     "_BID_DECLARATIONS",
     "_UNREADABLE",
     "has_pattern_fallback",
+    "is_scan_exhausted",
     "register_pattern_fallback_tool",
     "reset_pattern_fallback_tools",
 ]
+
+#: The two ways the best-effort scan can run out, in operator words. Keyed by
+#: the sentinel :mod:`mureo.policy.pattern_scan` reports, so the reason names
+#: the ACTUAL cause rather than a generic "too big".
+_SCAN_EXHAUSTED_CAUSES = {
+    SCAN_EXHAUSTED_NODES: (
+        "are too large for mureo's best-effort {what} scan to read completely"
+    ),
+    # Anything else is the depth sentinel.
+    None: (
+        "nest a {what}-carrying section deeper than mureo's best-effort "
+        "{what} scan descends"
+    ),
+}
+
+#: Shared by the budget and bid deny paths so the two cannot drift.
+#: ``{what}`` is "budget" / "bid"; ``{cause}`` comes from
+#: :data:`_SCAN_EXHAUSTED_CAUSES`.
+_SCAN_EXHAUSTED_REASON = (
+    "This call's arguments {cause}, so the STRATEGY.md Guardrails {what} caps "
+    "cannot be verified for it. Refusing it rather than letting an unchecked "
+    "{what} through. Declare this tool's {what} argument keys in its MCP "
+    "metadata (_meta['mureo']['{what}']) — a declaration is read directly and "
+    "is affected by neither payload size nor nesting — or flatten the payload "
+    "and split the call into smaller batches."
+)
+
+
+def _scan_exhausted_reason(unreadable_key: str, what: str) -> str:
+    """Operator-facing text for an exhausted scan. One builder, two families."""
+    cause = _SCAN_EXHAUSTED_CAUSES.get(
+        unreadable_key, _SCAN_EXHAUSTED_CAUSES[None]
+    ).format(what=what)
+    return _SCAN_EXHAUSTED_REASON.format(cause=cause, what=what)
+
 
 # The (case-insensitive) STRATEGY.md section that carries machine-readable
 # hard rules. Unrecognized by strategy.py's section map, so it round-trips as
@@ -600,6 +638,14 @@ def evaluate_guardrails(
         # Fail CLOSED: the operator wrote a cap and the tool's declared
         # budget argument carries garbage, so the cap CANNOT be checked.
         # Allowing here would be the #414 silent bypass with extra steps.
+        # An exhausted scan is the same failure for a different reason — it
+        # ran out of budget before reading anything — and gets a reason the
+        # operator can act on rather than "'<sentinel>' is not a number".
+        if is_scan_exhausted(inputs.unreadable_key):
+            return PolicyDecision(
+                allowed=False,
+                reason=_scan_exhausted_reason(inputs.unreadable_key, "budget"),
+            )
         return PolicyDecision(
             allowed=False,
             reason=(
@@ -699,6 +745,11 @@ def evaluate_guardrails(
     # would silently defeat the cap.
     bids = _bid_inputs(arguments, bid_declaration, pattern_fallback=pattern_fallback)
     if bids.unreadable_key is not None:
+        if is_scan_exhausted(bids.unreadable_key):
+            return PolicyDecision(
+                allowed=False,
+                reason=_scan_exhausted_reason(bids.unreadable_key, "bid"),
+            )
         return PolicyDecision(
             allowed=False,
             reason=(

@@ -585,6 +585,15 @@ def test_importing_the_bridge_first_does_not_break_plugin_discovery() -> None:
     source = (
         "import warnings\n"
         "warnings.simplefilter('error')\n"
+        # ...but NOT a dependency's deprecation noise. Since #516 the bridge
+        # resolves its manifest through the active RuntimeContext, so on a
+        # host with a ``mureo.runtime_context_factory`` installed the
+        # factory's own imports (google-ads emits two FutureWarnings on
+        # Python 3.10) run inside collection. Escalating those would fail
+        # this test for a third party's release calendar; the canary that
+        # matters — PluginToolWarning, i.e. discovery actually degraded —
+        # stays an error.
+        "warnings.simplefilter('default', FutureWarning)\n"
         "import mureo.amazon_ads.bridge\n"  # bridge FIRST — the risky order
         "import mureo.mcp.server as s\n"
         "assert s._PLUGIN_DISPATCH is not None\n"

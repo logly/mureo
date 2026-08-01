@@ -148,7 +148,7 @@ When a skill reports `analytics_not_available_for_<platform>`, `<platform>` is t
 
 ### Mutating plugin tools — structural strategy parity
 
-A **mutating** plugin tool (anything not declared `readOnlyHint`) is subject to the *same structural strategy handling as a built-in write*, even though mureo has no platform-specific analytics for it:
+A **mutating** plugin tool — one that declares `readOnlyHint: false`, or declares no `readOnlyHint` and whose name is not read-shaped (`list_` / `get_` / `analyze_` / `diagnose_` / `inspect_` / `report_` / `check_` / `search_` / `query_`, matched per hyphen-delimited namespace segment) — is subject to the *same structural strategy handling as a built-in write*, even though mureo has no platform-specific analytics for it:
 
 - **Confirm before the call.** The *Security Rules → Confirm Before Write Operations* requirement applies to plugin write tools exactly as it does to `google_ads_*` / `meta_ads_*` writes — show the user what will change and get explicit approval first.
 - **Gate against strategy.** Before the call, read STRATEGY.md (Operation Mode, Goals, brand/rules) and STATE.json. If the mutation conflicts with the current Operation Mode or a Goal, do **not** run it — surface the conflict and let the user decide, the same as you would for a built-in write.
