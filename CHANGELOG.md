@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.38] - 2026-08-01
+
+### Added
+
+- **A multi-tenant host can bind Amazon token refreshes to the active
+  tenant's own store** (#511). A secret store may declare an
+  `amazon_token_saver(access_token, refresh_token)` capability, resolved
+  at persist time by `runtime_amazon_token_saver()` — the same
+  entry-point-gated pattern as the other store capabilities. Without the
+  capability the bridge keeps writing through the runtime-resolved
+  credentials path, so single-tenant installs are unchanged, and an
+  explicitly injected saver still wins.
+- **Backend authors have a guide for the runtime store capabilities**
+  (#515). `docs/plugin-authoring.md` documents the runtime-context entry
+  point and every optional capability — write path, multi-account auth,
+  configure-UI field narrowing, per-client account allow-lists and the
+  new Amazon token saver — with their defensive-`getattr` semantics.
+
 ### Fixed
 
 - **The Amazon tool manifest now has exactly one location** (#516). The
