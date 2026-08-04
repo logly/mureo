@@ -343,9 +343,11 @@ def extract_mutation_identity(
     if declaration is not None:
         campaign_id = _identity_value(arguments, declaration.campaign_id_key)
         ad_id = _identity_value(arguments, declaration.ad_id_key)
-        entity_id = _identity_value(arguments, declaration.entity_id_key)
-        entity_type = declaration.entity_type if entity_id is not None else None
-        return campaign_id, ad_id, entity_type, entity_id
+        declared_entity_id = _identity_value(arguments, declaration.entity_id_key)
+        declared_entity_type = (
+            declaration.entity_type if declared_entity_id is not None else None
+        )
+        return campaign_id, ad_id, declared_entity_type, declared_entity_id
 
     campaign_id = _first_identity_value(arguments, _CAMPAIGN_ID_KEYS)
     ad_id = _first_identity_value(arguments, _AD_ID_KEYS)
