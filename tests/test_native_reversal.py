@@ -244,11 +244,41 @@ class TestRecordNativeMutation:
         entry = doc.action_log[0]
         assert entry.action == "meta_ads_campaigns_pause"
         assert entry.platform == "meta_ads"
+        assert entry.campaign_id == "c1"
         assert entry.observation_due is not None
         assert entry.reversible_params == {
             "operation": "meta_ads_campaigns_enable",
             "params": {"campaign_id": "c1"},
         }
+
+    def test_records_sub_campaign_identity(self, tmp_path, monkeypatch) -> None:
+        from mureo.context.state import read_state_file
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        nr.record_native_mutation(
+            "meta_ads_ad_sets_pause", {"ad_set_id": "set1"}, "ACTIVE"
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.entity_type == "ad_set"
+        assert entry.entity_id == "set1"
+
+    def test_google_ad_does_not_promote_parent_context(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        nr.record_native_mutation(
+            "google_ads_ads_update_status",
+            {"ad_group_id": "group1", "ad_id": "ad1"},
+            "ENABLED",
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.ad_id == "ad1"
+        assert entry.entity_type is None
+        assert entry.entity_id is None
 
     def test_timestamp_comes_from_the_shared_server_clock(
         self, tmp_path, monkeypatch

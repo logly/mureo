@@ -26,6 +26,10 @@ metadata — no new mureo Protocol surface:
       but not auto-reversible. Honest scope, documented.
     - ``throttle``: ``{"rate": float, "burst": int}`` → a dedicated
       Throttler for that tool; invalid/absent ⇒ shared default.
+    - ``identity``: argument-key declarations for action-log identity, e.g.
+      ``{"campaign_id": "campaignId", "entity_type": "placement",
+      "entity_id": "placementId"}``. Common argument names are also detected
+      when this declaration is absent.
 
 Mutations are promoted to the action_log **only when a STATE.json
 already exists in cwd** — we never litter an arbitrary working
@@ -76,6 +80,16 @@ _BID_UNITS = {"currency": False, "micros": True}
 
 
 @dataclass(frozen=True)
+class IdentityDeclaration:
+    """Argument keys and target kind used to identify a plugin mutation."""
+
+    campaign_id_key: str | None = None
+    ad_id_key: str | None = None
+    entity_type: str | None = None
+    entity_id_key: str | None = None
+
+
+@dataclass(frozen=True)
 class ToolSemantics:
     """Safety classification derived from a plugin tool's MCP metadata."""
 
@@ -85,6 +99,43 @@ class ToolSemantics:
     observation_days: int | None = None
     budget: BudgetDeclaration | None = None
     bid: BidDeclaration | None = None
+    identity: IdentityDeclaration | None = None
+
+
+def _parse_identity(raw: Any) -> IdentityDeclaration | None:
+    """Parse ``meta["mureo"]["identity"]`` as an all-valid declaration.
+
+    ``campaign_id``, ``ad_id``, and ``entity_id`` name top-level tool
+    arguments. ``entity_type`` is the stable literal kind stored beside the
+    generic entity id. A generic id/type must be supplied as a pair; malformed
+    declarations are ignored whole so partial identity is never implied.
+    """
+    if not isinstance(raw, dict):
+        return None
+
+    def _text(name: str) -> str | None:
+        value = raw.get(name)
+        return value.strip() if isinstance(value, str) and value.strip() else None
+
+    allowed = {"campaign_id", "ad_id", "entity_type", "entity_id"}
+    if any(name not in allowed for name in raw):
+        return None
+    for name in raw:
+        if _text(name) is None:
+            return None
+    entity_type = _text("entity_type")
+    entity_id_key = _text("entity_id")
+    if (entity_type is None) != (entity_id_key is None):
+        return None
+    declaration = IdentityDeclaration(
+        campaign_id_key=_text("campaign_id"),
+        ad_id_key=_text("ad_id"),
+        entity_type=entity_type,
+        entity_id_key=entity_id_key,
+    )
+    if not any((declaration.campaign_id_key, declaration.ad_id_key, entity_id_key)):
+        return None
+    return declaration
 
 
 def _parse_budget(raw: Any) -> BudgetDeclaration | None:
@@ -237,7 +288,83 @@ def derive_semantics(tool: Tool) -> ToolSemantics:
         observation_days=observation_days,
         budget=_parse_budget(section.get("budget")),
         bid=_parse_bid(section.get("bid")),
+        identity=_parse_identity(section.get("identity")),
     )
+
+
+_CAMPAIGN_ID_KEYS = ("campaign_id", "campaignId")
+_AD_ID_KEYS = ("ad_id", "adId")
+_ENTITY_ID_KEYS = (
+    ("ad_group_id", "ad_group"),
+    ("adGroupId", "ad_group"),
+    ("ad_set_id", "ad_set"),
+    ("adSetId", "ad_set"),
+    ("placement_id", "placement"),
+    ("placementId", "placement"),
+    ("adspot_id", "adspot"),
+    ("adspotId", "adspot"),
+)
+
+
+def _identity_value(arguments: dict[str, Any], key: str | None) -> str | None:
+    """Return one scalar argument as a non-blank string identity."""
+    if key is None:
+        return None
+    value = arguments.get(key)
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _first_identity_value(
+    arguments: dict[str, Any], keys: tuple[str, ...]
+) -> str | None:
+    """Return the first populated identity among equivalent key spellings."""
+    for key in keys:
+        value = _identity_value(arguments, key)
+        if value is not None:
+            return value
+    return None
+
+
+def extract_mutation_identity(
+    arguments: dict[str, Any], declaration: IdentityDeclaration | None = None
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """Extract campaign, ad, and generic entity identity from tool arguments.
+
+    An explicit declaration is authoritative: only its declared keys are
+    extracted, so an undeclared context id cannot silently become the target.
+    With no declaration, common top-level spellings provide a backward-
+    compatible fallback, including the cheap campaign-level fix. In that
+    fallback an ``ad_id`` is the canonical target and parent context such as
+    ``ad_group_id`` / ``ad_set_id`` is not also promoted.
+    """
+    if declaration is not None:
+        campaign_id = _identity_value(arguments, declaration.campaign_id_key)
+        ad_id = _identity_value(arguments, declaration.ad_id_key)
+        declared_entity_id = _identity_value(arguments, declaration.entity_id_key)
+        declared_entity_type = (
+            declaration.entity_type if declared_entity_id is not None else None
+        )
+        return campaign_id, ad_id, declared_entity_type, declared_entity_id
+
+    campaign_id = _first_identity_value(arguments, _CAMPAIGN_ID_KEYS)
+    ad_id = _first_identity_value(arguments, _AD_ID_KEYS)
+    entity_type: str | None = None
+    entity_id: str | None = None
+    if ad_id is None:
+        direct_type = _identity_value(arguments, "entity_type")
+        direct_id = _identity_value(arguments, "entity_id")
+        if direct_type is not None and direct_id is not None:
+            entity_type, entity_id = direct_type, direct_id
+    if entity_id is None and ad_id is None:
+        for key, kind in _ENTITY_ID_KEYS:
+            candidate = _identity_value(arguments, key)
+            if candidate is not None:
+                entity_type, entity_id = kind, candidate
+                break
+    return campaign_id, ad_id, entity_type, entity_id
 
 
 def record_mutation_action_log(
@@ -245,6 +372,8 @@ def record_mutation_action_log(
     tool: str,
     source: str,
     reversal: dict[str, Any] | None,
+    arguments: dict[str, Any] | None = None,
+    identity: IdentityDeclaration | None = None,
     observation_days: int | None = None,
 ) -> None:
     """Append a plugin mutation to STATE.json's action_log. Never raises.
@@ -273,12 +402,19 @@ def record_mutation_action_log(
         # Server clock (#460) — same stamp/format as every other writer.
         now = clock.server_now()
         days = observation_days or _DEFAULT_OBSERVATION_DAYS
+        campaign_id, ad_id, entity_type, entity_id = extract_mutation_identity(
+            arguments or {}, identity
+        )
         entry = ActionLogEntry(
             timestamp=now.isoformat(timespec="seconds"),
             action=tool,
             # Issue #481: the canonical key every surface joins on — see
             # mureo.core.platform_keys.
             platform=plugin_platform_key(source or "unknown"),
+            campaign_id=campaign_id,
+            ad_id=ad_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
             summary=f"plugin tool {tool} (mutating)",
             command=tool,
             observation_due=(now + timedelta(days=days)).date().isoformat(),

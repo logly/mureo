@@ -111,6 +111,10 @@ class ActionLogEntry:
         ad-level pause could only be recorded as free text, so a later run could not
         match what mureo did against the ad statuses it observes — and would have to
         guess whether a stopped ad was its own doing or an operator's manual change.
+    entity_type / entity_id: Generic sub-campaign identity for targets that are not
+        ads, such as Google ad groups, Meta ad sets, or placements (#524). The pair
+        lets a later run suppress a repeated recommendation for the same entity
+        without suppressing unrelated changes across the whole campaign.
     evaluation_of: Positional index (into the full, append-only action_log) of the
         action whose ``observation_due`` this entry evaluates and closes. Same
         index semantics as ``rollback_of``: the log is append-only, so an entry's
@@ -134,9 +138,22 @@ class ActionLogEntry:
     reversible_params: dict[str, Any] | None = None
     rollback_of: int | None = None
     evaluation_of: int | None = None
+    # Appended after every pre-#524 field to preserve positional-constructor
+    # compatibility for third-party callers of this public dataclass.
+    entity_type: str | None = None
+    entity_id: str | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""
+        if (self.entity_type is None) != (self.entity_id is None):
+            raise ValueError("entity_type and entity_id must be provided together")
+        if self.entity_type is not None and self.entity_id is not None:
+            if not isinstance(self.entity_type, str) or not self.entity_type.strip():
+                raise ValueError("entity_type must be a non-empty string")
+            if not isinstance(self.entity_id, str) or not self.entity_id.strip():
+                raise ValueError("entity_id must be a non-empty string")
+            object.__setattr__(self, "entity_type", self.entity_type.strip())
+            object.__setattr__(self, "entity_id", self.entity_id.strip())
         if self.metrics_at_action is not None:
             object.__setattr__(
                 self, "metrics_at_action", copy.deepcopy(self.metrics_at_action)

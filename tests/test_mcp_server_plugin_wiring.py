@@ -301,6 +301,33 @@ class _ThrottleHintPlugin:
         return [TextContent(type="text", text="ok")]
 
 
+class _IdentityPlugin:
+    name = "identity_plugin"
+    display_name = "Identity"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="identity_plugin_update_placement",
+                description="update placement",
+                inputSchema={"type": "object", "properties": {}},
+                meta={
+                    "mureo": {
+                        "identity": {
+                            "campaign_id": "campaignRef",
+                            "entity_type": "placement",
+                            "entity_id": "placementRef",
+                        }
+                    }
+                },
+            ),
+        )
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text="ok")]
+
+
 def _disc_for(cls: type):
     def _fn(**_kw: Any) -> tuple[ProviderEntry, ...]:
         return (
@@ -383,6 +410,36 @@ class TestPhase2Promotion:
             assert (
                 mod._PLUGIN_TOOL_THROTTLERS["th_plugin_go"] is not mod._PLUGIN_THROTTLER
             )
+        finally:
+            importlib.reload(mod)
+
+    async def test_dispatch_passes_arguments_to_identity_promotion(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+        from mureo.mcp import plugin_audit
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
+        )
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_IdentityPlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            await mod.handle_call_tool(
+                "identity_plugin_update_placement",
+                {"campaignRef": "c1", "placementRef": "p1"},
+            )
+            entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+            assert entry.campaign_id == "c1"
+            assert entry.entity_type == "placement"
+            assert entry.entity_id == "p1"
         finally:
             importlib.reload(mod)
 

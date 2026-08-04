@@ -211,16 +211,22 @@ def record_native_mutation(
             return
         from mureo.context.models import ActionLogEntry
         from mureo.context.state import append_action_log
+        from mureo.mcp.plugin_semantics import extract_mutation_identity
 
         # Server clock (#460): the same offset-bearing local timestamp
         # ``mureo_state_action_log_append`` stamps, so entries from both
         # promotion paths are directly comparable — and ``observation_due``
         # lands on the operator's local calendar day.
         now = clock.server_now()
+        campaign_id, ad_id, entity_type, entity_id = extract_mutation_identity(args)
         entry = ActionLogEntry(
             timestamp=now.isoformat(timespec="seconds"),
             action=name,
             platform=spec[0],
+            campaign_id=campaign_id,
+            ad_id=ad_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
             summary=f"{name} (status change)",
             command=name,
             observation_due=(now + timedelta(days=_DEFAULT_OBSERVATION_DAYS))
