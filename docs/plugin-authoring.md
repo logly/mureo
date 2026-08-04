@@ -645,6 +645,20 @@ mureo-specific Protocol method:
     from this so daily-check's evidence step reviews the outcome like a
     built-in write (no `metrics_at_action` baseline ⇒ reviewed
     qualitatively).
+  - `"identity": {"campaign_id": "<argument key>", "ad_id": "<argument key>",
+    "entity_type": "<literal kind>", "entity_id": "<argument key>"}` — declares
+    which mutation arguments identify the target recorded in `action_log`.
+    `campaign_id` and `ad_id` are independently optional. `entity_type` and
+    `entity_id` must be declared together; use the generic pair for ad groups,
+    ad sets, placements, or another platform-specific sub-campaign entity.
+    Common argument names (`campaign_id`, `campaignId`, `ad_id`, `adId`, and
+    standard ad-group/ad-set/placement spellings) are detected without a
+    declaration. An undeclared `ad_id` is treated as the canonical target, so
+    a parent `ad_group_id` / `ad_set_id` required only as API context does not
+    broaden the observation guard. An explicit generic declaration wins when
+    the actual target is something else. Declare identity when your provider
+    uses different names so daily-check can suppress repeated changes to the
+    same target on the same platform while its observation window is open.
   - `"budget": {"daily": "<key>", "lifetime": "<key>",
     "current": "<key>", "unit": "currency"|"micros"}` — **declare where
     your tool carries its budget so `STRATEGY.md` `## Guardrails` caps

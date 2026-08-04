@@ -668,6 +668,43 @@ class TestStateV2Models:
         )
         assert entry.metrics_at_action is None
         assert entry.observation_due is None
+        assert entry.entity_type is None
+        assert entry.entity_id is None
+
+    @pytest.mark.unit
+    def test_action_log_entity_identity_requires_complete_pair(self) -> None:
+        with pytest.raises(ValueError, match="provided together"):
+            ActionLogEntry(
+                timestamp="t",
+                action="a",
+                platform="p",
+                entity_type="placement",
+            )
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("field", ["entity_type", "entity_id"])
+    def test_action_log_entity_identity_rejects_blank_values(self, field: str) -> None:
+        values = {"entity_type": "placement", "entity_id": "p1"}
+        values[field] = "   "
+        with pytest.raises(ValueError, match="non-empty string"):
+            ActionLogEntry(
+                timestamp="t",
+                action="a",
+                platform="p",
+                **values,
+            )
+
+    @pytest.mark.unit
+    def test_action_log_entity_identity_strips_outer_whitespace(self) -> None:
+        entry = ActionLogEntry(
+            timestamp="t",
+            action="a",
+            platform="p",
+            entity_type=" placement ",
+            entity_id=" p1 ",
+        )
+        assert entry.entity_type == "placement"
+        assert entry.entity_id == "p1"
 
     @pytest.mark.unit
     def test_action_log_entry_metrics_defensive_copy(self) -> None:

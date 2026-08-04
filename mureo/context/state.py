@@ -237,6 +237,8 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         platform=e["platform"],
         campaign_id=e.get("campaign_id"),
         ad_id=e.get("ad_id"),
+        entity_type=e.get("entity_type"),
+        entity_id=e.get("entity_id"),
         summary=e.get("summary"),
         command=e.get("command"),
         metrics_at_action=e.get("metrics_at_action"),
@@ -332,6 +334,10 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["campaign_id"] = e.campaign_id
     if e.ad_id is not None:
         result["ad_id"] = e.ad_id
+    if e.entity_type is not None:
+        result["entity_type"] = e.entity_type
+    if e.entity_id is not None:
+        result["entity_id"] = e.entity_id
     if e.summary is not None:
         result["summary"] = e.summary
     if e.command is not None:

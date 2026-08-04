@@ -64,6 +64,41 @@ class TestDeriveSemantics:
             sem = derive_semantics(_tool(meta={"mureo": {"observation_days": bad_val}}))
             assert sem.observation_days is None
 
+    def test_identity_meta_parsed(self) -> None:
+        sem = derive_semantics(
+            _tool(
+                meta={
+                    "mureo": {
+                        "identity": {
+                            "campaign_id": "campaignId",
+                            "entity_type": "placement",
+                            "entity_id": "placementId",
+                        }
+                    }
+                }
+            )
+        )
+        assert sem.identity is not None
+        assert sem.identity.campaign_id_key == "campaignId"
+        assert sem.identity.entity_type == "placement"
+        assert sem.identity.entity_id_key == "placementId"
+
+    @pytest.mark.parametrize(
+        "identity",
+        [
+            {},
+            {"entity_type": "placement"},
+            {"entity_id": "placementId"},
+            {"campaign_id": 123},
+            {"unknown": "id"},
+        ],
+    )
+    def test_malformed_identity_meta_is_ignored(self, identity: object) -> None:
+        assert (
+            derive_semantics(_tool(meta={"mureo": {"identity": identity}})).identity
+            is None
+        )
+
 
 @pytest.mark.unit
 class TestHintLessToolsFallBackToTheNameVocabulary:
@@ -156,6 +191,193 @@ class TestRecordMutationActionLog:
         assert e.action == "acme_ads_pause"
         assert e.platform == "plugin:acme-dist"
         assert e.reversible_params == {"operation": "acme_ads_resume"}
+
+    def test_common_argument_names_are_recorded_as_identity(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+
+        self._seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        record_mutation_action_log(
+            tool="acme_ads_update_ad_set",
+            source="acme-dist",
+            reversal=None,
+            arguments={"campaign_id": "c1", "ad_set_id": "s1"},
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.campaign_id == "c1"
+        assert entry.entity_type == "ad_set"
+        assert entry.entity_id == "s1"
+
+    def test_ad_is_canonical_over_inferred_parent_context(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+
+        self._seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        record_mutation_action_log(
+            tool="acme_ads_pause_ad",
+            source="acme-dist",
+            reversal=None,
+            arguments={"campaign_id": "c1", "ad_group_id": "g1", "ad_id": "a1"},
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.campaign_id == "c1"
+        assert entry.ad_id == "a1"
+        assert entry.entity_type is None
+        assert entry.entity_id is None
+
+    def test_declared_identity_uses_provider_argument_names(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+
+        sem = derive_semantics(
+            _tool(
+                meta={
+                    "mureo": {
+                        "identity": {
+                            "campaign_id": "campaignRef",
+                            "entity_type": "placement",
+                            "entity_id": "targetRef",
+                        }
+                    }
+                }
+            )
+        )
+        self._seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        record_mutation_action_log(
+            tool="acme_ads_update_target",
+            source="acme-dist",
+            reversal=None,
+            arguments={"campaignRef": 42, "targetRef": "p9"},
+            identity=sem.identity,
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.campaign_id == "42"
+        assert entry.entity_type == "placement"
+        assert entry.entity_id == "p9"
+
+    def test_declared_generic_identity_ignores_undeclared_ad_fallback(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+
+        sem = derive_semantics(
+            _tool(
+                meta={
+                    "mureo": {
+                        "identity": {
+                            "entity_type": "placement",
+                            "entity_id": "placementRef",
+                        }
+                    }
+                }
+            )
+        )
+        self._seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        record_mutation_action_log(
+            tool="acme_ads_update_placement",
+            source="acme-dist",
+            reversal=None,
+            arguments={"ad_id": "a1", "placementRef": "p1"},
+            identity=sem.identity,
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.ad_id is None
+        assert entry.entity_type == "placement"
+        assert entry.entity_id == "p1"
+
+    def test_declaration_does_not_infer_undeclared_ad_context(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+
+        sem = derive_semantics(
+            _tool(meta={"mureo": {"identity": {"campaign_id": "campaignRef"}}})
+        )
+        self._seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        record_mutation_action_log(
+            tool="acme_ads_update_campaign",
+            source="acme-dist",
+            reversal=None,
+            arguments={"campaignRef": "c1", "ad_id": "context-ad"},
+            identity=sem.identity,
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.campaign_id == "c1"
+        assert entry.ad_id is None
+        assert entry.entity_type is None
+        assert entry.entity_id is None
+
+    def test_missing_declared_generic_id_does_not_infer_parent_context(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+
+        sem = derive_semantics(
+            _tool(
+                meta={
+                    "mureo": {
+                        "identity": {
+                            "entity_type": "placement",
+                            "entity_id": "placementRef",
+                        }
+                    }
+                }
+            )
+        )
+        self._seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        record_mutation_action_log(
+            tool="acme_ads_update_placement",
+            source="acme-dist",
+            reversal=None,
+            arguments={"placementRef": None, "ad_set_id": "parent-set"},
+            identity=sem.identity,
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.campaign_id is None
+        assert entry.ad_id is None
+        assert entry.entity_type is None
+        assert entry.entity_id is None
+
+    def test_missing_declared_entity_does_not_drop_campaign_identity(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.context.state import read_state_file
+
+        sem = derive_semantics(
+            _tool(
+                meta={
+                    "mureo": {
+                        "identity": {
+                            "campaign_id": "campaignRef",
+                            "entity_type": "placement",
+                            "entity_id": "placementRef",
+                        }
+                    }
+                }
+            )
+        )
+        self._seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        record_mutation_action_log(
+            tool="acme_ads_update_target",
+            source="acme-dist",
+            reversal=None,
+            arguments={"campaignRef": "c1"},
+            identity=sem.identity,
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.campaign_id == "c1"
+        assert entry.entity_type is None
+        assert entry.entity_id is None
 
     def test_noop_without_state_json(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

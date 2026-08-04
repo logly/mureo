@@ -1014,6 +1014,20 @@ def test_action_log_schema_accepts_ad_id() -> None:
     assert "ad_id" in entry["properties"]
 
 
+def test_action_log_schema_accepts_generic_entity_identity() -> None:
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_action_log_append")
+    entry = tool.inputSchema["properties"]["entry"]
+    assert "entity_type" in entry["properties"]
+    assert "entity_id" in entry["properties"]
+    assert entry["properties"]["entity_type"]["minLength"] == 1
+    assert entry["properties"]["entity_id"]["minLength"] == 1
+    assert entry["dependentRequired"] == {
+        "entity_type": ["entity_id"],
+        "entity_id": ["entity_type"],
+    }
+
+
 async def test_upsert_campaign_persists_ads(cwd_to_tmp) -> None:
     initial = {"version": "2", "platforms": {}, "action_log": []}
     (cwd_to_tmp / "STATE.json").write_text(json.dumps(initial), encoding="utf-8")
@@ -1118,6 +1132,26 @@ async def test_action_log_append_persists_ad_id(cwd_to_tmp) -> None:
     result = await mod.handle_tool("mureo_state_get", {})
     payload = json.loads(result[0].text)
     assert payload["action_log"][0]["ad_id"] == "ad_1"
+
+
+async def test_action_log_append_persists_generic_entity_identity(cwd_to_tmp) -> None:
+    mod = _import_tools()
+    result = await mod.handle_tool(
+        "mureo_state_action_log_append",
+        {
+            "entry": {
+                "action": "lower placement bid",
+                "platform": "plugin:acme",
+                "campaign_id": "campaign_1",
+                "entity_type": "placement",
+                "entity_id": "placement_1",
+            }
+        },
+    )
+    payload = json.loads(result[0].text)
+    entry = payload["action_log"][0]
+    assert entry["entity_type"] == "placement"
+    assert entry["entity_id"] == "placement_1"
 
 
 async def test_upsert_campaign_ads_merge_semantics_end_to_end(cwd_to_tmp) -> None:

@@ -978,6 +978,8 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
                     tool=name,
                     source=source,
                     reversal=reversal,
+                    arguments=arguments,
+                    identity=None if sem is None else sem.identity,
                     observation_days=None if sem is None else sem.observation_days,
                 )
             # Guardrail parity: a mutating plugin call re-surfaces the

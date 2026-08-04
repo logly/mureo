@@ -48,8 +48,8 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "An action_log entry. Required: action (short description), "
         "platform (google_ads / meta_ads / etc.). The ``timestamp`` is "
         "stamped by the server — do not compute it. Optional: campaign_id, "
-        "ad_id, summary, command, metrics_at_action, observation_due, "
-        "reversible_params, rollback_of, evaluation_of."
+        "ad_id, entity_type, entity_id, summary, command, metrics_at_action, "
+        "observation_due, reversible_params, rollback_of, evaluation_of."
     ),
     "properties": {
         "timestamp": {
@@ -71,6 +71,22 @@ _ACTION_LOG_ENTRY_PROPERTY = {
                 "The ad this action targeted, for ad-level actions (pause / "
                 "enable / creative swap). Record it so a later run can tell "
                 "an ad mureo stopped from one an operator stopped by hand."
+            ),
+        },
+        "entity_type": {
+            "type": "string",
+            "minLength": 1,
+            "description": (
+                "Generic target kind for a sub-campaign action, such as "
+                "ad_group, ad_set, or placement. Use together with entity_id."
+            ),
+        },
+        "entity_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": (
+                "Platform id of the entity_type target. Record the pair so a "
+                "later run can avoid repeating a change to that same entity."
             ),
         },
         "summary": {"type": "string"},
@@ -101,6 +117,10 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         },
     },
     "required": ["action", "platform"],
+    "dependentRequired": {
+        "entity_type": ["entity_id"],
+        "entity_id": ["entity_type"],
+    },
 }
 
 

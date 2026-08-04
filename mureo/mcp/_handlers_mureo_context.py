@@ -344,6 +344,8 @@ async def handle_state_action_log_append(
         platform=platform,
         campaign_id=raw.get("campaign_id"),
         ad_id=raw.get("ad_id"),
+        entity_type=raw.get("entity_type"),
+        entity_id=raw.get("entity_id"),
         summary=raw.get("summary"),
         command=raw.get("command"),
         metrics_at_action=raw.get("metrics_at_action"),
