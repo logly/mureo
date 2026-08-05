@@ -395,6 +395,68 @@ class TestTokenRefreshRetry:
         assert out == ["ok#2"]
         assert refreshed == [1]  # wasted-but-bounded refresh happened
 
+    def test_a_cancelled_call_is_never_refreshed_or_re_issued(
+        self, tmp_path: Path
+    ) -> None:
+        """A stop is not a refreshable failure — anywhere in the bridge.
+
+        The refresh-and-retry above fires on ANY first failure, which is
+        deliberate while the 401 shape is unobserved. A cancellation is not a
+        failure though: re-issuing the call would send a second request — for a
+        mutating tool, a second WRITE — on behalf of a caller that has already
+        disconnected, and returning the retry's result would swallow the
+        cancellation whole.
+        """
+        from mureo.amazon_ads.lwa import LwaTokens
+
+        attempts: list[str] = []
+        refreshed: list[int] = []
+
+        class _Sess:
+            def __init__(s, n):
+                s._n = n
+
+            async def initialize(s):
+                pass
+
+            async def call_tool(s, name, arguments):
+                if s._n == 1:
+                    await asyncio.Event().wait()  # first attempt never returns
+                return type("R", (), {"content": [f"ok#{s._n}"]})()
+
+        class _CM:
+            def __init__(s, url, headers):
+                attempts.append(headers["Authorization"])
+                s._n = len(attempts)
+
+            async def __aenter__(s):
+                return _Sess(s._n)
+
+            async def __aexit__(s, *e):
+                return False
+
+        b = self._mk(
+            tmp_path,
+            self._creds(),
+            lambda url, headers: _CM(url, headers),
+            refresher=lambda c: (
+                refreshed.append(1) or LwaTokens("Atza|NEW", "Atzr|R", 3600)
+            ),
+            token_saver=lambda a, r: None,
+        )
+
+        async def _drive() -> None:
+            task = asyncio.ensure_future(b.handle_mcp_tool("x", {}))
+            while not attempts:  # the call is in flight
+                await asyncio.sleep(0.01)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        asyncio.run(_drive())
+        assert attempts == ["Bearer Atza|OLD"]  # NOT re-issued
+        assert refreshed == []  # and no LwA exchange spent on it
+
     def test_retry_failure_chains_original_cause(self, tmp_path: Path) -> None:
         from mureo.amazon_ads.lwa import LwaTokens
 

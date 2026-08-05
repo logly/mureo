@@ -214,11 +214,14 @@ def _bridge(tmp_path: Path, connect: Any, **kw: Any) -> AmazonAdsBridge:
 
 
 def _stub_legacy_saver(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str | None]]:
-    """Replace ``save_amazon_access_token`` as the bridge sees it, so a
-    fallback is observable and the real ``~/.mureo`` is never touched."""
+    """Replace ``save_amazon_access_token`` as the default saver sees it, so a
+    fallback is observable and the real ``~/.mureo`` is never touched.
+
+    That default lives in ``session_auth`` — the credential seam the
+    single-call path and the #520 session batch share — not in ``bridge``."""
     legacy: list[tuple[str, str | None]] = []
     monkeypatch.setattr(
-        "mureo.amazon_ads.bridge.save_amazon_access_token",
+        "mureo.amazon_ads.session_auth.save_amazon_access_token",
         lambda access, refresh=None, **kw: legacy.append((access, refresh)),
     )
     return legacy

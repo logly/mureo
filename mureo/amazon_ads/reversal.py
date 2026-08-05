@@ -54,7 +54,9 @@ and stopping as soon as every id is resolved. Order is a pure cost
 heuristic and cannot corrupt the result: an entity is accepted only when
 its id field equals a requested id. Worst case is five reads before one
 write; ``query_portfolio`` declares no ``adProductFilter`` at all and
-always costs exactly one.
+always costs exactly one. However many reads it takes, they run over ONE
+MCP session — the bridge hands this module a session-scoped batch
+dispatch (#520), so the probe order costs queries, not handshakes.
 
 Two bounds, because this runs before a write
 --------------------------------------------
@@ -80,13 +82,17 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from mureo.core.control_flow import STOP_EXCEPTIONS
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    #: ``AmazonAdsBridge.handle_mcp_tool`` — capture goes through the bridge's
-    #: own dispatch so it inherits authentication and token refresh.
+    #: A bridge dispatch — capture goes through the bridge's own so it
+    #: inherits authentication and token refresh. Shape only: the bridge
+    #: passes its session-scoped batch dispatch (#520), which is
+    #: interchangeable with ``handle_mcp_tool`` here by construction.
     Dispatch = Callable[[str, dict[str, Any]], Awaitable[list[Any]]]
 
 #: ``adProductFilter.include`` enum. Exactly one per call ("Only one ad
@@ -363,6 +369,14 @@ async def _read_prior_state(
     far, so the write proceeds immediately and earlier rounds' entities are
     never thrown away. Ids that no probe resolves are simply absent — the
     caller records no reversal for them rather than inventing one.
+
+    A **stop is not a probe failure** (:data:`~mureo.core.control_flow
+    .STOP_EXCEPTIONS`) and is re-raised. This loop is the innermost
+    best-effort boundary in the capture, and the read is where a capture
+    spends nearly all of its wall clock — so absorbing a cancellation here
+    would swallow it UNDERNEATH every boundary above (the bridge's capture
+    hook, the server's plugin capture), and the mutation behind the capture
+    would go ahead for a caller that is no longer waiting for the result.
     """
     found: dict[str, dict[str, Any]] = {}
     remaining = list(ids)
@@ -375,7 +389,7 @@ async def _read_prior_state(
             result = await _read_once(
                 dispatch, pair, account, remaining, ad_product, budget
             )
-        except KeyboardInterrupt:
+        except STOP_EXCEPTIONS:
             raise
         except BaseException as exc:  # noqa: BLE001 — capture never blocks a write
             # A failed or timed-out probe ends the walk but must NOT discard

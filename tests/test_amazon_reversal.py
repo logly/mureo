@@ -776,13 +776,25 @@ class TestNotCaptured:
 
 
 def _bridge(tmp_path: Path, dispatch: Any) -> Any:
+    from contextlib import asynccontextmanager
+
     from mureo.amazon_ads.bridge import AmazonAdsBridge
 
     mp = tmp_path / "amazon_tools.json"
     mp.write_text(json.dumps({"tools": []}))
     bridge = AmazonAdsBridge(manifest_path=mp, creds_loader=lambda: None)
-    # Capture must ride the bridge's own dispatch (auth/refresh); the fake
-    # stands in for exactly that method.
+
+    # Capture must ride the bridge's own dispatch (auth/refresh). Since #520
+    # the probe sequence rides the SESSION-SCOPED one, which yields a dispatch
+    # of the very same ``(name, arguments) -> awaitable`` shape — so the fake
+    # still stands in for exactly one seam. Both are stubbed so no route to
+    # Amazon is left open: a test asserting "the dispatch was never reached"
+    # means it in full.
+    @asynccontextmanager
+    async def _batch() -> Any:
+        yield dispatch
+
+    bridge.batch_dispatch = _batch  # type: ignore[method-assign]
     bridge.handle_mcp_tool = dispatch  # type: ignore[method-assign]
     return bridge
 

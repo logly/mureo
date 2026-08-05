@@ -51,6 +51,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is untouched by all of this: a flat declared key still replaces the scan
   exactly as it did before.
 
+### Changed
+
+- **An Amazon before-state capture now opens one MCP session, not one per
+  probe** (#520). The bridge opened a fresh `streamablehttp_client` +
+  `ClientSession.initialize()` handshake for every forwarded call. That is
+  right for a one-shot tool call, but the #121 capture issues one read per ad
+  product probed, so a worst-case five-probe capture paid **five** handshakes
+  before a single write — and the handshake, not the query, is what that
+  sequence spends its time on. The bridge gained a session-scoped batch API
+  (an async context manager yielding a dispatch bound to one live session) and
+  the capture's probe sequence uses it: **N reads, one handshake.**
+
+  Deliberately contained. The batch yields the *same*
+  `(name, arguments) -> awaitable` dispatch shape as before, so no transport
+  object leaves the bridge and the capture module is unchanged; ordinary tool
+  calls keep the single-call path, one session each, byte-identically. Because
+  the auth headers are baked into a session when it is opened, a token
+  refreshed midway cannot apply to an open one: a refresh closes the session,
+  reopens it on the new token and retries **only** the call that triggered it,
+  with a budget of **one exchange per capture** so a sequence can never turn
+  into a run of token exchanges. A failure partway through still leaves the
+  already-completed probes usable — they become a partial reversal with
+  caveats and a `partial` rollback plan, exactly as before — and the session
+  is closed on every exit path, including a failed handshake, a failing probe
+  and a cancelled capture. Both bounds are unchanged: 10 seconds per read, 15
+  seconds per capture.
+
+  One behaviour did change on purpose, and it is worth reading if you drive
+  mureo from a client that can disconnect mid-call: **a cancelled Amazon call
+  is no longer retried, and a cancelled capture no longer runs the mutation
+  anyway.** mureo's MCP server runs each tool call in a task and cancels it
+  when the client goes away. The bridge used to treat that cancellation as an
+  ordinary failure — which meant refreshing the token and **re-issuing the
+  call**, i.e. writing to a live ad account on behalf of a caller that had
+  already disconnected, and returning the retry's result as though nothing had
+  happened. A capture's read loop absorbed one the same way, and let the
+  mutation behind it proceed.
+
+  A stop (cancellation, KeyboardInterrupt, SystemExit) is now never a
+  refreshable failure and never a capture failure, at every layer of the
+  bridge: the forwarded call, its refresh-and-retry, the batch session, the
+  per-probe read loop, and the shared plugin dispatch's before-state capture —
+  so this holds for **every** provider that implements the capture hook, not
+  just Amazon. Nothing else changes: a genuine failure still refreshes once and
+  retries exactly as before, and a genuine capture failure still degrades to
+  "no reversal" with the mutation running and recorded audit-only, never
+  blocked.
+
 ### Fixed
 
 - **A failed Amazon call is no longer recorded as a successful mutation**
