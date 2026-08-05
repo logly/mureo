@@ -15,8 +15,8 @@ metadata:
 > PREREQUISITE: Read `../_mureo-shared/SKILL.md` for auth, security rules, and
 > output format — and specifically its **Plugin platforms (third-party
 > providers)** section, which is the contract Amazon rides: honest scope,
-> best-effort guardrails, `action_log` promotion, structural strategy parity
-> for mutations. This file does not repeat any of it.
+> declaration-first guardrails, `action_log` promotion, structural strategy
+> parity for mutations. This file does not repeat any of it.
 
 > **Canonical platform key: `plugin:mureo-amazon-ads-bridge`.** Use it verbatim
 > wherever a mureo surface names a platform — STATE.json `platforms`,
@@ -60,16 +60,28 @@ metadata:
   inventing a heuristic from the tool schemas. The platform-agnostic
   `analysis_anomalies_check` **does** apply — see `../_mureo-shared/SKILL.md`
   → *Generic anomaly check*.
-- **Guardrails reach these tools best-effort, not as the exact-key hard gate.**
-  A bridged manifest carries no mureo declarations, so `STRATEGY.md`
-  `## Guardrails` budget/bid caps are applied by a **pattern scan** of the
-  argument keys. It covers the real Amazon money shapes as of 0.10.39 —
+- **Guardrails are EXACT on the known money tools, with the scan as a floor
+  under everything.** A bridged manifest carries no mureo declarations, so
+  mureo holds them itself: the **13 money-carrying tools** below are declared
+  by exact argument PATH —
   `budgets[].budgetValue.monetaryBudgetValue.monetaryBudget.value`,
   `budgetCaps.countryMonetaryBudgetSettings.<CC>.value`, `bid.bid`,
-  `bid.{baseBid,defaultBid,maxAverageBid}` — and an oversized or
-  deeper-than-scannable payload **fails closed** with a message naming the
-  cause. So: treat an Amazon cap as strong but **not guaranteed**, say so in
-  the output, and verify the resulting values after the first mutation.
+  `bid.{baseBid,defaultBid,maxAverageBid}` and their
+  `marketplaceSettings[]` overrides — and `STRATEGY.md` `## Guardrails`
+  budget/bid caps are enforced on those paths, not inferred. The **best-effort
+  pattern scan still runs underneath them**, and the larger amount wins, so a
+  money field that drifted shape or that Amazon added after the snapshot falls
+  back to that best-effort cover — a declaration can only ever raise what gets
+  checked, never lower it. That cover is a pattern, not a guarantee: it finds
+  the field when the new name still looks like money (`budget` / `spend` /
+  `bid`, or a plain `value` / `amount` under one), so a leaf renamed to
+  something outside that vocabulary is missed exactly as it was before the
+  paths were declared. Any OTHER Amazon tool gets that same pattern scan on
+  its own. An oversized or deeper-than-scannable payload **fails closed** with
+  a message naming the cause. So: a cap on the tools listed below is exact and
+  quotes the declared path when a value is unreadable; on any other Amazon
+  write call it **is** strong but **not guaranteed**, say so in the output, and
+  verify the resulting values after the first mutation.
 
 ## Calling requirements (get these wrong and the query fails outright)
 
@@ -244,19 +256,29 @@ parity*): **confirm with the operator before the call**, gate against
 successful call to land in `action_log` under
 `platform="plugin:mureo-amazon-ads-bridge"` with an observation window.
 
-The money-carrying tools — where the guardrail pattern scan matters most:
+The **13 money-carrying tools** — the ones mureo declares exact money paths
+for, so their `## Guardrails` caps are enforced exactly (all
+`campaign_management-`):
 
-- `campaign_management-update_campaign_budget` and
-  `campaign_management-create_campaign` /
-  `campaign_management-create_singleshot_sp_campaign`
-  (`budgets[].budgetValue.monetaryBudgetValue.monetaryBudget.value`)
-- `campaign_management-add_country_campaign`
-  (`budgetCaps.countryMonetaryBudgetSettings.<CC>.value` — per-country daily
-  budgets; show every country you are changing, not just the total)
-- `campaign_management-update_target_bid` / `-update_target` /
-  `-create_target` (`bid.bid`)
-- `campaign_management-update_ad_group` / `-create_ad_group`
-  (`bid.baseBid` / `bid.defaultBid` / `bid.maxAverageBid`)
+- **Campaign budgets** — `update_campaign_budget`, `update_campaign`,
+  `create_campaign`, `create_singleshot_sp_campaign`
+  (`budgets[].budgetValue.monetaryBudgetValue.monetaryBudget.value`, the
+  `marketplaceSettings[]` per-marketplace overrides beside it, and the
+  `flights[].budget…` variant on `create_campaign` / `update_campaign`)
+- **Per-country campaign budgets** — `add_country_campaign`
+  (`budgetCaps.countryMonetaryBudgetSettings.<CC>.value` — show every country
+  you are changing, not just the total)
+- **Ad-group budgets** — `create_ad_group` / `update_ad_group`
+  (`budgets[].budgetValue…monetaryBudget.value` and
+  `optimization.budgetSettings.dailyMinSpendValue`)
+- **Portfolio budgets** — `create_portfolio`, `create_singleshot_portfolio`,
+  `update_portfolio` (`budget.budgetValue.monetaryBudgetValue…value`)
+- **Target bids** — `update_target_bid` / `-update_target` /
+  `-create_target` (`bid.bid`, `bid.marketplaceSettings[].bid`)
+- **Ad-group bids** — `update_ad_group` / `-create_ad_group`
+  (`bid.baseBid` / `bid.defaultBid` / `bid.maxAverageBid` and
+  `bid.marketplaceSettings[].defaultBid`), and
+  `create_singleshot_sp_campaign` (`bid.marketplaceSettings[].defaultBid`)
 
 Always show the current value before the new one — read it back with the
 matching `query_*` tool first.

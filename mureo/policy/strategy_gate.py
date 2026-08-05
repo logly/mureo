@@ -10,7 +10,11 @@ could ignore (and was entirely absent for hosted connectors).
 Two layers:
 
 - Pure decision logic (:func:`parse_guardrails`, :func:`evaluate_guardrails`)
-  — I/O-free and fully unit-testable.
+  — I/O-free and fully unit-testable. It asks
+  :mod:`mureo.policy.declaration_resolution` what the call PROPOSES (that
+  sibling holds ``_budget_inputs`` / ``_bid_inputs``, split out to keep this
+  module within the project file-size budget) and compares the answer against
+  the operator's caps.
 - :class:`StrategyPolicyGate` — the ``PolicyGate`` implementation. It reads
   STRATEGY.md (TTL-cached, fail-open: any read/parse error ⇒ allow) and
   delegates the decision to the pure logic.
@@ -26,9 +30,12 @@ Three ways a budget/bid reaches a cap
 1. The **built-in key scan** — the Google/Meta argument spellings hard-coded
    below (``daily_budget``, ``amount_micros``, ``bid_amount``,
    ``cpc_bid_micros``, …).
-2. An **exact-key declaration** (:mod:`mureo.policy.declarations`) — a plugin
-   names the keys its tools carry, in standard MCP metadata. Authoritative:
-   it REPLACES the built-in scan for the channels it covers.
+2. An **exact declaration** (:mod:`mureo.policy.declarations`) — a plugin
+   names the keys its tools carry, in standard MCP metadata; or, for a
+   bridged surface that cannot carry metadata at all, mureo names the exact
+   nested PATHS itself (:class:`~mureo.policy.declarations.ArgumentPaths`,
+   #527). Authoritative: it REPLACES the built-in scan for the channels it
+   covers.
 3. The **pattern fallback** (:mod:`mureo.policy.pattern_scan`) — for a
    registered MUTATING plugin tool that declared nothing, budget-shaped and
    bid-shaped argument keys are read heuristically (recursively, micros-aware)
@@ -38,16 +45,28 @@ Three ways a budget/bid reaches a cap
 The fallback is **best-effort by construction**: it matches on key *shape*, so
 it can miss a budget spelled without the word (and it can over-block a
 budget-named field that is not a proposal). It exists because a bridged tool
-surface — someone else's tool definitions, forwarded verbatim — cannot carry
-mureo declarations at all, and "no declaration" must not mean "no cap" where
-real money moves. **Exact-key declarations always take precedence**: for a
-channel that has one, the scan is not consulted.
+surface — someone else's tool definitions, forwarded verbatim — declares
+nothing of its own, and "no declaration" must not mean "no cap" where real
+money moves. A **flat-key declaration takes precedence**: for a channel that
+has one, the scan is not consulted — the plugin owns the argument names of
+tools it authors itself.
+
+A **PATH declaration is different, and deliberately so** (#527): it raises the
+FLOOR rather than replacing the scan. mureo writes those paths for a surface
+it does not own, from a manifest snapshot, so whenever a family is declared by
+path the scan runs too and the larger figure per channel wins — however much
+the declaration resolved. The invariant is *never check less than the scan
+alone would have checked*: several declared tools carry two independent money
+fields in one channel, so a rule like "suppress the scan once the declaration
+resolves something" let a drifted SIBLING field go completely unchecked. See
+:func:`~mureo.policy.declarations.raise_to_scan_floor`. What a path
+declaration buys — exactness in the deny message, a DENY on an unreadable
+declared leaf, drift visibility — needs no suppression to work.
 """
 
 from __future__ import annotations
 
 import logging
-import math
 import re
 import time
 from dataclasses import dataclass, field
@@ -55,23 +74,43 @@ from typing import Any
 
 from mureo.core.policy import PolicyDecision
 
+# The channel-resolution layer — "what does this call propose?" — lives in
+# another sibling (:mod:`mureo.policy.declaration_resolution`), split out for
+# the same file-size reason and re-exported here for the same import-path
+# reason. This module is the decision layer: it asks that one for the resolved
+# channels and compares them against the operator's caps.
+from mureo.policy.declaration_resolution import (
+    _BID_AMOUNT_KEYS,
+    _BUDGET_KEYS,
+    _CONVENTION_CURRENT_KEY,
+    _CONVENTION_TOTAL_KEY,
+    _CURRENT_BUDGET_KEYS,
+    _bid_inputs,
+    _BidInputs,
+    _budget_inputs,
+    _BudgetInputs,
+    _current_budget,
+    _projected_total,
+    _proposed_bid_amount,
+    _proposed_budget,
+    _proposed_cpc_bid,
+    _proposed_lifetime_budget,
+)
+
 # The plugin budget/bid declaration machinery lives in a sibling module
 # (:mod:`mureo.policy.declarations`), split out to keep this module within the
 # project file-size budget. It is re-imported here — and listed in ``__all__``
 # below — so that ``mureo.policy.strategy_gate`` stays a stable import path:
 # the sibling bridges, mureo-pro, and the test-suite import several of these
 # names from here, so every symbol that used to live in this module must keep
-# resolving from it. ``_saturate`` / ``_declared_amount`` / ``_Unreadable`` are
-# also used directly by the decision logic below.
+# resolving from it.
 from mureo.policy.declarations import (
     _BID_DECLARATIONS,
     _BUDGET_DECLARATIONS,
     _UNREADABLE,
+    ArgumentPaths,
     BidDeclaration,
     BudgetDeclaration,
-    _declared_amount,
-    _saturate,
-    _Unreadable,
     bid_declaration_for,
     budget_declaration_for,
     register_bid_declaration,
@@ -85,8 +124,6 @@ from mureo.policy.pattern_scan import (
     is_scan_exhausted,
     register_pattern_fallback_tool,
     reset_pattern_fallback_tools,
-    scan_bid_amount,
-    scan_budget_amount,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,6 +140,7 @@ __all__ = [
     "evaluate_guardrails",
     "guardrails_from_strategy_text",
     "parse_guardrails",
+    "ArgumentPaths",
     "BudgetDeclaration",
     "BidDeclaration",
     "budget_declaration_for",
@@ -118,6 +156,23 @@ __all__ = [
     "is_scan_exhausted",
     "register_pattern_fallback_tool",
     "reset_pattern_fallback_tools",
+    # Resolution layer, re-exported so every name that used to live in this
+    # module keeps resolving from it.
+    "_BUDGET_KEYS",
+    "_CURRENT_BUDGET_KEYS",
+    "_BID_AMOUNT_KEYS",
+    "_CONVENTION_CURRENT_KEY",
+    "_CONVENTION_TOTAL_KEY",
+    "_BudgetInputs",
+    "_BidInputs",
+    "_budget_inputs",
+    "_bid_inputs",
+    "_projected_total",
+    "_proposed_budget",
+    "_proposed_lifetime_budget",
+    "_current_budget",
+    "_proposed_bid_amount",
+    "_proposed_cpc_bid",
 ]
 
 #: The two ways the best-effort scan can run out, in operator words. Keyed by
@@ -160,180 +215,8 @@ def _scan_exhausted_reason(unreadable_key: str, what: str) -> str:
 # a raw-heading entry titled "Guardrails".
 GUARDRAILS_HEADING = "guardrails"
 
-# Argument keys that carry a proposed daily budget, in priority order.
-# These are the BUILT-IN (Google/Meta) spellings; a plugin whose tools use a
-# different vocabulary declares its own keys instead — see BudgetDeclaration.
-_BUDGET_KEYS = ("daily_budget", "proposed_daily_budget", "amount")
-_CURRENT_BUDGET_KEYS = ("current_daily_budget", "current")
-#: Argument keys carrying a proposed *bid cap* (distinct from a spend budget).
-#: ``bid_amount`` is Meta's ad-set bid cap in account-currency minor units
-#: (meta_ads_ad_sets_create / _update). Deliberately scalar-only: the sibling
-#: ``bid_constraints`` dict carries a ``roas_average_floor`` (a min-ROAS floor,
-#: not a spend amount) and must NOT be read as a proposed bid.
-_BID_AMOUNT_KEYS = ("bid_amount",)
-#: The cross-provider convention keys for the two budget figures the CALLER
-#: supplies rather than the tool: the *existing* daily budget and the
-#: account-wide projected total (both in currency units), which the skills pass
-#: on a budget mutation. A declaration cannot replace these — see
-#: :func:`_budget_inputs`.
-_CONVENTION_CURRENT_KEY = "current_daily_budget"
-_CONVENTION_TOTAL_KEY = "projected_total_daily_budget"
 
 _BULLET_RE = re.compile(r"^\s*[-*]\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+?)\s*$")
-
-
-def _projected_total(arguments: dict[str, Any]) -> float | None:
-    """The account-wide projected daily total a skill passes for the total cap.
-
-    Convention key only, on the declared path as much as the built-in one:
-    there is no declared equivalent because this figure is not a budget the
-    TOOL proposes — like ``current_daily_budget`` it is context the CALLER
-    computes. Routed through ``_saturate`` like every other budget channel so
-    an oversized int denies instead of raising.
-    """
-    total = arguments.get(_CONVENTION_TOTAL_KEY)
-    if isinstance(total, (int, float)) and not isinstance(total, bool):
-        return _saturate(total)
-    return None
-
-
-@dataclass(frozen=True)
-class _BudgetInputs:
-    """The budget channels one evaluation needs, already resolved.
-
-    Every value here is either ``None`` (no budget on that channel) or a
-    FINITE float. A present-but-non-finite value (``inf``/``nan``, from an
-    oversized int that saturated, a bare ``NaN`` on the wire, or garbage on a
-    declared key) is collapsed into :attr:`unreadable_key` so the caller fails
-    closed once — no downstream comparison ever sees ``inf``/``nan``. This is
-    the single choke point that keeps ``nan > cap`` (always False) and
-    ``finite/inf = nan`` from silently defeating a cap.
-    """
-
-    proposed: float | None = None
-    current: float | None = None
-    lifetime: float | None = None
-    total: float | None = None
-    #: The first budget key that was present but unreadable (⇒ deny).
-    unreadable_key: str | None = None
-
-
-def _merge_pattern(channel: float | None, pattern: float | None) -> float | None:
-    """Fold a pattern-scanned amount into a resolved channel (larger wins).
-
-    Additive, never subtractive: the built-in scan keeps whatever it found, and
-    the fallback can only raise the figure a cap is checked against. Taking the
-    larger of the two is the conservative direction — the check must see the
-    biggest amount the call proposes.
-    """
-    if pattern is None:
-        return channel
-    if channel is None:
-        return pattern
-    return max(channel, pattern)
-
-
-def _budget_inputs(
-    arguments: dict[str, Any],
-    declaration: BudgetDeclaration | None,
-    *,
-    pattern_fallback: bool = False,
-) -> _BudgetInputs:
-    """Resolve the budget channels from declared keys, else the built-in scan.
-
-    A non-finite value on ANY channel — declared or built-in — fails closed:
-    the whole call is refused. The declared path already did this via
-    ``_declared_amount`` returning ``_UNREADABLE``; the built-in scan is held to
-    the same standard here so an oversized int (``inf``) or a bare ``NaN``
-    cannot slip past a comparison.
-
-    Deliberately BROAD, and fail-safe: a non-finite value on a budget channel
-    denies even when the specific cap that reads that channel is not the one
-    configured (e.g. garbage in ``current_daily_budget`` with only an absolute
-    cap set). This is only reachable once the operator has written *some*
-    guardrail (``evaluate_guardrails`` returns early on an empty ``Guardrails``),
-    so the fail-open default is preserved; past that point a non-finite figure
-    in any recognized budget argument is malformed input, and refusing it is the
-    safe direction. It also keeps this the single choke point — scoping the
-    check per-active-cap would re-introduce the "which comparison did we forget"
-    surface that let the overflow/NaN bypass exist in the first place. Mirrors
-    the already-shipped declared path (#414), which denies on any unreadable
-    declared key regardless of which cap reads it.
-    """
-    if declaration is None:
-        channels: list[tuple[str, float | None]] = [
-            ("daily budget", _proposed_budget(arguments)),
-            ("current budget", _current_budget(arguments)),
-            ("lifetime budget", _proposed_lifetime_budget(arguments)),
-            ("projected total daily budget", _projected_total(arguments)),
-        ]
-        for label, value in channels:
-            if value is not None and not math.isfinite(value):
-                return _BudgetInputs(unreadable_key=label)
-        proposed, current, lifetime, total = (v for _, v in channels)
-        if pattern_fallback:
-            # Best-effort key-shape scan for a declaration-less plugin
-            # mutation. Folded into BOTH proposal channels because a matched
-            # key's channel is exactly what the scan cannot know: the amount is
-            # held to every budget cap the operator configured rather than
-            # slipping past the one it happens not to be named for. The two
-            # CALLER-supplied channels (current / projected total) are
-            # deliberately untouched — they are mureo's own convention keys,
-            # already read above, and are never a proposal.
-            scanned = scan_budget_amount(arguments)
-            if scanned.unreadable_key is not None:
-                return _BudgetInputs(unreadable_key=scanned.unreadable_key)
-            proposed = _merge_pattern(proposed, scanned.value)
-            lifetime = _merge_pattern(lifetime, scanned.value)
-        return _BudgetInputs(
-            proposed=proposed, current=current, lifetime=lifetime, total=total
-        )
-    resolved: list[float | None] = []
-    for key in (
-        declaration.daily_key,
-        declaration.current_key,
-        declaration.lifetime_key,
-    ):
-        declared = _declared_amount(arguments, key, micros=declaration.micros)
-        if isinstance(declared, _Unreadable):
-            return _BudgetInputs(unreadable_key=key)
-        resolved.append(declared)
-    proposed, current, lifetime = resolved
-    # The two CALLER-supplied channels survive a declaration. Neither is part of
-    # the plugin's argument vocabulary: the existing daily budget and the
-    # account-wide projected total are context the skills compute and pass under
-    # mureo's own cross-provider convention (currency units, on every budget
-    # mutation). A declaration replaces the built-in scan for the budgets the
-    # tool PROPOSES; replacing these too silently disabled
-    # max_daily_budget_increase_pct and max_total_daily_budget for every plugin
-    # that adopted the seam — the exact underenforcement it exists to remove,
-    # and for the total cap not even opt-out-able, since a declaration has no
-    # key to name it with. Both are read in currency units even when the DECLARED
-    # keys are micros: ``micros`` describes what the tool carries, not these.
-    #
-    # They are budget channels like any other, so they fail closed on a
-    # non-finite figure exactly as the built-in scan does (#419): a ``nan``
-    # baseline makes ``current > 0`` False and takes the percentage cap dark,
-    # while a bare oversized int raises out of ``float()`` into the gate's
-    # blanket ``except`` — an abstain, i.e. an allow.
-    if not declaration.current_key:
-        # Only the namespaced convention key here, never the bare ``current``
-        # alias the built-in scan also accepts: a declaring plugin owns its
-        # argument vocabulary, and ``current`` is a plausible name for something
-        # else entirely (an index, a status). Misreading one as the baseline
-        # would compute a nonsense increase — and a LARGE stray value yields a
-        # SMALL percentage, i.e. it would allow a raise that should be refused.
-        raw = arguments.get(_CONVENTION_CURRENT_KEY)
-        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-            current = _saturate(raw)
-            if not math.isfinite(current):
-                return _BudgetInputs(unreadable_key=_CONVENTION_CURRENT_KEY)
-    total = _projected_total(arguments)
-    if total is not None and not math.isfinite(total):
-        return _BudgetInputs(unreadable_key=_CONVENTION_TOTAL_KEY)
-    return _BudgetInputs(
-        proposed=proposed, current=current, lifetime=lifetime, total=total
-    )
 
 
 @dataclass(frozen=True)
@@ -431,155 +314,6 @@ def guardrails_from_strategy_text(text: str) -> Guardrails:
     return Guardrails()
 
 
-def _proposed_budget(arguments: dict[str, Any]) -> float | None:
-    for key in _BUDGET_KEYS:
-        if key in arguments:
-            v = arguments[key]
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                return _saturate(v)
-    # Google Ads budgets are sometimes expressed in micros —
-    # budget_amount_micros on campaign tools, amount_micros on budget tools.
-    for micros_key in ("budget_amount_micros", "amount_micros"):
-        micros = arguments.get(micros_key)
-        if isinstance(micros, (int, float)) and not isinstance(micros, bool):
-            return _saturate(micros) / 1_000_000
-    return None
-
-
-def _proposed_lifetime_budget(arguments: dict[str, Any]) -> float | None:
-    """Extract a proposed lifetime / period-total budget in currency units.
-
-    Both spellings of a Google total budget are covered — ``total_amount``
-    (currency units) and ``total_amount_micros`` — so the cap cannot be
-    sidestepped by picking the other parameter form.
-    """
-    for key in ("lifetime_budget", "total_amount"):
-        v = arguments.get(key)
-        if isinstance(v, (int, float)) and not isinstance(v, bool):
-            return _saturate(v)
-    micros = arguments.get("total_amount_micros")
-    if isinstance(micros, (int, float)) and not isinstance(micros, bool):
-        return _saturate(micros) / 1_000_000
-    return None
-
-
-def _current_budget(arguments: dict[str, Any]) -> float | None:
-    for key in _CURRENT_BUDGET_KEYS:
-        v = arguments.get(key)
-        if isinstance(v, (int, float)) and not isinstance(v, bool):
-            return _saturate(v)
-    return None
-
-
-def _proposed_bid_amount(arguments: dict[str, Any]) -> float | None:
-    """Extract a proposed ad-set bid cap in account-currency minor units.
-
-    Mirrors :func:`_proposed_budget`: scans the built-in Meta spelling
-    (``bid_amount``) and saturates an oversized int to ``inf`` so it exceeds any
-    finite cap and denies rather than raising. Only the scalar ``bid_amount`` is
-    a spend cap; the sibling ``bid_constraints`` dict carries a
-    ``roas_average_floor`` (a min-ROAS floor, not a spend amount) and is
-    deliberately not read here — see :data:`_BID_AMOUNT_KEYS`.
-    """
-    for key in _BID_AMOUNT_KEYS:
-        v = arguments.get(key)
-        if isinstance(v, (int, float)) and not isinstance(v, bool):
-            return _saturate(v)
-    return None
-
-
-def _proposed_cpc_bid(arguments: dict[str, Any]) -> float | None:
-    """Extract a proposed Google ad-group CPC bid in account-currency units.
-
-    ``cpc_bid_micros`` (google_ads_ad_groups_create / _update) is in micros, so
-    it is divided by 1e6 to currency units before comparison — the same micros
-    convention :func:`_proposed_budget` applies to Google budgets. A
-    ``bid_modifier`` (google_ads_bid_adjustments_update) is a 0.1–10.0
-    multiplier, not a spend amount, so it is deliberately not read here.
-    """
-    micros = arguments.get("cpc_bid_micros")
-    if isinstance(micros, (int, float)) and not isinstance(micros, bool):
-        return _saturate(micros) / 1_000_000
-    return None
-
-
-@dataclass(frozen=True)
-class _BidInputs:
-    """The bid channels one evaluation needs, already resolved.
-
-    The bid analogue of :class:`_BudgetInputs` (#419). Every value here is
-    either ``None`` (no bid proposed on that channel) or a FINITE float. A
-    present-but-non-finite value — an oversized int that saturated to ``inf``, a
-    bare ``NaN`` / ``Infinity`` token ``json.loads`` accepts off the wire, or a
-    ``nan`` surviving the micros→currency division — collapses into
-    :attr:`unreadable_key` so the caller fails closed once, before any
-    ``bid > cap`` comparison (where ``nan > cap`` is always False and would
-    silently defeat the cap). ``bid_amount`` is in account-currency minor units;
-    ``cpc_bid`` is in currency units (post-division).
-    """
-
-    bid_amount: float | None = None
-    cpc_bid: float | None = None
-    #: The first bid key that was present but non-finite (⇒ deny).
-    unreadable_key: str | None = None
-
-
-def _bid_inputs(
-    arguments: dict[str, Any],
-    declaration: BidDeclaration | None = None,
-    *,
-    pattern_fallback: bool = False,
-) -> _BidInputs:
-    """Resolve the bid channels from declared keys, else the built-in scan.
-
-    Mirrors :func:`_budget_inputs` (#419) at a single choke point rather than
-    per-comparison: a proposed bid that is ``inf`` / ``nan`` is refused instead
-    of silently sailing past the cap. Both channels are checked AFTER the
-    micros→currency division, so a non-finite ``cpc_bid_micros`` cannot slip
-    through post-division. Only reachable once the operator has written some
-    guardrail (``evaluate_guardrails`` returns early on an empty ``Guardrails``),
-    so the fail-open default is preserved.
-
-    ``declaration`` (the bid twin of #414) names a plugin tool's bid argument
-    keys. When given it REPLACES the built-in Meta/Google key scan for that
-    tool — the plugin owns its argument vocabulary, so a stray ``bid_amount``
-    field cannot false-trip a cap. Unlike budgets there are no caller-supplied
-    convention keys, so a declaration replaces the whole bid scan. Declared keys
-    feed the SAME fail-closed logic as the built-in scan via
-    :func:`_declared_amount`: a present-but-unreadable declared key returns
-    :data:`_UNREADABLE`, collapsing into :attr:`_BidInputs.unreadable_key` so
-    the caller denies once — no second comparison path.
-    """
-    if declaration is None:
-        channels: list[tuple[str, float | None]] = [
-            ("bid_amount", _proposed_bid_amount(arguments)),
-            ("cpc_bid_micros", _proposed_cpc_bid(arguments)),
-        ]
-        for label, value in channels:
-            if value is not None and not math.isfinite(value):
-                return _BidInputs(unreadable_key=label)
-        bid_amount, cpc_bid = (v for _, v in channels)
-        if pattern_fallback:
-            # The bid twin of the budget fallback above, folded into both bid
-            # channels for the same reason: a heuristically matched key does
-            # not announce whether it is an ad-set bid cap or a CPC bid, so it
-            # is held to whichever caps the operator configured.
-            scanned = scan_bid_amount(arguments)
-            if scanned.unreadable_key is not None:
-                return _BidInputs(unreadable_key=scanned.unreadable_key)
-            bid_amount = _merge_pattern(bid_amount, scanned.value)
-            cpc_bid = _merge_pattern(cpc_bid, scanned.value)
-        return _BidInputs(bid_amount=bid_amount, cpc_bid=cpc_bid)
-    resolved: list[float | None] = []
-    for key in (declaration.bid_amount_key, declaration.cpc_bid_key):
-        declared = _declared_amount(arguments, key, micros=declaration.micros)
-        if isinstance(declared, _Unreadable):
-            return _BidInputs(unreadable_key=key)
-        resolved.append(declared)
-    bid_amount, cpc_bid = resolved
-    return _BidInputs(bid_amount=bid_amount, cpc_bid=cpc_bid)
-
-
 def evaluate_guardrails(
     tool_name: str,
     arguments: dict[str, Any],
@@ -614,10 +348,12 @@ def evaluate_guardrails(
     ``pattern_fallback`` turns on the best-effort key-shape scan
     (:mod:`mureo.policy.pattern_scan`) for the channels that have NO
     declaration — the only enforcement available to a tool surface that cannot
-    carry declarations at all. It is additive: the built-in scan still runs and
-    the larger figure wins. Per-family, so declaring a budget does not switch
-    the bid fallback off (or vice versa). Default ``False`` ⇒ every existing
-    caller is byte-identical.
+    carry declarations at all — and, since #527, for every family declared by
+    PATH, where it acts as a FLOOR under the declaration (the larger figure
+    wins; see the module docstring). It is additive: the built-in scan still
+    runs and the larger figure wins. Per-family, so declaring a budget does not
+    switch the bid fallback off (or vice versa). Default ``False`` ⇒ every
+    existing caller is byte-identical.
     """
     if guardrails.is_empty():
         return PolicyDecision(allowed=True)

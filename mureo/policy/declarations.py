@@ -11,12 +11,17 @@ builds on:
   (#414) or bid, so the built-in :class:`~mureo.policy.strategy_gate.StrategyPolicyGate`
   can enforce the operator's ``## Guardrails`` caps on a tool whose argument
   vocabulary differs from the built-in Google/Meta spellings.
+- :class:`ArgumentPaths` — the same declaration, for money that does not sit
+  at a top-level argument key but NESTED, through objects, arrays and dynamic
+  maps (#527). A bridged tool surface (someone else's tool definitions,
+  forwarded verbatim) cannot carry ``_meta`` at all, so mureo declares those
+  paths itself; a channel field accepts either a flat key (unchanged) or this.
 - Their process-wide registries and register / lookup / reset helpers,
   populated by ``mureo.mcp.server`` from plugin tool metadata at import so the
   pure decision layer stays I/O-free and needs no plugin imports.
 - :func:`_declared_amount` and its numeric helpers (:func:`_saturate`, the
   :data:`_UNREADABLE` sentinel) — the single reader that turns one declared
-  argument key into currency units, distinguishing "absent" from
+  argument key or path into currency units, distinguishing "absent" from
   "present-but-unreadable" so the gate can fail closed on garbage.
 
 Every public name here is re-exported from
@@ -28,7 +33,137 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
+
+#: A path segment suffix meaning "descend every item of this array".
+ARRAY_SUFFIX = "[]"
+
+#: A whole path segment meaning "descend every value of this object".
+#: Required to be EXPLICIT: a level whose keys are data rather than vocabulary
+#: (a country code, a marketplace id, a currency) cannot be guessed at, and
+#: guessing would be the one thing a declaration exists to avoid — silently
+#: matching something adjacent to the money instead of the money.
+WILDCARD = "*"
+
+
+class _Descent(Enum):
+    """A structural resolution step — descend into every child at this level."""
+
+    ITEMS = ARRAY_SUFFIX
+    VALUES = WILDCARD
+
+
+#: One resolution step: a ``str`` indexes an object by EXACT key, a
+#: :class:`_Descent` fans out over an array's items / an object's values.
+_Step = str | _Descent
+
+
+def _parse_path(spec: str) -> tuple[_Step, ...]:
+    """Compile one dotted path spec into resolution steps.
+
+    ``body.campaigns[].budgetCaps.countryMonetaryBudgetSettings.*.value`` →
+    ``("body", "campaigns", ITEMS, "budgetCaps",
+    "countryMonetaryBudgetSettings", VALUES, "value")``.
+
+    Raises ``ValueError`` on a malformed spec (an empty segment, a stray
+    bracket, a ``*`` glued to a name). The table that uses this is in-tree and
+    compiled at import, so a typo must fail loudly in testing rather than
+    quietly resolve to nothing — a path that silently never matches is an
+    unenforced cap.
+    """
+    steps: list[_Step] = []
+    for raw in spec.split("."):
+        if raw == WILDCARD:
+            steps.append(_Descent.VALUES)
+            continue
+        name = raw[: -len(ARRAY_SUFFIX)] if raw.endswith(ARRAY_SUFFIX) else raw
+        if not name or any(c in name for c in "[]*"):
+            raise ValueError(f"malformed declared argument path segment: {raw!r}")
+        steps.append(name)
+        if raw.endswith(ARRAY_SUFFIX):
+            steps.append(_Descent.ITEMS)
+    if not steps:
+        raise ValueError("empty declared argument path")
+    return tuple(steps)
+
+
+def _resolve_path(arguments: dict[str, Any], steps: tuple[_Step, ...]) -> list[Any]:
+    """Every value ``steps`` reaches in ``arguments`` (possibly none).
+
+    Resolution is STRICT at every level, because the whole point of declaring a
+    path is that it cannot drift onto a neighbour: a key step matches only an
+    object carrying that exact key, an array step only an actual list, a
+    wildcard step only an actual object. The first level that matches nothing
+    ends the walk with "not found" — never with a value from somewhere else.
+
+    Arrays (and wildcards) fan out element-wise, so a batch call resolves to
+    one value per element; the caller takes the MAXIMUM across them, which is
+    the same contract the best-effort scan reports (:attr:`PatternAmount.value`
+    is the largest amount found) and the only safe one — a cap must be checked
+    against the biggest amount the call proposes.
+
+    Work is linear in the payload the host already parsed: each step keeps at
+    most the nodes at one level of it, and only along the declared path.
+    """
+    nodes: list[Any] = [arguments]
+    for step in steps:
+        reached: list[Any] = []
+        for node in nodes:
+            if isinstance(step, str):
+                if isinstance(node, dict) and step in node:
+                    reached.append(node[step])
+            elif step is _Descent.ITEMS:
+                if isinstance(node, list):
+                    reached.extend(node)
+            elif isinstance(node, dict):
+                reached.extend(node.values())
+        if not reached:
+            return []
+        nodes = reached
+    return nodes
+
+
+@dataclass(frozen=True)
+class ArgumentPaths:
+    """One money channel's declared NESTED argument paths (#527).
+
+    A :class:`BudgetDeclaration` / :class:`BidDeclaration` channel normally
+    names a flat argument key. That is all a plugin authoring its own tools
+    needs, but it cannot express where a BRIDGED surface carries money: the
+    tools are someone else's, forwarded verbatim, and their amounts sit under
+    arrays and dynamic maps, e.g.::
+
+        body.campaigns[].budgets[].budgetValue.monetaryBudgetValue.monetaryBudget.value
+        body.campaigns[].budgetCaps.countryMonetaryBudgetSettings.*.value
+        body.targets[].bid.bid
+
+    So a channel accepts either a flat key (``str``, behaviour unchanged) or
+    this — one or more dotted path specs, all read as the SAME channel, the
+    largest resolved amount winning. Several specs per channel is the normal
+    case: one tool commonly declares alternative budget shapes and a call fills
+    in whichever it uses.
+
+    Written as strings rather than nested tuples because the table that holds
+    them is meant to be read against a real tool schema by a human, and the
+    dotted form is the shape those schemas are quoted in everywhere else in
+    mureo. They are compiled once, at import (:func:`_parse_path`).
+    """
+
+    specs: tuple[str, ...]
+    steps: tuple[tuple[_Step, ...], ...]
+
+    @classmethod
+    def parse(cls, *specs: str) -> ArgumentPaths:
+        """Compile ``specs`` into a channel declaration (see :func:`_parse_path`)."""
+        if not specs:
+            raise ValueError("an ArgumentPaths declaration needs at least one path")
+        return cls(specs=tuple(specs), steps=tuple(_parse_path(s) for s in specs))
+
+    @property
+    def label(self) -> str:
+        """The declared paths, for an operator-facing message."""
+        return " / ".join(self.specs)
 
 
 @dataclass(frozen=True)
@@ -77,10 +212,25 @@ class BudgetDeclaration:
     bool, a non-numeric string) makes the gate DENY — see
     :func:`_declared_amount`. The convention keys are held to the same
     standard (#419).
+
+    Either PROPOSAL channel may instead name :class:`ArgumentPaths` — nested
+    paths, for a bridged surface whose money is not at a top-level key (#527).
+    Everything above holds unchanged for a path; the two differences are in
+    :func:`_declared_amount` (a path fans out over arrays and takes the
+    largest match) and in the gate, where a path declaration is joined by the
+    best-effort scan acting as a FLOOR (see :func:`raise_to_scan_floor`) — a
+    flat key cannot drift, a bridged schema can.
+
+    ``current_key`` is deliberately NOT path-capable. It names the *existing*
+    budget, which is caller-supplied context rather than something the call
+    proposes, so it is outside both the drift story and the floor: the scan
+    never contributes to it (a baseline is not a proposal) and
+    :func:`declares_paths` therefore never inspects it. Allowing a path there
+    would create the one channel resolved with no floor under it.
     """
 
-    daily_key: str | None = None
-    lifetime_key: str | None = None
+    daily_key: str | ArgumentPaths | None = None
+    lifetime_key: str | ArgumentPaths | None = None
     current_key: str | None = None
     micros: bool = False
 
@@ -148,10 +298,14 @@ class BidDeclaration:
     present but unreadable (``inf``, ``nan``, a bool, a non-numeric string, a
     nested object) makes the gate DENY through the same :func:`_bid_inputs`
     choke point the built-in scan uses — see :func:`_declared_amount`.
+
+    Like its budget twin, a channel may instead name :class:`ArgumentPaths`
+    for a bridged tool whose bid is nested (``body.targets[].bid.bid``) —
+    see :class:`BudgetDeclaration` for what that changes (#527).
     """
 
-    bid_amount_key: str | None = None
-    cpc_bid_key: str | None = None
+    bid_amount_key: str | ArgumentPaths | None = None
+    cpc_bid_key: str | ArgumentPaths | None = None
     micros: bool = False
 
 
@@ -177,10 +331,49 @@ def reset_bid_declarations() -> None:
 
 
 class _Unreadable:
-    """Sentinel: a declared budget key is PRESENT but not a usable number."""
+    """Sentinel: a declared budget key is PRESENT but not a usable number.
+
+    ``key`` names the exact declared key or path that carried the garbage. It
+    is ``None`` on the shared :data:`_UNREADABLE` singleton, where the caller
+    already knows which key it asked for; a multi-path channel sets it, so the
+    deny message can quote the ONE path that failed rather than all of them.
+    """
+
+    __slots__ = ("key",)
+
+    def __init__(self, key: str | None = None) -> None:
+        self.key = key
 
 
 _UNREADABLE = _Unreadable()
+
+
+def declares_paths(*keys: str | ArgumentPaths | None) -> bool:
+    """Is any of ``keys`` a nested-path declaration rather than a flat key?
+
+    The gate's seam for the one behaviour that differs (#527): a path
+    declaration that resolves nothing may fall back to the best-effort scan,
+    because a bridged schema can move under mureo's feet. A flat key names an
+    argument of a tool the declaring plugin owns, so its absence means "this
+    call proposes nothing on that channel" — never drift — and that path stays
+    byte-identical to what it has always done.
+    """
+    return any(isinstance(key, ArgumentPaths) for key in keys)
+
+
+def unreadable_key_label(
+    sentinel: _Unreadable, declared: str | ArgumentPaths | None
+) -> str:
+    """Name the declared key/path a :class:`_Unreadable` came from.
+
+    Never empty for a real declaration, because the gate treats "no name" as
+    "nothing was unreadable" and would then skip the deny it just decided on.
+    """
+    if sentinel.key is not None:
+        return sentinel.key
+    if isinstance(declared, ArgumentPaths):
+        return declared.label
+    return declared or ""
 
 
 def _saturate(value: int | float) -> float:
@@ -202,9 +395,9 @@ def _saturate(value: int | float) -> float:
 
 
 def _declared_amount(
-    arguments: dict[str, Any], key: str | None, *, micros: bool
+    arguments: dict[str, Any], key: str | ArgumentPaths | None, *, micros: bool
 ) -> float | _Unreadable | None:
-    """Read one declared budget key as currency units.
+    """Read one declared budget key — or path (#527) — as currency units.
 
     Three outcomes, and the distinction is the whole point of #414:
 
@@ -220,10 +413,25 @@ def _declared_amount(
       re-opening the exact silent bypass this seam exists to close, and
       making the declared path weaker than the built-in scan (where a raw
       ``inf`` simply exceeds any finite cap and denies).
+
+    An :class:`ArgumentPaths` channel takes the same three outcomes through
+    :func:`_path_amount`, with the array/wildcard fan-out resolved to its
+    largest match first.
     """
+    if isinstance(key, ArgumentPaths):
+        return _path_amount(arguments, key, micros=micros)
     if not key or key not in arguments:
         return None
-    raw = arguments[key]
+    return _scalar_amount(arguments[key], micros=micros)
+
+
+def _scalar_amount(raw: Any, *, micros: bool) -> float | _Unreadable | None:
+    """Read ONE present value as currency units (the reader both channels share).
+
+    Split out of :func:`_declared_amount` unchanged so a declared flat key and
+    a declared path judge the same value identically — a path must not become
+    the lenient way to spell a declaration.
+    """
     if raw is None:
         return None
     if isinstance(raw, bool):
@@ -243,3 +451,95 @@ def _declared_amount(
     if math.isnan(value) or math.isinf(value):
         return _UNREADABLE
     return value / 1_000_000 if micros else value
+
+
+def _path_amount(
+    arguments: dict[str, Any], declared: ArgumentPaths, *, micros: bool
+) -> float | _Unreadable | None:
+    """The LARGEST amount ``declared``'s paths reach in ``arguments`` (#527).
+
+    Same three outcomes as :func:`_declared_amount`, resolved across every
+    path and every array/wildcard element:
+
+    - ``None`` — no path resolved to a readable amount. Either the call
+      carries no money on this channel, or the tool's schema has drifted
+      since the table was written; the two are indistinguishable from here,
+      which is one reason the gate never lets a path declaration stand alone
+      — see :func:`raise_to_scan_floor`.
+    - ``float`` — the maximum across every match, because a cap must be
+      checked against the biggest amount the call proposes (the same contract
+      the pattern scan reports).
+    - :class:`_Unreadable` — a path reached a SCALAR that is garbage, naming
+      that path. Content garbage is a fault worth denying on, exactly as on a
+      flat declared key.
+
+    One deliberate difference from a flat key: a path that lands on a nested
+    object or array is treated as NOT FOUND rather than unreadable. On a flat
+    key that shape is a plugin mis-declaring its own argument; here it is the
+    schema having moved the number deeper, and re-scanning the payload
+    best-effort enforces the cap on the amount actually being proposed, where
+    denying would refuse a call whose money nobody ever looked at.
+    """
+    best: float | None = None
+    for spec, steps in zip(declared.specs, declared.steps, strict=True):
+        for leaf in _resolve_path(arguments, steps):
+            if isinstance(leaf, (dict, list)):
+                continue
+            amount = _scalar_amount(leaf, micros=micros)
+            if isinstance(amount, _Unreadable):
+                return _Unreadable(spec)
+            if amount is not None and (best is None or amount > best):
+                best = amount
+    return best
+
+
+def _merge_pattern(channel: float | None, pattern: float | None) -> float | None:
+    """Fold a pattern-scanned amount into a resolved channel (larger wins).
+
+    Additive, never subtractive: whatever was resolved is kept, and the scan
+    can only raise the figure a cap is checked against. Taking the larger of
+    the two is the conservative direction — the check must see the biggest
+    amount the call proposes.
+    """
+    if pattern is None:
+        return channel
+    if channel is None:
+        return pattern
+    return max(channel, pattern)
+
+
+def raise_to_scan_floor(
+    channels: tuple[float | None, float | None], scanned: float | None
+) -> tuple[float | None, float | None]:
+    """Raise both proposal channels of one family to the scanned amount (#527).
+
+    **A path declaration raises the FLOOR; it does not replace the scan.**
+    Whenever a family is declared by PATH, the best-effort scan runs too and
+    the larger figure per channel wins — unconditionally, whether or not the
+    declaration resolved anything.
+
+    The invariant that matters where real money moves is *never check less
+    than the scan alone would have checked*. Only an additive merge guarantees
+    that structurally. The earlier design suppressed the scan whenever the
+    declaration resolved any amount, and that boundary condition was wrong:
+    several declared tools carry two physically independent money fields in
+    one channel (an ad group's ``budgets[]…`` and its
+    ``optimization.budgetSettings.dailyMinSpendValue``; a campaign's
+    ``budgets[]…`` and its ``flights[].budget…``), so one trivially-resolving
+    leaf silenced the scan for the whole tool and a SIBLING field whose shape
+    had drifted went unchecked — a call the pattern scan had been catching
+    since #517.
+
+    Suppressing the scan was never buying safety, either: it was justified as
+    stopping a stray budget-named field from false-tripping a cap, but those
+    same tools were scanned unconditionally before they were declared, and
+    #517 measured zero false positives across all 62 money leaves of the real
+    manifest. What a declaration still buys is real and needs no suppression:
+    exactness in the deny message (the resolved path is quoted), a DENY on an
+    unreadable declared leaf, and visibility when a path stops resolving.
+
+    Both channels take the same scanned figure because a heuristically matched
+    key does not announce which cap it belongs to, so it is held to every cap
+    the operator configured — the same reasoning as the undeclared path.
+    """
+    return _merge_pattern(channels[0], scanned), _merge_pattern(channels[1], scanned)
