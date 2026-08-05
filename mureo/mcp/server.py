@@ -1037,7 +1037,20 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
                 error=repr(exc),
             )
             raise
-        record_plugin_call(tool=name, arguments=arguments, source=source, ok=True)
+        # The call returned, so ``ok`` (= "did not raise") stays True. But a
+        # provider can report a PLATFORM refusal as ordinary content in the
+        # canonical error envelope — the same signal that skips the
+        # action_log promotion below — and the operator-facing trail must not
+        # read as a success for a call that changed nothing (#528).
+        platform_failed = is_error_result(result)
+        record_plugin_call(
+            tool=name,
+            arguments=arguments,
+            source=source,
+            ok=True,
+            platform_ok=not platform_failed,
+            error=result[0].text if platform_failed else None,
+        )
         # Phase 2: promote a *successful mutating* call into STATE.json's
         # action_log (only when a STATE.json exists in cwd) so the agent
         # / strategy review / rollback can see it like a built-in op.

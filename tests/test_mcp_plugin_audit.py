@@ -99,6 +99,37 @@ class TestRecordPluginCall:
         assert second["ok"] is False
         assert second["error"] == "boom"
 
+    def test_platform_failure_is_recorded_beside_ok(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#528 — a call that returned an error envelope did not raise.
+
+        ``ok`` keeps meaning "the call did not raise", so a platform-side
+        refusal is recorded as ``platform_ok: false``; the operator trail must
+        not read as a success for a call that changed nothing. Written only
+        when a failure is detected, so an ordinary record is unchanged.
+        """
+        log = tmp_path / "audit.jsonl"
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: log)
+
+        record_plugin_call(tool="t", arguments={}, source="s", ok=True)
+        record_plugin_call(
+            tool="t",
+            arguments={},
+            source="s",
+            ok=True,
+            platform_ok=False,
+            error="API error: FIELD_VALUE_IS_INVALID: bad id",
+        )
+
+        first, second = (
+            json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()
+        )
+        assert "platform_ok" not in first  # unchanged for a plain success
+        assert second["ok"] is True
+        assert second["platform_ok"] is False
+        assert "FIELD_VALUE_IS_INVALID" in second["error"]
+
     def test_never_raises_on_io_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def _boom() -> Path:
             raise OSError("disk gone")
@@ -178,12 +209,50 @@ class TestScrubFreeText:
             ("?code=ANabcdefgh12&scope=x", "ANabcdefgh12"),
             ("{'code': 'ANabcdefgh12'}", "ANabcdefgh12"),
             ("Authorization: Bearer Atza|abc", "Atza|abc"),
+            # #528 — the rule must not key on the WHOLE key being ``code``:
+            # a differently-named field holding the same material leaks.
+            (
+                '{"authorizationCode": "AQABAAABBBCCCDDDauthcode123456"}',
+                "AQABAAABBBCCCDDDauthcode123456",
+            ),
+            ("authCode=AQABAAABBBCCCDDDauthcode123456", "AQABAAABBBCCCDDD"),
+            ("&oauth_code=AQABAAABBBCCCDDDauthcode123456", "AQABAAABBBCCCDDD"),
+            # #528 — camelCase spellings of EVERY credential family. Amazon's
+            # surface is camelCase throughout (``advertiserAccountId``,
+            # ``adProductFilter``), so a snake_case-only rule leaks in exactly
+            # the payloads this scrubber exists for.
+            (
+                '{"clientSecret": "amzn1.oa2-cs.v1.SUPERSECRETVALUE"}',
+                "amzn1.oa2-cs.v1.SUPERSECRETVALUE",
+            ),
+            ('{"refreshToken": "abcdefgh12345678"}', "abcdefgh12345678"),
+            ('{"accessToken": "abcdefgh12345678"}', "abcdefgh12345678"),
+            ('{"apiKey": "sk-abcdefgh12345678"}', "sk-abcdefgh12345678"),
+            ("clientSecret=amzn1.oa2-cs.v1.SUPERSECRETVALUE", "SUPERSECRETVALUE"),
+            ("refreshToken=Atzr-plain-shaped-value", "Atzr-plain-shaped-value"),
+            ("accessToken: plain-shaped-value", "plain-shaped-value"),
+            # ...and the hyphenated spellings, for the same reason.
+            ("client-secret=amzn1.oa2-cs.v1.SUPERSECRETVALUE", "SUPERSECRETVALUE"),
+            ("refresh-token=Atzr-plain-shaped-value", "Atzr-plain-shaped-value"),
         ],
     )
     def test_credential_values_are_redacted(self, text: str, leaked: str) -> None:
         scrubbed = plugin_audit._scrub(text)
         assert leaked not in scrubbed
         assert "***" in scrubbed
+
+    def test_a_bearer_token_does_not_swallow_the_closing_quote(self) -> None:
+        """The token pattern must stop at a quote, like the ``Atza|`` ones do.
+
+        ``Bearer\\s+\\S+`` ate the closing ``"`` and everything after it,
+        leaving structurally broken JSON for whoever reads the record. No leak,
+        but a bearer token cannot contain a quote, so narrowing is free.
+        """
+        text = '{"code":"BAD","message":"bad header Bearer sometoken.jwt.here"}'
+        scrubbed = plugin_audit._scrub(text)
+
+        assert "sometoken.jwt.here" not in scrubbed
+        assert json.loads(scrubbed) == {"code": "BAD", "message": "bad header ***"}
 
     @pytest.mark.parametrize(
         "text",

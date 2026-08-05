@@ -570,6 +570,11 @@ operations that fall outside the shared Protocol, which hand-written
 Every plugin tool call is, automatically and without you opting in:
 
 - **Audited** — appended (secret-masked) to `~/.mureo/plugin_audit.jsonl`.
+  `ok` records whether the dispatch raised. If your handler reports a
+  platform-side refusal *without* raising, return it as mureo's canonical
+  `API error: ...` text envelope: the record is then additionally marked
+  `platform_ok: false` with the reason, and the call is **not** promoted
+  into `action_log` — nothing changed, so nothing is logged as a change.
 - **Throttled** — a conservative shared token bucket gates the plugin
   dispatch path. mureo never crashes on, nor silently swallows, a
   plugin exception: it is recorded then re-raised unchanged.

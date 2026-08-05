@@ -180,6 +180,60 @@ Amazon のツールが Amazon 自身の名前（例 `campaign_management-*`,
 `action_log`（`platform=plugin:mureo-amazon-ads-bridge`）へ観測窓
 付きで昇格（#114 プラグイン安全層と同じ）。
 
+## Amazon 側で呼び出しが拒否されたとき
+
+Amazon はプラットフォーム側の失敗を通信エラーではなく通常の応答として
+返します。mureo は組み込みツールと同じ `API error: <code>: <message>`
+の形で報告します。例えばグローバルアカウントを `advertiserAccountId`
+で照会したときは次のように返ります:
+
+```
+API error: ***: Multi marketplace query requests only support query by primary resource id
+```
+
+したがって:
+
+- **拒否された呼び出しは「変更」として記録されません。** `action_log`
+  エントリも観測窓もロールバック情報も作られません（何も起きていない
+  ものを起きたことにしない）。試行自体はプラグイン監査ログ
+  （`~/.mureo/plugin_audit.jsonl`）に残り、`platform_ok: false` と理由が
+  付きます（呼び出し自体は完了しているので `ok: true`、Amazon が拒否）。
+- **Amazon の `message` はそのままエージェントに届きます。** 対処に必要
+  な情報はこちらに入っており、呼び出しを修正して再試行できます。
+- **`code` は `***` と表示されることが多く、これは意図的です。** LwA の
+  認可コードもまったく同じ `"code": "..."` の形で漏れるため、mureo の
+  伏字化処理は「Amazon のエラーコードか認可コードか」を見分けようとせず
+  値を伏せます（見分けを誤ると、エージェントの文脈と
+  `plugin_audit.jsonl` に資格情報が残るためです）。8 文字未満の短い
+  コードはそのまま表示されます。Amazon が返したその他の項目は、
+  破棄せずメッセージの後ろに付けて表示します（同じ伏字化が適用され、
+  `clientSecret` / `refreshToken` / `authorizationCode` などの
+  資格情報らしい項目は表記ゆれ（camelCase / snake_case / kebab-case）に
+  関係なく伏字になります）。判定は「項目名 ＋ 値の長さ」で行い、値の
+  中身が秘密かどうかは見ません。そのため `*code` で終わる名前の長い値
+  （Amazon の `barcode` など）も伏字になります。カタログ項目が伏字に
+  なるのは読みにくいだけですが、トークンの漏えいはそうではない——という
+  意図的なトレードオフです。
+- **Amazon がメッセージを返さなかった場合はその旨を明示します**
+  （`API error: Amazon returned no error message; raw body: ...`）。
+  `{"code":"***"}` だけを渡して判断材料ゼロにはしません。極端に長い
+  本文は `…<truncated>` を付けて切り詰め、エージェントの文脈を
+  埋め尽くさないようにしています。
+- **判定には MCP プロトコルの `isError` フラグを使います**（応答本文の
+  形からの推測ではありません）。Amazon のホスト型エンドポイントは失敗時
+  に `isError` を立てます。実アカウントで実測して確認済み（2026-08-05）:
+  既知の 2 つの失敗形——`{"code": "FIELD_VALUE_IS_INVALID", ...}` と
+  `Validation failed: ...`——はいずれも `isError=true`、成功クエリは
+  `isError=false` でした。念のため `Validation failed:` で始まる応答も
+  失敗として扱います。
+
+これは体裁ではなく正しさの問題です。Amazon のツールは `outputSchema` を
+宣言しておらず、ミューテーション成功時の形も文書化されていません。本文
+の形から推測すると、いずれ成功応答（`{"code": "CREATED", ...}` など）を
+失敗と誤読し、**実際に起きた変更の記録を黙って落として**しまいます。
+プロトコルのフラグはプラットフォーム自身の申告なので、その誤りは起き
+ません。
+
 ## ロールバック：変更前状態の自動取得
 
 Amazon への書き込みは**ロールバックできます**。下表のミューテーション

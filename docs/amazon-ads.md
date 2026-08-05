@@ -180,6 +180,63 @@ strategy-gated like built-in platforms. Mutating calls are promoted
 into `STATE.json` `action_log` (`platform=plugin:mureo-amazon-ads-bridge`)
 with an observation window, exactly like the #114 plugin safety layer.
 
+## When Amazon rejects a call
+
+Amazon returns a platform-side failure as an ordinary response, not as a
+transport error. mureo reports it as `API error: <code>: <message>` — the
+same envelope a built-in tool produces. For example, querying a global
+account by `advertiserAccountId` comes back as:
+
+```
+API error: ***: Multi marketplace query requests only support query by primary resource id
+```
+
+so:
+
+- **A rejected call is never recorded as a change.** No `action_log`
+  entry, no observation window, no rollback entry — nothing happened, so
+  nothing is logged as having happened. The attempt is still in the
+  plugin audit trail (`~/.mureo/plugin_audit.jsonl`), where it is marked
+  `platform_ok: false` with the reason: the call itself completed
+  (`ok: true`), Amazon refused it.
+- **Amazon's `message` reaches the agent verbatim** — that is the
+  actionable half, and it is enough to correct the call and retry.
+- **The `code` is often shown as `***`, and that is intended.** An LwA
+  authorization code leaks in exactly the same `"code": "..."` shape, so
+  mureo's redactor masks the value rather than trying to tell the two
+  apart — a wrong guess there would put a credential in the agent's
+  context and in `plugin_audit.jsonl`. A short code (under 8
+  characters) is shown as-is. Any other fields Amazon returns are
+  appended after the message rather than dropped — with the same
+  redaction applied, so a credential-named field
+  (`clientSecret`, `refreshToken`, `authorizationCode`, …) is masked
+  whichever spelling it arrives in. The masking is keyed on the field
+  NAME plus the value's length, not on knowing what a secret looks
+  like, so a long innocent value under a `*code` name (Amazon's
+  `barcode`, for instance) is masked too. That is the intended
+  trade-off: a redacted catalog field is a readability annoyance, a
+  leaked token is not.
+- **If Amazon sends no message at all**, the envelope says so
+  (`API error: Amazon returned no error message; raw body: ...`) instead
+  of handing over an opaque `{"code":"***"}`. Very long bodies are
+  truncated with a `…<truncated>` marker so a runaway response cannot
+  flood the agent's context.
+- **The signal is the MCP protocol's own `isError` flag**, not a guess
+  about what the response body looks like. Amazon's hosted endpoint sets
+  `isError` on a failed call — verified live against a real account
+  (2026-08-05) for both known failure shapes, the
+  `{"code": "FIELD_VALUE_IS_INVALID", ...}` envelope and the
+  `Validation failed: ...` text, with `isError` false on a successful
+  query. mureo treats content opening with `Validation failed:` as a
+  failure too, as a second line of defence.
+
+That last point matters for correctness, not just tidiness: no Amazon
+tool declares an `outputSchema` and no mutation success shape is
+documented, so guessing from the body would eventually misread a
+success ack (`{"code": "CREATED", ...}`) as a failure and silently drop
+the `action_log` entry for a change that really happened. The protocol
+flag is the platform's own statement, so that cannot occur.
+
 ## Rollback: automatic before-state capture
 
 Amazon writes are **reversible**. Before one of the paired mutations
