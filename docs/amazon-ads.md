@@ -298,6 +298,16 @@ that invents an id.
   and token-refreshed like any other, and it is a read, so it changes
   nothing. It runs inside the mutation's rate-limit slot, so a burst of
   writes cannot emit unthrottled reads.
+- **The probes share one connection.** However many ad products a
+  capture has to probe, they run over a **single** authenticated MCP
+  session opened once for that capture — not one handshake per read.
+  The handshake, not the query, is what a multi-probe capture used to
+  spend its time on. If the access token has to be refreshed midway,
+  that session is closed and reopened on the new token and only the
+  call that hit the expiry is retried; the refresh happens **at most
+  once per capture**, so a probe sequence can never turn into a run of
+  token exchanges. Your ordinary tool calls are untouched: they still
+  open one session each.
 - **Your write is never held hostage.** Two bounds apply: each read is
   capped at **10 seconds**, and the whole capture at **15 seconds**
   however many probes it needs. A slow Amazon costs you at most the

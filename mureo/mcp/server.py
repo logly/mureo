@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     from mureo.core.policy import PolicyDecision, PolicyGate
     from mureo.mcp.tool_provider import MCPToolProvider
 
+from mureo.core.control_flow import STOP_EXCEPTIONS
 from mureo.mcp._helpers import is_error_result
 from mureo.mcp.native_reversal import capture_before_state, record_native_mutation
 from mureo.mcp.plugin_audit import record_plugin_call
@@ -852,9 +853,22 @@ async def _capture_plugin_reversal(
 
     Returns ``None`` (and the caller falls back to the static ``meta``
     reversal) when the provider does not opt in, when there is no STATE.json in
-    cwd to record into (so we skip the read entirely), when the call raises, or
+    cwd to record into (so we skip the read entirely), when the call fails, or
     when the returned value is not a well-formed ``{operation: str, params:
-    dict}``. Never raises — a capture failure must not block the mutation.
+    dict}``. A capture *failure* must not block the mutation, so it never
+    raises one.
+
+    A **stop is not a failure** — :data:`mureo.core.control_flow
+    .STOP_EXCEPTIONS` (cancellation, KeyboardInterrupt, SystemExit) is
+    re-raised. mureo's MCP server
+    runs each tool call in a task and cancels it when the client goes away, so
+    degrading that to "no reversal" would swallow the caller's own cancellation
+    and let the dispatch carry straight on into the mutation, for a caller that
+    is no longer waiting for the result — and would do so while the provider's
+    capture was still unwinding (:mod:`mureo.amazon_ads.batch` gives a capture
+    a session of its own). Same rule as
+    :func:`mureo.mcp.tools_analytics_registry._handle_analytics_run` and
+    :meth:`mureo.amazon_ads.bridge.AmazonAdsBridge.capture_reversal`.
     """
     if not isinstance(provider, MCPReversibleToolProvider):
         return None
@@ -866,7 +880,7 @@ async def _capture_plugin_reversal(
         return None
     try:
         reversal = await capture(name, dict(arguments))
-    except KeyboardInterrupt:
+    except STOP_EXCEPTIONS:
         raise
     except BaseException:  # noqa: BLE001 — capture must never block the mutation
         logger.warning(

@@ -24,7 +24,6 @@ participate in the same handler-call audit path as other analysis tools.
 
 from __future__ import annotations
 
-import asyncio
 import dataclasses
 import json
 import logging
@@ -41,6 +40,7 @@ from mureo.analytics.registry import (
     get_analytics_module,
     plugin_source,
 )
+from mureo.core.control_flow import STOP_EXCEPTIONS
 from mureo.core.platform_keys import (
     is_plugin_platform_key,
     plugin_distribution,
@@ -372,9 +372,7 @@ async def _handle_analytics_run(arguments: dict[str, Any]) -> list[TextContent]:
                 "result": _jsonable(result),
             }
         )
-    except (KeyboardInterrupt, SystemExit):
-        raise
-    except asyncio.CancelledError:
+    except STOP_EXCEPTIONS:
         raise
     except BaseException as exc:  # noqa: BLE001 — per-module fault isolation
         return _text(

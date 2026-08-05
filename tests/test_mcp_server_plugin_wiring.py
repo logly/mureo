@@ -751,6 +751,8 @@ class TestErrorEnvelopeNotPromoted:
 # Module-level tracker so the fresh provider instance (built by discovery) can
 # report whether/how its capture_reversal hook was invoked.
 _CAPTURE_CALLS: list[tuple[str, dict]] = []
+#: Same, for the mutation itself — so a test can assert the write did NOT run.
+_MUTATION_CALLS: list[str] = []
 
 
 class _CaptureReversalPlugin:
@@ -788,6 +790,70 @@ class _CaptureReversalPlugin:
         }
 
     async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        return [TextContent(type="text", text="ok")]
+
+
+class _CaptureHangsPlugin:
+    """capture_reversal never returns — stands in for a capture still in
+    flight when the client goes away and the tool call's task is cancelled."""
+
+    name = "hang_plugin"
+    display_name = "Hang"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="hang_plugin_act",
+                description="x",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"ad_id": {"type": "string"}},
+                },
+            ),
+        )
+
+    async def capture_reversal(
+        self, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        import asyncio
+
+        _CAPTURE_CALLS.append((name, dict(arguments)))
+        await asyncio.Event().wait()  # never returns
+        raise AssertionError("unreachable")
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        _MUTATION_CALLS.append(name)
+        return [TextContent(type="text", text="ok")]
+
+
+class _CaptureRaisesNoMetaPlugin:
+    """capture_reversal raises and there is no static meta to fall back to —
+    the mutation must still run and be recorded audit-only."""
+
+    name = "bare_raise_plugin"
+    display_name = "Bare raise"
+    capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+    def mcp_tools(self) -> tuple[Tool, ...]:
+        return (
+            Tool(
+                name="bare_raise_plugin_act",
+                description="x",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"ad_id": {"type": "string"}},
+                },
+            ),
+        )
+
+    async def capture_reversal(
+        self, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        raise RuntimeError("the platform read failed")
+
+    async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        _MUTATION_CALLS.append(name)
         return [TextContent(type="text", text="ok")]
 
 
@@ -1070,5 +1136,77 @@ class TestCaptureReversal:
             assert _CAPTURE_CALLS == [("cap_err_plugin_set_status", {"ad_id": "A1"})]
             doc = read_state_file(tmp_path / "STATE.json")
             assert doc.action_log == ()
+        finally:
+            importlib.reload(mod)
+
+    async def test_a_cancelled_capture_propagates_and_the_mutation_never_runs(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """A cancellation is not a capture failure (#520).
+
+        mureo's MCP server runs each tool call in a task and cancels it when
+        the client goes away. Degrading that to "no reversal" would swallow the
+        caller's own cancellation and send the dispatch on into the *mutation*
+        for a caller that is no longer waiting for the result — and would do so
+        while the provider's capture was still unwinding. It must propagate.
+        """
+        import asyncio
+
+        from mureo.mcp import plugin_audit
+
+        _CAPTURE_CALLS.clear()
+        _MUTATION_CALLS.clear()
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_CaptureHangsPlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            task = asyncio.create_task(
+                mod.handle_call_tool("hang_plugin_act", {"ad_id": "A1"})
+            )
+            for _ in range(200):  # let the dispatch reach the capture
+                await asyncio.sleep(0.005)
+                if _CAPTURE_CALLS:
+                    break
+            assert _CAPTURE_CALLS, "the capture never started"
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert _MUTATION_CALLS == []  # the write never happened
+        finally:
+            importlib.reload(mod)
+
+    async def test_a_capture_failure_records_the_mutation_unreversed(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """…while a GENUINE capture failure still degrades to "no reversal":
+        the mutation runs and is recorded audit-only, never blocked."""
+        from mureo.context.state import read_state_file
+        from mureo.mcp import plugin_audit
+
+        _MUTATION_CALLS.clear()
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "a.jsonl")
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_for(_CaptureRaisesNoMetaPlugin),
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            out = await mod.handle_call_tool("bare_raise_plugin_act", {"ad_id": "A1"})
+            assert out[0].text == "ok"
+            assert _MUTATION_CALLS == ["bare_raise_plugin_act"]
+            entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+            assert entry.action == "bare_raise_plugin_act"
+            assert entry.reversible_params is None  # audit-only, not a guess
         finally:
             importlib.reload(mod)

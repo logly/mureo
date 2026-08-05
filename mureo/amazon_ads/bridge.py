@@ -22,19 +22,18 @@ strategy / rollback) as entry-point plugins:
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import logging
-from collections.abc import Callable
-from contextlib import AbstractAsyncContextManager
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from mcp.types import TextContent, Tool
 
+from mureo.amazon_ads.batch import SessionBatch
 from mureo.amazon_ads.endpoints import endpoint_url, request_headers
-from mureo.amazon_ads.lwa import AmazonAuthError as _LwaAuthError
-from mureo.amazon_ads.lwa import LwaTokens, refresh_access_token
+from mureo.amazon_ads.lwa import refresh_access_token
 from mureo.amazon_ads.manifest import (
     _default_connect,
     document_age_days,
@@ -43,53 +42,33 @@ from mureo.amazon_ads.manifest import (
 )
 from mureo.amazon_ads.reversal import capture_reversal as _capture_reversal
 from mureo.amazon_ads.reversal import is_reversible_tool
-from mureo.auth import (
-    AmazonAdsCredentials,
-    load_amazon_ads_credentials,
-    save_amazon_access_token,
+from mureo.amazon_ads.session_auth import (
+    AmazonBridgeError,
+    CredsLoader,
+    Refresher,
+    SessionCredentials,
+    TokenSaver,
+    runtime_token_saver,
+    scrub_secrets,
 )
-from mureo.core.atomic_json import ConfigWriteError
+from mureo.auth import AmazonAdsCredentials, load_amazon_ads_credentials
+from mureo.core.control_flow import STOP_EXCEPTIONS
 from mureo.core.providers.credentials import AccountCredentialField
 
 logger = logging.getLogger(__name__)
 
 ConnectFactory = Callable[[str, dict[str, str]], AbstractAsyncContextManager[Any]]
-CredsLoader = Callable[[], AmazonAdsCredentials | None]
-Refresher = Callable[[AmazonAdsCredentials], LwaTokens]
-TokenSaver = Callable[[str, str | None], None]
+#: What :meth:`AmazonAdsBridge.batch_dispatch` yields — the SAME
+#: ``(name, arguments) -> awaitable`` seam ``handle_mcp_tool`` already
+#: satisfies, so a batched sequence and a one-shot call are interchangeable to
+#: every caller (:data:`mureo.amazon_ads.reversal.Dispatch`).
+Dispatch = Callable[[str, dict[str, Any]], Awaitable[list[Any]]]
 
 #: Process-wide latch for the stale-manifest warning. ``mcp_tools()`` runs at
 #: server start and on every tool-list refresh, so warning per call would be
 #: spam; the latch arms only when a warning is actually emitted, so a fresh
 #: read never silences a later stale one.
 _stale_manifest_warned = False
-
-
-def _scrub_secrets(text: str) -> str:
-    """Redact secret-shaped substrings from an operator-facing error string.
-
-    Delegates to the audit trail's redactor so there is ONE definition of
-    "what a token looks like" across every string mureo shows a human or an
-    agent (the audit log, the CLI, and here).
-
-    Imported lazily, and that is load-bearing rather than stylistic:
-    ``mureo.mcp.__init__`` imports ``mureo.mcp.server``, which builds its
-    plugin tool list at import time and reaches this bridge through
-    ``mureo.amazon_ads.provider``. A module-level ``from mureo.mcp.plugin_audit
-    import _scrub`` therefore re-enters a partially-initialized
-    ``mureo.amazon_ads.bridge`` and collapses plugin discovery to an
-    ImportError — observed, not hypothetical. Resolving it at call time breaks
-    the cycle; by then both modules are fully imported.
-
-    Fail-safe: if the redactor cannot be resolved at all, the text is dropped
-    rather than passed through unredacted. An unhelpful message is a much
-    smaller problem than a leaked token.
-    """
-    try:
-        from mureo.mcp.plugin_audit import _scrub
-    except Exception:  # noqa: BLE001 — never leak because an import failed
-        return "<error text withheld: redactor unavailable>"
-    return _scrub(text)
 
 
 #: Opening of Amazon's plain-text schema-validation failure. Kept as a
@@ -191,7 +170,7 @@ def _failure_text(content: list[Any]) -> str:
     for block in content:
         text = getattr(block, "text", None)
         if isinstance(text, str) and text.strip():
-            return _bounded(_flatten_for_display(_scrub_secrets(text.strip())))
+            return _bounded(_flatten_for_display(scrub_secrets(text.strip())))
     return _NO_FAILURE_TEXT
 
 
@@ -267,7 +246,7 @@ def _normalize_failure(content: list[Any], *, is_error: bool) -> list[Any]:
     """
     if not (is_error or _is_validation_failure(content)):
         return content
-    # Call-time import for the same load-bearing reason as ``_scrub_secrets``:
+    # Call-time import for the same load-bearing reason as ``scrub_secrets``:
     # this module is reached from ``mureo.mcp.server``'s import-time plugin
     # collection, so a module-level ``mureo.mcp.*`` import would re-enter a
     # partially-initialized bridge. By dispatch time ``mureo.mcp._helpers`` is
@@ -277,45 +256,6 @@ def _normalize_failure(content: list[Any], *, is_error: bool) -> list[Any]:
     return [
         TextContent(type="text", text=f"{API_ERROR_PREFIX} {_failure_text(content)}")
     ]
-
-
-def _runtime_token_saver(access_token: str, refresh_token: str | None) -> None:
-    """Persist a runtime-refreshed LwA token, honoring the active runtime.
-
-    The default ``token_saver`` when none is injected at construction —
-    which is every deployment, since the plugin collection path builds the
-    bridge zero-arg. Two destinations, decided at persist time (#511):
-
-    - The active ``RuntimeContext``'s ``SecretStore`` offers an
-      ``amazon_token_saver`` capability ⇒ write through it. A multi-tenant
-      host binds the refresh to the ACTIVE tenant's store, which is the
-      only place its own reads will look. Without this, refreshes land in
-      the operator-shared base whose reads strip per-client token fields,
-      so every dispatch would re-mint from a refresh token Amazon has
-      already rotated.
-    - No capability (single-tenant OSS, or a backend that did not opt in)
-      ⇒ :func:`mureo.auth.save_amazon_access_token`, i.e. the
-      runtime-resolved ``credentials.json`` exactly as before (#512).
-
-    Resolved per call, not at construction: the capability belongs to the
-    runtime context, which a host may install after the bridge is built.
-
-    The import is deliberately at call time, for the same load-bearing
-    reason as :func:`_scrub_secrets` — this module is reached from
-    ``mureo.mcp.server``'s import-time plugin collection, so a module-level
-    import into that graph risks re-entering a partially-initialized module.
-
-    Raises whatever the chosen saver raises; ``_refresh_and_persist`` maps
-    ``ConfigWriteError`` / ``OSError`` onto :class:`AmazonBridgeError` for
-    both destinations alike.
-    """
-    from mureo.core.runtime_context import runtime_amazon_token_saver
-
-    saver = runtime_amazon_token_saver()
-    if saver is not None:
-        saver(access_token, refresh_token)
-        return
-    save_amazon_access_token(access_token, refresh_token)
 
 
 def _warn_once_if_stale(path: Path, doc: Any) -> None:
@@ -582,11 +522,6 @@ _ACCOUNT_CREDENTIAL_FIELDS: tuple[AccountCredentialField, ...] = (
 )
 
 
-class AmazonBridgeError(RuntimeError):
-    """Raised by ``handle_mcp_tool`` when the bridge cannot proceed
-    (e.g. ``amazon_ads`` credentials are not configured)."""
-
-
 class AmazonAdsBridge:
     """Internal (non-entry-point) provider bridging to Amazon's MCP."""
 
@@ -613,12 +548,17 @@ class AmazonAdsBridge:
         token_saver: TokenSaver | None = None,
     ) -> None:
         self._manifest_path = manifest_path or _default_manifest_path()
-        self._creds_loader: CredsLoader = creds_loader or load_amazon_ads_credentials
         self._connect: ConnectFactory = connect or _default_connect
-        self._refresher: Refresher = refresher or refresh_access_token
-        # An injected saver always wins; the default routes through the
-        # runtime capability seam (see ``_runtime_token_saver``).
-        self._token_saver: TokenSaver = token_saver or _runtime_token_saver
+        # The credential seam both session paths share (#520) — see
+        # :class:`mureo.amazon_ads.session_auth.SessionCredentials`. Every
+        # default is still chosen HERE: an injected saver always wins, and the
+        # default routes through the runtime capability seam (see
+        # :func:`mureo.amazon_ads.session_auth.runtime_token_saver`).
+        self._auth = SessionCredentials(
+            loader=creds_loader or load_amazon_ads_credentials,
+            refresher=refresher or refresh_access_token,
+            token_saver=token_saver or runtime_token_saver,
+        )
 
     # -- collection-time (pure, never raises) -------------------------------
 
@@ -640,34 +580,21 @@ class AmazonAdsBridge:
     # -- dispatch-time (authenticated, network) -----------------------------
 
     async def handle_mcp_tool(self, name: str, arguments: dict[str, Any]) -> list[Any]:
-        creds = self._creds_loader()
-        if creds is None:
-            raise AmazonBridgeError(
-                "amazon_ads credentials not configured in "
-                "~/.mureo/credentials.json (run `mureo configure` and fill "
-                "in the Amazon Ads card, or set the AMAZON_ADS_* env vars)"
-            )
-        # #121 — the configure UI / env-var setup path stores only the
-        # durable LwA material, leaving access_token empty. Mint it here,
-        # BEFORE the first forwarded call: spending a guaranteed-to-fail
-        # round trip just to discover the obvious would be wasteful and
-        # would surface Amazon's error instead of ours. Minting consumes
-        # the single-LwA-exchange budget, so a failure afterwards is
-        # reported as-is rather than triggering a second exchange.
-        minted = False
-        if not creds.access_token:
-            creds = self._refresh_and_persist(
-                creds,
-                cause=None,
-                auth_failure_prefix=(
-                    "no amazon_ads access_token is stored and one could not "
-                    "be obtained from the refresh token"
-                ),
-            )
-            minted = True
+        """Forward one call, refreshing the LwA token once if it fails.
+
+        A **stop is never a refreshable failure — anywhere in the bridge**
+        (:data:`mureo.core.control_flow.STOP_EXCEPTIONS`). The retry below
+        re-issues the call, so treating a cancellation as a failure would send
+        a second request — for a mutating tool, a second WRITE to a live ad
+        account — on behalf of a caller that has already disconnected, and
+        returning the retry's result would swallow the cancellation whole.
+        Measured, not theorised: before this guard a cancelled call came back
+        ``['RESULT#2']`` with two attempts and one LwA exchange spent.
+        """
+        creds, minted = self._auth.resolve()
         try:
             return await self._call(creds, name, arguments)
-        except KeyboardInterrupt:
+        except STOP_EXCEPTIONS:
             raise
         except BaseException as first_exc:
             # The Amazon access token expires after 60 min. We do not
@@ -684,6 +611,40 @@ class AmazonAdsBridge:
                 raise
             return await self._refresh_and_retry(creds, name, arguments, first_exc)
 
+    # -- session-scoped batch (#520) ----------------------------------------
+
+    @asynccontextmanager
+    async def batch_dispatch(self) -> AsyncIterator[Dispatch]:
+        """Yield a dispatch bound to ONE session for a whole sequence of calls.
+
+        The single-call :meth:`handle_mcp_tool` remains the default and is
+        unchanged; this is the opt-in for a caller that issues several calls
+        back to back, where the per-call handshake — not the query — dominates
+        (:mod:`mureo.amazon_ads.reversal`'s probe sequence is the one such
+        caller today). What is yielded is a plain
+        ``(name, arguments) -> awaitable`` callable of exactly the same shape,
+        so no transport object leaves the bridge and no caller changes its
+        calling convention.
+
+        Refresh budget: **one LwA exchange for the whole batch** — a refresh
+        closes the session, opens a new one on the new token, and retries only
+        the call that triggered it; a second failure is reported, never
+        refreshed again. Minting a missing access token counts as that
+        exchange. See :mod:`mureo.amazon_ads.batch` for why the session lives
+        in its own task and how a partial sequence is preserved.
+
+        The session is opened lazily on the first call and closed on exit —
+        including the exception path, so a failing call can never leak an open
+        transport.
+        """
+        batch = SessionBatch(
+            connect=self._connect, invoke=self._invoke, auth=self._auth
+        )
+        try:
+            yield batch.dispatch
+        finally:
+            await batch.aclose()
+
     # -- reversal capture (#121, MCPReversibleToolProvider) -----------------
 
     async def capture_reversal(
@@ -693,14 +654,16 @@ class AmazonAdsBridge:
 
         mureo's dispatch path calls this **before** a mutating Amazon tool
         runs (see :class:`mureo.mcp.tool_provider.MCPReversibleToolProvider`).
-        The read is issued through :meth:`handle_mcp_tool`, so it inherits the
-        bridge's authentication and one-shot token refresh, and the returned
+        The reads are issued through :meth:`batch_dispatch`, so the whole probe
+        sequence shares ONE session instead of paying a handshake per probe
+        (#520) while inheriting the same authentication and bounded token
+        refresh a single call gets, and the returned
         ``{"operation": <same tool>, "params": {...previous values...}}`` is
         what lands in ``STATE.json``'s ``action_log`` — executable as-is by
         the rollback planner. :mod:`mureo.amazon_ads.reversal` owns the pair
         table and states plainly what is live-verified and what is inferred.
 
-        Best-effort, unconditionally: any failure returns ``None`` (the
+        Best-effort, unconditionally: any *failure* returns ``None`` (the
         mutation is then recorded audit-only) and NEVER prevents or alters
         the write. The failure's *text* is never logged — only its exception
         type, alongside the tool name. That is deliberately stronger than
@@ -708,6 +671,17 @@ class AmazonAdsBridge:
         and how, and dropping the message (and the traceback with it) means
         no credential material can reach the log even if it were shaped in a
         way no redactor recognises.
+
+        A **stop is not a failure** (:data:`~mureo.core.control_flow
+        .STOP_EXCEPTIONS`: cancellation, KeyboardInterrupt, SystemExit) and is
+        re-raised, not swallowed.
+        mureo's MCP server runs each tool call in a task and cancels it when
+        the client goes away, so degrading a cancelled capture to "no
+        reversal" would suppress the caller's own cancellation and let the
+        dispatch carry on into the mutation — and, since #520 gave the capture
+        a session of its own, would do so while its teardown was still
+        unwinding. Cancelling means the call is over; only a genuine read
+        failure means "record the write without a reversal".
         """
         # Cheap first: the vast majority of Amazon mutations have no query
         # counterpart, and they must not pay for an exception handler or a
@@ -715,8 +689,9 @@ class AmazonAdsBridge:
         if not is_reversible_tool(name):
             return None
         try:
-            return await _capture_reversal(self.handle_mcp_tool, name, arguments)
-        except KeyboardInterrupt:
+            async with self.batch_dispatch() as dispatch:
+                return await _capture_reversal(dispatch, name, arguments)
+        except STOP_EXCEPTIONS:
             raise
         except BaseException as exc:  # noqa: BLE001 — capture never blocks a write
             logger.warning(
@@ -726,64 +701,6 @@ class AmazonAdsBridge:
                 type(exc).__name__,
             )
             return None
-
-    def _refresh_and_persist(
-        self,
-        creds: AmazonAdsCredentials,
-        *,
-        cause: BaseException | None,
-        auth_failure_prefix: str,
-    ) -> AmazonAdsCredentials:
-        """Mint a fresh LwA access token, persist it, return updated creds.
-
-        Shared by the two paths that may perform the single permitted LwA
-        exchange: the proactive mint (no ``access_token`` stored yet) and
-        the refresh-and-retry after a failed call. ``cause`` is the
-        original call failure on the retry path — chained onto every
-        raised :class:`AmazonBridgeError` so it is never lost — and
-        ``None`` on the mint path, where the LwA error is its own cause.
-        ``auth_failure_prefix`` names which of the two situations failed.
-
-        Where the token lands is the ``_token_saver``'s business: an
-        injected saver (tests, embedders) is used verbatim, while the
-        default binds the write to the active runtime — the ACTIVE tenant's
-        store when a multi-tenant host offers one, and the
-        runtime-resolved ``credentials.json`` otherwise (#511; see
-        :func:`_runtime_token_saver`). Single-tenant installs are
-        unaffected. Either destination's ``ConfigWriteError`` / ``OSError``
-        is mapped to the same :class:`AmazonBridgeError` below.
-        """
-        try:
-            tokens = self._refresher(creds)
-        except _LwaAuthError as auth_exc:
-            raise AmazonBridgeError(
-                f"{auth_failure_prefix}: {_scrub_secrets(str(auth_exc))}"
-            ) from (cause if cause is not None else auth_exc)
-        try:
-            self._token_saver(tokens.access_token, tokens.refresh_token)
-        except (ConfigWriteError, OSError) as save_exc:
-            # The new token is valid but is not on disk, so every later call
-            # would re-mint from a refresh token Amazon has already rotated
-            # against. Surface the underlying reason — typically a malformed
-            # credentials.json that mureo deliberately refuses to overwrite —
-            # instead of letting a raw traceback out.
-            #
-            # Both nested messages are scrubbed on the way into ours. mureo's
-            # own LwA and writer errors are token-free by construction, but
-            # neither is guaranteed to be: ``_token_saver`` is injectable, an
-            # OSError carries whatever filename or payload the OS put in it,
-            # and this text lands in an agent-visible tool result. Scrubbing at
-            # the point the string is BUILT is the only place that stays true
-            # as those inputs change.
-            raise AmazonBridgeError(
-                f"Amazon access token was refreshed but could not be saved to "
-                f"~/.mureo/credentials.json: {_scrub_secrets(str(save_exc))}"
-            ) from (cause if cause is not None else save_exc)
-        return dataclasses.replace(
-            creds,
-            access_token=tokens.access_token,
-            refresh_token=tokens.refresh_token,
-        )
 
     async def _refresh_and_retry(
         self,
@@ -798,15 +715,15 @@ class AmazonAdsBridge:
         actionable message, always chaining ``first_exc`` so the original
         call failure is never lost.
         """
-        refreshed = self._refresh_and_persist(
+        refreshed = self._auth.refresh_and_persist(
             creds,
             cause=first_exc,
             auth_failure_prefix="Amazon access token expired and refresh failed",
         )
         try:
             return await self._call(refreshed, name, arguments)
-        except KeyboardInterrupt:
-            raise
+        except STOP_EXCEPTIONS:
+            raise  # a stop is not "the retry failed"; do not chain it
         except BaseException as retry_exc:
             raise retry_exc from first_exc
 
@@ -816,27 +733,40 @@ class AmazonAdsBridge:
         name: str,
         arguments: dict[str, Any],
     ) -> list[Any]:
-        """Forward one call, normalising an Amazon-declared failure (#528).
+        """Open one session for one call and forward it (the default path).
 
-        The normalisation sits here rather than in ``handle_mcp_tool`` so the
-        first attempt and the post-refresh retry — the only two ways a
-        forwarded response reaches a caller — are covered by one call site,
-        and because this is where ``CallToolResult.isError`` is still in
-        scope: everything above sees only ``content``.
-
-        ``getattr`` rather than attribute access, because the session is an
-        injection seam (tests, embedders) and a stand-in result object need
-        not carry the field; absent ⇒ not a failure.
+        A batched sequence opens its session elsewhere
+        (:class:`mureo.amazon_ads.batch.SessionBatch`) and reaches Amazon
+        through the same :meth:`_invoke`, so both paths forward and normalise
+        identically; only the session's lifetime differs.
         """
         url = endpoint_url(creds.region)
         headers = request_headers(creds)
         async with self._connect(url, headers) as session:
             await session.initialize()
-            result = await session.call_tool(name, arguments)
-            return _normalize_failure(
-                list(result.content),
-                is_error=bool(getattr(result, "isError", False)),
-            )
+            return await self._invoke(session, name, arguments)
+
+    async def _invoke(
+        self, session: Any, name: str, arguments: dict[str, Any]
+    ) -> list[Any]:
+        """Forward one call on an OPEN session, normalising an Amazon-declared
+        failure (#528).
+
+        The normalisation sits here rather than in ``handle_mcp_tool`` so every
+        way a forwarded response reaches a caller — the first attempt, the
+        post-refresh retry, and every call in a batched sequence — is covered
+        by one call site, and because this is where ``CallToolResult.isError``
+        is still in scope: everything above sees only ``content``.
+
+        ``getattr`` rather than attribute access, because the session is an
+        injection seam (tests, embedders) and a stand-in result object need
+        not carry the field; absent ⇒ not a failure.
+        """
+        result = await session.call_tool(name, arguments)
+        return _normalize_failure(
+            list(result.content),
+            is_error=bool(getattr(result, "isError", False)),
+        )
 
 
 def _default_manifest_path() -> Path:
