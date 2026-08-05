@@ -259,7 +259,12 @@ hyphen naming, the calling requirements that otherwise waste turns
 global-account `profileId` rule, the `ARCHIVED` / `ENABLED` / `PAUSED`
 state enum), the asynchronous reporting flow, and the honest scope:
 no tool declares an output schema, analytics are advisory (#120), and
-guardrails apply best-effort. It also pins Amazon's single-state ad
+guardrails are exact on the 13 money-carrying tools mureo declares
+money paths for — with the best-effort pattern scan still applied
+underneath those paths as a floor, so a drifted or newly-added money
+field falls back to that best-effort cover (which finds it when the new
+name still looks like money) rather than to nothing — and best-effort
+alone everywhere else on the surface. It also pins Amazon's single-state ad
 model — `state` is the *configured* state and there is no serving
 status — which `/daily-check` and `/sync-state` follow when they persist
 Amazon ads into `STATE.json`.

@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Amazon guardrails are now enforced on exact money paths, not inferred**
+  (#527). Native `google_ads_*` / `meta_ads_*` writes are capped by exact
+  argument keys compiled into mureo; bridged Amazon writes were capped by a
+  best-effort **pattern scan** over argument names. Coverage was complete for
+  the manifest it was measured on, but the mechanism was inferential — a tool
+  Amazon adds later whose money key falls outside the vocabulary would not be
+  capped, and nothing would announce that.
+
+  Amazon's tool definitions are Amazon's, so they cannot carry
+  `_meta.mureo.budget` / `_meta.mureo.bid`. mureo now holds those declarations
+  itself: an in-tree table maps each of the **13 money-carrying tools** to the
+  exact nested argument paths its `inputSchema` carries money at — all 62 money
+  leaves — and feeds them through the same `BudgetDeclaration` /
+  `BidDeclaration` registry a plugin uses, so the one built-in
+  `StrategyPolicyGate` enforces them exactly. Declarations gained the ability
+  to express a nested path — a campaign budget lives at
+  `body.campaigns[].budgets[].budgetValue.monetaryBudgetValue.monetaryBudget.value`
+  — walking arrays element-wise and checking the cap against the **largest**
+  amount the call proposes, with an **explicit** wildcard for a dynamic-map
+  level (`countryMonetaryBudgetSettings.*.value`, whose keys are marketplace
+  codes) rather than a guess. Existing flat-key declarations — every `_meta`
+  one, and every native path — behave byte-identically.
+
+  Honest by construction, because the table is a snapshot of a surface mureo
+  does not own. Path resolution is strict, so a level that does not match ends
+  the walk with "not found" and can never cap a neighbouring field. And a path
+  declaration **raises the floor rather than replacing the scan**: wherever
+  mureo declares paths, the best-effort pattern scan still runs and the larger
+  amount per channel wins, so declaring a tool can only ever increase what is
+  checked. That matters because several of these tools carry two independent
+  money fields in one channel (an ad group's `budgets[]…` and its
+  `optimization.budgetSettings.dailyMinSpendValue`; a campaign's `budgets[]…`
+  and its `flights[].budget…`) — a sibling field that changes shape upstream
+  is still covered by the scan, to the extent a pattern can: it is found when
+  the field's name still looks like money, which is the same honest limit the
+  scan has always had. Anything not in the table — a tool Amazon adds
+  later, a plugin that declares nothing — keeps that same best-effort
+  coverage. Precedence stays per family: a tool declared for budget but not
+  bid still gets the bid pattern fallback. A plugin's own `_meta` declaration
+  is untouched by all of this: a flat declared key still replaces the scan
+  exactly as it did before.
+
 ## [0.10.39] - 2026-08-02
 
 ### Added

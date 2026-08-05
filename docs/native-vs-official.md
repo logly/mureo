@@ -195,7 +195,7 @@ Claude  →  local mureo MCP  →  Amazon hosted MCP endpoint
 | Credentials stay in `~/.mureo/credentials.json` | Yes | No | Yes |
 | Automatic token refresh by mureo | Yes | No | Yes |
 | Audit log / `action_log` promotion | Yes | No | Yes |
-| Hard guardrail enforcement before dispatch | Yes (exact argument keys) | No | Best-effort (pattern-matched argument keys) |
+| Hard guardrail enforcement before dispatch | Yes (exact argument keys) | No | Yes on the 13 money-carrying tools (exact argument paths mureo declares), with the pattern scan applied underneath as a floor; best-effort (pattern-matched argument keys) alone on the rest of the surface |
 | Rollback | Allow-listed operations are auto-reversible | No | Automatic before-state capture on eight paired campaign/ad/ad-group/target/portfolio updates; best-effort, see [amazon-ads.md](./amazon-ads.md#rollback-automatic-before-state-capture) |
 | mureo tool names / taxonomy | mureo's | the platform's | the platform's (`campaign_management-*`, `account_management-*`) |
 | Deep mureo analytics (anomaly baselines, RSA audit, CV-mismatch) | Yes | No | Not yet (#120) |

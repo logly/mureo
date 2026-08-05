@@ -167,19 +167,30 @@ prose instruction the model could overlook. How strong depends on the platform
 **Coverage:** the gate runs inside mureo's own MCP dispatch, so it **reaches**
 every **mureo-dispatched** tool call — but the **strength of the check differs
 by platform**: exact argument keys on native `google_ads_*` / `meta_ads_*`
-(**hard enforcement**), best-effort pattern-matched keys on plugin / bridged
-platforms (**strong but not guaranteed**), and hosted connectors bypass mureo
+(**hard enforcement**), declaration-first on plugin / bridged platforms — exact
+on the money surface mureo declares, best-effort pattern-matched keys on the
+rest (**strong but not guaranteed**) — and hosted connectors bypass mureo
 entirely (**no gate at all**). In detail:
 
 - **Native `google_ads_*` / `meta_ads_*`** (and `mureo_*`) — the gate reads the
   **exact argument keys** it knows (`daily_budget`, `bid_amount`,
   `cpc_bid_micros`, …). This is the hard, deterministic case.
 - **Plugin / bridged platforms** routed through mureo (including **Amazon
-  Ads**, `plugin:mureo-amazon-ads-bridge`) — the gate matches **budget/bid-like
-  argument keys best-effort**, by pattern. A tool that declares its budget / bid
-  keys in its MCP metadata is matched **exactly** and that declaration takes
-  precedence; otherwise coverage depends on how the tool happens to name its
-  arguments. So this is **not** the hard case: treat plugin-platform caps as
+  Ads**, `plugin:mureo-amazon-ads-bridge`) — **declaration first, pattern
+  second**. A tool that declares its budget / bid keys in its MCP metadata is
+  matched **exactly** and that declaration takes precedence. So is the *known*
+  bridged money surface, which mureo declares itself: the **13 money-carrying
+  Amazon tools** (campaign / ad-group / portfolio budgets, per-country budget
+  caps, target and ad-group bids) are enforced on **exact argument paths**, not
+  by pattern — and the best-effort scan **still runs underneath those paths as
+  a floor**, the larger amount winning, so a money field that drifted shape or
+  that the provider added after mureo's snapshot falls back to that best-effort
+  cover rather than to nothing — it is found when the new name still looks like
+  money (`budget` / `spend` / `bid`, or a plain `value` / `amount` under one),
+  which is the honest limit of a pattern. Everything
+  else on such a platform — a tool the provider adds later, a plugin that
+  declares nothing — is covered by that scan alone. So: an Amazon cap on the
+  declared tools is exact; everywhere else on these platforms treat a cap as
   **strong but not guaranteed**, tell the operator so, and verify the resulting
   values after the first mutations on a new platform.
 

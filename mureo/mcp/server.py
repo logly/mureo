@@ -432,8 +432,93 @@ def _register_plugin_pattern_fallbacks(
             )
 
 
+def _declares_from_bridged_table(
+    name: str,
+    semantics: dict[str, ToolSemantics],
+    dispatch: dict[str, MCPToolProvider],
+) -> ToolSemantics | None:
+    """``name``'s semantics when mureo's bridged table may declare it, else None.
+
+    Three conditions, and the third is the one that matters. Tool names are
+    keyed WITHOUT plugin identity everywhere in this module, and the Amazon
+    manifest's names (``campaign_management-update_campaign``, …) are generic
+    enough that another provider could plausibly ship the same string. Hanging
+    exact money paths off a bare name would then point Amazon's schema at a
+    different platform's arguments, so the owning distribution is checked
+    against the tool's actual provider instance — the same breadcrumb the
+    audit trail attributes calls with.
+    """
+    from mureo.amazon_ads.provider import AMAZON_SOURCE_DISTRIBUTION
+
+    sem = semantics.get(name)
+    if sem is None or not sem.mutating:
+        return None
+    if plugin_source(dispatch.get(name)) != AMAZON_SOURCE_DISTRIBUTION:
+        return None
+    return sem
+
+
+def _register_bridged_money_declarations(
+    semantics: dict[str, ToolSemantics],
+    dispatch: dict[str, MCPToolProvider],
+) -> None:
+    """Publish mureo's OWN money declarations for a bridged surface (#527).
+
+    The two registrations above only reach a plugin that CAN declare, and the
+    pattern fallback below is best-effort by construction. A bridged surface
+    is neither: its tools are someone else's, so it declares nothing, yet its
+    money paths are *known* — enumerated from a real manifest and held in
+    :mod:`mureo.amazon_ads.money_paths`. Registering them here makes the known
+    part of that surface enforced EXACTLY, through the very registry a
+    declaring plugin uses, while the best-effort scan keeps running underneath
+    as a floor (see ``mureo.policy.declarations.raise_to_scan_floor``).
+
+    Only for a tool that is present, MUTATING and supplied by the Amazon
+    bridge (:func:`_declares_from_bridged_table`), and only when it declared
+    nothing itself: a plugin's own ``_meta`` always wins over mureo's table —
+    the tool author knows their vocabulary better than a snapshot does.
+    Best-effort: a registry failure must not take the server down, and neither
+    must a table that fails to import.
+    """
+    try:
+        from mureo.amazon_ads.money_paths import BID_DECLARATIONS, BUDGET_DECLARATIONS
+    except Exception:  # noqa: BLE001 — never break startup on a table
+        logger.warning("could not load the bridged money declarations", exc_info=True)
+        return
+    from mureo.policy.declarations import (
+        register_bid_declaration,
+        register_budget_declaration,
+    )
+
+    for name, budget in BUDGET_DECLARATIONS.items():
+        sem = _declares_from_bridged_table(name, semantics, dispatch)
+        if sem is None or sem.budget is not None:
+            continue
+        try:
+            register_budget_declaration(name, budget)
+        except Exception:  # noqa: BLE001 — never break startup on a hint
+            logger.warning(
+                "could not register the bridged budget declaration for '%s'",
+                name,
+                exc_info=True,
+            )
+    for name, bid in BID_DECLARATIONS.items():
+        sem = _declares_from_bridged_table(name, semantics, dispatch)
+        if sem is None or sem.bid is not None:
+            continue
+        try:
+            register_bid_declaration(name, bid)
+        except Exception:  # noqa: BLE001 — never break startup on a hint
+            logger.warning(
+                "could not register the bridged bid declaration for '%s'",
+                name,
+                exc_info=True,
+            )
+
+
 _register_plugin_budget_declarations(_PLUGIN_SEMANTICS)
 _register_plugin_bid_declarations(_PLUGIN_SEMANTICS)
+_register_bridged_money_declarations(_PLUGIN_SEMANTICS, _PLUGIN_DISPATCH)
 _register_plugin_pattern_fallbacks(_PLUGIN_SEMANTICS)
 
 
