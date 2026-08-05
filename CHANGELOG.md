@@ -51,6 +51,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is untouched by all of this: a flat declared key still replaces the scan
   exactly as it did before.
 
+### Fixed
+
+- **A failed Amazon call is no longer recorded as a successful mutation**
+  (#528). Amazon returns a platform-side failure as ordinary successful
+  content, so the shared detector — which knows only the `API error:`
+  prefix mureo's own handlers stamp — classified it as a success and
+  promoted the call into `STATE.json`'s `action_log`, complete with an
+  observation window, a STRATEGY reminder and possibly a captured
+  reversal for a change that never happened. `AmazonAdsBridge` now
+  normalises an Amazon-declared failure into the canonical
+  `API error: <code>: <message>` result, so promotion-skip, the audit
+  trail and rollback planning all work unchanged. Amazon's message
+  reaches the agent verbatim so it can correct the call; the failure
+  text is scrubbed BEFORE it is reshaped for display, which means a
+  `code` long enough to look like an LwA authorization code renders as
+  `***` (the redactor does not guess which it is — a wrong guess would
+  put a credential in the agent's context and in `plugin_audit.jsonl`).
+  Fields beyond `code`/`message` are appended rather than dropped, a
+  body with no usable message is reported as such instead of arriving as
+  an opaque `{"code":"***"}`, and the text is capped at 4000 characters
+  with an explicit truncation marker so an outsized body cannot flood
+  the agent's context.
+
+- **The plugin audit redactor no longer assumes snake_case credential
+  key names** (#528). `clientSecret`, `refreshToken` and `accessToken`
+  were written out in cleartext because the rule required a literal
+  underscore — while `apiKey` was already handled. Every separator is
+  now optional, so the snake_case, kebab-case and camelCase spellings of
+  all five families are masked alike. This matters for real payloads
+  rather than in theory: Amazon's surface is camelCase throughout
+  (`advertiserAccountId`, `adProductFilter`, `authorizationCode`), and
+  bridged error bodies are exactly what this scrubber reads.
+
+- **The same redactor masks credential values under any key ending in
+  `code`** (#528), not only a key that is exactly `code` —
+  `authorizationCode`, `authCode` and `oauth_code` carry the same
+  material and were previously written out in full.
+
+  Both changes affect every provider's audit records, not only Amazon.
+  Note what the `code` rule actually gates on: the **value's length**,
+  not whether the key is credential-related. Any key ending in `code`
+  followed by a value of 8+ characters is masked, so
+  `barcode=0123456789`, `zipcode=`, `postcode=` and
+  `status_code=INTERNAL_SERVER_ERROR` now render as `***` too —
+  `barcode` in particular is a real Amazon catalog field. That
+  over-masking is deliberate: a legitimate field rendered as `***` costs
+  legibility, while a missed authorization code costs a credential.
+  Short values (`status_code=400`) and ordinary prose are unaffected.
+
+  The bearer-token pattern also stops at a quote instead of running to
+  the next whitespace, so redacting inside a JSON body no longer
+  swallows the rest of the document.
+
+  The discriminator is MCP's own `CallToolResult.isError` — the
+  platform's declaration that the call failed — not an inference from
+  the response body. Verified live against a real account (2026-08-05):
+  Amazon sets `isError` on both known failure shapes (the
+  `{"code": "FIELD_VALUE_IS_INVALID", ...}` envelope and the
+  `Validation failed: ...` text) and leaves it false on a successful
+  query. Content opening with `Validation failed:` is treated as a
+  failure as well, as a second signal. The body is otherwise not
+  interpreted at all, which is what makes the fix safe in both
+  directions: no Amazon tool declares an `outputSchema` and no mutation
+  success shape is documented, so any body-shape heuristic would
+  eventually read an ack such as `{"code": "CREATED", "message": "..."}`
+  as a failure and silently drop the `action_log` entry, observation
+  window and rollback candidate for a change that really happened.
+
+- **The plugin audit trail no longer reads as success for a call the
+  platform refused** (#528). A provider that returns the canonical
+  `API error:` envelope does not raise, so `plugin_audit.jsonl` recorded
+  `ok: true` with no reason while `action_log` (correctly) recorded
+  nothing. Records now carry `platform_ok: false` plus the error text
+  when the platform refused the call; `ok` keeps its meaning ("the
+  dispatch did not raise") and an ordinary success record is unchanged.
+  Applies to every plugin provider, not only Amazon.
+
 ## [0.10.39] - 2026-08-02
 
 ### Added

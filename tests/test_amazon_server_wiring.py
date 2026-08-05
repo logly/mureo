@@ -62,14 +62,21 @@ def _no_thirdparty(**_kw):
     return ()
 
 
-def _reload_server(monkeypatch, tmp_path: Path, *, with_manifest: bool):
+def _reload_server(
+    monkeypatch,
+    tmp_path: Path,
+    *,
+    with_manifest: bool,
+    manifest: dict[str, Any] | None = None,
+    connect=_fake_connect,
+):
     from mureo.amazon_ads import bridge as bmod
     from mureo.auth import AmazonAdsCredentials
     from mureo.mcp import plugin_audit
 
     mp = tmp_path / "amazon_tools.json"
     if with_manifest:
-        mp.write_text(json.dumps(_MANIFEST))
+        mp.write_text(json.dumps(manifest or _MANIFEST))
     monkeypatch.setattr(
         "mureo.core.providers.registry.discover_providers", _no_thirdparty
     )
@@ -81,7 +88,7 @@ def _reload_server(monkeypatch, tmp_path: Path, *, with_manifest: bool):
             client_id="cid", access_token="Atza|SECRET"
         ),
     )
-    monkeypatch.setattr(bmod, "_default_connect", _fake_connect)
+    monkeypatch.setattr(bmod, "_default_connect", connect)
     monkeypatch.setattr(plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl")
     from mureo.mcp import server as mod
 
@@ -169,6 +176,321 @@ class TestAmazonServerWiring:
             assert amazon == []
         finally:
             importlib.reload(mod)
+
+
+_REVERSIBLE_MANIFEST = {
+    "generated_at": "2026-05-18T00:00:00+00:00",
+    "region": "na",
+    "endpoint": "https://advertising-ai.amazon.com/mcp",
+    "account_mode": "dynamic",
+    "tools": [
+        {
+            "name": "campaign_management-update_campaign_state",
+            "description": "Update campaign state.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+    ],
+}
+
+_AMAZON_ERROR_JSON = (
+    '{"code":"FIELD_VALUE_IS_INVALID","message":"Multi marketplace query '
+    'requests only support query by primary resource id"}'
+)
+_AMAZON_VALIDATION_TEXT = (
+    "Validation failed: provided input does not match tool input schema. "
+    "Validation errors: [/body: required property 'adProductFilter' not found]"
+)
+_AMAZON_SUCCESS_JSON = '{"campaigns":[{"campaignId":"C1","state":"ENABLED"}]}'
+#: Mutation acks. No mutation success shape is live-verified anywhere in this
+#: repo, so a write may answer with nothing but scalars. None of these carries
+#: ``isError``, so none of them may EVER be read as a failure — doing so would
+#: drop the ``action_log`` entry for a change that really happened.
+_AMAZON_ACKS = (
+    '{"code":"CREATED","message":"Campaign 123 created successfully"}',
+    '{"code":"ACCEPTED","message":"request accepted"}',
+    '{"code":"UPDATED","message":"campaign updated"}',
+    '{"code":"DELETED","message":"campaign deleted"}',
+    '{"code":"ENABLED","message":"campaign enabled"}',
+    '{"code":"IN_PROGRESS","message":"update in progress"}',
+    '{"code": 200, "message": "Campaign updated successfully"}',
+    '{"code":"SUCCESS","message":"OK","campaignId":"C1"}',
+)
+
+
+def _connect_returning(text: str, *, is_error: bool = False):
+    """Connect factory: every tool answers ``text`` with ``isError``.
+
+    ``isError`` is the field the real ``CallToolResult`` carries and is the
+    bridge's sole structural failure signal (live-verified 2026-08-05).
+    """
+
+    class _Sess:
+        async def initialize(self) -> None: ...
+
+        async def call_tool(self, name: str, arguments: dict[str, Any]):
+            from mcp.types import TextContent
+
+            return type(
+                "R",
+                (),
+                {
+                    "content": [TextContent(type="text", text=text)],
+                    "isError": is_error,
+                },
+            )()
+
+    class _CM:
+        async def __aenter__(self):
+            return _Sess()
+
+        async def __aexit__(self, *e):
+            return False
+
+    return lambda url, headers: _CM()
+
+
+@pytest.mark.unit
+class TestBridgedFailureIsNotRecordedAsAMutation:
+    """#528 — a platform-side failure must not land in ``action_log``.
+
+    Amazon returns its failures as ordinary successful content, so the whole
+    chain has to be checked, not just the detector: promotion is skipped, the
+    jsonl audit still records the attempt exactly as it does today, no
+    reversal is attached, and the (normalised) response still reaches the
+    agent.
+    """
+
+    def _audit(self, tmp_path: Path) -> list[dict[str, Any]]:
+        return [
+            json.loads(x) for x in (tmp_path / "audit.jsonl").read_text().splitlines()
+        ]
+
+    async def _dispatch(
+        self, monkeypatch, tmp_path, tool, text, *, manifest=None, is_error=False
+    ):
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        mod = _reload_server(
+            monkeypatch,
+            tmp_path,
+            with_manifest=True,
+            manifest=manifest,
+            connect=_connect_returning(text, is_error=is_error),
+        )
+        try:
+            return await mod.handle_call_tool(tool, {"campaignId": "C1"})
+        finally:
+            importlib.reload(mod)
+
+    async def test_json_error_envelope_skips_the_action_log(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from mureo.context.state import read_state_file
+
+        out = await self._dispatch(
+            monkeypatch,
+            tmp_path,
+            "campaign_management-create_campaign",
+            _AMAZON_ERROR_JSON,
+            is_error=True,
+        )
+
+        doc = read_state_file(tmp_path / "STATE.json")
+        assert doc.action_log == ()  # the mutation never happened
+        # ...but the response still reaches the agent, normalised. The message
+        # survives; the quoted code value is masked by the shared redactor.
+        assert out and out[0].text.startswith("API error:")
+        assert "Multi marketplace query requests" in out[0].text
+        # ...and the attempt is still audited — as a PLATFORM failure. ``ok``
+        # keeps its meaning ("the call did not raise"), so the operator-facing
+        # trail carries the outcome separately instead of reading as success.
+        audit = self._audit(tmp_path)
+        assert audit[-1]["tool"] == "campaign_management-create_campaign"
+        assert audit[-1]["ok"] is True
+        assert audit[-1]["platform_ok"] is False
+        assert "Multi marketplace query requests" in audit[-1]["error"]
+
+    async def test_a_token_shaped_code_reaches_neither_agent_nor_audit(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """The operator-facing trail must never carry a credential in clear.
+
+        ``plugin_audit.jsonl`` is written to disk and kept; a leak there
+        outlives the session. The scrub has to happen before the failure text
+        is reshaped for display, or the redactor's ``"code":`` anchor is gone
+        by the time it runs.
+        """
+        secret = "AQABAAgAAAAmoFfGtYxfTKd1RVy5Z1oL8vXeqR7uKQzTOKENVALUE1234"
+        out = await self._dispatch(
+            monkeypatch,
+            tmp_path,
+            "campaign_management-create_campaign",
+            f'{{"code": "{secret}", "message": "authorization code rejected"}}',
+            is_error=True,
+        )
+
+        assert secret not in out[0].text
+        assert secret not in (tmp_path / "audit.jsonl").read_text()
+        assert "authorization code rejected" in self._audit(tmp_path)[-1]["error"]
+
+    async def test_a_code_suffixed_key_reaches_neither_agent_nor_audit(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """Same guarantee for a key the redactor's ``code`` rule used to miss."""
+        secret = "AQABAAABBBCCCDDDauthcode123456"
+        out = await self._dispatch(
+            monkeypatch,
+            tmp_path,
+            "campaign_management-create_campaign",
+            f'{{"code":"BAD","message":"rejected","authorizationCode":"{secret}"}}',
+            is_error=True,
+        )
+
+        assert secret not in out[0].text
+        assert secret not in (tmp_path / "audit.jsonl").read_text()
+
+    @pytest.mark.parametrize(
+        "key",
+        ["clientSecret", "refreshToken", "accessToken", "apiKey", "client-secret"],
+    )
+    @pytest.mark.parametrize("with_message", [True, False], ids=["message", "none"])
+    async def test_a_camel_case_credential_key_reaches_nothing(
+        self, monkeypatch, tmp_path, key, with_message
+    ) -> None:
+        """Every credential family, in the spelling Amazon's surface uses.
+
+        Both paths this change added put a raw body in front of the agent and
+        into ``plugin_audit.jsonl``: the extras append (message present) and
+        the no-message fallback (message absent). A snake_case-only redactor
+        leaks through both.
+        """
+        secret = "amzn1.oa2-cs.v1.SUPERSECRETVALUE"
+        message = '"message":"rejected",' if with_message else ""
+        out = await self._dispatch(
+            monkeypatch,
+            tmp_path,
+            "campaign_management-create_campaign",
+            f'{{"code":"BAD",{message}"{key}":"{secret}"}}',
+            is_error=True,
+        )
+
+        assert secret not in out[0].text
+        assert secret not in (tmp_path / "audit.jsonl").read_text()
+
+    async def test_validation_failure_text_skips_the_action_log(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from mureo.context.state import read_state_file
+
+        out = await self._dispatch(
+            monkeypatch,
+            tmp_path,
+            "campaign_management-create_campaign",
+            _AMAZON_VALIDATION_TEXT,
+            is_error=True,
+        )
+
+        assert read_state_file(tmp_path / "STATE.json").action_log == ()
+        assert out[0].text.startswith("API error:")
+        assert "adProductFilter" in out[0].text
+        assert self._audit(tmp_path)[-1]["platform_ok"] is False
+
+    async def test_failed_reversible_mutation_attaches_no_reversal(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """A reversal for a change that never happened is a phantom rollback."""
+        from mureo.context.state import read_state_file
+
+        await self._dispatch(
+            monkeypatch,
+            tmp_path,
+            "campaign_management-update_campaign_state",
+            _AMAZON_ERROR_JSON,
+            manifest=_REVERSIBLE_MANIFEST,
+            is_error=True,
+        )
+
+        doc = read_state_file(tmp_path / "STATE.json")
+        assert doc.action_log == ()  # no entry ⇒ no reversible_params either
+
+    async def test_successful_envelope_is_unchanged_and_still_promoted(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from mureo.context.state import read_state_file
+
+        out = await self._dispatch(
+            monkeypatch,
+            tmp_path,
+            "campaign_management-create_campaign",
+            _AMAZON_SUCCESS_JSON,
+        )
+
+        assert out[0].text == _AMAZON_SUCCESS_JSON  # forwarded verbatim
+        doc = read_state_file(tmp_path / "STATE.json")
+        assert len(doc.action_log) == 1
+        assert doc.action_log[0].action == "campaign_management-create_campaign"
+        assert "platform_ok" not in self._audit(tmp_path)[-1]  # plain success
+
+    @pytest.mark.parametrize("ack", _AMAZON_ACKS)
+    async def test_a_scalar_mutation_ack_is_still_promoted(
+        self, monkeypatch, tmp_path, ack
+    ) -> None:
+        """The inverse failure mode: a real change must NOT be lost.
+
+        Every one of these acks was misclassified as a failure by an earlier
+        payload heuristic. None carries ``isError``, so each must reach
+        ``action_log`` — misreading one would drop the audit entry, the
+        observation window and the rollback candidate for a change that
+        actually happened.
+        """
+        from mureo.context.state import read_state_file
+
+        out = await self._dispatch(
+            monkeypatch, tmp_path, "campaign_management-create_campaign", ack
+        )
+
+        assert out[0].text == ack  # untouched
+        doc = read_state_file(tmp_path / "STATE.json")
+        assert len(doc.action_log) == 1
+        assert doc.action_log[0].action == "campaign_management-create_campaign"
+
+    async def test_readonly_tool_error_keeps_its_existing_behaviour(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """Read-only tools were never promoted; normalising changes nothing."""
+        from mureo.context.state import read_state_file
+
+        out = await self._dispatch(
+            monkeypatch,
+            tmp_path,
+            "account_management-query_advertiser_account",
+            _AMAZON_ERROR_JSON,
+            is_error=True,
+        )
+
+        assert read_state_file(tmp_path / "STATE.json").action_log == ()
+        assert out[0].text.startswith("API error:")
+        # A read-only tool is audit-only either way, but the trail must still
+        # say the platform refused the call.
+        assert self._audit(tmp_path)[-1]["platform_ok"] is False
+
+    async def test_is_error_on_a_success_looking_body_skips_promotion(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """Only ``isError`` can catch this — the body reads as a success."""
+        from mureo.context.state import read_state_file
+
+        out = await self._dispatch(
+            monkeypatch,
+            tmp_path,
+            "campaign_management-create_campaign",
+            _AMAZON_SUCCESS_JSON,
+            is_error=True,
+        )
+
+        assert read_state_file(tmp_path / "STATE.json").action_log == ()
+        assert out[0].text.startswith("API error:")
+        assert self._audit(tmp_path)[-1]["platform_ok"] is False
 
 
 @pytest.mark.unit

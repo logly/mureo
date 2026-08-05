@@ -47,8 +47,13 @@ _SENSITIVE_KEY = re.compile(
 # headers and Amazon LwA access/refresh tokens (Atza|… / Atzr|…). The
 # Amazon bridge is the first credentialed plugin path, so this is
 # defense-in-depth for every plugin's recorded exception text.
+#
+# Every alternative stops at whitespace OR a quote. ``Bearer\s+\S+`` used to
+# run past the closing quote of a JSON string and swallow the rest of the
+# document, leaving structurally broken text for whoever reads the record.
+# A bearer token cannot contain a quote, so stopping there cannot leak.
 _SECRET_VALUE = re.compile(
-    r"(Bearer\s+\S+|Atza\|[^\s'\"]+|Atzr\|[^\s'\"]+)",
+    r"(Bearer\s+[^\s'\"]+|Atza\|[^\s'\"]+|Atzr\|[^\s'\"]+)",
     re.IGNORECASE,
 )
 
@@ -65,16 +70,25 @@ _SECRET_VALUE = re.compile(
 # The optional quotes around the separator catch the dict/JSON rendering
 # an exception's ``repr`` produces (``{'client_secret': 'shh'}``) as well
 # as the bare form-encoded one.
+#
+# EVERY key word separator is optional (``[_-]?``), so ``client_secret``,
+# ``client-secret`` and ``clientSecret`` are all masked. Three of the five
+# alternatives once required a literal underscore, which meant the camelCase
+# spelling leaked in cleartext (#528) — and camelCase is not exotic here:
+# Amazon's own surface is camelCase throughout (``advertiserAccountId``,
+# ``adProductFilter``, ``authorizationCode``), and this scrubber's whole job
+# is redacting error bodies from surfaces like it. Matches ``_SENSITIVE_KEY``
+# above, which was already spelled this way.
 _SECRET_KEY_VALUE = re.compile(
-    r"((?:client_secret|refresh_token|access_token|api[_-]?key|password)"
+    r"((?:client[_-]?secret|refresh[_-]?token|access[_-]?token"
+    r"|api[_-]?key|password)"
     r"['\"]?\s*[:=]\s*['\"]?)[^\s,;&'\"}\])]+",
     re.IGNORECASE,
 )
 
 # ``code`` on its own is far too common in ordinary error prose ("status
 # code = 400", "error code: 17"), so it gets a deliberately narrow rule.
-# Only two shapes count, both with a word boundary in front (never
-# ``status_code=``):
+# Only two shapes count:
 #   - ``code=…`` with NO space before the ``=`` (the query-string /
 #     form-body shape an authorization code actually leaks in), and
 #   - the QUOTED dict-key shape ``'code': '…'`` that an exception repr
@@ -83,9 +97,27 @@ _SECRET_KEY_VALUE = re.compile(
 # must also be at least _MIN_CODE_VALUE_LEN token characters — Amazon's
 # authorization codes are long alphanumerics; status codes and errnos
 # are not.
+#
+# The key may END in ``code`` rather than BE it (``authorizationCode``,
+# ``authCode``, ``oauth_code``): the same credential lands in whatever field
+# name a platform picked, and the original word-boundary lookbehind let those
+# through in full (#528). Dropping the lookbehind is all that takes — the
+# pattern simply matches the ``code`` at the END of the key and leaves the
+# prefix untouched, so ``authorizationCode": "…"`` becomes
+# ``authorizationCode": "***"``. Broadening the KEY is the safe direction: the
+# length rule still keeps ``status_code=400`` and friends readable, and
+# over-masking costs legibility while under-masking costs a credential.
+#
+# Deliberately NOT written as a ``[\w-]*code`` prefix: that form backtracks
+# quadratically on a long non-matching string (a 2 MB error body hung the
+# test suite), and this scrubber runs on attacker-influenceable text.
+#
+# Not covered, deliberately: a bare NUMERIC code is never masked (an LwA
+# authorization code is a long alphanumeric string, never an integer), so the
+# asymmetry with string codes is a legibility quirk, not a leak.
 _MIN_CODE_VALUE_LEN = 8
 _CODE_KEY_VALUE = re.compile(
-    r"((?<![\w-])(?:code=['\"]?|code['\"]\s*:\s*['\"]))[^\s,;&'\"}\])]{"
+    r"((?:code=['\"]?|code['\"]\s*:\s*['\"]))[^\s,;&'\"}\])]{"
     + str(_MIN_CODE_VALUE_LEN)
     + r",}",
     re.IGNORECASE,
@@ -139,8 +171,21 @@ def record_plugin_call(
     source: str,
     ok: bool,
     error: str | None = None,
+    platform_ok: bool | None = None,
 ) -> None:
-    """Append one masked JSON-Lines audit record. Never raises."""
+    """Append one masked JSON-Lines audit record. Never raises.
+
+    Two independent outcomes, because they genuinely differ (#528):
+
+    - ``ok`` — did the dispatch complete without raising. Unchanged meaning.
+    - ``platform_ok`` — did the PLATFORM accept the call. A provider can
+      return a refusal as ordinary content (the canonical ``API error:``
+      envelope), which does not raise and so leaves ``ok`` True. Recorded as
+      ``platform_ok: false`` so this operator-facing trail does not read as a
+      success for a call that changed nothing, matching the ``action_log``
+      entry that is correctly skipped for it. Written ONLY when a failure is
+      known, so an ordinary record keeps its existing shape.
+    """
     try:
         rec = {
             "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -149,6 +194,8 @@ def record_plugin_call(
             "ok": ok,
             "args": _mask(arguments if isinstance(arguments, dict) else {}),
         }
+        if platform_ok is False:
+            rec["platform_ok"] = False
         if error is not None:
             rec["error"] = _scrub(error)[:_MAX_STR]
         path = _audit_path()

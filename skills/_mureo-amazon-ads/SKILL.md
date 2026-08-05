@@ -110,6 +110,33 @@ Every point below is verified against a live account.
 6. Closing the MCP session can log `Session termination failed: 403`. It
    appears *after* the call result and is harmless — do not report it as a
    failed operation.
+7. **A rejected call comes back as `API error: <code>: <message>`.** Amazon
+   returns its failures as ordinary content, flagged with the MCP protocol's
+   `isError` (live-verified 2026-08-05 for both the
+   `{"code": "FIELD_VALUE_IS_INVALID", ...}` envelope and the
+   `Validation failed: ...` text); mureo normalises those into the same
+   `API error: ...` result a built-in tool returns. Such a call changed
+   **nothing** and is deliberately **not** recorded in `action_log` — fix the
+   arguments from the message and retry, and never report the attempt as a
+   completed change. Two things to expect when you read one:
+   - **The `code` usually arrives as `***`.** An LwA authorization code has
+     the same `"code": "..."` shape, so mureo masks the value rather than
+     guessing which it is. **When a message is present it is the diagnosis** —
+     work from it and do NOT tell the operator that the code was hidden or
+     that information is missing. Example: `API error: ***: Multi marketplace
+     query requests only support query by primary resource id` is
+     requirement 3 above, and you can act on it as-is.
+   - **`API error: Amazon returned no error message; raw body: ...` means
+     there is genuinely nothing to read** — the code is masked and Amazon sent
+     no message. Say exactly that, quote the raw body, and do not invent a
+     cause. Re-read the tool's `inputSchema` and the *Calling requirements*
+     above, state your best hypothesis as a hypothesis, and ask the operator
+     before retrying a mutation.
+   - **A `…<truncated>` suffix means the body was longer than mureo will put
+     in your context.** Report what you have and say it was truncated.
+   - **The converse holds too**: a response that merely *looks*
+     error-flavoured (`{"code": "PARTIAL", ...}`) but is not flagged is a
+     success, and a mutation returning it IS recorded.
 
 Minimal working query body:
 
@@ -254,7 +281,9 @@ subject to the same structural handling as a built-in write (see
 parity*): **confirm with the operator before the call**, gate against
 `STRATEGY.md` (Operation Mode, Goals, `## Guardrails`), and expect the
 successful call to land in `action_log` under
-`platform="plugin:mureo-amazon-ads-bridge"` with an observation window.
+`platform="plugin:mureo-amazon-ads-bridge"` with an observation window. A
+call Amazon rejects (`API error: ...`, requirement 7 above) lands nowhere —
+it changed nothing, so report it as a failed attempt, not as a change.
 
 The **13 money-carrying tools** — the ones mureo declares exact money paths
 for, so their `## Guardrails` caps are enforced exactly (all

@@ -567,6 +567,424 @@ class TestProactiveTokenMint:
         assert attempts == ["Bearer Atza|MINTED"]  # exactly one forwarded call
 
 
+def _connect_result(content, *, is_error: bool = False, attempts: list | None = None):
+    """Connect factory whose session answers with ``content`` + ``isError``.
+
+    Mirrors the real ``CallToolResult``: a failure is DECLARED by the server
+    through ``isError``, not inferred from the body.
+    """
+
+    class _Sess:
+        async def initialize(self) -> None: ...
+
+        async def call_tool(self, name, arguments):
+            if attempts is not None:
+                attempts.append(name)
+            return type("R", (), {"content": content, "isError": is_error})()
+
+    class _CM:
+        def __init__(self, url, headers):
+            pass
+
+        async def __aenter__(self):
+            return _Sess()
+
+        async def __aexit__(self, *e):
+            return False
+
+    return lambda url, headers: _CM(url, headers)
+
+
+@pytest.mark.unit
+class TestFailureEnvelopeNormalization:
+    """#528 — an Amazon-declared failure becomes the canonical ``API error:``.
+
+    Amazon returns a platform-side failure as ordinary content, so
+    ``mureo.mcp._helpers.is_error_result`` — which knows only mureo's own
+    ``API error:`` prefix — said False and a mutation that never happened was
+    promoted into ``STATE.json``'s ``action_log``.
+
+    The discriminator is ``CallToolResult.isError``, MCP's own field, which is
+    LIVE-VERIFIED (region ``fe``, 2026-08-05) as ``True`` on both #528
+    failures and ``False`` on a successful query. The payload is NOT
+    inspected: every body-shape heuristic tried before this misread plausible
+    mutation acks (``{"code": "CREATED", …}``) as failures, which would DROP
+    the ``action_log`` entry for a change that really happened.
+    """
+
+    def _text(self, s: str):
+        from mcp.types import TextContent
+
+        return [TextContent(type="text", text=s)]
+
+    def _call(self, tmp_path: Path, content, *, is_error: bool = False):
+        b = _bridge(tmp_path, connect=_connect_result(content, is_error=is_error))
+        return asyncio.run(
+            b.handle_mcp_tool("campaign_management-create_campaign", {"name": "X"})
+        )
+
+    def _is_error(self, out) -> bool:
+        from mureo.mcp._helpers import is_error_result
+
+        return is_error_result(out)
+
+    def test_live_json_failure_becomes_an_api_error(self, tmp_path: Path) -> None:
+        """Live-observed shape #1, with the live-observed ``isError=True``."""
+        out = self._call(
+            tmp_path,
+            self._text(
+                '{"code":"FIELD_VALUE_IS_INVALID","message":"Multi marketplace '
+                'query requests only support query by primary resource id"}'
+            ),
+            is_error=True,
+        )
+        assert self._is_error(out)
+        text = out[0].text
+        # The MESSAGE — the actionable half — survives verbatim.
+        assert "Multi marketplace query requests" in text
+        assert "Traceback" not in text
+        # The CODE does not: the shared redactor masks the value of a quoted
+        # ``"code"`` key (it cannot tell an Amazon error code from an OAuth
+        # authorization code, and must not guess — see
+        # ``test_a_token_shaped_code_never_reaches_the_agent``).
+        assert "FIELD_VALUE_IS_INVALID" not in text
+        assert "***" in text
+
+    def test_a_token_shaped_code_never_reaches_the_agent(self, tmp_path: Path) -> None:
+        """A credential-shaped ``code`` must stay masked end to end.
+
+        The redactor masks the value of a quoted ``"code"`` key precisely
+        because an LwA authorization code leaks in that shape. Rendering the
+        payload for display must therefore happen AFTER scrubbing — flattening
+        first would strip the ``"code":`` anchor the rule keys on and hand the
+        agent (and the audit trail) the credential in cleartext.
+        """
+        secret = "AQABAAgAAAAmoFfGtYxfTKd1RVy5Z1oL8vXeqR7uKQzTOKENVALUE1234"
+        out = self._call(
+            tmp_path,
+            self._text(
+                f'{{"code": "{secret}", "message": "authorization code rejected"}}'
+            ),
+            is_error=True,
+        )
+        assert self._is_error(out)
+        assert secret not in out[0].text
+        assert "***" in out[0].text
+        assert "authorization code rejected" in out[0].text
+
+    def test_a_deeply_nested_body_does_not_escape_as_an_exception(
+        self, tmp_path: Path
+    ) -> None:
+        """``RecursionError`` is a ``RuntimeError``, so ``except ValueError``
+        misses it: the display helper must catch it and hand back the text.
+
+        Letting it escape would replace the graceful envelope with a raw
+        exception AND — with refresh credentials present — burn the one-shot
+        refresh-and-retry on a problem that is not authentication.
+        """
+        out = self._call(tmp_path, self._text("[" * 3000 + "]" * 3000), is_error=True)
+        assert self._is_error(out)
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            '{"code":"FIELD_VALUE_IS_INVALID"}',  # message absent
+            '{"code":"FIELD_VALUE_IS_INVALID","message":""}',  # empty
+            '{"code":"FIELD_VALUE_IS_INVALID","message":"   "}',  # whitespace
+            '{"code":"FIELD_VALUE_IS_INVALID","message":null}',  # null
+            '{"code":"FIELD_VALUE_IS_INVALID","message":{"nested":1}}',  # not a str
+        ],
+    )
+    def test_a_failure_with_no_usable_message_says_so(
+        self, tmp_path: Path, body: str
+    ) -> None:
+        """A masked code AND no message must not hand back an opaque blob.
+
+        The redactor masks the code, so without a message there is nothing
+        left to read. The envelope has to SAY that, otherwise the agent is
+        handed ``API error: {"code":"***"}`` and can only guess.
+        """
+        out = self._call(tmp_path, self._text(body), is_error=True)
+        assert self._is_error(out)
+        assert "no error message" in out[0].text
+
+    def test_a_message_without_a_code_is_still_rendered(self, tmp_path: Path) -> None:
+        """The message alone is a perfectly good diagnosis."""
+        out = self._call(
+            tmp_path, self._text('{"message":"campaign not found"}'), is_error=True
+        )
+        assert out[0].text == "API error: campaign not found"
+
+    def test_a_token_shaped_value_under_a_code_suffixed_key_is_masked(
+        self, tmp_path: Path
+    ) -> None:
+        """Appending extra keys made this reachable, so it must be covered.
+
+        The redactor's ``code`` rule required the key to BE ``code``; a field
+        named ``authorizationCode`` carrying the same material slipped through
+        and now lands in the agent-visible text verbatim.
+        """
+        secret = "AQABAAABBBCCCDDDauthcode123456"
+        out = self._call(
+            tmp_path,
+            self._text(
+                '{"code":"BAD","message":"rejected",'
+                f'"authorizationCode":"{secret}"}}'
+            ),
+            is_error=True,
+        )
+        assert secret not in out[0].text
+        assert "rejected" in out[0].text
+
+    def test_a_bearer_token_in_a_message_keeps_the_body_parseable(
+        self, tmp_path: Path
+    ) -> None:
+        """A redaction that eats the closing quote breaks the flattening."""
+        out = self._call(
+            tmp_path,
+            self._text(
+                '{"code":"BAD","message":"bad header Bearer sometoken.jwt.here"}'
+            ),
+            is_error=True,
+        )
+        assert out[0].text == "API error: BAD: bad header ***"
+
+    def test_the_agent_visible_text_is_bounded(self, tmp_path: Path) -> None:
+        """An unbounded body must not dump megabytes into the agent's context.
+
+        The audit line has always been capped; the agent-facing text was not.
+        """
+        from mureo.amazon_ads.bridge import _MAX_FAILURE_TEXT
+
+        huge_message = self._call(
+            tmp_path,
+            self._text('{"code":"BAD","message":"%s"}' % ("x" * 2_000_000)),
+            is_error=True,
+        )
+        assert len(huge_message[0].text) < _MAX_FAILURE_TEXT + 100
+        assert "truncated" in huge_message[0].text
+
+        extras = ",".join(f'"k{i}":"v{i}"' for i in range(50_000))
+        huge_extras = self._call(
+            tmp_path,
+            self._text('{"code":"BAD","message":"m",%s}' % extras),
+            is_error=True,
+        )
+        assert len(huge_extras[0].text) < _MAX_FAILURE_TEXT + 100
+        assert "truncated" in huge_extras[0].text
+
+    def test_unrecognised_keys_are_kept_in_the_display_text(
+        self, tmp_path: Path
+    ) -> None:
+        """Flattening must not silently discard the rest of the payload."""
+        out = self._call(
+            tmp_path,
+            self._text(
+                '{"code":"BAD","message":"bad id",'
+                '"details":[{"field":"campaignId"}],"requestId":"r-1"}'
+            ),
+            is_error=True,
+        )
+        text = out[0].text
+        assert "bad id" in text
+        assert "campaignId" in text  # details survived
+        assert "r-1" in text  # requestId survived
+
+    def test_live_validation_failure_becomes_an_api_error(self, tmp_path: Path) -> None:
+        """Live-observed shape #2 — plain text, also flagged ``isError=True``."""
+        out = self._call(
+            tmp_path,
+            self._text(
+                "Validation failed: provided input does not match tool input "
+                "schema. Validation errors: [/body: required property "
+                "'adProductFilter' not found]"
+            ),
+            is_error=True,
+        )
+        assert self._is_error(out)
+        assert "adProductFilter" in out[0].text
+        assert "Traceback" not in out[0].text
+
+    def test_is_error_normalises_a_success_looking_payload(
+        self, tmp_path: Path
+    ) -> None:
+        """The case ONLY ``isError`` can catch.
+
+        A body that reads exactly like a successful query envelope, declared
+        a failure by the server. No payload heuristic could ever see this;
+        the protocol field settles it.
+        """
+        out = self._call(
+            tmp_path,
+            self._text('{"campaigns":[{"campaignId":"C1","state":"ENABLED"}]}'),
+            is_error=True,
+        )
+        assert self._is_error(out)
+        assert "campaigns" in out[0].text  # Amazon's own body still surfaced
+
+    def test_validation_prefix_without_is_error_is_belt_and_braces(
+        self, tmp_path: Path
+    ) -> None:
+        """Second signal: no success message plausibly opens this way."""
+        out = self._call(
+            tmp_path,
+            self._text("Validation failed: provided input does not match schema."),
+            is_error=False,
+        )
+        assert self._is_error(out)
+
+    def test_is_error_with_no_text_still_yields_the_envelope(
+        self, tmp_path: Path
+    ) -> None:
+        """A declared failure with an empty body is still a failure."""
+        out = self._call(tmp_path, [], is_error=True)
+        assert self._is_error(out)
+        assert "no message" in out[0].text
+
+    def test_success_envelope_is_returned_unchanged(self, tmp_path: Path) -> None:
+        payload = '{"campaigns":[{"campaignId":"C1","state":"ENABLED"}]}'
+        out = self._call(tmp_path, self._text(payload))
+        assert not self._is_error(out)
+        assert out[0].text == payload
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            '{"code":"CREATED","message":"Campaign 123 created successfully"}',
+            '{"code":"ACCEPTED","message":"request accepted"}',
+            '{"code":"UPDATED","message":"campaign updated"}',
+            '{"code":"DELETED","message":"campaign deleted"}',
+            '{"code":"ENABLED","message":"campaign enabled"}',
+            '{"code":"IN_PROGRESS","message":"update in progress"}',
+            '{"code":"SUCCESS","message":"OK","campaignId":"C1"}',
+            '{"code": 200, "message": "Campaign updated successfully"}',
+            '{"code": 0, "message": "Campaign updated successfully"}',
+            '{"code":"PARTIAL","message":"one item failed",'
+            '"campaigns":[{"campaignId":"C1"}]}',
+        ],
+    )
+    def test_a_mutation_ack_is_never_a_failure(
+        self, tmp_path: Path, payload: str
+    ) -> None:
+        """Every ack shape the reviews produced, none of them ``isError``.
+
+        These are exactly the payloads the previous vocabulary heuristics
+        misclassified. Without ``isError`` the body cannot make the bridge
+        call something a failure, so the whole class of bug is gone by
+        construction rather than by a longer word list.
+        """
+        out = self._call(tmp_path, self._text(payload))
+        assert not self._is_error(out)
+        assert out[0].text == payload
+
+    def test_unrecognised_payload_without_is_error_is_a_success(
+        self, tmp_path: Path
+    ) -> None:
+        for payload in (
+            "Something entirely unexpected happened",
+            '{"foo":1}',
+            '{"message":"no code here"}',
+            '{"code":"NO_MESSAGE_HERE"}',
+            "[1, 2, 3]",
+        ):
+            out = self._call(tmp_path, self._text(payload))
+            assert not self._is_error(out), payload
+            assert out[0].text == payload
+
+    def test_non_text_content_is_returned_unchanged(self, tmp_path: Path) -> None:
+        out = self._call(tmp_path, ["RESULT"])
+        assert out == ["RESULT"]
+
+    def test_a_session_without_the_field_is_treated_as_a_success(
+        self, tmp_path: Path
+    ) -> None:
+        """The injection seam: a stand-in result need not carry ``isError``."""
+        out = self._call(tmp_path, self._text('{"code":"X_IS_INVALID","message":"m"}'))
+        assert not self._is_error(out)
+
+    def test_error_detail_goes_through_the_token_scrubbing(
+        self, tmp_path: Path
+    ) -> None:
+        out = self._call(
+            tmp_path,
+            self._text(
+                '{"code":"UNAUTHORIZED","message":"bad header '
+                'Bearer Atza|LEAKED-TOKEN for client_secret=hunter2"}'
+            ),
+            is_error=True,
+        )
+        assert self._is_error(out)
+        text = out[0].text
+        assert "Atza|LEAKED-TOKEN" not in text
+        assert "hunter2" not in text
+        # The message keeps the non-secret context; the quoted code value is
+        # masked like every other one (see the live-shape test).
+        assert "bad header" in text
+
+    def test_normalization_also_applies_to_the_post_refresh_retry(
+        self, tmp_path: Path
+    ) -> None:
+        """The retry leg returns through the same normalisation."""
+        from mcp.types import TextContent
+
+        from mureo.amazon_ads.lwa import LwaTokens
+
+        attempts: list[int] = []
+
+        class _Sess:
+            def __init__(s, n):
+                s._n = n
+
+            async def initialize(s):
+                pass
+
+            async def call_tool(s, name, arguments):
+                if s._n == 1:
+                    raise RuntimeError("401 token expired")
+                return type(
+                    "R",
+                    (),
+                    {
+                        "content": [
+                            TextContent(
+                                type="text",
+                                text='{"code":"BAD_REQUEST","message":"nope"}',
+                            )
+                        ],
+                        "isError": True,
+                    },
+                )()
+
+        class _CM:
+            def __init__(s, url, headers):
+                attempts.append(1)
+                s._n = len(attempts)
+
+            async def __aenter__(s):
+                return _Sess(s._n)
+
+            async def __aexit__(s, *e):
+                return False
+
+        mp = tmp_path / "amazon_tools.json"
+        mp.write_text(json.dumps(_MANIFEST))
+        b = AmazonAdsBridge(
+            manifest_path=mp,
+            creds_loader=lambda: AmazonAdsCredentials(
+                client_id="cid",
+                access_token="Atza|OLD",
+                refresh_token="Atzr|R",
+                client_secret="sec",
+            ),
+            connect=lambda url, headers: _CM(url, headers),
+            refresher=lambda c: LwaTokens("Atza|NEW", "Atzr|R2", 3600),
+            token_saver=lambda a, r: None,
+        )
+        out = asyncio.run(b.handle_mcp_tool("campaign_management-x", {}))
+        assert self._is_error(out)
+        assert "nope" in out[0].text  # message survives; quoted code is masked
+
+
 @pytest.mark.unit
 def test_importing_the_bridge_first_does_not_break_plugin_discovery() -> None:
     """Regression: the bridge must not import ``mureo.mcp`` at module level.

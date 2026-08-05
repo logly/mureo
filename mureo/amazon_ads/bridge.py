@@ -30,7 +30,7 @@ from contextlib import AbstractAsyncContextManager
 from pathlib import Path
 from typing import Any
 
-from mcp.types import Tool
+from mcp.types import TextContent, Tool
 
 from mureo.amazon_ads.endpoints import endpoint_url, request_headers
 from mureo.amazon_ads.lwa import AmazonAuthError as _LwaAuthError
@@ -90,6 +90,193 @@ def _scrub_secrets(text: str) -> str:
     except Exception:  # noqa: BLE001 — never leak because an import failed
         return "<error text withheld: redactor unavailable>"
     return _scrub(text)
+
+
+#: Opening of Amazon's plain-text schema-validation failure. Kept as a
+#: belt-and-braces second signal beside ``CallToolResult.isError`` (see
+#: :func:`_normalize_failure`): no success message plausibly begins with it,
+#: and it costs one ``str.startswith``.
+_VALIDATION_FAILURE_PREFIX = "Validation failed:"
+
+#: Stand-in when a failure arrives with no text at all — the envelope must
+#: still be produced (a failure with an empty body is still a failure), and it
+#: must still say something.
+_NO_FAILURE_TEXT = "Amazon reported a tool error with no message"
+
+#: Prefix for a body that carries no usable ``message``. Since the redactor
+#: masks most ``code`` values, such a body would otherwise reach the agent as
+#: an opaque ``{"code":"***"}`` with nothing to act on. Saying so plainly is
+#: the only honest option, and it tells the agent what to report.
+_NO_MESSAGE_TEXT = "Amazon returned no error message; raw body:"
+
+#: Hard cap on the failure text handed to the agent, with an explicit marker
+#: so a truncated diagnostic can never be mistaken for a complete one.
+#:
+#: 4000 characters. The longest failure observed live is ~150 characters, and
+#: a ``Validation errors: [...]`` list with a dozen entries still lands well
+#: under 1000, so every plausible real diagnostic survives whole (>25x the
+#: observed maximum). Past that it is a runaway or adversarial body, and an
+#: unbounded one would dump megabytes into the agent's context — the audit
+#: line has always been capped (``plugin_audit._MAX_STR``); this is the same
+#: protection for the side that reaches the model.
+_MAX_FAILURE_TEXT = 4000
+_TRUNCATION_MARKER = "…<truncated>"
+
+
+def _flatten_for_display(scrubbed: str) -> str:
+    """PRESENTATION ONLY: ``{"code": X, "message": Y, …}`` ⇒ ``X: Y (…)``.
+
+    Runs strictly AFTER a failure has been established by
+    :func:`_normalize_failure`, so it CANNOT influence whether something is a
+    failure — that is ``CallToolResult.isError``'s job alone.
+
+    **The input must already be scrubbed**, and the ordering is a security
+    property, not a style choice. The shared redactor keys on the literal
+    ``"code":`` anchor to mask what may be an LwA authorization code
+    (:func:`mureo.mcp.plugin_audit._scrub`). Flattening first would delete that
+    anchor and hand a credential to the agent AND to ``plugin_audit.jsonl`` in
+    cleartext. Scrub, then reshape what the redactor has already cleared.
+
+    The consequence is accepted deliberately: the redactor cannot tell an
+    Amazon error code from an OAuth code — and must not guess, since a wrong
+    guess here leaks a credential — so a ``code`` long enough to trip the rule
+    renders as ``***``. ``FIELD_VALUE_IS_INVALID`` is one of those, verified:
+    the live failure reads ``API error: ***: Multi marketplace query requests
+    only support query by primary resource id``. The message carries the
+    actionable content, which is what the agent needs to correct its call.
+
+    Every key that is not rendered into the summary is appended verbatim
+    rather than dropped, so a future Amazon shape does not lose information
+    silently. A body with NO usable ``message`` (absent, empty, ``null``, or
+    not a string) is prefixed with :data:`_NO_MESSAGE_TEXT`: with the code
+    masked there is nothing left to read, and an opaque ``{"code":"***"}``
+    would leave the agent guessing. A ``message`` with no usable ``code``
+    renders as the message alone — it is a perfectly good diagnosis.
+
+    Anything that does not parse is returned untouched — including a body deep
+    enough to exhaust the parser's stack (``RecursionError`` is a
+    ``RuntimeError``, so it needs naming explicitly beside ``ValueError``).
+    """
+    try:
+        payload = json.loads(scrubbed)
+        if not isinstance(payload, dict):
+            return scrubbed
+        raw_message = payload.get("message")
+        message = raw_message.strip() if isinstance(raw_message, str) else ""
+        if not message:
+            return f"{_NO_MESSAGE_TEXT} {scrubbed}"
+        rendered = message
+        rendered_keys = {"message"}
+        code = payload.get("code")
+        if not isinstance(code, bool) and isinstance(code, (str, int)):
+            rendered = f"{code}: {message}"
+            rendered_keys.add("code")
+        extras = {k: v for k, v in payload.items() if k not in rendered_keys}
+        if extras:
+            rendered = f"{rendered} ({json.dumps(extras, ensure_ascii=False)})"
+        return rendered
+    except (ValueError, RecursionError):
+        return scrubbed
+
+
+def _failure_text(content: list[Any]) -> str:
+    """Amazon's own failure text — scrubbed, reshaped and bounded.
+
+    Scrubbing happens HERE, at the point the string is taken out of the
+    response and before anything reshapes it, so every caller gets a redacted
+    string and the redactor still sees the payload in its original form
+    (see :func:`_flatten_for_display`). The result is capped last, so the
+    bound holds for every path through this function.
+    """
+    for block in content:
+        text = getattr(block, "text", None)
+        if isinstance(text, str) and text.strip():
+            return _bounded(_flatten_for_display(_scrub_secrets(text.strip())))
+    return _NO_FAILURE_TEXT
+
+
+def _bounded(text: str) -> str:
+    """Cap ``text`` at :data:`_MAX_FAILURE_TEXT`, marking any truncation."""
+    if len(text) <= _MAX_FAILURE_TEXT:
+        return text
+    return text[:_MAX_FAILURE_TEXT] + _TRUNCATION_MARKER
+
+
+def _is_validation_failure(content: list[Any]) -> bool:
+    """True if the first block opens with Amazon's validation-failure text.
+
+    Belt-and-braces ONLY, and deliberately not load-bearing: the live probe
+    (2026-08-05) shows Amazon flags BOTH known failure shapes — this one
+    included — with ``isError=True``, so this check has never been the thing
+    that catches a real failure. It exists in case a future shape arrives
+    unflagged. ``isError`` is the primary signal; do not promote this one.
+    """
+    if not content:
+        return False
+    text = getattr(content[0], "text", None)
+    return isinstance(text, str) and text.strip().startswith(_VALIDATION_FAILURE_PREFIX)
+
+
+def _normalize_failure(content: list[Any], *, is_error: bool) -> list[Any]:
+    """Rewrite an Amazon-declared failure into mureo's ``API error:`` envelope.
+
+    ``mureo.mcp._helpers.is_error_result`` — the single detector both
+    promotion paths use to skip recording a mutation that did not happen —
+    knows exactly one shape: the ``API error:`` prefix mureo's own
+    ``api_error_handler`` stamps. Bridged tools never pass through that
+    decorator, so an Amazon-side failure was promoted into ``STATE.json``'s
+    ``action_log`` as a successful mutation, complete with an
+    ``observation_due`` and possibly a captured reversal for a change that
+    never happened (#528). Normalising here keeps the shared detector
+    platform-agnostic.
+
+    The discriminator is ``CallToolResult.isError``
+    ------------------------------------------------
+    ``is_error`` is MCP's own field: the SERVER's declaration that the call
+    failed. It is a fact about the call, not an inference from the payload,
+    so no property of the response body can make it wrong.
+
+    LIVE-VERIFIED against the real account (region ``fe``, 2026-08-05), by
+    replaying the two failures from #528 as read-only calls and logging the
+    raw ``CallToolResult``:
+
+    - ``account_management-query_advertiser_account`` ``{"body": {}}``
+      (success) ⇒ ``isError=False``
+    - ``campaign_management-query_campaign`` by ``advertiserAccountId`` on a
+      global account ⇒ ``isError=True``, body
+      ``{"code": "FIELD_VALUE_IS_INVALID", "message": "Multi marketplace
+      query requests only support query by primary resource id"}``
+    - ``campaign_management-query_campaign`` with no ``adProductFilter`` ⇒
+      ``isError=True``, body ``Validation failed: provided input does not
+      match tool input schema. …``
+
+    The payload shape is therefore NOT examined, with one belt-and-braces
+    exception: content opening with ``Validation failed:``
+    (:func:`_is_validation_failure`) is also treated as a failure, since no
+    success message plausibly begins that way. Nothing else about the body
+    is read — in particular no ``code``/``message`` heuristic, which
+    misclassified plausible mutation acks (``{"code": "CREATED", …}``) as
+    failures and would have DROPPED the ``action_log`` entry for a change
+    that really happened.
+
+    A failure replaces the whole result with the canonical envelope carrying
+    Amazon's own text, scrubbed then reshaped for legibility
+    (:func:`_failure_text`). The text comes from the response, never from an
+    exception, so no traceback can reach it. An empty body still yields the
+    envelope: ``isError`` alone settles it.
+    """
+    if not (is_error or _is_validation_failure(content)):
+        return content
+    # Call-time import for the same load-bearing reason as ``_scrub_secrets``:
+    # this module is reached from ``mureo.mcp.server``'s import-time plugin
+    # collection, so a module-level ``mureo.mcp.*`` import would re-enter a
+    # partially-initialized bridge. By dispatch time ``mureo.mcp._helpers`` is
+    # long since imported — the dispatcher that calls us imports it itself.
+    from mureo.mcp._helpers import API_ERROR_PREFIX
+
+    return [
+        TextContent(type="text", text=f"{API_ERROR_PREFIX} {_failure_text(content)}")
+    ]
 
 
 def _runtime_token_saver(access_token: str, refresh_token: str | None) -> None:
@@ -629,12 +816,27 @@ class AmazonAdsBridge:
         name: str,
         arguments: dict[str, Any],
     ) -> list[Any]:
+        """Forward one call, normalising an Amazon-declared failure (#528).
+
+        The normalisation sits here rather than in ``handle_mcp_tool`` so the
+        first attempt and the post-refresh retry — the only two ways a
+        forwarded response reaches a caller — are covered by one call site,
+        and because this is where ``CallToolResult.isError`` is still in
+        scope: everything above sees only ``content``.
+
+        ``getattr`` rather than attribute access, because the session is an
+        injection seam (tests, embedders) and a stand-in result object need
+        not carry the field; absent ⇒ not a failure.
+        """
         url = endpoint_url(creds.region)
         headers = request_headers(creds)
         async with self._connect(url, headers) as session:
             await session.initialize()
             result = await session.call_tool(name, arguments)
-            return list(result.content)
+            return _normalize_failure(
+                list(result.content),
+                is_error=bool(getattr(result, "isError", False)),
+            )
 
 
 def _default_manifest_path() -> Path:
