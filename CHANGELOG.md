@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.41] - 2026-08-06
+
 ### Fixed
 
 - **The Reports view no longer silently sums two platform keys that are one ad
