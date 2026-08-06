@@ -114,6 +114,77 @@ def test_two_keys_for_one_account_are_surfaced_as_one_conflict(
 
 
 @pytest.mark.unit
+def test_sibling_providers_of_one_distribution_are_not_a_conflict(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#537 — two platforms from one package are two rows, not a problem.
+
+    Distinct keys, distinct accounts: no duplicate-account finding, and
+    both keys resolve to a label so neither reads as unrecognised. This is
+    the state a client running both LINE and Yahoo could not have at all
+    before, because the writer refused to file either.
+    """
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(
+        tmp_path,
+        StateDocument(
+            version="2",
+            platforms={
+                "plugin:mureo-lineyahoo-bridge:line_ads": PlatformState(
+                    account_id="line-1", totals={"spend": 100.0}
+                ),
+                "plugin:mureo-lineyahoo-bridge:yahoo_ads": PlatformState(
+                    account_id="yahoo-1", totals={"spend": 200.0}
+                ),
+            },
+        ),
+    )
+
+    summary = build_report_summary()
+    assert summary["platform_conflicts"] == []
+    assert {p["display_name"] for p in summary["platforms"]} == {
+        "Line Ads (plugin)",
+        "Yahoo Ads (plugin)",
+    }
+
+
+@pytest.mark.unit
+def test_legacy_and_per_provider_key_for_one_account_is_surfaced(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The migration case, reported rather than merged (#533 / #537).
+
+    A document that gained a per-provider entry for an account it already
+    held under the legacy key is a duplicate like any other: both rows
+    render, the conflict names both keys, and mureo rewrites neither.
+    """
+    _use_workspace(monkeypatch, tmp_path)
+    _write_state(
+        tmp_path,
+        StateDocument(
+            version="2",
+            platforms={
+                "plugin:mureo-logly-bridge": PlatformState(
+                    account_id="act_9", totals={"spend": 400.0}
+                ),
+                "plugin:mureo-logly-bridge:logly_ads_context": PlatformState(
+                    account_id="9", totals={"spend": 100.0}
+                ),
+            },
+        ),
+    )
+
+    summary = build_report_summary()
+    (found,) = _conflicts(summary, CONFLICT_DUPLICATE_ACCOUNT)
+    assert found["platform_keys"] == [
+        "plugin:mureo-logly-bridge",
+        "plugin:mureo-logly-bridge:logly_ads_context",
+    ]
+    assert _conflicts(summary, CONFLICT_UNRECOGNIZED_KEY) == []
+    assert len(summary["platforms"]) == 2
+
+
+@pytest.mark.unit
 def test_the_reported_field_shape_is_caught_by_the_unrecognised_key_signal(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

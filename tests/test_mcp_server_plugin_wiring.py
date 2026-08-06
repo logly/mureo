@@ -343,6 +343,45 @@ def _disc_for(cls: type):
     return _fn
 
 
+def _make_sibling(provider_name: str) -> type:
+    """A mutating provider named ``provider_name``, for the #537 fixture."""
+
+    class _Sibling:
+        name = provider_name
+        display_name = provider_name
+        capabilities = frozenset({Capability.READ_CAMPAIGNS})
+
+        def mcp_tools(self) -> tuple[Tool, ...]:
+            return (
+                Tool(
+                    name=f"{provider_name}_update",
+                    description="update",
+                    inputSchema={"type": "object", "properties": {}},
+                ),
+            )
+
+        async def handle_mcp_tool(
+            self, name: str, arguments: dict[str, Any]
+        ) -> list[Any]:
+            return [TextContent(type="text", text="ok")]
+
+    return _Sibling
+
+
+def _disc_multi(**_kw: Any) -> tuple[ProviderEntry, ...]:
+    """Two providers shipped by ONE distribution — the #537 shape."""
+    return tuple(
+        ProviderEntry(
+            name=cls.name,
+            display_name=cls.display_name,
+            capabilities=cls.capabilities,
+            provider_class=cls,
+            source_distribution="shared-dist",
+        )
+        for cls in (_make_sibling("sibling_a"), _make_sibling("sibling_b"))
+    )
+
+
 def _seed_state(d) -> None:
     from mureo.context.models import StateDocument
     from mureo.context.state import write_state_file
@@ -367,11 +406,50 @@ class TestPhase2Promotion:
         doc = read_state_file(tmp_path / "STATE.json")
         assert len(doc.action_log) == 1
         assert doc.action_log[0].action == "wired_plugin_echo"
-        assert doc.action_log[0].platform == "plugin:wired-dist"
+        # #537: the canonical key names the platform, not just the package.
+        assert doc.action_log[0].platform == "plugin:wired-dist:wired_plugin"
         # Phase 4: structural strategy parity — a default observation
         # window is set so the daily-check evidence loop reviews the
         # outcome like a built-in op.
         assert doc.action_log[0].observation_due is not None
+
+    async def test_two_providers_of_one_distribution_log_distinct_keys(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """#537 — the dispatch path attributes each platform separately.
+
+        ``mureo-lineyahoo-bridge`` ships three providers. Keyed on the
+        distribution alone, a LINE mutation and a Yahoo mutation land in
+        ``action_log`` under one platform — one platform's action recorded
+        as another's.
+        """
+        import importlib
+
+        from mureo.context.state import read_state_file
+        from mureo.mcp import plugin_audit
+
+        _seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            plugin_audit, "_audit_path", lambda: tmp_path / "audit.jsonl"
+        )
+        monkeypatch.setattr(
+            "mureo.core.providers.registry.discover_providers",
+            _disc_multi,
+        )
+        from mureo.mcp import server as mod
+
+        mod = importlib.reload(mod)
+        try:
+            await mod.handle_call_tool("sibling_a_update", {})
+            await mod.handle_call_tool("sibling_b_update", {})
+            doc = read_state_file(tmp_path / "STATE.json")
+            assert [e.platform for e in doc.action_log] == [
+                "plugin:shared-dist:sibling_a",
+                "plugin:shared-dist:sibling_b",
+            ]
+        finally:
+            importlib.reload(mod)
 
     async def test_readonly_plugin_not_promoted(self, tmp_path, monkeypatch) -> None:
         from mureo.context.state import read_state_file

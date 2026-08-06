@@ -177,7 +177,7 @@ does that itself (see below).
 Amazon's tools now appear (under Amazon's own names, e.g.
 `campaign_management-*`, `account_management-*`) and are audited +
 strategy-gated like built-in platforms. Mutating calls are promoted
-into `STATE.json` `action_log` (`platform=plugin:mureo-amazon-ads-bridge`)
+into `STATE.json` `action_log` (`platform=plugin:mureo-amazon-ads-bridge:amazon_ads`)
 with an observation window, exactly like the #114 plugin safety layer.
 
 ## When Amazon rejects a call

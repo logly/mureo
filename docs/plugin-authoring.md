@@ -2213,22 +2213,54 @@ acme_ads = "mureo_acme_ads.analytics:AcmeAdsAnalyticsModule"
 ship a provider only, an analytics module only, or both. The two
 groups have separate discovery paths and separate fault isolation.
 
-### Canonical platform key (Issue #481)
+### Canonical platform key (Issues #481, #537)
 
 Your plugin platform has exactly **one** key that mureo joins on:
-`plugin:<distribution>`, built from your **pip distribution name**
-(`mureo-acme-ads` → `plugin:mureo-acme-ads`). It is the STATE.json
-`platforms` key, the `platform` value on promoted `action_log` entries,
-the key the reporting dashboard resolves a display label from, and the
-`platform` field `mureo_analytics_modules_list` reports — so a skill
-holding a STATE.json key finds your analytics.
+`plugin:<distribution>:<provider>`, built from your **pip distribution
+name** and the **entry-point name** that platform is registered under
+(`mureo-acme-ads` + `acme_ads` → `plugin:mureo-acme-ads:acme_ads`). It is
+the STATE.json `platforms` key, the `platform` value on promoted
+`action_log` entries, the key the reporting dashboard resolves a display
+label from, and the `platform` field `mureo_analytics_modules_list`
+reports — so a skill holding a STATE.json key finds your analytics.
 
-Your module's `platform` attribute is the **registry name** and need not
-equal the distribution name. `mureo_analytics_modules_list` reports it
+**Why both halves.** One distribution may ship several platforms:
+`mureo-lineyahoo-bridge` registers `line_ads`, `yahoo_ads` and
+`yahoo_ads_display`. Keyed on the distribution alone (the original #481
+form) all three collapse onto one key, so a writer files three
+platforms' spend under one entry — one platform's numbers recorded as
+another's — and the key cannot be resolved back to which platform it
+meant.
+
+**The shape never depends on how many platforms you happen to ship.** A
+single-platform distribution gets the same two-part key as a
+three-platform one. Deriving the shape from that count would silently
+change your first platform's key the day you add a second, breaking
+joins for data already written under it.
+
+`:` is safe as the separator, but not because both halves are forbidden
+from containing one. The **distribution** half always comes from your
+installed package metadata, and a pip distribution name is ASCII letters,
+digits, `-`, `_` and `.` only (PEP 503 / PEP 508), so it can never forge
+a separator. The **provider** half is validated only on the
+`mureo.providers` path (`^[a-z][a-z0-9_]*$`); an entry-point *name* may
+legally contain `:` — `importlib.metadata` splits each line of
+`entry_points.txt` on the first `=` only — and an `AnalyticsModule`'s
+`platform` is not pattern-checked at all. What makes that safe is that
+mureo splits on the **first** `:` after the prefix: the distribution is
+always unambiguous, and a colon-bearing provider round-trips verbatim
+rather than being truncated. Use a plain snake_case name anyway — it is
+what the two entry-point groups have to agree on.
+
+**Name your provider and your analytics module identically.** Your
+analytics module's `platform` attribute is its **registry name**, and it
+is the `<provider>` half of the key. If your distribution ships both a
+`mureo.providers` provider and a `mureo.analytics` module for the same
+platform, both entry points must use the same name — otherwise the
+dispatch path and the analytics listing build two different keys for one
+platform. `mureo_analytics_modules_list` still reports the registry name
 separately as `registry_name` (with `source_distribution` alongside);
-neither is a key, and nothing persists them. `mureo_analytics_run`
-accepts either, but pass the canonical key — that is what the listing
-reports.
+neither is a key on its own, and nothing persists them.
 
 The `plugin:` namespace is **reserved**: a module whose `platform`
 starts with `plugin:` is refused at registration (with an
@@ -2236,16 +2268,37 @@ starts with `plugin:` is refused at registration (with an
 name could shadow another distribution's canonical key. Use a plain
 registry name — `acme_ads`, not `plugin:mureo-acme-ads`.
 
-Ship **one** analytics module per distribution. Two modules from the
-same distribution collapse onto the same canonical key: both are still
-listed, but `mureo_analytics_run` resolves the alphabetically-first
-registry name and mureo logs a warning.
+Shipping several analytics modules from one distribution is fine — each
+gets its own key. mureo logs a warning naming those keys, because the
+legacy short form (below) cannot name one of them.
 
-You do not build the key yourself: mureo derives it from the
-distribution that shipped the entry point. If you write STATE.json
-through mureo's tools, use `platform="plugin:<your-distribution>"`
-verbatim — mixing the two identifiers is exactly the silent join failure
-this convention prevents. See `mureo/core/platform_keys.py`.
+You do not build the key yourself: mureo builds it from the distribution
+and entry-point name that shipped the plugin. If you write STATE.json
+through mureo's tools, use the `platform` value
+`mureo_analytics_modules_list` reported, verbatim — mixing identifiers is
+exactly the silent join failure this convention prevents. See
+`mureo/core/platform_keys.py`.
+
+#### The legacy `plugin:<distribution>` form
+
+The #481 key **stays valid on read** everywhere: `mureo_analytics_run`
+accepts it, the write guards accept it, and the dashboard labels it
+exactly as before. For a distribution that provides a single platform the
+two forms denote the same platform, so state already written under the
+short form keeps joining.
+
+For a distribution that provides several, the short form is genuinely
+ambiguous — it names a package, not a platform. `mureo_analytics_run`
+resolves it to the alphabetically-first registry name (unchanged from
+#481) and logs a warning naming the unambiguous keys.
+
+**mureo performs no migration.** It does not merge, drop or rewrite an
+operator's state entries — the two halves of a duplicate typically hold
+different partial figures, so repairing one is the operator's call.
+Writing an account under the new key when it is already held under the
+legacy key is refused by the #534 write guard, and a document that
+already carries both surfaces as a `duplicate_account` conflict on the
+Reports card. Neither form is deprecated on read.
 
 ### Minimal example
 

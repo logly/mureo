@@ -43,8 +43,9 @@ from mureo.analytics.registry import (
 from mureo.core.control_flow import STOP_EXCEPTIONS
 from mureo.core.platform_keys import (
     is_plugin_platform_key,
-    plugin_distribution,
     plugin_platform_key,
+    plugin_platform_key_matches,
+    plugin_platform_parts,
 )
 from mureo.mcp._helpers import _require
 
@@ -65,12 +66,14 @@ TOOLS: list[Tool] = [
             "modules appear in the same shape. `platform` is the "
             "canonical platform key — the same key STATE.json's "
             "`platforms` map and action_log entries use, which for a "
-            "plugin-supplied module is `plugin:<distribution>`; look "
-            "analytics up by that key. `registry_name` is the "
+            "plugin-supplied module is "
+            "`plugin:<distribution>:<registry_name>`; look analytics up "
+            "by that key. One distribution can ship several platforms, "
+            "so the key carries both halves. `registry_name` is the "
             "entry-point name the module registered itself under and "
             "`source_distribution` the pip distribution that shipped "
-            "it; neither is a key (for a built-in, `registry_name` "
-            "equals `platform`)."
+            "it; neither is a key on its own (for a built-in, "
+            "`registry_name` equals `platform`)."
         ),
         inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
@@ -98,9 +101,11 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": (
                         "Canonical platform key (e.g. google_ads, meta_ads, "
-                        "or plugin:<distribution> for a plugin platform). "
-                        "Pass the `platform` value mureo_analytics_modules_list "
-                        "reported — the same key STATE.json platforms uses."
+                        "or plugin:<distribution>:<registry_name> for a "
+                        "plugin platform). Pass the `platform` value "
+                        "mureo_analytics_modules_list reported — the same key "
+                        "STATE.json platforms uses. The older "
+                        "plugin:<distribution> form is still accepted."
                     ),
                 },
                 "capability": {
@@ -147,16 +152,21 @@ async def _handle_modules_list(
     # never disagree about membership or the tie-break.
     for registry_name, module, distribution in _registry_entries():
         caps = module.capabilities()
-        # Issue #481: report the CANONICAL platform key, not the name the
-        # module happens to be registered under. For a plugin-supplied
-        # module that key is ``plugin:<dist>`` — what STATE.json, the
-        # action_log promoter, and the dashboard all join on — so a skill
-        # holding a STATE.json key resolves analytics for it. The registry
-        # name travels alongside as ``registry_name`` (it is what
-        # ``mureo_analytics_run`` was historically keyed by), and a
+        # Issues #481 / #537: report the CANONICAL platform key, not the
+        # name the module happens to be registered under. For a
+        # plugin-supplied module that key is ``plugin:<dist>:<registry
+        # name>`` — what STATE.json, the action_log promoter, and the
+        # dashboard all join on — so a skill holding a STATE.json key
+        # resolves analytics for it. The registry name is BOTH the second
+        # half of the key and reported alongside as ``registry_name`` (it
+        # is what ``mureo_analytics_run`` was historically keyed by), and a
         # built-in, having no plugin source, keeps its registry name as
         # the platform key so both fields are always present.
-        platform = plugin_platform_key(distribution) if distribution else registry_name
+        platform = (
+            plugin_platform_key(distribution, registry_name)
+            if distribution
+            else registry_name
+        )
         payload.append(
             {
                 "platform": platform,
@@ -245,14 +255,22 @@ def _registry_entries() -> list[tuple[str, Any, str]]:
 def _warn_on_duplicate_distributions(entries: list[tuple[str, Any, str]]) -> None:
     """Log when one distribution ships modules under several registry names.
 
-    Those modules all collapse onto the SAME canonical platform key
-    (``plugin:<dist>``), so the key can no longer name exactly one module.
-    mureo does not guess: the listing still emits every entry (the
-    ambiguity stays visible, with each module's own ``registry_name``),
-    and :func:`_resolve_module` deterministically takes the
-    alphabetically-first registry name. Log it rather than absorb it —
-    silently running one of two modules is the failure mode Issue #481 is
-    about. Once per call; this is a packaging mistake, not a hot path.
+    Still needed after #537, for a *different* reason than it was written
+    for. It no longer reports a collision on the canonical key: that key
+    now carries the registry name (``plugin:<dist>:<registry name>``), so
+    each of these modules has its own, and shipping several analytics
+    modules from one distribution is a legitimate packaging choice rather
+    than a mistake.
+
+    What it reports now is that the **legacy** ``plugin:<dist>`` key —
+    still valid on read, and what state written before #537 holds —
+    cannot name one of these modules. mureo does not guess: the listing
+    emits every entry under its own canonical key (so the unambiguous
+    key an operator should move to is visible), and
+    :func:`_resolve_module` resolves a legacy key to the
+    alphabetically-first registry name, unchanged from #481. Log it
+    rather than absorb it — silently running one of two modules is the
+    failure mode #481 is about. Once per call; not a hot path.
     """
     by_distribution: dict[str, list[str]] = {}
     for registry_name, _module, distribution in entries:
@@ -262,47 +280,62 @@ def _warn_on_duplicate_distributions(entries: list[tuple[str, Any, str]]) -> Non
     for distribution, registry_names in by_distribution.items():
         if len(registry_names) > 1:
             logger.warning(
-                "analytics distribution %r registered %d modules (%s) — they "
-                "share the canonical platform key %r, so %r wins by sorted "
-                "registry name; ship one analytics module per distribution",
+                "analytics distribution %r registered %d modules (%s) — each "
+                "has its own canonical platform key (%s), but the legacy key "
+                "%r cannot name one of them, so a caller passing it gets %r "
+                "by sorted registry name; pass the canonical key instead",
                 distribution,
                 len(registry_names),
                 ", ".join(registry_names),
+                ", ".join(
+                    repr(plugin_platform_key(distribution, name))
+                    for name in registry_names
+                ),
                 plugin_platform_key(distribution),
                 registry_names[0],
             )
 
 
 def _resolve_module(platform: str) -> Any | None:
-    """Resolve the module a ``platform`` value names (#481).
+    """Resolve the module a ``platform`` value names (#481, #537).
 
     ``mureo_analytics_modules_list`` reports the canonical key
-    (``plugin:<dist>`` for a plugin module) and the tool contract says to
-    call ``mureo_analytics_run`` with what that listing reported — but
-    the registry is keyed by each module's own registry name, so the two
-    need reconciling.
+    (``plugin:<dist>:<registry name>`` for a plugin module) and the tool
+    contract says to call ``mureo_analytics_run`` with what that listing
+    reported — but the registry is keyed by each module's own registry
+    name, so the two need reconciling.
 
     The two input shapes are resolved by **disjoint** paths, never by
     falling through from one to the other:
 
-    - A canonical ``plugin:<dist>`` key resolves **only** by matching the
-      source distribution, which is authoritative because mureo derives
-      it from the entry point rather than taking it from the module.
-      Unmatched ⇒ ``None``. Crucially there is no direct-registry attempt
-      first: a module registered under a *literal* ``plugin:<other-dist>``
-      name would otherwise win by name and hijack that distribution's
-      key. (Registration now refuses that shape outright — this is the
-      second, independent layer.)
+    - A plugin platform key resolves **only** by matching the source
+      distribution (and, when the key names one, the registry name).
+      The distribution is authoritative because mureo derives it from
+      the entry point rather than taking it from the module. Unmatched ⇒
+      ``None``. Crucially there is no direct-registry attempt first: a
+      module registered under a *literal* ``plugin:<other-dist>`` name
+      would otherwise win by name and hijack that distribution's key.
+      (Registration refuses that shape outright — this is the second,
+      independent layer.)
     - Anything else (a registry name, a built-in key) uses the direct
       registry lookup, unchanged.
+
+    The legacy ``plugin:<dist>`` short form keeps resolving, so state and
+    skills written before #537 keep working. It names a distribution
+    rather than a platform: with one module for that distribution it is
+    exact, and with several it takes the first in sorted registry-name
+    order — unchanged from #481, and logged by
+    :func:`_warn_on_duplicate_distributions`.
 
     ``None`` means no module — the caller turns that into the
     ``no_analytics_module`` status.
     """
     if is_plugin_platform_key(platform):
-        distribution = plugin_distribution(platform)
-        for _registry_name, module, module_distribution in _registry_entries():
-            if module_distribution == distribution:
+        distribution, _provider = plugin_platform_parts(platform)
+        for registry_name, module, module_distribution in _registry_entries():
+            if module_distribution != distribution:
+                continue
+            if plugin_platform_key_matches(platform, distribution, registry_name):
                 return module
         return None
 

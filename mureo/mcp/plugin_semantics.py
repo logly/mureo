@@ -375,8 +375,16 @@ def record_mutation_action_log(
     arguments: dict[str, Any] | None = None,
     identity: IdentityDeclaration | None = None,
     observation_days: int | None = None,
+    provider: str = "",
 ) -> None:
     """Append a plugin mutation to STATE.json's action_log. Never raises.
+
+    ``source`` is the pip distribution and ``provider`` the entry-point
+    name the calling provider was registered under; together they are the
+    canonical platform key (#537). ``provider`` defaults to ``""`` for a
+    caller that cannot name it (an instance whose breadcrumb is missing),
+    which writes the legacy ``plugin:<dist>`` short form rather than
+    fabricating a provider.
 
     No-op (jsonl audit still has it) when there is no STATE.json in cwd.
     Called only after a *successful* call; a failed mutation did not
@@ -408,9 +416,11 @@ def record_mutation_action_log(
         entry = ActionLogEntry(
             timestamp=now.isoformat(timespec="seconds"),
             action=tool,
-            # Issue #481: the canonical key every surface joins on — see
+            # Issues #481 / #537: the canonical key every surface joins on
+            # — distribution AND provider, so a distribution shipping
+            # several platforms does not file them all under one name. See
             # mureo.core.platform_keys.
-            platform=plugin_platform_key(source or "unknown"),
+            platform=plugin_platform_key(source or "unknown", provider),
             campaign_id=campaign_id,
             ad_id=ad_id,
             entity_type=entity_type,

@@ -62,6 +62,7 @@ from mureo.mcp.plugin_semantics import (
 from mureo.mcp.tool_provider import (
     MCPReversibleToolProvider,
     collect_plugin_tools,
+    plugin_provider_name,
     plugin_source,
 )
 from mureo.mcp.tools_analysis import TOOLS as ANALYSIS_TOOLS
@@ -1015,6 +1016,12 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     if name in _PLUGIN_NAMES:
         provider = _PLUGIN_DISPATCH[name]
         source = plugin_source(provider)
+        # The entry-point name this provider registered under. Dispatch
+        # itself is keyed by TOOL name, not by platform key — the platform
+        # key appears here only as the action_log attribution below, and
+        # since one distribution can ship several providers (#537) that
+        # attribution needs both halves to name the right platform.
+        provider_name = plugin_provider_name(provider)
         sem = _PLUGIN_SEMANTICS.get(name)
         await _acquire_plugin_throttle(name)
         # Capture a runtime-correct reversal BEFORE the mutation (#327),
@@ -1089,6 +1096,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
                 record_mutation_action_log(
                     tool=name,
                     source=source,
+                    provider=provider_name,
                     reversal=reversal,
                     arguments=arguments,
                     identity=None if sem is None else sem.identity,

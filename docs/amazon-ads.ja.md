@@ -177,7 +177,7 @@ mureo amazon refresh-manifest
 Amazon のツールが Amazon 自身の名前（例 `campaign_management-*`,
 `account_management-*`）で出現し、組み込みプラットフォームと同様に
 監査・戦略ゲートされます。mutating 呼び出しは `STATE.json` の
-`action_log`（`platform=plugin:mureo-amazon-ads-bridge`）へ観測窓
+`action_log`（`platform=plugin:mureo-amazon-ads-bridge:amazon_ads`）へ観測窓
 付きで昇格（#114 プラグイン安全層と同じ）。
 
 ## Amazon 側で呼び出しが拒否されたとき

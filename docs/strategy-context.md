@@ -136,7 +136,7 @@ STATE.json is a JSON file containing campaign state snapshots across platforms, 
         }
       ]
     },
-    "plugin:mureo-amazon-ads-bridge": {
+    "plugin:mureo-amazon-ads-bridge:amazon_ads": {
       "account_id": "ENTITY1A2B3C4D5E",
       "campaigns": [
         {
@@ -162,7 +162,7 @@ STATE.json is a JSON file containing campaign state snapshots across platforms, 
     {
       "timestamp": "2026-04-01T11:05:00+09:00",
       "action": "Raised daily budget 10000 -> 12000",
-      "platform": "plugin:mureo-amazon-ads-bridge",
+      "platform": "plugin:mureo-amazon-ads-bridge:amazon_ads",
       "campaign_id": "444555666",
       "command": "/budget-rebalance",
       "summary": "Shifted spend toward the brand-defense campaign",
@@ -178,9 +178,20 @@ A platform key is one of:
 
 - a **first-class ad-platform key** — `google_ads`, `meta_ads`, `tiktok_ads`,
   `search_console`;
-- a **`plugin:<dist>` key** for any platform mureo dispatches through the
-  plugin / bridge path, where `<dist>` is the provider's pip **distribution**
-  name. Amazon Ads is `plugin:mureo-amazon-ads-bridge`.
+- a **`plugin:<dist>:<provider>` key** for any platform mureo dispatches
+  through the plugin / bridge path, where `<dist>` is the provider's pip
+  **distribution** name and `<provider>` the **entry-point name** that
+  platform is registered under. One distribution may ship several platforms
+  (`mureo-lineyahoo-bridge` ships `line_ads`, `yahoo_ads` and
+  `yahoo_ads_display`), so the distribution alone cannot name one of them —
+  see #537. The shape does not depend on how many a distribution happens to
+  ship: Amazon Ads is `plugin:mureo-amazon-ads-bridge:amazon_ads`.
+
+  The older **`plugin:<dist>`** form (#481) stays valid on read everywhere,
+  and for a distribution providing a single platform it denotes the same
+  platform, so entries already written under it keep joining. mureo migrates
+  nothing: it never merges, drops or rewrites an operator's `platforms`
+  entries.
 
 The same key is used everywhere — the `platforms` map, each `action_log`
 entry's `platform`, `mureo_state_upsert_campaign` / `mureo_state_platform_metrics_set`,
@@ -303,6 +314,20 @@ canonical key with a real id and one non-canonical key with `account_id: ""`
 (the shape actually observed in the field) produces **no**
 `duplicate_account` finding at all. Account joining alone does not detect it;
 the unrecognisable key does.
+
+**Two rows with different labels can still be one platform.** A plugin
+platform held under both the legacy `plugin:<dist>` key and the canonical
+`plugin:<dist>:<provider>` one renders as two rows carrying two *different*
+labels — `Logly (plugin)` and `Logly Ads Context (plugin)` — because the
+legacy key can only be labelled from the distribution while the canonical one
+names the provider. Both keys resolve, so neither is flagged
+`unrecognized_key`; when the two entries carry the same `account_id` the
+`duplicate_account` conflict names both keys. A document should not reach this
+state on its own: the write path refuses to **create** the second entry, so
+both forms coexist only after a hand edit or a write that predates the guard.
+mureo merges and rewrites nothing — check which entry holds the right figures,
+keep the key that platform is already stored under, and delete the other
+yourself.
 
 What the dashboard does about it:
 

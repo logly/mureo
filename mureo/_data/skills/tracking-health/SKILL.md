@@ -47,7 +47,7 @@ Preventively audit conversion tracking across every configured platform. Measure
 
 6. **Search Console**: N/A for conversion tracking — Search Console has no conversion signal. Skip it here (organic conversion behavior belongs in daily-check / weekly-report).
 
-7. **Plugin & hosted-connector platforms** (best-effort): for a plugin platform (`plugin:<dist>`) or a hosted connector (`tiktok_ads`), report only the basic tracking status its own tools expose and emit `analytics_not_available_for_<platform>` for the mureo-only deep checks (pixel health, `result_indicator`, conversion-action recency) — do **not** fabricate a tracking verdict from an integration's tool schemas. See `../_mureo-shared/SKILL.md` → *analytics-module parity* and *Hosted-connector platforms*.
+7. **Plugin & hosted-connector platforms** (best-effort): for a plugin platform (`plugin:<dist>:<provider>`) or a hosted connector (`tiktok_ads`), report only the basic tracking status its own tools expose and emit `analytics_not_available_for_<platform>` for the mureo-only deep checks (pixel health, `result_indicator`, conversion-action recency) — do **not** fabricate a tracking verdict from an integration's tool schemas. See `../_mureo-shared/SKILL.md` → *analytics-module parity* and *Hosted-connector platforms*.
 
 8. **Scorecard**: present a per-platform **tracking scorecard**, one row per check, each rated **OK** / **Watch** / **Broken**:
    ```

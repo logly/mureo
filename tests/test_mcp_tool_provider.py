@@ -258,3 +258,27 @@ def test_collect_stamps_source_distribution_for_audit() -> None:
     assert plugin_source(dispatch["good_plugin_ping"]) == "test-dist"
     # Unknown / non-plugin object → empty string, never raises.
     assert plugin_source(object()) == ""
+
+
+def test_collect_stamps_provider_name_for_the_canonical_key() -> None:
+    """The other half of ``plugin:<dist>:<provider>`` (#537).
+
+    One distribution can ship several providers, so the distribution
+    breadcrumb alone cannot say which platform a dispatched call belongs
+    to — the action_log promoter needs the entry-point name too.
+    """
+    from mureo.core.platform_keys import plugin_platform_key
+    from mureo.mcp.tool_provider import plugin_provider_name
+
+    _tools, dispatch = collect_plugin_tools(
+        reserved_names=set(), discover=_discover(_GoodProvider)
+    )
+    instance = dispatch["good_plugin_ping"]
+    assert plugin_provider_name(instance) == "good_plugin"
+    assert (
+        plugin_platform_key(plugin_source(instance), plugin_provider_name(instance))
+        == "plugin:test-dist:good_plugin"
+    )
+    # Unknown / non-plugin object → empty string, never raises; the key
+    # degrades to the legacy short form rather than inventing a provider.
+    assert plugin_provider_name(object()) == ""

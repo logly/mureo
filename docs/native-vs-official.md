@@ -185,7 +185,7 @@ Claude  →  local mureo MCP  →  Amazon hosted MCP endpoint
 - **Full participation in the safety layer.** Because the call goes through
   mureo's dispatcher, Amazon tools are audited, throttled, strategy-gated, and
   successful mutations are promoted into `STATE.json` `action_log` under
-  `platform="plugin:mureo-amazon-ads-bridge"` with an observation window —
+  `platform="plugin:mureo-amazon-ads-bridge:amazon_ads"` with an observation window —
   exactly what a host-registered official MCP cannot offer.
 
 ### What that costs, and what it does not buy

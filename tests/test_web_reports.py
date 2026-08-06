@@ -198,6 +198,60 @@ def test_official_bridge_dists_render_without_the_plugin_suffix() -> None:
     # Every other plugin dist is unchanged.
     assert platform_display_name("plugin:mureo-logly-bridge") == "Logly (plugin)"
     assert platform_display_name("plugin:acme-ads") == "Acme Ads (plugin)"
+    # …and the per-provider key resolves the same override (#537).
+    assert (
+        platform_display_name("plugin:mureo-amazon-ads-bridge:amazon_ads")
+        == "Amazon Ads"
+    )
+
+
+@pytest.mark.unit
+def test_per_provider_key_labels_the_provider_not_a_mangled_string() -> None:
+    """#537 — the key names a platform, so the label must too.
+
+    The provider is what an operator recognises on the dashboard; the
+    distribution is packaging. Rendering the raw key would put a
+    distribution name and a colon on a client card.
+    """
+    from mureo.web.reports import platform_display_name
+
+    for key, expected in (
+        ("plugin:mureo-lineyahoo-bridge:yahoo_ads", "Yahoo Ads (plugin)"),
+        ("plugin:mureo-lineyahoo-bridge:line_ads", "Line Ads (plugin)"),
+        (
+            "plugin:mureo-lineyahoo-bridge:yahoo_ads_display",
+            "Yahoo Ads Display (plugin)",
+        ),
+        ("plugin:acme-ads:acme_ads", "Acme Ads (plugin)"),
+    ):
+        label = platform_display_name(key)
+        assert label == expected
+        assert ":" not in label
+
+
+@pytest.mark.unit
+def test_legacy_plugin_key_keeps_the_label_it_already_had() -> None:
+    """State written before #537 must not change how it renders."""
+    from mureo.web.reports import platform_display_name
+
+    assert platform_display_name("plugin:mureo-logly-bridge") == "Logly (plugin)"
+    assert (
+        platform_display_name("plugin:mureo-lineyahoo-bridge") == "Lineyahoo (plugin)"
+    )
+
+
+@pytest.mark.unit
+def test_unusable_plugin_key_still_falls_back_to_the_raw_key() -> None:
+    """A key claiming the namespace without naming a platform is not labelled.
+
+    ``_build_platform_conflicts`` reads "label == key" as
+    CONFLICT_UNRECOGNIZED_KEY, so this is what surfaces the malformed
+    entry to the operator instead of dressing it up.
+    """
+    from mureo.web.reports import platform_display_name
+
+    for key in ("plugin:", "plugin:acme-ads:"):
+        assert platform_display_name(key) == key
 
 
 @pytest.mark.unit

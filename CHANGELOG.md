@@ -60,6 +60,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The canonical plugin platform key is now per platform, not per pip
+  package: `plugin:<distribution>:<provider>` (#537).** #481 keyed on the
+  distribution alone, which assumes a distribution ships exactly one
+  platform. It does not have to: `mureo-lineyahoo-bridge` registers
+  `line_ads`, `yahoo_ads` and `yahoo_ads_display`, and all three
+  canonicalised to `plugin:mureo-lineyahoo-bridge`. A writer that
+  canonicalised correctly therefore filed three platforms' spend under one
+  STATE.json entry — one platform's numbers recorded as another's, the same
+  class of silent wrongness as the #533 double-count, inverted — and the key
+  could not be resolved back to which platform it meant. The live cost was
+  that `mureo-agency` refused to write anything for a client running two
+  providers from one distribution, so those clients got no rollup at all.
+
+  The key now carries both halves: the pip distribution and the entry-point
+  name that platform is registered under (`mureo.providers` for the dispatch
+  path, `mureo.analytics` for an analytics module — a distribution shipping
+  both for one platform must name them identically, or the two surfaces build
+  two keys for one platform). `:` is safe as the separator because mureo
+  validates or derives both halves and never trusts a raw entry-point name:
+  the distribution always comes from the installing package metadata, and a
+  distribution name is ASCII letters, digits, `-`, `_` and `.` only (PEP 503
+  / PEP 508), so it cannot forge a separator. The provider half is pinned to
+  `^[a-z][a-z0-9_]*$` on the `mureo.providers` path and unvalidated on the
+  `mureo.analytics` one — and parsing splits on the **first** `:` after the
+  prefix, so the distribution is always unambiguous and an unvalidated
+  provider segment round-trips verbatim rather than truncating.
+
+  **The shape never depends on how many platforms a distribution happens to
+  ship.** A single-platform distribution gets the same two-part key as a
+  three-platform one, and `plugin_platform_key()` takes the two names and
+  nothing else — it has no registry or count it could consult, pinned by a
+  test. Deriving the shape from that count would silently change the first
+  platform's key the day a second was added, breaking joins for data already
+  written under it.
+
+  All five surfaces agree: the STATE.json `platforms` key, the `action_log`
+  `platform` value the plugin dispatch promotes, the label the reporting
+  dashboard resolves, the `platform` field `mureo_analytics_modules_list`
+  reports, and `mureo_analytics_run`'s `platform` argument. The dashboard
+  labels the new form from its **provider** — `Yahoo Ads (plugin)`, not a
+  mangled `Mureo-Lineyahoo-Bridge:Yahoo Ads` — while an official in-tree
+  bridge keeps its registered name (`plugin:mureo-amazon-ads-bridge:
+  amazon_ads` → `Amazon Ads`). `mureo rollback list --platform` accepts a
+  legacy `plugin:<dist>` filter and still selects that distribution's
+  per-provider entries.
+
+  **The `plugin:<dist>` form stays valid on read, and mureo migrates
+  nothing.** `mureo_analytics_run` accepts it, the write guards accept it,
+  and the dashboard labels it exactly as before; for a distribution providing
+  a single platform the two forms denote the same platform, so state already
+  written under it keeps joining and needs no rewrite. mureo does not merge,
+  drop or rewrite an operator's `platforms` entries — the two halves of a
+  duplicate typically hold different partial figures, so the repair is the
+  operator's call. Writing an account under the new key while it is still
+  held under the legacy one is refused by the #534 write guard, and a
+  document that already carries both surfaces as a `duplicate_account`
+  conflict on the Reports card. Skills are instructed to keep writing
+  whichever key a platform is already stored under.
+
+  Two shapes that claim the namespace without naming a platform are now
+  refused as unusable keys: the bare `plugin:` (already refused) and
+  `plugin:<dist>:`, which claims the per-provider form while naming no
+  provider.
+
+  The analytics registry's duplicate-distribution warning is kept but
+  retargeted. It no longer reports a collision on the canonical key — each
+  module now has its own — and shipping several analytics modules from one
+  distribution is no longer called a packaging mistake. What it reports is
+  that the *legacy* key cannot name one of them, and it names the
+  unambiguous keys to move to; resolution of a legacy key is unchanged
+  (alphabetically-first registry name).
+
+  **This unblocks a downstream fix rather than delivering it.** The visible
+  symptom of the collision is that a client running two platforms from one
+  distribution — LINE and Yahoo, both shipped by `mureo-lineyahoo-bridge` —
+  gets no STATE.json rollup at all, because the out-of-tree digest writer
+  correctly refuses to file one platform's spend under another's name. That
+  writer lives in `mureo-agency` and consumes
+  `mureo.core.platform_keys` as a published API, so those clients stay
+  without a rollup — and absent from their Reports card — until agency picks
+  up this release and passes the provider to `plugin_platform_key()`, drops
+  its refusal path, and narrows its legacy-key warning to keys carrying no
+  provider component. Nothing an operator does with this release alone
+  restores those cards.
+
 - **The multi-account client seam moved out of `mureo/web/reports.py` into
   `mureo/web/report_clients.py`.** Report building and "which clients exist /
   which store do I read for one" are separate concerns, and the archive work
