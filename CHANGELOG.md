@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The Reports client index can be reordered, and clients can be archived.**
+  Two controls that look adjacent on screen and are deliberately stored in
+  completely different places.
+
+  **Order is per-operator and lives in the browser** (`localStorage`). It is
+  purely visual: losing it breaks nothing, and two operators sharing one
+  deployment reasonably want different orders — server state would impose one
+  person's arrangement on everyone. Drag a card to move it, or focus its
+  handle and use the arrow keys; a reorder control only a mouse can work
+  excludes operators who do not use one, so both paths run through the same
+  move. A stored order that names clients which no longer exist, or is
+  corrupt JSON, or cannot be read at all, falls back to the server's order
+  rather than to an empty grid. A client the stored order has never seen is
+  appended **last**: the grid is curated on purpose, and a client the
+  operator never placed must not displace the top of it on every onboarding.
+
+  **Archiving is not.** It stops the client's figures being collected, so it
+  is a decision about the client and is recorded server-side through an
+  optional `StateStore` seam, `set_client_archived(slug, archived)`, behind
+  the new `POST /api/reports/clients/archive`. A browser-local flag could not
+  reach the process that does the collecting. `list_clients()` rows may now
+  carry `archived: bool` (absent → `False`, non-bool coerced).
+
+  On that endpoint `archived` is **validated, not coerced**: a missing field
+  or a non-bool is refused with `400 {"error": "archived_required"}` and the
+  seam is never called. `bool("false")` is `True` in Python, so coercing
+  would archive a client whose caller meant the opposite, and defaulting a
+  missing field to `False` would silently resume collection.
+
+  The confirmation says the real consequence — while archived, that client's
+  figures are never collected, and un-archiving does not backfill the gap —
+  rather than "hide from this view", which it is not. Un-archiving is
+  reachable from the same screen through a collapsed "Archived clients"
+  disclosure; a feature whose only undo is hand-editing the client registry
+  is a trap.
+
+  Archived clients leave the index but still count towards the
+  single-vs-multi-client routing decision. Counting only the visible ones
+  would drop an operator who archived down to one client straight into that
+  client's detail view — and the index is the only place an archived client
+  can be restored from.
+
+  **An OSS-only install is completely unaffected.** `GET
+  /api/reports/clients` now advertises `can_archive`, and the control is not
+  rendered at all when the store has no archive seam — a single-workspace
+  install has no client registry to record the decision in. The seam is
+  documented in `docs/plugin-authoring.md` → *The `StateStore` client
+  registry*.
+
+### Changed
+
+- **The multi-account client seam moved out of `mureo/web/reports.py` into
+  `mureo/web/report_clients.py`.** Report building and "which clients exist /
+  which store do I read for one" are separate concerns, and the archive work
+  above had pushed the single file past the 800-line limit. Every public name
+  (`list_report_clients`, `state_store_for_client`, `report_clients_payload`,
+  `set_report_client_archived`, `ClientArchiveError`) is re-exported from
+  `mureo.web.reports`, so imports are unaffected. The runtime-context seam
+  tests patch now lives at `mureo.web.report_clients.get_runtime_context` —
+  a stale patch target raises `AttributeError` immediately rather than
+  silently reading the real workspace.
+
 ## [0.10.41] - 2026-08-06
 
 ### Fixed

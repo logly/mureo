@@ -6,10 +6,12 @@ Creative Studio writes generated visuals and composed banners to
 module enumerates those runs for the configure dashboard and resolves
 gallery image paths for the image route. There is no HTTP here (the
 handlers own that) and nothing mutates state — read-only, like
-:mod:`mureo.web.reports`, whose multi-account seams it reuses:
+:mod:`mureo.web.reports`. The multi-account seams it reuses live in
+:mod:`mureo.web.report_clients`:
 
-- the client picker is :func:`mureo.web.reports.list_report_clients`
-  (clients are clients — one picker source for every read-only tab);
+- the client picker is
+  :func:`mureo.web.report_clients.list_report_clients` (clients are
+  clients — one picker source for every read-only tab);
 - per-client resolution goes through the same defensive
   ``state_store_for_client(slug)`` capability, so a multi-account
   backend scopes the gallery to one client's workspace with no changes
@@ -38,10 +40,10 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-# Reuse the reports module's seam resolution so every read-only dashboard
-# tab agrees on what "the client's store" means (and tests patch a single
-# ``mureo.web.reports.get_runtime_context`` seam for both tabs).
-from mureo.web.reports import state_store_for_client
+# Reuse the shared client seam so every read-only dashboard tab agrees on
+# what "the client's store" means (and tests patch a single
+# ``mureo.web.report_clients.get_runtime_context`` seam for both tabs).
+from mureo.web.report_clients import state_store_for_client
 
 if TYPE_CHECKING:
     from mureo.core.state_store import StateStore

@@ -68,7 +68,7 @@ def _use_workspace(monkeypatch: pytest.MonkeyPatch, workspace: Path) -> None:
     """
     ctx = default_runtime_context(workspace=workspace)
     monkeypatch.setattr(
-        "mureo.web.reports.get_runtime_context",
+        "mureo.web.report_clients.get_runtime_context",
         lambda: ctx,
     )
 
@@ -477,7 +477,7 @@ def test_list_clients_delegates_to_agency_seam(
             ]
 
     ctx = dataclasses.replace(default_runtime_context(), state_store=_AgencyStore())
-    monkeypatch.setattr("mureo.web.reports.get_runtime_context", lambda: ctx)
+    monkeypatch.setattr("mureo.web.report_clients.get_runtime_context", lambda: ctx)
 
     clients = list_report_clients()
     assert [c["slug"] for c in clients] == ["acme", "globex"]

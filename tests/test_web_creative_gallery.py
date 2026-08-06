@@ -41,11 +41,11 @@ def _reset_ctx() -> Iterator[None]:
 def _use_workspace(monkeypatch: pytest.MonkeyPatch, workspace: Path) -> None:
     """Point the active runtime context at ``workspace``.
 
-    The gallery resolves its store through the reports module's seam
-    helpers, so the patch target is ``mureo.web.reports``.
+    The gallery resolves its store through the shared client seam, so the
+    patch target is ``mureo.web.report_clients``.
     """
     ctx = default_runtime_context(workspace=workspace)
-    monkeypatch.setattr("mureo.web.reports.get_runtime_context", lambda: ctx)
+    monkeypatch.setattr("mureo.web.report_clients.get_runtime_context", lambda: ctx)
 
 
 def _make_run(
@@ -153,7 +153,7 @@ class TestListCreativeRuns:
             default_runtime_context(workspace=tmp_path),
             state_store=_MultiStore(workspace=tmp_path),
         )
-        monkeypatch.setattr("mureo.web.reports.get_runtime_context", lambda: ctx)
+        monkeypatch.setattr("mureo.web.report_clients.get_runtime_context", lambda: ctx)
 
         runs = list_creative_runs("acme")["runs"]
         assert [r["run_id"] for r in runs] == ["20260101T000000Z_acme00"]
