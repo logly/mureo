@@ -383,6 +383,18 @@ Platform-level: `platforms[<p>].totals` holds the same keys summed for that
 platform (respecting the `result_indicator` grouping for Meta), and
 `platforms[<p>].metrics_period` records the window the totals cover.
 
+**`fetched_at` is what the dashboard's staleness marker reads — set it on
+every rollup you write**, including each `periods[<window>]` bucket. The
+reporting view judges a figure against the window it covers: stale once it is
+older than that window's own length plus one day of grace, i.e. the point at
+which the stored numbers no longer overlap the window their label claims
+(`YESTERDAY` after 2 days, `LAST_7_DAYS` after 8, `LAST_30_DAYS` after 31).
+A rollup with no `fetched_at` renders as *"update time unknown"* — never as
+fresh, because that would be a claim mureo cannot back. Do not lean on the
+document-level `last_synced_at` for this: it is re-stamped on **any** platform
+write, so one platform syncing would otherwise make every other platform's
+months-old numbers read as just-synced.
+
 **Per-period rollups:** `platforms[<p>].periods` is an optional map keyed by a
 canonical period token, each value a totals-shaped object using the SAME
 vocabulary above — so the reporting dashboard can offer a period toggle. Use
@@ -401,14 +413,21 @@ writing `YESTERDAY` never clobbers a prior `LAST_30_DAYS` bucket (and vice
 versa); omitted fields preserve their existing value.
 
 **One ad account, one platform key.** The rollup is written under the
-`platforms` key you pass, and the reporting view sums every entry — so an
-account stored under two keys double-counts spend, conversions and CPA. Pass
-the key the account is already stored under; a write that would create a
+`platforms` key you pass, and the reporting view aggregates across platforms —
+so an account stored under two keys double-counts spend, conversions and CPA.
+Pass the key the account is already stored under; a write that would create a
 *second* key for an `account_id` another key already holds is rejected, naming
 both keys. Existing entries are never merged or deleted (they usually hold
 different partial figures), so writes to a key that already exists always
 succeed and reconciling a duplicated document stays the operator's call. See
 `../_mureo-shared/SKILL.md` → *STATE.json Schema*.
+
+On the read side the dashboard no longer adds such entries up silently: when
+it finds two keys resolving to one account it **withholds the client total**
+and names both keys, and when it finds a key it cannot resolve to any platform
+at all it reports that separately (that entry's identity cannot be
+established, so it *may* be a duplicate). Both are reports, not repairs — the
+per-platform figures still render untouched.
 
 ### Reports section
 

@@ -33,13 +33,28 @@ defined against a small capability seam on the active ``StateStore``:
 
 Both seams are read defensively (``getattr`` + ``callable``); a store that
 does not advertise them keeps the standalone single-workspace behaviour.
+
+Conflicts and freshness (#533 / #535)
+-------------------------------------
+Two facts about the document that the frontend cannot work out for itself,
+and which this module therefore resolves and puts on the wire:
+
+- ``platform_conflicts`` — reasons this document's platform rows must NOT be
+  added together. Grouping happens here because the rows deliberately carry
+  no ``account_id`` (see :func:`_platform_row`), so the browser has nothing
+  to join on and is given nothing to join on.
+- each row's ``freshness`` — how old THAT platform's figures are, judged
+  against the window they cover. The document-level ``last_synced_at`` is
+  re-stamped on any platform write, so it cannot answer this.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
+from mureo.context.platform_accounts import duplicate_account_entries
 from mureo.context.state import read_state_file
 from mureo.core.platform_keys import is_plugin_platform_key, plugin_distribution
 from mureo.core.runtime_context import get_runtime_context
@@ -55,11 +70,43 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "CONFLICT_DUPLICATE_ACCOUNT",
+    "CONFLICT_UNRECOGNIZED_KEY",
     "build_report_summary",
     "list_report_clients",
     "state_store_for_client",
     "platform_display_name",
 ]
+
+# ``platform_conflicts[].kind`` — the wire vocabulary for "do not add these
+# rows together" (#533). TWO findings, deliberately never merged into one
+# warning: they are different facts and an operator's next move differs.
+CONFLICT_DUPLICATE_ACCOUNT = "duplicate_account"
+"""Two or more keys resolve to ONE ad account.
+
+Established by the shared join in :mod:`mureo.context.platform_accounts`.
+The consequence is present-tense and certain: any total over these rows
+counts that account's spend / conversions / CPA more than once, right now.
+"""
+
+CONFLICT_UNRECOGNIZED_KEY = "unrecognized_key"
+"""A key no mureo surface can resolve to a platform.
+
+The account join CANNOT find this case. The shape actually reported from the
+field had ``account_id = ""`` on one of the two entries, and
+``account_ids_match("", "")`` is ``False`` by design (an unknown id is not a
+value), so :func:`~mureo.context.platform_accounts.duplicate_account_entries`
+deliberately does not report that pair. This second, independent signal is
+what catches it: an entry whose identity cannot be established at all, and
+which may therefore be a duplicate of a canonical one.
+
+Recognition is delegated to :func:`platform_display_name`, which returns the
+key unchanged exactly when it can make nothing of it — that is already how
+mureo answers "is this key recognisable", and asking the dashboard's own
+resolver means this can never drift from what the dashboard renders. The
+alternative, an alias table mapping arbitrary keys onto platforms, would be a
+guess.
+"""
 
 # How many of the most-recent ``action_log`` entries the summary surfaces.
 # The dashboard shows a short activity feed, not the full history.
@@ -121,6 +168,32 @@ _PERIOD_ORDER: tuple[str, ...] = (
     "LAST_7_DAYS",
     "LAST_30_DAYS",
 )
+
+# Canonical window → the length of that window in days. The stale threshold
+# is derived from this rather than written down as a per-window magic number,
+# so the rationale below is the only thing to check when a window is added.
+_PERIOD_LENGTH_DAYS: dict[str, int] = {
+    "YESTERDAY": 1,
+    "LAST_7_DAYS": 7,
+    "LAST_30_DAYS": 30,
+}
+
+_STALE_GRACE_DAYS = 1
+"""Slack added to a window's own length before its figure is called stale.
+
+Absorbs one missed daily sync run and the platforms' own reporting lag
+(conversions backfill for a day or two is normal), so a single hiccup does
+not paint a healthy account red.
+"""
+
+_STALE_AFTER_DAYS_DEFAULT = max(_PERIOD_LENGTH_DAYS.values()) + _STALE_GRACE_DAYS
+"""Threshold for a window whose length mureo does not know.
+
+The most forgiving known threshold, not the strictest: a window we cannot
+reason about must not be flagged on a guess. Crying wolf on figures mureo
+cannot judge would teach operators to ignore the marker, which costs more
+than the occasional missed stale entry.
+"""
 
 
 def platform_display_name(key: str) -> str:
@@ -306,8 +379,12 @@ def build_report_summary(
 
     - ``platforms``: one row per key in ``platforms`` — built-in AND
       ``plugin:<dist>`` — each ``{key, display_name, totals, metrics_period,
-      campaign_count}``. A platform without metrics for the resolved window
-      still appears (``totals`` ``None`` / ``metrics_period`` ``None``).
+      campaign_count, freshness}``. A platform without metrics for the
+      resolved window still appears (``totals`` ``None`` /
+      ``metrics_period`` ``None``).
+    - ``platform_conflicts``: reasons these rows must not be added together
+      (#533) — see :func:`_build_platform_conflicts`. Always a list, empty
+      when the document is healthy, and it carries NO ad account ids.
     - ``periods``: the windows that have data SOMEWHERE in this document
       (union over every platform's per-period rollups plus its legacy
       single-rollup window), in canonical order — so the dashboard renders a
@@ -345,6 +422,7 @@ def build_report_summary(
         "periods": _available_periods(doc),
         "last_synced_at": doc.last_synced_at if doc is not None else None,
         "platforms": _build_platforms(doc, period),
+        "platform_conflicts": _build_platform_conflicts(doc),
         "recent_actions": _build_recent_actions(doc),
         # ``reports`` is relayed verbatim. Unlike ``totals`` / ``recent_actions``
         # it is NOT whitelisted: it holds the structured analysis summary written
@@ -421,6 +499,11 @@ def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[st
     ``period is None`` returns the stored single rollup (legacy passthrough);
     a set ``period`` resolves the totals for that window (see
     :func:`_period_totals`).
+
+    ``account_id`` stays off this row (a test pins the omission): identity is
+    resolved server-side into ``platform_conflicts`` instead, so the browser
+    is never handed an ad account id to join on. ``freshness`` rides
+    ALONGSIDE the five original fields — see :func:`_platform_freshness`.
     """
     if period is None:
         totals = _safe_totals(state.totals)
@@ -437,7 +520,147 @@ def _platform_row(key: str, state: PlatformState, period: str | None) -> dict[st
         "totals": totals,
         "metrics_period": metrics_period,
         "campaign_count": len(state.campaigns),
+        "freshness": _platform_freshness(totals, metrics_period),
     }
+
+
+# ---------------------------------------------------------------------------
+# Conflicts — why these rows must not be added together (#533)
+# ---------------------------------------------------------------------------
+
+
+def _build_platform_conflicts(doc: StateDocument | None) -> list[dict[str, Any]]:
+    """Reasons the caller must NOT sum this document's platform rows.
+
+    Each row is ``{"kind": <CONFLICT_*>, "platform_keys": [...]}`` — the
+    grouping the browser cannot do, since the rows carry no ``account_id``.
+    Nothing here identifies an ad account: the keys alone are what an
+    operator needs to find the entries in STATE.json, and putting the id on
+    the wire would undo :func:`_platform_row`'s omission.
+
+    Two independent signals, reported separately (see
+    :data:`CONFLICT_DUPLICATE_ACCOUNT` and
+    :data:`CONFLICT_UNRECOGNIZED_KEY` for why neither can stand in for the
+    other). A single key can legitimately appear in both.
+
+    **Detection, not repair.** Duplicated entries typically hold different
+    *partial* figures, so summing over-counts exactly as much as dropping
+    one under-counts. This module never merges, drops or reorders a row; it
+    reports, and the operator decides.
+    """
+    if doc is None or not doc.platforms:
+        return []
+    rows: list[dict[str, Any]] = [
+        {
+            "kind": CONFLICT_DUPLICATE_ACCOUNT,
+            "platform_keys": list(group.platform_keys),
+        }
+        for group in duplicate_account_entries(doc.platforms)
+    ]
+    rows.extend(
+        {"kind": CONFLICT_UNRECOGNIZED_KEY, "platform_keys": [key]}
+        for key in doc.platforms
+        if platform_display_name(key) == key
+    )
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Per-platform freshness (#535)
+# ---------------------------------------------------------------------------
+
+
+def _platform_freshness(
+    totals: dict[str, Any] | None, metrics_period: str | None
+) -> dict[str, Any]:
+    """How old THIS platform's figures are — ``{fetched_at, stale,
+    stale_after_days}``.
+
+    ``fetched_at`` is the optional, writer-stamped time the numbers were
+    pulled (canonical vocabulary; see ``_mureo-strategy`` → *Performance
+    Metrics*). It is read off the rollup actually being rendered, so a
+    period-toggled view reports the freshness of the window on screen, and it
+    is relayed **verbatim** — including a value that is not a timestamp at
+    all. ``stale`` is the authoritative "could this be interpreted?" answer;
+    blanking an uninterpretable string would throw away the only clue an
+    operator has for finding the writer that produced it, and this module
+    reports what the document says rather than silently normalising it.
+    Consumers must therefore treat ``fetched_at`` as an opaque string unless
+    ``stale`` is not ``None``.
+
+    ``stale`` is deliberately three-valued. ``None`` means **unknown** —
+    ``fetched_at`` was absent or unparseable — and that is a real state, not
+    an error: the field is optional and writer-dependent, so claiming either
+    "fresh" or "stale" would assert something mureo cannot back. Callers
+    render it as its own thing.
+
+    Why this exists at all: the only freshness the dashboard used to show was
+    the document-level ``last_synced_at``, which the state layer re-stamps on
+    ANY platform write — so refreshing one platform made every other
+    platform's months-old numbers read as just-synced (#535). That timestamp
+    is still correct about what it means; it just cannot answer this
+    question.
+    """
+    stale_after = _stale_after_days(metrics_period)
+    fetched_raw = totals.get("fetched_at") if totals else None
+    fetched_at = fetched_raw if isinstance(fetched_raw, str) and fetched_raw else None
+    parsed = _parse_timestamp(fetched_at)
+    stale = (
+        None
+        if parsed is None
+        else parsed < datetime.now(timezone.utc) - timedelta(days=stale_after)
+    )
+    return {
+        "fetched_at": fetched_at,
+        "stale": stale,
+        "stale_after_days": stale_after,
+    }
+
+
+def _stale_after_days(metrics_period: str | None) -> int:
+    """Age at which a figure covering ``metrics_period`` is called stale.
+
+    **The window's own length, plus one grace day.** A figure fetched longer
+    ago than the window it summarises no longer overlaps that window at all:
+    a ``LAST_30_DAYS`` rollup pulled 31 days ago describes days -31 to -61,
+    while today's ``LAST_30_DAYS`` is days 0 to -30 — not one shared day. So
+    the figure is not "a bit old", it is about a different period than the
+    label claims. :data:`_STALE_GRACE_DAYS` then absorbs one missed daily
+    sync and platform reporting lag.
+
+    That is why a ``YESTERDAY`` figure (stale after 2 days) and a
+    ``LAST_30_DAYS`` figure (stale after 31) are judged so differently: they
+    are not the same claim aging at the same rate.
+
+    An unrecognised window falls back to :data:`_STALE_AFTER_DAYS_DEFAULT`.
+    """
+    if metrics_period is None:
+        return _STALE_AFTER_DAYS_DEFAULT
+    length = _PERIOD_LENGTH_DAYS.get(metrics_period)
+    if length is None:
+        return _STALE_AFTER_DAYS_DEFAULT
+    return length + _STALE_GRACE_DAYS
+
+
+def _parse_timestamp(value: str | None) -> datetime | None:
+    """Parse an ISO-8601 ``fetched_at``, or ``None`` if it is not one.
+
+    Tolerates a trailing ``Z`` (Python < 3.11 ``fromisoformat`` does not) and
+    treats a naive timestamp as UTC — writers are inconsistent about the
+    offset and refusing one would report a real timestamp as unknown.
+    A value that is not a timestamp at all yields ``None`` (unknown) rather
+    than a guess, and never an exception out of this read-only view.
+    """
+    if not value:
+        return None
+    text = value.strip()
+    if text.endswith(("Z", "z")):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
 
 
 def _period_totals(state: PlatformState, period: str) -> dict[str, Any] | None:
