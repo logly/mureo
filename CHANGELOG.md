@@ -71,6 +71,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a stale patch target raises `AttributeError` immediately rather than
   silently reading the real workspace.
 
+- **`mureo/context/state.py` shed the STATE.json codec and the conversion
+  override lookup** (967 lines, against the 800-line limit). This module holds
+  the atomic write path and the state lock and is imported by essentially the
+  whole codebase, so the change is a **pure move**: every one of the 33
+  top-level definitions is byte-identical to its previous form, verified
+  mechanically rather than by eye.
+
+  `mureo/context/state_codec.py` now holds `parse_state` / `render_state` and
+  their per-field helpers. The two are inverses and every schema field appears
+  once in each, so the optionality rules that keep a round-trip byte-stable
+  are only checkable with both halves together — they moved as one unit rather
+  than parse alone. `mureo/context/conversion_overrides.py` holds
+  `load_conversion_action_types`: an account-scoped *setting* lookup that
+  resolves its own workspace and never raises, which is the opposite of the
+  writer contract the rest of `state.py` keeps.
+
+  Every name any caller imports — in this tree and out of it — is re-exported
+  from `mureo.context.state`, including `parse_state` and `render_state`, so
+  no import moves. What is not re-exported is the codec's private helpers
+  (`_parse_campaign`, `_snapshot_to_dict`, …), which have no callers anywhere.
+
+  One behavioural difference, and it is only visible in logs: the tolerant
+  read path's DEBUG records (`skipping unparseable …`, `missing 'account_id'`)
+  now come from the `mureo.context.state_codec` logger instead of
+  `mureo.context.state`. Level and message are unchanged.
+
+  Four functions are still over the 50-line function limit, for two different
+  reasons.
+
+  The three writers (`upsert_campaign` 89, `set_platform_metrics` 97,
+  `set_conversion_action_types` 71) were left long on purpose and are expected
+  to stay that way: their length is the merge-semantics docstring plus the
+  `_build` closure it describes, and cutting either apart would separate a
+  rule from the code that implements it.
+
+  `parse_state` (55) is a different case and is **not** permanent. Its v2
+  `platforms` loop would extract cleanly as a `_parse_platforms` helper — the
+  mirror of `_platform_state_to_dict` — bringing it to roughly 37 lines. That
+  was skipped only because it would have made one function's body differ, and
+  the "every definition is byte-identical" property is the entire reason this
+  change is reviewable. It is worth doing as its own change, where the body
+  diff is the point rather than a cost.
+
 ## [0.10.41] - 2026-08-06
 
 ### Fixed

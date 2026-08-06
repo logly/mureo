@@ -501,7 +501,7 @@ class TestStateFileErrorHandling:
             "version": "2",
             "platforms": {"google_ads": {"campaigns": [], "totals": {"spend": 1.0}}},
         }
-        with caplog.at_level(logging.DEBUG, logger="mureo.context.state"):
+        with caplog.at_level(logging.DEBUG, logger="mureo.context.state_codec"):
             parse_state(json.dumps(data), strict=False)
         assert any(
             "missing 'account_id'" in r.message and r.levelno == logging.DEBUG
@@ -523,7 +523,7 @@ class TestStateFileErrorHandling:
             "campaigns": [{"id": "x", "name": "variant, no campaign_id/_name"}],
             "action_log": [{"summary": "legacy, no timestamp/action/platform"}],
         }
-        with caplog.at_level(logging.DEBUG, logger="mureo.context.state"):
+        with caplog.at_level(logging.DEBUG, logger="mureo.context.state_codec"):
             parse_state(json.dumps(data), strict=False)
 
         # The skips still happen and are observable at DEBUG …

@@ -134,7 +134,11 @@ mureo/
 ├── context/                 # File-based context (STRATEGY.md, STATE.json)
 │   ├── models.py            # Immutable dataclasses (ActionLogEntry.rollback_of for audit trail)
 │   ├── strategy.py          # STRATEGY.md parser / renderer
-│   ├── state.py             # STATE.json parser / renderer
+│   ├── state.py             # STATE.json read / mutate / atomic write + state lock (re-exports the two below)
+│   ├── state_codec.py       # STATE.json <-> StateDocument codec (parse_state / render_state)
+│   ├── conversion_overrides.py # Per-account conversion action_type override lookup (#342)
+│   ├── platform_accounts.py # One ad account, one platform key — the shared account-id join
+│   ├── platform_guards.py   # Write-time guards over that join (refuse / warn on duplicates)
 │   └── errors.py            # Context-specific exceptions
 ├── cli/                     # Typer CLI (setup + auth + rollback inspection; ad operations are via MCP)
 │   ├── main.py              # Entry point (mureo command) — registers all 12 sub-command groups
