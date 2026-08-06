@@ -2345,7 +2345,7 @@ must not — ship a separate MCP tool to expose it (see below): implement the
 
 ## 15. Multi-tenant backend authoring
 
-> Status: store-capability family as of 0.10.39 (#196, #198, #207,
+> Status: store-capability family as of 0.10.40 (#196, #198, #207,
 > #375, #411, #511). Audience: teams embedding mureo in a multi-tenant
 > host — an agency backend, a SaaS control plane — that supplies its
 > own credential storage instead of `~/.mureo/credentials.json`.

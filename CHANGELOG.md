@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.40] - 2026-08-06
+
 ### Added
 
 - **Amazon guardrails are now enforced on exact money paths, not inferred**
