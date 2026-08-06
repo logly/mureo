@@ -24,6 +24,11 @@ from mureo.context.models import (
     PlatformState,
     StateDocument,
 )
+from mureo.context.platform_accounts import account_ids_match
+from mureo.context.platform_guards import (
+    guard_platform_entry_write,
+    warn_on_duplicate_accounts,
+)
 from mureo.fsutil import file_lock
 
 logger = logging.getLogger(__name__)
@@ -459,7 +464,13 @@ def read_state_file(path: Path, *, strict: bool = True) -> StateDocument:
 
 
 def write_state_file(path: Path, doc: StateDocument) -> None:
-    """Atomically write a StateDocument to a STATE.json file."""
+    """Atomically write a StateDocument to a STATE.json file.
+
+    Also emits the advisory duplicate-account warning (#534) — see
+    :func:`mureo.context.platform_guards.warn_on_duplicate_accounts`. The write
+    proceeds regardless.
+    """
+    warn_on_duplicate_accounts(path, doc)
     text = render_state(doc)
     _atomic_write(path, text)
 
@@ -578,6 +589,12 @@ def upsert_campaign(
 
     Returns:
         The updated :class:`StateDocument`.
+
+    Raises:
+        ValueError: ``platform`` is not a usable platform key, or the write
+            would create a SECOND key for an account another key already
+            holds (see
+            :func:`mureo.context.platform_guards.guard_platform_entry_write`).
     """
 
     def _build(doc: StateDocument) -> StateDocument:
@@ -588,6 +605,7 @@ def upsert_campaign(
         # entry exists, carries the (required) account_id, and holds the
         # campaign.
         platforms = dict(doc.platforms) if doc.platforms else {}
+        guard_platform_entry_write(platforms, platform, account_id)
         existing = platforms.get(platform)
         platforms[platform] = PlatformState(
             account_id=account_id,
@@ -735,10 +753,17 @@ def set_platform_metrics(
 
     Returns:
         The updated :class:`StateDocument`.
+
+    Raises:
+        ValueError: ``platform`` is not a usable platform key, or the write
+            would create a SECOND key for an account another key already
+            holds (see
+            :func:`mureo.context.platform_guards.guard_platform_entry_write`).
     """
 
     def _build(doc: StateDocument) -> StateDocument:
         platforms = dict(doc.platforms) if doc.platforms else {}
+        guard_platform_entry_write(platforms, platform, account_id)
         existing = platforms.get(platform)
 
         merged_periods: dict[str, dict[str, Any]] | None
@@ -817,6 +842,12 @@ def set_conversion_action_types(
 
     Returns:
         The updated :class:`StateDocument`.
+
+    Raises:
+        ValueError: ``platform`` is not a usable platform key, or the write
+            would create a SECOND key for an account another key already
+            holds (see
+            :func:`mureo.context.platform_guards.guard_platform_entry_write`).
     """
     cleaned: tuple[str, ...] | None = None
     if conversion_action_types:
@@ -829,6 +860,7 @@ def set_conversion_action_types(
 
     def _build(doc: StateDocument) -> StateDocument:
         platforms = dict(doc.platforms) if doc.platforms else {}
+        guard_platform_entry_write(platforms, platform, account_id)
         existing = platforms.get(platform)
         platforms[platform] = PlatformState(
             account_id=account_id,
@@ -880,17 +912,6 @@ def _workspace_state_path() -> Path:
     return _Path("STATE.json")
 
 
-def _account_id_eq(a: str, b: str) -> bool:
-    """Compare Meta account ids tolerant of the optional ``act_`` prefix (#342).
-
-    The MCP setter stores whatever id the operator/agent passed; the live
-    counters resolve with the ``act_*`` form the client enforces. Comparing
-    after stripping a leading ``act_`` keeps a bare-numeric override from
-    silently never matching.
-    """
-    return a.removeprefix("act_") == b.removeprefix("act_")
-
-
 def load_conversion_action_types(
     account_id: str,
     *,
@@ -903,6 +924,12 @@ def load_conversion_action_types(
     it is set AND the entry's ``account_id`` matches ``account_id`` (tolerant
     of the ``act_`` prefix); otherwise ``None`` so the conversion counters fall
     back to the built-in generic set.
+
+    An **unknown** id on either side never matches (#536) — see
+    :func:`~mureo.context.platform_accounts.account_ids_match`. An override
+    applied to the wrong account silently redefines what counts as a
+    conversion for it, so falling back to the built-in set is the safe
+    direction.
 
     Reads the ACTIVE workspace ``STATE.json`` (resolved via the runtime context
     — the same file the MCP state tools write to). **Never raises**: a missing
@@ -924,11 +951,10 @@ def load_conversion_action_types(
     entry = doc.platforms.get(platform)
     if entry is None or not entry.conversion_action_types:
         return None
-    if (
-        entry.account_id
-        and account_id
-        and not _account_id_eq(entry.account_id, account_id)
-    ):
+    # Fail closed on an unknown id (#536), via the SHARED join so the
+    # override's read side and the duplicate guard's write side cannot
+    # disagree about what "the same account" means.
+    if not account_ids_match(entry.account_id, account_id):
         return None
     return entry.conversion_action_types
 

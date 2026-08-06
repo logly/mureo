@@ -716,6 +716,123 @@ async def test_platform_metrics_set_requires_platform_and_account(cwd_to_tmp) ->
         )
 
 
+def _metrics_schema() -> dict:
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == "mureo_state_platform_metrics_set")
+    return tool.inputSchema
+
+
+def _platform_account_props(tool_name: str) -> dict:
+    """The ``platform`` / ``account_id`` properties of a state-write tool,
+    wherever the tool nests them."""
+    mod = _import_tools()
+    tool = next(t for t in mod.TOOLS if t.name == tool_name)
+    props = tool.inputSchema["properties"]
+    if "campaign" in props:  # mureo_state_upsert_campaign nests them
+        props = props["campaign"]["properties"]
+    return props
+
+
+def test_platform_metrics_schema_documents_tiktok_ads() -> None:
+    """#534 — ``tiktok_ads`` is a first-class ad-platform key (the reporting
+    view treats it as one), so the tool that writes platform rollups must
+    name it."""
+    platform = _metrics_schema()["properties"]["platform"]
+    assert "tiktok_ads" in platform["description"]
+
+
+def test_platform_metrics_schema_constrains_non_empty_strings() -> None:
+    """#534 — a bare ``{"type": "string"}`` accepts ``""``. An enum would
+    reject a valid ``plugin:<dist>`` key, so the genuinely correct constraint
+    is a minimum length."""
+    props = _metrics_schema()["properties"]
+    assert props["platform"]["minLength"] == 1
+    assert props["account_id"]["minLength"] == 1
+
+
+@pytest.mark.parametrize(
+    "tool_name",
+    [
+        "mureo_state_platform_metrics_set",
+        "mureo_state_upsert_campaign",
+        "mureo_state_set_conversion_events",
+    ],
+)
+def test_every_state_write_tool_states_the_one_account_one_key_rule(
+    tool_name: str,
+) -> None:
+    """#534 — the runtime guard covers all three writers, so all three schemas
+    must say so; an inconsistent one just teaches the next reader the wrong
+    rule."""
+    props = _platform_account_props(tool_name)
+    assert props["platform"]["minLength"] == 1
+    assert props["account_id"]["minLength"] == 1
+    assert "one platform key" in props["platform"]["description"]
+
+
+async def test_platform_metrics_set_rejects_explicit_empty_account_id(
+    cwd_to_tmp,
+) -> None:
+    """#534 — an explicitly-passed ``""`` must not be reported as "not
+    specified"; it WAS specified. Still fail-before-write.
+
+    This is the DIRECT-handler path (no schema gate) — see
+    ``test_empty_account_id_through_the_real_dispatcher`` for what an MCP
+    client actually sees.
+    """
+    mod = _import_tools()
+    with pytest.raises(ValueError, match="account_id must not be empty"):
+        await mod.handle_tool(
+            "mureo_state_platform_metrics_set",
+            {"platform": "google_ads", "account_id": ""},
+        )
+    assert not (cwd_to_tmp / "STATE.json").exists()
+
+
+async def test_empty_account_id_through_the_real_dispatcher(cwd_to_tmp) -> None:
+    """What an MCP CLIENT observes for ``account_id=""``.
+
+    ``handle_call_tool`` schema-validates against the declared ``inputSchema``
+    before any handler runs, so the ``minLength: 1`` constraint fires first and
+    the handler's own message is never reached on this path. Asserted here so
+    the schema and the docs describe the message that is actually emitted.
+    """
+    from mureo.mcp import server as server_mod
+
+    with pytest.raises(ValueError) as exc:
+        await server_mod.handle_call_tool(
+            "mureo_state_platform_metrics_set",
+            {"platform": "google_ads", "account_id": ""},
+        )
+    message = str(exc.value)
+    assert "account_id" in message
+    assert "non-empty" in message
+    assert not (cwd_to_tmp / "STATE.json").exists()
+
+
+async def test_platform_metrics_set_rejects_a_duplicate_account(cwd_to_tmp) -> None:
+    """#534 — the second key for one ad account is refused through the tool
+    surface too, naming both keys and the account."""
+    mod = _import_tools()
+    await mod.handle_tool(
+        "mureo_state_platform_metrics_set",
+        {"platform": "meta_ads", "account_id": "act_1", "totals": {"spend": 1.0}},
+    )
+    with pytest.raises(ValueError) as exc:
+        await mod.handle_tool(
+            "mureo_state_platform_metrics_set",
+            {
+                "platform": "plugin:mureo-logly-bridge",
+                "account_id": "act_1",
+                "totals": {"spend": 2.0},
+            },
+        )
+    message = str(exc.value)
+    assert "meta_ads" in message
+    assert "plugin:mureo-logly-bridge" in message
+    assert "act_1" in message
+
+
 async def test_platform_metrics_set_rejects_malformed_shapes(cwd_to_tmp) -> None:
     mod = _import_tools()
     base = {"platform": "google_ads", "account_id": "act_123"}

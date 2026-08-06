@@ -188,16 +188,27 @@ _CAMPAIGN_PROPERTY = {
         "status": {"type": "string"},
         "platform": {
             "type": "string",
+            # No enum: a valid key includes ``plugin:<dist>`` for any installed
+            # bridge, which no fixed list can enumerate. minLength is the
+            # constraint that IS always true.
+            "minLength": 1,
             "description": (
                 "Platform key this campaign belongs to, e.g. "
-                "``google_ads`` / ``meta_ads``."
+                "``google_ads`` / ``meta_ads`` / ``tiktok_ads``, or a plugin "
+                "bridge ``plugin:<dist>``. Use the SAME key the account is "
+                "already stored under — one ad account has exactly one "
+                "platform key, and a second key for an account another key "
+                "already holds is REJECTED (the reporting view sums the "
+                "entries, so it would double-count)."
             ),
         },
         "account_id": {
             "type": "string",
+            "minLength": 1,
             "description": (
                 "Platform account id (Google ``customer_id`` / Meta "
-                "``act_*``) written onto the platform entry."
+                "``act_*``) written onto the platform entry, and used to "
+                "detect a second entry for the same account."
             ),
         },
         "bidding_strategy_type": {"type": "string"},
@@ -432,17 +443,28 @@ TOOLS: list[Tool] = [
             "properties": {
                 "platform": {
                     "type": "string",
+                    # No enum: a valid key includes ``plugin:<dist>`` for any
+                    # installed bridge, which no fixed list can enumerate.
+                    # minLength is the constraint that IS always true.
+                    "minLength": 1,
                     "description": (
                         "Platform key: a built-in (``google_ads`` / "
-                        "``meta_ads`` / ``search_console`` / ``ga4``) or a "
-                        "plugin bridge ``plugin:<dist>``."
+                        "``meta_ads`` / ``tiktok_ads`` / ``search_console`` / "
+                        "``ga4``) or a plugin bridge ``plugin:<dist>``. Use "
+                        "the SAME key the account is already stored under — "
+                        "one ad account has exactly one platform key, and a "
+                        "second key for an account another key already holds "
+                        "is REJECTED (the reporting view sums the entries, so "
+                        "it would double-count)."
                     ),
                 },
                 "account_id": {
                     "type": "string",
+                    "minLength": 1,
                     "description": (
                         "The platform account id (Google customer_id / Meta "
-                        "act_*). Always written onto the platform entry."
+                        "act_*). Always written onto the platform entry, and "
+                        "used to detect a second entry for the same account."
                     ),
                 },
                 "totals": {
@@ -501,16 +523,26 @@ TOOLS: list[Tool] = [
             "properties": {
                 "platform": {
                     "type": "string",
+                    # No enum: see mureo_state_platform_metrics_set.
+                    "minLength": 1,
                     "description": (
                         "Platform key — normally ``meta_ads`` (the override "
-                        "only affects the Meta conversion counters)."
+                        "only affects the Meta conversion counters). Use the "
+                        "SAME key the account is already stored under — one "
+                        "ad account has exactly one platform key, and a "
+                        "second key for an account another key already holds "
+                        "is REJECTED (the reporting view sums the entries, so "
+                        "it would double-count)."
                     ),
                 },
                 "account_id": {
                     "type": "string",
+                    "minLength": 1,
                     "description": (
                         "The Meta ad account id (``act_*``). Always written "
-                        "onto the platform entry."
+                        "onto the platform entry, and used to detect a second "
+                        "entry for the same account. The override applies "
+                        "ONLY to this account."
                     ),
                 },
                 "conversion_action_types": {

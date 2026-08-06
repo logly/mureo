@@ -271,6 +271,13 @@ for that account; never summed on top of the defaults). It is stored on
 `platforms[meta_ads]` in STATE.json and applied by every Meta conversion
 counter. Pass an empty list to clear it and restore the default.
 
+The override is **scoped to the `account_id` on that entry** and applies only
+to it. If the entry carries no `account_id` (or an empty one — possible only in
+a hand-authored / externally written STATE.json), the override is **ignored**
+and the built-in generic set is used: an override belonging to an
+unidentifiable account must never redefine what counts as a conversion for a
+different one.
+
 ### analysis
 
 - `performance` -- Analyze overall performance trends.
