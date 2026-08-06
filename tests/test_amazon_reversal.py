@@ -432,10 +432,15 @@ class TestAdProductFilter:
         )
 
     async def test_slow_reads_stop_at_the_capture_deadline(self, monkeypatch) -> None:
-        """Each read returns just inside its own timeout, so only the OUTER
-        deadline can stop the probe walk. Time is faked so the assertion is on
-        read count, not on wall clock."""
-        monkeypatch.setattr(rev, "READ_TIMEOUT_SECONDS", 0.05)
+        """Only the OUTER deadline can stop this probe walk.
+
+        What is deterministic is the deadline: ``_monotonic`` is faked, so it
+        expires on a read COUNT and never on wall clock. The per-read timeout
+        is NOT faked — ``asyncio.wait_for`` runs on the real event-loop clock —
+        so it is instead given the whole remaining budget (9s for round one,
+        3s for round two) against a 1ms read. Firing it would take a
+        multi-second stall, not a loaded runner (#542).
+        """
         monkeypatch.setattr(rev, "CAPTURE_DEADLINE_SECONDS", 15.0)
         clock = _FakeClock(step=6.0)  # 0.0 (deadline set), 6.0, 12.0, 18.0 …
         monkeypatch.setattr(rev, "_monotonic", clock)
@@ -446,7 +451,7 @@ class TestAdProductFilter:
                 {"campaigns": []},
                 {"campaigns": [{"campaignId": "C2", "state": "ENABLED"}]},
             ],
-            delay=0.02,  # just under the per-read timeout: never times out
+            delay=0.001,  # a real read, three orders of magnitude inside it
         )
         out = await rev.capture_reversal(
             d,

@@ -30,6 +30,10 @@ from mureo.amazon_ads.bridge import AmazonAdsBridge
 from mureo.amazon_ads.lwa import LwaTokens
 from mureo.auth import AmazonAdsCredentials
 
+# The same deterministic clock the non-batched deadline test drives, so both
+# halves of the bound are exercised the same way rather than two ways.
+from tests.test_amazon_reversal import _FakeClock
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -420,33 +424,106 @@ class TestPartialSequence:
 
 @pytest.mark.unit
 class TestBoundsStillHold:
-    async def test_a_hung_session_cannot_outlive_the_capture_deadline(
+    async def test_a_hung_read_is_bounded_and_still_tears_the_session_down(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """The read hangs forever, so the PER-READ timeout is the only thing
+        that can end this call at all — reaching the assertions IS the proof
+        that the read was bounded. They are therefore on observable state,
+        never on elapsed time: a wall-clock ceiling would add nothing a hung
+        read has not already demonstrated, and a margin a loaded runner can
+        overshoot (#542).
+
+        The OUTER capture deadline is NOT exercised here. It is patched only
+        so that it cannot be the binding half of ``min(READ_TIMEOUT_SECONDS,
+        budget)``; the walk ends at the first hung probe, long before the
+        deadline could expire. The test that drives the deadline itself — with
+        reads that return well inside their own timeout, so only the deadline
+        can stop the walk — is ``test_amazon_reversal.py::TestAdProductFilter
+        ::test_slow_reads_stop_at_the_capture_deadline``.
+        """
         monkeypatch.setattr(rev, "READ_TIMEOUT_SECONDS", 0.2)
         monkeypatch.setattr(rev, "CAPTURE_DEADLINE_SECONDS", 0.5)
-        t = _FakeTransport([_HANG, _HANG, _HANG, _HANG, _HANG])
+        # ONE payload, because exactly one read happens: a timed-out probe ends
+        # the walk, so the other four ad products are never probed. (Were the
+        # walk to carry on, the missing payloads would return empty envelopes
+        # and the read count below would catch it.)
+        t = _FakeTransport([_HANG])
         b = _bridge(tmp_path, t)
-        started = time.monotonic()
         out = await b.capture_reversal(
             _UPDATE, _mutation([{"campaignId": "C1", "state": "PAUSED"}])
         )
-        elapsed = time.monotonic() - started
         assert out is None
-        assert elapsed < 0.5 + 0.4  # deadline + teardown, not 5 × the timeout
-        assert t.closed == [1]  # the hung session is still torn down
+        assert len(t.calls) == 1  # not the whole ad-product enum
+        assert t.closed == [1]  # the hung session is still torn down…
+        assert t.close_cancelled == []  # …gracefully, without the cancel fallback
+        assert _owner_tasks() == []  # nothing left holding a live session
+
+    async def test_the_capture_deadline_stops_the_walk_on_the_batched_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The OUTER deadline against the batch — the combination that every
+        real capture has run through since #520, and the one the test above
+        does NOT reach.
+
+        Every read returns immediately, well inside its own timeout (which is
+        the whole remaining budget here: 9s, then 3s), so nothing except the
+        capture deadline can end this walk. ``_monotonic`` is faked, so the
+        deadline expires on a read COUNT and never on wall clock — every
+        assertion below is a count or a state, none is an elapsed time (#542).
+        The non-batched twin is ``test_amazon_reversal.py::TestAdProductFilter
+        ::test_slow_reads_stop_at_the_capture_deadline``.
+        """
+        monkeypatch.setattr(rev, "CAPTURE_DEADLINE_SECONDS", 15.0)
+        # 0.0 sets the deadline, then 6.0 and 12.0 leave a budget; 18.0 does
+        # not, so the walk stops before a third probe rather than at the end
+        # of the five-product enum.
+        monkeypatch.setattr(rev, "_monotonic", _FakeClock(step=6.0))
+        t = _FakeTransport(
+            [
+                {"campaigns": [{"campaignId": "C1", "state": "ENABLED"}]},
+                {"campaigns": []},
+                # Deliberately never read: were the deadline to stop bounding
+                # the walk, this third probe would resolve C2 and the read
+                # count below would say so.
+                {"campaigns": [{"campaignId": "C2", "state": "ENABLED"}]},
+            ]
+        )
+        b = _bridge(tmp_path, t)
+        out = await b.capture_reversal(
+            _UPDATE,
+            _mutation(
+                [
+                    {"campaignId": "C1", "state": "PAUSED"},
+                    {"campaignId": "C2", "state": "PAUSED"},
+                ]
+            ),
+        )
+        assert len(t.calls) == 2  # two probes fit the budget, the third does not
+        assert t.sessions == 1  # …and the whole bounded walk shared ONE session
+        assert t.handshakes == [1]
+        assert t.closed == [1]
+        # What was captured before the deadline is kept; the entity that ran
+        # out of time is a caveat, not a guess.
+        assert out is not None
+        assert out["params"]["body"]["campaigns"] == [
+            {"campaignId": "C1", "state": "ENABLED"}
+        ]
+        assert any("C2" in c for c in out["caveats"])
 
     async def test_a_cancelled_call_still_leaves_the_session_closable(
         self, tmp_path: Path
     ) -> None:
+        """Same rule: leaving the ``async with`` at all is the bound being
+        demonstrated, so nothing here reads a clock either (#542)."""
         t = _FakeTransport([_HANG])
         b = _bridge(tmp_path, t)
-        started = time.monotonic()
         async with b.batch_dispatch() as dispatch:
             with pytest.raises(asyncio.TimeoutError):
                 await asyncio.wait_for(dispatch(_QUERY, {"body": {}}), timeout=0.1)
-        assert time.monotonic() - started < 1.0
         assert t.closed == [1]
+        assert t.close_cancelled == []  # closed gracefully, not cut loose
+        assert _owner_tasks() == []
 
 
 def _owner_tasks() -> list[asyncio.Task[Any]]:
