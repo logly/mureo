@@ -1884,6 +1884,527 @@ class TestConversionActionTypesOverride:
         # Live counters resolve with the act_* form.
         assert load_conversion_action_types("act_123456", path=p) == ("lead",)
 
+    def _state_with_override(self, tmp_path: Path, *, account_id: str) -> Path:
+        """A hand-authored / externally written STATE.json carrying an override.
+
+        Written as raw JSON rather than through ``set_conversion_action_types``
+        because the MCP write path blocks an empty ``account_id`` — the only
+        way an entry reaches ``load_conversion_action_types`` with one is a
+        file mureo did not write (#536).
+        """
+        p = tmp_path / "STATE.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {
+                        "meta_ads": {
+                            "account_id": account_id,
+                            "campaigns": [],
+                            "conversion_action_types": ["lead"],
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return p
+
+    def test_empty_stored_account_id_never_matches(self, tmp_path: Path) -> None:
+        """#536 — an entry whose ``account_id`` is empty must not hand its
+        override to every account on the platform.
+
+        The override redefines what counts as a conversion, so applying one
+        recorded for an unknown account to an unrelated account silently
+        miscounts its CV/CPA. An unknown id fails closed: the counters fall
+        back to the documented built-in generic set.
+        """
+        from mureo.context.state import load_conversion_action_types
+
+        p = self._state_with_override(tmp_path, account_id="")
+        assert load_conversion_action_types("act_1", path=p) is None
+        assert load_conversion_action_types("act_2", path=p) is None
+
+    def test_missing_stored_account_id_never_matches(self, tmp_path: Path) -> None:
+        """#536 — the tolerant read path synthesizes ``""`` for a missing
+        ``account_id``, which must be "unknown", never a join key."""
+        from mureo.context.state import load_conversion_action_types
+
+        p = tmp_path / "STATE.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {
+                        "meta_ads": {
+                            "campaigns": [],
+                            "conversion_action_types": ["lead"],
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert load_conversion_action_types("act_1", path=p) is None
+
+    def test_empty_requested_account_id_never_matches(self, tmp_path: Path) -> None:
+        """#536 — the second conjunct was symmetrically broken: a caller
+        passing ``""`` received another account's override."""
+        from mureo.context.state import load_conversion_action_types
+
+        p = self._state_with_override(tmp_path, account_id="act_1")
+        assert load_conversion_action_types("", path=p) is None
+
+    def test_control_known_ids_still_match_and_mismatch(self, tmp_path: Path) -> None:
+        """#536 control — the fix must not break the matching case."""
+        from mureo.context.state import load_conversion_action_types
+
+        p = self._state_with_override(tmp_path, account_id="act_1")
+        assert load_conversion_action_types("act_1", path=p) == ("lead",)
+        assert load_conversion_action_types("act_2", path=p) is None
+
+
+# ---------------------------------------------------------------------------
+# #534 — one ad account, one platform key
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestDuplicateAccountEntryGuard:
+    """#534 — a write that would create a SECOND platform key for an ad account
+    already stored under another key is rejected.
+
+    The guard lives in the state layer rather than only in the MCP handler
+    because the writer that produced the observed duplicate writes through
+    these functions directly and never passes MCP validation.
+    """
+
+    def _seed(self, tmp_path: Path, platform: str, account_id: str) -> Path:
+        path = tmp_path / "STATE.json"
+        set_platform_metrics(path, platform, account_id, totals={"spend": 1.0})
+        return path
+
+    def test_second_key_for_the_same_account_is_rejected(self, tmp_path: Path) -> None:
+        path = self._seed(tmp_path, "meta_ads", "act_1")
+        with pytest.raises(ValueError) as exc:
+            set_platform_metrics(
+                path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 2.0}
+            )
+        message = str(exc.value)
+        # Names BOTH keys and the account so the operator can repair it.
+        assert "plugin:mureo-logly-bridge" in message
+        assert "meta_ads" in message
+        assert "act_1" in message
+        # Fail-before-write: no second entry landed.
+        assert set(read_state_file(path).platforms) == {"meta_ads"}
+
+    def test_non_canonical_and_canonical_plugin_key_collide(
+        self, tmp_path: Path
+    ) -> None:
+        """The registry-name spelling and the canonical ``plugin:<dist>`` key
+        are two keys for one account — exactly the #533 ingress."""
+        path = self._seed(tmp_path, "mureo-logly-bridge", "act_1")
+        with pytest.raises(ValueError, match="mureo-logly-bridge"):
+            set_platform_metrics(
+                path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 2.0}
+            )
+
+    def test_act_prefix_variants_are_the_same_account(self, tmp_path: Path) -> None:
+        path = self._seed(tmp_path, "meta_ads", "123456")
+        with pytest.raises(ValueError, match="123456"):
+            set_platform_metrics(path, "plugin:x", "act_123456", totals={"spend": 2.0})
+
+    def test_update_of_an_existing_entry_always_succeeds(self, tmp_path: Path) -> None:
+        """An operator whose document ALREADY holds the duplicate pair must
+        still be able to sync — rejecting their updates would strand them with
+        state they cannot fix."""
+        path = tmp_path / "STATE.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {
+                        "meta_ads": {"account_id": "act_1", "campaigns": []},
+                        "plugin:mureo-logly-bridge": {
+                            "account_id": "act_1",
+                            "campaigns": [],
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        doc = set_platform_metrics(path, "meta_ads", "act_1", totals={"spend": 9.0})
+        assert doc.platforms["meta_ads"].totals == {"spend": 9.0}
+        doc = set_platform_metrics(
+            path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 8.0}
+        )
+        assert doc.platforms["plugin:mureo-logly-bridge"].totals == {"spend": 8.0}
+        # Neither entry was deleted or merged — repair is the operator's call.
+        assert set(doc.platforms) == {"meta_ads", "plugin:mureo-logly-bridge"}
+
+    def test_different_accounts_under_different_keys_are_fine(
+        self, tmp_path: Path
+    ) -> None:
+        path = self._seed(tmp_path, "google_ads", "123")
+        doc = set_platform_metrics(path, "meta_ads", "act_9", totals={"spend": 2.0})
+        assert set(doc.platforms) == {"google_ads", "meta_ads"}
+
+    def test_empty_stored_account_id_never_joins(self, tmp_path: Path) -> None:
+        """``""`` is "unknown", not a value that equals another ``""``."""
+        path = tmp_path / "STATE.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {"legacy": {"account_id": "", "campaigns": []}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        doc = set_platform_metrics(path, "meta_ads", "act_1", totals={"spend": 1.0})
+        assert set(doc.platforms) == {"legacy", "meta_ads"}
+
+    def test_empty_incoming_account_id_never_joins(self, tmp_path: Path) -> None:
+        path = tmp_path / "STATE.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {"legacy": {"account_id": "", "campaigns": []}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        doc = set_platform_metrics(path, "meta_ads", "", totals={"spend": 1.0})
+        assert set(doc.platforms) == {"legacy", "meta_ads"}
+
+    def test_upsert_campaign_shares_the_guard(self, tmp_path: Path) -> None:
+        """Same key-only get-then-overwrite shape, same ingress."""
+        path = self._seed(tmp_path, "meta_ads", "act_1")
+        with pytest.raises(ValueError, match="meta_ads"):
+            upsert_campaign(
+                path,
+                CampaignSnapshot(campaign_id="c1", campaign_name="C1", status="ACTIVE"),
+                platform="plugin:mureo-logly-bridge",
+                account_id="act_1",
+            )
+        assert set(read_state_file(path).platforms) == {"meta_ads"}
+
+    def test_set_conversion_action_types_shares_the_guard(self, tmp_path: Path) -> None:
+        from mureo.context.state import set_conversion_action_types
+
+        path = self._seed(tmp_path, "meta_ads", "act_1")
+        with pytest.raises(ValueError, match="meta_ads"):
+            set_conversion_action_types(
+                path, "plugin:mureo-logly-bridge", "act_1", ["lead"]
+            )
+        assert set(read_state_file(path).platforms) == {"meta_ads"}
+
+    def test_rejects_a_platform_key_that_is_not_a_key(self, tmp_path: Path) -> None:
+        """An empty / whitespace-only key, and a plugin key carrying no
+        distribution (``"plugin:"``), are not usable keys."""
+        path = tmp_path / "STATE.json"
+        for bad in ("", "   ", "plugin:"):
+            with pytest.raises(ValueError, match="platform"):
+                set_platform_metrics(path, bad, "act_1", totals={"spend": 1.0})
+        assert not path.exists()
+
+    def test_a_canonical_plugin_key_is_written_verbatim(self, tmp_path: Path) -> None:
+        """The write path never rewrites the key the operator passed."""
+        path = tmp_path / "STATE.json"
+        doc = set_platform_metrics(
+            path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 1.0}
+        )
+        assert set(doc.platforms) == {"plugin:mureo-logly-bridge"}
+
+    # -- re-pointing an EXISTING key at a different account -----------------
+    #
+    # "Create" is not "the key is absent". Reusing a key while changing which
+    # account it describes manufactures a brand-new duplicate through the
+    # guarded functions themselves, which is how the first cut of this guard
+    # leaked.
+
+    def test_repointing_a_key_onto_a_taken_account_is_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "STATE.json"
+        set_platform_metrics(path, "google_ads", "act_2", totals={"spend": 1.0})
+        set_platform_metrics(path, "meta_ads", "act_1", totals={"spend": 1.0})
+        # meta_ads exists, but re-pointing it at act_2 would make TWO keys for
+        # act_2 — a create in every sense that matters.
+        with pytest.raises(ValueError) as exc:
+            set_platform_metrics(path, "meta_ads", "act_2", totals={"spend": 5.0})
+        message = str(exc.value)
+        assert "meta_ads" in message
+        assert "google_ads" in message
+        assert "act_2" in message
+        stored = {k: v.account_id for k, v in read_state_file(path).platforms.items()}
+        assert stored == {"google_ads": "act_2", "meta_ads": "act_1"}
+
+    def test_repointing_a_key_onto_a_free_account_is_allowed(
+        self, tmp_path: Path
+    ) -> None:
+        """Re-pointing at an account nobody else holds is a legitimate move
+        (an operator switching which account a platform tracks)."""
+        path = tmp_path / "STATE.json"
+        set_platform_metrics(path, "meta_ads", "act_1", totals={"spend": 1.0})
+        doc = set_platform_metrics(path, "meta_ads", "act_9", totals={"spend": 5.0})
+        assert doc.platforms["meta_ads"].account_id == "act_9"
+
+    def test_a_plain_update_keeps_working(self, tmp_path: Path) -> None:
+        """Branch 1: the stored id MATCHES the incoming one — nothing about
+        identity changes, so the write is a plain update."""
+        path = tmp_path / "STATE.json"
+        set_platform_metrics(path, "meta_ads", "123456", totals={"spend": 1.0})
+        # act_-tolerant: the same account in the other spelling is still a
+        # plain update, not a re-point.
+        doc = set_platform_metrics(path, "meta_ads", "act_123456", totals={"spend": 2})
+        assert doc.platforms["meta_ads"].totals == {"spend": 2}
+
+    def test_stamping_an_id_onto_an_idless_entry_is_allowed_even_if_it_collides(
+        self, tmp_path: Path
+    ) -> None:
+        """Branch 2, and deliberately NOT a hole.
+
+        The existing entry has no ``account_id``, so it does not yet claim any
+        account. Stamping one on cannot create a real-world duplicate: if the
+        two keys really are one account, that was already true and merely
+        invisible. Allowing the write is what makes the duplicate DETECTABLE
+        (``duplicate_account_entries`` can now see it) and therefore
+        surfaceable to the operator — rejecting would block the very write
+        that reveals the problem. This is the repair path.
+        """
+        path = tmp_path / "STATE.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {
+                        "google_ads": {"account_id": "act_1"},
+                        "legacy": {"account_id": ""},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        doc = set_platform_metrics(path, "legacy", "act_1", totals={"spend": 1.0})
+        assert doc.platforms["legacy"].account_id == "act_1"
+        # ...and the now-visible duplicate is reported by the shared join.
+        from mureo.context.platform_accounts import duplicate_account_entries
+
+        (group,) = duplicate_account_entries(doc.platforms)
+        assert group.platform_keys == ("google_ads", "legacy")
+
+    def test_upsert_campaign_rejects_a_repoint(self, tmp_path: Path) -> None:
+        path = tmp_path / "STATE.json"
+        set_platform_metrics(path, "google_ads", "act_2", totals={"spend": 1.0})
+        set_platform_metrics(path, "meta_ads", "act_1", totals={"spend": 1.0})
+        with pytest.raises(ValueError, match="google_ads"):
+            upsert_campaign(
+                path,
+                CampaignSnapshot(campaign_id="c1", campaign_name="C1", status="ACTIVE"),
+                platform="meta_ads",
+                account_id="act_2",
+            )
+        assert read_state_file(path).platforms["meta_ads"].account_id == "act_1"
+
+    def test_set_conversion_action_types_rejects_a_repoint(
+        self, tmp_path: Path
+    ) -> None:
+        from mureo.context.state import set_conversion_action_types
+
+        path = tmp_path / "STATE.json"
+        set_platform_metrics(path, "google_ads", "act_2", totals={"spend": 1.0})
+        set_platform_metrics(path, "meta_ads", "act_1", totals={"spend": 1.0})
+        with pytest.raises(ValueError, match="google_ads"):
+            set_conversion_action_types(path, "meta_ads", "act_2", ["lead"])
+        assert read_state_file(path).platforms["meta_ads"].account_id == "act_1"
+
+    def test_rejects_a_padded_key_on_create(self, tmp_path: Path) -> None:
+        """``" google_ads"`` is a distinct dict key from ``"google_ads"`` —
+        never intentional, and another route to two entries for one account."""
+        path = tmp_path / "STATE.json"
+        with pytest.raises(ValueError, match="surrounding whitespace"):
+            set_platform_metrics(path, " google_ads", "123", totals={"spend": 1.0})
+        assert not path.exists()
+
+    def test_a_padded_key_that_already_exists_stays_writable(
+        self, tmp_path: Path
+    ) -> None:
+        """Same create-vs-update rule as the duplicate guard: an operator
+        holding a padded entry must still be able to write to it (and the key
+        is never silently stripped — that would change what they see)."""
+        path = tmp_path / "STATE.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {" google_ads": {"account_id": "123"}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        doc = set_platform_metrics(path, " google_ads", "123", totals={"spend": 1.0})
+        assert doc.platforms[" google_ads"].totals == {"spend": 1.0}
+        assert set(doc.platforms) == {" google_ads"}
+
+    def test_an_unusable_key_that_already_exists_stays_writable(
+        self, tmp_path: Path
+    ) -> None:
+        """The create-vs-update rule covers EVERY key check, not just the
+        duplicate one — otherwise a bad key strands the operator holding it."""
+        path = tmp_path / "STATE.json"
+        path.write_text(
+            json.dumps(
+                {"version": "2", "platforms": {"plugin:": {"account_id": "123"}}}
+            ),
+            encoding="utf-8",
+        )
+        doc = set_platform_metrics(path, "plugin:", "123", totals={"spend": 1.0})
+        assert doc.platforms["plugin:"].totals == {"spend": 1.0}
+
+
+# ---------------------------------------------------------------------------
+# #534 — whole-document writes: detection, not enforcement
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestWholeDocumentDuplicateWarning:
+    """A writer that assembles a whole ``StateDocument`` and writes it wholesale
+    never touches the upsert helpers, so the create-time guard cannot see it.
+
+    ``write_state_file`` is the one funnel every such writer goes through
+    (``FilesystemStateStore.write_state`` included), so the duplicate is at
+    least made VISIBLE there. It must not reject: a document that already
+    contains a duplicate has to stay writable or the operator can never repair
+    it.
+    """
+
+    def _duplicated_doc(self) -> StateDocument:
+        return StateDocument(
+            version="2",
+            platforms={
+                "meta_ads": PlatformState(account_id="act_1"),
+                "plugin:mureo-logly-bridge": PlatformState(account_id="1"),
+            },
+        )
+
+    # The warn-once latch is reset by the session-wide autouse fixture in
+    # tests/conftest.py — see there for why it does not live on this class.
+
+    def test_warns_naming_both_keys_and_the_account(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        path = tmp_path / "STATE.json"
+        with caplog.at_level(logging.WARNING, logger="mureo.context.platform_guards"):
+            write_state_file(path, self._duplicated_doc())
+        (record,) = [r for r in caplog.records if r.levelno == logging.WARNING]
+        message = record.getMessage()
+        assert "meta_ads" in message
+        assert "plugin:mureo-logly-bridge" in message
+        assert "act_1" in message
+
+    def test_the_write_still_happens(self, tmp_path: Path) -> None:
+        """Detection, NOT enforcement — the document must land on disk."""
+        path = tmp_path / "STATE.json"
+        write_state_file(path, self._duplicated_doc())
+        assert set(read_state_file(path).platforms) == {
+            "meta_ads",
+            "plugin:mureo-logly-bridge",
+        }
+
+    def test_warns_once_per_process_per_group(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """This runs on every write; a per-call warning would flood the log."""
+        path = tmp_path / "STATE.json"
+        with caplog.at_level(logging.WARNING, logger="mureo.context.platform_guards"):
+            write_state_file(path, self._duplicated_doc())
+            write_state_file(path, self._duplicated_doc())
+            write_state_file(path, self._duplicated_doc())
+        assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
+
+    def test_a_different_group_still_warns(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The latch is per key-pair, so one warned pair cannot silence another."""
+        path = tmp_path / "STATE.json"
+        other = StateDocument(
+            version="2",
+            platforms={
+                "google_ads": PlatformState(account_id="999"),
+                "plugin:other": PlatformState(account_id="999"),
+            },
+        )
+        with caplog.at_level(logging.WARNING, logger="mureo.context.platform_guards"):
+            write_state_file(path, self._duplicated_doc())
+            write_state_file(path, other)
+        assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 2
+
+    def test_the_same_group_in_another_workspace_still_warns(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The latch is keyed by (path, group): an agency process serves many
+        workspaces, and one tenant's duplicate must not silence another's."""
+        one = tmp_path / "a" / "STATE.json"
+        two = tmp_path / "b" / "STATE.json"
+        with caplog.at_level(logging.WARNING, logger="mureo.context.platform_guards"):
+            write_state_file(one, self._duplicated_doc())
+            write_state_file(two, self._duplicated_doc())
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 2
+        assert str(one) in warnings[0].getMessage()
+        assert str(two) in warnings[1].getMessage()
+
+    def test_the_latch_is_bounded(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """It must not grow without bound in a long-lived multi-tenant process.
+        Clearing (rather than evicting) biases towards warning again, which is
+        the safe direction for a visibility feature."""
+        from mureo.context import platform_guards
+
+        cap = platform_guards._DUPLICATE_ACCOUNT_WARN_LATCH_MAX
+        with caplog.at_level(logging.WARNING, logger="mureo.context.platform_guards"):
+            for i in range(cap + 5):
+                write_state_file(
+                    tmp_path / str(i) / "STATE.json", self._duplicated_doc()
+                )
+        assert len(platform_guards._DUPLICATE_ACCOUNT_WARNED) <= cap
+
+    def test_a_clean_document_is_silent(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        path = tmp_path / "STATE.json"
+        doc = StateDocument(
+            version="2",
+            platforms={
+                "meta_ads": PlatformState(account_id="act_1"),
+                "google_ads": PlatformState(account_id="999"),
+                "legacy": PlatformState(account_id=""),
+            },
+        )
+        with caplog.at_level(logging.WARNING, logger="mureo.context.platform_guards"):
+            write_state_file(path, doc)
+        assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
+    def test_the_store_write_state_path_is_covered(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The observed producer writes a whole document through the store."""
+        from mureo.core.state_store import FilesystemStateStore
+
+        store = FilesystemStateStore(workspace=tmp_path)
+        with caplog.at_level(logging.WARNING, logger="mureo.context.platform_guards"):
+            store.write_state(self._duplicated_doc())
+        assert [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert set(store.read_state().platforms) == {
+            "meta_ads",
+            "plugin:mureo-logly-bridge",
+        }
+
 
 # ---------------------------------------------------------------------------
 # #468 — ad-level state

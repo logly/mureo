@@ -400,6 +400,16 @@ and/or `periods` for the per-window map. `periods` is merged per window key, so
 writing `YESTERDAY` never clobbers a prior `LAST_30_DAYS` bucket (and vice
 versa); omitted fields preserve their existing value.
 
+**One ad account, one platform key.** The rollup is written under the
+`platforms` key you pass, and the reporting view sums every entry — so an
+account stored under two keys double-counts spend, conversions and CPA. Pass
+the key the account is already stored under; a write that would create a
+*second* key for an `account_id` another key already holds is rejected, naming
+both keys. Existing entries are never merged or deleted (they usually hold
+different partial figures), so writes to a key that already exists always
+succeed and reconciling a duplicated document stays the operator's call. See
+`../_mureo-shared/SKILL.md` → *STATE.json Schema*.
+
 ### Reports section
 
 `reports` (top-level, optional) holds the latest agent-written summary per

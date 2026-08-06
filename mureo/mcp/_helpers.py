@@ -58,10 +58,18 @@ async def _close_clients(bucket: list[Any]) -> None:
 
 
 def _require(arguments: dict[str, Any], key: str) -> Any:
-    """Retrieve a required parameter. Raises ValueError if missing."""
+    """Retrieve a required parameter. Raises ValueError if missing or empty.
+
+    The two cases get distinct messages (#534): "not specified" is misleading
+    for a parameter that WAS specified as ``""``, and it sends the caller
+    looking for a missing argument instead of an empty one. Both still fail
+    before any write.
+    """
     value = arguments.get(key)
-    if value is None or value == "":
+    if value is None:
         raise ValueError(f"Required parameter {key} is not specified")
+    if value == "":
+        raise ValueError(f"Required parameter {key} must not be empty")
     return value
 
 

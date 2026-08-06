@@ -7,6 +7,129 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A write can no longer create a second STATE.json entry for one ad account**
+  (#534). The `platforms` map is keyed by a free-form string and the write path
+  resolved the target by **key only** — `account_id` was written but never
+  consulted. A writer using a different spelling of the same platform (an
+  agent's key versus an automated writer's) therefore added a *second* entry
+  for one real ad account, with no error, no warning and no log line. The
+  reporting view sums every entry, so spend, conversions and CPA all inflate
+  together (#533).
+
+  A write that would leave the document holding **two keys for one account** is
+  now rejected with an error naming both keys and the account. The guard sits
+  in the state layer (`upsert_campaign`, `set_platform_metrics`,
+  `set_conversion_action_types` — all three share the same key-only
+  get-then-overwrite shape), not only in the MCP handler, so it covers a skill
+  writing through the tools and a direct in-process caller alike. It runs
+  inside the state lock against the document just read, so a rejection happens
+  before any write.
+
+  Note that "would create a duplicate" is **not** "the target key is absent":
+  reusing an existing key while changing which account it points at
+  manufactures a new duplicate just as surely. The rule therefore branches on
+  what the entry already says:
+
+  - the key **does not exist** — refuse if another key already holds the
+    account (and validate the key's shape);
+  - the key exists and its stored id **matches** the incoming one — a plain
+    update, allowed (`act_`-tolerant, so re-writing `123456` as `act_123456`
+    is still an update);
+  - the key exists and its stored id is **unknown** (`""`) — allowed, *even if
+    another key already holds the incoming account*. Stamping an identity onto
+    an entry that had none cannot create a real-world duplicate: if the two
+    keys really are one account, that was already true and merely invisible.
+    The write is what makes it detectable, and therefore repairable — so this
+    path stays open by design;
+  - the key exists and its stored id is **known and different** — a re-point:
+    refused if another key already holds the incoming account, allowed if
+    nobody does (an operator legitimately switching which account a platform
+    tracks).
+
+  The thread through all four: refuse to create a new problem, never strand an
+  operator who already has one. Which is also why:
+
+  - **A write to a key that already exists is never refused on the key's
+    shape**, even in a document that already carries a duplicate pair, a
+    padded key or an unusable one. An operator whose state is already bad must
+    still be able to sync.
+  - **Nothing is merged or deleted.** In the observed case the two entries held
+    different *partial* figures, so dropping either under-counts as much as
+    summing over-counts; reconciliation is the operator's call.
+  - **`account_id = ""` is never a join key.** The tolerant read path
+    synthesizes it for a missing field, so it means "unknown" — it neither
+    triggers the rejection nor matches another empty id. A bare-numeric id and
+    its `act_`-prefixed form are recognised as the same account.
+  - **The key you pass is never rewritten.** A key that claims the plugin
+    namespace but carries no distribution (a bare `plugin:`), or one with
+    surrounding whitespace (`" google_ads"` — a different key from
+    `google_ads`, and another route to a duplicate), is rejected on create
+    rather than repaired: nothing on the write path can tell a bare
+    distribution name from a built-in key, so silently canonicalizing would
+    fabricate one — and rewriting the key an operator sees in STATE.json and on
+    the dashboard is the same class of silent divergence this guard exists to
+    stop.
+
+  A writer that assembles a **whole** `StateDocument` and writes it wholesale
+  (`StateStore.write_state`) never calls those three functions, so the
+  create-time guard cannot see it — and it could not reject there anyway: a
+  whole-document write carries no notion of which entry is new, and refusing
+  would lock an operator out of repairing their own file. `write_state_file`,
+  the funnel every such writer passes through, now **logs a warning** naming
+  both keys and the account instead, once per process per pair. Detection, not
+  enforcement — the write always proceeds.
+
+  The join itself is defined **once**, in the new
+  `mureo.context.platform_accounts` (`normalize_account_id`,
+  `account_ids_match`, `platform_keys_for_account`,
+  `duplicate_account_entries`), and shared by the write guards, the read-only
+  Reports view and out-of-tree writers. Its empty-id and `act_`-prefix rules
+  are easy to get subtly wrong, and a private copy that drifts re-creates the
+  bug.
+
+  Known limit, documented in `docs/strategy-context.md`: the join is on
+  `account_id` alone across all keys — it must be, since the bug is one account
+  under two *different* platform keys — so two genuinely different platforms
+  that happen to share an identifier string are reported as a duplicate and the
+  second cannot be created through the API. That trade is deliberate (a clear,
+  recoverable setup-time failure beats silently double-counting real money);
+  the escape is to add the second entry by hand, after which every write to
+  either key succeeds.
+
+  All three state-write tool schemas were tightened on the same surface:
+  `platform` and `account_id` declare `minLength: 1` (not an `enum` — that
+  would reject a valid `plugin:<dist>` key) and the `platform` description
+  states the one-account-one-key rule.
+  `mureo_state_platform_metrics_set` additionally names `tiktok_ads`, a
+  first-class key the reporting view already treats as one. An MCP client that
+  passes an explicit `account_id: ""` now gets
+  `Invalid arguments for <tool>: at 'account_id': '' should be non-empty` from
+  the dispatcher's schema gate, instead of the misleading
+  `Required parameter account_id is not specified` — misleading because the
+  parameter *was* specified. (The handler-level check behind that gate was
+  corrected to say `must not be empty` as well; it is what a caller invoking a
+  handler directly, outside the schema gate, sees.) Both paths still fail
+  before any write.
+
+- **A conversion-action-type override no longer applies to every ad account**
+  (#536). The account guard in `load_conversion_action_types` was
+  falsy-collapsing (`entry.account_id and account_id and not …`): when the
+  stored `account_id` was empty the whole chain went falsy, the `return None`
+  was skipped, and the override was returned for **any** account on that
+  platform in the workspace — and symmetrically, a caller passing `""` received
+  another account's override. An empty id is reachable because the tolerant
+  read path synthesizes `""` for a missing `account_id`, so a hand-authored or
+  externally written STATE.json gets there.
+
+  An unknown id on either side now fails closed and yields `None`. That
+  direction is the safe one: the override redefines *what counts as a
+  conversion* for an account, so wrongly applying one silently miscounts an
+  unrelated account's CV and CPA, while falling back to the documented built-in
+  generic set is visible and expected. The docstring, which described a match
+  the code did not perform, was corrected too.
+
 ## [0.10.40] - 2026-08-06
 
 ### Added

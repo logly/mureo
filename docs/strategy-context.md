@@ -189,6 +189,96 @@ the reporting dashboard's label lookup, and `mureo_analytics_modules_list` /
 under another is a silent join failure; see
 `skills/_mureo-shared/SKILL.md` → *Canonical platform key*.
 
+**One ad account has exactly one platform key.** The `platforms` map is keyed
+by a free-form string, so two spellings of the same platform would otherwise
+produce two entries for one real ad account — and the reporting view sums
+every entry, inflating spend, conversions and CPA together. The STATE.json
+write path therefore rejects a write that would **create** a second key for an
+`account_id` another key already holds, with an error naming both keys and the
+account. It applies to every writer that goes through `upsert_campaign`,
+`set_platform_metrics` or `set_conversion_action_types`, MCP or not.
+
+"Would create a duplicate" is **not** "the key does not exist yet" — reusing a
+key while changing which account it points at manufactures a new duplicate just
+as surely. What happens depends on what the entry already says:
+
+| Existing entry | Incoming `account_id` | Result |
+|----------------|------------------------|--------|
+| absent | held by another key | **rejected** (create) |
+| absent | free | created |
+| same account (`act_`-tolerant) | — | plain update |
+| no `account_id` (`""`) | free | id stamped on |
+| no `account_id` (`""`) | held by another key | **allowed** — see below |
+| different known account | held by another key | **rejected** (re-point) |
+| different known account | free | re-pointed |
+
+The `""` row is deliberate and is not a loophole. An entry with no
+`account_id` does not yet claim any account, so stamping one onto it cannot
+create a real-world duplicate: if the two keys really are one account, that was
+already true and merely invisible. Allowing the write is what makes the
+duplicate *detectable* — and therefore fixable. Rejecting it would block the
+very write that reveals the problem.
+
+**A write to a key that already exists is never refused on the key's shape** —
+including a whitespace-padded key or an unusable one. An operator holding bad
+state must be able to keep syncing, or the guard becomes a trap they cannot
+escape.
+
+Three things it deliberately does **not** do:
+
+- It never rewrites the key you passed. A key that claims the plugin namespace
+  but carries no distribution (a bare `plugin:`) is rejected rather than
+  repaired, because nothing can tell a bare distribution name from a built-in
+  key — silently canonicalizing would fabricate one. A key with surrounding
+  whitespace (`" google_ads"`, a different key from `google_ads` and another
+  route to a duplicate) is likewise rejected on create rather than stripped.
+- It never merges or deletes an existing entry. The two halves of a duplicate
+  typically hold different *partial* figures, so dropping either under-counts
+  as much as summing over-counts; reconciling them is the operator's call.
+- It cannot reject on a **whole-document** write. A writer that assembles a
+  complete `StateDocument` and writes it wholesale (`StateStore.write_state`)
+  carries no notion of which entry is new, so there is nothing to refuse —
+  and refusing would lock an operator out of repairing their own file. Such a
+  write instead logs a **warning** naming both keys and the account, once per
+  process per pair. Detection, not enforcement.
+
+An `account_id` of `""` means **unknown**: it is never a join key, so it
+neither triggers this rejection nor matches another empty id.
+
+#### If your two platforms genuinely share an account id
+
+The join is on `account_id` alone, across all keys — it has to be, because the
+whole point is to catch one account stored under two *different* platform keys.
+So if you really do operate two different platforms whose account identifiers
+happen to be the same string, mureo will refuse to create the second entry and
+report them as a duplicate.
+
+This is a deliberate trade: a clear, recoverable failure at setup time is
+cheaper than silently double-counting real money on a client card at every
+sync. There is no override flag. To proceed, add the second `platforms` entry
+by hand in STATE.json — once both keys exist, every subsequent write to either
+succeeds, because the guard only ever refuses a *create*. The duplicate warning
+described above will keep appearing once per process; that is the honest signal
+that mureo cannot tell your case apart from the bug.
+
+#### The shared join
+
+The one-account-one-key rule is defined once, in
+`mureo.context.platform_accounts`, and consumed by the write guards, the
+read-only Reports view and out-of-tree writers alike:
+
+| Function | Use |
+|----------|-----|
+| `normalize_account_id(account_id)` | Fold an id to its join form (strips surrounding space and an optional `act_` prefix, case-insensitive on the prefix only). `None` / empty folds to `""`; a non-string is folded textually rather than raising |
+| `account_ids_match(a, b)` | Same **known** account? `False` whenever either side is unknown — including `("", "")` |
+| `platform_keys_for_account(platforms, account_id)` | Every key that already describes this account, in document order |
+| `duplicate_account_entries(platforms)` | One `DuplicateAccountEntry(account_id, platform_keys)` per account held under two or more keys |
+
+If you write STATE.json from outside mureo, call `duplicate_account_entries`
+on the `platforms` map you assembled **before** writing it. Do not reimplement
+the comparison — the empty-id and `act_` rules are easy to get subtly wrong,
+and a private copy that drifts re-creates the bug.
+
 ### Fields
 
 #### Root

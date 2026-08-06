@@ -328,8 +328,26 @@ shows fewer campaigns than you wrote — get these exact names right:
   `device_targeting`, and `metrics` (the per-campaign performance object:
   `spend` / `impressions` / `clicks` / `conversions` / `cpa` / `ctr` / …).
 - **Platform entry** (`platforms[<platform>]`) — required: `account_id` (str;
-  use `""` only if genuinely unknown). Plus `campaigns[]` and the rollups the
-  dashboard actually renders: `totals`, `metrics_period`, `periods[<window>]`.
+  use `""` only if genuinely unknown — an empty id is treated as *unknown*
+  everywhere, so it never joins with another entry and never matches a
+  per-account override). Plus `campaigns[]` and the rollups the dashboard
+  actually renders: `totals`, `metrics_period`, `periods[<window>]`.
+  **One ad account has exactly one platform key.** Before writing an entry,
+  check whether that `account_id` is already stored under a *different* key
+  and write to that key instead — the reporting view sums every entry, so two
+  keys for one account inflate spend / conversions / CPA together. The
+  `mureo_state_*` write tools now **reject** a write that would create the
+  second key (naming both keys and the account); on the Code `Write` path the
+  same rule is yours to honour, and a wholesale `Write` that lands a duplicate
+  is logged as a warning rather than blocked. Pass the key exactly — a key with
+  surrounding whitespace (`" google_ads"`) is a *different* key, and is
+  rejected on create rather than silently stripped. If a document already
+  carries the duplicate pair, writes to the *existing* keys still succeed —
+  mureo never merges or deletes an entry, because the two typically hold
+  different partial figures; reconciling them is the operator's call. Changing
+  an existing key's `account_id` to one another key already holds is rejected
+  for the same reason (it creates the duplicate just as surely); pointing a
+  key at an account nobody else holds is fine.
 - **Top-level** — required: `last_synced_at` (ISO-8601 string, **stamped to
   _now_** by every campaign/metrics/report write). It drives the dashboard's
   "Synced N ago" freshness; a missing or stale value makes the data read as
