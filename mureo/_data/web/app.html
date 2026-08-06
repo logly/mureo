@@ -201,6 +201,17 @@
               <div class="dashboard-reports-clients" data-reports-clients
                    role="list" aria-label="Clients" hidden></div>
 
+              <!-- Archived clients. Un-archiving has to be reachable from
+                   this screen: if the only way back were editing the client
+                   registry by hand, archiving would be a trap. Collapsed and
+                   unobtrusive, and shown only when the registry reports at
+                   least one archived client. -->
+              <details class="reports-archived" data-reports-archived hidden>
+                <summary data-reports-archived-summary></summary>
+                <p class="muted" data-i18n="dashboard.reports_archived_hint">Archived clients are not synced, so no figures are collected while they are archived. Restoring one resumes collection from that point; the gap is not backfilled.</p>
+                <ul class="reports-archived-list" data-reports-archived-list></ul>
+              </details>
+
               <!-- DETAIL view: one client's full report. -->
               <div class="dashboard-reports-detail" data-reports-detail hidden>
                 <!-- Selected client name (multi-client / Agency only). -->

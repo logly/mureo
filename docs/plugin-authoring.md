@@ -2550,6 +2550,76 @@ to the **active tenant's** store (#511). Anything non-callable
 resolves to `None` and the bridge falls back to its default writer: a
 mistype must not break the refresh path.
 
+### The `StateStore` client registry — Reports across many clients
+
+The capabilities above hang off your `SecretStore`. One more family hangs
+off your **`StateStore`**, and it is what turns the configure-UI's Reports
+tab from a single-workspace view into a client index. All three are
+optional and read defensively (`getattr` + `callable`), so a store that
+declares none of them keeps the OSS single-workspace behaviour exactly.
+
+| Method | Returns | Consulted by |
+|---|---|---|
+| `list_clients()` | `list[dict]` — one row per selectable client | `mureo.web.report_clients.list_report_clients` |
+| `state_store_for_client(slug)` | the `StateStore` to read for that client | `mureo.web.report_clients.state_store_for_client` |
+| `set_client_archived(slug, archived)` | `None` | `mureo.web.report_clients.set_report_client_archived` |
+
+Each `list_clients()` row is normalized to
+`{slug, name, active, archived}`:
+
+- `slug` (required, non-empty) identifies the client everywhere else;
+  a row without one is dropped.
+- `name` defaults to the slug.
+- `active` and `archived` default to `False`, and a non-bool value is
+  coerced rather than raising — a backend that writes `"yes"` or `1` still
+  renders. `list_clients()` raising, or returning a non-list, is treated
+  as "no seam at all": a backend bug must not blank out the picker.
+
+#### `archived` — a decision about the client, not a view preference
+
+An archived client is off the Reports index and no summary is fetched for
+it. That is the *visible* half; the half that matters is that **your**
+digest / sync process must stop collecting that client's figures while the
+flag is set. mureo cannot do that for you — it only records the decision
+through `set_client_archived` and renders the consequence honestly: the
+confirmation the operator sees says the figures are not collected while
+archived and that un-archiving does not backfill the gap. Do not
+re-interpret the flag as "hide from the list"; the wording in the UI would
+then be a lie.
+
+Un-archiving is reachable from the same screen (a disclosure listing the
+archived clients), so an operator can always undo it without hand-editing
+your registry.
+
+#### No `set_client_archived`, no archive control
+
+`GET /api/reports/clients` advertises the capability as `can_archive`, and
+the dashboard renders the archive control **only** when it is `true` — not
+rendered-and-disabled. An OSS-only single-workspace install has no client
+registry to record the decision in, so it never shows the control at all
+and is completely unaffected by this feature. A mistyped declaration (a
+plain attribute rather than a method) reads as absent for the same reason
+every other capability does: the value must be callable.
+
+`POST /api/reports/clients/archive` relays `{slug, archived}` to your seam.
+`archived` must be a real JSON boolean: a missing field or a non-bool is
+refused with `400 {"error": "archived_required"}` and your seam is never
+called. It is validated rather than coerced because it decides whether a
+client's figures get collected at all — `bool("false")` is `True`, so
+coercion would archive a client whose caller meant the opposite, and a
+defaulted-to-`False` missing field would silently resume collection.
+Reject a non-bool on your side too; the two halves of this contract must
+agree about what `archived: "false"` means.
+
+A seam that raises is logged server-side and answered with a plain
+`400 {"error": "archive_failed"}` — your exception's message never reaches
+the browser. A blank slug is `400 {"error": "slug_required"}`.
+
+Card **order** on the index is deliberately *not* part of this seam. It is
+per-operator and browser-local (`localStorage`): purely visual, and two
+operators sharing one deployment reasonably want different orders, so it
+is never imposed through the backend.
+
 ### Minimal example
 
 ```python

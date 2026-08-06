@@ -2067,7 +2067,16 @@
   // stays on "detail". The last-fetched client list is cached so a back /
   // period re-render does not need to re-resolve it.
   let reportsView = "index";
+  // EVERY client the registry returned, archived ones included. The index
+  // renders only the visible ones, but the routing decision counts them all
+  // — see renderReports().
   let reportsClients = [];
+
+  // Whether the backing client registry can record an archive decision
+  // (`can_archive` off /api/reports/clients). False on an OSS-only install:
+  // there is no registry there, so the control is not rendered AT ALL rather
+  // than rendered and inert.
+  let reportsCanArchive = false;
 
   // Monotonic render generation (mirrors renderPluginCredentials #223):
   // the section clears then awaits a fetch, so an interleaved re-render
@@ -2601,12 +2610,254 @@
     return cell;
   }
 
+  // --------------------------------------------------------------------
+  // Index card order (per operator, in this browser)
+  //
+  // The order is PURELY visual: losing it breaks nothing, and two operators
+  // sharing one install reasonably want different orders. So it is
+  // localStorage, not server state — server state would impose one
+  // operator's arrangement on everyone. Archiving is the opposite kind of
+  // decision and is deliberately NOT stored here (see setReportsClientArchived).
+  // --------------------------------------------------------------------
+  const REPORTS_ORDER_KEY = "mureo.reports.client_order";
+
+  // The stored order, or [] on ANY problem (storage disabled, corrupt JSON,
+  // a non-array body, non-string members). An unusable order must degrade to
+  // the server's order — never to an empty grid.
+  function readReportsOrder() {
+    try {
+      const raw = window.localStorage.getItem(REPORTS_ORDER_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(function (s) {
+        return typeof s === "string" && s;
+      });
+    } catch (_e) {
+      return []; // storage unavailable or corrupt — fall back to server order
+    }
+  }
+
+  function writeReportsOrder(slugs) {
+    try {
+      window.localStorage.setItem(REPORTS_ORDER_KEY, JSON.stringify(slugs));
+    } catch (_e) {
+      /* storage unavailable — the order stays for this render only */
+    }
+  }
+
+  // Apply the stored order to `rows`. Stored slugs that no longer exist are
+  // simply never matched, so they cost nothing; clients the stored order has
+  // never seen keep their server order and are appended LAST.
+  //
+  // Last, not first: the grid is curated on purpose, and a client the
+  // operator has never placed must not displace the top of it on every
+  // onboarding. Its position is defined and findable, and one drag fixes it.
+  function orderReportsClients(rows) {
+    const order = readReportsOrder();
+    const placed = [];
+    const fresh = [];
+    rows.forEach(function (c) {
+      const slug = c && c.slug ? c.slug : "";
+      if (slug && order.indexOf(slug) !== -1) placed.push(c);
+      else fresh.push(c);
+    });
+    placed.sort(function (a, b) {
+      return order.indexOf(a.slug) - order.indexOf(b.slug);
+    });
+    return placed.concat(fresh);
+  }
+
+  // Persist the grid's CURRENT DOM order. The DOM is the single source of
+  // truth for both the drop handler and the keyboard path, so the two can
+  // never disagree. Only the cards on screen are recorded: an archived
+  // client leaves the stored order and returns as an unplaced (last) card
+  // when it is restored.
+  function persistReportsOrderFromDom(wrap) {
+    const slugs = [];
+    Array.prototype.forEach.call(wrap.children, function (node) {
+      const slug = node.getAttribute ? node.getAttribute("data-client") : null;
+      if (slug) slugs.push(slug);
+    });
+    writeReportsOrder(slugs);
+  }
+
+  // Move one card `delta` slots and persist. Moving the existing node (rather
+  // than re-rendering the grid) keeps focus on the control the operator is
+  // holding, so repeated arrow presses just work.
+  function moveReportsCard(node, delta) {
+    const wrap = node.parentNode;
+    if (!wrap) return;
+    const items = Array.prototype.slice.call(wrap.children);
+    const from = items.indexOf(node);
+    const to = from + delta;
+    if (from === -1 || to < 0 || to >= items.length) return;
+    if (delta < 0) wrap.insertBefore(node, items[to]);
+    else wrap.insertBefore(node, items[to].nextSibling);
+    persistReportsOrderFromDom(wrap);
+  }
+
+  // The card being dragged, held as the NODE (never as a slug fed back into
+  // a selector — a client slug is registry-controlled text).
+  let reportsDragNode = null;
+
+  function wireReportsCardDrag(item, wrap) {
+    item.draggable = true;
+    item.addEventListener("dragstart", function (ev) {
+      reportsDragNode = item;
+      item.classList.add("is-dragging");
+      if (ev.dataTransfer) {
+        ev.dataTransfer.effectAllowed = "move";
+        // Some browsers cancel a drag that carries no payload.
+        try {
+          const slug = item.getAttribute("data-client") || "";
+          ev.dataTransfer.setData("text/plain", slug);
+        } catch (_e) {
+          /* payload optional */
+        }
+      }
+    });
+    item.addEventListener("dragend", function () {
+      reportsDragNode = null;
+      item.classList.remove("is-dragging");
+    });
+    item.addEventListener("dragover", function (ev) {
+      if (!reportsDragNode || reportsDragNode === item) return;
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+    });
+    item.addEventListener("drop", function (ev) {
+      if (!reportsDragNode || reportsDragNode === item) return;
+      ev.preventDefault();
+      const items = Array.prototype.slice.call(wrap.children);
+      const from = items.indexOf(reportsDragNode);
+      const to = items.indexOf(item);
+      if (from === -1 || to === -1) return;
+      if (from < to) wrap.insertBefore(reportsDragNode, item.nextSibling);
+      else wrap.insertBefore(reportsDragNode, item);
+      persistReportsOrderFromDom(wrap);
+    });
+  }
+
+  // The drag handle. It is a real button so it is reachable by keyboard, and
+  // the arrow keys move the card — a reorder control that only a mouse can
+  // work excludes operators who do not use one. Both paths end in
+  // moveReportsCard, so mouse and keyboard can never drift apart.
+  function buildReportsDragHandle(item, name) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "reports-client-drag";
+    btn.setAttribute("data-reports-drag-handle", "");
+    btn.setAttribute(
+      "aria-label",
+      MUREO.t("dashboard.reports_reorder_handle", { name: name })
+    );
+    btn.title = MUREO.t("dashboard.reports_reorder_hint");
+    btn.textContent = "⠿";
+    btn.addEventListener("keydown", function (ev) {
+      let delta = 0;
+      if (ev.key === "ArrowUp" || ev.key === "ArrowLeft") delta = -1;
+      else if (ev.key === "ArrowDown" || ev.key === "ArrowRight") delta = 1;
+      if (!delta) return;
+      ev.preventDefault();
+      moveReportsCard(item, delta);
+      btn.focus();
+    });
+    return btn;
+  }
+
+  // --------------------------------------------------------------------
+  // Archiving (server-side — see mureo/web/reports.py)
+  // --------------------------------------------------------------------
+  function isArchivedClient(c) {
+    return !!(c && c.archived);
+  }
+
+  function visibleReportsClients() {
+    return reportsClients.filter(function (c) {
+      return !isArchivedClient(c);
+    });
+  }
+
+  function archivedReportsClients() {
+    return reportsClients.filter(isArchivedClient);
+  }
+
+  // Relay the decision to the client registry. Archiving is NOT a view
+  // preference: while it is set, that client's figures are never collected,
+  // so a browser-local flag could not reach the process that does the
+  // collecting. On success the whole view is re-rendered from the server's
+  // answer rather than from an optimistic local edit.
+  async function setReportsClientArchived(slug, archived) {
+    let res = null;
+    try {
+      res = await MUREO.postJson("/api/reports/clients/archive", {
+        slug: slug,
+        archived: archived,
+      });
+    } catch (_err) {
+      res = null;
+    }
+    if (!res || !res.ok || !res.body || res.body.status === "error") {
+      MUREO.toast(MUREO.t("dashboard.reports_archive_failed"), "error");
+      return;
+    }
+    reportsView = "index";
+    renderReports();
+  }
+
+  function buildReportsArchiveButton(slug, name) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "reports-client-archive";
+    btn.setAttribute(
+      "aria-label",
+      MUREO.t("dashboard.reports_archive_label", { name: name })
+    );
+    btn.textContent = MUREO.t("dashboard.reports_archive_action");
+    btn.addEventListener("click", async function () {
+      // The confirmation states the real consequence — figures stop being
+      // collected and the gap is never backfilled — not "hide from view".
+      const ok = await MUREO.confirmAction(
+        MUREO.t("dashboard.reports_archive_confirm", { name: name })
+      );
+      if (!ok) return;
+      await setReportsClientArchived(slug, true);
+    });
+    return btn;
+  }
+
+  // One grid cell: the card button plus its controls. The controls live
+  // OUTSIDE the card because the card IS a button, and a button may not nest
+  // interactive children.
+  function buildClientCardItem(client, summary, wrap) {
+    const slug = client && client.slug ? client.slug : "";
+    const name = (client && (client.name || client.slug)) || "";
+    const item = document.createElement("div");
+    item.className = "reports-client-card-item";
+    item.setAttribute("role", "listitem");
+    item.setAttribute("data-client", slug);
+    item.appendChild(buildClientCard(client, summary));
+
+    const tools = document.createElement("div");
+    tools.className = "reports-client-tools";
+    tools.appendChild(buildReportsDragHandle(item, name));
+    // No registry, no archive control: an OSS-only single-workspace install
+    // has nowhere to record the decision, and must be completely unaffected.
+    if (reportsCanArchive && slug) {
+      tools.appendChild(buildReportsArchiveButton(slug, name));
+    }
+    item.appendChild(tools);
+
+    wireReportsCardDrag(item, wrap);
+    return item;
+  }
+
   function buildClientCard(client, summary) {
     const slug = client && client.slug ? client.slug : "";
     const card = document.createElement("button");
     card.type = "button";
     card.className = "reports-client-card";
-    card.setAttribute("role", "listitem");
     card.setAttribute("data-client", slug);
 
     const head = document.createElement("div");
@@ -2729,6 +2980,10 @@
     const nameEl = document.querySelector("[data-reports-detail-client]");
     if (index) index.hidden = view !== "index";
     if (detail) detail.hidden = view !== "detail";
+    // The archived list belongs to the index; renderReportsIndex un-hides it
+    // again when there is something to list.
+    const archived = document.querySelector("[data-reports-archived]");
+    if (archived && view !== "index") archived.hidden = true;
     // The back link (under the "Reports" heading) and the client-name heading
     // appear only in a multi-client detail view — an OSS single client has no
     // index to go back to and no sibling to disambiguate.
@@ -2743,7 +2998,9 @@
   async function renderReportsIndex(seq) {
     const wrap = document.querySelector("[data-reports-clients]");
     if (!wrap) return;
-    const rows = reportsClients;
+    // Archived clients are off the grid entirely (and no summary is fetched
+    // for them), then the operator's own order is applied.
+    const rows = orderReportsClients(visibleReportsClients());
     const summaries = await Promise.all(
       rows.map(function (c) {
         return fetchClientCardSummary(c && c.slug ? c.slug : "");
@@ -2757,8 +3014,20 @@
     if (freshness) freshness.textContent = "";
     wrap.textContent = "";
     rows.forEach(function (c, i) {
-      wrap.appendChild(buildClientCard(c, summaries[i]));
+      wrap.appendChild(buildClientCardItem(c, summaries[i], wrap));
     });
+    if (!rows.length) {
+      // Every client archived: say so, and leave the disclosure below as the
+      // way back — an empty grid with no explanation reads as a broken view.
+      const note = document.createElement("p");
+      note.className = "reports-clients-empty";
+      // The grid is role="list"; keep its children listitems so the message
+      // is announced rather than dropped as an out-of-structure child.
+      note.setAttribute("role", "listitem");
+      note.textContent = MUREO.t("dashboard.reports_all_archived");
+      wrap.appendChild(note);
+    }
+    renderReportsArchived();
     // Period toggle from the union of windows any client advertises.
     const union = [];
     summaries.forEach(function (s) {
@@ -2767,6 +3036,53 @@
       });
     });
     renderReportsPeriodToggle(union);
+  }
+
+  // The archived-clients disclosure under the index. Un-archiving has to be
+  // reachable from THIS screen: if the only way back were editing the client
+  // registry by hand, archiving would be a trap. It does not need to be
+  // prominent, so it is a collapsed <details> that appears only when there is
+  // something in it.
+  function renderReportsArchived() {
+    const box = document.querySelector("[data-reports-archived]");
+    const list = document.querySelector("[data-reports-archived-list]");
+    const summary = document.querySelector("[data-reports-archived-summary]");
+    if (!box || !list) return;
+    const rows = archivedReportsClients();
+    box.hidden = !rows.length;
+    list.textContent = "";
+    if (!rows.length) return;
+    if (summary) {
+      summary.textContent = MUREO.t("dashboard.reports_archived_title", {
+        n: rows.length,
+      });
+    }
+    rows.forEach(function (c) {
+      const slug = c && c.slug ? c.slug : "";
+      const name = (c && (c.name || c.slug)) || "";
+      const row = document.createElement("li");
+      row.className = "reports-archived-row";
+      const label = document.createElement("span");
+      label.className = "reports-archived-name";
+      // Registry-controlled text — textContent, never innerHTML (#533).
+      label.textContent = name;
+      row.appendChild(label);
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "reports-archived-restore";
+      restore.setAttribute(
+        "aria-label",
+        MUREO.t("dashboard.reports_archive_restore_label", { name: name })
+      );
+      restore.textContent = MUREO.t("dashboard.reports_archive_restore");
+      // No confirmation: restoring resumes collection, which is the safe
+      // direction. It still cannot recover the period that was missed.
+      restore.addEventListener("click", function () {
+        setReportsClientArchived(slug, false);
+      });
+      row.appendChild(restore);
+      list.appendChild(row);
+    });
   }
 
   // DETAIL view: one client's full report (per-platform KPIs, latest report,
@@ -2909,9 +3225,17 @@
 
   // Entry point: fetch the client list, then show the right view. Re-runnable
   // (tab open, locale / period change, navigation). Routing:
-  //   • 0–1 client (OSS)  → detail of the single client; no index, no back.
-  //   • >1 client (Agency) → keep the current view across re-renders, defaulting
-  //     to the index on first entry (or when the selected client disappears).
+  //   • 0–1 client, none archived (OSS) → detail of the single client; no
+  //     index, no back.
+  //   • otherwise (Agency) → keep the current view across re-renders,
+  //     defaulting to the index on first entry (or when the selected client
+  //     disappears or is archived).
+  //
+  // The routing decision counts the WHOLE registry, archived rows included.
+  // Counting only the visible ones would drop an operator who archived down
+  // to one client into that client's detail view — and the index is the only
+  // place an archived client can be restored from, so the feature would trap
+  // them. A registry that has ever held more than one client keeps its index.
   async function renderReports() {
     const cards = document.querySelector("[data-reports-cards]");
     if (!cards) return;
@@ -2919,8 +3243,9 @@
     const body = await fetchReportsJson("/api/reports/clients");
     if (seq !== reportsRenderSeq) return;
     reportsClients = body && Array.isArray(body.clients) ? body.clients : [];
+    reportsCanArchive = !!(body && body.can_archive);
 
-    if (reportsClients.length <= 1) {
+    if (reportsClients.length <= 1 && !archivedReportsClients().length) {
       // OSS single workspace: no index page — open the detail directly.
       // showReportsClientDetail() sets the view + syncs the DOM.
       reportsActiveClient = defaultClientSlug(reportsClients);
@@ -2928,9 +3253,12 @@
       return;
     }
 
+    // An archived client is not a live selection: archiving the one on screen
+    // returns the operator to the index rather than leaving them on a detail
+    // view for a client that is no longer being collected.
     const selectionAlive =
       reportsActiveClient &&
-      reportsClients.some(function (c) {
+      visibleReportsClients().some(function (c) {
         return c && c.slug === reportsActiveClient;
       });
     if (reportsView === "detail" && selectionAlive) {

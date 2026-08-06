@@ -55,7 +55,7 @@ def _reset_ctx() -> Iterator[None]:
 
 def _use_workspace(monkeypatch: pytest.MonkeyPatch, workspace: Path) -> None:
     ctx = default_runtime_context(workspace=workspace)
-    monkeypatch.setattr("mureo.web.reports.get_runtime_context", lambda: ctx)
+    monkeypatch.setattr("mureo.web.report_clients.get_runtime_context", lambda: ctx)
 
 
 def _write_state(workspace: Path, doc: StateDocument) -> None:

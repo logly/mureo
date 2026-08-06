@@ -19,20 +19,14 @@ no synced metrics still appears (totals empty), so a bridge shows up as
 
 Multi-account (Agency) seam
 ---------------------------
-:func:`list_report_clients` and the per-client STATE.json resolution are
-defined against a small capability seam on the active ``StateStore``:
-
-- ``list_clients()`` → the selectable clients (an Agency backend plugs in
-  here). Absent (OSS default) → exactly one client for the active
-  workspace.
-- ``state_store_for_client(slug)`` → the ``StateStore`` for a non-default
-  client (Agency backend). Absent → the active store is used regardless of
-  the requested client, so a single-account OSS install works today and an
-  Agency backend can plug in multiple clients later without touching this
-  module's call sites.
-
-Both seams are read defensively (``getattr`` + ``callable``); a store that
-does not advertise them keeps the standalone single-workspace behaviour.
+Which clients exist, and which ``StateStore`` to read for one of them,
+live in :mod:`mureo.web.report_clients` — the report builders here take
+the resolved store and do not decide any of that. The seam's names
+(:func:`list_report_clients`, :func:`state_store_for_client`,
+:func:`report_clients_payload`, :func:`set_report_client_archived`,
+:class:`ClientArchiveError`) are re-exported below so existing importers
+keep working; the runtime-context resolution seam that tests patch lives
+in that module (``mureo.web.report_clients.get_runtime_context``).
 
 Conflicts and freshness (#533 / #535)
 -------------------------------------
@@ -57,7 +51,19 @@ from typing import TYPE_CHECKING, Any
 from mureo.context.platform_accounts import duplicate_account_entries
 from mureo.context.state import read_state_file
 from mureo.core.platform_keys import is_plugin_platform_key, plugin_distribution
-from mureo.core.runtime_context import get_runtime_context
+
+# The client seam. Imported (not re-implemented) and re-exported through
+# ``__all__`` so ``from mureo.web.reports import state_store_for_client``
+# keeps resolving for every existing caller.
+from mureo.web.report_clients import (
+    ClientArchiveError,
+    _active_state_store,
+    _active_workspace_id,
+    list_report_clients,
+    report_clients_payload,
+    set_report_client_archived,
+    state_store_for_client,
+)
 
 if TYPE_CHECKING:
     from mureo.context.models import (
@@ -72,11 +78,15 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "CONFLICT_DUPLICATE_ACCOUNT",
     "CONFLICT_UNRECOGNIZED_KEY",
+    "ClientArchiveError",
     "build_report_summary",
     "list_report_clients",
+    "report_clients_payload",
+    "set_report_client_archived",
     "state_store_for_client",
     "platform_display_name",
 ]
+
 
 # ``platform_conflicts[].kind`` — the wire vocabulary for "do not add these
 # rows together" (#533). TWO findings, deliberately never merged into one
@@ -244,123 +254,6 @@ def _humanize_dist(dist: str) -> str:
         name = name[: -len("-bridge")]
     words = [w for w in name.replace("_", "-").split("-") if w]
     return " ".join(word.capitalize() for word in words)
-
-
-# ---------------------------------------------------------------------------
-# Multi-account (Agency) seam
-# ---------------------------------------------------------------------------
-
-
-def list_report_clients() -> list[dict[str, Any]]:
-    """Enumerate the selectable reporting clients.
-
-    Agency seam: when the active ``StateStore`` exposes a callable
-    ``list_clients()`` (a multi-account backend), its result is normalized
-    and returned. Otherwise (the OSS default single-workspace store) this
-    returns exactly one entry describing the active workspace:
-    ``[{"slug": <id>, "name": <id>, "active": True}]``.
-
-    Never raises — a broken/odd ``list_clients`` degrades to the single
-    active-workspace entry so the dashboard's client picker always renders.
-    """
-    store = _active_state_store()
-    rows = _agency_list_clients(store)
-    if rows is not None:
-        return rows
-    slug = _active_workspace_id(store)
-    return [{"slug": slug, "name": slug, "active": True}]
-
-
-def _agency_list_clients(store: StateStore) -> list[dict[str, Any]] | None:
-    """Call the store's ``list_clients`` seam, normalized, or ``None``.
-
-    ``None`` means "no Agency seam" (use the single-workspace fallback). A
-    seam that raises or returns a non-list is treated as absent — a backend
-    bug must not blank out the picker.
-    """
-    fn = getattr(store, "list_clients", None)
-    if not callable(fn):
-        return None
-    try:
-        raw = fn()
-    except Exception:  # noqa: BLE001 — a backend bug must not 500 the picker
-        logger.exception("state store list_clients() failed; using single workspace")
-        return None
-    if not isinstance(raw, list):
-        return None
-    rows: list[dict[str, Any]] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        slug = str(item.get("slug", "")).strip()
-        if not slug:
-            continue
-        rows.append(
-            {
-                "slug": slug,
-                "name": str(item.get("name", slug)),
-                "active": bool(item.get("active", False)),
-            }
-        )
-    return rows or None
-
-
-def _active_state_store() -> StateStore:
-    """The active workspace's ``StateStore`` (default single-workspace).
-
-    Tolerant of a misconfigured ``mureo.runtime_context_factory`` (>1 entry
-    point raises ``RuntimeContextFactoryError``): fall back to the default
-    filesystem store so the Reports endpoints keep their documented "never
-    raises" contract instead of dropping the connection with no envelope.
-    """
-    try:
-        return get_runtime_context().state_store
-    except Exception:  # noqa: BLE001 — a broken factory must not 500 the reports view
-        logger.exception("runtime context factory failed; using default state store")
-        from mureo.core.state_store import FilesystemStateStore
-
-        return FilesystemStateStore()
-
-
-def _active_workspace_id(store: StateStore) -> str:
-    """A stable, non-empty client slug for the active workspace.
-
-    Prefers the runtime context's opaque ``workspace_id`` (``"default"`` for
-    OSS), falling back to a literal so the slug is never blank.
-    """
-    try:
-        workspace_id = getattr(get_runtime_context(), "workspace_id", "")
-    except Exception:  # noqa: BLE001 — mirror _active_state_store's tolerance
-        workspace_id = ""
-    slug = str(workspace_id).strip()
-    return slug or "default"
-
-
-def state_store_for_client(client: str | None) -> StateStore:
-    """Resolve the ``StateStore`` to read for ``client``.
-
-    Agency seam: when a non-default ``client`` is requested and the active
-    store exposes a callable ``state_store_for_client(slug)``, its result is
-    used. Otherwise the active store is returned — so OSS (single workspace)
-    ignores the ``client`` argument by construction. A seam that raises or
-    returns a non-store falls back to the active store rather than 500-ing.
-    """
-    active = _active_state_store()
-    if not client:
-        return active
-    if client == _active_workspace_id(active):
-        return active
-    fn = getattr(active, "state_store_for_client", None)
-    if not callable(fn):
-        return active
-    try:
-        resolved = fn(client)
-    except Exception:  # noqa: BLE001 — backend bug must not 500 the summary
-        logger.exception("state_store_for_client(%r) failed; using active", client)
-        return active
-    # Duck-typed: a usable store exposes read_state(). Anything else is
-    # ignored so a malformed return can't break the read below.
-    return resolved if hasattr(resolved, "read_state") else active
 
 
 # ---------------------------------------------------------------------------

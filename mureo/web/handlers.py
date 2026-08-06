@@ -40,6 +40,7 @@ Routes
 ``GET  /api/byod/status``        → per-platform byod/live status
 ``GET  /api/reports/clients``    → selectable reporting clients (Agency seam)
 ``GET  /api/reports/summary``    → read-only STATE.json report summary
+``POST /api/reports/clients/archive`` → archive/un-archive one client (seam)
 ``POST /api/byod/import``        → import a Sheet bundle XLSX
 ``POST /api/byod/remove``        → drop one platform's BYOD data
 ``POST /api/byod/clear``         → wipe all BYOD data
@@ -128,7 +129,13 @@ from mureo.web.plugin_credentials import (
     multi_account_picker_scope,
     save_plugin_credentials,
 )
-from mureo.web.reports import build_report_summary, list_report_clients
+from mureo.web.reports import (
+    ClientArchiveError,
+    build_report_summary,
+    list_report_clients,
+    report_clients_payload,
+    set_report_client_archived,
+)
 from mureo.web.session import OAUTH_PROVIDERS, SUPPORTED_HOSTS
 from mureo.web.setup_actions import (
     clear_all_setup,
@@ -1208,10 +1215,14 @@ class ConfigureHandler(BaseHTTPRequestHandler):
 
         Read-only, Host-gated like every other GET. One client for the OSS
         single-workspace install; the Agency backend's ``list_clients`` seam
-        plugs in inside :func:`mureo.web.reports.list_report_clients`. Never
+        plugs in inside :func:`mureo.web.report_clients.list_report_clients`. Never
         raises — the builder degrades to the active workspace.
+
+        The body also carries ``can_archive``: the dashboard renders the
+        archive control ONLY when the backing store can record the decision,
+        so an OSS-only install never shows one.
         """
-        send_json(self, {"clients": list_report_clients()})
+        send_json(self, report_clients_payload())
 
     def _serve_reports_summary(self) -> None:
         """GET ``/api/reports/summary`` — read-only STATE.json report data.
@@ -1224,6 +1235,40 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         client = query.get("client") or None
         period = query.get("period") or None
         send_json(self, build_report_summary(client=client, period=period))
+
+    def _post_reports_client_archive(self, payload: dict[str, Any]) -> None:
+        """POST ``/api/reports/clients/archive`` — archive/un-archive a client.
+
+        Delegates to the store's optional ``set_client_archived`` seam (see
+        :func:`mureo.web.report_clients.set_report_client_archived`). Archiving is
+        NOT a view preference: it stops the digest collecting that client's
+        figures, which is why it is server-side state rather than something
+        the browser could remember.
+
+        ``archived`` is REQUIRED and must be a real JSON boolean. It is the
+        one field on this handler that is validated rather than coerced,
+        because it decides whether a client's figures get collected at all:
+        ``bool("false")`` is ``True`` in Python, so coercing would archive a
+        client whose caller meant the opposite, and defaulting a missing
+        field to ``False`` would silently RESUME collection. The agency side
+        rejects a non-bool for the same reason — the two halves of this
+        contract must agree on what ``archived: "false"`` means.
+
+        Every refusal — no seam (the OSS default), a blank slug, a non-bool
+        flag, a seam that raised — comes back as a 400 envelope carrying a
+        short code. The backend's own exception is logged in
+        ``reports.py``, never echoed here.
+        """
+        archived = payload.get("archived")
+        if not isinstance(archived, bool):
+            send_error_json(self, 400, "archived_required")
+            return
+        try:
+            set_report_client_archived(str(payload.get("slug", "")), archived)
+        except ClientArchiveError as exc:
+            send_error_json(self, 400, exc.code)
+            return
+        send_json(self, {"status": "ok"})
 
     def _serve_creative_runs(self) -> None:
         """GET ``/api/creative/runs`` — one client's gallery runs (#409).
@@ -2043,6 +2088,7 @@ class ConfigureHandler(BaseHTTPRequestHandler):
         "/api/byod/import": _post_byod_import,
         "/api/byod/remove": _post_byod_remove,
         "/api/byod/clear": _post_byod_clear,
+        "/api/reports/clients/archive": _post_reports_client_archive,
         "/api/shutdown": _post_shutdown,
         "/api/pick/directory": _post_pick_directory,
         "/api/pick/file": _post_pick_file,

@@ -2884,10 +2884,12 @@ class TestAdvisors:
 
 # ---------------------------------------------------------------------------
 # Reporting dashboard routes (read-only, STATE.json-sourced):
-#   GET /api/reports/clients   (Host-gated only, no CSRF for GET)
-#   GET /api/reports/summary   (Host-gated only; ?client=&period= forwarded)
-# The reports.py builders are unit-tested in test_web_reports.py; here we
-# pin only the route layer (dispatch, gating, query forwarding, JSON shape).
+#   GET  /api/reports/clients        (Host-gated only, no CSRF for GET)
+#   GET  /api/reports/summary        (Host-gated only; ?client=&period= fwd)
+#   POST /api/reports/clients/archive (CSRF-gated; delegates to the seam)
+# The reports.py builders are unit-tested in test_web_reports.py (and the
+# archive seam in test_web_reports_archive.py); here we pin only the route
+# layer (dispatch, gating, query forwarding, JSON shape).
 # ---------------------------------------------------------------------------
 
 
@@ -2898,17 +2900,39 @@ class TestGetReportsClients:
     ROUTE = "/api/reports/clients"
 
     def test_returns_clients_envelope(self, wizard: ConfigureWizard) -> None:
-        fake = [{"slug": "default", "name": "default", "active": True}]
+        fake = {
+            "clients": [
+                {
+                    "slug": "default",
+                    "name": "default",
+                    "active": True,
+                    "archived": False,
+                }
+            ],
+            "can_archive": False,
+        }
         with patch(
-            "mureo.web.handlers.list_report_clients", return_value=fake
+            "mureo.web.handlers.report_clients_payload", return_value=fake
         ) as mock_clients:
             resp = _get(wizard, self.ROUTE)
         body = json.loads(resp.read().decode("utf-8"))
-        assert body == {"clients": fake}
+        assert body == fake
         mock_clients.assert_called_once()
 
+    def test_advertises_the_archive_capability(self, wizard: ConfigureWizard) -> None:
+        """The frontend renders no archive control unless the backend says the
+        registry can record the decision — so the flag must reach the wire."""
+        resp = _get(wizard, self.ROUTE)
+        body = json.loads(resp.read().decode("utf-8"))
+        # This OSS install has no client registry.
+        assert body["can_archive"] is False
+        assert isinstance(body["clients"], list)
+
     def test_get_does_not_require_csrf(self, wizard: ConfigureWizard) -> None:
-        with patch("mureo.web.handlers.list_report_clients", return_value=[]):
+        with patch(
+            "mureo.web.handlers.report_clients_payload",
+            return_value={"clients": [], "can_archive": False},
+        ):
             resp = _get(wizard, self.ROUTE)
         assert resp.status == 200
 
@@ -2917,6 +2941,123 @@ class TestGetReportsClients:
         req.add_header("Host", "attacker.example.com")
         with pytest.raises(urllib.error.HTTPError) as exc:
             urllib.request.urlopen(req, timeout=2.0)
+        assert exc.value.code == 403
+
+
+@pytest.mark.unit
+class TestPostReportsClientArchive:
+    """``POST /api/reports/clients/archive`` — archive / un-archive a client.
+
+    Archiving stops the digest syncing that client, so the decision is
+    server-side state reached through the store's optional
+    ``set_client_archived`` seam. Every refusal — no seam, blank slug, a seam
+    that raised — is a clean 400 envelope, never a 500 with a traceback.
+    """
+
+    ROUTE = "/api/reports/clients/archive"
+
+    def test_delegates_to_the_seam(self, wizard: ConfigureWizard) -> None:
+        with patch("mureo.web.handlers.set_report_client_archived") as mock_set:
+            resp = _post(wizard, self.ROUTE, {"slug": "acme", "archived": True})
+        body = json.loads(resp.read().decode("utf-8"))
+        assert body == {"status": "ok"}
+        mock_set.assert_called_once_with("acme", True)
+
+    def test_un_archive_forwards_false(self, wizard: ConfigureWizard) -> None:
+        with patch("mureo.web.handlers.set_report_client_archived") as mock_set:
+            _post(wizard, self.ROUTE, {"slug": "acme", "archived": False})
+        mock_set.assert_called_once_with("acme", False)
+
+    def test_seam_refusal_is_a_400_code_not_a_500(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        from mureo.web.reports import ClientArchiveError
+
+        with (
+            patch(
+                "mureo.web.handlers.set_report_client_archived",
+                side_effect=ClientArchiveError("archive_unsupported"),
+            ),
+            pytest.raises(urllib.error.HTTPError) as exc,
+        ):
+            _post(wizard, self.ROUTE, {"slug": "acme", "archived": True})
+        assert exc.value.code == 400
+        assert json.loads(exc.value.read().decode("utf-8")) == {
+            "error": "archive_unsupported"
+        }
+
+    def test_oss_install_without_a_registry_refuses_cleanly(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """Unpatched: a single-workspace OSS store advertises no seam."""
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {"slug": "acme", "archived": True})
+        assert exc.value.code == 400
+        assert json.loads(exc.value.read().decode("utf-8")) == {
+            "error": "archive_unsupported"
+        }
+
+    def test_blank_slug_is_refused(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {"slug": "  ", "archived": True})
+        assert exc.value.code == 400
+        assert json.loads(exc.value.read().decode("utf-8")) == {
+            "error": "slug_required"
+        }
+
+    @pytest.mark.parametrize(
+        "archived",
+        ["false", "true", "", 0, 1, None, [], {}],
+    )
+    def test_a_non_bool_archived_is_refused_never_coerced(
+        self, wizard: ConfigureWizard, archived: Any
+    ) -> None:
+        """This field decides whether a client's figures get collected at all,
+        so it is validated rather than coerced: ``"false"`` is truthy in
+        Python and would ARCHIVE the client. The agency side refuses a
+        non-bool for the same reason — two halves of one contract must not
+        disagree about what ``archived: "false"`` means."""
+        with (
+            patch("mureo.web.handlers.set_report_client_archived") as mock_set,
+            pytest.raises(urllib.error.HTTPError) as exc,
+        ):
+            _post(wizard, self.ROUTE, {"slug": "acme", "archived": archived})
+        assert exc.value.code == 400
+        assert json.loads(exc.value.read().decode("utf-8")) == {
+            "error": "archived_required"
+        }
+        mock_set.assert_not_called()
+
+    def test_a_missing_archived_field_is_refused(self, wizard: ConfigureWizard) -> None:
+        """No default either: defaulting to False would silently RESUME
+        collection for a client the caller never mentioned."""
+        with (
+            patch("mureo.web.handlers.set_report_client_archived") as mock_set,
+            pytest.raises(urllib.error.HTTPError) as exc,
+        ):
+            _post(wizard, self.ROUTE, {"slug": "acme"})
+        assert exc.value.code == 400
+        assert json.loads(exc.value.read().decode("utf-8")) == {
+            "error": "archived_required"
+        }
+        mock_set.assert_not_called()
+
+    def test_a_payload_missing_both_fields_is_refused(
+        self, wizard: ConfigureWizard
+    ) -> None:
+        """The flag is a wire-shape gate checked before the seam is called at
+        all, so an empty payload is refused on it — either way nothing runs
+        and the envelope shape is the same."""
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {})
+        assert exc.value.code == 400
+        assert json.loads(exc.value.read().decode("utf-8")) == {
+            "error": "archived_required"
+        }
+
+    def test_requires_csrf(self, wizard: ConfigureWizard) -> None:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post(wizard, self.ROUTE, {"slug": "acme"}, csrf=None)
         assert exc.value.code == 403
 
 

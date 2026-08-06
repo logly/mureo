@@ -1624,6 +1624,161 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   color: var(--muted);
 }
 
+/* One grid cell = the card button + its controls. The controls sit OUTSIDE
+   the card because the card IS a button, and a button may not nest
+   interactive children. */
+.reports-client-card-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.reports-client-card-item > .reports-client-card {
+  flex: 1;
+}
+
+.reports-client-card-item.is-dragging {
+  opacity: 0.45;
+}
+
+.reports-client-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Drag handle — also the keyboard reorder control (arrow keys), so it is a
+   real button and must show a focus ring. */
+.reports-client-drag {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: grab;
+}
+
+.reports-client-drag:hover {
+  color: var(--ink);
+}
+
+.reports-client-drag:active {
+  cursor: grabbing;
+}
+
+.reports-client-drag:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+.reports-client-archive {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.reports-client-archive:hover {
+  color: var(--danger);
+}
+
+.reports-client-archive:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+/* "Every client is archived" — spans the whole grid so it reads as a state
+   of the view rather than as a card. */
+.reports-clients-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* Archived-clients disclosure: the (deliberately unobtrusive) way back. */
+.reports-archived {
+  margin: 8px 0 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.reports-archived[hidden] {
+  display: none;
+}
+
+.reports-archived > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.reports-archived > summary:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.reports-archived-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reports-archived-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Client name from the registry — mureo does not control it, so it needs the
+   same break treatment as .reports-client-card-name. */
+.reports-archived-name {
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.reports-archived-restore {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.reports-archived-restore:hover {
+  color: var(--accent-press);
+  text-decoration: underline;
+}
+
+.reports-archived-restore:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* Index ↔ detail navigation (#307). The "← Clients" back link sits directly
    under the "Reports" heading (its own stacked column on the head's left). */
 .dashboard-reports-detail[hidden],
