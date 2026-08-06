@@ -9,6 +9,118 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Reports view no longer silently sums two platform keys that are one ad
+  account** (#533). The write guards below stop mureo *creating* that
+  duplicate, but they repair nothing — an operator whose STATE.json already
+  carries one kept seeing a client card with more than double the real spend,
+  because `aggregateClientKpis` added every platform row together without ever
+  looking at the keys.
+
+  The summary now carries `platform_conflicts`: a list of
+  `{kind, platform_keys}` saying why these rows must not be added up. The
+  grouping is done **server-side**, because the platform rows deliberately
+  omit `account_id` (a test pins that omission) — so the browser has nothing
+  to join on, and is still given nothing to join on: no ad account id crosses
+  the wire for any of this.
+
+  There are **two** kinds, and they are deliberately never merged into one
+  warning:
+
+  - `duplicate_account` — two or more keys resolve to one ad account. The
+    consequence is certain and present-tense: any total over these rows
+    double-counts that account.
+  - `unrecognized_key` — a key no mureo surface can resolve to a platform, so
+    that entry's identity cannot be established and it *may* duplicate a
+    canonical one.
+
+  The second signal is what actually catches the reported case, and is not
+  redundant with the first. The shape observed in the field had
+  `account_id: ""` on one of the two entries, and an empty id means *unknown*
+  — `account_ids_match("", "")` is `False` by design, so
+  `duplicate_account_entries` does not report that pair. Account joining alone
+  therefore does **not** detect the bug that was reported. Recognition is
+  delegated to `platform_display_name`, which returns the key unchanged
+  exactly when it can make nothing of it — the dashboard's own resolver, so
+  this cannot drift from what the dashboard renders, and no alias table
+  (`logly_ads` → which distribution?) is invented. An operator needs to tell
+  the two findings apart because their next move differs, so each keeps its
+  own wording on the card.
+
+  What the dashboard does with a conflict:
+
+  - a client card reporting `duplicate_account` **withholds its KPI totals**
+    instead of showing figures it knows are wrong. Summing under a warning was
+    the other defensible option and was rejected: a doubled spend reads as a
+    genuine outlier in an at-a-glance triage grid and gets acted on, so the
+    warning has to compete with the number it is warning about. Withholding
+    routes the operator to the client's detail view, where the per-platform
+    figures render individually and are **not** summed — no data is hidden,
+    only the one number that is provably wrong. The nulling happens inside
+    `aggregateClientKpis` itself, so no future call site can render the
+    double-counted sum by forgetting to check the flag.
+  - `unrecognized_key` is a suspicion, not a proof (the key may be a genuine
+    platform mureo does not know), so its totals still render and the card is
+    flagged rather than blanked.
+  - either way the card gains a visible marker and a localized note, so a
+    flagged card cannot be skimmed as a healthy one. The per-platform cards in
+    the detail view carry the same findings — the index grid only exists for
+    multi-client installs, so on a single-client OSS setup that is the only
+    surface a finding can appear on.
+  - **nothing is merged, dropped or reordered.** The two entries typically
+    hold different *partial* figures, so summing over-counts exactly as much
+    as dropping one under-counts; reconciling them stays the operator's call.
+
+  The join itself is not reimplemented: it is
+  `mureo.context.platform_accounts`, the same module the write guards and
+  out-of-tree writers use. Three consumers, one definition.
+
+  Because an unlisted native key would now earn a **permanent**
+  `unrecognized_key` banner on an otherwise healthy install, the built-in
+  display-name allowlist is pinned by a drift test against the built-in keys
+  the `mureo_state_platform_metrics_set` tool schema advertises to agents —
+  the write-side counterpart of the same vocabulary — rather than against a
+  second hand-written copy of the list.
+
+- **The Reports card now shows how old each platform's numbers actually are**
+  (#535). `fetched_at` was already on the wire — it is in the summary's metric
+  whitelist, the write tool advertises it and the skill contract tells writers
+  to set it — but `dashboard.js` never read it. The only freshness on screen
+  was the document-level `last_synced_at`, which the state layer re-stamps on
+  **any** platform write, so refreshing one platform made every other
+  platform's months-old numbers read as just-synced.
+
+  Each platform row now carries a `freshness` block
+  (`{fetched_at, stale, stale_after_days}`) alongside its existing five
+  fields, and the per-platform card renders it in the footer. `stale` is
+  three-valued: `fetched_at` is optional and writer-dependent, so an entry
+  without one (or with something that is not a timestamp) is reported as
+  **unknown** — a real state — and renders as "update time unknown", never as
+  fresh. An uninterpretable `fetched_at` is still relayed verbatim, because
+  the staleness verdict already says not to compute with it and blanking the
+  string would discard the only clue to which writer produced it.
+
+  The threshold is **the window's own length plus one day of grace**, not a
+  magic number: `YESTERDAY` goes stale after 2 days, `LAST_7_DAYS` after 8,
+  `LAST_30_DAYS` after 31. Past its own length the stored figure no longer
+  overlaps the window its label claims — a `LAST_30_DAYS` rollup pulled 31
+  days ago describes days -31 to -61, which shares not one day with today's
+  last 30 — so it is not "a bit old", it is about a different period. The
+  grace day absorbs one missed daily sync and the platforms' own reporting
+  lag. A window mureo has no length for gets the most forgiving known
+  threshold rather than a guess: crying wolf on a figure that cannot be judged
+  teaches operators to ignore the marker.
+
+  A client card, which shows one aggregate rather than per-platform rows,
+  reports the **oldest** freshness among the platforms that actually
+  contribute totals — an aggregate is only as current as its stalest input —
+  and marks itself stale if any of them is. When some contributor carries no
+  usable `fetched_at` the card cannot honestly quote an age and says "update
+  time unknown"; if it *also* knows one contributor is stale it says "stale —
+  some update times unknown", so the label always matches the marker rather
+  than reading "unknown" in stale-red. `last_synced_at` is unchanged in both
+  meaning and stamping; the detail view still shows it, labelled as the
+  document sync it is.
+
 - **A write can no longer create a second STATE.json entry for one ad account**
   (#534). The `platforms` map is keyed by a free-form string and the write path
   resolved the target by **key only** — `account_id` was written but never

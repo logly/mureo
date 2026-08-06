@@ -334,8 +334,12 @@ shows fewer campaigns than you wrote — get these exact names right:
   actually renders: `totals`, `metrics_period`, `periods[<window>]`.
   **One ad account has exactly one platform key.** Before writing an entry,
   check whether that `account_id` is already stored under a *different* key
-  and write to that key instead — the reporting view sums every entry, so two
-  keys for one account inflate spend / conversions / CPA together. The
+  and write to that key instead — the reporting view aggregates across
+  platforms, so two keys for one account inflate spend / conversions / CPA
+  together. (The read side detects that case and **withholds the client
+  total** rather than showing the inflated one, and separately reports a key
+  it cannot resolve to any platform — but detection is not repair, so do not
+  treat it as a licence to write the duplicate.) The
   `mureo_state_*` write tools now **reject** a write that would create the
   second key (naming both keys and the account); on the Code `Write` path the
   same rule is yours to honour, and a wholesale `Write` that lands a duplicate

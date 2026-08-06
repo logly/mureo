@@ -1768,9 +1768,27 @@
   // Period toggle (YESTERDAY default / LAST_30_DAYS): the summary carries a
   // `periods` union of the windows that have data; the toggle is rendered
   // ONLY for those, and only when there is a real choice (>= 2). Each call
-  // requests `?period=`, and the cards show that window's totals. Overall
-  // freshness still comes from last_synced_at ("synced N ago").
+  // requests `?period=`, and the cards show that window's totals.
+  //
+  // Freshness (#535) is PER PLATFORM, from each row's own `freshness` block
+  // ({fetched_at, stale, stale_after_days}, resolved server-side against the
+  // window the figure covers). The document-level `last_synced_at` is
+  // re-stamped on ANY platform write, so it cannot stand in for it — it
+  // still shows in the detail view, labelled as the document sync it is.
+  //
+  // Conflicts (#533): `platform_conflicts` says when these rows must NOT be
+  // added together. The grouping is done server-side because the rows carry
+  // no account id (and must not start carrying one), so the browser only
+  // renders what it is told.
   // ----------------------------------------------------------------------
+
+  // `platform_conflicts[].kind` — two INDEPENDENT findings, kept apart on
+  // purpose. "Two keys resolve to one account" means the totals on screen
+  // are double-counted right now; "unrecognised key" means that entry's
+  // identity cannot be established at all and it MAY be a duplicate. The
+  // operator's next move differs, so they never collapse into one warning.
+  const REPORTS_CONFLICT_DUPLICATE_ACCOUNT = "duplicate_account";
+  const REPORTS_CONFLICT_UNRECOGNIZED_KEY = "unrecognized_key";
 
   // Canonical secondary KPI vocabulary → i18n label key. Headline (spend)
   // is rendered separately. Order here is the on-card display order.
@@ -2098,8 +2116,147 @@
     return formatNumber(value);
   }
 
-  // Build one KPI card for a single platform entry.
-  function buildReportCard(platform) {
+  // ------------------------------------------------------------------
+  // Conflicts (#533) + per-platform freshness (#535)
+  // ------------------------------------------------------------------
+
+  // Every conflict row of `kind` in a summary. Defensive: the key is always
+  // sent, but a proxy or an older daemon may not have it.
+  function reportsConflictsOfKind(summary, kind) {
+    const rows =
+      summary && Array.isArray(summary.platform_conflicts)
+        ? summary.platform_conflicts
+        : [];
+    return rows.filter(function (row) {
+      return row && row.kind === kind && Array.isArray(row.platform_keys);
+    });
+  }
+
+  // Does this client's aggregate double-count an ad account right now?
+  function reportsHasDoubleCount(summary) {
+    return (
+      reportsConflictsOfKind(summary, REPORTS_CONFLICT_DUPLICATE_ACCOUNT).length > 0
+    );
+  }
+
+  // key → display_name from the summary's platform rows, so a conflict names
+  // platforms the way the rest of the view does. Falls back to the raw key.
+  function reportsPlatformLabels(summary) {
+    const map = {};
+    (summary && Array.isArray(summary.platforms) ? summary.platforms : []).forEach(
+      function (p) {
+        if (p && typeof p.key === "string") map[p.key] = p.display_name || p.key;
+      }
+    );
+    return map;
+  }
+
+  function reportsKeyList(keys, labels) {
+    return (Array.isArray(keys) ? keys : [])
+      .map(function (k) {
+        return (labels && labels[k]) || String(k);
+      })
+      .join(", ");
+  }
+
+  // A conflict as one localized sentence. Untrusted platform keys are
+  // interpolated into the string and the caller sets it via textContent.
+  function reportsConflictText(row, labels) {
+    const keys = reportsKeyList(row.platform_keys, labels);
+    if (row.kind === REPORTS_CONFLICT_DUPLICATE_ACCOUNT) {
+      return MUREO.t("dashboard.reports_conflict_double_counted", { keys: keys });
+    }
+    return MUREO.t("dashboard.reports_conflict_unknown_key", { keys: keys });
+  }
+
+  // Every conflict that names `key`, so a platform card can carry its own.
+  function reportsConflictsForKey(summary, key) {
+    const rows =
+      summary && Array.isArray(summary.platform_conflicts)
+        ? summary.platform_conflicts
+        : [];
+    return rows.filter(function (row) {
+      return (
+        row && Array.isArray(row.platform_keys) && row.platform_keys.indexOf(key) >= 0
+      );
+    });
+  }
+
+  // A row's own freshness as {text, stale}. `stale === null` (fetched_at
+  // absent or unparseable) is its own state — "unknown", not "fresh" —
+  // because fetched_at is optional and writer-dependent.
+  function reportsFreshnessLabel(freshness) {
+    const f = freshness && typeof freshness === "object" ? freshness : null;
+    if (!f || !f.fetched_at || f.stale == null) {
+      return { text: MUREO.t("dashboard.reports_platform_age_unknown"), stale: false };
+    }
+    const ago = relativeAge(f.fetched_at);
+    return {
+      text: MUREO.t(
+        f.stale
+          ? "dashboard.reports_platform_stale"
+          : "dashboard.reports_platform_updated",
+        { ago: ago }
+      ),
+      stale: !!f.stale,
+    };
+  }
+
+  // The freshness of a client CARD, which shows one aggregate rather than
+  // per-platform rows. Only platforms that actually carry totals count —
+  // an advisory bridge contributes nothing to the sum, so its (absent)
+  // fetched_at says nothing about the number on screen. Among the rest the
+  // OLDEST wins, because an aggregate is only as current as its stalest
+  // input, and a single unknown means the card cannot state an age at all
+  // rather than letting a fresh sibling vouch for the rest.
+  //
+  // Three outcomes, and the text always matches the styling:
+  //   • every contributor known      → "Updated N ago" / "Stale — updated N ago"
+  //   • some unknown, none stale     → "Update time unknown" (not marked stale)
+  //   • some unknown, one is stale   → "Stale — some update times unknown"
+  // The third is the mixed case: we know something IS stale (a fresh sibling
+  // must never hide it) but we cannot honestly quote an age, so the label
+  // says exactly that instead of claiming "unknown" in stale-red.
+  function reportsCardFreshness(summary) {
+    const platforms =
+      summary && Array.isArray(summary.platforms) ? summary.platforms : [];
+    let oldest = null;
+    let oldestMs = Infinity;
+    let stale = false;
+    let unknown = false;
+    platforms.forEach(function (p) {
+      if (!p || !p.totals || typeof p.totals !== "object") return;
+      const f = p.freshness && typeof p.freshness === "object" ? p.freshness : null;
+      if (!f || !f.fetched_at || f.stale == null) {
+        unknown = true;
+        return;
+      }
+      if (f.stale) stale = true;
+      const ms = Date.parse(f.fetched_at);
+      if (!Number.isNaN(ms) && ms < oldestMs) {
+        oldestMs = ms;
+        oldest = f;
+      }
+    });
+    if (unknown || !oldest) {
+      return {
+        text: MUREO.t(
+          stale
+            ? "dashboard.reports_platform_stale_partial"
+            : "dashboard.reports_platform_age_unknown"
+        ),
+        stale: stale,
+      };
+    }
+    return reportsFreshnessLabel({
+      fetched_at: oldest.fetched_at,
+      stale: stale,
+    });
+  }
+
+  // Build one KPI card for a single platform entry. `summary` is optional and
+  // supplies the conflict context (the platform row itself carries none).
+  function buildReportCard(platform, summary) {
     const card = document.createElement("article");
     card.className = "report-card";
     // Defensive: a null/non-object element in the platforms array must not
@@ -2121,6 +2278,21 @@
       head.appendChild(periodEl);
     }
     card.appendChild(head);
+
+    // Any conflict naming this key, before the numbers — the index card only
+    // renders for multi-client installs, so on a single-client (OSS) setup
+    // this platform card is the ONLY place the finding can surface.
+    const conflicts = reportsConflictsForKey(summary, platform.key);
+    if (conflicts.length) {
+      card.classList.add("is-conflicted");
+      const labels = reportsPlatformLabels(summary);
+      conflicts.forEach(function (row) {
+        const note = document.createElement("p");
+        note.className = "report-card-conflict";
+        note.textContent = reportsConflictText(row, labels);
+        card.appendChild(note);
+      });
+    }
 
     const totals =
       platform.totals && typeof platform.totals === "object"
@@ -2170,7 +2342,7 @@
     return card;
   }
 
-  // Card footer: campaign count + any free-form report flags as chips.
+  // Card footer: campaign count + THIS platform's own freshness (#535).
   function buildReportCardFoot(platform) {
     const foot = document.createElement("footer");
     foot.className = "report-card-foot";
@@ -2179,6 +2351,14 @@
     const n = typeof platform.campaign_count === "number" ? platform.campaign_count : 0;
     count.textContent = MUREO.t("dashboard.reports_campaign_count", { n: n });
     foot.appendChild(count);
+    // Per-platform, never the document-level last_synced_at: that is
+    // re-stamped on any platform write, so it would report this platform's
+    // months-old numbers as just-synced.
+    const fresh = reportsFreshnessLabel(platform.freshness);
+    const freshEl = document.createElement("span");
+    freshEl.className = "report-card-fresh" + (fresh.stale ? " is-stale" : "");
+    freshEl.textContent = fresh.text;
+    foot.appendChild(freshEl);
     return foot;
   }
 
@@ -2315,6 +2495,20 @@
 
   // Sum a client's headline KPIs across its platforms. null when absent so a
   // missing metric reads as "—" rather than a misleading zero.
+  //
+  // Summing across genuinely different platforms is the feature. Summing two
+  // keys that resolve to ONE ad account is the bug (#533) — so when the
+  // summary reports that conflict, the figures are WITHHELD (null) rather
+  // than shown under a warning. A number an operator triages by is worse
+  // than no number when it is known to be wrong: a doubled spend reads as a
+  // real outlier and gets acted on. The un-summed per-platform figures are
+  // one click away in the detail view, and nothing is merged or dropped to
+  // manufacture a total — the two entries hold different partial figures.
+  //
+  // The nulling happens HERE, not in the caller, so no future call site can
+  // render the double-counted sum by forgetting to check the flag.
+  // `hasFigures` reports the raw presence of data regardless, for callers
+  // deciding whether another period window is worth fetching.
   function aggregateClientKpis(summary) {
     const platforms =
       summary && Array.isArray(summary.platforms) ? summary.platforms : [];
@@ -2334,10 +2528,14 @@
         hasConv = true;
       }
     });
+    const doubleCounted = reportsHasDoubleCount(summary);
     return {
-      spend: hasSpend ? spend : null,
-      conversions: hasConv ? conv : null,
-      cpa: hasSpend && hasConv && conv > 0 ? spend / conv : null,
+      spend: !doubleCounted && hasSpend ? spend : null,
+      conversions: !doubleCounted && hasConv ? conv : null,
+      cpa:
+        !doubleCounted && hasSpend && hasConv && conv > 0 ? spend / conv : null,
+      hasFigures: hasSpend || hasConv,
+      doubleCounted: doubleCounted,
     };
   }
 
@@ -2376,7 +2574,10 @@
           return typeof p === "string" && p;
         })
       : [];
-    if (kpis.spend == null && kpis.conversions == null && periods.length) {
+    // `hasFigures`, not the rendered values: a conflicted client HAS data,
+    // it is just withheld, and re-fetching another window would not fix that
+    // (the conflict is a property of the document, not of the window).
+    if (!kpis.hasFigures && periods.length) {
       const fallback = periods.indexOf(reportsPeriod) === -1 ? periods[0] : null;
       if (fallback) {
         const alt = await fetchReportsJson(summaryUrl(fallback));
@@ -2414,14 +2615,42 @@
     name.className = "reports-client-card-name";
     name.textContent = (client && (client.name || client.slug)) || "";
     head.appendChild(name);
+    // Per-platform freshness, NOT the document-level last_synced_at (#535):
+    // that is re-stamped on any platform write, so a card whose numbers are
+    // months old read as just-synced whenever a sibling platform synced.
+    const cardFresh = reportsCardFreshness(summary);
     const fresh = document.createElement("span");
-    fresh.className = "reports-client-card-fresh";
-    fresh.textContent =
-      summary && summary.last_synced_at ? relativeAge(summary.last_synced_at) : "";
+    fresh.className =
+      "reports-client-card-fresh" + (cardFresh.stale ? " is-stale" : "");
+    fresh.textContent = cardFresh.text;
     head.appendChild(fresh);
     card.appendChild(head);
 
+    // Conflicts before the KPIs, so a flagged card can never be skimmed as a
+    // healthy one: it carries a modifier class, a coloured note, and (for a
+    // double-counted account) no totals at all.
+    const conflicts =
+      summary && Array.isArray(summary.platform_conflicts)
+        ? summary.platform_conflicts
+        : [];
+    if (conflicts.length) {
+      card.classList.add("is-conflicted");
+      const labels = reportsPlatformLabels(summary);
+      conflicts.forEach(function (row) {
+        const note = document.createElement("p");
+        note.className = "reports-client-card-conflict";
+        note.textContent = reportsConflictText(row, labels);
+        card.appendChild(note);
+      });
+    }
+
     const kpis = aggregateClientKpis(summary);
+    if (kpis.doubleCounted) {
+      const withheld = document.createElement("p");
+      withheld.className = "reports-client-card-conflict";
+      withheld.textContent = MUREO.t("dashboard.reports_conflict_kpis_withheld");
+      card.appendChild(withheld);
+    }
     const krow = document.createElement("div");
     krow.className = "reports-client-card-kpis";
     krow.appendChild(
@@ -2656,6 +2885,8 @@
 
     const platforms = Array.isArray(summary.platforms) ? summary.platforms : [];
     if (freshness) {
+      // Document-level, and labelled as such ("Synced N ago"). Per-platform
+      // freshness lives on each card's footer — see buildReportCardFoot.
       freshness.textContent = summary.last_synced_at
         ? MUREO.t("dashboard.reports_synced", {
             ago: relativeAge(summary.last_synced_at),
@@ -2668,7 +2899,7 @@
     } else {
       if (empty) empty.hidden = true;
       platforms.forEach(function (p) {
-        cards.appendChild(buildReportCard(p));
+        cards.appendChild(buildReportCard(p, summary));
       });
     }
 

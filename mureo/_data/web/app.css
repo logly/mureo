@@ -1543,16 +1543,49 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   gap: 8px;
 }
 
+/* Client name comes from the Agency client list, which mureo does not
+   control either. Same break treatment as .report-card-name. */
 .reports-client-card-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .reports-client-card-fresh {
   font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* Stale per-platform figures (#535): the aggregate is only as current as its
+   oldest input, so the card's own freshness carries the marker. */
+.reports-client-card-fresh.is-stale {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* A card whose KPIs must not be trusted (#533). The ring is what stops a
+   flagged card reading as an ordinary one in the at-a-glance grid. */
+.reports-client-card.is-conflicted {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
+/* Interpolates raw platform keys — see .report-card-conflict. */
+.reports-client-card-conflict {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--danger);
+  background: var(--danger-tint);
+  border-radius: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .reports-client-card-kpis {
@@ -1713,12 +1746,21 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   gap: 10px;
 }
 
+/* A display name falls back to the raw platforms key, which mureo does not
+   control who writes (see mureo/context/platform_accounts.py) — and an
+   unrecognisable key is exactly the case this card now flags. A long,
+   space-free key has no break point of its own, so inside a flex row it
+   would push the head wider than the grid track. min-width:0 lets the flex
+   item shrink below its content; overflow-wrap gives the break. */
 .report-card-name {
   margin: 0;
   font-size: 14px;
   font-weight: 650;
   color: var(--ink);
   letter-spacing: -0.01em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* metrics_period label, e.g. "LAST_30_DAYS" — quiet, mono, tinted pill. */
@@ -1792,12 +1834,50 @@ dialog[data-confirm-dialog] [data-confirm-ok] {
   margin-top: auto;
   padding-top: 12px;
   border-top: 1px solid var(--hairline);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .report-card-count {
   font-size: 12px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* Per-platform freshness (#535) — this platform's own fetched_at, never the
+   document-level last_synced_at. */
+.report-card-fresh {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.report-card-fresh.is-stale {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* Why this platform's figures must not be added to its siblings' (#533).
+   The note interpolates raw platform keys, so it needs the same break
+   treatment as .report-card-name. */
+.report-card-conflict {
+  margin: 0;
+  padding: 7px 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--danger);
+  background: var(--danger-tint);
+  border-radius: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.report-card.is-conflicted {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
 }
 
 /* Latest-report + recent-actions blocks share a quiet sub-section frame. */

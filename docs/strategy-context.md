@@ -279,6 +279,84 @@ on the `platforms` map you assembled **before** writing it. Do not reimplement
 the comparison — the empty-id and `act_` rules are easy to get subtly wrong,
 and a private copy that drifts re-creates the bug.
 
+#### What the reporting view does with a duplicate it finds
+
+None of the write guards repair anything, so an operator whose STATE.json is
+*already* doubled keeps seeing a doubled card until they fix the file. The
+read-only Reports view therefore detects the problem itself and reports it on
+the summary as `platform_conflicts` — a list of
+`{kind, platform_keys}`, in document order, carrying **no `account_id`**
+(the platform rows deliberately omit it, and the grouping is done server-side
+precisely so the browser is never handed one).
+
+Two `kind`s, deliberately never merged into one warning, because an
+operator's next move differs:
+
+| `kind` | What it establishes | Signal |
+|--------|---------------------|--------|
+| `duplicate_account` | Two or more keys resolve to **one** ad account, so any total over these rows is double-counted *right now* | `duplicate_account_entries` (the shared join above) |
+| `unrecognized_key` | A key **no mureo surface can resolve**, so that entry's identity cannot be established and it *may* duplicate a canonical one | `platform_display_name(key) == key` — the key resolves to no label |
+
+The second signal is not redundant. The join treats an empty `account_id` as
+unknown, and unknown never matches unknown — so a document holding one
+canonical key with a real id and one non-canonical key with `account_id: ""`
+(the shape actually observed in the field) produces **no**
+`duplicate_account` finding at all. Account joining alone does not detect it;
+the unrecognisable key does.
+
+What the dashboard does about it:
+
+- a client card with a `duplicate_account` conflict **withholds its KPI
+  totals** rather than showing a figure it knows is wrong. A doubled spend
+  reads as a real outlier in an at-a-glance grid and gets acted on, so no
+  number is safer than a wrong one under a warning; the un-summed
+  per-platform figures are one click away in the client's detail view;
+- an `unrecognized_key` conflict is a *suspicion*, not a proof (the key may
+  well be a genuine platform mureo does not know), so the totals still
+  render — the card is flagged, not blanked;
+- either way the card carries a visible marker, so a flagged card cannot be
+  skimmed as a healthy one, and the per-platform cards in the detail view
+  carry the same finding (a single-client OSS install has no index grid, so
+  that is the only surface it can appear on there);
+- nothing is merged, dropped or reordered. Detection, not repair.
+
+#### Per-platform freshness
+
+`fetched_at` (the metric-vocabulary key, see *Performance Metrics* in
+`skills/_mureo-strategy/SKILL.md`) is what the dashboard reads to say how old
+each platform's numbers are. It is judged against the window the figure
+covers: a rollup is **stale** once it is older than that window's own length
+plus one day of grace — `YESTERDAY` after 2 days, `LAST_7_DAYS` after 8,
+`LAST_30_DAYS` after 31. The window's length is the threshold because past it
+the stored figure no longer overlaps the window its label claims (a
+`LAST_30_DAYS` rollup pulled 31 days ago describes days -31 to -61, which
+shares not one day with today's last 30); the grace day absorbs a missed
+daily sync and the platforms' own reporting lag. An unrecognised window gets
+the most forgiving threshold rather than a guess.
+
+`fetched_at` is optional and writer-dependent, so an entry without one renders
+as *"update time unknown"* — never as fresh. A value that is not a timestamp
+at all is treated the same way, and is still relayed **verbatim**: the
+staleness verdict is the authoritative "could this be interpreted?" answer, so
+blanking the string would only throw away the clue an operator needs to find
+the writer that produced it. Treat `fetched_at` as an opaque string unless the
+verdict is not "unknown".
+
+A client card shows one aggregate rather than per-platform rows, so it reports
+the **oldest** freshness among the platforms that actually contribute totals —
+an aggregate is only as current as its stalest input — and marks itself stale
+if any of them is. When some contributor has no usable `fetched_at` the card
+cannot honestly quote an age, so it says *"update time unknown"*; if it also
+knows one contributor is genuinely stale it says *"stale — some update times
+unknown"* instead, because a fresh sibling must never hide a stale one and the
+label has to match the marker.
+
+This is per platform and **cannot** come from the document-level
+`last_synced_at`, which is re-stamped on any platform write: refreshing one
+platform would otherwise make every other platform's stale numbers read as
+just-synced. `last_synced_at` still means exactly what it always did — the
+detail view shows it, labelled as the document sync it is.
+
 ### Fields
 
 #### Root
