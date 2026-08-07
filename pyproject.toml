@@ -120,6 +120,35 @@ ignore = ["E501"]
 [tool.ruff.lint.isort]
 known-first-party = ["mureo"]
 
+# The lint gate covers `tests/` too (see .github/workflows/ci.yml). Three
+# rules do not carry over from library code to test code; each is excused
+# individually, with its reason, rather than by muting a rule group or a
+# file. Anything not listed here is enforced in tests exactly as in mureo/.
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    # N802 (function name should be lowercase) assumes an ASCII, case-bearing
+    # identifier. Test names here deliberately spell out the behaviour under
+    # test in Japanese (`test_コンストラクタ_customer_idからハイフン除去`) or quote a
+    # platform constant verbatim (`test_GoogleAdsException`, `test_PAUSED`,
+    # `test_RESOURCE_NOT_FOUND`). Neither has a lowercase form; renaming ~400
+    # of them would destroy the one thing a test name is for.
+    "N802",
+    # N806 (non-lowercase variable in a function) fires on the name bound by
+    # `with patch("...") as MockClient:`. That name IS the class stand-in the
+    # patch installed, and PascalCase is how unittest.mock's own docs spell
+    # it. In library code a PascalCase local is a smell; here it is the type
+    # being replaced.
+    "N806",
+    # TC001/TC002/TC003 (move a typing-only import into `if TYPE_CHECKING:`)
+    # exist to keep a library's import graph cheap for its importers. Nothing
+    # imports a test module, so deferring `from pathlib import Path` buys
+    # zero and costs an `if TYPE_CHECKING:` block in ~35 files — plus a
+    # NameError the first time a test needs `Path(...)` at runtime.
+    "TC001",
+    "TC002",
+    "TC003",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
