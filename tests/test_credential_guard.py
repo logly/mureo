@@ -218,27 +218,43 @@ class TestBashGuardBehavior:
             # filesystems, so it must stay blocked.
             "cat ~/.Mureo/credentials.json",
             "ls ~/.MUREO",
-            # An expansion right after the directory name never starts with an
-            # identifier character, so the boundary rule still sees the match.
+            # Anything at all may follow the directory name — the rule only
+            # consults what comes before it.
             "cat ~/.mureo$SUFFIX/credentials.json",
             "cat ~/.mureo{,}/credentials.json",
             "cat ~/.mureo*/credentials.json",
-            # A variable holding the parent puts an identifier character
-            # *before* the directory name — the rule must not key on that.
-            "D=~/; cat $D.mureo/credentials.json",
-            # A sibling directory name is not a match, but the traversal back
-            # into the real directory is a second occurrence that is.
             "cat ~/.mureoX/../.mureo/credentials.json",
+            # Sibling names are blocked too: only the text before the name is
+            # consulted, so ``.mureoX`` — which may well be a symlink INTO the
+            # protected directory — is not admitted.
+            "cat ~/.mureoX/credentials.json",
+            "ls ~/.mureo_backup",
+            # A substitution supplying the parent directory leaves an
+            # identifier character immediately before the name. These are the
+            # forms that make a naive preceded-by test unsafe: each one
+            # resolves into ~/.mureo.
+            "D=~/; cat $D.mureo/credentials.json",
+            "D=~/; cat $D.MUREO/credentials.json",
+            "set -- ~/; cat $1.mureo/credentials.json",
+            "D=~/; E=; cat $D$E.mureo/credentials.json",
+            "cat $(printf '%s.mureo/credentials.json' ~/)",
+            "python3 -c \"print(open('%s.mureo/credentials.json' % h).read())\"",
+            # ...while every other splice closes with punctuation, which the
+            # boundary test catches on its own.
+            "D=~/; cat ${D}.mureo/credentials.json",
+            'D=~/; cat "$D".mureo/credentials.json',
+            "cat $(printf '%s' ~/).mureo/credentials.json",
+            "python3 -c \"print(open('{}.mureo/x'.format(h)).read())\"",
         ],
     )
     def test_denies_every_spelling_of_the_mureo_dir(
         self, fake_home: Path, command: str
     ) -> None:
-        """The identifier-boundary rule must not shrink what is blocked.
+        """The boundary rule must not shrink what is blocked.
 
-        Every form here reaches ``~/.mureo`` with plain path syntax; the
-        character after the directory name is never an identifier character,
-        because shell expansions and quoting all start with something else.
+        Every form here resolves into ``~/.mureo`` — verified by expanding
+        each one with a real shell against a throwaway ``$HOME`` — and every
+        one of them was blocked by the previous bare-substring check.
         """
         proc = run_guard(
             _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
@@ -255,41 +271,29 @@ class TestBashGuardBehavior:
 
     @pytest.mark.parametrize(
         "command",
-        ["cat ~/.mureoX/credentials.json", "ls ~/.mureo_backup"],
-    )
-    def test_allows_sibling_dirs_whose_name_merely_starts_with_mureo(
-        self, fake_home: Path, command: str
-    ) -> None:
-        """``~/.mureoX`` is a different directory, and is not protected.
-
-        This mirrors the path guard, which already allows sibling names
-        (``test_allows_similarly_named_sibling_dir``). Blocking them was the
-        same behavior that blocked ``window.MUREO_REPORTS_FORMAT`` — a prefix
-        match cannot tell the two apart, so the boundary is drawn where the
-        path guard already draws it: at the end of the directory name.
-        """
-        proc = run_guard(
-            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
-        )
-        assert proc.returncode == 0
-        assert proc.stdout.strip() == "", command
-
-    @pytest.mark.parametrize(
-        "command",
         [
+            # mureo's own public browser namespace, case-folding to `.mureo_`.
             "gh release create v0.10.43 --notes 'adds window.MUREO_REPORTS_FORMAT'",
             "git commit -m 'feat: reorder via window.MUREO_REPORTS_ORDER'",
             "grep -rn window.MUREO_WIZARD mureo/_data/web/",
             "node --test tests/js/reports_format.test.js # window.MUREO_AUTH_META",
+            # Hostnames under the project's domain, case-folding to `.mureo.`.
+            "gh pr create --body 'published to pkgs.mureo.jp'",
+            "pip install --index-url https://pkgs.mureo.jp/simple/ mureo-agency",
+            "curl -sS https://pkgs.mureo.jp/simple/index.html",
+            "open https://docs.mureo.jp/byod",
+            "echo www.mureo.jp",
         ],
     )
-    def test_allows_mureo_browser_globals(self, fake_home: Path, command: str) -> None:
-        """``window.MUREO_*`` is mureo's own public browser namespace.
+    def test_allows_mureo_own_identifiers(self, fake_home: Path, command: str) -> None:
+        """mureo's browser globals and hostnames are not the directory.
 
-        Case-folded, ``.MUREO_REPORTS_FORMAT`` contains ``.mureo`` — but the
-        next character continues an identifier, so it can never be the
-        ``~/.mureo`` directory name. Release notes, commit messages and greps
-        naming these globals must not be blocked.
+        Both false positives were observed for real: the ``gh release
+        create`` call for v0.10.43 was denied over ``window.MUREO_REPORTS_*``
+        in its notes, and a ``gh pr create`` was denied over
+        ``pkgs.mureo.jp`` in its body. In each the substring is preceded by
+        an identifier character belonging to a longer name, so it cannot be
+        the start of a ``.mureo`` path component.
         """
         proc = run_guard(
             _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"

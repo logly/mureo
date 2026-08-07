@@ -23,32 +23,44 @@ Two guards are installed:
   ``~/.mureo/credentials.json`` that is itself a symlink pointing OUT — its
   realpath escapes the dir, but the requested path is still under it). Both
   cover every file in the directory, not just ``credentials.json``.
-* Bash guard: denies any command whose text references ``.mureo`` as a
-  complete path component — the substring must not be followed by an
-  identifier character (``[A-Za-z0-9_]``).  A substring check is all a
-  command string allows, but anchoring on the directory name (not
-  ``credentials``) also catches wildcard forms like ``cat ~/.mureo/cred*``.
+* Bash guard: denies any command whose text references ``.mureo`` where a
+  path component could *start*.  A substring check is all a command string
+  allows, but anchoring on the directory name (not ``credentials``) also
+  catches wildcard forms like ``cat ~/.mureo/cred*``.
 
-  The boundary costs nothing against *plain path syntax*, which is what a
-  text guard can see: naming ``~/.mureo`` requires the component to end
-  there, and every way a shell continues a word after it — ``/``, quote,
-  ``$``, backtick, ``{``, ``*``, backslash, whitespace, end of string — is
-  a non-identifier character.  A letter, digit or underscore instead spells
-  a *different* component (``~/.mureoX``), which the path guard likewise
-  treats as outside the protected tree.  What it buys is that mureo's own
-  public browser namespace — ``window.MUREO_REPORTS_FORMAT`` and friends,
-  case-folded to ``.mureo_...`` — stops tripping the guard in commit
-  messages, release notes and greps.
+  A bare substring test over-blocks badly, because case-folded ``.mureo``
+  is also a prefix of things that are emphatically not the directory:
+  mureo's own browser globals (``window.MUREO_REPORTS_FORMAT``) and every
+  hostname under the project's domain (``pkgs.mureo.jp``,
+  ``docs.mureo.jp``).  Naming either one in a commit message, a release
+  note or a PR body was denied outright.
 
-  Two properties of the boundary are deliberate.  It is one-sided: the
-  character *before* the match is not examined, because an unquoted
-  variable holding the parent (``D=~/; cat $D.mureo/...``) puts an
-  identifier character there while still resolving into ``~/.mureo``.  And
-  it no longer blocks a *symlink* whose own name starts with ``.mureo``
-  (``~/.mureoLINK -> ~/.mureo``); that was never a property to rely on,
-  since a symlink under any other name (``~/link``) evaded the old check
-  too — the path guard's realpath resolution is what actually covers
-  symlinks.
+  What separates those from a real reference is what comes *before*: a
+  path component named ``.mureo`` always starts at a boundary — after
+  ``/``, ``~``, a quote, whitespace, or the start of the string — whereas
+  the false positives are preceded by an identifier character that belongs
+  to a longer name (``window``, ``pkgs``).  So the guard denies when the
+  substring is at the start of the command or preceded by a non-identifier
+  character.
+
+  That test alone would be too weak, because an identifier character can
+  also be the tail of a *substitution* that supplies the parent directory:
+  with ``D=~/``, the command ``cat $D.mureo/credentials.json`` resolves
+  into the protected directory while putting ``D`` immediately before the
+  name.  Of all the ways a shell can splice text, only ``$NAME`` and
+  ``$1`` end in an identifier character — ``${...}``, ``$(...)``,
+  backticks and brace expansion all close with punctuation, which the
+  boundary test already catches.  The same applies one level up, to
+  format specifiers consumed by a program (``printf '%s.mureo/...' ~/``).
+  So the guard additionally denies when the identifier run before the
+  substring is itself introduced by ``$`` or ``%``.
+
+  Note ``$`` cannot appear literally in the payload (see the NOTE below),
+  hence ``chr(36)``.
+
+  Nothing that names the directory in plain path syntax is admitted by
+  this: sibling directories (``~/.mureoX``, ``~/.mureo_backup``) still
+  deny, since only the text before the name is consulted.
 
 Both comparisons are case-folded: macOS and Windows filesystems are
 case-insensitive by default, so ``~/.MUREO/credentials.json`` opens the
@@ -119,9 +131,11 @@ _PATH_GUARD_CODE = (
 _BASH_GUARD_CODE = (
     "import sys,json,re; "
     "d=json.loads(sys.stdin.read() or '{}'); "
-    "c=str((d.get('tool_input') or {}).get('command') or ''); "
+    "c=str((d.get('tool_input') or {}).get('command') or '').lower(); "
+    "b=re.search('(^|[^a-z0-9_])[.]mureo', c) or "
+    "re.search('[' + chr(36) + '%][a-z0-9_]*[.]mureo', c); "
     + _deny_expr("mureo credential guard: commands referencing .mureo are blocked")
-    + " if re.search('[.]mureo[^A-Za-z0-9_]', c.lower()+' ') else None"
+    + " if b else None"
 )
 
 
