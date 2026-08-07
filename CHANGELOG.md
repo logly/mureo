@@ -246,6 +246,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the Node already on the runner. It is independent of the Python lint
   job on purpose: a formatting failure must not hide a broken money figure.
 
+### Fixed
+
+- **`import mureo.mcp.__main__` no longer starts an MCP server (#555).**
+  The module called `asyncio.run(main())` at module scope with no
+  `if __name__ == "__main__"` guard, so merely importing it opened the stdio
+  transport, read stdin to EOF and closed `sys.stdout` — taking the importing
+  process's stdout with it. `python -m mureo.mcp`, the documented launch
+  path, runs the file as `__main__` and is unchanged; `mureo/__main__.py`
+  already had the guard.
+
+  It surfaced because the clean-import test now reaches the module at all.
+  **`tests/test_imports.py` derives its module list from a walk of `mureo/`
+  instead of hand-maintaining one.** The old `_ALL_MODULES` named 46 of the
+  288 modules and had no exclusion policy written anywhere — `mcp`, `web`,
+  `core`, `cli`, `analytics`, `creative_studio`, `amazon_ads` and eight other
+  packages had no clean-import coverage at all. That was drift, not a
+  decision: the list simply stopped being extended, while the DB/LLM import
+  ban in the same file had always walked the tree.
+
+  A derived list cannot fall behind the tree, so the omission mode is gone
+  rather than merely corrected — but it introduces one of its own, a walk
+  that yields nothing and collects zero tests while staying green. Three
+  assertions close it: the package root resolves, every `.py` file yields
+  exactly one unique module name, and every name round-trips back to the file
+  it came from. None of them hard-codes a count that would need maintaining.
+
+  `mureo.mcp.__main__` was the only module of the 288 that did not import
+  standalone, and it was fixed rather than excluded. There is no exclusion
+  list; the file states that a future one must carry its reason beside it.
+
+  **The cost is amortised in a full run and real when the file is run
+  alone.** `pytest tests/` gains 245 tests with no measurable change in wall
+  time (two back-to-back A/B runs put the branch at or just under the base),
+  because the heavy transitive imports — `mcp`, `google-ads`,
+  `facebook-business` — are already paid by other tests.
+  `pytest tests/test_imports.py` on its own pays them by itself: 47 → 292
+  tests, roughly 2x the wall time and about +40MB peak RSS. Running that one
+  file is what someone debugging an import problem does, which is exactly
+  who meets the 2x, so it is stated rather than left to be discovered.
+
+  The file also now restores `sys.excepthook` and `warnings.filters` around
+  its own tests. Importing this much of the tree drags in dependencies that
+  move both on import (the `exceptiongroup` backport, `google-ads` /
+  `requests`). Today the restore is a measured no-op — pytest's warnings
+  plugin already brackets every item, and `exceptiongroup` is a hard pytest
+  dependency on Python 3.10 so its hook is installed before collection even
+  begins — but both are pytest internals, and the second does not exist on
+  3.11+. A test that imports 288 modules should leave the interpreter as it
+  found it on its own terms, not because something earlier happened to.
+
 ## [0.10.41] - 2026-08-06
 
 ### Fixed
