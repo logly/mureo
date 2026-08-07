@@ -6,6 +6,14 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any
 
+#: ``ActionLogEntry.origin`` value for a change mureo OBSERVED rather than
+#: performed (#545). ``origin is None`` — every entry written before this
+#: field existed, and every entry mureo writes for its own dispatch — means
+#: mureo-originated. The two must never collapse into one another: mureo can
+#: vouch for the arguments of its own change and can often reverse it, and can
+#: do neither for a change made in a platform's UI.
+EXTERNAL_ORIGIN = "external"
+
 
 @dataclass(frozen=True)
 class StrategyEntry:
@@ -163,6 +171,29 @@ class ActionLogEntry:
         by :func:`mureo.context.state.append_action_log` from the workspace's open
         batch, so a native, hosted-connector and bridged/plugin mutation all join
         the same unit without any per-platform code.
+    origin: Who made this change (#545). ``None`` — the default, and what every
+        entry written before this field existed carries — means mureo did:
+        mureo dispatched it, a policy gate saw it, and its ``reversible_params``
+        are mureo's own. :data:`EXTERNAL_ORIGIN` means mureo only OBSERVED it,
+        having read it out of a platform's change feed after the fact. The
+        distinction is load-bearing rather than cosmetic: mureo cannot vouch for
+        an external change's arguments, did not record the prior value, and
+        therefore refuses to plan a rollback for it (see
+        :func:`mureo.rollback.planner.plan_rollback`). Collapsing the two would
+        let mureo claim it can undo work it never did.
+    external_id: The change feed's identity for an external change, namespaced by
+        platform (``"google_ads|customers/…/changeEvents/…"``). It is what makes
+        importing idempotent — the same change polled twice must not be recorded
+        twice — so it is only meaningful together with ``origin``, and setting it
+        without :data:`EXTERNAL_ORIGIN` is refused rather than ignored.
+    occurred_at: When the PLATFORM says an external change happened, which is
+        routinely hours or days before mureo saw it. ``timestamp`` stays what it
+        has always been — when mureo wrote this entry, stamped server-side (#460)
+        — so nothing here reintroduces a model-supplied "now"; ``occurred_at`` is
+        history reported by the platform and must never be read as the current
+        date. The observation window anchors on it, because a change that has
+        been live for a week is already due for review, not due in a fortnight.
+        ``None`` for a mureo-originated entry, where the two coincide.
     """
 
     timestamp: str
@@ -183,9 +214,14 @@ class ActionLogEntry:
     entity_id: str | None = None
     # Appended after every pre-#549 field, same positional-compatibility rule.
     batch_id: str | None = None
+    # Appended after every pre-#545 field, same positional-compatibility rule.
+    origin: str | None = None
+    external_id: str | None = None
+    occurred_at: str | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""
+        self._validate_origin()
         if self.batch_id is not None:
             if not isinstance(self.batch_id, str) or not self.batch_id.strip():
                 raise ValueError("batch_id must be a non-empty string")
@@ -207,6 +243,47 @@ class ActionLogEntry:
             object.__setattr__(
                 self, "reversible_params", copy.deepcopy(self.reversible_params)
             )
+
+    def _validate_origin(self) -> None:
+        """Enforce the #545 provenance invariants.
+
+        Three refusals, all of the same kind: a half-declared provenance is
+        worse than none, because every downstream surface (rollback, dedup,
+        daily-check) reads one of these fields and would draw a confident
+        conclusion from a value the others contradict.
+        """
+        if self.origin is not None:
+            if not isinstance(self.origin, str) or not self.origin.strip():
+                raise ValueError("origin must be a non-empty string")
+            object.__setattr__(self, "origin", self.origin.strip())
+        if self.external_id is not None:
+            if not isinstance(self.external_id, str) or not self.external_id.strip():
+                raise ValueError("external_id must be a non-empty string")
+            object.__setattr__(self, "external_id", self.external_id.strip())
+            # An external_id on a mureo-originated entry has no meaning and
+            # would poison dedup: the next import would treat mureo's own
+            # action as a change it had already imported.
+            if self.origin != EXTERNAL_ORIGIN:
+                raise ValueError(
+                    f"external_id requires origin={EXTERNAL_ORIGIN!r}; got "
+                    f"origin={self.origin!r}"
+                )
+        if self.occurred_at is not None and (
+            not isinstance(self.occurred_at, str) or not self.occurred_at.strip()
+        ):
+            raise ValueError("occurred_at must be a non-empty string")
+        if self.occurred_at is not None:
+            object.__setattr__(self, "occurred_at", self.occurred_at.strip())
+
+    @property
+    def is_external(self) -> bool:
+        """Did mureo merely observe this change rather than perform it?
+
+        A property, not a field: it derives from ``origin`` so the two can
+        never disagree, and it keeps the dataclass field set — which IS the
+        plugin ABI — unchanged by its addition.
+        """
+        return self.origin == EXTERNAL_ORIGIN
 
 
 @dataclass(frozen=True)

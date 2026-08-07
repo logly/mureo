@@ -17,6 +17,7 @@ For the plugin authoring walkthrough, see
 2. [Stability promise (semver mapping)](#2-stability-promise-semver-mapping)
 3. [Capability enum values](#3-capability-enum-values)
 4. [Protocol method signatures](#4-protocol-method-signatures)
+4b. [ChangeFeedProvider Protocol](#4b-changefeedprovider-protocol-issue-545)
 5. [Model dataclass shapes](#5-model-dataclass-shapes)
 6. [Entry-point group names](#6-entry-point-group-names)
 7. [Provider name and skill name regexes](#7-provider-name-and-skill-name-regexes)
@@ -39,6 +40,8 @@ The mureo plugin ABI consists of exactly the following:
 | Domain Protocol method signatures (`CampaignProvider`, `KeywordProvider`, `AudienceProvider`, `ExtensionProvider`) | `mureo.core.providers.{campaign,keyword,audience,extension}` | Stable (Phase 1) |
 | `MCPToolProvider` Protocol shape (`mcp_tools()` + `async handle_mcp_tool()`) — the opt-in MCP-exposure secondary Protocol | `mureo.mcp.tool_provider` | Stable (Phase 1; structural / `runtime_checkable`) |
 | Plugin tool-call safety semantics: mureo reads **standard MCP** `Tool.annotations.readOnlyHint` (believed verbatim either way; when the hint is ABSENT the tool NAME decides via mureo's shared read vocabulary, and a name that does not read as a read ⇒ *mutating*, conservative default) and the optional `Tool` `_meta["mureo"]` keys `reversal` / `throttle` / `observation_days` / `identity`. No new required Protocol surface — purely additive & opt-in; undeclared behaviour is unchanged from Phase 1 (audited + throttled). A mutating plugin call additionally receives *structural* strategy parity (confirm + STRATEGY-gate are skill-mediated; action_log promotion + observation window + target identity + rollback-intent are mechanical) — not mureo's platform-specific analytics. | `mureo.mcp.{server,plugin_semantics}` | Stable (Phase 2/4; additive — these meta key names are the only contract) |
+| `ChangeFeedProvider` Protocol shape (`platform` + `async fetch_change_events()`) — the opt-in change-import secondary Protocol (#545) | `mureo.change_import.protocol` | Stable (structural / `runtime_checkable`) |
+| `ExternalChange` / `ChangeFeedResult` / `ChangeImportOutcome` dataclass shapes and the `ChangeImportStatus` / `ImportVerdict` **enum values** | `mureo.change_import.models` | Stable (additive evolution allowed) |
 | Model dataclass shapes (`Campaign`, `Ad`, `Keyword`, ...) | `mureo.core.providers.models` | Stable (Phase 1; additive evolution allowed) |
 | Status / Kind / MatchType / BidStrategy **enum values** | `mureo.core.providers.models` | Stable |
 | Entry-point group names (`mureo.providers`, `mureo.skills`, `mureo.native_skills`) | `mureo.core.providers.registry` | Stable |
@@ -272,6 +275,69 @@ Protocol when the new surface is large.
 
 ---
 
+## 4b. ChangeFeedProvider Protocol (Issue #545)
+
+`mureo.change_import.ChangeFeedProvider` is a separate runtime-checkable
+Protocol shipped under its own entry-point group
+(`mureo.change_feeds`). It lets a bridge or plugin publish its
+platform's change history so mureo can import work done outside
+mureo into `action_log`. It is opt-in: a plugin that does not
+implement it remains fully supported, and the importer reports
+`change_import_unavailable_for_<platform>` honestly — the same
+degradation contract as `analytics_not_available_for_<platform>`.
+
+The contract:
+
+| Member | Stability |
+|---|---|
+| `platform: str` class attribute | Required; the module's registry name — the `<provider>` half of `plugin:<dist>:<provider>`. A `plugin:`-prefixed value is refused. |
+| `async fetch_change_events(account_id, *, since, until) -> ChangeFeedResult` | Required signature. Raising is a valid "cannot fetch"; the importer reports `error` per platform. |
+
+### Why a new Protocol AND a new group
+
+Two separate rules are being obeyed at once, and both matter:
+
+- **§4** — adding a required method to an existing `runtime_checkable`
+  Protocol is breaking, because `isinstance` requires *every* member.
+  Folding `fetch_change_events` into `AnalyticsModule` would have
+  silently de-registered every already-published four-method plugin,
+  which is precisely what #546 avoided by splitting
+  `DeliveryCollapseModule` out as a sibling.
+- **§6** — adding a new entry-point group is non-breaking. Using one
+  here (rather than a second Protocol inside `mureo.analytics`) means a
+  bridge that only wants to publish a change feed does not have to stub
+  four analytics methods it will never implement, and a plugin that has
+  never heard of change import is unaffected in every way.
+
+The three registries (`mureo.providers`, `mureo.analytics`,
+`mureo.change_feeds`) are independent: a package may register against
+any subset, and a failure in one cannot disable another.
+
+`ExternalChange`, `ChangeFeedResult`, `ChangeImportOutcome` live in
+`mureo.change_import.models` as `@dataclass(frozen=True)`; the §5
+field-mutation rules apply to them identically — adding a field with a
+default is non-breaking, adding one without a default is breaking.
+`ChangeImportStatus` and `ImportVerdict` follow the `Capability` rule:
+adding a member is non-breaking, renaming or removing one is breaking.
+
+### `ActionLogEntry` provenance fields
+
+`ActionLogEntry` gained `origin`, `external_id` and `occurred_at`, each
+`str | None = None` and each appended after every pre-#545 field — so
+positional construction by a third-party caller is unaffected, and a
+STATE.json written before they existed parses unchanged and gains no
+new key. `ActionLogEntry.is_external` is a **property**, not a field:
+it derives from `origin`, so the dataclass field set (which is the ABI)
+is unchanged by its addition.
+
+One invariant is enforced rather than documented: `external_id` without
+`origin="external"` raises `ValueError`. An external id on a
+mureo-originated entry has no meaning and would poison change-import
+dedup — the next import would treat mureo's own action as something it
+had already imported.
+
+---
+
 ## 5. Model dataclass shapes
 
 Every entity / DTO in `mureo.core.providers.models` is
@@ -328,12 +394,13 @@ Four group names are part of the ABI:
 | `SKILLS_ENTRY_POINT_GROUP` | `"mureo.skills"` | `discover_skills` |
 | `NATIVE_SKILLS_ENTRY_POINT_GROUP` | `"mureo.native_skills"` | `mureo.cli.native_skills.install_native_skills` |
 | `ANALYTICS_ENTRY_POINT_GROUP` | `"mureo.analytics"` | `AnalyticsRegistry.discover` |
+| `CHANGE_FEED_ENTRY_POINT_GROUP` | `"mureo.change_feeds"` | `ChangeFeedRegistry.discover` |
 | (literal) | `"mureo.policy_gates"` | `mureo.mcp.server._load_policy_gates` |
 
 `PROVIDERS_…` / `SKILLS_…` / `NATIVE_SKILLS_…` are exported from
 `mureo.core.providers.registry` (the first two re-exported from
 `mureo.core.skills`); `ANALYTICS_…` is exported from
-`mureo.analytics`. The `mureo.policy_gates` literal is documented
+`mureo.analytics`; `CHANGE_FEED_…` from `mureo.change_import`. The `mureo.policy_gates` literal is documented
 here (no exported constant) because policy gates are loaded by the
 MCP server itself rather than by a third-party-facing registry.
 Renaming any of these groups is a breaking change — every plugin's
@@ -373,10 +440,10 @@ contract:
 - The default behaviour with zero gates registered is byte-
   identical to v0.9.22: every call dispatches normally.
 
-The three groups are independent: a package may register against any
-subset (provider only, analytics only, both, etc.) — the discovery
-paths and fault isolation are separate, so a failure in one group
-cannot disable another.
+The groups are independent: a package may register against any subset
+(provider only, analytics only, change feed only, any combination) —
+the discovery paths and fault isolation are separate, so a failure in
+one group cannot disable another.
 
 If a new entry-point group is introduced (e.g. for a future
 `mureo.workflows` extension), it will be **additive**. Plugins that
@@ -628,6 +695,7 @@ A handy cheat sheet for mureo maintainers and curious plugin authors.
 | Rename `Capability` member | Yes |
 | Remove `Capability` member | Yes |
 | Add new Protocol | No |
+| Add new Protocol in a NEW entry-point group | No |
 | Add required method to existing Protocol | Yes |
 | Add optional keyword arg to Protocol method (with default) | No (in practice) |
 | Add positional arg to Protocol method | Yes |
@@ -653,6 +721,8 @@ A handy cheat sheet for mureo maintainers and curious plugin authors.
 
 - [plugin-authoring.md](./plugin-authoring.md) — how to write a
   plugin that targets the ABI documented here.
+- [change-import.md](./change-import.md) — the `ChangeFeedProvider`
+  hook in context, plus per-platform coverage.
 - [architecture.md](./architecture.md) — overall mureo architecture
   and how plugins fit into it.
 - [CHANGELOG.md](../CHANGELOG.md) — version-by-version log; ABI

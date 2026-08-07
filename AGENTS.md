@@ -92,6 +92,8 @@ mureo/
 │   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
 │   ├── tools_batch.py                     # mureo_batch_begin / _end / _status (#549)
 │   ├── _handlers_batch.py                 # Batch lifecycle handlers
+│   ├── tools_change_import.py             # mureo_external_changes_import (#545)
+│   ├── _handlers_change_import.py         # Change-import handler
 │   ├── tools_analysis.py                  # analysis_anomalies_check
 │   ├── _handlers_analysis.py              # Anomaly detector composition handler
 │   ├── tools_analytics_registry.py        # mureo_analytics_modules_list / mureo_analytics_run (#440)
@@ -132,6 +134,13 @@ mureo/
 │   └── executor.py      # execute_rollback(...) -> appends ActionLogEntry(rollback_of=index)
 ├── adapters/            # Provider adapters wrapping each ad-platform client as a registry Protocol
 ├── analytics/           # Analytics-module registry for external MCP / plugin platforms (#120)
+├── change_import/       # Import changes made OUTSIDE mureo into action_log (#545)
+│   ├── models.py        # ExternalChange / ChangeFeedResult / ChangeImportOutcome
+│   ├── protocol.py      # ChangeFeedProvider Protocol (`mureo.change_feeds` entry-point group)
+│   ├── registry.py      # Discovery + per-plugin fault isolation + lookup
+│   ├── dedupe.py        # Already-imported vs mureo's own change (why one is approximate)
+│   ├── importer.py      # Watermark, action_log write, per-platform outcome
+│   └── builtin/         # Native feeds — google_ads only today; see docs/change-import.md
 ├── core/                # Extension Protocols + file-backed impls + RuntimeContext; provider & skill discovery
 ├── providers/           # Official MCP provider catalog + one-command install helpers (#86)
 ├── policy/              # Built-in policy gates (strategy_gate) — ship with OSS, run by default
@@ -225,6 +234,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 | Analytics Registry (#440) | `mureo_analytics_modules_list`, `mureo_analytics_run` |
 | Rollback | `rollback_plan_get`, `rollback_apply` |
 | Batch (#549) | `mureo_batch_begin`, `mureo_batch_end`, `mureo_batch_status` |
+| Change Import (#545) | `mureo_external_changes_import` |
 | Analysis | `analysis_anomalies_check` |
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
