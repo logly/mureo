@@ -9,9 +9,9 @@ from __future__ import annotations
 import pytest
 
 from mureo.meta_ads.mappers import (
-    _minor_units_to_amount,
     _extract_conversions,
     _extract_cost_per_conversion,
+    _minor_units_to_amount,
     _safe_float,
     _safe_int,
     map_ad,
@@ -19,7 +19,6 @@ from mureo.meta_ads.mappers import (
     map_campaign,
     map_insights,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helper functions

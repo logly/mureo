@@ -30,7 +30,6 @@ from mureo.google_ads._rsa_insights import (
     RSAInsightExtractor,
 )
 
-
 # ===========================================================================
 # RSAInsightExtractor
 # ===========================================================================
@@ -448,17 +447,18 @@ class TestLPScreenshotterCapture:
 
         screenshotter = LPScreenshotter()
 
-        with patch(
-            "mureo.analysis.lp_analyzer.LPAnalyzer._validate_url",
-            side_effect=ValueError("Invalid URL"),
+        with (
+            patch(
+                "mureo.analysis.lp_analyzer.LPAnalyzer._validate_url",
+                side_effect=ValueError("Invalid URL"),
+            ),
+            pytest.raises(ValueError, match="Invalid URL"),
         ):
-            with pytest.raises(ValueError, match="Invalid URL"):
-                await screenshotter.capture("http://127.0.0.1/internal")
+            await screenshotter.capture("http://127.0.0.1/internal")
 
     @pytest.mark.asyncio
     async def test_playwrightが未インストールの場合(self) -> None:
         """Raises RuntimeError when playwright is not installed."""
-        import sys
         from unittest.mock import patch
 
         screenshotter = LPScreenshotter()
@@ -468,7 +468,6 @@ class TestLPScreenshotterCapture:
             "mureo.analysis.lp_analyzer.LPAnalyzer._validate_url",
         ):
             # Temporarily block the playwright module.
-            import importlib
 
             _real_import = builtins.__import__
 
@@ -477,9 +476,11 @@ class TestLPScreenshotterCapture:
                     raise ImportError("No module named 'playwright'")
                 return _real_import(name, *args, **kwargs)
 
-            with patch("builtins.__import__", side_effect=_mock_import):
-                with pytest.raises(RuntimeError, match="Playwright"):
-                    await screenshotter.capture("https://example.com")
+            with (
+                patch("builtins.__import__", side_effect=_mock_import),
+                pytest.raises(RuntimeError, match="Playwright"),
+            ):
+                await screenshotter.capture("https://example.com")
 
 
 @pytest.mark.unit

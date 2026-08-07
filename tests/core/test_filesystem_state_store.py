@@ -61,7 +61,9 @@ def test_write_then_read_strategy_round_trip(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_read_strategy_returns_isolated_snapshot(tmp_path: Path) -> None:
     store = FilesystemStateStore(workspace=tmp_path)
-    store.write_strategy([StrategyEntry(context_type="persona", title="T", content="x")])
+    store.write_strategy(
+        [StrategyEntry(context_type="persona", title="T", content="x")]
+    )
     snap = store.read_strategy()
     snap.append(StrategyEntry(context_type="usp", title="U", content="y"))
     assert len(store.read_strategy()) == 1
@@ -98,7 +100,9 @@ def test_workspace_paths_resolve_under_workspace_dir(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_default_workspace_is_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_workspace_is_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     store = FilesystemStateStore()
     assert store.state_path == tmp_path / "STATE.json"

@@ -101,7 +101,9 @@ def test_read_strategy_returns_isolated_snapshot() -> None:
     Protocol contract, not a recommendation, so alternate backends that
     hand back an internal reference are caught here."""
     store = _FakeStateStore()
-    store.write_strategy([StrategyEntry(context_type="persona", title="T", content="x")])
+    store.write_strategy(
+        [StrategyEntry(context_type="persona", title="T", content="x")]
+    )
     snap = store.read_strategy()
     snap.append(StrategyEntry(context_type="usp", title="U", content="y"))
     assert len(store.read_strategy()) == 1

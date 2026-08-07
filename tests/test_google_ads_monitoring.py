@@ -12,7 +12,6 @@ import pytest
 
 from mureo.google_ads._monitoring import _MonitoringMixin
 
-
 # ---------------------------------------------------------------------------
 # Mock client class for tests
 # ---------------------------------------------------------------------------

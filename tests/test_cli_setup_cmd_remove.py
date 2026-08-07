@@ -23,7 +23,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
@@ -173,9 +172,7 @@ class TestRemoveSkillsSafety:
         assert isinstance(count, int)
         assert isinstance(dest, Path)
 
-    def test_preserves_non_skill_dir_with_matching_name(
-        self, tmp_path: Path
-    ) -> None:
+    def test_preserves_non_skill_dir_with_matching_name(self, tmp_path: Path) -> None:
         """If a bundle-named entry lacks ``SKILL.md`` (a user dir that
         happens to share a bundle name), the implementer must still
         remove it because the allow-list is bundle-membership, not
@@ -207,9 +204,7 @@ class TestRemoveSkillsSafety:
         user_dir.mkdir()
         (user_dir / "scratch.txt").write_text("important", encoding="utf-8")
         (user_dir / "sub").mkdir()
-        (user_dir / "sub" / "nested.txt").write_text(
-            "nested-data", encoding="utf-8"
-        )
+        (user_dir / "sub" / "nested.txt").write_text("nested-data", encoding="utf-8")
 
         remove_skills(target_dir=target)
 
@@ -263,9 +258,7 @@ class TestRemoveSkillsSafety:
         count, _ = remove_skills(target_dir=target)
 
         assert user_skill.exists(), "_mureo-custom must NOT be removed"
-        assert (user_skill / "SKILL.md").read_text(encoding="utf-8") == (
-            "user content"
-        )
+        assert (user_skill / "SKILL.md").read_text(encoding="utf-8") == ("user content")
         assert count == 0
 
     def test_count_matches_actually_removed(self, tmp_path: Path) -> None:
@@ -287,9 +280,7 @@ class TestRemoveSkillsSafety:
 
 @pytest.mark.unit
 class TestRemoveSkillsAllowListSource:
-    def test_uses_get_data_path_skills_for_allow_list(
-        self, tmp_path: Path
-    ) -> None:
+    def test_uses_get_data_path_skills_for_allow_list(self, tmp_path: Path) -> None:
         """The remove allow-list is derived from
         ``_get_data_path("skills")`` — verify by patching
         ``_get_data_path`` to return a synthetic bundle dir."""
@@ -304,9 +295,7 @@ class TestRemoveSkillsAllowListSource:
         _make_skill_dir(target, "only-one", "installed-bundle")
         _make_skill_dir(target, "third-party", "user-installed")
 
-        with patch(
-            "mureo.cli.setup_cmd._get_data_path", return_value=fake_src
-        ):
+        with patch("mureo.cli.setup_cmd._get_data_path", return_value=fake_src):
             count, _ = remove_skills(target_dir=target)
 
         # Only the bundle member is removed.
@@ -318,9 +307,7 @@ class TestRemoveSkillsAllowListSource:
         )
         assert count == 1
 
-    def test_bundle_dir_missing_skill_md_is_skipped(
-        self, tmp_path: Path
-    ) -> None:
+    def test_bundle_dir_missing_skill_md_is_skipped(self, tmp_path: Path) -> None:
         """A child in the bundle source dir that lacks ``SKILL.md`` is
         NOT part of the allow-list — symmetric with ``install_skills``
         which only copies ``is_dir() and (SKILL.md).exists()`` children."""
@@ -343,9 +330,7 @@ class TestRemoveSkillsAllowListSource:
         )
         bundle_skill = _make_skill_dir(target, "real-skill", "installed")
 
-        with patch(
-            "mureo.cli.setup_cmd._get_data_path", return_value=fake_src
-        ):
+        with patch("mureo.cli.setup_cmd._get_data_path", return_value=fake_src):
             count, _ = remove_skills(target_dir=target)
 
         # Only ``real-skill`` is in the allow-list.

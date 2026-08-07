@@ -7,7 +7,6 @@ Verifies tool definitions (inputSchema, required fields) and handlers
 from __future__ import annotations
 
 import json
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -509,7 +508,9 @@ class TestGoogleAdsCampaignHandlers:
             )
 
         client.update_campaign_status.assert_awaited_once_with("456", "PAUSED")
-        assert json.loads(result[0].text) == { "resource_name": "customers/123/campaigns/456" }
+        assert json.loads(result[0].text) == {
+            "resource_name": "customers/123/campaigns/456"
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -558,7 +559,9 @@ class TestGoogleAdsAdGroupHandlers:
             )
 
         client.create_ad_group.assert_awaited_once()
-        assert json.loads(result[0].text) == { "resource_name": "customers/123/adGroups/99" }
+        assert json.loads(result[0].text) == {
+            "resource_name": "customers/123/adGroups/99"
+        }
 
     async def test_ad_groups_update(self) -> None:
         mod = _import_google_ads_tools()
@@ -578,7 +581,9 @@ class TestGoogleAdsAdGroupHandlers:
             )
 
         client.update_ad_group.assert_awaited_once()
-        assert json.loads(result[0].text) == { "resource_name": "customers/123/adGroups/99" }
+        assert json.loads(result[0].text) == {
+            "resource_name": "customers/123/adGroups/99"
+        }
 
 
 # ---------------------------------------------------------------------------

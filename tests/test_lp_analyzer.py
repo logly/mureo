@@ -11,9 +11,7 @@ import pytest
 from mureo.analysis.lp_analyzer import (
     LPAnalyzer,
     LPContent,
-    _INDUSTRY_KEYWORDS,
 )
-
 
 # ---------------------------------------------------------------------------
 # Test HTML

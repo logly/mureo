@@ -829,7 +829,7 @@ class TestFailureEnvelopeNormalization:
         extras = ",".join(f'"k{i}":"v{i}"' for i in range(50_000))
         huge_extras = self._call(
             tmp_path,
-            self._text('{"code":"BAD","message":"m",%s}' % extras),
+            self._text(f'{{"code":"BAD","message":"m",{extras}}}'),
             is_error=True,
         )
         assert len(huge_extras[0].text) < _MAX_FAILURE_TEXT + 100

@@ -7,9 +7,8 @@ calls are mocked.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from google.ads.googleads.errors import GoogleAdsException
@@ -1548,11 +1547,13 @@ class TestCheckBudgetBiddingCompatibility:
         row = MagicMock()
         row.campaign_budget.explicitly_shared = True
 
-        with patch.object(client, "_search", return_value=[row]):
-            with pytest.raises(ValueError, match="not compatible with shared budget"):
-                await client._check_budget_bidding_compatibility(
-                    "100", "MAXIMIZE_CONVERSIONS"
-                )
+        with (
+            patch.object(client, "_search", return_value=[row]),
+            pytest.raises(ValueError, match="not compatible with shared budget"),
+        ):
+            await client._check_budget_bidding_compatibility(
+                "100", "MAXIMIZE_CONVERSIONS"
+            )
 
     @pytest.mark.asyncio
     async def test_非共有予算_OK(self) -> None:

@@ -47,9 +47,7 @@ class TestSetNativePreference:
         assert r.status == "error"
         assert r.detail == "invalid_platform"
 
-    def test_prefer_official_blocked_when_provider_absent(
-        self, tmp_path: Path
-    ) -> None:
+    def test_prefer_official_blocked_when_provider_absent(self, tmp_path: Path) -> None:
         from mureo.web.setup_actions import set_native_preference
 
         cj = _cj(tmp_path)
@@ -104,9 +102,7 @@ class TestSetNativePreference:
         assert r.status == "ok"
         assert _env(cj)["MUREO_DISABLE_META_ADS"] == "1"
 
-    def test_switch_back_to_native_always_allowed(
-        self, tmp_path: Path
-    ) -> None:
+    def test_switch_back_to_native_always_allowed(self, tmp_path: Path) -> None:
         from mureo.web.setup_actions import set_native_preference
 
         cj = _cj(tmp_path)
@@ -129,9 +125,7 @@ class TestSetNativePreference:
         assert r.status == "ok"
         assert "MUREO_DISABLE_GOOGLE_ADS" not in _env(cj)
 
-    def test_back_to_native_noop_when_already_native(
-        self, tmp_path: Path
-    ) -> None:
+    def test_back_to_native_noop_when_already_native(self, tmp_path: Path) -> None:
         from mureo.web.setup_actions import set_native_preference
 
         cj = _cj(tmp_path)

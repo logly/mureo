@@ -59,9 +59,7 @@ def _make_run(
     for name in images:
         (run_dir / name).write_bytes(b"\x89PNG fake")
     if manifest is not None:
-        (run_dir / "manifest.json").write_text(
-            json.dumps(manifest), encoding="utf-8"
-        )
+        (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return run_dir
 
 
@@ -227,9 +225,7 @@ class TestResolveGalleryImage:
 
 
 @pytest.mark.unit
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="symlink creation needs privileges"
-)
+@pytest.mark.skipif(sys.platform == "win32", reason="symlink creation needs privileges")
 class TestListingSymlinkContainment:
     def test_symlinked_run_dir_is_excluded(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -274,9 +270,7 @@ class TestListingSymlinkContainment:
 
 @pytest.mark.unit
 class TestListingFaultIsolation:
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="POSIX permission semantics"
-    )
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission semantics")
     def test_one_unreadable_run_does_not_blank_the_gallery(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

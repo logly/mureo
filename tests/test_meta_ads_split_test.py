@@ -11,7 +11,6 @@ import pytest
 
 from mureo.meta_ads._split_test import SplitTestMixin
 
-
 # ---------------------------------------------------------------------------
 # Helpers: mock class wrapping the Mixin for test isolation
 # ---------------------------------------------------------------------------

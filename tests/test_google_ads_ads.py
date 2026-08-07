@@ -14,7 +14,6 @@ from google.ads.googleads.errors import GoogleAdsException
 
 from mureo.google_ads.client import GoogleAdsApiClient
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -578,41 +577,43 @@ class TestCreateDisplayAd:
             patch.object(
                 type(client), "_verify_ad_group_is_display", self._noop_verify
             ),
+            pytest.raises(ValueError, match="At least 1 headline"),
         ):
-            with pytest.raises(ValueError, match="At least 1 headline"):
-                await client.create_display_ad(
-                    {
-                        "ad_group_id": "100",
-                        "headlines": [],
-                        "long_headline": "Long",
-                        "descriptions": ["D"],
-                        "business_name": "Biz",
-                        "marketing_image_paths": ["/tmp/m.jpg"],
-                        "square_marketing_image_paths": ["/tmp/s.jpg"],
-                        "final_url": "https://example.com",
-                    }
-                )
+            await client.create_display_ad(
+                {
+                    "ad_group_id": "100",
+                    "headlines": [],
+                    "long_headline": "Long",
+                    "descriptions": ["D"],
+                    "business_name": "Biz",
+                    "marketing_image_paths": ["/tmp/m.jpg"],
+                    "square_marketing_image_paths": ["/tmp/s.jpg"],
+                    "final_url": "https://example.com",
+                }
+            )
         assert upload_calls == []
 
     @pytest.mark.asyncio
     async def test_marketing画像なしでエラー(self) -> None:
         client = _make_client()
-        with patch.object(
-            type(client), "_verify_ad_group_is_display", self._noop_verify
+        with (
+            patch.object(
+                type(client), "_verify_ad_group_is_display", self._noop_verify
+            ),
+            pytest.raises(ValueError, match="At least 1 marketing image"),
         ):
-            with pytest.raises(ValueError, match="At least 1 marketing image"):
-                await client.create_display_ad(
-                    {
-                        "ad_group_id": "100",
-                        "headlines": ["H"],
-                        "long_headline": "Long",
-                        "descriptions": ["D"],
-                        "business_name": "Biz",
-                        "marketing_image_paths": [],
-                        "square_marketing_image_paths": ["/tmp/s.jpg"],
-                        "final_url": "https://example.com",
-                    }
-                )
+            await client.create_display_ad(
+                {
+                    "ad_group_id": "100",
+                    "headlines": ["H"],
+                    "long_headline": "Long",
+                    "descriptions": ["D"],
+                    "business_name": "Biz",
+                    "marketing_image_paths": [],
+                    "square_marketing_image_paths": ["/tmp/s.jpg"],
+                    "final_url": "https://example.com",
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_GoogleAdsException時はオーファンアセットを報告(self) -> None:
@@ -639,20 +640,20 @@ class TestCreateDisplayAd:
             patch.object(
                 type(client), "_verify_ad_group_is_display", self._noop_verify
             ),
+            pytest.raises(RDAUploadError) as exc_info,
         ):
-            with pytest.raises(RDAUploadError) as exc_info:
-                await client.create_display_ad(
-                    {
-                        "ad_group_id": "100",
-                        "headlines": ["H"],
-                        "long_headline": "Long",
-                        "descriptions": ["D"],
-                        "business_name": "Biz",
-                        "marketing_image_paths": ["/tmp/m.jpg"],
-                        "square_marketing_image_paths": ["/tmp/s.jpg"],
-                        "final_url": "https://example.com",
-                    }
-                )
+            await client.create_display_ad(
+                {
+                    "ad_group_id": "100",
+                    "headlines": ["H"],
+                    "long_headline": "Long",
+                    "descriptions": ["D"],
+                    "business_name": "Biz",
+                    "marketing_image_paths": ["/tmp/m.jpg"],
+                    "square_marketing_image_paths": ["/tmp/s.jpg"],
+                    "final_url": "https://example.com",
+                }
+            )
         # Uploaded assets should appear in orphaned_assets.
         orphans = exc_info.value.orphaned_assets
         assert "customers/123/assets/tmp/m.jpg" in " ".join(orphans) or any(
@@ -685,20 +686,20 @@ class TestCreateDisplayAd:
             patch.object(
                 type(client), "_verify_ad_group_is_display", self._noop_verify
             ),
+            pytest.raises(RDAUploadError) as exc_info,
         ):
-            with pytest.raises(RDAUploadError) as exc_info:
-                await client.create_display_ad(
-                    {
-                        "ad_group_id": "100",
-                        "headlines": ["H"],
-                        "long_headline": "Long",
-                        "descriptions": ["D"],
-                        "business_name": "Biz",
-                        "marketing_image_paths": ["/tmp/m1.jpg", "/tmp/m2.jpg"],
-                        "square_marketing_image_paths": ["/tmp/s.jpg"],
-                        "final_url": "https://example.com",
-                    }
-                )
+            await client.create_display_ad(
+                {
+                    "ad_group_id": "100",
+                    "headlines": ["H"],
+                    "long_headline": "Long",
+                    "descriptions": ["D"],
+                    "business_name": "Biz",
+                    "marketing_image_paths": ["/tmp/m1.jpg", "/tmp/m2.jpg"],
+                    "square_marketing_image_paths": ["/tmp/s.jpg"],
+                    "final_url": "https://example.com",
+                }
+            )
         # The error should fire with only image #1 uploaded.
         assert len(exc_info.value.orphaned_assets) == 1
         assert "/tmp/m1.jpg" in exc_info.value.orphaned_assets[0]
@@ -799,16 +800,20 @@ class TestVerifyAdGroupIsDisplay:
 
         row = MagicMock()
         row.campaign.advertising_channel_type = search_enum
-        with patch.object(client, "_search", return_value=[row]):
-            with pytest.raises(ValueError, match="does not belong to a DISPLAY"):
-                await client._verify_ad_group_is_display("100")
+        with (
+            patch.object(client, "_search", return_value=[row]),
+            pytest.raises(ValueError, match="does not belong to a DISPLAY"),
+        ):
+            await client._verify_ad_group_is_display("100")
 
     @pytest.mark.asyncio
     async def test_アカウントが存在しない場合はエラー(self) -> None:
         client = _make_client()
-        with patch.object(client, "_search", return_value=[]):
-            with pytest.raises(ValueError, match="not found"):
-                await client._verify_ad_group_is_display("100")
+        with (
+            patch.object(client, "_search", return_value=[]),
+            pytest.raises(ValueError, match="not found"),
+        ):
+            await client._verify_ad_group_is_display("100")
 
 
 # ---------------------------------------------------------------------------
@@ -889,31 +894,35 @@ class TestUpdateAd:
         rda_row = MagicMock()
         rda_row.ad_group_ad.ad.type_ = 19  # RESPONSIVE_DISPLAY_AD
 
-        with patch.object(client, "_search", return_value=[rda_row]):
-            with pytest.raises(ValueError, match="update_ad supports.*RSA"):
-                await client.update_ad(
-                    {
-                        "ad_id": "456",
-                        "headlines": ["H1", "H2", "H3"],
-                        "descriptions": ["D1", "D2"],
-                        "final_url": "https://example.com",
-                    }
-                )
+        with (
+            patch.object(client, "_search", return_value=[rda_row]),
+            pytest.raises(ValueError, match="update_ad supports.*RSA"),
+        ):
+            await client.update_ad(
+                {
+                    "ad_id": "456",
+                    "headlines": ["H1", "H2", "H3"],
+                    "descriptions": ["D1", "D2"],
+                    "final_url": "https://example.com",
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_存在しないad_idでエラー(self) -> None:
         """When the pre-check cannot find the ad, return a clear error."""
         client = _make_client()
 
-        with patch.object(client, "_search", return_value=[]):
-            with pytest.raises(ValueError, match="not found"):
-                await client.update_ad(
-                    {
-                        "ad_id": "999",
-                        "headlines": ["H1", "H2", "H3"],
-                        "descriptions": ["D1", "D2"],
-                    }
-                )
+        with (
+            patch.object(client, "_search", return_value=[]),
+            pytest.raises(ValueError, match="not found"),
+        ):
+            await client.update_ad(
+                {
+                    "ad_id": "999",
+                    "headlines": ["H1", "H2", "H3"],
+                    "descriptions": ["D1", "D2"],
+                }
+            )
 
     @staticmethod
     async def _assets(self, ad_id: str):  # noqa: ARG004
@@ -936,11 +945,11 @@ class TestUpdateAd:
         # Supplying only headlines must NOT touch descriptions (no FieldMask
         # path for descriptions), so the existing descriptions survive.
         client = self._mutate_client()
-        with patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa):
-            with patch.object(type(client), "_get_rsa_assets", self._assets):
-                await client.update_ad(
-                    {"ad_id": "456", "headlines": ["H1", "H2", "H3"]}
-                )
+        with (
+            patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa),
+            patch.object(type(client), "_get_rsa_assets", self._assets),
+        ):
+            await client.update_ad({"ad_id": "456", "headlines": ["H1", "H2", "H3"]})
         paths = list(client._client.copy_from.call_args[0][1].paths)
         assert "responsive_search_ad.headlines" in paths
         assert "responsive_search_ad.descriptions" not in paths
@@ -948,9 +957,11 @@ class TestUpdateAd:
     @pytest.mark.asyncio
     async def test_descriptions_only_preserves_headlines(self) -> None:
         client = self._mutate_client()
-        with patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa):
-            with patch.object(type(client), "_get_rsa_assets", self._assets):
-                await client.update_ad({"ad_id": "456", "descriptions": ["D1", "D2"]})
+        with (
+            patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa),
+            patch.object(type(client), "_get_rsa_assets", self._assets),
+        ):
+            await client.update_ad({"ad_id": "456", "descriptions": ["D1", "D2"]})
         paths = list(client._client.copy_from.call_args[0][1].paths)
         assert "responsive_search_ad.descriptions" in paths
         assert "responsive_search_ad.headlines" not in paths
@@ -958,9 +969,11 @@ class TestUpdateAd:
     @pytest.mark.asyncio
     async def test_no_headlines_or_descriptions_raises(self) -> None:
         client = self._mutate_client()
-        with patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa):
-            with pytest.raises(ValueError, match="Supply headlines"):
-                await client.update_ad({"ad_id": "456"})
+        with (
+            patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa),
+            pytest.raises(ValueError, match="Supply headlines"),
+        ):
+            await client.update_ad({"ad_id": "456"})
 
     @pytest.mark.asyncio
     async def test_unreadable_omitted_side_raises_clear_error(self) -> None:
@@ -971,12 +984,12 @@ class TestUpdateAd:
         async def _no_desc(self, ad_id: str):  # noqa: ARG001
             return (["旧1", "旧2", "旧3"], [])
 
-        with patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa):
-            with patch.object(type(client), "_get_rsa_assets", _no_desc):
-                with pytest.raises(ValueError, match="current descriptions"):
-                    await client.update_ad(
-                        {"ad_id": "456", "headlines": ["H1", "H2", "H3"]}
-                    )
+        with (
+            patch.object(type(client), "_assert_ad_is_rsa", self._noop_assert_rsa),
+            patch.object(type(client), "_get_rsa_assets", _no_desc),
+            pytest.raises(ValueError, match="current descriptions"),
+        ):
+            await client.update_ad({"ad_id": "456", "headlines": ["H1", "H2", "H3"]})
 
 
 # ---------------------------------------------------------------------------

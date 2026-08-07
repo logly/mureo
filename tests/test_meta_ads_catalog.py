@@ -11,7 +11,6 @@ import pytest
 
 from mureo.meta_ads._catalog import CatalogMixin
 
-
 # ---------------------------------------------------------------------------
 # Helpers: mock class wrapping CatalogMixin for test isolation
 # ---------------------------------------------------------------------------

@@ -86,8 +86,9 @@ def test_skips_non_mapping_and_junk_values() -> None:
 
 @pytest.mark.unit
 def test_canonical_set_is_the_deduped_generics() -> None:
-    assert CONVERSION_ACTION_TYPES == frozenset(
-        {"lead", "purchase", "complete_registration"}
+    assert (
+        frozenset({"lead", "purchase", "complete_registration"})
+        == CONVERSION_ACTION_TYPES
     )
 
 

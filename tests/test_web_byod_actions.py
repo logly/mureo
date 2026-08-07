@@ -61,9 +61,7 @@ class TestValidateXlsxPath:
             byod_actions._validate_xlsx_path("bundle.xlsx")
 
     @pytest.mark.parametrize("ext", [".csv", ".txt", ".json", ".xls", ""])
-    def test_rejects_non_xlsx_extension(
-        self, tmp_path: Path, ext: str
-    ) -> None:
+    def test_rejects_non_xlsx_extension(self, tmp_path: Path, ext: str) -> None:
         from mureo.web import byod_actions
 
         f = tmp_path / f"bundle{ext}"
@@ -95,9 +93,7 @@ class TestValidateXlsxPath:
         with pytest.raises((ValueError, Exception)):
             byod_actions._validate_xlsx_path(str(d))
 
-    def test_rejects_traversal_even_with_xlsx_suffix(
-        self, tmp_path: Path
-    ) -> None:
+    def test_rejects_traversal_even_with_xlsx_suffix(self, tmp_path: Path) -> None:
         from mureo.web import byod_actions
 
         with pytest.raises((ValueError, Exception)):
@@ -138,9 +134,7 @@ class TestByodStatus:
     def test_no_manifest_all_platforms_live_or_unconfigured(self) -> None:
         from mureo.web import byod_actions
 
-        with patch(
-            "mureo.web.byod_actions.read_manifest", return_value=None
-        ):
+        with patch("mureo.web.byod_actions.read_manifest", return_value=None):
             result = byod_actions.byod_status()
         as_dict = _d(result)
         assert as_dict["status"] == "ok"
@@ -160,14 +154,13 @@ class TestByodStatus:
                 }
             },
         }
-        with patch(
-            "mureo.web.byod_actions.read_manifest", return_value=manifest
-        ), patch("mureo.web.byod_actions.byod_has", return_value=True):
+        with (
+            patch("mureo.web.byod_actions.read_manifest", return_value=manifest),
+            patch("mureo.web.byod_actions.byod_has", return_value=True),
+        ):
             result = byod_actions.byod_status()
         as_dict = _d(result)
-        ga = next(
-            p for p in as_dict["platforms"] if p["platform"] == "google_ads"
-        )
+        ga = next(p for p in as_dict["platforms"] if p["platform"] == "google_ads")
         assert ga["mode"] == "byod"
         assert ga["rows"] == 1234
         assert ga["date_range"] == {"start": "2026-01-01", "end": "2026-01-31"}
@@ -183,9 +176,10 @@ class TestByodStatus:
         def _has(platform: str) -> bool:
             return platform == "google_ads"
 
-        with patch(
-            "mureo.web.byod_actions.read_manifest", return_value=manifest
-        ), patch("mureo.web.byod_actions.byod_has", side_effect=_has):
+        with (
+            patch("mureo.web.byod_actions.read_manifest", return_value=manifest),
+            patch("mureo.web.byod_actions.byod_has", side_effect=_has),
+        ):
             result = byod_actions.byod_status()
         modes = {p["platform"]: p["mode"] for p in _d(result)["platforms"]}
         assert modes["google_ads"] == "byod"
@@ -194,9 +188,7 @@ class TestByodStatus:
     def test_status_never_leaks_credentials(self) -> None:
         from mureo.web import byod_actions
 
-        with patch(
-            "mureo.web.byod_actions.read_manifest", return_value=None
-        ):
+        with patch("mureo.web.byod_actions.read_manifest", return_value=None):
             result = byod_actions.byod_status()
         blob = repr(_d(result))
         assert "refresh_token" not in blob
@@ -208,9 +200,7 @@ class TestByodStatus:
 
         from mureo.web import byod_actions
 
-        with patch(
-            "mureo.web.byod_actions.read_manifest", return_value=None
-        ):
+        with patch("mureo.web.byod_actions.read_manifest", return_value=None):
             result = byod_actions.byod_status()
         json.dumps(_d(result))
 
@@ -253,9 +243,7 @@ class TestByodImportSuccess:
             "mureo.web.byod_actions.import_bundle",
             return_value=self._bundle_result(),
         ) as mock_imp:
-            result = byod_actions.byod_import(
-                file_path=str(f), replace=False
-            )
+            result = byod_actions.byod_import(file_path=str(f), replace=False)
         as_dict = _d(result)
         assert as_dict["status"] == "ok"
         assert "google_ads" in repr(as_dict)
@@ -282,9 +270,7 @@ class TestByodImportSuccess:
             "mureo.web.byod_actions.import_bundle",
             return_value=self._bundle_result(),
         ):
-            result = byod_actions.byod_import(
-                file_path=str(f), replace=False
-            )
+            result = byod_actions.byod_import(file_path=str(f), replace=False)
         assert "42" in repr(_d(result))
 
     def test_import_does_not_echo_raw_file_bytes(self, tmp_path: Path) -> None:
@@ -296,9 +282,7 @@ class TestByodImportSuccess:
             "mureo.web.byod_actions.import_bundle",
             return_value=self._bundle_result(),
         ):
-            result = byod_actions.byod_import(
-                file_path=str(f), replace=False
-            )
+            result = byod_actions.byod_import(file_path=str(f), replace=False)
         assert "SENSITIVE-RAW-BYTES" not in repr(_d(result))
 
 
@@ -317,9 +301,7 @@ class TestByodImportValidation:
         f = tmp_path / "data.csv"
         f.write_text("a,b", encoding="utf-8")
         with patch("mureo.web.byod_actions.import_bundle") as mock_imp:
-            result = byod_actions.byod_import(
-                file_path=str(f), replace=False
-            )
+            result = byod_actions.byod_import(file_path=str(f), replace=False)
         assert _d(result)["status"] == "error"
         mock_imp.assert_not_called()
 
@@ -328,9 +310,7 @@ class TestByodImportValidation:
 
         (tmp_path / "bundle.xlsx").write_bytes(b"x")
         with patch("mureo.web.byod_actions.import_bundle") as mock_imp:
-            result = byod_actions.byod_import(
-                file_path="bundle.xlsx", replace=False
-            )
+            result = byod_actions.byod_import(file_path="bundle.xlsx", replace=False)
         assert _d(result)["status"] == "error"
         mock_imp.assert_not_called()
 
@@ -342,9 +322,7 @@ class TestByodImportValidation:
         from mureo.web import byod_actions
 
         with patch("mureo.web.byod_actions.import_bundle") as mock_imp:
-            result = byod_actions.byod_import(
-                file_path=payload, replace=False
-            )
+            result = byod_actions.byod_import(file_path=payload, replace=False)
         assert _d(result)["status"] == "error"
         mock_imp.assert_not_called()
 
@@ -365,9 +343,7 @@ class TestByodImportValidation:
         from mureo.web import byod_actions
 
         with patch("mureo.web.byod_actions.import_bundle") as mock_imp:
-            result = byod_actions.byod_import(
-                file_path=payload, replace=False
-            )
+            result = byod_actions.byod_import(file_path=payload, replace=False)
         assert _d(result)["status"] == "error"
         mock_imp.assert_not_called()
 
@@ -383,15 +359,11 @@ class TestByodImportValidation:
             "mureo.web.byod_actions.import_bundle",
             side_effect=BundleImportError("no recognized tabs"),
         ):
-            result = byod_actions.byod_import(
-                file_path=str(f), replace=False
-            )
+            result = byod_actions.byod_import(file_path=str(f), replace=False)
         as_dict = _d(result)
         assert as_dict["status"] == "error"
 
-    def test_unexpected_exception_degrades_to_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_unexpected_exception_degrades_to_error(self, tmp_path: Path) -> None:
         from mureo.web import byod_actions
 
         f = tmp_path / "bundle.xlsx"
@@ -400,14 +372,10 @@ class TestByodImportValidation:
             "mureo.web.byod_actions.import_bundle",
             side_effect=RuntimeError("openpyxl exploded"),
         ):
-            result = byod_actions.byod_import(
-                file_path=str(f), replace=False
-            )
+            result = byod_actions.byod_import(file_path=str(f), replace=False)
         assert _d(result)["status"] == "error"
 
-    def test_error_envelope_does_not_leak_traceback(
-        self, tmp_path: Path
-    ) -> None:
+    def test_error_envelope_does_not_leak_traceback(self, tmp_path: Path) -> None:
         from mureo.web import byod_actions
 
         f = tmp_path / "bundle.xlsx"
@@ -416,9 +384,7 @@ class TestByodImportValidation:
             "mureo.web.byod_actions.import_bundle",
             side_effect=RuntimeError("/Users/secret boom"),
         ):
-            result = byod_actions.byod_import(
-                file_path=str(f), replace=False
-            )
+            result = byod_actions.byod_import(file_path=str(f), replace=False)
         assert "Traceback (most recent call last)" not in repr(_d(result))
 
 
@@ -435,9 +401,7 @@ class TestByodRemove:
         with patch(
             "mureo.web.byod_actions.remove_platform", return_value=True
         ) as mock_rm:
-            result = byod_actions.byod_remove(
-                google_ads=True, meta_ads=False
-            )
+            result = byod_actions.byod_remove(google_ads=True, meta_ads=False)
         assert _d(result)["status"] == "ok"
         mock_rm.assert_called_once_with("google_ads")
 
@@ -447,30 +411,22 @@ class TestByodRemove:
         with patch(
             "mureo.web.byod_actions.remove_platform", return_value=True
         ) as mock_rm:
-            result = byod_actions.byod_remove(
-                google_ads=False, meta_ads=True
-            )
+            result = byod_actions.byod_remove(google_ads=False, meta_ads=True)
         assert _d(result)["status"] == "ok"
         mock_rm.assert_called_once_with("meta_ads")
 
     def test_nothing_to_remove_is_noop(self) -> None:
         from mureo.web import byod_actions
 
-        with patch(
-            "mureo.web.byod_actions.remove_platform", return_value=False
-        ):
-            result = byod_actions.byod_remove(
-                google_ads=True, meta_ads=False
-            )
+        with patch("mureo.web.byod_actions.remove_platform", return_value=False):
+            result = byod_actions.byod_remove(google_ads=True, meta_ads=False)
         assert _d(result)["status"] in {"noop", "ok"}
 
     def test_zero_platforms_selected_rejected(self) -> None:
         from mureo.web import byod_actions
 
         with patch("mureo.web.byod_actions.remove_platform") as mock_rm:
-            result = byod_actions.byod_remove(
-                google_ads=False, meta_ads=False
-            )
+            result = byod_actions.byod_remove(google_ads=False, meta_ads=False)
         assert _d(result)["status"] == "error"
         mock_rm.assert_not_called()
 
@@ -478,9 +434,7 @@ class TestByodRemove:
         from mureo.web import byod_actions
 
         with patch("mureo.web.byod_actions.remove_platform") as mock_rm:
-            result = byod_actions.byod_remove(
-                google_ads=True, meta_ads=True
-            )
+            result = byod_actions.byod_remove(google_ads=True, meta_ads=True)
         assert _d(result)["status"] == "error"
         mock_rm.assert_not_called()
 
@@ -492,9 +446,7 @@ class TestByodRemove:
             "mureo.web.byod_actions.remove_platform",
             side_effect=BYODImportError("unknown platform"),
         ):
-            result = byod_actions.byod_remove(
-                google_ads=True, meta_ads=False
-            )
+            result = byod_actions.byod_remove(google_ads=True, meta_ads=False)
         assert _d(result)["status"] == "error"
 
     def test_remove_idempotent_second_call_noop(self) -> None:
@@ -520,9 +472,7 @@ class TestByodClear:
     def test_clear_removes_all_returns_ok(self) -> None:
         from mureo.web import byod_actions
 
-        with patch(
-            "mureo.web.byod_actions.clear_all", return_value=True
-        ) as mock_clear:
+        with patch("mureo.web.byod_actions.clear_all", return_value=True) as mock_clear:
             result = byod_actions.byod_clear()
         assert _d(result)["status"] == "ok"
         mock_clear.assert_called_once()
@@ -530,9 +480,7 @@ class TestByodClear:
     def test_clear_when_nothing_present_is_noop(self) -> None:
         from mureo.web import byod_actions
 
-        with patch(
-            "mureo.web.byod_actions.clear_all", return_value=False
-        ):
+        with patch("mureo.web.byod_actions.clear_all", return_value=False):
             result = byod_actions.byod_clear()
         assert _d(result)["status"] in {"noop", "ok"}
 
@@ -549,9 +497,7 @@ class TestByodClear:
     def test_clear_idempotent_second_call_noop(self) -> None:
         from mureo.web import byod_actions
 
-        with patch(
-            "mureo.web.byod_actions.clear_all", side_effect=[True, False]
-        ):
+        with patch("mureo.web.byod_actions.clear_all", side_effect=[True, False]):
             first = byod_actions.byod_clear()
             second = byod_actions.byod_clear()
         assert _d(first)["status"] == "ok"
@@ -562,9 +508,7 @@ class TestByodClear:
 
         from mureo.web import byod_actions
 
-        with patch(
-            "mureo.web.byod_actions.clear_all", return_value=True
-        ):
+        with patch("mureo.web.byod_actions.clear_all", return_value=True):
             result = byod_actions.byod_clear()
         json.dumps(_d(result))
 
@@ -576,9 +520,7 @@ class TestByodClear:
 
 @pytest.mark.unit
 class TestEnvelopeContract:
-    def test_import_result_is_frozen_dataclass_like(
-        self, tmp_path: Path
-    ) -> None:
+    def test_import_result_is_frozen_dataclass_like(self, tmp_path: Path) -> None:
         from mureo.web import byod_actions
 
         f = tmp_path / "bundle.xlsx"
@@ -587,9 +529,7 @@ class TestEnvelopeContract:
             "mureo.web.byod_actions.import_bundle",
             return_value={"google_ads": {"rows": 1}},
         ):
-            result = byod_actions.byod_import(
-                file_path=str(f), replace=False
-            )
+            result = byod_actions.byod_import(file_path=str(f), replace=False)
         assert hasattr(result, "as_dict")
         with pytest.raises(dataclasses.FrozenInstanceError):
             result.status = "tampered"  # type: ignore[misc]

@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -227,9 +226,7 @@ class TestAuthAmazonCommands:
         from mureo.cli.main import app
 
         with (
-            patch(
-                "mureo.cli.auth_cmd.load_google_ads_credentials", return_value=None
-            ),
+            patch("mureo.cli.auth_cmd.load_google_ads_credentials", return_value=None),
             patch("mureo.cli.auth_cmd.load_meta_ads_credentials", return_value=None),
             patch(
                 "mureo.cli.auth_cmd.load_amazon_ads_credentials",
@@ -246,9 +243,7 @@ class TestAuthAmazonCommands:
         from mureo.cli.main import app
 
         with (
-            patch(
-                "mureo.cli.auth_cmd.load_google_ads_credentials", return_value=None
-            ),
+            patch("mureo.cli.auth_cmd.load_google_ads_credentials", return_value=None),
             patch("mureo.cli.auth_cmd.load_meta_ads_credentials", return_value=None),
             patch(
                 "mureo.cli.auth_cmd.load_amazon_ads_credentials",

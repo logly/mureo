@@ -12,15 +12,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mureo.meta_ads._campaigns import CampaignsMixin
 from mureo.meta_ads._ad_sets import AdSetsMixin
 from mureo.meta_ads._ads import AdsMixin
-from mureo.meta_ads._creatives import CreativesMixin
+from mureo.meta_ads._analysis import AnalysisMixin, _extract_cv, _safe_float
 from mureo.meta_ads._audiences import AudiencesMixin
-from mureo.meta_ads._pixels import PixelsMixin
+from mureo.meta_ads._campaigns import CampaignsMixin
+from mureo.meta_ads._creatives import CreativesMixin
 from mureo.meta_ads._insights import InsightsMixin
-from mureo.meta_ads._analysis import AnalysisMixin, _safe_float, _extract_cv
-
+from mureo.meta_ads._pixels import PixelsMixin
 
 # ---------------------------------------------------------------------------
 # Helpers: factory producing mock classes wrapping each Mixin for test isolation

@@ -413,11 +413,11 @@ class TestUrlInspectionHandler:
     async def test_inspect_url_missing_params(self) -> None:
         h = _import_handlers()
         mock_creds = MagicMock()
-        with patch.object(h, "load_google_ads_credentials", return_value=mock_creds):
-            with pytest.raises(ValueError, match="inspection_url"):
-                await h.handle_url_inspection_inspect(
-                    {"site_url": "https://example.com/"}
-                )
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=mock_creds),
+            pytest.raises(ValueError, match="inspection_url"),
+        ):
+            await h.handle_url_inspection_inspect({"site_url": "https://example.com/"})
 
 
 # ---------------------------------------------------------------------------
@@ -444,6 +444,8 @@ class TestHandlerErrors:
         """Missing required param raises ValueError (not caught by decorator)."""
         h = _import_handlers()
         mock_creds = MagicMock()
-        with patch.object(h, "load_google_ads_credentials", return_value=mock_creds):
-            with pytest.raises(ValueError, match="site_url"):
-                await h.handle_sites_get({})
+        with (
+            patch.object(h, "load_google_ads_credentials", return_value=mock_creds),
+            pytest.raises(ValueError, match="site_url"),
+        ):
+            await h.handle_sites_get({})

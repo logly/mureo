@@ -16,7 +16,7 @@ _run_report / _search and friends are mocked.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
@@ -40,12 +40,11 @@ from mureo.google_ads._analysis_keywords import _KeywordsAnalysisMixin
 from mureo.google_ads._analysis_performance import _PerformanceAnalysisMixin
 from mureo.google_ads._analysis_rsa import _RsaAnalysisMixin
 from mureo.google_ads._analysis_search_terms import (
-    _SearchTermsAnalysisMixin,
     _build_add_candidate,
     _build_exclude_candidate,
     _is_informational_term,
+    _SearchTermsAnalysisMixin,
 )
-
 
 # =====================================================================
 # Mock client
@@ -733,7 +732,7 @@ class TestSearchTermsAnalysisMixin:
             "123", use_intent_analysis=False
         )
         assert len(result["suggestions"]) >= 1
-        assert "PHRASE" == result["suggestions"][0]["recommended_match_type"]
+        assert result["suggestions"][0]["recommended_match_type"] == "PHRASE"
 
     @pytest.mark.unit
     async def test_review_search_terms_classification(self) -> None:

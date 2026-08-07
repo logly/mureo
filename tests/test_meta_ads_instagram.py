@@ -7,13 +7,12 @@ Also covers the MCP tool handlers.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
-from mureo.meta_ads._page_posts import PagePostsMixin
 from mureo.meta_ads._instagram import InstagramMixin
-
+from mureo.meta_ads._page_posts import PagePostsMixin
 
 # ---------------------------------------------------------------------------
 # Helpers: mock class wrapping the Mixin for test isolation

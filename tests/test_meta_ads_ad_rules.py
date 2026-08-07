@@ -12,7 +12,6 @@ import pytest
 
 from mureo.meta_ads._ad_rules import AdRulesMixin
 
-
 # ---------------------------------------------------------------------------
 # Helpers: mock class wrapping the Mixin for test isolation
 # ---------------------------------------------------------------------------

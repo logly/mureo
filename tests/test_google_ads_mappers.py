@@ -9,9 +9,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from google.ads.googleads.v23.enums.types.bidding_strategy_type import (
-    BiddingStrategyTypeEnum,
-)
 
 from mureo.google_ads.mappers import (
     _BIDDING_STRATEGY_MAP,
@@ -22,7 +19,6 @@ from mureo.google_ads.mappers import (
     map_ad_group,
     map_ad_performance_report,
     map_approval_status,
-    map_bidding_strategy_type,
     map_bidding_system_status,
     map_callout,
     map_campaign,
@@ -43,7 +39,6 @@ from mureo.google_ads.mappers import (
     map_sitelink,
     map_tag_snippet,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helper functions

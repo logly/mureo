@@ -44,9 +44,7 @@ def _patch_entry_points(monkeypatch: pytest.MonkeyPatch, eps: list[_FakeEP]) -> 
         assert group == "mureo.runtime_context_factory"
         return eps
 
-    monkeypatch.setattr(
-        "mureo.core.runtime_context.entry_points", fake_entry_points
-    )
+    monkeypatch.setattr("mureo.core.runtime_context.entry_points", fake_entry_points)
 
 
 @pytest.fixture(autouse=True)
@@ -71,9 +69,7 @@ def test_no_entry_point_returns_default(monkeypatch: pytest.MonkeyPatch) -> None
 @pytest.mark.unit
 def test_single_entry_point_factory_is_used(monkeypatch: pytest.MonkeyPatch) -> None:
     sentinel_ctx = default_runtime_context()  # any concrete RuntimeContext
-    _patch_entry_points(
-        monkeypatch, [_FakeEP("custom-runtime", lambda: sentinel_ctx)]
-    )
+    _patch_entry_points(monkeypatch, [_FakeEP("custom-runtime", lambda: sentinel_ctx)])
     assert get_runtime_context() is sentinel_ctx
 
 
@@ -119,9 +115,7 @@ def test_multiple_entry_points_raise(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.unit
 def test_factory_returning_wrong_type_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_entry_points(
-        monkeypatch, [_FakeEP("bad", lambda: "not a context")]
-    )
+    _patch_entry_points(monkeypatch, [_FakeEP("bad", lambda: "not a context")])
     with pytest.raises(RuntimeContextFactoryError, match="expected RuntimeContext"):
         get_runtime_context()
 

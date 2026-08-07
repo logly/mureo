@@ -22,7 +22,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # list_demo_scenarios
 # ---------------------------------------------------------------------------
@@ -85,9 +84,7 @@ class TestListDemoScenarios:
     def test_registry_failure_degrades_to_error_envelope(self) -> None:
         from mureo.web import demo_actions
 
-        with patch.object(
-            demo_actions, "SCENARIOS", new=MagicMock()
-        ) as broken:
+        with patch.object(demo_actions, "SCENARIOS", new=MagicMock()) as broken:
             broken.__iter__.side_effect = RuntimeError("registry boom")
             broken.items.side_effect = RuntimeError("registry boom")
             result = demo_actions.list_demo_scenarios()
@@ -155,9 +152,7 @@ class TestInitDemoSuccess:
         target = tmp_path / "d"
         ret = self._materialize_return(target)
         ret["state"] = None
-        with patch(
-            "mureo.web.demo_actions.materialize", return_value=ret
-        ) as mock_mat:
+        with patch("mureo.web.demo_actions.materialize", return_value=ret) as mock_mat:
             result = demo_actions.init_demo(
                 scenario_name="seasonality-trap",
                 target=str(target),
@@ -295,9 +290,7 @@ class TestInitDemoErrors:
         as_dict = result.as_dict() if hasattr(result, "as_dict") else result
         assert as_dict["status"] == "error"
 
-    def test_error_envelope_does_not_leak_full_traceback(
-        self, tmp_path: Path
-    ) -> None:
+    def test_error_envelope_does_not_leak_full_traceback(self, tmp_path: Path) -> None:
         from mureo.web import demo_actions
 
         with patch(

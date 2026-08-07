@@ -28,7 +28,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
@@ -304,9 +303,7 @@ class TestRemoveMcpConfig:
         assert src.parent == settings_path.parent
         assert ".tmp" in src.name
 
-    def test_atomic_write_preserves_original_on_failure(
-        self, tmp_path: Path
-    ) -> None:
+    def test_atomic_write_preserves_original_on_failure(self, tmp_path: Path) -> None:
         """If ``os.replace`` raises mid-write, the original file is
         byte-for-byte intact and no ``.tmp`` debris remains. Acceptance
         criteria L154-L156."""
@@ -356,12 +353,8 @@ class TestRemoveMcpConfig:
         consulted for MCP discovery)."""
         from mureo.cli.settings_remove import remove_mcp_config
 
-        monkeypatch.setattr(
-            "mureo.cli.settings_remove.shutil.which", lambda _: None
-        )
-        monkeypatch.setattr(
-            "mureo.cli.settings_remove.Path.home", lambda: tmp_path
-        )
+        monkeypatch.setattr("mureo.cli.settings_remove.shutil.which", lambda _: None)
+        monkeypatch.setattr("mureo.cli.settings_remove.Path.home", lambda: tmp_path)
         claude_json = tmp_path / ".claude.json"
         _write_settings(
             claude_json,
@@ -466,11 +459,7 @@ class TestRemoveCredentialGuard:
         settings_path = tmp_path / ".claude" / "settings.json"
         _write_settings(
             settings_path,
-            {
-                "hooks": {
-                    "PreToolUse": [_make_unrelated_hook("Edit", "echo x")]
-                }
-            },
+            {"hooks": {"PreToolUse": [_make_unrelated_hook("Edit", "echo x")]}},
         )
         pre_bytes = settings_path.read_bytes()
         pre_mtime = settings_path.stat().st_mtime_ns
@@ -519,9 +508,7 @@ class TestRemoveCredentialGuard:
         assert result.changed is False
         assert settings_path.read_bytes() == pre_bytes
 
-    def test_does_not_match_substring_in_matcher_field(
-        self, tmp_path: Path
-    ) -> None:
+    def test_does_not_match_substring_in_matcher_field(self, tmp_path: Path) -> None:
         """An unrelated entry whose ``matcher`` field happens to contain
         ``[mureo-credential-guard]`` must NOT be removed — the tag is
         only honored inside ``hooks[].command``. Acceptance criteria /
@@ -537,11 +524,7 @@ class TestRemoveCredentialGuard:
         }
         _write_settings(
             settings_path,
-            {
-                "hooks": {
-                    "PreToolUse": [decoy, _make_mureo_hook_entry("Read")]
-                }
-            },
+            {"hooks": {"PreToolUse": [decoy, _make_mureo_hook_entry("Read")]}},
         )
 
         result = remove_credential_guard(settings_path=settings_path)
@@ -592,9 +575,7 @@ class TestRemoveCredentialGuard:
         assert str(settings_path) in str(exc_info.value)
         assert settings_path.read_bytes() == pre_bytes
 
-    def test_atomic_write_preserves_original_on_failure(
-        self, tmp_path: Path
-    ) -> None:
+    def test_atomic_write_preserves_original_on_failure(self, tmp_path: Path) -> None:
         """An OSError mid-replace leaves the original byte-for-byte intact."""
         from mureo.cli.settings_remove import remove_credential_guard
 
@@ -625,9 +606,7 @@ class TestRemoveCredentialGuard:
         leftovers = list(settings_path.parent.glob("*.tmp*"))
         assert leftovers == []
 
-    def test_atomic_write_uses_tempfile_in_same_dir(
-        self, tmp_path: Path
-    ) -> None:
+    def test_atomic_write_uses_tempfile_in_same_dir(self, tmp_path: Path) -> None:
         """Verify atomic-write invariant for the hook remover."""
         from mureo.cli.settings_remove import remove_credential_guard
 
@@ -662,9 +641,7 @@ class TestRemoveCredentialGuard:
         """Omitting ``settings_path`` resolves through ``Path.home``."""
         from mureo.cli.settings_remove import remove_credential_guard
 
-        monkeypatch.setattr(
-            "mureo.cli.settings_remove.Path.home", lambda: tmp_path
-        )
+        monkeypatch.setattr("mureo.cli.settings_remove.Path.home", lambda: tmp_path)
         settings_path = tmp_path / ".claude" / "settings.json"
         _write_settings(
             settings_path,
@@ -719,9 +696,7 @@ class TestRemoveCredentialGuard:
         assert payload["hooks"]["PreToolUse"] == []
         assert result.changed is True
 
-    def test_strips_mureo_hook_inside_multi_hook_entry(
-        self, tmp_path: Path
-    ) -> None:
+    def test_strips_mureo_hook_inside_multi_hook_entry(self, tmp_path: Path) -> None:
         """When a PreToolUse entry contains BOTH a tagged mureo hook and
         an unrelated hook in its ``hooks`` array, the tagged one is
         removed while the unrelated one survives within the same entry.
@@ -753,9 +728,7 @@ class TestRemoveCredentialGuard:
         # entry survives with only the user hook left, or it's pruned
         # entirely — both are valid as long as the user hook is intact.
         leftover_commands = [
-            h["command"]
-            for entry in remaining
-            for h in entry.get("hooks", [])
+            h["command"] for entry in remaining for h in entry.get("hooks", [])
         ]
         assert "echo user-owned" in leftover_commands
         assert not any(_MUREO_HOOK_TAG in c for c in leftover_commands)

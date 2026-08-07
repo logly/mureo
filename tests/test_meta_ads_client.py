@@ -14,11 +14,7 @@ import pytest
 
 from mureo.meta_ads.client import (
     MetaAdsApiClient,
-    _INITIAL_BACKOFF_SECONDS,
-    _MAX_RETRIES,
-    _RATE_LIMIT_WARNING_THRESHOLD,
 )
-
 
 # ---------------------------------------------------------------------------
 # Initialization tests
@@ -177,9 +173,11 @@ class TestRequest:
         client._http = MagicMock()
         client._http.get = AsyncMock(return_value=mock_429)
 
-        with patch("mureo.meta_ads.client.asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(RuntimeError, match="maximum retry count"):
-                await client._get("/test")
+        with (
+            patch("mureo.meta_ads.client.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(RuntimeError, match="maximum retry count"),
+        ):
+            await client._get("/test")
 
     @pytest.mark.asyncio
     async def test_http_error_retry(self, client: MetaAdsApiClient) -> None:
@@ -204,9 +202,11 @@ class TestRequest:
         client._http = MagicMock()
         client._http.get = AsyncMock(side_effect=httpx.ConnectError("always fail"))
 
-        with patch("mureo.meta_ads.client.asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(RuntimeError, match="request failed"):
-                await client._get("/test")
+        with (
+            patch("mureo.meta_ads.client.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(RuntimeError, match="request failed"),
+        ):
+            await client._get("/test")
 
     @pytest.mark.asyncio
     async def test_unsupported_method_raises(self, client: MetaAdsApiClient) -> None:
