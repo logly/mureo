@@ -70,11 +70,13 @@ LIMITATIONS: tuple[str, ...] = (
     "Learning-phase internals (Google Ads bid-strategy learning, Meta ad-set "
     "learning) are not readable through mureo's clients; a learning reset is "
     "inferred from a change event, never observed directly.",
-    "Change feeds are incomplete by construction: Google Ads change history "
-    "omits system-initiated changes and retains ~30 days, Meta has no "
-    "equivalent feed, and manual work done outside mureo reaches action_log "
-    "only if it was imported. A cliff with no change in the window is "
-    "therefore weak evidence, not exoneration.",
+    "Change feeds reaching mureo are incomplete: Google Ads change history "
+    "omits system-initiated changes and retains ~30 days; Meta publishes an "
+    "account activity log but mureo does not fetch it yet, so Meta changes "
+    "reach this timeline only via action_log; and manual work done outside "
+    "mureo reaches action_log only if it was imported. A cliff with no "
+    "change in the window is therefore weak evidence, not exoneration — and "
+    "for Meta the gap is mureo's, not the platform's.",
     "Several campaigns collapsing on the same day is reported as a "
     "correlation only. A shared account-level cause (account review, "
     "payment hold, inventory-side policy action) is not attributable from "

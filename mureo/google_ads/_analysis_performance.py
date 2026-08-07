@@ -6,6 +6,7 @@ import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
+from mureo.analysis.delivery_collapse import fill_missing_delivery_days
 from mureo.core import clock
 from mureo.google_ads._analysis_constants import (
     _calc_change_rate,
@@ -704,6 +705,13 @@ class _PerformanceAnalysisMixin:
         ``days`` is range-checked by the GAQL validator and the two dates
         are produced by :meth:`datetime.date.isoformat`, whose format
         Python locks — no caller-controlled string reaches the query.
+
+        GAQL omits a ``(campaign, date)`` row entirely when the campaign
+        did not serve that day, rather than returning ``impressions=0``.
+        That is precisely the shape this detector looks for, so the rows
+        are reconciled against the requested range before they leave —
+        otherwise a dead campaign's series simply ends at its last active
+        day and nothing ever fires.
         """
         window = validate_period_days(days)
         end = clock.server_now().date()
@@ -717,7 +725,9 @@ class _PerformanceAnalysisMixin:
             f"AND '{end.isoformat()}'"
         )
         rows = await self._search(query)
-        return [_daily_delivery_row(row) for row in rows]
+        return fill_missing_delivery_days(
+            [_daily_delivery_row(row) for row in rows], through=end
+        )
 
 
 def _daily_delivery_row(row: Any) -> dict[str, Any]:

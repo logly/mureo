@@ -227,6 +227,28 @@ TOOLS: list[Tool] = [
                     "type": "string",
                     "description": "Treat this YYYY-MM-DD date as 'today'.",
                 },
+                "change_lookback_days": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 90,
+                    "description": (
+                        "How many days before the cliff count as 'immediately "
+                        "before' for changes_before_cliff (default 3). Widen it "
+                        "for a cause with a delayed effect — a billing hold or "
+                        "a policy review can stop delivery days after the "
+                        "change that caused it. Changes outside the window "
+                        "still appear on the timeline."
+                    ),
+                },
+                "timeline_days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 180,
+                    "description": (
+                        "How many trailing days of delivery the timeline "
+                        "covers (default 21)."
+                    ),
+                },
                 "changes": {
                     "type": "array",
                     "description": (

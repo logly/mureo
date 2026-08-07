@@ -21,6 +21,8 @@ import dataclasses
 from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.collapse_diagnosis import (
+    DEFAULT_CHANGE_LOOKBACK_DAYS,
+    DEFAULT_TIMELINE_DAYS,
     ChangeEvent,
     CheckOutcome,
     EvidenceCheck,
@@ -157,6 +159,12 @@ async def handle_delivery_collapse_diagnose(
     Returns ``status="no_collapse_detected"`` when the campaign does not
     currently qualify — a diagnosis of a collapse that is not happening
     would be fabricated reasoning.
+
+    ``change_lookback_days`` and ``timeline_days`` are caller-settable:
+    a cause with a delayed effect (a billing hold placed five days before
+    delivery stopped) falls outside the 3-day default, and asking the
+    operator to supply everything they know and then narrowing it
+    silently is the wrong trade.
     """
     try:
         series = _series_from_arguments(arguments)
@@ -184,7 +192,16 @@ async def handle_delivery_collapse_diagnose(
         )
 
     try:
-        diagnosis = diagnose_collapse(signal, target, changes=changes, checks=checks)
+        diagnosis = diagnose_collapse(
+            signal,
+            target,
+            changes=changes,
+            checks=checks,
+            change_lookback_days=int(
+                _opt(arguments, "change_lookback_days", DEFAULT_CHANGE_LOOKBACK_DAYS)
+            ),
+            timeline_days=int(_opt(arguments, "timeline_days", DEFAULT_TIMELINE_DAYS)),
+        )
     except ValueError as exc:
         return _json_result({"error": str(exc)})
 

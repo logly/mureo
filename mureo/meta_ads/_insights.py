@@ -5,6 +5,7 @@ import logging
 from datetime import timedelta
 from typing import Any
 
+from mureo.analysis.delivery_collapse import fill_missing_delivery_days
 from mureo.context.state import load_conversion_action_types
 from mureo.core import clock
 from mureo.meta_ads._conversion_count import count_conversions_from_actions
@@ -208,8 +209,9 @@ class InsightsMixin:
 
         Rows follow the platform-agnostic delivery shape consumed by
         :func:`mureo.analysis.delivery_collapse.delivery_series_from_rows`.
-        Campaign status is joined from ``list_campaigns`` because Meta's
-        insights edge does not carry it — and the *status says serving,
+        Missing days are reconciled against the requested range (Meta
+        omits zero-delivery rows). Campaign status is joined from
+        ``list_campaigns`` because Meta's insights edge does not carry it — and the *status says serving,
         nothing is serving* contradiction is the entire signal, so a row
         whose campaign is missing from that join is dropped rather than
         defaulted to ENABLED.
@@ -228,11 +230,16 @@ class InsightsMixin:
         rows = await self._get_all_insights(f"/{self._ad_account_id}/insights", params)
         campaigns = await self.list_campaigns(limit=_CAMPAIGN_JOIN_LIMIT)
         by_id = {str(c.get("id")): c for c in campaigns}
-        return [
+        mapped = [
             _delivery_row(row, by_id[str(row.get("campaign_id"))])
             for row in rows
             if str(row.get("campaign_id")) in by_id
         ]
+        # Meta's insights edge omits a (campaign, day) row when there was
+        # no delivery rather than returning impressions=0 — exactly the
+        # days this detector exists to see. Reconcile against the range
+        # that was requested, not against what came back.
+        return fill_missing_delivery_days(mapped, through=until)
 
     async def analyze_performance(
         self,

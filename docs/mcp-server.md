@@ -516,7 +516,7 @@ Cross-platform analysis that runs on normalised metrics rather than a platform A
 |------|-------------|-------------------|
 | `analysis_anomalies_check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). | `current` (`current.campaign_id` and `current.cost` required) |
 | `analysis_delivery_collapse_check` | Flag campaigns whose impressions fell off a cliff while their status still says they should be serving. Baseline comes from the supplied day-grain rows, **not** from `action_log`. | `platform`, `rows` |
-| `analysis_delivery_collapse_diagnose` | Overlay a change feed on one campaign's daily delivery, fold in elimination-ladder evidence, and report the cause **and** the open questions. | `platform`, `campaign_id`, `rows` |
+| `analysis_delivery_collapse_diagnose` | Overlay a change feed on one campaign's daily delivery, fold in elimination-ladder evidence, and report the cause **and** the open questions. `change_lookback_days` (default 3) and `timeline_days` (default 21) are settable — widen the lookback for a cause with a delayed effect. | `platform`, `campaign_id`, `rows` |
 
 `had_prior_spend` (default `true`) suppresses the zero-spend alert for fresh campaigns. `min_baseline_entries` (default `7`) controls how many history entries are required before a baseline is built; below this, `baseline` is `null` and only zero-spend is evaluated. Numeric fields accept int / float / numeric-string and reject `"N/A"` or booleans. `state_file` is sandboxed the same way as for the rollback tools. A parseable-but-corrupt `STATE.json` produces a `baseline_warning` in the response without silencing live zero-spend detection.
 
@@ -540,7 +540,12 @@ Cross-platform analysis that runs on normalised metrics rather than a platform A
 - **Intentional pauses** — a campaign whose status is not a serving status is skipped. The *status says serving, nothing is serving* contradiction is the entire signal.
 - **Finished flights** — a campaign past its `end_date` is expected to stop.
 - **Low-volume campaigns** — a baseline under `delivery_collapse_min_baseline_impressions` (default 1000/day) hits zero routinely.
-- **New campaigns** — fewer than `delivery_collapse_min_baseline_days` (default 14) of history yields no signal.
+- **New campaigns** — fewer than `delivery_collapse_min_baseline_days` (default 14) days *with real delivery* in the window yields no signal. It counts delivering days, not window length, so a campaign cannot reach the bar on days it was already down.
+
+Two things it deliberately does **not** depend on:
+
+- **How long the outage has been running.** Detection is asserted across the whole duration range (1 day to 180+), because a detector that silently stops firing on the *longest* outages is worst exactly where it matters most.
+- **Whether a platform emits zero-delivery rows.** Google Ads and Meta both omit a `(campaign, date)` row when nothing served, which is the very symptom being looked for. Rows are reconciled against the requested date range before detection — every date from a campaign's first observed row to the end of the window with no row becomes an explicit zero. A platform that already returns zeros produces no gaps, so the reconciliation is a no-op for it. Days *before* a campaign's first row are never invented.
 
 **Thresholds live in STRATEGY.md `## Guardrails`** (all optional; a malformed or out-of-range value drops that one rule and keeps the default):
 
@@ -559,7 +564,7 @@ Cross-platform analysis that runs on normalised metrics rather than a platform A
 - Serving-side suppression — the platform choosing not to enter a campaign into auctions — is not exposed by any read API mureo has, on any platform.
 - No supported platform exposes billing state through an API mureo integrates.
 - Learning-phase internals (Google bid-strategy learning, Meta ad-set learning) are not readable; a learning reset is inferred from a change event, never observed.
-- Change feeds are incomplete: Google Ads change history omits system-initiated changes and retains ~30 days, Meta has no equivalent feed, and manual work reaches `action_log` only if it was imported. No change in the window is weak evidence, not exoneration.
+- Change feeds reaching mureo are incomplete: Google Ads change history omits system-initiated changes and retains ~30 days; **Meta publishes an account activity log but mureo does not fetch it yet**, so Meta changes reach the timeline only via `action_log`; and manual work reaches `action_log` only if it was imported. No change in the window is weak evidence, not exoneration — and on Meta the gap is mureo's, not the platform's.
 - Several campaigns collapsing on the same day is reported as a correlation only.
 
 `next_checks` names the mureo tool for each open step on platforms that have one, and an empty string where mureo has no tool at all (billing everywhere; bid competitiveness and learning state on Meta) rather than inventing one.

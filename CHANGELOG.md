@@ -34,10 +34,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     detector by the second one. Also suppressed: the partial current day (budget
     pacing makes every morning look like a cliff), intentional pauses, finished
     flights, low-volume campaigns, and campaigns with under two weeks of
-    history. Thresholds are the operator's, in STRATEGY.md `## Guardrails`
+    history. `delivery_collapse_min_baseline_days` counts days that actually
+    **delivered**, not the window's length, so a campaign cannot clear the
+    minimum-history bar on days it was already down. Thresholds are the
+    operator's, in STRATEGY.md `## Guardrails`
     (`delivery_collapse_drop_pct`, `delivery_collapse_consecutive_days`,
     `delivery_collapse_min_baseline_impressions`,
     `delivery_collapse_baseline_days`, …).
+  - **It does not depend on how long the outage has been running.** The
+    baseline window sits strictly before the cliff and the scan runs forward
+    over every candidate, so a collapse of any length reports the real cliff
+    date. `test_collapse_duration_sweep` asserts the whole duration range
+    rather than one length: a detector that silently stops firing on the
+    LONGEST outages is worst exactly where it matters, and the report layer
+    renders that silence as "checked, healthy".
+  - **It does not depend on whether a platform emits zero-delivery rows.**
+    Google Ads and Meta both omit a `(campaign, date)` row when nothing
+    served — the very symptom being looked for — so rows are reconciled
+    against the requested date range before detection and any missing date
+    becomes an explicit zero. Correct whichever way the APIs behave, and a
+    no-op for a platform that already returns zeros. Days before a
+    campaign's first observed row are never invented.
 
   **Diagnosis** — `analysis_delivery_collapse_diagnose` overlays the change
   feed on daily delivery to answer "what changed immediately before the
@@ -51,9 +68,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `confidence: "undetermined"` rather than nominating a cause the evidence does
   not support. Every response carries the standing limits: serving-side
   suppression, billing state and learning-phase internals are not readable
-  through any API mureo integrates on any platform, change feeds are incomplete
-  by construction, and a same-day multi-campaign collapse is reported as a
-  correlation, never a cause. `/rescue` gained the workflow that drives this.
+  through any API mureo integrates on any platform, the change feeds that do
+  reach mureo are incomplete (Google Ads change history omits system-initiated
+  changes and retains ~30 days; Meta publishes an account activity log that
+  mureo does not fetch yet), and a same-day multi-campaign collapse is reported
+  as a correlation, never a cause. `/rescue` gained the workflow that drives
+  this.
 
   **Platform coverage is stated, not implied.** Google Ads and Meta Ads detect
   and diagnose automatically (live and BYOD). TikTok and other hosted

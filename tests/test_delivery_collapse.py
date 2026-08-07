@@ -11,6 +11,7 @@ Marks: unit — pure, no network, no filesystem.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import Any
 
 import pytest
 
@@ -149,23 +150,68 @@ def test_multi_day_collapse_reports_the_full_run_and_its_start() -> None:
     assert signal.baseline_impressions == pytest.approx(NORMAL_IMPRESSIONS)
 
 
+def _collapsed_series(collapse_days: int, *, history_days: int = 40) -> DeliverySeries:
+    """``history_days`` of normal delivery followed by ``collapse_days`` of zero."""
+    history = _flat_history(history_days, end=AS_OF - timedelta(days=collapse_days + 1))
+    return _series(days=[*history, *_zero_days(collapse_days)])
+
+
 def test_a_collapse_longer_than_the_baseline_window_is_still_detected() -> None:
-    """The failure mode that silences a detector exactly when it matters.
+    """45 zero days against a 28-day baseline window.
 
-    If each day were judged against the window immediately preceding it,
-    a collapse that outlives half the 28-day window would drag that
-    window's median to zero — nothing would look like a drop any more and
-    the alert would stop. The baseline must come from before the cliff.
+    The previous version of this test used a **20**-day collapse against
+    the same 28-day window — shorter than the window, while its name
+    claimed the whole class was covered. It passed with a margin of a day
+    or two and stopped anyone looking again, which is exactly how the
+    detector shipped silent on collapses past ~21 days.
     """
-    history = _flat_history(28, end=AS_OF - timedelta(days=21))
-    series = _series(days=[*history, *_zero_days(20)])
-
-    signal = detect_delivery_collapse(series, as_of=AS_OF)
+    signal = detect_delivery_collapse(_collapsed_series(45), as_of=AS_OF)
 
     assert signal is not None
-    assert signal.days_at_collapse == 20
+    assert signal.days_at_collapse == 45
     assert signal.baseline_impressions == pytest.approx(NORMAL_IMPRESSIONS)
-    assert signal.collapse_start_date == (AS_OF - timedelta(days=20)).isoformat()
+    assert signal.collapse_start_date == (AS_OF - timedelta(days=45)).isoformat()
+
+
+@pytest.mark.parametrize(
+    "collapse_days", [1, 2, 5, 13, 14, 20, 21, 22, 23, 27, 28, 29, 40, 60, 90, 180]
+)
+def test_collapse_duration_sweep(collapse_days: int) -> None:
+    """Detection must not depend on how long the outage has been running.
+
+    The boundary is asserted rather than accidentally cleared: 21/22 is
+    where the shipped detector silently stopped firing, and every value
+    past it reported nothing at all — which the report layer rendered as
+    "checked, healthy". A miss on the LONGEST outages is the worst place
+    to be silent, so the whole range is pinned, not one length.
+    """
+    signal = detect_delivery_collapse(_collapsed_series(collapse_days), as_of=AS_OF)
+
+    assert signal is not None, f"{collapse_days}-day collapse went undetected"
+    assert signal.days_at_collapse == collapse_days
+    assert signal.severity is CollapseSeverity.CRITICAL
+    assert signal.baseline_impressions == pytest.approx(NORMAL_IMPRESSIONS)
+
+
+def test_min_baseline_days_counts_delivering_days_not_window_length() -> None:
+    """13 real days plus 3 already-dead ones is 13, not 16.
+
+    The gate is "does this campaign have enough history to have a
+    normal?" — days it was already down are not history, and letting the
+    window's raw LENGTH satisfy the gate would let a campaign qualify on
+    the strength of its own outage.
+    """
+    history = _flat_history(13, end=AS_OF - timedelta(days=5))
+    series = _series(days=[*history, *_zero_days(4)])
+
+    assert detect_delivery_collapse(series, as_of=AS_OF) is None
+
+    # One more delivering day and the same shape does fire.
+    history = _flat_history(14, end=AS_OF - timedelta(days=5))
+    assert (
+        detect_delivery_collapse(_series(days=[*history, *_zero_days(4)]), as_of=AS_OF)
+        is not None
+    )
 
 
 def test_severe_but_nonzero_drop_is_high_not_critical() -> None:
@@ -463,6 +509,73 @@ def test_delivery_series_from_rows_normalises_a_platform_report() -> None:
     assert series[0].status == "ENABLED"
     assert [d.date for d in series[0].daily] == [date(2026, 5, 30), date(2026, 5, 31)]
     assert series[0].daily[1].impressions == 0
+
+
+def test_series_from_rows_reconciles_a_sparse_report() -> None:
+    """The hosted-connector / bridge path, where no client fills gaps.
+
+    A platform that omits zero-delivery rows returns nothing at all for a
+    dead campaign, so its series would simply stop at the last active day
+    and nothing would ever fire. The still-delivering campaign proves how
+    far the report extends, which is what the dead one is reconciled to.
+    """
+    rows: list[dict[str, Any]] = []
+    for offset in reversed(range(30)):
+        day = (AS_OF - timedelta(days=offset + 1)).isoformat()
+        rows.append(
+            {
+                "campaign_id": "alive",
+                "status": "ENABLED",
+                "date": day,
+                "impressions": NORMAL_IMPRESSIONS,
+            }
+        )
+    # "dead" stops reporting 10 days before the report's own last date.
+    for offset in reversed(range(11, 41)):
+        rows.append(
+            {
+                "campaign_id": "dead",
+                "status": "ENABLED",
+                "date": (AS_OF - timedelta(days=offset)).isoformat(),
+                "impressions": NORMAL_IMPRESSIONS,
+            }
+        )
+
+    series = {s.campaign_id: s for s in delivery_series_from_rows(rows, platform="x")}
+
+    dead_days = {d.date: d.impressions for d in series["dead"].daily}
+    assert dead_days[AS_OF - timedelta(days=1)] == 0
+    signal = detect_delivery_collapse(series["dead"], as_of=AS_OF)
+    assert signal is not None
+    assert signal.days_at_collapse == 10
+    assert detect_delivery_collapse(series["alive"], as_of=AS_OF) is None
+
+
+def test_series_from_rows_reconciles_through_an_explicit_range_end() -> None:
+    """When every campaign died the same day, the report has no later date.
+
+    Callers that know the range they requested pass it, because the
+    report's own last date is then the day the account went dark.
+    """
+    rows = [
+        {
+            "campaign_id": "dead",
+            "status": "ENABLED",
+            "date": (AS_OF - timedelta(days=offset)).isoformat(),
+            "impressions": NORMAL_IMPRESSIONS,
+        }
+        for offset in reversed(range(11, 41))
+    ]
+
+    without_range = delivery_series_from_rows(rows, platform="x")
+    assert detect_delivery_collapse(without_range[0], as_of=AS_OF) is None
+
+    with_range = delivery_series_from_rows(
+        rows, platform="x", through=AS_OF - timedelta(days=1)
+    )
+    signal = detect_delivery_collapse(with_range[0], as_of=AS_OF)
+    assert signal is not None
+    assert signal.days_at_collapse == 10
 
 
 def test_delivery_series_from_rows_rejects_rows_without_a_campaign() -> None:

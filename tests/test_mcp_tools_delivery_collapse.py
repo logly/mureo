@@ -178,6 +178,53 @@ async def test_diagnose_returns_the_timeline_and_the_open_questions() -> None:
 
 
 @pytest.mark.asyncio
+async def test_diagnose_lookback_window_is_caller_settable() -> None:
+    """A cause with a delayed effect must be reachable.
+
+    A billing hold placed five days before delivery stopped falls outside
+    the 3-day default; asking the operator to supply everything they know
+    and then narrowing it silently is the wrong trade.
+    """
+    change = {
+        "occurred_at": (AS_OF - timedelta(days=6)).isoformat(),
+        "source": "action_log",
+        "resource_type": "billing",
+        "summary": "payment method declined",
+    }
+    args: dict[str, Any] = {
+        "platform": "google_ads",
+        "campaign_id": "c-1",
+        "rows": _rows(),
+        "as_of": AS_OF.isoformat(),
+        "changes": [change],
+    }
+
+    default = await _call("analysis_delivery_collapse_diagnose", args)
+    assert default["changes_before_cliff"] == []
+
+    widened = await _call(
+        "analysis_delivery_collapse_diagnose", {**args, "change_lookback_days": 7}
+    )
+    assert widened["changes_before_cliff"][0]["summary"] == "payment method declined"
+
+
+@pytest.mark.asyncio
+async def test_diagnose_timeline_window_is_caller_settable() -> None:
+    payload = await _call(
+        "analysis_delivery_collapse_diagnose",
+        {
+            "platform": "google_ads",
+            "campaign_id": "c-1",
+            "rows": _rows(),
+            "as_of": AS_OF.isoformat(),
+            "timeline_days": 5,
+        },
+    )
+
+    assert len(payload["timeline"]) == 5
+
+
+@pytest.mark.asyncio
 async def test_diagnose_folds_in_supplied_evidence() -> None:
     payload = await _call(
         "analysis_delivery_collapse_diagnose",

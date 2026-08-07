@@ -45,7 +45,7 @@ from __future__ import annotations
 import re
 import statistics
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -144,11 +144,24 @@ class CollapseThresholds:
     same-weekday baseline is not ad-ops variance, it is a fault.
     """
 
+    #: How far below its own baseline a day must fall to count as collapsed.
     drop_pct: float = DEFAULT_DROP_PCT
+    #: Daily impressions below which a campaign is treated as not
+    #: delivering at all. Doubles as the floor under a usable baseline —
+    #: a campaign averaging 80 impressions/day hits zero routinely.
     min_baseline_impressions: int = DEFAULT_MIN_BASELINE_IMPRESSIONS
+    #: Length of the trailing window the baseline median is drawn from.
     baseline_days: int = DEFAULT_BASELINE_DAYS
+    #: Minimum number of days **that actually delivered** (at or above
+    #: ``min_baseline_impressions``) required inside that window before
+    #: the detector will speak. It counts real delivery, not window
+    #: length: 13 delivering days plus 3 already-dead ones is 13, not 16,
+    #: so a campaign cannot reach the bar on days it was already down.
     min_baseline_days: int = DEFAULT_MIN_BASELINE_DAYS
+    #: Complete collapsed days required before a signal is emitted.
     consecutive_days: int = DEFAULT_CONSECUTIVE_DAYS
+    #: Below this many same-weekday samples the baseline falls back to
+    #: the all-day median (and says so on the signal).
     min_same_weekday_samples: int = DEFAULT_MIN_SAME_WEEKDAY_SAMPLES
 
 
@@ -212,7 +225,7 @@ def detect_delivery_collapse(
         return None
 
     complete = _complete_days(series.daily, as_of=as_of)
-    found = _walk_back_collapse(complete, resolved)
+    found = _find_collapse_start(complete, resolved)
     if found is None:
         return None
     start_index, baseline = found
@@ -266,51 +279,94 @@ def _complete_days(
     return tuple(sorted((d for d in daily if d.date < as_of), key=lambda d: d.date))
 
 
-def _walk_back_collapse(
+class _WindowBaselines:
+    """Baselines drawn from one fixed pre-cliff window, memoised per weekday.
+
+    Not a frozen dataclass (the repo default) precisely because the memo
+    is the point: on a healthy account the scan below tests one day per
+    candidate and stops, so computing all seven weekday medians eagerly
+    would be the dominant cost of a daily check for no benefit.
+    """
+
+    __slots__ = ("_window", "_thresholds", "_by_weekday", "delivering_days")
+
+    def __init__(
+        self, window: Sequence[DailyDelivery], thresholds: CollapseThresholds
+    ) -> None:
+        self._window = window
+        self._thresholds = thresholds
+        self._by_weekday: dict[int, _Baseline] = {}
+        #: Days in the window that actually delivered. This — not the
+        #: window's LENGTH — is what ``min_baseline_days`` gates, so a
+        #: window padded out with days the campaign was already dead
+        #: cannot pass for history.
+        self.delivering_days = sum(
+            1
+            for day in window
+            if day.impressions >= thresholds.min_baseline_impressions
+        )
+
+    def baseline_for(self, day: DailyDelivery) -> _Baseline:
+        weekday = day.date.weekday()
+        cached = self._by_weekday.get(weekday)
+        if cached is None:
+            cached = _baseline_for(day, self._window, self._thresholds)
+            self._by_weekday[weekday] = cached
+        return cached
+
+    def is_collapsed(self, day: DailyDelivery) -> bool:
+        """Is ``day`` collapsed against this window's baseline for its weekday?"""
+        baseline = self.baseline_for(day)
+        if baseline.impressions < self._thresholds.min_baseline_impressions:
+            return False
+        return (
+            _drop_pct(day.impressions, baseline.impressions)
+            >= self._thresholds.drop_pct
+        )
+
+
+def _find_collapse_start(
     complete: Sequence[DailyDelivery],
     thresholds: CollapseThresholds,
 ) -> tuple[int, _Baseline] | None:
-    """Find the earliest day from which delivery has stayed collapsed.
+    """Earliest day from which delivery has stayed collapsed, or ``None``.
 
-    The baseline window always sits STRICTLY BEFORE the candidate cliff,
-    and every later day is judged against that same pre-cliff window.
-    Judging each day against the window immediately preceding *it* would
-    let a long outage redefine "normal": once the collapse outlives half
-    the window the median falls to zero, nothing looks like a drop any
-    more, and the detector goes quiet on the worst possible account —
-    exactly the week-long incident this was built for.
+    Two properties do the work, and both were learned the hard way:
 
-    Returns ``(collapse_start_index, baseline_at_the_cliff)`` or ``None``.
+    1. **The window sits strictly before the candidate cliff**, and every
+       later day is judged against that same pre-cliff window. Judging
+       each day against the window immediately preceding *it* lets a long
+       outage redefine "normal" — the median falls to zero and nothing
+       looks like a drop any more.
+    2. **The scan runs forward and never breaks early.** An earlier
+       version walked backwards from the most recent day and stopped at
+       the first candidate that failed. On a long outage the most recent
+       day's window is itself mostly zeros, so it failed on iteration one
+       and the clean window further back was never reached: collapses
+       past ~3/4 of ``baseline_days`` reported *nothing*, which the
+       report layer then rendered as "checked, healthy". A miss on the
+       longest outages is the worst possible place to be silent, and it
+       is invisible — which is why ``test_collapse_duration_sweep``
+       asserts the whole duration range rather than one length.
+
+    Scanning forward and returning the first hit yields the EARLIEST day
+    of the current uninterrupted collapse, so ``days_at_collapse``
+    measures the real outage rather than however far back we happened to
+    look.
     """
-    start: int | None = None
-    baseline_at_start: _Baseline | None = None
-    candidate = len(complete) - 1
-    while candidate >= 0:
-        window = complete[max(0, candidate - thresholds.baseline_days) : candidate]
-        if len(window) < thresholds.min_baseline_days:
-            break
-        baseline = _baseline_for(complete[candidate], window, thresholds)
-        if not all(
-            _is_collapsed(day, window, thresholds) for day in complete[candidate:]
-        ):
-            break
-        start, baseline_at_start = candidate, baseline
-        candidate -= 1
-    if start is None or baseline_at_start is None:
-        return None
-    return start, baseline_at_start
-
-
-def _is_collapsed(
-    day: DailyDelivery,
-    window: Sequence[DailyDelivery],
-    thresholds: CollapseThresholds,
-) -> bool:
-    """Is ``day`` collapsed against a baseline drawn from ``window``?"""
-    baseline = _baseline_for(day, window, thresholds)
-    if baseline.impressions < thresholds.min_baseline_impressions:
-        return False
-    return _drop_pct(day.impressions, baseline.impressions) >= thresholds.drop_pct
+    for candidate in range(len(complete)):
+        window = _WindowBaselines(
+            complete[max(0, candidate - thresholds.baseline_days) : candidate],
+            thresholds,
+        )
+        if window.delivering_days < thresholds.min_baseline_days:
+            continue
+        if not window.is_collapsed(complete[candidate]):
+            continue
+        if not all(window.is_collapsed(day) for day in complete[candidate + 1 :]):
+            continue
+        return candidate, window.baseline_for(complete[candidate])
+    return None
 
 
 def _baseline_for(
@@ -398,10 +454,109 @@ def _build_signal(
 # ---------------------------------------------------------------------------
 
 
+#: Ceiling on how many days a single campaign's gap-fill may materialise.
+#: A caller that passes a ``through`` far in the future would otherwise
+#: allocate a row per day per campaign forever.
+MAX_FILL_DAYS = 400
+
+
+def fill_missing_delivery_days(
+    rows: Iterable[dict[str, Any]],
+    *,
+    through: date | None = None,
+) -> list[dict[str, Any]]:
+    """Materialise the days a platform report omits entirely.
+
+    Google Ads (GAQL over ``segments.date``) and Meta (insights with
+    ``time_increment=1``) are both widely reported to **drop** a
+    ``(campaign, date)`` row when there was no delivery, rather than
+    return ``impressions=0``. If that holds, then on the exact symptom
+    this detector exists for — impressions at literal zero — the
+    collapsed days are simply ABSENT, each campaign's series ends at its
+    last active day, and nothing ever fires.
+
+    This reconciliation deliberately does **not** depend on knowing which
+    way either API behaves. A platform that already returns explicit zero
+    rows leaves no gaps to fill, so this is a no-op for it; a platform
+    that omits them gets them back. Correct either way, and it cannot
+    rot when a platform changes its mind.
+
+    For each campaign, every date from its **first observed row** through
+    ``through`` (default: the latest date anywhere in ``rows``, which is
+    how far the report demonstrably extends) that carries no row is added
+    as a zero-delivery day, inheriting that campaign's name / status /
+    end date. Days *before* a campaign's first row are never invented:
+    there is no evidence it existed yet, and fabricating them would
+    fabricate the history the baseline is computed from.
+
+    Reporting lag: a platform that has not yet materialised the most
+    recent day's row will have it filled as zero. The detector never
+    evaluates the current (partial) day, so this can only reach
+    yesterday; an operator running the check minutes after midnight
+    should set ``delivery_collapse_consecutive_days: 2``.
+    """
+    parsed = [(row, _parse_date(row.get("date"))) for row in rows]
+    dated = [(row, day) for row, day in parsed if str(row.get("campaign_id") or "")]
+    if not dated:
+        return [row for row, _ in parsed]
+
+    report_end = through if through is not None else max(day for _, day in dated)
+    filled = [row for row, _ in parsed]
+    for campaign_id, (source, seen) in _index_days_by_campaign(dated).items():
+        start = min(seen)
+        end = min(report_end, start + timedelta(days=MAX_FILL_DAYS))
+        filled.extend(_zero_rows(campaign_id, source, start, end, seen))
+    return filled
+
+
+def _index_days_by_campaign(
+    dated: Sequence[tuple[dict[str, Any], date]],
+) -> dict[str, tuple[dict[str, Any], set[date]]]:
+    """``{campaign_id: (first row seen, every date seen)}``."""
+    index: dict[str, tuple[dict[str, Any], set[date]]] = {}
+    for row, day in dated:
+        campaign_id = str(row["campaign_id"])
+        existing = index.get(campaign_id)
+        if existing is None:
+            index[campaign_id] = (row, {day})
+        else:
+            existing[1].add(day)
+    return index
+
+
+def _zero_rows(
+    campaign_id: str,
+    source: dict[str, Any],
+    start: date,
+    end: date,
+    seen: set[date],
+) -> list[dict[str, Any]]:
+    """Zero-delivery rows for every date in ``[start, end]`` not in ``seen``."""
+    out: list[dict[str, Any]] = []
+    day = start
+    while day <= end:
+        if day not in seen:
+            out.append(
+                {
+                    "campaign_id": campaign_id,
+                    "campaign_name": source.get("campaign_name", ""),
+                    "status": source.get("status", ""),
+                    "end_date": source.get("end_date", ""),
+                    "date": day.isoformat(),
+                    "impressions": 0,
+                    "clicks": 0,
+                    "cost": 0.0,
+                }
+            )
+        day += timedelta(days=1)
+    return out
+
+
 def delivery_series_from_rows(
     rows: Iterable[dict[str, Any]],
     *,
     platform: str,
+    through: date | None = None,
 ) -> tuple[DeliverySeries, ...]:
     """Group day-grain platform rows into per-campaign series.
 
@@ -415,10 +570,19 @@ def delivery_series_from_rows(
     a synthetic ``""`` campaign would silently mix several campaigns'
     delivery. A malformed ``date`` raises :class:`ValueError`: guessing
     at it would misplace the cliff.
+
+    Gaps are reconciled through :func:`fill_missing_delivery_days` before
+    grouping, so a platform that omits its zero-delivery rows cannot
+    present a dead campaign as a series that merely stops. ``through``
+    names how far the report was *requested* to run; without it the
+    latest date anywhere in ``rows`` is used, which is how far the report
+    demonstrably extends. Callers that know the requested range (the
+    built-in clients do) should pass it — a report whose every campaign
+    died on the same day has no later date to infer the tail from.
     """
     grouped: dict[str, list[DailyDelivery]] = {}
     attributes: dict[str, tuple[str, str, date | None]] = {}
-    for row in rows:
+    for row in fill_missing_delivery_days(rows, through=through):
         campaign_id = str(row.get("campaign_id") or "").strip()
         if not campaign_id:
             continue
@@ -557,6 +721,7 @@ def collapse_thresholds_from_strategy_text(text: str) -> CollapseThresholds:
 __all__ = [
     "BASELINE_SOURCE",
     "GUARDRAIL_KEYS",
+    "MAX_FILL_DAYS",
     "SERVING_STATUSES",
     "BaselineMethod",
     "CollapseSeverity",
@@ -568,6 +733,7 @@ __all__ = [
     "collapse_thresholds_from_strategy_text",
     "delivery_series_from_rows",
     "detect_delivery_collapse",
+    "fill_missing_delivery_days",
     "detect_delivery_collapses",
     "is_serving_status",
 ]

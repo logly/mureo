@@ -20,7 +20,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from mureo.analysis.delivery_collapse import delivery_series_from_rows
+from mureo.analysis.delivery_collapse import (
+    delivery_series_from_rows,
+    detect_delivery_collapse,
+)
 from mureo.byod.clients import ByodGoogleAdsClient, ByodMetaAdsClient
 from mureo.google_ads._analysis_performance import _PerformanceAnalysisMixin
 from mureo.meta_ads._insights import InsightsMixin
@@ -84,6 +87,100 @@ async def test_google_daily_delivery_shape_and_window() -> None:
     query = client._search.call_args.args[0]  # type: ignore[attr-defined]
     assert "segments.date BETWEEN '2026-04-17' AND '2026-06-01'" in query
     assert "campaign.status" in query
+
+
+@pytest.mark.asyncio
+async def test_google_sparse_response_is_reconciled_to_the_requested_range() -> None:
+    """GAQL omits a (campaign, date) row when nothing served that day.
+
+    That is the exact symptom this feature exists for, so a raw 1:1
+    mapping would end the series at the last active day and nothing would
+    ever fire on the built-in path. The rows must be reconciled against
+    the range that was REQUESTED, not against what came back.
+    """
+    # 30 days of delivery ending 2026-05-01, then silence: the API
+    # returns nothing at all for 2026-05-02 .. 2026-06-01.
+    last_active = date(2026, 5, 1)
+    rows_in = [
+        _google_row(last_active - timedelta(days=offset), 350_000)
+        for offset in reversed(range(30))
+    ]
+    client = _GoogleClient(rows_in)
+
+    rows = await client.get_daily_delivery_report(days=60)
+
+    by_date = {row["date"]: row for row in rows}
+    assert by_date["2026-05-31"]["impressions"] == 0
+    assert by_date["2026-05-31"]["status"] == "ENABLED"
+    assert by_date["2026-06-01"]["impressions"] == 0
+    # And the whole point: the detector now sees the outage.
+    series = delivery_series_from_rows(rows, platform="google_ads")
+    signal = detect_delivery_collapse(series[0], as_of=date(2026, 6, 1))
+    assert signal is not None
+    assert signal.collapse_start_date == "2026-05-02"
+    assert signal.days_at_collapse == 30
+
+
+@pytest.mark.asyncio
+async def test_google_dense_response_is_left_alone() -> None:
+    """If the API does return explicit zero rows, this is a no-op.
+
+    The reconciliation must not depend on knowing which way the API
+    behaves — that is a fact that can change underneath us.
+    """
+    days = [date(2026, 5, 1) + timedelta(days=i) for i in range(3)]
+    client = _GoogleClient(
+        [_google_row(d, 0 if i else 100) for i, d in enumerate(days)]
+    )
+
+    rows = await client.get_daily_delivery_report(days=2)
+
+    # 3 supplied + fill only up to the requested end (today, frozen).
+    assert len([r for r in rows if r["date"] in {d.isoformat() for d in days}]) == 3
+    assert sum(1 for r in rows if r["date"] == "2026-05-01") == 1
+
+
+@pytest.mark.asyncio
+async def test_meta_sparse_response_is_reconciled_to_the_requested_range() -> None:
+    client = _MetaClient(
+        insights=[
+            {
+                "campaign_id": "9",
+                "campaign_name": "Prospecting",
+                "date_start": (date(2026, 5, 1) - timedelta(days=offset)).isoformat(),
+                "impressions": "350000",
+                "clicks": "3500",
+                "spend": "1200.50",
+            }
+            for offset in reversed(range(30))
+        ],
+        campaigns=[{"id": "9", "name": "Prospecting", "status": "ACTIVE"}],
+    )
+
+    rows = await client.get_daily_delivery_report(days=60)
+
+    by_date = {row["date"]: row for row in rows}
+    assert by_date["2026-05-31"]["impressions"] == 0
+    assert by_date["2026-05-31"]["status"] == "ACTIVE"
+    series = delivery_series_from_rows(rows, platform="meta_ads")
+    assert detect_delivery_collapse(series[0], as_of=date(2026, 6, 1)) is not None
+
+
+@pytest.mark.asyncio
+async def test_fill_never_invents_days_before_a_campaign_first_appeared() -> None:
+    """A campaign created mid-window has no history before it existed.
+
+    Fabricating leading zeros would fabricate the very history the
+    baseline is computed from.
+    """
+    first = date(2026, 5, 20)
+    client = _GoogleClient(
+        [_google_row(first + timedelta(days=i), 350_000) for i in range(5)]
+    )
+
+    rows = await client.get_daily_delivery_report(days=60)
+
+    assert min(row["date"] for row in rows) == first.isoformat()
 
 
 @pytest.mark.asyncio
