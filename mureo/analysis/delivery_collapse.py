@@ -516,10 +516,23 @@ def fill_missing_delivery_days(
     campaign, at any hour, and no ``consecutive_days`` setting closed it
     (a two-day lag simply produced ``days_at_collapse=2``).
 
-    ``reported_through`` overrides that inference for a caller that
-    genuinely knows how far the platform has reported — a connector whose
-    payload carries a data-freshness timestamp, say. It is **not** the
-    range you asked for; passing that is the bug described above.
+    Precondition on ``rows``
+    ------------------------
+    Using the whole report as the bracket assumes **every campaign in
+    ``rows`` came from one fetch and finalises at the same time**. mureo's
+    own Google and Meta clients issue a single account-wide query per
+    call, so they satisfy it by construction — but this function is
+    reachable from ``analysis_delivery_collapse_check`` with rows an agent
+    assembled itself, and there the assumption can break. Rows stitched
+    together from several fetches, or a connector whose campaigns
+    finalise at different times, make the FASTEST campaign's latest date
+    the evidence: a slower but perfectly healthy campaign is then
+    zero-filled up to it and reported as collapsed.
+
+    When that precondition does not hold, pass ``reported_through``
+    explicitly — the oldest per-campaign last date you trust, or a
+    freshness timestamp the connector supplies. It is **not** the range
+    you asked for; passing that is the bug described above.
 
     Days *before* a campaign's first row are never invented either: there
     is no evidence it existed yet, and fabricating them would fabricate

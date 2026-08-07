@@ -217,3 +217,96 @@ async def test_a_silent_account_is_reported_as_unreported_not_as_healthy() -> No
 
     assert detect_delivery_collapses(series, as_of=TODAY) == ()
     assert last_reported_day(series) == TODAY - timedelta(days=7)
+
+
+# ---------------------------------------------------------------------------
+# The precondition the report-wide bracket rests on
+# ---------------------------------------------------------------------------
+
+
+def _mixed_frontier_rows() -> list[dict[str, Any]]:
+    """Two healthy campaigns whose reports finalise at different times."""
+    rows: list[dict[str, Any]] = []
+    for campaign_id, lag in (("a_lag0", 0), ("b_lag2", 2)):
+        last_reported = TODAY - timedelta(days=1 + lag)
+        rows += [
+            {
+                "campaign_id": campaign_id,
+                "campaign_name": campaign_id,
+                "status": "ENABLED",
+                "date": (last_reported - timedelta(days=offset)).isoformat(),
+                "impressions": HEALTHY_IMPRESSIONS,
+                "clicks": 3_500,
+                "cost": 120_000.0,
+            }
+            for offset in reversed(range(HISTORY_DAYS))
+        ]
+    return rows
+
+
+def test_mixed_reporting_frontiers_break_the_single_fetch_precondition() -> None:
+    """Documented hazard, pinned so it cannot surprise anyone quietly.
+
+    The report-wide bracket assumes every campaign in one call was
+    fetched together and finalises together. mureo's own Google and Meta
+    clients issue a single account-wide query so they satisfy it, but
+    ``analysis_delivery_collapse_check`` takes rows an agent assembled.
+    Mix two frontiers and the faster campaign's latest date becomes the
+    evidence for the slower one, which is then zero-filled and flagged
+    while perfectly healthy.
+
+    This asserts the behaviour to keep it *known*, not because it is
+    desirable — the remedy is the next test, and the precondition is
+    stated in the tool description, the docstring, docs/mcp-server.md and
+    /daily-check.
+    """
+    series = delivery_series_from_rows(_mixed_frontier_rows(), platform="tiktok_ads")
+    signals = {s.campaign_id: s for s in detect_delivery_collapses(series, as_of=TODAY)}
+
+    assert "b_lag2" in signals
+    assert signals["b_lag2"].days_at_collapse == 2
+    assert "a_lag0" not in signals
+
+
+def test_reported_through_makes_a_mixed_fetch_safe() -> None:
+    """The escape hatch: declare the frontier you actually trust.
+
+    The oldest per-campaign last date is the only one every campaign in
+    the batch demonstrably reached.
+    """
+    series = delivery_series_from_rows(
+        _mixed_frontier_rows(),
+        platform="tiktok_ads",
+        reported_through=TODAY - timedelta(days=3),
+    )
+
+    assert detect_delivery_collapses(series, as_of=TODAY) == ()
+
+
+def test_reported_through_does_not_hide_a_real_collapse() -> None:
+    """Clamping the frontier costs recency, never the signal itself."""
+    rows = [
+        *_mixed_frontier_rows(),
+        *[
+            {
+                "campaign_id": "dead",
+                "campaign_name": "dead",
+                "status": "ENABLED",
+                "date": (TODAY - timedelta(days=offset)).isoformat(),
+                "impressions": HEALTHY_IMPRESSIONS,
+                "clicks": 3_500,
+                "cost": 120_000.0,
+            }
+            for offset in reversed(range(15, 15 + HISTORY_DAYS))
+        ],
+    ]
+
+    series = delivery_series_from_rows(
+        rows, platform="tiktok_ads", reported_through=TODAY - timedelta(days=3)
+    )
+    signals = {s.campaign_id: s for s in detect_delivery_collapses(series, as_of=TODAY)}
+
+    # Last row TODAY-15, frontier TODAY-3 -> the run is TODAY-14..TODAY-3.
+    assert "dead" in signals
+    assert signals["dead"].days_at_collapse == 12
+    assert "b_lag2" not in signals

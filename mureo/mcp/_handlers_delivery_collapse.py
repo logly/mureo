@@ -85,8 +85,9 @@ def _coerce_int(value: Any, field: str) -> int:
     raise ValueError(f"'{field}' must be an integer, got {type(value).__name__}")
 
 
-def _parse_as_of(arguments: dict[str, Any]) -> date | None:
-    raw = arguments.get("as_of")
+def _parse_date_arg(arguments: dict[str, Any], field: str) -> date | None:
+    """Parse an optional ``YYYY-MM-DD`` argument. ``None`` when absent."""
+    raw = arguments.get(field)
     if not raw:
         return None
     from datetime import datetime
@@ -94,7 +95,11 @@ def _parse_as_of(arguments: dict[str, Any]) -> date | None:
     try:
         return datetime.strptime(str(raw), "%Y-%m-%d").date()  # noqa: DTZ007
     except ValueError as exc:
-        raise ValueError(f"as_of must be YYYY-MM-DD, got {raw!r}") from exc
+        raise ValueError(f"{field} must be YYYY-MM-DD, got {raw!r}") from exc
+
+
+def _parse_as_of(arguments: dict[str, Any]) -> date | None:
+    return _parse_date_arg(arguments, "as_of")
 
 
 def _series_from_arguments(arguments: dict[str, Any]) -> tuple[DeliverySeries, ...]:
@@ -102,7 +107,9 @@ def _series_from_arguments(arguments: dict[str, Any]) -> tuple[DeliverySeries, .
     if not isinstance(rows, list):
         raise ValueError("'rows' must be an array of day-grain delivery rows")
     return delivery_series_from_rows(
-        rows, platform=str(_require(arguments, "platform"))
+        rows,
+        platform=str(_require(arguments, "platform")),
+        reported_through=_parse_date_arg(arguments, "reported_through"),
     )
 
 

@@ -188,6 +188,23 @@ TOOLS: list[Tool] = [
                         "server's current date."
                     ),
                 },
+                "reported_through": {
+                    "type": "string",
+                    "description": (
+                        "YYYY-MM-DD: the last date the platform has actually "
+                        "REPORTED delivery for. Optional. Without it the tool "
+                        "infers the frontier as the latest date appearing "
+                        "anywhere in `rows`, which assumes every campaign in "
+                        "`rows` was fetched in one request and finalises at the "
+                        "same time. Set it when that does not hold — rows "
+                        "stitched together from several fetches, or a connector "
+                        "whose campaigns finalise at different times — using the "
+                        "OLDEST per-campaign last date you trust. Do NOT pass the "
+                        "end of the range you requested: that asserts coverage "
+                        "the platform never confirmed and turns reporting lag "
+                        "into a false collapse."
+                    ),
+                },
             },
             "required": ["platform", "rows"],
             "additionalProperties": False,

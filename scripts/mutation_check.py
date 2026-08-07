@@ -191,6 +191,28 @@ MUTATIONS: tuple[Mutation, ...] = (
         tests=T_LAG,
     ),
     Mutation(
+        name="caller_frontier_ignored",
+        summary="the caller's reported_through is discarded for the inferred one",
+        path=CORE,
+        original=(
+            "    report_end = (\n"
+            "        reported_through\n"
+            "        if reported_through is not None\n"
+            "        else max(day for _, day in dated)\n"
+            "    )"
+        ),
+        mutated="    report_end = max(day for _, day in dated)",
+        tests=T_LAG,
+    ),
+    Mutation(
+        name="byod_anchor_inferred_after_join",
+        summary="the BYOD frontier is inferred post-join instead of from the bundle",
+        path=BYOD,
+        original="    return fill_missing_delivery_days(out, reported_through=anchor)",
+        mutated="    return fill_missing_delivery_days(out)",
+        tests=T_CLIENTS,
+    ),
+    Mutation(
         name="fill_invents_prior_days",
         summary="gap-fill invents days before a campaign first appeared",
         path=CORE,
@@ -231,7 +253,9 @@ MUTATIONS: tuple[Mutation, ...] = (
         name="byod_delivery_stubbed",
         summary="BYOD delivery falls back to the __getattr__ empty-list stub",
         path=BYOD,
-        original="    return fill_missing_delivery_days(out)",
+        original=(
+            "    return fill_missing_delivery_days(out, reported_through=anchor)"
+        ),
         mutated="    return []",
         tests=T_CLIENTS,
     ),

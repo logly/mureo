@@ -376,3 +376,44 @@ async def test_byod_rows_feed_the_shared_detector(
 
     assert signal is not None
     assert signal.collapse_start_date == "2026-05-31"
+
+
+@pytest.mark.parametrize("client_cls", [ByodGoogleAdsClient, ByodMetaAdsClient])
+@pytest.mark.asyncio
+async def test_byod_anchor_survives_the_campaign_join(
+    client_cls: type, tmp_path: Path
+) -> None:
+    """The bundle's frontier is its own last date, not the joined subset's.
+
+    ``_byod_delivery_rows`` computes the anchor from every metrics row and
+    then drops rows whose campaign is absent from campaigns.csv. If the
+    frontier were inferred after that join, a campaign carrying the
+    bundle's latest dates but missing from campaigns.csv would drag the
+    frontier earlier and silently shorten every other campaign's window —
+    here, hiding c1's outage entirely.
+    """
+    root = tmp_path / "byod"
+    root.mkdir(parents=True)
+    (root / "campaigns.csv").write_text(
+        "campaign_id,name,status\nc1,Prospecting,ENABLED\n", encoding="utf-8"
+    )
+    anchor = date(2026, 5, 31)
+    lines = ["date,campaign_id,impressions,clicks,cost_jpy,conversions"]
+    # c1 delivers for 30 days and then stops 10 days before the anchor.
+    for offset in range(11, 41):
+        day = anchor - timedelta(days=offset)
+        lines.append(f"{day.isoformat()},c1,350000,3500,120000,10")
+    # c2 carries the bundle's most recent dates but is NOT in campaigns.csv.
+    for offset in range(11):
+        day = anchor - timedelta(days=offset)
+        lines.append(f"{day.isoformat()},c2,50000,500,20000,2")
+    (root / "metrics_daily.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    rows = await client_cls(root).get_daily_delivery_report(days=60)
+
+    assert {r["campaign_id"] for r in rows} == {"c1"}
+    assert max(r["date"] for r in rows) == anchor.isoformat()
+    series = delivery_series_from_rows(rows, platform="google_ads")
+    signal = detect_delivery_collapse(series[0], as_of=anchor + timedelta(days=1))
+    assert signal is not None
+    assert signal.days_at_collapse == 11

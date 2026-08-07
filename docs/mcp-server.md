@@ -551,6 +551,11 @@ Two things it deliberately does **not** depend on:
 
   The proof matters, and it is the difference between a working detector and one that gets muted. A gap **bracketed by later rows** (the campaign's own, or any other campaign in the account) is certain: the platform reported past it, so nothing served. A gap **beyond the last date anything was reported** is not — that is a dead campaign *or* a platform that has not caught up, and mureo cannot tell which, so those days are left out of the evaluation entirely. Filling to the *requested* range end instead turned a one-day reporting lag into a CRITICAL "100% below baseline" on every healthy campaign, at any hour of the day, and no `delivery_collapse_consecutive_days` setting closed it — a two-day lag simply produced `days_at_collapse=2`.
 
+  **One precondition on `rows`.** Using the whole report as the bracket assumes **every campaign in a single call was fetched together and finalises at the same time**. mureo's own Google and Meta clients issue one account-wide query per call, so they satisfy it by construction. An agent assembling rows itself may not: rows stitched from several fetches, or a connector whose campaigns finalise at different times, make the *fastest* campaign's latest date the evidence, and a slower but perfectly healthy campaign gets zero-filled up to it and reported as collapsed. Two rules follow:
+
+  - Pass **all** campaigns from **one** fetch in a single call. Do not mix rows retrieved at different times.
+  - When you cannot guarantee that, set `reported_through` to the **oldest** per-campaign last date you trust. It costs a day or two of recency and never hides a real collapse. Do *not* pass the end of the range you requested — that asserts coverage the platform never confirmed, which is the bug above.
+
 #### What detection cannot see
 
 Two blind spots follow from that rule, both listed in the diagnosis `limitations` as well:

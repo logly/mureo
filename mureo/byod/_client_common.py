@@ -118,10 +118,17 @@ def _byod_delivery_rows(
             }
         )
     # A bundle can omit a campaign's zero-delivery days just as the live
-    # APIs do — the exporter only writes the rows it was given. The
-    # bundle's own last date is inferred from the rows (a bundle cannot
-    # be "behind" on itself), so no explicit bound is passed.
-    return fill_missing_delivery_days(out)
+    # APIs do — the exporter only writes the rows it was given.
+    #
+    # ``anchor`` is passed explicitly rather than left to be inferred from
+    # ``out``: it is computed from EVERY metrics row, before the campaign
+    # join drops any. Inferring it afterwards would let the frontier slip
+    # earlier whenever the rows carrying the bundle's last date belong to
+    # campaigns missing from campaigns.csv, silently shortening every
+    # other campaign's evaluated window. A static bundle also cannot be
+    # "behind" on itself, so its own last date IS the reporting frontier
+    # — the one case where asserting coverage is sound.
+    return fill_missing_delivery_days(out, reported_through=anchor)
 
 
 def _period_to_range(period: str, *, anchor: date | None = None) -> tuple[date, date]:

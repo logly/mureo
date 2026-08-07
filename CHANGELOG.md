@@ -60,6 +60,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     a CRITICAL on every healthy campaign. Correct whichever way the APIs
     behave, and a no-op for a platform that already returns zeros. Days
     before a campaign's first observed row are never invented.
+    The bracket is the report rather than the single campaign, which
+    assumes every campaign in one call was fetched together and finalises
+    together — true by construction for mureo's own account-wide queries,
+    and stated as a precondition (with `reported_through` as the escape
+    hatch) for agents assembling rows themselves.
   - **It says what it could not see.** `reported_through` and
     `unreported_days` ride alongside `signals`, so an empty signal list is
     only an all-clear when the platform is current. The two detection blind
