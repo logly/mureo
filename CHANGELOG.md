@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A bulk change is one revertible unit** (#549). mureo had rollback, but it
+  reasoned about one allow-listed operation at a time, so "undo what I did on
+  Monday" was not expressible: after a bulk pass the operator had to work out
+  by hand which entries a change set contained. An unverifiable revert is
+  nearly as bad as no revert — it leaves the operator unable to rule their own
+  fix out as a variable.
+
+  - `mureo_batch_begin` / `mureo_batch_end` / `mureo_batch_status` declare the
+    boundary of a change set. A bulk pass is many tool calls and nothing in a
+    single call says which others belong with it, so the boundary is declared
+    rather than guessed at from timing or target.
+  - Membership is stamped at the one place every recording path already
+    converges (`append_action_log`), not through tool arguments. That is what
+    makes it platform-agnostic with no per-platform code and no ABI change: a
+    native Google/Meta status toggle, a mutation an agent records for a hosted
+    connector, and a bridged/plugin tool call mureo promotes all join the same
+    batch — including tools whose input schemas mureo does not own.
+  - `rollback_plan_get` accepts `batch_id` and returns a plan covering **every**
+    member, with `coverage` (`full` / `partial` / `none` / `empty`), the same
+    verdict **per platform**, per-member reversibility, the reason each
+    irreversible member cannot be reversed, and an `apply_order`. Reversibility
+    is not uniform across platforms, and a plan that listed only the reversible
+    members would read as a complete revert; a batch where 60 of 80 members can
+    be restored says so before anything is applied.
+  - Each member is classified by the existing `plan_rollback` allow-list, so
+    grouping loosens no guarantee. Reversals appended by `rollback_apply` never
+    join an open batch — otherwise reverting a batch would grow it.
+
+  Honest limits, stated in the docs rather than smoothed over: native
+  mutations other than status toggles (budget, keywords, exclusions) join a
+  batch only when the agent records them with `mureo_state_action_log_append`;
+  a bridged/plugin reversal is executed only when it names a registered plugin
+  tool, and is otherwise reported `irreversible`; hosted-connector members are
+  never reversed by mureo, so their plan is an accurate manual checklist; and
+  Search Console mutations are not recorded in `action_log` at all, so they
+  cannot join a batch today.
+
+  STATE.json gains an optional `batches` array and an optional `batch_id` on
+  each `action_log` entry, both emitted only when present — an existing
+  STATE.json parses unchanged and gains no new key on the next write.
+
 ## [0.10.43] - 2026-08-07
 
 ### Changed

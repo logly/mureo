@@ -200,7 +200,10 @@ async def execute_rollback(
         rollback_of=index,
         reversible_params=None,
     )
-    append_action_log(state_file, new_entry)
+    # A reversal must not join whatever batch happens to be open (#549):
+    # doing so would grow the batch it reverses, and the next batch plan
+    # would offer the reversals themselves as things still to reverse.
+    append_action_log(state_file, new_entry, join_active_batch=False)
 
     return {
         "status": "applied",

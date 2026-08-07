@@ -73,6 +73,8 @@ from mureo.mcp.tools_analytics_registry import (
 from mureo.mcp.tools_analytics_registry import (
     handle_tool as handle_analytics_registry_tool,
 )
+from mureo.mcp.tools_batch import TOOLS as BATCH_TOOLS
+from mureo.mcp.tools_batch import handle_tool as handle_batch_tool
 from mureo.mcp.tools_creative_studio import TOOLS as CREATIVE_STUDIO_TOOLS
 from mureo.mcp.tools_creative_studio import (
     handle_tool as handle_creative_studio_tool,
@@ -131,6 +133,7 @@ _ALL_TOOLS: list[Tool] = [
     *(META_ADS_TOOLS if _META_ADS_ENABLED else []),
     *SEARCH_CONSOLE_TOOLS,
     *ROLLBACK_TOOLS,
+    *BATCH_TOOLS,
     *ANALYSIS_TOOLS,
     *MUREO_CONTEXT_TOOLS,
     *ANALYTICS_REGISTRY_TOOLS,
@@ -145,6 +148,7 @@ _META_ADS_NAMES: frozenset[str] = (
 )
 _SEARCH_CONSOLE_NAMES: frozenset[str] = frozenset(t.name for t in SEARCH_CONSOLE_TOOLS)
 _ROLLBACK_NAMES: frozenset[str] = frozenset(t.name for t in ROLLBACK_TOOLS)
+_BATCH_NAMES: frozenset[str] = frozenset(t.name for t in BATCH_TOOLS)
 _ANALYSIS_NAMES: frozenset[str] = frozenset(t.name for t in ANALYSIS_TOOLS)
 _MUREO_CONTEXT_NAMES: frozenset[str] = frozenset(t.name for t in MUREO_CONTEXT_TOOLS)
 _ANALYTICS_REGISTRY_NAMES: frozenset[str] = frozenset(
@@ -225,6 +229,7 @@ _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
         | _META_ADS_NAMES
         | _SEARCH_CONSOLE_NAMES
         | _ROLLBACK_NAMES
+        | _BATCH_NAMES
         | _ANALYSIS_NAMES
         | _MUREO_CONTEXT_NAMES
         | _ANALYTICS_REGISTRY_NAMES
@@ -1001,6 +1006,8 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         return _maybe_append_strategy_reminder(
             name, await handle_rollback_tool(name, arguments)
         )
+    if name in _BATCH_NAMES:
+        return await handle_batch_tool(name, arguments)
     if name in _ANALYSIS_NAMES:
         return await handle_analysis_tool(name, arguments)
     if name in _MUREO_CONTEXT_NAMES:

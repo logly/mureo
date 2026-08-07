@@ -353,6 +353,11 @@ async def handle_state_action_log_append(
         reversible_params=raw.get("reversible_params"),
         rollback_of=raw.get("rollback_of"),
         evaluation_of=raw.get("evaluation_of"),
+        # #549: normally omitted — the open batch is stamped on by
+        # ``append_action_log``. Supplying it explicitly is for the import /
+        # backfill case, where the entry belongs to a change set that is not
+        # the one open now.
+        batch_id=raw.get("batch_id"),
     )
     doc = append_action_log(path, entry)
     return _json_result(_state_to_dict(doc))

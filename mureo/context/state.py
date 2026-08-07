@@ -35,9 +35,16 @@ if TYPE_CHECKING:
 
     from mureo.context.models import ActionLogEntry, CampaignSnapshot
 
+from mureo.context.batch import (
+    BatchError,
+    active_batch,
+    batch_members,
+    new_batch_id,
+    stamp_batch,
+)
 from mureo.context.conversion_overrides import load_conversion_action_types
 from mureo.context.errors import ContextFileError
-from mureo.context.models import PlatformState, StateDocument
+from mureo.context.models import BatchRecord, PlatformState, StateDocument
 from mureo.context.platform_guards import (
     guard_platform_entry_write,
     warn_on_duplicate_accounts,
@@ -282,34 +289,136 @@ def upsert_campaign(
             # summaries the dashboard renders (every upsert after a report write
             # erased it).
             reports=doc.reports,
+            # Preserve the batch records (#549) — same rationale as reports.
+            batches=doc.batches,
         )
 
     return _locked_state_mutation(path, _build)
 
 
-def append_action_log(path: Path, entry: ActionLogEntry) -> StateDocument:
+def append_action_log(
+    path: Path, entry: ActionLogEntry, *, join_active_batch: bool = True
+) -> StateDocument:
     """Append an action log entry to STATE.json.
 
     Reads the current state, appends the entry, and writes back atomically.
+
+    This is the single choke point every recording path funnels through —
+    native status toggles, ``mureo_state_action_log_append``, and the
+    bridged / plugin promotion — so it is also where the workspace's open batch
+    is stamped onto the entry (#549). Doing it here, inside the lock, is what
+    makes batch membership platform-agnostic: no tool schema, no per-platform
+    recorder and no plugin ABI has to know the batch exists.
+
+    Args:
+        path: STATE.json location.
+        entry: The entry to append. An explicit ``batch_id`` on it always wins
+            over the open batch (see
+            :func:`mureo.context.batch.stamp_batch`).
+        join_active_batch: Pass ``False`` for an entry that must NOT become a
+            member of whatever batch is open — the rollback executor's
+            ``rollback_of`` record does, because a reversal joining the batch
+            it reverses would grow that batch and make the next plan offer the
+            reversals as things still to reverse.
 
     Returns:
         Updated StateDocument
     """
 
     def _build(doc: StateDocument) -> StateDocument:
+        stamped = stamp_batch(entry, active_batch(doc)) if join_active_batch else entry
         return StateDocument(
             version=doc.version,
             last_synced_at=doc.last_synced_at,
             customer_id=doc.customer_id,
             campaigns=doc.campaigns,
             platforms=doc.platforms,
-            action_log=(*doc.action_log, entry),
+            action_log=(*doc.action_log, stamped),
             # Preserve the analysis summaries — appending an action must not
             # wipe the daily/weekly/goal reports the dashboard renders.
             reports=doc.reports,
+            batches=doc.batches,
         )
 
     return _locked_state_mutation(path, _build)
+
+
+def begin_batch(path: Path, *, label: str) -> BatchRecord:
+    """Open a batch: every later ``action_log`` entry joins it until it is ended.
+
+    Args:
+        path: STATE.json location.
+        label: What this change set is, in the operator's words. Required and
+            non-blank — an unlabelled batch id is a string the operator has to
+            decode later, which is the reconstruction work #549 removes.
+
+    Returns:
+        The opened :class:`~mureo.context.models.BatchRecord`.
+
+    Raises:
+        BatchError: A batch is already open. Refused rather than nested: two
+            change sets merged into one cannot be told apart afterwards.
+        ValueError: ``label`` is blank.
+    """
+    cleaned = label.strip() if isinstance(label, str) else ""
+    if not cleaned:
+        raise ValueError("label must be a non-empty string")
+
+    opened: list[BatchRecord] = []
+
+    def _build(doc: StateDocument) -> StateDocument:
+        open_batch = active_batch(doc)
+        if open_batch is not None:
+            raise BatchError(
+                f"Batch {open_batch.batch_id!r} ({open_batch.label!r}) is already "
+                "open; end it before beginning another."
+            )
+        started_at = _now_iso()
+        batch = BatchRecord(
+            batch_id=new_batch_id(started_at),
+            label=cleaned,
+            started_at=started_at,
+        )
+        opened.append(batch)
+        return replace(doc, batches=(*doc.batches, batch))
+
+    _locked_state_mutation(path, _build)
+    return opened[0]
+
+
+def end_batch(path: Path) -> tuple[BatchRecord, tuple[int, ...]]:
+    """Close the open batch and report exactly what it collected.
+
+    The record is kept (with ``ended_at`` set) rather than deleted, so the
+    batch's label still answers "what was batch-2026… ?" long after the pass.
+
+    Returns:
+        The closed :class:`~mureo.context.models.BatchRecord` and the
+        ``action_log`` indices of its members — the checklist that replaces
+        reconstructing the change set by hand.
+
+    Raises:
+        BatchError: No batch is open.
+    """
+    closed: list[tuple[BatchRecord, tuple[int, ...]]] = []
+
+    def _build(doc: StateDocument) -> StateDocument:
+        open_batch = active_batch(doc)
+        if open_batch is None:
+            raise BatchError("No batch is open.")
+        ended = replace(open_batch, ended_at=_now_iso())
+        closed.append(
+            (ended, tuple(index for index, _ in batch_members(doc, ended.batch_id)))
+        )
+        return replace(
+            doc,
+            batches=tuple(
+                ended if b.batch_id == ended.batch_id else b for b in doc.batches
+            ),
+        )
+
+    _locked_state_mutation(path, _build)
+    return closed[0]
 
 
 def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocument:
@@ -346,6 +455,9 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
             platforms=doc.platforms,
             action_log=doc.action_log,
             reports=reports,
+            # Preserve the batch records (#549): a report write has no batch
+            # input, so dropping them would silently close a bulk pass.
+            batches=doc.batches,
         )
 
     return _locked_state_mutation(path, _build)
@@ -445,6 +557,10 @@ def set_platform_metrics(
             platforms=platforms,
             action_log=doc.action_log,
             reports=doc.reports,
+            # Preserve the batch records (#549): none of these mutators has a
+            # batch input, so dropping them here would silently close a bulk
+            # pass mid-flight and leave its later members unlabelled.
+            batches=doc.batches,
         )
 
     return _locked_state_mutation(path, _build)
@@ -518,6 +634,10 @@ def set_conversion_action_types(
             platforms=platforms,
             action_log=doc.action_log,
             reports=doc.reports,
+            # Preserve the batch records (#549): none of these mutators has a
+            # batch input, so dropping them here would silently close a bulk
+            # pass mid-flight and leave its later members unlabelled.
+            batches=doc.batches,
         )
 
     return _locked_state_mutation(path, _build)
@@ -541,6 +661,8 @@ __all__ = [
     "render_state",
     # Defined here.
     "append_action_log",
+    "begin_batch",
+    "end_batch",
     "get_campaign",
     "read_state_file",
     "set_conversion_action_types",

@@ -1,8 +1,14 @@
 """MCP handlers for the ``rollback.*`` tool family.
 
-``rollback_plan_get`` — inspect the reversal plan for one action_log entry.
+``rollback_plan_get`` — inspect the reversal plan for one action_log entry
+(``index``), or for a whole declared batch (``batch_id``, #549). The batch
+form reports every member's verdict and the overall / per-platform coverage,
+so partial reversibility is known before anything is applied.
 ``rollback_apply``    — execute that plan, re-entering the same MCP
-dispatch path used for forward actions.
+dispatch path used for forward actions. Deliberately still one ``index`` per
+call: applying a batch is a loop over the plan's ``apply_order``, so each
+reversal keeps its own result instead of being folded into one summary status
+that would have to gloss over partial failure.
 
 The dispatcher used by ``rollback_apply`` is resolved lazily via
 :func:`_get_dispatcher` so that ``mureo.mcp.server`` and this module
@@ -24,6 +30,7 @@ from mureo.mcp._helpers import _json_result, _require
 from mureo.rollback import (
     RollbackExecutionError,
     execute_rollback,
+    plan_batch_rollback,
     plan_rollback,
 )
 
@@ -31,6 +38,8 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from mcp.types import TextContent
+
+    from mureo.rollback import BatchMemberPlan, BatchRollbackPlan
 
 
 logger = logging.getLogger(__name__)
@@ -105,13 +114,77 @@ def _is_truthy_confirm(value: Any) -> bool:
     return value is True
 
 
+def _batch_plan_payload(plan: BatchRollbackPlan) -> dict[str, Any]:
+    """Serialize a whole-batch plan, gaps and all.
+
+    Every member appears — including the ones mureo cannot reverse, each with
+    the reason. A response that listed only the reversible members would read
+    as a complete revert and is exactly the failure #549 exists to prevent.
+    """
+    return {
+        "batch_id": plan.batch_id,
+        "label": plan.label,
+        "coverage": plan.coverage.value,
+        "counts": plan.counts,
+        "platform_coverage": {
+            platform: coverage.value for platform, coverage in plan.platform_coverage
+        },
+        # Reverse-chronological: feed these to rollback_apply in this order.
+        "apply_order": list(plan.apply_order),
+        "members": [_batch_member_payload(member) for member in plan.members],
+    }
+
+
+def _batch_member_payload(member: BatchMemberPlan) -> dict[str, Any]:
+    """Serialize one batch member: its verdict first, its plan second."""
+    payload: dict[str, Any] = {
+        "index": member.index,
+        "timestamp": member.timestamp,
+        "action": member.action,
+        "platform": member.platform,
+        "reversibility": member.status.value,
+        "reason": member.reason,
+        "plan_status": None,
+        "operation": None,
+        "params": None,
+        "caveats": [],
+    }
+    if member.plan is not None:
+        payload["plan_status"] = member.plan.status.value
+        payload["operation"] = member.plan.operation
+        payload["params"] = member.plan.params
+        payload["caveats"] = list(member.plan.caveats)
+    return payload
+
+
+def _selector(arguments: dict[str, Any]) -> tuple[str, Any]:
+    """Return ``("index", int)`` or ``("batch_id", str)``.
+
+    The MCP schema declares the exclusivity, but the schema is not the only
+    caller: rejecting both-or-neither here keeps a direct handler invocation
+    from silently planning something the operator did not ask for.
+    """
+    raw_index = arguments.get("index")
+    raw_batch = arguments.get("batch_id")
+    has_index = raw_index is not None
+    has_batch = isinstance(raw_batch, str) and bool(raw_batch.strip())
+    if has_index == has_batch:
+        raise ValueError(
+            "Provide exactly one of 'index' (a single action_log entry) or "
+            "'batch_id' (a whole batch)."
+        )
+    if raw_index is not None:
+        return ("index", int(raw_index))
+    return ("batch_id", str(raw_batch).strip())
+
+
 async def handle_plan_get(arguments: dict[str, Any]) -> list[TextContent]:
-    """Return the :class:`RollbackPlan` for ``action_log[index]`` as JSON."""
+    """Return the reversal plan for one entry, or for a whole batch, as JSON."""
     try:
         state_file = _resolve_state_file(arguments)
+        kind, selector = _selector(arguments)
     except ValueError as exc:
         return _json_result({"plan": None, "reason": str(exc)})
-    index = int(_require(arguments, "index"))
 
     if not state_file.exists():
         return _json_result(
@@ -122,6 +195,10 @@ async def handle_plan_get(arguments: dict[str, Any]) -> list[TextContent]:
     except ContextFileError as exc:
         return _json_result({"plan": None, "reason": str(exc)})
 
+    if kind == "batch_id":
+        return _json_result(_batch_plan_payload(plan_batch_rollback(doc, selector)))
+
+    index = selector
     if index < 0 or index >= len(doc.action_log):
         return _json_result(
             {
