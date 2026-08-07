@@ -140,10 +140,15 @@ known-first-party = ["mureo"]
     # being replaced.
     "N806",
     # TC001/TC002/TC003 (move a typing-only import into `if TYPE_CHECKING:`)
-    # exist to keep a library's import graph cheap for its importers. Nothing
-    # imports a test module, so deferring `from pathlib import Path` buys
-    # zero and costs an `if TYPE_CHECKING:` block in ~35 files — plus a
-    # NameError the first time a test needs `Path(...)` at runtime.
+    # pay for themselves by keeping a library's import graph cheap for
+    # everyone downstream. tests/ is not a library — pytest collects these
+    # modules and nothing ships them. Test modules DO import each other a
+    # little (test_amazon_session_batch -> test_amazon_reversal._FakeClock,
+    # test_credential_guard -> hook_guard_runner.run_guard, and two more),
+    # but every one of those pulls a runtime value, which is precisely what
+    # these rules leave alone. So the saving is nil either way, while the
+    # cost is an `if TYPE_CHECKING:` block in ~35 files and a NameError the
+    # first time a test wants `Path(...)` at runtime.
     "TC001",
     "TC002",
     "TC003",

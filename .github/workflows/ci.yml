@@ -20,9 +20,11 @@ jobs:
           cache: 'pip'
       - name: Install dependencies
         run: pip install -e ".[dev]"
-      # Whole tree, NOT `mureo/`. Gating only the package is how tests/
-      # accumulated 638 ruff violations and 26 unformatted files unnoticed —
-      # including 43 discarded return values that were missing assertions.
+      # Whole tree, NOT `mureo/`. Gating only the package let tests/ drift into
+      # hundreds of ruff findings and dozens of unformatted files unseen — among
+      # them 43 handler tests that captured a return value and then asserted
+      # nothing about it. (Raw totals shift with the ruff/black patch version,
+      # so none are quoted here; the point is that nothing was checking.)
       # `.` also covers scripts/ and anything added later, so a new top-level
       # Python file is linted on the commit that introduces it rather than
       # whenever someone next widens this glob. Test code is held to the same
