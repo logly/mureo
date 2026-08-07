@@ -349,6 +349,33 @@ class TestForgottenBatchAnnouncesItself:
         )
         assert stale_batch_warning(record, datetime.now(timezone.utc)) is None
 
+    def test_staleness_follows_the_server_clock_seam(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The default ``now`` is ``clock.server_now``, not a raw wall clock.
+
+        Without this, the production path would be the only caller outside the
+        one clock seam (#460) — every other test here passes ``now`` explicitly,
+        so a drift back to ``datetime.now`` would pass unnoticed. Freezing the
+        seam must move the verdict.
+        """
+        from mureo.core import clock
+
+        started = datetime(2026, 8, 1, 9, 0, tzinfo=timezone.utc)
+        record = BatchRecord(
+            batch_id="batch-seam", label="pass", started_at=started.isoformat()
+        )
+
+        monkeypatch.setattr(clock, "server_now", lambda: started + timedelta(hours=1))
+        assert batch_open_hours(record) == pytest.approx(1.0)
+        assert stale_batch_warning(record) is None
+
+        monkeypatch.setattr(
+            clock, "server_now", lambda: started + timedelta(hours=STALE_AFTER_HOURS)
+        )
+        assert batch_open_hours(record) == pytest.approx(float(STALE_AFTER_HOURS))
+        assert stale_batch_warning(record) is not None
+
     def test_an_unparseable_start_is_not_reported_as_fresh(self) -> None:
         """An unknown age must not pass for a small one."""
         record = BatchRecord(batch_id="b", label="l", started_at="not-a-date")
@@ -554,20 +581,66 @@ class TestBatchPlanCoverage:
     ) -> None:
         """A read in the batch is not something the operator must undo by hand.
 
-        KNOWN DEFECT, pinned deliberately. ``is_read_only_tool_name`` anchors
-        its verbs at the START of a name segment (``list_campaigns``), but
-        mureo's own tools put the verb at the END
-        (``google_ads_campaigns_list``), so a NATIVE read is currently
-        classified ``irreversible`` rather than ``nothing_to_reverse``. The
-        error direction is safe — nothing is offered for reversal that should
-        not be — but it shows the operator a read among the "cannot be
-        reverted" items, which is not true and corrodes trust in this report.
+        KNOWN DEFECT, pinned deliberately — read this before "fixing" it.
 
-        The bridged spelling (``campaign_management-list_campaigns``) IS
-        matched today, so both are asserted here: the fix is to the shared
-        vocabulary in ``mureo.core.tool_names`` and lands in its own PR, at
-        which point the native assertion flips to NOTHING_TO_REVERSE and the
-        bridged one is unchanged.
+        **What is wrong.** ``mureo.core.tool_names.is_read_only_tool_name``
+        anchors its verbs at the START of a hyphen-delimited name segment
+        (``list_campaigns``), but mureo's own tools put the verb at the END
+        (``google_ads_campaigns_list``). So::
+
+            is_read_only_tool_name("google_ads_campaigns_list")  # False, wrong
+
+        A NATIVE read therefore reaches ``plan_rollback`` as a write with no
+        ``reversible_params`` hint and is classified IRREVERSIBLE instead of
+        NOTHING_TO_REVERSE. The error direction is safe — nothing is offered
+        for reversal that should not be — but the batch report shows the
+        operator a read among the "cannot be reverted" items, which is untrue
+        and corrodes trust in exactly the surface #549 adds. The bridged
+        spelling (``campaign_management-list_campaigns``) is matched correctly
+        today, which is why both are asserted here.
+
+        **Why it is not fixed in the #549 PR.** The obvious fix — also match a
+        verb at the END of a segment — is wrong, not merely broad. Three
+        modules share this vocabulary, and one of them gates a DENIAL:
+        ``mureo.mcp.server._register_pattern_fallbacks`` skips
+        ``register_pattern_fallback_tool(name)`` when the name reads as a read,
+        so a name wrongly classified as a read loses its guardrail money
+        pattern-scan. Measured on a 294-tool installed plugin surface, a naive
+        suffix rule flips 23 names, and **13 of them are**
+        ``ToolSemantics(mutating=True)`` — i.e. 13 real mutations would be
+        newly exempted from the money scan::
+
+            amc-execute_query
+            logly_ads_context_merge_adgroup_list
+            reporting-create_campaign_report
+            reporting-create_inventory_report
+            reporting-create_product_report
+            reporting-create_report
+            reporting-delete_report          <- a DELETE reading as a read
+            yahoo_ads_create_placement_url_list
+            yahoo_ads_display_create_placement_url_list
+            yahoo_ads_display_remove_placement_url_list
+            yahoo_ads_display_update_placement_url_list
+            yahoo_ads_remove_placement_url_list
+            yahoo_ads_update_placement_url_list
+
+        (On the native side the same rule flips 70 of 208 names, none carrying
+        a write verb — the native direction alone is safe.)
+
+        **What a correct fix must do.** Match a trailing verb only when no
+        write verb (``create`` / ``update`` / ``delete`` / ``remove`` / ``set``
+        / ``add`` / ``merge`` / ``execute`` …) appears elsewhere in the same
+        segment, so ``google_ads_campaigns_list`` becomes a read while
+        ``reporting-delete_report`` and ``yahoo_ads_update_placement_url_list``
+        stay writes. It changes plugin guardrail registration, plugin
+        ``derive_semantics`` classification and ``mureo rollback list`` output,
+        so it needs its own tests in ``test_strategy_gate_pattern_fallback.py``,
+        ``test_mcp_plugin_semantics.py``, ``test_rollback.py`` and
+        ``test_cli_rollback.py``.
+
+        **What flips here when it lands.** The ``by_index[0]`` assertion below
+        becomes ``BatchMemberStatus.NOTHING_TO_REVERSE``. ``by_index[1]``,
+        ``by_index[2]`` and ``apply_order`` are unchanged.
         """
         state_file = workspace / "STATE.json"
         batch = begin_batch(state_file, label="a pass that also read things")

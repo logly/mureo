@@ -24,7 +24,8 @@ platform, not to mureo, so threading a ``batch_id`` through tool schemas would
 work for native tools only.
 
 **Known limit.** The batch lifecycle tools resolve STATE.json through the
-active :class:`StateStore` (``_resolve_path``), while the native and plugin
+active :class:`StateStore` (via
+:func:`mureo.mcp._helpers.resolve_workspace_path`), while the native and plugin
 recorders write to ``Path.cwd() / "STATE.json"`` directly — a pre-existing
 asymmetry, not one introduced here. They coincide in the default file-backed
 configuration, which is every OSS install; under an alternate
@@ -168,15 +169,28 @@ def batch_open_hours(record: BatchRecord, now: datetime | None = None) -> float 
 
     ``None`` for a closed batch and for one whose ``started_at`` cannot be
     parsed — an unknown age must not be reported as a small one.
+
+    ``now`` defaults to :func:`mureo.core.clock.server_now`, the one clock seam
+    (#460): reaching for ``datetime.now`` directly would leave the production
+    path outside the seam every test freezes, so a drift there would go
+    unnoticed. Resolved through the MODULE (``clock.server_now()``) rather than
+    a bound name, which is what keeps
+    ``monkeypatch.setattr(mureo.core.clock, "server_now", …)`` effective.
+
+    The import is deliberately lazy: ``mureo.core.__init__`` → ``runtime_context``
+    → ``state_store`` → ``mureo.context.state`` → this module is a real import
+    chain, so reaching ``mureo.core`` at module load would close the cycle.
     """
     if record.ended_at is not None:
         return None
     started = _parse_iso(record.started_at)
     if started is None:
         return None
-    current = now or datetime.now(timezone.utc)
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=timezone.utc)
+    if now is None:
+        from mureo.core import clock
+
+        now = clock.server_now()
+    current = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
     return (current - started).total_seconds() / 3600.0
 
 
