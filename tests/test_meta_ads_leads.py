@@ -504,6 +504,7 @@ class TestLeadFormsMcpHandlers:
             )
 
         client.get_lead_form.assert_awaited_once_with("form_1")
+        assert json.loads(result[0].text) == { "id": "form_1", "name": "問い合わせ"}
 
     async def test_lead_forms_create(self) -> None:
         mod = _import_meta_ads_tools()
@@ -554,6 +555,7 @@ class TestLeadFormsMcpHandlers:
 
         call_kwargs = client.create_lead_form.call_args
         assert call_kwargs[1]["follow_up_action_url"] == "https://example.com/thanks"
+        assert json.loads(result[0].text) == {"id": "form_ty"}
 
     async def test_leads_get(self) -> None:
         mod = _import_meta_ads_tools()
@@ -1343,7 +1345,6 @@ class TestExportLeadsToCsv:
         out: Path = tmp_path / "out.csv"  # type: ignore[assignment]
         count = await client.export_leads_to_csv("form_1", out)
         assert count == 1
-        rows = out.read_text(encoding="utf-8").splitlines()
         # Missing cells are blank — use a csv parser to assert the exact value.
         import csv
 

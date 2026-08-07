@@ -142,6 +142,7 @@ class TestBoostPost:
             name="カスタム広告名",
         )
 
+        assert result["id"] == "ad_999"
         call_args = client._post.call_args
         data = call_args[0][1]
         assert data["name"] == "カスタム広告名"

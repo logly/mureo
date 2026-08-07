@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 from pathlib import Path
@@ -2475,7 +2476,7 @@ class TestAdState:
         from mureo.context.models import AdState
 
         ad = AdState(ad_id="ad_1")
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             ad.ad_id = "ad_2"  # type: ignore[misc]
 
     @pytest.mark.unit

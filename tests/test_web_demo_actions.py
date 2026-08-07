@@ -15,6 +15,7 @@ scenario scaffolding, no real XLSX, no real ``~/.mureo`` writes.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -485,7 +486,7 @@ class TestEnvelopeContract:
                 skip_import=False,
             )
         assert hasattr(result, "as_dict")
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             result.status = "tampered"  # type: ignore[misc]
 
     def test_as_dict_is_json_serializable(self, tmp_path: Path) -> None:

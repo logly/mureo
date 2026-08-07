@@ -290,6 +290,7 @@ class TestAnalyticsHandlers:
 
         call_kwargs = mock_client.query_analytics.call_args[1]
         assert call_kwargs["dimensions"] == ["page"]
+        assert json.loads(result[0].text) == [{"keys": ["/page1"], "clicks": 200}]
 
     async def test_device_breakdown(self) -> None:
         h = _import_handlers()
@@ -309,6 +310,7 @@ class TestAnalyticsHandlers:
 
         call_kwargs = mock_client.query_analytics.call_args[1]
         assert call_kwargs["dimensions"] == ["device"]
+        assert json.loads(result[0].text) == [{"keys": ["MOBILE"], "clicks": 300}]
 
     async def test_compare_periods(self) -> None:
         h = _import_handlers()

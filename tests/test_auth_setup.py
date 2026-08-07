@@ -1840,6 +1840,13 @@ async def test_setup_meta_ads_single_account(tmp_path: Path) -> None:
 
     data = json.loads(cred_path.read_text(encoding="utf-8"))
     assert data["meta_ads"]["account_id"] == "act_111"
+    # The returned credentials carry the OAuth result, not a re-read of the
+    # file. NB: ``account_id`` is deliberately NOT asserted here — the wizard
+    # persists it via ``save_credentials`` but leaves it unset on the returned
+    # object, and no caller reads the return value today. Pinning either value
+    # would bless a shape this PR did not decide on.
+    assert result.access_token == "long-lived-token"
+    assert result.app_id == "test-app-id"
 
 
 @pytest.mark.unit
@@ -1913,6 +1920,9 @@ async def test_setup_meta_ads_cancel_selection(tmp_path: Path) -> None:
     data = json.loads(cred_path.read_text(encoding="utf-8"))
     # On cancel, the first account is the default.
     assert data["meta_ads"]["account_id"] == "act_111"
+    # See test_setup_meta_ads_single_account for why account_id is not
+    # asserted on the returned object.
+    assert result.access_token == "long-lived-token"
 
 
 @pytest.mark.unit

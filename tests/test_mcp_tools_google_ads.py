@@ -509,6 +509,7 @@ class TestGoogleAdsCampaignHandlers:
             )
 
         client.update_campaign_status.assert_awaited_once_with("456", "PAUSED")
+        assert json.loads(result[0].text) == { "resource_name": "customers/123/campaigns/456" }
 
 
 # ---------------------------------------------------------------------------
@@ -557,6 +558,7 @@ class TestGoogleAdsAdGroupHandlers:
             )
 
         client.create_ad_group.assert_awaited_once()
+        assert json.loads(result[0].text) == { "resource_name": "customers/123/adGroups/99" }
 
     async def test_ad_groups_update(self) -> None:
         mod = _import_google_ads_tools()
@@ -576,6 +578,7 @@ class TestGoogleAdsAdGroupHandlers:
             )
 
         client.update_ad_group.assert_awaited_once()
+        assert json.loads(result[0].text) == { "resource_name": "customers/123/adGroups/99" }
 
 
 # ---------------------------------------------------------------------------
@@ -626,6 +629,7 @@ class TestGoogleAdsAdHandlers:
             )
 
         client.create_ad.assert_awaited_once()
+        assert json.loads(result[0].text) == {"resource_name": "customers/123/ads/55"}
 
     async def test_ads_update_status(self) -> None:
         mod = _import_google_ads_tools()
@@ -648,6 +652,7 @@ class TestGoogleAdsAdHandlers:
             )
 
         client.update_ad_status.assert_awaited_once()
+        assert json.loads(result[0].text) == {"resource_name": "res"}
 
     async def test_ads_create_display(self) -> None:
         mod = _import_google_ads_tools()
@@ -714,6 +719,7 @@ class TestGoogleAdsKeywordHandlers:
             )
 
         client.list_keywords.assert_awaited_once()
+        assert json.loads(result[0].text) == [{"text": "test", "match_type": "BROAD"}]
 
     async def test_keywords_add(self) -> None:
         mod = _import_google_ads_tools()
@@ -735,6 +741,7 @@ class TestGoogleAdsKeywordHandlers:
             )
 
         client.add_keywords.assert_awaited_once()
+        assert json.loads(result[0].text) == [{"resource_name": "res"}]
 
     async def test_keywords_remove(self) -> None:
         mod = _import_google_ads_tools()
@@ -756,6 +763,7 @@ class TestGoogleAdsKeywordHandlers:
             )
 
         client.remove_keyword.assert_awaited_once()
+        assert json.loads(result[0].text) == {"resource_name": "res"}
 
     async def test_keywords_suggest(self) -> None:
         mod = _import_google_ads_tools()
@@ -773,6 +781,7 @@ class TestGoogleAdsKeywordHandlers:
             )
 
         client.suggest_keywords.assert_awaited_once()
+        assert json.loads(result[0].text) == [{"keyword": "suggested"}]
 
     async def test_keywords_diagnose(self) -> None:
         mod = _import_google_ads_tools()
@@ -790,6 +799,7 @@ class TestGoogleAdsKeywordHandlers:
             )
 
         client.diagnose_keywords.assert_awaited_once_with("456")
+        assert json.loads(result[0].text) == {"total": 10, "issues": []}
 
     async def test_negative_keywords_list(self) -> None:
         mod = _import_google_ads_tools()
@@ -807,6 +817,7 @@ class TestGoogleAdsKeywordHandlers:
             )
 
         client.list_negative_keywords.assert_awaited_once_with("456")
+        assert json.loads(result[0].text) == [{"text": "neg"}]
 
     async def test_negative_keywords_add(self) -> None:
         mod = _import_google_ads_tools()
@@ -828,6 +839,7 @@ class TestGoogleAdsKeywordHandlers:
             )
 
         client.add_negative_keywords.assert_awaited_once()
+        assert json.loads(result[0].text) == [{"resource_name": "res"}]
 
 
 # ---------------------------------------------------------------------------
@@ -855,6 +867,7 @@ class TestGoogleAdsBudgetHandlers:
             )
 
         client.get_budget.assert_awaited_once_with("456")
+        assert json.loads(result[0].text) == {"id": "1", "daily_budget": 5000}
 
     async def test_budget_update(self) -> None:
         mod = _import_google_ads_tools()
@@ -872,6 +885,7 @@ class TestGoogleAdsBudgetHandlers:
             )
 
         client.update_budget.assert_awaited_once()
+        assert json.loads(result[0].text) == {"resource_name": "res"}
 
 
 # ---------------------------------------------------------------------------
@@ -899,6 +913,7 @@ class TestGoogleAdsAnalysisHandlers:
             )
 
         client.get_performance_report.assert_awaited_once()
+        assert json.loads(result[0].text) == [{"clicks": 100}]
 
     async def test_search_terms_report(self) -> None:
         mod = _import_google_ads_tools()
@@ -916,6 +931,7 @@ class TestGoogleAdsAnalysisHandlers:
             )
 
         client.get_search_terms_report.assert_awaited_once()
+        assert json.loads(result[0].text) == [{"term": "query"}]
 
     async def test_search_terms_review(self) -> None:
         mod = _import_google_ads_tools()
@@ -933,6 +949,7 @@ class TestGoogleAdsAnalysisHandlers:
             )
 
         client.review_search_terms.assert_awaited_once()
+        assert json.loads(result[0].text) == {"candidates": []}
 
     async def test_auction_insights_analyze(self) -> None:
         mod = _import_google_ads_tools()
@@ -950,6 +967,7 @@ class TestGoogleAdsAnalysisHandlers:
             )
 
         client.analyze_auction_insights.assert_awaited_once()
+        assert json.loads(result[0].text) == {"competitors": []}
 
     async def test_cpc_detect_trend(self) -> None:
         mod = _import_google_ads_tools()
@@ -967,6 +985,7 @@ class TestGoogleAdsAnalysisHandlers:
             )
 
         client.detect_cpc_trend.assert_awaited_once()
+        assert json.loads(result[0].text) == {"direction": "rising"}
 
     async def test_device_analyze(self) -> None:
         mod = _import_google_ads_tools()
@@ -984,6 +1003,7 @@ class TestGoogleAdsAnalysisHandlers:
             )
 
         client.analyze_device_performance.assert_awaited_once()
+        assert json.loads(result[0].text) == {"devices": []}
 
 
 # ---------------------------------------------------------------------------
@@ -1039,6 +1059,7 @@ class TestGoogleAdsErrorHandling:
             )
 
         client.diagnose_campaign_delivery.assert_awaited_once_with("456")
+        assert json.loads(result[0].text) == {"issues": []}
 
     async def test_handler_api_error(self) -> None:
         """API exceptions are converted into TextContent error messages."""

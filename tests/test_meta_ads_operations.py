@@ -78,6 +78,7 @@ class TestCampaignsMixin:
     @pytest.mark.asyncio
     async def test_create_campaign(self, client) -> None:
         result = await client.create_campaign("Test", "CONVERSIONS")
+        assert result["id"] == "new_id"
         client._post.assert_called_once()
         call_args = client._post.call_args
         assert "/act_123/campaigns" in call_args[0][0]

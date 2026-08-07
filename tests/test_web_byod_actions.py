@@ -19,6 +19,7 @@ are mocked. No real XLSX parsing, no real ``~/.mureo`` writes.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -590,5 +591,5 @@ class TestEnvelopeContract:
                 file_path=str(f), replace=False
             )
         assert hasattr(result, "as_dict")
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             result.status = "tampered"  # type: ignore[misc]
