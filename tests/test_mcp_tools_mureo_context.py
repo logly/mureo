@@ -28,7 +28,7 @@ pytestmark = pytest.mark.unit
 @pytest.fixture(autouse=True)
 def _clear_runtime_context_cache():
     """Reset the resolver cache before and after every test in this file
-    so the workspace-aware ``_resolve_path`` rebuilds a
+    so the workspace-aware ``resolve_workspace_path`` rebuilds a
     :class:`FilesystemStateStore` with the (per-test) CWD instead of
     reusing a stale one cached during an earlier test or test module."""
     from mureo.core.runtime_context import reset_runtime_context

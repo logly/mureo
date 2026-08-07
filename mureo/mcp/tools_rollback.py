@@ -25,10 +25,16 @@ TOOLS: list[Tool] = [
     Tool(
         name="rollback_plan_get",
         description=(
-            "Inspect the reversal plan for a recorded action_log entry in "
-            "STATE.json. Returns the planner's status (supported / partial / "
-            "not_supported), the operation that would be dispatched, its "
-            "parameters, and any caveats. Does not execute anything."
+            "Inspect the reversal plan for recorded action_log entries in "
+            "STATE.json. Pass ``index`` for ONE entry: returns the planner's "
+            "status (supported / partial / not_supported), the operation that "
+            "would be dispatched, its parameters, and any caveats. Pass "
+            "``batch_id`` (from mureo_batch_begin) for a WHOLE bulk change: "
+            "returns every member with its own verdict, plus overall and "
+            "per-platform coverage (full / partial / none) and the reason each "
+            "irreversible member cannot be reversed. Exactly one of the two is "
+            "required. Read-only — nothing is executed, so partial coverage is "
+            "known BEFORE anything is applied."
         ),
         inputSchema={
             "type": "object",
@@ -45,8 +51,19 @@ TOOLS: list[Tool] = [
                     "minimum": 0,
                     "description": "Index into action_log (0-based).",
                 },
+                "batch_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": (
+                        "Batch id to plan as one unit. Covers every action_log "
+                        "entry tagged with it, across every platform they "
+                        "touched."
+                    ),
+                },
             },
-            "required": ["index"],
+            # Exactly one selector. ``index`` alone is the pre-#549 contract
+            # and keeps working unchanged; the alternative is additive.
+            "oneOf": [{"required": ["index"]}, {"required": ["batch_id"]}],
             "additionalProperties": False,
         },
     ),

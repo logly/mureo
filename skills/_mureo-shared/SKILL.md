@@ -107,6 +107,7 @@ Skills and commands describe "Read STRATEGY.md", "Update STATE.json", and "Appen
 | Read STATE.json | `Read` tool | `mureo_state_get` MCP tool |
 | Establish the current date | `mureo_state_get` MCP tool (`server_now`) | `mureo_state_get` MCP tool (`server_now`) |
 | Append action_log entry | `mureo_state_action_log_append` MCP tool | `mureo_state_action_log_append` MCP tool |
+| Group a bulk change as one unit | `mureo_batch_begin` / `mureo_batch_end` MCP tools | `mureo_batch_begin` / `mureo_batch_end` MCP tools |
 | Upsert campaign snapshot | `mureo_state_upsert_campaign` MCP tool | `mureo_state_upsert_campaign` MCP tool |
 
 When you don't have direct filesystem tools (Desktop / Cowork / web), always reach for the corresponding `mureo_*` MCP tool — they encode the same atomic-write semantics so you can't corrupt the file mid-edit.
@@ -206,6 +207,29 @@ The MCP server exposes tools for Google Ads, Meta Ads, and Search Console over s
 
 Once configured, the AI agent can call `google_ads_campaigns_list` or `meta_ads_campaigns_list` to verify the connection is working.
 
+## Bulk changes are one revertible unit
+
+Any pass that changes **more than one entity** — N placement/app exclusions, N keywords, N ad status changes, a pause across several campaigns — must be wrapped:
+
+1. `mureo_batch_begin` with a `label` in the operator's words (e.g. `"exclude low-quality display placements"`). It returns a `batch_id`.
+2. Do the work. Every `action_log` entry recorded until you close the batch is tagged with that id automatically — **on every platform**, whether the entry came from a native status toggle, from a bridged/plugin tool mureo promoted, or from your own `mureo_state_action_log_append` call.
+3. `mureo_batch_end`. It returns the exact member list (`member_indices`, `platforms`). **Report the `batch_id` and the member count to the operator** — that is the record which removes any later need to reconstruct the change set from memory. Closing is final: nothing can join afterwards, so that count stays true.
+
+**Close it.** A missed `begin` yields no batch and is harmless; a missed `end` yields a batch that keeps swallowing every later change — including work from another session entirely — and then reports the lot as one unit. If a batch has been open more than a day, mureo appends a warning to mutating tool results and to `mureo_batch_status`; when you see it, either close the batch or tell the operator it is still open. mureo will not close it for you. Never pass a `batch_id` you did not get from `mureo_batch_begin` in this session: an unknown id, or one whose batch is closed, is refused.
+
+Then `rollback_plan_get` with `batch_id` (instead of `index`) plans the whole thing: `coverage` (`full` / `partial` / `none`), `platform_coverage`, per-member verdicts, and `apply_order`.
+
+**Report coverage honestly and BEFORE applying anything.** If a batch of 80 reports 60 reversible and 20 `irreversible`, say exactly that, name the irreversible members and their `reason`, and say which platform they are on — do not describe the revert as complete. `rollback_apply` still takes one `index` at a time; walk `apply_order` in the order given (newest first).
+
+What can join a batch, and how far a reversal can actually go, differs by platform — state the limit rather than implying uniform coverage:
+
+- **Native `google_ads_*` / `meta_ads_*`** — status toggles are recorded for you. **Every other mutation** (budget, keywords, exclusions, creative) is recorded only if YOU call `mureo_state_action_log_append`; without that it is not in the batch and not in the plan.
+- **Plugin / bridged platforms** (`plugin:<dist>:<provider>`, e.g. Amazon Ads) — successful mutations join automatically. A reversal is executed only when the hint names a registered plugin tool; otherwise the member is reported `irreversible` with the reason, and reversing it is manual.
+- **Hosted connectors** (`tiktok_ads`) — join only through your own `mureo_state_action_log_append` calls, and their reversal is never executed by mureo. The batch plan is still worth having: it is an accurate manual checklist instead of a memory exercise.
+- **Search Console** — its mutations are not recorded in `action_log` at all, so they cannot join a batch today.
+
+If you cannot open a batch (older mureo without the tools), say so and record each entry individually — do not silently do a bulk pass with no grouping.
+
 ## Security Rules
 
 > CRITICAL: AI agents MUST follow these rules when using mureo tools.
@@ -239,6 +263,7 @@ When pausing or removing multiple entities:
 - List all affected entities with their current performance
 - Show total impact (e.g., "This will pause 5 campaigns with 1,200 clicks/day")
 - Require explicit confirmation
+- **Wrap the whole pass in a batch** so it can be reviewed and reverted as ONE unit — see *Bulk changes are one revertible unit* above
 
 ### 4. Never Expose Raw Credentials
 
@@ -360,6 +385,12 @@ shows fewer campaigns than you wrote — get these exact names right:
   not-recently-synced. `mureo_state_upsert_campaign` / `_platform_metrics_set`
   / `_report_set` set it for you (`_action_log_append` does not); on the Code
   `Write` path you must set it yourself.
+- **Top-level `batches`** (declared bulk change sets, #549) — **carry it over
+  verbatim** on the Code `Write` path, together with each `action_log` entry's
+  `batch_id`. Dropping either detaches a change set from its members, which is
+  precisely the "reconstruct what I did from memory" state batches exist to
+  remove. A record with no `ended_at` is an OPEN batch; do not invent, close or
+  renumber one by hand — use `mureo_batch_begin` / `mureo_batch_end`.
 
 Canonical STATE.json shape (note `campaign_name`, `account_id`, `last_synced_at`):
 

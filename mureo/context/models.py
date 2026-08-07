@@ -90,6 +90,35 @@ class CampaignSnapshot:
 
 
 @dataclass(frozen=True)
+class BatchRecord:
+    """One declared bulk change set (#549).
+
+    A bulk change is normally many tool calls, and nothing in a single call
+    tells mureo which other calls belong with it. So the boundary is
+    **declared**: ``mureo_batch_begin`` opens a record, every ``action_log``
+    write until ``mureo_batch_end`` is stamped with its ``batch_id``, and the
+    rollback plan for that id covers exactly those entries.
+
+    Stored in STATE.json rather than in process memory because the MCP server
+    can be restarted by its host between two calls of the same operator
+    session, and a batch that silently stopped collecting members is the
+    failure mode this whole feature exists to prevent.
+
+    The record outlives the batch: ``ended_at`` is set on close rather than the
+    record being deleted, so ``label`` is still there weeks later when the
+    operator asks what a batch id actually was. ``ended_at is None`` means the
+    batch is open, and at most one record may be open at a time.
+
+    Both timestamps are stamped SERVER-side (the #460 rule).
+    """
+
+    batch_id: str
+    label: str
+    started_at: str
+    ended_at: str | None = None
+
+
+@dataclass(frozen=True)
 class ActionLogEntry:
     """Immutable record of a single action performed on a campaign.
 
@@ -124,6 +153,16 @@ class ActionLogEntry:
         entry with ``evaluation_of=<index>`` records that the outcome was reviewed
         and takes the source out of the pending set. ``None`` means this entry is
         not an evaluation record.
+    batch_id: The logical batch this action was dispatched as part of (#549), or
+        ``None`` for a standalone action — which every entry written before this
+        field existed is, so old STATE.json files parse unchanged and gain no new
+        key on the next write. Membership is what makes "undo what I did on
+        Monday" expressible: ``rollback_plan_get`` takes the id and reports the
+        reversibility of EVERY member before anything is applied, so the operator
+        never has to reconstruct a change set from memory. Stamped automatically
+        by :func:`mureo.context.state.append_action_log` from the workspace's open
+        batch, so a native, hosted-connector and bridged/plugin mutation all join
+        the same unit without any per-platform code.
     """
 
     timestamp: str
@@ -142,9 +181,15 @@ class ActionLogEntry:
     # compatibility for third-party callers of this public dataclass.
     entity_type: str | None = None
     entity_id: str | None = None
+    # Appended after every pre-#549 field, same positional-compatibility rule.
+    batch_id: str | None = None
 
     def __post_init__(self) -> None:
         """Take defensive copies of mutable dict fields."""
+        if self.batch_id is not None:
+            if not isinstance(self.batch_id, str) or not self.batch_id.strip():
+                raise ValueError("batch_id must be a non-empty string")
+            object.__setattr__(self, "batch_id", self.batch_id.strip())
         if (self.entity_type is None) != (self.entity_id is None):
             raise ValueError("entity_type and entity_id must be provided together")
         if self.entity_type is not None and self.entity_id is not None:
@@ -237,6 +282,10 @@ class StateDocument:
     # skill writes it yet. Optional with a None default so old STATE.json
     # files parse unchanged and emit no extra key.
     reports: dict[str, Any] | None = None
+    # Declared bulk change sets (#549), open and closed. Empty by default and
+    # emitted only when non-empty, so a STATE.json written before this field
+    # existed parses unchanged and gains no new key.
+    batches: tuple[BatchRecord, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         """Defensive copies for mutable fields."""
@@ -244,5 +293,7 @@ class StateDocument:
             object.__setattr__(self, "platforms", dict(self.platforms))
         if not isinstance(self.action_log, tuple):
             object.__setattr__(self, "action_log", tuple(self.action_log))
+        if not isinstance(self.batches, tuple):
+            object.__setattr__(self, "batches", tuple(self.batches))
         if self.reports is not None:
             object.__setattr__(self, "reports", copy.deepcopy(self.reports))

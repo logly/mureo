@@ -56,10 +56,14 @@ Review and clean up search terms and keywords across all platforms.
 
 9. **Check pending observations**: Before executing, check `action_log` for this campaign. If a previous action is still within its observation window, warn that stacking changes will make outcome evaluation difficult. Recommend waiting if possible.
 
-10. **Execute**: Use each platform's keyword management tools to apply approved changes (add negative keywords, add positive keywords, adjust bids).
+10. **Open a batch**: call `mureo_batch_begin` with a `label` naming this pass (e.g. `"search-term cleanup 2026-08-07"`). A cleanup changes many entities across possibly several platforms, and the batch is what makes it one reviewable, plannable unit instead of a set of entries nobody can re-identify later. See `../_mureo-shared/SKILL.md` → *Bulk changes are one revertible unit*.
 
-11. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current CPA, conversions, clicks, CTR, impressions, cost) and `observation_due` (14 days from `server_now`'s date). This enables evidence-based evaluation later.
+11. **Execute**: Use each platform's keyword management tools to apply approved changes (add negative keywords, add positive keywords, adjust bids).
 
-12. **Update STATE.json** with notes about the cleanup.
+12. **Record outcome context**: For each campaign modified, log to `action_log` with `metrics_at_action` (current CPA, conversions, clicks, CTR, impressions, cost) and `observation_due` (14 days from `server_now`'s date). This enables evidence-based evaluation later. Keyword and negative-keyword changes are **not** auto-recorded, so this step is what puts them in the batch at all — an entry you do not append is invisible to any later revert.
+
+13. **Close the batch**: call `mureo_batch_end` and report the returned `batch_id` and member count to the operator, so undoing this pass later is `rollback_plan_get` with that id rather than a reconstruction from memory.
+
+14. **Update STATE.json** with notes about the cleanup.
 
 IMPORTANT: Always explain WHY a term should be excluded/added, referencing the Persona or USP from STRATEGY.md. Consult past action_log entries — if a similar cleanup was previously evaluated, reference whether it was effective.

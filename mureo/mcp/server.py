@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from mureo.mcp.tool_provider import MCPToolProvider
 
 from mureo.core.control_flow import STOP_EXCEPTIONS
+from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.mcp._helpers import is_error_result
 from mureo.mcp.native_reversal import capture_before_state, record_native_mutation
 from mureo.mcp.plugin_audit import record_plugin_call
@@ -73,6 +74,8 @@ from mureo.mcp.tools_analytics_registry import (
 from mureo.mcp.tools_analytics_registry import (
     handle_tool as handle_analytics_registry_tool,
 )
+from mureo.mcp.tools_batch import TOOLS as BATCH_TOOLS
+from mureo.mcp.tools_batch import handle_tool as handle_batch_tool
 from mureo.mcp.tools_creative_studio import TOOLS as CREATIVE_STUDIO_TOOLS
 from mureo.mcp.tools_creative_studio import (
     handle_tool as handle_creative_studio_tool,
@@ -131,6 +134,7 @@ _ALL_TOOLS: list[Tool] = [
     *(META_ADS_TOOLS if _META_ADS_ENABLED else []),
     *SEARCH_CONSOLE_TOOLS,
     *ROLLBACK_TOOLS,
+    *BATCH_TOOLS,
     *ANALYSIS_TOOLS,
     *MUREO_CONTEXT_TOOLS,
     *ANALYTICS_REGISTRY_TOOLS,
@@ -145,6 +149,7 @@ _META_ADS_NAMES: frozenset[str] = (
 )
 _SEARCH_CONSOLE_NAMES: frozenset[str] = frozenset(t.name for t in SEARCH_CONSOLE_TOOLS)
 _ROLLBACK_NAMES: frozenset[str] = frozenset(t.name for t in ROLLBACK_TOOLS)
+_BATCH_NAMES: frozenset[str] = frozenset(t.name for t in BATCH_TOOLS)
 _ANALYSIS_NAMES: frozenset[str] = frozenset(t.name for t in ANALYSIS_TOOLS)
 _MUREO_CONTEXT_NAMES: frozenset[str] = frozenset(t.name for t in MUREO_CONTEXT_TOOLS)
 _ANALYTICS_REGISTRY_NAMES: frozenset[str] = frozenset(
@@ -225,6 +230,7 @@ _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
         | _META_ADS_NAMES
         | _SEARCH_CONSOLE_NAMES
         | _ROLLBACK_NAMES
+        | _BATCH_NAMES
         | _ANALYSIS_NAMES
         | _MUREO_CONTEXT_NAMES
         | _ANALYTICS_REGISTRY_NAMES
@@ -793,6 +799,35 @@ def _refuse_text_content(name: str, decision: PolicyDecision) -> list[Any]:
     return [TextContent(type="text", text=body)]
 
 
+def _maybe_append_batch_reminder(result: list[Any], *, is_mutation: bool) -> list[Any]:
+    """Warn, on a mutation, that a batch has been open too long (#549).
+
+    Push, not pull. ``mureo_batch_status`` reports the same staleness, but a
+    caller who FORGOT the batch is open is by definition not asking — and every
+    mutation dispatched meanwhile is another entry silently joining a change
+    set it does not belong to. So the warning rides out on the mutation itself,
+    the same soft-enforcement shape as the STRATEGY.md reminder.
+
+    Re-emitted per mutation rather than latched once per process: each one adds
+    a member, so each one is a new instance of the problem, not a repeat of the
+    old one. Never refuses, never replaces the tool's content, never raises;
+    suppress with ``MUREO_DISABLE_BATCH_REMINDER=1``.
+    """
+    if not is_mutation:
+        # Reads add no members, so a read is not another instance of the
+        # problem — warning on one would only cost context.
+        return result
+
+    from mcp.types import TextContent
+
+    from mureo.mcp._handlers_batch import maybe_build_batch_reminder
+
+    warning = maybe_build_batch_reminder()
+    if warning is None:
+        return result
+    return [*result, TextContent(type="text", text=warning)]
+
+
 def _maybe_append_strategy_reminder(name: str, result: list[Any]) -> list[Any]:
     """Best-effort soft-enforcement of the "strategy-driven" claim.
 
@@ -986,13 +1021,19 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         result = await handle_google_ads_tool(name, arguments)
         if record_mutations:
             record_native_mutation(name, arguments, before, result)
-        return _maybe_append_strategy_reminder(name, result)
+        return _maybe_append_batch_reminder(
+            _maybe_append_strategy_reminder(name, result),
+            is_mutation=is_mutating_builtin_tool(name),
+        )
     if name in _META_ADS_NAMES:
         before = await capture_before_state(name, arguments)
         result = await handle_meta_ads_tool(name, arguments)
         if record_mutations:
             record_native_mutation(name, arguments, before, result)
-        return _maybe_append_strategy_reminder(name, result)
+        return _maybe_append_batch_reminder(
+            _maybe_append_strategy_reminder(name, result),
+            is_mutation=is_mutating_builtin_tool(name),
+        )
     if name in _SEARCH_CONSOLE_NAMES:
         return _maybe_append_strategy_reminder(
             name, await handle_search_console_tool(name, arguments)
@@ -1001,6 +1042,8 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         return _maybe_append_strategy_reminder(
             name, await handle_rollback_tool(name, arguments)
         )
+    if name in _BATCH_NAMES:
+        return await handle_batch_tool(name, arguments)
     if name in _ANALYSIS_NAMES:
         return await handle_analysis_tool(name, arguments)
     if name in _MUREO_CONTEXT_NAMES:
@@ -1107,6 +1150,10 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
             # mutation — appended regardless of the result envelope, matching
             # the built-in dispatch. Read-only plugin tools skip it.
             result = _maybe_append_plugin_strategy_reminder(name, result)
+            # This branch runs only for a mutating plugin tool, so the call
+            # just added a member to any open batch — same reason the built-in
+            # mutating branches warn (#549).
+            result = _maybe_append_batch_reminder(result, is_mutation=True)
         return result
     raise ValueError(f"Unknown tool: {name}")
 

@@ -128,12 +128,14 @@ mureo/
 │   ├── lp_analyzer.py       # Landing page analysis
 │   └── anomaly_detector.py  # CPA spike / CTR drop / zero-spend detection with sample-size gates
 ├── rollback/                # Rollback feature (allow-list gated, append-only)
-│   ├── models.py            # RollbackStatus enum + RollbackPlan dataclass
+│   ├── models.py            # RollbackStatus / RollbackPlan + batch verdicts (BatchCoverage, BatchRollbackPlan)
 │   ├── planner.py           # plan_rollback(ActionLogEntry) -> RollbackPlan | None
+│   ├── batch.py             # plan_batch_rollback(doc, batch_id) -> every member, gaps included (#549)
 │   └── executor.py          # execute_rollback(...) -> appends ActionLogEntry(rollback_of=index)
 ├── context/                 # File-based context (STRATEGY.md, STATE.json)
-│   ├── models.py            # Immutable dataclasses (ActionLogEntry.rollback_of for audit trail)
+│   ├── models.py            # Immutable dataclasses (ActionLogEntry.rollback_of / .batch_id, BatchRecord)
 │   ├── strategy.py          # STRATEGY.md parser / renderer
+│   ├── batch.py             # Batch id minting, the stamping rule, membership queries (#549)
 │   ├── state.py             # STATE.json read / mutate / atomic write + state lock (re-exports the two below)
 │   ├── state_codec.py       # STATE.json <-> StateDocument codec (parse_state / render_state)
 │   ├── conversion_overrides.py # Per-account conversion action_type override lookup (#342)
@@ -177,6 +179,8 @@ mureo/
 │   ├── _handlers_search_console.py        # Search Console handlers
 │   ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
 │   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
+│   ├── tools_batch.py                     # mureo_batch_begin / _end / _status
+│   ├── _handlers_batch.py                 # Batch lifecycle handlers
 │   ├── tools_analysis.py                  # analysis_anomalies_check
 │   ├── _handlers_analysis.py              # Anomaly detector composition handler
 │   ├── tools_mureo_context.py            # STRATEGY.md / STATE.json read-write + outcome eval
@@ -267,6 +271,8 @@ mureo assumes the caller is an AI agent susceptible to prompt injection, not a t
 2. **GAQL input validation** — every ID, date, date-range constant, and string literal entering a Google Ads query flows through a single whitelist-based surface in `mureo/google_ads/_gaql_validator.py`. `_period_to_date_clause`'s `BETWEEN` branch pattern-matches and revalidates its dates instead of passing the raw caller string into GAQL.
 3. **Anomaly detection** — `mureo/analysis/anomaly_detector.py` compares current campaign metrics against a median-based baseline built from historical `action_log` entries and emits prioritized alerts for zero spend (CRITICAL), CPA spikes (≥1.5×, critical at 2×), and CTR drops (≤0.5×, critical at 0.3×). Sample-size gates (30+ conversions, 1000+ impressions) follow the `_mureo-learning` skill's statistical-thinking rules to suppress single-day noise. Baselines tolerate malformed `metrics_at_action` rows; CPA/CTR are medianed per-entry so baseline values reflect a real historical day.
 4. **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. `reversible_params` is untrusted input for the rollback executor, so the planner enforces an explicit allow-list of operations (budget update + status toggles across Google/Meta Ads), refuses destructive verbs (`.delete` / `.remove` / `.destroy` / `.purge` / `.transfer`), and rejects unexpected parameter keys — a compromised agent cannot smuggle a privileged call through the rollback path. The `mureo rollback list` / `show` CLI commands are inspection-only; execution stays with the MCP dispatcher so it re-enters the same policy gate as forward actions, and control characters from STATE.json are stripped before terminal output to prevent ANSI-escape spoofing.
+
+   A bulk change is planned as **one unit** (#549): `mureo_batch_begin` / `mureo_batch_end` declare the boundary, every `action_log` entry written in between is stamped with the batch id at the single `append_action_log` choke point (so native, hosted-connector and bridged/plugin recordings all join without any per-platform code), and `rollback_plan_get` takes that id and classifies **every** member. Coverage is reported overall and per platform as `full` / `partial` / `none` — because reversibility is not uniform across platforms, and a plan that quietly omitted the members mureo cannot reverse would read as a complete revert. The same allow-list decides each member, so nothing about the guarantee is loosened by grouping.
 
 See [SECURITY.md](../SECURITY.md) for the full threat model.
 

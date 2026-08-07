@@ -2,6 +2,12 @@
 
 Provides utility functions and API error handling decorators
 shared by Google Ads / Meta Ads handlers.
+
+:func:`resolve_workspace_path` lives here rather than in whichever handler
+happened to need it first: it is the workspace **sandbox boundary** every
+STATE.json / STRATEGY.md tool relies on, so a second copy — or a sibling
+module reaching into another's privates to borrow it — is a place for the
+check to drift. One definition, imported by name.
 """
 
 from __future__ import annotations
@@ -11,6 +17,7 @@ import functools
 import inspect
 import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -94,6 +101,61 @@ def _validate_positive_money(arguments: dict[str, Any], *keys: str) -> None:
             raise ValueError(f"{key} must be a positive number (got {value!r})")
         if value <= 0:
             raise ValueError(f"{key} must be greater than 0 (got {value!r})")
+
+
+def resolve_workspace_path(
+    arguments: dict[str, Any], default_name: str, *, store_attr: str | None = None
+) -> Path:
+    """Resolve a user-supplied path, refusing anything outside the workspace.
+
+    Resolution rules:
+
+    - ``path`` argument missing or empty (``None`` or ``""``) → the
+      workspace-derived default (``getattr(store, store_attr)`` when
+      available, otherwise ``workspace / default_name``). Picks up
+      any alternate :class:`StateStore` wired via the
+      ``mureo.runtime_context_factory`` entry-point group without the
+      caller having to know about it. Note: the empty-string case
+      used to dispatch to ``Path(".")`` under the old ``_opt``-based
+      implementation; the new behaviour is intentional and safer.
+    - ``path`` argument present → resolved relative to the workspace
+      (not the process CWD — they coincide in the default file-backed
+      configuration but may diverge under an alternate runtime),
+      then security-checked: ``Path.resolve()`` follows symlinks, so a
+      file inside the workspace that symlinks to ``/etc/passwd``
+      resolves to the target and is correctly refused.
+    """
+    # Lazy import: ``mureo.core.runtime_context`` pulls in the state layer,
+    # and ``_helpers`` is imported by every handler module at load time.
+    from mureo.core.runtime_context import get_runtime_context
+
+    store = get_runtime_context().state_store
+    workspace = getattr(store, "workspace", Path.cwd()).resolve()
+    raw = arguments.get("path")
+    if not raw:
+        if store_attr is not None:
+            attr = getattr(store, store_attr, None)
+            if attr is not None:
+                # Backend-owned path: trusted output of an installed
+                # ``StateStore`` (the entry-point factory is host code,
+                # not an untrusted MCP caller). Skip the workspace
+                # boundary check so a backend can legitimately point
+                # outside ``workspace`` if its design requires it.
+                return Path(attr)
+        return workspace / default_name
+
+    candidate = Path(raw)
+    resolved = (
+        workspace / candidate if not candidate.is_absolute() else candidate
+    ).resolve()
+    try:
+        resolved.relative_to(workspace)
+    except ValueError as exc:
+        raise ValueError(
+            f"Refusing to read/write outside workspace: "
+            f"{resolved} is not inside {workspace}"
+        ) from exc
+    return resolved
 
 
 def _json_result(data: Any) -> list[TextContent]:
