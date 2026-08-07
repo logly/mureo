@@ -9,8 +9,8 @@ Re-running the embedded payload through ``sys.executable`` keeps these tests
 portable (no bash dependency on the Windows CI job) while exercising the
 exact code a shell would hand to ``python3 -c``.  ``extract_python_code``
 also asserts the payload is shell-safe: because the code sits inside double
-quotes on the command line, any ``"``, ``$``, backtick, or backslash would
-change meaning under a POSIX shell.
+quotes on the command line, any ``"``, ``$``, backtick, backslash, or ``!``
+(history expansion) would change meaning under a POSIX shell.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from typing import Any
 
 _COMMAND_RE = re.compile(r'^python3 -c "(?P<code>[^"]*)" # \[mureo-credential-guard\]$')
 
-_SHELL_HAZARDS = ("$", "`", "\\", "\n")
+_SHELL_HAZARDS = ("$", "`", "\\", "\n", "!")
 
 
 def extract_python_code(command: str) -> str:

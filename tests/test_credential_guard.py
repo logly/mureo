@@ -261,6 +261,95 @@ class TestBashGuardBehavior:
         )
         assert deny_decision(proc) == "deny", command
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # Every one of these was verified against a throwaway $HOME with a
+            # real bash 5.2: each prints the contents of the credentials file.
+            "cat ~/.mure?/credentials.json",
+            "cat ~/.[m]ureo/credentials.json",
+            "cat ~/.mur*/credentials.json",
+            "cat ~/.m?reo/credentials.json",
+            "cat ~/.?????/credentials.json",
+            "cat ~/.[!.]*/credentials.json",
+            "cat ~/.mure[o]/credentials.json",
+            # Brace expansion runs before pathname expansion, so it produces
+            # the real directory name without any wildcard at all.
+            "cat ~/.mure{o,x}/credentials.json",
+            "cat ~/.mur{eo,ex}/credentials.json",
+            # Same patterns, other spellings of the parent directory.
+            "ls -la ~/.mure?",
+            "cp -r ~/.m?reo /tmp/exfil",
+            "cat $HOME/.mure?/credentials.json",
+            "cat ${HOME}/.mur*/credentials.json",
+            'cat "$HOME"/.mure?/credentials.json',
+            "cat /Users/x/.mur*/credentials.json",
+            # Case-folded, as everywhere else in the guard.
+            "cat ~/.MURE?/credentials.json",
+            "cat ~/.[M]UREO/credentials.json",
+            # A substitution supplies the parent, so the pattern does not
+            # start at a path boundary — the same shapes rule 1 covers for
+            # the literal name.
+            "D=~/; cat $D.mure?/credentials.json",
+            "cat $(printf '%s.mure?/credentials.json' ~/)",
+            "python3 -c \"print(open('%s.mure?/credentials.json' % h).read())\"",
+        ],
+    )
+    def test_denies_glob_patterns_matching_the_mureo_dir(
+        self, fake_home: Path, command: str
+    ) -> None:
+        """A wildcard inside the directory name still reaches the real files.
+
+        The literal-substring rule looks for six consecutive characters, so
+        any metacharacter placed *inside* ``.mureo`` breaks the match while
+        the shell still expands the pattern onto the protected directory.
+        """
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # Wildcards that cannot reach a dotfile at all: the shell requires
+            # a leading period to be matched explicitly.
+            "ls *",
+            "rm -rf build/*",
+            "cp dist/* /tmp/",
+            "node --test tests/js/*.test.js",
+            "pytest tests/test_*.py",
+            "ls -d */",
+            "git add -- mureo/*.py",
+            # Dot-leading patterns that cannot spell the directory name.
+            "rm -f .coverage*",
+            "ls -d .git*",
+            "cat .env.*",
+            "rm -rf .pytest_cache .ruff_cache",
+            # Quoted metacharacters never reach pathname expansion — regexes
+            # and format strings must not be read as globs.
+            "sed 's/.*//' notes.txt",
+            "grep -rn '.*TODO' mureo/",
+            "find . -name '*.py' -newer setup.py",
+            "find . -name '.*' -maxdepth 1",
+            "git log --grep '.*fix'",
+            # ...including a fully quoted path: quoting suppresses globbing,
+            # so `?` here is a literal character and opens nothing.
+            'cat "$HOME/.mure?/credentials.json"',
+            # Ordinary commands with no pattern at all.
+            "ruff check .",
+            "git diff -- .",
+            "black --check .",
+        ],
+    )
+    def test_allows_everyday_glob_commands(self, fake_home: Path, command: str) -> None:
+        """The pattern rule must not fire on day-to-day shell usage."""
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert proc.returncode == 0
+        assert proc.stdout.strip() == "", command
+
     @pytest.mark.parametrize("command", ["echo hello", "ls -la", "git status"])
     def test_allows_unrelated_commands(self, fake_home: Path, command: str) -> None:
         proc = run_guard(

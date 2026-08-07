@@ -23,10 +23,14 @@ Two guards are installed:
   ``~/.mureo/credentials.json`` that is itself a symlink pointing OUT — its
   realpath escapes the dir, but the requested path is still under it). Both
   cover every file in the directory, not just ``credentials.json``.
-* Bash guard: denies any command whose text references ``.mureo`` where a
-  path component could *start*.  A substring check is all a command string
-  allows, but anchoring on the directory name (not ``credentials``) also
-  catches wildcard forms like ``cat ~/.mureo/cred*``.
+* Bash guard: two rules over the command text; either one denies.
+
+  Rule 1 (the name spelled out) denies any command whose text contains
+  ``.mureo`` where a path component could *start*.  Anchoring on the
+  directory name rather than on ``credentials`` also covers a wildcard
+  that follows the name (``cat ~/.mureo/cred*``) — but only because the
+  six characters of the name are still there verbatim.  Rule 2 below is
+  what covers a wildcard placed *inside* the name.
 
   A bare substring test over-blocks badly, because case-folded ``.mureo``
   is also a prefix of things that are emphatically not the directory:
@@ -62,6 +66,56 @@ Two guards are installed:
   this: sibling directories (``~/.mureoX``, ``~/.mureo_backup``) still
   deny, since only the text before the name is consulted.
 
+  Rule 2 (the name written as a pattern) closes the other half.  A
+  metacharacter placed inside the name breaks rule 1's six-character
+  literal while the shell still expands the pattern onto the real
+  directory: ``cat ~/.mure?/credentials.json`` prints the credentials
+  file, and so do ``.[m]ureo``, ``.mur*``, ``.m?reo``, ``.?????``,
+  ``.[!.]*`` and the brace form ``.mure{o,x}`` (checked against bash 5.2
+  with a throwaway ``HOME``).  No regex over the command text can decide
+  this, because the string that reaches the filesystem does not exist
+  yet — so the guard asks the question the other way round.  It takes the
+  path components of the command, keeps those that begin at a component
+  boundary with a literal ``.`` and contain a metacharacter, and denies
+  when ``fnmatch`` says the pattern matches ``.mureo``.
+
+  Requiring the literal leading ``.`` is what makes that safe to do.  A
+  shell will not let a wildcard match the leading period of a filename
+  unless ``dotglob`` is set, so ``ls *``, ``rm -rf build/*`` and
+  ``tests/*.py`` cannot reach ``.mureo`` and are never candidates.
+  Without that restriction the rule would have to deny every glob anyone
+  types, ``fnmatch('.mureo', '*')`` being true.
+
+  Quoted spans are skipped for this rule, because quoting suppresses
+  pathname expansion: ``sed 's/.*//'`` and ``find . -name '.*'`` are a
+  regex and a literal, not globs, and ``cat "$HOME/.mure?/x"`` opens
+  nothing.  Unquoted, those same characters do glob, and are denied.  A
+  pattern spliced in by a substitution (``$D.mure?``, ``printf
+  '%s.mure?/'``) is caught by the same ``$``/``%`` clause rule 1 uses,
+  where quoting is not consulted: the pattern reaches the shell through a
+  later expansion.  Brace groups are replaced by ``*`` before matching,
+  an over-approximation that also denies things like ``mv .{env,bak}``
+  which cannot name the directory — the safe direction.
+
+  What rule 2 does not cover, and no part of the guard claims to:
+
+  - a pattern the command text does not contain, because a variable set
+    by an earlier command or by another program supplies it (``cat
+    ~/$P/x``).  Written out in the same command, ``P=.mure?; cat ~/$P/x``
+    is denied — the pattern is in the text;
+  - patterns for *sibling* names (``~/.mur*_backup``): rule 2 asks only
+    whether the pattern matches ``.mureo`` itself, whereas rule 1 does
+    deny literal siblings such as ``~/.mureo_backup``;
+  - extended globs (``.mure@(o|x)``), which bash has off by default;
+  - quoting is scanned as balanced pairs and each quoted span is dropped
+    whole, rather than parsed as a shell would.  A pattern split across
+    the quoting (``~/'.'mure?/x`` — the quoted dot still counts as
+    explicit to the shell) and one hidden behind a deliberately
+    unbalanced quote earlier in the line both escape this half of the
+    rule;
+  - shells configured with ``dotglob`` or ``GLOBIGNORE``, where ``*``
+    does reach dotfiles.
+
 Both comparisons are case-folded: macOS and Windows filesystems are
 case-insensitive by default, so ``~/.MUREO/credentials.json`` opens the
 real file.  On case-sensitive filesystems this can only over-block (a
@@ -74,8 +128,11 @@ comes from filesystem permissions on ``~/.mureo`` itself.
 
 NOTE: the python payloads run inside double quotes on a shell command line
 (``python3 -c "..."``), so they must not contain double quotes, ``$``,
-backticks, backslashes, or newlines.  ``tests/test_credential_guard.py``
-enforces this along with the blocking behavior.
+backticks, backslashes, newlines, or ``!`` — the last because a shell with
+history expansion enabled rewrites ``!`` sequences inside double quotes.
+``chr(36)`` and ``chr(33)`` stand in for the two that the patterns need.
+``tests/test_credential_guard.py`` enforces this along with the blocking
+behavior.
 """
 
 from __future__ import annotations
@@ -128,12 +185,30 @@ _PATH_GUARD_CODE = (
     " or lp==bl or lp.startswith(bl+os.sep)) else None"
 )
 
+# Source of a python expression yielding the regex for one path component
+# written as a shell pattern: a literal dot plus the run of characters a
+# pattern may contain.  Neither ``/`` nor whitespace is in the set, so a run
+# stops where the component does.  The class needs no backslash escapes:
+# ``]`` comes first and ``-`` last, and ``!`` arrives via ``chr(33)`` (see
+# the NOTE in the module docstring for both prohibitions).
+_PATTERN_COMPONENT = "'[.][]a-z0-9_.*?[^{},' + chr(33) + '-]*'"
+
 _BASH_GUARD_CODE = (
-    "import sys,json,re; "
+    "import sys,json,re,fnmatch; "
     "d=json.loads(sys.stdin.read() or '{}'); "
     "c=str((d.get('tool_input') or {}).get('command') or '').lower(); "
+    # Quoted spans undergo no pathname expansion, so they hold no globs.
+    "u=re.sub(chr(39) + '[^' + chr(39) + ']*' + chr(39), ' ', c); "
+    "u=re.sub(chr(34) + '[^' + chr(34) + ']*' + chr(34), ' ', u); "
+    "p=re.findall('(?:^|[^a-z0-9_])(' + " + _PATTERN_COMPONENT + " + ')', u) + "
+    "re.findall('[' + chr(36) + '%][a-z0-9_]*(' + "
+    + _PATTERN_COMPONENT
+    + " + ')', c); "
+    # A brace group stands for any of its alternatives; ``*`` covers them all.
+    "g=[x for x in p if set('*?[{') & set(x) and "
+    "fnmatch.fnmatchcase('.mureo', re.sub('[{].*[}]', '*', x))]; "
     "b=re.search('(^|[^a-z0-9_])[.]mureo', c) or "
-    "re.search('[' + chr(36) + '%][a-z0-9_]*[.]mureo', c); "
+    "re.search('[' + chr(36) + '%][a-z0-9_]*[.]mureo', c) or g; "
     + _deny_expr("mureo credential guard: commands referencing .mureo are blocked")
     + " if b else None"
 )
