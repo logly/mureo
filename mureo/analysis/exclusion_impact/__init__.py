@@ -52,8 +52,10 @@ from mureo.analysis.exclusion_impact.rules import (
     DEFAULT_WINDOW_DAYS,
     MAX_WINDOW_DAYS,
     ExclusionImpactRules,
+    UnevaluatedRule,
     evaluate_exclusion_impact,
     exclusion_impact_rules,
+    unevaluated_rules,
 )
 from mureo.analysis.exclusion_impact.surfaces import (
     DeliverySample,
@@ -83,6 +85,7 @@ __all__ = [
     "ExclusionSurface",
     "ExclusionTarget",
     "MetricShare",
+    "UnevaluatedRule",
     "estimate_exclusion_impact",
     "evaluate_exclusion_impact",
     "exclusion_impact_rules",
@@ -94,4 +97,5 @@ __all__ = [
     "reset_exclusion_surfaces",
     "target_matches",
     "tokenize",
+    "unevaluated_rules",
 ]

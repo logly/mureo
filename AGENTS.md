@@ -29,6 +29,7 @@ mureo/
 ├── google_ads/          # Google Ads API client (Mixin composition)
 │   ├── client.py        # GoogleAdsApiClient (main entry)
 │   ├── mappers.py       # Response mapping to structured dicts
+│   ├── _placement_mappers.py # Negative-placement + group_placement_view row mappers (#544/#547)
 │   ├── _ads.py          # AdsMixin (RSA create/update/status/list)
 │   ├── _ads_display.py  # DisplayAdsMixin (RDA create + RDAUploadError)
 │   ├── _keywords.py     # KeywordsMixin (add/remove/suggest/diagnose)
@@ -132,7 +133,7 @@ mureo/
 │       ├── models.py        # DeliveryRecord / ExclusionTarget / ExclusionImpact + coverage verdicts
 │       ├── matching.py      # Per-entity-kind match rules (host, app id, negative keyword match type)
 │       ├── estimator.py     # The share itself — incremental and cumulative
-│       ├── rules.py         # ## Guardrails exclusion keys + the one refusal decision
+│       ├── rules.py         # ## Guardrails exclusion keys, the one refusal decision, inert-rule reporting
 │       └── surfaces.py      # Which tools are exclusion surfaces (mureo's + plugin-registered)
 ├── rollback/            # Rollback feature (allow-list gated, append-only audit trail)
 │   ├── models.py        # RollbackStatus enum + RollbackPlan dataclass

@@ -582,6 +582,15 @@ also cover that ad group and are not reachable from the call's arguments, and
 for `google_ads_negative_keywords_add_to_ad_group`, because Google Ads exposes
 no ad-group-level negative keyword listing.
 
+**An inert rule says so.** Because the cumulative figure is withheld on those
+scopes, `max_cumulative_delivery_share_removed_pct` enforces **nothing** there
+— and that is the scope the motivating incident happened at. Pair it with
+`max_delivery_share_removed_pct`, which is per-batch and needs no standing
+list. When a rule the operator wrote could not be evaluated for a call, mureo
+names it rather than letting it pass silently: `unevaluated_rules` in this
+tool's response, and a `NOT ENFORCED on this call:` line (with the backstop to
+add) in the notice appended to the exclusion's own result.
+
 **Enforcement.** The three `STRATEGY.md` `## Guardrails` keys
 `max_delivery_share_removed_pct`,
 `max_cumulative_delivery_share_removed_pct` and

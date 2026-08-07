@@ -36,6 +36,7 @@ from mureo.analysis.exclusion_impact import (
     exclusion_impact_rules,
     exclusion_surface_for,
     registered_exclusion_tools,
+    unevaluated_rules,
 )
 from mureo.mcp._helpers import _json_result, _opt
 
@@ -56,6 +57,25 @@ def _number(value: Any) -> float:
         return 0.0
 
 
+def _required_field(row: Any, key: str, field: str, index: int) -> str:
+    """A non-empty string field of one caller-supplied row, or raise.
+
+    Fail loudly rather than substituting ``""``. An entity with an empty
+    ``entity_type`` matches no delivery row and no target, so a single typo
+    would be reported as a measured **0% impact** — the one output this
+    feature must never produce. ``additionalProperties: false`` in the tool
+    schema catches a misspelled KEY; this catches a missing or blank VALUE.
+    """
+    if not isinstance(row, dict):
+        raise ValueError(f"{field}[{index}] must be an object")
+    value = row.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(
+            f"{field}[{index}].{key} is required and must be a non-empty string"
+        )
+    return value.strip()
+
+
 def _records(raw: Any) -> tuple[DeliveryRecord, ...] | None:
     """Caller-supplied delivery rows, or ``None`` when none were supplied.
 
@@ -68,31 +88,29 @@ def _records(raw: Any) -> tuple[DeliveryRecord, ...] | None:
         raise ValueError("delivery_records must be a list of objects")
     return tuple(
         DeliveryRecord(
-            entity=str(row.get("entity") or ""),
-            entity_type=str(row.get("entity_type") or ""),
+            entity=_required_field(row, "entity", "delivery_records", index),
+            entity_type=_required_field(row, "entity_type", "delivery_records", index),
             impressions=_number(row.get("impressions")),
             clicks=_number(row.get("clicks")),
             cost=_number(row.get("cost")),
             conversions=_number(row.get("conversions")),
         )
-        for row in raw
-        if isinstance(row, dict)
+        for index, row in enumerate(raw)
     )
 
 
-def _targets(raw: Any) -> tuple[ExclusionTarget, ...]:
+def _targets(raw: Any, field: str = "excluded_entities") -> tuple[ExclusionTarget, ...]:
     if not isinstance(raw, list):
-        raise ValueError("excluded_entities must be a list of objects")
+        raise ValueError(f"{field} must be a list of objects")
     return tuple(
         ExclusionTarget(
-            value=str(row.get("value") or ""),
-            entity_type=str(row.get("entity_type") or ""),
+            value=_required_field(row, "value", field, index),
+            entity_type=_required_field(row, "entity_type", field, index),
             match_type=(
                 str(row["match_type"]) if row.get("match_type") is not None else None
             ),
         )
-        for row in raw
-        if isinstance(row, dict) and row.get("value")
+        for index, row in enumerate(raw)
     )
 
 
@@ -123,7 +141,7 @@ async def _resolve(
     tool = _opt(arguments, "tool")
     supplied = _records(arguments.get("delivery_records"))
     standing = (
-        _targets(arguments["standing_exclusions"])
+        _targets(arguments["standing_exclusions"], "standing_exclusions")
         if isinstance(arguments.get("standing_exclusions"), list)
         else None
     )
@@ -203,6 +221,14 @@ async def handle_exclusion_impact_preview(
         },
         "would_block": block_reason is not None,
         "block_reason": block_reason,
+        # Rules the operator WROTE that cannot be evaluated for this call.
+        # An inert rule is not the same as a satisfied one, and the
+        # cumulative rule is inert on exactly the ad-group scopes the
+        # motivating incident happened at.
+        "unevaluated_rules": [
+            {"key": rule.key, "reason": rule.reason}
+            for rule in unevaluated_rules(impact, rules)
+        ],
     }
     if note:
         payload["note"] = note

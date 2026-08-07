@@ -120,6 +120,56 @@ def _over_cap(
     return None
 
 
+@dataclass(frozen=True)
+class UnevaluatedRule:
+    """A rule the operator WROTE that could not be evaluated for this call."""
+
+    key: str
+    reason: str
+
+    def as_text(self) -> str:
+        return f"{self.key} could not be evaluated here — {self.reason}"
+
+
+def unevaluated_rules(
+    impact: ExclusionImpact, rules: ExclusionImpactRules
+) -> tuple[UnevaluatedRule, ...]:
+    """Rules that are silently inert for this particular call.
+
+    A rule that cannot fire has to say so **at the moment it cannot fire**,
+    not only in a document. The case that matters:
+    ``max_cumulative_delivery_share_removed_pct`` is the rule that catches
+    incremental tightening, and it is exactly the rule an operator writes
+    after reading an incident report — but mureo cannot list the standing
+    exclusion set for an ad-group-scoped write, so on those calls the rule
+    enforces nothing at all. An operator who wrote ONLY that rule would
+    have no enforcement on the very scope the incident happened at. Saying
+    so lets them add ``max_delivery_share_removed_pct`` as the backstop.
+    """
+    inert: list[UnevaluatedRule] = []
+    if rules.max_share_pct is not None and impact.incremental is None:
+        inert.append(
+            UnevaluatedRule(
+                key="max_delivery_share_removed_pct",
+                reason=(
+                    impact.coverage_reason
+                    or f"delivery coverage for this call is '{impact.coverage}'"
+                ),
+            )
+        )
+    if rules.max_cumulative_share_pct is not None and impact.cumulative is None:
+        inert.append(
+            UnevaluatedRule(
+                key="max_cumulative_delivery_share_removed_pct",
+                reason=(
+                    impact.cumulative_reason
+                    or "the standing exclusion set could not be read for this scope"
+                ),
+            )
+        )
+    return tuple(inert)
+
+
 def evaluate_exclusion_impact(
     impact: ExclusionImpact, rules: ExclusionImpactRules
 ) -> str | None:
@@ -151,6 +201,8 @@ __all__ = [
     "DEFAULT_WINDOW_DAYS",
     "MAX_WINDOW_DAYS",
     "ExclusionImpactRules",
+    "UnevaluatedRule",
     "evaluate_exclusion_impact",
     "exclusion_impact_rules",
+    "unevaluated_rules",
 ]

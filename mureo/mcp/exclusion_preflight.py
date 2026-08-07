@@ -72,6 +72,7 @@ from mureo.analysis.exclusion_impact import (
     evaluate_exclusion_impact,
     exclusion_impact_rules,
     exclusion_surface_for,
+    unevaluated_rules,
 )
 from mureo.core.control_flow import STOP_EXCEPTIONS
 
@@ -97,6 +98,10 @@ class ExclusionPreflight:
     tool: str
     impact: ExclusionImpact | None = None
     refusal_reason: str | None = None
+    #: The resolved rules this call was measured against. Carried so the
+    #: notice can report a rule the operator WROTE but that could not be
+    #: evaluated for this particular call.
+    rules: ExclusionImpactRules | None = None
 
     @property
     def checked(self) -> bool:
@@ -182,6 +187,7 @@ async def exclusion_impact_preflight(
             tool=name,
             impact=impact,
             refusal_reason=evaluate_exclusion_impact(impact, rules),
+            rules=rules,
         )
     except STOP_EXCEPTIONS:
         raise
@@ -249,7 +255,36 @@ def notice_text(preflight: ExclusionPreflight) -> str | None:
             "  The window served nothing on this basis, so no share could "
             "be computed — this is not the same as 'removes nothing'.\n"
         )
-    return header + body
+    return header + body + _inert_rule_lines(preflight)
+
+
+def _inert_rule_lines(preflight: ExclusionPreflight) -> str:
+    """Name any rule the operator wrote that could not fire on this call.
+
+    Without this, an operator who wrote ONLY
+    ``max_cumulative_delivery_share_removed_pct`` — the natural rule to write
+    after reading the incident report — would get no enforcement at all on
+    ad-group-scoped exclusion writes, and nothing would ever tell them. The
+    line names the backstop to add.
+    """
+    impact, rules = preflight.impact, preflight.rules
+    if impact is None or rules is None:
+        return ""
+    inert = unevaluated_rules(impact, rules)
+    if not inert:
+        return ""
+    lines = [f"  NOT ENFORCED on this call: {rule.as_text()}\n" for rule in inert]
+    needs_backstop = rules.max_share_pct is None and any(
+        rule.key == "max_cumulative_delivery_share_removed_pct" for rule in inert
+    )
+    if needs_backstop:
+        lines.append(
+            "  Add max_delivery_share_removed_pct to STRATEGY.md ## Guardrails "
+            "as a backstop: it is evaluated per batch and needs no standing "
+            "exclusion list, so it still fires on the scopes the cumulative "
+            "rule cannot cover.\n"
+        )
+    return "".join(lines)
 
 
 def append_notice(result: list[Any], preflight: ExclusionPreflight) -> list[Any]:

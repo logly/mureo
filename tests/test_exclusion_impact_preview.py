@@ -37,6 +37,7 @@ from mureo.analysis.exclusion_impact import (
     estimate_exclusion_impact,
     evaluate_exclusion_impact,
     exclusion_impact_rules,
+    unevaluated_rules,
 )
 from mureo.policy.strategy_gate import Guardrails, guardrails_from_strategy_text
 
@@ -802,3 +803,233 @@ class TestPreviewTool:
         assert payload["impact"]["coverage"] == COVERAGE_UNKNOWN
         assert payload["impact"]["coverage_reason"]
         assert payload["impact"]["incremental"] is None
+
+
+# ---------------------------------------------------------------------------
+# A rule that cannot fire must say so at the moment it cannot fire
+# ---------------------------------------------------------------------------
+
+
+_STRATEGY_CUMULATIVE_ONLY = """# Strategy
+
+## Guardrails
+
+- max_cumulative_delivery_share_removed_pct: 60
+"""
+
+
+def _impact_without_standing() -> Any:
+    return estimate_exclusion_impact(
+        targets=[_site("a.example")],
+        records=[_rec("a.example", 10), _rec("b.example", 90)],
+        attributable_types=_PLACEMENT_TYPES,
+        basis="b",
+        window_days=30,
+        standing=None,
+        cumulative_reason="mureo cannot list ad-group-level standing exclusions",
+    )
+
+
+@pytest.mark.unit
+class TestInertRulesAreNamed:
+    def test_a_cumulative_only_rule_is_reported_as_unevaluated(self) -> None:
+        rules = exclusion_impact_rules(
+            Guardrails(max_cumulative_delivery_share_removed_pct=60.0)
+        )
+        impact = _impact_without_standing()
+        # It genuinely enforces nothing here — that is the defect being named.
+        assert evaluate_exclusion_impact(impact, rules) is None
+        inert = unevaluated_rules(impact, rules)
+        assert [r.key for r in inert] == ["max_cumulative_delivery_share_removed_pct"]
+        assert "ad-group-level" in inert[0].reason
+
+    def test_an_evaluable_rule_is_not_reported(self) -> None:
+        rules = exclusion_impact_rules(Guardrails(max_delivery_share_removed_pct=25.0))
+        impact = _impact_without_standing()
+        assert unevaluated_rules(impact, rules) == ()
+
+    def test_an_unmeasurable_batch_makes_the_incremental_rule_inert(self) -> None:
+        rules = exclusion_impact_rules(Guardrails(max_delivery_share_removed_pct=25.0))
+        impact = estimate_exclusion_impact(
+            targets=[ExclusionTarget("household", "publisher_category")],
+            records=None,
+            attributable_types=frozenset(),
+            basis="meta_ads_ad_set_targeting",
+            window_days=30,
+            coverage_reason="no attributable breakdown",
+        )
+        assert [r.key for r in unevaluated_rules(impact, rules)] == [
+            "max_delivery_share_removed_pct"
+        ]
+
+
+@pytest.mark.asyncio
+class TestInertRuleSurfacing:
+    async def test_the_notice_names_the_inert_rule_and_the_backstop(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """An ad-group-scoped write with only the cumulative rule written."""
+        import mureo.mcp.exclusion_sources as sources
+        from mureo.mcp.server import handle_call_tool
+
+        _activate_workspace(monkeypatch, tmp_path, _STRATEGY_CUMULATIVE_ONLY)
+        monkeypatch.setattr("mureo.mcp.server._load_policy_gates", lambda: ())
+
+        client = _FakeGoogleClient(
+            [
+                {"placement": "a.example", "type": "website", "impressions": 100},
+                {"placement": "b.example", "type": "website", "impressions": 900},
+            ]
+        )
+
+        async def _fake_client(args: dict[str, Any]) -> Any:
+            return client
+
+        monkeypatch.setattr(sources, "google_ads_client", _fake_client)
+        monkeypatch.setattr(
+            "mureo.mcp._handlers_google_ads._get_client", lambda args: client
+        )
+        result = await handle_call_tool(
+            GOOGLE_ADD,
+            {
+                "customer_id": "1234567890",
+                "ad_group_id": "200",
+                "placements": [{"type": "website", "value": "a.example"}],
+            },
+        )
+        text = "\n".join(getattr(c, "text", "") for c in result)
+        assert client.mutated is True
+        assert "NOT ENFORCED on this call" in text
+        assert "max_cumulative_delivery_share_removed_pct" in text
+        assert "Add max_delivery_share_removed_pct" in text
+
+    async def test_the_preview_tool_reports_the_same_inert_rule(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from mureo.mcp.tools_analysis import handle_tool
+
+        _activate_workspace(monkeypatch, tmp_path, _STRATEGY_CUMULATIVE_ONLY)
+        result = await handle_tool(
+            "analysis_exclusion_impact_preview",
+            {
+                "excluded_entities": [{"value": "a.example", "entity_type": "website"}],
+                "delivery_records": [
+                    {
+                        "entity": "a.example",
+                        "entity_type": "website",
+                        "impressions": 940,
+                    },
+                ],
+            },
+        )
+        payload = json.loads(result[0].text)
+        assert payload["would_block"] is False
+        assert [r["key"] for r in payload["unevaluated_rules"]] == [
+            "max_cumulative_delivery_share_removed_pct"
+        ]
+
+    async def test_no_inert_rules_when_everything_could_be_evaluated(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from mureo.mcp.tools_analysis import handle_tool
+
+        _activate_workspace(monkeypatch, tmp_path, _STRATEGY_WITH_CAP)
+        result = await handle_tool(
+            "analysis_exclusion_impact_preview",
+            {
+                "excluded_entities": [{"value": "a.example", "entity_type": "website"}],
+                "delivery_records": [
+                    {"entity": "a.example", "entity_type": "website", "impressions": 5},
+                    {
+                        "entity": "b.example",
+                        "entity_type": "website",
+                        "impressions": 95,
+                    },
+                ],
+            },
+        )
+        payload = json.loads(result[0].text)
+        assert payload["unevaluated_rules"] == []
+        assert payload["would_block"] is False
+
+
+# ---------------------------------------------------------------------------
+# A malformed caller payload must never read as "measured, 0% impact"
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestMalformedPayloadIsRefused:
+    async def test_an_entity_without_a_type_is_refused(self) -> None:
+        from mureo.mcp.tools_analysis import handle_tool
+
+        with pytest.raises(ValueError, match="entity_type"):
+            await handle_tool(
+                "analysis_exclusion_impact_preview",
+                {
+                    "excluded_entities": [{"value": "a.example"}],
+                    "delivery_records": [
+                        {
+                            "entity": "a.example",
+                            "entity_type": "website",
+                            "impressions": 100,
+                        }
+                    ],
+                },
+            )
+
+    async def test_an_entity_without_a_value_is_refused(self) -> None:
+        from mureo.mcp.tools_analysis import handle_tool
+
+        with pytest.raises(ValueError, match="value"):
+            await handle_tool(
+                "analysis_exclusion_impact_preview",
+                {"excluded_entities": [{"entity_type": "website"}]},
+            )
+
+    async def test_a_delivery_row_without_a_type_is_refused(self) -> None:
+        from mureo.mcp.tools_analysis import handle_tool
+
+        with pytest.raises(ValueError, match="entity_type"):
+            await handle_tool(
+                "analysis_exclusion_impact_preview",
+                {
+                    "excluded_entities": [
+                        {"value": "a.example", "entity_type": "website"}
+                    ],
+                    "delivery_records": [{"entity": "a.example", "impressions": 100}],
+                },
+            )
+
+    async def test_a_blank_standing_exclusion_is_refused(self) -> None:
+        from mureo.mcp.tools_analysis import handle_tool
+
+        with pytest.raises(ValueError, match="standing_exclusions"):
+            await handle_tool(
+                "analysis_exclusion_impact_preview",
+                {
+                    "excluded_entities": [
+                        {"value": "a.example", "entity_type": "website"}
+                    ],
+                    "standing_exclusions": [{"value": "", "entity_type": "website"}],
+                    "delivery_records": [],
+                },
+            )
+
+
+# ---------------------------------------------------------------------------
+# The placement mappers keep their own module (file-size budget)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_placement_mappers_live_outside_mappers_py() -> None:
+    from mureo.google_ads import _placement_mappers, mappers
+
+    assert hasattr(_placement_mappers, "map_negative_placement")
+    assert hasattr(_placement_mappers, "map_placement_performance")
+    assert not hasattr(mappers, "map_placement_performance")
+    root = Path(mappers.__file__).parent
+    for name in ("mappers.py", "_placement_mappers.py"):
+        lines = len((root / name).read_text(encoding="utf-8").splitlines())
+        assert lines <= 800, f"{name} is {lines} lines, over the 800-line budget"

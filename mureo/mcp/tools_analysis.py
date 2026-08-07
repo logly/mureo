@@ -163,7 +163,10 @@ TOOLS: list[Tool] = [
             "or 'unknown'; 'unknown' is an honest answer and never means "
             "'no impact'. 'would_block' is computed by the same rule the "
             "dispatcher enforces from STRATEGY.md ## Guardrails, so it "
-            "cannot disagree with what will actually happen."
+            "cannot disagree with what will actually happen. "
+            "'unevaluated_rules' names any guardrail the operator wrote that "
+            "cannot be evaluated for this call — an inert rule is not a "
+            "satisfied one, so surface it to the operator."
         ),
         inputSchema={
             "type": "object",

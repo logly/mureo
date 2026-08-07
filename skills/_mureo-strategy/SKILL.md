@@ -332,6 +332,20 @@ request and behaves exactly as before.
   **whole** standing exclusion set, including this batch, is over the cap. The
   incident behind #547 was two weeks of individually-small passes, none of
   which would have tripped the incremental cap.
+
+  **Do not write this one alone.** It needs the standing exclusion set, and
+  mureo cannot read that for an **ad group-scoped** write: campaign-level
+  exclusions also cover the ad group and are not reachable from the call's
+  arguments, and Google Ads exposes no ad group-level negative keyword
+  listing at all. On those calls the cumulative figure is withheld (`null`
+  with a reason) and this rule therefore enforces **nothing** — which is
+  exactly the scope the motivating incident happened at. Always pair it with
+  `max_delivery_share_removed_pct`, which is evaluated per batch, needs no
+  standing list, and so still fires there. When a rule you wrote could not be
+  evaluated, mureo says so on the call itself (`NOT ENFORCED on this call:`
+  in the appended notice, `unevaluated_rules` in
+  `analysis_exclusion_impact_preview`) — treat that line as a gap to close,
+  not as a pass.
 - `exclusion_impact_window_days` — the recent window (default 30, max 365).
 - `exclusion_impact_metrics` — which of `impressions` / `clicks` / `cost` /
   `conversions` the caps apply to. Default `impressions`; any listed metric

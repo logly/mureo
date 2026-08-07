@@ -72,6 +72,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dispatcher enforces, so the advertised verdict and the enforced one cannot
   drift.
 
+  **A rule that cannot fire says so.** The cumulative figure is withheld on
+  ad-group-scoped writes, so `max_cumulative_delivery_share_removed_pct`
+  enforces nothing there — the scope the incident happened at. Rather than
+  leave that to a document, mureo names the inert rule at the moment it cannot
+  fire: `unevaluated_rules` in the preview tool's response, and a `NOT ENFORCED
+  on this call:` line naming the backstop to add in the notice on the
+  exclusion's own result.
+
   New `## Guardrails` keys (all optional, all default off):
   `max_delivery_share_removed_pct`,
   `max_cumulative_delivery_share_removed_pct`,
