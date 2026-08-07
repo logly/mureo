@@ -554,10 +554,13 @@ class TestGuardThroughARealShell:
     def test_known_open_bypasses(self, fake_home: Path, command: str) -> None:
         """The bypasses this guard does not close, pinned so they cannot grow.
 
-        Each one reads the real file (verified against a throwaway HOME) and
-        each is allowed. They are here so the open surface is a list someone
-        has to edit, rather than something discovered by a reviewer: closing
-        one means deleting its row and saying so in the module docstring.
+        All but one were run against a throwaway HOME and printed the
+        credentials file; the exception is ``cat ~/$P/x``, which reads it
+        only once an earlier call has set ``P`` — the point of the row is
+        that the name is nowhere in the text. They are here so the open
+        surface is a list someone has to edit, rather than something a
+        reviewer discovers: closing one means deleting its row and saying
+        so in the module docstring.
 
         What they have in common is that the text handed to the guard does
         not contain the thing that reaches the filesystem — it is produced
