@@ -118,6 +118,16 @@ from mureo.policy.declarations import (
     reset_bid_declarations,
     reset_budget_declarations,
 )
+
+# The learning-period pre-flight (#548) — "is this change reset-triggering,
+# and is the campaign already learning?". Its own module because the
+# per-platform facts it rests on carry provenance and change over time; this
+# module only turns its answer into a refusal.
+from mureo.policy.learning_reset import (
+    LearningPreflight,
+    learning_reset_denial,
+    load_preflight,
+)
 from mureo.policy.pattern_scan import (
     SCAN_EXHAUSTED_NODES,
     has_pattern_fallback,
@@ -136,7 +146,10 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "GUARDRAILS_HEADING",
     "Guardrails",
+    "LearningPreflight",
     "StrategyPolicyGate",
+    "learning_reset_denial",
+    "load_preflight",
     "evaluate_guardrails",
     "guardrails_from_strategy_text",
     "parse_guardrails",
@@ -236,6 +249,15 @@ class Guardrails:
     max_bid_amount_per_ad_set: float | None = None
     max_cpc_bid_per_ad_group: float | None = None
     blocked_operations: frozenset[str] = field(default_factory=frozenset)
+    #: Learning-period reset refusals (#548). ``block_learning_resets``
+    #: refuses every change mureo classifies as restarting an automated bid
+    #: strategy's learning period. ``block_learning_resets_during_incident``
+    #: refuses one only when the campaign is not positively known to be out
+    #: of a learning period — the "stop stacking resets on an unstable
+    #: campaign" rule, which therefore also fires when the state is unknown.
+    #: Both default off, so the gate stays fail-open.
+    block_learning_resets: bool = False
+    block_learning_resets_during_incident: bool = False
 
     def is_empty(self) -> bool:
         return (
@@ -246,6 +268,8 @@ class Guardrails:
             and self.max_bid_amount_per_ad_set is None
             and self.max_cpc_bid_per_ad_group is None
             and not self.blocked_operations
+            and not self.block_learning_resets
+            and not self.block_learning_resets_during_incident
         )
 
 
@@ -254,6 +278,16 @@ def _to_float(value: str) -> float | None:
         return float(value.replace(",", "").replace("_", "").strip())
     except (ValueError, AttributeError):
         return None
+
+
+#: Accepted spellings of "on" for a boolean guardrail. Anything else — including
+#: a typo — reads as OFF, matching the numeric rules' "a malformed value drops
+#: that one rule" behaviour rather than silently enabling a refusal.
+_TRUE_WORDS = frozenset({"true", "yes", "on", "1"})
+
+
+def _to_bool(value: str) -> bool:
+    return value.strip().lower() in _TRUE_WORDS
 
 
 def parse_guardrails(content: str) -> Guardrails:
@@ -270,6 +304,8 @@ def parse_guardrails(content: str) -> Guardrails:
     max_bid_amount: float | None = None
     max_cpc_bid: float | None = None
     blocked: set[str] = set()
+    block_resets = False
+    block_resets_incident = False
 
     for line in content.splitlines():
         m = _BULLET_RE.match(line)
@@ -291,6 +327,10 @@ def parse_guardrails(content: str) -> Guardrails:
             max_cpc_bid = _to_float(raw)
         elif key == "blocked_operations":
             blocked = {op.strip() for op in raw.split(",") if op.strip()}
+        elif key == "block_learning_resets":
+            block_resets = _to_bool(raw)
+        elif key == "block_learning_resets_during_incident":
+            block_resets_incident = _to_bool(raw)
 
     return Guardrails(
         max_daily_budget_per_campaign=max_per_campaign,
@@ -300,6 +340,8 @@ def parse_guardrails(content: str) -> Guardrails:
         max_bid_amount_per_ad_set=max_bid_amount,
         max_cpc_bid_per_ad_group=max_cpc_bid,
         blocked_operations=frozenset(blocked),
+        block_learning_resets=block_resets,
+        block_learning_resets_during_incident=block_resets_incident,
     )
 
 
@@ -322,6 +364,7 @@ def evaluate_guardrails(
     budget_declaration: BudgetDeclaration | None = None,
     bid_declaration: BidDeclaration | None = None,
     pattern_fallback: bool = False,
+    learning: LearningPreflight | None = None,
 ) -> PolicyDecision:
     """Pure decision: does ``tool_name(arguments)`` violate ``guardrails``?
 
@@ -354,9 +397,24 @@ def evaluate_guardrails(
     runs and the larger figure wins. Per-family, so declaring a budget does not
     switch the bid fallback off (or vice versa). Default ``False`` ⇒ every
     existing caller is byte-identical.
+
+    ``learning`` (#548) is the pre-flight answer for this call — is the change
+    reset-triggering, and is the campaign already in a learning period. Only
+    the two ``block_learning_resets*`` rules consult it, and omitting it (the
+    pure-layer default) simply means no learning refusal: this function stays
+    I/O-free, and the STATE.json reading is done by the gate below.
     """
     if guardrails.is_empty():
         return PolicyDecision(allowed=True)
+
+    if learning is not None:
+        learning_reason = learning_reset_denial(
+            learning,
+            block_all=guardrails.block_learning_resets,
+            block_during_incident=guardrails.block_learning_resets_during_incident,
+        )
+        if learning_reason is not None:
+            return PolicyDecision(allowed=False, reason=learning_reason)
 
     if tool_name in guardrails.blocked_operations:
         return PolicyDecision(
@@ -572,12 +630,30 @@ class StrategyPolicyGate:
     by default; abstains (allows) whenever no guardrail applies.
     """
 
+    @staticmethod
+    def _learning_preflight(
+        tool_name: str, arguments: dict[str, Any], guardrails: Guardrails
+    ) -> LearningPreflight | None:
+        """The #548 pre-flight reading, or ``None`` when nothing needs it.
+
+        Skipped entirely unless the operator declared one of the two learning
+        rules, so an operator who wrote no such rule pays neither the
+        STATE.json read nor any behaviour change.
+        """
+        if not (
+            guardrails.block_learning_resets
+            or guardrails.block_learning_resets_during_incident
+        ):
+            return None
+        return load_preflight(tool_name, arguments)
+
     def evaluate(self, tool_name: str, arguments: dict[str, Any]) -> PolicyDecision:
         try:
+            guardrails = _load_guardrails()
             return evaluate_guardrails(
                 tool_name,
                 arguments,
-                _load_guardrails(),
+                guardrails,
                 # #414: a plugin tool that declared its budget keys is now
                 # enforced by THIS gate — no hand-rolled per-plugin gate.
                 budget_declaration=budget_declaration_for(tool_name),
@@ -588,6 +664,11 @@ class StrategyPolicyGate:
                 # surface cannot) falls back to the best-effort key-shape scan
                 # rather than to no enforcement at all.
                 pattern_fallback=has_pattern_fallback(tool_name),
+                # #548: the learning-period pre-flight. Read (from STATE.json,
+                # TTL-cached — no network, this runs on every call) only when
+                # the operator actually wrote one of the two rules, so the
+                # default path costs nothing.
+                learning=self._learning_preflight(tool_name, arguments, guardrails),
             )
         except Exception:  # noqa: BLE001 — abstain on any unexpected error
             logger.debug("StrategyPolicyGate: abstaining on error", exc_info=True)

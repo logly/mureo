@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 210 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 189 advertising and SEO operation tools across Google Ads (89), Meta Ads (90), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
+mureo exposes 211 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 189 advertising and SEO operation tools across Google Ads (89), Meta Ads (90), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
 
 ## Starting the Server
 
@@ -572,6 +572,37 @@ Retrieve accumulated practitioner know-how before drawing diagnostic conclusions
 |------|-------------|-------------------|
 | `mureo_learning_insights_get` | Load every insight previously saved via `/learn` as raw Markdown | *(none)* |
 | `mureo_consult_advisor` | Query external advisor MCP servers (vector search) enriched with local campaign state; advisor responses are treated as untrusted external content | `question` |
+
+### Learning-period reset pre-flight
+
+Every automated-bidding system has a learning period, and a change that restarts it costs days of delivery — most damagingly while someone is troubleshooting a collapsed campaign, because troubleshooting means many changes in a row. This tool answers, *before* the change, whether it restarts learning and whether the campaign is already re-learning.
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `mureo_learning_reset_preflight` | Classify a pending change against the campaign's learning period: `reset_risk` (with the first-party source it rests on), `learning_state`, and whether `## Guardrails` would refuse it | `tool_name` |
+
+Read-only: it calls no platform API and changes nothing.
+
+**Three surfaces, of deliberately different strength.** MCP has no interposed confirmation step — mureo either runs a tool call or refuses it — so these are not interchangeable:
+
+| Surface | When | Strength |
+|---|---|---|
+| `## Guardrails` `block_learning_resets` / `block_learning_resets_during_incident` | before dispatch | **hard** — the call is refused by `StrategyPolicyGate`, before any API call |
+| `mureo_learning_reset_preflight` | before the change, when the agent calls it | advisory — as strong as the agent's compliance |
+| A notice appended to a reset-triggering call's own result | after that call | records the reset so the *next* change in the sequence is not made blind |
+
+**Per-platform coverage.** Reset triggers are sourced from first-party documentation only; where mureo has no such source it reports `unknown` and never `no_reset`, because a false "this resets nothing" turns a missing warning into implied approval.
+
+| Platform | Learning state readable by mureo? | Reset triggers known? |
+|---|---|---|
+| Google Ads | **Yes** — `bidding_details.bidding_strategy_system_status` on the campaign's STATE.json snapshot | **Yes** — Google's own `LEARNING_*` enum members ([`BiddingStrategySystemStatus`](https://developers.google.com/google-ads/api/reference/rpc/v23/BiddingStrategySystemStatusEnum.BiddingStrategySystemStatus)) |
+| Meta Ads | No — Meta exposes [`learning_stage_info`](https://developers.facebook.com/docs/marketing-api/reference/ad-campaign-learning-stage-info/) on the **ad set**; mureo's client does not request it and STATE.json is campaign-level | No — Meta documents that "significant edits" restart the phase without enumerating them |
+| Amazon Ads (official-MCP bridge) | No — no learning-state read exists on the bridged tool surface | No |
+| Yahoo / LINE / SmartNews / LOGLY (plugins) | No — unless the plugin registers rules | No — unless the plugin registers rules |
+
+A plugin or bridge advertises its own platform's rules through `mureo.policy.learning_rules.register_platform_learning_rules`, the same registry pattern the budget/bid declarations use.
+
+**The state read is local by design.** A policy gate runs on every tool call and must not make network calls, so the learning state comes from STATE.json rather than from the platform. Keep it fresh (`google_ads_campaigns_get` / `google_ads_campaigns_diagnose` → `mureo_state_upsert_campaign`); a missing observation is reported `unknown`, never `steady`.
 
 ### Creative Studio
 
