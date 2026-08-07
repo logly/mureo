@@ -11,13 +11,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from mureo.meta_ads._conversions import ConversionsMixin
 from mureo.meta_ads._hash_utils import (
     hash_email,
     hash_phone,
     normalize_user_data,
 )
-from mureo.meta_ads._conversions import ConversionsMixin
-
 
 # ---------------------------------------------------------------------------
 # Helpers: mock class wrapping ConversionsMixin for test isolation
@@ -46,13 +45,13 @@ class TestHashEmail:
     def test_basic(self) -> None:
         """SHA-256 hash an email address."""
         result = hash_email("Test@Example.COM")
-        expected = hashlib.sha256("test@example.com".encode()).hexdigest()
+        expected = hashlib.sha256(b"test@example.com").hexdigest()
         assert result == expected
 
     def test_strips_whitespace(self) -> None:
         """Strip leading/trailing whitespace before hashing."""
         result = hash_email("  user@test.com  ")
-        expected = hashlib.sha256("user@test.com".encode()).hexdigest()
+        expected = hashlib.sha256(b"user@test.com").hexdigest()
         assert result == expected
 
 
@@ -66,13 +65,13 @@ class TestHashPhone:
     def test_basic(self) -> None:
         """Normalize a phone number to digits only, then SHA-256 hash it."""
         result = hash_phone("+81-90-1234-5678")
-        expected = hashlib.sha256("819012345678".encode()).hexdigest()
+        expected = hashlib.sha256(b"819012345678").hexdigest()
         assert result == expected
 
     def test_strips_spaces_and_parens(self) -> None:
         """Strip spaces, parentheses, and hyphens."""
         result = hash_phone("(090) 1234-5678")
-        expected = hashlib.sha256("09012345678".encode()).hexdigest()
+        expected = hashlib.sha256(b"09012345678").hexdigest()
         assert result == expected
 
 
@@ -101,10 +100,10 @@ class TestNormalizeUserData:
 
     def test_already_hashed_skips(self) -> None:
         """Skip values that are already SHA-256 hashed (64 hex chars)."""
-        already_hashed = hashlib.sha256("test@example.com".encode()).hexdigest()
+        already_hashed = hashlib.sha256(b"test@example.com").hexdigest()
         user_data = {
             "em": already_hashed,
-            "ph": hashlib.sha256("09012345678".encode()).hexdigest(),
+            "ph": hashlib.sha256(b"09012345678").hexdigest(),
         }
         result = normalize_user_data(user_data)
         assert result["em"] == already_hashed
@@ -131,12 +130,12 @@ class TestNormalizeUserData:
             "country": "jp",
         }
         result = normalize_user_data(user_data)
-        assert result["fn"] == hashlib.sha256("taro".encode()).hexdigest()
-        assert result["ln"] == hashlib.sha256("yamada".encode()).hexdigest()
-        assert result["ct"] == hashlib.sha256("tokyo".encode()).hexdigest()
-        assert result["st"] == hashlib.sha256("tokyo".encode()).hexdigest()
-        assert result["zp"] == hashlib.sha256("1000001".encode()).hexdigest()
-        assert result["country"] == hashlib.sha256("jp".encode()).hexdigest()
+        assert result["fn"] == hashlib.sha256(b"taro").hexdigest()
+        assert result["ln"] == hashlib.sha256(b"yamada").hexdigest()
+        assert result["ct"] == hashlib.sha256(b"tokyo").hexdigest()
+        assert result["st"] == hashlib.sha256(b"tokyo").hexdigest()
+        assert result["zp"] == hashlib.sha256(b"1000001").hexdigest()
+        assert result["country"] == hashlib.sha256(b"jp").hexdigest()
 
 
 # ===========================================================================
@@ -159,7 +158,7 @@ class TestSendEvent:
                 "event_time": 1700000000,
                 "action_source": "website",
                 "user_data": {
-                    "em": hashlib.sha256("test@example.com".encode()).hexdigest(),
+                    "em": hashlib.sha256(b"test@example.com").hexdigest(),
                     "client_ip_address": "1.2.3.4",
                 },
                 "custom_data": {"currency": "USD", "value": 100.0},

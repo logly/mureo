@@ -8,11 +8,9 @@ functions are invoked directly without the stdio layer.
 from __future__ import annotations
 
 import json
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -212,14 +210,16 @@ class TestCallToolErrors:
         ga_mod = _import_google_ads_handlers()
 
         mock_creds = MagicMock()
-        with patch.object(
-            ga_mod, "load_google_ads_credentials", return_value=mock_creds
+        with (
+            patch.object(
+                ga_mod, "load_google_ads_credentials", return_value=mock_creds
+            ),
+            pytest.raises(ValueError, match="campaign_id"),
         ):
-            with pytest.raises(ValueError, match="campaign_id"):
-                await mod.handle_call_tool(
-                    "google_ads_campaigns_get",
-                    {"customer_id": "1234567890"},
-                )
+            await mod.handle_call_tool(
+                "google_ads_campaigns_get",
+                {"customer_id": "1234567890"},
+            )
 
     async def test_no_credentials_returns_error_text(self) -> None:
         """When credentials are missing, the error is returned as TextContent."""

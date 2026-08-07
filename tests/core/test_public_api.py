@@ -67,23 +67,25 @@ def test_public_all_matches_documented_surface() -> None:
     surprise extras should appear without a code review."""
     import mureo.core as core
 
-    assert sorted(core.__all__) == sorted([
-        "DEFAULT_WORKSPACE_ID",
-        "FilesystemKnowledgeStore",
-        "FilesystemSecretStore",
-        "FilesystemStateStore",
-        "KnowledgeStore",
-        "ProcessLocalThrottleStore",
-        "RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP",
-        "RuntimeContext",
-        "RuntimeContextFactoryError",
-        "SecretStore",
-        "StateStore",
-        "ThrottleStore",
-        "default_runtime_context",
-        "get_runtime_context",
-        "reset_runtime_context",
-    ])
+    assert sorted(core.__all__) == sorted(
+        [
+            "DEFAULT_WORKSPACE_ID",
+            "FilesystemKnowledgeStore",
+            "FilesystemSecretStore",
+            "FilesystemStateStore",
+            "KnowledgeStore",
+            "ProcessLocalThrottleStore",
+            "RUNTIME_CONTEXT_FACTORY_ENTRY_POINT_GROUP",
+            "RuntimeContext",
+            "RuntimeContextFactoryError",
+            "SecretStore",
+            "StateStore",
+            "ThrottleStore",
+            "default_runtime_context",
+            "get_runtime_context",
+            "reset_runtime_context",
+        ]
+    )
 
 
 @pytest.mark.unit

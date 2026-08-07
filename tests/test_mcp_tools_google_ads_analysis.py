@@ -49,12 +49,15 @@ def _standalone_google_ads():
     the scoping seam so this module always exercises the unrestricted
     path; the scoped behavior lives in test_account_id_tenant_scope.py.
     """
-    with patch(
-        "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
-        return_value=None,
-    ), patch(
-        "mureo.mcp._handlers_google_ads_analysis.runtime_google_ads_customer_ids",
-        return_value=None,
+    with (
+        patch(
+            "mureo.mcp._handlers_google_ads.runtime_google_ads_customer_ids",
+            return_value=None,
+        ),
+        patch(
+            "mureo.mcp._handlers_google_ads_analysis.runtime_google_ads_customer_ids",
+            return_value=None,
+        ),
     ):
         yield
 

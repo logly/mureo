@@ -402,18 +402,18 @@ class TestCreativeHandlers:
         with (
             patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
             patch.object(handlers, "create_meta_ads_client", return_value=client),
+            pytest.raises(ValueError, match="form_id"),
         ):
-            with pytest.raises(Exception):  # noqa: B017, PT011
-                await mod.handle_tool(
-                    "meta_ads_creatives_create_lead",
-                    {
-                        "account_id": "act_123",
-                        "name": "LeadCreative",
-                        "page_id": "pg_1",
-                        # form_id missing
-                        "link_url": "https://example.com",
-                    },
-                )
+            await mod.handle_tool(
+                "meta_ads_creatives_create_lead",
+                {
+                    "account_id": "act_123",
+                    "name": "LeadCreative",
+                    "page_id": "pg_1",
+                    # form_id missing
+                    "link_url": "https://example.com",
+                },
+            )
 
     async def test_creatives_create_dynamic(self) -> None:
         mod = _import_meta_ads_tools()

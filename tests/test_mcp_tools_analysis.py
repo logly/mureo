@@ -142,15 +142,11 @@ class TestAnomalyHandler:
         )
         payload = json.loads(result[0].text)
         assert payload["baseline"] is not None
-        cpa_anomaly = next(
-            a for a in payload["anomalies"] if a["metric"] == "cpa"
-        )
+        cpa_anomaly = next(a for a in payload["anomalies"] if a["metric"] == "cpa")
         assert cpa_anomaly["severity"] == "critical"
 
     @pytest.mark.asyncio
-    async def test_insufficient_history_no_baseline(
-        self, sandboxed_cwd: Path
-    ) -> None:
+    async def test_insufficient_history_no_baseline(self, sandboxed_cwd: Path) -> None:
         """Below min_baseline_entries, baseline is None and CPA is not evaluated."""
         _write_state(
             sandboxed_cwd / "STATE.json",
@@ -267,9 +263,7 @@ class TestAnomalyHandler:
         assert "error" in payload
 
     @pytest.mark.asyncio
-    async def test_min_baseline_entries_zero_refused(
-        self, sandboxed_cwd: Path
-    ) -> None:
+    async def test_min_baseline_entries_zero_refused(self, sandboxed_cwd: Path) -> None:
         with pytest.raises(ValueError, match="min_baseline_entries"):
             await handle_tool(
                 "analysis_anomalies_check",
@@ -280,9 +274,7 @@ class TestAnomalyHandler:
             )
 
     @pytest.mark.asyncio
-    async def test_malformed_metrics_row_tolerated(
-        self, sandboxed_cwd: Path
-    ) -> None:
+    async def test_malformed_metrics_row_tolerated(self, sandboxed_cwd: Path) -> None:
         """A history entry with string-typed / N/A metrics must not break detection."""
         entries: list[ActionLogEntry] = [
             ActionLogEntry(

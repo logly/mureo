@@ -47,7 +47,6 @@ import pathlib
 import sys
 import warnings
 from collections.abc import Iterator
-from typing import Any
 
 import pytest
 
@@ -149,9 +148,8 @@ def _collect_imports_from_file(filepath: pathlib.Path) -> list[str]:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 imports.append(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imports.append(node.module)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.append(node.module)
     return imports
 
 

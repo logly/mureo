@@ -12,7 +12,6 @@ import pytest
 
 from mureo.google_ads._creative import _CreativeMixin
 
-
 # ---------------------------------------------------------------------------
 # Mock client class for tests
 # ---------------------------------------------------------------------------

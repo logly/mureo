@@ -9,14 +9,12 @@ get_search_terms_report.
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 from google.ads.googleads.errors import GoogleAdsException
 
 from mureo.google_ads.client import GoogleAdsApiClient
-
 
 # ---------------------------------------------------------------------------
 # Helpers

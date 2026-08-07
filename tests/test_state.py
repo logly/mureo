@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 from pathlib import Path
@@ -380,9 +381,11 @@ class TestStateFileErrorHandling:
         """Permission error raises ContextFileError."""
         fp = tmp_path / "STATE.json"
         fp.write_text("{}", encoding="utf-8")
-        with patch.object(Path, "read_text", side_effect=PermissionError("denied")):
-            with pytest.raises(ContextFileError):
-                read_state_file(fp)
+        with (
+            patch.object(Path, "read_text", side_effect=PermissionError("denied")),
+            pytest.raises(ContextFileError),
+        ):
+            read_state_file(fp)
 
     @pytest.mark.unit
     def test_parse_state_missing_required_field_campaign_id(self) -> None:
@@ -610,9 +613,11 @@ class TestAtomicWrite:
         write_state_file(fp, original_doc)
 
         new_doc = StateDocument(version="1", customer_id="new")
-        with patch("mureo.context.state.os.replace", side_effect=OSError("disk full")):
-            with pytest.raises(OSError):
-                write_state_file(fp, new_doc)
+        with (
+            patch("mureo.context.state.os.replace", side_effect=OSError("disk full")),
+            pytest.raises(OSError),
+        ):
+            write_state_file(fp, new_doc)
 
         # Original file is intact
         data = json.loads(fp.read_text(encoding="utf-8"))
@@ -2475,7 +2480,7 @@ class TestAdState:
         from mureo.context.models import AdState
 
         ad = AdState(ad_id="ad_1")
-        with pytest.raises(Exception):
+        with pytest.raises(dataclasses.FrozenInstanceError):
             ad.ad_id = "ad_2"  # type: ignore[misc]
 
     @pytest.mark.unit

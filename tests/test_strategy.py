@@ -185,7 +185,7 @@ class TestRenderStrategy:
         md = render_strategy(original)
         parsed = parse_strategy(md)
         assert len(parsed) == len(original)
-        for orig, p in zip(original, parsed):
+        for orig, p in zip(original, parsed, strict=True):
             assert orig.context_type == p.context_type
             assert orig.content == p.content
 
@@ -281,9 +281,11 @@ class TestStrategyFileErrorHandling:
         """Permission error raises ContextFileError."""
         fp = tmp_path / "STRATEGY.md"
         fp.write_text("# Strategy\n\n## Persona\nTest\n", encoding="utf-8")
-        with patch.object(Path, "read_text", side_effect=PermissionError("denied")):
-            with pytest.raises(ContextFileError):
-                read_strategy_file(fp)
+        with (
+            patch.object(Path, "read_text", side_effect=PermissionError("denied")),
+            pytest.raises(ContextFileError),
+        ):
+            read_strategy_file(fp)
 
     @pytest.mark.unit
     def test_write_strategy_file_creates_parent_dir(self, tmp_path: Path) -> None:

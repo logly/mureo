@@ -37,7 +37,9 @@ def test_save_refuses_to_clobber_malformed_file(tmp_path: Path) -> None:
     drop every other provider's credentials. It backs the file up and raises."""
     path = tmp_path / "credentials.json"
     # Truncated JSON that once held multiple providers.
-    path.write_text('{"google_ads": {"developer_token": "abc"}, "meta_a', encoding="utf-8")
+    path.write_text(
+        '{"google_ads": {"developer_token": "abc"}, "meta_a', encoding="utf-8"
+    )
     store = FilesystemSecretStore(path=path)
 
     with pytest.raises(SecretStoreError):

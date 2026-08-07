@@ -12,7 +12,6 @@ import pytest
 
 from mureo.auth_setup import (
     MetaOAuthResult,
-    OAuthCallbackServer,
     _exchange_code_for_short_token,
     _exchange_short_for_long_token,
     _generate_meta_auth_url,

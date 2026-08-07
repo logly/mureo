@@ -54,9 +54,7 @@ class TestIsTty:
 
 
 class TestConfirmOrDefault:
-    def test_no_tty_returns_default_true(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_tty_returns_default_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """In non-TTY (subprocess / Claude Bash tool), take the default
         without any I/O — no typer.confirm, no input() call."""
         _set_tty(monkeypatch, tty=False)
@@ -110,9 +108,7 @@ class TestConfirmOrDefault:
             return True
 
         monkeypatch.setattr("typer.confirm", _sentinel)
-        assert (
-            confirm_or_default("Configure?", default=True, override=False) is False
-        )
+        assert confirm_or_default("Configure?", default=True, override=False) is False
         assert called is False, "Explicit override must not call typer.confirm"
 
     def test_asymmetric_tty_counts_as_non_tty(

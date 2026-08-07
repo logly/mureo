@@ -36,6 +36,7 @@ _CLIENT_SECRET = AccountCredentialField(
 _REFRESH = AccountCredentialField(
     key="refresh_token", display_name="Refresh Token", secret=True
 )
+_ACCOUNT = AccountCredentialField(key="account_id", display_name="Account")
 
 _OAUTH = AccountOAuthConfig(
     authorize_url="https://biz-oauth.yahoo.co.jp/oauth/v1/authorize",
@@ -186,8 +187,6 @@ def test_config_accounts_field_defaults_none() -> None:
 
 @pytest.mark.unit
 def test_reader_accepts_valid_accounts_field() -> None:
-    _ACCOUNT = AccountCredentialField(key="account_id", display_name="Account")
-
     class _Picker:
         name = "broker"
         account_credential_fields = (_CLIENT_ID, _CLIENT_SECRET, _REFRESH, _ACCOUNT)

@@ -20,10 +20,23 @@ jobs:
           cache: 'pip'
       - name: Install dependencies
         run: pip install -e ".[dev]"
+      # Whole tree, NOT `mureo/`. Gating only the package let tests/ drift into
+      # hundreds of ruff findings and dozens of unformatted files unseen — among
+      # them 43 handler tests that captured a return value and then asserted
+      # nothing about it. (Raw totals shift with the ruff/black patch version,
+      # so none are quoted here; the point is that nothing was checking.)
+      # `.` also covers scripts/ and anything added later, so a new top-level
+      # Python file is linted on the commit that introduces it rather than
+      # whenever someone next widens this glob. Test code is held to the same
+      # rules as the package; the few that genuinely do not apply are excused
+      # one at a time, with reasons, in [tool.ruff.lint.per-file-ignores].
       - name: Ruff check
-        run: ruff check mureo/
+        run: ruff check .
       - name: Black check
-        run: black --check mureo/
+        run: black --check .
+      # mypy stays scoped to mureo/. `strict = true` on tests/ would mean
+      # annotating every fixture and mock; that is a separate decision, not a
+      # side effect of turning on the lint gate.
       - name: Type check
         run: mypy mureo/ --ignore-missing-imports
 

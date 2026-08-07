@@ -48,20 +48,23 @@ class TestMinorUnitsPerUnit:
             minor_units_per_unit("JPN")
 
     def test_zero_decimal_set_matches_meta_docs(self) -> None:
-        assert ZERO_DECIMAL_CURRENCIES == frozenset(
-            {
-                "CLP",
-                "COP",
-                "CRC",
-                "HUF",
-                "IDR",
-                "ISK",
-                "JPY",
-                "KRW",
-                "PYG",
-                "TWD",
-                "VND",
-            }
+        assert (
+            frozenset(
+                {
+                    "CLP",
+                    "COP",
+                    "CRC",
+                    "HUF",
+                    "IDR",
+                    "ISK",
+                    "JPY",
+                    "KRW",
+                    "PYG",
+                    "TWD",
+                    "VND",
+                }
+            )
+            == ZERO_DECIMAL_CURRENCIES
         )
 
 

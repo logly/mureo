@@ -213,9 +213,7 @@ class TestInstallCodexCredentialGuard:
         from tests.hook_guard_runner import deny_decision, run_guard
 
         install_codex_credential_guard()
-        data = json.loads(
-            (home / ".codex" / "hooks.json").read_text(encoding="utf-8")
-        )
+        data = json.loads((home / ".codex" / "hooks.json").read_text(encoding="utf-8"))
         commands = [
             h["command"]
             for entry in data["hooks"]["PreToolUse"]

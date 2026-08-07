@@ -30,10 +30,7 @@ class TestBuildMetaAuthUrl:
         assert "dialog/oauth" in url
         assert "client_id=1234567890" in url
         # redirect_uri appears URL-encoded
-        assert (
-            "redirect_uri=http%3A%2F%2F127.0.0.1%3A8080%2Fmeta-ads%2Fcallback"
-            in url
-        )
+        assert "redirect_uri=http%3A%2F%2F127.0.0.1%3A8080%2Fmeta-ads%2Fcallback" in url
         assert "state=state-xyz" in url
         assert "response_type=code" in url
 
@@ -120,17 +117,19 @@ class TestExchangeMetaCode:
 
     @pytest.mark.asyncio
     async def test_short_token_failure_propagates(self) -> None:
-        with patch(
-            "mureo.auth_setup._exchange_code_for_short_token",
-            new=AsyncMock(side_effect=RuntimeError("facebook said no")),
+        with (
+            patch(
+                "mureo.auth_setup._exchange_code_for_short_token",
+                new=AsyncMock(side_effect=RuntimeError("facebook said no")),
+            ),
+            pytest.raises(RuntimeError, match="facebook said no"),
         ):
-            with pytest.raises(RuntimeError, match="facebook said no"):
-                await exchange_meta_code(
-                    code="AUTH_CODE",
-                    app_id="app",
-                    app_secret="secret",
-                    redirect_uri="http://127.0.0.1:1/cb",
-                )
+            await exchange_meta_code(
+                code="AUTH_CODE",
+                app_id="app",
+                app_secret="secret",
+                redirect_uri="http://127.0.0.1:1/cb",
+            )
 
     @pytest.mark.asyncio
     async def test_long_upgrade_failure_propagates(self) -> None:
@@ -143,11 +142,11 @@ class TestExchangeMetaCode:
                 "mureo.auth_setup._exchange_short_for_long_token",
                 new=AsyncMock(side_effect=RuntimeError("upgrade failed")),
             ),
+            pytest.raises(RuntimeError, match="upgrade failed"),
         ):
-            with pytest.raises(RuntimeError, match="upgrade failed"):
-                await exchange_meta_code(
-                    code="AUTH_CODE",
-                    app_id="app",
-                    app_secret="secret",
-                    redirect_uri="http://127.0.0.1:1/cb",
-                )
+            await exchange_meta_code(
+                code="AUTH_CODE",
+                app_id="app",
+                app_secret="secret",
+                redirect_uri="http://127.0.0.1:1/cb",
+            )

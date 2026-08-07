@@ -215,6 +215,7 @@ class TestMetaAdsCampaignHandlers:
             )
 
         client.get_campaign.assert_awaited_once_with("456")
+        assert json.loads(result[0].text) == {"id": "456", "name": "Detail"}
 
     async def test_campaigns_create(self) -> None:
         mod = _import_meta_ads_tools()
@@ -236,6 +237,7 @@ class TestMetaAdsCampaignHandlers:
             )
 
         client.create_campaign.assert_awaited_once()
+        assert json.loads(result[0].text) == {"id": "789"}
 
     async def test_campaigns_update(self) -> None:
         mod = _import_meta_ads_tools()
@@ -253,6 +255,7 @@ class TestMetaAdsCampaignHandlers:
             )
 
         client.update_campaign.assert_awaited_once()
+        assert json.loads(result[0].text) == {"success": True}
 
     async def test_campaigns_create_forwards_bid_strategy(self) -> None:
         mod = _import_meta_ads_tools()
@@ -387,6 +390,7 @@ class TestMetaAdsAdSetHandlers:
             )
 
         client.list_ad_sets.assert_awaited_once()
+        assert json.loads(result[0].text) == [{"id": "10", "name": "AS1"}]
 
     async def test_ad_sets_create(self) -> None:
         mod = _import_meta_ads_tools()
@@ -409,6 +413,7 @@ class TestMetaAdsAdSetHandlers:
             )
 
         client.create_ad_set.assert_awaited_once()
+        assert json.loads(result[0].text) == {"id": "20"}
 
     async def test_ad_sets_update(self) -> None:
         mod = _import_meta_ads_tools()
@@ -426,6 +431,7 @@ class TestMetaAdsAdSetHandlers:
             )
 
         client.update_ad_set.assert_awaited_once()
+        assert json.loads(result[0].text) == {"success": True}
 
     async def test_ad_sets_update_forwards_lifetime_budget(self) -> None:
         """lifetime_budget reaches update_ad_set unchanged (#367)."""
@@ -679,6 +685,7 @@ class TestMetaAdsAdHandlers:
             )
 
         client.list_ads.assert_awaited_once()
+        assert json.loads(result[0].text) == [{"id": "30", "name": "Ad1"}]
 
     async def test_ads_create(self) -> None:
         mod = _import_meta_ads_tools()
@@ -701,6 +708,7 @@ class TestMetaAdsAdHandlers:
             )
 
         client.create_ad.assert_awaited_once()
+        assert json.loads(result[0].text) == {"id": "40"}
 
     async def test_ads_update(self) -> None:
         mod = _import_meta_ads_tools()
@@ -718,6 +726,7 @@ class TestMetaAdsAdHandlers:
             )
 
         client.update_ad.assert_awaited_once()
+        assert json.loads(result[0].text) == {"success": True}
 
 
 # ---------------------------------------------------------------------------
@@ -744,6 +753,7 @@ class TestMetaAdsInsightsHandlers:
             )
 
         client.get_performance_report.assert_awaited_once()
+        assert json.loads(result[0].text) == [{"impressions": 1000}]
 
     async def test_insights_breakdown(self) -> None:
         mod = _import_meta_ads_tools()
@@ -761,6 +771,7 @@ class TestMetaAdsInsightsHandlers:
             )
 
         client.get_breakdown_report.assert_awaited_once()
+        assert json.loads(result[0].text) == [{"age": "18-24"}]
 
 
 # ---------------------------------------------------------------------------
@@ -787,6 +798,7 @@ class TestMetaAdsAudienceHandlers:
             )
 
         client.list_custom_audiences.assert_awaited_once()
+        assert json.loads(result[0].text) == [{"id": "50", "name": "Aud1"}]
 
     async def test_audiences_create(self) -> None:
         mod = _import_meta_ads_tools()
@@ -808,6 +820,7 @@ class TestMetaAdsAudienceHandlers:
             )
 
         client.create_custom_audience.assert_awaited_once()
+        assert json.loads(result[0].text) == {"id": "60"}
 
 
 # ---------------------------------------------------------------------------

@@ -668,18 +668,20 @@ async def test_run_google_oauth_no_refresh_token() -> None:
     mock_flow = MagicMock()
     mock_flow.run_local_server.return_value = mock_credentials
 
-    with patch(
-        # Source-module patch target: InstalledAppFlow is imported lazily
-        # inside build_google_flow (#486), so it is never an attribute
-        # of mureo.auth_setup.
-        "google_auth_oauthlib.flow.InstalledAppFlow.from_client_config",
-        return_value=mock_flow,
+    with (
+        patch(
+            # Source-module patch target: InstalledAppFlow is imported lazily
+            # inside build_google_flow (#486), so it is never an attribute
+            # of mureo.auth_setup.
+            "google_auth_oauthlib.flow.InstalledAppFlow.from_client_config",
+            return_value=mock_flow,
+        ),
+        pytest.raises(RuntimeError, match="Failed to obtain refresh_token"),
     ):
-        with pytest.raises(RuntimeError, match="Failed to obtain refresh_token"):
-            await run_google_oauth(
-                client_id="test-cid",
-                client_secret="test-csec",
-            )
+        await run_google_oauth(
+            client_id="test-cid",
+            client_secret="test-csec",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -856,18 +858,20 @@ async def test_run_google_oauth_flow_exception() -> None:
     mock_flow = MagicMock()
     mock_flow.run_local_server.side_effect = Exception("Cannot open browser")
 
-    with patch(
-        # Source-module patch target: InstalledAppFlow is imported lazily
-        # inside build_google_flow (#486), so it is never an attribute
-        # of mureo.auth_setup.
-        "google_auth_oauthlib.flow.InstalledAppFlow.from_client_config",
-        return_value=mock_flow,
+    with (
+        patch(
+            # Source-module patch target: InstalledAppFlow is imported lazily
+            # inside build_google_flow (#486), so it is never an attribute
+            # of mureo.auth_setup.
+            "google_auth_oauthlib.flow.InstalledAppFlow.from_client_config",
+            return_value=mock_flow,
+        ),
+        pytest.raises(Exception, match="Cannot open browser"),
     ):
-        with pytest.raises(Exception, match="Cannot open browser"):
-            await run_google_oauth(
-                client_id="test-cid",
-                client_secret="test-csec",
-            )
+        await run_google_oauth(
+            client_id="test-cid",
+            client_secret="test-csec",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1196,9 +1200,11 @@ def test_select_account_fallback_valid_choice() -> None:
         {"id": "222", "name": "Account B"},
     ]
 
-    with patch("simple_term_menu.TerminalMenu", side_effect=ImportError):
-        with patch("builtins.input", return_value="2"):
-            result = _select_account(accounts)
+    with (
+        patch("simple_term_menu.TerminalMenu", side_effect=ImportError),
+        patch("builtins.input", return_value="2"),
+    ):
+        result = _select_account(accounts)
 
     assert result == "222"
 
@@ -1212,9 +1218,11 @@ def test_select_account_fallback_invalid_choice() -> None:
         {"id": "111", "name": "Account A"},
     ]
 
-    with patch("simple_term_menu.TerminalMenu", side_effect=ImportError):
-        with patch("builtins.input", return_value="999"):
-            result = _select_account(accounts)
+    with (
+        patch("simple_term_menu.TerminalMenu", side_effect=ImportError),
+        patch("builtins.input", return_value="999"),
+    ):
+        result = _select_account(accounts)
 
     assert result is None
 
@@ -1228,9 +1236,11 @@ def test_select_account_fallback_non_numeric() -> None:
         {"id": "111", "name": "Account A"},
     ]
 
-    with patch("simple_term_menu.TerminalMenu", side_effect=ImportError):
-        with patch("builtins.input", return_value="abc"):
-            result = _select_account(accounts)
+    with (
+        patch("simple_term_menu.TerminalMenu", side_effect=ImportError),
+        patch("builtins.input", return_value="abc"),
+    ):
+        result = _select_account(accounts)
 
     assert result is None
 
@@ -1840,6 +1850,13 @@ async def test_setup_meta_ads_single_account(tmp_path: Path) -> None:
 
     data = json.loads(cred_path.read_text(encoding="utf-8"))
     assert data["meta_ads"]["account_id"] == "act_111"
+    # The returned credentials carry the OAuth result, not a re-read of the
+    # file. NB: ``account_id`` is deliberately NOT asserted here — the wizard
+    # persists it via ``save_credentials`` but leaves it unset on the returned
+    # object, and no caller reads the return value today. Pinning either value
+    # would bless a shape this PR did not decide on.
+    assert result.access_token == "long-lived-token"
+    assert result.app_id == "test-app-id"
 
 
 @pytest.mark.unit
@@ -1869,9 +1886,9 @@ async def test_setup_meta_ads_no_accounts(tmp_path: Path) -> None:
             new_callable=AsyncMock,
             return_value=[],
         ),
+        pytest.raises(RuntimeError, match="No ad accounts found"),
     ):
-        with pytest.raises(RuntimeError, match="No ad accounts found"):
-            await setup_meta_ads(credentials_path=cred_path)
+        await setup_meta_ads(credentials_path=cred_path)
 
 
 @pytest.mark.unit
@@ -1913,6 +1930,9 @@ async def test_setup_meta_ads_cancel_selection(tmp_path: Path) -> None:
     data = json.loads(cred_path.read_text(encoding="utf-8"))
     # On cancel, the first account is the default.
     assert data["meta_ads"]["account_id"] == "act_111"
+    # See test_setup_meta_ads_single_account for why account_id is not
+    # asserted on the returned object.
+    assert result.access_token == "long-lived-token"
 
 
 @pytest.mark.unit

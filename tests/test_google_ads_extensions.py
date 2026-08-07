@@ -6,21 +6,14 @@ Mocks _search / _get_service / _client to eliminate any external API calls.
 
 from __future__ import annotations
 
-import math
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from mureo.google_ads._extensions import (
     _ExtensionsMixin,
-    _DEVICE_ENUM_MAP,
     _normalize_device_type,
-    _VALID_CONVERSION_ACTION_TYPES,
-    _VALID_CONVERSION_ACTION_CATEGORIES,
-    _VALID_CONVERSION_ACTION_STATUSES,
 )
-
 
 # ---------------------------------------------------------------------------
 # Mock client class for tests

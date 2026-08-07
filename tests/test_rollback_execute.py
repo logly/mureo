@@ -29,7 +29,6 @@ from mureo.rollback.executor import (  # noqa: I001
     execute_rollback,
 )
 
-
 Dispatcher = Callable[[str, dict[str, Any]], Awaitable[list[Any]]]
 
 

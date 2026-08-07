@@ -148,26 +148,26 @@ class TestTokenRefreshRetry:
         the first ``fail_first`` attempts, then returns content."""
 
         class _Sess:
-            def __init__(s, n):
-                s._n = n
+            def __init__(self, n):
+                self._n = n
 
-            async def initialize(s):
+            async def initialize(self):
                 pass
 
-            async def call_tool(s, name, arguments):
-                if s._n <= fail_first:
+            async def call_tool(self, name, arguments):
+                if self._n <= fail_first:
                     raise RuntimeError("401 token expired")
-                return type("R", (), {"content": [f"ok#{s._n}"]})()
+                return type("R", (), {"content": [f"ok#{self._n}"]})()
 
         class _CM:
-            def __init__(s, url, headers):
+            def __init__(self, url, headers):
                 attempts.append(headers["Authorization"])
-                s._n = len(attempts)
+                self._n = len(attempts)
 
-            async def __aenter__(s):
-                return _Sess(s._n)
+            async def __aenter__(self):
+                return _Sess(self._n)
 
-            async def __aexit__(s, *e):
+            async def __aexit__(self, *e):
                 return False
 
         return lambda url, headers: _CM(url, headers)
@@ -357,28 +357,28 @@ class TestTokenRefreshRetry:
         from mureo.amazon_ads.lwa import LwaTokens
 
         class _Sess:
-            def __init__(s, n):
-                s._n = n
+            def __init__(self, n):
+                self._n = n
 
-            async def initialize(s):
+            async def initialize(self):
                 pass
 
-            async def call_tool(s, name, arguments):
-                if s._n == 1:
+            async def call_tool(self, name, arguments):
+                if self._n == 1:
                     raise RuntimeError("500 internal server error")  # non-auth
-                return type("R", (), {"content": [f"ok#{s._n}"]})()
+                return type("R", (), {"content": [f"ok#{self._n}"]})()
 
         attempts: list[str] = []
 
         class _CM:
-            def __init__(s, url, headers):
+            def __init__(self, url, headers):
                 attempts.append(headers["Authorization"])
-                s._n = len(attempts)
+                self._n = len(attempts)
 
-            async def __aenter__(s):
-                return _Sess(s._n)
+            async def __aenter__(self):
+                return _Sess(self._n)
 
-            async def __aexit__(s, *e):
+            async def __aexit__(self, *e):
                 return False
 
         refreshed: list = []
@@ -413,26 +413,26 @@ class TestTokenRefreshRetry:
         refreshed: list[int] = []
 
         class _Sess:
-            def __init__(s, n):
-                s._n = n
+            def __init__(self, n):
+                self._n = n
 
-            async def initialize(s):
+            async def initialize(self):
                 pass
 
-            async def call_tool(s, name, arguments):
-                if s._n == 1:
+            async def call_tool(self, name, arguments):
+                if self._n == 1:
                     await asyncio.Event().wait()  # first attempt never returns
-                return type("R", (), {"content": [f"ok#{s._n}"]})()
+                return type("R", (), {"content": [f"ok#{self._n}"]})()
 
         class _CM:
-            def __init__(s, url, headers):
+            def __init__(self, url, headers):
                 attempts.append(headers["Authorization"])
-                s._n = len(attempts)
+                self._n = len(attempts)
 
-            async def __aenter__(s):
-                return _Sess(s._n)
+            async def __aenter__(self):
+                return _Sess(self._n)
 
-            async def __aexit__(s, *e):
+            async def __aexit__(self, *e):
                 return False
 
         b = self._mk(
@@ -596,20 +596,20 @@ class TestProactiveTokenMint:
         refreshed: list = []
 
         class _Sess:
-            async def initialize(s):
+            async def initialize(self):
                 pass
 
-            async def call_tool(s, name, arguments):
+            async def call_tool(self, name, arguments):
                 raise RuntimeError("401 token expired")
 
         class _CM:
-            def __init__(s, url, headers):
+            def __init__(self, url, headers):
                 attempts.append(headers["Authorization"])
 
-            async def __aenter__(s):
+            async def __aenter__(self):
                 return _Sess()
 
-            async def __aexit__(s, *e):
+            async def __aexit__(self, *e):
                 return False
 
         def refresher(c):
@@ -829,7 +829,7 @@ class TestFailureEnvelopeNormalization:
         extras = ",".join(f'"k{i}":"v{i}"' for i in range(50_000))
         huge_extras = self._call(
             tmp_path,
-            self._text('{"code":"BAD","message":"m",%s}' % extras),
+            self._text(f'{{"code":"BAD","message":"m",{extras}}}'),
             is_error=True,
         )
         assert len(huge_extras[0].text) < _MAX_FAILURE_TEXT + 100
@@ -994,14 +994,14 @@ class TestFailureEnvelopeNormalization:
         attempts: list[int] = []
 
         class _Sess:
-            def __init__(s, n):
-                s._n = n
+            def __init__(self, n):
+                self._n = n
 
-            async def initialize(s):
+            async def initialize(self):
                 pass
 
-            async def call_tool(s, name, arguments):
-                if s._n == 1:
+            async def call_tool(self, name, arguments):
+                if self._n == 1:
                     raise RuntimeError("401 token expired")
                 return type(
                     "R",
@@ -1018,14 +1018,14 @@ class TestFailureEnvelopeNormalization:
                 )()
 
         class _CM:
-            def __init__(s, url, headers):
+            def __init__(self, url, headers):
                 attempts.append(1)
-                s._n = len(attempts)
+                self._n = len(attempts)
 
-            async def __aenter__(s):
-                return _Sess(s._n)
+            async def __aenter__(self):
+                return _Sess(self._n)
 
-            async def __aexit__(s, *e):
+            async def __aexit__(self, *e):
                 return False
 
         mp = tmp_path / "amazon_tools.json"

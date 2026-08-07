@@ -34,17 +34,22 @@ class TestValidatePublicUrl:
         with pytest.raises(UnsafeUrlError):
             validate_public_url(url)
 
-    @pytest.mark.parametrize("url", ["file:///etc/passwd", "ftp://host/x", "gopher://x"])
+    @pytest.mark.parametrize(
+        "url", ["file:///etc/passwd", "ftp://host/x", "gopher://x"]
+    )
     def test_blocks_non_http_schemes(self, url: str) -> None:
         with pytest.raises(UnsafeUrlError):
             validate_public_url(url)
 
     def test_blocks_dns_name_resolving_to_private(self) -> None:
         # A public-looking hostname that resolves to a private IP must be rejected.
-        with patch(
-            "mureo.core.url_guard.socket.getaddrinfo",
-            return_value=[(2, 1, 6, "", ("10.1.2.3", 0))],
-        ), pytest.raises(UnsafeUrlError):
+        with (
+            patch(
+                "mureo.core.url_guard.socket.getaddrinfo",
+                return_value=[(2, 1, 6, "", ("10.1.2.3", 0))],
+            ),
+            pytest.raises(UnsafeUrlError),
+        ):
             validate_public_url("https://sneaky.example.com/x")
 
 

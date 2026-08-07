@@ -273,9 +273,11 @@ def test_start_400_when_callback_url_invalid(wizard: ConfigureWizard) -> None:
             "oauth_callback_url": "https://example.com/oauth/callback",
         }
     }
-    with patch.object(wizard.oauth_bridge, "start_plugin_oauth") as mock_start:
-        with pytest.raises(urllib.error.HTTPError) as exc:
-            _post(wizard, "/api/credentials/plugins/yahoo_ads/oauth/start", payload)
+    with (
+        patch.object(wizard.oauth_bridge, "start_plugin_oauth") as mock_start,
+        pytest.raises(urllib.error.HTTPError) as exc,
+    ):
+        _post(wizard, "/api/credentials/plugins/yahoo_ads/oauth/start", payload)
     assert exc.value.code == 400
     assert json.loads(exc.value.read())["error"] == "callback_url_invalid"
     mock_start.assert_not_called()

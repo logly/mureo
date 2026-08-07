@@ -1368,9 +1368,8 @@ def test_list_oauth_accounts_wraps_hook_failure(
     )
     store = _store(tmp_path)
     store.save("broker", {"access_token": "SECRET-TKN"})
-    with caplog.at_level("WARNING"):
-        with pytest.raises(AccountListingError):
-            list_oauth_accounts("broker", secret_store=store)
+    with caplog.at_level("WARNING"), pytest.raises(AccountListingError):
+        list_oauth_accounts("broker", secret_store=store)
     # The underlying exception detail (and token) must not leak into logs.
     assert "SECRET-TKN" not in caplog.text
 

@@ -6,20 +6,17 @@ its helper methods.
 
 from __future__ import annotations
 
-from datetime import date
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from mureo.google_ads._diagnostics import (
-    _DiagnosticsMixin,
     _LEARNING_STATUS_DESC,
     _PRIMARY_STATUS_REASON_DESC,
     _REASON_IS_ISSUE,
     _SMART_BIDDING_STRATEGIES,
+    _DiagnosticsMixin,
 )
-
 
 # ---------------------------------------------------------------------------
 # Mock client class for tests

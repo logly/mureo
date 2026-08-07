@@ -7,13 +7,12 @@ Also covers the MCP tool handlers.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
-from mureo.meta_ads._page_posts import PagePostsMixin
 from mureo.meta_ads._instagram import InstagramMixin
-
+from mureo.meta_ads._page_posts import PagePostsMixin
 
 # ---------------------------------------------------------------------------
 # Helpers: mock class wrapping the Mixin for test isolation
@@ -142,6 +141,7 @@ class TestBoostPost:
             name="カスタム広告名",
         )
 
+        assert result["id"] == "ad_999"
         call_args = client._post.call_args
         data = call_args[0][1]
         assert data["name"] == "カスタム広告名"

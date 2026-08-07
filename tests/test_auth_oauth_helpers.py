@@ -55,9 +55,7 @@ class TestValidateLocalRedirectUri:
     )
     def test_rejects_non_localhost(self, bad: str) -> None:
         with pytest.raises(ValueError):
-            build_google_flow(
-                client_id="cid", client_secret="SECRET", redirect_uri=bad
-            )
+            build_google_flow(client_id="cid", client_secret="SECRET", redirect_uri=bad)
 
     @pytest.mark.parametrize(
         "good",
@@ -106,9 +104,7 @@ class TestBuildGoogleFlow:
         )
         assert isinstance(flow, Flow)
         assert not isinstance(flow, InstalledAppFlow)
-        assert flow.redirect_uri == (
-            "http://127.0.0.1:59999/google-ads/callback"
-        )
+        assert flow.redirect_uri == ("http://127.0.0.1:59999/google-ads/callback")
 
     def test_scopes_cover_google_ads_and_search_console(self) -> None:
         """Scopes must include both Google Ads and Search Console so
@@ -219,16 +215,12 @@ class TestRunGoogleOauthUsesNewHelpers:
         mock_creds.refresh_token = "REFRESH"
         mock_creds.token = "ACCESS"
 
-        with patch(
-            "mureo.auth_setup.build_google_flow"
-        ) as mock_build_flow:
+        with patch("mureo.auth_setup.build_google_flow") as mock_build_flow:
             mock_flow = MagicMock()
             mock_flow.run_local_server.return_value = mock_creds
             mock_build_flow.return_value = mock_flow
 
-            result = await run_google_oauth(
-                client_id="cid", client_secret="SECRET"
-            )
+            result = await run_google_oauth(client_id="cid", client_secret="SECRET")
 
         assert isinstance(result, OAuthResult)
         assert result.refresh_token == "REFRESH"

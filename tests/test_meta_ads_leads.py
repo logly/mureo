@@ -504,6 +504,7 @@ class TestLeadFormsMcpHandlers:
             )
 
         client.get_lead_form.assert_awaited_once_with("form_1")
+        assert json.loads(result[0].text) == {"id": "form_1", "name": "問い合わせ"}
 
     async def test_lead_forms_create(self) -> None:
         mod = _import_meta_ads_tools()
@@ -554,6 +555,7 @@ class TestLeadFormsMcpHandlers:
 
         call_kwargs = client.create_lead_form.call_args
         assert call_kwargs[1]["follow_up_action_url"] == "https://example.com/thanks"
+        assert json.loads(result[0].text) == {"id": "form_ty"}
 
     async def test_leads_get(self) -> None:
         mod = _import_meta_ads_tools()
@@ -601,11 +603,9 @@ class TestLeadFormsMcpHandlers:
         with (
             patch.object(handlers, "load_meta_ads_credentials", return_value=creds),
             patch.object(handlers, "create_meta_ads_client", return_value=client),
+            pytest.raises(ValueError, match="page_id"),
         ):
-            with pytest.raises(ValueError, match="page_id"):
-                await mod.handle_tool(
-                    "meta_ads_lead_forms_list", {"account_id": "act_123"}
-                )
+            await mod.handle_tool("meta_ads_lead_forms_list", {"account_id": "act_123"})
 
     async def test_leads_no_credentials(self) -> None:
         """Returns error text when no credentials are present."""
@@ -941,15 +941,11 @@ class TestDuplicateLeadForm:
         client._get = AsyncMock(return_value=source)
         client._post = AsyncMock(return_value={"id": "form_2"})
 
-        await client.duplicate_lead_form(
-            "form_1", page_id="page_123", new_name="Copy"
-        )
+        await client.duplicate_lead_form("form_1", page_id="page_123", new_name="Copy")
 
         post_data = client._post.call_args[0][1]
         assert json.loads(post_data["context_card"]) == source["context_card"]
-        assert (
-            json.loads(post_data["thank_you_page"]) == source["thank_you_page"]
-        )
+        assert json.loads(post_data["thank_you_page"]) == source["thank_you_page"]
         assert post_data["is_higher_intent"] is True
         assert (
             json.loads(post_data["conditional_questions_choices"])
@@ -973,9 +969,7 @@ class TestDuplicateLeadForm:
         client._get = AsyncMock(return_value=source)
         client._post = AsyncMock(return_value={"id": "form_2"})
 
-        await client.duplicate_lead_form(
-            "form_1", page_id="page_123", new_name="Copy"
-        )
+        await client.duplicate_lead_form("form_1", page_id="page_123", new_name="Copy")
 
         post_data = client._post.call_args[0][1]
         assert "context_card" not in post_data
@@ -1000,9 +994,7 @@ class TestDuplicateLeadForm:
         client._get = AsyncMock(return_value=source)
         client._post = AsyncMock(return_value={"id": "form_2"})
 
-        await client.duplicate_lead_form(
-            "form_1", page_id="page_123", new_name="Copy"
-        )
+        await client.duplicate_lead_form("form_1", page_id="page_123", new_name="Copy")
 
         post_data = client._post.call_args[0][1]
         assert "is_higher_intent" not in post_data
@@ -1254,8 +1246,8 @@ class TestExportLeadsToCsv:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """lead.field_data values must never appear in log output."""
-        from pathlib import Path
         import logging
+        from pathlib import Path
 
         form = {
             "id": "form_1",
@@ -1343,7 +1335,6 @@ class TestExportLeadsToCsv:
         out: Path = tmp_path / "out.csv"  # type: ignore[assignment]
         count = await client.export_leads_to_csv("form_1", out)
         assert count == 1
-        rows = out.read_text(encoding="utf-8").splitlines()
         # Missing cells are blank — use a csv parser to assert the exact value.
         import csv
 
@@ -1495,9 +1486,7 @@ class TestExportLeadsToCsv:
                 {
                     "id": f"lead_{i}",
                     "created_time": "2026-01-01T00:00:00+0000",
-                    "field_data": [
-                        {"name": "email", "values": [f"u{i}@example.com"]}
-                    ],
+                    "field_data": [{"name": "email", "values": [f"u{i}@example.com"]}],
                 }
                 for i in range(2)
             ],
@@ -1510,9 +1499,7 @@ class TestExportLeadsToCsv:
                 {
                     "id": "lead_2",
                     "created_time": "2026-01-01T00:00:00+0000",
-                    "field_data": [
-                        {"name": "email", "values": ["u2@example.com"]}
-                    ],
+                    "field_data": [{"name": "email", "values": ["u2@example.com"]}],
                 },
             ],
             # No paging.next → loop terminates.
@@ -1562,9 +1549,7 @@ class TestExportLeadsToCsv:
                 }
             ],
             # ``next`` is present but has no ``after=`` query.
-            "paging": {
-                "next": "https://graph.facebook.com/v23.0/form_1/leads?foo=bar"
-            },
+            "paging": {"next": "https://graph.facebook.com/v23.0/form_1/leads?foo=bar"},
         }
         client._get = AsyncMock(side_effect=[form, page])
 
@@ -1597,9 +1582,7 @@ class TestExportLeadsToCsv:
                 {
                     "id": "lead_0",
                     "created_time": "2026-01-01T00:00:00+0000",
-                    "field_data": [
-                        {"name": "email", "values": ["u0@example.com"]}
-                    ],
+                    "field_data": [{"name": "email", "values": ["u0@example.com"]}],
                 }
             ],
             "paging": {

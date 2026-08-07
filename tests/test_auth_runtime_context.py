@@ -132,9 +132,7 @@ def test_explicit_path_bypasses_runtime_context(
     would silently leak through the resolver cache."""
     # Wire a recording store that, if consulted, would return DIFFERENT
     # creds than the file. The auth helper must NOT consult it.
-    store = _RecordingSecretStore(
-        payload={"google_ads": {"developer_token": "WRONG"}}
-    )
+    store = _RecordingSecretStore(payload={"google_ads": {"developer_token": "WRONG"}})
     _patch_runtime_context(monkeypatch, store)
 
     # Write a real credentials file that the explicit-path branch reads.
