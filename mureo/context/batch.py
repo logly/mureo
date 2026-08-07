@@ -42,13 +42,12 @@ nothing to do with ``action_log`` membership.
 from __future__ import annotations
 
 import secrets
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from mureo.context.models import ActionLogEntry
-
 if TYPE_CHECKING:
-    from mureo.context.models import BatchRecord, StateDocument
+    from mureo.context.models import ActionLogEntry, BatchRecord, StateDocument
 
 
 class BatchError(Exception):
@@ -225,26 +224,24 @@ def stamp_batch(entry: ActionLogEntry, batch: BatchRecord | None) -> ActionLogEn
     An explicit ``batch_id`` already on the entry always wins: it is how an
     imported or backfilled record keeps the batch it actually belonged to,
     which must not be overwritten by whatever happens to be open now.
+
+    **Never rebuild the entry field-by-field here.** ``dataclasses.replace``
+    changes ``batch_id`` and carries everything else across by construction; an
+    enumerated constructor silently drops any field added to
+    :class:`ActionLogEntry` after this function was written, and joining a
+    batch is the DEFAULT path (``join_active_batch=True``), so the loss would
+    hit ordinary appends. The failure is silent — a dropped field reads as
+    "the caller did not set it" — so nothing downstream would flag it.
+
+    That is not hypothetical: an enumerated version of this function dropped
+    the provenance fields (``origin`` / ``external_id``), and because
+    ``is_external`` is derived from ``origin``, an externally-imported entry
+    lost the very marker that stops a forged ``reversible_params`` from being
+    planned as a reversal.
     """
     if batch is None or entry.batch_id is not None:
         return entry
-    return ActionLogEntry(
-        timestamp=entry.timestamp,
-        action=entry.action,
-        platform=entry.platform,
-        campaign_id=entry.campaign_id,
-        ad_id=entry.ad_id,
-        summary=entry.summary,
-        command=entry.command,
-        metrics_at_action=entry.metrics_at_action,
-        observation_due=entry.observation_due,
-        reversible_params=entry.reversible_params,
-        rollback_of=entry.rollback_of,
-        evaluation_of=entry.evaluation_of,
-        entity_type=entry.entity_type,
-        entity_id=entry.entity_id,
-        batch_id=batch.batch_id,
-    )
+    return replace(entry, batch_id=batch.batch_id)
 
 
 def batch_members(
