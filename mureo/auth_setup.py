@@ -1415,11 +1415,16 @@ async def setup_meta_ads(
 
     account_id: str = selected["id"]
 
-    # Save to credentials.json (using shared save_credentials function)
+    # Save to credentials.json (using shared save_credentials function).
+    # ``account_id`` is carried on the returned object as well as persisted:
+    # a caller that trusts the return value must see the same ad account that
+    # was written to disk, exactly as setup_google_ads returns its selected
+    # customer_id.
     meta_creds = MetaAdsCredentials(
         access_token=oauth_result.access_token,
         app_id=app_id,
         app_secret=app_secret,
+        account_id=account_id,
     )
 
     save_credentials(
