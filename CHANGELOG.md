@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Two more DOM-free parts of `dashboard.js` are now executed by tests
+  rather than grepped for** (#556). `dashboard.js` was 3,877 lines against
+  the repo's 800-line budget, grown by feature accretion. Rather than chase
+  the number, two cohesive seams moved out **verbatim**, on the pattern #540
+  established and proved:
+
+  - `mureo/_data/web/reports_format.js` (`window.MUREO_REPORTS_FORMAT`) —
+    the Reports display vocabulary: a report flag's localized label and
+    severity chip, a flag's `params` rendered as a drill-down line, numbers
+    and CTR, and the period-toggle labels.
+  - `mureo/_data/web/reports_order.js` (`window.MUREO_REPORTS_ORDER`) — the
+    per-operator Reports index card order: where it is stored, how it is
+    applied to the server's rows, and the two ways the grid changes.
+
+  Both were previously covered only by substring pins, which see that a name
+  or a string is present and nothing more. What now runs: that the **longest**
+  registered flag base wins even when a shorter one is registered first — the
+  case that decides whether `search_console_no_property` is an informational
+  note or an amber warning with the wrong text — that an unlocalized flag code
+  degrades to a humanized token instead of putting a raw
+  `dashboard.reports_flag_…` key on screen, that an `info` or `positive` flag
+  is neither coloured nor sorted like an alarm, that CTR's
+  fraction-vs-percentage heuristic scales `0.034` and `3.4` to the same
+  figure, that an unusable stored order (storage disabled, corrupt JSON, junk
+  members) degrades to the **server's** order and never to an empty grid, that
+  a never-placed client lands **last**, and that a move off either end of the
+  grid is a no-op rather than a wrap-around.
+
+  The longest-base rule is checked against the shipped table rather than by
+  restating cases: the test derives every `_`-boundary prefix pair from
+  `REPORTS_FLAG_BASES` itself, so a base added anywhere in it is covered the
+  moment it ships.
+
+  `reports_order.js` is not DOM-free and does not claim to be — the grid is
+  the single source of truth for the order. What it never does is go
+  *looking* for a node: every node is handed in by the caller, nothing in it
+  touches `document`, creates an element or registers a listener. That is
+  what makes the rules executable against a fake grid. The drag handle, the
+  drag/drop listeners and the archive controls stayed in `dashboard.js`.
+
+  **Nothing about how mureo ships changed.** Both are plain
+  `<script>`-loaded assets, each publishing exactly one global, each on
+  `_STATIC_ALLOWLIST` with its tag ahead of `dashboard.js`. No bundler, no
+  module system, no build step, no `package.json`. `dashboard.js` still
+  refuses to run without them, and now names every module that is missing
+  rather than the first. `tests/js/browser_contract.test.js` asserts the same
+  contract for every module from one table, cross-checked against the
+  `reports_*.js` files actually shipped so a module cannot be added without
+  it. The move was verified mechanically against the base: every line of
+  each new module came from `dashboard.js` byte-for-byte apart from one
+  declared comment edit (a pointer that named a function the split had left
+  behind), and the only edited region in `dashboard.js` is the binding block
+  itself. `dashboard.js` is 3,563 lines — still well over budget, and the
+  remaining seams (the Creative Studio gallery, the credential-card wiring,
+  the report renderers) are untouched.
+
 ## [0.10.42] - 2026-08-07
 
 ### Added

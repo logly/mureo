@@ -7,10 +7,12 @@ read directly from ``mureo/_data/web/``) so a future refactor that drops
 the toggle wiring, the ``?period=`` request, or the default-window choice
 flips red here before an operator notices the regression.
 
-The toggle itself is rendering and has no runner. The KPI aggregation it
-re-requests moved to ``reports_logic.js`` in #540 and IS executed there, by
-``node --test tests/js/`` — so the pin below reads the aggregate helper from
-that file and only checks that ``dashboard.js`` still calls it.
+The toggle itself is rendering and has no runner. Two things it leans on do:
+the KPI aggregation it re-requests moved to ``reports_logic.js`` in #540, and
+the window/flag labelling moved to ``reports_format.js`` in #556. Both are
+executed by ``node --test tests/js/``, so the pins below read each helper from
+its own file and only check that ``dashboard.js`` still calls it — which is
+the half no runner can see.
 """
 
 from __future__ import annotations
@@ -74,9 +76,11 @@ def test_toggle_hidden_without_a_real_choice() -> None:
 @pytest.mark.unit
 def test_period_label_keys_referenced() -> None:
     """Window buttons are localized via the canonical period label keys."""
-    js = _read("dashboard.js")
+    js = _read("reports_format.js")
     assert "dashboard.reports_period_yesterday" in js
     assert "dashboard.reports_period_last_30_days" in js
+    # …and the button still gets its text from the labeller (#556).
+    assert "reportsPeriodLabel(token)" in _read("dashboard.js")
 
 
 @pytest.mark.unit
@@ -104,12 +108,17 @@ def test_report_flags_are_humanized_not_raw() -> None:
     """Free-form snake_case report flags (reports.daily.flags) must be mapped
     to friendly labels, not rendered raw. The dashboard humanizes them via a
     base→i18n-label map with a generic fallback, so a raw tag like
-    `cpa_over_target_logly` never reaches the operator."""
-    js = _read("dashboard.js")
+    `cpa_over_target_logly` never reaches the operator.
+
+    That the LONGEST base wins and that an unknown code degrades to a
+    humanized token rather than a raw i18n key is *executed* by
+    ``tests/js/reports_format.test.js``; this only pins that the helper
+    exists and that the chip text still goes through it."""
+    js = _read("reports_format.js")
     assert "function humanizeReportFlag(" in js
     assert "REPORTS_FLAG_BASES" in js
     # The chip text must go through the humanizer for bare-string flags.
-    assert "humanizeReportFlag(flag)" in js
+    assert "humanizeReportFlag(flag)" in _read("dashboard.js")
 
 
 @pytest.mark.unit
@@ -132,12 +141,16 @@ def test_report_flags_get_severity_colored_chips() -> None:
     """Flags render as coloured tags: each known base carries a severity
     (is-warn / is-danger / is-success) and the chip class comes from
     reportFlagKind(), not raw keyword inference alone — so issue flags are
-    not all neutral grey."""
-    js = _read("dashboard.js")
+    not all neutral grey.
+
+    Which severity each base carries is *executed* by
+    ``tests/js/reports_format.test.js``; this pins that the renderer asks
+    for a kind at all."""
+    js = _read("reports_format.js")
     assert "function reportFlagKind(" in js
-    assert "reportFlagKind(flag)" in js
     assert '"is-warn"' in js
     assert '"is-danger"' in js
+    assert "reportFlagKind(flag)" in _read("dashboard.js")
 
 
 @pytest.mark.unit

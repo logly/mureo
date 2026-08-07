@@ -459,9 +459,13 @@
   <script src="/static/amazon_oauth.js"></script>
   <script src="/static/auth_wizards_meta.js"></script>
   <script src="/static/auth_wizards.js"></script>
-  <!-- The Reports dashboard's pure logic (#540). dashboard.js binds it at
-       load, so it MUST come first. -->
+  <!-- The Reports dashboard's DOM-free halves: the money-safety logic
+       (#540), the display vocabulary and the card order (#556).
+       dashboard.js binds all three at load and throws naming the missing
+       one, so they MUST come first. -->
   <script src="/static/reports_logic.js"></script>
+  <script src="/static/reports_format.js"></script>
+  <script src="/static/reports_order.js"></script>
   <script src="/static/dashboard.js"></script>
   <script src="/static/extensions.js"></script>
 

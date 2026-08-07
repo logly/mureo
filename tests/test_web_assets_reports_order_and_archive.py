@@ -1,29 +1,32 @@
 """Static-content guards for the Reports index reorder + archive controls.
 
-There is still no JS build step, and the runner added in #540
-(``node --test tests/js/``) covers only the DOM-free Reports logic that was
-extracted into ``reports_logic.js``. The ordering and archive helpers below
-touch ``localStorage`` and the grid DOM and were NOT extracted, so — like
-``test_web_assets_reports_conflicts.py`` — these read the bundled assets in
-``mureo/_data/web/`` and pin the *shape* of what ships: that the
-identifiers, i18n keys, DOM hooks and CSS rules the feature depends on are
-present, in both locales, and that nothing here reintroduces ``innerHTML``.
+There is still no JS build step. Since #556 the ORDERING half of this feature
+is no longer guarded from here at all: ``readReportsOrder``,
+``writeReportsOrder``, ``orderReportsClients``, ``persistReportsOrderFromDom``
+and ``moveReportsCard`` moved verbatim into ``mureo/_data/web/reports_order.js``
+and are *executed* by ``tests/js/reports_order.test.js``. The module never goes
+looking for a node — every node is handed in by the caller — so a fake grid
+drives the real code, and the two claims this file used to admit it could not
+make ("a drag actually reorders the grid", "a corrupt stored order really
+degrades to the server order") are now assertions there.
 
-Two of them go past presence and read *structure*: the routing condition
-must mention the archived clients, and the archive click handler's source
-must confirm-then-return-then-POST in that order. Both would otherwise pass
-against an implementation that had regressed to the obvious wrong thing.
+What stays here is what still has no runner:
 
-**What they do NOT cover.** They execute no JavaScript. They cannot prove
-that a drag actually reorders the grid, that a corrupt stored order really
-degrades to the server order, that `await` genuinely suspends before the
-POST, or that the routing branch is reached with the state it is written
-for. Reading source order is not the same as observing behaviour: a
-handler could satisfy the ordering pin and still, say, ignore the confirm's
-resolved value. Those behaviours are argued in the code comments and were
-verified by hand (plus, for the ordering rules, by running the extracted
-helpers under node); treat these as anti-regression pins on the contract's
-surface, not as behavioural tests.
+  - the DOM wiring the module is bound to — the drag handle button, the
+    dragstart/dragover/drop listeners, the keyboard equivalent;
+  - the archive controls, which are server state rather than a browser-local
+    view preference, and whose click handler is pinned on *structure*
+    (confirm → bail-on-no → POST, in that order) rather than presence;
+  - the routing condition, which must count archived clients;
+  - i18n keys in both locales, CSS rules, and that nothing reintroduces
+    ``innerHTML``.
+
+**What they do NOT cover.** They execute no JavaScript. They cannot prove that
+`await` genuinely suspends before the POST, or that the routing branch is
+reached with the state it is written for. Reading source order is not the same
+as observing behaviour: a handler could satisfy the ordering pin and still,
+say, ignore the confirm's resolved value. Treat these as anti-regression pins
+on the contract's surface, not as behavioural tests.
 """
 
 from __future__ import annotations
@@ -54,6 +57,11 @@ def _function_body(js: str, signature: str) -> str:
 
 # ---------------------------------------------------------------------------
 # Ordering — per-operator, browser-local, degrades to the server order
+#
+# The RULES moved to reports_order.js in #556 and are executed by
+# tests/js/reports_order.test.js. What is left to pin from here is the
+# shipping seam: the module is served, it loads before dashboard.js, and no
+# copy of it stayed behind to shadow the tested one.
 # ---------------------------------------------------------------------------
 
 
@@ -62,35 +70,48 @@ def test_card_order_is_stored_per_operator_in_the_browser() -> None:
     """The order is purely visual: losing it breaks nothing and two operators
     reasonably want different ones, so it is localStorage — never server
     state that one operator's arrangement would impose on everyone."""
-    js = _read("dashboard.js")
+    js = _read("reports_order.js")
     assert "mureo.reports.client_order" in js
     assert "localStorage" in js
     assert "function readReportsOrder(" in js
     assert "function writeReportsOrder(" in js
+    # Browser-local means browser-local: no endpoint records the arrangement.
+    assert "/api/reports/clients/order" not in _read("dashboard.js")
 
 
 @pytest.mark.unit
-def test_a_stored_order_is_reconciled_rather_than_trusted() -> None:
-    """A stored order naming clients that no longer exist, missing clients
-    that now do, or corrupt JSON must all render a sane grid — the ordering
-    helper filters and merges instead of indexing blindly."""
-    js = _read("dashboard.js")
-    assert "function orderReportsClients(" in js
-    # Corrupt JSON / storage-disabled path: readReportsOrder swallows and
-    # returns [] so the grid falls back to the server's order.
-    body = js.split("function readReportsOrder(", 1)[1].split("\n  }", 1)[0]
-    assert "JSON.parse" in body
-    assert "catch" in body
-    assert "Array.isArray" in body
+def test_the_ordering_rules_are_not_re_implemented_in_the_renderer() -> None:
+    """One definition, executed by ``node --test tests/js/``. A copy left in
+    dashboard.js would shadow the tested one and drift from it silently."""
+    dashboard = _read("dashboard.js")
+    order = _read("reports_order.js")
+    for fn in (
+        "readReportsOrder",
+        "writeReportsOrder",
+        "orderReportsClients",
+        "persistReportsOrderFromDom",
+        "moveReportsCard",
+    ):
+        assert f"function {fn}(" in order, f"{fn} is not in reports_order.js"
+        assert f"function {fn}(" not in dashboard, f"{fn} is duplicated"
+    assert "window.MUREO_REPORTS_ORDER = api" in order
+    assert "MUREO_REPORTS_ORDER" in dashboard
 
 
 @pytest.mark.unit
-def test_reordering_persists_from_the_dom_not_from_a_shadow_list() -> None:
-    """One source of truth for the new order — the grid itself — so the
-    keyboard path and the drop handler can never disagree."""
+def test_the_renderer_still_asks_the_module_to_order_and_to_persist() -> None:
+    """The seam the JS suite cannot see: the module can be perfectly correct
+    and unreached. The grid must be ordered through it, and both mutation
+    paths — the drop handler and the keyboard handler — must end in it."""
     js = _read("dashboard.js")
-    assert "function persistReportsOrderFromDom(" in js
-    assert "function moveReportsCard(" in js
+    index = _function_body(js, "async function renderReportsIndex(")
+    assert "orderReportsClients(" in index
+
+    drop = _function_body(js, "function wireReportsCardDrag(")
+    assert "persistReportsOrderFromDom(wrap)" in drop
+
+    handle = _function_body(js, "function buildReportsDragHandle(")
+    assert "moveReportsCard(item, delta)" in handle
 
 
 @pytest.mark.unit
@@ -258,10 +279,11 @@ def test_order_and_archive_strings_are_localized_in_both_locales() -> None:
 def test_client_names_still_reach_the_dom_via_text_content() -> None:
     """Client names come from the Agency registry, which mureo does not
     control. The archived list renders them like every other untrusted
-    string — nothing in the file ever ASSIGNS innerHTML (#533)."""
-    js = _read("dashboard.js")
-    assert ".innerHTML =" not in js
-    assert ".innerHTML=" not in js
+    string — neither file ever ASSIGNS innerHTML (#533)."""
+    for name in ("dashboard.js", "reports_order.js"):
+        js = _read(name)
+        assert ".innerHTML =" not in js, name
+        assert ".innerHTML=" not in js, name
 
 
 @pytest.mark.unit
