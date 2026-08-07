@@ -542,10 +542,21 @@ Cross-platform analysis that runs on normalised metrics rather than a platform A
 - **Low-volume campaigns** — a baseline under `delivery_collapse_min_baseline_impressions` (default 1000/day) hits zero routinely.
 - **New campaigns** — fewer than `delivery_collapse_min_baseline_days` (default 14) days *with real delivery* in the window yields no signal. It counts delivering days, not window length, so a campaign cannot reach the bar on days it was already down.
 
+It reports `reported_through` (the latest date the platform reported anything) and `unreported_days` alongside `signals`. **An empty `signals` list is only an all-clear when `unreported_days` is 0** — see *What detection cannot see* below.
+
 Two things it deliberately does **not** depend on:
 
 - **How long the outage has been running.** Detection is asserted across the whole duration range (1 day to 180+), because a detector that silently stops firing on the *longest* outages is worst exactly where it matters most.
-- **Whether a platform emits zero-delivery rows.** Google Ads and Meta both omit a `(campaign, date)` row when nothing served, which is the very symptom being looked for. Rows are reconciled against the requested date range before detection — every date from a campaign's first observed row to the end of the window with no row becomes an explicit zero. A platform that already returns zeros produces no gaps, so the reconciliation is a no-op for it. Days *before* a campaign's first row are never invented.
+- **Whether a platform emits zero-delivery rows.** Google Ads and Meta both omit a `(campaign, date)` row when nothing served, which is the very symptom being looked for. Missing days are reconciled to explicit zeros — but only where the report **proves** the platform covered them. A platform that already returns zeros produces no gaps, so the reconciliation is a no-op for it.
+
+  The proof matters, and it is the difference between a working detector and one that gets muted. A gap **bracketed by later rows** (the campaign's own, or any other campaign in the account) is certain: the platform reported past it, so nothing served. A gap **beyond the last date anything was reported** is not — that is a dead campaign *or* a platform that has not caught up, and mureo cannot tell which, so those days are left out of the evaluation entirely. Filling to the *requested* range end instead turned a one-day reporting lag into a CRITICAL "100% below baseline" on every healthy campaign, at any hour of the day, and no `delivery_collapse_consecutive_days` setting closed it — a two-day lag simply produced `days_at_collapse=2`.
+
+#### What detection cannot see
+
+Two blind spots follow from that rule, both listed in the diagnosis `limitations` as well:
+
+- **A campaign with no rows anywhere in the window is invisible.** With no first row there is no series to reconcile, and inventing one would fabricate the baseline. Widen the window, or check the platform UI.
+- **When every campaign stops reporting on the same day, no signal fires.** Nothing proves those days were covered, and a total account outage is indistinguishable from a platform-side reporting failure. This one is *reported* rather than hidden: `unreported_days` climbs, and a value that keeps growing across runs is a finding in its own right — treat it as Action needed and check the account directly.
 
 **Thresholds live in STRATEGY.md `## Guardrails`** (all optional; a malformed or out-of-range value drops that one rule and keeps the default):
 

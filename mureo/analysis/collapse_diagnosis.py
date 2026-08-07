@@ -81,6 +81,15 @@ LIMITATIONS: tuple[str, ...] = (
     "correlation only. A shared account-level cause (account review, "
     "payment hold, inventory-side policy action) is not attributable from "
     "campaign-scoped data.",
+    "Two blind spots in DETECTION, both from refusing to assume what the "
+    "platform has not said. A campaign with no rows anywhere in the window "
+    "is invisible: with no first row there is no series, and inventing one "
+    "would fabricate the baseline. And when EVERY campaign stops reporting "
+    "on the same day, nothing proves those days were covered, so no signal "
+    "fires — a total account outage and a platform reporting failure are "
+    "indistinguishable from here. The second is reported as "
+    "`unreported_days` rather than hidden; the first needs a longer window "
+    "or the platform UI.",
 )
 
 #: Per-platform evidence lookups — the ONLY platform-specific part of

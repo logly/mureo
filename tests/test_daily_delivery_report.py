@@ -23,6 +23,7 @@ import pytest
 from mureo.analysis.delivery_collapse import (
     delivery_series_from_rows,
     detect_delivery_collapse,
+    last_reported_day,
 )
 from mureo.byod.clients import ByodGoogleAdsClient, ByodMetaAdsClient
 from mureo.google_ads._analysis_performance import _PerformanceAnalysisMixin
@@ -57,10 +58,10 @@ class _GoogleClient(_PerformanceAnalysisMixin):
         self._search = AsyncMock(return_value=rows)  # type: ignore[method-assign]
 
 
-def _google_row(day: date, impressions: int) -> Any:
+def _google_row(day: date, impressions: int, campaign_id: int = 123) -> Any:
     return SimpleNamespace(
         campaign=SimpleNamespace(
-            id=123,
+            id=campaign_id,
             name="Display / Prospecting",
             status="ENABLED",
             end_date="2037-12-30",
@@ -90,35 +91,72 @@ async def test_google_daily_delivery_shape_and_window() -> None:
 
 
 @pytest.mark.asyncio
-async def test_google_sparse_response_is_reconciled_to_the_requested_range() -> None:
+async def test_google_sparse_response_is_reconciled_to_what_was_reported() -> None:
     """GAQL omits a (campaign, date) row when nothing served that day.
 
     That is the exact symptom this feature exists for, so a raw 1:1
     mapping would end the series at the last active day and nothing would
-    ever fire on the built-in path. The rows must be reconciled against
-    the range that was REQUESTED, not against what came back.
+    ever fire on the built-in path.
+
+    Reconciliation is bounded by what the report PROVES was covered — the
+    still-delivering campaign here — never by the range requested. Filling
+    to the requested end instead turns normal reporting lag into a
+    CRITICAL on every healthy campaign (see
+    ``test_delivery_collapse_reporting_lag.py``).
     """
-    # 30 days of delivery ending 2026-05-01, then silence: the API
-    # returns nothing at all for 2026-05-02 .. 2026-06-01.
+    # "dead" stops on 2026-05-01; "alive" keeps reporting to 2026-05-31,
+    # which is what proves the platform covered 2026-05-02..05-31.
     last_active = date(2026, 5, 1)
     rows_in = [
         _google_row(last_active - timedelta(days=offset), 350_000)
         for offset in reversed(range(30))
     ]
+    rows_in += [
+        _google_row(date(2026, 5, 31) - timedelta(days=offset), 200_000, campaign_id=99)
+        for offset in reversed(range(60))
+    ]
     client = _GoogleClient(rows_in)
 
     rows = await client.get_daily_delivery_report(days=60)
 
-    by_date = {row["date"]: row for row in rows}
-    assert by_date["2026-05-31"]["impressions"] == 0
-    assert by_date["2026-05-31"]["status"] == "ENABLED"
-    assert by_date["2026-06-01"]["impressions"] == 0
-    # And the whole point: the detector now sees the outage.
-    series = delivery_series_from_rows(rows, platform="google_ads")
-    signal = detect_delivery_collapse(series[0], as_of=date(2026, 6, 1))
+    dead_rows = {r["date"]: r for r in rows if r["campaign_id"] == "123"}
+    assert dead_rows["2026-05-31"]["impressions"] == 0
+    assert dead_rows["2026-05-31"]["status"] == "ENABLED"
+    # Never past the last reported day: 06-01 was reported by nobody.
+    assert "2026-06-01" not in dead_rows
+
+    series = {
+        s.campaign_id: s for s in delivery_series_from_rows(rows, platform="google_ads")
+    }
+    signal = detect_delivery_collapse(series["123"], as_of=date(2026, 6, 1))
     assert signal is not None
     assert signal.collapse_start_date == "2026-05-02"
     assert signal.days_at_collapse == 30
+    assert detect_delivery_collapse(series["99"], as_of=date(2026, 6, 1)) is None
+
+
+@pytest.mark.asyncio
+async def test_google_report_that_simply_stops_yields_no_signal() -> None:
+    """A single-campaign account going quiet is the residual blind spot.
+
+    Nothing proves the platform covered the missing days, so the detector
+    has no opinion — the caller surfaces it via ``last_reported_day`` /
+    ``unreported_days`` instead of being handed a CRITICAL that might be
+    a reporting outage.
+    """
+    last_active = date(2026, 5, 1)
+    client = _GoogleClient(
+        [
+            _google_row(last_active - timedelta(days=offset), 350_000)
+            for offset in reversed(range(30))
+        ]
+    )
+
+    rows = await client.get_daily_delivery_report(days=60)
+    series = delivery_series_from_rows(rows, platform="google_ads")
+
+    assert detect_delivery_collapse(series[0], as_of=date(2026, 6, 1)) is None
+    assert last_reported_day(series) == last_active
 
 
 @pytest.mark.asyncio
@@ -135,35 +173,55 @@ async def test_google_dense_response_is_left_alone() -> None:
 
     rows = await client.get_daily_delivery_report(days=2)
 
-    # 3 supplied + fill only up to the requested end (today, frozen).
+    # All three supplied days survive untouched, and nothing is added
+    # past the last one the report covered.
     assert len([r for r in rows if r["date"] in {d.isoformat() for d in days}]) == 3
+    assert max(r["date"] for r in rows) == days[-1].isoformat()
     assert sum(1 for r in rows if r["date"] == "2026-05-01") == 1
 
 
 @pytest.mark.asyncio
-async def test_meta_sparse_response_is_reconciled_to_the_requested_range() -> None:
+async def test_meta_sparse_response_is_reconciled_to_what_was_reported() -> None:
+    """Meta twin: the still-delivering ad account proves the coverage."""
+
+    def _insight(campaign_id: str, day: date, impressions: int) -> dict[str, Any]:
+        return {
+            "campaign_id": campaign_id,
+            "campaign_name": f"Campaign {campaign_id}",
+            "date_start": day.isoformat(),
+            "impressions": str(impressions),
+            "clicks": "3500",
+            "spend": "1200.50",
+        }
+
     client = _MetaClient(
         insights=[
-            {
-                "campaign_id": "9",
-                "campaign_name": "Prospecting",
-                "date_start": (date(2026, 5, 1) - timedelta(days=offset)).isoformat(),
-                "impressions": "350000",
-                "clicks": "3500",
-                "spend": "1200.50",
-            }
-            for offset in reversed(range(30))
+            *[
+                _insight("9", date(2026, 5, 1) - timedelta(days=offset), 350_000)
+                for offset in reversed(range(30))
+            ],
+            *[
+                _insight("10", date(2026, 5, 31) - timedelta(days=offset), 200_000)
+                for offset in reversed(range(60))
+            ],
         ],
-        campaigns=[{"id": "9", "name": "Prospecting", "status": "ACTIVE"}],
+        campaigns=[
+            {"id": "9", "name": "Prospecting", "status": "ACTIVE"},
+            {"id": "10", "name": "Retargeting", "status": "ACTIVE"},
+        ],
     )
 
     rows = await client.get_daily_delivery_report(days=60)
 
-    by_date = {row["date"]: row for row in rows}
-    assert by_date["2026-05-31"]["impressions"] == 0
-    assert by_date["2026-05-31"]["status"] == "ACTIVE"
-    series = delivery_series_from_rows(rows, platform="meta_ads")
-    assert detect_delivery_collapse(series[0], as_of=date(2026, 6, 1)) is not None
+    dead_rows = {r["date"]: r for r in rows if r["campaign_id"] == "9"}
+    assert dead_rows["2026-05-31"]["impressions"] == 0
+    assert dead_rows["2026-05-31"]["status"] == "ACTIVE"
+    assert "2026-06-01" not in dead_rows
+    series = {
+        s.campaign_id: s for s in delivery_series_from_rows(rows, platform="meta_ads")
+    }
+    assert detect_delivery_collapse(series["9"], as_of=date(2026, 6, 1)) is not None
+    assert detect_delivery_collapse(series["10"], as_of=date(2026, 6, 1)) is None
 
 
 @pytest.mark.asyncio

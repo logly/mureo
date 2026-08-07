@@ -284,6 +284,17 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 ## Test Coverage
 
 - Target: 80% minimum (enforced by `tool.coverage.report.fail_under`)
+- **Mutation check for the delivery-collapse detector**: `python scripts/mutation_check.py`
+  injects ~20 plausible wrong implementations and asserts the tests object to each.
+  Green tests prove the code passes its tests, not that the tests would notice if the
+  code were wrong — and for a detector whose failure mode is *silence on a dead
+  account*, "the suite is green" is exactly the reassurance that hides the bug. Two
+  CRITICALs in #546 shipped past a green suite. Run it when touching
+  `mureo/analysis/delivery_collapse*.py`, `collapse_diagnosis.py`, or any
+  `get_daily_delivery_report`. A **survivor is a gap in the tests**, not a pass: add the
+  missing assertion rather than deleting the mutation. `tests/test_mutation_harness.py`
+  asserts every anchor still resolves, so a refactor cannot turn the harness into a
+  no-op that always "passes".
 - Framework: pytest + pytest-asyncio
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests
 - Use `@pytest.mark.unit` / `@pytest.mark.integration` for categorization

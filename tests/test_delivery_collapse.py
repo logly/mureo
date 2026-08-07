@@ -26,6 +26,7 @@ from mureo.analysis.delivery_collapse import (
     delivery_series_from_rows,
     detect_delivery_collapse,
     detect_delivery_collapses,
+    last_reported_day,
 )
 
 pytestmark = pytest.mark.unit
@@ -551,11 +552,13 @@ def test_series_from_rows_reconciles_a_sparse_report() -> None:
     assert detect_delivery_collapse(series["alive"], as_of=AS_OF) is None
 
 
-def test_series_from_rows_reconciles_through_an_explicit_range_end() -> None:
-    """When every campaign died the same day, the report has no later date.
+def test_a_report_that_simply_stops_is_not_assumed_to_be_zero() -> None:
+    """The whole report ending is not evidence that delivery ended.
 
-    Callers that know the range they requested pass it, because the
-    report's own last date is then the day the account went dark.
+    Nothing here can tell a dead account from a platform that has not
+    reported yet, so the detector has no opinion — silence beats a
+    CRITICAL on a healthy account, and the caller surfaces the gap via
+    ``last_reported_day`` instead.
     """
     rows = [
         {
@@ -567,13 +570,34 @@ def test_series_from_rows_reconciles_through_an_explicit_range_end() -> None:
         for offset in reversed(range(11, 41))
     ]
 
-    without_range = delivery_series_from_rows(rows, platform="x")
-    assert detect_delivery_collapse(without_range[0], as_of=AS_OF) is None
+    series = delivery_series_from_rows(rows, platform="x")
 
-    with_range = delivery_series_from_rows(
-        rows, platform="x", through=AS_OF - timedelta(days=1)
+    assert detect_delivery_collapse(series[0], as_of=AS_OF) is None
+    assert last_reported_day(series) == AS_OF - timedelta(days=11)
+
+
+def test_reported_through_lets_a_caller_that_knows_assert_coverage() -> None:
+    """Only a caller with real freshness information may override it.
+
+    ``reported_through`` is what the platform HAS reported, never the
+    range that was requested — passing the latter is exactly the bug that
+    turned reporting lag into a CRITICAL.
+    """
+    rows = [
+        {
+            "campaign_id": "dead",
+            "status": "ENABLED",
+            "date": (AS_OF - timedelta(days=offset)).isoformat(),
+            "impressions": NORMAL_IMPRESSIONS,
+        }
+        for offset in reversed(range(11, 41))
+    ]
+
+    series = delivery_series_from_rows(
+        rows, platform="x", reported_through=AS_OF - timedelta(days=1)
     )
-    signal = detect_delivery_collapse(with_range[0], as_of=AS_OF)
+    signal = detect_delivery_collapse(series[0], as_of=AS_OF)
+
     assert signal is not None
     assert signal.days_at_collapse == 10
 

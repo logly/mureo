@@ -50,11 +50,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     renders that silence as "checked, healthy".
   - **It does not depend on whether a platform emits zero-delivery rows.**
     Google Ads and Meta both omit a `(campaign, date)` row when nothing
-    served — the very symptom being looked for — so rows are reconciled
-    against the requested date range before detection and any missing date
-    becomes an explicit zero. Correct whichever way the APIs behave, and a
-    no-op for a platform that already returns zeros. Days before a
-    campaign's first observed row are never invented.
+    served — the very symptom being looked for — so missing days are
+    reconciled to explicit zeros wherever the report *proves* the platform
+    covered them: a gap bracketed by later rows (the campaign's own, or any
+    other campaign in the account) is certain. Days beyond the last date
+    anything was reported are left out of the evaluation instead, because a
+    dead campaign and a platform that has not caught up are
+    indistinguishable there — filling them turns normal reporting lag into
+    a CRITICAL on every healthy campaign. Correct whichever way the APIs
+    behave, and a no-op for a platform that already returns zeros. Days
+    before a campaign's first observed row are never invented.
+  - **It says what it could not see.** `reported_through` and
+    `unreported_days` ride alongside `signals`, so an empty signal list is
+    only an all-clear when the platform is current. The two detection blind
+    spots that follow from refusing to assume — a campaign with no rows
+    anywhere in the window, and an account where every campaign stopped
+    reporting at once — are documented in `docs/mcp-server.md`, in the
+    diagnosis `limitations`, and in `/daily-check`.
 
   **Diagnosis** — `analysis_delivery_collapse_diagnose` overlays the change
   feed on daily delivery to answer "what changed immediately before the
@@ -88,6 +100,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "checked, nothing collapsed"); `DeliveryCollapseReport.status` distinguishes
   `ok` / `no_credentials` / `data_unavailable` so a fetch failure can never be
   read as an all-clear.
+
+- **`scripts/mutation_check.py`** — targeted mutation testing for the
+  delivery-collapse detector. Green tests prove the code passes its tests,
+  not that the tests would notice if the code were wrong; this injects ~20
+  plausible wrong implementations and asserts the suite objects to each.
+  It is how the long-collapse baseline bug was found. A survivor is a gap
+  in the tests, not a pass. `tests/test_mutation_harness.py` pins every
+  anchor so a refactor cannot silently reduce the harness to a no-op.
 
 - **`mureo.analytics.DeliveryCollapseModule`** — the optional extension
   Protocol plugins implement for the capability above. It is deliberately a

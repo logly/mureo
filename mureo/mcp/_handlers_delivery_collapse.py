@@ -33,8 +33,10 @@ from mureo.analysis.delivery_collapse import (
     delivery_series_from_rows,
     detect_delivery_collapse,
     detect_delivery_collapses,
+    last_reported_day,
 )
 from mureo.analysis.delivery_collapse_config import load_collapse_thresholds
+from mureo.core import clock
 from mureo.mcp._helpers import _json_result, _opt, _require
 
 if TYPE_CHECKING:
@@ -61,6 +63,26 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: _jsonable(item) for key, item in value.items()}
     return value
+
+
+def _coerce_int(value: Any, field: str) -> int:
+    """Accept an integer; reject bools and non-numerics.
+
+    ``bool`` is an ``int`` subclass, so a bare ``int(value)`` silently
+    turns ``true`` into 1. ``analysis_anomalies_check`` already rejects
+    booleans on its numeric fields and is documented as doing so — these
+    tools sit beside it and must not disagree.
+    """
+    if isinstance(value, bool):
+        raise ValueError(f"'{field}' must be an integer, got bool")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise ValueError(f"'{field}' must be an integer, got {value!r}") from exc
+    raise ValueError(f"'{field}' must be an integer, got {type(value).__name__}")
 
 
 def _parse_as_of(arguments: dict[str, Any]) -> date | None:
@@ -96,6 +118,8 @@ async def handle_delivery_collapse_check(
 
     thresholds, source = load_collapse_thresholds()
     signals = detect_delivery_collapses(series, thresholds=thresholds, as_of=as_of)
+    reported = last_reported_day(series)
+    evaluated_through = as_of or clock.server_now().date()
     return _json_result(
         {
             "platform": arguments.get("platform"),
@@ -103,6 +127,15 @@ async def handle_delivery_collapse_check(
             "baseline_source": BASELINE_SOURCE,
             "thresholds": _jsonable(thresholds),
             "thresholds_source": source,
+            # The one state the detector has no opinion on: when every
+            # campaign stops reporting at once, a total outage and a
+            # reporting failure are indistinguishable. Reported, not
+            # guessed at — an empty `signals` with a climbing
+            # `unreported_days` is NOT an all-clear.
+            "reported_through": reported.isoformat() if reported else "",
+            "unreported_days": (
+                max(0, (evaluated_through - reported).days - 1) if reported else 0
+            ),
             "signals": _jsonable(signals),
         }
     )
@@ -197,10 +230,14 @@ async def handle_delivery_collapse_diagnose(
             target,
             changes=changes,
             checks=checks,
-            change_lookback_days=int(
-                _opt(arguments, "change_lookback_days", DEFAULT_CHANGE_LOOKBACK_DAYS)
+            change_lookback_days=_coerce_int(
+                _opt(arguments, "change_lookback_days", DEFAULT_CHANGE_LOOKBACK_DAYS),
+                "change_lookback_days",
             ),
-            timeline_days=int(_opt(arguments, "timeline_days", DEFAULT_TIMELINE_DAYS)),
+            timeline_days=_coerce_int(
+                _opt(arguments, "timeline_days", DEFAULT_TIMELINE_DAYS),
+                "timeline_days",
+            ),
         )
     except ValueError as exc:
         return _json_result({"error": str(exc)})

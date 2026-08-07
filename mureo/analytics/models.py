@@ -169,6 +169,16 @@ class DeliveryCollapseReport:
     - ``"data_unavailable"`` — the platform (or the active data source,
       e.g. a BYOD bundle without a daily tab) cannot produce day-grain
       delivery, so no baseline can be built.
+
+    ``reported_through`` / ``unreported_days`` carry the one case the
+    detector deliberately has no opinion on. A missing day only counts as
+    zero delivery where the report proves the platform covered it; when
+    EVERY campaign stops on the same day, nothing proves anything, and a
+    total account outage is indistinguishable from a platform-wide
+    reporting failure. Rather than guess, the gap is reported: an account
+    whose ``unreported_days`` keeps climbing is a finding in its own
+    right, and the caller says so instead of reading an empty ``signals``
+    tuple as "all healthy".
     """
 
     platform: str
@@ -180,6 +190,11 @@ class DeliveryCollapseReport:
     thresholds: CollapseThresholds = CollapseThresholds()
     thresholds_source: str = ""
     baseline_source: str = BASELINE_SOURCE
+    #: Latest date the platform reported ANY delivery (ISO, "" when none).
+    reported_through: str = ""
+    #: Complete days between ``reported_through`` and the evaluation date
+    #: that the platform has not reported at all. 0 is the healthy case.
+    unreported_days: int = 0
 
 
 __all__ = [

@@ -239,6 +239,20 @@ def detect_delivery_collapse(
     return _build_signal(series, complete, start_index, baseline)
 
 
+def last_reported_day(
+    all_series: Iterable[DeliverySeries],
+) -> date | None:
+    """Latest date the platform reported ANY delivery, or ``None``.
+
+    How far the data demonstrably extends. When it trails the day the
+    caller expected, the account has gone quiet — a total outage and a
+    reporting failure look identical from here, so it is reported as a
+    fact rather than guessed at as a collapse.
+    """
+    days = [day.date for series in all_series for day in series.daily]
+    return max(days) if days else None
+
+
 def detect_delivery_collapses(
     all_series: Iterable[DeliverySeries],
     *,
@@ -463,9 +477,9 @@ MAX_FILL_DAYS = 400
 def fill_missing_delivery_days(
     rows: Iterable[dict[str, Any]],
     *,
-    through: date | None = None,
+    reported_through: date | None = None,
 ) -> list[dict[str, Any]]:
-    """Materialise the days a platform report omits entirely.
+    """Materialise the days a platform report omits, and only those.
 
     Google Ads (GAQL over ``segments.date``) and Meta (insights with
     ``time_increment=1``) are both widely reported to **drop** a
@@ -475,32 +489,59 @@ def fill_missing_delivery_days(
     collapsed days are simply ABSENT, each campaign's series ends at its
     last active day, and nothing ever fires.
 
-    This reconciliation deliberately does **not** depend on knowing which
+    The reconciliation deliberately does **not** depend on knowing which
     way either API behaves. A platform that already returns explicit zero
     rows leaves no gaps to fill, so this is a no-op for it; a platform
-    that omits them gets them back. Correct either way, and it cannot
-    rot when a platform changes its mind.
+    that omits them gets them back. Correct either way, and it cannot rot
+    when a platform changes its mind.
 
-    For each campaign, every date from its **first observed row** through
-    ``through`` (default: the latest date anywhere in ``rows``, which is
-    how far the report demonstrably extends) that carries no row is added
-    as a zero-delivery day, inheriting that campaign's name / status /
-    end date. Days *before* a campaign's first row are never invented:
-    there is no evidence it existed yet, and fabricating them would
-    fabricate the history the baseline is computed from.
+    Evidence, not assumption
+    ------------------------
+    A missing day is zero delivery only where the report **proves** the
+    platform covered that day. Two kinds of gap, and they are not alike:
 
-    Reporting lag: a platform that has not yet materialised the most
-    recent day's row will have it filled as zero. The detector never
-    evaluates the current (partial) day, so this can only reach
-    yesterday; an operator running the check minutes after midnight
-    should set ``delivery_collapse_consecutive_days: 2``.
+    - **Interior** — bracketed by rows, so the platform demonstrably
+      reported past it. Certain: fill it with zero.
+    - **Trailing** — beyond the last date anything was reported. That is
+      a dead campaign *or* a platform that has not caught up yet, and
+      nothing here can tell the two apart. Left absent, so the detector
+      simply has no opinion on those days.
+
+    The bracket is the **report**, not the single campaign: any campaign
+    in the account carrying a row for date D proves D was covered, so a
+    campaign silent on D genuinely delivered nothing. That is what keeps
+    a dead campaign detectable in a live account while normal reporting
+    lag stays silent — filling to the *requested* range end instead
+    turned a one-day lag into a CRITICAL 100% drop on every healthy
+    campaign, at any hour, and no ``consecutive_days`` setting closed it
+    (a two-day lag simply produced ``days_at_collapse=2``).
+
+    ``reported_through`` overrides that inference for a caller that
+    genuinely knows how far the platform has reported — a connector whose
+    payload carries a data-freshness timestamp, say. It is **not** the
+    range you asked for; passing that is the bug described above.
+
+    Days *before* a campaign's first row are never invented either: there
+    is no evidence it existed yet, and fabricating them would fabricate
+    the history the baseline is computed from.
+
+    Residual gap, by construction: when EVERY campaign stops on the same
+    day there is no later row to bracket anything, so nothing is filled
+    and no signal fires. A total account outage and a platform-wide
+    reporting failure are indistinguishable from here. Callers surface it
+    instead via :func:`last_reported_day` — see
+    ``DeliveryCollapseReport.unreported_days``.
     """
     parsed = [(row, _parse_date(row.get("date"))) for row in rows]
     dated = [(row, day) for row, day in parsed if str(row.get("campaign_id") or "")]
     if not dated:
         return [row for row, _ in parsed]
 
-    report_end = through if through is not None else max(day for _, day in dated)
+    report_end = (
+        reported_through
+        if reported_through is not None
+        else max(day for _, day in dated)
+    )
     filled = [row for row, _ in parsed]
     for campaign_id, (source, seen) in _index_days_by_campaign(dated).items():
         start = min(seen)
@@ -556,7 +597,7 @@ def delivery_series_from_rows(
     rows: Iterable[dict[str, Any]],
     *,
     platform: str,
-    through: date | None = None,
+    reported_through: date | None = None,
 ) -> tuple[DeliverySeries, ...]:
     """Group day-grain platform rows into per-campaign series.
 
@@ -573,16 +614,16 @@ def delivery_series_from_rows(
 
     Gaps are reconciled through :func:`fill_missing_delivery_days` before
     grouping, so a platform that omits its zero-delivery rows cannot
-    present a dead campaign as a series that merely stops. ``through``
-    names how far the report was *requested* to run; without it the
-    latest date anywhere in ``rows`` is used, which is how far the report
-    demonstrably extends. Callers that know the requested range (the
-    built-in clients do) should pass it — a report whose every campaign
-    died on the same day has no later date to infer the tail from.
+    present a dead campaign as a series that merely stops. Pass
+    ``reported_through`` only when you genuinely know how far the
+    platform has reported; it is NOT the range you requested, and the
+    built-in clients deliberately do not pass it (see that function for
+    why filling to the requested end turns reporting lag into a
+    CRITICAL).
     """
     grouped: dict[str, list[DailyDelivery]] = {}
     attributes: dict[str, tuple[str, str, date | None]] = {}
-    for row in fill_missing_delivery_days(rows, through=through):
+    for row in fill_missing_delivery_days(rows, reported_through=reported_through):
         campaign_id = str(row.get("campaign_id") or "").strip()
         if not campaign_id:
             continue
@@ -735,5 +776,6 @@ __all__ = [
     "detect_delivery_collapse",
     "fill_missing_delivery_days",
     "detect_delivery_collapses",
+    "last_reported_day",
     "is_serving_status",
 ]

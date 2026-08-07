@@ -118,10 +118,10 @@ def _byod_delivery_rows(
             }
         )
     # A bundle can omit a campaign's zero-delivery days just as the live
-    # APIs do — the exporter only writes the rows it was given. Reconcile
-    # against the bundle's own last date so a dead campaign reads as zero
-    # rather than as a series that stops.
-    return fill_missing_delivery_days(out, through=anchor)
+    # APIs do — the exporter only writes the rows it was given. The
+    # bundle's own last date is inferred from the rows (a bundle cannot
+    # be "behind" on itself), so no explicit bound is passed.
+    return fill_missing_delivery_days(out)
 
 
 def _period_to_range(period: str, *, anchor: date | None = None) -> tuple[date, date]:

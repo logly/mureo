@@ -277,3 +277,61 @@ async def test_diagnose_rejects_an_unknown_check_name() -> None:
 
     assert "error" in payload
     assert "vibes" in payload["error"]
+
+
+@pytest.mark.asyncio
+async def test_diagnose_rejects_a_boolean_window() -> None:
+    """`bool` is an `int` subclass, so a bare int() would read true as 1.
+
+    The sibling `analysis_anomalies_check` rejects booleans on its
+    numeric fields and is documented as doing so; these tools sit beside
+    it and must not disagree.
+    """
+    payload = await _call(
+        "analysis_delivery_collapse_diagnose",
+        {
+            "platform": "google_ads",
+            "campaign_id": "c-1",
+            "rows": _rows(),
+            "as_of": AS_OF.isoformat(),
+            "timeline_days": True,
+        },
+    )
+
+    assert "error" in payload
+    assert "timeline_days" in payload["error"]
+
+
+@pytest.mark.asyncio
+async def test_check_reports_how_far_the_platform_has_reported() -> None:
+    """An empty `signals` list is only an all-clear when the platform is
+    current — `unreported_days` is what tells the caller which it is."""
+    rows = _rows(collapsed_days=0, history_days=30)
+    payload = await _call(
+        "analysis_delivery_collapse_check",
+        {"platform": "tiktok_ads", "rows": rows, "as_of": AS_OF.isoformat()},
+    )
+
+    assert payload["signals"] == []
+    assert payload["reported_through"] == (AS_OF - timedelta(days=1)).isoformat()
+    assert payload["unreported_days"] == 0
+
+
+@pytest.mark.asyncio
+async def test_check_surfaces_a_silent_account_instead_of_calling_it_healthy() -> None:
+    """Every campaign stopping at once is the one case the detector has
+    no opinion on: a total outage and a reporting failure look identical.
+    It must be reported as a gap, never swallowed as 'no signals'."""
+    rows = [
+        row
+        for row in _rows(collapsed_days=0, history_days=30)
+        if row["date"] < (AS_OF - timedelta(days=5)).isoformat()
+    ]
+
+    payload = await _call(
+        "analysis_delivery_collapse_check",
+        {"platform": "tiktok_ads", "rows": rows, "as_of": AS_OF.isoformat()},
+    )
+
+    assert payload["signals"] == []
+    assert payload["unreported_days"] == 5

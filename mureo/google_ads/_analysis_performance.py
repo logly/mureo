@@ -708,10 +708,15 @@ class _PerformanceAnalysisMixin:
 
         GAQL omits a ``(campaign, date)`` row entirely when the campaign
         did not serve that day, rather than returning ``impressions=0``.
-        That is precisely the shape this detector looks for, so the rows
-        are reconciled against the requested range before they leave —
-        otherwise a dead campaign's series simply ends at its last active
-        day and nothing ever fires.
+        That is precisely the shape this detector looks for, so gaps are
+        reconciled before the rows leave — otherwise a dead campaign's
+        series simply ends at its last active day and nothing ever fires.
+
+        Reconciliation is bounded by what the report PROVES was covered
+        (the latest date any campaign reported), never by the range that
+        was requested: Google has not always finished computing the most
+        recent day, and filling it as zero turns normal reporting lag
+        into a CRITICAL 100% drop on every healthy campaign.
         """
         window = validate_period_days(days)
         end = clock.server_now().date()
@@ -725,9 +730,7 @@ class _PerformanceAnalysisMixin:
             f"AND '{end.isoformat()}'"
         )
         rows = await self._search(query)
-        return fill_missing_delivery_days(
-            [_daily_delivery_row(row) for row in rows], through=end
-        )
+        return fill_missing_delivery_days([_daily_delivery_row(row) for row in rows])
 
 
 def _daily_delivery_row(row: Any) -> dict[str, Any]:

@@ -209,12 +209,14 @@ class InsightsMixin:
 
         Rows follow the platform-agnostic delivery shape consumed by
         :func:`mureo.analysis.delivery_collapse.delivery_series_from_rows`.
-        Missing days are reconciled against the requested range (Meta
-        omits zero-delivery rows). Campaign status is joined from
-        ``list_campaigns`` because Meta's insights edge does not carry it — and the *status says serving,
-        nothing is serving* contradiction is the entire signal, so a row
-        whose campaign is missing from that join is dropped rather than
-        defaulted to ENABLED.
+        Missing days are reconciled up to the last date the report
+        proves was covered (Meta omits zero-delivery rows, and also
+        lags). Campaign status is joined from
+        ``list_campaigns`` because Meta's insights edge does not carry
+        it — and the *status says serving, nothing is serving*
+        contradiction is the entire signal, so a row whose campaign is
+        missing from that join is dropped rather than defaulted to
+        ENABLED.
         """
         window = max(1, min(int(days), _MAX_DELIVERY_DAYS))
         until = clock.server_now().date()
@@ -237,9 +239,11 @@ class InsightsMixin:
         ]
         # Meta's insights edge omits a (campaign, day) row when there was
         # no delivery rather than returning impressions=0 — exactly the
-        # days this detector exists to see. Reconcile against the range
-        # that was requested, not against what came back.
-        return fill_missing_delivery_days(mapped, through=until)
+        # days this detector exists to see. Reconcile against what the
+        # report proves was covered, NOT against the range requested:
+        # Meta lags, and filling an unreported day as zero reads as a
+        # 100% drop on a healthy campaign.
+        return fill_missing_delivery_days(mapped)
 
     async def analyze_performance(
         self,

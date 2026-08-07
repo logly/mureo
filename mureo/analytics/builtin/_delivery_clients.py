@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 from mureo.analysis.delivery_collapse import (
     delivery_series_from_rows,
     detect_delivery_collapses,
+    last_reported_day,
 )
 from mureo.analysis.delivery_collapse_config import load_collapse_thresholds
 from mureo.analytics.builtin._live_clients import (
@@ -29,6 +30,7 @@ from mureo.analytics.builtin._live_clients import (
     _open_meta_ads_client,
 )
 from mureo.analytics.models import DeliveryCollapseReport
+from mureo.core import clock
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -130,10 +132,20 @@ async def run_delivery_collapse(
         return _report("data_unavailable", detail=str(exc))
 
     account_id = resolved_account
+    reported = last_reported_day(series)
+    evaluated_through = as_of or clock.server_now().date()
     return _report(
         "ok",
         evaluated_campaigns=len(series),
         signals=detect_delivery_collapses(series, thresholds=resolved, as_of=as_of),
+        reported_through=reported.isoformat() if reported else "",
+        # Complete days (i.e. excluding the partial current one) that the
+        # platform has not reported at all. Non-zero is not automatically
+        # a fault — it is the state the detector cannot see through, so
+        # the caller has to be told rather than shown an empty list.
+        unreported_days=(
+            max(0, (evaluated_through - reported).days - 1) if reported else 0
+        ),
     )
 
 
