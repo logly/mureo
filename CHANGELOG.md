@@ -315,9 +315,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   creative, created by an earlier call, so enforcing there is tracked as
   follow-up rather than shipped half-done.
 
+  The enforcement path reads the same `## Tracking Convention` the advisory
+  path does, from `STRATEGY.md` in the active workspace. Anything less would
+  break the promise in both directions at once: an account that declared
+  `differentiate:` to stop legitimate variation being flagged would still be
+  blocked on every create (and would learn to acknowledge reflexively), and an
+  account that declared `identify:` because its segment marker lives in
+  `utm_content` would get no enforcement on a real leak. Failing open is not
+  silent either — a create whose check could not run comes back with a
+  `tracking_preflight: "NOT CHECKED: …"` field, and three consecutive failures
+  escalate to an ERROR saying the guardrail is effectively off. Each enforced
+  create runs one account-wide `list_ads`, cached per account for 60s so a bulk
+  upload is a single read.
+
   `docs/tracking-consistency.md` documents what the check detects, what it does
   not, **and what it may flag that you meant** — the false-positive side is
-  listed as explicitly as the false-negative side.
+  listed as explicitly as the false-negative side. Two verified blind spots are
+  named there rather than left to be discovered: campaign tokens that differ
+  only in digits (`campaign_2024` vs `campaign_2025` collapse to the same
+  shape, so sixteen mis-tagged ads produce zero findings), and a source
+  campaign carrying the scheme on a single ad when the campaigns use different
+  landing pages.
 
 ## [0.10.43] - 2026-08-07
 

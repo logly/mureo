@@ -24,6 +24,12 @@ The Meta gap is not an oversight to read past: on Meta the destination link live
 
 **The pre-flight fails open.** Any error reading the account is logged and the create proceeds. A tracking check that cannot see the account must not stop an operator shipping an ad; the only thing that blocks is a positive finding.
 
+**Failing open is not the same as failing silently.** When the check could not run, the successful create response carries a `tracking_preflight` field saying so in words (`NOT CHECKED: …`), and three consecutive failures escalate from a WARNING to an ERROR log stating that the create-time guardrail is effectively off. A permanently broken guardrail and a quiet one look identical otherwise.
+
+**The declared convention applies here too.** The enforcement path reads `## Tracking Convention` from `STRATEGY.md` in the active workspace and applies `recognize:` / `identify:` / `differentiate:` exactly as the advisory tool does. It has to: an account that declared `differentiate:` to stop legitimate variation being flagged would otherwise still be blocked on every create and would learn to pass `acknowledge_tracking_findings` reflexively, and an account that declared `identify:` because its segment marker lives in `utm_content` would get no enforcement on a real leak — the one account that customised its convention would be the one where this defect slips through. An unreadable or absent `STRATEGY.md` falls back to the documented defaults, not to no enforcement.
+
+**Cost.** Each enforced create runs one account-wide `list_ads` (a GAQL `ad_group_ad` query with no filter). The read cannot be narrowed to the target campaign — locating the campaign a scheme was copied *from* is the point of `foreign_campaign_scheme` — so instead the snapshot is cached per account for 60 seconds (`SNAPSHOT_TTL_SECONDS`), which collapses a bulk upload of 16 ads into a single read. The trade-off is that an ad created inside that window is not visible to the next ad's check.
+
 ## The design decision: where "inconsistent" comes from
 
 mureo does **not** know what a correct `utm_campaign` looks like for your account. A prefix that identifies an audience segment in one account is a campaign month in the next. A check that guessed the convention and then judged ads against the guess would produce false positives, and a check that produces false positives gets muted — at which point it detects nothing at all.
@@ -124,15 +130,19 @@ Both lists below are meant to be complete. A check whose limits are undocumented
 - **Whether the tags are *correct* in absolute terms.** mureo compares ads against each other and against what the operator declared. It cannot tell that the whole account's `utm_medium` should have been `cpc` rather than `ppc`.
 - **Redirects.** The URL on the ad is what is compared; where it lands after a redirect chain is not fetched.
 - **Duplicate query keys.** When one URL carries the same parameter twice, the first occurrence is used — delivery-time precedence is platform-specific and mureo does not guess it.
+- **Campaign tokens that differ only in digits — total blindness, not just noise.** The digit-collapsing rule is what stops `segb01` vs `segb02` from firing, and it cannot tell that apart from `campaign_2024` vs `campaign_2025`: both collapse to `campaign_#`. Copying campaign A's exact tags onto sixteen of campaign B's ads therefore produces **zero findings** — verified, not theorised. Any account whose campaigns are distinguished by a year, a month or a sequence number is invisible to `foreign_campaign_scheme`. Distinguish campaigns by more than a digit, or declare `pattern` rules that pin the expected values per campaign.
+- **A source campaign carrying the scheme on only one ad, when the campaigns use different landing pages.** `foreign_campaign_scheme` requires the owning campaign to have at least two ads on the scheme (one ad is an anecdote, not a campaign's scheme), and `same_destination_scheme_conflict` needs a shared landing page. With neither, sixteen mis-tagged ads produce zero findings — also verified.
 - **Anything on a create path that is not native Google Ads.** Meta, plugin, bridged and hosted ad creation is routing only — see the enforcement table above.
 
 ### What it may flag that you meant (false positives)
 
 - **Two campaigns deliberately reporting under one identity.** If some — not all — of campaign X's ads carry exactly the same `utm_source` + `utm_medium` + `utm_campaign` as every ad of campaign Y, that fires. It is a real reporting collision (those ads are indistinguishable from Y's in analytics), but it can be intentional, e.g. a shared always-on line item split across two campaigns. Declare the distinguishing parameter with `identify:` so the two stop looking identical.
-- **Campaign tokens that differ only in digits.** `promo001` and `promo101` collapse to the same shape `promo#`, so two campaigns using that pattern read as one scheme. This is the digit-collapsing rule doing what it is for; the same rule is what stops `segb01` vs `segb02` from firing. Use tokens that differ by more than a digit, or declare patterns.
+- **Two campaigns whose tokens differ only in digits, read as one scheme.** `promo001` and `promo101` both collapse to `promo#`. If one of those campaigns then contains a second scheme, its `promo#` ads can be reported as carrying the other campaign's identity. The more common consequence of this rule is the opposite — silence — and it is listed above as a false negative; both directions come from the same normalization.
 - **An A/B test of the tracking itself.** Two ads pointing at one landing page under two deliberately different schemes is exactly what `same_destination_scheme_conflict` reports. That is usually what you want to know, but if you are running such a test it is noise — acknowledge it per call, or park the check with `MUREO_DISABLE_TRACKING_PREFLIGHT=1`.
 
 Two earlier false positives are fixed rather than documented, and are pinned by tests so they stay fixed: `utm_content` / `utm_term` varying per creative on one landing page (rule 2 above), and a value like `utm_source=google` that two campaigns merely share (rule 3).
+
+If a finding is wrong for your account, the fix is almost always a line in `## Tracking Convention` rather than an acknowledgement: `differentiate:` a parameter that varies by design, `identify:` one that carries real meaning. An `acknowledge_tracking_findings=true` you type on every create is a guardrail you have switched off without noticing.
 
 ## Using it
 
