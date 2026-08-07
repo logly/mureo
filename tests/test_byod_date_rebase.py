@@ -31,19 +31,42 @@ def _write(path: Path, text: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+_PINNED_TODAY = date(2026, 6, 15)
+
+
+@pytest.fixture
+def pinned_today(monkeypatch: pytest.MonkeyPatch) -> date:
+    """Pin the ``date.today()`` that ``_period_to_range`` reads.
+
+    The legacy branch reads the wall clock itself, so a test that also
+    reads it compares two independent clock reads and breaks on a run
+    that straddles midnight (#562). Pin the module's ``date`` instead —
+    the assertion then measures the window arithmetic, not the clock."""
+    from mureo.byod import clients
+
+    class _PinnedDate(date):
+        @classmethod
+        def today(cls) -> date:
+            return _PINNED_TODAY
+
+    monkeypatch.setattr(clients, "date", _PinnedDate)
+    return _PINNED_TODAY
+
+
 @pytest.mark.unit
 class TestPeriodToRangeAnchor:
-    def test_anchor_none_preserves_legacy_today_behaviour(self) -> None:
+    def test_anchor_none_preserves_legacy_today_behaviour(
+        self, pinned_today: date
+    ) -> None:
         from mureo.byod.clients import _period_to_range
 
-        today = date.today()
         assert _period_to_range("LAST_7_DAYS") == (
-            today - timedelta(days=7),
-            today - timedelta(days=1),
+            pinned_today - timedelta(days=7),
+            pinned_today - timedelta(days=1),
         )
         assert _period_to_range("LAST_30_DAYS", anchor=None) == (
-            today - timedelta(days=30),
-            today - timedelta(days=1),
+            pinned_today - timedelta(days=30),
+            pinned_today - timedelta(days=1),
         )
 
     def test_anchor_rebases_window_end_to_anchor(self) -> None:

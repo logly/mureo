@@ -1399,9 +1399,15 @@ def _write_mixed_state(root) -> None:
     (root / "STATE.json").write_text(json.dumps(state), encoding="utf-8")
 
 
-async def test_state_get_action_log_default_is_all_and_byte_identical(cwd_to_tmp):
+async def test_state_get_action_log_default_is_all_and_byte_identical(
+    cwd_to_tmp, frozen_clock
+):
     """Omitting ``action_log`` (and passing ``"all"``) is the historical
-    behaviour verbatim: the full log, no scope markers, byte-for-byte equal."""
+    behaviour verbatim: the full log, no scope markers, byte-for-byte equal.
+
+    The clock is frozen (#460 seam) because the two responses each carry
+    their own ``server_now`` stamp: unfrozen, "byte-for-byte" would only
+    hold while both calls land in the same wall-clock second (#562)."""
     _write_mixed_state(cwd_to_tmp)
     mod = _import_tools()
     default = (await mod.handle_tool("mureo_state_get", {}))[0].text
@@ -1447,9 +1453,15 @@ async def test_state_get_action_log_none_omits(cwd_to_tmp):
 
 
 @pytest.mark.parametrize("scope", ["pending", "none"])
-async def test_state_get_rest_of_response_unchanged_when_filtered(cwd_to_tmp, scope):
+async def test_state_get_rest_of_response_unchanged_when_filtered(
+    cwd_to_tmp, frozen_clock, scope
+):
     """Filtering the log must not touch anything else: platforms (incl.
-    campaigns), reports, last_synced_at and server_now are identical."""
+    campaigns), reports, last_synced_at and server_now are identical.
+
+    ``server_now`` is stamped per response, so the clock is frozen (#460
+    seam) — otherwise this compares two wall-clock reads, not the filter's
+    effect (#562)."""
     _write_mixed_state(cwd_to_tmp)
     mod = _import_tools()
     full = json.loads((await mod.handle_tool("mureo_state_get", {}))[0].text)
