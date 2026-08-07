@@ -53,6 +53,18 @@ class NoCredentialsError(RuntimeError):
     """
 
 
+class DeliveryDataUnavailableError(RuntimeError):
+    """The active data source cannot produce day-grain delivery (#546).
+
+    Deliberately NOT a :class:`NoCredentialsError` subclass: credentials
+    and data availability are different operator problems with different
+    fixes, and the delivery-collapse report distinguishes them
+    (``no_credentials`` vs ``data_unavailable``). Neither may ever be
+    rendered as "no collapse" — that would be a false all-clear on an
+    account that may be entirely dead.
+    """
+
+
 class AccountNotAvailableError(NoCredentialsError):
     """The account cannot be fetched in the active workspace scope (#413/#435).
 
@@ -582,6 +594,7 @@ async def fetch_meta_ads_performance_rows(
 
 __all__ = [
     "AccountNotAvailableError",
+    "DeliveryDataUnavailableError",
     "NoCredentialsError",
     "fetch_google_ads_list",
     "fetch_google_ads_metrics",

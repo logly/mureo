@@ -177,7 +177,7 @@ mureo/
 │   ├── _handlers_search_console.py        # Search Console handlers
 │   ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
 │   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
-│   ├── tools_analysis.py                  # analysis_anomalies_check
+│   ├── tools_analysis.py                  # analysis_anomalies_check + analysis_delivery_collapse_* (#546)
 │   ├── _handlers_analysis.py              # Anomaly detector composition handler
 │   ├── tools_mureo_context.py            # STRATEGY.md / STATE.json read-write + outcome eval
 │   ├── _handlers_mureo_context.py        # Mureo-context handlers (atomic file writes)
@@ -449,7 +449,7 @@ The Amazon bridge is the reason mureo sits in the request path rather than letti
 
 ## Command-Based Workflow System
 
-In addition to the 205 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
+In addition to the 207 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 

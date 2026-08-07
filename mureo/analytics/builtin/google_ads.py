@@ -39,10 +39,19 @@ from mureo.analytics.builtin._common import (
 )
 
 if TYPE_CHECKING:
+    from datetime import date
+
     from mureo.analysis.anomaly_detector import CampaignMetrics
+    from mureo.analysis.delivery_collapse import CollapseThresholds
+    from mureo.analytics.builtin._delivery_clients import DeliveryFetcher
 from mureo.analytics.builtin._creative_audit import (
     audit_google_ads_creatives,
     summarise_findings_by_campaign,
+)
+from mureo.analytics.builtin._delivery_clients import (
+    DEFAULT_HISTORY_DAYS,
+    fetch_google_ads_delivery_series,
+    run_delivery_collapse,
 )
 from mureo.analytics.builtin._live_clients import (
     NoCredentialsError,
@@ -54,6 +63,7 @@ from mureo.analytics.models import (
     Anomaly,
     BudgetEfficiency,
     CreativeAudit,
+    DeliveryCollapseReport,
     PerformanceDiagnosis,
     PerformanceScope,
 )
@@ -65,6 +75,7 @@ _CAPABILITIES: frozenset[AnalyticsCapability] = frozenset(
         AnalyticsCapability.DIAGNOSE_PERFORMANCE,
         AnalyticsCapability.AUDIT_CREATIVE,
         AnalyticsCapability.ANALYZE_BUDGET_EFFICIENCY,
+        AnalyticsCapability.DETECT_DELIVERY_COLLAPSE,
     }
 )
 
@@ -87,6 +98,7 @@ class GoogleAdsAnalyticsModule(AnalyticsModule):
         performance_fetcher: PerformanceFetcher | None = None,
         per_campaign_metrics_fetcher: PerCampaignMetricsFetcher | None = None,
         ads_list_fetcher: AdsListFetcher | None = None,
+        delivery_fetcher: DeliveryFetcher | None = None,
     ) -> None:
         # ``metrics_fetcher`` is the legacy aggregate-path injection
         # (kept for back-compat with existing tests); the live default
@@ -98,6 +110,7 @@ class GoogleAdsAnalyticsModule(AnalyticsModule):
         self._performance_fetcher = performance_fetcher
         self._per_campaign_metrics_fetcher = per_campaign_metrics_fetcher
         self._ads_list_fetcher = ads_list_fetcher
+        self._delivery_fetcher = delivery_fetcher
 
     def capabilities(self) -> frozenset[AnalyticsCapability]:
         return _CAPABILITIES
@@ -278,6 +291,29 @@ class GoogleAdsAnalyticsModule(AnalyticsModule):
             account_id=account_id,
             spend_key="cost",
             nested_metrics=True,
+        )
+
+    async def detect_delivery_collapse(
+        self,
+        account_id: str,
+        *,
+        history_days: int = DEFAULT_HISTORY_DAYS,
+        thresholds: CollapseThresholds | None = None,
+        as_of: date | None = None,
+    ) -> DeliveryCollapseReport:
+        """Flag Google Ads campaigns that stopped serving while ENABLED (#546).
+
+        Only the fetch is Google-specific: the baseline, the cliff walk
+        and the thresholds are the shared core, so the same behaviour
+        holds on every platform that can produce day-grain delivery.
+        """
+        return await run_delivery_collapse(
+            platform=self.platform,
+            account_id=account_id,
+            fetcher=self._delivery_fetcher or fetch_google_ads_delivery_series,
+            history_days=history_days,
+            thresholds=thresholds,
+            as_of=as_of,
         )
 
 

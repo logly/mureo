@@ -41,15 +41,19 @@ def pinned_today(monkeypatch: pytest.MonkeyPatch) -> date:
     The legacy branch reads the wall clock itself, so a test that also
     reads it compares two independent clock reads and breaks on a run
     that straddles midnight (#562). Pin the module's ``date`` instead —
-    the assertion then measures the window arithmetic, not the clock."""
-    from mureo.byod import clients
+    the assertion then measures the window arithmetic, not the clock.
+
+    The patch target is ``_client_common``, where ``_period_to_range``
+    now lives after the #546 split; ``mureo.byod.clients`` re-exports the
+    function but not the ``date`` name its globals resolve against."""
+    from mureo.byod import _client_common
 
     class _PinnedDate(date):
         @classmethod
         def today(cls) -> date:
             return _PINNED_TODAY
 
-    monkeypatch.setattr(clients, "date", _PinnedDate)
+    monkeypatch.setattr(_client_common, "date", _PinnedDate)
     return _PINNED_TODAY
 
 

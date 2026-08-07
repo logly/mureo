@@ -208,6 +208,25 @@ The contract:
 | `async audit_creative(account_id)` | Same. |
 | `async analyze_budget_efficiency(account_id)` | Same. |
 
+**`detect_delivery_collapse` is NOT on this Protocol** (#546). Adding a
+fifth member would have been breaking in a way that is easy to miss:
+`AnalyticsModule` is `runtime_checkable`, and `isinstance` against a
+runtime-checkable Protocol requires *every* member, so every already
+published four-method module would have started failing the check. The
+optional extension lives in its own Protocol instead:
+
+| Member | Stability |
+|---|---|
+| `mureo.analytics.DeliveryCollapseModule` | Optional extension Protocol; `runtime_checkable`. Implement it **in addition to** `AnalyticsModule`. |
+| `async detect_delivery_collapse(account_id, *, history_days=60, thresholds=None, as_of=None) -> DeliveryCollapseReport` | Required signature when implemented; advertise `AnalyticsCapability.DETECT_DELIVERY_COLLAPSE`. |
+
+The registry's structural validator is unchanged — it still requires
+exactly the four `AnalyticsModule` methods — so a module that does not
+implement the extension keeps registering and simply never advertises
+the capability. This is the pattern to follow for any future optional
+method: a sibling Protocol, never a new member on a runtime-checkable
+one.
+
 `AnalyticsCapability` is `class AnalyticsCapability(str, Enum)` (not
 the 3.11-only `StrEnum`, since mureo supports 3.10). Member values
 are stable strings — compare with `cap.value` or `cap == "detect_anomalies"`,
@@ -219,8 +238,13 @@ platforms. Renaming or removing a member is breaking, same rule as
 `Capability`.
 
 `Anomaly` / `PerformanceDiagnosis` / `CreativeAudit` /
-`CreativeFinding` / `BudgetEfficiency` live in
-`mureo.analytics.models` as `@dataclass(frozen=True)`. The field-
+`CreativeFinding` / `BudgetEfficiency` / `DeliveryCollapseReport` live in
+`mureo.analytics.models` as `@dataclass(frozen=True)`. The
+delivery-collapse models (`CollapseSignal`, `DeliverySeries`,
+`DailyDelivery`, `CollapseThresholds`, `CollapseSeverity`,
+`BaselineMethod`) are defined once in `mureo.analysis.delivery_collapse`
+and re-exported from `mureo.analytics.models` / `mureo.analytics`; import
+them from either path. The field-
 mutation rules in §5 apply to them identically — adding a field with
 a default is non-breaking; adding one without a default is breaking.
 

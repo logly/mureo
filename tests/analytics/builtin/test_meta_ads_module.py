@@ -24,6 +24,9 @@ def test_advertised_capabilities() -> None:
             AnalyticsCapability.DIAGNOSE_PERFORMANCE,
             AnalyticsCapability.AUDIT_CREATIVE,
             AnalyticsCapability.ANALYZE_BUDGET_EFFICIENCY,
+            # #546 — advertised via the optional DeliveryCollapseModule
+            # extension, not a fifth AnalyticsModule method.
+            AnalyticsCapability.DETECT_DELIVERY_COLLAPSE,
         }
     )
 

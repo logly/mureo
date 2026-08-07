@@ -3,18 +3,28 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
+from mureo.analysis.delivery_collapse import fill_missing_delivery_days
+from mureo.core import clock
 from mureo.google_ads._analysis_constants import (
     _calc_change_rate,
     _get_comparison_date_ranges,
     _safe_metrics,
 )
+from mureo.google_ads._gaql_validator import validate_period_days
+from mureo.google_ads.mappers import map_entity_status
 
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
 
 logger = logging.getLogger(__name__)
+
+#: Trailing window the delivery-collapse detector asks for by default:
+#: a 28-day baseline plus room for a collapse that has already been
+#: running for a month before anyone looked.
+DAILY_DELIVERY_DEFAULT_DAYS = 60
 
 
 class _PerformanceAnalysisMixin:
@@ -28,6 +38,7 @@ class _PerformanceAnalysisMixin:
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
     def _get_service(self, service_name: str) -> Any: ...
     def _period_to_date_clause(self, period: str) -> str: ...  # type: ignore[empty-body]
+    async def _search(self, query: str) -> list[Any]: ...  # type: ignore[empty-body]
 
     async def get_campaign(self, campaign_id: str) -> dict[str, Any] | None: ...
     async def list_campaigns(  # type: ignore[empty-body]
@@ -671,3 +682,70 @@ class _PerformanceAnalysisMixin:
             "recommendation": recommendation,
             "insights": insights,
         }
+
+    # =================================================================
+    # Day-grain delivery (#546)
+    # =================================================================
+
+    async def get_daily_delivery_report(
+        self, days: int = DAILY_DELIVERY_DEFAULT_DAYS
+    ) -> list[dict[str, Any]]:
+        """Return one row per (campaign, day) for the trailing ``days``.
+
+        The delivery-collapse detector needs a real time series, not a
+        period aggregate: its baseline is the median of the *same
+        weekday* over several weeks, so ``get_performance_report``'s
+        collapsed totals cannot feed it.
+
+        Rows follow the platform-agnostic delivery shape consumed by
+        :func:`mureo.analysis.delivery_collapse.delivery_series_from_rows`
+        (``campaign_id`` / ``campaign_name`` / ``status`` / ``end_date`` /
+        ``date`` / ``impressions`` / ``clicks`` / ``cost``).
+
+        ``days`` is range-checked by the GAQL validator and the two dates
+        are produced by :meth:`datetime.date.isoformat`, whose format
+        Python locks — no caller-controlled string reaches the query.
+
+        GAQL omits a ``(campaign, date)`` row entirely when the campaign
+        did not serve that day, rather than returning ``impressions=0``.
+        That is precisely the shape this detector looks for, so gaps are
+        reconciled before the rows leave — otherwise a dead campaign's
+        series simply ends at its last active day and nothing ever fires.
+
+        Reconciliation is bounded by what the report PROVES was covered
+        (the latest date any campaign reported), never by the range that
+        was requested: Google has not always finished computing the most
+        recent day, and filling it as zero turns normal reporting lag
+        into a CRITICAL 100% drop on every healthy campaign.
+        """
+        window = validate_period_days(days)
+        end = clock.server_now().date()
+        start = end - timedelta(days=window)
+        query = (
+            "SELECT campaign.id, campaign.name, campaign.status, "
+            "campaign.end_date, segments.date, metrics.impressions, "
+            "metrics.clicks, metrics.cost_micros "
+            "FROM campaign "
+            f"WHERE segments.date BETWEEN '{start.isoformat()}' "
+            f"AND '{end.isoformat()}'"
+        )
+        rows = await self._search(query)
+        return fill_missing_delivery_days([_daily_delivery_row(row) for row in rows])
+
+
+def _daily_delivery_row(row: Any) -> dict[str, Any]:
+    """Map one GAQL ``segments.date`` row to the shared delivery shape."""
+    end_date = str(getattr(row.campaign, "end_date", "") or "")
+    return {
+        "campaign_id": str(row.campaign.id),
+        "campaign_name": str(row.campaign.name),
+        "status": map_entity_status(row.campaign.status),
+        # Google returns 2037-12-30 for "no end date"; passing it through
+        # is harmless (a cliff can never post-date it) and avoids
+        # hard-coding a sentinel that Google may change.
+        "end_date": end_date,
+        "date": str(row.segments.date),
+        "impressions": int(row.metrics.impressions),
+        "clicks": int(row.metrics.clicks),
+        "cost": float(row.metrics.cost_micros) / 1_000_000,
+    }

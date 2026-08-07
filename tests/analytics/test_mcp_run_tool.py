@@ -13,6 +13,7 @@ from mureo.analytics.models import (
     BudgetEfficiency,
     CreativeAudit,
     CreativeFinding,
+    DeliveryCollapseReport,
     PerformanceDiagnosis,
     PerformanceScope,
 )
@@ -349,3 +350,69 @@ async def test_cancelled_error_propagates() -> None:
                 "account_id": "acct-1",
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# Delivery collapse — the optional fifth capability (#546)
+# ---------------------------------------------------------------------------
+
+
+class _CollapseModule(_RecordingModule):
+    """A plugin that also implements the optional collapse extension."""
+
+    platform = "fake_platform"
+
+    def __init__(self) -> None:
+        super().__init__(caps=frozenset({AnalyticsCapability.DETECT_DELIVERY_COLLAPSE}))
+
+    async def detect_delivery_collapse(
+        self, account_id: str, **kwargs: object
+    ) -> DeliveryCollapseReport:
+        self.calls.append(("detect_delivery_collapse", (account_id,), dict(kwargs)))
+        return DeliveryCollapseReport(
+            platform=self.platform,
+            account_id=account_id,
+            status="data_unavailable",
+            detail="this platform reports no day-grain delivery",
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_dispatches_detect_delivery_collapse() -> None:
+    module = _CollapseModule()
+    register_analytics_module(module)
+
+    result = await handle_tool(
+        "mureo_analytics_run",
+        {
+            "platform": "fake_platform",
+            "capability": "detect_delivery_collapse",
+            "account_id": "acct-1",
+        },
+    )
+    payload = json.loads(result[0].text)
+
+    assert payload["status"] == "ok"
+    assert payload["result"]["status"] == "data_unavailable"
+    assert module.calls[0][0] == "detect_delivery_collapse"
+    # window_days is meaningless for a multi-week baseline and must not be
+    # forwarded: 7 days of history cannot support a same-weekday median.
+    assert module.calls[0][2] == {}
+
+
+@pytest.mark.asyncio
+async def test_module_without_the_extension_reports_capability_not_available() -> None:
+    """A four-method plugin stays fully usable; it just cannot do this."""
+    register_analytics_module(_RecordingModule())
+
+    result = await handle_tool(
+        "mureo_analytics_run",
+        {
+            "platform": "fake_platform",
+            "capability": "detect_delivery_collapse",
+            "account_id": "acct-1",
+        },
+    )
+    payload = json.loads(result[0].text)
+
+    assert payload["status"] == "capability_not_available"

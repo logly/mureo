@@ -90,8 +90,9 @@ mureo/
 │   ├── _handlers_search_console.py        # Search Console handlers
 │   ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
 │   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
-│   ├── tools_analysis.py                  # analysis_anomalies_check
+│   ├── tools_analysis.py                  # analysis_anomalies_check + analysis_delivery_collapse_*
 │   ├── _handlers_analysis.py              # Anomaly detector composition handler
+│   ├── _handlers_delivery_collapse.py     # Delivery-collapse check / diagnose handlers (#546)
 │   ├── tools_analytics_registry.py        # mureo_analytics_modules_list / mureo_analytics_run (#440)
 │   ├── tools_creative_studio.py           # creative_studio_* (visual generation + compose)
 │   ├── tools_learning.py                  # mureo_learning_insights_get / mureo_consult_advisor
@@ -121,7 +122,12 @@ mureo/
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   ├── lp_analyzer.py   # Landing page analyzer
-│   └── anomaly_detector.py  # Zero-spend / CPA-spike / CTR-drop detection (pure, sample-size-gated)
+│   ├── anomaly_detector.py  # Zero-spend / CPA-spike / CTR-drop detection (pure, sample-size-gated)
+│   ├── delivery_collapse.py # Delivery-collapse detection (#546) — weekday-aware baseline taken
+│   │                        #   from the platform's own daily delivery, never from action_log
+│   ├── delivery_collapse_config.py  # ## Guardrails -> CollapseThresholds (the only I/O half)
+│   └── collapse_diagnosis.py        # Change x metric timeline + elimination ladder; reports the
+│                                    #   open questions, never a cause it did not evidence
 ├── rollback/            # Rollback feature (allow-list gated, append-only audit trail)
 │   ├── models.py        # RollbackStatus enum + RollbackPlan dataclass
 │   ├── planner.py       # plan_rollback(ActionLogEntry) -> RollbackPlan | None
@@ -220,7 +226,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 |--------|-------|
 | Analytics Registry (#440) | `mureo_analytics_modules_list`, `mureo_analytics_run` |
 | Rollback | `rollback_plan_get`, `rollback_apply` |
-| Analysis | `analysis_anomalies_check` |
+| Analysis | `analysis_anomalies_check`, `analysis_delivery_collapse_check`, `analysis_delivery_collapse_diagnose` |
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
 | mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_platform_metrics_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate` |
@@ -278,6 +284,17 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 ## Test Coverage
 
 - Target: 80% minimum (enforced by `tool.coverage.report.fail_under`)
+- **Mutation check for the delivery-collapse detector**: `python scripts/mutation_check.py`
+  injects ~20 plausible wrong implementations and asserts the tests object to each.
+  Green tests prove the code passes its tests, not that the tests would notice if the
+  code were wrong — and for a detector whose failure mode is *silence on a dead
+  account*, "the suite is green" is exactly the reassurance that hides the bug. Two
+  CRITICALs in #546 shipped past a green suite. Run it when touching
+  `mureo/analysis/delivery_collapse*.py`, `collapse_diagnosis.py`, or any
+  `get_daily_delivery_report`. A **survivor is a gap in the tests**, not a pass: add the
+  missing assertion rather than deleting the mutation. `tests/test_mutation_harness.py`
+  asserts every anchor still resolves, so a refactor cannot turn the harness into a
+  no-op that always "passes".
 - Framework: pytest + pytest-asyncio
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests
 - Use `@pytest.mark.unit` / `@pytest.mark.integration` for categorization

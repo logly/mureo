@@ -13,7 +13,11 @@ from mureo.analytics.models import (
     PerformanceDiagnosis,
     PerformanceScope,
 )
-from mureo.analytics.protocol import AnalyticsCapability, AnalyticsModule
+from mureo.analytics.protocol import (
+    AnalyticsCapability,
+    AnalyticsModule,
+    DeliveryCollapseModule,
+)
 
 
 class _WellFormedModule:
@@ -73,12 +77,30 @@ def test_capability_values_are_stable_strings() -> None:
     assert AnalyticsCapability.DIAGNOSE_PERFORMANCE == "diagnose_performance"
     assert AnalyticsCapability.AUDIT_CREATIVE == "audit_creative"
     assert AnalyticsCapability.ANALYZE_BUDGET_EFFICIENCY == "analyze_budget_efficiency"
+    assert AnalyticsCapability.DETECT_DELIVERY_COLLAPSE == "detect_delivery_collapse"
 
 
 @pytest.mark.unit
 def test_capability_enum_is_complete() -> None:
-    # Four capabilities map 1:1 with the four Protocol methods.
-    assert len(AnalyticsCapability) == 4
+    # Four capabilities map 1:1 with AnalyticsModule's four methods; the
+    # fifth (#546) maps to the optional DeliveryCollapseModule extension.
+    assert len(AnalyticsCapability) == 5
+
+
+@pytest.mark.unit
+def test_optional_extension_is_not_folded_into_analytics_module() -> None:
+    """#546 — the collapse capability must NOT add a member to
+    ``AnalyticsModule``.
+
+    ``isinstance`` against a runtime-checkable Protocol requires every
+    member, so a fifth method there would have silently invalidated every
+    already-published four-method plugin. ``_WellFormedModule`` is exactly
+    such a plugin: it must keep satisfying ``AnalyticsModule`` while
+    failing the separate extension Protocol.
+    """
+    module = _WellFormedModule()
+    assert isinstance(module, AnalyticsModule)
+    assert not isinstance(module, DeliveryCollapseModule)
 
 
 @pytest.mark.asyncio

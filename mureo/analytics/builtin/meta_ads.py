@@ -35,10 +35,19 @@ from mureo.analytics.builtin._common import (
 from mureo.context.state import load_conversion_action_types
 
 if TYPE_CHECKING:
+    from datetime import date
+
     from mureo.analysis.anomaly_detector import CampaignMetrics
+    from mureo.analysis.delivery_collapse import CollapseThresholds
+    from mureo.analytics.builtin._delivery_clients import DeliveryFetcher
 from mureo.analytics.builtin._creative_audit import (
     audit_meta_ads_creatives,
     summarise_findings_by_campaign,
+)
+from mureo.analytics.builtin._delivery_clients import (
+    DEFAULT_HISTORY_DAYS,
+    fetch_meta_ads_delivery_series,
+    run_delivery_collapse,
 )
 from mureo.analytics.builtin._live_clients import (
     NoCredentialsError,
@@ -50,6 +59,7 @@ from mureo.analytics.models import (
     Anomaly,
     BudgetEfficiency,
     CreativeAudit,
+    DeliveryCollapseReport,
     PerformanceDiagnosis,
     PerformanceScope,
 )
@@ -61,6 +71,7 @@ _CAPABILITIES: frozenset[AnalyticsCapability] = frozenset(
         AnalyticsCapability.DIAGNOSE_PERFORMANCE,
         AnalyticsCapability.AUDIT_CREATIVE,
         AnalyticsCapability.ANALYZE_BUDGET_EFFICIENCY,
+        AnalyticsCapability.DETECT_DELIVERY_COLLAPSE,
     }
 )
 
@@ -91,14 +102,41 @@ class MetaAdsAnalyticsModule(AnalyticsModule):
         performance_fetcher: PerformanceFetcher | None = None,
         per_campaign_metrics_fetcher: PerCampaignMetricsFetcher | None = None,
         ads_list_fetcher: AdsListFetcher | None = None,
+        delivery_fetcher: DeliveryFetcher | None = None,
     ) -> None:
         self._metrics_fetcher = metrics_fetcher
         self._performance_fetcher = performance_fetcher
         self._per_campaign_metrics_fetcher = per_campaign_metrics_fetcher
         self._ads_list_fetcher = ads_list_fetcher
+        self._delivery_fetcher = delivery_fetcher
 
     def capabilities(self) -> frozenset[AnalyticsCapability]:
         return _CAPABILITIES
+
+    async def detect_delivery_collapse(
+        self,
+        account_id: str,
+        *,
+        history_days: int = DEFAULT_HISTORY_DAYS,
+        thresholds: CollapseThresholds | None = None,
+        as_of: date | None = None,
+    ) -> DeliveryCollapseReport:
+        """Flag Meta campaigns that stopped delivering while ACTIVE (#546).
+
+        Same shared core as the Google adapter; only the day-grain fetch
+        differs. Meta's insights edge carries no status, so the fetcher
+        joins ``effective_status`` from ``list_campaigns`` — without it
+        the *status says serving, nothing is serving* contradiction that
+        defines this signal cannot be evaluated at all.
+        """
+        return await run_delivery_collapse(
+            platform=self.platform,
+            account_id=account_id,
+            fetcher=self._delivery_fetcher or fetch_meta_ads_delivery_series,
+            history_days=history_days,
+            thresholds=thresholds,
+            as_of=as_of,
+        )
 
     async def detect_anomalies(
         self,

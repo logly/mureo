@@ -7,6 +7,121 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Delivery-collapse detection and diagnosis, across all platforms** (#546).
+  mureo could detect a cost spike but not its inverse:
+  `google_ads_cost_increase_investigate` existed, nothing answered "the
+  campaign is still ENABLED and its impressions are zero". That is the most
+  detectable failure mode in ad operations, and it had no scheduled detector
+  and no root-cause workflow. The two halves ship separately because they are
+  worth having separately — knowing a campaign died is actionable hours before
+  anyone knows why.
+
+  **Detection** — `analysis_delivery_collapse_check` (any platform, fed
+  day-grain rows) and the new `detect_delivery_collapse` analytics capability
+  (Google Ads / Meta Ads, fetched automatically). `/daily-check` runs it in
+  both modes. Two design points make it usable unattended:
+
+  - **The baseline comes from the platform's own daily delivery, not
+    `action_log`.** The generic `analysis_anomalies_check` must be hand-fed one
+    campaign's metrics and baselines off action-log history, which is thin or
+    empty on accounts operated partly by hand — silent exactly where the
+    detector is needed.
+  - **The baseline is weekday-aware.** A retail account running 350k
+    impressions on a Tuesday and 15k on a Saturday is a 96% swing; a flat
+    median would raise a CRITICAL every weekend and the operator would mute the
+    detector by the second one. Also suppressed: the partial current day (budget
+    pacing makes every morning look like a cliff), intentional pauses, finished
+    flights, low-volume campaigns, and campaigns with under two weeks of
+    history. `delivery_collapse_min_baseline_days` counts days that actually
+    **delivered**, not the window's length, so a campaign cannot clear the
+    minimum-history bar on days it was already down. Thresholds are the
+    operator's, in STRATEGY.md `## Guardrails`
+    (`delivery_collapse_drop_pct`, `delivery_collapse_consecutive_days`,
+    `delivery_collapse_min_baseline_impressions`,
+    `delivery_collapse_baseline_days`, …).
+  - **It does not depend on how long the outage has been running.** The
+    baseline window sits strictly before the cliff and the scan runs forward
+    over every candidate, so a collapse of any length reports the real cliff
+    date. `test_collapse_duration_sweep` asserts the whole duration range
+    rather than one length: a detector that silently stops firing on the
+    LONGEST outages is worst exactly where it matters, and the report layer
+    renders that silence as "checked, healthy".
+  - **It does not depend on whether a platform emits zero-delivery rows.**
+    Google Ads and Meta both omit a `(campaign, date)` row when nothing
+    served — the very symptom being looked for — so missing days are
+    reconciled to explicit zeros wherever the report *proves* the platform
+    covered them: a gap bracketed by later rows (the campaign's own, or any
+    other campaign in the account) is certain. Days beyond the last date
+    anything was reported are left out of the evaluation instead, because a
+    dead campaign and a platform that has not caught up are
+    indistinguishable there — filling them turns normal reporting lag into
+    a CRITICAL on every healthy campaign. Correct whichever way the APIs
+    behave, and a no-op for a platform that already returns zeros. Days
+    before a campaign's first observed row are never invented.
+    The bracket is the report rather than the single campaign, which
+    assumes every campaign in one call was fetched together and finalises
+    together — true by construction for mureo's own account-wide queries,
+    and stated as a precondition (with `reported_through` as the escape
+    hatch) for agents assembling rows themselves.
+  - **It says what it could not see.** `reported_through` and
+    `unreported_days` ride alongside `signals`, so an empty signal list is
+    only an all-clear when the platform is current. The two detection blind
+    spots that follow from refusing to assume — a campaign with no rows
+    anywhere in the window, and an account where every campaign stopped
+    reporting at once — are documented in `docs/mcp-server.md`, in the
+    diagnosis `limitations`, and in `/daily-check`.
+
+  **Diagnosis** — `analysis_delivery_collapse_diagnose` overlays the change
+  feed on daily delivery to answer "what changed immediately before the
+  cliff?", then walks the elimination ladder (ad approval/policy, billing,
+  budget, bid competitiveness, targeting and exclusions, learning state, flight
+  dates). **It does not promise a cause.** In the incident this was built from,
+  an agent with complete API access ran every one of those checks and still
+  could not say why two campaigns died on the same day — so the output reports
+  what was ruled out, what is implicated with its evidence, and what remains
+  unknown, and returns `most_likely_cause: null` /
+  `confidence: "undetermined"` rather than nominating a cause the evidence does
+  not support. Every response carries the standing limits: serving-side
+  suppression, billing state and learning-phase internals are not readable
+  through any API mureo integrates on any platform, the change feeds that do
+  reach mureo are incomplete (Google Ads change history omits system-initiated
+  changes and retains ~30 days; Meta publishes an account activity log that
+  mureo does not fetch yet), and a same-day multi-campaign collapse is reported
+  as a correlation, never a cause. `/rescue` gained the workflow that drives
+  this.
+
+  **Platform coverage is stated, not implied.** Google Ads and Meta Ads detect
+  and diagnose automatically (live and BYOD). TikTok and other hosted
+  connectors, the Amazon official-MCP bridge, and plugin platforms run the
+  identical core detector and ladder through the two `analysis_*` tools once a
+  skill feeds them normalised day-grain rows; mureo has no automatic
+  evidence lookups there and says so instead of implying it does.
+
+  Supporting work: `get_daily_delivery_report` on the Google Ads, Meta Ads and
+  both BYOD clients (the BYOD ones implemented explicitly, because the
+  `__getattr__` empty-list fallback would otherwise have passed a bundle off as
+  "checked, nothing collapsed"); `DeliveryCollapseReport.status` distinguishes
+  `ok` / `no_credentials` / `data_unavailable` so a fetch failure can never be
+  read as an all-clear.
+
+- **`scripts/mutation_check.py`** — targeted mutation testing for the
+  delivery-collapse detector. Green tests prove the code passes its tests,
+  not that the tests would notice if the code were wrong; this injects ~20
+  plausible wrong implementations and asserts the suite objects to each.
+  It is how the long-collapse baseline bug was found. A survivor is a gap
+  in the tests, not a pass. `tests/test_mutation_harness.py` pins every
+  anchor so a refactor cannot silently reduce the harness to a no-op.
+
+- **`mureo.analytics.DeliveryCollapseModule`** — the optional extension
+  Protocol plugins implement for the capability above. It is deliberately a
+  **sibling** Protocol rather than a fifth method on `AnalyticsModule`:
+  `AnalyticsModule` is `runtime_checkable`, and `isinstance` against a
+  runtime-checkable Protocol requires every member, so adding one would have
+  silently invalidated every already-published four-method module. The
+  registry's structural validator is unchanged. See `docs/ABI-stability.md`.
+
 ## [0.10.43] - 2026-08-07
 
 ### Changed
