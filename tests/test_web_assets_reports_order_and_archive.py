@@ -1,8 +1,11 @@
 """Static-content guards for the Reports index reorder + archive controls.
 
-There is no JS build step and no JS test runner in this repo (#540), so —
-like ``test_web_assets_reports_conflicts.py`` — these read the bundled
-assets in ``mureo/_data/web/`` and pin the *shape* of what ships: that the
+There is still no JS build step, and the runner added in #540
+(``node --test tests/js/``) covers only the DOM-free Reports logic that was
+extracted into ``reports_logic.js``. The ordering and archive helpers below
+touch ``localStorage`` and the grid DOM and were NOT extracted, so — like
+``test_web_assets_reports_conflicts.py`` — these read the bundled assets in
+``mureo/_data/web/`` and pin the *shape* of what ships: that the
 identifiers, i18n keys, DOM hooks and CSS rules the feature depends on are
 present, in both locales, and that nothing here reintroduces ``innerHTML``.
 

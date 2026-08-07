@@ -8,6 +8,13 @@ Thank you for your interest in contributing to mureo. This guide covers the deve
 
 - Python 3.10 or later
 - Git
+- Node.js 20 or later (`node:test` was experimental before 20) — **only**
+  to run the browser-asset tests
+  (`node --test tests/js/*.test.js`). mureo ships no JavaScript
+  dependencies, there is no `package.json` and no build step; Node is used
+  purely as a test runner for the DOM-free logic in
+  `mureo/_data/web/reports_logic.js`. Skip it if you are not touching the
+  configure UI — CI runs it either way.
 
 ### Clone and Install
 
@@ -59,6 +66,28 @@ pytest -m unit
 # Integration tests only
 pytest -m integration
 ```
+
+### Browser Assets
+
+The configure UI in `mureo/_data/web/` ships as plain `<script>`-loaded
+files — no bundler, no module system, no build step. Most of it is guarded
+by the `tests/test_web_assets_*.py` pins, which grep the shipped asset for
+the names, strings and selectors a feature depends on.
+
+Grepping cannot catch an inverted condition, so the DOM-free logic behind
+the Reports dashboard's money figures lives in its own asset,
+`mureo/_data/web/reports_logic.js`, and is executed by Node's built-in test
+runner:
+
+```bash
+node --test tests/js/*.test.js
+```
+
+No install step: no `package.json`, no dependencies, no lockfile. The
+module publishes `window.MUREO_REPORTS_LOGIC` for the browser and carries an
+inert `module.exports` tail so Node can require the exact bytes the browser
+is served. When you add DOM-free logic to the configure UI, put it there
+and test it; rendering stays in `dashboard.js` and stays pinned statically.
 
 ### Test Framework
 
@@ -183,6 +212,8 @@ Never commit credentials, API keys, or tokens. Use environment variables or `~/.
 3. **Types pass**: `mypy mureo/`
 4. **Lint passes**: `ruff check mureo/`
 5. **Formatted**: `black --check mureo/ tests/`
+6. **Browser assets pass** (only if you touched `mureo/_data/web/`):
+   `node --test tests/js/*.test.js`
 
 ### PR Structure
 
@@ -232,7 +263,8 @@ mureo/
 │   ├── context/
 │   ├── cli/
 │   └── mcp/
-├── tests/               # Test suite
+├── tests/               # Test suite (pytest)
+│   └── js/              # Browser-asset tests (node --test, no deps)
 ├── docs/                # Documentation
 ├── pyproject.toml       # Project configuration
 └── README.md

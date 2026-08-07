@@ -6,7 +6,7 @@
 - #224: declared fields pre-fill from the list payload's current state —
   non-secret values verbatim, secrets via a ``configured`` flag only.
 
-No JS test harness ships in the repo, so the contract is pinned by
+No JS test harness runs THIS code — ``node --test tests/js/`` covers only the DOM-free Reports logic extracted in #540, so the contract is pinned by
 grepping the bundled ``dashboard.js``.
 """
 

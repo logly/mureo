@@ -16,6 +16,10 @@ mureo combines strategy context, workflow commands, and domain knowledge to help
 pip install -e ".[dev]"
 pytest tests/ -v
 pytest tests/ --cov=mureo --cov-report=term-missing
+
+# Browser assets (only when mureo/_data/web/ changes). Node's built-in
+# runner — no package.json, no dependencies, no build step.
+node --test tests/js/*.test.js
 ```
 
 ## Architecture
@@ -278,6 +282,15 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests
 - Use `@pytest.mark.unit` / `@pytest.mark.integration` for categorization
 - Async test mode: auto (`asyncio_mode = "auto"`)
+- **Browser assets** (`mureo/_data/web/`): they ship as plain
+  `<script>`-loaded files, so nothing there may grow a bundler, a module
+  system or a build step. Rendering is guarded by the substring pins in
+  `tests/test_web_assets_*.py`. DOM-free logic goes in
+  `mureo/_data/web/reports_logic.js` — which publishes
+  `window.MUREO_REPORTS_LOGIC` for the browser and carries an inert
+  `module.exports` tail so `node --test tests/js/*.test.js` executes the
+  exact bytes the browser is served. Put new decision logic there; a
+  grep-pin cannot catch an inverted condition.
 
 ## Credential Security
 

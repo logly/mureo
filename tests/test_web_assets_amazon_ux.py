@@ -1,6 +1,6 @@
 """Static-content guards for the Amazon Ads configure-UI parity work.
 
-No JS test harness ships in the repo, so the contract is pinned by
+No JS test harness runs THIS code — ``node --test tests/js/`` covers only the DOM-free Reports logic extracted in #540, so the contract here is pinned by
 grepping the bundled assets (the same convention as
 ``test_web_assets_plugin_credentials_render.py``):
 

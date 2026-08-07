@@ -1,7 +1,7 @@
 """Static-content guards for the plugin-OAuth card rework (#216/#217).
 
-No JS test harness ships in the repo, so the ``dashboard.js`` OAuth card
-contract is pinned by grepping the bundled asset (read directly from
+No JS test harness runs THIS code — ``node --test tests/js/`` covers only the DOM-free Reports logic extracted in #540, so the ``dashboard.js`` OAuth
+card contract is pinned by grepping the bundled asset (read directly from
 ``mureo/_data/web/`` at runtime — no build step). A future refactor that
 drops the operator callback-URL input (#216), re-adds a Save button to an
 OAuth provider, stops sending the form values on Authenticate (#217), or

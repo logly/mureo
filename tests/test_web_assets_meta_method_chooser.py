@@ -8,8 +8,8 @@ anyway and dead-ended. The two paths are mutually exclusive alternatives, so
 the step now opens with an explicit either/or chooser and reveals **only**
 the chosen flow.
 
-No JS test harness ships in the repo, so the ``auth_wizards.js`` contract is
-pinned by grepping the bundled asset: the chooser's ``data-i18n`` keys, its
+No JS test harness runs THIS code — ``node --test tests/js/`` covers only the DOM-free Reports logic extracted in #540, so the ``auth_wizards.js`` contract
+is pinned by grepping the bundled asset: the chooser's ``data-i18n`` keys, its
 radio semantics, its keyboard wiring, and — the actual bug fix — that
 nothing is preselected and neither flow is visible until the operator picks.
 """

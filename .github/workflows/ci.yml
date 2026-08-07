@@ -27,6 +27,39 @@ jobs:
       - name: Type check
         run: mypy mureo/ --ignore-missing-imports
 
+  # Browser-asset logic guard (#540). mureo/_data/web/reports_logic.js holds
+  # the money-safety half of the Reports dashboard — the KPI-withholding
+  # condition (#533), the freshness aggregation (#535), the conflict-kind
+  # routing. The Python guards in tests/test_web_assets_*.py can only pin
+  # substrings; an inverted condition ships green past them. This job
+  # EXECUTES that logic.
+  #
+  # Deliberately dependency-free: Node's built-in test runner, no
+  # package.json, no lockfile, no npm install, no new pinned action — it
+  # uses the Node preinstalled on the runner. Adding a JS toolchain to a
+  # Python project's CI is a real cost, and this keeps it at ~1s and zero
+  # supply-chain surface. Independent of `lint` on purpose: a Python
+  # formatting failure must not hide a broken money figure.
+  #
+  # NOTE — the Node version floats with `ubuntu-latest`, ON PURPOSE. Please
+  # do NOT "fix" this by adding `actions/setup-node`: that trades a pinned
+  # version floor for a third-party action in the supply chain of every CI
+  # run. The suite uses only `node:test`, `node:assert` and `node:vm`.
+  # `node:test` shipped in Node 18.0.0 as experimental and reached stable in
+  # Node 20; `node:assert` and `node:vm` are long-stable. So the real floor
+  # is Node 20, and `ubuntu-latest` has shipped well past that since 2023 —
+  # the drift risk is a version becoming NEWER, which these APIs are
+  # backwards-compatible across. The `node --version` step exists so a
+  # future incompatibility is visible in the log instead of being guessed at.
+  test-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Node version
+        run: node --version
+      - name: Run browser-asset tests
+        run: node --test tests/js/*.test.js
+
   test:
     needs: lint
     runs-on: ubuntu-latest

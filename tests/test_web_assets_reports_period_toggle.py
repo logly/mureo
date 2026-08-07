@@ -6,6 +6,11 @@ These tests pin the *shape* of the bundled web assets (no build step —
 read directly from ``mureo/_data/web/``) so a future refactor that drops
 the toggle wiring, the ``?period=`` request, or the default-window choice
 flips red here before an operator notices the regression.
+
+The toggle itself is rendering and has no runner. The KPI aggregation it
+re-requests moved to ``reports_logic.js`` in #540 and IS executed there, by
+``node --test tests/js/`` — so the pin below reads the aggregate helper from
+that file and only checks that ``dashboard.js`` still calls it.
 """
 
 from __future__ import annotations
@@ -154,7 +159,8 @@ def test_reports_index_detail_navigation() -> None:
     # JS builds the index, aggregates KPIs, opens detail, and toggles views.
     assert "function renderReportsIndex(" in js
     assert "function buildClientCard(" in js
-    assert "function aggregateClientKpis(" in js
+    assert "function aggregateClientKpis(" in _read("reports_logic.js")
+    assert "aggregateClientKpis(summary)" in js
     assert "function showReportsClientDetail(" in js
     assert "function setReportsView(" in js
     assert "renderReportsClientSelector" not in js
