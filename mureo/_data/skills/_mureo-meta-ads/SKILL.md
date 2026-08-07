@@ -106,6 +106,8 @@ metadata:
 | 86 | `meta_ads_leads_export_csv` | Lead | Write (local) | Export form leads to a local CSV file |
 | 87 | `meta_ads_videos_get` | Video | Read | Get video processing status / metadata |
 | 88 | `meta_ads_videos_thumbnails` | Video | Read | List auto-generated video thumbnails |
+| 89 | `meta_ads_excluded_placements_get` | Placement Exclusion | Read | Read an ad set's publisher / app-category / brand-safety exclusions |
+| 90 | `meta_ads_excluded_placements_set` | Placement Exclusion | Write | Replace the supplied exclusion facets on an ad set |
 
 ## Key Differences from Google Ads
 
@@ -226,6 +228,30 @@ metadata:
 - `enable` -- Enable a paused ad. **Requires user confirmation.**
   ```
   Required: account_id, ad_id
+  ```
+
+### excluded_placements
+
+Delivery-surface exclusions: which publishers, Audience Network app categories and content
+types an ad set must **not** be delivered against. Meta stores these inside the ad set's
+`targeting` spec, but they get their own tools so mureo can record the change with an
+`observation_due` window and reverse it — a generic `ad_sets.update` targeting write is
+indistinguishable from any other targeting edit.
+
+- `get` -- Read the ad set's current exclusion lists. Always returns all three keys; an
+  unset facet reads as an empty array.
+  ```
+  Required: account_id, ad_set_id
+  ```
+
+- `set` -- Replace the supplied exclusion facets. **Requires user confirmation.** Each
+  supplied facet REPLACES its current value (Meta has no append here) — call `get` first and
+  send the full intended set. An omitted facet is left untouched; an empty array clears it.
+  The rest of the targeting spec is preserved by a read-modify-write merge.
+  ```
+  Required: account_id, ad_set_id
+  Optional: excluded_publisher_categories, excluded_publisher_list_ids,
+            excluded_brand_safety_content_types (arrays of string; at least one required)
   ```
 
 ### insights
