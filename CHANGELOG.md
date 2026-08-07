@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
 ### Added
 
 - **A bulk exclusion now says how much of your delivery it removes, before it
@@ -339,6 +340,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shape, so sixteen mis-tagged ads produce zero findings), and a source
   campaign carrying the scheme on a single ad when the campaigns use different
   landing pages.
+
+### Fixed
+
+- **A targeted STATE.json write no longer resets fields it does not own.**
+  All five mutators (`upsert_campaign`, `append_action_log`, `set_report`,
+  `set_platform_metrics`, `set_conversion_action_types`) rebuilt the
+  `StateDocument` — and three of them the `PlatformState` — by enumerating
+  every field. That works until a field is added, at which point every mutator
+  that forgot it silently resets it, and a reset field is indistinguishable
+  downstream from one that was never set.
+
+  They now use `dataclasses.replace` and change only the fields each call
+  actually owns, so preservation is structural rather than remembered. A new
+  field on either model is carried across by every mutator with no edit.
+
+  This is the same defect that dropped `archived` from a renamed agency client
+  and `origin` from a batched `action_log` entry. Finding it twice did not
+  prevent the third instance, because the failure is an omission and omissions
+  are invisible in review — so the fix comes with tests driven off
+  `dataclasses.fields(...)`: each names only what its mutator declares it
+  changes and asserts everything else survived. `state_codec` must keep
+  enumerating (it maps to an external JSON schema, so `replace` cannot help
+  it) and is covered by a round-trip test built the same way.
 
 ## [0.10.43] - 2026-08-07
 

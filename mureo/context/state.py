@@ -196,6 +196,27 @@ def _upsert_into(
     return tuple(result)
 
 
+def _platform_base(
+    platforms: dict[str, PlatformState], platform: str, account_id: str
+) -> PlatformState:
+    """The :class:`PlatformState` a targeted write should build on.
+
+    The existing entry when there is one, otherwise a minimal new entry
+    carrying only ``account_id`` — whose remaining fields take the dataclass's
+    own defaults rather than a hand-written copy of them.
+
+    Every caller then uses ``dataclasses.replace`` to change ONLY the fields it
+    actually has input for, which is what makes preservation structural: a
+    field added to :class:`PlatformState` later is carried across by every
+    mutator without any of them being edited. Enumerating instead is how a
+    campaign upsert once wiped the dashboard rollups, and how a metrics write
+    once wiped the #342 conversion override — both silent, because a reset
+    field is indistinguishable from one that was never set.
+    """
+    existing = platforms.get(platform)
+    return existing if existing is not None else PlatformState(account_id=account_id)
+
+
 def upsert_campaign(
     path: Path,
     campaign: CampaignSnapshot,
@@ -246,42 +267,32 @@ def upsert_campaign(
         # campaign.
         platforms = dict(doc.platforms) if doc.platforms else {}
         guard_platform_entry_write(platforms, platform, account_id)
-        existing = platforms.get(platform)
-        platforms[platform] = PlatformState(
+        base = _platform_base(platforms, platform, account_id)
+        # Everything a campaign upsert has no input for — the platform-level
+        # rollup (totals / metrics_period / periods) and the #342 conversion
+        # override — is carried over by ``replace``. Each was a real
+        # regression when it was enumerated and forgotten: an upsert wiped the
+        # dashboard KPIs, and another wiped the account's conversion setting.
+        platforms[platform] = replace(
+            base,
             account_id=account_id,
             campaigns=_upsert_into(
-                existing.campaigns if existing is not None else (),
+                base.campaigns,
                 campaign,
                 # Platform-scoped: a same-id match here IS the same campaign,
                 # so carrying its ad-level state over is safe (#468).
                 inherit_ads=True,
             ),
-            # Preserve the platform-level rollup: it has no upsert input, so
-            # a campaign upsert must inherit it rather than reset it to None
-            # (otherwise every upsert silently wipes the dashboard KPIs). The
-            # same applies to the per-period rollups.
-            totals=existing.totals if existing is not None else None,
-            metrics_period=existing.metrics_period if existing is not None else None,
-            periods=existing.periods if existing is not None else None,
-            # #342 — the operator conversion override has no upsert input;
-            # inherit it so a campaign upsert never wipes the account setting.
-            conversion_action_types=(
-                existing.conversion_action_types if existing is not None else None
-            ),
         )
 
-        return StateDocument(
-            version=doc.version,
+        # ``reports`` and ``action_log`` are likewise untouched by construction;
+        # dropping the former used to wipe the daily/weekly/goal summaries the
+        # dashboard renders on every upsert that followed a report write.
+        return replace(
+            doc,
             last_synced_at=_now_iso(),
-            customer_id=doc.customer_id,
             campaigns=flat_campaigns,
             platforms=platforms,
-            action_log=doc.action_log,
-            # Preserve the analysis summaries: a campaign upsert has no reports
-            # input, so dropping this would silently wipe the daily/weekly/goal
-            # summaries the dashboard renders (every upsert after a report write
-            # erased it).
-            reports=doc.reports,
         )
 
     return _locked_state_mutation(path, _build)
@@ -297,17 +308,11 @@ def append_action_log(path: Path, entry: ActionLogEntry) -> StateDocument:
     """
 
     def _build(doc: StateDocument) -> StateDocument:
-        return StateDocument(
-            version=doc.version,
-            last_synced_at=doc.last_synced_at,
-            customer_id=doc.customer_id,
-            campaigns=doc.campaigns,
-            platforms=doc.platforms,
-            action_log=(*doc.action_log, entry),
-            # Preserve the analysis summaries — appending an action must not
-            # wipe the daily/weekly/goal reports the dashboard renders.
-            reports=doc.reports,
-        )
+        # ``last_synced_at`` is deliberately NOT re-stamped: appending an action
+        # is not a sync, and the dashboard's "Synced N ago" freshness must keep
+        # reflecting the last real sync. Every other section is carried over by
+        # ``replace``.
+        return replace(doc, action_log=(*doc.action_log, entry))
 
     return _locked_state_mutation(path, _build)
 
@@ -338,15 +343,7 @@ def set_report(path: Path, report: str, summary: dict[str, Any]) -> StateDocumen
         # preserved rather than wiped.
         reports = dict(doc.reports) if doc.reports else {}
         reports[report] = summary
-        return StateDocument(
-            version=doc.version,
-            last_synced_at=_now_iso(),
-            customer_id=doc.customer_id,
-            campaigns=doc.campaigns,
-            platforms=doc.platforms,
-            action_log=doc.action_log,
-            reports=reports,
-        )
+        return replace(doc, last_synced_at=_now_iso(), reports=reports)
 
     return _locked_state_mutation(path, _build)
 
@@ -404,48 +401,31 @@ def set_platform_metrics(
     def _build(doc: StateDocument) -> StateDocument:
         platforms = dict(doc.platforms) if doc.platforms else {}
         guard_platform_entry_write(platforms, platform, account_id)
-        existing = platforms.get(platform)
+
+        base = _platform_base(platforms, platform, account_id)
 
         merged_periods: dict[str, dict[str, Any]] | None
         if periods is not None:
-            base = dict(existing.periods) if existing and existing.periods else {}
-            base.update(periods)
-            merged_periods = base
+            merged = dict(base.periods) if base.periods else {}
+            merged.update(periods)
+            merged_periods = merged
         else:
-            merged_periods = existing.periods if existing is not None else None
+            merged_periods = base.periods
 
-        platforms[platform] = PlatformState(
+        # ``campaigns`` and the #342 conversion override have no input on a
+        # metrics write and are carried over by ``replace``; a ``None``
+        # argument means "leave as it was", not "clear it".
+        platforms[platform] = replace(
+            base,
             account_id=account_id,
-            # Rollups have no campaign input — inherit the campaigns a prior
-            # sync/upsert wrote rather than reset them.
-            campaigns=existing.campaigns if existing is not None else (),
-            totals=(
-                totals
-                if totals is not None
-                else (existing.totals if existing is not None else None)
-            ),
+            totals=totals if totals is not None else base.totals,
             metrics_period=(
-                metrics_period
-                if metrics_period is not None
-                else (existing.metrics_period if existing is not None else None)
+                metrics_period if metrics_period is not None else base.metrics_period
             ),
             periods=merged_periods,
-            # #342 — preserve the operator conversion override across a
-            # metrics write (it has no input here, same rationale as totals).
-            conversion_action_types=(
-                existing.conversion_action_types if existing is not None else None
-            ),
         )
 
-        return StateDocument(
-            version=doc.version,
-            last_synced_at=_now_iso(),
-            customer_id=doc.customer_id,
-            campaigns=doc.campaigns,
-            platforms=platforms,
-            action_log=doc.action_log,
-            reports=doc.reports,
-        )
+        return replace(doc, last_synced_at=_now_iso(), platforms=platforms)
 
     return _locked_state_mutation(path, _build)
 
@@ -501,24 +481,14 @@ def set_conversion_action_types(
     def _build(doc: StateDocument) -> StateDocument:
         platforms = dict(doc.platforms) if doc.platforms else {}
         guard_platform_entry_write(platforms, platform, account_id)
-        existing = platforms.get(platform)
-        platforms[platform] = PlatformState(
+        # Campaigns and every rollup are untouched by construction — this call
+        # declares the conversion set and nothing else.
+        platforms[platform] = replace(
+            _platform_base(platforms, platform, account_id),
             account_id=account_id,
-            campaigns=existing.campaigns if existing is not None else (),
-            totals=existing.totals if existing is not None else None,
-            metrics_period=existing.metrics_period if existing is not None else None,
-            periods=existing.periods if existing is not None else None,
             conversion_action_types=cleaned,
         )
-        return StateDocument(
-            version=doc.version,
-            last_synced_at=_now_iso(),
-            customer_id=doc.customer_id,
-            campaigns=doc.campaigns,
-            platforms=platforms,
-            action_log=doc.action_log,
-            reports=doc.reports,
-        )
+        return replace(doc, last_synced_at=_now_iso(), platforms=platforms)
 
     return _locked_state_mutation(path, _build)
 
