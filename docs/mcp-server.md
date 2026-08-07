@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 205 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 184 advertising and SEO operation tools across Google Ads (86), Meta Ads (88), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
+mureo exposes 207 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 184 advertising and SEO operation tools across Google Ads (86), Meta Ads (88), and Search Console (10), 2 rollback tools, 3 cross-platform analysis tools (anomaly detection plus delivery-collapse detection and diagnosis), 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
 
 ## Starting the Server
 
@@ -510,13 +510,59 @@ Both tools accept an optional `state_file` argument (default `STATE.json`), whic
 
 ### Analysis
 
-Cross-platform anomaly detection that operates on STATE.json's `action_log` history rather than a platform API directly.
+Cross-platform analysis that runs on normalised metrics rather than a platform API directly.
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `analysis_anomalies_check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). | `current` (`current.campaign_id` and `current.cost` required) |
+| `analysis_delivery_collapse_check` | Flag campaigns whose impressions fell off a cliff while their status still says they should be serving. Baseline comes from the supplied day-grain rows, **not** from `action_log`. | `platform`, `rows` |
+| `analysis_delivery_collapse_diagnose` | Overlay a change feed on one campaign's daily delivery, fold in elimination-ladder evidence, and report the cause **and** the open questions. | `platform`, `campaign_id`, `rows` |
 
 `had_prior_spend` (default `true`) suppresses the zero-spend alert for fresh campaigns. `min_baseline_entries` (default `7`) controls how many history entries are required before a baseline is built; below this, `baseline` is `null` and only zero-spend is evaluated. Numeric fields accept int / float / numeric-string and reject `"N/A"` or booleans. `state_file` is sandboxed the same way as for the rollback tools. A parseable-but-corrupt `STATE.json` produces a `baseline_warning` in the response without silencing live zero-spend detection.
+
+#### Delivery collapse (#546)
+
+`google_ads_cost_increase_investigate` answers "why did spend jump?". These two answer its inverse — a campaign that is still ENABLED while its impressions have gone to zero, which is the most detectable failure mode in ad operations and the one mureo previously had no scheduled detector for.
+
+**Why not `analysis_anomalies_check`.** That tool must be hand-fed one campaign's current metrics and baselines them off `action_log`, which is thin or empty on accounts operated partly by hand. `analysis_delivery_collapse_check` takes a whole day-grain report and derives its baseline from those rows (`baseline_source: "platform_daily_delivery"`), so it works with an empty action log.
+
+**Row shape** — one row per campaign per day, ~30+ days:
+
+```json
+{"campaign_id": "123", "campaign_name": "Display / Prospecting", "status": "ENABLED",
+ "end_date": "2026-12-31", "date": "2026-05-31", "impressions": 0, "clicks": 0, "cost": 0}
+```
+
+**What it will not fire on.** The false-positive suppression is the reason the detector is usable unattended:
+
+- **Weekend / weekday seasonality** — the baseline is the median of the **same weekday** in the trailing window (`same_weekday_median`, falling back to `all_day_median` when a weekday has too few samples). A 96% Saturday dip on a weekday-heavy account is normal and is not reported.
+- **Intraday budget pacing** — the current day is always partial, so days at or after `as_of` (the server's today, overridable for tests) are never evaluated.
+- **Intentional pauses** — a campaign whose status is not a serving status is skipped. The *status says serving, nothing is serving* contradiction is the entire signal.
+- **Finished flights** — a campaign past its `end_date` is expected to stop.
+- **Low-volume campaigns** — a baseline under `delivery_collapse_min_baseline_impressions` (default 1000/day) hits zero routinely.
+- **New campaigns** — fewer than `delivery_collapse_min_baseline_days` (default 14) of history yields no signal.
+
+**Thresholds live in STRATEGY.md `## Guardrails`** (all optional; a malformed or out-of-range value drops that one rule and keeps the default):
+
+```markdown
+## Guardrails
+- delivery_collapse_drop_pct: 90                    # % below baseline that counts as a collapse
+- delivery_collapse_consecutive_days: 1             # complete days required before alerting
+- delivery_collapse_min_baseline_impressions: 1000  # ignore campaigns below this daily volume
+- delivery_collapse_baseline_days: 28               # trailing window the median is taken from
+- delivery_collapse_min_baseline_days: 14           # minimum history before the detector speaks
+- delivery_collapse_min_same_weekday_samples: 2     # below this, fall back to the all-day median
+```
+
+**What the diagnosis cannot answer.** `analysis_delivery_collapse_diagnose` returns `most_likely_cause: null` and `confidence: "undetermined"` unless supplied evidence actually implicates a step — seven passing checks is an honest "undetermined", not a diagnosis. Every response carries `unresolved` (steps nobody could check, and a note when there is no change in the pre-cliff window) and a standing `limitations` list:
+
+- Serving-side suppression — the platform choosing not to enter a campaign into auctions — is not exposed by any read API mureo has, on any platform.
+- No supported platform exposes billing state through an API mureo integrates.
+- Learning-phase internals (Google bid-strategy learning, Meta ad-set learning) are not readable; a learning reset is inferred from a change event, never observed.
+- Change feeds are incomplete: Google Ads change history omits system-initiated changes and retains ~30 days, Meta has no equivalent feed, and manual work reaches `action_log` only if it was imported. No change in the window is weak evidence, not exoneration.
+- Several campaigns collapsing on the same day is reported as a correlation only.
+
+`next_checks` names the mureo tool for each open step on platforms that have one, and an empty string where mureo has no tool at all (billing everywhere; bid competitiveness and learning state on Meta) rather than inventing one.
 
 ### Mureo Context
 
@@ -542,7 +588,7 @@ Discover and invoke the analytics modules registered for each platform (built-in
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `mureo_analytics_modules_list` | List analytics modules per platform and the capabilities each advertises (`detect_anomalies`, `diagnose_performance`, `audit_creative`, `analyze_budget_efficiency`) | *(none)* |
+| `mureo_analytics_modules_list` | List analytics modules per platform and the capabilities each advertises (`detect_anomalies`, `diagnose_performance`, `audit_creative`, `analyze_budget_efficiency`, `detect_delivery_collapse`) | *(none)* |
 | `mureo_analytics_run` | Run one capability of a platform's analytics module and return its structured result; degrades to a structured status (`no_analytics_module` / `capability_not_available` / `error`) instead of failing the workflow | `platform`, `capability`, `account_id` |
 
 ### Learning

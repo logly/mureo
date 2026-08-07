@@ -16,11 +16,18 @@ Public surface (re-exports):
 
 - :class:`AnalyticsModule` — the Protocol every analytics module
   implements.
+- :class:`DeliveryCollapseModule` — the OPTIONAL extension Protocol for
+  delivery-collapse detection (#546); kept separate so adding it could
+  not invalidate ``isinstance`` for existing four-method modules.
 - :class:`AnalyticsCapability` — declarative capability flags so skills
   can ask "does this platform support X" without invoking it.
 - :class:`Anomaly`, :class:`PerformanceDiagnosis`,
   :class:`CreativeAudit`, :class:`BudgetEfficiency` — frozen
   dataclasses returned by the four Protocol methods.
+- :class:`DeliveryCollapseReport` and the delivery-collapse models
+  (:class:`CollapseSignal`, :class:`DeliverySeries`,
+  :class:`CollapseThresholds`) — returned by the optional
+  ``detect_delivery_collapse`` capability (#546).
 - :class:`AnalyticsRegistry`, :func:`get_analytics_module`,
   :func:`list_analytics_platforms`,
   :func:`discover_analytics_modules`, :func:`register_analytics_module`
@@ -46,15 +53,27 @@ from mureo.analytics.builtin._row_types import (
     MetaPerformanceRow,
 )
 from mureo.analytics.models import (
+    BASELINE_SOURCE,
     Anomaly,
     AnomalySeverity,
+    BaselineMethod,
     BudgetEfficiency,
+    CollapseSeverity,
+    CollapseSignal,
+    CollapseThresholds,
     CreativeAudit,
     CreativeFinding,
+    DailyDelivery,
+    DeliveryCollapseReport,
+    DeliverySeries,
     PerformanceDiagnosis,
     PerformanceScope,
 )
-from mureo.analytics.protocol import AnalyticsCapability, AnalyticsModule
+from mureo.analytics.protocol import (
+    AnalyticsCapability,
+    AnalyticsModule,
+    DeliveryCollapseModule,
+)
 from mureo.analytics.registry import (
     ANALYTICS_ENTRY_POINT_GROUP,
     AnalyticsModuleWarning,
@@ -70,15 +89,24 @@ from mureo.analytics.registry import (
 
 __all__ = [
     "ANALYTICS_ENTRY_POINT_GROUP",
+    "BASELINE_SOURCE",
     "AnalyticsCapability",
     "AnalyticsModule",
     "AnalyticsModuleWarning",
     "AnalyticsRegistry",
     "Anomaly",
     "AnomalySeverity",
+    "BaselineMethod",
     "BudgetEfficiency",
+    "CollapseSeverity",
+    "CollapseSignal",
+    "CollapseThresholds",
     "CreativeAudit",
     "CreativeFinding",
+    "DailyDelivery",
+    "DeliveryCollapseModule",
+    "DeliveryCollapseReport",
+    "DeliverySeries",
     "GoogleAdRow",
     "GoogleByodPerformanceRow",
     "GoogleLivePerformanceRow",

@@ -1,12 +1,25 @@
 """The :class:`AnalyticsModule` Protocol and capability enum.
 
 A module is **opt-in** and **hand-authored** per platform. The four
-methods cover the workflow-skill surface mureo cares about today:
+required methods cover the workflow-skill surface mureo cares about
+today:
 
 - :meth:`detect_anomalies` — daily-check / rescue.
 - :meth:`diagnose_performance` — daily-check / weekly-report.
 - :meth:`audit_creative` — creative-refresh.
 - :meth:`analyze_budget_efficiency` — budget-rebalance.
+
+Delivery-collapse detection (#546) is an **optional extension** and is
+deliberately NOT a fifth method on :class:`AnalyticsModule`. That
+Protocol is ``runtime_checkable``, and ``isinstance`` against a
+runtime-checkable Protocol requires *every* member — so adding a member
+would have silently made every already-published four-method plugin fail
+the check. The extension lives in its own
+:class:`DeliveryCollapseModule` Protocol instead: a module opts in by
+implementing ``detect_delivery_collapse`` and adding
+:attr:`AnalyticsCapability.DETECT_DELIVERY_COLLAPSE` to its
+:meth:`capabilities`. A module that does not simply never advertises it,
+and ``mureo_analytics_run`` reports ``capability_not_available``.
 
 A module SHOULD declare its true surface via :meth:`capabilities`. A
 skill MAY consult capabilities to short-circuit before calling a method
@@ -21,10 +34,14 @@ from enum import Enum
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from datetime import date
+
+    from mureo.analysis.delivery_collapse import CollapseThresholds
     from mureo.analytics.models import (
         Anomaly,
         BudgetEfficiency,
         CreativeAudit,
+        DeliveryCollapseReport,
         PerformanceDiagnosis,
         PerformanceScope,
     )
@@ -43,6 +60,10 @@ class AnalyticsCapability(str, Enum):
     DIAGNOSE_PERFORMANCE = "diagnose_performance"
     AUDIT_CREATIVE = "audit_creative"
     ANALYZE_BUDGET_EFFICIENCY = "analyze_budget_efficiency"
+    #: #546 — optional. Only advertise it if the module can produce
+    #: day-grain delivery for the account; the detector needs weeks of
+    #: daily history to build a baseline, not a period aggregate.
+    DETECT_DELIVERY_COLLAPSE = "detect_delivery_collapse"
 
 
 @runtime_checkable
@@ -144,7 +165,53 @@ class AnalyticsModule(Protocol):
         ...
 
 
+@runtime_checkable
+class DeliveryCollapseModule(Protocol):
+    """Optional extension: scheduled delivery-collapse detection (#546).
+
+    Separate from :class:`AnalyticsModule` on purpose — see that class's
+    module docstring for why folding it in would have de-registered
+    existing plugins. Implement BOTH Protocols to offer collapse
+    detection; ``isinstance(module, DeliveryCollapseModule)`` is the
+    structural check, and
+    :attr:`AnalyticsCapability.DETECT_DELIVERY_COLLAPSE` is the
+    advertised one.
+    """
+
+    platform: str
+
+    async def detect_delivery_collapse(
+        self,
+        account_id: str,
+        *,
+        history_days: int = 60,
+        thresholds: CollapseThresholds | None = None,
+        as_of: date | None = None,
+    ) -> DeliveryCollapseReport:
+        """Flag campaigns whose delivery collapsed while set to serve.
+
+        Implementations fetch
+        ``history_days`` of day-grain delivery for ``account_id``,
+        normalise it with
+        :func:`mureo.analysis.delivery_collapse.delivery_series_from_rows`,
+        and run the shared
+        :func:`mureo.analysis.delivery_collapse.detect_delivery_collapses`.
+        The detector is platform-agnostic on purpose: only the fetch is
+        the module's job.
+
+        A module that cannot produce day-grain delivery MUST return a
+        report with ``status="data_unavailable"`` rather than an empty
+        ``signals`` tuple — the two mean opposite things to an operator.
+
+        ``thresholds=None`` means "read the operator's STRATEGY.md
+        ``## Guardrails``" (see
+        :func:`mureo.analysis.delivery_collapse_config.load_collapse_thresholds`).
+        """
+        ...
+
+
 __all__ = [
     "AnalyticsCapability",
     "AnalyticsModule",
+    "DeliveryCollapseModule",
 ]

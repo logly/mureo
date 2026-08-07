@@ -76,6 +76,57 @@ def _max_date(rows: list[dict[str, Any]], key: str = "date") -> date | None:
     return best
 
 
+#: Mirrors the live clients' default collapse-detection window.
+_DAILY_DELIVERY_DEFAULT_DAYS = 60
+
+
+def _byod_delivery_rows(
+    metrics: list[dict[str, Any]],
+    campaigns: list[dict[str, Any]],
+    *,
+    days: int,
+    name_key: str,
+) -> list[dict[str, Any]]:
+    """Shared day-grain delivery projection for both BYOD clients (#546).
+
+    The window is anchored on the BUNDLE's own latest date, not on wall
+    clock: a bundle imported last month must keep returning its most
+    recent ``days`` rather than going silently empty — the same rebasing
+    ``_period_to_range`` does.
+    """
+    anchor = _max_date(metrics)
+    if anchor is None:
+        return []
+    start = anchor - timedelta(days=max(1, days))
+    attributes = {
+        str(c.get("campaign_id")): (
+            str(c.get(name_key, "") or ""),
+            str(c.get("status", "") or ""),
+        )
+        for c in campaigns
+    }
+    out: list[dict[str, Any]] = []
+    for row in metrics:
+        day = _parse_date(row.get("date", ""))
+        campaign_id = str(row.get("campaign_id") or "")
+        if day is None or day < start or day > anchor or campaign_id not in attributes:
+            continue
+        name, status = attributes[campaign_id]
+        out.append(
+            {
+                "campaign_id": campaign_id,
+                "campaign_name": name,
+                "status": status,
+                "end_date": "",
+                "date": day.isoformat(),
+                "impressions": _to_int(row.get("impressions")),
+                "clicks": _to_int(row.get("clicks")),
+                "cost": _to_float(row.get("cost_jpy")),
+            }
+        )
+    return out
+
+
 def _period_to_range(period: str, *, anchor: date | None = None) -> tuple[date, date]:
     """Resolve a relative ``period`` to a concrete ``(start, end)``.
 
@@ -587,6 +638,22 @@ class ByodGoogleAdsClient:
             "change_rate_per_day_pct": round(change / max(midpoint, 1), 2),
         }
 
+    async def get_daily_delivery_report(
+        self, days: int = _DAILY_DELIVERY_DEFAULT_DAYS
+    ) -> list[dict[str, Any]]:
+        """Day-grain delivery rows for the collapse detector (#546).
+
+        Implemented explicitly rather than left to ``__getattr__``: that
+        fallback returns an empty list for any unknown read method, which
+        the detector would read as "no campaigns to check" — a silent
+        all-clear on a possibly dead account. The bundle's
+        ``metrics_daily.csv`` already carries the per-day series, so the
+        honest answer is the real one.
+        """
+        return _byod_delivery_rows(
+            self._metrics(), self._campaigns(), days=days, name_key="name"
+        )
+
     def __getattr__(self, name: str) -> Callable[..., Any]:
         if name.startswith("_"):
             raise AttributeError(name)
@@ -932,6 +999,19 @@ class ByodMetaAdsClient:
 
     async def get_ad_leads(self, **_: Any) -> list[dict[str, Any]]:
         return []
+
+    async def get_daily_delivery_report(
+        self, days: int = _DAILY_DELIVERY_DEFAULT_DAYS
+    ) -> list[dict[str, Any]]:
+        """Day-grain delivery rows for the collapse detector (#546).
+
+        Same rationale as the Google BYOD twin: implemented explicitly so
+        the ``__getattr__`` empty-list fallback cannot pass a bundle off
+        as "checked, nothing collapsed".
+        """
+        return _byod_delivery_rows(
+            self._metrics(), self._campaigns(), days=days, name_key="name"
+        )
 
     async def close(self) -> None:
         return None

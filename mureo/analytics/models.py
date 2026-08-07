@@ -14,6 +14,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+# Delivery-collapse models (#546) are NOT mirrored here the way
+# :class:`Anomaly` mirrors the detector's own dataclass. They are already
+# platform-agnostic and carry no detector-internal type, so a second copy
+# would only be two definitions to keep in sync. They are re-exported so
+# a plugin implementing ``detect_delivery_collapse`` imports its result
+# types from the same ABI module as every other analytics result.
+from mureo.analysis.delivery_collapse import (
+    BASELINE_SOURCE,
+    BaselineMethod,
+    CollapseSeverity,
+    CollapseSignal,
+    CollapseThresholds,
+    DailyDelivery,
+    DeliverySeries,
+)
+
 
 class AnomalySeverity(str, Enum):
     """Anomaly severity. ``str`` mixin makes JSON serialization trivial.
@@ -135,12 +151,51 @@ class BudgetEfficiency:
     unused_budget_amount: float = 0.0
 
 
+@dataclass(frozen=True)
+class DeliveryCollapseReport:
+    """Result of :meth:`AnalyticsModule.detect_delivery_collapse` (#546).
+
+    ``status`` is the honest three-way outcome, and the distinction
+    matters more here than anywhere else in this module: an empty
+    ``signals`` tuple means "checked, nothing collapsed" ONLY when
+    ``status`` is ``"ok"``. The other two states are why the field
+    exists at all — rendering a credentials problem or a platform that
+    cannot produce day-grain delivery as "no signals" would be a false
+    all-clear on an account that may well be dead.
+
+    - ``"ok"`` — the account was evaluated; ``signals`` is authoritative.
+    - ``"no_credentials"`` — credentials are absent or the account is
+      outside the active workspace scope; nothing was evaluated.
+    - ``"data_unavailable"`` — the platform (or the active data source,
+      e.g. a BYOD bundle without a daily tab) cannot produce day-grain
+      delivery, so no baseline can be built.
+    """
+
+    platform: str
+    account_id: str
+    status: str
+    detail: str = ""
+    evaluated_campaigns: int = 0
+    signals: tuple[CollapseSignal, ...] = ()
+    thresholds: CollapseThresholds = CollapseThresholds()
+    thresholds_source: str = ""
+    baseline_source: str = BASELINE_SOURCE
+
+
 __all__ = [
+    "BASELINE_SOURCE",
     "Anomaly",
     "AnomalySeverity",
+    "BaselineMethod",
     "BudgetEfficiency",
+    "CollapseSeverity",
+    "CollapseSignal",
+    "CollapseThresholds",
     "CreativeAudit",
     "CreativeFinding",
+    "DailyDelivery",
+    "DeliveryCollapseReport",
+    "DeliverySeries",
     "PerformanceDiagnosis",
     "PerformanceScope",
 ]
