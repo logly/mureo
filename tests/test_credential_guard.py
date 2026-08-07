@@ -202,6 +202,65 @@ class TestBashGuardBehavior:
         )
         assert deny_decision(proc) == "deny"
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # End of the command string: nothing follows the directory name.
+            "ls -la ~/.mureo",
+            "tar cf /tmp/x.tar ~/.mureo",
+            # Trailing separator, and every quoting form of the same path.
+            "ls ~/.mureo/",
+            'cat "$HOME/.mureo/credentials.json"',
+            "cat '~/.mureo/credentials.json'",
+            "cat ~/'.mureo'/credentials.json",
+            'cat ~/.mureo""/credentials.json',
+            # Mixed case still opens the real file on case-insensitive
+            # filesystems, so it must stay blocked.
+            "cat ~/.Mureo/credentials.json",
+            "ls ~/.MUREO",
+            # Anything at all may follow the directory name — the rule only
+            # consults what comes before it.
+            "cat ~/.mureo$SUFFIX/credentials.json",
+            "cat ~/.mureo{,}/credentials.json",
+            "cat ~/.mureo*/credentials.json",
+            "cat ~/.mureoX/../.mureo/credentials.json",
+            # Sibling names are blocked too: only the text before the name is
+            # consulted, so ``.mureoX`` — which may well be a symlink INTO the
+            # protected directory — is not admitted.
+            "cat ~/.mureoX/credentials.json",
+            "ls ~/.mureo_backup",
+            # A substitution supplying the parent directory leaves an
+            # identifier character immediately before the name. These are the
+            # forms that make a naive preceded-by test unsafe: each one
+            # resolves into ~/.mureo.
+            "D=~/; cat $D.mureo/credentials.json",
+            "D=~/; cat $D.MUREO/credentials.json",
+            "set -- ~/; cat $1.mureo/credentials.json",
+            "D=~/; E=; cat $D$E.mureo/credentials.json",
+            "cat $(printf '%s.mureo/credentials.json' ~/)",
+            "python3 -c \"print(open('%s.mureo/credentials.json' % h).read())\"",
+            # ...while every other splice closes with punctuation, which the
+            # boundary test catches on its own.
+            "D=~/; cat ${D}.mureo/credentials.json",
+            'D=~/; cat "$D".mureo/credentials.json',
+            "cat $(printf '%s' ~/).mureo/credentials.json",
+            "python3 -c \"print(open('{}.mureo/x'.format(h)).read())\"",
+        ],
+    )
+    def test_denies_every_spelling_of_the_mureo_dir(
+        self, fake_home: Path, command: str
+    ) -> None:
+        """The boundary rule must not shrink what is blocked.
+
+        Every form here resolves into ``~/.mureo`` — verified by expanding
+        each one with a real shell against a throwaway ``$HOME`` — and every
+        one of them was blocked by the previous bare-substring check.
+        """
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert deny_decision(proc) == "deny", command
+
     @pytest.mark.parametrize("command", ["echo hello", "ls -la", "git status"])
     def test_allows_unrelated_commands(self, fake_home: Path, command: str) -> None:
         proc = run_guard(
@@ -209,6 +268,38 @@ class TestBashGuardBehavior:
         )
         assert proc.returncode == 0
         assert proc.stdout.strip() == ""
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # mureo's own public browser namespace, case-folding to `.mureo_`.
+            "gh release create v0.10.43 --notes 'adds window.MUREO_REPORTS_FORMAT'",
+            "git commit -m 'feat: reorder via window.MUREO_REPORTS_ORDER'",
+            "grep -rn window.MUREO_WIZARD mureo/_data/web/",
+            "node --test tests/js/reports_format.test.js # window.MUREO_AUTH_META",
+            # Hostnames under the project's domain, case-folding to `.mureo.`.
+            "gh pr create --body 'published to pkgs.mureo.jp'",
+            "pip install --index-url https://pkgs.mureo.jp/simple/ mureo-agency",
+            "curl -sS https://pkgs.mureo.jp/simple/index.html",
+            "open https://docs.mureo.jp/byod",
+            "echo www.mureo.jp",
+        ],
+    )
+    def test_allows_mureo_own_identifiers(self, fake_home: Path, command: str) -> None:
+        """mureo's browser globals and hostnames are not the directory.
+
+        Both false positives were observed for real: the ``gh release
+        create`` call for v0.10.43 was denied over ``window.MUREO_REPORTS_*``
+        in its notes, and a ``gh pr create`` was denied over
+        ``pkgs.mureo.jp`` in its body. In each the substring is preceded by
+        an identifier character belonging to a longer name, so it cannot be
+        the start of a ``.mureo`` path component.
+        """
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert proc.returncode == 0
+        assert proc.stdout.strip() == "", command
 
 
 # ---------------------------------------------------------------------------
