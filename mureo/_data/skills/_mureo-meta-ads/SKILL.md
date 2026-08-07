@@ -254,6 +254,18 @@ indistinguishable from any other targeting edit.
             excluded_brand_safety_content_types (arrays of string; at least one required)
   ```
 
+  **Delivery impact is not measurable here, and mureo says so (#547).** None of Meta's
+  insights breakdowns attribute past delivery to publisher categories, publisher block
+  lists or brand-safety content types — `publisher_platform` / `platform_position` are a
+  different exclusion surface (ad-set targeting). So
+  `analysis_exclusion_impact_preview` reports `coverage: "unknown"` for this tool, never
+  "no impact", and the call's own result carries the same verdict. Tell the operator the
+  size is unknown rather than implying it is small. An operator who would rather refuse
+  than proceed blind sets `block_exclusions_without_impact_data: true` in STRATEGY.md
+  `## Guardrails`, which refuses this tool outright. To size such a change from real
+  data, pull the ad set's delivery yourself and pass it to the preview tool as
+  `delivery_records`.
+
 ### insights
 
 - `report` -- Get performance metrics for the account or specific campaign.

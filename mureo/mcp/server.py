@@ -52,6 +52,15 @@ if TYPE_CHECKING:
 
 from mureo.core.control_flow import STOP_EXCEPTIONS
 from mureo.mcp._helpers import is_error_result
+from mureo.mcp.exclusion_preflight import (
+    append_notice as append_exclusion_impact_notice,
+)
+from mureo.mcp.exclusion_preflight import (
+    exclusion_impact_preflight,
+)
+from mureo.mcp.exclusion_preflight import (
+    refusal_content as exclusion_refusal_content,
+)
 from mureo.mcp.native_reversal import capture_before_state, record_native_mutation
 from mureo.mcp.plugin_audit import record_plugin_call
 from mureo.mcp.plugin_semantics import (
@@ -1005,7 +1014,19 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     # capture, or real-spend API call — so an out-of-bounds budget/bid is
     # rejected before it can reach a live campaign.
     _validate_tool_input(name, arguments)
-    result = await _dispatch_tool(name, arguments)
+    # #547: size a bulk exclusion / block / negative-keyword batch against the
+    # account's own recent delivery before it is applied. Runs here rather than
+    # in a PolicyGate because it needs one AWAITED platform read and the gate
+    # ABI is synchronous by design; runs before _dispatch_tool so a refusal
+    # lands before any mutation. No-ops (and issues no read) for every tool
+    # that is not a registered exclusion surface, and for an operator who wrote
+    # no exclusion rule in STRATEGY.md ## Guardrails.
+    preflight = await exclusion_impact_preflight(name, arguments)
+    if preflight.refusal_reason is not None:
+        return exclusion_refusal_content(preflight)
+    result = append_exclusion_impact_notice(
+        await _dispatch_tool(name, arguments), preflight
+    )
     # #548: a change that restarts an automated bid strategy's learning period
     # says so in its own result, so the next change in a troubleshooting
     # sequence is not made blind. No-op for everything else.

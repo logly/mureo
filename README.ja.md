@@ -270,7 +270,7 @@ STATE.jsonから接続媒体を検出:
 
 ### MCP サーバーとツール一覧
 
-mureo は **211 の MCP ツール** を stdio で公開します。Google広告（89）、Meta広告（90）、Search Console（10）に加え、rollback、異常検知、戦略と状態のコンテキスト、分析モジュールレジストリ、学習、学習期間リセットのプリフライト、Creative Studio を含みます。Amazon 広告を設定している場合は、ローカルのマニフェストからブリッジされた Amazon のツールがこれに加わります（ツール名も本数も Amazon 側のもので、mureo が定義するものではありません。詳細は [docs/amazon-ads.ja.md](docs/amazon-ads.ja.md)）。MCP 対応クライアントなら何からでも接続できます。
+mureo は **212 の MCP ツール** を stdio で公開します。Google広告（89）、Meta広告（90）、Search Console（10）に加え、rollback、異常検知、除外の配信インパクトプレビュー、戦略と状態のコンテキスト、分析モジュールレジストリ、学習、学習期間リセットのプリフライト、Creative Studio を含みます。Amazon 広告を設定している場合は、ローカルのマニフェストからブリッジされた Amazon のツールがこれに加わります（ツール名も本数も Amazon 側のもので、mureo が定義するものではありません。詳細は [docs/amazon-ads.ja.md](docs/amazon-ads.ja.md)）。MCP 対応クライアントなら何からでも接続できます。
 
 ```json
 {

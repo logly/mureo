@@ -92,8 +92,11 @@ mureo/
 │   ├── _handlers_search_console.py        # Search Console handlers
 │   ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
 │   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
-│   ├── tools_analysis.py                  # analysis_anomalies_check
+│   ├── tools_analysis.py                  # analysis_anomalies_check / analysis_exclusion_impact_preview
 │   ├── _handlers_analysis.py              # Anomaly detector composition handler
+│   ├── _handlers_exclusion_impact.py      # analysis_exclusion_impact_preview handler (#547)
+│   ├── exclusion_preflight.py             # Pre-dispatch exclusion sizing + refusal + notice (#547)
+│   ├── exclusion_sources.py               # Built-in per-platform delivery sources for the above (#547)
 │   ├── tools_analytics_registry.py        # mureo_analytics_modules_list / mureo_analytics_run (#440)
 │   ├── tools_creative_studio.py           # creative_studio_* (visual generation + compose)
 │   ├── tools_learning.py                  # mureo_learning_insights_get / mureo_consult_advisor
@@ -124,7 +127,13 @@ mureo/
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   ├── lp_analyzer.py   # Landing page analyzer
-│   └── anomaly_detector.py  # Zero-spend / CPA-spike / CTR-drop detection (pure, sample-size-gated)
+│   ├── anomaly_detector.py  # Zero-spend / CPA-spike / CTR-drop detection (pure, sample-size-gated)
+│   └── exclusion_impact/    # Delivery-impact preview for bulk exclusions (#547; pure)
+│       ├── models.py        # DeliveryRecord / ExclusionTarget / ExclusionImpact + coverage verdicts
+│       ├── matching.py      # Per-entity-kind match rules (host, app id, negative keyword match type)
+│       ├── estimator.py     # The share itself — incremental and cumulative
+│       ├── rules.py         # ## Guardrails exclusion keys + the one refusal decision
+│       └── surfaces.py      # Which tools are exclusion surfaces (mureo's + plugin-registered)
 ├── rollback/            # Rollback feature (allow-list gated, append-only audit trail)
 │   ├── models.py        # RollbackStatus enum + RollbackPlan dataclass
 │   ├── planner.py       # plan_rollback(ActionLogEntry) -> RollbackPlan | None
@@ -169,6 +178,7 @@ docs/integrations.md          # Platform discovery + external MCP integration gu
 | Keywords | `keywords.list`, `keywords.add`, `keywords.remove`, `keywords.suggest`, `keywords.diagnose`, `keywords.pause`, `keywords.audit`, `keywords.cross_adgroup_duplicates` |
 | Negative Keywords | `negative_keywords.list`, `negative_keywords.add`, `negative_keywords.remove`, `negative_keywords.add_to_ad_group`, `negative_keywords.suggest` |
 | Negative Placements | `negative_placements.list`, `negative_placements.add`, `negative_placements.remove` |
+| Placement Performance | (read used by `analysis_exclusion_impact_preview`: `group_placement_view` via `get_placement_performance`) |
 | Budget | `budget.get`, `budget.update`, `budget.create` |
 | Accounts | `accounts.list` |
 | Search Terms | `search_terms.report`, `search_terms.analyze` |
@@ -227,7 +237,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 |--------|-------|
 | Analytics Registry (#440) | `mureo_analytics_modules_list`, `mureo_analytics_run` |
 | Rollback | `rollback_plan_get`, `rollback_apply` |
-| Analysis | `analysis_anomalies_check` |
+| Analysis | `analysis_anomalies_check`, `analysis_exclusion_impact_preview` |
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
 | Learning pre-flight (#548) | `mureo_learning_reset_preflight` |

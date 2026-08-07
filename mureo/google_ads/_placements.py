@@ -27,7 +27,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from mureo.google_ads.client import _wrap_mutate_error
-from mureo.google_ads.mappers import map_negative_placement
+from mureo.google_ads.mappers import map_negative_placement, map_placement_performance
 
 if TYPE_CHECKING:
     from google.ads.googleads.client import GoogleAdsClient
@@ -76,6 +76,7 @@ class _PlacementsMixin:
     @staticmethod
     def _validate_id(value: str, field_name: str) -> str: ...  # type: ignore[empty-body]
     def _get_service(self, service_name: str) -> Any: ...
+    def _period_to_date_clause(self, period: str) -> str: ...  # type: ignore[empty-body]
 
     # -- helpers -----------------------------------------------------------
 
@@ -208,6 +209,47 @@ class _PlacementsMixin:
             )
             for row in response
         ]
+
+    async def get_placement_performance(
+        self,
+        campaign_id: str | None = None,
+        ad_group_id: str | None = None,
+        period: str = "LAST_30_DAYS",
+    ) -> list[dict[str, Any]]:
+        """Delivery per placement over ``period`` — the exclusion denominator.
+
+        ``group_placement_view`` aggregates at the level an exclusion is
+        actually written at (a domain, an app), which is why it is the
+        source for the #547 impact preview rather than
+        ``detail_placement_view``'s per-URL rows.
+
+        The totals it returns are *placement-attributed* delivery only —
+        Search impressions, and any Display impression Google does not
+        attribute to a placement, are not in it. Callers name that as the
+        basis rather than calling it "the campaign's delivery".
+        """
+        date_clause = self._period_to_date_clause(period)
+        query = f"""
+            SELECT
+                group_placement_view.placement,
+                group_placement_view.display_name,
+                group_placement_view.target_url,
+                group_placement_view.placement_type,
+                metrics.impressions,
+                metrics.clicks,
+                metrics.cost_micros,
+                metrics.conversions
+            FROM group_placement_view
+            WHERE segments.date {date_clause}"""
+        if campaign_id:
+            self._validate_id(campaign_id, "campaign_id")
+            query += f"\n                AND campaign.id = {campaign_id}"
+        if ad_group_id:
+            self._validate_id(ad_group_id, "ad_group_id")
+            query += f"\n                AND ad_group.id = {ad_group_id}"
+        query += f"\n            LIMIT {_PLACEMENT_READ_LIMIT}"
+        response = await self._search(query)  # type: ignore[attr-defined]
+        return [map_placement_performance(row) for row in response]
 
     # -- writes ------------------------------------------------------------
 

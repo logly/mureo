@@ -482,3 +482,83 @@ class TestHandlers:
             await h.HANDLERS["google_ads_negative_placements_remove"](
                 {"campaign_id": "100"}
             )
+
+
+# ---------------------------------------------------------------------------
+# Placement performance — the denominator for the #547 impact preview
+# ---------------------------------------------------------------------------
+
+
+def _placement_perf_row(
+    placement: str = "example.com",
+    placement_type: str = "PlacementType.WEBSITE",
+    impressions: int = 1000,
+) -> MagicMock:
+    row = MagicMock()
+    view = row.group_placement_view
+    view.placement = placement
+    view.display_name = "Example"
+    view.target_url = f"https://{placement}"
+    view.placement_type = placement_type
+    row.metrics.impressions = impressions
+    row.metrics.clicks = 10
+    row.metrics.cost_micros = 5_000_000
+    row.metrics.conversions = 2.0
+    return row
+
+
+@pytest.mark.unit
+class TestPlacementPerformance:
+    @pytest.mark.asyncio
+    async def test_reads_group_placement_view_scoped_to_the_campaign(self) -> None:
+        client = _make_client()
+        queries: list[str] = []
+
+        async def _search(query: str) -> list[Any]:
+            queries.append(query)
+            return [
+                _placement_perf_row(),
+                _placement_perf_row(
+                    "mobileapp::1-com.example.app",
+                    "PlacementType.MOBILE_APPLICATION",
+                    400,
+                ),
+            ]
+
+        client._search = _search  # type: ignore[method-assign]
+        rows = await client.get_placement_performance(
+            campaign_id="100", period="LAST_30_DAYS"
+        )
+
+        assert "FROM group_placement_view" in queries[0]
+        assert "AND campaign.id = 100" in queries[0]
+        assert "DURING LAST_30_DAYS" in queries[0]
+        assert rows[0]["placement"] == "example.com"
+        assert rows[0]["type"] == "website"
+        assert rows[0]["impressions"] == 1000
+        assert rows[0]["cost"] == 5.0
+        assert rows[1]["type"] == "mobile_application"
+
+    @pytest.mark.asyncio
+    async def test_a_between_window_is_validated_not_interpolated_raw(self) -> None:
+        client = _make_client()
+
+        async def _search(query: str) -> list[Any]:
+            return []
+
+        client._search = _search  # type: ignore[method-assign]
+        with pytest.raises(ValueError):
+            await client.get_placement_performance(
+                campaign_id="100", period="BETWEEN '2026-01-01' AND '; DROP'"
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_non_numeric_scope_id_is_refused(self) -> None:
+        client = _make_client()
+
+        async def _search(query: str) -> list[Any]:
+            return []
+
+        client._search = _search  # type: ignore[method-assign]
+        with pytest.raises(ValueError):
+            await client.get_placement_performance(campaign_id="100 OR 1=1")

@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 211 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 189 advertising and SEO operation tools across Google Ads (89), Meta Ads (90), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
+mureo exposes 212 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 189 advertising and SEO operation tools across Google Ads (89), Meta Ads (90), and Search Console (10), 2 rollback tools, 2 cross-platform analysis tools (anomaly detection and the exclusion delivery-impact preview), 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
 
 ## Starting the Server
 
@@ -529,11 +529,68 @@ Both tools accept an optional `state_file` argument (default `STATE.json`), whic
 
 ### Analysis
 
-Cross-platform anomaly detection that operates on STATE.json's `action_log` history rather than a platform API directly.
+Cross-platform analysis that operates on data the caller supplies (or, for the exclusion preview, on the account's own report) rather than on a platform API the tool picks for itself.
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `analysis_anomalies_check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). | `current` (`current.campaign_id` and `current.cost` required) |
+| `analysis_exclusion_impact_preview` | Size a bulk exclusion / block / negative-keyword batch before applying it: what share of the recent window's impressions, clicks, cost and conversions the excluded entities carried, incrementally and cumulatively. Returns `would_block` from the same rule the dispatcher enforces. | either `tool` (+ `arguments`) or `excluded_entities` |
+
+#### `analysis_exclusion_impact_preview` (#547)
+
+Applying an exclusion batch without knowing its size is how a Display campaign
+goes to zero impressions. This tool answers "how much of *my current delivery*
+does this remove", from the account's own recent performance — never a platform
+reach estimator.
+
+Two calling conventions:
+
+- **`tool` + `arguments`** — the exact call you are about to make. mureo reads
+  the excluded entities out of the arguments and fetches the matching report
+  for that scope.
+- **`excluded_entities` + `delivery_records`** — you supply both sides. This
+  form **reaches no platform API**, so a platform mureo does not model is still
+  auditable whenever you can pull its own report.
+
+`window_days` defaults to STRATEGY.md's `exclusion_impact_window_days` (else
+30). `standing_exclusions` is optional; omit it (rather than passing `[]`) when
+the standing set is unknown — an empty list means "there are none", and the
+cumulative figure is withheld rather than understated when it is unknown.
+
+Coverage is `measured`, `partial` (some entity kinds are structurally
+unattributable on that basis) or `unknown`. `unknown` never means "no impact",
+and `incremental` is `null` rather than a row of zeroes. A window that served
+nothing reports `share_pct: null`, not `0`.
+
+Per-surface attribution:
+
+| Surface | Delivery source | Attributable |
+|---|---|---|
+| `google_ads_negative_placements_add` | `group_placement_view` over the window | Yes for `website` / `mobile_application`; `mobile_app_category` is not a placement that serves, so a mixed batch reports `partial` |
+| `google_ads_negative_keywords_add` / `_add_to_ad_group` | `search_term_view` over the window, matched per `EXACT` / `PHRASE` / `BROAD` | Yes. Negative keywords do not match close variants and neither does the estimate, so it is a lower bound |
+| `meta_ads_excluded_placements_set` | — | **No.** No insights breakdown attributes past delivery to publisher categories, publisher block lists or brand-safety content types. Reported `unknown` |
+| Plugin / bridged surfaces (Yahoo, LINE, SmartNews, LOGLY, Amazon) | Whatever the provider registers via `register_exclusion_surface`, else caller-supplied `delivery_records` | Provider-declared |
+
+**Cumulative tightening.** `cumulative` is the share attributable to the whole
+standing exclusion set once this batch lands, which is what catches a fortnight
+of individually-small passes: an entity excluded a week ago still carries its
+pre-exclusion impressions inside a 30-day window. Its limit is the window — an
+exclusion older than the window contributed nothing to it and is invisible — so
+the cumulative figure is a lower bound. It is withheld (`null` with a reason)
+for an ad-group-level Google placement write, because campaign-level exclusions
+also cover that ad group and are not reachable from the call's arguments, and
+for `google_ads_negative_keywords_add_to_ad_group`, because Google Ads exposes
+no ad-group-level negative keyword listing.
+
+**Enforcement.** The three `STRATEGY.md` `## Guardrails` keys
+`max_delivery_share_removed_pct`,
+`max_cumulative_delivery_share_removed_pct` and
+`block_exclusions_without_impact_data` are enforced in the dispatcher before an
+exclusion tool runs. They are *not* in `StrategyPolicyGate`: the check needs one
+awaited platform read and the `PolicyGate` v1 ABI is synchronous by design and
+must stay pure and fast. With none of them written the check does no I/O at all
+and behaviour is unchanged. `MUREO_DISABLE_EXCLUSION_PREFLIGHT=1` turns it off
+entirely.
 
 `had_prior_spend` (default `true`) suppresses the zero-spend alert for fresh campaigns. `min_baseline_entries` (default `7`) controls how many history entries are required before a baseline is built; below this, `baseline` is `null` and only zero-spend is evaluated. Numeric fields accept int / float / numeric-string and reject `"N/A"` or booleans. `state_file` is sandboxed the same way as for the rollback tools. A parseable-but-corrupt `STATE.json` produces a `baseline_warning` in the response without silencing live zero-spend detection.
 

@@ -623,6 +623,43 @@ def map_negative_placement(
     return result
 
 
+# === Placement performance (delivery-impact preview, #547) ===
+
+#: ``group_placement_view.placement_type`` → mureo's exclusion vocabulary.
+#: Only the three kinds an exclusion can name are translated; anything else
+#: keeps a lower-cased raw enum name so a YouTube channel row is still
+#: readable — and, since it matches no exclusion kind, contributes to the
+#: denominator without ever being claimed as removed.
+_PLACEMENT_TYPE_TO_KIND: dict[str, str] = {
+    "WEBSITE": "website",
+    "MOBILE_APPLICATION": "mobile_application",
+    "MOBILE_APP_CATEGORY": "mobile_app_category",
+}
+
+
+def map_placement_performance(row: Any) -> dict[str, Any]:
+    """Shape one ``group_placement_view`` row for the exclusion preview.
+
+    ``placement`` is the value an exclusion would name (a domain, or a
+    ``mobileapp::``-prefixed app id); ``display_name`` is the human label.
+    """
+    view = row.group_placement_view if hasattr(row, "group_placement_view") else row
+    metrics = row.metrics if hasattr(row, "metrics") else row
+    raw_type = str(getattr(view, "placement_type", "")).rsplit(".", 1)[-1].upper()
+    return {
+        "placement": _safe_str(view, "placement"),
+        "display_name": _safe_str(view, "display_name"),
+        "target_url": _safe_str(view, "target_url"),
+        "placement_type": raw_type,
+        "type": _PLACEMENT_TYPE_TO_KIND.get(raw_type, raw_type.lower()),
+        "impressions": _safe_int(metrics, "impressions"),
+        "clicks": _safe_int(metrics, "clicks"),
+        "cost_micros": _safe_int(metrics, "cost_micros"),
+        "cost": _micros_to_currency(_safe_int(metrics, "cost_micros")),
+        "conversions": _safe_float(metrics, "conversions"),
+    }
+
+
 # === Search Terms Report ===
 
 

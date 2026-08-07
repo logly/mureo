@@ -152,6 +152,7 @@ __all__ = [
     "load_preflight",
     "evaluate_guardrails",
     "guardrails_from_strategy_text",
+    "load_guardrails",
     "parse_guardrails",
     "ArgumentPaths",
     "BudgetDeclaration",
@@ -258,8 +259,31 @@ class Guardrails:
     #: Both default off, so the gate stays fail-open.
     block_learning_resets: bool = False
     block_learning_resets_during_incident: bool = False
+    #: Delivery-impact rules for bulk exclusions / blocks / negative
+    #: keywords (#547). Enforced by the dispatcher pre-flight
+    #: (:mod:`mureo.mcp.exclusion_preflight`) rather than by this gate: the
+    #: check needs one AWAITED platform read of the account's own recent
+    #: delivery, and the ``PolicyGate`` v1 contract is synchronous and
+    #: must stay pure and fast. They are parsed here so ``## Guardrails``
+    #: stays one vocabulary with one parser. Resolved against their
+    #: defaults by
+    #: :func:`mureo.analysis.exclusion_impact.exclusion_impact_rules`.
+    max_delivery_share_removed_pct: float | None = None
+    max_cumulative_delivery_share_removed_pct: float | None = None
+    exclusion_impact_window_days: int | None = None
+    exclusion_impact_metrics: tuple[str, ...] = ()
+    block_exclusions_without_impact_data: bool = False
 
     def is_empty(self) -> bool:
+        """True when THIS gate has nothing to enforce.
+
+        Deliberately blind to the ``exclusion_impact_*`` fields: they are
+        enforced by the dispatcher pre-flight, not here, and counting them
+        would switch on this gate's budget/bid scan — including the
+        best-effort pattern fallback and its fail-closed deny on an
+        exhausted scan — for an operator who wrote only an exclusion rule
+        and no money cap at all.
+        """
         return (
             self.max_daily_budget_per_campaign is None
             and self.max_daily_budget_increase_pct is None
@@ -280,6 +304,19 @@ def _to_float(value: str) -> float | None:
         return None
 
 
+def _to_int(value: str) -> int | None:
+    """Whole-number bullet value, or ``None`` when it is not one.
+
+    A fractional day count is dropped rather than truncated: silently
+    turning ``30.5`` into ``30`` would report a window the operator did not
+    write.
+    """
+    number = _to_float(value)
+    if number is None or number != int(number):
+        return None
+    return int(number)
+
+
 #: Accepted spellings of "on" for a boolean guardrail. Anything else — including
 #: a typo — reads as OFF, matching the numeric rules' "a malformed value drops
 #: that one rule" behaviour rather than silently enabling a refusal.
@@ -290,6 +327,27 @@ def _to_bool(value: str) -> bool:
     return value.strip().lower() in _TRUE_WORDS
 
 
+def _to_metrics(value: str) -> tuple[str, ...]:
+    """``impressions, cost`` → ``("impressions", "cost")``, order preserved.
+
+    Unknown names are dropped by
+    :func:`~mureo.analysis.exclusion_impact.exclusion_impact_rules`, which
+    owns the metric vocabulary; parsing stays a pure split so this module
+    keeps no import on the analysis package.
+    """
+    return tuple(item.strip().lower() for item in value.split(",") if item.strip())
+
+
+def _bullets(content: str) -> dict[str, str]:
+    """``- key: value`` bullets of a section body, last occurrence winning."""
+    found: dict[str, str] = {}
+    for line in content.splitlines():
+        match = _BULLET_RE.match(line)
+        if match is not None:
+            found[match.group(1).lower()] = match.group(2).strip()
+    return found
+
+
 def parse_guardrails(content: str) -> Guardrails:
     """Parse the body of a ``## Guardrails`` section into :class:`Guardrails`.
 
@@ -297,51 +355,42 @@ def parse_guardrails(content: str) -> Guardrails:
     compatibility). A malformed numeric value drops that one rule rather than
     failing the whole parse.
     """
-    max_per_campaign: float | None = None
-    max_increase_pct: float | None = None
-    max_total: float | None = None
-    max_lifetime: float | None = None
-    max_bid_amount: float | None = None
-    max_cpc_bid: float | None = None
-    blocked: set[str] = set()
-    block_resets = False
-    block_resets_incident = False
+    bullets = _bullets(content)
 
-    for line in content.splitlines():
-        m = _BULLET_RE.match(line)
-        if m is None:
-            continue
-        key = m.group(1).lower()
-        raw = m.group(2).strip()
-        if key == "max_daily_budget_per_campaign":
-            max_per_campaign = _to_float(raw)
-        elif key == "max_daily_budget_increase_pct":
-            max_increase_pct = _to_float(raw)
-        elif key == "max_total_daily_budget":
-            max_total = _to_float(raw)
-        elif key == "max_lifetime_budget_per_campaign":
-            max_lifetime = _to_float(raw)
-        elif key == "max_bid_amount_per_ad_set":
-            max_bid_amount = _to_float(raw)
-        elif key == "max_cpc_bid_per_ad_group":
-            max_cpc_bid = _to_float(raw)
-        elif key == "blocked_operations":
-            blocked = {op.strip() for op in raw.split(",") if op.strip()}
-        elif key == "block_learning_resets":
-            block_resets = _to_bool(raw)
-        elif key == "block_learning_resets_during_incident":
-            block_resets_incident = _to_bool(raw)
+    def number(key: str) -> float | None:
+        raw = bullets.get(key)
+        return None if raw is None else _to_float(raw)
 
+    window_raw = bullets.get("exclusion_impact_window_days")
     return Guardrails(
-        max_daily_budget_per_campaign=max_per_campaign,
-        max_daily_budget_increase_pct=max_increase_pct,
-        max_total_daily_budget=max_total,
-        max_lifetime_budget_per_campaign=max_lifetime,
-        max_bid_amount_per_ad_set=max_bid_amount,
-        max_cpc_bid_per_ad_group=max_cpc_bid,
-        blocked_operations=frozenset(blocked),
-        block_learning_resets=block_resets,
-        block_learning_resets_during_incident=block_resets_incident,
+        max_daily_budget_per_campaign=number("max_daily_budget_per_campaign"),
+        max_daily_budget_increase_pct=number("max_daily_budget_increase_pct"),
+        max_total_daily_budget=number("max_total_daily_budget"),
+        max_lifetime_budget_per_campaign=number("max_lifetime_budget_per_campaign"),
+        max_bid_amount_per_ad_set=number("max_bid_amount_per_ad_set"),
+        max_cpc_bid_per_ad_group=number("max_cpc_bid_per_ad_group"),
+        blocked_operations=frozenset(
+            op.strip()
+            for op in bullets.get("blocked_operations", "").split(",")
+            if op.strip()
+        ),
+        max_delivery_share_removed_pct=number("max_delivery_share_removed_pct"),
+        max_cumulative_delivery_share_removed_pct=number(
+            "max_cumulative_delivery_share_removed_pct"
+        ),
+        exclusion_impact_window_days=(
+            None if window_raw is None else _to_int(window_raw)
+        ),
+        exclusion_impact_metrics=_to_metrics(
+            bullets.get("exclusion_impact_metrics", "")
+        ),
+        block_exclusions_without_impact_data=_to_bool(
+            bullets.get("block_exclusions_without_impact_data", "")
+        ),
+        block_learning_resets=_to_bool(bullets.get("block_learning_resets", "")),
+        block_learning_resets_during_incident=_to_bool(
+            bullets.get("block_learning_resets_during_incident", "")
+        ),
     )
 
 
@@ -621,6 +670,18 @@ def _load_guardrails() -> Guardrails:
         guardrails = Guardrails()
     _cache[key] = (now, guardrails)
     return guardrails
+
+
+def load_guardrails() -> Guardrails:
+    """Public read of the operator's ``## Guardrails``, TTL-cached, fail-open.
+
+    Exists for the rules this file PARSES but does not enforce — the
+    exclusion delivery-impact keys (#547), enforced by the dispatcher
+    pre-flight because they need an awaited platform read. Calls through
+    :func:`_load_guardrails` rather than aliasing it so a test that patches
+    the loader patches both.
+    """
+    return _load_guardrails()
 
 
 class StrategyPolicyGate:

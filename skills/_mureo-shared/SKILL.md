@@ -240,6 +240,42 @@ When pausing or removing multiple entities:
 - Show total impact (e.g., "This will pause 5 campaigns with 1,200 clicks/day")
 - Require explicit confirmation
 
+### 3b. Bulk Exclusions: Size Them Before Applying (#547)
+
+An exclusion / block / negative-keyword batch removes **inventory**, and the
+share of delivery it removes is not visible from the count of entities. Before
+any such call, run:
+
+```
+analysis_exclusion_impact_preview
+  tool: "<the exclusion tool you are about to call>"
+  arguments: { …exactly the arguments you will send… }
+```
+
+It returns the share of the recent window's impressions / clicks / cost /
+conversions those entities carried — **incrementally** (this batch) and
+**cumulatively** (every standing exclusion once this batch lands). Show the
+operator the share, not just the count. The cumulative figure is the one that
+matters for a sequence of small passes: each pass can look harmless while the
+set as a whole takes delivery to zero.
+
+For a platform mureo does not model — Yahoo Ads placement URL lists, LINE /
+SmartNews placement restrictions, LOGLY adspot blocks, Amazon negative
+targeting — the tool still works: pull that platform's own per-placement /
+per-adspot report yourself and pass `excluded_entities` + `delivery_records`.
+In that form it reaches no API at all.
+
+`coverage: "unknown"` is an honest answer and **never** means "no impact". Say
+"the size of this exclusion cannot be measured" rather than proceeding as if it
+were small.
+
+**LOGLY specifically:** the account's own numbers cannot tell "bad inventory"
+apart from "my creative mismatches this inventory". Before blocking an adspot,
+also check `logly_supply_adspot_summary` (all-advertiser CTR / CPC for the
+slot) and `logly_supply_adspot_cv_by_category` (whether other advertisers
+convert there). The delivery-impact preview sizes the loss; the supply-side
+view is what says whether the loss is worth taking.
+
 ### 4. Never Expose Raw Credentials
 
 - Never include token values from `credentials.json` in responses
