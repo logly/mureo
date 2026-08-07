@@ -228,6 +228,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `no_reset` — the operator stopped by a false positive is the one who needs
   them.
 
+- **mureo now checks that an ad's tracking parameters match the campaign it
+  actually lives in** (#550), on every platform, both when ads are created and
+  as an account-wide audit. Nothing caught an ad shipped into campaign B
+  carrying campaign A's tags before this. That defect is more dangerous than a
+  delivery fault because it is silent: delivery looks healthy, spend looks
+  healthy, and the analytics everyone downstream trusts is quietly wrong.
+  Nobody investigates, because nothing appears broken.
+
+  The hard part is not detecting a difference — it is not inventing one. mureo
+  does not know what a correct `utm_campaign` looks like for your account: a
+  prefix that identifies an audience segment in one account is a campaign month
+  in the next. A check that guessed the convention would produce false
+  positives, and a check that produces false positives gets muted. So the
+  zero-configuration checks derive their verdict entirely from **evidence
+  already in the account**:
+
+  - `foreign_campaign_scheme` — some ads of a campaign carry a value shape that
+    is the **sole** shape of **exactly one** other campaign, while their own
+    campaign also uses a different shape. That is the copy-paste signature.
+    Requiring exactly one owner is what stops `utm_source=google` — used by
+    everything — from ever firing.
+  - `same_destination_scheme_conflict` — two ads in one campaign send the same
+    landing page to two different schemes. Needs no second campaign, so it
+    still fires when the campaign the tags were copied from is out of scope.
+  - `missing_tracking_parameter` / `untagged_final_url` — an ad out of step with
+    the tagging **its own campaign** already uses. mureo does not assert that
+    every account must carry `utm_source` / `utm_medium` / `utm_campaign`.
+
+  Legitimate variation does not fire: a maximal run of digits is collapsed when
+  values are compared, so `segb01` and `segb02` are one scheme while `sega01`
+  is another. Only `utm_*` parameters are inspected by default, so a product id
+  or a variant flag in the URL is never compared on.
+
+  Operator intent — the one thing evidence cannot supply — is **declared, never
+  inferred**, in an opt-in `## Tracking Convention` section of `STRATEGY.md`
+  (`recognize:` / `require:` / `pattern <name>:`, `fnmatch` globs). mureo parses
+  it; the agent passes it through unchanged.
+
+  Severity reflects delivery state, because the two cases are not the same
+  problem: a mis-tagged ad that has already served is a data-integrity incident
+  needing a reporting caveat (`critical`), one that never served is a cheap fix
+  (`high`). Delivery data that was not supplied is reported as
+  `delivery_state: unknown` with a note that the severity may be understated —
+  never silently assumed.
+
+  The detector lives in core (`mureo/analysis/tracking/`) over a platform-neutral
+  record, with one thin accessor per platform, and is exposed as the read-only
+  `analysis_tracking_consistency_check` MCP tool that reaches no platform API.
+  Because the caller passes the ad records in, it covers native platforms
+  (Google Ads `final_urls`, Meta Ads `object_story_spec` link + creative
+  `url_tags` — now requested by `meta_ads_ads_list`), plugin platforms through
+  the provider ABI's `Ad.final_url`, and bridged / hosted connectors
+  best-effort. Where mureo **cannot** read a URL — the Amazon Ads bridge
+  exposes no destination-URL field — those ads are listed in
+  `ads_without_readable_url` and reported as *unchecked*, never as clean.
+
+  `/tracking-health` runs the account audit (new step 8); the pre-flight before
+  ad creation is in `_mureo-shared`, so every upload path routes through it.
+  `docs/tracking-consistency.md` documents what the check can detect and, at
+  equal length, what it cannot.
+
 ## [0.10.43] - 2026-08-07
 
 ### Changed

@@ -126,7 +126,12 @@ mureo/
 │   └── client.py            # SearchConsoleApiClient
 ├── analysis/                # Cross-platform analysis utilities
 │   ├── lp_analyzer.py       # Landing page analysis
-│   └── anomaly_detector.py  # CPA spike / CTR drop / zero-spend detection with sample-size gates
+│   ├── anomaly_detector.py  # CPA spike / CTR drop / zero-spend detection with sample-size gates
+│   └── tracking/            # Tracking-parameter consistency (#550)
+│       ├── checks.py        # Platform-neutral detector: account audit + pre-upload pre-flight
+│       ├── scheme.py        # URL -> recognized tracking parameters + comparable value shape
+│       ├── convention.py    # Opt-in '## Tracking Convention' section of STRATEGY.md
+│       └── sources.py       # One thin accessor per platform ('this ad's destination URLs')
 ├── rollback/                # Rollback feature (allow-list gated, append-only)
 │   ├── models.py            # RollbackStatus enum + RollbackPlan dataclass
 │   ├── planner.py           # plan_rollback(ActionLogEntry) -> RollbackPlan | None
@@ -177,8 +182,9 @@ mureo/
 │   ├── _handlers_search_console.py        # Search Console handlers
 │   ├── tools_rollback.py                  # rollback_plan_get / rollback_apply
 │   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
-│   ├── tools_analysis.py                  # analysis_anomalies_check
+│   ├── tools_analysis.py                  # analysis_anomalies_check / analysis_tracking_consistency_check
 │   ├── _handlers_analysis.py              # Anomaly detector composition handler
+│   ├── _handlers_tracking.py              # Tracking-parameter consistency handler (#550)
 │   ├── tools_mureo_context.py            # STRATEGY.md / STATE.json read-write + outcome eval
 │   ├── _handlers_mureo_context.py        # Mureo-context handlers (atomic file writes)
 │   ├── tools_analytics_registry.py       # mureo_analytics_modules_list / _run (#440)
@@ -261,12 +267,13 @@ Claude Code ─MCP──▶ mureo MCP server
 
 ### Defense-in-Depth for AI Agents
 
-mureo assumes the caller is an AI agent susceptible to prompt injection, not a trusted human. Three layered controls address that threat model:
+mureo assumes the caller is an AI agent susceptible to prompt injection, not a trusted human. Five layered controls address that threat model:
 
 1. **Credential guard** — `mureo setup claude-code` writes a PreToolUse hook to `~/.claude/settings.json` that blocks reads of `~/.mureo/credentials.json`, `.env`, and similar secret files, so a prompt-injection payload cannot exfiltrate tokens via the file-system tools.
 2. **GAQL input validation** — every ID, date, date-range constant, and string literal entering a Google Ads query flows through a single whitelist-based surface in `mureo/google_ads/_gaql_validator.py`. `_period_to_date_clause`'s `BETWEEN` branch pattern-matches and revalidates its dates instead of passing the raw caller string into GAQL.
 3. **Anomaly detection** — `mureo/analysis/anomaly_detector.py` compares current campaign metrics against a median-based baseline built from historical `action_log` entries and emits prioritized alerts for zero spend (CRITICAL), CPA spikes (≥1.5×, critical at 2×), and CTR drops (≤0.5×, critical at 0.3×). Sample-size gates (30+ conversions, 1000+ impressions) follow the `_mureo-learning` skill's statistical-thinking rules to suppress single-day noise. Baselines tolerate malformed `metrics_at_action` rows; CPA/CTR are medianed per-entry so baseline values reflect a real historical day.
-4. **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. `reversible_params` is untrusted input for the rollback executor, so the planner enforces an explicit allow-list of operations (budget update + status toggles across Google/Meta Ads), refuses destructive verbs (`.delete` / `.remove` / `.destroy` / `.purge` / `.transfer`), and rejects unexpected parameter keys — a compromised agent cannot smuggle a privileged call through the rollback path. The `mureo rollback list` / `show` CLI commands are inspection-only; execution stays with the MCP dispatcher so it re-enters the same policy gate as forward actions, and control characters from STATE.json are stripped before terminal output to prevent ANSI-escape spoofing.
+4. **Tracking-parameter consistency** — `mureo/analysis/tracking/` detects ads whose final-URL tracking parameters disagree with the campaign they live in: a silent defect, because delivery and spend look healthy while the analytics everyone downstream trusts is quietly wrong. The detector is platform-neutral (it sees only `AdTrackingRecord`) with one thin accessor per platform, and it derives its verdict from evidence already in the account — never from a guessed naming convention. Operator intent is declared in STRATEGY.md's `## Tracking Convention` and parsed by mureo, not interpreted by the agent. Exposed as `analysis_tracking_consistency_check`, used by `/tracking-health` for the account audit and as a pre-flight before ads are created. See [tracking-consistency.md](tracking-consistency.md) for the exhaustive list of what it cannot detect.
+5. **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. `reversible_params` is untrusted input for the rollback executor, so the planner enforces an explicit allow-list of operations (budget update + status toggles across Google/Meta Ads), refuses destructive verbs (`.delete` / `.remove` / `.destroy` / `.purge` / `.transfer`), and rejects unexpected parameter keys — a compromised agent cannot smuggle a privileged call through the rollback path. The `mureo rollback list` / `show` CLI commands are inspection-only; execution stays with the MCP dispatcher so it re-enters the same policy gate as forward actions, and control characters from STATE.json are stripped before terminal output to prevent ANSI-escape spoofing.
 
 See [SECURITY.md](../SECURITY.md) for the full threat model.
 
