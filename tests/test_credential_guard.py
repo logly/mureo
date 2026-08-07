@@ -202,6 +202,49 @@ class TestBashGuardBehavior:
         )
         assert deny_decision(proc) == "deny"
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # End of the command string: nothing follows the directory name.
+            "ls -la ~/.mureo",
+            "tar cf /tmp/x.tar ~/.mureo",
+            # Trailing separator, and every quoting form of the same path.
+            "ls ~/.mureo/",
+            'cat "$HOME/.mureo/credentials.json"',
+            "cat '~/.mureo/credentials.json'",
+            "cat ~/'.mureo'/credentials.json",
+            'cat ~/.mureo""/credentials.json',
+            # Mixed case still opens the real file on case-insensitive
+            # filesystems, so it must stay blocked.
+            "cat ~/.Mureo/credentials.json",
+            "ls ~/.MUREO",
+            # An expansion right after the directory name never starts with an
+            # identifier character, so the boundary rule still sees the match.
+            "cat ~/.mureo$SUFFIX/credentials.json",
+            "cat ~/.mureo{,}/credentials.json",
+            "cat ~/.mureo*/credentials.json",
+            # A variable holding the parent puts an identifier character
+            # *before* the directory name — the rule must not key on that.
+            "D=~/; cat $D.mureo/credentials.json",
+            # A sibling directory name is not a match, but the traversal back
+            # into the real directory is a second occurrence that is.
+            "cat ~/.mureoX/../.mureo/credentials.json",
+        ],
+    )
+    def test_denies_every_spelling_of_the_mureo_dir(
+        self, fake_home: Path, command: str
+    ) -> None:
+        """The identifier-boundary rule must not shrink what is blocked.
+
+        Every form here reaches ``~/.mureo`` with plain path syntax; the
+        character after the directory name is never an identifier character,
+        because shell expansions and quoting all start with something else.
+        """
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert deny_decision(proc) == "deny", command
+
     @pytest.mark.parametrize("command", ["echo hello", "ls -la", "git status"])
     def test_allows_unrelated_commands(self, fake_home: Path, command: str) -> None:
         proc = run_guard(
@@ -209,6 +252,50 @@ class TestBashGuardBehavior:
         )
         assert proc.returncode == 0
         assert proc.stdout.strip() == ""
+
+    @pytest.mark.parametrize(
+        "command",
+        ["cat ~/.mureoX/credentials.json", "ls ~/.mureo_backup"],
+    )
+    def test_allows_sibling_dirs_whose_name_merely_starts_with_mureo(
+        self, fake_home: Path, command: str
+    ) -> None:
+        """``~/.mureoX`` is a different directory, and is not protected.
+
+        This mirrors the path guard, which already allows sibling names
+        (``test_allows_similarly_named_sibling_dir``). Blocking them was the
+        same behavior that blocked ``window.MUREO_REPORTS_FORMAT`` — a prefix
+        match cannot tell the two apart, so the boundary is drawn where the
+        path guard already draws it: at the end of the directory name.
+        """
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert proc.returncode == 0
+        assert proc.stdout.strip() == "", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "gh release create v0.10.43 --notes 'adds window.MUREO_REPORTS_FORMAT'",
+            "git commit -m 'feat: reorder via window.MUREO_REPORTS_ORDER'",
+            "grep -rn window.MUREO_WIZARD mureo/_data/web/",
+            "node --test tests/js/reports_format.test.js # window.MUREO_AUTH_META",
+        ],
+    )
+    def test_allows_mureo_browser_globals(self, fake_home: Path, command: str) -> None:
+        """``window.MUREO_*`` is mureo's own public browser namespace.
+
+        Case-folded, ``.MUREO_REPORTS_FORMAT`` contains ``.mureo`` — but the
+        next character continues an identifier, so it can never be the
+        ``~/.mureo`` directory name. Release notes, commit messages and greps
+        naming these globals must not be blocked.
+        """
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert proc.returncode == 0
+        assert proc.stdout.strip() == "", command
 
 
 # ---------------------------------------------------------------------------

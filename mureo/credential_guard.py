@@ -23,10 +23,32 @@ Two guards are installed:
   ``~/.mureo/credentials.json`` that is itself a symlink pointing OUT — its
   realpath escapes the dir, but the requested path is still under it). Both
   cover every file in the directory, not just ``credentials.json``.
-* Bash guard: denies any command whose text references ``.mureo``.  A
-  substring check is all a command string allows, but anchoring on the
-  directory name (not ``credentials``) also catches wildcard forms like
-  ``cat ~/.mureo/cred*``.
+* Bash guard: denies any command whose text references ``.mureo`` as a
+  complete path component — the substring must not be followed by an
+  identifier character (``[A-Za-z0-9_]``).  A substring check is all a
+  command string allows, but anchoring on the directory name (not
+  ``credentials``) also catches wildcard forms like ``cat ~/.mureo/cred*``.
+
+  The boundary costs nothing against *plain path syntax*, which is what a
+  text guard can see: naming ``~/.mureo`` requires the component to end
+  there, and every way a shell continues a word after it — ``/``, quote,
+  ``$``, backtick, ``{``, ``*``, backslash, whitespace, end of string — is
+  a non-identifier character.  A letter, digit or underscore instead spells
+  a *different* component (``~/.mureoX``), which the path guard likewise
+  treats as outside the protected tree.  What it buys is that mureo's own
+  public browser namespace — ``window.MUREO_REPORTS_FORMAT`` and friends,
+  case-folded to ``.mureo_...`` — stops tripping the guard in commit
+  messages, release notes and greps.
+
+  Two properties of the boundary are deliberate.  It is one-sided: the
+  character *before* the match is not examined, because an unquoted
+  variable holding the parent (``D=~/; cat $D.mureo/...``) puts an
+  identifier character there while still resolving into ``~/.mureo``.  And
+  it no longer blocks a *symlink* whose own name starts with ``.mureo``
+  (``~/.mureoLINK -> ~/.mureo``); that was never a property to rely on,
+  since a symlink under any other name (``~/link``) evaded the old check
+  too — the path guard's realpath resolution is what actually covers
+  symlinks.
 
 Both comparisons are case-folded: macOS and Windows filesystems are
 case-insensitive by default, so ``~/.MUREO/credentials.json`` opens the
@@ -95,11 +117,11 @@ _PATH_GUARD_CODE = (
 )
 
 _BASH_GUARD_CODE = (
-    "import sys,json; "
+    "import sys,json,re; "
     "d=json.loads(sys.stdin.read() or '{}'); "
     "c=str((d.get('tool_input') or {}).get('command') or ''); "
     + _deny_expr("mureo credential guard: commands referencing .mureo are blocked")
-    + " if '.mureo' in c.lower() else None"
+    + " if re.search('[.]mureo[^A-Za-z0-9_]', c.lower()+' ') else None"
 )
 
 
