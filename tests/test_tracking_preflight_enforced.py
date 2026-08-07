@@ -12,6 +12,8 @@ account must never block an operator from shipping an ad.
 from __future__ import annotations
 
 import json
+import logging
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -336,8 +338,10 @@ class TestDeclaredConventionReachesEnforcement:
             *[_row(f"a{n}", "campaign-a", "ag-a", f"sega0{n}", n) for n in (1, 2, 3)],
             *[_row(f"b{n}", "campaign-b", "ag-b", f"segb0{n}", n) for n in (4, 5, 6)],
         ]
-        # utm_medium is what the borrowed URL shares; declaring it
-        # creative-differentiating removes it from the comparison.
+        # utm_campaign is the ONLY parameter separating segment A from
+        # segment B here (source and medium are google/cpc throughout).
+        # Declaring it creative-differentiating empties the identifying
+        # signature, so the borrowed URL stops being a foreign scheme.
         self._declare(workspace, "- differentiate: utm_campaign")
 
         outcome = await google_ads_create_preflight(
@@ -476,3 +480,165 @@ class TestAccountSnapshotIsReusedAcrossABulkUpload:
             )
         assert first.list_ads.await_count == 1
         assert second.list_ads.await_count == 1
+
+
+_PREFLIGHT_LOGGER = "mureo.mcp._tracking_preflight"
+
+
+def _records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    """Only this module's records.
+
+    ``caplog`` collects from the root handler, so anything else
+    installed in the environment (an agency plugin, a vendored client)
+    would otherwise be counted as a pre-flight failure.
+    """
+    return [r for r in caplog.records if r.name == _PREFLIGHT_LOGGER]
+
+
+@pytest.mark.unit
+class TestFailureEscalation:
+    """A permanently broken guardrail must not look like a quiet one.
+
+    These pin the two headline behaviours of the fail-open path: the
+    counter escalates to ERROR, and a success resets it. Without them a
+    refactor could move the threshold or drop the reset and nothing
+    would go red — the reviewer confirmed both work by executing them,
+    which is exactly the evidence a test is supposed to make permanent.
+    """
+
+    def _broken(self) -> Any:
+        client = _client()
+        client.list_ads = AsyncMock(side_effect=RuntimeError("API unavailable"))
+        return client
+
+    def _blind(self) -> Any:
+        """An integration that returns empty data instead of raising."""
+        client = _client(rows=[])
+        client.list_ad_groups = AsyncMock(return_value=[])
+        return client
+
+    async def _run(self, client: Any):
+        return await google_ads_create_preflight(
+            client,
+            ad_group_id="ag-b",
+            final_url=_url(1, "sega01"),
+            acknowledged=False,
+        )
+
+    async def test_repeated_failures_escalate_to_error(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        client = self._broken()
+        with caplog.at_level(logging.WARNING, logger="mureo.mcp._tracking_preflight"):
+            for _ in range(3):
+                assert not (await self._run(client)).refused
+        levels = [r.levelno for r in _records(caplog)]
+        assert levels == [logging.WARNING, logging.WARNING, logging.ERROR]
+        assert "guardrail is effectively OFF" in _records(caplog)[2].getMessage()
+
+    async def test_an_unresolvable_campaign_counts_towards_escalation(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The branch that raises nothing must still be visible.
+
+        It returns NOT CHECKED without an exception, so if it bypassed
+        the counter a broken integration could stay silent forever.
+        """
+        client = self._blind()
+        with caplog.at_level(logging.WARNING, logger="mureo.mcp._tracking_preflight"):
+            for _ in range(3):
+                outcome = await self._run(client)
+                assert not outcome.refused
+                assert outcome.note is not None
+        assert [r.levelno for r in _records(caplog)] == [
+            logging.WARNING,
+            logging.WARNING,
+            logging.ERROR,
+        ]
+
+    async def test_every_not_run_emits_a_log_record(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Regression: the unresolved-campaign branch once logged nothing."""
+        with caplog.at_level(logging.WARNING, logger="mureo.mcp._tracking_preflight"):
+            outcome = await self._run(self._blind())
+        assert outcome.note is not None
+        assert len(_records(caplog)) == 1
+        assert "did not run" in _records(caplog)[0].getMessage()
+
+    async def test_a_success_resets_the_counter(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Two failures, a clean run, two more failures: still no alarm."""
+        broken = self._broken()
+        with caplog.at_level(logging.WARNING, logger="mureo.mcp._tracking_preflight"):
+            for _ in range(2):
+                await self._run(broken)
+            healthy = _client()
+            healthy._customer_id = "healthy"
+            assert not (
+                await google_ads_create_preflight(
+                    healthy,
+                    ad_group_id="ag-b",
+                    final_url=_url(7, "segb07"),
+                    acknowledged=False,
+                )
+            ).refused
+            for _ in range(2):
+                await self._run(broken)
+        assert [r.levelno for r in _records(caplog)] == [logging.WARNING] * 4
+
+
+@pytest.mark.unit
+class TestConventionReadFailures:
+    """An unreadable STRATEGY.md falls back to defaults, not to nothing."""
+
+    async def test_a_read_error_still_enforces_on_defaults(
+        self,
+        tmp_path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        strategy = tmp_path / "STRATEGY.md"
+        strategy.write_text("## Tracking Convention\n\n- differentiate: utm_campaign\n")
+
+        import mureo.mcp._tracking_preflight as preflight
+
+        def _boom(*_args: Any, **_kwargs: Any) -> str:
+            raise OSError("permission denied")
+
+        monkeypatch.setattr(Path, "read_text", _boom)
+
+        with caplog.at_level(logging.WARNING, logger="mureo.mcp._tracking_preflight"):
+            assert preflight.load_workspace_convention() is None
+            outcome = await google_ads_create_preflight(
+                _client(),
+                ad_group_id="ag-b",
+                final_url=_url(1, "sega01"),
+                acknowledged=False,
+            )
+
+        # The declared `differentiate:` never loaded, so the DEFAULT
+        # identifying set applies and the ad is still refused.
+        assert outcome.refused
+        assert any("could not read" in r.getMessage() for r in _records(caplog))
+
+    def test_the_strategy_path_comes_from_the_state_store(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Taken from the store, not rebuilt, so the two cannot drift."""
+        import mureo.mcp._tracking_preflight as preflight
+        from mureo.core.state_store import FilesystemStateStore
+
+        store = FilesystemStateStore(workspace=tmp_path)
+        moved = tmp_path / "elsewhere" / "STRATEGY.md"
+        store.strategy_path = moved
+
+        class _Ctx:
+            state_store = store
+
+        import mureo.core.runtime_context as rc
+
+        monkeypatch.setattr(rc, "get_runtime_context", lambda: _Ctx())
+        assert preflight._strategy_path() == moved

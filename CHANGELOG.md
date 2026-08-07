@@ -323,8 +323,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   account that declared `identify:` because its segment marker lives in
   `utm_content` would get no enforcement on a real leak. Failing open is not
   silent either — a create whose check could not run comes back with a
-  `tracking_preflight: "NOT CHECKED: …"` field, and three consecutive failures
-  escalate to an ERROR saying the guardrail is effectively off. Each enforced
+  `tracking_preflight: "NOT CHECKED: …"` field, every miss emits a log record,
+  and three consecutive misses escalate to an ERROR saying the guardrail is
+  effectively off. That covers every way the check can fail to run, including
+  the ones that raise nothing — an integration returning empty data instead of
+  erroring is exactly the case that would otherwise stay silent forever. Each enforced
   create runs one account-wide `list_ads`, cached per account for 60s so a bulk
   upload is a single read.
 

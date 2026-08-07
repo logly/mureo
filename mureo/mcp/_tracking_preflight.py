@@ -127,25 +127,35 @@ def reset_preflight_cache() -> None:
     _consecutive_failures = 0
 
 
-def _workspace() -> Path:
-    """The active workspace, matching how the other handlers resolve it."""
+def _strategy_path() -> Path:
+    """Where the active :class:`StateStore` keeps STRATEGY.md.
+
+    Taken from the store's own ``strategy_path`` so this module and
+    :mod:`mureo.core.state_store` cannot drift apart; the
+    ``workspace / STRATEGY_FILENAME`` fallback is only for a backend
+    registered through ``mureo.runtime_context_factory`` that does not
+    expose one.
+    """
     from mureo.core.runtime_context import get_runtime_context
 
     store = get_runtime_context().state_store
-    return Path(getattr(store, "workspace", Path.cwd()))
+    declared = getattr(store, "strategy_path", None)
+    if declared is not None:
+        return Path(declared)
+    return Path(getattr(store, "workspace", Path.cwd())) / STRATEGY_FILENAME
 
 
 def load_workspace_convention() -> TrackingConvention | None:
     """Parse ``## Tracking Convention`` out of the workspace STRATEGY.md.
 
-    The path is mureo's own (``<workspace>/STRATEGY.md``), never a
-    caller-supplied string, so there is no traversal surface here.
-    Returns ``None`` when the file or the section is absent, or when
-    anything at all goes wrong — a convention that cannot be read falls
-    back to the documented defaults rather than to no enforcement.
+    The path is mureo's own (the active store's ``strategy_path``),
+    never a caller-supplied string, so there is no traversal surface
+    here. Returns ``None`` when the file or the section is absent, or
+    when anything at all goes wrong — a convention that cannot be read
+    falls back to the documented **defaults**, never to no enforcement.
     """
     try:
-        path = _workspace() / STRATEGY_FILENAME
+        path = _strategy_path()
         if not path.is_file():
             return None
         return parse_tracking_convention(path.read_text(encoding="utf-8"))
@@ -191,8 +201,30 @@ def _refusal(findings: Sequence[TrackingFinding]) -> list[TextContent]:
     )
 
 
-def _not_run(reason: str) -> PreflightOutcome:
-    """Proceed with the create, but say the guardrail did not run."""
+def _fail_open(reason: str, *, exc: BaseException | None = None) -> PreflightOutcome:
+    """Let the create proceed, having counted and logged the miss.
+
+    EVERY way the check can fail to run goes through here, including the
+    ones that raise nothing. An integration that returns empty data
+    instead of erroring is precisely the case where "a permanently
+    broken guardrail and a quiet one look identical", so excluding it
+    from the counter would hollow out the escalation below.
+    """
+    global _consecutive_failures
+    _consecutive_failures += 1
+    if _consecutive_failures >= _FAILURES_BEFORE_ALARM:
+        logger.error(
+            "tracking pre-flight has not run %d times in a row (%s) — the "
+            "create-time guardrail is effectively OFF; ads are being created "
+            "unchecked",
+            _consecutive_failures,
+            reason,
+            exc_info=exc,
+        )
+    else:
+        logger.warning(
+            "tracking pre-flight did not run (%s); proceeding", reason, exc_info=exc
+        )
     return PreflightOutcome(
         note=(
             f"NOT CHECKED: the tracking-parameter pre-flight did not run "
@@ -201,21 +233,6 @@ def _not_run(reason: str) -> PreflightOutcome:
             f"campaign, or /tracking-health on the account."
         )
     )
-
-
-def _record_failure(exc: BaseException) -> None:
-    """Count consecutive failures and escalate a persistent one."""
-    global _consecutive_failures
-    _consecutive_failures += 1
-    if _consecutive_failures >= _FAILURES_BEFORE_ALARM:
-        logger.error(
-            "tracking pre-flight has failed %d times in a row — the create-time "
-            "guardrail is effectively OFF; ads are being created unchecked",
-            _consecutive_failures,
-            exc_info=exc,
-        )
-    else:
-        logger.warning("tracking pre-flight could not run; proceeding", exc_info=exc)
 
 
 async def _account_snapshot(client: Any) -> list[dict[str, Any]]:
@@ -264,7 +281,7 @@ async def google_ads_create_preflight(
         rows = await _account_snapshot(client)
         campaign_id = await _resolve_campaign_id(client, rows, ad_group_id)
         if not campaign_id:
-            return _not_run("the campaign for the target ad group is unresolvable")
+            return _fail_open("the campaign for the target ad group is unresolvable")
         planned = AdTrackingRecord(
             ad_id=PLANNED_AD_ID,
             campaign_id=campaign_id,
@@ -278,8 +295,7 @@ async def google_ads_create_preflight(
             convention=load_workspace_convention(),
         )
     except Exception as exc:  # noqa: BLE001 - a read failure must not block a create
-        _record_failure(exc)
-        return _not_run(f"{type(exc).__name__} while reading the account")
+        return _fail_open(f"{type(exc).__name__} while reading the account", exc=exc)
     _consecutive_failures = 0
     if not report.findings:
         return PreflightOutcome()
