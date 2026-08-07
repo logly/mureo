@@ -1782,28 +1782,51 @@
   // renders what it is told.
   // ----------------------------------------------------------------------
 
-  // The pure half of this section — the KPI-withholding condition, the
-  // freshness aggregation and the conflict-kind routing — lives in
-  // reports_logic.js (#540) so a test runner can execute it. Nothing about
-  // it needs a DOM; everything below still does. Bound here by their
+  // The parts of this section that need no DOM live in their own plain
+  // `<script>` modules, loaded ahead of this file (see app.html):
+  //
+  //   reports_logic.js  (#540) — the KPI-withholding condition, the
+  //     freshness aggregation and the conflict-kind routing.
+  //   reports_format.js (#556) — the display vocabulary: a flag's label and
+  //     severity, a param's detail line, a number's and a period's text.
+  //   reports_order.js  (#556) — the operator's card order: where it is
+  //     stored, how it is applied, and the two ways it changes.
+  //
+  // Everything below still needs a DOM. The modules are bound here by their
   // original names so every call site downstream reads exactly as before.
-  // reports_logic.js is a plain `<script>` loaded ahead of this file (see
-  // app.html). Failing at load is deliberate — the alternative is a
-  // conflicted client's double-counted totals rendering because the
-  // withholding helper quietly became `undefined`. Everything above this
-  // point is declarations, so nothing observable has happened yet when this
-  // throws: no listener is registered, no fetch is issued, no node reaches
-  // the DOM. But it does take the whole configure UI with it, so it says
-  // what is missing and what fixes it rather than leaving whoever hits it
-  // to reverse-engineer a bare "cannot read properties of undefined".
-  if (!window.MUREO_REPORTS_LOGIC) {
+  //
+  // Failing at load is deliberate — the alternative is a conflicted client's
+  // double-counted totals rendering because the withholding helper quietly
+  // became `undefined`. Everything above this point is declarations, so
+  // nothing observable has happened yet when this throws: no listener is
+  // registered, no fetch is issued, no node reaches the DOM. But it does
+  // take the whole configure UI with it, so it names WHICH modules are
+  // missing and what fixes it rather than leaving whoever hits it to
+  // reverse-engineer a bare "cannot read properties of undefined".
+  //
+  // ALL of them, not the first: a deployment that dropped the whole block of
+  // <script> tags would otherwise be diagnosed one reload at a time.
+  const missingReportsModules = [
+    ["MUREO_REPORTS_LOGIC", "reports_logic.js"],
+    ["MUREO_REPORTS_FORMAT", "reports_format.js"],
+    ["MUREO_REPORTS_ORDER", "reports_order.js"],
+  ].filter(function (mod) {
+    return !window[mod[0]];
+  });
+  if (missingReportsModules.length) {
     throw new Error(
-      "dashboard.js: window.MUREO_REPORTS_LOGIC is missing. " +
-        "reports_logic.js must be served (see _STATIC_ALLOWLIST in " +
+      "dashboard.js: " +
+        missingReportsModules
+          .map(function (mod) {
+            return "window." + mod[0] + " (" + mod[1] + ")";
+          })
+          .join(", ") +
+        " is missing. Each must be served (see _STATIC_ALLOWLIST in " +
         "mureo/web/handlers.py) and its <script> tag must come BEFORE " +
         "dashboard.js in app.html."
     );
   }
+
   const REPORTS_LOGIC = window.MUREO_REPORTS_LOGIC;
   const relativeAge = REPORTS_LOGIC.relativeAge;
   const reportsPlatformLabels = REPORTS_LOGIC.reportsPlatformLabels;
@@ -1812,6 +1835,21 @@
   const reportsFreshnessLabel = REPORTS_LOGIC.reportsFreshnessLabel;
   const reportsCardFreshness = REPORTS_LOGIC.reportsCardFreshness;
   const aggregateClientKpis = REPORTS_LOGIC.aggregateClientKpis;
+
+  const REPORTS_FORMAT = window.MUREO_REPORTS_FORMAT;
+  const reportsPeriodLabel = REPORTS_FORMAT.reportsPeriodLabel;
+  const humanizeReportFlag = REPORTS_FORMAT.humanizeReportFlag;
+  const reportFlagKind = REPORTS_FORMAT.reportFlagKind;
+  const flagSeverityRank = REPORTS_FORMAT.flagSeverityRank;
+  const clientReportFlags = REPORTS_FORMAT.clientReportFlags;
+  const buildFlagDetail = REPORTS_FORMAT.buildFlagDetail;
+  const formatNumber = REPORTS_FORMAT.formatNumber;
+  const formatKpi = REPORTS_FORMAT.formatKpi;
+
+  const REPORTS_ORDER = window.MUREO_REPORTS_ORDER;
+  const orderReportsClients = REPORTS_ORDER.orderReportsClients;
+  const persistReportsOrderFromDom = REPORTS_ORDER.persistReportsOrderFromDom;
+  const moveReportsCard = REPORTS_ORDER.moveReportsCard;
 
   // Canonical secondary KPI vocabulary → i18n label key. Headline (spend)
   // is rendered separately. Order here is the on-card display order.
@@ -1822,218 +1860,6 @@
     clicks: "dashboard.reports_kpi_clicks",
     impressions: "dashboard.reports_kpi_impressions",
   };
-
-  // Canonical period token → i18n label key. Unknown tokens fall back to the
-  // raw token (so a future window still renders a button, just unlocalized).
-  const REPORTS_PERIOD_LABELS = {
-    YESTERDAY: "dashboard.reports_period_yesterday",
-    LAST_7_DAYS: "dashboard.reports_period_last_7_days",
-    LAST_30_DAYS: "dashboard.reports_period_last_30_days",
-  };
-
-  function reportsPeriodLabel(token) {
-    const key = REPORTS_PERIOD_LABELS[token];
-    return key ? MUREO.t(key) : String(token);
-  }
-
-  // Report flags (reports.daily.flags) are free-form snake_case tags the
-  // analysis skill authors (e.g. "cpa_over_target_logly"). Map the common
-  // bases to friendly localized labels; anything unknown is humanized
-  // generically so a raw snake_case token never reaches the operator. The
-  // LONGEST matching base wins. Only the base label is shown — the trailing
-  // remainder (a platform or a descriptor) is dropped: it was inconsistent
-  // across flags and read as distracting, ambiguous parentheses. Detail
-  // lives in the report narrative. The 3rd element is the chip severity
-  // (is-warn / is-danger / is-success) so flags read as coloured tags:
-  // off-target / setup gaps = warn (amber), data-integrity / runaway = danger
-  // (red), on-target = success (green).
-  const REPORTS_FLAG_BASES = [
-    ["cpa_over_target", "dashboard.reports_flag_cpa_over_target", "is-warn"],
-    ["cpa_under_target", "dashboard.reports_flag_cpa_under_target", "is-success"],
-    ["cv_below_target", "dashboard.reports_flag_cv_below_target", "is-warn"],
-    ["conversions_below_target", "dashboard.reports_flag_cv_below_target", "is-warn"],
-    ["cv_above_target", "dashboard.reports_flag_cv_above_target", "is-success"],
-    ["operation_mode_mismatch", "dashboard.reports_flag_operation_mode_mismatch", "is-warn"],
-    ["low_cvr_lp_conversion", "dashboard.reports_flag_low_cvr_lp", "is-warn"],
-    ["low_cvr", "dashboard.reports_flag_low_cvr", "is-warn"],
-    ["sparse_conversions_tracking_suspect", "dashboard.reports_flag_tracking_suspect", "is-danger"],
-    ["tracking_suspect", "dashboard.reports_flag_tracking_suspect", "is-danger"],
-    ["zero_conversions", "dashboard.reports_flag_zero_conversions", "is-danger"],
-    ["budget_overspend", "dashboard.reports_flag_budget_overspend", "is-danger"],
-    ["spend_spike", "dashboard.reports_flag_spend_spike", "is-warn"],
-    ["search_console_no", "dashboard.reports_flag_sc_no_property", "is-warn"],
-    // Canonical vocabulary (PR-A) — a bare-string flag emitted as one of these
-    // codes maps to the same localized label + severity as its object form.
-    ["invalid_traffic_suspected", "dashboard.reports_flag_invalid_traffic_suspected", "is-danger"],
-    ["cpa_spike", "dashboard.reports_flag_cpa_spike", "is-warn"],
-    ["zero_cv_adspots", "dashboard.reports_flag_zero_cv_adspots", "is-warn"],
-    ["budget_drift", "dashboard.reports_flag_budget_drift", "is-warn"],
-    ["goals_met", "dashboard.reports_flag_goals_met", "is-success"],
-    ["supply_tools_unconfigured", "dashboard.reports_flag_supply_tools_unconfigured", "is-info"],
-    ["anomaly_baseline_insufficient", "dashboard.reports_flag_anomaly_baseline_insufficient", "is-info"],
-    ["pending_observations", "dashboard.reports_flag_pending_observations", "is-info"],
-    ["search_console_no_property", "dashboard.reports_flag_search_console_no_property", "is-info"],
-    ["ga4_not_configured", "dashboard.reports_flag_ga4_not_configured", "is-info"],
-  ];
-
-  // snake_case tokens that read better upper-cased (metric acronyms).
-  const REPORTS_FLAG_ACRONYMS = {
-    cpa: "CPA",
-    cpc: "CPC",
-    cpm: "CPM",
-    ctr: "CTR",
-    cvr: "CVR",
-    cv: "CV",
-    roas: "ROAS",
-    roi: "ROI",
-    lp: "LP",
-    ga4: "GA4",
-    seo: "SEO",
-    url: "URL",
-  };
-
-  function humanizeFlagWords(token) {
-    const words = String(token == null ? "" : token)
-      .split("_")
-      .filter(Boolean)
-      .map(function (w) {
-        return REPORTS_FLAG_ACRONYMS[w] || w;
-      });
-    if (!words.length) return "";
-    const s = words.join(" ");
-    return s.charAt(0).toUpperCase() + s.slice(1);
-  }
-
-  // The longest base entry that a bare-string flag matches (or null).
-  function matchReportFlagBase(raw) {
-    let best = null;
-    for (let i = 0; i < REPORTS_FLAG_BASES.length; i++) {
-      const base = REPORTS_FLAG_BASES[i][0];
-      if (
-        (raw === base || raw.indexOf(base + "_") === 0) &&
-        (!best || base.length > best[0].length)
-      ) {
-        best = REPORTS_FLAG_BASES[i];
-      }
-    }
-    return best;
-  }
-
-  function humanizeReportFlag(flag) {
-    // Structured object flag: localize by its canonical code, or use the
-    // author-written label for a `custom` flag. Detail never appears here —
-    // it lives in `params` (rendered on drill-down) and the narrative.
-    if (flag && typeof flag === "object") {
-      if (flag.code === "custom") return pickLocalizedLabel(flag.label);
-      if (typeof flag.code === "string" && flag.code) {
-        const key = "dashboard.reports_flag_" + flag.code;
-        const label = MUREO.t(key);
-        return label !== key ? label : humanizeFlagWords(flag.code);
-      }
-      // Legacy object without a code: fall back to any author text it carries
-      // (label / message / level / kind), matching the pre-vocabulary render.
-      return String(flag.label || flag.message || flag.level || flag.kind || "");
-    }
-    const raw = String(flag == null ? "" : flag);
-    const best = matchReportFlagBase(raw);
-    // A matched base shows only its localized label (no trailing context).
-    return best ? MUREO.t(best[1]) : humanizeFlagWords(raw);
-  }
-
-  // A `custom` flag's label is either a plain string or a {locale: text} map.
-  // Pick the active configure-UI locale (mirrored onto <html lang>), falling
-  // back to English, then to any provided string.
-  function pickLocalizedLabel(label) {
-    if (typeof label === "string") return label;
-    if (label && typeof label === "object") {
-      const loc = document.documentElement.lang || "en";
-      if (typeof label[loc] === "string") return label[loc];
-      if (typeof label.en === "string") return label.en;
-      const first = Object.keys(label)
-        .map(function (k) {
-          return label[k];
-        })
-        .filter(function (v) {
-          return typeof v === "string" && v;
-        })[0];
-      return first || "";
-    }
-    return "";
-  }
-
-  // Canonical severity (action/watch/info/positive) → chip CSS class. Kept
-  // separate from the legacy keyword inference in flagChipKind so a positive
-  // ("goals met") or informational ("baseline not yet established") flag is
-  // never coloured like an alarm.
-  const SEVERITY_CHIP = {
-    action: "is-danger",
-    watch: "is-warn",
-    info: "is-info",
-    positive: "is-success",
-  };
-
-  // Severity class for a flag's coloured chip. An object flag carries an
-  // explicit canonical severity; a bare string uses its base entry's curated
-  // severity, falling back to keyword inference (flagChipKind) for unmapped
-  // flags.
-  function reportFlagKind(flag) {
-    if (flag && typeof flag === "object") {
-      const sev = flag.severity || flag.level || flag.kind;
-      return SEVERITY_CHIP[sev] || flagChipKind(sev);
-    }
-    const best = matchReportFlagBase(String(flag == null ? "" : flag));
-    return (best && best[2]) || flagChipKind(flag);
-  }
-
-  // Build the drill-down detail string for a structured flag from its
-  // `params` (adspot ids, yen, ctr, …). Returns "" when there is nothing to
-  // show — the chip then renders as a plain, non-interactive tag.
-  function buildFlagDetail(flag) {
-    if (!flag || typeof flag !== "object") return "";
-    const params = flag.params;
-    if (!params || typeof params !== "object") return "";
-    const parts = [];
-    Object.keys(params).forEach(function (key) {
-      const value = formatFlagParam(key, params[key]);
-      if (value === "") return;
-      parts.push(flagParamLabel(key) + ": " + value);
-    });
-    return parts.join(" · ");
-  }
-
-  // Localized label for a param key (dashboard.reports_param_<key>), humanized
-  // as a fallback so an unlocalized key never shows a raw i18n token.
-  function flagParamLabel(key) {
-    const k = "dashboard.reports_param_" + key;
-    const label = MUREO.t(k);
-    return label !== k ? label : humanizeFlagWords(key);
-  }
-
-  // Format a single param value: arrays join with commas, ctr renders as a
-  // percentage, other numbers get thousands separators (no currency symbol —
-  // the value may be any platform's spend), everything else is stringified.
-  function formatFlagParam(key, value) {
-    if (Array.isArray(value)) {
-      return value
-        .map(function (v) {
-          return formatFlagParam(key, v);
-        })
-        .filter(Boolean)
-        .join(", ");
-    }
-    if (typeof value === "boolean") {
-      return MUREO.t(
-        value ? "dashboard.reports_param_yes" : "dashboard.reports_param_no"
-      );
-    }
-    if (key === "ctr" && typeof value === "number" && Number.isFinite(value)) {
-      return formatKpi("ctr", value);
-    }
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return formatNumber(value);
-    }
-    return value == null ? "" : String(value);
-  }
 
   // Build one flag chip element. A flag with drill-down detail becomes an
   // interactive <button> that toggles a detail line (an ARIA disclosure);
@@ -2106,31 +1932,6 @@
   // (locale change, client switch, period switch) must not let a stale
   // result append.
   let reportsRenderSeq = 0;
-
-  // Format a raw number with thousands separators (no currency symbol —
-  // the API returns raw numbers and we must not assume a currency). Non-
-  // numbers pass through as plain text.
-  function formatNumber(value) {
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value.toLocaleString();
-    }
-    return value == null ? "" : String(value);
-  }
-
-  // CTR is a ratio/percentage — render with up to 2 decimals + "%".
-  function formatKpi(key, value) {
-    if (key === "ctr" && typeof value === "number" && Number.isFinite(value)) {
-      // Heuristic: a value <= 1 is a fraction (0.034 → 3.4%); otherwise it
-      // is already a percentage figure from the platform. NOTE: totals are
-      // platform-agnostic (built-in + arbitrary plugin:<dist> bridges) with no
-      // guaranteed CTR-unit convention, so a bridge reporting "0.8" meaning
-      // 0.8% would render as 80%. The real fix is normalizing CTR units in the
-      // backend (PR-1) so the frontend doesn't guess; tracked as a follow-up.
-      const pct = value <= 1 ? value * 100 : value;
-      return pct.toLocaleString(undefined, { maximumFractionDigits: 2 }) + "%";
-    }
-    return formatNumber(value);
-  }
 
   // Build one KPI card for a single platform entry. `summary` is optional and
   // supplies the conflict context (the platform row itself carries none).
@@ -2238,18 +2039,6 @@
     freshEl.textContent = fresh.text;
     foot.appendChild(freshEl);
     return foot;
-  }
-
-  // Map a free-form flag (string) to a chip kind. Defensive: any field may
-  // be absent and the value may be an object with {level, label}.
-  function flagChipKind(level) {
-    const l = String(level || "").toLowerCase();
-    if (l.indexOf("danger") >= 0 || l.indexOf("critical") >= 0 || l.indexOf("error") >= 0)
-      return "is-danger";
-    if (l.indexOf("warn") >= 0 || l.indexOf("watch") >= 0) return "is-warn";
-    if (l.indexOf("ok") >= 0 || l.indexOf("good") >= 0 || l.indexOf("healthy") >= 0)
-      return "is-success";
-    return "";
   }
 
   // Render the "latest report" block from reports.{daily|weekly|goal}. The
@@ -2371,22 +2160,6 @@
     }
   }
 
-  // Flags from a client's latest report (daily → weekly → goal).
-  function clientReportFlags(summary) {
-    const reports =
-      summary && typeof summary.reports === "object" ? summary.reports : null;
-    if (!reports) return [];
-    const r = reports.daily || reports.weekly || reports.goal;
-    return r && Array.isArray(r.flags) ? r.flags : [];
-  }
-
-  // Sort flags danger → warn → success → info → neutral (most urgent first).
-  const REPORTS_FLAG_SEVERITY_ORDER = ["is-danger", "is-warn", "is-success", "is-info", ""];
-  function flagSeverityRank(flag) {
-    const idx = REPORTS_FLAG_SEVERITY_ORDER.indexOf(reportFlagKind(flag));
-    return idx === -1 ? REPORTS_FLAG_SEVERITY_ORDER.length : idx;
-  }
-
   // Fetch a client's summary for its overview card. Honours the period toggle,
   // and when the selected window has no totals (a period-bucketed client whose
   // passthrough rollup is blank) falls back to the first window with data.
@@ -2431,93 +2204,6 @@
     cell.appendChild(v);
     cell.appendChild(l);
     return cell;
-  }
-
-  // --------------------------------------------------------------------
-  // Index card order (per operator, in this browser)
-  //
-  // The order is PURELY visual: losing it breaks nothing, and two operators
-  // sharing one install reasonably want different orders. So it is
-  // localStorage, not server state — server state would impose one
-  // operator's arrangement on everyone. Archiving is the opposite kind of
-  // decision and is deliberately NOT stored here (see setReportsClientArchived).
-  // --------------------------------------------------------------------
-  const REPORTS_ORDER_KEY = "mureo.reports.client_order";
-
-  // The stored order, or [] on ANY problem (storage disabled, corrupt JSON,
-  // a non-array body, non-string members). An unusable order must degrade to
-  // the server's order — never to an empty grid.
-  function readReportsOrder() {
-    try {
-      const raw = window.localStorage.getItem(REPORTS_ORDER_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter(function (s) {
-        return typeof s === "string" && s;
-      });
-    } catch (_e) {
-      return []; // storage unavailable or corrupt — fall back to server order
-    }
-  }
-
-  function writeReportsOrder(slugs) {
-    try {
-      window.localStorage.setItem(REPORTS_ORDER_KEY, JSON.stringify(slugs));
-    } catch (_e) {
-      /* storage unavailable — the order stays for this render only */
-    }
-  }
-
-  // Apply the stored order to `rows`. Stored slugs that no longer exist are
-  // simply never matched, so they cost nothing; clients the stored order has
-  // never seen keep their server order and are appended LAST.
-  //
-  // Last, not first: the grid is curated on purpose, and a client the
-  // operator has never placed must not displace the top of it on every
-  // onboarding. Its position is defined and findable, and one drag fixes it.
-  function orderReportsClients(rows) {
-    const order = readReportsOrder();
-    const placed = [];
-    const fresh = [];
-    rows.forEach(function (c) {
-      const slug = c && c.slug ? c.slug : "";
-      if (slug && order.indexOf(slug) !== -1) placed.push(c);
-      else fresh.push(c);
-    });
-    placed.sort(function (a, b) {
-      return order.indexOf(a.slug) - order.indexOf(b.slug);
-    });
-    return placed.concat(fresh);
-  }
-
-  // Persist the grid's CURRENT DOM order. The DOM is the single source of
-  // truth for both the drop handler and the keyboard path, so the two can
-  // never disagree. Only the cards on screen are recorded: an archived
-  // client leaves the stored order and returns as an unplaced (last) card
-  // when it is restored.
-  function persistReportsOrderFromDom(wrap) {
-    const slugs = [];
-    Array.prototype.forEach.call(wrap.children, function (node) {
-      const slug = node.getAttribute ? node.getAttribute("data-client") : null;
-      if (slug) slugs.push(slug);
-    });
-    writeReportsOrder(slugs);
-  }
-
-  // Move one card `delta` slots and persist. Moving the existing node (rather
-  // than re-rendering the grid) keeps focus on the control the operator is
-  // holding, so repeated arrow presses just work.
-  function moveReportsCard(node, delta) {
-    const wrap = node.parentNode;
-    if (!wrap) return;
-    const items = Array.prototype.slice.call(wrap.children);
-    const from = items.indexOf(node);
-    const to = from + delta;
-    if (from === -1 || to < 0 || to >= items.length) return;
-    if (delta < 0) wrap.insertBefore(node, items[to]);
-    else wrap.insertBefore(node, items[to].nextSibling);
-    persistReportsOrderFromDom(wrap);
   }
 
   // The card being dragged, held as the NODE (never as a slug fed back into

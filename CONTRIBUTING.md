@@ -13,7 +13,7 @@ Thank you for your interest in contributing to mureo. This guide covers the deve
   (`node --test tests/js/*.test.js`). mureo ships no JavaScript
   dependencies, there is no `package.json` and no build step; Node is used
   purely as a test runner for the DOM-free logic in
-  `mureo/_data/web/reports_logic.js`. Skip it if you are not touching the
+  `mureo/_data/web/reports_*.js`. Skip it if you are not touching the
   configure UI — CI runs it either way.
 
 ### Clone and Install
@@ -74,20 +74,31 @@ files — no bundler, no module system, no build step. Most of it is guarded
 by the `tests/test_web_assets_*.py` pins, which grep the shipped asset for
 the names, strings and selectors a feature depends on.
 
-Grepping cannot catch an inverted condition, so the DOM-free logic behind
-the Reports dashboard's money figures lives in its own asset,
-`mureo/_data/web/reports_logic.js`, and is executed by Node's built-in test
-runner:
+Grepping cannot catch an inverted condition, so the DOM-free parts of the
+Reports dashboard live in their own assets and are executed by Node's
+built-in test runner:
 
 ```bash
 node --test tests/js/*.test.js
 ```
 
-No install step: no `package.json`, no dependencies, no lockfile. The
-module publishes `window.MUREO_REPORTS_LOGIC` for the browser and carries an
-inert `module.exports` tail so Node can require the exact bytes the browser
-is served. When you add DOM-free logic to the configure UI, put it there
-and test it; rendering stays in `dashboard.js` and stays pinned statically.
+| Asset | Global | What is in it |
+| --- | --- | --- |
+| `reports_logic.js` | `MUREO_REPORTS_LOGIC` | KPI withholding, freshness aggregation, conflict routing |
+| `reports_format.js` | `MUREO_REPORTS_FORMAT` | Flag labels and severities, param detail, numbers, period labels |
+| `reports_order.js` | `MUREO_REPORTS_ORDER` | The Reports index card order and how it is persisted |
+
+No install step: no `package.json`, no dependencies, no lockfile. Each
+module publishes exactly one global for the browser and carries an inert
+`module.exports` tail so Node can require the exact bytes the browser is
+served. A new module needs three things: an entry in `_STATIC_ALLOWLIST`
+(`mureo/web/handlers.py`), a `<script>` tag ahead of `dashboard.js` in
+`app.html`, and a row in the table at the top of
+`tests/js/browser_contract.test.js` — which then asserts the same shipping
+contract for it as for every other module.
+
+When you add DOM-free logic to the configure UI, put it in one of these and
+test it; rendering stays in `dashboard.js` and stays pinned statically.
 
 ### Test Framework
 

@@ -7,6 +7,22 @@ its detail in ``params`` so the chip stays coarse and localizable while the
 detail moves to a drill-down. These tests pin the bundled web assets (no build
 step — read directly from ``mureo/_data/web/``) so a regression that drops the
 localized labels, the severity colouring, or the drill-down flips red here.
+
+**Read this with ``tests/js/reports_format.test.js``.** Since #556 the two
+halves are guarded differently, the same way #540 split the conflict logic:
+
+  - the DECISIONS — the longest base wins, an unknown code degrades to a
+    humanized token instead of a raw i18n key, a canonical severity beats the
+    legacy keyword inference, an ``is-info`` flag ranks below the alarms —
+    live in ``mureo/_data/web/reports_format.js`` and are *executed* by
+    ``node --test tests/js/``. An inverted comparison is caught there.
+  - the CHIP — the element, its ARIA disclosure, its CSS classes — stays in
+    ``dashboard.js``, still has no runner that can drive a DOM, and is
+    guarded below by pinning the *shape* of what ships.
+
+The pair ships as one behaviour, so the pins that do not care which of the two
+holds a string grep both as a single source (``_FLAG_ASSETS``), the way
+``test_web_assets_reports_conflicts.py`` does.
 """
 
 from __future__ import annotations
@@ -51,8 +67,16 @@ _PARAM_LABEL_KEYS = (
 )
 
 
+# The flag vocabulary module and the renderer that consumes it (#556).
+_FLAG_ASSETS = ("reports_format.js", "dashboard.js")
+
+
 def _read(name: str) -> str:
     return (_WEB / name).read_text(encoding="utf-8")
+
+
+def _read_flags() -> str:
+    return "\n".join(_read(name) for name in _FLAG_ASSETS)
 
 
 # ---------------------------------------------------------------------------
@@ -79,14 +103,17 @@ def test_param_label_keys_present_in_both_locales() -> None:
 
 
 # ---------------------------------------------------------------------------
-# dashboard.js — structured flag rendering
+# reports_format.js + dashboard.js — structured flag rendering
 # ---------------------------------------------------------------------------
 
 
 def test_object_flags_localized_by_code() -> None:
     """An object flag renders its label from ``dashboard.reports_flag_<code>``,
-    not the raw slug — so it is coarse and localized."""
-    js = _read("dashboard.js")
+    not the raw slug — so it is coarse and localized.
+
+    *Which* label an unlocalized code falls back to is executed by
+    ``tests/js/reports_format.test.js``."""
+    js = _read("reports_format.js")
     assert "function humanizeReportFlag(" in js
     assert '"dashboard.reports_flag_" + ' in js
     assert "flag.code" in js
@@ -94,8 +121,12 @@ def test_object_flags_localized_by_code() -> None:
 
 def test_custom_flag_label_is_locale_picked() -> None:
     """A ``custom`` flag carries an author label (string or {locale: text});
-    the frontend picks the active locale via documentElement.lang."""
-    js = _read("dashboard.js")
+    the frontend picks the active locale via documentElement.lang.
+
+    This is the one thing in reports_format.js that reads the document — a
+    single attribute, at call time — so it is pinned here as well as executed
+    under a stubbed ``document`` by the JS suite."""
+    js = _read("reports_format.js")
     assert "function pickLocalizedLabel(" in js
     assert "documentElement.lang" in js
 
@@ -104,19 +135,19 @@ def test_severity_maps_to_chip_class_including_info() -> None:
     """The four canonical severities map to chip classes, including the new
     neutral ``is-info`` bucket so info / positive flags are not styled as
     alarms."""
-    js = _read("dashboard.js")
+    js = _read("reports_format.js")
     assert "function reportFlagKind(" in js
     assert "flag.severity" in js
     assert '"is-info"' in js
     # The severity → chip mapping must cover all four buckets.
     for sev in ("action", "watch", "info", "positive"):
-        assert sev in js, f"severity {sev} not referenced in dashboard.js"
+        assert sev in js, f"severity {sev} not referenced in reports_format.js"
 
 
 def test_new_canonical_bases_registered() -> None:
     """The bare-string base map is aligned with the canonical vocabulary so a
     flag emitted as a plain code string still maps to its localized label."""
-    js = _read("dashboard.js")
+    js = _read("reports_format.js")
     for code in (
         "invalid_traffic_suspected",
         "budget_drift",
@@ -124,27 +155,32 @@ def test_new_canonical_bases_registered() -> None:
         "goals_met",
         "anomaly_baseline_insufficient",
     ):
-        assert code in js, f"canonical base {code} not in dashboard.js"
+        assert code in js, f"canonical base {code} not in reports_format.js"
 
 
 def test_flag_detail_drilldown_present() -> None:
     """Detail (adspot ids / yen / ctr) is rendered on a drill-down, never on
     the chip face: an interactive chip toggles a detail element built from
-    ``params``, wired as an ARIA disclosure (aria-expanded + aria-controls)."""
-    js = _read("dashboard.js")
-    assert "function buildFlagDetail(" in js
-    assert "function buildFlagChipElement(" in js
-    assert '"dashboard.reports_param_" + ' in js
-    assert "is-interactive" in js
-    assert "report-flag-detail" in js
-    assert 'setAttribute("aria-expanded"' in js
-    assert 'setAttribute("aria-controls"' in js
+    ``params``, wired as an ARIA disclosure (aria-expanded + aria-controls).
+
+    The detail STRING is built in reports_format.js and executed by the JS
+    suite; the disclosure ELEMENT is rendering and stays pinned here."""
+    detail = _read("reports_format.js")
+    assert "function buildFlagDetail(" in detail
+    assert '"dashboard.reports_param_" + ' in detail
+    chip = _read("dashboard.js")
+    assert "function buildFlagChipElement(" in chip
+    assert "buildFlagDetail(flag)" in chip
+    assert "is-interactive" in chip
+    assert "report-flag-detail" in chip
+    assert 'setAttribute("aria-expanded"' in chip
+    assert 'setAttribute("aria-controls"' in chip
 
 
 def test_boolean_params_are_localized() -> None:
     """A boolean param (e.g. budget_drift's ``unlogged``) renders a localized
     yes/no, not raw English ``true`` / ``false`` in the Japanese UI."""
-    js = _read("dashboard.js")
+    js = _read("reports_format.js")
     assert 'typeof value === "boolean"' in js
     data = json.loads(_read("i18n.json"))
     for key in ("dashboard.reports_param_yes", "dashboard.reports_param_no"):
@@ -155,12 +191,51 @@ def test_boolean_params_are_localized() -> None:
 def test_severity_order_includes_info() -> None:
     """The client-card sort order ranks the new ``is-info`` bucket (below the
     coloured severities) so info flags do not jump above alarms."""
-    js = _read("dashboard.js")
+    js = _read("reports_format.js")
     assert "REPORTS_FLAG_SEVERITY_ORDER" in js
     order_line = next(
         line for line in js.splitlines() if "REPORTS_FLAG_SEVERITY_ORDER =" in line
     )
     assert "is-info" in order_line
+
+
+def test_the_flag_vocabulary_is_not_re_implemented_in_the_renderer() -> None:
+    """One definition, executed by ``node --test tests/js/``. A copy left in
+    dashboard.js would shadow the tested one and drift from it silently —
+    the exact failure the split exists to end."""
+    dashboard = _read("dashboard.js")
+    fmt = _read("reports_format.js")
+    for fn in (
+        "humanizeReportFlag",
+        "humanizeFlagWords",
+        "matchReportFlagBase",
+        "pickLocalizedLabel",
+        "reportFlagKind",
+        "flagChipKind",
+        "flagSeverityRank",
+        "clientReportFlags",
+        "buildFlagDetail",
+        "flagParamLabel",
+        "formatFlagParam",
+        "formatNumber",
+        "formatKpi",
+        "reportsPeriodLabel",
+    ):
+        assert f"function {fn}(" in fmt, f"{fn} is not in reports_format.js"
+        assert f"function {fn}(" not in dashboard, f"{fn} is duplicated"
+    # It publishes itself the way amazon_oauth.js does — a global on `window`,
+    # not a module system the served page would have to grow.
+    assert "window.MUREO_REPORTS_FORMAT = api" in fmt
+    assert "MUREO_REPORTS_FORMAT" in dashboard
+
+
+def test_untrusted_flag_text_still_reaches_the_dom_via_text_content() -> None:
+    """Flag labels and params are agent-authored. Neither file ever ASSIGNS
+    innerHTML (#533)."""
+    for name in _FLAG_ASSETS:
+        js = _read(name)
+        assert ".innerHTML =" not in js, name
+        assert ".innerHTML=" not in js, name
 
 
 # ---------------------------------------------------------------------------

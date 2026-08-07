@@ -285,12 +285,23 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 - **Browser assets** (`mureo/_data/web/`): they ship as plain
   `<script>`-loaded files, so nothing there may grow a bundler, a module
   system or a build step. Rendering is guarded by the substring pins in
-  `tests/test_web_assets_*.py`. DOM-free logic goes in
-  `mureo/_data/web/reports_logic.js` — which publishes
-  `window.MUREO_REPORTS_LOGIC` for the browser and carries an inert
-  `module.exports` tail so `node --test tests/js/*.test.js` executes the
-  exact bytes the browser is served. Put new decision logic there; a
-  grep-pin cannot catch an inverted condition.
+  `tests/test_web_assets_*.py`. DOM-free logic lives in its own asset next
+  to `dashboard.js`, one global per file:
+  - `reports_logic.js` → `window.MUREO_REPORTS_LOGIC` — the money-safety
+    decisions (KPI withholding, freshness aggregation, conflict routing).
+  - `reports_format.js` → `window.MUREO_REPORTS_FORMAT` — the display
+    vocabulary (flag labels and severities, param detail, numbers, periods).
+  - `reports_order.js` → `window.MUREO_REPORTS_ORDER` — the Reports index
+    card order (localStorage, and the two ways the grid is reordered).
+
+  Each carries an inert `module.exports` tail so `node --test
+  tests/js/*.test.js` executes the exact bytes the browser is served, and
+  each is listed in `_STATIC_ALLOWLIST` with its `<script>` ahead of
+  `dashboard.js` (which throws at load naming any that is missing).
+  `tests/js/browser_contract.test.js` asserts the shipping contract for
+  every module from one table — add a row when you add a module. Put new
+  decision logic in one of these rather than in `dashboard.js`; a grep-pin
+  cannot catch an inverted condition.
 
 ## Credential Security
 

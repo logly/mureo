@@ -210,18 +210,27 @@ def test_conflict_and_freshness_text_is_rendered_via_text_content() -> None:
 @pytest.mark.unit
 def test_the_pure_logic_is_served_and_loaded_before_its_consumer() -> None:
     """#540 split the money-safety logic into its own asset so a test runner
-    can execute it. That only holds if the browser still gets it: it has to
-    be on the static allow-list and its ``<script>`` has to come BEFORE
-    dashboard.js, which binds it at load. Miss either and the dashboard is
-    a blank page — so this pins the shipping half of the split."""
+    can execute it, and #556 split two more the same way. That only holds if
+    the browser still gets them: each has to be on the static allow-list and
+    its ``<script>`` has to come BEFORE dashboard.js, which binds all three at
+    load. Miss either and the dashboard is a blank page — so this pins the
+    shipping half of the splits.
+
+    The module list is DISCOVERED, not declared: every ``reports_*.js`` in
+    ``mureo/_data/web/`` must satisfy this. A module extracted but never
+    served is the failure being guarded, and a hand-maintained list is
+    exactly what a person forgets to add the new name to."""
     from mureo.web.handlers import _STATIC_ALLOWLIST
 
-    assert "reports_logic.js" in _STATIC_ALLOWLIST
+    modules = sorted(p.name for p in _WEB.glob("reports_*.js"))
+    assert modules, "no reports_*.js modules found — did the layout change?"
     html = _read("app.html")
-    position = html.index("/static/reports_logic.js")
-    assert position < html.index("/static/dashboard.js")
-    # It stays a plain <script>: no type="module", no bundler entry point.
-    assert 'src="/static/reports_logic.js"></script>' in html
+    for name in modules:
+        assert name in _STATIC_ALLOWLIST, f"{name} is not served"
+        assert html.index(f"/static/{name}") < html.index("/static/dashboard.js")
+        # It stays a plain <script>: no type="module", no bundler entry point.
+        assert f'src="/static/{name}"></script>' in html
+    assert 'type="module"' not in html
 
 
 @pytest.mark.unit
