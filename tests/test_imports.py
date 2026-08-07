@@ -1,7 +1,27 @@
 """Import verification tests.
 
-Verifies that every module imports cleanly and that none of them pull
-in database or LLM dependencies.
+Two checks with deliberately different reach. The difference matters when you
+read a green run, so it is stated here rather than left to be inferred:
+
+- **The DB/LLM import ban covers everything.** ``TestNoForbiddenImports``
+  walks ``mureo/`` with ``rglob``, so every module in the package is checked,
+  including any added since this file was last touched.
+- **The clean-import check does not.** ``TestModuleImports`` iterates
+  ``_ALL_MODULES``, a hand-maintained list naming 46 of the 288 importable
+  modules under ``mureo/``.
+
+That subset is **drift, not policy**. No exclusion rule was ever written for
+the list; it simply stopped being extended, and whole packages — ``mcp``,
+``web``, ``core``, ``cli``, ``analytics``, ``creative_studio``,
+``amazon_ads``, ``adapters``, ``byod``, ``demo``, ``providers``, ``policy``,
+``rollback``, ``learning``, ``search_console`` — have no clean-import
+coverage here at all, while ``google_ads`` / ``meta_ads`` / ``analysis`` are
+covered only in part. So do **not** read a green ``TestModuleImports`` as
+"every module imports cleanly"; read it as "these 46 do".
+
+Closing the gap is tracked in #555 and is deliberately its own change: a
+module that legitimately cannot import standalone has to be found and judged,
+not swept into a list.
 """
 
 from __future__ import annotations
@@ -77,9 +97,13 @@ _ALL_MODULES: list[str] = [
     "mureo.analysis",
     "mureo.analysis.lp_analyzer",
     "mureo.context",
+    "mureo.context.conversion_overrides",
     "mureo.context.errors",
     "mureo.context.models",
+    "mureo.context.platform_accounts",
+    "mureo.context.platform_guards",
     "mureo.context.state",
+    "mureo.context.state_codec",
     "mureo.context.strategy",
 ]
 

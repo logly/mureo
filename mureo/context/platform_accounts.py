@@ -24,7 +24,7 @@ three would let the definitions drift, and drift here re-creates the bug.
 The join has exactly one subtlety, and it is load-bearing: **an empty
 ``account_id`` means UNKNOWN, never a value.** The tolerant read path
 synthesizes ``""`` for a missing ``account_id``
-(:func:`mureo.context.state._platform_account_id`), so treating ``""`` as a
+(:func:`mureo.context.state_codec._platform_account_id`), so treating ``""`` as a
 value would join every id-less entry in a document into one bogus "account".
 
 Deliberately dependency-free — stdlib plus the frozen ``PlatformState`` model
@@ -60,7 +60,7 @@ class DuplicateAccountEntry:
     entries.
 
     Frozen and hashable, so a caller can use it directly as a warn-once latch
-    key (see :func:`mureo.context.state._warn_on_duplicate_accounts`).
+    key (see :func:`mureo.context.platform_guards.warn_on_duplicate_accounts`).
     """
 
     account_id: str
