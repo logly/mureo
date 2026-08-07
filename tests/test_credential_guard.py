@@ -464,6 +464,25 @@ class TestGuardThroughARealShell:
             # `$"..."` is a translated string: the `$` is not an expansion
             # of anything the guard cannot see.
             'cat ~/$".mureo"/credentials.json',
+            # The parent directory comes from a substitution *and* the name
+            # is broken by something only normalization resolves. This is
+            # the product of the two axes, and it is the category that
+            # shipped twice: while the two rules read different strings,
+            # whatever one of them folded away the other could not see.
+            "D2=~/; cat $D2.mu\\\nreo/credentials.json",
+            'D2=~/; cat "$D2".mu\\\nreo/credentials.json',
+            "set -- ~/; cat $1.mu\\\nreo/credentials.json",
+            "D2=~/; E2=; cat $D2$E2.mu\\\nreo/credentials.json",
+            "D2=~/; cat ${D2}.mu\\\nreo/credentials.json",
+            "D2=~/; cat $D2.\\\nmureo/credentials.json",
+            "D2=~/; cat $D2.m\\\nur\\\neo/credentials.json",
+            'D2=~/; cat $D2.mure"o"/credentials.json',
+            "D2=~/; cat $D2.mur'e'o/credentials.json",
+            "D2=~/; cat $D2.mure?/credentials.json",
+            'D2=~/; cat "$D2".mure[o]/credentials.json',
+            "set -- ~/; cat $1.mure{o,x}/credentials.json",
+            "cat $(printf '%s' ~/).mu\\\nreo/credentials.json",
+            "cat `printf '%s' ~/`.mure?/credentials.json",
             # ...and the plain forms still deny through the shell layer.
             "cat ~/.mureo/credentials.json",
             "cat ~/.mure?/credentials.json",

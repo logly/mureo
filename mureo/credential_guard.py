@@ -23,18 +23,30 @@ Two guards are installed:
   ``~/.mureo/credentials.json`` that is itself a symlink pointing OUT — its
   realpath escapes the dir, but the requested path is still under it). Both
   cover every file in the directory, not just ``credentials.json``.
-* Bash guard: reads the command text twice — as written, and as a shell
-  will read it once quoting is resolved — and applies two rules to both.
-  Either one denies.
+* Bash guard: normalizes the command *once* into the text a shell would
+  read after quoting, line continuations and expansions are resolved, and
+  applies two rules to that one string.  Either one denies.
 
-  Rule 1 (the name spelled out) denies any command whose text contains
+  The single reading is the load-bearing part, and it was learned the
+  expensive way.  Earlier versions had one rule scanning the raw command
+  and another scanning the folded text; every obfuscation one of them
+  resolved was invisible to the other, so each new fold opened a new hole
+  on the axis the other rule owned.  ``D=~/; cat $D.mu\\<newline>reo/…``
+  reads the file: the continuation was folded away in the text the
+  pattern rule read, while the rule that knew about ``$D`` was still
+  looking at the raw command.  Nothing here may reintroduce a second
+  reader.  If a rule needs information the fold destroys, the fold has to
+  preserve it — which is what ``_COLLAPSE`` does for expansion
+  boundaries — rather than the rule reaching for a different string.
+
+  Rule 1 (the name spelled out) denies when the normalized text contains
   ``.mureo`` where a path component could *start*.  Anchoring on the
   directory name rather than on ``credentials`` also covers a wildcard
-  that follows the name (``cat ~/.mureo/cred*``) — but only because the
-  six characters of the name are still there verbatim.  Rule 2 below is
-  what covers a metacharacter placed *inside* the name, and running both
-  rules over the normalized text is what covers a name that only becomes
-  contiguous after quote removal (``cat ~/.mure"o"/x``, ``~/.mur'e'o``).
+  that follows the name (``cat ~/.mureo/cred*``).  Rule 2 below covers a
+  metacharacter placed *inside* the name.  Because both read the
+  normalized text, a name that only becomes contiguous once the shell has
+  worked on it — ``.mure"o"``, ``.mur'e'o``, ``.mu\\<newline>reo``,
+  ``$D.mureo`` — is as visible to them as one written out.
 
   A bare substring test over-blocks badly, because case-folded ``.mureo``
   is also a prefix of things that are emphatically not the directory:
@@ -51,20 +63,22 @@ Two guards are installed:
   substring is at the start of the command or preceded by a non-identifier
   character.
 
-  That test alone would be too weak, because an identifier character can
-  also be the tail of a *substitution* that supplies the parent directory:
-  with ``D=~/``, the command ``cat $D.mureo/credentials.json`` resolves
-  into the protected directory while putting ``D`` immediately before the
-  name.  Of all the ways a shell can splice text, only ``$NAME`` and
-  ``$1`` end in an identifier character — ``${...}``, ``$(...)``,
-  backticks and brace expansion all close with punctuation, which the
-  boundary test already catches.  The same applies one level up, to
-  format specifiers consumed by a program (``printf '%s.mureo/...' ~/``).
-  So the guard additionally denies when the identifier run before the
-  substring is itself introduced by ``$`` or ``%``.
+  That boundary test would be too weak on the raw command, because an
+  identifier character can also be the tail of a *substitution* that
+  supplies the parent directory: with ``D=~/``, the command ``cat
+  $D.mureo/credentials.json`` resolves into the protected directory while
+  putting ``D`` immediately before the name.  The same applies one level
+  up, to a format specifier a program will fill in (``printf
+  '%s.mureo/...' ~/``).
 
-  Note ``$`` cannot appear literally in the payload (see the NOTE below),
-  hence ``chr(36)``.
+  This is where an earlier design added a *second rule* over the raw text,
+  and where the split-brain bugs came from.  Normalization handles it
+  instead: an expansion becomes ``*/`` and swallows the identifier run
+  that names it, so ``$D.mureo``, ``${D}.mureo``, ``$1.mureo`` and
+  ``%s.mureo`` all read as ``*/.mureo``.  The dot then sits after a
+  non-identifier character, exactly as it does in ``~/.mureo``, and the
+  one boundary test sees every one of them — including when the name is
+  *also* broken up, which is what the two-rule version could not do.
 
   Nothing that names the directory in plain path syntax is admitted by
   this: sibling directories (``~/.mureoX``, ``~/.mureo_backup``) still
@@ -90,19 +104,18 @@ Two guards are installed:
   Without that restriction the rule would have to deny every glob anyone
   types, ``fnmatch('.mureo', '*')`` being true.
 
-  Normalization is where both rules get their second reading of the
-  command, and it is a left fold over the characters with a five-state
-  quoting automaton — unquoted, single-quoted, double-quoted, and the two
-  escaped states — because that is the only way to get quoting right.  An
-  earlier version stripped quoted spans with two regex passes and had the
-  defect that shape invites: in ``echo "it's" ; cat ~/.mure?/x 'x'`` the
-  single-quote pass read the apostrophe of ``it's`` as an opening
-  delimiter, paired it with the unrelated ``'x'`` at the end of the line,
-  and deleted the real pattern sitting between them.  The fold cannot make
-  that mistake, and it also gets ``echo it\\'s`` right, where an escaped
-  quote is not a delimiter at all.
+  Normalization produces that one reading, and it is a left fold over the
+  characters with a five-state quoting automaton — unquoted, single-quoted,
+  double-quoted, and the two escaped states — because that is the only way
+  to get quoting right.  An earlier version stripped quoted spans with two
+  regex passes and had the defect that shape invites: in ``echo "it's" ;
+  cat ~/.mure?/x 'x'`` the single-quote pass read the apostrophe of
+  ``it's`` as an opening delimiter, paired it with the unrelated ``'x'``
+  at the end of the line, and deleted the real pattern sitting between
+  them.  The fold cannot make that mistake, and it also gets ``echo
+  it\\'s`` right, where an escaped quote is not a delimiter at all.
 
-  The fold rewrites four things:
+  The fold rewrites five things:
 
   - quote delimiters are dropped, so the text reads as the shell will read
     it (this is what catches ``~/.mure"o"``);
@@ -111,20 +124,31 @@ Two guards are installed:
     pair before it tokenises anything.  ``cat ~/.mu\\<newline>reo/…``
     prints the credentials file, and so do ``.\\<newline>mureo``,
     ``.mure\\<newline>?`` and the same spellings inside double quotes.
-    Keeping the newline was enough to stop the name ever being contiguous,
-    so neither rule saw it.  Inside *single* quotes a backslash is an
-    ordinary character, so there is no continuation there and none is
-    normalized away;
-  - a *quoted* metacharacter becomes ``_``, because quoting makes it an
+    Keeping the newline was enough to stop the name ever being contiguous.
+    Inside *single* quotes a backslash is an ordinary character, so there
+    is no continuation there and none is normalized away;
+  - a *quoted* metacharacter becomes ``=``, because quoting makes it an
     ordinary character and no ordinary character in ``.mureo`` is a
     metacharacter.  That is why ``sed 's/.*//'`` and ``find . -name '.*'``
     are a regex and a literal rather than globs, and why ``cat
     "$HOME/.mure?/x"`` — which opens nothing — is allowed while the
-    unquoted spelling is denied;
-  - the start of an expansion (``$``, backtick) becomes ``*/``: ``*``
-    because its text is unknown, ``/`` because its extent is unknown too,
-    so whatever follows in the command cannot be assumed to continue the
-    same path component.
+    unquoted spelling is denied.  The placeholder has to be a character
+    that reads as a *boundary*: it was ``_`` once, and since ``_`` is an
+    identifier character, ``'{}.mureo'`` folded to ``__.mureo`` and the
+    boundary test saw one long name rather than the directory;
+  - the start of an expansion (``$``, backtick, ``%``) becomes ``*/`` and
+    swallows the identifier run naming it: ``*`` because its text is
+    unknown, ``/`` because its extent is unknown too, so what follows
+    cannot be assumed to continue the same path component, and swallowing
+    ``D`` in ``$D`` so the expansion reads as one unknown thing.  ``%`` is
+    an expansion in every state, quoted or not, because the program that
+    fills it in is the next one along, not this shell;
+  - a quoted span containing ``%`` keeps its metacharacters live, because
+    such a span is a template rather than text: ``printf
+    '%s.mure?/x'`` builds a name whose ``?`` the shell then globs.  The
+    flag resets at the end of the span, so a ``%`` in one argument cannot
+    animate the metacharacters of a later one — ``echo "100%" ; sed
+    's/.*//'`` is still allowed.
 
   A brace group is replaced by ``.*`` when any alternative contains a dot
   and by ``*`` otherwise, before the components are cut.  That is what
@@ -145,7 +169,13 @@ Two guards are installed:
   - a component holding an expansion is unknown text, so ``ls .$X`` and
     ``cat .$(cmd)`` deny.  An arithmetic expansion is not treated any
     differently, so ``echo .$((1+1))`` and ``cat ~/.mure$((0))?/x`` deny
-    too, though neither can reach the directory.
+    too, though neither can reach the directory;
+  - a format string that builds ``<something>.<something>`` is the shape
+    of ``printf '%s.mureo/…' ~/``, and nothing in the text distinguishes
+    them, so ``printf '%s.%s' a b`` denies.  Of twenty ``%``-heavy
+    everyday commands (``date +%Y-%m-%d``, ``git log --format=%h``,
+    ``awk '{printf "%.2f", $1}'``, ``grep '100%'``, a commit message
+    reading ``30% faster``) that is the only one that does.
 
   What the guard does not cover — measured, not assumed, and pinned by
   ``test_known_open_bypasses``:
@@ -169,19 +199,31 @@ Two guards are installed:
     literal siblings such as ``~/.mureo_backup``.
 
   The first two are not closable by inspecting command text, and no
-  further rule should be added pretending otherwise.  A random
-  differential fuzz against a real bash (2500 commands that spell the
-  directory name one character at a time, using every quoting, escaping,
-  line-continuation, class, range, brace and substitution form) found 1995
-  that really read the file: of the 825 whose name is written out in the
-  text, 0 got through; of the 1170 assembled at runtime, 172 did — all of
-  them producing the leading dot from a substitution.
+  further rule should be added pretending otherwise.
 
-  That fuzz is also how the line-continuation family should have been
-  found, and was not: the generator had no ``\\<newline>`` among its
-  escaping forms, so a whole lexer-level rewrite went untested while the
-  numbers above looked complete.  A form the generator cannot produce is a
-  form nothing here has checked; extend it before trusting it.
+  Two differential tests against a real bash back that up, both checking
+  what the shell actually reads rather than what the rule thinks:
+
+  - an exhaustive product of {how the parent directory is supplied:
+    literal, ``$HOME``, ``"$HOME"``, ``$VAR``, ``"$VAR"``, ``${VAR}``,
+    ``$VAR$EMPTY``, ``$1``, ``$(cmd)``, backtick} x {how the name is
+    broken: not at all, continuation, two continuations, single-quote
+    split, single-quoted character, double-quote split, double-quoted
+    character, escaped character, class, wildcard, brace, star} x {where}.
+    All 560 members read the credentials file, and all 560 deny;
+  - a random fuzz that spells the name one character at a time in the same
+    forms: of 2500 commands, 1995 read the file — 825 with the name
+    written out in the text, 0 through; 1170 assembled at runtime, 172
+    through, every one of them producing the leading dot from a
+    substitution.
+
+  Both of the last two rounds of bugs were products of two axes, and both
+  times the generator had only walked the margins: it emitted continuations
+  and it emitted substitutions, but never a continuation *inside* a
+  substituted parent, which is exactly where the guard was blind.  A form
+  the generator cannot produce is a form nothing here has checked — and
+  that applies to combinations, not just to features.  Extend it before
+  trusting it.
 
 Both comparisons are case-folded: macOS and Windows filesystems are
 case-insensitive by default, so ``~/.MUREO/credentials.json`` opens the
@@ -288,31 +330,44 @@ _PATH_GUARD_CODE = (
     " or lp==bl or lp.startswith(bl+os.sep)) else None"
 )
 
-# Shell metacharacters, named once.  None of them may appear literally in
-# the payload (see the NOTE in the module docstring), so each arrives as a
-# chr() call: q1 ', q2 ", bs backslash, dl $, tk backtick, nl newline.
+# Shell metacharacters, named once.  Most may not appear literally in the
+# payload (see the NOTE in the module docstring), so each arrives as a
+# chr() call: q1 ', q2 ", bs backslash, dl $, tk backtick, nl newline,
+# pc %.  `ho` is the placeholder a quoted metacharacter collapses to — it
+# must be none of: an identifier character (it has to read as a component
+# boundary), a metacharacter, or a dot.
 _CHARS = (
     "q1=chr(39); q2=chr(34); bs=chr(92); dl=chr(36); tk=chr(96); nl=chr(10); "
-    "mt='*?[]{},'; "
+    "pc=chr(37); ho='='; mt='*?[]{},'; "
 )
 
-# The quoting automaton, as the step function of a left fold.  States:
-# 0 unquoted, 1 single-quoted, 2 double-quoted, 3 escaped (from unquoted),
-# 4 escaped (inside double quotes).  Inside single quotes nothing is
-# special, not even a backslash — the rule bash applies.
+# The quoting automaton, as the step function of a left fold.  The state is
+# a pair.  First, where we are: 0 unquoted, 1 single-quoted, 2
+# double-quoted, 3 escaped (from unquoted), 4 escaped (inside double
+# quotes).  Inside single quotes nothing is special, not even a backslash —
+# the rule bash applies.
+#
+# Second, whether a `%` has appeared in the quoted span we are inside.  A
+# quoted string is ordinary text, unless a program is going to build a path
+# out of it: ``printf '%s.mure?/x'`` is a template whose metacharacters
+# survive into a filename, and the shell then globs the result.  The flag
+# resets on leaving the span, so the `%` in one argument cannot make the
+# metacharacters of a later one live.
 _QUOTE_STEP = (
-    "lambda k,x: (1 if x==q1 else 2 if x==q2 else 3 if x==bs else 0) if k==0"
-    " else (0 if x==q1 else 1) if k==1"
-    " else (0 if x==q2 else 4 if x==bs else 2) if k==2"
-    " else (0 if k==3 else 2)"
+    "lambda kv,x: ("
+    "(1 if x==q1 else 2 if x==q2 else 3 if x==bs else 0) if kv[0]==0"
+    " else (0 if x==q1 else 1) if kv[0]==1"
+    " else (0 if x==q2 else 4 if x==bs else 2) if kv[0]==2"
+    " else (0 if kv[0]==3 else 2),"
+    " 1 if x==pc else (kv[1] if kv[0] else 0))"
 )
 
 # Rebuild the command with quoting resolved, one character at a time: drop
 # the delimiters; drop the newline of a line continuation, since a shell
 # removes the pair before it tokenises anything; turn a quoted
-# metacharacter into `_`, because quoting makes it an ordinary character
-# and no ordinary character in `.mureo` is a metacharacter; and turn the
-# start of an expansion into `*/`.
+# metacharacter into the placeholder, because quoting makes it an ordinary
+# character and no ordinary character in `.mureo` is a metacharacter; and
+# turn the start of an expansion into `*/`.
 #
 # `*` because its text is unknown, and `/` because where it *ends* is
 # unknown too: the characters after it in the command (`o` in `.mure$X`,
@@ -323,12 +378,24 @@ _QUOTE_STEP = (
 # continuation. Inside single quotes a backslash is an ordinary character,
 # so `.mu\\<newline>reo` in single quotes really is a name with a newline
 # in it, and normalizing it away would over-block rather than protect.
+#
+# `%` becomes an expansion in *every* state, quoted or not, because it is
+# the next program along that expands it, not this shell.
 _NORMALIZE = (
     "''.join('' if (k==0 and x in q1+q2+bs) or (k==1 and x==q1)"
     " or (k==2 and x in q2+bs) or (k>2 and x==nl)"
-    " else ('*/' if x in dl+tk and k in (0,2) else ('_' if k and x in mt else x))"
-    " for x,k in zip(c,st))"
+    " else ('*/' if x in dl+tk+pc else (ho if k and not m and x in mt else x))"
+    " for x,(k,m) in zip(c,st))"
 )
+
+# An expansion swallows the identifier run that names it: `$D` and `%s` are
+# one unknown thing, not an unknown thing followed by the letters `d`/`s`.
+# Collapsing them is what lets a single reading serve both rules — after
+# it, `$D.mureo` reads as `*/.mureo`, whose dot sits at a boundary exactly
+# like the one in `~/.mureo`, so the literal rule needs no separate scan of
+# the raw text to find it.  This cannot hide a name: it removes only
+# identifier characters, and every form the guard looks for contains a dot.
+_COLLAPSE = "re.sub('[*]/[a-z0-9_]*', '*/', t)"
 
 # A brace group stands for any of its alternatives.  One that contains a dot
 # can supply the leading dot of a dotfile, so it becomes `.*`; any other
@@ -355,18 +422,15 @@ _BASH_GUARD_CODE = (
     + _CHARS
     + "st=list(itertools.accumulate(c, "
     + _QUOTE_STEP
-    + ", initial=0)); "
+    + ", initial=(0,0))); "
+    # One reading of the command, built once, consumed by both rules below.
     "t=" + _NORMALIZE + "; "
-    "gr='[{][^{}]*[}]'; fb=lambda m: '.*' if '.' in m.group() else '*'; "
+    "t=" + _COLLAPSE + "; "
+    "gr='[{][^{}]*[}]'; fb=lambda w: '.*' if '.' in w.group() else '*'; "
     "t=" + _DEBRACE + "; "
-    # The literal rules read the command as written and as the shell will
-    # read it, so quoting cannot reassemble the name unseen.
-    "j=c + ' ' + t; "
-    "p=re.findall('(?:^|[^a-z0-9_])(' + " + _PATTERN_COMPONENT + " + ')', t) + "
-    "re.findall('[' + dl + '%][a-z0-9_]*(' + " + _PATTERN_COMPONENT + " + ')', c); "
+    "p=re.findall('(?:^|[^a-z0-9_])(' + " + _PATTERN_COMPONENT + " + ')', t); "
     "g=[x for x in p if set('*?[') & set(x) and fnmatch.fnmatchcase('.mureo', x)]; "
-    "b=re.search('(^|[^a-z0-9_])[.]mureo', j) or "
-    "re.search('[' + dl + '%][a-z0-9_]*[.]mureo', j) or g; "
+    "b=re.search('(^|[^a-z0-9_])[.]mureo', t) or g; "
     + _deny_expr(_BASH_REASON)
     + " if b else None"
 )
