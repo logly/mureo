@@ -177,7 +177,7 @@ Claude  →  local mureo MCP  →  Amazon hosted MCP endpoint
 
 Two things follow from that. Your Login with Amazon (LwA) credentials stay in the `amazon_ads` section of `~/.mureo/credentials.json` and **never enter the host's own MCP configuration**; and because mureo is in the path, it can mint and **auto-refresh** the short-lived LwA access token for you (one exchange per dispatch, never a loop). The trade-off is that Amazon's tools are available only while the mureo MCP server is running.
 
-Every Amazon call rides mureo's normal safety layer — audit, throttling, strategy gating, and `action_log` promotion for mutations (`platform=plugin:mureo-amazon-ads-bridge`) with an observation window.
+Every Amazon call rides mureo's normal safety layer — audit, throttling, strategy gating, and `action_log` promotion for mutations (`platform=plugin:mureo-amazon-ads-bridge:amazon_ads`) with an observation window.
 
 ### Configuration
 

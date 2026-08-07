@@ -116,9 +116,12 @@ def reject_unusable_platform_key(platform: str) -> None:
     - a key with surrounding whitespace (``" google_ads"``), which is a
       distinct dict key from the unpadded one and so is another route to two
       entries for one account — never intentional;
-    - a key that claims the plugin namespace without being canonical
-      (a bare ``"plugin:"`` carries no distribution, so it joins with
-      nothing — see :mod:`mureo.core.platform_keys`).
+    - a key that claims the plugin namespace without being usable — a
+      bare ``"plugin:"`` carries no distribution, and ``"plugin:<dist>:"``
+      claims the per-provider form (#537) while naming no provider, so
+      neither joins with anything (see :mod:`mureo.core.platform_keys`).
+      Both accepted forms — ``plugin:<dist>:<provider>`` and the legacy
+      ``plugin:<dist>`` — pass.
 
     Why reject rather than silently canonicalize or strip: the write path
     cannot tell a bare distribution name from a built-in key or an arbitrary
@@ -153,8 +156,10 @@ def reject_unusable_platform_key(platform: str) -> None:
     ):
         raise ValueError(
             f"platform {platform!r} is not a usable platform key: a plugin "
-            f"platform key is {PLUGIN_PLATFORM_PREFIX}<distribution> "
-            f"(e.g. {PLUGIN_PLATFORM_PREFIX}mureo-logly-bridge)"
+            f"platform key is {PLUGIN_PLATFORM_PREFIX}<distribution>:<provider> "
+            f"(e.g. {PLUGIN_PLATFORM_PREFIX}mureo-lineyahoo-bridge:yahoo_ads), "
+            f"or the older {PLUGIN_PLATFORM_PREFIX}<distribution> for a "
+            f"distribution that provides a single platform"
         )
 
 

@@ -47,13 +47,17 @@ from mureo.amazon_ads.bridge import AmazonAdsBridge
 from mureo.core.providers.registry import ProviderEntry, default_registry
 
 #: Pip-distribution label recorded on the entry. It also names the
-#: bridge in the audit trail (``source``) and in ``STATE.json``
-#: ``action_log`` entries (``platform=plugin:<this>``), so renaming it
-#: would orphan existing history.
+#: bridge in the audit trail (``source``) and, with
+#: :data:`AMAZON_PROVIDER_NAME`, in ``STATE.json`` ``action_log`` entries
+#: (``platform=plugin:<this>:<provider>``, #537), so renaming it would
+#: orphan existing history.
 AMAZON_SOURCE_DISTRIBUTION = "mureo-amazon-ads-bridge"
 
 #: Registry key of the bridge — mirrors ``AmazonAdsBridge.name`` and the
-#: ``amazon_ads`` section of ``~/.mureo/credentials.json``.
+#: ``amazon_ads`` section of ``~/.mureo/credentials.json``. It is also the
+#: provider half of the canonical platform key
+#: (``plugin:mureo-amazon-ads-bridge:amazon_ads``), so renaming it orphans
+#: history for the same reason.
 AMAZON_PROVIDER_NAME = "amazon_ads"
 
 #: Coexistence control, matching ``MUREO_DISABLE_GOOGLE_ADS`` and friends

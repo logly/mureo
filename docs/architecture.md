@@ -374,7 +374,7 @@ server.py :: _create_server()
         │       │   ├── plugin throttle (shared bucket, per-tool for read-only)
         │       │   ├── forward to the provider / the official Amazon MCP endpoint
         │       │   ├── record_plugin_call(...) → append-only jsonl audit (secrets scrubbed)
-        │           └── successful mutation → action_log (platform="plugin:<dist>")
+        │           └── successful mutation → action_log (platform="plugin:<dist>:<provider>")
         │
         └── else → ValueError("Unknown tool")
 ```

@@ -208,12 +208,19 @@ def _collect_one(
         # Discovered & skill-matchable, just no MCP surface. Not a fault.
         return
 
-    # Stamp the originating distribution onto the instance so the server
-    # dispatch path can attribute audit records without changing the
-    # (test-depended-on) collect_plugin_tools return signature. Best-
-    # effort: some objects forbid attribute assignment (__slots__).
+    # Stamp the originating distribution AND the entry-point name onto the
+    # instance so the server dispatch path can attribute audit records
+    # without changing the (test-depended-on) collect_plugin_tools return
+    # signature. Both are needed: the canonical platform key is
+    # ``plugin:<distribution>:<provider>`` (#537), and one distribution can
+    # ship several providers — ``mureo-lineyahoo-bridge`` ships three — so
+    # the distribution alone would file one platform's mutations under
+    # another's name. Best-effort: some objects forbid attribute assignment
+    # (__slots__); a missing breadcrumb degrades to the legacy short key.
     with contextlib.suppress(AttributeError, TypeError):
         instance._mureo_source_distribution = entry.source_distribution  # type: ignore[attr-defined]
+    with contextlib.suppress(AttributeError, TypeError):
+        instance._mureo_provider_name = entry.name  # type: ignore[attr-defined]
 
     # ``runtime_checkable`` only proves the attributes exist, not that
     # ``handle_mcp_tool`` is awaitable. The server dispatch path
@@ -266,10 +273,25 @@ def plugin_source(provider: object) -> str:
     return value if isinstance(value, str) else ""
 
 
+def plugin_provider_name(provider: object) -> str:
+    """Return the entry-point name ``provider`` was registered under.
+
+    The second half of the canonical platform key
+    (``plugin:<distribution>:<provider>``, #537) — without it, the three
+    providers of a multi-platform distribution are indistinguishable.
+    Empty string when unknown (older instance, ``__slots__``, or a
+    non-plugin), which callers degrade to the legacy short key rather
+    than guessing a provider.
+    """
+    value = getattr(provider, "_mureo_provider_name", "")
+    return value if isinstance(value, str) else ""
+
+
 __all__ = [
     "MCPReversibleToolProvider",
     "MCPToolProvider",
     "PluginToolWarning",
     "collect_plugin_tools",
+    "plugin_provider_name",
     "plugin_source",
 ]

@@ -176,7 +176,7 @@ entirely (**no gate at all**). In detail:
   **exact argument keys** it knows (`daily_budget`, `bid_amount`,
   `cpc_bid_micros`, …). This is the hard, deterministic case.
 - **Plugin / bridged platforms** routed through mureo (including **Amazon
-  Ads**, `plugin:mureo-amazon-ads-bridge`) — **declaration first, pattern
+  Ads**, `plugin:mureo-amazon-ads-bridge:amazon_ads`) — **declaration first, pattern
   second**. A tool that declares its budget / bid keys in its MCP metadata is
   matched **exactly** and that declaration takes precedence. So is the *known*
   bridged money surface, which mureo declares itself: the **13 money-carrying
@@ -297,7 +297,7 @@ should surface it to the operator rather than retrying.
         }
       ]
     },
-    "plugin:mureo-amazon-ads-bridge": {
+    "plugin:mureo-amazon-ads-bridge:amazon_ads": {
       "account_id": "ENTITY1A2B3C4D5E",
       "campaigns": [
         {
@@ -324,7 +324,7 @@ should surface it to the operator rather than retrying.
     {
       "timestamp": "2026-04-01T11:05:00+09:00",
       "action": "Raised daily budget 10000 -> 12000",
-      "platform": "plugin:mureo-amazon-ads-bridge",
+      "platform": "plugin:mureo-amazon-ads-bridge:amazon_ads",
       "campaign_id": "444555666",
       "command": "/budget-rebalance",
       "summary": "Shifted spend toward the brand-defense campaign",
@@ -334,9 +334,11 @@ should surface it to the operator rather than retrying.
 }
 ```
 
-> The second platform key shows the canonical `plugin:<dist>` shape used for
-> every mureo-dispatched plugin / bridged platform — Amazon Ads is
-> `plugin:mureo-amazon-ads-bridge`. Use the identical string in the
+> The second platform key shows the canonical `plugin:<dist>:<provider>` shape
+> used for every mureo-dispatched plugin / bridged platform — Amazon Ads is
+> `plugin:mureo-amazon-ads-bridge:amazon_ads`. The older `plugin:<dist>` form
+> stays valid on read, so an entry already stored under it keeps working and
+> must not be rewritten. Use the identical string in the
 > `platforms` map and in each `action_log` entry's `platform`; see
 > `../_mureo-shared/SKILL.md` → *Canonical platform key*.
 

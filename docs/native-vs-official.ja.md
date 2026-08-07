@@ -182,7 +182,7 @@ Claude  →  ローカルの mureo MCP  →  Amazon のホスト型MCPエンド�
   交換し、再試行するのは経路上にいる mureo だけです。
 - **安全機構にフル参加する。** mureo のディスパッチャを通るため、Amazon の
   ツール呼び出しも監査・スロットリング・戦略ゲートの対象になり、成功した変更
-  操作は `platform="plugin:mureo-amazon-ads-bridge"` として `STATE.json` の
+  操作は `platform="plugin:mureo-amazon-ads-bridge:amazon_ads"` として `STATE.json` の
   `action_log` に観測期限付きで記録されます。ホスト登録型の公式MCPでは実現
   できない点です。
 

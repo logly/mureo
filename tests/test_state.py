@@ -2102,10 +2102,12 @@ class TestDuplicateAccountEntryGuard:
         assert set(read_state_file(path).platforms) == {"meta_ads"}
 
     def test_rejects_a_platform_key_that_is_not_a_key(self, tmp_path: Path) -> None:
-        """An empty / whitespace-only key, and a plugin key carrying no
-        distribution (``"plugin:"``), are not usable keys."""
+        """An empty / whitespace-only key, a plugin key carrying no
+        distribution (``"plugin:"``), and one claiming the per-provider form
+        while naming no provider (``"plugin:<dist>:"``, #537), are not
+        usable keys."""
         path = tmp_path / "STATE.json"
-        for bad in ("", "   ", "plugin:"):
+        for bad in ("", "   ", "plugin:", "plugin:mureo-logly-bridge:"):
             with pytest.raises(ValueError, match="platform"):
                 set_platform_metrics(path, bad, "act_1", totals={"spend": 1.0})
         assert not path.exists()
@@ -2117,6 +2119,55 @@ class TestDuplicateAccountEntryGuard:
             path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 1.0}
         )
         assert set(doc.platforms) == {"plugin:mureo-logly-bridge"}
+
+    def test_the_per_provider_key_is_accepted_and_written_verbatim(
+        self, tmp_path: Path
+    ) -> None:
+        """#537 — the write guard accepts ``plugin:<dist>:<provider>``.
+
+        Two providers of one distribution are two separate accounts, so
+        they must both land rather than one being refused as a duplicate.
+        """
+        path = tmp_path / "STATE.json"
+        set_platform_metrics(
+            path,
+            "plugin:mureo-lineyahoo-bridge:line_ads",
+            "act_line",
+            totals={"spend": 1.0},
+        )
+        doc = set_platform_metrics(
+            path,
+            "plugin:mureo-lineyahoo-bridge:yahoo_ads",
+            "act_yahoo",
+            totals={"spend": 2.0},
+        )
+        assert set(doc.platforms) == {
+            "plugin:mureo-lineyahoo-bridge:line_ads",
+            "plugin:mureo-lineyahoo-bridge:yahoo_ads",
+        }
+
+    def test_legacy_and_per_provider_keys_for_one_account_still_collide(
+        self, tmp_path: Path
+    ) -> None:
+        """#534's guard is unchanged by #537 — and this is the migration cost.
+
+        An operator whose STATE.json already holds ``plugin:<dist>`` for an
+        account, writing that same account under the new per-provider key,
+        is refused rather than quietly given two entries the Reports view
+        would sum. mureo does not merge or rewrite either entry; the
+        operator decides.
+        """
+        path = tmp_path / "STATE.json"
+        set_platform_metrics(
+            path, "plugin:mureo-logly-bridge", "act_1", totals={"spend": 1.0}
+        )
+        with pytest.raises(ValueError, match="plugin:mureo-logly-bridge"):
+            set_platform_metrics(
+                path,
+                "plugin:mureo-logly-bridge:logly_ads_context",
+                "act_1",
+                totals={"spend": 1.0},
+            )
 
     # -- re-pointing an EXISTING key at a different account -----------------
     #

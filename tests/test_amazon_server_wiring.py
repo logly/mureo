@@ -140,7 +140,10 @@ class TestAmazonServerWiring:
             assert len(doc.action_log) == 1
             e = doc.action_log[0]
             assert e.action == "campaign_management-create_campaign"
-            assert e.platform == "plugin:mureo-amazon-ads-bridge"
+            # #537: distribution AND provider. The bridge ships one platform,
+            # but the key shape does not depend on that — see
+            # ``mureo.core.platform_keys``.
+            assert e.platform == "plugin:mureo-amazon-ads-bridge:amazon_ads"
             assert e.observation_due is not None  # Phase 4 window
         finally:
             importlib.reload(mod)

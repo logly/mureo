@@ -589,7 +589,7 @@ What is stable:
   dispatch branch below: audited to the append-only jsonl log (secrets
   scrubbed), throttled, strategy-gated, and — for successful mutations —
   promoted into `STATE.json` `action_log` under
-  `platform="plugin:mureo-amazon-ads-bridge"` with an observation window.
+  `platform="plugin:mureo-amazon-ads-bridge:amazon_ads"` with an observation window.
 - **Env gate.** `MUREO_DISABLE_AMAZON_ADS=1` suppresses the bridged Amazon
   family the same way `MUREO_DISABLE_GOOGLE_ADS` / `MUREO_DISABLE_META_ADS`
   suppress their built-in families.

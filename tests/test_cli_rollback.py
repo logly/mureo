@@ -115,6 +115,51 @@ class TestRollbackList:
         assert "meta_ads" in result.output
         assert "google_ads" not in result.output
 
+    def test_legacy_plugin_filter_still_selects_per_provider_entries(
+        self, tmp_path: Path
+    ) -> None:
+        """#537 — a ``plugin:<dist>`` filter must not go silently empty.
+
+        History written before the per-provider key, and an operator's
+        muscle memory, both use the short form; it stays valid on read.
+        """
+        from mureo.cli.main import app
+
+        state = tmp_path / "STATE.json"
+        _make_state(
+            state,
+            [
+                {
+                    "timestamp": "2026-04-15T10:00:00",
+                    "action": "line_pause",
+                    "platform": "plugin:mureo-lineyahoo-bridge:line_ads",
+                    "campaign_id": "111",
+                    "reversible_params": {"operation": "line_resume"},
+                },
+                {
+                    "timestamp": "2026-04-14T10:00:00",
+                    "action": "logly_pause",
+                    "platform": "plugin:mureo-logly-bridge:logly_ads_context",
+                    "campaign_id": "222",
+                    "reversible_params": {"operation": "logly_resume"},
+                },
+            ],
+        )
+        result = runner.invoke(
+            app,
+            [
+                "rollback",
+                "list",
+                "--state-file",
+                str(state),
+                "--platform",
+                "plugin:mureo-lineyahoo-bridge",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "line_pause" in result.output
+        assert "logly_pause" not in result.output
+
     def test_missing_state_file_exits_with_helpful_message(
         self, tmp_path: Path
     ) -> None:

@@ -21,6 +21,10 @@ import typer
 
 from mureo.context.errors import ContextFileError
 from mureo.context.state import read_state_file
+from mureo.core.platform_keys import (
+    plugin_platform_key_matches,
+    plugin_platform_parts,
+)
 from mureo.rollback import RollbackPlan, plan_rollback
 
 rollback_app = typer.Typer(name="rollback", help="Inspect reversible actions")
@@ -72,6 +76,27 @@ def _resolve_default_state_file() -> Path:
     return Path(workspace) / "STATE.json"
 
 
+def _platform_filter_matches(entry_platform: str, wanted: str) -> bool:
+    """Does an ``action_log`` entry's platform satisfy a ``--platform`` filter?
+
+    Exact string match, plus one widening: a legacy ``plugin:<dist>``
+    filter still selects that distribution's per-provider entries
+    (``plugin:<dist>:<provider>``, #537). The old key stays valid on read
+    everywhere else, so an operator whose muscle memory — or whose older
+    history — uses it must not silently get an empty list.
+
+    Deliberately NOT widened the other way: a ``plugin:<dist>:<provider>``
+    filter does not select bare ``plugin:<dist>`` entries, because such an
+    entry may belong to a sibling provider and mureo does not guess which.
+    """
+    if entry_platform == wanted:
+        return True
+    distribution, provider = plugin_platform_parts(entry_platform)
+    if not distribution or not provider:
+        return False
+    return plugin_platform_key_matches(wanted, distribution, provider)
+
+
 def _load_plans(
     state_file: Path,
     *,
@@ -95,7 +120,9 @@ def _load_plans(
 
     plans: list[tuple[int, RollbackPlan]] = []
     for index, entry in enumerate(doc.action_log):
-        if platform is not None and entry.platform != platform:
+        if platform is not None and not _platform_filter_matches(
+            entry.platform, platform
+        ):
             continue
         plan = plan_rollback(entry)
         if plan is None:

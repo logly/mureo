@@ -50,7 +50,7 @@ from typing import TYPE_CHECKING, Any
 
 from mureo.context.platform_accounts import duplicate_account_entries
 from mureo.context.state import read_state_file
-from mureo.core.platform_keys import is_plugin_platform_key, plugin_distribution
+from mureo.core.platform_keys import is_plugin_platform_key, plugin_platform_parts
 
 # The client seam. Imported (not re-implemented) and re-exported through
 # ``__all__`` so ``from mureo.web.reports import state_store_for_client``
@@ -212,30 +212,57 @@ def platform_display_name(key: str) -> str:
     Rules:
     - A built-in key (``google_ads`` / ``meta_ads`` / ``search_console`` /
       ``ga4``) → its registered name.
-    - A ``plugin:<dist>`` key naming an OFFICIAL in-tree bridge → its
-      registered name, with no ``" (plugin)"`` suffix (e.g.
+    - A plugin key naming an OFFICIAL in-tree bridge → its registered
+      name, with no ``" (plugin)"`` suffix (e.g.
       ``plugin:mureo-amazon-ads-bridge`` → ``"Amazon Ads"``). See
       :data:`_OFFICIAL_BRIDGE_DISPLAY_NAMES`.
-    - Any other ``plugin:<dist>`` key → a humanized label from ``<dist>``:
+    - A canonical ``plugin:<dist>:<provider>`` key (#537) → a humanized
+      label from ``<provider>``, suffixed ``" (plugin)"``: the provider
+      names the *platform*, which is what a label is for, while the
+      distribution is packaging (e.g.
+      ``plugin:mureo-lineyahoo-bridge:yahoo_ads`` → ``"Yahoo Ads
+      (plugin)"``, not a mangled ``"Mureo-Lineyahoo-Bridge:Yahoo Ads"``).
+      A provider that humanizes to nothing falls back to the distribution.
+    - A legacy ``plugin:<dist>`` key → a humanized label from ``<dist>``:
       drop a leading ``mureo-`` and a trailing ``-bridge``, title-case the
       hyphen-separated words, and suffix ``" (plugin)"`` (e.g.
       ``plugin:mureo-logly-bridge`` → ``"Logly (plugin)"``,
-      ``plugin:acme-ads`` → ``"Acme Ads (plugin)"``).
+      ``plugin:acme-ads`` → ``"Acme Ads (plugin)"``). Unchanged, so state
+      written before #537 keeps the label it already had.
     - Anything else (an unknown built-in-shaped key) → the key itself, so
       the dashboard never renders a blank label.
+
+    :data:`_OFFICIAL_BRIDGE_DISPLAY_NAMES` is keyed by distribution, so an
+    official bridge shipping several platforms would label them all alike;
+    none does today, and the fix when one appears is a per-provider entry,
+    not a change to this resolution order.
     """
     builtin = _BUILTIN_DISPLAY_NAMES.get(key)
     if builtin is not None:
         return builtin
-    # Issue #481: the canonical plugin key — see mureo.core.platform_keys.
+    # Issues #481 / #537: the canonical plugin key — see
+    # mureo.core.platform_keys.
     if is_plugin_platform_key(key):
-        dist = plugin_distribution(key)
+        dist, provider = plugin_platform_parts(key)
         official = _OFFICIAL_BRIDGE_DISPLAY_NAMES.get(dist)
         if official is not None:
             return official
-        label = _humanize_dist(dist)
+        label = _humanize_words(provider) if provider else ""
+        if not label:
+            label = _humanize_dist(dist)
         return f"{label} (plugin)" if label else key
     return key
+
+
+def _humanize_words(name: str) -> str:
+    """Title-case a ``-``/``_``-separated identifier.
+
+    ``yahoo_ads`` → ``Yahoo Ads``; ``acme-ads`` → ``Acme Ads``. An
+    identifier that carries no word characters yields ``""`` so the
+    caller can fall back.
+    """
+    words = [w for w in name.strip().replace("_", "-").split("-") if w]
+    return " ".join(word.capitalize() for word in words)
 
 
 def _humanize_dist(dist: str) -> str:
@@ -252,8 +279,7 @@ def _humanize_dist(dist: str) -> str:
         name = name[len("mureo-") :]
     if name.endswith("-bridge"):
         name = name[: -len("-bridge")]
-    words = [w for w in name.replace("_", "-").split("-") if w]
-    return " ".join(word.capitalize() for word in words)
+    return _humanize_words(name)
 
 
 # ---------------------------------------------------------------------------

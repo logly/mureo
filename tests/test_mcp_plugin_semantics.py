@@ -189,8 +189,57 @@ class TestRecordMutationActionLog:
         assert len(doc.action_log) == 1
         e = doc.action_log[0]
         assert e.action == "acme_ads_pause"
+        # No provider named — the legacy short key, not a fabricated one.
         assert e.platform == "plugin:acme-dist"
         assert e.reversible_params == {"operation": "acme_ads_resume"}
+
+    def test_provider_makes_the_platform_the_canonical_key(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#537 — two providers of one distribution log under distinct keys.
+
+        Without the provider half, a LINE mutation and a Yahoo mutation
+        would both read as ``plugin:mureo-lineyahoo-bridge`` in the audit
+        trail, i.e. one platform's action recorded as another's.
+        """
+        from mureo.context.state import read_state_file
+
+        self._seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        record_mutation_action_log(
+            tool="line_ads_pause",
+            source="mureo-lineyahoo-bridge",
+            provider="line_ads",
+            reversal=None,
+        )
+        record_mutation_action_log(
+            tool="yahoo_ads_pause",
+            source="mureo-lineyahoo-bridge",
+            provider="yahoo_ads",
+            reversal=None,
+        )
+        doc = read_state_file(tmp_path / "STATE.json")
+        assert [e.platform for e in doc.action_log] == [
+            "plugin:mureo-lineyahoo-bridge:line_ads",
+            "plugin:mureo-lineyahoo-bridge:yahoo_ads",
+        ]
+
+    def test_single_provider_distribution_also_gets_the_two_part_key(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The key shape does not depend on the sibling count (#537)."""
+        from mureo.context.state import read_state_file
+
+        self._seed_state(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        record_mutation_action_log(
+            tool="logly_pause",
+            source="mureo-logly-bridge",
+            provider="logly_ads_context",
+            reversal=None,
+        )
+        entry = read_state_file(tmp_path / "STATE.json").action_log[0]
+        assert entry.platform == "plugin:mureo-logly-bridge:logly_ads_context"
 
     def test_common_argument_names_are_recorded_as_identity(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

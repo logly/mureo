@@ -18,12 +18,19 @@ metadata:
 > declaration-first guardrails, `action_log` promotion, structural strategy
 > parity for mutations. This file does not repeat any of it.
 
-> **Canonical platform key: `plugin:mureo-amazon-ads-bridge`.** Use it verbatim
+> **Canonical platform key: `plugin:mureo-amazon-ads-bridge:amazon_ads`.** Use it verbatim
 > wherever a mureo surface names a platform — STATE.json `platforms`,
-> `mureo_state_upsert_campaign(platform="plugin:mureo-amazon-ads-bridge")`,
+> `mureo_state_upsert_campaign(platform="plugin:mureo-amazon-ads-bridge:amazon_ads")`,
 > `mureo_state_platform_metrics_set`, `action_log`, `mureo_analytics_*`.
 > Amazon's own tools carry no mureo platform key; joining on anything else
 > (`amazon`, `amazon_ads`, a tool namespace) silently fails to join.
+>
+> The older `plugin:mureo-amazon-ads-bridge` form (before the key carried
+> the provider, logly/mureo#537) **stays valid on read** — it resolves to
+> the same platform, and the dashboard still labels it *Amazon Ads*. If
+> STATE.json already holds an entry under it, **keep writing that key**:
+> a second entry for one ad account is what double-counts it on the
+> Reports card, and mureo never merges or rewrites either entry.
 
 > **There is no `mureo amazon-ads …` CLI command.** The only Amazon CLI is
 > `mureo amazon refresh-manifest` (rebuilds the tool list). Every operation
@@ -56,7 +63,7 @@ metadata:
 - **Analytics are advisory.** No mureo analytics module ships for Amazon
   (issue #120): anomaly detection, `result_indicator` CV-mismatch, RSA-asset
   audit and rule-based scoring do not exist here. Report
-  `analytics_not_available_for_plugin:mureo-amazon-ads-bridge` instead of
+  `analytics_not_available_for_plugin:mureo-amazon-ads-bridge:amazon_ads` instead of
   inventing a heuristic from the tool schemas. The platform-agnostic
   `analysis_anomalies_check` **does** apply — see `../_mureo-shared/SKILL.md`
   → *Generic anomaly check*.
@@ -281,7 +288,7 @@ subject to the same structural handling as a built-in write (see
 parity*): **confirm with the operator before the call**, gate against
 `STRATEGY.md` (Operation Mode, Goals, `## Guardrails`), and expect the
 successful call to land in `action_log` under
-`platform="plugin:mureo-amazon-ads-bridge"` with an observation window. A
+`platform="plugin:mureo-amazon-ads-bridge:amazon_ads"` with an observation window. A
 call Amazon rejects (`API error: ...`, requirement 7 above) lands nowhere —
 it changed nothing, so report it as a failed attempt, not as a change.
 
