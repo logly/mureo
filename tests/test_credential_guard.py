@@ -449,6 +449,24 @@ class TestGuardThroughARealShell:
             "cat ~/{.,z}mureo/credentials.json",
             "cat ~/.mure{o,x}/credentials.json",
             "cat ~/.mur{e{o,z},y}/credentials.json",
+            # An alternative carrying its own dot, which is unrelated to the
+            # dot of the dotfile. Folding the group to a single placeholder
+            # had to guess which of the two the dot belonged to, and chose
+            # wrong: these read the credentials file.
+            "cat ~/.{mureo,x.y}/credentials.json",
+            "cp -r ~/.{mureo,bashrc.bak} /tmp/dest/",
+            "ls -la ~/.{mureo,x.y}",
+            "cat ~/.mure{o,x.y}/credentials.json",
+            "cat ~/.m{ureo,x.y}/credentials.json",
+            "cat ~/.{MUREO,x.y}/credentials.json",
+            "cat $HOME/.{mureo,x.y}/credentials.json",
+            "cat ~/.{mure?,x.y}/credentials.json",
+            "cat ~/.{a.b,c.d,mureo}/credentials.json",
+            "cat ~/.{mureo,{a,b}.c}/credentials.json",
+            # A sequence expression is not a list of alternatives at all,
+            # and `{l..n}` covers `m` without the letter appearing anywhere.
+            "cat ~/.{l..n}ureo/credentials.json",
+            "cat ~/.mure{n..p}/credentials.json",
             # A line continuation is deleted, backslash and newline both,
             # before the shell tokenises anything — so the name is spelled
             # across two lines and is contiguous by the time it is used.

@@ -150,19 +150,31 @@ Two guards are installed:
     animate the metacharacters of a later one — ``echo "100%" ; sed
     's/.*//'`` is still allowed.
 
-  A brace group is replaced by ``.*`` when any alternative contains a dot
-  and by ``*`` otherwise, before the components are cut.  That is what
-  catches both ``~/.mure{o,x}`` and ``~/{.,z}mureo``, where the group
-  supplies the leading dot itself.
+  Brace groups are then *expanded*, not approximated: the normalized text
+  becomes the list of strings the shell would produce, and every rule runs
+  against all of them.  ``~/.mure{o,x}`` and ``~/{.,z}mureo`` are caught
+  because ``.mureo`` is literally among the results.
+
+  An earlier version folded each group to one placeholder and guessed
+  which — ``.*`` if the group held a dot anywhere, ``*`` otherwise — and
+  the guess is what broke.  ``~/.{mureo,x.y}`` has a dot before the group
+  and a dot inside an alternative that has nothing to do with the
+  directory; the fold read them as one, produced ``..*``, which requires
+  two leading dots, and meanwhile the literal ``.mureo`` that rule 1 would
+  have matched had already been replaced.  Both rules passed and the file
+  was read.  Expanding removes the guess instead of refining it.
+
+  Two groups are not lists of alternatives and cannot be enumerated this
+  way: a sequence (``.{l..n}ureo`` covers ``m`` without the letter
+  appearing anywhere) and one with absurdly many alternatives.  Those fall
+  back to *both* coarse readings, ``*`` and ``.*``, which between them
+  cover "supplies a leading dot" and "does not" — the pair the single
+  guess was missing.  A group with neither a comma nor a ``..`` is not
+  brace expansion at all; bash leaves ``{eo}`` literal, so the guard does
+  too, and ``~/.mur{eo}`` is allowed because it opens nothing.
 
   Deliberate over-blocks, all in the safe direction:
 
-  - a brace group with no dot in it becomes ``*``, so ``mv .{foo,bar}``
-    and ``rm .{a,b,c}`` deny although neither can name the directory.
-    (``mv .{env,env.bak}`` does not: the dot in an alternative makes the
-    replacement ``.*``, which cannot match a six-character name starting
-    with a single dot.)  Expanding the alternatives exactly would fix
-    this, and is the change to make if it ever gets in the way;
   - anything unquoted that really does glob dotfiles: ``ls .*``, ``ls -d
     .??*``, ``rm -rf .[!.]*`` all reach ``~/.mureo`` from ``$HOME`` and
     all deny;
@@ -176,6 +188,18 @@ Two guards are installed:
     everyday commands (``date +%Y-%m-%d``, ``git log --format=%h``,
     ``awk '{printf "%.2f", $1}'``, ``grep '100%'``, a commit message
     reading ``30% faster``) that is the only one that does.
+
+  Brace expansion used to be on this list — ``mv .{foo,bar}`` and ``rm
+  .{a,b,c}`` denied although neither can name the directory.  Expanding
+  the alternatives exactly, rather than folding them to a placeholder,
+  removed those: each alternative is now judged on its own, and both are
+  allowed.  That is the shape of the right fix for the remaining entries
+  too — compute what the shell would produce instead of approximating it.
+
+  The coarse approximations that are left, and would each have to be
+  replaced the same way: an expansion's *text* (unknowable, so ``*``), an
+  expansion's *extent* (unknowable, so ``/``), a ``%`` template's result,
+  a sequence group, and a group with more than 64 alternatives.
 
   What the guard does not cover — measured, not assumed, and pinned by
   ``test_known_open_bypasses``:
@@ -209,21 +233,30 @@ Two guards are installed:
     ``$VAR$EMPTY``, ``$1``, ``$(cmd)``, backtick} x {how the name is
     broken: not at all, continuation, two continuations, single-quote
     split, single-quoted character, double-quote split, double-quoted
-    character, escaped character, class, wildcard, brace, star} x {where}.
-    All 560 members read the credentials file, and all 560 deny;
+    character, escaped character, class, wildcard, brace here, brace tail,
+    brace whole, sequence, star} x {what the breaking form contains: plain,
+    an alternative with its own dot, with two, a backup-looking name, a
+    nested group, a metacharacter, a leading dot} x {where}.  All 1510
+    members read the credentials file, and all 1510 deny;
   - a random fuzz that spells the name one character at a time in the same
     forms: of 2500 commands, 1995 read the file — 825 with the name
     written out in the text, 0 through; 1170 assembled at runtime, 172
     through, every one of them producing the leading dot from a
     substitution.
 
-  Both of the last two rounds of bugs were products of two axes, and both
-  times the generator had only walked the margins: it emitted continuations
-  and it emitted substitutions, but never a continuation *inside* a
-  substituted parent, which is exactly where the guard was blind.  A form
-  the generator cannot produce is a form nothing here has checked — and
-  that applies to combinations, not just to features.  Extend it before
-  trusting it.
+  Each of the last three rounds of bugs was a product of axes the
+  generator only walked the margins of.  It emitted continuations and it
+  emitted substitutions, but never a continuation *inside* a substituted
+  parent.  Then it emitted brace groups, but every alternative was inert
+  filler, so a group holding an unrelated dot — the thing that broke the
+  fold — could not be produced.  That is why there is now a dimension for
+  what a breaking form *contains*, not only for which form is used.
+
+  Take the pattern seriously rather than the instances: a form the
+  generator cannot produce is a form nothing here has checked, and that
+  applies to the insides of forms and to combinations of them, not only to
+  the list of features.  Before trusting a number in this docstring, look
+  at whether the generator can express the shape it is claiming to cover.
 
 Both comparisons are case-folded: macOS and Windows filesystems are
 case-insensitive by default, so ``~/.MUREO/credentials.json`` opens the
@@ -397,10 +430,46 @@ _NORMALIZE = (
 # identifier characters, and every form the guard looks for contains a dot.
 _COLLAPSE = "re.sub('[*]/[a-z0-9_]*', '*/', t)"
 
-# A brace group stands for any of its alternatives.  One that contains a dot
-# can supply the leading dot of a dotfile, so it becomes `.*`; any other
-# becomes `*`.  Applied twice, which covers a group nested in a group.
-_DEBRACE = "re.sub(gr, fb, re.sub(gr, fb, t))"
+# Brace expansion, done properly: the command is turned into the *list* of
+# strings the shell would produce, and every rule runs against all of them.
+#
+# The previous version folded a group to one placeholder and guessed which:
+# `.*` if the group contained a dot anywhere, `*` otherwise. It never asked
+# *where* the dot was, so `~/.{mureo,x.y}` — a dot before the group and a
+# dot inside an unrelated alternative — folded to `..*`, which wants two
+# leading dots, while the literal `.mureo` that rule 1 would have caught had
+# already been replaced. It read the credentials file. Expanding removes the
+# guess rather than refining it, and it also stops over-blocking
+# `mv .{foo,bar}`, since each alternative is now judged on its own.
+#
+# `fe` finds the first *expandable* innermost group, skipping `{a}`, which
+# bash leaves alone — a group is expandable only with a comma or a `..`.
+# `al` gives its alternatives; a sequence (`{l..n}`) is not a list of
+# alternatives this can enumerate, and neither is a group with absurdly many
+# of them, so those fall back to the two coarse readings — `*` and `.*` —
+# which between them cover both "supplies a leading dot" and "does not".
+# That pair is what the old single guess was missing.
+_BRACE_HELPERS = (
+    "ga='[{][^{}]*[}]'; "
+    "fe=lambda s: next((w for w in re.finditer(ga, s)"
+    " if ',' in w.group() or '..' in w.group()), None); "
+    "al=lambda w: (lambda v: v if ',' in w.group() and len(v)<=64 else ['*','.*'])"
+    "(w.group()[1:-1].split(',')); "
+    "ex=lambda s: (lambda w: [s[:w.start()] + a + s[w.end():] for a in al(w)]"
+    " if w else [s])(fe(s)); "
+)
+
+# Eight passes expand eight groups, innermost first, so nesting resolves as
+# the outer group becomes innermost. The cap keeps a pathological command
+# from exploding the hook: exceeding it abandons that pass and leaves the
+# groups for the coarse fallback below, which over-approximates rather than
+# dropping candidates.
+_EXPAND = (
+    "ls=functools.reduce(lambda acc,_: (lambda n: n if len(n)<=400 else acc)"
+    "([y for x in acc for y in ex(x)]), range(8), [t]); "
+    "ls=[y for x in ls for y in ([x] if not fe(x) else"
+    " [re.sub(ga,'*',re.sub(ga,'*',x)), re.sub(ga,'.*',re.sub(ga,'.*',x))])]; "
+)
 
 # Source of a python expression yielding the regex for one path component
 # written as a shell pattern: a literal dot plus the run of characters a
@@ -412,7 +481,7 @@ _PATTERN_COMPONENT = "'[.][]a-z0-9_.*?[^{},' + chr(33) + '-]*'"
 _BASH_REASON = "mureo credential guard: commands that can reach ~/.mureo are blocked"
 
 _BASH_GUARD_CODE = (
-    "import sys,json,re,os,fnmatch,itertools; "
+    "import sys,json,re,os,fnmatch,functools,itertools; "
     # Fail closed: an escaping exception exits 1, which both hosts treat as a
     # non-blocking hook error, so every exception must deny instead.
     "sys.excepthook=lambda *a: (" + _deny_expr(_BASH_REASON) + ", "
@@ -423,14 +492,19 @@ _BASH_GUARD_CODE = (
     + "st=list(itertools.accumulate(c, "
     + _QUOTE_STEP
     + ", initial=(0,0))); "
-    # One reading of the command, built once, consumed by both rules below.
+    # One reading of the command, built once. Brace expansion turns it into
+    # the list of readings the shell would produce; both rules see all of
+    # them, so neither depends on a guess about any single one.
     "t=" + _NORMALIZE + "; "
-    "t=" + _COLLAPSE + "; "
-    "gr='[{][^{}]*[}]'; fb=lambda w: '.*' if '.' in w.group() else '*'; "
-    "t=" + _DEBRACE + "; "
-    "p=re.findall('(?:^|[^a-z0-9_])(' + " + _PATTERN_COMPONENT + " + ')', t); "
+    "t="
+    + _COLLAPSE
+    + "; "
+    + _BRACE_HELPERS
+    + _EXPAND
+    + "p=[x for s in ls for x in re.findall("
+    "'(?:^|[^a-z0-9_])(' + " + _PATTERN_COMPONENT + " + ')', s)]; "
     "g=[x for x in p if set('*?[') & set(x) and fnmatch.fnmatchcase('.mureo', x)]; "
-    "b=re.search('(^|[^a-z0-9_])[.]mureo', t) or g; "
+    "b=[s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g; "
     + _deny_expr(_BASH_REASON)
     + " if b else None"
 )
