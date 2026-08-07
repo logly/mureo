@@ -1,6 +1,6 @@
 """Static-content guards for the manual Meta system-user token card (#458).
 
-No JS test harness ships in the repo, so the ``auth_wizards.js`` contract
+No JS test harness runs THIS code — ``node --test tests/js/`` covers only the DOM-free Reports logic extracted in #540, so the ``auth_wizards.js`` contract
 for the "paste a system-user token" card is pinned by grepping the bundled
 asset. A refactor that drops the card, its Validate/Save wiring to
 ``/api/credentials/meta/token``, the account-picker, the localhost-OAuth

@@ -286,6 +286,7 @@ _STATIC_ALLOWLIST: tuple[str, ...] = (
     "amazon_oauth.js",
     "auth_wizards_meta.js",
     "auth_wizards.js",
+    "reports_logic.js",
     "dashboard.js",
     "extensions.js",
     "i18n.json",

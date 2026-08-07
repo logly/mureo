@@ -198,6 +198,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the "every definition is byte-identical" property is the entire reason this
   change is reviewable. It is worth doing as its own change, where the body
   diff is the point rather than a cost.
+- **The Reports dashboard's money-safety logic is now executed by a test, not
+  grepped for** (#540). `aggregateClientKpis` decides whether a client card
+  renders a money figure at all — since #533 it withholds spend, conversions
+  and CPA when the document is known to double-count an ad account — and
+  `reportsCardFreshness` decides whether a card reads as stale. Neither was
+  run by anything. The `tests/test_web_assets_*.py` guards are substring
+  pins: they catch a deleted name or string, but an inverted condition, a
+  flipped comparison or a dropped branch shipped green past them, and those
+  are the failure modes that put a wrong number in front of an operator.
+
+  The DOM-free half of that section — the withholding condition, the
+  freshness aggregation, the conflict-kind routing and their helpers — moved
+  **verbatim** out of `dashboard.js` into a new asset,
+  `mureo/_data/web/reports_logic.js`, which `dashboard.js` binds at load.
+  Rendering did not move and is still pinned statically.
+
+  **Nothing about how mureo ships changed.** The new file is another plain
+  `<script>`-loaded asset served from `mureo/_data/web/`, the way
+  `amazon_oauth.js` already is: it publishes `window.MUREO_REPORTS_LOGIC`,
+  and its `module.exports` tail is dead code in a browser. No bundler, no
+  module system, no build step, no `package.json`, no JavaScript
+  dependencies. `tests/js/browser_contract.test.js` evaluates the shipped
+  bytes in a context with no CommonJS at all — the browser's — and then
+  evaluates `dashboard.js` on top of them, so the split cannot quietly leave
+  the page with a script it can no longer load. If the module is ever
+  missing or misordered, `dashboard.js` throws at load naming the module and
+  the required `<script>` order: refusing to run is right — the alternative
+  is rendering double-counted totals from an `undefined` helper — but the
+  failure takes the whole configure UI with it, so it should not also need
+  reverse-engineering.
+
+  **The logic/renderer seam is pinned too.** Extracting the decisions leaves
+  a gap the JS suite cannot see: `aggregateClientKpis` can withhold a figure
+  correctly and the card can still draw it, because one comparison points
+  the wrong way. Inverting `kpis.spend != null` makes a healthy client read
+  "—" and the double-counted one the only card showing a number; inverting
+  `if (kpis.doubleCounted)` moves the "figures withheld" note onto every
+  healthy card and off the one it describes. Both are one character, and
+  both used to pass. `tests/test_web_assets_reports_conflicts.py` now pins
+  those branches on polarity — and on which branch a string is reachable
+  from — rather than on the identifiers being present.
+
+  CI gains one dependency-free job that runs `node --test tests/js/*.test.js`
+  with the Node already on the runner. It is independent of the Python lint
+  job on purpose: a formatting failure must not hide a broken money figure.
 
 ## [0.10.41] - 2026-08-06
 
