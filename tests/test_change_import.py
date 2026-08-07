@@ -523,6 +523,100 @@ class TestImportsStayOutOfBatches:
 
 
 # ---------------------------------------------------------------------------
+# Provenance survives joining a batch (the hosted-connector path)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestProvenanceSurvivesBatchStamping:
+    """The path #545 does NOT route around.
+
+    The importer passes ``join_active_batch=False``, so it never reaches
+    ``stamp_batch`` at all. A hosted connector does: mureo holds no
+    credentials for TikTok and dispatches nothing, so an agent records what it
+    read from the connector's own change history through
+    ``mureo_state_action_log_append`` — the ordinary append path, where joining
+    the open batch is the DEFAULT.
+
+    That is where a batch-stamping bug reaches the provenance fields, and the
+    failure mode is silent in the worst way: a dropped ``origin`` reads as
+    "mureo made this change", which flips ``is_external`` to False and lets
+    ``plan_rollback`` accept a ``reversible_params`` hint that came from
+    outside mureo entirely. These tests pin the whole chain rather than the
+    stamping function, so a future regression anywhere along it is caught here
+    too.
+    """
+
+    def _forged_hint(self) -> dict[str, Any]:
+        """An allow-listed reversal hint on an entry mureo never dispatched.
+
+        Content on an external entry comes from outside mureo, so this is the
+        cheapest place to plant one — and the only thing standing between it
+        and a dispatched "reversal" is ``origin`` surviving the write.
+        """
+        return {
+            "operation": "google_ads_campaigns_update_status",
+            "params": {"campaign_id": "111", "status": "ENABLED"},
+        }
+
+    def _external_entry(self) -> ActionLogEntry:
+        return ActionLogEntry(
+            timestamp=NOW.isoformat(),
+            action="external_change:CAMPAIGN",
+            platform="tiktok_ads",
+            campaign_id="111",
+            origin=EXTERNAL_ORIGIN,
+            external_id="tiktok_ads|abc123",
+            occurred_at=(NOW - timedelta(days=2)).isoformat(),
+            reversible_params=self._forged_hint(),
+        )
+
+    def test_provenance_survives_an_append_that_joins_a_batch(
+        self, tmp_path: Path
+    ) -> None:
+        path = _write_state(tmp_path, {"tiktok_ads": "tt1"})
+        batch = begin_batch(path, label="monday exclusions")
+        entry = self._external_entry()
+
+        append_action_log(path, entry)
+
+        stored = read_state_file(path).action_log[-1]
+        # It DID join the batch — this is the ordinary path, not the importer's.
+        assert stored.batch_id == batch.batch_id
+        # ...and joining cost it nothing.
+        assert stored.origin == EXTERNAL_ORIGIN
+        assert stored.external_id == entry.external_id
+        assert stored.occurred_at == entry.occurred_at
+        assert stored.is_external
+
+    def test_rollback_still_refuses_a_batch_stamped_external_entry(
+        self, tmp_path: Path
+    ) -> None:
+        """The consequence, asserted where an operator would feel it."""
+        path = _write_state(tmp_path, {"tiktok_ads": "tt1"})
+        begin_batch(path, label="monday exclusions")
+
+        append_action_log(path, self._external_entry())
+
+        stored = read_state_file(path).action_log[-1]
+        plan = plan_rollback(stored)
+        assert plan is not None
+        assert plan.status is RollbackStatus.NOT_SUPPORTED
+        assert "outside mureo" in plan.notes
+
+    def test_the_batch_plan_reports_it_as_a_gap(self, tmp_path: Path) -> None:
+        """A batch holding it must not read as fully revertible."""
+        path = _write_state(tmp_path, {"tiktok_ads": "tt1"})
+        batch = begin_batch(path, label="monday exclusions")
+        append_action_log(path, self._external_entry())
+
+        plan = plan_batch_rollback(read_state_file(path), batch.batch_id)
+
+        assert plan.coverage.value == "none"
+        assert plan.apply_order == ()
+
+
+# ---------------------------------------------------------------------------
 # 4. A platform with no change feed says so
 # ---------------------------------------------------------------------------
 

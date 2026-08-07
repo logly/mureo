@@ -49,9 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     operator's budget edit on campaign 111 four minutes later. Wherever the
     comparison cannot be made — identity missing, kind underivable — the change
     is imported as external: an over-import is visible and correctable, an
-    over-attribution silently swallows a real UI edit. What this still cannot
-    discriminate is written down in `docs/change-import.md` rather than left
-    implied.
+    over-attribution silently swallows a real UI edit. One case still fails the
+    expensive way and cannot be fixed by comparing harder: a hand edit to the
+    SAME setting on the SAME entity within the window of a mureo change is
+    indistinguishable from mureo's own. It is documented as an operator-facing
+    limitation, with the concrete advice (wait out the window, or say what you
+    changed), in `docs/change-import.md` and the `_mureo-shared` skill.
   - **An imported change never joins an open batch** (#549). A batch is the
     operator's declared change set; a change mureo merely observed is not
     something they did through mureo, and letting it join would drop that

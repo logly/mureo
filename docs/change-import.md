@@ -168,15 +168,53 @@ A small shared vocabulary — `status`, `budget`, `bid`, `criterion`, `ad`,
 anything" would restore identity-only behaviour for every action mureo cannot
 classify.
 
-### What this cannot discriminate, stated plainly
+### Known limitation: a same-kind edit within 10 minutes of a mureo change is lost
 
-- **Two changes of the same kind on the same target inside the window.**
-  mureo raises a campaign's budget; the operator raises it again two minutes
-  later. Nothing in the feed distinguishes them, and mureo attributes the
-  second to itself. This is the residual over-attribution and it is real.
+> **If you edit an entity by hand shortly after mureo changed the same thing
+> on it, mureo will record your edit as its own and you will not be told.**
+>
+> **What to do:** after mureo changes an entity, wait out the 10-minute
+> attribution window before editing *that same entity's same setting* by
+> hand — or make the edit and then say so, so the run has a record that does
+> not depend on the import. Anything else on the account is unaffected: a
+> different entity, or a different setting on the same entity, is imported
+> normally.
+
+This is the one case where change import fails in the expensive direction,
+and it is worth being blunt about it because it is not an exotic shape. It is
+exactly the mixed-operation pattern of the incident behind #545: mureo raises
+a campaign's budget, the operator looks at the result and raises it again two
+minutes later. Both are `budget`, both are campaign 111, both are inside the
+window — so the second one is attributed to mureo and silently dropped from
+`action_log`.
+
+Nothing in the feed can separate them. `user_email` is the same OAuth
+identity either way, `client_type: GOOGLE_ADS_API` covers mureo and every
+other API tool on the account, and the two rows are otherwise identical in
+every field the feed exposes. Widening what mureo compares cannot fix it;
+only the operator's own timing or their own note can.
+
+It is bounded by design, and the bound is what makes the advice usable:
+
+| Situation | Imported? |
+|---|---|
+| Same entity, same setting, within 10 min of a mureo change | **No — silently attributed to mureo** |
+| Same entity, same setting, after 10 min | Yes |
+| Same entity, *different* setting (budget vs status), any time | Yes |
+| Different entity, any setting, any time | Yes |
+| Anything at all when mureo made no nearby change | Yes |
+
+`/daily-check` cannot flag what it never saw, so the limitation is stated
+here and in the `_mureo-shared` skill rather than left to be discovered.
+
+### Other things this cannot discriminate
+
+Both of these fail toward over-import — visible and correctable — rather than
+toward the silent loss above:
+
 - **Free-text and unrecognised action names.** An `action_log` entry an agent
   wrote as prose yields no kind, so nothing is attributed to it — mureo's own
-  change re-imports as external. Costs an over-import, not a swallow.
+  change re-imports as external.
 - **Sub-kind detail.** A targeting change and a negative-keyword change are
   both `criterion`; a bid-modifier change on an ad group and on a campaign
   are both `bid`. Splitting these further would trade one failure direction

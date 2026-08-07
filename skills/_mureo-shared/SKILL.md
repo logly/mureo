@@ -278,6 +278,21 @@ exist. And **mureo will not roll it back** — `rollback_plan_get` returns
 value. If it needs undoing, that happens in the platform; say so plainly
 instead of offering a revert mureo cannot perform.
 
+**Known limitation — tell the operator when it applies.** If a change is made
+by hand to the *same setting on the same entity* that mureo changed less than
+10 minutes earlier, mureo records it as its own work and the operator's edit
+never reaches `action_log`. Nothing in any platform's change feed separates
+the two, so mureo cannot detect this and will not warn about it. It is the one
+case where import fails silently rather than visibly.
+
+When you have just made a change through mureo and the operator says they are
+about to adjust the same thing by hand, say so plainly: **wait out the 10
+minutes before editing that entity's same setting, or tell mureo about the
+edit afterwards so the record does not depend on the import.** A different
+entity, or a different setting on the same entity, is imported normally — the
+limitation is narrow, which is exactly what makes the advice worth giving
+instead of a blanket caveat. Full matrix in `docs/change-import.md`.
+
 **Never mark your own work external.** `origin: "external"` on
 `mureo_state_action_log_append` is for a change you READ out of a platform's
 change history and mureo cannot poll itself — today that means a hosted

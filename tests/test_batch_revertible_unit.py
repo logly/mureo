@@ -38,7 +38,12 @@ from mureo.context.batch import (
     stale_batch_warning,
     stamp_batch,
 )
-from mureo.context.models import ActionLogEntry, BatchRecord, StateDocument
+from mureo.context.models import (
+    EXTERNAL_ORIGIN,
+    ActionLogEntry,
+    BatchRecord,
+    StateDocument,
+)
 from mureo.context.state import (
     append_action_log,
     begin_batch,
@@ -264,6 +269,15 @@ _ENTRY_FIELD_VALUES: dict[str, Any] = {
     "evaluation_of": 4,
     "entity_type": "ad_group",
     "entity_id": "G-1",
+    # #545 provenance. These are the fields the enumerated ``stamp_batch``
+    # actually dropped, and the loss was invisible: without ``origin`` an
+    # observed change reads as one mureo made, and ``plan_rollback`` will
+    # plan a reversal from a ``reversible_params`` hint that came from
+    # outside mureo. ``external_id`` requires ``origin="external"``, so the
+    # three move together.
+    "origin": EXTERNAL_ORIGIN,
+    "external_id": "google_ads|customers/1/changeEvents/abc",
+    "occurred_at": "2026-08-05T09:14:00+09:00",
     # The one field the round-trip is ALLOWED to change: it arrives unset and
     # comes back carrying the open batch.
     "batch_id": None,

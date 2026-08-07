@@ -38,6 +38,18 @@ the operator a change they may have made through mureo (visible, annoying,
 correctable), while an over-attribution silently swallows a real UI edit —
 which is precisely the blindness #545 exists to remove. Never trade a visible
 wrong answer for an invisible one.
+
+**One case still fails the expensive way, and it cannot be fixed here.** A
+hand edit to the SAME setting on the SAME entity within the window of a mureo
+change is indistinguishable from mureo's own — the two rows agree in every
+field the feed exposes — so it is attributed to mureo and lost. That is the
+mixed-operation pattern from the incident behind #545, not an exotic shape.
+It is bounded (a different entity, or a different setting on the same entity,
+imports normally), so it is documented as an operator-facing limitation with
+concrete advice in ``docs/change-import.md`` and in the ``_mureo-shared``
+skill rather than papered over here. Anyone tempted to close it by loosening
+the comparison should read that section first: every loosening moves MORE
+changes into this bucket.
 """
 
 from __future__ import annotations
