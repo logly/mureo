@@ -449,6 +449,21 @@ class TestGuardThroughARealShell:
             "cat ~/{.,z}mureo/credentials.json",
             "cat ~/.mure{o,x}/credentials.json",
             "cat ~/.mur{e{o,z},y}/credentials.json",
+            # A line continuation is deleted, backslash and newline both,
+            # before the shell tokenises anything — so the name is spelled
+            # across two lines and is contiguous by the time it is used.
+            "cat ~/.mu\\\nreo/credentials.json",
+            "cat ~/.\\\nmureo/credentials.json",
+            "cat ~/.m\\\nu\\\nr\\\ne\\\no/credentials.json",
+            "cat ~/.mure\\\n?/credentials.json",
+            "cat ~/.m\\\nure?/credentials.json",
+            # ...including inside double quotes, where it is still a
+            # continuation (and where nothing globs, so the name itself is
+            # what has to be seen).
+            'cat "$HOME/.mu\\\nreo/credentials.json"',
+            # `$"..."` is a translated string: the `$` is not an expansion
+            # of anything the guard cannot see.
+            'cat ~/$".mureo"/credentials.json',
             # ...and the plain forms still deny through the shell layer.
             "cat ~/.mureo/credentials.json",
             "cat ~/.mure?/credentials.json",
@@ -479,6 +494,12 @@ class TestGuardThroughARealShell:
             "rm -rf build/*",
             "node --test tests/js/*.test.js",
             "ls -d .git*",
+            # Inside single quotes a backslash is an ordinary character, so
+            # this is a name with a newline in it, not a continuation, and
+            # it opens nothing.
+            "cat '~/.mu\\\nreo/credentials.json'",
+            # A continuation that only wraps a long line.
+            "ls -la \\\n  ~/project",
             # mureo's own identifiers, including inside quotes.
             "gh release create v0.10.44 --notes 'adds window.MUREO_REPORTS_FORMAT'",
             "pip install --index-url https://pkgs.mureo.jp/simple/ mureo-agency",

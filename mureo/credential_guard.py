@@ -102,10 +102,19 @@ Two guards are installed:
   that mistake, and it also gets ``echo it\\'s`` right, where an escaped
   quote is not a delimiter at all.
 
-  The fold rewrites three things:
+  The fold rewrites four things:
 
   - quote delimiters are dropped, so the text reads as the shell will read
     it (this is what catches ``~/.mure"o"``);
+  - a line continuation — a backslash with a newline after it — is dropped
+    whole, both characters, because that is what a shell does with the
+    pair before it tokenises anything.  ``cat ~/.mu\\<newline>reo/…``
+    prints the credentials file, and so do ``.\\<newline>mureo``,
+    ``.mure\\<newline>?`` and the same spellings inside double quotes.
+    Keeping the newline was enough to stop the name ever being contiguous,
+    so neither rule saw it.  Inside *single* quotes a backslash is an
+    ordinary character, so there is no continuation there and none is
+    normalized away;
   - a *quoted* metacharacter becomes ``_``, because quoting makes it an
     ordinary character and no ordinary character in ``.mureo`` is a
     metacharacter.  That is why ``sed 's/.*//'`` and ``find . -name '.*'``
@@ -134,7 +143,9 @@ Two guards are installed:
     .??*``, ``rm -rf .[!.]*`` all reach ``~/.mureo`` from ``$HOME`` and
     all deny;
   - a component holding an expansion is unknown text, so ``ls .$X`` and
-    ``cat .$(cmd)`` deny.
+    ``cat .$(cmd)`` deny.  An arithmetic expansion is not treated any
+    differently, so ``echo .$((1+1))`` and ``cat ~/.mure$((0))?/x`` deny
+    too, though neither can reach the directory.
 
   What the guard does not cover — measured, not assumed, and pinned by
   ``test_known_open_bypasses``:
@@ -159,12 +170,18 @@ Two guards are installed:
 
   The first two are not closable by inspecting command text, and no
   further rule should be added pretending otherwise.  A random
-  differential fuzz against a real bash (2000 commands that spell the
+  differential fuzz against a real bash (2500 commands that spell the
   directory name one character at a time, using every quoting, escaping,
-  class, range, brace and substitution form) found 1621 that really read
-  the file: of the 873 whose name is written out in the text, 0 got
-  through; of the 748 assembled at runtime, 265 did — all of them
-  producing the leading dot from a substitution.
+  line-continuation, class, range, brace and substitution form) found 1995
+  that really read the file: of the 825 whose name is written out in the
+  text, 0 got through; of the 1170 assembled at runtime, 172 did — all of
+  them producing the leading dot from a substitution.
+
+  That fuzz is also how the line-continuation family should have been
+  found, and was not: the generator had no ``\\<newline>`` among its
+  escaping forms, so a whole lexer-level rewrite went untested while the
+  numbers above looked complete.  A form the generator cannot produce is a
+  form nothing here has checked; extend it before trusting it.
 
 Both comparisons are case-folded: macOS and Windows filesystems are
 case-insensitive by default, so ``~/.MUREO/credentials.json`` opens the
@@ -179,6 +196,14 @@ crash: ``sys.excepthook`` is set to print the deny JSON and exit 0.  This
 was not academic — malformed stdin made both payloads exit 1 and let the
 call through, as did a path with an embedded NUL, which makes
 ``os.path.realpath`` raise.
+
+The payloads run under whatever ``python3`` the host finds on PATH, which
+need not be the interpreter mureo itself was installed with.  The Bash
+payload needs **Python 3.8 or newer** for ``itertools.accumulate(...,
+initial=...)``; on anything older it raises, which fails closed — it
+denies every Bash call rather than letting any through, so the symptom is
+loud and safe rather than silent.  Keep it that way: a rewrite of the fold
+that avoids ``initial=`` is fine, one that swallows the error is not.
 
 WHAT THIS GUARD IS.  It is a deterrent against an agent reading the
 credentials by accident or on a careless instruction — the cases that
@@ -265,8 +290,11 @@ _PATH_GUARD_CODE = (
 
 # Shell metacharacters, named once.  None of them may appear literally in
 # the payload (see the NOTE in the module docstring), so each arrives as a
-# chr() call: q1 ', q2 ", bs backslash, dl $, tk backtick.
-_CHARS = "q1=chr(39); q2=chr(34); bs=chr(92); dl=chr(36); tk=chr(96); mt='*?[]{},'; "
+# chr() call: q1 ', q2 ", bs backslash, dl $, tk backtick, nl newline.
+_CHARS = (
+    "q1=chr(39); q2=chr(34); bs=chr(92); dl=chr(36); tk=chr(96); nl=chr(10); "
+    "mt='*?[]{},'; "
+)
 
 # The quoting automaton, as the step function of a left fold.  States:
 # 0 unquoted, 1 single-quoted, 2 double-quoted, 3 escaped (from unquoted),
@@ -280,17 +308,24 @@ _QUOTE_STEP = (
 )
 
 # Rebuild the command with quoting resolved, one character at a time: drop
-# the delimiters; turn a quoted metacharacter into `_`, because quoting
-# makes it an ordinary character and no ordinary character in `.mureo` is a
-# metacharacter; and turn the start of an expansion into `*/`.
+# the delimiters; drop the newline of a line continuation, since a shell
+# removes the pair before it tokenises anything; turn a quoted
+# metacharacter into `_`, because quoting makes it an ordinary character
+# and no ordinary character in `.mureo` is a metacharacter; and turn the
+# start of an expansion into `*/`.
 #
 # `*` because its text is unknown, and `/` because where it *ends* is
 # unknown too: the characters after it in the command (`o` in `.mure$X`,
 # `printf o` inside backticks) are not necessarily part of the same path
 # component, so they must not extend the pattern being tested.
+#
+# `k>2` is the two escaped states: only there does a newline belong to a
+# continuation. Inside single quotes a backslash is an ordinary character,
+# so `.mu\\<newline>reo` in single quotes really is a name with a newline
+# in it, and normalizing it away would over-block rather than protect.
 _NORMALIZE = (
     "''.join('' if (k==0 and x in q1+q2+bs) or (k==1 and x==q1)"
-    " or (k==2 and x in q2+bs)"
+    " or (k==2 and x in q2+bs) or (k>2 and x==nl)"
     " else ('*/' if x in dl+tk and k in (0,2) else ('_' if k and x in mt else x))"
     " for x,k in zip(c,st))"
 )
