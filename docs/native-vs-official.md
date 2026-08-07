@@ -34,7 +34,7 @@ The practical differences for Google and Meta:
 | Official MCP | `googleads/google-ads-mcp` (pipx, ADC) | hosted `https://mcp.facebook.com/ads` (OAuth) |
 | Official tool count | **3 — read-only** | **29 — read + write** |
 | Official can mutate? | No | Yes (direct to live account, no undo/draft/confirm) |
-| mureo native tool count | **86** | **88** |
+| mureo native tool count | **89** | **90** |
 | mureo native can mutate? | Yes | Yes |
 | Safety (rollback, action_log, strategy gating) | native only | native only |
 | BYOD / `mureo demo` (CSV, no live API) | native only | native only |
@@ -60,7 +60,7 @@ The practical differences for Google and Meta:
   budget creation or edits, no status changes, no applying recommendations, no
   conversion setup.
 
-### mureo native — Google Ads (86 tools)
+### mureo native — Google Ads (89 tools)
 
 Full read **and** write, exposed as opinionated, task-level tools:
 
@@ -120,7 +120,7 @@ from mureo native.
   assets (copy, images, carousels, collections, dynamic ads); Instagram-specific
   actions.
 
-### mureo native — Meta Ads (88 tools)
+### mureo native — Meta Ads (90 tools)
 
 Covers the same operational class as the official MCP **plus** every documented
 gap above:

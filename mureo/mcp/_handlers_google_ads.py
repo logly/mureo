@@ -442,6 +442,54 @@ async def handle_negative_keywords_add(args: dict[str, Any]) -> list[TextContent
 
 
 # ---------------------------------------------------------------------------
+# Negative placements (delivery-surface exclusions, #544)
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_negative_placements_list(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.list_negative_placements(
+        campaign_id=_opt(args, "campaign_id"),
+        ad_group_id=_opt(args, "ad_group_id"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_negative_placements_add(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    # The level keys stay optional here on purpose: the client enforces
+    # "exactly one of campaign_id / ad_group_id" in one place, so the two
+    # ways of getting it wrong (neither, both) produce the same message.
+    params: dict[str, Any] = {
+        "campaign_id": _opt(args, "campaign_id"),
+        "ad_group_id": _opt(args, "ad_group_id"),
+        "placements": _require(args, "placements"),
+    }
+    result = await client.add_negative_placements(params)
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_negative_placements_remove(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    params: dict[str, Any] = {
+        "campaign_id": _opt(args, "campaign_id"),
+        "ad_group_id": _opt(args, "ad_group_id"),
+        "criterion_ids": _require(args, "criterion_ids"),
+    }
+    result = await client.remove_negative_placements(params)
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
 # Budget
 # ---------------------------------------------------------------------------
 
@@ -619,6 +667,9 @@ _HANDLERS_BASE: dict[str, Any] = {
     "google_ads_keywords_diagnose": handle_keywords_diagnose,
     "google_ads_negative_keywords_list": handle_negative_keywords_list,
     "google_ads_negative_keywords_add": handle_negative_keywords_add,
+    "google_ads_negative_placements_list": handle_negative_placements_list,
+    "google_ads_negative_placements_add": handle_negative_placements_add,
+    "google_ads_negative_placements_remove": handle_negative_placements_remove,
     "google_ads_budget_get": handle_budget_get,
     "google_ads_budget_update": handle_budget_update,
     "google_ads_performance_report": handle_performance_report,

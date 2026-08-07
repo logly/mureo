@@ -449,7 +449,7 @@ The Amazon bridge is the reason mureo sits in the request path rather than letti
 
 ## Command-Based Workflow System
 
-In addition to the 205 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
+In addition to the 210 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 

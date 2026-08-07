@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Delivery-surface exclusions are now an operation mureo can perform, and
+  therefore one it can guard, record and reverse** (#544). Google Ads
+  campaign / ad-group **negative placement criteria** — excluded websites,
+  excluded mobile apps, excluded mobile app categories — had no tool at all.
+  The only exclusion surface mureo exposed for Google Ads was
+  `google_ads_negative_keywords_*`, which covers search terms, not
+  placements. So Display / Demand-Gen placement hygiene happened by hand in
+  the Google Ads UI: outside the dispatcher, so `StrategyPolicyGate` never
+  saw it, never promoted to `action_log`, no `observation_due` attached.
+
+  On a live Display account that gap cost roughly a week. An operator
+  tightened exclusions across several sessions (36 excluded mobile apps and
+  10 excluded websites in one batch, 23 excluded app categories in another,
+  a larger pass days later). Delivery on two campaigns went from ~350k
+  impressions/day to zero and stayed there. Nothing tied "delivery died" to
+  "exclusions were added", so the recovery was guesswork — a bulk delete of
+  80+ exclusions that did not help, a bid-ceiling change that reset the
+  bidding strategy into learning, and finally a rebuild that was probably
+  unnecessary.
+
+  New Google Ads tools:
+
+  - `google_ads_negative_placements_list` — excluded websites / apps / app
+    categories at **both** levels, with the `criterion_id` needed to lift
+    them.
+  - `google_ads_negative_placements_add` — exclude by type (`website`,
+    `mobile_application`, `mobile_app_category`), campaign or ad group
+    level, mixing types in one batch.
+  - `google_ads_negative_placements_remove` — lift by `criterion_id`, as a
+    list, so a bad batch reverts in one call.
+
+  The tools are not the point; the three properties they carry are. A batch
+  is one `action_log` entry with an `observation_due` window ("N exclusions
+  added on date X, review by date Y"), so `/daily-check` surfaces a
+  zero-delivery anomaly against a known cause. It is one revertible unit:
+  `rollback_apply` removes **exactly** the criteria that call created,
+  however many there were. And `remove` verifies every id against the live
+  criteria first — an id that is not a negative placement criterion at the
+  named level is reported under `skipped` and never mutated, so the reversal
+  of an exclusion batch can never become a way to delete a keyword.
+
+- **The Meta half of the same surface** (#544). Meta stores its exclusions
+  inside an ad set's `targeting` spec (`excluded_publisher_categories`,
+  `excluded_publisher_list_ids`, `excluded_brand_safety_content_types`).
+  They were reachable through `meta_ads_ad_sets_update`, but only as an
+  opaque blob — mureo could not tell an exclusion change from any other
+  targeting edit, so it could neither record it with an observation window
+  nor reverse it. `meta_ads_excluded_placements_get` /
+  `meta_ads_excluded_placements_set` name the operation, which is what puts
+  it on the same guarantees. The write goes through the existing
+  read-modify-write targeting merge, so geo, audiences and interests are
+  preserved; its reversal restores the prior lists, and a facet that had no
+  prior value is reversed by clearing it rather than by leaving the new
+  exclusion in place.
+
+### Changed
+
+- **The rollback planner's destructive-verb net now has one explicit,
+  bounded exemption** (#544). That net refuses to plan any reversal whose
+  operation name contains `_remove` / `_delete` / …, which is the right
+  default for operations mureo did not curate — it stops an agent-authored
+  `reversible_params` from naming an arbitrary delete. But the inverse of
+  "add an exclusion" **is** a removal, so the net would have left the
+  highest-risk bulk write in mureo irreversible. `_DESTRUCTIVE_VERB_EXEMPT`
+  now names `google_ads_negative_placements_remove` and nothing else.
+  Membership is not sufficient on its own: an exempt operation must also be
+  in `_ALLOWED_OPERATIONS` (which bounds its params) and safe by
+  construction at the tool. Every other removal stays blocked, and both
+  invariants are pinned by tests.
+
 ## [0.10.43] - 2026-08-07
 
 ### Changed

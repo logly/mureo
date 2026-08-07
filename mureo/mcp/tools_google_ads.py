@@ -1,12 +1,13 @@
 """Google Ads MCP tool definitions
 
-Provides 86 tool definitions (MCP Tool).
+Provides 89 tool definitions (MCP Tool).
 Handler implementations are separated into _handlers_google_ads.py /
 _handlers_google_ads_extensions.py / _handlers_google_ads_analysis.py.
 
 Tool definitions are split into category sub-modules:
   _tools_google_ads_campaigns.py  -- Campaigns, ad groups, ads, budgets
   _tools_google_ads_keywords.py   -- Keywords, negative keywords
+  _tools_google_ads_placements.py -- Negative placements (websites, apps, app categories)
   _tools_google_ads_extensions.py -- Sitelinks, callouts, conversions, targeting
   _tools_google_ads_targeting.py  -- Demographic & audience criteria reads
   _tools_google_ads_analysis.py   -- Performance analysis, search terms, monitoring, capture
@@ -31,10 +32,11 @@ from mureo.mcp._tools_google_ads_assets import TOOLS as _TOOLS_ASSETS
 from mureo.mcp._tools_google_ads_campaigns import TOOLS as _TOOLS_CAMPAIGNS
 from mureo.mcp._tools_google_ads_extensions import TOOLS as _TOOLS_EXTENSIONS
 from mureo.mcp._tools_google_ads_keywords import TOOLS as _TOOLS_KEYWORDS
+from mureo.mcp._tools_google_ads_placements import TOOLS as _TOOLS_PLACEMENTS
 from mureo.mcp._tools_google_ads_targeting import TOOLS as _TOOLS_TARGETING
 
 # ---------------------------------------------------------------------------
-# Tool definitions (86) -- aggregated from sub-modules
+# Tool definitions (89) -- aggregated from sub-modules
 # ---------------------------------------------------------------------------
 
 TOOLS: list[Tool] = (
@@ -44,6 +46,7 @@ TOOLS: list[Tool] = (
     + _TOOLS_TARGETING
     + _TOOLS_ANALYSIS
     + _TOOLS_ASSETS
+    + _TOOLS_PLACEMENTS
 )
 
 _TOOL_NAMES: frozenset[str] = frozenset(t.name for t in TOOLS)

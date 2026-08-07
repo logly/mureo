@@ -32,6 +32,7 @@ mureo/
 │   ├── _ads.py          # AdsMixin (RSA create/update/status/list)
 │   ├── _ads_display.py  # DisplayAdsMixin (RDA create + RDAUploadError)
 │   ├── _keywords.py     # KeywordsMixin (add/remove/suggest/diagnose)
+│   ├── _placements.py   # PlacementsMixin (negative placements: sites/apps/app categories, #544)
 │   ├── _analysis.py     # AnalysisMixin aggregator, composing the split modules below
 │   ├── _analysis_auction.py / _analysis_btob.py / _analysis_budget.py    # + _analysis_constants.py
 │   ├── _analysis_keywords.py / _analysis_performance.py / _analysis_rsa.py / _analysis_search_terms.py
@@ -58,6 +59,7 @@ mureo/
 │   ├── _videos.py       # VideosMixin (AdVideo upload/status/thumbnails)
 │   ├── _audiences.py    # AudiencesMixin
 │   ├── _pixels.py       # PixelsMixin
+│   ├── _placement_exclusions.py  # PlacementExclusionsMixin (ad-set publisher exclusions, #544)
 │   ├── _insights.py     # InsightsMixin
 │   ├── _analysis.py     # AnalysisMixin
 │   ├── _catalog.py      # CatalogMixin (product catalogs/feeds)
@@ -163,6 +165,7 @@ docs/integrations.md          # Platform discovery + external MCP integration gu
 | Ads | `ads.list`, `ads.create`, `ads.create_display`, `ads.update`, `ads.update_status`, `ads.policy_details` |
 | Keywords | `keywords.list`, `keywords.add`, `keywords.remove`, `keywords.suggest`, `keywords.diagnose`, `keywords.pause`, `keywords.audit`, `keywords.cross_adgroup_duplicates` |
 | Negative Keywords | `negative_keywords.list`, `negative_keywords.add`, `negative_keywords.remove`, `negative_keywords.add_to_ad_group`, `negative_keywords.suggest` |
+| Negative Placements | `negative_placements.list`, `negative_placements.add`, `negative_placements.remove` |
 | Budget | `budget.get`, `budget.update`, `budget.create` |
 | Accounts | `accounts.list` |
 | Search Terms | `search_terms.report`, `search_terms.analyze` |
@@ -194,6 +197,7 @@ docs/integrations.md          # Platform discovery + external MCP integration gu
 | Conversions API | `conversions.send`, `conversions.send_purchase`, `conversions.send_lead` |
 | Pixels | `pixels.list`, `pixels.get`, `pixels.stats`, `pixels.events`, `pixels.create` |
 | Analysis | `analysis.performance`, `analysis.audience`, `analysis.placements`, `analysis.cost`, `analysis.compare_ads`, `analysis.suggest_creative` |
+| Placement Exclusions | `excluded_placements.get`, `excluded_placements.set` |
 | Product Catalog | `catalogs.list`, `catalogs.create`, `catalogs.get`, `catalogs.delete`, `products.list`, `products.add`, `products.get`, `products.update`, `products.delete`, `feeds.list`, `feeds.create` |
 | Lead Ads | `lead_forms.list`, `lead_forms.get`, `lead_forms.create`, `leads.get`, `leads.get_by_ad` |
 | Videos | `videos.upload`, `videos.upload_file` |

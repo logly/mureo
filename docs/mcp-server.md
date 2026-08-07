@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 205 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 184 advertising and SEO operation tools across Google Ads (86), Meta Ads (88), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
+mureo exposes 210 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 189 advertising and SEO operation tools across Google Ads (89), Meta Ads (90), and Search Console (10), 2 rollback tools, 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
 
 ## Starting the Server
 
@@ -143,6 +143,16 @@ Or use `uv` to run it:
 | `google_ads_negative_keywords_remove` | Remove a negative keyword | `customer_id`, `campaign_id`, `criterion_id` |
 | `google_ads_negative_keywords_add_to_ad_group` | Add negative keywords to an ad group | `customer_id`, `ad_group_id`, `keywords` |
 | `google_ads_negative_keywords_suggest` | Suggest negative keywords based on search terms | `customer_id`, `campaign_id` |
+
+#### Negative Placements (delivery-surface exclusions)
+
+Excluded websites, mobile apps and mobile app categories — the placement side of exclusion, as opposed to the search-term side above.
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads_negative_placements_list` | List excluded websites / apps / app categories at campaign and ad group level | `customer_id` |
+| `google_ads_negative_placements_add` | Exclude websites / apps / app categories (batch, one revertible unit) | `customer_id`, one of `campaign_id` / `ad_group_id`, `placements` |
+| `google_ads_negative_placements_remove` | Lift exclusions by `criterion_id` (batch) | `customer_id`, one of `campaign_id` / `ad_group_id`, `criterion_ids` |
 
 #### Budget
 
@@ -377,6 +387,15 @@ Or use `uv` to run it:
 | `meta_ads_analysis_cost` | Analyze cost trends and efficiency | `account_id` |
 | `meta_ads_analysis_compare_ads` | Compare performance across ads | `account_id` |
 | `meta_ads_analysis_suggest_creative` | Suggest creative improvements based on data | `account_id` |
+
+#### Placement Exclusions
+
+Which publishers, Audience Network app categories and content types an ad set must NOT be delivered against. Stored inside the ad set's targeting spec; named as their own tools so mureo can record and reverse an exclusion change.
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `meta_ads_excluded_placements_get` | Read an ad set's current exclusion lists | `account_id`, `ad_set_id` |
+| `meta_ads_excluded_placements_set` | Replace the supplied exclusion facets on an ad set | `account_id`, `ad_set_id` |
 
 #### Product Catalog (DPA)
 

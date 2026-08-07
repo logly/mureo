@@ -53,9 +53,9 @@ class TestGoogleAdsToolDefinitions:
     """Verify the Google Ads tool list is defined correctly."""
 
     def test_tool_count(self) -> None:
-        """All 86 tools are defined (83 + demographic/audience/image-asset reads, #366)."""
+        """All 89 tools are defined (86 + negative placement list/add/remove, #544)."""
         mod = _import_google_ads_tools()
-        assert len(mod.TOOLS) == 86
+        assert len(mod.TOOLS) == 89
 
     def test_all_tool_names(self) -> None:
         """Every tool name starts with google_ads_ (underscore-separated, per MCP spec)."""

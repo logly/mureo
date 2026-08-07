@@ -136,6 +136,9 @@ immediate request but is not remembered.
 | 84 | `google_ads_demographic_targeting_list` | Targeting | Read | List demographic criteria (age/gender/parental status/income) |
 | 85 | `google_ads_audience_targeting_list` | Targeting | Read | List audience criteria (user lists, interests, custom/combined audiences) |
 | 86 | `google_ads_image_assets_list` | Asset | Read | List image assets with names and dimensions |
+| 87 | `google_ads_negative_placements_list` | Negative Placement | Read | List excluded websites / apps / app categories (campaign + ad group) |
+| 88 | `google_ads_negative_placements_add` | Negative Placement | Write | Exclude websites / apps / app categories (batch, one revertible unit) |
+| 89 | `google_ads_negative_placements_remove` | Negative Placement | Write | Lift exclusions by criterion_id (batch) |
 
 ## API Resources
 
@@ -306,6 +309,46 @@ immediate request but is not remembered.
 - `suggest` -- Suggest negative keywords based on search term analysis.
   ```
   Required: customer_id, campaign_id (string)
+  ```
+
+### negative_placements
+
+Delivery-surface exclusions: excluded **websites**, **mobile apps** and **mobile app
+categories**. This is the placement side of exclusion; `negative_keywords` above is the
+search-term side. Both campaign-level and ad group-level criteria are supported — supply
+**exactly one** of `campaign_id` / `ad_group_id`.
+
+A `add` call is recorded in STATE.json's `action_log` with an `observation_due` window and
+is reversible as **one unit** via `rollback_apply`, however many exclusions it carried. That
+is the whole point of routing placement hygiene through mureo: a bulk exclusion pass that
+kills delivery can be tied to a date and undone, instead of being reconstructed by hand.
+
+- `list` -- List excluded websites / apps / app categories. Returns level ("campaign" |
+  "ad_group"), criterion_id, type, criterion_type, value, display_name, and the parent
+  campaign / ad group ids.
+  ```
+  Required: customer_id (string)
+  Optional: campaign_id, ad_group_id (string)
+  ```
+
+- `add` -- Exclude websites / apps / app categories. **Requires user confirmation.** Always
+  show the count and the level before writing — a large batch can take a Display campaign
+  to zero impressions.
+  ```
+  Required: customer_id (string), exactly one of campaign_id / ad_group_id (string),
+            placements (array of {type: "website" | "mobile_application" | "mobile_app_category",
+                                  value: string})
+  ```
+  `value` formats: website = domain or URL; mobile_application = platform-prefixed app id
+  (`1-` iOS, `2-` Android); mobile_app_category = category constant id or its
+  `mobileAppCategoryConstants/<id>` resource name.
+
+- `remove` -- Lift exclusions by criterion_id. **Requires user confirmation.** Ids are
+  verified first: anything that is not a negative placement criterion at the named level is
+  reported under `skipped` and never removed.
+  ```
+  Required: customer_id (string), exactly one of campaign_id / ad_group_id (string),
+            criterion_ids (array of string)
   ```
 
 ### budget
