@@ -22,7 +22,7 @@ bridged / plugin ABI path, recorded through
 from __future__ import annotations
 
 import json
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -36,6 +36,7 @@ from mureo.context.batch import (
     batch_members,
     batch_open_hours,
     stale_batch_warning,
+    stamp_batch,
 )
 from mureo.context.models import ActionLogEntry, BatchRecord, StateDocument
 from mureo.context.state import (
@@ -238,6 +239,108 @@ class TestBatchGrouping:
         assert doc.action_log[0].batch_id is None
         assert active_batch(doc) is not None
         assert batch_members(doc, batch.batch_id) == ()
+
+
+#: One distinctive value per :class:`ActionLogEntry` field. Driven off the
+#: dataclass's own field list by the tests below, so ADDING A FIELD TO
+#: ``ActionLogEntry`` WITHOUT ADDING IT HERE FAILS — which is the point. The
+#: hazard being guarded is silent: a field dropped while joining a batch reads
+#: downstream as "the caller never set it", so nothing else would notice.
+_ENTRY_FIELD_VALUES: dict[str, Any] = {
+    "timestamp": "2026-08-07T10:00:00+09:00",
+    "action": "google_ads_placement_exclusions_add",
+    "platform": "google_ads",
+    "campaign_id": "C-1",
+    "ad_id": "A-1",
+    "summary": "excluded 12 placements",
+    "command": "/search-term-cleanup",
+    "metrics_at_action": {"cpa": 5200, "conversions": 45},
+    "observation_due": "2026-08-21",
+    "reversible_params": {
+        "operation": "google_ads_campaigns_update_status",
+        "params": {"campaign_id": "C-1", "status": "ENABLED"},
+    },
+    "rollback_of": 3,
+    "evaluation_of": 4,
+    "entity_type": "ad_group",
+    "entity_id": "G-1",
+    # The one field the round-trip is ALLOWED to change: it arrives unset and
+    # comes back carrying the open batch.
+    "batch_id": None,
+}
+
+
+def _fully_populated_entry() -> ActionLogEntry:
+    """An entry with every field set, checked against the dataclass itself."""
+    declared = {f.name for f in fields(ActionLogEntry)}
+    missing = declared - set(_ENTRY_FIELD_VALUES)
+    assert not missing, (
+        f"ActionLogEntry gained field(s) {sorted(missing)} with no value in "
+        "_ENTRY_FIELD_VALUES. Add one, then confirm the field survives "
+        "stamp_batch and the STATE.json codec — a new field that is silently "
+        "dropped when an entry joins a batch is exactly the bug this guards."
+    )
+    stale = set(_ENTRY_FIELD_VALUES) - declared
+    assert not stale, f"_ENTRY_FIELD_VALUES names removed field(s) {sorted(stale)}"
+    return ActionLogEntry(**_ENTRY_FIELD_VALUES)
+
+
+@pytest.mark.unit
+class TestJoiningABatchPreservesTheEntry:
+    """Joining a batch must change ``batch_id`` and nothing else.
+
+    ``stamp_batch`` used to rebuild the entry field-by-field, so any field
+    added to :class:`ActionLogEntry` afterwards was dropped the moment an entry
+    joined an open batch — and ``join_active_batch`` defaults to ``True``, so
+    that is the ordinary path, not a corner. The loss was silent: a missing
+    field is indistinguishable from one the caller never set. It cost the
+    provenance fields (``origin`` / ``external_id``), and with them the
+    ``is_external`` marker that stops a forged ``reversible_params`` on an
+    imported entry from being planned as a real reversal.
+
+    Both tests below are driven off ``dataclasses.fields(ActionLogEntry)``
+    rather than a hand-written list, so they cannot rot the same way.
+    """
+
+    def test_stamp_batch_changes_only_batch_id(self) -> None:
+        """The pure function, so a failure localizes here and not in the codec."""
+        entry = _fully_populated_entry()
+        record = BatchRecord(
+            batch_id="batch-x", label="pass", started_at="2026-08-07T09:00:00+09:00"
+        )
+        stamped = stamp_batch(entry, record)
+
+        assert stamped.batch_id == "batch-x"
+        for field in fields(ActionLogEntry):
+            if field.name == "batch_id":
+                continue
+            assert getattr(stamped, field.name) == getattr(entry, field.name), (
+                f"stamp_batch dropped or altered {field.name!r} while joining a "
+                "batch. Use dataclasses.replace; never enumerate fields."
+            )
+
+    def test_every_field_survives_the_append_round_trip(self, workspace: Path) -> None:
+        """End to end: through ``stamp_batch``, the codec, and back off disk.
+
+        Covers the second enumerating surface too — ``state_codec`` maps the
+        entry to JSON field-by-field in both directions, so a field missing
+        from either half is lost on the way to STATE.json rather than on the
+        way into the batch.
+        """
+        state_file = workspace / "STATE.json"
+        batch = begin_batch(state_file, label="preserve everything")
+        entry = _fully_populated_entry()
+        append_action_log(state_file, entry)
+
+        stored = read_state_file(state_file).action_log[0]
+        assert stored.batch_id == batch.batch_id
+        for field in fields(ActionLogEntry):
+            if field.name == "batch_id":
+                continue
+            assert getattr(stored, field.name) == _ENTRY_FIELD_VALUES[field.name], (
+                f"{field.name!r} did not survive append_action_log with an open "
+                "batch — check stamp_batch and both halves of state_codec."
+            )
 
 
 @pytest.mark.unit
