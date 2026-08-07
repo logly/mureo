@@ -249,13 +249,43 @@ GOOGLE_ADS_RULES = PlatformLearningRules(
                 "keywords attached to it."
             ),
         ),
+        # Google exposes TWO conversion causes, and mapping them to separate
+        # triggers is what keeps a cosmetic edit out of the reset class.
+        # Adding or archiving an action changes the set of conversion TYPES;
+        # editing an existing action changes its SETTINGS — but only for the
+        # fields that are settings. ``google_ads_conversions_update`` also
+        # renames, and a rename resets nothing, so the settings trigger names
+        # the fields it needs (same discipline as
+        # ``google_ads_campaigns_update``, where a rename is NO_RESET).
         ResetTrigger(
-            change_class="conversion_settings_change",
+            change_class="conversion_type_change",
             tools=frozenset(
                 {
                     "google_ads_conversions_create",
-                    "google_ads_conversions_update",
                     "google_ads_conversions_remove",
+                }
+            ),
+            evidence=_google_evidence(
+                "LEARNING_CONVERSION_TYPE_CHANGE: The bid strategy depends on "
+                "conversion reporting and the customer recently modified "
+                "conversion types that were relevant to the bid strategy."
+            ),
+        ),
+        ResetTrigger(
+            change_class="conversion_settings_change",
+            tools=frozenset({"google_ads_conversions_update"}),
+            # Every updatable field of google_ads_conversions_update EXCEPT
+            # ``name``. ``status`` belongs here: HIDDEN / REMOVED / ENABLED
+            # decides whether the action counts toward "Conversions", which is
+            # the reporting the bid strategy depends on.
+            requires_arguments=frozenset(
+                {
+                    "category",
+                    "status",
+                    "default_value",
+                    "always_use_default_value",
+                    "click_through_lookback_window_days",
+                    "view_through_lookback_window_days",
                 }
             ),
             evidence=_google_evidence(
@@ -277,17 +307,19 @@ GOOGLE_ADS_RULES = PlatformLearningRules(
     triggers_are_enumerated=True,
     notes=(
         "Trigger classes are Google's own LEARNING_* enum members, mapped to "
-        "the mureo tools that perform each change. Two limits are deliberate "
-        "and not papered over: (1) LEARNING_SETTING_CHANGE says 'a recent "
-        "setting change' without enumerating which settings, so mureo maps it "
-        "only to the bidding-strategy field it can see in a tool argument — a "
-        "campaign setting changed through another tool is not classified; "
-        "(2) LEARNING_BUDGET_CHANGE names no magnitude threshold, so mureo "
-        "applies none (the '>20%' figure the old SKILL prose used has no "
-        "first-party source). Only campaigns on an automated bid strategy have "
-        "a bid strategy to reset; mureo does not consult the campaign's "
-        "strategy type before classifying, so a budget change on a manual-CPC "
-        "campaign is reported as reset-triggering when it is not."
+        "the mureo tools that perform each change. Three known limits, stated "
+        "so a verdict is never read as more than it is: (1) only a campaign on "
+        "an AUTOMATED bid strategy has a learning period to reset, and mureo "
+        "does not consult the campaign's strategy type before classifying — so "
+        "budget_change, composition_change AND reactivation are all "
+        "over-reported on a manual-CPC campaign; (2) LEARNING_BUDGET_CHANGE "
+        "names no magnitude threshold, so mureo applies none (the '>20%' "
+        "figure the old SKILL prose used has no first-party source); "
+        "(3) LEARNING_SETTING_CHANGE says 'a recent setting change' without "
+        "enumerating which settings, so mureo maps only the bidding-strategy "
+        "field it can see in a tool argument — a campaign setting changed "
+        "through another tool is not classified at all, which is an "
+        "under-report rather than an over-report."
     ),
 )
 

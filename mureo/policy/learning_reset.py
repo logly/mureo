@@ -194,9 +194,16 @@ def classify_change(tool_name: str, arguments: dict[str, Any]) -> ChangeAssessme
                     platform=platform,
                     risk=ResetRisk.RESETS,
                     change_class=trigger.change_class,
+                    # The caveats travel with the RESETS verdict, not only
+                    # with NO_RESET. The operator who is *blocked* by a false
+                    # positive is the one person who needs to know the
+                    # classification has known blind spots; putting the note
+                    # only on the quiet path is honesty filed where nobody
+                    # reads it.
                     detail=(
                         f"{tool_name} is a {trigger.change_class} on "
-                        f"{platform}, which restarts the learning period."
+                        f"{platform}, which restarts the learning period. "
+                        f"Known limits of this classification: {rules.notes}"
                     ),
                     evidence=trigger.evidence,
                 )
@@ -401,19 +408,37 @@ def learning_reset_denial(
 ) -> str | None:
     """The operator-facing refusal reason, or ``None`` to allow.
 
-    ``block_all`` refuses every reset-triggering change.
-    ``block_during_incident`` refuses one only when the campaign is not
-    positively known to be out of a learning period — so it fires on
-    LEARNING (stacking a second reset on an unstable campaign) and equally on
-    UNKNOWN / UNREPORTABLE, matching the rest of this gate's discipline of
-    refusing what it cannot verify rather than assuming the safe answer.
+    ``block_all`` refuses every reset-triggering change, whatever the state
+    and whether or not a campaign can be identified. It is a freeze, and it
+    is honestly blunt.
+
+    ``block_during_incident`` is narrower by name and must be narrower in
+    fact: "during incident" names *a specific campaign that is known to be
+    unstable*. So it refuses only when
+
+    1. this call identifies a campaign at all, and
+    2. that campaign is not positively known to be out of a learning period.
+
+    (2) is fail-closed on purpose — UNKNOWN is refused, not assumed steady —
+    but (1) is what keeps that from degenerating. Several reset-triggering
+    tools are not campaign-scoped (``google_ads_conversions_*`` is
+    account-level; ``google_ads_budget_update`` is keyed on a ``budget_id``),
+    so their campaign is always unresolvable and their state always UNKNOWN.
+    Without (1) this rule would refuse every one of those calls forever, with
+    no relation to any incident or any campaign — the operator who followed
+    mureo's own advice to declare it would find conversion actions
+    permanently un-editable, and would turn the feature off. A rule with no
+    subject has nothing to refuse.
     """
     if pre.change.risk is not ResetRisk.RESETS:
         return None
     if not (block_all or block_during_incident):
         return None
-    if not block_all and pre.learning.is_known_not_learning():
-        return None
+    if not block_all:
+        if pre.campaign_id is None:
+            return None
+        if pre.learning.is_known_not_learning():
+            return None
     rule = (
         "block_learning_resets"
         if block_all

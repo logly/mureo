@@ -97,10 +97,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Hard refusal.** Two new STRATEGY.md `## Guardrails` rules, enforced by the
     existing built-in `StrategyPolicyGate` before dispatch (no second gate):
     `block_learning_resets` refuses every reset-triggering change;
-    `block_learning_resets_during_incident` refuses one unless the campaign is
-    *positively known* to be out of a learning period — so it also fires on an
-    unknown state, matching the gate's existing discipline of refusing what it
-    cannot verify. Both default off: with neither written, behaviour is
+    `block_learning_resets_during_incident` is narrower by name and in fact —
+    it refuses only a change that *identifies a campaign* which is not
+    positively known to be out of a learning period. An unknown state on an
+    identified campaign is refused (fail-closed, matching the gate's existing
+    discipline of refusing what it cannot verify); a change that identifies no
+    campaign at all has no subject and is not refused, since several
+    reset-triggering tools are account-level (`google_ads_conversions_*`) or
+    keyed on something other than a campaign (`google_ads_budget_update` takes
+    a `budget_id`) and would otherwise be blocked forever with no relation to
+    any incident. Both default off: with neither written, behaviour is
     unchanged and mureo neither reads STATE.json nor blocks anything.
   - **Pre-flight tool.** `mureo_learning_reset_preflight` (read-only, no
     platform API call) answers, *before* the change: is it reset-triggering,
@@ -131,9 +137,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Reads and unrelated mutations are never flagged: a campaign rename through
   `google_ads_campaigns_update` is `no_reset` while the same tool carrying
-  `bidding_strategy` is `resets`, and pausing a campaign is `no_reset` while
-  re-enabling it is `resets`. A check that fires on everything is a check that
-  gets ignored.
+  `bidding_strategy` is `resets`; renaming a conversion action through
+  `google_ads_conversions_update` is `no_reset` while changing its category,
+  status, value or lookback window is `resets`; and pausing a campaign is
+  `no_reset` while re-enabling it is `resets`. A check that fires on everything
+  is a check that gets ignored — and one that blocks a rename is a check that
+  gets switched off.
+
+  The classification's known blind spots (a manual-CPC campaign has no bid
+  strategy to reset, so `budget_change` / `composition_change` / `reactivation`
+  are over-reported on one) travel with the **`resets`** verdict, not only with
+  `no_reset` — the operator stopped by a false positive is the one who needs
+  them.
 
 ## [0.10.43] - 2026-08-07
 

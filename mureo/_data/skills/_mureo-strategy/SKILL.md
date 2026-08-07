@@ -273,14 +273,27 @@ keys (all optional):
 - `block_learning_resets` — every change mureo classifies as restarting an
   automated bid strategy's learning period is **refused**. The blunt rule: use
   it during a freeze, not day to day.
-- `block_learning_resets_during_incident` — the same refusal, but only when the
-  campaign is **not positively known to be out of** a learning period. Stacking
-  a second reset on a campaign that is already re-learning is almost never
-  intended, and is the exact shape of the incident this rule comes from
-  (a collapsed campaign "fixed" by moving its bid ceiling, which restarted
-  learning and delayed recovery). It therefore **also fires when the learning
-  state is unknown or unreportable** — consistent with the rest of this gate,
-  which refuses what it cannot verify rather than assuming the safe answer.
+- `block_learning_resets_during_incident` — the same refusal, but narrower by
+  name and in fact: *"during incident"* names **a specific campaign that is
+  known to be unstable**. It refuses only when the call (1) identifies a
+  campaign at all and (2) that campaign is **not positively known to be out
+  of** a learning period. Stacking a second reset on a campaign that is already
+  re-learning is almost never intended, and is the exact shape of the incident
+  this rule comes from (a collapsed campaign "fixed" by moving its bid ceiling,
+  which restarted learning and delayed recovery).
+
+  Condition (2) is **fail-closed**: an `unknown` or `unreportable` state on an
+  identified campaign is refused, not assumed steady. Condition (1) is what
+  keeps that from degenerating into a permanent block. Several
+  reset-triggering tools are **not campaign-scoped** —
+  `google_ads_conversions_*` is account-level and `google_ads_budget_update` is
+  keyed on a `budget_id` — so their campaign can never be resolved and their
+  state is always `unknown`. Without (1) this rule would refuse every one of
+  those calls forever, with no relation to any incident: an operator who
+  followed mureo's own advice to declare it would find conversion actions
+  permanently un-editable. A rule with no subject has nothing to refuse. Use
+  `block_learning_resets` when you want the account-wide freeze — that one is
+  honestly blunt and needs no subject.
 
   Coverage is honest rather than uniform. mureo classifies reset triggers from
   **first-party sources only**: Google Ads is complete (Google publishes the

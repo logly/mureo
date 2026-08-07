@@ -139,6 +139,53 @@ class TestChangeClassification:
         assert enable.risk is ResetRisk.RESETS
         assert pause.risk is ResetRisk.NO_RESET
 
+    def test_conversion_rename_is_not_a_reset(self) -> None:
+        """Review finding: a cosmetic rename of a conversion action classified
+        the same as changing its value, so an operator who declared
+        block_learning_resets_during_incident could never rename one."""
+        a = classify_change(
+            "google_ads_conversions_update",
+            {"conversion_action_id": "CA1", "name": "Renamed"},
+        )
+        assert a.risk is ResetRisk.NO_RESET
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("category", "PURCHASE"),
+            ("status", "REMOVED"),
+            ("default_value", 5000),
+            ("always_use_default_value", True),
+            ("click_through_lookback_window_days", 30),
+            ("view_through_lookback_window_days", 1),
+        ],
+    )
+    def test_conversion_setting_edits_are_resets(self, field: str, value: Any) -> None:
+        a = classify_change(
+            "google_ads_conversions_update",
+            {"conversion_action_id": "CA1", field: value},
+        )
+        assert a.risk is ResetRisk.RESETS
+        assert a.change_class == "conversion_settings_change"
+
+    @pytest.mark.parametrize(
+        "tool", ["google_ads_conversions_create", "google_ads_conversions_remove"]
+    )
+    def test_conversion_type_changes_stay_resets(self, tool: str) -> None:
+        """create / remove have no cosmetic-only mode, so they stay
+        unconditional — narrowing must not become under-reporting."""
+        a = classify_change(tool, {"conversion_action_id": "CA1"})
+        assert a.risk is ResetRisk.RESETS
+        assert a.change_class == "conversion_type_change"
+
+    def test_reset_verdict_carries_the_classification_caveats(self) -> None:
+        """The caveats must reach the person who is BLOCKED, not only the one
+        who is waved through."""
+        a = classify_change("google_ads_budget_update", {"amount": 1})
+        assert "manual-CPC" in a.detail
+        for change_class in ("budget_change", "composition_change", "reactivation"):
+            assert change_class in a.detail
+
     @pytest.mark.parametrize(
         "tool",
         [
@@ -277,6 +324,35 @@ class TestGateEnforcement:
         reason = learning_reset_denial(pre, block_all=False, block_during_incident=True)
         assert reason is not None
         assert "LEARNING_BUDGET_CHANGE" in reason
+
+    def test_incident_guardrail_needs_a_campaign_subject(self) -> None:
+        """'During incident' names a specific unstable campaign. An
+        account-level change identifies none, so the rule has no subject and
+        must not refuse — otherwise editing a conversion action is refused
+        forever, with no relation to any incident."""
+        pre = self._pre(
+            "google_ads_conversions_update",
+            {"conversion_action_id": "CA1", "status": "REMOVED"},
+            "LEARNING_NEW",
+        )
+        assert pre.campaign_id is None
+        assert pre.change.risk is ResetRisk.RESETS
+        assert (
+            learning_reset_denial(pre, block_all=False, block_during_incident=True)
+            is None
+        )
+
+    def test_block_all_still_refuses_without_a_campaign_subject(self) -> None:
+        """The blunt rule stays blunt: a freeze needs no subject."""
+        pre = self._pre(
+            "google_ads_conversions_update",
+            {"conversion_action_id": "CA1", "status": "REMOVED"},
+            "LEARNING_NEW",
+        )
+        assert (
+            learning_reset_denial(pre, block_all=True, block_during_incident=False)
+            is not None
+        )
 
     def test_incident_guardrail_allows_when_steady(self) -> None:
         pre = self._pre(

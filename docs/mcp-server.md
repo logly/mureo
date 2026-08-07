@@ -588,6 +588,8 @@ Read-only: it calls no platform API and changes nothing.
 | Surface | When | Strength |
 |---|---|---|
 | `## Guardrails` `block_learning_resets` / `block_learning_resets_during_incident` | before dispatch | **hard** — the call is refused by `StrategyPolicyGate`, before any API call |
+
+`block_learning_resets` is an account-wide freeze: it refuses every reset-triggering change, with or without an identifiable campaign. `block_learning_resets_during_incident` is narrower by name and in fact — it refuses only a change that **identifies a campaign** which is not positively known to be out of a learning period. An unknown state on an identified campaign is refused (fail-closed); a change that identifies no campaign at all (`google_ads_conversions_*` is account-level, `google_ads_budget_update` is keyed on a `budget_id`) has no subject and is not refused, or the rule would permanently block editing a conversion action with no relation to any incident.
 | `mureo_learning_reset_preflight` | before the change, when the agent calls it | advisory — as strong as the agent's compliance |
 | A notice appended to a reset-triggering call's own result | after that call | records the reset so the *next* change in the sequence is not made blind |
 
