@@ -46,9 +46,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Search Console mutations are not recorded in `action_log` at all, so they
   cannot join a batch today.
 
+  Membership is validated, not trusted. An explicit `batch_id` on
+  `mureo_state_action_log_append` must name a batch that was actually declared
+  and is still open; an unknown id is refused, and so is a closed one. The
+  check lives at the `append_action_log` choke point, so no caller — handler,
+  library user or future recorder — can conjure a change set or grow one whose
+  membership `mureo_batch_end` already reported.
+
+  A forgotten `mureo_batch_end` announces itself. After 24 hours open,
+  `mureo_batch_status` returns a warning and one is appended to every mutating
+  tool result, so the agent that forgot is told without having to ask. Nothing
+  is ever closed automatically: a timeout would trade a visible wrong answer
+  for an invisible one.
+
   STATE.json gains an optional `batches` array and an optional `batch_id` on
   each `action_log` entry, both emitted only when present — an existing
   STATE.json parses unchanged and gains no new key on the next write.
+
+### Changed
+
+- `_resolve_path`, the workspace sandbox boundary shared by the STATE.json /
+  STRATEGY.md tools, moved from `mureo/mcp/_handlers_mureo_context.py` to
+  `mureo/mcp/_helpers.py` as `resolve_workspace_path`. It is a security check;
+  a sibling module reaching into another handler's privates to borrow it —
+  or copying it — is a place for the two to drift.
 
 ## [0.10.43] - 2026-08-07
 

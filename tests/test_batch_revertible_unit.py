@@ -22,13 +22,22 @@ bridged / plugin ABI path, recorded through
 from __future__ import annotations
 
 import json
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from mureo.context.batch import BatchError, active_batch, batch_members, new_batch_id
-from mureo.context.models import ActionLogEntry, StateDocument
+from mureo.context.batch import (
+    STALE_AFTER_HOURS,
+    BatchError,
+    active_batch,
+    batch_members,
+    batch_open_hours,
+    stale_batch_warning,
+)
+from mureo.context.models import ActionLogEntry, BatchRecord, StateDocument
 from mureo.context.state import (
     append_action_log,
     begin_batch,
@@ -197,21 +206,20 @@ class TestBatchGrouping:
         with pytest.raises(BatchError):
             end_batch(workspace / "STATE.json")
 
-    def test_explicit_batch_id_on_the_entry_wins(self, workspace: Path) -> None:
-        """An imported / backfilled entry keeps the batch it declares."""
+    def test_explicit_batch_id_must_name_the_open_batch(self, workspace: Path) -> None:
+        """An explicit ``batch_id`` is an assertion, and it is checked."""
         state_file = workspace / "STATE.json"
-        begin_batch(state_file, label="open")
-        foreign = new_batch_id()
+        batch = begin_batch(state_file, label="open")
         append_action_log(
             state_file,
             ActionLogEntry(
                 timestamp="2026-08-07T10:00:00+09:00",
                 action="google_ads_budget_update",
                 platform="google_ads",
-                batch_id=foreign,
+                batch_id=batch.batch_id,
             ),
         )
-        assert read_state_file(state_file).action_log[0].batch_id == foreign
+        assert read_state_file(state_file).action_log[0].batch_id == batch.batch_id
 
     def test_rollback_entries_do_not_join_the_open_batch(self, workspace: Path) -> None:
         """A reversal appended while a batch is open must not become a member.
@@ -230,6 +238,182 @@ class TestBatchGrouping:
         assert doc.action_log[0].batch_id is None
         assert active_batch(doc) is not None
         assert batch_members(doc, batch.batch_id) == ()
+
+
+@pytest.mark.unit
+class TestMembershipCannotBeForged:
+    """Membership is the one thing this feature asks the operator to trust.
+
+    A batch id supplied by a caller is untrusted input: an unchecked one lets
+    an entry conjure a change set that never happened, or grow one whose
+    membership was already reported as final.
+    """
+
+    def test_an_unknown_batch_id_is_refused(self, workspace: Path) -> None:
+        state_file = workspace / "STATE.json"
+        with pytest.raises(BatchError, match="Unknown batch_id"):
+            append_action_log(
+                state_file,
+                ActionLogEntry(
+                    timestamp="2026-08-07T10:00:00+09:00",
+                    action="google_ads_budget_update",
+                    platform="google_ads",
+                    batch_id="batch-i-made-this-up",
+                ),
+            )
+        assert read_state_file(state_file).action_log == ()
+
+    def test_a_closed_batch_cannot_be_rejoined(self, workspace: Path) -> None:
+        """The member_count mureo_batch_end reported must stay true."""
+        state_file = workspace / "STATE.json"
+        batch = begin_batch(state_file, label="monday pass")
+        append_action_log(state_file, _entry("google_ads_budget_update", "google_ads"))
+        _, indices = end_batch(state_file)
+        assert indices == (0,)
+
+        with pytest.raises(BatchError, match="closed"):
+            append_action_log(
+                state_file,
+                ActionLogEntry(
+                    timestamp="2026-08-07T12:00:00+09:00",
+                    action="google_ads_keywords_add",
+                    platform="google_ads",
+                    batch_id=batch.batch_id,
+                ),
+            )
+        doc = read_state_file(state_file)
+        assert [i for i, _ in batch_members(doc, batch.batch_id)] == list(indices)
+
+    @pytest.mark.asyncio
+    async def test_forged_batch_id_is_refused_through_the_mcp_tool(
+        self, workspace: Path
+    ) -> None:
+        """The reproduction from review: no begin, arbitrary id, real batch."""
+        from mureo.mcp.tools_mureo_context import handle_tool as handle_context_tool
+
+        with pytest.raises(ValueError, match="Unknown batch_id"):
+            await handle_context_tool(
+                "mureo_state_action_log_append",
+                {
+                    "entry": {
+                        "action": "google_ads_placement_exclusions_add",
+                        "platform": "google_ads",
+                        "batch_id": "batch-fabricated",
+                    }
+                },
+            )
+        payload = _payload(
+            await handle_rollback_tool(
+                "rollback_plan_get", {"batch_id": "batch-fabricated"}
+            )
+        )
+        assert payload["coverage"] == "empty"
+        assert payload["members"] == []
+
+
+@pytest.mark.unit
+class TestForgottenBatchAnnouncesItself:
+    """A missed ``end`` is worse than a missed ``begin``.
+
+    A missed begin yields no batch — obvious and harmless. A missed end yields
+    a batch that keeps swallowing unrelated changes and then reports them,
+    confidently, as one unit. Nothing auto-closes: that would trade a visible
+    wrong answer for an invisible one.
+    """
+
+    def test_a_fresh_batch_is_not_stale(self, workspace: Path) -> None:
+        batch = begin_batch(workspace / "STATE.json", label="just opened")
+        assert stale_batch_warning(batch) is None
+
+    def test_a_long_open_batch_warns(self) -> None:
+        started = datetime(2026, 8, 1, 9, 0, tzinfo=timezone.utc)
+        record = BatchRecord(
+            batch_id="batch-old",
+            label="monday pass",
+            started_at=started.isoformat(),
+        )
+        now = started + timedelta(hours=STALE_AFTER_HOURS + 1)
+        warning = stale_batch_warning(record, now)
+        assert warning is not None
+        assert "batch-old" in warning
+        assert "mureo_batch_end" in warning
+        # Never auto-closed — the record is untouched.
+        assert record.ended_at is None
+
+    def test_a_closed_batch_never_warns(self) -> None:
+        record = BatchRecord(
+            batch_id="batch-done",
+            label="done",
+            started_at="2026-08-01T09:00:00+00:00",
+            ended_at="2026-08-01T10:00:00+00:00",
+        )
+        assert stale_batch_warning(record, datetime.now(timezone.utc)) is None
+
+    def test_an_unparseable_start_is_not_reported_as_fresh(self) -> None:
+        """An unknown age must not pass for a small one."""
+        record = BatchRecord(batch_id="b", label="l", started_at="not-a-date")
+        assert batch_open_hours(record) is None
+        assert stale_batch_warning(record) is None
+
+    @pytest.mark.asyncio
+    async def test_batch_status_carries_the_warning(self, workspace: Path) -> None:
+        state_file = workspace / "STATE.json"
+        begin_batch(state_file, label="forgotten")
+        doc = read_state_file(state_file)
+        stale = replace(
+            doc.batches[0],
+            started_at=(
+                datetime.now(timezone.utc) - timedelta(hours=STALE_AFTER_HOURS + 2)
+            ).isoformat(),
+        )
+        write_state_file(state_file, replace(doc, batches=(stale,)))
+
+        payload = _payload(await handle_batch_tool("mureo_batch_status", {}))
+        assert payload["warning"] is not None
+        assert "mureo_batch_end" in payload["warning"]
+
+    @pytest.mark.asyncio
+    async def test_reminder_fires_only_while_a_stale_batch_is_open(
+        self, workspace: Path
+    ) -> None:
+        from mureo.mcp._handlers_batch import maybe_build_batch_reminder
+
+        assert maybe_build_batch_reminder() is None  # nothing open
+
+        state_file = workspace / "STATE.json"
+        begin_batch(state_file, label="forgotten")
+        assert maybe_build_batch_reminder() is None  # open, but fresh
+
+        doc = read_state_file(state_file)
+        stale = replace(
+            doc.batches[0],
+            started_at=(
+                datetime.now(timezone.utc) - timedelta(hours=STALE_AFTER_HOURS + 2)
+            ).isoformat(),
+        )
+        write_state_file(state_file, replace(doc, batches=(stale,)))
+        assert maybe_build_batch_reminder() is not None
+
+    @pytest.mark.asyncio
+    async def test_reminder_can_be_disabled(
+        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.mcp._handlers_batch import maybe_build_batch_reminder
+
+        state_file = workspace / "STATE.json"
+        begin_batch(state_file, label="forgotten")
+        doc = read_state_file(state_file)
+        stale = replace(
+            doc.batches[0],
+            started_at=(
+                datetime.now(timezone.utc) - timedelta(hours=STALE_AFTER_HOURS + 2)
+            ).isoformat(),
+        )
+        write_state_file(state_file, replace(doc, batches=(stale,)))
+        assert maybe_build_batch_reminder() is not None
+
+        monkeypatch.setenv("MUREO_DISABLE_BATCH_REMINDER", "1")
+        assert maybe_build_batch_reminder() is None
 
 
 # ---------------------------------------------------------------------------
@@ -364,6 +548,54 @@ class TestBatchPlanCoverage:
         plan = plan_batch_rollback(read_state_file(state_file), batch.batch_id)
         assert plan.members[0].status is BatchMemberStatus.ALREADY_REVERSED
         assert plan.apply_order == ()
+
+    def test_native_read_only_member_is_not_counted_as_a_gap(
+        self, workspace: Path
+    ) -> None:
+        """A read in the batch is not something the operator must undo by hand.
+
+        KNOWN DEFECT, pinned deliberately. ``is_read_only_tool_name`` anchors
+        its verbs at the START of a name segment (``list_campaigns``), but
+        mureo's own tools put the verb at the END
+        (``google_ads_campaigns_list``), so a NATIVE read is currently
+        classified ``irreversible`` rather than ``nothing_to_reverse``. The
+        error direction is safe — nothing is offered for reversal that should
+        not be — but it shows the operator a read among the "cannot be
+        reverted" items, which is not true and corrodes trust in this report.
+
+        The bridged spelling (``campaign_management-list_campaigns``) IS
+        matched today, so both are asserted here: the fix is to the shared
+        vocabulary in ``mureo.core.tool_names`` and lands in its own PR, at
+        which point the native assertion flips to NOTHING_TO_REVERSE and the
+        bridged one is unchanged.
+        """
+        state_file = workspace / "STATE.json"
+        batch = begin_batch(state_file, label="a pass that also read things")
+        append_action_log(state_file, _entry("google_ads_campaigns_list", "google_ads"))
+        append_action_log(
+            state_file,
+            _entry("campaign_management-list_campaigns", _PLUGIN_PLATFORM),
+        )
+        append_action_log(
+            state_file,
+            _entry(
+                "google_ads_campaigns_update_status",
+                "google_ads",
+                reversible_params=_GOOGLE_REVERSAL,
+            ),
+        )
+        end_batch(state_file)
+
+        plan = plan_batch_rollback(read_state_file(state_file), batch.batch_id)
+        by_index = {m.index: m for m in plan.members}
+        # Bridged spelling: correctly recognised as a read today.
+        assert by_index[1].status is BatchMemberStatus.NOTHING_TO_REVERSE
+        # Native spelling: misclassified today. Flip this to
+        # NOTHING_TO_REVERSE with the tool_names fix.
+        assert by_index[0].status is BatchMemberStatus.IRREVERSIBLE
+        assert by_index[2].status is BatchMemberStatus.REVERSIBLE
+        # Either way a read is never offered for reversal.
+        assert plan.apply_order == (2,)
 
     def test_unknown_batch_id_is_empty_not_a_lie(self, workspace: Path) -> None:
         plan = plan_batch_rollback(read_state_file(workspace / "STATE.json"), "nope")

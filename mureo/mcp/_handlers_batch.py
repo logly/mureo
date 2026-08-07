@@ -5,11 +5,10 @@ ask which is open. Everything in between joins the batch automatically —
 see :mod:`mureo.context.batch` for why the stamp is applied at the
 ``append_action_log`` choke point rather than through tool arguments.
 
-Path resolution reuses ``_handlers_mureo_context._resolve_path`` rather than
-re-implementing it. It is a security boundary — an MCP caller must not be able
-to point these at a STATE.json outside the active workspace — and a second
-copy of that check is a place for the two to drift apart silently, which is
-the one failure mode a sandbox cannot afford.
+Path resolution uses the shared :func:`mureo.mcp._helpers.resolve_workspace_path`.
+It is a security boundary — an MCP caller must not be able to point these at a
+STATE.json outside the active workspace — and a second copy of that check is a
+place for the two to drift apart silently.
 """
 
 from __future__ import annotations
@@ -21,10 +20,10 @@ from mureo.context.batch import (
     active_batch,
     batch_members,
     batch_platforms,
+    stale_batch_warning,
 )
 from mureo.context.state import begin_batch, end_batch, read_state_file
-from mureo.mcp._handlers_mureo_context import _resolve_path
-from mureo.mcp._helpers import _json_result, _require
+from mureo.mcp._helpers import _json_result, _require, resolve_workspace_path
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
@@ -49,7 +48,7 @@ async def handle_batch_begin(arguments: dict[str, Any]) -> list[TextContent]:
     label = _require(arguments, "label")
     if not isinstance(label, str) or not label.strip():
         raise ValueError("label must be a non-empty string")
-    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     try:
         record = begin_batch(path, label=label)
     except BatchError as exc:
@@ -62,9 +61,12 @@ async def handle_batch_end(arguments: dict[str, Any]) -> list[TextContent]:
 
     The member indices are the point of the response: they are the checklist
     that replaces reconstructing a change set from memory, and they are what
-    ``rollback_plan_get`` will report on next.
+    ``rollback_plan_get`` will report on next. Closing is final — no later
+    append can join a closed batch (see
+    :func:`mureo.context.batch.ensure_joinable`), so the ``member_count``
+    returned here stays true.
     """
-    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     try:
         record, indices = end_batch(path)
     except BatchError as exc:
@@ -82,12 +84,18 @@ async def handle_batch_end(arguments: dict[str, Any]) -> list[TextContent]:
 
 
 async def handle_batch_status(arguments: dict[str, Any]) -> list[TextContent]:
-    """Report the open batch (or ``null``) and how much it has collected."""
-    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    """Report the open batch (or ``null``) and how much it has collected.
+
+    Carries the staleness ``warning`` when one has been open too long — the
+    pull half of the signal, for a caller who does think to ask. The push half
+    (a reminder appended to mutating tool results) is what reaches the caller
+    who does not; see :func:`maybe_build_batch_reminder`.
+    """
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     doc = read_state_file(path)
     record = active_batch(doc)
     if record is None:
-        return _json_result({"active_batch": None, "member_count": 0})
+        return _json_result({"active_batch": None, "member_count": 0, "warning": None})
     members = batch_members(doc, record.batch_id)
     return _json_result(
         {
@@ -95,8 +103,35 @@ async def handle_batch_status(arguments: dict[str, Any]) -> list[TextContent]:
             "member_count": len(members),
             "member_indices": [index for index, _ in members],
             "platforms": list(batch_platforms(doc, record.batch_id)),
+            "warning": stale_batch_warning(record),
         }
     )
 
 
-__all__ = ["handle_batch_begin", "handle_batch_end", "handle_batch_status"]
+def maybe_build_batch_reminder() -> str | None:
+    """Text to append to a mutating tool result when a batch is stale, else None.
+
+    Best-effort and read-only: any failure (no STATE.json, unreadable, corrupt)
+    returns ``None`` and the tool result is untouched. Opt out with
+    ``MUREO_DISABLE_BATCH_REMINDER=1`` (exact string, matching the established
+    ``MUREO_DISABLE_*`` pattern).
+    """
+    import os
+
+    if os.environ.get("MUREO_DISABLE_BATCH_REMINDER") == "1":
+        return None
+    try:
+        path = resolve_workspace_path({}, "STATE.json", store_attr="state_path")
+        if not path.is_file():
+            return None
+        return stale_batch_warning(active_batch(read_state_file(path)))
+    except Exception:  # noqa: BLE001 — a reminder must never break a tool call
+        return None
+
+
+__all__ = [
+    "handle_batch_begin",
+    "handle_batch_end",
+    "handle_batch_status",
+    "maybe_build_batch_reminder",
+]

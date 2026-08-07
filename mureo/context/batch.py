@@ -41,6 +41,7 @@ nothing to do with ``action_log`` membership.
 from __future__ import annotations
 
 import secrets
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from mureo.context.models import ActionLogEntry
@@ -52,10 +53,12 @@ if TYPE_CHECKING:
 class BatchError(Exception):
     """A batch lifecycle call that cannot be honoured.
 
-    Raised for opening a batch while one is already open, and for closing one
-    when none is. Both are refused rather than resolved silently: flattening a
-    nested begin would merge two change sets an operator meant to keep apart,
-    and a no-op end would report a batch that never collected anything.
+    Raised for opening a batch while one is already open, for closing one when
+    none is, and for naming a batch that does not exist or has already closed.
+    All are refused rather than resolved silently: flattening a nested begin
+    would merge two change sets an operator meant to keep apart, a no-op end
+    would report a batch that never collected anything, and an unchecked id
+    would let membership be invented or grown after the fact.
     """
 
 
@@ -63,6 +66,14 @@ class BatchError(Exception):
 #: secrets — this is collision avoidance across same-second batches, nothing
 #: more.
 _ID_ENTROPY_BYTES = 4
+
+#: How long a batch may stay open before it is reported as stale. A bulk pass
+#: is one working session; a batch still open a day later has almost certainly
+#: been forgotten rather than deliberately kept. The threshold only controls
+#: when mureo *says something* — nothing closes a batch automatically, because
+#: an auto-close would trade a visible wrong answer for an invisible one: the
+#: entries after it would silently stop joining and no one would be told.
+STALE_AFTER_HOURS = 24
 
 
 def new_batch_id(started_at: str = "") -> str:
@@ -101,6 +112,97 @@ def find_batch(doc: StateDocument, batch_id: str) -> BatchRecord | None:
         if record.batch_id == wanted:
             return record
     return None
+
+
+def ensure_joinable(doc: StateDocument, batch_id: str) -> BatchRecord:
+    """Return the record ``batch_id`` names, or raise if it cannot be joined.
+
+    A batch id supplied by a caller is untrusted, and membership is the one
+    thing this whole feature asks the operator to trust. Two refusals:
+
+    - **Unknown id.** An id that names no declared batch is a typo or a
+      fabrication, not a batch. Accepting it would let an entry manufacture a
+      change set out of nothing, which ``rollback_plan_get`` would then report
+      as a legitimate — and, having no record, unlabelled — unit.
+    - **Closed batch.** ``mureo_batch_end`` reports a ``member_count`` the
+      operator keeps. If a later append could still join, that number silently
+      stops being true, and a change set whose membership drifts after it was
+      reported is exactly the "confidently wrong" state this feature exists to
+      remove. Closing is final.
+
+    Backfill and import (#545) therefore do not reattach to a closed batch:
+    they declare their own with ``begin_batch``, which gives the imported set
+    an honest label and start time instead of retrofitting someone else's.
+    """
+    record = find_batch(doc, batch_id)
+    if record is None:
+        raise BatchError(
+            f"Unknown batch_id {batch_id.strip()!r}. Open a batch with "
+            "mureo_batch_begin; an id that names no declared batch cannot be "
+            "joined."
+        )
+    if record.ended_at is not None:
+        raise BatchError(
+            f"Batch {record.batch_id!r} closed at {record.ended_at}; its "
+            "membership is final and was already reported. Open a new batch "
+            "for further changes."
+        )
+    return record
+
+
+def _parse_iso(value: str) -> datetime | None:
+    """Parse an ISO 8601 timestamp, or ``None`` when it is unusable.
+
+    Naive values are read as UTC so a hand-edited or legacy record still
+    compares against ``now`` instead of raising.
+    """
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def batch_open_hours(record: BatchRecord, now: datetime | None = None) -> float | None:
+    """How long ``record`` has been open, or ``None`` if that is unknowable.
+
+    ``None`` for a closed batch and for one whose ``started_at`` cannot be
+    parsed — an unknown age must not be reported as a small one.
+    """
+    if record.ended_at is not None:
+        return None
+    started = _parse_iso(record.started_at)
+    if started is None:
+        return None
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return (current - started).total_seconds() / 3600.0
+
+
+def stale_batch_warning(
+    record: BatchRecord | None, now: datetime | None = None
+) -> str | None:
+    """Warn that a batch has been open too long, or ``None``.
+
+    The asymmetry this exists for: a missed ``begin`` yields no batch, which is
+    obvious and harmless. A missed ``end`` yields a batch that keeps swallowing
+    unrelated changes for days and then reports them, confidently, as one
+    reviewable unit — a wrong answer that looks like a right one. So the open
+    batch has to announce itself; it is never closed on the operator's behalf.
+    """
+    if record is None:
+        return None
+    hours = batch_open_hours(record, now)
+    if hours is None or hours < STALE_AFTER_HOURS:
+        return None
+    return (
+        f"Batch {record.batch_id!r} ({record.label!r}) has been open for "
+        f"{hours:.0f}h. Every action_log entry recorded since it opened has "
+        "joined it, including any unrelated to that change set. If the bulk "
+        "pass is finished, close it with mureo_batch_end; mureo will not close "
+        "it for you."
+    )
 
 
 def stamp_batch(entry: ActionLogEntry, batch: BatchRecord | None) -> ActionLogEntry:
@@ -156,11 +258,15 @@ def batch_platforms(doc: StateDocument, batch_id: str) -> tuple[str, ...]:
 
 
 __all__ = [
+    "STALE_AFTER_HOURS",
     "BatchError",
     "active_batch",
     "batch_members",
+    "batch_open_hours",
     "batch_platforms",
+    "ensure_joinable",
     "find_batch",
     "new_batch_id",
+    "stale_batch_warning",
     "stamp_batch",
 ]

@@ -213,7 +213,9 @@ Any pass that changes **more than one entity** — N placement/app exclusions, N
 
 1. `mureo_batch_begin` with a `label` in the operator's words (e.g. `"exclude low-quality display placements"`). It returns a `batch_id`.
 2. Do the work. Every `action_log` entry recorded until you close the batch is tagged with that id automatically — **on every platform**, whether the entry came from a native status toggle, from a bridged/plugin tool mureo promoted, or from your own `mureo_state_action_log_append` call.
-3. `mureo_batch_end`. It returns the exact member list (`member_indices`, `platforms`). **Report the `batch_id` and the member count to the operator** — that is the record which removes any later need to reconstruct the change set from memory.
+3. `mureo_batch_end`. It returns the exact member list (`member_indices`, `platforms`). **Report the `batch_id` and the member count to the operator** — that is the record which removes any later need to reconstruct the change set from memory. Closing is final: nothing can join afterwards, so that count stays true.
+
+**Close it.** A missed `begin` yields no batch and is harmless; a missed `end` yields a batch that keeps swallowing every later change — including work from another session entirely — and then reports the lot as one unit. If a batch has been open more than a day, mureo appends a warning to mutating tool results and to `mureo_batch_status`; when you see it, either close the batch or tell the operator it is still open. mureo will not close it for you. Never pass a `batch_id` you did not get from `mureo_batch_begin` in this session: an unknown id, or one whose batch is closed, is refused.
 
 Then `rollback_plan_get` with `batch_id` (instead of `index`) plans the whole thing: `coverage` (`full` / `partial` / `none`), `platform_coverage`, per-member verdicts, and `apply_order`.
 

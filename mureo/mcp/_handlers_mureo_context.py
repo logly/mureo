@@ -42,10 +42,10 @@ longer be persisted and read back later as fact.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.report_flags import normalize_flags
+from mureo.context.batch import BatchError
 from mureo.context.errors import ContextFileError
 from mureo.context.models import (
     ActionLogEntry,
@@ -64,63 +64,11 @@ from mureo.context.state import (
 )
 from mureo.context.strategy import RAW_HEADING_TYPE, parse_strategy, write_strategy_file
 from mureo.core.clock import server_now_iso
-from mureo.core.runtime_context import get_runtime_context
 from mureo.fsutil import backup_file
-from mureo.mcp._helpers import _json_result, _require
+from mureo.mcp._helpers import _json_result, _require, resolve_workspace_path
 
 if TYPE_CHECKING:
     from mcp.types import TextContent
-
-
-def _resolve_path(
-    arguments: dict[str, Any], default_name: str, *, store_attr: str | None = None
-) -> Path:
-    """Resolve a user-supplied path, refusing anything outside the workspace.
-
-    Resolution rules:
-
-    - ``path`` argument missing or empty (``None`` or ``""``) → the
-      workspace-derived default (``getattr(store, store_attr)`` when
-      available, otherwise ``workspace / default_name``). Picks up
-      any alternate :class:`StateStore` wired via the
-      ``mureo.runtime_context_factory`` entry-point group without the
-      caller having to know about it. Note: the empty-string case
-      used to dispatch to ``Path(".")`` under the old ``_opt``-based
-      implementation; the new behaviour is intentional and safer.
-    - ``path`` argument present → resolved relative to the workspace
-      (not the process CWD — they coincide in the default file-backed
-      configuration but may diverge under an alternate runtime),
-      then security-checked: ``Path.resolve()`` follows symlinks, so a
-      file inside the workspace that symlinks to ``/etc/passwd``
-      resolves to the target and is correctly refused.
-    """
-    store = get_runtime_context().state_store
-    workspace = getattr(store, "workspace", Path.cwd()).resolve()
-    raw = arguments.get("path")
-    if not raw:
-        if store_attr is not None:
-            attr = getattr(store, store_attr, None)
-            if attr is not None:
-                # Backend-owned path: trusted output of an installed
-                # ``StateStore`` (the entry-point factory is host code,
-                # not an untrusted MCP caller). Skip the workspace
-                # boundary check so a backend can legitimately point
-                # outside ``workspace`` if its design requires it.
-                return Path(attr)
-        return workspace / default_name
-
-    candidate = Path(raw)
-    resolved = (
-        workspace / candidate if not candidate.is_absolute() else candidate
-    ).resolve()
-    try:
-        resolved.relative_to(workspace)
-    except ValueError as exc:
-        raise ValueError(
-            f"Refusing to read/write outside workspace: "
-            f"{resolved} is not inside {workspace}"
-        ) from exc
-    return resolved
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +77,7 @@ def _resolve_path(
 
 
 async def handle_strategy_get(arguments: dict[str, Any]) -> list[TextContent]:
-    path = _resolve_path(arguments, "STRATEGY.md", store_attr="strategy_path")
+    path = resolve_workspace_path(arguments, "STRATEGY.md", store_attr="strategy_path")
     # ``server_now`` on both branches: a skill that starts from STRATEGY.md
     # (or runs before onboarding, when neither file exists) must still be
     # able to establish the current date without a second call.
@@ -161,7 +109,7 @@ async def handle_strategy_set(arguments: dict[str, Any]) -> list[TextContent]:
     # rejects "" / None; this also catches whitespace-only payloads.
     if not markdown.strip():
         raise ValueError("markdown must not be empty or whitespace-only")
-    path = _resolve_path(arguments, "STRATEGY.md", store_attr="strategy_path")
+    path = resolve_workspace_path(arguments, "STRATEGY.md", store_attr="strategy_path")
     # Round-trip through parse so callers can't write a STRATEGY.md
     # whose subsequent parse_strategy() call breaks downstream skills.
     # Unrecognized headings are preserved (raw passthrough), not dropped.
@@ -275,7 +223,7 @@ def _apply_action_log_scope(payload: dict[str, Any], scope: Any) -> None:
 
 
 async def handle_state_get(arguments: dict[str, Any]) -> list[TextContent]:
-    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     # read_state_file already returns an empty default StateDocument when
     # the file is absent; round-trip through render_state to keep the
     # missing-file and present-file branches in lockstep.
@@ -324,7 +272,7 @@ async def handle_state_action_log_append(
     # Required per ActionLogEntry contract.
     action = _require(raw, "action")
     platform = _require(raw, "platform")
-    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     # Validate the closure indices against the CURRENT log length before the
     # append. The log is append-only so its length only grows; an index that
     # is valid now stays valid, and reading once here avoids a stray value
@@ -354,12 +302,17 @@ async def handle_state_action_log_append(
         rollback_of=raw.get("rollback_of"),
         evaluation_of=raw.get("evaluation_of"),
         # #549: normally omitted — the open batch is stamped on by
-        # ``append_action_log``. Supplying it explicitly is for the import /
-        # backfill case, where the entry belongs to a change set that is not
-        # the one open now.
+        # ``append_action_log``, which also VALIDATES an explicit value
+        # against the declared batches. A caller cannot invent a batch id or
+        # reattach to a closed one.
         batch_id=raw.get("batch_id"),
     )
-    doc = append_action_log(path, entry)
+    try:
+        doc = append_action_log(path, entry)
+    except BatchError as exc:
+        # A refused batch_id is caller error, not a server fault: report it as
+        # the tool's own refusal rather than as an unhandled exception.
+        raise ValueError(str(exc)) from exc
     return _json_result(_state_to_dict(doc))
 
 
@@ -428,7 +381,7 @@ async def handle_state_upsert_campaign(
         metrics=raw.get("metrics"),
         ads=_parse_ads_argument(raw.get("ads")),
     )
-    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     try:
         doc = upsert_campaign(path, campaign, platform=platform, account_id=account_id)
     except ContextFileError as exc:
@@ -454,7 +407,7 @@ async def handle_state_report_set(
     # pass through untouched; a ``summary`` without ``flags`` is left as-is.
     if "flags" in summary:
         summary = {**summary, "flags": normalize_flags(summary.get("flags"))}
-    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     doc = set_report(path, report, summary)
     return _json_result(_state_to_dict(doc))
 
@@ -482,7 +435,7 @@ async def handle_state_platform_metrics_set(
         for window, bucket in periods.items():
             if not isinstance(bucket, dict):
                 raise ValueError(f"periods[{window!r}] must be an object")
-    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     try:
         doc = set_platform_metrics(
             path,
@@ -510,7 +463,7 @@ async def handle_state_set_conversion_events(
         raise ValueError("conversion_action_types must be a list of strings")
     if isinstance(raw, list) and not all(isinstance(x, str) for x in raw):
         raise ValueError("conversion_action_types entries must be strings")
-    path = _resolve_path(arguments, "STATE.json", store_attr="state_path")
+    path = resolve_workspace_path(arguments, "STATE.json", store_attr="state_path")
     try:
         doc = set_conversion_action_types(path, platform, account_id, raw)
     except ContextFileError as exc:

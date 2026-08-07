@@ -531,8 +531,12 @@ Declare the boundary of a bulk change so it becomes one reviewable, plannable un
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `mureo_batch_begin` | Open a batch. Every `action_log` entry recorded until it is closed is tagged with the returned `batch_id`. Refused if one is already open. | `label` |
-| `mureo_batch_end` | Close the open batch and return its exact membership (`member_indices`, `member_count`, `platforms`). Refused if none is open. | *(none)* |
-| `mureo_batch_status` | Report which batch is collecting (or `null`), how many members it holds, and which platforms they span. Read-only. | *(none)* |
+| `mureo_batch_end` | Close the open batch and return its exact membership (`member_indices`, `member_count`, `platforms`). Closing is **final**. Refused if none is open. | *(none)* |
+| `mureo_batch_status` | Report which batch is collecting (or `null`), how many members it holds, which platforms they span, and a `warning` when it has been open too long. Read-only. | *(none)* |
+
+**Membership cannot be forged or grown after the fact.** `mureo_state_action_log_append` accepts an optional `batch_id`, but it is validated, not trusted: it must name a batch that was actually declared and is still open. An unknown id is refused (an id naming no batch is a typo or a fabrication, not a change set), and a **closed** batch is refused too — `mureo_batch_end` reports a `member_count` the operator keeps, and a membership that can still grow afterwards makes that number silently false. To group imported or backfilled history, open a batch for the import rather than reattaching to an old one.
+
+**A forgotten `mureo_batch_end` announces itself.** A missed `begin` yields no batch, which is obvious and harmless; a missed `end` yields a batch that keeps swallowing unrelated changes for days and then reports them, confidently, as one unit. After 24 hours open, `mureo_batch_status` returns a `warning`, and one is appended to the result of every mutating tool call so the agent that forgot is told without having to ask. mureo never closes a batch for you — an automatic timeout would trade a visible wrong answer for an invisible one. Suppress the appended reminder with `MUREO_DISABLE_BATCH_REMINDER=1`.
 
 Membership is stamped where every recording path already converges (`append_action_log`), not through tool arguments — which is what makes it work for platforms whose tool schemas mureo does not own. What that means per platform:
 

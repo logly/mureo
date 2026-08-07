@@ -75,8 +75,9 @@ TOOLS: list[Tool] = [
             "Close the open batch and return its exact membership: the "
             "action_log indices it collected and the platforms they span. "
             "Keep that list — it is the record that removes the need to "
-            "reconstruct a change set from memory later. Refused if no batch "
-            "is open."
+            "reconstruct a change set from memory later. Closing is FINAL: no "
+            "later entry can join, so the member count stays true. Refused if "
+            "no batch is open."
         ),
         inputSchema={
             "type": "object",
@@ -89,7 +90,10 @@ TOOLS: list[Tool] = [
         description=(
             "Report which batch is currently collecting action_log entries "
             "(null when none is), how many members it holds so far, and "
-            "which platforms they span. Read-only."
+            "which platforms they span. Also returns a ``warning`` when a "
+            "batch has been open unusually long — a forgotten batch keeps "
+            "swallowing unrelated changes. Read-only; mureo never closes a "
+            "batch on your behalf."
         ),
         inputSchema={
             "type": "object",

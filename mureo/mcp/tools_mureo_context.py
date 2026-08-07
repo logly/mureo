@@ -122,10 +122,14 @@ _ACTION_LOG_ENTRY_PROPERTY = {
             "description": (
                 "Normally OMIT this. While a batch is open (mureo_batch_begin) "
                 "the server stamps the entry with it automatically, so a bulk "
-                "pass groups itself. Supply it only when recording an entry "
-                "that belongs to a DIFFERENT change set than the one open now "
-                "— importing or backfilling history — in which case the value "
-                "given here wins."
+                "pass groups itself. Supplying it is an explicit ASSERTION "
+                "that this entry belongs to that batch, and it is validated: "
+                "the id must name a declared batch that is still open. An "
+                "unknown id, or one whose batch has been closed, is REFUSED — "
+                "membership cannot be invented, and a closed batch's reported "
+                "member count cannot be made false after the fact. To group "
+                "imported or backfilled history, open a batch for the import "
+                "rather than reattaching to an old one."
             ),
         },
     },

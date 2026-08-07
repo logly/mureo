@@ -39,6 +39,7 @@ from mureo.context.batch import (
     BatchError,
     active_batch,
     batch_members,
+    ensure_joinable,
     new_batch_id,
     stamp_batch,
 )
@@ -310,11 +311,17 @@ def append_action_log(
     makes batch membership platform-agnostic: no tool schema, no per-platform
     recorder and no plugin ABI has to know the batch exists.
 
+    An explicit ``batch_id`` on the entry is **validated, not trusted**: it must
+    name a batch that exists and is still open
+    (:func:`mureo.context.batch.ensure_joinable`). Checking here rather than in
+    the MCP handler means no caller — handler, library user or future recorder
+    — can invent a change set or grow one after it was closed and reported.
+
     Args:
         path: STATE.json location.
-        entry: The entry to append. An explicit ``batch_id`` on it always wins
-            over the open batch (see
-            :func:`mureo.context.batch.stamp_batch`).
+        entry: The entry to append. An explicit ``batch_id`` on it wins over the
+            open batch (see :func:`mureo.context.batch.stamp_batch`) once it has
+            passed :func:`~mureo.context.batch.ensure_joinable`.
         join_active_batch: Pass ``False`` for an entry that must NOT become a
             member of whatever batch is open — the rollback executor's
             ``rollback_of`` record does, because a reversal joining the batch
@@ -323,9 +330,15 @@ def append_action_log(
 
     Returns:
         Updated StateDocument
+
+    Raises:
+        BatchError: ``entry.batch_id`` names no declared batch, or names one
+            that has already been closed.
     """
 
     def _build(doc: StateDocument) -> StateDocument:
+        if entry.batch_id is not None:
+            ensure_joinable(doc, entry.batch_id)
         stamped = stamp_batch(entry, active_batch(doc)) if join_active_batch else entry
         return StateDocument(
             version=doc.version,
