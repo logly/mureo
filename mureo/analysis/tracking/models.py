@@ -120,7 +120,10 @@ class TrackingConvention:
     """An operator-declared tracking convention (opt-in, from STRATEGY.md).
 
     ``recognize`` extends the parameter names the zero-config checks
-    inspect (glob patterns, e.g. ``utm_*``); ``require`` names the
+    read at all (glob patterns, e.g. ``utm_*``). ``identify`` extends
+    the parameters whose values identify **which campaign** traffic came
+    from — the only ones schemes are compared on — and ``differentiate``
+    removes a default one from that set. ``require`` names the
     parameters every tagged final URL must carry; ``patterns`` maps a
     parameter name to the glob patterns its value must match (any one).
 
@@ -129,6 +132,8 @@ class TrackingConvention:
     """
 
     recognize: tuple[str, ...] = ()
+    identify: tuple[str, ...] = ()
+    differentiate: tuple[str, ...] = ()
     require: tuple[str, ...] = ()
     patterns: tuple[tuple[str, tuple[str, ...]], ...] = ()
 

@@ -1,24 +1,41 @@
 """URL → tracking-scheme reduction.
 
-Two normalizations carry the whole false-positive story, and both are
-deliberate, fixed rules — mureo never *infers* an account's naming
+Three fixed rules carry the whole false-positive story. All three are
+deliberate and documented — mureo never *infers* an account's naming
 convention:
 
-1. **Which parameters count.** Only ``utm_*`` by default. A parameter
-   mureo does not recognise as tracking (a product id, a variant flag)
-   never contributes to a scheme, so an account that puts content
-   parameters in its final URLs is not compared on them. An account
-   whose tracking does not use ``utm_`` names declares those names in
-   STRATEGY.md (``recognize:``) — see
-   :mod:`mureo.analysis.tracking.convention`.
+1. **Which parameters are read at all.** Only ``utm_*`` by default. A
+   parameter mureo does not recognise as tracking (a product id, a
+   variant flag) is never compared on, so an account that puts content
+   parameters in its final URLs is not judged on them. An account whose
+   tracking does not use ``utm_`` names declares those names in
+   STRATEGY.md — see :mod:`mureo.analysis.tracking.convention`.
 
-2. **What counts as the same value.** A maximal run of digits is
+2. **Which parameters identify a campaign.** Only
+   :data:`DEFAULT_IDENTIFYING` — ``utm_source`` / ``utm_medium`` /
+   ``utm_campaign`` — take part in the scheme-consistency comparison.
+   ``utm_content`` and ``utm_term`` exist precisely so that one campaign
+   can tell its creatives and keywords apart on a single landing page;
+   comparing on them would flag ordinary creative differentiation
+   (``utm_content=hero`` vs ``utm_content=video``) as an inconsistency,
+   which is the single most likely way an operator ends up muting this
+   check. They are still read — the presence checks and any declared
+   value patterns see them — but they never make two ads "disagree".
+
+3. **What counts as the same value.** A maximal run of digits is
    collapsed to ``#`` when comparing values, so ``segb01`` and
    ``segb02`` are the same *scheme* while ``sega01`` is a different
    one. This is the single rule that lets the check tell "article 2
    instead of article 1" (legitimate) from "segment A instead of
    segment B" (the incident). It errs toward treating values as the
    same, i.e. toward FEWER findings.
+
+Schemes are compared as a **whole identifying signature**, never one
+parameter at a time. Per-parameter comparison reports "these ads
+borrowed campaign Y's ``utm_source``" for a value like ``google`` that
+Y merely happens to share, which is noise; a full signature match means
+the ads carry another campaign's entire tracking identity, which is the
+defect.
 
 The destination (scheme + host + path, query and fragment dropped) is
 kept separately: two ads pointing at the same landing page with
@@ -40,6 +57,14 @@ if TYPE_CHECKING:
 #: ``utm_*`` is the only cross-platform tracking namespace mureo can
 #: assume; everything else is account convention and must be declared.
 DEFAULT_RECOGNIZED: tuple[str, ...] = ("utm_*",)
+
+#: Parameter-name globs whose values identify **which campaign** traffic
+#: came from, and therefore the only ones the scheme-consistency checks
+#: compare on. Everything else that is recognised (notably ``utm_content``
+#: and ``utm_term``) is creative- or keyword-differentiating: it varies
+#: within one campaign by design. Extend with ``identify:`` in
+#: STRATEGY.md, or narrow with ``differentiate:``.
+DEFAULT_IDENTIFYING: tuple[str, ...] = ("utm_source", "utm_medium", "utm_campaign")
 
 #: Placeholder a maximal digit run collapses to when values are compared.
 SERIAL_PLACEHOLDER = "#"
@@ -106,13 +131,23 @@ def destination(url: str) -> str:
 
 def scheme_signature(
     parameters: Iterable[tuple[str, str]],
+    identifying: Sequence[str] | None = None,
 ) -> tuple[tuple[str, str], ...]:
     """Reduce parameters to the comparable shape signature.
 
     Two ads share a signature when they carry the same tracking
-    parameter names with values of the same shape.
+    parameter names with values of the same shape. When ``identifying``
+    is given, only parameters matching it contribute — that is the
+    signature the scheme-consistency checks compare, and it is what
+    keeps ``utm_content``-per-creative out of the comparison.
     """
-    return tuple(sorted((name, value_shape(value)) for name, value in parameters))
+    return tuple(
+        sorted(
+            (name, value_shape(value))
+            for name, value in parameters
+            if identifying is None or is_recognized(name, identifying)
+        )
+    )
 
 
 def format_signature(signature: Sequence[tuple[str, str]]) -> str:
@@ -121,6 +156,7 @@ def format_signature(signature: Sequence[tuple[str, str]]) -> str:
 
 
 __all__ = [
+    "DEFAULT_IDENTIFYING",
     "DEFAULT_RECOGNIZED",
     "SERIAL_PLACEHOLDER",
     "destination",

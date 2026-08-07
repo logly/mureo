@@ -127,7 +127,10 @@ class TestForeignCampaignScheme:
         # so the operator does not have to work it out during an audit.
         evidence = dict(foreign[0].evidence)
         assert evidence["owning_campaign_id"] == "campaign-a"
-        assert evidence["parameter"] == "utm_campaign"
+        # Only utm_campaign separates the two segments; utm_source and
+        # utm_medium are identical across the whole account and must not
+        # be reported as the thing that differs.
+        assert evidence["differing_parameters"] == "utm_campaign"
 
     def test_does_not_flag_the_correctly_tagged_ads_in_the_same_campaign(self) -> None:
         report = check_tracking_consistency(
@@ -171,8 +174,11 @@ class TestForeignCampaignScheme:
         assert foreign
         flagged = {ad_id for f in foreign for ad_id in f.ad_ids}
         assert flagged == {"d1-bad", "d2-bad"}
-        params = {dict(f.evidence)["parameter"] for f in foreign}
-        assert {"utm_source", "utm_medium"} & params
+        # The whole identifying signature was borrowed, so all three
+        # campaign-identifying parameters are named as differing.
+        differing = dict(foreign[0].evidence)["differing_parameters"]
+        assert "utm_source" in differing
+        assert "utm_medium" in differing
 
     def test_detects_a_foreign_scheme_on_a_non_google_platform(self) -> None:
         """Meta Ads records go through the same core check, unchanged."""
@@ -298,6 +304,170 @@ class TestNoFalsePositives:
             for n in (1, 2, 3)
         ]
         assert not check_tracking_consistency(records).findings
+
+
+@pytest.mark.unit
+class TestCreativeDifferentiatingParametersAreNotSchemes:
+    """utm_content / utm_term vary within one campaign by design.
+
+    Comparing on them flags ordinary creative differentiation, which is
+    the single most likely way an operator ends up muting the check.
+    """
+
+    def test_utm_content_varying_per_creative_on_one_landing_page(self) -> None:
+        records = [
+            _ad(
+                f"ad-{creative}",
+                "campaign-prospecting",
+                "https://example.com/lp/?utm_source=google&utm_medium=display"
+                f"&utm_campaign=prospecting&utm_content={creative}",
+            )
+            for creative in ("hero", "video", "carousel", "static")
+        ]
+        assert check_tracking_consistency(records).findings == ()
+
+    def test_utm_term_varying_per_keyword_on_one_landing_page(self) -> None:
+        records = [
+            _ad(
+                f"ad-{term}",
+                "campaign-brand",
+                "https://example.com/lp/?utm_source=google&utm_medium=cpc"
+                f"&utm_campaign=brand&utm_term={term}",
+            )
+            for term in ("shoes", "sneakers", "trainers")
+        ]
+        assert check_tracking_consistency(records).findings == ()
+
+    def test_utm_content_is_not_borrowed_across_campaigns(self) -> None:
+        """One campaign's creative names reused in another is not a leak."""
+        a = [
+            _ad(
+                f"a{n}",
+                "campaign-a",
+                f"https://example.com/lp/{n}/?utm_source=google&utm_medium=cpc"
+                f"&utm_campaign=sega&utm_content=hero",
+            )
+            for n in (1, 2, 3)
+        ]
+        b = [
+            _ad(
+                f"b{n}",
+                "campaign-b",
+                f"https://example.com/lp/{n}/?utm_source=google&utm_medium=cpc"
+                f"&utm_campaign=segb&utm_content={creative}",
+            )
+            for n, creative in ((4, "hero"), (5, "video"), (6, "video"))
+        ]
+        assert check_tracking_consistency([*a, *b]).findings == ()
+
+    def test_declared_identify_can_promote_utm_content(self) -> None:
+        """An account whose segment lives in utm_content declares it."""
+        convention = parse_tracking_convention(
+            "## Tracking Convention\n\n- identify: utm_content\n"
+        )
+        a = [
+            _ad(
+                f"a{n}",
+                "campaign-a",
+                f"https://example.com/lp/{n}/?utm_source=google&utm_medium=cpc"
+                f"&utm_campaign=always_on&utm_content=sega",
+            )
+            for n in (1, 2, 3)
+        ]
+        b = [
+            _ad(
+                f"b{n}",
+                "campaign-b",
+                f"https://example.com/lp/{n}/?utm_source=google&utm_medium=cpc"
+                f"&utm_campaign=always_on&utm_content=segb",
+            )
+            for n in (4, 5, 6)
+        ]
+        leaked = [
+            _ad(
+                f"b{n}-bad",
+                "campaign-b",
+                f"https://example.com/lp/{n}/?utm_source=google&utm_medium=cpc"
+                f"&utm_campaign=always_on&utm_content=sega",
+            )
+            for n in (7, 8)
+        ]
+        assert check_tracking_consistency([*a, *b, *leaked]).findings == ()
+
+        report = check_tracking_consistency([*a, *b, *leaked], convention=convention)
+        assert {ad for f in report.findings for ad in f.ad_ids} == {"b7-bad", "b8-bad"}
+
+
+@pytest.mark.unit
+class TestSharedValuesAreNotBorrowedSchemes:
+    """A value two campaigns merely share is not evidence of a leak.
+
+    Schemes are compared as whole identifying signatures for exactly
+    this reason. Comparing one parameter at a time reported "these ads
+    borrowed campaign Y's utm_source" for a value like ``google``, and
+    below three campaigns ``google`` IS owned by exactly one other
+    campaign — so the correctly-tagged majority got flagged.
+    """
+
+    # Distinct per-campaign utm_campaign tokens — every campaign shares
+    # utm_source=google and utm_medium=cpc, as almost every real account
+    # does.
+    _TOKENS = ("spring_promo", "brand_always_on", "retargeting")
+
+    def _account(self, campaigns: int) -> list[AdTrackingRecord]:
+        records: list[AdTrackingRecord] = []
+        for index in range(campaigns):
+            name = f"campaign-{index}"
+            records.extend(
+                _ad(f"{name}-ad{n}", name, _url(n, f"{self._TOKENS[index]}0{n}"))
+                for n in (1, 2, 3)
+            )
+        return records
+
+    def test_two_campaign_account_with_one_off_ad_is_not_flagged(self) -> None:
+        """The reviewer's repro: co-marketing one-off inside campaign X."""
+        records = [
+            *self._account(2),
+            _ad(
+                "campaign-0-oneoff",
+                "campaign-0",
+                _url(9, "newsletter", source="newsletter", medium="email"),
+            ),
+        ]
+        report = check_tracking_consistency(records)
+        assert _findings(report, "foreign_campaign_scheme") == []
+
+    def test_adding_a_third_campaign_does_not_change_the_verdict(self) -> None:
+        """The old mechanism made the finding vanish at three campaigns."""
+        records = [
+            *self._account(3),
+            _ad(
+                "campaign-0-oneoff",
+                "campaign-0",
+                _url(9, "newsletter", source="newsletter", medium="email"),
+            ),
+        ]
+        assert (
+            _findings(check_tracking_consistency(records), "foreign_campaign_scheme")
+            == []
+        )
+
+    def test_shared_source_and_medium_alone_never_fire(self) -> None:
+        """Every campaign in the account is google/cpc — that is normal."""
+        report = check_tracking_consistency(self._account(2))
+        assert report.findings == ()
+
+    def test_the_incident_is_still_caught_in_a_two_campaign_account(self) -> None:
+        """A minimum campaign count would have switched this off.
+
+        The motivating incident happened in an account with exactly two
+        Display campaigns, so requiring three campaigns before the check
+        runs would have disabled it for the case it exists for.
+        """
+        report = check_tracking_consistency(
+            [*_segment_a_campaign(), *_segment_b_campaign(), *_mis_tagged_into_b()]
+        )
+        assert _findings(report, "foreign_campaign_scheme")
 
 
 @pytest.mark.unit
@@ -476,10 +646,14 @@ Someone else's section.
         )
         assert report.findings == ()
 
-    def test_declared_recognize_extends_the_inspected_parameters(self) -> None:
-        """A non-utm scheme is invisible by default and visible once declared."""
+    def test_declared_identify_extends_the_compared_parameters(self) -> None:
+        """A non-utm scheme is invisible by default and visible once declared.
+
+        ``identify:`` implies recognition — a parameter cannot be
+        compared without first being read.
+        """
         convention = parse_tracking_convention(
-            "## Tracking Convention\n\n- recognize: argument\n"
+            "## Tracking Convention\n\n- identify: argument\n"
         )
         a = [
             _ad(f"a{n}", "campaign-a", f"https://example.com/lp/{n}/?argument=sega0{n}")

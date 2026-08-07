@@ -26,6 +26,7 @@ from mureo.mcp._helpers import (
     _require,
     api_error_handler,
 )
+from mureo.mcp._tracking_preflight import google_ads_create_preflight
 from mureo.throttle import GOOGLE_ADS_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -292,6 +293,14 @@ async def handle_ads_create(args: dict[str, Any]) -> list[TextContent]:
         val = _opt(args, key)
         if val is not None:
             params[key] = val
+    refusal = await google_ads_create_preflight(
+        client,
+        ad_group_id=params["ad_group_id"],
+        final_url=params.get("final_url"),
+        acknowledged=bool(_opt(args, "acknowledge_tracking_findings", False)),
+    )
+    if refusal is not None:
+        return refusal
     result = await client.create_ad(params)
     return _json_result(result)
 
@@ -317,6 +326,14 @@ async def handle_ads_create_display(args: dict[str, Any]) -> list[TextContent]:
     logos = _opt(args, "logo_image_paths")
     if logos is not None:
         params["logo_image_paths"] = logos
+    refusal = await google_ads_create_preflight(
+        client,
+        ad_group_id=params["ad_group_id"],
+        final_url=params.get("final_url"),
+        acknowledged=bool(_opt(args, "acknowledge_tracking_findings", False)),
+    )
+    if refusal is not None:
+        return refusal
     result = await client.create_display_ad(params)
     return _json_result(result)
 

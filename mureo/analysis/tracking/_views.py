@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from mureo.analysis.tracking.models import DeliveryState, TrackingSeverity
 from mureo.analysis.tracking.scheme import (
+    DEFAULT_IDENTIFYING,
     DEFAULT_RECOGNIZED,
     destination,
     scheme_signature,
@@ -26,16 +27,29 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class UrlView:
-    """One final URL reduced to destination + tracking scheme."""
+    """One final URL reduced to destination + tracking scheme.
+
+    ``signature`` covers every recognised parameter; ``identifying``
+    covers only the campaign-identifying subset and is what the
+    scheme-consistency checks compare. Keeping both means the presence
+    checks still see ``utm_content`` while the comparison never trips
+    over it.
+    """
 
     url: str
     destination: str
     parameters: tuple[tuple[str, str], ...]
     signature: tuple[tuple[str, str], ...]
+    identifying: tuple[tuple[str, str], ...]
 
     @property
     def tagged(self) -> bool:
         return bool(self.parameters)
+
+    @property
+    def identifiable(self) -> bool:
+        """Whether this URL says anything about which campaign it is."""
+        return bool(self.identifying)
 
 
 @dataclass(frozen=True)
@@ -62,11 +76,15 @@ class AdView:
     def tagged(self) -> bool:
         return any(url.tagged for url in self.urls)
 
-    def shapes_for(self, name: str) -> frozenset[str]:
-        """Value shapes this ad carries for parameter ``name`` (any URL)."""
-        return frozenset(
-            shape for url in self.urls for key, shape in url.signature if key == name
-        )
+    @property
+    def identifying_signatures(self) -> frozenset[tuple[tuple[str, str], ...]]:
+        """The distinct campaign-identifying signatures this ad carries.
+
+        Usually one; an ad with several final URLs can carry more.
+        Empty signatures are dropped — an ad with no identifying
+        parameter cannot be said to belong to any campaign's scheme.
+        """
+        return frozenset(url.identifying for url in self.urls if url.identifying)
 
     def parameter_names(self) -> frozenset[str]:
         return frozenset(name for url in self.urls for name, _ in url.parameters)
@@ -78,27 +96,52 @@ class AdView:
         )
 
 
+def _extend(base: tuple[str, ...], extra: Sequence[str]) -> tuple[str, ...]:
+    return base + tuple(p for p in extra if p not in base)
+
+
 def resolve_recognized(convention: TrackingConvention | None) -> tuple[str, ...]:
     """Recognised parameter globs — declared names ADD to the default set.
 
     Declaring ``recognize: argument`` must not switch off ``utm_*``
-    detection for the rest of the account.
+    detection for the rest of the account. Anything declared under
+    ``identify:`` is recognised too: a parameter cannot be compared
+    without first being read.
     """
-    if convention is None or not convention.recognize:
+    if convention is None:
         return DEFAULT_RECOGNIZED
-    extra = tuple(p for p in convention.recognize if p not in DEFAULT_RECOGNIZED)
-    return DEFAULT_RECOGNIZED + extra
+    return _extend(
+        _extend(DEFAULT_RECOGNIZED, convention.recognize), convention.identify
+    )
+
+
+def resolve_identifying(convention: TrackingConvention | None) -> tuple[str, ...]:
+    """Campaign-identifying globs — the only ones schemes are compared on.
+
+    ``identify:`` adds names, ``differentiate:`` removes them. An
+    account that carries its segment in ``utm_content`` declares
+    ``identify: utm_content``; one whose ``utm_campaign`` varies per
+    creative declares ``differentiate: utm_campaign``.
+    """
+    if convention is None:
+        return DEFAULT_IDENTIFYING
+    identifying = _extend(DEFAULT_IDENTIFYING, convention.identify)
+    if not convention.differentiate:
+        return identifying
+    excluded = {name.lower() for name in convention.differentiate}
+    return tuple(name for name in identifying if name.lower() not in excluded)
 
 
 def build_views(
     records: Iterable[AdTrackingRecord],
     recognized: Sequence[str],
+    identifying: Sequence[str] = DEFAULT_IDENTIFYING,
 ) -> tuple[AdView, ...]:
     """Reduce every record to an :class:`AdView`, dropping empty URLs."""
     views: list[AdView] = []
     for record in records:
         urls = tuple(
-            _url_view(url, recognized)
+            _url_view(url, recognized, identifying)
             for url in record.final_urls
             if url and url.strip()
         )
@@ -106,13 +149,16 @@ def build_views(
     return tuple(views)
 
 
-def _url_view(url: str, recognized: Sequence[str]) -> UrlView:
+def _url_view(
+    url: str, recognized: Sequence[str], identifying: Sequence[str]
+) -> UrlView:
     parameters = tracking_parameters(url, recognized)
     return UrlView(
         url=url,
         destination=destination(url),
         parameters=parameters,
         signature=scheme_signature(parameters),
+        identifying=scheme_signature(parameters, identifying),
     )
 
 
@@ -148,6 +194,7 @@ __all__ = [
     "UrlView",
     "aggregate_delivery",
     "build_views",
+    "resolve_identifying",
     "resolve_recognized",
     "severity_for",
 ]

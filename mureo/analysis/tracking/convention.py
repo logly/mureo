@@ -9,10 +9,20 @@ declared, never inferred:
 ## Tracking Convention
 
 - recognize: utm_*, argument
+- identify: argument
+- differentiate: utm_medium
 - require: utm_source, utm_medium, utm_campaign
 - pattern utm_source: google, yahoo
 - pattern utm_campaign: seg[ab]??
 ```
+
+``identify:`` and ``differentiate:`` move a parameter in and out of the
+**campaign-identifying** set — the only parameters schemes are compared
+on. An account that carries its audience segment in ``utm_content``
+declares ``identify: utm_content``; one whose ``utm_medium`` varies per
+creative declares ``differentiate: utm_medium``. Anything under
+``identify:`` is recognised automatically: a parameter cannot be
+compared without first being read.
 
 Patterns are ``fnmatch`` globs (``*``, ``?``, ``[seq]``), not regular
 expressions: an operator-authored regex in an agent-writable file is
@@ -72,6 +82,8 @@ def parse_tracking_convention(markdown: str) -> TrackingConvention | None:
         return None
 
     recognize: list[str] = []
+    identify: list[str] = []
+    differentiate: list[str] = []
     require: list[str] = []
     patterns: dict[str, tuple[str, ...]] = {}
 
@@ -89,11 +101,17 @@ def parse_tracking_convention(markdown: str) -> TrackingConvention | None:
             patterns[pattern_for.group(1)] = values
         elif directive.lower() == "recognize":
             recognize.extend(values)
+        elif directive.lower() == "identify":
+            identify.extend(values)
+        elif directive.lower() == "differentiate":
+            differentiate.extend(values)
         elif directive.lower() == "require":
             require.extend(values)
 
     return TrackingConvention(
         recognize=tuple(recognize),
+        identify=tuple(identify),
+        differentiate=tuple(differentiate),
         require=tuple(require),
         patterns=tuple(sorted(patterns.items())),
     )

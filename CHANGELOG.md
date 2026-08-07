@@ -244,11 +244,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zero-configuration checks derive their verdict entirely from **evidence
   already in the account**:
 
-  - `foreign_campaign_scheme` — some ads of a campaign carry a value shape that
-    is the **sole** shape of **exactly one** other campaign, while their own
-    campaign also uses a different shape. That is the copy-paste signature.
-    Requiring exactly one owner is what stops `utm_source=google` — used by
-    everything — from ever firing.
+  - `foreign_campaign_scheme` — some ads of a campaign carry a whole
+    campaign-identifying signature that is the **sole** signature of **exactly
+    one** other campaign, while their own campaign is tagged differently. That
+    is the copy-paste signature.
   - `same_destination_scheme_conflict` — two ads in one campaign send the same
     landing page to two different schemes. Needs no second campaign, so it
     still fires when the campaign the tags were copied from is out of scope.
@@ -256,15 +255,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the tagging **its own campaign** already uses. mureo does not assert that
     every account must carry `utm_source` / `utm_medium` / `utm_campaign`.
 
-  Legitimate variation does not fire: a maximal run of digits is collapsed when
-  values are compared, so `segb01` and `segb02` are one scheme while `sega01`
-  is another. Only `utm_*` parameters are inspected by default, so a product id
-  or a variant flag in the URL is never compared on.
+  Three rules keep legitimate variation from firing, and all three are fixed and
+  documented rather than inferred:
+
+  - Only `utm_*` is read at all, so a product id or variant flag in the URL is
+    never compared on.
+  - Only `utm_source` / `utm_medium` / `utm_campaign` **identify a campaign**.
+    `utm_content` and `utm_term` exist so one campaign can tell its creatives
+    and keywords apart on a single landing page; comparing on them would flag
+    ordinary creative differentiation, which is the fastest way to have the
+    check muted. They are still read — presence checks and declared value
+    patterns see them — they just never make two ads disagree.
+  - Schemes are compared as **whole signatures**, never one parameter at a time.
+    A per-parameter comparison reports "these ads borrowed campaign Y's
+    `utm_source`" for a value like `google` that Y merely shares — and below
+    three campaigns, or wherever one campaign carries a legitimate one-off ad,
+    `google` *is* owned by exactly one other campaign, so the correctly-tagged
+    majority gets flagged. Requiring the entire identifying signature to match
+    means the finding says something true: these ads carry another campaign's
+    whole tracking identity.
+
+  On top of that, a maximal run of digits is collapsed when values are compared,
+  so `segb01` and `segb02` are one scheme while `sega01` is another.
 
   Operator intent — the one thing evidence cannot supply — is **declared, never
   inferred**, in an opt-in `## Tracking Convention` section of `STRATEGY.md`
-  (`recognize:` / `require:` / `pattern <name>:`, `fnmatch` globs). mureo parses
-  it; the agent passes it through unchanged.
+  (`recognize:` / `identify:` / `differentiate:` / `require:` /
+  `pattern <name>:`, `fnmatch` globs). mureo parses it; the agent passes it
+  through unchanged. An account that carries its audience segment in
+  `utm_content` declares `identify: utm_content`.
 
   Severity reflects delivery state, because the two cases are not the same
   problem: a mis-tagged ad that has already served is a data-integrity incident
@@ -284,10 +303,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exposes no destination-URL field — those ads are listed in
   `ads_without_readable_url` and reported as *unchecked*, never as clean.
 
-  `/tracking-health` runs the account audit (new step 8); the pre-flight before
-  ad creation is in `_mureo-shared`, so every upload path routes through it.
-  `docs/tracking-consistency.md` documents what the check can detect and, at
-  equal length, what it cannot.
+  `/tracking-health` runs the account audit (new step 8). The pre-flight before
+  ad creation is **enforced in the handler** for native Google Ads
+  (`google_ads_ads_create` / `google_ads_ads_create_display`): the check runs
+  before the mutation and a finding refuses the create, overridable per call
+  with `acknowledge_tracking_findings=true` or globally with
+  `MUREO_DISABLE_TRACKING_PREFLIGHT=1`, and failing **open** on any error
+  reading the account. Meta, plugin, bridged and hosted creates are routing
+  only — `_mureo-shared` instructs the agent to run the check first, and
+  nothing stops it skipping the step; on Meta the destination link lives on the
+  creative, created by an earlier call, so enforcing there is tracked as
+  follow-up rather than shipped half-done.
+
+  `docs/tracking-consistency.md` documents what the check detects, what it does
+  not, **and what it may flag that you meant** — the false-positive side is
+  listed as explicitly as the false-negative side.
 
 ## [0.10.43] - 2026-08-07
 

@@ -471,6 +471,17 @@ TOOLS: list[Tool] = [
                         "display width. Requires path1 if set. Optional."
                     ),
                 },
+                "acknowledge_tracking_findings": {
+                    "type": "boolean",
+                    "description": (
+                        "Set true ONLY after showing the operator a refused "
+                        "tracking pre-flight and getting their decision. mureo "
+                        "refuses the create when the final URL's tracking "
+                        "parameters carry another campaign's identity, because "
+                        "that defect is silent once live — delivery and spend "
+                        "stay healthy while reporting is wrong. Default false."
+                    ),
+                },
             },
             "required": ["ad_group_id", "headlines", "descriptions"],
             "additionalProperties": False,
@@ -571,6 +582,17 @@ TOOLS: list[Tool] = [
                     "description": (
                         "Landing page URL. Must be HTTPS and match the "
                         "campaign's allowed domains."
+                    ),
+                },
+                "acknowledge_tracking_findings": {
+                    "type": "boolean",
+                    "description": (
+                        "Set true ONLY after showing the operator a refused "
+                        "tracking pre-flight and getting their decision. mureo "
+                        "refuses the create when the final URL's tracking "
+                        "parameters carry another campaign's identity, because "
+                        "that defect is silent once live — delivery and spend "
+                        "stay healthy while reporting is wrong. Default false."
                     ),
                 },
             },

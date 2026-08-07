@@ -42,6 +42,7 @@ from mureo.analysis.tracking.models import (
     TrackingSeverity,
 )
 from mureo.analysis.tracking.scheme import (
+    DEFAULT_IDENTIFYING,
     DEFAULT_RECOGNIZED,
     destination,
     tracking_parameters,
@@ -55,6 +56,7 @@ from mureo.analysis.tracking.sources import (
 )
 
 __all__ = [
+    "DEFAULT_IDENTIFYING",
     "DEFAULT_RECOGNIZED",
     "SECTION_HEADING",
     "AdTrackingRecord",

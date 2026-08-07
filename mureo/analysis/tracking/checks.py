@@ -26,7 +26,11 @@ from mureo.analysis.tracking._checks_scheme import (
     foreign_campaign_scheme_findings,
     same_destination_conflict_findings,
 )
-from mureo.analysis.tracking._views import build_views, resolve_recognized
+from mureo.analysis.tracking._views import (
+    build_views,
+    resolve_identifying,
+    resolve_recognized,
+)
 from mureo.analysis.tracking.models import (
     DeliveryState,
     TrackingConsistencyReport,
@@ -60,7 +64,11 @@ def check_tracking_consistency(
     on the same platform. An ad whose destination URL the caller could
     not read is counted and named rather than dropped.
     """
-    views = build_views(records, resolve_recognized(convention))
+    views = build_views(
+        records,
+        resolve_recognized(convention),
+        resolve_identifying(convention),
+    )
     findings = _run_checks(views, convention)
     return TrackingConsistencyReport(
         findings=_ordered(findings),
