@@ -239,6 +239,21 @@ async def _import_one_platform(
             ),
         )
 
+    if result.unavailable_reason:
+        # A registered feed that could not answer for THIS account or mode
+        # (BYOD, an unsupported account type). It did not look, so it must not
+        # land in the same bucket as a feed that looked and found nothing —
+        # only UNAVAILABLE and ERROR reach ``blind_spots``, and a platform
+        # missing from ``blind_spots`` is one the agent is told was checked.
+        return ChangeImportOutcome(
+            platform=platform,
+            status=ChangeImportStatus.UNAVAILABLE,
+            since=start.isoformat(),
+            until=now.isoformat(),
+            reason=f"change_import_unavailable_for_{platform}",
+            notes=(*result.notes, result.unavailable_reason),
+        )
+
     own, foreign = _split_by_platform(result.changes, platform)
     imported: list[int] = []
     already = 0
@@ -254,10 +269,22 @@ async def _import_one_platform(
         if verdict is ImportVerdict.ATTRIBUTED_TO_MUREO:
             attributed += 1
             continue
-        # Append through the normal choke point so the open batch (#549) is
-        # stamped, the state lock is held, and the write is atomic — an
-        # imported change is an action_log entry like any other.
-        doc = append_action_log(path, to_action_log_entry(change, recorded_at=now))
+        # Append through the normal choke point for the state lock and the
+        # atomic write, but explicitly OUT of any open batch (#549).
+        #
+        # A batch is the operator's declared change set — "what I did on
+        # Monday". A change mureo merely observed is by definition not
+        # something they did through mureo, and letting it join would make
+        # that set mean something else: an unrelated UI edit imported while
+        # the batch happened to be open would drop the whole batch's rollback
+        # coverage to ``partial`` and be listed as a member the operator
+        # cannot reverse. The same reasoning as the rollback executor's own
+        # ``rollback_of`` record, which is excluded for the same reason.
+        doc = append_action_log(
+            path,
+            to_action_log_entry(change, recorded_at=now),
+            join_active_batch=False,
+        )
         imported.append(len(doc.action_log) - 1)
         seen.add(external_change_id(change))
 

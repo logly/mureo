@@ -117,11 +117,16 @@ class GoogleAdsChangeFeed:
         """
         client = self._open_client(account_id)
         if client is None:
+            # BYOD. ``unavailable_reason`` — NOT an empty result: nothing was
+            # looked at, and an empty ``changes`` tuple would be reported as
+            # IMPORTED, putting the platform outside ``blind_spots`` and
+            # telling the agent it was checked.
             return ChangeFeedResult(
-                notes=(
+                unavailable_reason=(
                     "Google Ads change history is a live-API read; the BYOD "
                     "export carries performance rows, not an audit trail, so "
-                    "no change import is possible in BYOD mode.",
+                    "no change import is possible in BYOD mode. Nothing was "
+                    "checked — this is not evidence that nothing changed."
                 )
             )
         rows = await client.list_change_history(

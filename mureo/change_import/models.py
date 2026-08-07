@@ -104,6 +104,16 @@ class ChangeFeedResult:
     A feed that hit its cap MUST say so: reporting a capped page as a complete
     answer turns a known blind spot into an invisible one.
 
+    ``unavailable_reason`` is how a feed says "I did not look" as distinct
+    from "I looked and the window was quiet". A feed that is registered but
+    cannot answer for this account or mode — BYOD, an unsupported account
+    type, a plan without change history — MUST set it rather than return an
+    empty ``changes`` tuple. The two render identically to an operator
+    otherwise, and the whole point of #545 is that they must not: the
+    importer maps a non-empty value to
+    :data:`ChangeImportStatus.UNAVAILABLE`, which is what puts the platform
+    in ``blind_spots``.
+
     ``notes`` carries anything else the operator needs to read the result
     honestly (retention limits, kinds of change the feed omits).
     """
@@ -111,6 +121,7 @@ class ChangeFeedResult:
     changes: tuple[ExternalChange, ...] = ()
     truncated: bool = False
     notes: tuple[str, ...] = ()
+    unavailable_reason: str = ""
 
     def __post_init__(self) -> None:
         """Normalise the sequence fields to tuples (defensive copies)."""

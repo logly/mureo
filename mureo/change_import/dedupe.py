@@ -12,21 +12,32 @@ have to be caught or ``action_log`` stops being a record and becomes a tally:
    platform's own change feed. Importing that back as "external" would
    double-count mureo's own work and — far worse — would file a change mureo
    CAN reverse under a provenance that says it cannot. Caught by matching
-   target identity within a bounded time window.
+   same platform, **same kind of change**, same target, close in time.
 
 Case 2 cannot be caught exactly, and it is worth being precise about why.
 The feed's own attribution fields do not separate the two: Google reports
 ``user_email`` (mureo's API calls carry the same operator's OAuth identity as
 that operator's UI session) and ``client_type`` (``GOOGLE_ADS_API`` covers
 mureo and every other API tool the account has). So the discriminator is
-mureo's own log: same platform, same target, close in time.
+mureo's own log.
 
-**Which way it fails matters.** When identity is missing on either side the
-match cannot be made, and the change is imported as external. That direction
-is deliberate: an over-import shows the operator a change they may have made
-through mureo (visible, annoying, correctable), while an over-attribution
-silently swallows a real UI edit — which is precisely the blindness #545
-exists to remove. Never trade a visible wrong answer for an invisible one.
+**Identity and time alone are not enough**, and the gap is not theoretical:
+mureo pauses campaign 111, four minutes later the operator edits that same
+campaign's budget by hand, and an identity-only match swallows the budget
+edit as mureo's own status toggle. Manual and mureo-driven operation
+overlapping on the same campaign is normal for a while after onboarding (see
+``/daily-check`` → *Mixed operation*), so this is the common case, not the
+corner. A match therefore also requires the two to be the **same kind of
+change** — see :func:`change_kind` / :func:`action_kind` for the vocabulary
+and :func:`_kinds_match` for the rule.
+
+**Which way it fails matters.** Wherever the comparison cannot be made —
+identity missing on either side, kind underivable on either side — the change
+is imported as external. That direction is deliberate: an over-import shows
+the operator a change they may have made through mureo (visible, annoying,
+correctable), while an over-attribution silently swallows a real UI edit —
+which is precisely the blindness #545 exists to remove. Never trade a visible
+wrong answer for an invisible one.
 """
 
 from __future__ import annotations
@@ -46,10 +57,100 @@ if TYPE_CHECKING:
 #: How far apart a mureo ``action_log`` entry and a feed row may be and still
 #: be read as the same event. mureo stamps its entry when the call returns;
 #: a platform stamps the change when it commits it, and the two clocks are
-#: not the same clock. Ten minutes absorbs that skew and a slow API call
-#: without being wide enough to let an unrelated hand edit on the same target
-#: hide behind a mureo action from earlier in the session.
+#: not the same clock. Ten minutes absorbs that skew and a slow API call.
+#:
+#: **The trade-off is asymmetric, so this number should not be raised
+#: casually.** Widening it can only ever cause MORE attribution, and the
+#: attributions it adds are the least certain ones — a hand edit further from
+#: mureo's action, hiding behind it. That failure is silent: the operator's
+#: change is discarded and nothing says so. Narrowing it can only cause more
+#: over-import, which the operator sees and can dismiss. When in doubt, keep
+#: it small: the kind + identity requirements below carry most of the
+#: precision, and the window is only there to absorb clock skew.
 ATTRIBUTION_WINDOW_MINUTES = 10
+
+#: Coarse "what kind of thing changed" vocabulary, shared by both sides of the
+#: attribution comparison. Deliberately small: it only has to be fine enough
+#: to separate the changes an operator would describe differently, and every
+#: extra distinction is another way for a legitimate match to be missed (which
+#: costs an over-import) OR for two unlike changes to land in one bucket
+#: (which costs a silent swallow — the expensive direction).
+KIND_STATUS = "status"
+KIND_BUDGET = "budget"
+KIND_BID = "bid"
+KIND_CRITERION = "criterion"
+KIND_AD = "ad"
+KIND_AD_GROUP = "ad_group"
+KIND_CAMPAIGN = "campaign"
+
+#: ``changed_fields`` substrings that override the resource type. A Google
+#: budget edit can arrive as ``CAMPAIGN`` + ``changed_fields=["campaign_budget"]``
+#: as easily as ``CAMPAIGN_BUDGET``; reading only the resource type would call
+#: the first one a generic campaign edit and let it match a status toggle.
+#: Ordered — first hit wins.
+_FIELD_KINDS: tuple[tuple[str, str], ...] = (
+    ("budget", KIND_BUDGET),
+    ("bid", KIND_BID),
+    ("status", KIND_STATUS),
+)
+
+#: Feed ``resource_type`` -> kind. Types absent here yield ``""`` ("unknown"),
+#: which blocks attribution rather than falling back to a permissive default.
+_RESOURCE_KINDS: dict[str, str] = {
+    "CAMPAIGN_BUDGET": KIND_BUDGET,
+    "AD_GROUP_BID_MODIFIER": KIND_BID,
+    "CAMPAIGN_CRITERION": KIND_CRITERION,
+    "AD_GROUP_CRITERION": KIND_CRITERION,
+    "AD": KIND_AD,
+    "AD_GROUP_AD": KIND_AD,
+    "AD_GROUP": KIND_AD_GROUP,
+    "CAMPAIGN": KIND_CAMPAIGN,
+}
+
+#: ``action_log`` action-name substrings -> kind. ORDER IS THE CONTRACT: the
+#: first hit wins, so the more specific verbs must precede the entity nouns.
+#: ``google_ads_campaigns_update_status`` has to read as a status change, not
+#: as a generic campaign edit, or the very case this exists to block would
+#: still match.
+_ACTION_KINDS: tuple[tuple[str, str], ...] = (
+    ("budget", KIND_BUDGET),
+    ("bid", KIND_BID),
+    ("keyword", KIND_CRITERION),
+    ("criteri", KIND_CRITERION),
+    ("negative", KIND_CRITERION),
+    ("placement", KIND_CRITERION),
+    ("exclusion", KIND_CRITERION),
+    ("targeting", KIND_CRITERION),
+    ("audience", KIND_CRITERION),
+    ("_status", KIND_STATUS),
+    ("pause", KIND_STATUS),
+    ("enable", KIND_STATUS),
+    ("resume", KIND_STATUS),
+    ("creative", KIND_AD),
+    ("ads_create", KIND_AD),
+    ("ads_update", KIND_AD),
+    ("ad_group", KIND_AD_GROUP),
+    ("ad_set", KIND_AD_GROUP),
+    ("campaign", KIND_CAMPAIGN),
+)
+
+#: Feed operation -> canonical verb, and the same for an action name. Used
+#: only to REFUTE a match (see :func:`_operations_conflict`), never to require
+#: one: a tool called ``*_update`` may well be an upsert, so demanding
+#: agreement here would block far more true matches than it protects.
+_OPERATION_ALIASES: dict[str, str] = {
+    "CREATE": "create",
+    "ADD": "create",
+    "REMOVE": "remove",
+    "DELETE": "remove",
+    "UPDATE": "update",
+}
+_ACTION_OPERATIONS: tuple[tuple[str, str], ...] = (
+    ("_remove", "remove"),
+    ("_delete", "remove"),
+    ("_add", "create"),
+    ("_create", "create"),
+)
 
 
 def external_change_id(change: ExternalChange) -> str:
@@ -131,17 +232,98 @@ def _identity_pairs(
     return frozenset((slot, value) for slot, value in pairs if value)
 
 
+def change_kind(change: ExternalChange) -> str:
+    """The coarse kind of thing ``change`` touched, or ``""`` when unknown.
+
+    ``changed_fields`` is consulted BEFORE ``resource_type`` because it is the
+    more specific signal: a budget edit reaches the feed as ``CAMPAIGN`` +
+    ``changed_fields=["campaign_budget"]`` at least as often as it reaches it
+    as ``CAMPAIGN_BUDGET``, and reading only the resource type would classify
+    that as a generic campaign edit — which is exactly the bucket a status
+    toggle falls into.
+
+    ``""`` is returned rather than a permissive default. A kind mureo cannot
+    derive must not be allowed to match anything; see :func:`_kinds_match`.
+    """
+    for field in change.changed_fields:
+        lowered = field.lower()
+        for token, kind in _FIELD_KINDS:
+            if token in lowered:
+                return kind
+    return _RESOURCE_KINDS.get(change.resource_type.strip().upper(), "")
+
+
+def action_kind(action: str) -> str:
+    """The coarse kind of thing an ``action_log`` action touched, or ``""``.
+
+    Matched against the tool name because that is all a recorded action
+    reliably carries — an agent-supplied ``summary`` is free text. The rules
+    are ordered verb-before-noun (see :data:`_ACTION_KINDS`), so
+    ``google_ads_campaigns_update_status`` is a status change and not a
+    campaign edit.
+
+    A free-text or unrecognised action yields ``""``. That costs an
+    over-import for platforms whose mutations mureo records by hand, and that
+    is the correct side to be wrong on.
+    """
+    normalized = action.strip().lower().replace("-", "_")
+    for token, kind in _ACTION_KINDS:
+        if token in normalized:
+            return kind
+    return ""
+
+
+def _kinds_match(entry: ActionLogEntry, change: ExternalChange) -> bool:
+    """Do the two describe the same kind of change?
+
+    Both sides must yield a kind AND the two must be equal. "Unknown matches
+    anything" would restore the identity-only behaviour for every action mureo
+    cannot classify, which is the permissive direction — and permissive here
+    means silently discarding an operator's edit.
+    """
+    feed_kind = change_kind(change)
+    own_kind = action_kind(entry.action)
+    return bool(feed_kind) and feed_kind == own_kind
+
+
+def _operations_conflict(entry: ActionLogEntry, change: ExternalChange) -> bool:
+    """Do the two definitely disagree about create-vs-remove?
+
+    Only a definite disagreement refutes; an unknown verb on either side
+    imposes no constraint. This catches the case kind matching cannot — mureo
+    removing a negative keyword while the operator adds one on the same ad
+    group in the same minute — without demanding a verb mapping that is
+    genuinely ambiguous for the ``*_update`` upsert family.
+    """
+    feed_op = _OPERATION_ALIASES.get(change.operation.strip().upper(), "")
+    if not feed_op:
+        return False
+    normalized = entry.action.strip().lower().replace("-", "_")
+    for token, own_op in _ACTION_OPERATIONS:
+        if token in normalized:
+            return own_op != feed_op
+    return False
+
+
 def _entry_matches(
     entry: ActionLogEntry,
     change: ExternalChange,
     change_time: datetime,
     window: timedelta,
 ) -> bool:
-    """Is ``entry`` mureo's own record of ``change``?"""
+    """Is ``entry`` mureo's own record of ``change``?
+
+    Four conditions, all required: same platform, same kind of change, a
+    shared target identity, and within the attribution window. Dropping any
+    one of them makes mureo swallow an operator's edit that merely happened
+    near one of its own.
+    """
     # Only mureo-originated entries can absorb a change. An already-imported
     # external entry must never attribute a later one, or a single UI edit
     # would suppress every subsequent edit on the same target.
     if entry.origin is not None or entry.platform != change.platform:
+        return False
+    if not _kinds_match(entry, change) or _operations_conflict(entry, change):
         return False
     shared = _identity_pairs(
         campaign_id=change.campaign_id,
@@ -202,6 +384,15 @@ def classify_change(
 
 __all__ = [
     "ATTRIBUTION_WINDOW_MINUTES",
+    "KIND_AD",
+    "KIND_AD_GROUP",
+    "KIND_BID",
+    "KIND_BUDGET",
+    "KIND_CAMPAIGN",
+    "KIND_CRITERION",
+    "KIND_STATUS",
+    "action_kind",
+    "change_kind",
     "classify_change",
     "external_change_id",
     "imported_change_ids",

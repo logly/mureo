@@ -31,7 +31,7 @@ are different from "nothing happened there".
 
 | Platform | Key | Change feed | Read by mureo today | What is missing |
 |---|---|---|---|---|
-| Google Ads | `google_ads` | `change_event` (GAQL) | **Yes** — built-in feed | Capped at 100 rows with no paging; ~30-day retention; user-made changes only |
+| Google Ads | `google_ads` | `change_event` (GAQL) | **Yes** — built-in feed (live API only) | Capped at 100 rows with no paging; ~30-day retention; user-made changes only. **BYOD mode reports `unavailable`** — the export carries performance rows, not an audit trail |
 | Meta Ads | `meta_ads` | Ad Account Activity (`/activities` edge on the Marketing API) | **No** | mureo ships no client for that edge. The data exists on Meta's side; mureo does not fetch it yet |
 | Amazon Ads (official-MCP bridge) | `plugin:mureo-amazon-ads-bridge:amazon_ads` | Vendor API | **No** | The bridge can opt in through the ABI hook below; it does not today |
 | Yahoo Ads (Search / Display) | `plugin:<dist>:yahoo_ads` / `…:yahoo_ads_display` | Vendor change history | **No** | Same — plugin-side, via the ABI hook |
@@ -134,16 +134,74 @@ about why. The feed's own attribution fields do not separate the two:
 - `client_type: GOOGLE_ADS_API` covers mureo and every other API tool the
   account uses.
 
-So the discriminator is mureo's own log: **same platform, same target
-identity, within 10 minutes**. The window absorbs the skew between mureo's
-stamp (when the call returned) and the platform's (when it committed).
+So the discriminator is mureo's own log. **Four conditions, all required:**
 
-**Which way it fails is a deliberate choice.** When identity is missing on
-either side, no match can be made and the change is imported as external. An
-over-import shows the operator a change they may have made through mureo —
-visible, mildly annoying, correctable. An over-attribution silently swallows
-a real UI edit, which is the exact blindness this feature exists to remove.
-Never trade a visible wrong answer for an invisible one.
+| Condition | Why it is not optional |
+|---|---|
+| Same platform | Ids from two platforms share no namespace |
+| Same **kind** of change | Without it, mureo pausing campaign 111 swallows the operator's budget edit on campaign 111 four minutes later. Manual and mureo-driven work overlapping on one campaign is normal for a while after onboarding, so this is the common case |
+| Shared target identity | Slot-qualified (`campaign_id` / `ad_id` / `entity_id`), so a campaign id never matches an ad id that happens to be the same string |
+| Within 10 minutes | Absorbs the skew between mureo's stamp (when the call returned) and the platform's (when it committed) |
+
+Additionally, a **definite** create-vs-remove disagreement refutes a match —
+mureo removing a negative keyword while the operator adds one on the same ad
+group in the same minute. It only refutes, never confirms: a `*_update` tool
+may well be an upsert, so requiring agreement would block far more true
+matches than it protects.
+
+### How "kind" is derived
+
+A small shared vocabulary — `status`, `budget`, `bid`, `criterion`, `ad`,
+`ad_group`, `campaign` — computed independently from each side:
+
+- **From the feed**: `changed_fields` first, `resource_type` second. The
+  field list is the more specific signal, because Google reports a budget
+  edit as `CAMPAIGN` + `changed_fields=["campaign_budget"]` at least as often
+  as it reports it as `CAMPAIGN_BUDGET`; reading only the resource type would
+  file the first one as a generic campaign edit — the same bucket a status
+  toggle falls into.
+- **From `action_log`**: the tool name, matched verb-before-noun so
+  `google_ads_campaigns_update_status` reads as `status` rather than
+  `campaign`.
+
+**Both sides must yield a kind, and the two must be equal.** "Unknown matches
+anything" would restore identity-only behaviour for every action mureo cannot
+classify.
+
+### What this cannot discriminate, stated plainly
+
+- **Two changes of the same kind on the same target inside the window.**
+  mureo raises a campaign's budget; the operator raises it again two minutes
+  later. Nothing in the feed distinguishes them, and mureo attributes the
+  second to itself. This is the residual over-attribution and it is real.
+- **Free-text and unrecognised action names.** An `action_log` entry an agent
+  wrote as prose yields no kind, so nothing is attributed to it — mureo's own
+  change re-imports as external. Costs an over-import, not a swallow.
+- **Sub-kind detail.** A targeting change and a negative-keyword change are
+  both `criterion`; a bid-modifier change on an ad group and on a campaign
+  are both `bid`. Splitting these further would trade one failure direction
+  for the other, and the vocabulary is deliberately coarse.
+
+**Which way it fails is a deliberate choice.** Wherever the comparison cannot
+be made — identity missing, kind underivable — the change is imported as
+external. An over-import shows the operator a change they may have made
+through mureo: visible, mildly annoying, correctable. An over-attribution
+silently swallows a real UI edit, which is the exact blindness this feature
+exists to remove. Never trade a visible wrong answer for an invisible one.
+
+That asymmetry is also why the 10-minute window should not be widened
+casually. Widening it can only ever *add* attributions, and the ones it adds
+are the least certain — a hand edit further away from mureo's action, hiding
+behind it. Narrowing it can only add over-imports, which the operator sees.
+
+### Imports never join a batch
+
+An imported change is never stamped with the open batch id (#549). A batch is
+the operator's declared change set — "what I did on Monday" — and a change
+mureo merely observed is by definition not something they did through mureo.
+Letting it join would drop that batch's rollback coverage to `partial` and
+list an unrelated UI edit as a member the operator cannot reverse, for no
+reason other than that the batch happened to be open when the poll ran.
 
 ## When import runs
 
@@ -236,9 +294,16 @@ Two obligations worth stating plainly:
 
 - **Set `truncated` when your response was capped.** Reporting a capped page
   as a complete answer turns a known blind spot into an invisible one.
-- **Populate whatever identity the feed exposes.** Without `campaign_id` /
-  `ad_id` / `entity_id`, mureo cannot tell its own change apart from an
-  operator's and will record mureo's own work a second time as external.
+- **Populate whatever identity the feed exposes**, and a `resource_type` /
+  `changed_fields` that mureo can classify. Without identity, mureo cannot
+  tell its own change apart from an operator's; without a derivable kind, no
+  attribution is attempted at all. Both cost an over-import, never a swallow —
+  but both are avoidable.
+- **Set `unavailable_reason` when you did not look.** A feed that is
+  registered but cannot answer for this account or mode (BYOD, an unsupported
+  account type, a plan without change history) must say so rather than return
+  an empty `changes` tuple. An empty result is reported as `imported`, which
+  keeps the platform out of `blind_spots` and tells the caller it was checked.
 
 Raising is a valid answer for "cannot fetch" (missing credentials, expired
 token, unsupported account). The importer catches it per platform and reports

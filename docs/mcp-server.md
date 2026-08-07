@@ -564,7 +564,7 @@ Optional: `platforms` (array of platform keys; omit to cover every platform in S
 | `status` | Meaning |
 |---|---|
 | `imported` | The feed ran. An empty `imported_indices` here is a real "nothing changed in this window" |
-| `unavailable` | mureo has **no change feed** for that platform (`reason: "change_import_unavailable_for_<platform>"`). It was not checked — this is not evidence that nothing happened |
+| `unavailable` | The platform was **not checked**: either mureo has no change feed for it, or a registered feed could not answer for this account/mode (BYOD, unsupported account type). `reason: "change_import_unavailable_for_<platform>"`; the specific cause is in `notes`. Not evidence that nothing happened |
 | `error` | The feed exists but could not be read (expired token, missing credentials). Also unchecked, also not evidence of quiet |
 
 `blind_spots` collects the `unavailable` and `error` platforms; `truncated_platforms` collects those whose feed capped its response, meaning older changes inside that window are unreachable and **cannot be recovered later**. `feeds_available_for` lists the platforms that have a registered feed at all.

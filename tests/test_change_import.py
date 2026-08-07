@@ -40,8 +40,14 @@ from mureo.change_import import (
     register_change_feed,
     to_action_log_entry,
 )
+from mureo.context.batch import batch_members
 from mureo.context.models import EXTERNAL_ORIGIN, ActionLogEntry
-from mureo.context.state import append_action_log, read_state_file, write_state_file
+from mureo.context.state import (
+    append_action_log,
+    begin_batch,
+    read_state_file,
+    write_state_file,
+)
 from mureo.context.state_codec import parse_state, render_state
 from mureo.rollback import RollbackStatus, plan_batch_rollback, plan_rollback
 
@@ -91,6 +97,25 @@ class _ExplodingFeed:
         self, account_id: str, *, since: datetime, until: datetime
     ) -> ChangeFeedResult:
         raise RuntimeError("token expired")
+
+
+def _log(
+    *,
+    action: str,
+    campaign_id: str = "111",
+    platform: str = "google_ads",
+    timestamp: datetime | None = None,
+    **extra: Any,
+) -> Any:
+    """A parsed StateDocument holding one mureo-originated action_log entry."""
+    entry: dict[str, Any] = {
+        "timestamp": (timestamp or NOW).isoformat(),
+        "action": action,
+        "platform": platform,
+        "campaign_id": campaign_id,
+    }
+    entry.update(extra)
+    return parse_state(json.dumps({"action_log": [entry]}))
 
 
 def _write_state(tmp_path: Path, platforms: dict[str, str]) -> Path:
@@ -214,6 +239,7 @@ class TestNoDoubleCounting:
         feed_echo = _change(
             occurred_at=NOW.isoformat(),
             resource_type="CAMPAIGN",
+            changed_fields=("status",),
             operation="UPDATE",
             campaign_id="111",
             client_type="GOOGLE_ADS_API",
@@ -231,64 +257,116 @@ class TestNoDoubleCounting:
         assert log[0].origin is None
 
     def test_attribution_needs_matching_identity(self) -> None:
-        """A same-minute change on a DIFFERENT campaign is still external."""
-        doc = parse_state(
-            json.dumps(
-                {
-                    "action_log": [
-                        {
-                            "timestamp": NOW.isoformat(),
-                            "action": "google_ads_campaigns_update_status",
-                            "platform": "google_ads",
-                            "campaign_id": "999",
-                        }
-                    ]
-                }
-            )
-        )
+        """A same-minute change of the SAME kind on a DIFFERENT campaign."""
+        doc = _log(action="google_ads_negative_keywords_add", campaign_id="999")
         assert classify_change(_change(occurred_at=NOW.isoformat()), doc) is (
             ImportVerdict.IMPORT
         )
 
     def test_attribution_needs_matching_platform(self) -> None:
-        doc = parse_state(
-            json.dumps(
-                {
-                    "action_log": [
-                        {
-                            "timestamp": NOW.isoformat(),
-                            "action": "meta_ads_campaigns_pause",
-                            "platform": "meta_ads",
-                            "campaign_id": "111",
-                        }
-                    ]
-                }
-            )
+        doc = _log(
+            action="meta_ads_negative_keywords_add",
+            campaign_id="111",
+            platform="meta_ads",
         )
         assert classify_change(_change(occurred_at=NOW.isoformat()), doc) is (
             ImportVerdict.IMPORT
         )
 
     def test_attribution_window_is_bounded(self) -> None:
-        """A mureo action from LAST WEEK does not absorb today's UI edit."""
+        """A mureo action from outside the window does not absorb a UI edit."""
         stale = NOW - timedelta(minutes=ATTRIBUTION_WINDOW_MINUTES + 1)
-        doc = parse_state(
-            json.dumps(
-                {
-                    "action_log": [
-                        {
-                            "timestamp": stale.isoformat(),
-                            "action": "google_ads_campaigns_update_status",
-                            "platform": "google_ads",
-                            "campaign_id": "111",
-                        }
-                    ]
-                }
-            )
+        doc = _log(
+            action="google_ads_negative_keywords_add",
+            campaign_id="111",
+            timestamp=stale,
         )
         assert classify_change(_change(occurred_at=NOW.isoformat()), doc) is (
             ImportVerdict.IMPORT
         )
+
+    def test_a_different_kind_of_change_on_the_same_target_is_not_absorbed(
+        self,
+    ) -> None:
+        """THE regression this guard exists for.
+
+        mureo pauses campaign 111; four minutes later the operator edits that
+        same campaign's budget by hand. Identity and time both match. Only the
+        KIND separates them, and without that separation mureo silently
+        discards a real UI edit — the outcome this whole feature exists to
+        prevent.
+        """
+        doc = _log(
+            action="google_ads_campaigns_update_status",
+            campaign_id="111",
+            timestamp=NOW - timedelta(minutes=4),
+        )
+        budget_edit = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN_BUDGET",
+            changed_fields=("amount_micros",),
+            operation="UPDATE",
+            campaign_id="111",
+        )
+        assert classify_change(budget_edit, doc) is ImportVerdict.IMPORT
+
+    def test_a_budget_field_on_a_campaign_row_still_reads_as_a_budget_change(
+        self,
+    ) -> None:
+        """Google reports the same edit either way; both must block a toggle."""
+        doc = _log(action="google_ads_campaigns_update_status", campaign_id="111")
+        as_campaign_row = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            changed_fields=("campaign_budget",),
+            operation="UPDATE",
+            campaign_id="111",
+        )
+        assert classify_change(as_campaign_row, doc) is ImportVerdict.IMPORT
+
+    def test_an_unclassifiable_action_does_not_absorb_anything(self) -> None:
+        """Unknown kind must not mean 'matches everything'."""
+        doc = _log(action="reviewed the account", campaign_id="111")
+        assert classify_change(_change(occurred_at=NOW.isoformat()), doc) is (
+            ImportVerdict.IMPORT
+        )
+
+    def test_opposite_operations_on_the_same_target_are_not_absorbed(self) -> None:
+        """mureo removed a negative; the operator added one, same minute."""
+        doc = _log(action="google_ads_negative_keywords_remove", campaign_id="111")
+        added = _change(occurred_at=NOW.isoformat(), operation="CREATE")
+        assert classify_change(added, doc) is ImportVerdict.IMPORT
+
+    # The full matrix: same target throughout, so KIND and the WINDOW are the
+    # only variables. Only the top-left cell may be absorbed.
+    @pytest.mark.parametrize(
+        ("same_kind", "inside_window", "expected"),
+        [
+            (True, True, ImportVerdict.ATTRIBUTED_TO_MUREO),
+            (True, False, ImportVerdict.IMPORT),
+            (False, True, ImportVerdict.IMPORT),
+            (False, False, ImportVerdict.IMPORT),
+        ],
+        ids=[
+            "same-kind-inside-window",
+            "same-kind-outside-window",
+            "different-kind-inside-window",
+            "different-kind-outside-window",
+        ],
+    )
+    def test_attribution_matrix(
+        self, same_kind: bool, inside_window: bool, expected: ImportVerdict
+    ) -> None:
+        offset = timedelta(
+            minutes=1 if inside_window else ATTRIBUTION_WINDOW_MINUTES + 1
+        )
+        action = (
+            "google_ads_negative_keywords_add"
+            if same_kind
+            else "google_ads_campaigns_update_status"
+        )
+        doc = _log(action=action, campaign_id="111", timestamp=NOW - offset)
+        assert classify_change(_change(occurred_at=NOW.isoformat()), doc) is expected
 
     def test_an_imported_external_entry_never_absorbs_a_later_change(self) -> None:
         """Attribution matches mureo-originated entries ONLY."""
@@ -412,6 +490,39 @@ class TestFeedCannotWriteAnotherPlatform:
 
 
 # ---------------------------------------------------------------------------
+# An import never joins the operator's declared change set
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestImportsStayOutOfBatches:
+    @pytest.mark.asyncio
+    async def test_an_imported_change_does_not_join_an_open_batch(
+        self, tmp_path: Path
+    ) -> None:
+        """A batch is what the operator DID, not what mureo happened to see.
+
+        Letting an import join would drop the whole batch's rollback coverage
+        to ``partial`` and list an unrelated UI edit as a member the operator
+        cannot reverse — for no reason other than that the batch was open when
+        the poll ran.
+        """
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        batch = begin_batch(path, label="monday exclusions")
+        register_change_feed(
+            _StubFeed("google_ads", ChangeFeedResult(changes=(_change(),)))
+        )
+
+        await import_external_changes(path, now=NOW)
+
+        doc = read_state_file(path)
+        imported_entry = doc.action_log[-1]
+        assert imported_entry.is_external
+        assert imported_entry.batch_id is None
+        assert batch_members(doc, batch.batch_id) == ()
+
+
+# ---------------------------------------------------------------------------
 # 4. A platform with no change feed says so
 # ---------------------------------------------------------------------------
 
@@ -466,6 +577,32 @@ class TestHonestUnavailability:
 
         assert outcomes["google_ads"].status is ChangeImportStatus.ERROR
         assert outcomes["meta_ads"].status is ChangeImportStatus.UNAVAILABLE
+
+    @pytest.mark.asyncio
+    async def test_a_feed_that_could_not_look_is_unavailable_not_imported(
+        self, tmp_path: Path
+    ) -> None:
+        """A registered feed that did not look must reach ``blind_spots``.
+
+        ``IMPORTED`` means the feed ran. A feed that cannot answer for this
+        account or mode (BYOD, unsupported account type) returning an empty
+        result would be indistinguishable from a quiet window — which is the
+        "nothing happened" vs "something happened I cannot see" collapse this
+        feature exists to remove.
+        """
+        path = _write_state(tmp_path, {"google_ads": "123"})
+        register_change_feed(
+            _StubFeed(
+                "google_ads",
+                ChangeFeedResult(unavailable_reason="no change history in BYOD mode"),
+            )
+        )
+
+        outcomes = await import_external_changes(path, now=NOW)
+
+        assert outcomes[0].status is ChangeImportStatus.UNAVAILABLE
+        assert outcomes[0].reason == "change_import_unavailable_for_google_ads"
+        assert any("BYOD" in note for note in outcomes[0].notes)
 
     @pytest.mark.asyncio
     async def test_truncated_feed_says_history_was_lost(self, tmp_path: Path) -> None:

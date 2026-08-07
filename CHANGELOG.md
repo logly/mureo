@@ -42,16 +42,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     dispatches also appears in the platform's feed. The feed's attribution
     fields cannot separate them (`user_email` is the same OAuth identity either
     way; `client_type: GOOGLE_ADS_API` covers every API tool on the account),
-    so the discriminator is mureo's own log — same platform, same target
-    identity, within 10 minutes. Where identity is missing the match cannot be
-    made and the change is imported as external: an over-import is visible and
-    correctable, an over-attribution silently swallows a real UI edit.
+    so the discriminator is mureo's own log — same platform, **same kind of
+    change**, same target identity, within 10 minutes, with a definite
+    create-vs-remove disagreement refuting the match. Kind is required because
+    identity and time alone let mureo pausing campaign 111 swallow the
+    operator's budget edit on campaign 111 four minutes later. Wherever the
+    comparison cannot be made — identity missing, kind underivable — the change
+    is imported as external: an over-import is visible and correctable, an
+    over-attribution silently swallows a real UI edit. What this still cannot
+    discriminate is written down in `docs/change-import.md` rather than left
+    implied.
+  - **An imported change never joins an open batch** (#549). A batch is the
+    operator's declared change set; a change mureo merely observed is not
+    something they did through mureo, and letting it join would drop that
+    batch's rollback coverage to `partial` over an unrelated UI edit.
   - **Missing coverage is reported, never smoothed over.** Every configured
     platform appears in the response. A platform with no feed returns
     `change_import_unavailable_for_<platform>` — the same contract as
     `analytics_not_available_for_<platform>` — and a feed that failed returns
-    `error`. Neither means "no changes"; the absence of a change feed is not
-    evidence of innocence. A capped response returns `truncated: true`, because
+    `error`. A registered feed that could not answer for this account or mode
+    — BYOD has no change history at all — returns `unavailable` too, via
+    `ChangeFeedResult.unavailable_reason`, rather than an empty result that
+    would read as a checked-and-quiet window. None of these means "no
+    changes"; the absence of a change feed is not evidence of innocence. A capped response returns `truncated: true`, because
     Google Ads' `change_event` returns at most 100 rows with no paging and
     retains ~30 days: history cannot be reconstructed after the fact, only
     captured continuously.

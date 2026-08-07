@@ -143,13 +143,51 @@ class TestGoogleFeed:
     async def test_byod_says_so_rather_than_returning_a_quiet_window(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """BYOD has no change history, so nothing was LOOKED at.
+
+        The assertion is on ``unavailable_reason``, not on ``notes``: notes
+        are prose an operator may or may not read, while
+        ``unavailable_reason`` is what routes the platform to
+        ``ChangeImportStatus.UNAVAILABLE`` and into ``blind_spots``. An
+        earlier version of this test checked only the note and passed while
+        the platform was still being reported as checked.
+        """
         feed = GoogleAdsChangeFeed()
         monkeypatch.setattr(feed, "_open_client", lambda _account: None)
 
         result = await feed.fetch_change_events("123", since=NOW, until=NOW)
 
         assert result.changes == ()
-        assert any("BYOD" in note for note in result.notes)
+        assert "BYOD" in result.unavailable_reason
+
+    @pytest.mark.asyncio
+    async def test_byod_reaches_the_blind_spots_list(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """End to end: the BYOD signal must survive all the way to the tool.
+
+        ``/daily-check`` step 2b tells the agent that a platform absent from
+        ``blind_spots`` was looked at, so this is the assertion that matters.
+        """
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "STATE.json").write_text(
+            json.dumps(
+                {
+                    "version": "2",
+                    "platforms": {"google_ads": {"account_id": "123", "campaigns": []}},
+                    "action_log": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        feed = GoogleAdsChangeFeed()
+        monkeypatch.setattr(feed, "_open_client", lambda _account: None)
+        register_change_feed(feed)
+
+        payload = json.loads((await handle_external_changes_import({}))[0].text)
+
+        assert payload["blind_spots"] == ["google_ads"]
+        assert payload["platforms"][0]["status"] == "unavailable"
 
 
 class _StubFeed:
