@@ -22,7 +22,11 @@ from mureo.change_import import (
     default_change_feed_registry,
     register_change_feed,
 )
-from mureo.change_import.builtin.google_ads import GoogleAdsChangeFeed, _row_to_change
+from mureo.change_import.builtin.google_ads import (
+    _CRITERION_RESOURCE_TYPES,
+    GoogleAdsChangeFeed,
+    _row_to_change,
+)
 from mureo.google_ads._extensions_targeting import CHANGE_HISTORY_ROW_LIMIT
 from mureo.mcp import server as mcp_server
 from mureo.mcp._handlers_change_import import handle_external_changes_import
@@ -81,6 +85,58 @@ class TestRowMapping:
         assert change.entity_type == "ad_group"
         assert change.entity_id == "222"
 
+    def test_resource_name_segments_match_the_sdk_path_builders(self) -> None:
+        """Every path segment this adapter parses must be one the SDK mints.
+
+        The segments are the other half of the fabricated-field class of bug:
+        a wrong one silently yields "no identity" rather than raising, so the
+        adapter would keep working and simply stop recognising its targets.
+        Asserted against the SDK's own ``*_path`` builders rather than
+        hardcoded strings, so a rename in a future API version fails here.
+        """
+        from google.ads.googleads.v23.services.services.ad_group_ad_service import (
+            AdGroupAdServiceClient,
+        )
+        from google.ads.googleads.v23.services.services.ad_group_bid_modifier_service import (  # noqa: E501
+            AdGroupBidModifierServiceClient,
+        )
+        from google.ads.googleads.v23.services.services.ad_group_criterion_service import (  # noqa: E501
+            AdGroupCriterionServiceClient,
+        )
+        from google.ads.googleads.v23.services.services.ad_service import (
+            AdServiceClient,
+        )
+        from google.ads.googleads.v23.services.services.campaign_criterion_service import (  # noqa: E501
+            CampaignCriterionServiceClient,
+        )
+
+        def segment(resource_name: str) -> str:
+            return resource_name.split("/")[-2]
+
+        assert segment(AdServiceClient.ad_path("1", "999")) == "ads"
+        assert (
+            segment(AdGroupAdServiceClient.ad_group_ad_path("1", "222", "999"))
+            == "adGroupAds"
+        )
+        expected = {
+            "AD_GROUP_CRITERION": segment(
+                AdGroupCriterionServiceClient.ad_group_criterion_path("1", "222", "777")
+            ),
+            "CAMPAIGN_CRITERION": segment(
+                CampaignCriterionServiceClient.campaign_criterion_path(
+                    "1", "111", "777"
+                )
+            ),
+            "AD_GROUP_BID_MODIFIER": segment(
+                AdGroupBidModifierServiceClient.ad_group_bid_modifier_path(
+                    "1", "222", "777"
+                )
+            ),
+        }
+        assert {
+            key: value[0] for key, value in _CRITERION_RESOURCE_TYPES.items()
+        } == expected
+
     @pytest.mark.parametrize(
         ("resource_type", "change_resource_name", "entity_type"),
         [
@@ -94,8 +150,16 @@ class TestRowMapping:
                 "customers/1/campaignCriteria/111~777",
                 "campaign_criterion",
             ),
+            # Not reachable through mureo's own tools (device bids go through
+            # CampaignCriterionService), but an operator's UI edit reaches the
+            # feed — and this is a feed of changes mureo did not make.
+            (
+                "AD_GROUP_BID_MODIFIER",
+                "customers/1/adGroupBidModifiers/222~777",
+                "ad_group_bid_modifier",
+            ),
         ],
-        ids=["ad_group_criterion", "campaign_criterion"],
+        ids=["ad_group_criterion", "campaign_criterion", "ad_group_bid_modifier"],
     )
     def test_a_criterion_row_names_the_CRITERION_not_its_parent(
         self, resource_type: str, change_resource_name: str, entity_type: str

@@ -31,6 +31,24 @@ metadata — no new mureo Protocol surface:
       "entity_id": "placementId"}``. Common argument names are also detected
       when this declaration is absent.
 
+Known property of the undeclared-identity fallback
+--------------------------------------------------
+When a plugin tool does NOT declare ``identity``, :data:`_ENTITY_ID_KEYS`
+guesses the target from common argument spellings, and each guess carries a
+hardcoded ``entity_type`` — ``criterion_id`` is labelled
+``"ad_group_criterion"``, ``adspot_id`` is labelled ``"adspot"``, and so on.
+Those labels are Google-shaped names applied to third-party arguments that
+merely share a spelling; a plugin whose ``criterion_id`` means something else
+entirely is still filed under ``ad_group_criterion``.
+
+That is inherent to guessing rather than a defect introduced by any one
+entry: the fallback exists precisely because the tool told mureo nothing, and
+some label has to be chosen for the pair to be usable as identity at all. It
+is unreachable through mureo's own built-in tools, which never take this
+path. A plugin that cares declares ``identity`` and gets its own
+``entity_type`` verbatim — that is the supported route, and the fallback is
+best-effort for tools that do not.
+
 Mutations are promoted to the action_log **only when a STATE.json
 already exists in cwd** — we never litter an arbitrary working
 directory with a new STATE.json just because a plugin tool ran. The

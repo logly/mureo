@@ -84,6 +84,15 @@ _CRITERION_RESOURCE_TYPES: dict[str, tuple[str, str]] = {
     # resource type -> (resource-name segment, entity_type)
     "AD_GROUP_CRITERION": ("adGroupCriteria", "ad_group_criterion"),
     "CAMPAIGN_CRITERION": ("campaignCriteria", "campaign_criterion"),
+    # Same composite ``<parentId>~<criterionId>`` shape as the two above.
+    # mureo never calls AdGroupBidModifierService today — its device bid
+    # adjustments go through CampaignCriterionService, which is covered by the
+    # entry above — so no row of this type is reachable through mureo's own
+    # tools. It is listed anyway because an operator's UI edit IS reachable
+    # (this is a feed of changes mureo did NOT make), and because omitting it
+    # would collapse such rows onto the parent ad group: the exact defect the
+    # criterion entries exist to fix, left in place for one resource type.
+    "AD_GROUP_BID_MODIFIER": ("adGroupBidModifiers", "ad_group_bid_modifier"),
 }
 
 
