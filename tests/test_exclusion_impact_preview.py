@@ -93,7 +93,7 @@ class TestShareIsComputed:
         assert impact.share_pct("clicks") == pytest.approx(94.0)
         assert impact.share_pct("cost") == pytest.approx(94.0)
         assert impact.share_pct("conversions") == pytest.approx(94.0)
-        assert "bigsite.com" in impact.matched
+        assert impact.matched == ("bigsite.com",)
 
     def test_subdomains_of_an_excluded_domain_count(self) -> None:
         impact = estimate_exclusion_impact(
