@@ -74,17 +74,66 @@ def _id_from_resource_name(resource_name: str, segment: str) -> str | None:
 #: :func:`_row_identity`.
 _AD_LEVEL_RESOURCE_TYPES = frozenset({"AD", "AD_GROUP_AD"})
 
+#: Resource types whose changed resource is a criterion (keyword, negative,
+#: placement, audience, …), mapped to the ``entity_type`` mureo records for
+#: that target. The criterion — not its parent — is the canonical target: two
+#: keywords in one ad group are two different things to edit, and collapsing
+#: them onto the ad group is what let one operator's keyword edit be read as
+#: mureo's edit to a sibling keyword.
+_CRITERION_RESOURCE_TYPES: dict[str, tuple[str, str]] = {
+    # resource type -> (resource-name segment, entity_type)
+    "AD_GROUP_CRITERION": ("adGroupCriteria", "ad_group_criterion"),
+    "CAMPAIGN_CRITERION": ("campaignCriteria", "campaign_criterion"),
+}
 
-def _ad_id_from_changed_resource(changed_resource_name: str) -> str | None:
-    """Pull the ad id out of ``customers/<cid>/adGroupAds/<adGroupId>~<adId>``.
 
-    ``None`` for any other shape. The composite id is the only place the feed
-    names the ad itself — ``change_event.ad_group`` names the container.
+def _ad_id_from_changed_resource(change_resource_name: str) -> str | None:
+    """Pull the ad id out of ``change_event.change_resource_name``.
+
+    Two shapes, because the resource type decides which service reported the
+    change and the two name ads differently:
+
+    - ``customers/<cid>/adGroupAds/<adGroupId>~<adId>`` for ``AD_GROUP_AD``
+      (AdGroupAdService — a status toggle, say);
+    - ``customers/<cid>/ads/<adId>`` for ``AD`` (AdService — ``ads.update``,
+      i.e. every creative edit). No ad-group segment, and no ``~``.
+
+    Handling only the first shape leaves ``AD`` rows with nothing below the
+    campaign, so every creative edit mureo makes re-imports as external — the
+    exact effect this identity work exists to remove, just on the other
+    resource type.
+
+    ``None`` for any other shape: an id invented here would be compared
+    against ``action_log`` and could attribute an operator's change to mureo.
     """
-    if not changed_resource_name:
+    if not change_resource_name:
         return None
-    parts = changed_resource_name.split("/")
-    if len(parts) < 2 or parts[-2] != "adGroupAds":
+    parts = change_resource_name.split("/")
+    if len(parts) < 2:
+        return None
+    if parts[-2] == "ads":
+        return parts[-1] or None
+    if parts[-2] == "adGroupAds":
+        tail = parts[-1].split("~")
+        return tail[-1] if len(tail) == 2 and tail[-1] else None
+    return None
+
+
+def _criterion_id_from_changed_resource(
+    change_resource_name: str, segment: str
+) -> str | None:
+    """Pull the criterion id out of ``customers/<cid>/<segment>/<parent>~<id>``.
+
+    Both criterion resources use the composite form —
+    ``adGroupCriteria/<adGroupId>~<criterionId>`` and
+    ``campaignCriteria/<campaignId>~<criterionId>``. ``None`` for any other
+    shape, so an unexpected path yields no identity rather than a fabricated
+    one.
+    """
+    if not change_resource_name:
+        return None
+    parts = change_resource_name.split("/")
+    if len(parts) < 2 or parts[-2] != segment:
         return None
     tail = parts[-1].split("~")
     return tail[-1] if len(tail) == 2 and tail[-1] else None
@@ -105,25 +154,37 @@ def _row_identity(row: dict[str, Any], resource_type: str) -> dict[str, Any]:
     than mureo's own record of the very same change, and mureo's ad-level work
     would re-import as external every single run.
 
-    So an ad-level row names the ad and NOT its ad group; every other row that
-    carries an ad group names the ad group.
+    So an ad-level row names the ad, a criterion-level row names the
+    criterion, and every other row that carries an ad group names the ad
+    group. In each case the parents are context and are not promoted
+    alongside — except ``campaign_id``, which is a coarser slot rather than a
+    competing target and is what lets a campaign-level change on both sides
+    match.
     """
+    changed = str(row.get("change_resource_name") or "")
     identity: dict[str, Any] = {
         "campaign_id": _id_from_resource_name(
             str(row.get("campaign") or ""), "campaigns"
         )
     }
     if resource_type in _AD_LEVEL_RESOURCE_TYPES:
-        ad_id = _ad_id_from_changed_resource(
-            str(row.get("changed_resource_name") or "")
-        )
+        ad_id = _ad_id_from_changed_resource(changed)
         if ad_id is not None:
             identity["ad_id"] = ad_id
-            return identity
         # An ad-level row mureo cannot resolve to an ad names no sub-campaign
         # target at all. Falling back to the ad group would claim a
         # specificity the row does not have, and the campaign alone would let
         # a one-ad change match a campaign-wide one.
+        return identity
+    criterion = _CRITERION_RESOURCE_TYPES.get(resource_type)
+    if criterion is not None:
+        segment, entity_type = criterion
+        criterion_id = _criterion_id_from_changed_resource(changed, segment)
+        if criterion_id is not None:
+            identity["entity_type"] = entity_type
+            identity["entity_id"] = criterion_id
+        # Same rule as the ad case: an unresolvable criterion row names no
+        # sub-campaign target rather than falling back to its ad group.
         return identity
     ad_group_id = _id_from_resource_name(str(row.get("ad_group") or ""), "adGroups")
     if ad_group_id is not None:

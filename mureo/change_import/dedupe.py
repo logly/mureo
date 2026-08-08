@@ -233,20 +233,34 @@ def _parse_iso(value: str | None) -> datetime | None:
 
 
 def _identities(
-    *, campaign_id: str | None, ad_id: str | None, entity_id: str | None
+    *,
+    campaign_id: str | None,
+    ad_id: str | None,
+    entity_type: str | None,
+    entity_id: str | None,
 ) -> dict[str, str]:
     """The populated ``{slot: value}`` identities of a change or an entry.
 
     Slot-keyed so a campaign id can never be compared against an ad id that
     happens to be the same string — Google and Meta both mint numeric ids from
     separate namespaces, and an unqualified comparison would match across them.
+
+    The generic slot folds ``entity_type`` into its value for the same reason.
+    ``entity_id`` is only unique within a kind: an ``ad_group`` numbered 999
+    and a ``keyword`` numbered 999 are different things, and comparing the
+    bare id would call them the same target. Google and Meta happen to make
+    that collision unlikely, but a plugin declaring its own ``entity_type``
+    (:class:`mureo.mcp.plugin_semantics.IdentityDeclaration`) gives no such
+    guarantee — and ``ExternalChange`` has always documented ``entity_type``
+    as part of identity, so it has to actually be part of it.
     """
+    generic = f"{entity_type or ''}:{entity_id}" if entity_id else None
     return {
         slot: value
         for slot, value in (
             ("campaign_id", campaign_id),
             ("ad_id", ad_id),
-            ("entity_id", entity_id),
+            ("entity_id", generic),
         )
         if value
     }
@@ -405,11 +419,13 @@ def _entry_matches(
         _identities(
             campaign_id=entry.campaign_id,
             ad_id=entry.ad_id,
+            entity_type=entry.entity_type,
             entity_id=entry.entity_id,
         ),
         _identities(
             campaign_id=change.campaign_id,
             ad_id=change.ad_id,
+            entity_type=change.entity_type,
             entity_id=change.entity_id,
         ),
     ):

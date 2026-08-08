@@ -35,7 +35,7 @@ def _row(**overrides: Any) -> dict[str, Any]:
         "resource_name": "customers/1/changeEvents/2026-08-05~1~2",
         "change_date_time": "2026-08-05 09:14:00",
         "change_resource_type": "CAMPAIGN_CRITERION",
-        "changed_resource_name": "customers/1/campaignCriteria/111~99",
+        "change_resource_name": "customers/1/campaignCriteria/111~99",
         "resource_change_operation": "CREATE",
         "changed_fields": ["campaign_criterion.negative"],
         "client_type": "GOOGLE_ADS_WEB_CLIENT",
@@ -72,14 +72,75 @@ def _clear_runtime_context_cache() -> Any:
 
 @pytest.mark.unit
 class TestRowMapping:
-    def test_identity_is_extracted_from_resource_names(self) -> None:
-        change = _row_to_change(_row())
+    def test_a_row_with_only_an_ad_group_names_the_ad_group(self) -> None:
+        change = _row_to_change(
+            _row(change_resource_type="AD_GROUP", change_resource_name="")
+        )
         assert change is not None
         assert change.campaign_id == "111"
         assert change.entity_type == "ad_group"
         assert change.entity_id == "222"
 
-    def test_an_ad_level_row_names_the_AD_not_its_ad_group(self) -> None:
+    @pytest.mark.parametrize(
+        ("resource_type", "change_resource_name", "entity_type"),
+        [
+            (
+                "AD_GROUP_CRITERION",
+                "customers/1/adGroupCriteria/222~777",
+                "ad_group_criterion",
+            ),
+            (
+                "CAMPAIGN_CRITERION",
+                "customers/1/campaignCriteria/111~777",
+                "campaign_criterion",
+            ),
+        ],
+        ids=["ad_group_criterion", "campaign_criterion"],
+    )
+    def test_a_criterion_row_names_the_CRITERION_not_its_parent(
+        self, resource_type: str, change_resource_name: str, entity_type: str
+    ) -> None:
+        """Two keywords in one ad group are two different things to edit.
+
+        Collapsing them onto the shared ad group is what let an operator's
+        edit to one keyword read as mureo's edit to a sibling keyword, so the
+        criterion — not its parent — is the canonical target.
+        """
+        change = _row_to_change(
+            _row(
+                change_resource_type=resource_type,
+                change_resource_name=change_resource_name,
+            )
+        )
+        assert change is not None
+        assert change.campaign_id == "111"
+        assert change.entity_type == entity_type
+        assert change.entity_id == "777"
+
+    def test_an_unresolvable_criterion_row_claims_no_sub_campaign_target(self) -> None:
+        change = _row_to_change(
+            _row(change_resource_type="AD_GROUP_CRITERION", change_resource_name="odd")
+        )
+        assert change is not None
+        assert change.entity_id is None
+        assert change.campaign_id == "111"
+
+    @pytest.mark.parametrize(
+        ("resource_type", "change_resource_name"),
+        [
+            # AdGroupAdService — a status toggle.
+            ("AD_GROUP_AD", "customers/1/adGroupAds/222~999"),
+            # AdService — ``google_ads_ads_update``, i.e. every creative edit.
+            # No ad-group segment and no "~", so a parser that only knows the
+            # composite shape leaves these rows with nothing below the
+            # campaign and re-imports every creative edit as external.
+            ("AD", "customers/1/ads/999"),
+        ],
+        ids=["ad_group_ad", "ad"],
+    )
+    def test_an_ad_level_row_names_the_AD_not_its_ad_group(
+        self, resource_type: str, change_resource_name: str
+    ) -> None:
         """One canonical target per row, matching mureo's own convention.
 
         Reporting both the ad and its parent ad group would make the feed row
@@ -89,8 +150,8 @@ class TestRowMapping:
         """
         change = _row_to_change(
             _row(
-                change_resource_type="AD_GROUP_AD",
-                changed_resource_name="customers/1/adGroupAds/222~999",
+                change_resource_type=resource_type,
+                change_resource_name=change_resource_name,
             )
         )
         assert change is not None
@@ -101,7 +162,7 @@ class TestRowMapping:
     def test_an_unresolvable_ad_row_claims_no_sub_campaign_target(self) -> None:
         """Falling back to the ad group would claim specificity it lacks."""
         change = _row_to_change(
-            _row(change_resource_type="AD_GROUP_AD", changed_resource_name="weird")
+            _row(change_resource_type="AD_GROUP_AD", change_resource_name="weird")
         )
         assert change is not None
         assert change.ad_id is None
@@ -120,7 +181,14 @@ class TestRowMapping:
 
     def test_an_unexpected_resource_path_yields_no_identity(self) -> None:
         """Better no id than a fabricated one — a wrong id mis-attributes."""
-        change = _row_to_change(_row(campaign="something/else", ad_group=""))
+        change = _row_to_change(
+            _row(
+                change_resource_type="AD_GROUP",
+                campaign="something/else",
+                ad_group="",
+                change_resource_name="",
+            )
+        )
         assert change is not None
         assert change.campaign_id is None
         assert change.entity_id is None

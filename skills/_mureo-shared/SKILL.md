@@ -295,6 +295,18 @@ the same entity, a sibling entity in the same campaign, a broader or narrower
 entity than the one mureo touched, and anything at all when mureo made no
 nearby change. Full matrix in `docs/change-import.md`.
 
+**Record the target at the granularity you changed it.** When you append an
+`action_log` entry by hand, `entity_type` + `entity_id` must name **the thing
+you actually edited**, not its parent — that is what lets the next import tell
+your change apart from an operator's edit to a sibling. Concretely, for a
+keyword / negative / placement mutation pass `entity_type:
+"ad_group_criterion"` (or `"campaign_criterion"` for a campaign-level
+negative) and `entity_id:` **the criterion id**, not the `ad_group_id`. Two
+keywords in one ad group recorded as "ad group 222" are one target as far as
+mureo can tell, and an operator's edit to the second one is then read as your
+edit to the first and discarded. Same rule for ads: pass `ad_id`, not the ad
+group.
+
 **Never mark your own work external.** `origin: "external"` on
 `mureo_state_action_log_append` is for a change you READ out of a platform's
 change history and mureo cannot poll itself — today that means a hosted

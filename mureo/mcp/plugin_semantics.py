@@ -295,6 +295,14 @@ def derive_semantics(tool: Tool) -> ToolSemantics:
 _CAMPAIGN_ID_KEYS = ("campaign_id", "campaignId")
 _AD_ID_KEYS = ("ad_id", "adId")
 _ENTITY_ID_KEYS = (
+    # Criterion first: a keyword / negative / placement mutation carries BOTH
+    # its criterion id and its parent ad_group_id, and the criterion is the
+    # target. Falling through to the ad group would record two edits to
+    # different keywords in one ad group as the same target — which the #545
+    # change importer then reads as "mureo already did this" and discards the
+    # operator's edit (see mureo.change_import.dedupe).
+    ("criterion_id", "ad_group_criterion"),
+    ("criterionId", "ad_group_criterion"),
     ("ad_group_id", "ad_group"),
     ("adGroupId", "ad_group"),
     ("ad_set_id", "ad_set"),

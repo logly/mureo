@@ -90,9 +90,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     only wants a change feed need not stub four analytics methods it will never
     implement. Installed plugins are unaffected in every way.
   - Google Ads' `change_event` query additionally selects `resource_name`,
-    `client_type`, `campaign`, `ad_group` and `changed_resource_name`. Purely
+    `change_resource_name`, `client_type`, `campaign` and `ad_group`. Purely
     additive — every field `google_ads_change_history_list` returned before is
-    unchanged.
+    unchanged. Rows name ONE canonical target each: an ad row names the ad, a
+    criterion row names the criterion, and neither promotes its parent
+    alongside — the same rule mureo already applies to its own mutations, and
+    what lets two keywords in one ad group be told apart.
+  - A plugin mutation carrying `criterion_id` now records the criterion as its
+    target rather than falling through to the parent `ad_group_id`. Two edits
+    to different keywords in one ad group were previously one target, which is
+    enough for the change importer to read the second as the first.
 
 - **A bulk change is one revertible unit** (#549). mureo had rollback, but it
   reasoned about one allow-listed operation at a time, so "undo what I did on

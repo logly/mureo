@@ -537,8 +537,8 @@ class _TargetingMixin:
         the window are unreachable — see the constant. Callers that need to
         know (the #545 importer) compare the row count against it.
 
-        ``resource_name`` / ``client_type`` / ``campaign`` / ``ad_group`` are
-        selected for the #545 importer: the event's own resource name is the
+        ``resource_name`` / ``change_resource_name`` / ``client_type`` /
+        ``campaign`` / ``ad_group`` are selected for the #545 importer: the event's own resource name is the
         stable id that makes a repeated poll idempotent, and the campaign /
         ad-group links are the target identity without which mureo cannot tell
         its own change apart from an operator's. Additive — every field the
@@ -550,7 +550,7 @@ class _TargetingMixin:
                 change_event.resource_name,
                 change_event.change_date_time,
                 change_event.change_resource_type,
-                change_event.changed_resource_name,
+                change_event.change_resource_name,
                 change_event.resource_change_operation,
                 change_event.changed_fields,
                 change_event.client_type,

@@ -706,8 +706,9 @@ def map_recommendation(rec: Any) -> dict[str, Any]:
 def map_change_event(event: Any) -> dict[str, Any]:
     """Format change history event.
 
-    The four fields added for #545 — ``resource_name``, ``client_type``,
-    ``campaign``, ``ad_group`` — are purely additive; every key the pre-#545
+    The five fields added for #545 — ``resource_name``,
+    ``change_resource_name``, ``client_type``, ``campaign``, ``ad_group`` —
+    are purely additive; every key the pre-#545
     response carried is unchanged. They exist because the change importer
     needs two things this shape did not carry: a stable per-event id (so a
     repeated poll is idempotent) and the target the change was made against
@@ -726,7 +727,7 @@ def map_change_event(event: Any) -> dict[str, Any]:
             if hasattr(event, "change_resource_type")
             else None
         ),
-        "changed_resource_name": _safe_str(event, "changed_resource_name"),
+        "change_resource_name": _safe_str(event, "change_resource_name"),
         "resource_change_operation": (
             str(event.resource_change_operation)
             if hasattr(event, "resource_change_operation")

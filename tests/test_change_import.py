@@ -391,6 +391,58 @@ class TestNoDoubleCounting:
         )
         assert classify_change(ad_level, doc) is ImportVerdict.IMPORT
 
+    def test_the_same_id_under_a_different_entity_type_is_not_the_same_target(
+        self,
+    ) -> None:
+        """``entity_id`` is only unique within a kind.
+
+        ``ExternalChange`` has always called ``entity_type`` part of identity;
+        until now it was never compared, so an ``ad_group`` numbered 999 and a
+        ``keyword`` numbered 999 read as one target. Unlikely on Google and
+        Meta, guaranteed by nothing at all for a plugin that declares its own
+        ``entity_type``.
+        """
+        doc = _log(
+            action="google_ads_negative_keywords_add",
+            campaign_id="111",
+            entity_type="ad_group",
+            entity_id="999",
+        )
+        other_kind = _change(
+            occurred_at=NOW.isoformat(),
+            campaign_id="111",
+            entity_type="ad_group_criterion",
+            entity_id="999",
+        )
+        assert classify_change(other_kind, doc) is ImportVerdict.IMPORT
+
+    def test_two_keywords_in_one_ad_group_are_two_targets(self) -> None:
+        """The flagship scenario, at the granularity it actually needs.
+
+        mureo edits keyword 777's bid; the operator edits keyword 888's bid in
+        the SAME ad group four minutes later. While both sides named only the
+        parent ad group these collapsed into one target and the operator's
+        edit was discarded — a sibling-entity swallow that the campaign-level
+        fix alone did not reach.
+        """
+        doc = _log(
+            action="google_ads_bid_adjustments_update",
+            campaign_id="111",
+            entity_type="ad_group_criterion",
+            entity_id="777",
+            timestamp=NOW - timedelta(minutes=4),
+        )
+        sibling_keyword = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="AD_GROUP_CRITERION",
+            changed_fields=("cpc_bid_micros",),
+            operation="UPDATE",
+            campaign_id="111",
+            entity_type="ad_group_criterion",
+            entity_id="888",
+        )
+        assert classify_change(sibling_keyword, doc) is ImportVerdict.IMPORT
+
     def test_an_entry_with_no_identity_absorbs_nothing(self) -> None:
         """An empty identity set has no disagreement — and no agreement."""
         doc = _log(action="google_ads_negative_keywords_add", campaign_id="")

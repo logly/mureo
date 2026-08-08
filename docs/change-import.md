@@ -228,7 +228,7 @@ It is bounded by design, and the bound is what makes the advice usable:
 | Same entity, same setting, within 10 min of a mureo change | **No — silently attributed to mureo** |
 | Same entity, same setting, after 10 min | Yes |
 | Same entity, *different* setting (budget vs status), any time | Yes |
-| A *sibling* entity in the same campaign (different ad group, ad, keyword) | Yes |
+| A *sibling* entity in the same campaign (different ad group, ad, keyword) | Yes — provided the sibling was recorded at its own granularity; see below |
 | A *broader* entity than mureo touched (campaign-wide vs one ad) | Yes |
 | A *narrower* entity than mureo touched (one ad vs campaign-wide) | Yes |
 | A different campaign entirely | Yes |
@@ -237,6 +237,18 @@ It is bounded by design, and the bound is what makes the advice usable:
 Only the first row is lost. Every other combination of target is imported —
 including the ones an earlier version of this table got wrong, where a shared
 `campaign_id` was enough to absorb an edit to a different entity inside it.
+
+**The sibling row depends on both sides naming the sibling.** mureo can only
+tell two keywords apart if both its own `action_log` entry and the feed row
+name the criterion rather than the ad group they share. The built-in Google
+feed does (criterion rows name the criterion, ad rows name the ad), and
+plugin mutations passing `criterion_id` do. But mureo does **not** record
+native keyword / exclusion / creative mutations automatically at all — only
+status toggles are automatic, everything else is recorded when the agent
+calls `mureo_state_action_log_append`. If that call names the ad group
+instead of the criterion, two keywords in that ad group are one target again
+and the sibling row does not hold for them. `_mureo-shared` tells the agent
+what to pass; there is no mechanism that enforces it.
 
 `/daily-check` cannot flag what it never saw, so the limitation is stated
 here and in the `_mureo-shared` skill rather than left to be discovered.

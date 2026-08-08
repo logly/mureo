@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING
 import pytest
 from mcp.types import Tool, ToolAnnotations
 
-from mureo.mcp.plugin_semantics import derive_semantics, record_mutation_action_log
+from mureo.mcp.plugin_semantics import (
+    derive_semantics,
+    extract_mutation_identity,
+    record_mutation_action_log,
+)
 from mureo.throttle import ThrottleConfig
 
 if TYPE_CHECKING:
@@ -493,3 +497,36 @@ class TestRecordMutationActionLog:
             tool="acme_ads_pause", source="d", reversal=None, observation_days=3
         )
         assert self._due_date(tmp_path / "STATE.json") == today + timedelta(days=3)
+
+
+@pytest.mark.unit
+class TestCriterionIdentity:
+    """#545: a criterion mutation must record the criterion, not its parent."""
+
+    def test_criterion_id_outranks_its_parent_ad_group(self) -> None:
+        """Both ids are on the call; the criterion is the target.
+
+        Falling through to ``ad_group_id`` records two edits to different
+        keywords in one ad group as the same target, which the change importer
+        then reads as "mureo already did this" and discards the operator's
+        edit.
+        """
+        assert extract_mutation_identity(
+            {"ad_group_id": "222", "criterion_id": "777"}
+        ) == (None, None, "ad_group_criterion", "777")
+
+    def test_camel_case_spelling_is_accepted_too(self) -> None:
+        assert extract_mutation_identity({"criterionId": "777"}) == (
+            None,
+            None,
+            "ad_group_criterion",
+            "777",
+        )
+
+    def test_the_ad_group_is_still_the_target_when_alone(self) -> None:
+        assert extract_mutation_identity({"ad_group_id": "222"}) == (
+            None,
+            None,
+            "ad_group",
+            "222",
+        )
