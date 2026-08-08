@@ -228,6 +228,118 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `no_reset` — the operator stopped by a false positive is the one who needs
   them.
 
+- **mureo now checks that an ad's tracking parameters match the campaign it
+  actually lives in** (#550), on every platform, both when ads are created and
+  as an account-wide audit. Nothing caught an ad shipped into campaign B
+  carrying campaign A's tags before this. That defect is more dangerous than a
+  delivery fault because it is silent: delivery looks healthy, spend looks
+  healthy, and the analytics everyone downstream trusts is quietly wrong.
+  Nobody investigates, because nothing appears broken.
+
+  The hard part is not detecting a difference — it is not inventing one. mureo
+  does not know what a correct `utm_campaign` looks like for your account: a
+  prefix that identifies an audience segment in one account is a campaign month
+  in the next. A check that guessed the convention would produce false
+  positives, and a check that produces false positives gets muted. So the
+  zero-configuration checks derive their verdict entirely from **evidence
+  already in the account**:
+
+  - `foreign_campaign_scheme` — some ads of a campaign carry a whole
+    campaign-identifying signature that is the **sole** signature of **exactly
+    one** other campaign, while their own campaign is tagged differently. That
+    is the copy-paste signature.
+  - `same_destination_scheme_conflict` — two ads in one campaign send the same
+    landing page to two different schemes. Needs no second campaign, so it
+    still fires when the campaign the tags were copied from is out of scope.
+  - `missing_tracking_parameter` / `untagged_final_url` — an ad out of step with
+    the tagging **its own campaign** already uses. mureo does not assert that
+    every account must carry `utm_source` / `utm_medium` / `utm_campaign`.
+
+  Three rules keep legitimate variation from firing, and all three are fixed and
+  documented rather than inferred:
+
+  - Only `utm_*` is read at all, so a product id or variant flag in the URL is
+    never compared on.
+  - Only `utm_source` / `utm_medium` / `utm_campaign` **identify a campaign**.
+    `utm_content` and `utm_term` exist so one campaign can tell its creatives
+    and keywords apart on a single landing page; comparing on them would flag
+    ordinary creative differentiation, which is the fastest way to have the
+    check muted. They are still read — presence checks and declared value
+    patterns see them — they just never make two ads disagree.
+  - Schemes are compared as **whole signatures**, never one parameter at a time.
+    A per-parameter comparison reports "these ads borrowed campaign Y's
+    `utm_source`" for a value like `google` that Y merely shares — and below
+    three campaigns, or wherever one campaign carries a legitimate one-off ad,
+    `google` *is* owned by exactly one other campaign, so the correctly-tagged
+    majority gets flagged. Requiring the entire identifying signature to match
+    means the finding says something true: these ads carry another campaign's
+    whole tracking identity.
+
+  On top of that, a maximal run of digits is collapsed when values are compared,
+  so `segb01` and `segb02` are one scheme while `sega01` is another.
+
+  Operator intent — the one thing evidence cannot supply — is **declared, never
+  inferred**, in an opt-in `## Tracking Convention` section of `STRATEGY.md`
+  (`recognize:` / `identify:` / `differentiate:` / `require:` /
+  `pattern <name>:`, `fnmatch` globs). mureo parses it; the agent passes it
+  through unchanged. An account that carries its audience segment in
+  `utm_content` declares `identify: utm_content`.
+
+  Severity reflects delivery state, because the two cases are not the same
+  problem: a mis-tagged ad that has already served is a data-integrity incident
+  needing a reporting caveat (`critical`), one that never served is a cheap fix
+  (`high`). Delivery data that was not supplied is reported as
+  `delivery_state: unknown` with a note that the severity may be understated —
+  never silently assumed.
+
+  The detector lives in core (`mureo/analysis/tracking/`) over a platform-neutral
+  record, with one thin accessor per platform, and is exposed as the read-only
+  `analysis_tracking_consistency_check` MCP tool that reaches no platform API.
+  Because the caller passes the ad records in, it covers native platforms
+  (Google Ads `final_urls`, Meta Ads `object_story_spec` link + creative
+  `url_tags` — now requested by `meta_ads_ads_list`), plugin platforms through
+  the provider ABI's `Ad.final_url`, and bridged / hosted connectors
+  best-effort. Where mureo **cannot** read a URL — the Amazon Ads bridge
+  exposes no destination-URL field — those ads are listed in
+  `ads_without_readable_url` and reported as *unchecked*, never as clean.
+
+  `/tracking-health` runs the account audit (new step 8). The pre-flight before
+  ad creation is **enforced in the handler** for native Google Ads
+  (`google_ads_ads_create` / `google_ads_ads_create_display`): the check runs
+  before the mutation and a finding refuses the create, overridable per call
+  with `acknowledge_tracking_findings=true` or globally with
+  `MUREO_DISABLE_TRACKING_PREFLIGHT=1`, and failing **open** on any error
+  reading the account. Meta, plugin, bridged and hosted creates are routing
+  only — `_mureo-shared` instructs the agent to run the check first, and
+  nothing stops it skipping the step; on Meta the destination link lives on the
+  creative, created by an earlier call, so enforcing there is tracked as
+  follow-up rather than shipped half-done.
+
+  The enforcement path reads the same `## Tracking Convention` the advisory
+  path does, from `STRATEGY.md` in the active workspace. Anything less would
+  break the promise in both directions at once: an account that declared
+  `differentiate:` to stop legitimate variation being flagged would still be
+  blocked on every create (and would learn to acknowledge reflexively), and an
+  account that declared `identify:` because its segment marker lives in
+  `utm_content` would get no enforcement on a real leak. Failing open is not
+  silent either — a create whose check could not run comes back with a
+  `tracking_preflight: "NOT CHECKED: …"` field, every miss emits a log record,
+  and three consecutive misses escalate to an ERROR saying the guardrail is
+  effectively off. That covers every way the check can fail to run, including
+  the ones that raise nothing — an integration returning empty data instead of
+  erroring is exactly the case that would otherwise stay silent forever. Each enforced
+  create runs one account-wide `list_ads`, cached per account for 60s so a bulk
+  upload is a single read.
+
+  `docs/tracking-consistency.md` documents what the check detects, what it does
+  not, **and what it may flag that you meant** — the false-positive side is
+  listed as explicitly as the false-negative side. Two verified blind spots are
+  named there rather than left to be discovered: campaign tokens that differ
+  only in digits (`campaign_2024` vs `campaign_2025` collapse to the same
+  shape, so sixteen mis-tagged ads produce zero findings), and a source
+  campaign carrying the scheme on a single ad when the campaigns use different
+  landing pages.
+
 ## [0.10.43] - 2026-08-07
 
 ### Changed

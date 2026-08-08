@@ -129,12 +129,13 @@ mureo/
 ├── analysis/            # Analysis utilities
 │   ├── lp_analyzer.py   # Landing page analyzer
 │   ├── anomaly_detector.py  # Zero-spend / CPA-spike / CTR-drop detection (pure, sample-size-gated)
-│   └── exclusion_impact/    # Delivery-impact preview for bulk exclusions (#547; pure)
-│       ├── models.py        # DeliveryRecord / ExclusionTarget / ExclusionImpact + coverage verdicts
-│       ├── matching.py      # Per-entity-kind match rules (host, app id, negative keyword match type)
-│       ├── estimator.py     # The share itself — incremental and cumulative
-│       ├── rules.py         # ## Guardrails exclusion keys, the one refusal decision, inert-rule reporting
-│       └── surfaces.py      # Which tools are exclusion surfaces (mureo's + plugin-registered)
+│   ├── exclusion_impact/    # Delivery-impact preview for bulk exclusions (#547; pure)
+│   │   ├── models.py        # DeliveryRecord / ExclusionTarget / ExclusionImpact + coverage verdicts
+│   │   ├── matching.py      # Per-entity-kind match rules (host, app id, negative keyword match type)
+│   │   ├── estimator.py     # The share itself — incremental and cumulative
+│   │   ├── rules.py         # ## Guardrails exclusion keys, the one refusal decision, inert-rule reporting
+│   │   └── surfaces.py      # Which tools are exclusion surfaces (mureo's + plugin-registered)
+│   └── tracking/        # Tracking-parameter consistency: platform-neutral detector + per-platform URL accessors (#550)
 ├── rollback/            # Rollback feature (allow-list gated, append-only audit trail)
 │   ├── models.py        # RollbackStatus enum + RollbackPlan dataclass
 │   ├── planner.py       # plan_rollback(ActionLogEntry) -> RollbackPlan | None

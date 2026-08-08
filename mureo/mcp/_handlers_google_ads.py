@@ -26,6 +26,10 @@ from mureo.mcp._helpers import (
     _require,
     api_error_handler,
 )
+from mureo.mcp._tracking_preflight import (
+    PreflightOutcome,
+    google_ads_create_preflight,
+)
 from mureo.throttle import GOOGLE_ADS_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -278,6 +282,19 @@ async def handle_ads_list(args: dict[str, Any]) -> list[TextContent]:
     return _json_result(result)
 
 
+def _with_preflight_note(
+    result: dict[str, Any], outcome: PreflightOutcome
+) -> dict[str, Any]:
+    """Attach a "guardrail did not run" note to a successful create.
+
+    A returned copy, never a mutation of the client's dict. Silence and
+    "checked, clean" must not look the same to the operator.
+    """
+    if outcome.note is None:
+        return result
+    return {**result, "tracking_preflight": outcome.note}
+
+
 @api_error_handler
 async def handle_ads_create(args: dict[str, Any]) -> list[TextContent]:
     client = _get_client(args)
@@ -292,8 +309,16 @@ async def handle_ads_create(args: dict[str, Any]) -> list[TextContent]:
         val = _opt(args, key)
         if val is not None:
             params[key] = val
+    outcome = await google_ads_create_preflight(
+        client,
+        ad_group_id=params["ad_group_id"],
+        final_url=params.get("final_url"),
+        acknowledged=bool(_opt(args, "acknowledge_tracking_findings", False)),
+    )
+    if outcome.refusal is not None:
+        return outcome.refusal
     result = await client.create_ad(params)
-    return _json_result(result)
+    return _json_result(_with_preflight_note(result, outcome))
 
 
 @api_error_handler
@@ -317,8 +342,16 @@ async def handle_ads_create_display(args: dict[str, Any]) -> list[TextContent]:
     logos = _opt(args, "logo_image_paths")
     if logos is not None:
         params["logo_image_paths"] = logos
+    outcome = await google_ads_create_preflight(
+        client,
+        ad_group_id=params["ad_group_id"],
+        final_url=params.get("final_url"),
+        acknowledged=bool(_opt(args, "acknowledge_tracking_findings", False)),
+    )
+    if outcome.refusal is not None:
+        return outcome.refusal
     result = await client.create_display_ad(params)
-    return _json_result(result)
+    return _json_result(_with_preflight_note(result, outcome))
 
 
 @api_error_handler

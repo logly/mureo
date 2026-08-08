@@ -758,6 +758,8 @@ Step 4: Add keywords to each ad group
   -> google_ads_keywords_add {customer_id, ad_group_id, keywords: [...]}
 
 Step 5: Create RSA ads for each ad group
+  -> analysis_tracking_consistency_check {ads: <existing ads in the campaign>, planned_ads: [...]}
+     (tracking-parameter pre-flight -- see ../_mureo-shared/SKILL.md; stop on any finding)
   -> google_ads_ads_create {customer_id, ad_group_id, headlines: [...], descriptions: [...], final_url}
 
 Step 6: Add campaign-level negative keywords
