@@ -355,14 +355,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actually owns, so preservation is structural rather than remembered. A new
   field on either model is carried across by every mutator with no edit.
 
+  The same shape was found and fixed in `_merge_campaign_metrics`
+  (`mureo/analytics/builtin/_live_clients.py`), which folded two rows for one
+  campaign by enumerating five of `CampaignMetrics`'s seven fields and dropped
+  `cpa` / `ctr`. Inert today because nothing populates them — the exact state
+  the other instances were in before a field was added. The two duplicated
+  merge blocks are now one helper, and `cpa` / `ctr` are cleared *explicitly*
+  rather than by omission: they are ratios, cannot be summed, and carrying one
+  row's value across would report it as the total's.
+
   This is the same defect that dropped `archived` from a renamed agency client
-  and `origin` from a batched `action_log` entry. Finding it twice did not
-  prevent the third instance, because the failure is an omission and omissions
-  are invisible in review — so the fix comes with tests driven off
+  and `origin` from a batched `action_log` entry. Finding it three times did
+  not prevent the fourth, because the failure is an omission and omissions are
+  invisible in review — so the fix comes with tests driven off
   `dataclasses.fields(...)`: each names only what its mutator declares it
-  changes and asserts everything else survived. `state_codec` must keep
-  enumerating (it maps to an external JSON schema, so `replace` cannot help
-  it) and is covered by a round-trip test built the same way.
+  changes and asserts everything else survived.
+
+  `state_codec` must keep enumerating (it maps to an external JSON schema, so
+  `replace` cannot help it). Its field coverage is now asserted **at module
+  import**, so adding a field without updating both halves of the codec raises
+  immediately — on any `import mureo`, a REPL, or a `pytest -k` run that never
+  collects the round-trip test — instead of silently dropping the field on the
+  next STATE.json write.
 
 ## [0.10.43] - 2026-08-07
 
