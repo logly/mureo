@@ -6,7 +6,7 @@ mutator that forgot it silently resets it, and a reset field is
 indistinguishable downstream from one that was never set. The bug therefore
 does not announce itself; it is found later, from the damage.
 
-It has been found four times in this project now:
+It has been found five times in this project now:
 
 - agency #193 — ``update()`` rebuilt a registry entry field-by-field and
   dropped ``archived``, silently resuming collection on a renamed client.
@@ -20,15 +20,20 @@ It has been found four times in this project now:
   fields were enumerated, dropping ``cpa`` / ``ctr``. Inert only because
   nothing populates them yet, which is the state the other three were in
   before a field was added.
+- ``preflight_tracking_consistency`` here — found while rebasing onto the
+  commit that introduced it (#570). All five fields of
+  ``TrackingConsistencyReport`` were enumerated, so nothing is dropped today;
+  the sixth field added to that model would be. Two functions beside it in the
+  same file already used ``replace``.
 
-Finding it three times did not prevent the fourth, because the defect is an
+Finding it four times did not prevent the fifth, because the defect is an
 omission and omissions are invisible in review. So these tests are driven off
 ``dataclasses.fields(...)`` rather than a hand-written list: each states only
 the fields its mutator DECLARES it changes, and asserts everything else
-survived. A field added to :class:`StateDocument`, :class:`PlatformState` or
-:class:`CampaignMetrics` is checked by every one of them without any test
-being edited — and the value maps below fail loudly if the new field has no
-distinctive value to check.
+survived. A field added to :class:`StateDocument`, :class:`PlatformState`,
+:class:`CampaignMetrics` or ``TrackingConsistencyReport`` is checked by every
+one of them without any test being edited — and the value maps below fail
+loudly if the new field has no distinctive value to check.
 
 Two subtleties, both of which produced a test that looked like a guard and was
 not. They are the reason this file is longer than it first appears it needs to
@@ -500,6 +505,82 @@ class TestCampaignMetricsMerge:
         merged = _merge_campaign_metrics(first, first)
         assert merged.derived_cpa() == pytest.approx(2000.0 / 10.0)
         assert merged.derived_ctr() == pytest.approx(100 / 2000)
+
+
+@pytest.mark.unit
+class TestTrackingReportNarrowing:
+    """Narrowing a tracking report to the planned ads keeps the rest.
+
+    Fifth instance, found while rebasing onto the commit that introduced it
+    (#570). ``preflight_tracking_consistency`` runs the account-wide detector
+    and then narrows the result to the ads being uploaded. It rebuilt
+    :class:`TrackingConsistencyReport` field-by-field, enumerating all five —
+    complete today, and silently resetting whatever is added tomorrow.
+
+    Every field being enumerated correctly is exactly why a behavioural
+    assertion proves nothing here, the same trap as ``CampaignMetrics``. The
+    report is built inside the function, so the subclass has to arrive through
+    the seam: patching the detector makes it return a model carrying a field
+    the narrowing step has never heard of. ``replace`` reconstructs
+    ``type(obj)`` and keeps it; naming ``TrackingConsistencyReport(...)``
+    returns the base class and drops it.
+    """
+
+    def test_narrowing_preserves_a_field_it_does_not_know_about(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from mureo.analysis.tracking import checks as tracking_checks
+        from mureo.analysis.tracking.models import TrackingConsistencyReport
+
+        @dataclass(frozen=True)
+        class ExtendedReport(TrackingConsistencyReport):
+            scan_id: str | None = None
+
+        monkeypatch.setattr(
+            tracking_checks,
+            "check_tracking_consistency",
+            lambda *a, **k: ExtendedReport(
+                ads_examined=7,
+                campaigns_examined=2,
+                notes=("delivery data absent",),
+                scan_id="SCAN-1",
+            ),
+        )
+        narrowed = tracking_checks.preflight_tracking_consistency([], [])
+
+        assert isinstance(narrowed, ExtendedReport), (
+            "preflight_tracking_consistency rebuilt the report as a bare "
+            "TrackingConsistencyReport. Use dataclasses.replace so fields it "
+            "does not own survive."
+        )
+        assert narrowed.scan_id == "SCAN-1"
+
+    def test_narrowing_preserves_every_field_it_does_not_own(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The two fields it DOES own change; the rest are carried across."""
+        from mureo.analysis.tracking import checks as tracking_checks
+        from mureo.analysis.tracking.models import TrackingConsistencyReport
+
+        source = TrackingConsistencyReport(
+            ads_examined=7,
+            campaigns_examined=2,
+            ads_without_readable_url=("ad-9",),
+            notes=("delivery data absent — severities capped at HIGH",),
+        )
+        monkeypatch.setattr(
+            tracking_checks, "check_tracking_consistency", lambda *a, **k: source
+        )
+        narrowed = tracking_checks.preflight_tracking_consistency([], [])
+
+        owned = {"findings", "ads_without_readable_url"}
+        for field in fields(TrackingConsistencyReport):
+            if field.name in owned:
+                continue
+            assert getattr(narrowed, field.name) == getattr(source, field.name), (
+                f"{field.name!r} was reset while narrowing the report to the "
+                "planned ads."
+            )
 
 
 @pytest.mark.unit

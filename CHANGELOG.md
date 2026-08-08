@@ -364,9 +364,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than by omission: they are ratios, cannot be summed, and carrying one
   row's value across would report it as the total's.
 
+  A fifth was found in `preflight_tracking_consistency`
+  (`mureo/analysis/tracking/checks.py`) while rebasing onto the commit that
+  introduced it: narrowing a `TrackingConsistencyReport` to the planned ads
+  enumerated all five of its fields, so nothing is dropped today and the sixth
+  field added to that model would be. Two helpers beside it in the same file
+  already used `replace`.
+
   This is the same defect that dropped `archived` from a renamed agency client
-  and `origin` from a batched `action_log` entry. Finding it three times did
-  not prevent the fourth, because the failure is an omission and omissions are
+  and `origin` from a batched `action_log` entry. Finding it four times did
+  not prevent the fifth, because the failure is an omission and omissions are
   invisible in review — so the fix comes with tests driven off
   `dataclasses.fields(...)`: each names only what its mutator declares it
   changes and asserts everything else survived.

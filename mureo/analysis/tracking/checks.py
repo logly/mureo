@@ -16,6 +16,7 @@ ads on the same platform, and it only ever sees
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from mureo.analysis.tracking._checks_completeness import (
@@ -105,28 +106,30 @@ def preflight_tracking_consistency(
         for finding in report.findings
         if planned_ids & set(finding.ad_ids)
     )
-    return TrackingConsistencyReport(
+    # ``replace``, not a rebuild: this function narrows the report to the
+    # planned ads and owns exactly two fields. ``ads_examined`` /
+    # ``campaigns_examined`` / ``notes`` — and anything added to
+    # :class:`TrackingConsistencyReport` later — are carried across by
+    # construction. Enumerating them instead is complete today and silently
+    # resets whatever is added tomorrow; that omission has now been the same
+    # bug four separate times in this codebase, and it is invisible in review
+    # because a reset field looks exactly like one that was never set.
+    return replace(
+        report,
         findings=findings,
-        ads_examined=report.ads_examined,
-        campaigns_examined=report.campaigns_examined,
         ads_without_readable_url=tuple(
             ad_id for ad_id in report.ads_without_readable_url if ad_id in planned_ids
         ),
-        notes=report.notes,
     )
 
 
 def _as_planned(record: AdTrackingRecord) -> AdTrackingRecord:
-    from dataclasses import replace
-
     return replace(record, planned=True)
 
 
 def _project_onto_planned(
     finding: TrackingFinding, planned_ids: set[str]
 ) -> TrackingFinding:
-    from dataclasses import replace
-
     mine = tuple(ad_id for ad_id in finding.ad_ids if ad_id in planned_ids)
     others = tuple(ad_id for ad_id in finding.ad_ids if ad_id not in planned_ids)
     evidence = finding.evidence
