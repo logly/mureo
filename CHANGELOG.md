@@ -79,6 +79,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   construction at the tool. Every other removal stays blocked, and both
   invariants are pinned by tests.
 
+- **Learning-period reset pre-flight — an enforced check, not prose** (#548).
+  `_mureo-shared/SKILL.md` documented "Learning Period Awareness" as a security
+  rule: warn before changes that reset the learning period, list the affected
+  operations, show the current bidding system status. Nothing in mureo actually
+  detected or blocked such a change at the moment it was dispatched — it was
+  advice addressed to a model, and models follow advice worst exactly when it
+  matters most. The incident behind this: a campaign whose delivery had already
+  collapsed was "fixed" by moving its bid ceiling, which put the bidding
+  strategy into a settings-change learning state and delayed recovery further.
+  Troubleshooting *means* making many changes quickly, which is why this needed
+  a mechanism.
+
+  Three surfaces of deliberately different strength — MCP has no interposed
+  confirmation step, so mureo either runs a call or refuses it:
+
+  - **Hard refusal.** Two new STRATEGY.md `## Guardrails` rules, enforced by the
+    existing built-in `StrategyPolicyGate` before dispatch (no second gate):
+    `block_learning_resets` refuses every reset-triggering change;
+    `block_learning_resets_during_incident` is narrower by name and in fact —
+    it refuses only a change that *identifies a campaign* which is not
+    positively known to be out of a learning period. An unknown state on an
+    identified campaign is refused (fail-closed, matching the gate's existing
+    discipline of refusing what it cannot verify); a change that identifies no
+    campaign at all has no subject and is not refused, since several
+    reset-triggering tools are account-level (`google_ads_conversions_*`) or
+    keyed on something other than a campaign (`google_ads_budget_update` takes
+    a `budget_id`) and would otherwise be blocked forever with no relation to
+    any incident. Both default off: with neither written, behaviour is
+    unchanged and mureo neither reads STATE.json nor blocks anything.
+  - **Pre-flight tool.** `mureo_learning_reset_preflight` (read-only, no
+    platform API call) answers, *before* the change: is it reset-triggering,
+    with the first-party source that verdict rests on; what is the campaign's
+    current learning state; and would the operator's guardrails refuse it.
+    `would_block` is computed by the same function the gate uses, so the two
+    cannot drift.
+  - **Notice.** A reset-triggering call's own result carries a notice, so the
+    *next* change in a troubleshooting sequence is not made blind.
+
+  **Evidence, not folklore.** Every trigger carries the first-party source, the
+  retrieval date, and the sentence it rests on (`mureo/policy/learning_rules.py`).
+  Google Ads is complete because Google publishes the causes as the `LEARNING_*`
+  members of `BiddingStrategySystemStatus` — the same enum mureo reads the state
+  from. No other platform ships a trigger list: Meta documents that "significant
+  edits" restart the phase without enumerating them, so **every Meta mutation is
+  reported `unknown`, never `no_reset`**, and the same holds for the Amazon
+  bridge and plugin platforms until their plugin registers rules via
+  `register_platform_learning_rules`. The two figures the old prose asserted —
+  "budget changes > 20%" — had no first-party source and are gone rather than
+  reproduced. `unknown` and `unreportable` are never treated as safe: a false
+  "this resets nothing" converts a missing warning into implied approval.
+
+  The learning state is read **locally**, from
+  `bidding_details.bidding_strategy_system_status` on the campaign's STATE.json
+  snapshot, because a policy gate runs on every tool call and must not make
+  network calls. A missing observation reports `unknown`.
+
+  Reads and unrelated mutations are never flagged: a campaign rename through
+  `google_ads_campaigns_update` is `no_reset` while the same tool carrying
+  `bidding_strategy` is `resets`; renaming a conversion action through
+  `google_ads_conversions_update` is `no_reset` while changing its category,
+  status, value or lookback window is `resets`; and pausing a campaign is
+  `no_reset` while re-enabling it is `resets`. A check that fires on everything
+  is a check that gets ignored — and one that blocks a rename is a check that
+  gets switched off.
+
+  The classification's known blind spots (a manual-CPC campaign has no bid
+  strategy to reset, so `budget_change` / `composition_change` / `reactivation`
+  are over-reported on one) travel with the **`resets`** verdict, not only with
+  `no_reset` — the operator stopped by a false positive is the one who needs
+  them.
+
 ## [0.10.43] - 2026-08-07
 
 ### Changed

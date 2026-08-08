@@ -97,6 +97,7 @@ mureo/
 │   ├── tools_analytics_registry.py        # mureo_analytics_modules_list / mureo_analytics_run (#440)
 │   ├── tools_creative_studio.py           # creative_studio_* (visual generation + compose)
 │   ├── tools_learning.py                  # mureo_learning_insights_get / mureo_consult_advisor
+│   ├── tools_learning_preflight.py        # mureo_learning_reset_preflight (#548)
 │   ├── tools_mureo_context.py             # STRATEGY.md / STATE.json + mureo_outcome_evaluate tools
 │   ├── _handlers_mureo_context.py         # Context (STRATEGY/STATE) handlers
 │   ├── _client_factory.py                 # Per-platform BYOD-vs-live client factory
@@ -133,6 +134,8 @@ mureo/
 ├── core/                # Extension Protocols + file-backed impls + RuntimeContext; provider & skill discovery
 ├── providers/           # Official MCP provider catalog + one-command install helpers (#86)
 ├── policy/              # Built-in policy gates (strategy_gate) — ship with OSS, run by default
+│   ├── learning_rules.py     # Per-platform learning-period facts + their first-party sources (#548)
+│   └── learning_reset.py     # Reset-class + learning-state pre-flight the gate refuses on
 ├── learning/            # Read-side /learn companion: insight federation across configured sources
 ├── creative_studio/     # Creator-grade ad-creative (image) generation via pluggable providers
 ├── byod/                # Bring Your Own Data — CSV-backed offline analysis (see BYOD Mode below)
@@ -227,6 +230,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 | Analysis | `analysis_anomalies_check` |
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
+| Learning pre-flight (#548) | `mureo_learning_reset_preflight` |
 | mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_platform_metrics_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate` |
 
 ## Design Constraints

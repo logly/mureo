@@ -81,6 +81,10 @@ from mureo.mcp.tools_google_ads import TOOLS as GOOGLE_ADS_TOOLS
 from mureo.mcp.tools_google_ads import handle_tool as handle_google_ads_tool
 from mureo.mcp.tools_learning import TOOLS as LEARNING_TOOLS
 from mureo.mcp.tools_learning import handle_tool as handle_learning_tool
+from mureo.mcp.tools_learning_preflight import TOOLS as LEARNING_PREFLIGHT_TOOLS
+from mureo.mcp.tools_learning_preflight import (
+    handle_tool as handle_learning_preflight_tool,
+)
 from mureo.mcp.tools_meta_ads import TOOLS as META_ADS_TOOLS
 from mureo.mcp.tools_meta_ads import handle_tool as handle_meta_ads_tool
 from mureo.mcp.tools_mureo_context import TOOLS as MUREO_CONTEXT_TOOLS
@@ -135,6 +139,7 @@ _ALL_TOOLS: list[Tool] = [
     *MUREO_CONTEXT_TOOLS,
     *ANALYTICS_REGISTRY_TOOLS,
     *LEARNING_TOOLS,
+    *LEARNING_PREFLIGHT_TOOLS,
     *(CREATIVE_STUDIO_TOOLS if _CREATIVE_STUDIO_ENABLED else []),
 ]
 _GOOGLE_ADS_NAMES: frozenset[str] = (
@@ -151,6 +156,9 @@ _ANALYTICS_REGISTRY_NAMES: frozenset[str] = frozenset(
     t.name for t in ANALYTICS_REGISTRY_TOOLS
 )
 _LEARNING_NAMES: frozenset[str] = frozenset(t.name for t in LEARNING_TOOLS)
+_LEARNING_PREFLIGHT_NAMES: frozenset[str] = frozenset(
+    t.name for t in LEARNING_PREFLIGHT_TOOLS
+)
 _CREATIVE_STUDIO_NAMES: frozenset[str] = (
     frozenset(t.name for t in CREATIVE_STUDIO_TOOLS)
     if _CREATIVE_STUDIO_ENABLED
@@ -900,6 +908,41 @@ async def _capture_plugin_reversal(
     return None
 
 
+def _maybe_append_learning_reset_notice(
+    name: str, arguments: dict[str, Any], result: list[Any]
+) -> list[Any]:
+    """Append the #548 learning-period notice to a reset-triggering call.
+
+    Fires ONLY when :func:`mureo.policy.learning_reset.classify_change` says
+    the call restarts an automated bid strategy's learning period — a small,
+    evidence-backed set — so an ordinary read or a rename appends nothing. An
+    UNKNOWN verdict appends nothing either: it would fire on every mutation of
+    every platform mureo has no trigger list for, and a notice that always
+    fires is a notice nobody reads (the pre-flight tool still reports UNKNOWN
+    honestly when asked).
+
+    This runs AFTER the call, so for the call it rides on it is a record, not
+    a veto — MCP gives mureo no interposed confirmation step. What it buys is
+    the NEXT change in a troubleshooting sequence: the agent now knows the
+    campaign has just re-entered learning. The before-the-change surfaces are
+    ``mureo_learning_reset_preflight`` and the ``## Guardrails`` refusal.
+
+    Best-effort and never raises: a notice must not break a tool call.
+    """
+    try:
+        from mcp.types import TextContent
+
+        from mureo.policy.learning_reset import load_preflight, preflight_notice
+
+        notice = preflight_notice(load_preflight(name, arguments))
+        if notice is None:
+            return result
+        return [*result, TextContent(type="text", text=notice)]
+    except Exception:  # noqa: BLE001 — never let a notice break a tool call
+        logger.debug("learning-reset notice failed for %r", name, exc_info=True)
+        return result
+
+
 # Once-per-process latch: the stale-version banner is appended to the first
 # tool result that detects the mismatch, not every call (avoid spamming a
 # read-heavy daily-check). A fresh process after restart starts False again.
@@ -963,6 +1006,10 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
     # rejected before it can reach a live campaign.
     _validate_tool_input(name, arguments)
     result = await _dispatch_tool(name, arguments)
+    # #548: a change that restarts an automated bid strategy's learning period
+    # says so in its own result, so the next change in a troubleshooting
+    # sequence is not made blind. No-op for everything else.
+    result = _maybe_append_learning_reset_notice(name, arguments, result)
     # Push, not pull: if this MCP process is older than the mureo installed on
     # disk (operator upgraded but did not fully restart Claude), append a
     # one-time restart warning so the agent surfaces it WITHOUT having to ask
@@ -1011,6 +1058,8 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         return await handle_analytics_registry_tool(name, arguments)
     if name in _LEARNING_NAMES:
         return await handle_learning_tool(name, arguments)
+    if name in _LEARNING_PREFLIGHT_NAMES:
+        return await handle_learning_preflight_tool(name, arguments)
     if name in _CREATIVE_STUDIO_NAMES:
         return await handle_creative_studio_tool(name, arguments)
     if name in _PLUGIN_NAMES:

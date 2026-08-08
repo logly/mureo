@@ -253,12 +253,54 @@ When adding or removing large numbers of keywords:
 - Show progress after each batch
 - Allow the user to stop between batches
 
-### 6. Learning Period Awareness
+### 6. Learning Period Awareness (mechanised — call the pre-flight tool)
 
-For Google Ads campaigns using smart bidding:
-- Warn before making changes that reset the learning period
-- Affected operations: bidding strategy changes, budget changes > 20%, conversion setting changes
-- Display the current bidding system status if available
+This used to be prose telling you to "warn before changes that reset the
+learning period". It is now a real check, because the rule was least likely to
+be followed exactly when it mattered most: troubleshooting a broken campaign
+means making many changes quickly, and that is precisely when stacking a second
+learning reset delays recovery instead of speeding it up.
+
+**Before any bid-strategy, budget, conversion-setting, keyword or re-enable
+change, call `mureo_learning_reset_preflight`** with the tool name and the
+arguments you are about to pass, and put its answer in your confirmation to the
+operator. It is read-only, calls no platform API, and returns:
+
+- `reset_risk` — `resets` / `no_reset` / `unknown`, with the **first-party
+  source** the verdict rests on (`reset_verdict.evidence`).
+- `learning_state` — `learning` / `steady` / `unknown` / `unreportable` for the
+  campaign, read from STATE.json.
+- `would_block` — whether the operator's STRATEGY.md `## Guardrails` refuses
+  this call.
+
+**`unknown` and `unreportable` never mean safe.** They mean mureo has no
+answer: report them as "not known" to the operator rather than proceeding as if
+the change were harmless.
+
+Three surfaces, of deliberately different strength:
+
+| Surface | When | Strength |
+|---|---|---|
+| `## Guardrails` `block_learning_resets` / `block_learning_resets_during_incident` | before dispatch | **hard** — the call is refused |
+| `mureo_learning_reset_preflight` | before the change, when you call it | advisory — as strong as your compliance |
+| Automatic notice appended to a reset-triggering call's result | after that call | records the reset so the NEXT change is not made blind |
+
+MCP has no interposed confirmation step, so mureo cannot pause a call and ask.
+The guardrails are the only surface that stops one.
+
+**What mureo knows, per platform** (never claim more than this):
+
+| Platform | Learning state readable by mureo? | Reset triggers known? |
+|---|---|---|
+| Google Ads | Yes — `bidding_strategy_system_status` from the campaign snapshot in STATE.json | Yes — Google's own `LEARNING_*` enum members |
+| Meta Ads | No — Meta exposes `learning_stage_info` on the **ad set**, mureo does not fetch it and STATE.json is campaign-level | No — Meta documents "significant edits" without enumerating them |
+| Amazon Ads (bridge), Yahoo / LINE / SmartNews / LOGLY (plugins) | No — unless the plugin registers rules | No — unless the plugin registers rules |
+
+So the check is **complete on Google Ads and honest everywhere else**. For a
+Google campaign, keep `bidding_details.bidding_strategy_system_status` fresh in
+STATE.json (`google_ads_campaigns_get` / `google_ads_campaigns_diagnose` →
+`mureo_state_upsert_campaign`); without it the learning state is reported
+`unknown`, not `steady`.
 
 ## Diagnostic preamble (learning insights + advisor consult)
 
