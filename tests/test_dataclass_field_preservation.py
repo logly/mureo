@@ -30,12 +30,32 @@ survived. A field added to :class:`StateDocument`, :class:`PlatformState` or
 being edited — and the value maps below fail loudly if the new field has no
 distinctive value to check.
 
-One caveat worth stating, because it is why the fourth instance sat unnoticed:
-where every current field already has a declared role, an enumerated rebuild
-and a ``replace`` behave IDENTICALLY, so no behavioural assertion can tell
-them apart. That case needs the structural guard —
-``test_a_field_the_merge_does_not_know_about_survives``, which subclasses the
-model to supply a field the function has never heard of.
+Two subtleties, both of which produced a test that looked like a guard and was
+not. They are the reason this file is longer than it first appears it needs to
+be.
+
+**1. Where every field already has a declared role, behaviour cannot tell an
+enumerated rebuild from a ``replace``.** That is why the ``CampaignMetrics``
+instance sat unnoticed: the two fields it dropped are the two a merge clears
+anyway, so the old code and the fixed code produce identical output today. The
+guard there has to be STRUCTURAL —
+``test_a_field_the_merge_does_not_know_about_survives`` subclasses the model to
+supply a field the function has never heard of, which ``replace`` carries and
+an enumerated constructor discards.
+
+**2. Every fixture value must be NON-DEFAULT.** A field the codec declares but
+wires into neither half comes back at its default; if the fixture also left it
+at its default, the comparison passes and the loss is invisible. Naming a field
+in ``state_codec._CODEC_COVERAGE`` satisfies the import-time check — which
+asserts declaration — while still dropping the data on every write. Only a
+distinctive value in the maps below turns that into a failure, which is why
+``_assert_map_covers`` runs over EVERY model the codec touches
+(:data:`_CODEC_MODELS`), nested ones included, rather than just the two at the
+top.
+
+Division of labour, stated once: the import-time check in ``state_codec``
+asserts a field is DECLARED; the round-trip tests here assert it SURVIVES.
+Neither substitutes for the other.
 """
 
 from __future__ import annotations
@@ -71,20 +91,62 @@ _ACCOUNT = "123-456-7890"
 _PLATFORM = "google_ads"
 
 
+# Every value below must be NON-DEFAULT and distinctive. That is the whole
+# mechanism: a codec that declares a field but wires neither half leaves it at
+# its default on the way back, so a fixture that also left it at its default
+# would compare equal and the loss would be invisible. Every nested model gets
+# the same treatment for the same reason — a gap in any one of them is a gap in
+# the round trip.
+
+#: One distinctive value per :class:`AdState` field.
+_AD_STATE_FIELD_VALUES: dict[str, Any] = {
+    "ad_id": "A-1",
+    "name": "RSA — spring",
+    "status": "ENABLED",
+    "effective_status": "DISAPPROVED",
+    "as_of": "2026-08-08T08:00:00+09:00",
+}
+
+#: One distinctive value per :class:`ActionLogEntry` field.
+_ACTION_LOG_FIELD_VALUES: dict[str, Any] = {
+    "timestamp": "2026-08-08T09:30:00+09:00",
+    "action": "google_ads_budget_update",
+    "platform": _PLATFORM,
+    "campaign_id": "C-1",
+    "ad_id": "A-1",
+    "summary": "raised daily budget",
+    "command": "/budget-rebalance",
+    "metrics_at_action": {"cpa": 5200, "conversions": 45},
+    "observation_due": "2026-08-22",
+    "reversible_params": {
+        "operation": "google_ads_budget_update",
+        "params": {"budget_id": "B1", "amount": 10000},
+    },
+    "rollback_of": 3,
+    "evaluation_of": 4,
+    "entity_type": "ad_group",
+    "entity_id": "G-1",
+}
+
+#: One distinctive value per :class:`CampaignSnapshot` field, minus the id the
+#: caller varies.
+_CAMPAIGN_FIELD_VALUES: dict[str, Any] = {
+    "campaign_id": "C-1",
+    "campaign_name": "Brand Search",
+    "status": "ENABLED",
+    "bidding_strategy_type": "TARGET_CPA",
+    "bidding_details": {"target_cpa": 5000},
+    "daily_budget": 12000.0,
+    "device_targeting": ({"device": "MOBILE", "modifier": 1.2},),
+    "campaign_goal": "leads",
+    "notes": "do not pause",
+    "metrics": {"spend": 4200.0, "clicks": 310},
+    "ads": (AdState(**_AD_STATE_FIELD_VALUES),),
+}
+
+
 def _campaign(campaign_id: str = "C-1") -> CampaignSnapshot:
-    return CampaignSnapshot(
-        campaign_id=campaign_id,
-        campaign_name="Brand Search",
-        status="ENABLED",
-        bidding_strategy_type="TARGET_CPA",
-        bidding_details={"target_cpa": 5000},
-        daily_budget=12000.0,
-        device_targeting=({"device": "MOBILE", "modifier": 1.2},),
-        campaign_goal="leads",
-        notes="do not pause",
-        metrics={"spend": 4200.0, "clicks": 310},
-        ads=(AdState(ad_id="A-1", name="RSA", status="ENABLED"),),
-    )
+    return CampaignSnapshot(**{**_CAMPAIGN_FIELD_VALUES, "campaign_id": campaign_id})
 
 
 #: One distinctive value per :class:`PlatformState` field.
@@ -104,18 +166,20 @@ _DOCUMENT_FIELD_VALUES: dict[str, Any] = {
     "customer_id": _ACCOUNT,
     "campaigns": (_campaign(),),
     "platforms": {_PLATFORM: PlatformState(**_PLATFORM_FIELD_VALUES)},
-    "action_log": (
-        ActionLogEntry(
-            timestamp="2026-08-08T09:30:00+09:00",
-            action="google_ads_budget_update",
-            platform=_PLATFORM,
-            campaign_id="C-1",
-            summary="raised daily budget",
-            observation_due="2026-08-22",
-        ),
-    ),
+    "action_log": (ActionLogEntry(**_ACTION_LOG_FIELD_VALUES),),
     "reports": {"daily": {"narrative": "healthy"}},
 }
+
+#: Every model the STATE.json codec maps, with the map that must cover it.
+#: Checked as one table so a model cannot be added to the codec and quietly
+#: left out of the round trip.
+_CODEC_MODELS: tuple[tuple[type, dict[str, Any]], ...] = (
+    (StateDocument, _DOCUMENT_FIELD_VALUES),
+    (PlatformState, _PLATFORM_FIELD_VALUES),
+    (ActionLogEntry, _ACTION_LOG_FIELD_VALUES),
+    (CampaignSnapshot, _CAMPAIGN_FIELD_VALUES),
+    (AdState, _AD_STATE_FIELD_VALUES),
+)
 
 
 def _assert_map_covers(cls: type, values: dict[str, Any]) -> None:
@@ -136,10 +200,15 @@ def _assert_map_covers(cls: type, values: dict[str, Any]) -> None:
     assert not stale, f"{cls.__name__} map names removed field(s) {sorted(stale)}"
 
 
+def _assert_every_codec_model_covered() -> None:
+    """Every model the codec maps has a fully-populated, non-default fixture."""
+    for model, values in _CODEC_MODELS:
+        _assert_map_covers(model, values)
+
+
 def _seed(path: Path) -> StateDocument:
     """Write a STATE.json with every field of every model populated."""
-    _assert_map_covers(PlatformState, _PLATFORM_FIELD_VALUES)
-    _assert_map_covers(StateDocument, _DOCUMENT_FIELD_VALUES)
+    _assert_every_codec_model_covered()
     doc = StateDocument(**_DOCUMENT_FIELD_VALUES)
     write_state_file(path, doc)
     return doc
@@ -445,7 +514,7 @@ class TestCodecRoundTrip:
     """
 
     def test_every_document_field_survives_render_and_parse(self) -> None:
-        _assert_map_covers(StateDocument, _DOCUMENT_FIELD_VALUES)
+        _assert_every_codec_model_covered()
         doc = StateDocument(**_DOCUMENT_FIELD_VALUES)
         restored = parse_state(render_state(doc))
         for field in fields(StateDocument):
@@ -455,7 +524,7 @@ class TestCodecRoundTrip:
             )
 
     def test_every_platform_field_survives_render_and_parse(self) -> None:
-        _assert_map_covers(PlatformState, _PLATFORM_FIELD_VALUES)
+        _assert_every_codec_model_covered()
         doc = StateDocument(**_DOCUMENT_FIELD_VALUES)
         restored = parse_state(render_state(doc))
         assert restored.platforms is not None
@@ -463,6 +532,59 @@ class TestCodecRoundTrip:
             assert getattr(restored.platforms[_PLATFORM], field.name) == getattr(
                 doc.platforms[_PLATFORM], field.name  # type: ignore[index]
             ), f"platform field {field.name!r} did not survive the round trip"
+
+    def test_every_action_log_field_survives_render_and_parse(self) -> None:
+        """#545 adds three fields to this codec pair — the gap closes first.
+
+        Declaring a field in ``_CODEC_COVERAGE`` while wiring neither half of
+        ``_parse_action_log_entry`` / ``_action_log_entry_to_dict`` passes the
+        import-time check, because that check asserts declaration only. It is
+        this assertion that catches the loss — but only because every field in
+        the fixture carries a distinctive NON-DEFAULT value, so a dropped one
+        comes back different rather than coincidentally equal.
+        """
+        _assert_every_codec_model_covered()
+        doc = StateDocument(**_DOCUMENT_FIELD_VALUES)
+        restored = parse_state(render_state(doc))
+        original_entry = doc.action_log[0]
+        restored_entry = restored.action_log[0]
+        for field in fields(ActionLogEntry):
+            assert getattr(restored_entry, field.name) == getattr(
+                original_entry, field.name
+            ), (
+                f"action_log field {field.name!r} did not survive the round "
+                "trip — naming it in _CODEC_COVERAGE is not enough, BOTH "
+                "_parse_action_log_entry and _action_log_entry_to_dict must "
+                "handle it."
+            )
+
+    def test_every_ad_state_field_survives_render_and_parse(self) -> None:
+        """``AdState`` is nested two deep and had the same blind spot."""
+        _assert_every_codec_model_covered()
+        doc = StateDocument(**_DOCUMENT_FIELD_VALUES)
+        restored = parse_state(render_state(doc))
+        original_ads = doc.campaigns[0].ads
+        restored_ads = restored.campaigns[0].ads
+        assert original_ads is not None and restored_ads is not None
+        for field in fields(AdState):
+            assert getattr(restored_ads[0], field.name) == getattr(
+                original_ads[0], field.name
+            ), (
+                f"ads[] field {field.name!r} did not survive the round trip — "
+                "check BOTH _parse_ad and _ad_state_to_dict."
+            )
+
+    def test_every_campaign_field_survives_render_and_parse(self) -> None:
+        _assert_every_codec_model_covered()
+        doc = StateDocument(**_DOCUMENT_FIELD_VALUES)
+        restored = parse_state(render_state(doc))
+        for field in fields(CampaignSnapshot):
+            assert getattr(restored.campaigns[0], field.name) == getattr(
+                doc.campaigns[0], field.name
+            ), (
+                f"campaign field {field.name!r} did not survive the round trip "
+                "— check BOTH _parse_campaign and _snapshot_to_dict."
+            )
 
     def test_round_trip_through_disk(self, tmp_path: Path) -> None:
         path = tmp_path / "STATE.json"

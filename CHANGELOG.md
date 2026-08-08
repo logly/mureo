@@ -372,11 +372,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changes and asserts everything else survived.
 
   `state_codec` must keep enumerating (it maps to an external JSON schema, so
-  `replace` cannot help it). Its field coverage is now asserted **at module
-  import**, so adding a field without updating both halves of the codec raises
-  immediately — on any `import mureo`, a REPL, or a `pytest -k` run that never
-  collects the round-trip test — instead of silently dropping the field on the
-  next STATE.json write.
+  `replace` cannot help it), so it gets two guards with a clear division of
+  labour. Its field coverage is asserted **at module import**, so adding a
+  field without naming it there raises immediately — on any `import mureo`, a
+  REPL, or a `pytest -k` run that never collects the round-trip test. That
+  check asserts *declaration*; the round-trip tests assert the field actually
+  **survives**, and they now cover every model the codec touches — including
+  the nested `ActionLogEntry` and `AdState`, where a declared-but-unwired
+  field would previously have round-tripped to `None` unnoticed because the
+  fixtures left it at its default.
 
 ## [0.10.43] - 2026-08-07
 
