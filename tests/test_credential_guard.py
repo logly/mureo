@@ -8,7 +8,9 @@ mureo uses the deny-JSON form because an interpreter crash (exit 1) can
 never be mistaken for an intentional block.
 
 These tests execute the generated hook payloads in a subprocess with a fake
-``$HOME``, mirroring how the agent harness invokes them.
+``$HOME``, mirroring how the agent harness invokes them.  The cases whose
+answer depends on quoting run the whole command through a real bash instead
+— see ``TestGuardThroughARealShell``.
 """
 
 from __future__ import annotations
@@ -20,7 +22,18 @@ from pathlib import Path
 
 import pytest
 
-from tests.hook_guard_runner import deny_decision, run_guard
+from tests.hook_guard_runner import (
+    BASH,
+    PYTHON3,
+    deny_decision,
+    run_guard,
+    run_guard_in_shell,
+)
+
+needs_shell = pytest.mark.skipif(
+    BASH is None or PYTHON3 is None,
+    reason="the shell layer needs both bash and python3 on PATH",
+)
 
 _PROTECTED_FILES = (
     "credentials.json",
@@ -44,13 +57,13 @@ def fake_home(tmp_path: Path) -> Path:
 def _path_guard_command() -> str:
     from mureo.credential_guard import path_guard_entry
 
-    return path_guard_entry()["hooks"][0]["command"]
+    return str(path_guard_entry()["hooks"][0]["command"])
 
 
 def _bash_guard_command() -> str:
     from mureo.credential_guard import bash_guard_entry
 
-    return bash_guard_entry()["hooks"][0]["command"]
+    return str(bash_guard_entry()["hooks"][0]["command"])
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +274,95 @@ class TestBashGuardBehavior:
         )
         assert deny_decision(proc) == "deny", command
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # Every one of these was verified against a throwaway $HOME with a
+            # real bash 5.2: each prints the contents of the credentials file.
+            "cat ~/.mure?/credentials.json",
+            "cat ~/.[m]ureo/credentials.json",
+            "cat ~/.mur*/credentials.json",
+            "cat ~/.m?reo/credentials.json",
+            "cat ~/.?????/credentials.json",
+            "cat ~/.[!.]*/credentials.json",
+            "cat ~/.mure[o]/credentials.json",
+            # Brace expansion runs before pathname expansion, so it produces
+            # the real directory name without any wildcard at all.
+            "cat ~/.mure{o,x}/credentials.json",
+            "cat ~/.mur{eo,ex}/credentials.json",
+            # Same patterns, other spellings of the parent directory.
+            "ls -la ~/.mure?",
+            "cp -r ~/.m?reo /tmp/exfil",
+            "cat $HOME/.mure?/credentials.json",
+            "cat ${HOME}/.mur*/credentials.json",
+            'cat "$HOME"/.mure?/credentials.json',
+            "cat /Users/x/.mur*/credentials.json",
+            # Case-folded, as everywhere else in the guard.
+            "cat ~/.MURE?/credentials.json",
+            "cat ~/.[M]UREO/credentials.json",
+            # A substitution supplies the parent, so the pattern does not
+            # start at a path boundary — the same shapes rule 1 covers for
+            # the literal name.
+            "D=~/; cat $D.mure?/credentials.json",
+            "cat $(printf '%s.mure?/credentials.json' ~/)",
+            "python3 -c \"print(open('%s.mure?/credentials.json' % h).read())\"",
+        ],
+    )
+    def test_denies_glob_patterns_matching_the_mureo_dir(
+        self, fake_home: Path, command: str
+    ) -> None:
+        """A wildcard inside the directory name still reaches the real files.
+
+        The literal-substring rule looks for six consecutive characters, so
+        any metacharacter placed *inside* ``.mureo`` breaks the match while
+        the shell still expands the pattern onto the protected directory.
+        """
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # Wildcards that cannot reach a dotfile at all: the shell requires
+            # a leading period to be matched explicitly.
+            "ls *",
+            "rm -rf build/*",
+            "cp dist/* /tmp/",
+            "node --test tests/js/*.test.js",
+            "pytest tests/test_*.py",
+            "ls -d */",
+            "git add -- mureo/*.py",
+            # Dot-leading patterns that cannot spell the directory name.
+            "rm -f .coverage*",
+            "ls -d .git*",
+            "cat .env.*",
+            "rm -rf .pytest_cache .ruff_cache",
+            # Quoted metacharacters never reach pathname expansion — regexes
+            # and format strings must not be read as globs.
+            "sed 's/.*//' notes.txt",
+            "grep -rn '.*TODO' mureo/",
+            "find . -name '*.py' -newer setup.py",
+            "find . -name '.*' -maxdepth 1",
+            "git log --grep '.*fix'",
+            # ...including a fully quoted path: quoting suppresses globbing,
+            # so `?` here is a literal character and opens nothing.
+            'cat "$HOME/.mure?/credentials.json"',
+            # Ordinary commands with no pattern at all.
+            "ruff check .",
+            "git diff -- .",
+            "black --check .",
+        ],
+    )
+    def test_allows_everyday_glob_commands(self, fake_home: Path, command: str) -> None:
+        """The pattern rule must not fire on day-to-day shell usage."""
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert proc.returncode == 0
+        assert proc.stdout.strip() == "", command
+
     @pytest.mark.parametrize("command", ["echo hello", "ls -la", "git status"])
     def test_allows_unrelated_commands(self, fake_home: Path, command: str) -> None:
         proc = run_guard(
@@ -300,6 +402,312 @@ class TestBashGuardBehavior:
         )
         assert proc.returncode == 0
         assert proc.stdout.strip() == "", command
+
+
+# ---------------------------------------------------------------------------
+# The shell layer
+# ---------------------------------------------------------------------------
+
+
+@needs_shell
+@pytest.mark.unit
+class TestGuardThroughARealShell:
+    """Run the generated command the way a host runs it: ``bash -c``.
+
+    Every case below was checked outside the suite against a throwaway
+    ``HOME`` holding a marker credentials file: the deny cases print the
+    marker when the guard is removed, and the allow cases print nothing.
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # Quoting splits the name, and quote removal puts it back
+            # together. None of these contains `.mureo` as six consecutive
+            # characters, and the first four hide the metacharacter too.
+            "cat ~/'.'mure?/credentials.json",
+            'cat ~/".mure"?/credentials.json',
+            "cat ~/.mure''?/credentials.json",
+            'cat ~/.mure"o"/credentials.json',
+            'cat "$HOME"/.mure"o"/credentials.json',
+            "cat ~/.mur'e'o/credentials.json",
+            # An apostrophe inside a double-quoted word is an ordinary
+            # character. Reading it as a delimiter pairs it with the next
+            # quote and swallows the real pattern in between.
+            "echo \"it's\" ; cat ~/.mure?/credentials.json 'x'",
+            "echo \"don't\" && cat ~/.mure?/credentials.json 'y'",
+            # A backslash-escaped quote is not a delimiter either.
+            "echo it\\'s ; cat ~/.mure?/credentials.json",
+            # An escaped metacharacter is literal, but an escaped letter is
+            # still the letter.
+            "cat ~/\\.mureo/credentials.json",
+            "cat ~/.mur\\eo/credentials.json",
+            # A substitution inside the name makes the rest of it unknown.
+            "cat ~/.mure$(printf '?')/credentials.json",
+            "cat ~/.mure`printf o`/credentials.json",
+            # A brace group can supply any character, including the dot.
+            "cat ~/{.,z}mureo/credentials.json",
+            "cat ~/.mure{o,x}/credentials.json",
+            "cat ~/.mur{e{o,z},y}/credentials.json",
+            # An alternative carrying its own dot, which is unrelated to the
+            # dot of the dotfile. Folding the group to a single placeholder
+            # had to guess which of the two the dot belonged to, and chose
+            # wrong: these read the credentials file.
+            "cat ~/.{mureo,x.y}/credentials.json",
+            "cp -r ~/.{mureo,bashrc.bak} /tmp/dest/",
+            "ls -la ~/.{mureo,x.y}",
+            "cat ~/.mure{o,x.y}/credentials.json",
+            "cat ~/.m{ureo,x.y}/credentials.json",
+            "cat ~/.{MUREO,x.y}/credentials.json",
+            "cat $HOME/.{mureo,x.y}/credentials.json",
+            "cat ~/.{mure?,x.y}/credentials.json",
+            "cat ~/.{a.b,c.d,mureo}/credentials.json",
+            "cat ~/.{mureo,{a,b}.c}/credentials.json",
+            # A sequence expression is not a list of alternatives at all,
+            # and `{l..n}` covers `m` without the letter appearing anywhere.
+            "cat ~/.{l..n}ureo/credentials.json",
+            "cat ~/.mure{n..p}/credentials.json",
+            # Nested past the expansion budget. The budget used to end in a
+            # coarse fallback that left literal braces in the candidates —
+            # ordinary characters to fnmatch — so neither rule fired and the
+            # file was read. Unresolved structure now denies on its own.
+            "cat ~/.{z2,{z1,mureo}}/credentials.json",
+            "cat ~/.{z9,{z8,{z7,{z6,{z5,{z4,{z3,{z2,{z1,mureo}}}}}}}}}/creds",
+            "cat ~/.{z11,{z10,{z9,{z8,{z7,{z6,{z5,{z4,{z3,{z2,{z1,mureo}}}"
+            "}}}}}}}}/credentials.json",
+            "cp -r ~/.{z11,{z10,{z9,{z8,{z7,{z6,{z5,{z4,{z3,{z2,{z1,mureo}}}"
+            "}}}}}}}}/ /tmp/dest/",
+            # Three and five alternatives per level reach the budget sooner.
+            "cat ~/.{a,b,{c,d,{e,f,{g,h,{i,j,{k,l,{m,n,mureo}}}}}}}/creds",
+            # A letter range covering `m`. This one really does expand onto
+            # the directory; `{-..0}` below does not, and is a row in the
+            # conservative-refusal test instead.
+            "cat ~/.{l..n}ureo/credentials.json",
+            # A line continuation is deleted, backslash and newline both,
+            # before the shell tokenises anything — so the name is spelled
+            # across two lines and is contiguous by the time it is used.
+            "cat ~/.mu\\\nreo/credentials.json",
+            "cat ~/.\\\nmureo/credentials.json",
+            "cat ~/.m\\\nu\\\nr\\\ne\\\no/credentials.json",
+            "cat ~/.mure\\\n?/credentials.json",
+            "cat ~/.m\\\nure?/credentials.json",
+            # ...including inside double quotes, where it is still a
+            # continuation (and where nothing globs, so the name itself is
+            # what has to be seen).
+            'cat "$HOME/.mu\\\nreo/credentials.json"',
+            # `$"..."` is a translated string: the `$` is not an expansion
+            # of anything the guard cannot see.
+            'cat ~/$".mureo"/credentials.json',
+            # The parent directory comes from a substitution *and* the name
+            # is broken by something only normalization resolves. This is
+            # the product of the two axes, and it is the category that
+            # shipped twice: while the two rules read different strings,
+            # whatever one of them folded away the other could not see.
+            "D2=~/; cat $D2.mu\\\nreo/credentials.json",
+            'D2=~/; cat "$D2".mu\\\nreo/credentials.json',
+            "set -- ~/; cat $1.mu\\\nreo/credentials.json",
+            "D2=~/; E2=; cat $D2$E2.mu\\\nreo/credentials.json",
+            "D2=~/; cat ${D2}.mu\\\nreo/credentials.json",
+            "D2=~/; cat $D2.\\\nmureo/credentials.json",
+            "D2=~/; cat $D2.m\\\nur\\\neo/credentials.json",
+            'D2=~/; cat $D2.mure"o"/credentials.json',
+            "D2=~/; cat $D2.mur'e'o/credentials.json",
+            "D2=~/; cat $D2.mure?/credentials.json",
+            'D2=~/; cat "$D2".mure[o]/credentials.json',
+            "set -- ~/; cat $1.mure{o,x}/credentials.json",
+            "cat $(printf '%s' ~/).mu\\\nreo/credentials.json",
+            "cat `printf '%s' ~/`.mure?/credentials.json",
+            # ...and the plain forms still deny through the shell layer.
+            "cat ~/.mureo/credentials.json",
+            "cat ~/.mure?/credentials.json",
+            "D=~/; cat $D.mure?/credentials.json",
+            "cat $(printf '%s.mure?/credentials.json' ~/)",
+        ],
+    )
+    def test_denies_through_the_shell(self, fake_home: Path, command: str) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # Quoted metacharacters are ordinary characters: a regex, a
+            # literal argument, a path that opens nothing.
+            "sed 's/.*//' notes.txt",
+            "sed -e 's|.*/||' paths.txt",
+            "find . -name '.*' -maxdepth 1",
+            "grep -rn '.*TODO' mureo/",
+            'cat "$HOME/.mure?/credentials.json"',
+            "cat '~/.mure?/credentials.json'",
+            # Everyday globbing, which cannot reach a dotfile.
+            "ls *",
+            "rm -rf build/*",
+            "node --test tests/js/*.test.js",
+            "ls -d .git*",
+            # Inside single quotes a backslash is an ordinary character, so
+            # this is a name with a newline in it, not a continuation, and
+            # it opens nothing.
+            "cat '~/.mu\\\nreo/credentials.json'",
+            # Brace usage that is not an attempt at the directory. The
+            # refusal on unresolved structure must not reach these: the
+            # awk/jq bodies are quoted, `{}` has no comma, and eight groups
+            # sit inside the expansion budget.
+            "awk '{print $1}' data.txt",
+            "find . -name '*.pyc' -exec rm {} ;",
+            "mkdir -p build/{lib,bin,share}",
+            "mv report.{txt,md}",
+            "mv file{1..10}.txt archive/",
+            # A bare sequence group, which is a common idiom and denied
+            # until the range was consulted: integers hold no dot, and a
+            # character range holds one only if it spans ASCII 46.
+            "echo {1..100}",
+            "for i in {1..5}; do touch file$i.txt; done",
+            "printf '%s\\n' {A..Z}",
+            "touch file{1..20}.log",
+            "mkdir -p test{1..3}/{a..c}",
+            "echo {a..z}{0..9}",
+            "mkdir -p a/{1,2}/b/{3,4}/c/{5,6}/d/{7,8}",
+            "kubectl get pods -o jsonpath='{.items[0].metadata.name}'",
+            # Braces on separate lines of a multi-line command must not pair
+            # up across the newline and swallow what lies between them.
+            "echo '{' > a.json\necho '}' >> a.json",
+            # A continuation that only wraps a long line.
+            "ls -la \\\n  ~/project",
+            # mureo's own identifiers, including inside quotes.
+            "gh release create v0.10.44 --notes 'adds window.MUREO_REPORTS_FORMAT'",
+            "pip install --index-url https://pkgs.mureo.jp/simple/ mureo-agency",
+            "echo user@pkgs.mureo.jp",
+        ],
+    )
+    def test_allows_through_the_shell(self, fake_home: Path, command: str) -> None:
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == "", command
+
+    @pytest.mark.parametrize(
+        "raw_stdin",
+        [
+            "{not json",
+            "[]",
+            '{"tool_input": "not a dict"}',
+            "\x00\x01\x02",
+        ],
+    )
+    def test_malformed_input_denies_rather_than_escapes(
+        self, fake_home: Path, raw_stdin: str
+    ) -> None:
+        """An exception in the payload is a bypass, not a crash.
+
+        Exit 1 is a *non-blocking* hook error in both hosts, so a payload
+        that raises lets the tool call proceed. Anything the guard cannot
+        parse must therefore deny.
+        """
+        proc = run_guard_in_shell(
+            _bash_guard_command(), None, fake_home, raw_stdin=raw_stdin
+        )
+        assert deny_decision(proc) == "deny", raw_stdin
+        assert proc.returncode == 0, proc.stderr
+
+    def test_path_guard_malformed_input_denies(self, fake_home: Path) -> None:
+        proc = run_guard_in_shell(
+            _path_guard_command(), None, fake_home, raw_stdin="{not json"
+        )
+        assert deny_decision(proc) == "deny"
+        assert proc.returncode == 0
+
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason=(
+            "the trigger is POSIX-specific: os.path.realpath raises on an "
+            "embedded NUL there, while on Windows it returns and the path "
+            "simply does not resolve under ~/.mureo, so there is no "
+            "exception to escape. The property this demonstrates — an "
+            "exception denies rather than exits 1 — is asserted on every "
+            "platform by the malformed-stdin tests above, for both guards"
+        ),
+    )
+    def test_path_guard_unusable_path_denies(self, fake_home: Path) -> None:
+        """``realpath`` raises on an embedded NUL — that must not fail open."""
+        proc = run_guard_in_shell(
+            _path_guard_command(),
+            {"file_path": "\x00/x/.mureo/credentials.json"},
+            fake_home,
+            tool_name="Read",
+        )
+        assert deny_decision(proc) == "deny"
+        assert proc.returncode == 0
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cat ~/{-..0}mureo/credentials.json",
+            "echo {-..0}",
+            "echo {a..z..2}",
+        ],
+    )
+    def test_denies_sequence_syntax_it_does_not_recognise(
+        self, fake_home: Path, command: str
+    ) -> None:
+        """Unrecognised sequence syntax is refused rather than reasoned about.
+
+        These are over-blocks, recorded as such. Bash expands a sequence
+        only when both endpoints are integers or single letters, so
+        ``{-..0}`` is not a sequence at all and stays literal — none of
+        these reaches the directory, and none of them is something a person
+        types. The guard does not parse the syntax and does not try to: it
+        reads what it cannot resolve conservatively, which is the same rule
+        that closed the nesting cliff.
+        """
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # The shell's own glob options are not in the command text. With
+            # dotglob set — here, or in an earlier call on the persistent
+            # shell, or in the user's rc file — `*` reaches dotfiles.
+            "shopt -s dotglob; cat ~/*/credentials.json",
+            # The leading dot is produced at runtime, so the text never
+            # contains a dot-anchored component to test.
+            "cat ~/$(printf '.')mureo/credentials.json",
+            "cat ~/$(printf '.')mure?/credentials.json",
+            # The name is assembled by a previous command.
+            "cat ~/$P/credentials.json",
+            # Another notation has to be decoded first.
+            "cat ~/$'\\x2emureo'/credentials.json",
+        ],
+    )
+    def test_known_open_bypasses(self, fake_home: Path, command: str) -> None:
+        """The bypasses this guard does not close, pinned so they cannot grow.
+
+        All but one were run against a throwaway HOME and printed the
+        credentials file; the exception is ``cat ~/$P/x``, which reads it
+        only once an earlier call has set ``P`` — the point of the row is
+        that the name is nowhere in the text. They are here so the open
+        surface is a list someone has to edit, rather than something a
+        reviewer discovers: closing one means deleting its row and saying
+        so in the module docstring.
+
+        What they have in common is that the text handed to the guard does
+        not contain the thing that reaches the filesystem — it is produced
+        later, by the shell's options, by another program, or by decoding
+        another notation. No inspection of the command text can decide them;
+        see the module docstring in ``mureo/credential_guard.py``.
+        """
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == "", f"now denied, update the docstring: {command}"
 
 
 # ---------------------------------------------------------------------------
