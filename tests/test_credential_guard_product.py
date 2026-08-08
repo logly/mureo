@@ -141,7 +141,7 @@ class TestNestingDepth:
         return "cat ~/." + inner + "/credentials.json"
 
     @pytest.mark.parametrize("alts", [2, 3, 5])
-    @pytest.mark.parametrize("depth", [1, 2, 5, 8, 9, 10, 11, 12, 16, 20])
+    @pytest.mark.parametrize("depth", list(range(1, 21)))
     def test_denies_at_every_depth(self, tmp_path: Path, depth: int, alts: int) -> None:
         home = Path(build_home(str(tmp_path)))
         command = self._nested(depth, alts)

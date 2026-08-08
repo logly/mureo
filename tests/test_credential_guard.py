@@ -479,10 +479,10 @@ class TestGuardThroughARealShell:
             "}}}}}}}}/ /tmp/dest/",
             # Three and five alternatives per level reach the budget sooner.
             "cat ~/.{a,b,{c,d,{e,f,{g,h,{i,j,{k,l,{m,n,mureo}}}}}}}/creds",
-            # A character range that spans ASCII 46 can produce the dot
-            # itself, so the group can supply the leading dot of a dotfile.
+            # A letter range covering `m`. This one really does expand onto
+            # the directory; `{-..0}` below does not, and is a row in the
+            # conservative-refusal test instead.
             "cat ~/.{l..n}ureo/credentials.json",
-            "cat ~/{-..0}mureo/credentials.json",
             # A line continuation is deleted, backslash and newline both,
             # before the shell tokenises anything — so the name is spelled
             # across two lines and is contiguous by the time it is used.
@@ -630,6 +630,33 @@ class TestGuardThroughARealShell:
         )
         assert deny_decision(proc) == "deny"
         assert proc.returncode == 0
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cat ~/{-..0}mureo/credentials.json",
+            "echo {-..0}",
+            "echo {a..z..2}",
+        ],
+    )
+    def test_denies_sequence_syntax_it_does_not_recognise(
+        self, fake_home: Path, command: str
+    ) -> None:
+        """Unrecognised sequence syntax is refused rather than reasoned about.
+
+        These are over-blocks, recorded as such. Bash expands a sequence
+        only when both endpoints are integers or single letters, so
+        ``{-..0}`` is not a sequence at all and stays literal — none of
+        these reaches the directory, and none of them is something a person
+        types. The guard does not parse the syntax and does not try to: it
+        reads what it cannot resolve conservatively, which is the same rule
+        that closed the nesting cliff.
+        """
+        proc = run_guard_in_shell(
+            _bash_guard_command(), {"command": command}, fake_home
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert deny_decision(proc) == "deny", command
 
     @pytest.mark.parametrize(
         "command",

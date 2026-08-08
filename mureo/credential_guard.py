@@ -216,13 +216,16 @@ Two guards are installed:
     eight groups in one command, or an expansion whose normalized text
     exceeds 200 KB;
   - a command longer than 64 KB, which is refused unread (see below);
-  - a sequence whose character range spans ASCII 46, since one of the
-    things it produces is the dot itself: ``echo {-..0}`` denies.  Ranges
-    that cannot produce a dot are read exactly, so ``echo {1..100}``,
-    ``for i in {1..5}``, ``printf '%s' {A..Z}`` and ``touch
-    file{1..20}.log`` are allowed — they were denied until the range was
-    consulted, which is the kind of over-block that teaches people to turn
-    a guard off.
+  - sequence syntax this does not recognise — a three-part ``{a..z..2}``,
+    an endpoint that is neither an integer nor a single letter — which is
+    refused rather than reasoned about.  Bash expands a sequence only for
+    those two endpoint kinds, so ``{-..0}`` is not a sequence at all and
+    stays literal; the refusal costs nothing real.  Sequences that *are*
+    recognised are read exactly, so ``echo {1..100}``, ``for i in
+    {1..5}``, ``printf '%s' {A..Z}`` and ``touch file{1..20}.log`` are
+    allowed — every one of them denied until the endpoints were consulted,
+    which is the kind of over-block that teaches people to turn a guard
+    off.
 
   Brace expansion itself used to be on this list — ``mv .{foo,bar}`` and
   ``rm .{a,b,c}`` denied although neither can name the directory.
@@ -281,10 +284,12 @@ Two guards are installed:
     the marker file and then asking the guard: all 2698 read it, all 2698
     deny.  The default run checks an evenly-strided sample of 118, so
     every commit defends the property even without the slow pass;
-  - the nesting cliff has its own table, at depths 1 to 20 with two, three
-    and five alternatives per level, run by default.  Before the refusal
-    rule, 38 of those cells were allowed while bash read the file — the
-    cliff sat at depth 11, 8 and 6 respectively;
+  - the nesting cliff has its own table: every depth from 1 to 20 with
+    two, three and five alternatives per level, 60 cells, run by default.
+    Each asserts that the command really reads the marker file *and* that
+    the guard denies it.  Against the commit before the refusal rule the
+    deeper cells were allowed while bash read the file, the cliff falling
+    at depth 11 for two alternatives per level and earlier for more;
   - the resource bounds have their own tests: expansion bombs up to
     multi-megabyte commands must still answer, and the 64 KB boundary must
     refuse on one side and not the other.
@@ -515,9 +520,8 @@ _COLLAPSE = "re.sub('[*]/[a-z0-9_]*', '*/', t)"
 # bash leaves alone — a group is expandable only with a comma or a `..`.
 # `al` gives its alternatives; a sequence (`{l..n}`) is not a list of
 # alternatives this can enumerate, and neither is a group with absurdly many
-# of them, so those fall back to the two coarse readings — `*` and `.*` —
-# which between them cover both "supplies a leading dot" and "does not".
-# That pair is what the old single guess was missing.
+# of them, so those are read coarsely — see `sq` below for which of the two
+# coarse readings applies and why.
 #
 # `ga` excludes the newline from a group's contents, because an unquoted
 # newline is a token separator: bash will not expand a brace group across
@@ -528,12 +532,20 @@ _BRACE_HELPERS = (
     "ga='[{][^{}' + nl + ']*[}]'; "
     "fe=lambda s: next((w for w in re.finditer(ga, s)"
     " if ',' in w.group() or '..' in w.group()), None); "
-    # A sequence yields integers or single characters. Integers hold no dot,
-    # and a character range holds one only if it spans ASCII 46 — so only
-    # then can the group supply the leading dot of a dotfile, and only then
-    # is the `.*` reading needed. Without this, `echo {1..100}` folded to
-    # `.*` and denied, which is a common idiom and not an attempt at
-    # anything.
+    # A sequence bash recognises has endpoints that are integers or single
+    # *letters*, and neither can be a dot: an integer never contains one,
+    # and a letter range lies within ASCII 65..122, well clear of 46. So a
+    # recognised sequence cannot supply the leading dot of a dotfile and
+    # `*` alone reads it. Without that, `echo {1..100}` folded to `.*` and
+    # denied — a common idiom, and not an attempt at anything.
+    #
+    # The `.*` reading is kept for everything this does not recognise as a
+    # sequence: a three-part `{a..z..2}`, a range with an endpoint that is
+    # neither, anything malformed. Those are refused conservatively rather
+    # than reasoned about — bash leaves most of them literal (`{-..0}` is
+    # not a sequence at all and stays as written), so the cost is an
+    # over-block on text nobody types and the benefit is not having to be
+    # right about a syntax this does not parse.
     "sq=lambda v: (lambda e: ['*'] if len(e)==2 and"
     " ((e[0].lstrip(chr(45)).isdigit() and e[1].lstrip(chr(45)).isdigit())"
     " or (len(e[0])==1 and len(e[1])==1 and not"
@@ -581,6 +593,16 @@ _PATTERN_COMPONENT = "'[.][]a-z0-9_.*?[^{},' + chr(33) + '-]*'"
 
 _BASH_REASON = "mureo credential guard: commands that can reach ~/.mureo are blocked"
 
+# A refusal is not a match, and the agent reading the reason acts on the
+# difference: told the command references ~/.mureo, it goes looking for a
+# reference that is not there and retries. This one says what actually
+# happened — the command was too long to read, so nothing was concluded
+# about it.
+_OVERSIZE_REASON = (
+    "mureo credential guard: command over 65536 bytes was refused unread, "
+    "not analysed; shorten it or run it in pieces"
+)
+
 _BASH_GUARD_CODE = (
     "import sys,json,re,os,fnmatch,functools,itertools; "
     # Fail closed: an escaping exception exits 1, which both hosts treat as a
@@ -611,11 +633,13 @@ _BASH_GUARD_CODE = (
     + "p=[x for s in ls for x in re.findall("
     "'(?:^|[^a-z0-9_])(' + " + _PATTERN_COMPONENT + " + ')', s)]; "
     "g=[x for x in p if set('*?[') & set(x) and fnmatch.fnmatchcase('.mureo', x)]; "
-    # `bg` and `un` first: what the guard could not read, and what it could
-    # not resolve, each deny on their own.
-    "b=bg or un or [s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g; "
+    # `un` first: structure the guard could not resolve denies on its own.
+    # `bg` is answered separately below, because it needs its own reason.
+    "b=un or [s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g; "
+    + _deny_expr(_OVERSIZE_REASON)
+    + " if bg else ("
     + _deny_expr(_BASH_REASON)
-    + " if b else None"
+    + " if b else None)"
 )
 
 
