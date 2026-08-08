@@ -213,7 +213,16 @@ Two guards are installed:
     ``awk '{printf "%.2f", $1}'``, ``grep '100%'``, a commit message
     reading ``30% faster``) that is the only one that does;
   - brace structure the expansion budget could not resolve: more than
-    eight groups in one command, or an expansion of more than 400 strings.
+    eight groups in one command, or an expansion whose normalized text
+    exceeds 200 KB;
+  - a command longer than 64 KB, which is refused unread (see below);
+  - a sequence whose character range spans ASCII 46, since one of the
+    things it produces is the dot itself: ``echo {-..0}`` denies.  Ranges
+    that cannot produce a dot are read exactly, so ``echo {1..100}``,
+    ``for i in {1..5}``, ``printf '%s' {A..Z}`` and ``touch
+    file{1..20}.log`` are allowed — they were denied until the range was
+    consulted, which is the kind of over-block that teaches people to turn
+    a guard off.
 
   Brace expansion itself used to be on this list — ``mv .{foo,bar}`` and
   ``rm .{a,b,c}`` denied although neither can name the directory.
@@ -254,29 +263,37 @@ Two guards are installed:
   The first two are not closable by inspecting command text, and no
   further rule should be added pretending otherwise.
 
-  Two differential tests against a real bash back that up, both checking
-  what the shell actually reads rather than what the rule thinks:
+  What is actually checked, and where — every number below is produced by
+  committed code, not by a measurement someone once took:
 
-  - an exhaustive product of {how the parent directory is supplied:
-    literal, ``$HOME``, ``"$HOME"``, ``$VAR``, ``"$VAR"``, ``${VAR}``,
-    ``$VAR$EMPTY``, ``$1``, ``$(cmd)``, backtick} x {how the name is
-    broken: not at all, continuation, two continuations, single-quote
-    split, single-quoted character, double-quote split, double-quoted
-    character, escaped character, class, wildcard, brace here, brace tail,
-    brace whole, sequence, star} x {what the breaking form contains: plain,
-    an alternative with its own dot, with two, a backup-looking name, a
-    nested group, a metacharacter, a leading dot} x {how deeply it is
-    nested: 0, 1, 2, 3, 5, 8, 9, 11, 14, 20 levels} x {where}.  All 2698
-    members read the credentials file, and all 2698 deny;
-  - the nesting cliff specifically, at every depth from 1 to 20 with two,
-    three and five alternatives per level: 60 cells, every one of which
-    reads the file, and every one denied.  Before the refusal rule 38 of
-    them were allowed — the cliff sat at depth 11, 8 and 6 respectively;
-  - a random fuzz that spells the name one character at a time in the same
-    forms: of 2500 commands, 1995 read the file — 825 with the name
-    written out in the text, 0 through; 1170 assembled at runtime, 172
-    through, every one of them producing the leading dot from a
-    substitution.
+  - ``tests/credential_guard_product.py`` builds a product of {how the
+    parent directory is supplied: literal, ``$HOME``, ``"$HOME"``,
+    ``$VAR``, ``"$VAR"``, ``${VAR}``, ``$VAR$EMPTY``, ``$1``, ``$(cmd)``,
+    backtick} x {how the name is broken: not at all, continuation, two
+    continuations, single-quote split, single-quoted character,
+    double-quote split, double-quoted character, escaped character, class,
+    wildcard, brace here, brace tail, brace whole, sequence, star} x {what
+    the breaking form contains: plain, an alternative with its own dot,
+    with two, a backup-looking name, a nested group, a metacharacter, a
+    leading dot} x {how deeply it nests: 0, 1, 2, 3, 5, 8, 9, 11, 14, 20}
+    x {where}.  2698 members.  ``pytest -m slow`` runs all of them,
+    executing each in a throwaway ``HOME`` to confirm it really does read
+    the marker file and then asking the guard: all 2698 read it, all 2698
+    deny.  The default run checks an evenly-strided sample of 118, so
+    every commit defends the property even without the slow pass;
+  - the nesting cliff has its own table, at depths 1 to 20 with two, three
+    and five alternatives per level, run by default.  Before the refusal
+    rule, 38 of those cells were allowed while bash read the file — the
+    cliff sat at depth 11, 8 and 6 respectively;
+  - the resource bounds have their own tests: expansion bombs up to
+    multi-megabyte commands must still answer, and the 64 KB boundary must
+    refuse on one side and not the other.
+
+  Older figures that once appeared here — a random single-character fuzz —
+  are gone rather than restated, because nothing in the repository
+  reproduces them.  A number in a docstring with no committed artifact is
+  a claim about the past, not a property of the code; if a measurement is
+  worth quoting it is worth committing the thing that produces it.
 
   Each round of bugs here has been a product of axes the generator only
   walked the margins of.  It emitted continuations and it emitted
@@ -308,6 +325,21 @@ crash: ``sys.excepthook`` is set to print the deny JSON and exit 0.  This
 was not academic — malformed stdin made both payloads exit 1 and let the
 call through, as did a path with an embedded NUL, which makes
 ``os.path.realpath`` raise.
+
+Failing closed is about time as well as exceptions.  ``sys.excepthook``
+catches what Python raises; it cannot catch the host killing a hook that
+overruns, and that process exits non-zero *without* printing the deny
+JSON — which is precisely the non-blocking case where the tool call
+proceeds.  A guard that is merely slow is a guard that is bypassed, and a
+4 MB command of nested brace groups used to take it there: no answer in
+45 seconds, 1.95 GB resident.  Three bounds keep that shut, all of them
+cheap: the command is refused unread above 64 KB, expansion is budgeted on
+total normalized bytes rather than on how many candidates there are, and a
+pass that has to revert stops the loop instead of letting the remaining
+seven recompute and discard the same expansion.  Multi-megabyte bombs now
+answer in about a fifth of a second.  Nothing legitimate comes near 64 KB;
+if that ever stops being true, raise the bound deliberately rather than
+letting the work grow to fit.
 
 The payloads run under whatever ``python3`` the host finds on PATH, which
 need not be the interpreter mureo itself was installed with.  The Bash
@@ -455,7 +487,7 @@ _NORMALIZE = (
     "''.join('' if (k==0 and x in q1+q2+bs) or (k==1 and x==q1)"
     " or (k==2 and x in q2+bs) or (k>2 and x==nl)"
     " else ('*/' if x in dl+tk+pc else (ho if k and not m and x in mt else x))"
-    " for x,(k,m) in zip(c,st))"
+    " for x,(k,m) in zip(cc,st))"
 )
 
 # An expansion swallows the identifier run that names it: `$D` and `%s` are
@@ -496,8 +528,19 @@ _BRACE_HELPERS = (
     "ga='[{][^{}' + nl + ']*[}]'; "
     "fe=lambda s: next((w for w in re.finditer(ga, s)"
     " if ',' in w.group() or '..' in w.group()), None); "
-    "al=lambda w: (lambda v: v if ',' in w.group() and len(v)<=64 else ['*','.*'])"
-    "(w.group()[1:-1].split(',')); "
+    # A sequence yields integers or single characters. Integers hold no dot,
+    # and a character range holds one only if it spans ASCII 46 — so only
+    # then can the group supply the leading dot of a dotfile, and only then
+    # is the `.*` reading needed. Without this, `echo {1..100}` folded to
+    # `.*` and denied, which is a common idiom and not an attempt at
+    # anything.
+    "sq=lambda v: (lambda e: ['*'] if len(e)==2 and"
+    " ((e[0].lstrip(chr(45)).isdigit() and e[1].lstrip(chr(45)).isdigit())"
+    " or (len(e[0])==1 and len(e[1])==1 and not"
+    " (min(ord(e[0]),ord(e[1]))<=46<=max(ord(e[0]),ord(e[1])))))"
+    " else ['*','.*'])(v.split('..')); "
+    "al=lambda w: (lambda v: v if ',' in w.group() and len(v)<=64"
+    " else sq(w.group()[1:-1]))(w.group()[1:-1].split(',')); "
     "ex=lambda s: (lambda w: [s[:w.start()] + a + s[w.end():] for a in al(w)]"
     " if w else [s])(fe(s)); "
 )
@@ -522,9 +565,11 @@ _BRACE_HELPERS = (
 # What is left is a command with more than eight brace groups, or one whose
 # expansion exceeds 400 strings, and neither is a thing anyone types.
 _EXPAND = (
-    "ls=functools.reduce(lambda acc,_: (lambda n: n if len(n)<=400 else acc)"
-    "([y for x in acc for y in ex(x)]), range(8), [t]); "
-    "un=[x for x in ls if fe(x)]; "
+    "rs=functools.reduce(lambda q,_: q if q[1] else"
+    " (lambda n: (q[0],True) if sum(map(len,n))>200000"
+    " else (n, n==q[0]))"
+    "([y for x in q[0] for y in ex(x)]), range(8), ([t],False)); "
+    "ls=rs[0]; un=[x for x in ls if fe(x)]; "
 )
 
 # Source of a python expression yielding the regex for one path component
@@ -544,8 +589,14 @@ _BASH_GUARD_CODE = (
     "sys.stdout.flush(), os._exit(0)); "
     "d=json.loads(sys.stdin.read() or '{}'); "
     "c=str((d.get('tool_input') or {}).get('command') or '').lower(); "
+    # A guard that is merely slow is a guard that is bypassed: the host
+    # kills a hook that overruns and that process exits non-zero without
+    # printing the deny JSON, which is the non-blocking case. So an
+    # oversized command is refused before any of the work below, and every
+    # later step runs on the empty string instead.
+    "bg=len(c)>65536; cc='' if bg else c; "
     + _CHARS
-    + "st=list(itertools.accumulate(c, "
+    + "st=list(itertools.accumulate(cc, "
     + _QUOTE_STEP
     + ", initial=(0,0))); "
     # One reading of the command, built once. Brace expansion turns it into
@@ -560,8 +611,9 @@ _BASH_GUARD_CODE = (
     + "p=[x for s in ls for x in re.findall("
     "'(?:^|[^a-z0-9_])(' + " + _PATTERN_COMPONENT + " + ')', s)]; "
     "g=[x for x in p if set('*?[') & set(x) and fnmatch.fnmatchcase('.mureo', x)]; "
-    # `un` first: structure the guard could not resolve denies on its own.
-    "b=un or [s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g; "
+    # `bg` and `un` first: what the guard could not read, and what it could
+    # not resolve, each deny on their own.
+    "b=bg or un or [s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g; "
     + _deny_expr(_BASH_REASON)
     + " if b else None"
 )

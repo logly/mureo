@@ -479,6 +479,10 @@ class TestGuardThroughARealShell:
             "}}}}}}}}/ /tmp/dest/",
             # Three and five alternatives per level reach the budget sooner.
             "cat ~/.{a,b,{c,d,{e,f,{g,h,{i,j,{k,l,{m,n,mureo}}}}}}}/creds",
+            # A character range that spans ASCII 46 can produce the dot
+            # itself, so the group can supply the leading dot of a dotfile.
+            "cat ~/.{l..n}ureo/credentials.json",
+            "cat ~/{-..0}mureo/credentials.json",
             # A line continuation is deleted, backslash and newline both,
             # before the shell tokenises anything — so the name is spelled
             # across two lines and is contiguous by the time it is used.
@@ -556,6 +560,15 @@ class TestGuardThroughARealShell:
             "mkdir -p build/{lib,bin,share}",
             "mv report.{txt,md}",
             "mv file{1..10}.txt archive/",
+            # A bare sequence group, which is a common idiom and denied
+            # until the range was consulted: integers hold no dot, and a
+            # character range holds one only if it spans ASCII 46.
+            "echo {1..100}",
+            "for i in {1..5}; do touch file$i.txt; done",
+            "printf '%s\\n' {A..Z}",
+            "touch file{1..20}.log",
+            "mkdir -p test{1..3}/{a..c}",
+            "echo {a..z}{0..9}",
             "mkdir -p a/{1,2}/b/{3,4}/c/{5,6}/d/{7,8}",
             "kubectl get pods -o jsonpath='{.items[0].metadata.name}'",
             # Braces on separate lines of a multi-line command must not pair
