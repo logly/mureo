@@ -570,57 +570,12 @@ def map_negative_keyword(criterion: Any) -> dict[str, Any]:
     }
 
 
-# === Negative Placements (delivery-surface exclusions, #544) ===
-
-
-def map_negative_placement(
-    criterion: Any,
-    level: str,
-    campaign: _HasIdAndName | None = None,
-    ad_group: _HasIdAndName | None = None,
-) -> dict[str, Any]:
-    """Shape one negative placement / app / app-category criterion row.
-
-    ``level`` is ``"campaign"`` or ``"ad_group"`` — the two are separate
-    Google Ads resources and an operator has to know which one an exclusion
-    lives on before removing it. ``type`` is mureo's tool-facing exclusion
-    vocabulary; ``criterion_type`` keeps the raw Google Ads enum name so a
-    row is still readable if Google adds a type mureo does not map yet.
-    """
-    # Imported here rather than at module import time: the placements mixin
-    # imports this module, so a module-level import would close a cycle.
-    from mureo.google_ads._placements import CRITERION_TYPE_TO_KIND
-
-    criterion_type = map_enum_name(criterion.type_, CRITERION_TYPE_MAP)
-    kind = CRITERION_TYPE_TO_KIND.get(criterion_type)
-    if kind == "website":
-        value = _safe_str(criterion.placement, "url") or None
-    elif kind == "mobile_application":
-        value = _safe_str(criterion.mobile_application, "app_id") or None
-    elif kind == "mobile_app_category":
-        value = (
-            _safe_str(criterion.mobile_app_category, "mobile_app_category_constant")
-            or None
-        )
-    else:
-        value = None
-    app_name = _safe_str(criterion.mobile_application, "name") or None
-    result: dict[str, Any] = {
-        "level": level,
-        "criterion_id": str(criterion.criterion_id),
-        "type": kind,
-        "criterion_type": criterion_type,
-        "value": value,
-        "display_name": app_name if kind == "mobile_application" else value,
-        "negative": bool(getattr(criterion, "negative", True)),
-    }
-    if campaign is not None:
-        result["campaign_id"] = str(campaign.id)
-        result["campaign_name"] = campaign.name
-    if ad_group is not None:
-        result["ad_group_id"] = str(ad_group.id)
-        result["ad_group_name"] = ad_group.name
-    return result
+# === Negative Placements / placement performance ===
+#
+# ``map_negative_placement`` (#544) and ``map_placement_performance``
+# (#547) live in :mod:`mureo.google_ads._placement_mappers`, split out
+# the way ``_placements.py`` was split out of the client once this module
+# reached the project's 800-line file budget. Import them from there.
 
 
 # === Search Terms Report ===

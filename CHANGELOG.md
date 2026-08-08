@@ -9,6 +9,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A bulk exclusion now says how much of your delivery it removes, before it
+  is applied — and a threshold in `STRATEGY.md` can refuse it** (#547). mureo
+  would happily apply an exclusion / block / negative-keyword batch without
+  telling the operator that the inventory it is about to remove carried 94% of
+  the last 30 days of impressions. Of everything filed from the incident
+  post-mortem behind #544–#551, this is the only item that prevents the
+  originating mistake rather than shortening the recovery from it: the
+  operator's intent was reasonable and the direction was correct — the
+  magnitude was not visible at the moment of the decision.
+
+  Three surfaces, of deliberately different strength, because MCP has no
+  interposed confirmation step to put the number in:
+
+  | Surface | When | Strength |
+  |---|---|---|
+  | `## Guardrails` `max_delivery_share_removed_pct` / `max_cumulative_delivery_share_removed_pct` / `block_exclusions_without_impact_data` | before dispatch | **hard** — the call is refused before any API request |
+  | `analysis_exclusion_impact_preview` (new tool, read-only) | whenever the agent asks | advisory — as strong as the agent's compliance |
+  | Notice appended to an allowed exclusion's own result | after that call | records the measured size, so the **next** pass in an incremental sequence is not made blind |
+
+  **Enforced in the dispatcher, not in `StrategyPolicyGate`.** Sizing an
+  exclusion needs one *awaited* read of the account's own recent delivery, and
+  the `PolicyGate` v1 ABI is synchronous by design and must stay pure and fast
+  because it runs on every tool call. So the rules are parsed by the gate's own
+  parser — one `## Guardrails` vocabulary, one parser — and enforced in
+  `mureo/mcp/exclusion_preflight.py`, which runs before `_dispatch_tool`. With
+  none of the three keys written the pre-flight returns before it builds a
+  client: no report request is issued and behaviour is byte-identical.
+  `MUREO_DISABLE_EXCLUSION_PREFLIGHT=1` turns it off.
+
+  **It catches the incremental case, which is the one that did the damage.**
+  The estimate reports both the share this batch removes and the share the
+  account's **whole** standing exclusion set removes once it lands. An entity
+  excluded a week ago still carries its pre-exclusion impressions inside a
+  30-day window, so a fortnight of individually-small passes shows up in the
+  cumulative figure even when no single pass trips the incremental cap. The
+  honest limit: an exclusion older than the window contributed nothing to it
+  and is invisible, so the cumulative share is a lower bound — and it is
+  withheld entirely (never reported as zero) where mureo cannot list the
+  standing set.
+
+  **Per-platform, and honest where it cannot answer:**
+
+  | Surface | Attributable? |
+  |---|---|
+  | `google_ads_negative_placements_add` | **Yes** — new `group_placement_view` read (`get_placement_performance`). A `mobile_app_category` in the same batch is not attributable (a category is not a placement that serves), so a mixed batch reports `partial` |
+  | `google_ads_negative_keywords_add` / `_add_to_ad_group` | **Yes** — `search_term_view`, matched per `EXACT` / `PHRASE` / `BROAD`. Negative keywords do not match close variants and neither does the estimate, so it is a lower bound |
+  | `meta_ads_excluded_placements_set` | **No** — no Meta insights breakdown attributes past delivery to publisher categories, publisher block lists or brand-safety content types (`publisher_platform` / `platform_position` are a different exclusion surface). Reported `unknown` |
+  | Yahoo / LINE / SmartNews / LOGLY / Amazon | **Provider-declared** — a plugin or bridge registers its own surface via `register_exclusion_surface`; mureo registers nothing on their behalf rather than guessing a bridged tool's argument shape |
+
+  `unknown` is an acceptable output; a silent "no impact" is not. Coverage is
+  `measured` / `partial` / `unknown`, `incremental` is `null` rather than a row
+  of zeroes when nothing can be attributed, and a window that served nothing
+  reports `share_pct: null` rather than `0`. An operator who would rather
+  refuse than proceed blind sets `block_exclusions_without_impact_data: true`.
+
+  `analysis_exclusion_impact_preview` also takes `excluded_entities` +
+  `delivery_records` directly, in which case it **reaches no platform API at
+  all** — so a Yahoo placement URL list, a LOGLY adspot block or an Amazon
+  negative-targeting batch is auditable whenever the agent can pull that
+  platform's own report. Its `would_block` is computed by the same function the
+  dispatcher enforces, so the advertised verdict and the enforced one cannot
+  drift.
+
+  **A rule that cannot fire says so.** The cumulative figure is withheld on
+  ad-group-scoped writes, so `max_cumulative_delivery_share_removed_pct`
+  enforces nothing there — the scope the incident happened at. Rather than
+  leave that to a document, mureo names the inert rule at the moment it cannot
+  fire: `unevaluated_rules` in the preview tool's response, and a `NOT ENFORCED
+  on this call:` line naming the backstop to add in the notice on the
+  exclusion's own result.
+
+  New `## Guardrails` keys (all optional, all default off):
+  `max_delivery_share_removed_pct`,
+  `max_cumulative_delivery_share_removed_pct`,
+  `exclusion_impact_window_days` (default 30),
+  `exclusion_impact_metrics` (default `impressions`),
+  `block_exclusions_without_impact_data`.
+
 - **Delivery-surface exclusions are now an operation mureo can perform, and
   therefore one it can guard, record and reverse** (#544). Google Ads
   campaign / ad-group **negative placement criteria** — excluded websites,

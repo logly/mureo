@@ -334,6 +334,15 @@ kills delivery can be tied to a date and undone, instead of being reconstructed 
 - `add` -- Exclude websites / apps / app categories. **Requires user confirmation.** Always
   show the count and the level before writing — a large batch can take a Display campaign
   to zero impressions.
+
+  **Size it first (#547).** Call `analysis_exclusion_impact_preview` with
+  `tool="google_ads_negative_placements_add"` and the exact `arguments` you are about to
+  send. It reports the share of the last N days' impressions / clicks / cost / conversions
+  those placements carried, both for this batch and cumulatively for every standing
+  exclusion once it lands, plus `would_block`. Show the operator the share, not just the
+  count. If STRATEGY.md `## Guardrails` carries `max_delivery_share_removed_pct` (or
+  `max_cumulative_delivery_share_removed_pct`), an over-cap batch is **refused before it
+  reaches the API** and the refusal names the measured share.
   ```
   Required: customer_id (string), exactly one of campaign_id / ad_group_id (string),
             placements (array of {type: "website" | "mobile_application" | "mobile_app_category",

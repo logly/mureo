@@ -215,6 +215,11 @@ keys (all optional):
 - blocked_operations: google_ads_keywords_remove, meta_ads_audiences_delete
 - block_learning_resets: false
 - block_learning_resets_during_incident: true
+- max_delivery_share_removed_pct: 25
+- max_cumulative_delivery_share_removed_pct: 60
+- exclusion_impact_window_days: 30
+- exclusion_impact_metrics: impressions, cost
+- block_exclusions_without_impact_data: false
 ```
 
 - `max_daily_budget_per_campaign` — a budget mutation proposing more than this
@@ -310,6 +315,54 @@ keys (all optional):
   snapshot (a policy gate runs on every tool call and must not make network
   calls). Keep it fresh or the answer is `unknown` — which these rules treat as
   "refuse", not as "fine".
+
+### Exclusion delivery-impact rules (#547)
+
+The five keys below govern **bulk exclusions / blocks / negative keywords** —
+the operation that removes inventory rather than money. Before such a call is
+dispatched, mureo computes how much of the account's OWN recent delivery the
+batch removes and refuses it when it is over the cap. All five are optional and
+all default to off; with none of them written mureo issues no extra report
+request and behaves exactly as before.
+
+- `max_delivery_share_removed_pct` — refuse an exclusion batch whose entities
+  accounted for more than this share of the recent window. This is the rule
+  that stops "I tightened placements and delivery went to zero".
+- `max_cumulative_delivery_share_removed_pct` — refuse when the account's
+  **whole** standing exclusion set, including this batch, is over the cap. The
+  incident behind #547 was two weeks of individually-small passes, none of
+  which would have tripped the incremental cap.
+
+  **Do not write this one alone.** It needs the standing exclusion set, and
+  mureo cannot read that for an **ad group-scoped** write: campaign-level
+  exclusions also cover the ad group and are not reachable from the call's
+  arguments, and Google Ads exposes no ad group-level negative keyword
+  listing at all. On those calls the cumulative figure is withheld (`null`
+  with a reason) and this rule therefore enforces **nothing** — which is
+  exactly the scope the motivating incident happened at. Always pair it with
+  `max_delivery_share_removed_pct`, which is evaluated per batch, needs no
+  standing list, and so still fires there. When a rule you wrote could not be
+  evaluated, mureo says so on the call itself (`NOT ENFORCED on this call:`
+  in the appended notice, `unevaluated_rules` in
+  `analysis_exclusion_impact_preview`) — treat that line as a gap to close,
+  not as a pass.
+- `exclusion_impact_window_days` — the recent window (default 30, max 365).
+- `exclusion_impact_metrics` — which of `impressions` / `clicks` / `cost` /
+  `conversions` the caps apply to. Default `impressions`; any listed metric
+  over the cap refuses.
+- `block_exclusions_without_impact_data` — refuse an exclusion mureo cannot
+  size (coverage `unknown` or `partial`) instead of applying it blind. Default
+  `false`, because several real exclusion surfaces are structurally
+  unattributable (Meta publisher categories / block lists / brand-safety
+  content types have no insights breakdown). Even with it off, the measured —
+  or unmeasurable — verdict is appended to the call's own result, so an
+  exclusion is never applied *silently*.
+
+Call `analysis_exclusion_impact_preview` **before** any bulk exclusion to see
+the same numbers without applying anything. It also works for platforms mureo
+does not model: pass `excluded_entities` + `delivery_records` you fetched from
+that platform's own report and it reaches no API at all. Its `would_block`
+field is computed by the same rule the dispatcher enforces.
 
 Absent section (or an unparseable value) ⇒ no enforcement for that rule
 (fail-open); mureo never blocks on a rule the operator did not write. A boolean
