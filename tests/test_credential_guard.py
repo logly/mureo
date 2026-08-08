@@ -467,6 +467,18 @@ class TestGuardThroughARealShell:
             # and `{l..n}` covers `m` without the letter appearing anywhere.
             "cat ~/.{l..n}ureo/credentials.json",
             "cat ~/.mure{n..p}/credentials.json",
+            # Nested past the expansion budget. The budget used to end in a
+            # coarse fallback that left literal braces in the candidates —
+            # ordinary characters to fnmatch — so neither rule fired and the
+            # file was read. Unresolved structure now denies on its own.
+            "cat ~/.{z2,{z1,mureo}}/credentials.json",
+            "cat ~/.{z9,{z8,{z7,{z6,{z5,{z4,{z3,{z2,{z1,mureo}}}}}}}}}/creds",
+            "cat ~/.{z11,{z10,{z9,{z8,{z7,{z6,{z5,{z4,{z3,{z2,{z1,mureo}}}"
+            "}}}}}}}}/credentials.json",
+            "cp -r ~/.{z11,{z10,{z9,{z8,{z7,{z6,{z5,{z4,{z3,{z2,{z1,mureo}}}"
+            "}}}}}}}}/ /tmp/dest/",
+            # Three and five alternatives per level reach the budget sooner.
+            "cat ~/.{a,b,{c,d,{e,f,{g,h,{i,j,{k,l,{m,n,mureo}}}}}}}/creds",
             # A line continuation is deleted, backslash and newline both,
             # before the shell tokenises anything — so the name is spelled
             # across two lines and is contiguous by the time it is used.
@@ -535,6 +547,20 @@ class TestGuardThroughARealShell:
             # this is a name with a newline in it, not a continuation, and
             # it opens nothing.
             "cat '~/.mu\\\nreo/credentials.json'",
+            # Brace usage that is not an attempt at the directory. The
+            # refusal on unresolved structure must not reach these: the
+            # awk/jq bodies are quoted, `{}` has no comma, and eight groups
+            # sit inside the expansion budget.
+            "awk '{print $1}' data.txt",
+            "find . -name '*.pyc' -exec rm {} ;",
+            "mkdir -p build/{lib,bin,share}",
+            "mv report.{txt,md}",
+            "mv file{1..10}.txt archive/",
+            "mkdir -p a/{1,2}/b/{3,4}/c/{5,6}/d/{7,8}",
+            "kubectl get pods -o jsonpath='{.items[0].metadata.name}'",
+            # Braces on separate lines of a multi-line command must not pair
+            # up across the newline and swallow what lies between them.
+            "echo '{' > a.json\necho '}' >> a.json",
             # A continuation that only wraps a long line.
             "ls -la \\\n  ~/project",
             # mureo's own identifiers, including inside quotes.

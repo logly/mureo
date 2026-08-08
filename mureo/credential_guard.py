@@ -173,6 +173,30 @@ Two guards are installed:
   brace expansion at all; bash leaves ``{eo}`` literal, so the guard does
   too, and ``~/.mur{eo}`` is allowed because it opens nothing.
 
+  Expansion has a budget — eight passes, 400 strings — so a pathological
+  command cannot explode the hook.  **Whatever the budget does not resolve
+  is refused.**  Anything still holding an expandable group after the
+  passes denies on that ground alone, without being examined further.
+
+  That rule replaced a fallback that collapsed leftovers coarsely, and it
+  is worth saying plainly why, because the docstring claimed the fallback
+  "over-approximates rather than dropping candidates" and that was false.
+  Past ten levels of nesting the collapse left literal ``{`` and ``}`` in
+  the candidates, which ``fnmatch`` reads as ordinary characters, so
+  *neither* rule fired: ``cat ~/.{z11,{z10,…{z1,mureo}}}/…`` — ninety
+  characters, no exotic syntax — was allowed while bash read the file.  A
+  budget that shrugs is a bypass with a length requirement.  The general
+  form of the rule is: when the guard cannot compute what the shell would
+  produce, it denies.
+
+  What that refuses in practice is a command with more than eight brace
+  groups, or one whose expansion exceeds 400 strings.  Of twenty-one
+  brace-using everyday commands — ``awk '{print $1}'``, ``find . -exec rm
+  {} ;``, ``mkdir -p build/{lib,bin,share}``, ``mv file{1..10}.txt``,
+  ``jq '{name: .name}'``, eight groups on one line — exactly one is
+  refused: nine groups on one line.  Quoted braces never reach this step,
+  and a group with no comma and no ``..`` is literal to bash and to ``fe``.
+
   Deliberate over-blocks, all in the safe direction:
 
   - anything unquoted that really does glob dotfiles: ``ls .*``, ``ls -d
@@ -187,19 +211,24 @@ Two guards are installed:
     them, so ``printf '%s.%s' a b`` denies.  Of twenty ``%``-heavy
     everyday commands (``date +%Y-%m-%d``, ``git log --format=%h``,
     ``awk '{printf "%.2f", $1}'``, ``grep '100%'``, a commit message
-    reading ``30% faster``) that is the only one that does.
+    reading ``30% faster``) that is the only one that does;
+  - brace structure the expansion budget could not resolve: more than
+    eight groups in one command, or an expansion of more than 400 strings.
 
-  Brace expansion used to be on this list — ``mv .{foo,bar}`` and ``rm
-  .{a,b,c}`` denied although neither can name the directory.  Expanding
-  the alternatives exactly, rather than folding them to a placeholder,
-  removed those: each alternative is now judged on its own, and both are
-  allowed.  That is the shape of the right fix for the remaining entries
-  too — compute what the shell would produce instead of approximating it.
+  Brace expansion itself used to be on this list — ``mv .{foo,bar}`` and
+  ``rm .{a,b,c}`` denied although neither can name the directory.
+  Expanding the alternatives exactly, rather than folding them to a
+  placeholder, removed those: each alternative is judged on its own, and
+  both are allowed.  That is the shape of the right fix for the remaining
+  entries — compute what the shell would produce instead of approximating
+  it — and where that is impossible, refuse rather than approximate.
 
-  The coarse approximations that are left, and would each have to be
-  replaced the same way: an expansion's *text* (unknowable, so ``*``), an
-  expansion's *extent* (unknowable, so ``/``), a ``%`` template's result,
-  a sequence group, and a group with more than 64 alternatives.
+  The coarse approximations that are left: an expansion's *text*
+  (unknowable, so ``*``), an expansion's *extent* (unknowable, so ``/``),
+  and a ``%`` template's result.  Two more — a sequence group and a group
+  with more than 64 alternatives — still take both coarse readings rather
+  than being enumerated; enumerating them is a contained change and the
+  place to start if this list is ever shortened again.
 
   What the guard does not cover — measured, not assumed, and pinned by
   ``test_known_open_bypasses``:
@@ -236,27 +265,35 @@ Two guards are installed:
     character, escaped character, class, wildcard, brace here, brace tail,
     brace whole, sequence, star} x {what the breaking form contains: plain,
     an alternative with its own dot, with two, a backup-looking name, a
-    nested group, a metacharacter, a leading dot} x {where}.  All 1510
-    members read the credentials file, and all 1510 deny;
+    nested group, a metacharacter, a leading dot} x {how deeply it is
+    nested: 0, 1, 2, 3, 5, 8, 9, 11, 14, 20 levels} x {where}.  All 2698
+    members read the credentials file, and all 2698 deny;
+  - the nesting cliff specifically, at every depth from 1 to 20 with two,
+    three and five alternatives per level: 60 cells, every one of which
+    reads the file, and every one denied.  Before the refusal rule 38 of
+    them were allowed — the cliff sat at depth 11, 8 and 6 respectively;
   - a random fuzz that spells the name one character at a time in the same
     forms: of 2500 commands, 1995 read the file — 825 with the name
     written out in the text, 0 through; 1170 assembled at runtime, 172
     through, every one of them producing the leading dot from a
     substitution.
 
-  Each of the last three rounds of bugs was a product of axes the
-  generator only walked the margins of.  It emitted continuations and it
-  emitted substitutions, but never a continuation *inside* a substituted
-  parent.  Then it emitted brace groups, but every alternative was inert
-  filler, so a group holding an unrelated dot — the thing that broke the
-  fold — could not be produced.  That is why there is now a dimension for
-  what a breaking form *contains*, not only for which form is used.
+  Each round of bugs here has been a product of axes the generator only
+  walked the margins of.  It emitted continuations and it emitted
+  substitutions, but never a continuation *inside* a substituted parent.
+  Then it emitted brace groups, but every alternative was inert filler, so
+  a group holding an unrelated dot could not be produced.  Then it had a
+  "nested group" filler at one fixed depth, so 1510 members all sat at
+  depth two or less and the cliff at eleven was invisible.  Each time the
+  missing dimension was one level *inside* the last one added.
 
-  Take the pattern seriously rather than the instances: a form the
-  generator cannot produce is a form nothing here has checked, and that
-  applies to the insides of forms and to combinations of them, not only to
-  the list of features.  Before trusting a number in this docstring, look
-  at whether the generator can express the shape it is claiming to cover.
+  Take the pattern rather than the instances: a form the generator cannot
+  produce is a form nothing here has checked, and that applies to the
+  insides of forms, to how deeply they nest, and to combinations of them,
+  not only to the list of features.  Before trusting a number in this
+  docstring, look at whether the generator can express the shape it claims
+  to cover — and prefer a rule that fails closed on what it cannot resolve
+  over a measurement that says the gap is not reachable.
 
 Both comparisons are case-folded: macOS and Windows filesystems are
 case-insensitive by default, so ``~/.MUREO/credentials.json`` opens the
@@ -449,8 +486,14 @@ _COLLAPSE = "re.sub('[*]/[a-z0-9_]*', '*/', t)"
 # of them, so those fall back to the two coarse readings — `*` and `.*` —
 # which between them cover both "supplies a leading dot" and "does not".
 # That pair is what the old single guess was missing.
+#
+# `ga` excludes the newline from a group's contents, because an unquoted
+# newline is a token separator: bash will not expand a brace group across
+# one, so neither should this. Matching across newlines would also let two
+# unrelated braces on different lines of a multi-line command pair up and
+# swallow everything between them.
 _BRACE_HELPERS = (
-    "ga='[{][^{}]*[}]'; "
+    "ga='[{][^{}' + nl + ']*[}]'; "
     "fe=lambda s: next((w for w in re.finditer(ga, s)"
     " if ',' in w.group() or '..' in w.group()), None); "
     "al=lambda w: (lambda v: v if ',' in w.group() and len(v)<=64 else ['*','.*'])"
@@ -460,15 +503,28 @@ _BRACE_HELPERS = (
 )
 
 # Eight passes expand eight groups, innermost first, so nesting resolves as
-# the outer group becomes innermost. The cap keeps a pathological command
-# from exploding the hook: exceeding it abandons that pass and leaves the
-# groups for the coarse fallback below, which over-approximates rather than
-# dropping candidates.
+# the outer group becomes innermost, and a cap stops a pathological command
+# from exploding the hook.
+#
+# Whatever is left when the budget runs out is *refused*, not approximated:
+# `un` collects the candidates that still hold an expandable group, and a
+# non-empty `un` denies on that ground alone. The budget used to end in a
+# coarse fallback of two `re.sub` collapses, which past ten levels of
+# nesting left literal braces in the candidates — text `fnmatch` reads as
+# ordinary characters, so neither rule fired and
+# `~/.{z11,{z10,...{z1,mureo}}}` was allowed while bash read the file. A
+# budget that shrugs is a bypass with a length requirement.
+#
+# The rule is general: when the guard cannot compute what the shell would
+# produce, it denies. Nothing legitimate is refused by it — a quoted
+# `awk '{print $1}'` never reaches this step, and `find . -exec {} \\;` has
+# neither a comma nor a `..`, so bash leaves it literal and so does `fe`.
+# What is left is a command with more than eight brace groups, or one whose
+# expansion exceeds 400 strings, and neither is a thing anyone types.
 _EXPAND = (
     "ls=functools.reduce(lambda acc,_: (lambda n: n if len(n)<=400 else acc)"
     "([y for x in acc for y in ex(x)]), range(8), [t]); "
-    "ls=[y for x in ls for y in ([x] if not fe(x) else"
-    " [re.sub(ga,'*',re.sub(ga,'*',x)), re.sub(ga,'.*',re.sub(ga,'.*',x))])]; "
+    "un=[x for x in ls if fe(x)]; "
 )
 
 # Source of a python expression yielding the regex for one path component
@@ -504,7 +560,8 @@ _BASH_GUARD_CODE = (
     + "p=[x for s in ls for x in re.findall("
     "'(?:^|[^a-z0-9_])(' + " + _PATTERN_COMPONENT + " + ')', s)]; "
     "g=[x for x in p if set('*?[') & set(x) and fnmatch.fnmatchcase('.mureo', x)]; "
-    "b=[s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g; "
+    # `un` first: structure the guard could not resolve denies on its own.
+    "b=un or [s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g; "
     + _deny_expr(_BASH_REASON)
     + " if b else None"
 )
