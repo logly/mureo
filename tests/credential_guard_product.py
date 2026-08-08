@@ -32,6 +32,14 @@ import json
 import os
 import shutil
 import subprocess
+from pathlib import Path
+
+# These tests execute the attack command in a real shell and check whether it
+# reaches the file. That is a statement about POSIX path, glob and quoting
+# semantics; under an emulated shell on Windows a "no" would mean "not
+# reachable through this translation layer", which is not the property under
+# test and is indistinguishable from the guard working.
+POSIX_SHELL = os.name == "posix"
 
 Q1, Q2, BS, TICK, NL = chr(39), chr(34), chr(92), chr(96), chr(10)
 CONT = BS + NL
@@ -129,28 +137,42 @@ def members() -> list[tuple[str, str]]:
     return out
 
 
-def build_home(root: str) -> str:
+def build_home(root: str | os.PathLike[str]) -> Path:
     """A throwaway HOME with a marker credentials file."""
-    home = os.path.join(root, "home")
+    home = Path(root) / "home"
     shutil.rmtree(home, ignore_errors=True)
-    os.makedirs(os.path.join(home, ".mureo"))
-    with open(
-        os.path.join(home, ".mureo", "credentials.json"), "w", encoding="utf-8"
-    ) as fh:
-        fh.write(json.dumps({"access_token": MARKER}))
-    os.makedirs(os.path.join(home, "project"), exist_ok=True)
+    (home / ".mureo").mkdir(parents=True)
+    (home / ".mureo" / "credentials.json").write_text(
+        json.dumps({"access_token": MARKER}), encoding="utf-8"
+    )
+    (home / "project").mkdir(exist_ok=True)
     return home
 
 
-def reads_marker(command: str, home: str, bash: str) -> bool:
-    """Does a real shell actually print the credentials file for this?"""
+def reads_marker(command: str, home: str | os.PathLike[str], bash: str) -> bool:
+    """Does a real shell actually print the credentials file for this?
+
+    ``home`` is coerced here rather than at the call sites. It arrives as a
+    ``Path`` from every caller, and ``subprocess`` on POSIX accepts one in
+    ``env`` while Windows raises ``TypeError: environment can only contain
+    strings`` — so an annotation that disagreed with the argument was not
+    cosmetic, it was a failure waiting for the first platform that enforces
+    the contract. Coercing at the boundary means the signature and the
+    reality agree without every caller having to remember.
+
+    The environment is ``os.environ`` with ``HOME`` overridden, not a
+    hand-built pair: a minimal env drops variables a shell needs to start
+    at all on some platforms, which fails as "the command did not read the
+    file" — indistinguishable from the guard working.
+    """
+    env = dict(os.environ, HOME=str(home), USERPROFILE=str(home))
     try:
         proc = subprocess.run(
             [bash, "-c", command],
             capture_output=True,
             text=True,
-            env={"HOME": home, "PATH": os.environ.get("PATH", "")},
-            cwd=home,
+            env=env,
+            cwd=str(home),
             timeout=15,
         )
     except subprocess.TimeoutExpired:

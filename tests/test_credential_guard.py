@@ -57,13 +57,13 @@ def fake_home(tmp_path: Path) -> Path:
 def _path_guard_command() -> str:
     from mureo.credential_guard import path_guard_entry
 
-    return path_guard_entry()["hooks"][0]["command"]
+    return str(path_guard_entry()["hooks"][0]["command"])
 
 
 def _bash_guard_command() -> str:
     from mureo.credential_guard import bash_guard_entry
 
-    return bash_guard_entry()["hooks"][0]["command"]
+    return str(bash_guard_entry()["hooks"][0]["command"])
 
 
 # ---------------------------------------------------------------------------

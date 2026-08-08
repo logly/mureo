@@ -32,6 +32,7 @@ from pathlib import Path
 import pytest
 
 from tests.credential_guard_product import (
+    POSIX_SHELL,
     build_home,
     members,
     reads_marker,
@@ -43,6 +44,20 @@ needs_shell = pytest.mark.skipif(
     reason="the differential product needs both bash and python3 on PATH",
 )
 
+# Asking the guard about a command is platform-independent — it is string
+# analysis in Python. *Executing* the command and seeing whether it reaches
+# the file is not, so the two claims are separate tests rather than one test
+# with a conditional assertion. Everything the guard decides is checked
+# everywhere; only the premise about what a shell does is POSIX-only.
+needs_posix_shell = pytest.mark.skipif(
+    not POSIX_SHELL,
+    reason=(
+        "executes the attack command and asserts a real shell reaches the "
+        "file: a claim about POSIX path and glob semantics, not about the "
+        "guard, which is checked on every platform by the deny tests"
+    ),
+)
+
 # The sample the default run checks. Strided rather than random so a
 # failure names the same member on every machine.
 _SAMPLE_STRIDE = 23
@@ -51,7 +66,7 @@ _SAMPLE_STRIDE = 23
 def _bash_guard_command() -> str:
     from mureo.credential_guard import bash_guard_entry
 
-    return bash_guard_entry()["hooks"][0]["command"]
+    return str(bash_guard_entry()["hooks"][0]["command"])
 
 
 def _denies(command: str, home: Path) -> bool:
@@ -72,7 +87,7 @@ class TestProductSample:
         characters of the directory name consecutively unless the ``none``
         break was chosen.
         """
-        home = Path(build_home(str(tmp_path)))
+        home = build_home(tmp_path)
         sample = members()[::_SAMPLE_STRIDE]
         assert len(sample) > 100, "the product shrank; check the axes"
         missed = [label for label, cmd in sample if not _denies(cmd, home)]
@@ -85,6 +100,70 @@ class TestProductSample:
             assert any(axis in label for label in labels), axis
         for depth in ("d0", "d3", "d11", "d20"):
             assert any(label.endswith(depth) for label in labels), depth
+
+
+@pytest.mark.unit
+class TestSubprocessContracts:
+    """The environment handed to a subprocess must be strings, everywhere.
+
+    POSIX accepts a ``Path`` in ``env`` and Windows raises ``TypeError:
+    environment can only contain strings``. That difference turned an
+    annotation nobody enforced into 61 failures on the first Windows run,
+    so the contract is pinned here rather than left to the platform to
+    discover. These run on every platform precisely because the lenient
+    one is where the mistake gets made.
+    """
+
+    def test_reads_marker_passes_only_strings_to_the_environment(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tests import credential_guard_product as product
+
+        seen: dict[str, object] = {}
+
+        def fake_run(
+            *args: object, **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            seen.update(kwargs)
+            return subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr=""
+            )
+
+        # Patch the shared module object both helpers import.
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        product.reads_marker("echo hi", build_home(tmp_path), "bash")
+
+        env = seen["env"]
+        assert isinstance(env, dict)
+        bad = {k: v for k, v in env.items() if not isinstance(v, str)}
+        assert not bad, f"non-string environment values: {bad}"
+        assert isinstance(seen["cwd"], str)
+        # Inherited rather than hand-built: a minimal env drops variables a
+        # shell needs to start, which looks like "the command read nothing".
+        assert len(env) > 2, "the environment should extend os.environ"
+
+    def test_the_runner_passes_only_strings_to_the_environment(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tests import hook_guard_runner as runner
+
+        seen: dict[str, object] = {}
+
+        def fake_run(
+            *args: object, **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            seen.update(kwargs)
+            return subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr=""
+            )
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        runner.run_guard(_bash_guard_command(), {"command": "echo hi"}, tmp_path)
+
+        env = seen["env"]
+        assert isinstance(env, dict)
+        bad = {k: v for k, v in env.items() if not isinstance(v, str)}
+        assert not bad, f"non-string environment values: {bad}"
 
 
 @pytest.fixture
@@ -100,6 +179,7 @@ def only_when_asked_for(request: pytest.FixtureRequest) -> None:
 
 
 @needs_shell
+@needs_posix_shell
 @pytest.mark.slow
 class TestWholeProduct:
     @pytest.mark.usefixtures("only_when_asked_for")
@@ -110,7 +190,7 @@ class TestWholeProduct:
         that every member really reads the marker is what stops the product
         quietly filling up with commands that prove nothing.
         """
-        home = Path(build_home(str(tmp_path)))
+        home = build_home(tmp_path)
         all_members = members()
         inert = [
             label
@@ -143,10 +223,24 @@ class TestNestingDepth:
     @pytest.mark.parametrize("alts", [2, 3, 5])
     @pytest.mark.parametrize("depth", list(range(1, 21)))
     def test_denies_at_every_depth(self, tmp_path: Path, depth: int, alts: int) -> None:
-        home = Path(build_home(str(tmp_path)))
+        """The guarantee: every cell denies. Runs everywhere."""
+        home = build_home(tmp_path)
+        assert _denies(self._nested(depth, alts), home)
+
+    @needs_posix_shell
+    @pytest.mark.parametrize("alts", [2, 3, 5])
+    @pytest.mark.parametrize("depth", list(range(1, 21)))
+    def test_every_depth_really_reaches_the_file(
+        self, tmp_path: Path, depth: int, alts: int
+    ) -> None:
+        """The premise: every cell is a command that reads the file.
+
+        Without this the table above could fill up with commands that deny
+        because they are nonsense rather than because the guard works.
+        """
+        home = build_home(tmp_path)
         command = self._nested(depth, alts)
-        assert reads_marker(command, home, BASH or "bash"), "case proves nothing"
-        assert _denies(command, home), command
+        assert reads_marker(command, home, BASH or "bash"), command
 
 
 @needs_shell
