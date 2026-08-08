@@ -704,14 +704,30 @@ def map_recommendation(rec: Any) -> dict[str, Any]:
 
 
 def map_change_event(event: Any) -> dict[str, Any]:
-    """Format change history event."""
+    """Format change history event.
+
+    The five fields added for #545 — ``resource_name``,
+    ``change_resource_name``, ``client_type``, ``campaign``, ``ad_group`` —
+    are purely additive; every key the pre-#545
+    response carried is unchanged. They exist because the change importer
+    needs two things this shape did not carry: a stable per-event id (so a
+    repeated poll is idempotent) and the target the change was made against
+    (so mureo can tell its own change apart from an operator's).
+
+    ``client_type`` is context, not attribution: ``GOOGLE_ADS_API`` covers
+    mureo and every other API tool on the account, and ``user_email`` is the
+    same OAuth identity whether the operator worked in the UI or through
+    mureo. Neither may be used to decide who made a change.
+    """
     return {
+        "resource_name": _safe_str(event, "resource_name"),
         "change_date_time": _safe_str(event, "change_date_time"),
         "change_resource_type": (
             str(event.change_resource_type)
             if hasattr(event, "change_resource_type")
             else None
         ),
+        "change_resource_name": _safe_str(event, "change_resource_name"),
         "resource_change_operation": (
             str(event.resource_change_operation)
             if hasattr(event, "resource_change_operation")
@@ -723,5 +739,10 @@ def map_change_event(event: Any) -> dict[str, Any]:
             and hasattr(event.changed_fields, "paths")
             else []
         ),
+        "client_type": (
+            str(event.client_type) if hasattr(event, "client_type") else None
+        ),
         "user_email": _safe_str(event, "user_email"),
+        "campaign": _safe_str(event, "campaign"),
+        "ad_group": _safe_str(event, "ad_group"),
     }

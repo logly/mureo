@@ -549,6 +549,34 @@ Membership is stamped where every recording path already converges (`append_acti
 
 Batch state lives in STATE.json (`batches`), not in process memory, so a host that restarts the MCP server mid-pass does not silently stop collecting members. Records are kept after close (with `ended_at`) so a `batch_id` still resolves to the operator's own label weeks later.
 
+### Change import
+
+Record changes made **outside** mureo — in a platform's own UI, its editor, or another tool — so mureo's guarantees survive manual operation. Without this, mureo cannot tell "nothing happened" from "something happened that I cannot see".
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `mureo_external_changes_import` | Poll each configured platform's change feed and append anything mureo did not do to `action_log` with `origin: "external"`. Skips changes already imported and changes mureo itself made. Idempotent. | *(none)* |
+
+Optional: `platforms` (array of platform keys; omit to cover every platform in STATE.json), `since` (ISO 8601 window start; omit to resume from the newest change already imported), `path`.
+
+**The response is designed to be read for blind spots, not just for finds.** Every configured platform appears in `platforms[]`:
+
+| `status` | Meaning |
+|---|---|
+| `imported` | The feed ran. An empty `imported_indices` here is a real "nothing changed in this window" |
+| `unavailable` | The platform was **not checked**: either mureo has no change feed for it, or a registered feed could not answer for this account/mode (BYOD, unsupported account type). `reason: "change_import_unavailable_for_<platform>"`; the specific cause is in `notes`. Not evidence that nothing happened |
+| `error` | The feed exists but could not be read (expired token, missing credentials). Also unchecked, also not evidence of quiet |
+
+`blind_spots` collects the `unavailable` and `error` platforms; `truncated_platforms` collects those whose feed capped its response, meaning older changes inside that window are unreachable and **cannot be recovered later**. `feeds_available_for` lists the platforms that have a registered feed at all.
+
+Per-platform coverage — which feeds exist, which mureo reads today, and what each omits — is in [`docs/change-import.md`](change-import.md). Do not infer it from tool availability.
+
+An imported entry is permanently distinguishable from one mureo performed. It carries `origin: "external"`, the platform's `occurred_at`, and an `observation_due` anchored on that (so an older change lands already past due), and **no** `metrics_at_action`. `rollback_plan_get` returns `not_supported` for every external entry — mureo never saw the prior value, so a "reversal" would be a fresh change dressed as a restoration.
+
+For a hosted connector mureo cannot poll (`tiktok_ads`), a skill that reads the connector's own change tools records what it finds through `mureo_state_action_log_append` with `origin: "external"` plus `external_id` and `occurred_at`.
+
+Bridges and plugins participate by shipping an entry point in the `mureo.change_feeds` group implementing `ChangeFeedProvider` — a **new** Protocol in a **new** group, so no published plugin is affected. See [`docs/ABI-stability.md` §4b](ABI-stability.md#4b-changefeedprovider-protocol-issue-545).
+
 ### Analysis
 
 Cross-platform anomaly detection that operates on STATE.json's `action_log` history rather than a platform API directly.

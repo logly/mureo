@@ -304,6 +304,11 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         reversible_params=e.get("reversible_params"),
         rollback_of=e.get("rollback_of"),
         evaluation_of=e.get("evaluation_of"),
+        # #545 provenance. Absent on every entry written before it existed,
+        # which is exactly what "mureo made this change" looks like.
+        origin=e.get("origin"),
+        external_id=e.get("external_id"),
+        occurred_at=e.get("occurred_at"),
     )
 
 
@@ -418,6 +423,14 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["rollback_of"] = e.rollback_of
     if e.evaluation_of is not None:
         result["evaluation_of"] = e.evaluation_of
+    # #545: emitted only when set, so a STATE.json written by a mureo-driven
+    # run round-trips byte-identically and gains no new key.
+    if e.origin is not None:
+        result["origin"] = e.origin
+    if e.external_id is not None:
+        result["external_id"] = e.external_id
+    if e.occurred_at is not None:
+        result["occurred_at"] = e.occurred_at
     return result
 
 

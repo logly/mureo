@@ -132,6 +132,32 @@ def plan_rollback(entry: ActionLogEntry) -> RollbackPlan | None:
     Returns a plan with :data:`RollbackStatus.NOT_SUPPORTED` when the
     entry is a write but carries no usable ``reversible_params`` hint.
     """
+    # #545: an entry mureo only OBSERVED is never planned, checked before
+    # anything else so no later branch can reach a "supported" verdict.
+    #
+    # mureo did not dispatch the change, so it never captured the prior value
+    # — the one thing a reversal needs. A hint on such an entry describes a
+    # state mureo never read; applying it would push whatever the hint happens
+    # to say, which is a fresh change dressed as a restoration. And an entry
+    # imported from a change feed is exactly where a forged hint would be
+    # cheapest to plant, since its content comes from outside mureo entirely.
+    #
+    # Refusing here is what keeps the batch plan honest too: a bulk pass that
+    # mixes mureo's own changes with imported ones reports PARTIAL coverage
+    # and names the imported members as gaps
+    # (:mod:`mureo.rollback.batch`), instead of promising a full revert it
+    # could only half deliver.
+    if entry.is_external:
+        return _not_supported(
+            entry,
+            notes=(
+                f"{entry.action} was made outside mureo (origin="
+                f"{entry.origin!r}) and only observed through "
+                f"{entry.platform}'s change feed. mureo never recorded the "
+                "prior value, so it cannot reverse this change — undo it in "
+                "the platform, where the previous state is known."
+            ),
+        )
     if _is_read_only(entry.action):
         if entry.reversible_params is not None:
             # Read-only action should never carry a reversible hint; this is
