@@ -164,6 +164,11 @@ _ACTION_OPERATIONS: tuple[tuple[str, str], ...] = (
     ("_create", "create"),
 )
 
+#: Identity slots in order of INCREASING specificity. The order is mureo's
+#: existing canonical-target precedence (#524): an explicitly declared
+#: ``entity_id`` outranks an ``ad_id``, which outranks the campaign.
+_IDENTITY_SLOTS: tuple[str, ...] = ("campaign_id", "ad_id", "entity_id")
+
 
 def external_change_id(change: ExternalChange) -> str:
     """The dedup identity for ``change``, namespaced by platform.
@@ -227,21 +232,80 @@ def _parse_iso(value: str | None) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def _identity_pairs(
+def _identities(
     *, campaign_id: str | None, ad_id: str | None, entity_id: str | None
-) -> frozenset[tuple[str, str]]:
-    """The ``(slot, value)`` identities carried by a change or an entry.
+) -> dict[str, str]:
+    """The populated ``{slot: value}`` identities of a change or an entry.
 
-    Slot-qualified so a campaign id can never match an ad id that happens to
-    be the same string — Google and Meta both mint numeric ids from separate
-    namespaces, and an unqualified match would attribute across them.
+    Slot-keyed so a campaign id can never be compared against an ad id that
+    happens to be the same string — Google and Meta both mint numeric ids from
+    separate namespaces, and an unqualified comparison would match across them.
     """
-    pairs = {
-        ("campaign_id", campaign_id),
-        ("ad_id", ad_id),
-        ("entity_id", entity_id),
+    return {
+        slot: value
+        for slot, value in (
+            ("campaign_id", campaign_id),
+            ("ad_id", ad_id),
+            ("entity_id", entity_id),
+        )
+        if value
     }
-    return frozenset((slot, value) for slot, value in pairs if value)
+
+
+def _finest_slot(identities: dict[str, str]) -> str:
+    """The most specific slot ``identities`` can answer at, or ``""``.
+
+    The precedence is mureo's existing canonical-target rule (#524, and
+    ``/daily-check`` step 9): an explicitly declared ``entity_id`` outranks an
+    ``ad_id``, which outranks the campaign. Reusing it here means "how
+    specifically can this side name its target" has one answer across mureo
+    rather than a second, private one in the deduper.
+    """
+    for slot in reversed(_IDENTITY_SLOTS):
+        if slot in identities:
+            return slot
+    return ""
+
+
+def _identities_agree(own: dict[str, str], other: dict[str, str]) -> bool:
+    """Do two sides name the SAME target — not merely an overlapping one?
+
+    This used to intersect the two identity sets and accept a non-empty
+    result, which is "some slot agrees" and not "nothing disagrees". Two
+    failures came out of that, and both discarded a real operator edit:
+
+    - mureo updates keyword ``kw-A``'s bid; four minutes later the operator
+      edits ``kw-B``'s bid in the same campaign. ``entity_id`` disagrees
+      outright, but the shared ``campaign_id`` alone satisfied the
+      intersection, so it never got consulted.
+    - mureo pauses one ad; the operator pauses the whole campaign. ``ad_id``
+      is simply absent on a campaign-level feed row, so the match fell back
+      to the coarser shared field and a small mureo action swallowed a much
+      larger operator action.
+
+    Two conditions now, and both are the module's stated bias applied at this
+    layer rather than only at the kind layer:
+
+    1. **No populated-both-sides slot may disagree.** Rejecting on any
+       disagreement, rather than accepting on any agreement, is the whole fix
+       for the first case.
+    2. **Both sides must be able to answer at the same specificity.** If one
+       side names an ad and the other can only name a campaign, they are not
+       known to be the same target — they are a target and a container. That
+       is *unresolved*, and unresolved must mean import, because attributing
+       it is how the second case swallowed a campaign-wide pause.
+    """
+    for slot in own.keys() & other.keys():
+        if own[slot] != other[slot]:
+            return False
+    own_finest = _finest_slot(own)
+    other_finest = _finest_slot(other)
+    # No identity at all on a side: nothing to compare, so nothing is the
+    # same. (Condition 1 is vacuously true for an empty set, which is exactly
+    # why it cannot be the only condition.)
+    if not own_finest or not other_finest:
+        return False
+    return own_finest == other_finest
 
 
 def change_kind(change: ExternalChange) -> str:
@@ -325,10 +389,10 @@ def _entry_matches(
 ) -> bool:
     """Is ``entry`` mureo's own record of ``change``?
 
-    Four conditions, all required: same platform, same kind of change, a
-    shared target identity, and within the attribution window. Dropping any
-    one of them makes mureo swallow an operator's edit that merely happened
-    near one of its own.
+    Four conditions, all required: same platform, same kind of change, the
+    SAME target (see :func:`_identities_agree` — not merely an overlapping
+    one), and within the attribution window. Dropping any one of them makes
+    mureo swallow an operator's edit that merely happened near one of its own.
     """
     # Only mureo-originated entries can absorb a change. An already-imported
     # external entry must never attribute a later one, or a single UI edit
@@ -337,16 +401,18 @@ def _entry_matches(
         return False
     if not _kinds_match(entry, change) or _operations_conflict(entry, change):
         return False
-    shared = _identity_pairs(
-        campaign_id=change.campaign_id,
-        ad_id=change.ad_id,
-        entity_id=change.entity_id,
-    ) & _identity_pairs(
-        campaign_id=entry.campaign_id,
-        ad_id=entry.ad_id,
-        entity_id=entry.entity_id,
-    )
-    if not shared:
+    if not _identities_agree(
+        _identities(
+            campaign_id=entry.campaign_id,
+            ad_id=entry.ad_id,
+            entity_id=entry.entity_id,
+        ),
+        _identities(
+            campaign_id=change.campaign_id,
+            ad_id=change.ad_id,
+            entity_id=change.entity_id,
+        ),
+    ):
         return False
     entry_time = _parse_iso(entry.timestamp)
     if entry_time is None:

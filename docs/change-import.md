@@ -140,7 +140,7 @@ So the discriminator is mureo's own log. **Four conditions, all required:**
 |---|---|
 | Same platform | Ids from two platforms share no namespace |
 | Same **kind** of change | Without it, mureo pausing campaign 111 swallows the operator's budget edit on campaign 111 four minutes later. Manual and mureo-driven work overlapping on one campaign is normal for a while after onboarding, so this is the common case |
-| Shared target identity | Slot-qualified (`campaign_id` / `ad_id` / `entity_id`), so a campaign id never matches an ad id that happens to be the same string |
+| The **same** target — see below | "Some shared id" is not the same thing, and treating it as such discards the operator's edit |
 | Within 10 minutes | Absorbs the skew between mureo's stamp (when the call returned) and the platform's (when it committed) |
 
 Additionally, a **definite** create-vs-remove disagreement refutes a match —
@@ -148,6 +148,33 @@ mureo removing a negative keyword while the operator adds one on the same ad
 group in the same minute. It only refutes, never confirms: a `*_update` tool
 may well be an upsert, so requiring agreement would block far more true
 matches than it protects.
+
+### How "the same target" is decided
+
+Identity is slot-qualified (`campaign_id` / `ad_id` / `entity_id`), so a
+campaign id never matches an ad id that happens to be the same string. Two
+rules on top of that, and both are the "fail toward over-import" bias applied
+at the identity layer rather than only at the kind layer:
+
+1. **No slot populated on both sides may disagree.** Rejecting on any
+   disagreement — rather than accepting on any agreement — is what stops
+   mureo's bid change on keyword `kw-A` from swallowing the operator's bid
+   change on `kw-B` in the same campaign. The shared `campaign_id` is not a
+   licence to ignore the `entity_id` that disagrees.
+2. **Both sides must name their target at the same specificity**
+   (`entity_id` > `ad_id` > `campaign_id`, mureo's existing canonical-target
+   precedence). If mureo names an ad and the feed row can only name a
+   campaign, those are a target and a container, not a match. Identity is
+   **unresolved**, and unresolved means import — otherwise mureo pausing one
+   ad swallows the operator pausing the whole campaign.
+
+The consequence for a feed adapter is that a row must name **one** canonical
+target, not a target plus its parents: a row reporting both an ad and its ad
+group would look strictly more specific than mureo's own record of that same
+change, and rule 2 would then reject every true match. The built-in Google
+Ads feed follows that convention (ad-level rows name the ad, not the ad
+group), the same rule `plugin_semantics.extract_mutation_identity` already
+applies to plugin mutations.
 
 ### How "kind" is derived
 
@@ -201,8 +228,15 @@ It is bounded by design, and the bound is what makes the advice usable:
 | Same entity, same setting, within 10 min of a mureo change | **No — silently attributed to mureo** |
 | Same entity, same setting, after 10 min | Yes |
 | Same entity, *different* setting (budget vs status), any time | Yes |
-| Different entity, any setting, any time | Yes |
+| A *sibling* entity in the same campaign (different ad group, ad, keyword) | Yes |
+| A *broader* entity than mureo touched (campaign-wide vs one ad) | Yes |
+| A *narrower* entity than mureo touched (one ad vs campaign-wide) | Yes |
+| A different campaign entirely | Yes |
 | Anything at all when mureo made no nearby change | Yes |
+
+Only the first row is lost. Every other combination of target is imported —
+including the ones an earlier version of this table got wrong, where a shared
+`campaign_id` was enough to absorb an edit to a different entity inside it.
 
 `/daily-check` cannot flag what it never saw, so the limitation is stated
 here and in the `_mureo-shared` skill rather than left to be discovered.
@@ -231,6 +265,11 @@ That asymmetry is also why the 10-minute window should not be widened
 casually. Widening it can only ever *add* attributions, and the ones it adds
 are the least certain — a hand edit further away from mureo's action, hiding
 behind it. Narrowing it can only add over-imports, which the operator sees.
+
+The window now multiplies exactly one gap: the same-entity/same-setting case
+above. It used to multiply a much larger one — every edit anywhere inside a
+campaign mureo had touched — which is worth knowing if you are reading an
+older account's history.
 
 ### Imports never join a batch
 

@@ -288,10 +288,12 @@ case where import fails silently rather than visibly.
 When you have just made a change through mureo and the operator says they are
 about to adjust the same thing by hand, say so plainly: **wait out the 10
 minutes before editing that entity's same setting, or tell mureo about the
-edit afterwards so the record does not depend on the import.** A different
-entity, or a different setting on the same entity, is imported normally — the
-limitation is narrow, which is exactly what makes the advice worth giving
-instead of a blanket caveat. Full matrix in `docs/change-import.md`.
+edit afterwards so the record does not depend on the import.** The limitation
+is narrow, which is exactly what makes the advice worth giving instead of a
+blanket caveat — all of these are imported normally: a different setting on
+the same entity, a sibling entity in the same campaign, a broader or narrower
+entity than the one mureo touched, and anything at all when mureo made no
+nearby change. Full matrix in `docs/change-import.md`.
 
 **Never mark your own work external.** `origin: "external"` on
 `mureo_state_action_log_append` is for a change you READ out of a platform's

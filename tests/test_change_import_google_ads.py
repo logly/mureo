@@ -79,6 +79,35 @@ class TestRowMapping:
         assert change.entity_type == "ad_group"
         assert change.entity_id == "222"
 
+    def test_an_ad_level_row_names_the_AD_not_its_ad_group(self) -> None:
+        """One canonical target per row, matching mureo's own convention.
+
+        Reporting both the ad and its parent ad group would make the feed row
+        look strictly more specific than mureo's own record of the same
+        change, and attribution requires equal specificity — so mureo's
+        ad-level work would re-import as external on every run.
+        """
+        change = _row_to_change(
+            _row(
+                change_resource_type="AD_GROUP_AD",
+                changed_resource_name="customers/1/adGroupAds/222~999",
+            )
+        )
+        assert change is not None
+        assert change.ad_id == "999"
+        assert change.entity_id is None
+        assert change.campaign_id == "111"
+
+    def test_an_unresolvable_ad_row_claims_no_sub_campaign_target(self) -> None:
+        """Falling back to the ad group would claim specificity it lacks."""
+        change = _row_to_change(
+            _row(change_resource_type="AD_GROUP_AD", changed_resource_name="weird")
+        )
+        assert change is not None
+        assert change.ad_id is None
+        assert change.entity_id is None
+        assert change.campaign_id == "111"
+
     def test_timestamp_is_normalised_to_parseable_iso(self) -> None:
         change = _row_to_change(_row())
         assert change is not None

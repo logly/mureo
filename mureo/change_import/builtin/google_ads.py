@@ -16,11 +16,14 @@ comment, because an operator reading an empty import needs it:
 - It caps at :data:`~mureo.google_ads._extensions_targeting.CHANGE_HISTORY_ROW_LIMIT`
   rows with no paging. A capped response sets ``truncated``.
 
+Rows name ONE canonical target each — see :func:`_row_identity` for why that
+matters to attribution.
+
 The client is opened per call through the shared factory, so credentials may
 be configured after registration and BYOD routing is picked up automatically.
 BYOD has no change history at all (the export carries performance rows, not
-an audit trail), and that is reported as a note rather than as an empty
-window.
+an audit trail), and that is reported as ``unavailable_reason`` rather than
+as an empty window.
 """
 
 from __future__ import annotations
@@ -66,6 +69,69 @@ def _id_from_resource_name(resource_name: str, segment: str) -> str | None:
     return parts[-1]
 
 
+#: Resource types whose changed resource IS an ad. For these the ad is the
+#: canonical target and the ad group is parent context — see
+#: :func:`_row_identity`.
+_AD_LEVEL_RESOURCE_TYPES = frozenset({"AD", "AD_GROUP_AD"})
+
+
+def _ad_id_from_changed_resource(changed_resource_name: str) -> str | None:
+    """Pull the ad id out of ``customers/<cid>/adGroupAds/<adGroupId>~<adId>``.
+
+    ``None`` for any other shape. The composite id is the only place the feed
+    names the ad itself — ``change_event.ad_group`` names the container.
+    """
+    if not changed_resource_name:
+        return None
+    parts = changed_resource_name.split("/")
+    if len(parts) < 2 or parts[-2] != "adGroupAds":
+        return None
+    tail = parts[-1].split("~")
+    return tail[-1] if len(tail) == 2 and tail[-1] else None
+
+
+def _row_identity(row: dict[str, Any], resource_type: str) -> dict[str, Any]:
+    """The ONE canonical target of a row, plus its campaign.
+
+    mureo records a single canonical target per action — ``entity_id`` when
+    declared, else ``ad_id``, else ``campaign_id`` — and parent context is
+    deliberately not promoted alongside it
+    (:func:`mureo.mcp.plugin_semantics.extract_mutation_identity` states the
+    same rule for plugin mutations). The feed side has to speak that same
+    language or the two can never be compared: attribution requires both
+    sides to name their target at the SAME specificity
+    (:func:`mureo.change_import.dedupe._identities_agree`), so a feed row that
+    reported *both* the ad and its ad group would look strictly more specific
+    than mureo's own record of the very same change, and mureo's ad-level work
+    would re-import as external every single run.
+
+    So an ad-level row names the ad and NOT its ad group; every other row that
+    carries an ad group names the ad group.
+    """
+    identity: dict[str, Any] = {
+        "campaign_id": _id_from_resource_name(
+            str(row.get("campaign") or ""), "campaigns"
+        )
+    }
+    if resource_type in _AD_LEVEL_RESOURCE_TYPES:
+        ad_id = _ad_id_from_changed_resource(
+            str(row.get("changed_resource_name") or "")
+        )
+        if ad_id is not None:
+            identity["ad_id"] = ad_id
+            return identity
+        # An ad-level row mureo cannot resolve to an ad names no sub-campaign
+        # target at all. Falling back to the ad group would claim a
+        # specificity the row does not have, and the campaign alone would let
+        # a one-ad change match a campaign-wide one.
+        return identity
+    ad_group_id = _id_from_resource_name(str(row.get("ad_group") or ""), "adGroups")
+    if ad_group_id is not None:
+        identity["entity_type"] = "ad_group"
+        identity["entity_id"] = ad_group_id
+    return identity
+
+
 def _row_to_change(row: dict[str, Any]) -> ExternalChange | None:
     """Normalise one ``list_change_history`` row, or ``None`` if unusable.
 
@@ -77,23 +143,20 @@ def _row_to_change(row: dict[str, Any]) -> ExternalChange | None:
     occurred_at = str(row.get("change_date_time") or "").strip()
     if not occurred_at:
         return None
-    campaign_id = _id_from_resource_name(str(row.get("campaign") or ""), "campaigns")
-    ad_group_id = _id_from_resource_name(str(row.get("ad_group") or ""), "adGroups")
+    resource_type = str(row.get("change_resource_type") or "UNKNOWN")
     changed_fields = row.get("changed_fields") or []
     return ExternalChange(
         platform="google_ads",
         # Google returns ``YYYY-MM-DD HH:MM:SS`` in the account timezone;
         # normalise the separator so ``datetime.fromisoformat`` parses it.
         occurred_at=occurred_at.replace(" ", "T", 1),
-        resource_type=str(row.get("change_resource_type") or "UNKNOWN"),
+        resource_type=resource_type,
         operation=str(row.get("resource_change_operation") or "UNKNOWN"),
         change_id=str(row.get("resource_name") or ""),
         changed_fields=tuple(str(f) for f in changed_fields),
         actor=str(row.get("user_email") or ""),
         client_type=str(row.get("client_type") or ""),
-        campaign_id=campaign_id,
-        entity_type="ad_group" if ad_group_id else None,
-        entity_id=ad_group_id,
+        **_row_identity(row, resource_type),
     )
 
 

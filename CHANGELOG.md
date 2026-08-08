@@ -43,8 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     fields cannot separate them (`user_email` is the same OAuth identity either
     way; `client_type: GOOGLE_ADS_API` covers every API tool on the account),
     so the discriminator is mureo's own log — same platform, **same kind of
-    change**, same target identity, within 10 minutes, with a definite
-    create-vs-remove disagreement refuting the match. Kind is required because
+    change**, the **same target** (no slot populated on both sides may
+    disagree, and both sides must name their target at the same specificity —
+    `entity_id` > `ad_id` > `campaign_id`), within 10 minutes, with a definite
+    create-vs-remove disagreement refuting the match. "Some shared id" is not
+    the same target: a shared `campaign_id` must not absorb an edit to a
+    sibling entity inside that campaign, and a one-ad change must not absorb a
+    campaign-wide one. Kind is required because
     identity and time alone let mureo pausing campaign 111 swallow the
     operator's budget edit on campaign 111 four minutes later. Wherever the
     comparison cannot be made — identity missing, kind underivable — the change

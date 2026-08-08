@@ -324,6 +324,97 @@ class TestNoDoubleCounting:
         )
         assert classify_change(as_campaign_row, doc) is ImportVerdict.IMPORT
 
+    def test_a_sibling_entity_in_the_same_campaign_is_not_absorbed(self) -> None:
+        """mureo edits kw-A's bid; the operator edits kw-B's, same campaign.
+
+        ``entity_id`` disagrees outright. Matching used to intersect the
+        identity sets and accept a non-empty result, so the shared
+        ``campaign_id`` alone satisfied it and the disagreeing ``entity_id``
+        was never consulted — discarding the operator's edit.
+        """
+        doc = _log(
+            action="google_ads_bid_adjustments_update",
+            campaign_id="111",
+            entity_type="ad_group",
+            entity_id="kw-A-shoes",
+            timestamp=NOW - timedelta(minutes=4),
+        )
+        sibling = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="AD_GROUP_CRITERION",
+            changed_fields=("cpc_bid_micros",),
+            operation="UPDATE",
+            campaign_id="111",
+            entity_type="ad_group",
+            entity_id="kw-B-boots",
+        )
+        assert classify_change(sibling, doc) is ImportVerdict.IMPORT
+
+    def test_a_campaign_wide_change_is_not_absorbed_by_an_ad_level_one(self) -> None:
+        """mureo pauses ONE ad; the operator pauses the WHOLE campaign.
+
+        ``ad_id`` is simply absent on a campaign-level feed row, so the old
+        match fell back to the shared ``campaign_id`` and a small mureo action
+        swallowed a much larger operator action. The two sides cannot answer
+        at the same specificity, so identity is unresolved — which must mean
+        import.
+        """
+        doc = _log(
+            action="google_ads_ads_update_status",
+            campaign_id="111",
+            ad_id="A-1",
+            timestamp=NOW - timedelta(minutes=4),
+        )
+        campaign_wide = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="CAMPAIGN",
+            changed_fields=("status",),
+            operation="UPDATE",
+            campaign_id="111",
+        )
+        assert classify_change(campaign_wide, doc) is ImportVerdict.IMPORT
+
+    def test_the_reverse_asymmetry_is_also_unresolved(self) -> None:
+        """mureo pauses the campaign; the feed reports one ad stopping."""
+        doc = _log(
+            action="google_ads_campaigns_update_status",
+            campaign_id="111",
+            timestamp=NOW - timedelta(minutes=4),
+        )
+        ad_level = _change(
+            occurred_at=NOW.isoformat(),
+            resource_type="AD_GROUP_AD",
+            changed_fields=("status",),
+            operation="UPDATE",
+            campaign_id="111",
+            ad_id="A-1",
+        )
+        assert classify_change(ad_level, doc) is ImportVerdict.IMPORT
+
+    def test_an_entry_with_no_identity_absorbs_nothing(self) -> None:
+        """An empty identity set has no disagreement — and no agreement."""
+        doc = _log(action="google_ads_negative_keywords_add", campaign_id="")
+        assert classify_change(_change(occurred_at=NOW.isoformat()), doc) is (
+            ImportVerdict.IMPORT
+        )
+
+    def test_two_identity_less_sides_do_not_match_each_other(self) -> None:
+        """Neither side can name a target, so they are not known to be one.
+
+        This is the case the empty-identity guard alone protects: with both
+        sides empty, there is no slot to disagree AND their specificity is
+        trivially equal, so kind and time would be the entire test. Two
+        unrelated criterion changes a minute apart would collapse into one.
+        """
+        doc = _log(action="google_ads_negative_keywords_add", campaign_id="")
+        anonymous = _change(
+            occurred_at=NOW.isoformat(),
+            campaign_id=None,
+            entity_type=None,
+            entity_id=None,
+        )
+        assert classify_change(anonymous, doc) is ImportVerdict.IMPORT
+
     def test_an_unclassifiable_action_does_not_absorb_anything(self) -> None:
         """Unknown kind must not mean 'matches everything'."""
         doc = _log(action="reviewed the account", campaign_id="111")
@@ -337,7 +428,109 @@ class TestNoDoubleCounting:
         added = _change(occurred_at=NOW.isoformat(), operation="CREATE")
         assert classify_change(added, doc) is ImportVerdict.IMPORT
 
-    # The full matrix: same target throughout, so KIND and the WINDOW are the
+    # The identity matrix: kind is held constant (criterion on both sides), so
+    # only WHO was changed and WHEN vary. Only an exact same-specificity,
+    # same-value target inside the window may be absorbed.
+    @pytest.mark.parametrize(
+        ("label", "entry_ids", "change_ids", "inside_window", "expected"),
+        [
+            (
+                "same campaign, same entity",
+                {"campaign_id": "111", "entity_id": "G-1"},
+                {"campaign_id": "111", "entity_id": "G-1"},
+                True,
+                ImportVerdict.ATTRIBUTED_TO_MUREO,
+            ),
+            (
+                "same campaign, same entity, outside window",
+                {"campaign_id": "111", "entity_id": "G-1"},
+                {"campaign_id": "111", "entity_id": "G-1"},
+                False,
+                ImportVerdict.IMPORT,
+            ),
+            (
+                "same campaign, DIFFERENT entity",
+                {"campaign_id": "111", "entity_id": "G-1"},
+                {"campaign_id": "111", "entity_id": "G-2"},
+                True,
+                ImportVerdict.IMPORT,
+            ),
+            (
+                "DIFFERENT campaign, same entity id",
+                {"campaign_id": "111", "entity_id": "G-1"},
+                {"campaign_id": "222", "entity_id": "G-1"},
+                True,
+                ImportVerdict.IMPORT,
+            ),
+            (
+                "different campaign and entity",
+                {"campaign_id": "111", "entity_id": "G-1"},
+                {"campaign_id": "222", "entity_id": "G-2"},
+                True,
+                ImportVerdict.IMPORT,
+            ),
+            (
+                "entity on the ENTRY side only",
+                {"campaign_id": "111", "entity_id": "G-1"},
+                {"campaign_id": "111"},
+                True,
+                ImportVerdict.IMPORT,
+            ),
+            (
+                "entity on the CHANGE side only",
+                {"campaign_id": "111"},
+                {"campaign_id": "111", "entity_id": "G-1"},
+                True,
+                ImportVerdict.IMPORT,
+            ),
+            (
+                "campaign level on both sides",
+                {"campaign_id": "111"},
+                {"campaign_id": "111"},
+                True,
+                ImportVerdict.ATTRIBUTED_TO_MUREO,
+            ),
+            (
+                "no identity on the entry side",
+                {"campaign_id": ""},
+                {"campaign_id": "111", "entity_id": "G-1"},
+                True,
+                ImportVerdict.IMPORT,
+            ),
+        ],
+        ids=lambda v: v if isinstance(v, str) else "",
+    )
+    def test_identity_matrix(
+        self,
+        label: str,
+        entry_ids: dict[str, str],
+        change_ids: dict[str, str],
+        inside_window: bool,
+        expected: ImportVerdict,
+    ) -> None:
+        offset = timedelta(
+            minutes=1 if inside_window else ATTRIBUTION_WINDOW_MINUTES + 1
+        )
+        entry_extra = (
+            {"entity_type": "ad_group", "entity_id": entry_ids["entity_id"]}
+            if "entity_id" in entry_ids
+            else {}
+        )
+        doc = _log(
+            action="google_ads_negative_keywords_add",
+            campaign_id=entry_ids["campaign_id"],
+            timestamp=NOW - offset,
+            **entry_extra,
+        )
+        change = _change(
+            occurred_at=NOW.isoformat(),
+            campaign_id=change_ids["campaign_id"] or None,
+            entity_type="ad_group" if "entity_id" in change_ids else None,
+            entity_id=change_ids.get("entity_id"),
+        )
+        assert classify_change(change, doc) is expected
+
+    # The kind matrix: same target throughout, so KIND and the WINDOW are the
     # only variables. Only the top-left cell may be absorbed.
     @pytest.mark.parametrize(
         ("same_kind", "inside_window", "expected"),
