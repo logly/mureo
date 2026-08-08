@@ -620,6 +620,17 @@ class TestGuardThroughARealShell:
         assert deny_decision(proc) == "deny"
         assert proc.returncode == 0
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason=(
+            "the trigger is POSIX-specific: os.path.realpath raises on an "
+            "embedded NUL there, while on Windows it returns and the path "
+            "simply does not resolve under ~/.mureo, so there is no "
+            "exception to escape. The property this demonstrates — an "
+            "exception denies rather than exits 1 — is asserted on every "
+            "platform by the malformed-stdin tests above, for both guards"
+        ),
+    )
     def test_path_guard_unusable_path_denies(self, fake_home: Path) -> None:
         """``realpath`` raises on an embedded NUL — that must not fail open."""
         proc = run_guard_in_shell(
