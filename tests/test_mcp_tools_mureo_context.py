@@ -28,7 +28,7 @@ pytestmark = pytest.mark.unit
 @pytest.fixture(autouse=True)
 def _clear_runtime_context_cache():
     """Reset the resolver cache before and after every test in this file
-    so the workspace-aware ``_resolve_path`` rebuilds a
+    so the workspace-aware ``resolve_workspace_path`` rebuilds a
     :class:`FilesystemStateStore` with the (per-test) CWD instead of
     reusing a stale one cached during an earlier test or test module."""
     from mureo.core.runtime_context import reset_runtime_context
@@ -1142,6 +1142,10 @@ def test_action_log_schema_accepts_generic_entity_identity() -> None:
     assert entry["dependentRequired"] == {
         "entity_type": ["entity_id"],
         "entity_id": ["entity_type"],
+        # #545: an external_id on a mureo-originated entry would poison
+        # change-import dedup, so the schema refuses it too — not only the
+        # model. Pinned as a whole dict so a rule cannot be dropped silently.
+        "external_id": ["origin"],
     }
 
 

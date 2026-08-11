@@ -41,7 +41,8 @@ def _workspace_state_path() -> Path:
     """Resolve the ACTIVE workspace's STATE.json — the same file the MCP state
     tools write to (#342).
 
-    Mirrors ``_handlers_mureo_context._resolve_path``'s default resolution
+    Mirrors the default resolution of
+    :func:`mureo.mcp._helpers.resolve_workspace_path`
     (``store.state_path`` → ``store.workspace / STATE.json``) via the runtime
     context, so the conversion override is read from the same file it is
     written to — even under an agency / alternate ``StateStore`` where the

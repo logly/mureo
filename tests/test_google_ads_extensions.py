@@ -6,6 +6,7 @@ Mocks _search / _get_service / _client to eliminate any external API calls.
 
 from __future__ import annotations
 
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -606,6 +607,38 @@ class TestListChangeHistory:
             start_date="2024-01-01", end_date="2024-01-31"
         )
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_every_selected_field_exists_on_the_proto(
+        self, client: _MockExtensionsClient
+    ) -> None:
+        """No ``change_event.<field>`` in the query may be an invented name.
+
+        ``_search`` is mocked in every other test here, so the query string
+        itself was never checked by anything — which is how
+        ``change_event.changed_resource_name`` (the real field is
+        ``change_resource_name``, no "d") reached a shipping tool. The server
+        would reject that SELECT; the test suite could not tell.
+
+        Asserting against the vendored proto rather than a hardcoded list, so
+        the check keeps working when the query gains a field.
+        """
+        from google.ads.googleads.v23.resources.types.change_event import (
+            ChangeEvent,
+        )
+
+        client._search = AsyncMock(return_value=[])
+        await client.list_change_history()
+
+        query = client._search.await_args.args[0]
+        selected = set(re.findall(r"change_event\.(\w+)", query))
+        declared = {f.name for f in ChangeEvent.pb(ChangeEvent()).DESCRIPTOR.fields}
+        assert selected, "no change_event fields found in the query"
+        assert selected <= declared, (
+            f"GAQL selects change_event field(s) {sorted(selected - declared)} "
+            f"that the proto does not declare — the API will reject this query. "
+            f"Check the spelling against the vendored SDK."
+        )
 
 
 # ---------------------------------------------------------------------------

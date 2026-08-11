@@ -42,6 +42,7 @@ from typing import Any
 from mureo.context.models import (
     ActionLogEntry,
     AdState,
+    BatchRecord,
     CampaignSnapshot,
     PlatformState,
     StateDocument,
@@ -84,6 +85,7 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "platforms",
                 "action_log",
                 "reports",
+                "batches",
             }
         ),
         "parse_state / render_state",
@@ -120,6 +122,10 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
                 "reversible_params",
                 "rollback_of",
                 "evaluation_of",
+                "batch_id",
+                "origin",
+                "external_id",
+                "occurred_at",
             }
         ),
         "_parse_action_log_entry / _action_log_entry_to_dict",
@@ -147,6 +153,11 @@ _CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
         AdState,
         frozenset({"ad_id", "name", "status", "effective_status", "as_of"}),
         "_parse_ad / _ad_state_to_dict",
+    ),
+    (
+        BatchRecord,
+        frozenset({"batch_id", "label", "started_at", "ended_at"}),
+        "_parse_batches / _batch_record_to_dict",
     ),
 )
 
@@ -319,6 +330,40 @@ def _parse_conversion_action_types(raw: Any) -> tuple[str, ...] | None:
     return cleaned or None
 
 
+def _parse_batches(raw: Any) -> tuple[BatchRecord, ...]:
+    """Parse the declared bulk change sets (#549).
+
+    Tolerant in both modes, unlike the campaign / action_log lists: a batch
+    record is bookkeeping ABOUT history, not history itself — the members are
+    in ``action_log`` and their ``batch_id`` stands on its own. A malformed
+    record therefore costs a label, and dropping it is a far better trade than
+    letting a hand-edited entry blank a whole document.
+    """
+    if not isinstance(raw, list):
+        return ()
+    records: list[BatchRecord] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            logger.debug("skipping non-object batch record: %r", item)
+            continue
+        batch_id = item.get("batch_id")
+        if not isinstance(batch_id, str) or not batch_id.strip():
+            logger.debug("skipping batch record without a usable batch_id: %r", item)
+            continue
+        label = item.get("label")
+        started_at = item.get("started_at")
+        ended_at = item.get("ended_at")
+        records.append(
+            BatchRecord(
+                batch_id=batch_id.strip(),
+                label=label if isinstance(label, str) else "",
+                started_at=started_at if isinstance(started_at, str) else "",
+                ended_at=ended_at if isinstance(ended_at, str) else None,
+            )
+        )
+    return tuple(records)
+
+
 def parse_state(text: str, *, strict: bool = True) -> StateDocument:
     """Parse a JSON string and return a StateDocument.
 
@@ -373,6 +418,7 @@ def parse_state(text: str, *, strict: bool = True) -> StateDocument:
         platforms=platforms,
         action_log=action_log,
         reports=data.get("reports"),
+        batches=_parse_batches(data.get("batches")),
     )
 
 
@@ -386,6 +432,7 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         ad_id=e.get("ad_id"),
         entity_type=e.get("entity_type"),
         entity_id=e.get("entity_id"),
+        batch_id=e.get("batch_id"),
         summary=e.get("summary"),
         command=e.get("command"),
         metrics_at_action=e.get("metrics_at_action"),
@@ -393,6 +440,11 @@ def _parse_action_log_entry(e: dict[str, Any]) -> ActionLogEntry:
         reversible_params=e.get("reversible_params"),
         rollback_of=e.get("rollback_of"),
         evaluation_of=e.get("evaluation_of"),
+        # #545 provenance. Absent on every entry written before it existed,
+        # which is exactly what "mureo made this change" looks like.
+        origin=e.get("origin"),
+        external_id=e.get("external_id"),
+        occurred_at=e.get("occurred_at"),
     )
 
 
@@ -445,6 +497,12 @@ def render_state(doc: StateDocument) -> str:
     if doc.reports is not None:
         data["reports"] = copy.deepcopy(doc.reports)
 
+    # Declared batches (#549): emit only when the workspace has any, so a
+    # document written before this field existed stays byte-stable on
+    # round-trip. ``ended_at`` is omitted while a batch is open.
+    if doc.batches:
+        data["batches"] = [_batch_record_to_dict(b) for b in doc.batches]
+
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
@@ -485,6 +543,8 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["entity_type"] = e.entity_type
     if e.entity_id is not None:
         result["entity_id"] = e.entity_id
+    if e.batch_id is not None:
+        result["batch_id"] = e.batch_id
     if e.summary is not None:
         result["summary"] = e.summary
     if e.command is not None:
@@ -499,6 +559,30 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["rollback_of"] = e.rollback_of
     if e.evaluation_of is not None:
         result["evaluation_of"] = e.evaluation_of
+    # #545: emitted only when set, so a STATE.json written by a mureo-driven
+    # run round-trips byte-identically and gains no new key.
+    if e.origin is not None:
+        result["origin"] = e.origin
+    if e.external_id is not None:
+        result["external_id"] = e.external_id
+    if e.occurred_at is not None:
+        result["occurred_at"] = e.occurred_at
+    return result
+
+
+def _batch_record_to_dict(b: BatchRecord) -> dict[str, Any]:
+    """Convert a :class:`BatchRecord` to a dictionary.
+
+    ``ended_at`` is emitted only once the batch is closed, so "open" is the
+    absence of the key rather than a null a reader could misparse as a time.
+    """
+    result: dict[str, Any] = {
+        "batch_id": b.batch_id,
+        "label": b.label,
+        "started_at": b.started_at,
+    }
+    if b.ended_at is not None:
+        result["ended_at"] = b.ended_at
     return result
 
 

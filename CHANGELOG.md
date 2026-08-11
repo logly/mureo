@@ -122,7 +122,152 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   silently invalidated every already-published four-method module. The
   registry's structural validator is unchanged. See `docs/ABI-stability.md`.
 
-### Added
+- **Changes made outside mureo are imported into `action_log`** (#545). Every
+  guarantee mureo offers hung off mureo having *made* the change: an operator
+  working in a platform's own UI — normal professional work, not misuse — never
+  went through `StrategyPolicyGate`, never reached `action_log`, never got an
+  `observation_due`, and never appeared in `/daily-check`'s evidence step. The
+  consequence was not a thin log but a blind one: **mureo could not tell
+  "nothing happened" from "something happened that I cannot see"**, which is
+  how a delivery collapse turns into days of guesswork against an unknown
+  change set.
+
+  - `mureo_external_changes_import` polls each configured platform's change
+    feed and appends what mureo did not do, marked `origin: "external"`.
+    Idempotent — importing the same change twice is a no-op. `/daily-check`
+    runs it at step 2b, before it diffs or diagnoses anything.
+  - **Observed is not performed.** `ActionLogEntry` gains `origin`,
+    `external_id` and `occurred_at` (all optional, all emitted only when set,
+    so an existing STATE.json parses unchanged and gains no new key). An
+    imported entry can never be mistaken for one mureo dispatched, and
+    `rollback_plan_get` returns `not_supported` for every external entry —
+    before any other check, and even when the entry carries a well-formed
+    reversal hint. mureo never captured the prior value, so a "reversal" built
+    from such a hint is a fresh change dressed as a restoration. A batch that
+    mixes the two therefore reports `partial` coverage instead of promising a
+    revert it could only half deliver.
+  - **The observation window anchors on when the change happened**, not on
+    when mureo noticed. A change made three weeks ago lands already past due
+    and is reviewed on the next run. `metrics_at_action` is deliberately unset:
+    mureo was not there, and synthesising a baseline from today's numbers would
+    invent a "before" that never existed.
+  - **mureo's own changes are not double-counted.** Every change mureo
+    dispatches also appears in the platform's feed. The feed's attribution
+    fields cannot separate them (`user_email` is the same OAuth identity either
+    way; `client_type: GOOGLE_ADS_API` covers every API tool on the account),
+    so the discriminator is mureo's own log — same platform, **same kind of
+    change**, the **same target** (no slot populated on both sides may
+    disagree, and both sides must name their target at the same specificity —
+    `entity_id` > `ad_id` > `campaign_id`), within 10 minutes, with a definite
+    create-vs-remove disagreement refuting the match. "Some shared id" is not
+    the same target: a shared `campaign_id` must not absorb an edit to a
+    sibling entity inside that campaign, and a one-ad change must not absorb a
+    campaign-wide one. Kind is required because
+    identity and time alone let mureo pausing campaign 111 swallow the
+    operator's budget edit on campaign 111 four minutes later. Wherever the
+    comparison cannot be made — identity missing, kind underivable — the change
+    is imported as external: an over-import is visible and correctable, an
+    over-attribution silently swallows a real UI edit. One case still fails the
+    expensive way and cannot be fixed by comparing harder: a hand edit to the
+    SAME setting on the SAME entity within the window of a mureo change is
+    indistinguishable from mureo's own. It is documented as an operator-facing
+    limitation, with the concrete advice (wait out the window, or say what you
+    changed), in `docs/change-import.md` and the `_mureo-shared` skill.
+  - **An imported change never joins an open batch** (#549). A batch is the
+    operator's declared change set; a change mureo merely observed is not
+    something they did through mureo, and letting it join would drop that
+    batch's rollback coverage to `partial` over an unrelated UI edit.
+  - **Missing coverage is reported, never smoothed over.** Every configured
+    platform appears in the response. A platform with no feed returns
+    `change_import_unavailable_for_<platform>` — the same contract as
+    `analytics_not_available_for_<platform>` — and a feed that failed returns
+    `error`. A registered feed that could not answer for this account or mode
+    — BYOD has no change history at all — returns `unavailable` too, via
+    `ChangeFeedResult.unavailable_reason`, rather than an empty result that
+    would read as a checked-and-quiet window. None of these means "no
+    changes"; the absence of a change feed is not evidence of innocence. A capped response returns `truncated: true`, because
+    Google Ads' `change_event` returns at most 100 rows with no paging and
+    retains ~30 days: history cannot be reconstructed after the fact, only
+    captured continuously.
+  - **Platform coverage today**: Google Ads is read (built-in feed). Meta Ads
+    is **not** — the Ad Account Activity edge exists on Meta's side and mureo
+    ships no client for it. Amazon (bridge), Yahoo, LINE and SmartNews
+    (plugins) can opt in through the ABI hook and do not today. TikTok is a
+    hosted connector outside mureo's data path entirely; a skill records what
+    it reads there via `mureo_state_action_log_append` with `origin:
+    "external"`. The full table is in `docs/change-import.md`.
+  - **ABI hook**: a new `ChangeFeedProvider` Protocol in a new
+    `mureo.change_feeds` entry-point group. A new Protocol because adding a
+    method to a `runtime_checkable` one de-registers every published
+    implementation (`docs/ABI-stability.md` §4); a new *group* so a bridge that
+    only wants a change feed need not stub four analytics methods it will never
+    implement. Installed plugins are unaffected in every way.
+  - Google Ads' `change_event` query additionally selects `resource_name`,
+    `change_resource_name`, `client_type`, `campaign` and `ad_group`. Purely
+    additive — every field `google_ads_change_history_list` returned before is
+    unchanged. Rows name ONE canonical target each: an ad row names the ad, a
+    criterion row names the criterion, and neither promotes its parent
+    alongside — the same rule mureo already applies to its own mutations, and
+    what lets two keywords in one ad group be told apart.
+  - A plugin mutation carrying `criterion_id` now records the criterion as its
+    target rather than falling through to the parent `ad_group_id`. Two edits
+    to different keywords in one ad group were previously one target, which is
+    enough for the change importer to read the second as the first.
+
+- **A bulk change is one revertible unit** (#549). mureo had rollback, but it
+  reasoned about one allow-listed operation at a time, so "undo what I did on
+  Monday" was not expressible: after a bulk pass the operator had to work out
+  by hand which entries a change set contained. An unverifiable revert is
+  nearly as bad as no revert — it leaves the operator unable to rule their own
+  fix out as a variable.
+
+  - `mureo_batch_begin` / `mureo_batch_end` / `mureo_batch_status` declare the
+    boundary of a change set. A bulk pass is many tool calls and nothing in a
+    single call says which others belong with it, so the boundary is declared
+    rather than guessed at from timing or target.
+  - Membership is stamped at the one place every recording path already
+    converges (`append_action_log`), not through tool arguments. That is what
+    makes it platform-agnostic with no per-platform code and no ABI change: a
+    native Google/Meta status toggle, a mutation an agent records for a hosted
+    connector, and a bridged/plugin tool call mureo promotes all join the same
+    batch — including tools whose input schemas mureo does not own.
+  - `rollback_plan_get` accepts `batch_id` and returns a plan covering **every**
+    member, with `coverage` (`full` / `partial` / `none` / `empty`), the same
+    verdict **per platform**, per-member reversibility, the reason each
+    irreversible member cannot be reversed, and an `apply_order`. Reversibility
+    is not uniform across platforms, and a plan that listed only the reversible
+    members would read as a complete revert; a batch where 60 of 80 members can
+    be restored says so before anything is applied.
+  - Each member is classified by the existing `plan_rollback` allow-list, so
+    grouping loosens no guarantee. Reversals appended by `rollback_apply` never
+    join an open batch — otherwise reverting a batch would grow it.
+
+  Honest limits, stated in the docs rather than smoothed over: native
+  mutations other than status toggles (budget, keywords, exclusions) join a
+  batch only when the agent records them with `mureo_state_action_log_append`;
+  a bridged/plugin reversal is executed only when it names a registered plugin
+  tool, and is otherwise reported `irreversible`; hosted-connector members are
+  never reversed by mureo, so their plan is an accurate manual checklist; and
+  Search Console mutations are not recorded in `action_log` at all, so they
+  cannot join a batch today.
+
+  Membership is validated, not trusted. An explicit `batch_id` on
+  `mureo_state_action_log_append` must name a batch that was actually declared
+  and is still open; an unknown id is refused, and so is a closed one. The
+  check lives at the `append_action_log` choke point, so no caller — handler,
+  library user or future recorder — can conjure a change set or grow one whose
+  membership `mureo_batch_end` already reported.
+
+  A forgotten `mureo_batch_end` announces itself. After 24 hours open,
+  `mureo_batch_status` returns a warning and one is appended to every mutating
+  tool result, so the agent that forgot is told without having to ask. Nothing
+  is ever closed automatically: a timeout would trade a visible wrong answer
+  for an invisible one.
+
+  STATE.json gains an optional `batches` array and an optional `batch_id` on
+  each `action_log` entry, both emitted only when present — an existing
+  STATE.json parses unchanged and gains no new key on the next write.
+
 
 - **A bulk exclusion now says how much of your delivery it removes, before it
   is applied — and a threshold in `STRATEGY.md` can refuse it** (#547). mureo
@@ -258,6 +403,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exclusion in place.
 
 ### Changed
+
+- `_resolve_path`, the workspace sandbox boundary shared by the STATE.json /
+  STRATEGY.md tools, moved from `mureo/mcp/_handlers_mureo_context.py` to
+  `mureo/mcp/_helpers.py` as `resolve_workspace_path`. It is a security check;
+  a sibling module reaching into another handler's privates to borrow it —
+  or copying it — is a place for the two to drift.
+
 
 - **The rollback planner's destructive-verb net now has one explicit,
   bounded exemption** (#544). That net refuses to plan any reversal whose
@@ -2815,7 +2967,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - READMEs now link the commercial editions (mureo.jp): the cloud-hosted
   service and the local Agency edition. (#380)
-
 
 ## [0.10.19] - 2026-07-09
 

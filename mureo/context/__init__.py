@@ -1,9 +1,17 @@
 """mureo context -- File-based strategy context (STRATEGY.md / STATE.json)."""
 
+from mureo.context.batch import (
+    BatchError,
+    active_batch,
+    batch_members,
+    batch_platforms,
+    find_batch,
+)
 from mureo.context.errors import ContextFileError
 from mureo.context.models import (
     ActionLogEntry,
     AdState,
+    BatchRecord,
     CampaignSnapshot,
     PlatformState,
     StateDocument,
@@ -11,6 +19,8 @@ from mureo.context.models import (
 )
 from mureo.context.state import (
     append_action_log,
+    begin_batch,
+    end_batch,
     get_campaign,
     parse_state,
     read_state_file,
@@ -30,9 +40,16 @@ from mureo.context.strategy import (
 __all__ = [
     # errors
     "ContextFileError",
+    # batch (#549)
+    "BatchError",
+    "active_batch",
+    "batch_members",
+    "batch_platforms",
+    "find_batch",
     # models
     "ActionLogEntry",
     "AdState",
+    "BatchRecord",
     "CampaignSnapshot",
     "PlatformState",
     "StateDocument",
@@ -46,6 +63,8 @@ __all__ = [
     "write_strategy_file",
     # state
     "append_action_log",
+    "begin_batch",
+    "end_batch",
     "get_campaign",
     "parse_state",
     "read_state_file",

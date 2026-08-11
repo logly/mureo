@@ -60,7 +60,7 @@ def _row(day: date, impressions: int, campaign_id: int = 123) -> Any:
             id=campaign_id,
             name=f"Campaign {campaign_id}",
             status="ENABLED",
-            end_date="",
+            end_date_time="",
         ),
         segments=SimpleNamespace(date=day.isoformat()),
         metrics=SimpleNamespace(

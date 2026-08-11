@@ -723,7 +723,7 @@ class _PerformanceAnalysisMixin:
         start = end - timedelta(days=window)
         query = (
             "SELECT campaign.id, campaign.name, campaign.status, "
-            "campaign.end_date, segments.date, metrics.impressions, "
+            "campaign.end_date_time, segments.date, metrics.impressions, "
             "metrics.clicks, metrics.cost_micros "
             "FROM campaign "
             f"WHERE segments.date BETWEEN '{start.isoformat()}' "
@@ -735,7 +735,11 @@ class _PerformanceAnalysisMixin:
 
 def _daily_delivery_row(row: Any) -> dict[str, Any]:
     """Map one GAQL ``segments.date`` row to the shared delivery shape."""
-    end_date = str(getattr(row.campaign, "end_date", "") or "")
+    # v23 carries the flight end as ``end_date_time`` ("YYYY-MM-DD HH:MM:SS");
+    # there is no ``campaign.end_date`` to select, and the detector compares
+    # whole days, so only the date half is kept.
+    end_date_time = str(getattr(row.campaign, "end_date_time", "") or "")
+    end_date = end_date_time.split(" ", 1)[0].split("T", 1)[0]
     return {
         "campaign_id": str(row.campaign.id),
         "campaign_name": str(row.campaign.name),

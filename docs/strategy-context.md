@@ -409,6 +409,7 @@ detail view shows it, labelled as the document sync it is.
 | `last_synced_at` | `string \| null` | ISO 8601 timestamp of last sync |
 | `platforms` | `object \| null` | Per-platform state (v2) |
 | `action_log` | `array` | Log of actions with outcome tracking |
+| `batches` | `array` | Declared bulk change sets (see below). Absent until the first `mureo_batch_begin` |
 | `customer_id` | `string \| null` | Legacy v1 field (kept for backward compatibility) |
 | `campaigns` | `array` | Legacy v1 field (kept for backward compatibility) |
 
@@ -455,8 +456,27 @@ Each entry in `action_log` records an action taken by a workflow command, with o
 | `summary` | `string` | No | Human-readable summary |
 | `metrics_at_action` | `object` | No | Key metrics at the time of action (e.g., `{"cpa": 5200, "conversions": 45}`) |
 | `observation_due` | `string` | No | ISO 8601 date when the outcome should be evaluated (e.g., `"2026-04-15"`) |
+| `batch_id` | `string` | No — server-stamped | The bulk change set this action belongs to. Stamped automatically while a batch is open (see below). You may supply it as an explicit assertion, but it is **validated**: it must name a declared batch that is still open, so membership can neither be invented nor added to a batch already closed. Absent means the action was standalone |
+| `origin` | `string` | No | `"external"` when mureo only **observed** this change (imported from a platform's change feed, #545). **Absent means mureo made it** — which is every entry written before this field existed. mureo refuses to plan a rollback for an external entry: it never dispatched the change, so it never captured the prior value |
+| `external_id` | `string` | No | The change feed's identity for an external change, namespaced by platform (`"google_ads\|customers/…/changeEvents/…"`). What makes re-importing the same change a no-op. Requires `origin: "external"` — setting it without one raises, because an external id on a mureo-originated entry would make the next import skip mureo's own action |
+| `occurred_at` | `string` | No | When the **platform** says an external change happened, which is routinely well before mureo saw it. The one date the server does not stamp — it cannot know it — but history, never a claim about "now". `observation_due` is measured from it, so a change that has been live for three weeks is already past due rather than due in a fortnight |
+
+An imported (`origin: "external"`) entry deliberately carries **no** `metrics_at_action`: mureo was not present when the change was made, so there is no baseline, and synthesising one from today's numbers would invent a "before" that never existed. Those entries are reviewed qualitatively. Which platforms mureo can import from — and what each feed omits — is in [`docs/change-import.md`](change-import.md).
 
 The `metrics_at_action` and `observation_due` fields enable evidence-based outcome evaluation. When an action's observation window has passed, the agent compares current metrics against `metrics_at_action` to assess the action's impact. See `skills/_mureo-learning/SKILL.md` for the evidence-based decision framework.
+
+#### Batch Record
+
+Each entry in `batches` is one **declared** bulk change set (#549). A bulk pass is many tool calls and nothing in a single call says which others belong with it, so the boundary is declared with `mureo_batch_begin` / `mureo_batch_end` rather than inferred; every `action_log` entry written in between carries the batch's `batch_id`. `rollback_plan_get` then takes that id and reports the reversibility of **every** member — including the ones it cannot reverse — before anything is applied.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `batch_id` | `string` | Yes | The id stamped onto member `action_log` entries |
+| `label` | `string` | Yes | What the change set is, in the operator's words |
+| `started_at` | `string` | No — server-stamped | ISO 8601 timestamp with UTC offset |
+| `ended_at` | `string` | No — server-stamped | When the batch was closed. **Absent means the batch is open** and still collecting; at most one may be open. Once set, membership is final — no later entry can join |
+
+The record is kept after the batch closes rather than deleted, so a `batch_id` found in `action_log` still resolves to its label later. What can join a batch differs by platform — native non-status mutations must be recorded by the agent, and Search Console mutations are not recorded at all — see [`docs/mcp-server.md`](mcp-server.md#batch).
 
 ### Python API
 

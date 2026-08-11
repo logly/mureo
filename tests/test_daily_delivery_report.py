@@ -64,7 +64,9 @@ def _google_row(day: date, impressions: int, campaign_id: int = 123) -> Any:
             id=campaign_id,
             name="Display / Prospecting",
             status="ENABLED",
-            end_date="2037-12-30",
+            # v23 spells the flight end ``end_date_time``, and returns a
+            # datetime rather than a date.
+            end_date_time="2037-12-30 23:59:59",
         ),
         segments=SimpleNamespace(date=day.isoformat()),
         metrics=SimpleNamespace(
@@ -85,9 +87,16 @@ async def test_google_daily_delivery_shape_and_window() -> None:
     assert rows[0]["date"] == "2026-05-31"
     assert rows[0]["impressions"] == 350_000
     assert rows[0]["cost"] == pytest.approx(1.5)
+    # The flight end is selected as ``campaign.end_date_time`` (there is no
+    # ``campaign.end_date`` on v23 — selecting it makes the API reject the
+    # whole query) and narrowed to a date, which is what the detector
+    # compares a cliff against.
+    assert rows[0]["end_date"] == "2037-12-30"
     query = client._search.call_args.args[0]  # type: ignore[attr-defined]
     assert "segments.date BETWEEN '2026-04-17' AND '2026-06-01'" in query
     assert "campaign.status" in query
+    assert "campaign.end_date_time" in query
+    assert "campaign.end_date," not in query
 
 
 @pytest.mark.asyncio

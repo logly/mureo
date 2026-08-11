@@ -502,6 +502,67 @@ class TestMapChangeEvent:
         assert result["change_resource_type"] == "CAMPAIGN"
         assert result["changed_fields"] == ["budget"]
 
+    def test_reads_real_proto_field_names(self) -> None:
+        """Drive the mapper with a REAL ``ChangeEvent``, not a MagicMock.
+
+        A MagicMock answers ``hasattr`` for anything and returns a new mock
+        for any attribute, so a misspelt field name maps to a truthy value and
+        every assertion in the test above still passes. That is exactly how
+        ``changed_resource_name`` — which does not exist on the proto; the
+        field is ``change_resource_name`` — reached a shipped tool and a GAQL
+        SELECT that the server would reject.
+
+        A real protobuf raises ``AttributeError`` for a name it does not have,
+        so every key this asserts is a name the vendored SDK actually defines.
+        """
+        from google.ads.googleads.v23.resources.types.change_event import (
+            ChangeEvent,
+        )
+
+        event = ChangeEvent(
+            resource_name="customers/1/changeEvents/2026-08-05~1~2",
+            change_date_time="2026-08-05 09:14:00",
+            change_resource_name="customers/1/ads/999",
+            user_email="operator@example.com",
+            campaign="customers/1/campaigns/111",
+            ad_group="customers/1/adGroups/222",
+        )
+        event.changed_fields.paths.append("status")
+
+        result = map_change_event(event)
+
+        assert result["resource_name"] == "customers/1/changeEvents/2026-08-05~1~2"
+        assert result["change_date_time"] == "2026-08-05 09:14:00"
+        assert result["change_resource_name"] == "customers/1/ads/999"
+        assert result["user_email"] == "operator@example.com"
+        assert result["campaign"] == "customers/1/campaigns/111"
+        assert result["ad_group"] == "customers/1/adGroups/222"
+        assert result["changed_fields"] == ["status"]
+        # Enum-valued fields are present and stringified, not dropped.
+        assert result["change_resource_type"] is not None
+        assert result["resource_change_operation"] is not None
+        assert result["client_type"] is not None
+
+    def test_every_mapped_key_exists_on_the_proto(self) -> None:
+        """No key the mapper emits may name a field the proto does not have.
+
+        The general form of the bug above: a grep-proof guard that fails the
+        moment someone adds a field name by hand rather than from the proto.
+        Keys the mapper renames deliberately are listed as exceptions.
+        """
+        from google.ads.googleads.v23.resources.types.change_event import (
+            ChangeEvent,
+        )
+
+        declared = {f.name for f in ChangeEvent.pb(ChangeEvent()).DESCRIPTOR.fields}
+        emitted = set(map_change_event(ChangeEvent()))
+        assert emitted <= declared, (
+            f"map_change_event emits key(s) {sorted(emitted - declared)} that name "
+            f"no field on ChangeEvent. Check the spelling against the vendored "
+            f"proto — a name that does not exist reads as an empty value and "
+            f"fails silently."
+        )
+
 
 @pytest.mark.unit
 class TestMapAdPerformanceReport:
