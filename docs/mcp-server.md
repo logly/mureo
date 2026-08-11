@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 213 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 189 advertising and SEO operation tools across Google Ads (89), Meta Ads (90), and Search Console (10), 2 rollback tools, 3 cross-platform analysis tools (anomaly detection, the exclusion delivery-impact preview and tracking-parameter consistency), 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
+mureo exposes 216 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 189 advertising and SEO operation tools across Google Ads (89), Meta Ads (90), and Search Console (10), 2 rollback tools, 3 batch tools (group a bulk change into one revertible unit), 3 cross-platform analysis tools (anomaly detection, the exclusion delivery-impact preview and tracking-parameter consistency), 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
 
 ## Starting the Server
 
@@ -522,10 +522,51 @@ Cross-platform tools for inspecting and applying the reversal of a previously-re
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
-| `rollback_plan_get` | Inspect the reversal plan for an `action_log` entry (`supported` / `partial` / `not_supported`), its `operation` + `params`, and any caveats. Read-only. | `index` |
+| `rollback_plan_get` | Inspect the reversal plan for one `action_log` entry (`supported` / `partial` / `not_supported`), its `operation` + `params`, and any caveats — or, with `batch_id` instead, for a whole batch (see below). Read-only. | exactly one of `index` / `batch_id` |
 | `rollback_apply` | Execute the reversal plan for `action_log[index]`. Requires `confirm=true` as a literal boolean. Appends a new log entry tagged `rollback_of=<index>`. | `index`, `confirm` |
 
 Both tools accept an optional `state_file` argument (default `STATE.json`), which is resolved strictly inside the MCP server's current working directory. Path traversal, symlink escape, and `rollback.*` self-recursion are all refused. A second apply of the same index is refused (idempotency is enforced by scanning later log entries for a matching `rollback_of` marker). Downstream SDK exceptions are logged server-side only; the MCP response returns a generic message so tokens and account identifiers cannot leak into model context.
+
+#### Planning a whole batch (#549)
+
+`rollback_plan_get` with `batch_id` returns one plan covering **every** member of that batch (see [Batch](#batch) below for how membership is declared), so a bulk pass is reviewed as one unit instead of entry by entry:
+
+| Field | Meaning |
+|-------|---------|
+| `coverage` | `full` / `partial` / `none` / `empty` — how much of the batch a reversal would actually restore |
+| `platform_coverage` | The same verdict **per platform key**, because reversibility is not uniform across platforms |
+| `counts` | Members per verdict (`reversible`, `reversible_with_caveats`, `irreversible`, `nothing_to_reverse`, `already_reversed`, `total`) |
+| `apply_order` | The reversible members' `action_log` indices, newest first — the order to feed `rollback_apply` |
+| `members[]` | Every member with its `index`, `platform`, `reversibility` verdict, the `reason` when it cannot be reversed, and its `operation` / `params` / `caveats` when it can |
+
+The point of the response is the part that is **not** reversible. A batch where 60 of 80 members can be restored reports `coverage: "partial"` with the other 20 listed and explained, before anything is applied — a revert whose completeness the operator cannot verify leaves them unable to rule their own fix out as a variable.
+
+`rollback_plan_get` is read-only and `rollback_apply` still takes one `index` at a time, so applying a batch reversal is a loop over `apply_order` — each call re-entering the same policy gate as a forward action. There is deliberately no "apply the whole batch" call: a single result code for 80 dispatches would have to summarize partial failure, which is the reporting problem this feature exists to remove.
+
+### Batch
+
+Declare the boundary of a bulk change so it becomes one reviewable, plannable unit in `action_log`. A bulk pass is many tool calls and nothing in a single call says which others belong with it, so the boundary is declared rather than guessed.
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `mureo_batch_begin` | Open a batch. Every `action_log` entry recorded until it is closed is tagged with the returned `batch_id`. Refused if one is already open. | `label` |
+| `mureo_batch_end` | Close the open batch and return its exact membership (`member_indices`, `member_count`, `platforms`). Closing is **final**. Refused if none is open. | *(none)* |
+| `mureo_batch_status` | Report which batch is collecting (or `null`), how many members it holds, which platforms they span, and a `warning` when it has been open too long. Read-only. | *(none)* |
+
+**Membership cannot be forged or grown after the fact.** `mureo_state_action_log_append` accepts an optional `batch_id`, but it is validated, not trusted: it must name a batch that was actually declared and is still open. An unknown id is refused (an id naming no batch is a typo or a fabrication, not a change set), and a **closed** batch is refused too — `mureo_batch_end` reports a `member_count` the operator keeps, and a membership that can still grow afterwards makes that number silently false. To group imported or backfilled history, open a batch for the import rather than reattaching to an old one.
+
+**A forgotten `mureo_batch_end` announces itself.** A missed `begin` yields no batch, which is obvious and harmless; a missed `end` yields a batch that keeps swallowing unrelated changes for days and then reports them, confidently, as one unit. After 24 hours open, `mureo_batch_status` returns a `warning`, and one is appended to the result of every mutating tool call so the agent that forgot is told without having to ask. mureo never closes a batch for you — an automatic timeout would trade a visible wrong answer for an invisible one. Suppress the appended reminder with `MUREO_DISABLE_BATCH_REMINDER=1`.
+
+Membership is stamped where every recording path already converges (`append_action_log`), not through tool arguments — which is what makes it work for platforms whose tool schemas mureo does not own. What that means per platform:
+
+| Platform kind | Joins a batch | Reversal of a member |
+|---------------|---------------|----------------------|
+| Native Google Ads / Meta Ads | Yes. Status toggles are recorded automatically; **every other mutation** (budget, keywords, placement exclusions, …) joins only if the agent records it with `mureo_state_action_log_append` | Executed, for the allow-listed operations |
+| Bridged / plugin (`plugin:<dist>:<provider>`, e.g. Amazon Ads) | Yes — successful mutations are promoted to `action_log` automatically | Recorded for visibility; executed only when the reversal names a *registered* plugin tool. Otherwise the member is reported `irreversible` with the reason |
+| Hosted connectors (`tiktok_ads`) | Yes, for entries recorded with `mureo_state_action_log_append` — mureo is not in the data path, so nothing is automatic | Not executed by design. Members are reported `irreversible`, so the batch plan is an accurate manual checklist |
+| Search Console | **No.** Its mutations (`sitemaps_submit`) are not recorded in `action_log` at all, so there is nothing to group | n/a |
+
+Batch state lives in STATE.json (`batches`), not in process memory, so a host that restarts the MCP server mid-pass does not silently stop collecting members. Records are kept after close (with `ended_at`) so a `batch_id` still resolves to the operator's own label weeks later.
 
 ### Analysis
 

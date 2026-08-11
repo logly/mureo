@@ -241,6 +241,10 @@ Agent: rollback_apply({index: 0, confirm: true}) → dispatches.
 
 `confirm` must be the literal boolean `true` (truthy non-booleans are refused). On success the executor appends a new log entry tagged `rollback_of=<index>`; a second apply of the same index is refused. `state_file` resolves strictly inside the MCP server's current working directory — `..`-traversal and symlink escape are refused so an attacker-crafted `STATE.json` elsewhere on disk cannot be used as the reversal source.
 
+### Reverting a whole bulk change
+
+A bulk pass wrapped in a batch (`mureo_batch_begin` / `mureo_batch_end`) is planned as one unit by `rollback_plan_get` with `batch_id` instead of `index` — it reports every member, overall and per-platform coverage (`full` / `partial` / `none`), and the reason each member it cannot reverse. That surface is **MCP-only**: `mureo rollback list` / `show` still work entry by entry, and neither the batch tools nor batch planning has a CLI command today. Ask the agent for the batch plan before applying anything; a batch where only some members can be restored will say so there.
+
 ## BYOD Commands (Bring Your Own Data)
 
 Analyse your ad-account data locally without OAuth or a developer token. The importer accepts a single XLSX produced by either the mureo Google Ads Script (`scripts/sheet-template/google-ads-script.js`) or a Meta Ads Manager Saved Report. Activated automatically when `~/.mureo/byod/manifest.json` registers a platform — no `--byod` flag exists. Adapter dispatch is by workbook header signature, so no `--google-ads / --meta-ads` flags on `import` are needed. See [`docs/byod.md`](byod.md) for the full walkthrough.

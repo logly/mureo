@@ -7,8 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-
 ### Added
+
+- **A bulk change is one revertible unit** (#549). mureo had rollback, but it
+  reasoned about one allow-listed operation at a time, so "undo what I did on
+  Monday" was not expressible: after a bulk pass the operator had to work out
+  by hand which entries a change set contained. An unverifiable revert is
+  nearly as bad as no revert — it leaves the operator unable to rule their own
+  fix out as a variable.
+
+  - `mureo_batch_begin` / `mureo_batch_end` / `mureo_batch_status` declare the
+    boundary of a change set. A bulk pass is many tool calls and nothing in a
+    single call says which others belong with it, so the boundary is declared
+    rather than guessed at from timing or target.
+  - Membership is stamped at the one place every recording path already
+    converges (`append_action_log`), not through tool arguments. That is what
+    makes it platform-agnostic with no per-platform code and no ABI change: a
+    native Google/Meta status toggle, a mutation an agent records for a hosted
+    connector, and a bridged/plugin tool call mureo promotes all join the same
+    batch — including tools whose input schemas mureo does not own.
+  - `rollback_plan_get` accepts `batch_id` and returns a plan covering **every**
+    member, with `coverage` (`full` / `partial` / `none` / `empty`), the same
+    verdict **per platform**, per-member reversibility, the reason each
+    irreversible member cannot be reversed, and an `apply_order`. Reversibility
+    is not uniform across platforms, and a plan that listed only the reversible
+    members would read as a complete revert; a batch where 60 of 80 members can
+    be restored says so before anything is applied.
+  - Each member is classified by the existing `plan_rollback` allow-list, so
+    grouping loosens no guarantee. Reversals appended by `rollback_apply` never
+    join an open batch — otherwise reverting a batch would grow it.
+
+  Honest limits, stated in the docs rather than smoothed over: native
+  mutations other than status toggles (budget, keywords, exclusions) join a
+  batch only when the agent records them with `mureo_state_action_log_append`;
+  a bridged/plugin reversal is executed only when it names a registered plugin
+  tool, and is otherwise reported `irreversible`; hosted-connector members are
+  never reversed by mureo, so their plan is an accurate manual checklist; and
+  Search Console mutations are not recorded in `action_log` at all, so they
+  cannot join a batch today.
+
+  Membership is validated, not trusted. An explicit `batch_id` on
+  `mureo_state_action_log_append` must name a batch that was actually declared
+  and is still open; an unknown id is refused, and so is a closed one. The
+  check lives at the `append_action_log` choke point, so no caller — handler,
+  library user or future recorder — can conjure a change set or grow one whose
+  membership `mureo_batch_end` already reported.
+
+  A forgotten `mureo_batch_end` announces itself. After 24 hours open,
+  `mureo_batch_status` returns a warning and one is appended to every mutating
+  tool result, so the agent that forgot is told without having to ask. Nothing
+  is ever closed automatically: a timeout would trade a visible wrong answer
+  for an invisible one.
+
+  STATE.json gains an optional `batches` array and an optional `batch_id` on
+  each `action_log` entry, both emitted only when present — an existing
+  STATE.json parses unchanged and gains no new key on the next write.
+
 
 - **A bulk exclusion now says how much of your delivery it removes, before it
   is applied — and a threshold in `STRATEGY.md` can refuse it** (#547). mureo
@@ -144,6 +198,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exclusion in place.
 
 ### Changed
+
+- `_resolve_path`, the workspace sandbox boundary shared by the STATE.json /
+  STRATEGY.md tools, moved from `mureo/mcp/_handlers_mureo_context.py` to
+  `mureo/mcp/_helpers.py` as `resolve_workspace_path`. It is a security check;
+  a sibling module reaching into another handler's privates to borrow it —
+  or copying it — is a place for the two to drift.
+
 
 - **The rollback planner's destructive-verb net now has one explicit,
   bounded exemption** (#544). That net refuses to plan any reversal whose
@@ -2701,7 +2762,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - READMEs now link the commercial editions (mureo.jp): the cloud-hosted
   service and the local Agency edition. (#380)
-
 
 ## [0.10.19] - 2026-07-09
 

@@ -49,7 +49,8 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "platform (google_ads / meta_ads / etc.). The ``timestamp`` is "
         "stamped by the server — do not compute it. Optional: campaign_id, "
         "ad_id, entity_type, entity_id, summary, command, metrics_at_action, "
-        "observation_due, reversible_params, rollback_of, evaluation_of."
+        "observation_due, reversible_params, rollback_of, evaluation_of, "
+        "batch_id (normally stamped by the server — see the field)."
     ),
     "properties": {
         "timestamp": {
@@ -113,6 +114,22 @@ _ACTION_LOG_ENTRY_PROPERTY = {
                 "set (``mureo_outcome_evaluate`` is pure and records nothing "
                 "itself). Must point at an existing entry — the daily-check's "
                 "pending scope reads the returned ``index`` field to fill it."
+            ),
+        },
+        "batch_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": (
+                "Normally OMIT this. While a batch is open (mureo_batch_begin) "
+                "the server stamps the entry with it automatically, so a bulk "
+                "pass groups itself. Supplying it is an explicit ASSERTION "
+                "that this entry belongs to that batch, and it is validated: "
+                "the id must name a declared batch that is still open. An "
+                "unknown id, or one whose batch has been closed, is REFUSED — "
+                "membership cannot be invented, and a closed batch's reported "
+                "member count cannot be made false after the fact. To group "
+                "imported or backfilled history, open a batch for the import "
+                "rather than reattaching to an old one."
             ),
         },
     },

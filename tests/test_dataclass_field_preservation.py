@@ -76,6 +76,7 @@ from mureo.analytics.builtin._live_clients import _merge_campaign_metrics
 from mureo.context.models import (
     ActionLogEntry,
     AdState,
+    BatchRecord,
     CampaignSnapshot,
     PlatformState,
     StateDocument,
@@ -131,6 +132,15 @@ _ACTION_LOG_FIELD_VALUES: dict[str, Any] = {
     "evaluation_of": 4,
     "entity_type": "ad_group",
     "entity_id": "G-1",
+    "batch_id": "B-20260808-093000-a1b2",
+}
+
+#: One distinctive value per :class:`BatchRecord` field (#549).
+_BATCH_FIELD_VALUES: dict[str, Any] = {
+    "batch_id": "B-20260808-093000-a1b2",
+    "label": "pause the losing ad groups",
+    "started_at": "2026-08-08T09:30:00+09:00",
+    "ended_at": "2026-08-08T09:41:00+09:00",
 }
 
 #: One distinctive value per :class:`CampaignSnapshot` field, minus the id the
@@ -173,6 +183,7 @@ _DOCUMENT_FIELD_VALUES: dict[str, Any] = {
     "platforms": {_PLATFORM: PlatformState(**_PLATFORM_FIELD_VALUES)},
     "action_log": (ActionLogEntry(**_ACTION_LOG_FIELD_VALUES),),
     "reports": {"daily": {"narrative": "healthy"}},
+    "batches": (BatchRecord(**_BATCH_FIELD_VALUES),),
 }
 
 #: Every model the STATE.json codec maps, with the map that must cover it.
@@ -184,6 +195,7 @@ _CODEC_MODELS: tuple[tuple[type, dict[str, Any]], ...] = (
     (ActionLogEntry, _ACTION_LOG_FIELD_VALUES),
     (CampaignSnapshot, _CAMPAIGN_FIELD_VALUES),
     (AdState, _AD_STATE_FIELD_VALUES),
+    (BatchRecord, _BATCH_FIELD_VALUES),
 )
 
 
