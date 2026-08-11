@@ -85,6 +85,8 @@ from mureo.mcp.tools_analytics_registry import (
 )
 from mureo.mcp.tools_batch import TOOLS as BATCH_TOOLS
 from mureo.mcp.tools_batch import handle_tool as handle_batch_tool
+from mureo.mcp.tools_change_import import TOOLS as CHANGE_IMPORT_TOOLS
+from mureo.mcp.tools_change_import import handle_tool as handle_change_import_tool
 from mureo.mcp.tools_creative_studio import TOOLS as CREATIVE_STUDIO_TOOLS
 from mureo.mcp.tools_creative_studio import (
     handle_tool as handle_creative_studio_tool,
@@ -148,6 +150,7 @@ _ALL_TOOLS: list[Tool] = [
     *SEARCH_CONSOLE_TOOLS,
     *ROLLBACK_TOOLS,
     *BATCH_TOOLS,
+    *CHANGE_IMPORT_TOOLS,
     *ANALYSIS_TOOLS,
     *MUREO_CONTEXT_TOOLS,
     *ANALYTICS_REGISTRY_TOOLS,
@@ -164,6 +167,7 @@ _META_ADS_NAMES: frozenset[str] = (
 _SEARCH_CONSOLE_NAMES: frozenset[str] = frozenset(t.name for t in SEARCH_CONSOLE_TOOLS)
 _ROLLBACK_NAMES: frozenset[str] = frozenset(t.name for t in ROLLBACK_TOOLS)
 _BATCH_NAMES: frozenset[str] = frozenset(t.name for t in BATCH_TOOLS)
+_CHANGE_IMPORT_NAMES: frozenset[str] = frozenset(t.name for t in CHANGE_IMPORT_TOOLS)
 _ANALYSIS_NAMES: frozenset[str] = frozenset(t.name for t in ANALYSIS_TOOLS)
 _MUREO_CONTEXT_NAMES: frozenset[str] = frozenset(t.name for t in MUREO_CONTEXT_TOOLS)
 _ANALYTICS_REGISTRY_NAMES: frozenset[str] = frozenset(
@@ -248,6 +252,7 @@ _PLUGIN_TOOLS, _PLUGIN_DISPATCH = collect_plugin_tools(
         | _SEARCH_CONSOLE_NAMES
         | _ROLLBACK_NAMES
         | _BATCH_NAMES
+        | _CHANGE_IMPORT_NAMES
         | _ANALYSIS_NAMES
         | _MUREO_CONTEXT_NAMES
         | _ANALYTICS_REGISTRY_NAMES
@@ -1112,6 +1117,8 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         )
     if name in _BATCH_NAMES:
         return await handle_batch_tool(name, arguments)
+    if name in _CHANGE_IMPORT_NAMES:
+        return await handle_change_import_tool(name, arguments)
     if name in _ANALYSIS_NAMES:
         return await handle_analysis_tool(name, arguments)
     if name in _MUREO_CONTEXT_NAMES:

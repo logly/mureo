@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 216 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 189 advertising and SEO operation tools across Google Ads (89), Meta Ads (90), and Search Console (10), 2 rollback tools, 3 batch tools (group a bulk change into one revertible unit), 3 cross-platform analysis tools (anomaly detection, the exclusion delivery-impact preview and tracking-parameter consistency), 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
+mureo exposes 217 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 189 advertising and SEO operation tools across Google Ads (89), Meta Ads (90), and Search Console (10), 2 rollback tools, 3 batch tools (group a bulk change into one revertible unit), 1 change-import tool (record changes made outside mureo), 3 cross-platform analysis tools (anomaly detection, the exclusion delivery-impact preview and tracking-parameter consistency), 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
 
 ## Starting the Server
 
@@ -567,6 +567,34 @@ Membership is stamped where every recording path already converges (`append_acti
 | Search Console | **No.** Its mutations (`sitemaps_submit`) are not recorded in `action_log` at all, so there is nothing to group | n/a |
 
 Batch state lives in STATE.json (`batches`), not in process memory, so a host that restarts the MCP server mid-pass does not silently stop collecting members. Records are kept after close (with `ended_at`) so a `batch_id` still resolves to the operator's own label weeks later.
+
+### Change import
+
+Record changes made **outside** mureo — in a platform's own UI, its editor, or another tool — so mureo's guarantees survive manual operation. Without this, mureo cannot tell "nothing happened" from "something happened that I cannot see".
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `mureo_external_changes_import` | Poll each configured platform's change feed and append anything mureo did not do to `action_log` with `origin: "external"`. Skips changes already imported and changes mureo itself made. Idempotent. | *(none)* |
+
+Optional: `platforms` (array of platform keys; omit to cover every platform in STATE.json), `since` (ISO 8601 window start; omit to resume from the newest change already imported), `path`.
+
+**The response is designed to be read for blind spots, not just for finds.** Every configured platform appears in `platforms[]`:
+
+| `status` | Meaning |
+|---|---|
+| `imported` | The feed ran. An empty `imported_indices` here is a real "nothing changed in this window" |
+| `unavailable` | The platform was **not checked**: either mureo has no change feed for it, or a registered feed could not answer for this account/mode (BYOD, unsupported account type). `reason: "change_import_unavailable_for_<platform>"`; the specific cause is in `notes`. Not evidence that nothing happened |
+| `error` | The feed exists but could not be read (expired token, missing credentials). Also unchecked, also not evidence of quiet |
+
+`blind_spots` collects the `unavailable` and `error` platforms; `truncated_platforms` collects those whose feed capped its response, meaning older changes inside that window are unreachable and **cannot be recovered later**. `feeds_available_for` lists the platforms that have a registered feed at all.
+
+Per-platform coverage — which feeds exist, which mureo reads today, and what each omits — is in [`docs/change-import.md`](change-import.md). Do not infer it from tool availability.
+
+An imported entry is permanently distinguishable from one mureo performed. It carries `origin: "external"`, the platform's `occurred_at`, and an `observation_due` anchored on that (so an older change lands already past due), and **no** `metrics_at_action`. `rollback_plan_get` returns `not_supported` for every external entry — mureo never saw the prior value, so a "reversal" would be a fresh change dressed as a restoration.
+
+For a hosted connector mureo cannot poll (`tiktok_ads`), a skill that reads the connector's own change tools records what it finds through `mureo_state_action_log_append` with `origin: "external"` plus `external_id` and `occurred_at`.
+
+Bridges and plugins participate by shipping an entry point in the `mureo.change_feeds` group implementing `ChangeFeedProvider` — a **new** Protocol in a **new** group, so no published plugin is affected. See [`docs/ABI-stability.md` §4b](ABI-stability.md#4b-changefeedprovider-protocol-issue-545).
 
 ### Analysis
 

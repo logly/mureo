@@ -50,7 +50,9 @@ _ACTION_LOG_ENTRY_PROPERTY = {
         "stamped by the server — do not compute it. Optional: campaign_id, "
         "ad_id, entity_type, entity_id, summary, command, metrics_at_action, "
         "observation_due, reversible_params, rollback_of, evaluation_of, "
-        "batch_id (normally stamped by the server — see the field)."
+        "batch_id (normally stamped by the server — see the field), and the "
+        "provenance trio origin / external_id / occurred_at for a change "
+        "mureo did NOT make (see those fields)."
     ),
     "properties": {
         "timestamp": {
@@ -132,11 +134,55 @@ _ACTION_LOG_ENTRY_PROPERTY = {
                 "rather than reattaching to an old one."
             ),
         },
+        "origin": {
+            "type": "string",
+            "enum": ["external"],
+            "description": (
+                "OMIT for anything mureo did — that is what an absent origin "
+                "means. Set 'external' ONLY for a change mureo did not make, "
+                "which you read out of a platform's own change history "
+                "(typically a hosted connector mureo cannot poll itself; "
+                "native and plugin platforms are covered by "
+                "mureo_external_changes_import). An external entry is "
+                "permanently marked as observed rather than performed: mureo "
+                "will refuse to plan a rollback for it, because it never saw "
+                "the prior value. Never use it to record a change you made "
+                "through mureo."
+            ),
+        },
+        "external_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": (
+                "The change feed's own identifier for an external change, so "
+                "recording it twice is a no-op. Requires origin='external'. "
+                "Namespace it with the platform key (e.g. "
+                "'tiktok_ads|<change id>'). Omit only when the feed exposes "
+                "no id — the entry is then recorded, but a later pass cannot "
+                "recognise it and will record it again."
+            ),
+        },
+        "occurred_at": {
+            "type": "string",
+            "minLength": 1,
+            "description": (
+                "ISO 8601 time the PLATFORM says the change happened — "
+                "history, never 'now'. Unlike ``timestamp`` (which the server "
+                "always stamps) this is accepted, because the change's own "
+                "date is not something the server can know. The observation "
+                "window anchors on it, so a change made two weeks ago is "
+                "already due for review rather than due in a fortnight."
+            ),
+        },
     },
     "required": ["action", "platform"],
     "dependentRequired": {
         "entity_type": ["entity_id"],
         "entity_id": ["entity_type"],
+        # An external_id on a mureo-originated entry would poison change-import
+        # dedup — the next import would treat mureo's own action as something
+        # it had already imported. Refused at the schema and again in the model.
+        "external_id": ["origin"],
     },
 }
 

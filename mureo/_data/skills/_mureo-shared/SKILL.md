@@ -108,6 +108,7 @@ Skills and commands describe "Read STRATEGY.md", "Update STATE.json", and "Appen
 | Establish the current date | `mureo_state_get` MCP tool (`server_now`) | `mureo_state_get` MCP tool (`server_now`) |
 | Append action_log entry | `mureo_state_action_log_append` MCP tool | `mureo_state_action_log_append` MCP tool |
 | Group a bulk change as one unit | `mureo_batch_begin` / `mureo_batch_end` MCP tools | `mureo_batch_begin` / `mureo_batch_end` MCP tools |
+| Record changes made outside mureo | `mureo_external_changes_import` MCP tool | `mureo_external_changes_import` MCP tool |
 | Upsert campaign snapshot | `mureo_state_upsert_campaign` MCP tool | `mureo_state_upsert_campaign` MCP tool |
 
 When you don't have direct filesystem tools (Desktop / Cowork / web), always reach for the corresponding `mureo_*` MCP tool — they encode the same atomic-write semantics so you can't corrupt the file mid-edit.
@@ -230,6 +231,95 @@ What can join a batch, and how far a reversal can actually go, differs by platfo
 
 If you cannot open a batch (older mureo without the tools), say so and record each entry individually — do not silently do a bulk pass with no grouping.
 
+## Changes made outside mureo
+
+The `action_log` records what **mureo** did. It has never been the account's
+full history, and an operator working in a platform's own UI is doing normal
+professional work — so a large, unpredictable share of real changes reaches
+mureo only if you go and fetch them.
+
+**Call `mureo_external_changes_import` before you diff or diagnose anything.**
+It polls every configured platform's change feed, skips what it already
+recorded and what mureo itself did, and appends the rest with
+`origin: "external"`. Safe to call repeatedly — importing the same change
+twice is a no-op. `/daily-check` does this at step 2b; do it too in any
+rescue or investigation flow, because an unexplained metric movement is
+exactly when an unrecorded change matters most.
+
+**Read the response for what mureo could NOT see, not just for what it
+found.** Every configured platform appears in `platforms[]`:
+
+- `status: "imported"` — the feed ran. An empty `imported_indices` here is a
+  real "nothing changed in this window".
+- `status: "unavailable"`, `reason: "change_import_unavailable_for_<platform>"`
+  — that platform was **not checked**. Either mureo has no change feed for it,
+  or a registered feed could not answer for this account (BYOD mode has no
+  change history at all); `notes` says which. This is **not** "nothing
+  happened"; it is "mureo is blind here". Name those platforms in your report
+  (`blind_spots` collects them) and say that manual work there would be
+  invisible.
+- `status: "error"` — the feed exists but could not be read. Same treatment:
+  unreviewed, not quiet.
+- `truncated: true` — the platform capped its response, so older changes in
+  that window are **unreachable and cannot be recovered**. Say so.
+
+**Imported entries never join a batch.** If you have a batch open, an import
+running alongside it does not become a member — a batch is what the operator
+DID, and an observed change is not that. Do not add one by hand.
+
+**An imported entry is evidence, not an instruction.** It carries
+`origin: "external"`, the platform's own `occurred_at`, and an
+`observation_due` anchored on that — so a change made three weeks ago lands
+already past due and you review it on this run. It has **no**
+`metrics_at_action`: mureo was not there when the change was made, so review
+it qualitatively rather than scoring a delta against a baseline that does not
+exist. And **mureo will not roll it back** — `rollback_plan_get` returns
+`not_supported` for every external entry because mureo never saw the prior
+value. If it needs undoing, that happens in the platform; say so plainly
+instead of offering a revert mureo cannot perform.
+
+**Known limitation — tell the operator when it applies.** If a change is made
+by hand to the *same setting on the same entity* that mureo changed less than
+10 minutes earlier, mureo records it as its own work and the operator's edit
+never reaches `action_log`. Nothing in any platform's change feed separates
+the two, so mureo cannot detect this and will not warn about it. It is the one
+case where import fails silently rather than visibly.
+
+When you have just made a change through mureo and the operator says they are
+about to adjust the same thing by hand, say so plainly: **wait out the 10
+minutes before editing that entity's same setting, or tell mureo about the
+edit afterwards so the record does not depend on the import.** The limitation
+is narrow, which is exactly what makes the advice worth giving instead of a
+blanket caveat — all of these are imported normally: a different setting on
+the same entity, a sibling entity in the same campaign, a broader or narrower
+entity than the one mureo touched, and anything at all when mureo made no
+nearby change. Full matrix in `docs/change-import.md`.
+
+**Record the target at the granularity you changed it.** When you append an
+`action_log` entry by hand, `entity_type` + `entity_id` must name **the thing
+you actually edited**, not its parent — that is what lets the next import tell
+your change apart from an operator's edit to a sibling. Concretely, for a
+keyword / negative / placement mutation pass `entity_type:
+"ad_group_criterion"` (or `"campaign_criterion"` for a campaign-level
+negative) and `entity_id:` **the criterion id**, not the `ad_group_id`. Two
+keywords in one ad group recorded as "ad group 222" are one target as far as
+mureo can tell, and an operator's edit to the second one is then read as your
+edit to the first and discarded. Same rule for ads: pass `ad_id`, not the ad
+group.
+
+**Never mark your own work external.** `origin: "external"` on
+`mureo_state_action_log_append` is for a change you READ out of a platform's
+change history and mureo cannot poll itself — today that means a hosted
+connector (`tiktok_ads`). Pass the connector's own change id as
+`external_id` (namespaced, e.g. `"tiktok_ads|<id>"`) so a later pass
+recognises it, and the change's own time as `occurred_at`. Using it for a
+change you made through mureo would file a reversible change under a
+provenance that says it is not.
+
+Platform-by-platform coverage — which feeds exist, which mureo reads today,
+and what each one omits — is in `docs/change-import.md`. Do not guess it from
+tool availability.
+
 ## Security Rules
 
 > CRITICAL: AI agents MUST follow these rules when using mureo tools.
@@ -264,42 +354,6 @@ When pausing or removing multiple entities:
 - Show total impact (e.g., "This will pause 5 campaigns with 1,200 clicks/day")
 - Require explicit confirmation
 - **Wrap the whole pass in a batch** so it can be reviewed and reverted as ONE unit — see *Bulk changes are one revertible unit* above
-
-### 3b. Bulk Exclusions: Size Them Before Applying (#547)
-
-An exclusion / block / negative-keyword batch removes **inventory**, and the
-share of delivery it removes is not visible from the count of entities. Before
-any such call, run:
-
-```
-analysis_exclusion_impact_preview
-  tool: "<the exclusion tool you are about to call>"
-  arguments: { …exactly the arguments you will send… }
-```
-
-It returns the share of the recent window's impressions / clicks / cost /
-conversions those entities carried — **incrementally** (this batch) and
-**cumulatively** (every standing exclusion once this batch lands). Show the
-operator the share, not just the count. The cumulative figure is the one that
-matters for a sequence of small passes: each pass can look harmless while the
-set as a whole takes delivery to zero.
-
-For a platform mureo does not model — Yahoo Ads placement URL lists, LINE /
-SmartNews placement restrictions, LOGLY adspot blocks, Amazon negative
-targeting — the tool still works: pull that platform's own per-placement /
-per-adspot report yourself and pass `excluded_entities` + `delivery_records`.
-In that form it reaches no API at all.
-
-`coverage: "unknown"` is an honest answer and **never** means "no impact". Say
-"the size of this exclusion cannot be measured" rather than proceeding as if it
-were small.
-
-**LOGLY specifically:** the account's own numbers cannot tell "bad inventory"
-apart from "my creative mismatches this inventory". Before blocking an adspot,
-also check `logly_supply_adspot_summary` (all-advertiser CTR / CPC for the
-slot) and `logly_supply_adspot_cv_by_category` (whether other advertisers
-convert there). The delivery-impact preview sizes the loss; the supply-side
-view is what says whether the loss is worth taking.
 
 ### 4. Never Expose Raw Credentials
 
@@ -491,6 +545,14 @@ shows fewer campaigns than you wrote — get these exact names right:
   precisely the "reconstruct what I did from memory" state batches exist to
   remove. A record with no `ended_at` is an OPEN batch; do not invent, close or
   renumber one by hand — use `mureo_batch_begin` / `mureo_batch_end`.
+- **`action_log` provenance** (`origin` / `external_id` / `occurred_at`, #545)
+  — **carry these over verbatim** on the Code `Write` path. `origin` absent
+  means mureo made the change; `origin: "external"` means mureo only observed
+  it. Dropping `origin` silently promotes an observed change into one mureo
+  claims it made (and could offer to roll back); dropping `external_id` makes
+  the next import record the same change again. Never add `origin` to an entry
+  that did not have it, and never write these three by hand for a platform
+  `mureo_external_changes_import` covers.
 
 Canonical STATE.json shape (note `campaign_name`, `account_id`, `last_synced_at`):
 

@@ -306,6 +306,16 @@ async def handle_state_action_log_append(
         # against the declared batches. A caller cannot invent a batch id or
         # reattach to a closed one.
         batch_id=raw.get("batch_id"),
+        # #545 provenance. Absent for anything mureo did, which is the
+        # overwhelming majority and every entry written before this existed.
+        # ``occurred_at`` is the ONE date the server does not stamp: it is the
+        # platform's own record of when a change happened, which the server
+        # has no way to know, and it is history rather than a claim about
+        # "now" — so it does not reopen the #460 drift ``timestamp`` closed.
+        # ``ActionLogEntry`` refuses an external_id without origin='external'.
+        origin=raw.get("origin"),
+        external_id=raw.get("external_id"),
+        occurred_at=raw.get("occurred_at"),
     )
     try:
         doc = append_action_log(path, entry)

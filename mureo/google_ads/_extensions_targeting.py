@@ -34,6 +34,14 @@ if TYPE_CHECKING:
 
 _RESOURCE_NAME_PATTERN = re.compile(r"customers/\d+/recommendations/\d+")
 
+#: Row cap on a ``change_event`` query. The resource offers no pagination, so
+#: this is a hard ceiling on one window rather than a page size: a response of
+#: exactly this length means older changes in the window are permanently
+#: unreachable. During the incident post-mortem behind #545 a single bulk
+#: exclusion edit consumed the entire window, which is why change history has
+#: to be captured continuously and cannot be backfilled afterwards.
+CHANGE_HISTORY_ROW_LIMIT = 100
+
 # Google Ads DeviceEnum integer -> device name mapping
 # API v23 campaign_criterion.device.type_ returns int
 _DEVICE_ENUM_MAP: dict[int, str] = {
@@ -523,15 +531,32 @@ class _TargetingMixin:
         """List change history.
 
         API requires date range filter, so defaults to last 14 days when unspecified.
+
+        The row cap is :data:`CHANGE_HISTORY_ROW_LIMIT` and ``change_event``
+        offers no paging, so a response OF that length means older changes in
+        the window are unreachable — see the constant. Callers that need to
+        know (the #545 importer) compare the row count against it.
+
+        ``resource_name`` / ``change_resource_name`` / ``client_type`` /
+        ``campaign`` / ``ad_group`` are selected for the #545 importer: the event's own resource name is the
+        stable id that makes a repeated poll idempotent, and the campaign /
+        ad-group links are the target identity without which mureo cannot tell
+        its own change apart from an operator's. Additive — every field the
+        pre-#545 response carried is still there.
         """
 
         query = """
             SELECT
+                change_event.resource_name,
                 change_event.change_date_time,
                 change_event.change_resource_type,
+                change_event.change_resource_name,
                 change_event.resource_change_operation,
                 change_event.changed_fields,
-                change_event.user_email
+                change_event.client_type,
+                change_event.user_email,
+                change_event.campaign,
+                change_event.ad_group
             FROM change_event
         """
         # API rejects CHANGE_DATE_RANGE_INFINITE, so set default date range
@@ -547,7 +572,7 @@ class _TargetingMixin:
         ]
         query += "\n            WHERE " + " AND ".join(conditions)
         query += "\n            ORDER BY change_event.change_date_time DESC"
-        query += "\n            LIMIT 100"
+        query += f"\n            LIMIT {CHANGE_HISTORY_ROW_LIMIT}"
         response = await self._search(query)  # type: ignore[attr-defined]
         return [map_change_event(row.change_event) for row in response]
 

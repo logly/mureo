@@ -74,6 +74,7 @@ import pytest
 from mureo.analysis.anomaly_detector import CampaignMetrics
 from mureo.analytics.builtin._live_clients import _merge_campaign_metrics
 from mureo.context.models import (
+    EXTERNAL_ORIGIN,
     ActionLogEntry,
     AdState,
     BatchRecord,
@@ -133,6 +134,9 @@ _ACTION_LOG_FIELD_VALUES: dict[str, Any] = {
     "entity_type": "ad_group",
     "entity_id": "G-1",
     "batch_id": "B-20260808-093000-a1b2",
+    "origin": EXTERNAL_ORIGIN,
+    "external_id": "google_ads|customers/1/changeEvents/abc",
+    "occurred_at": "2026-08-05T09:14:00+09:00",
 }
 
 #: One distinctive value per :class:`BatchRecord` field (#549).

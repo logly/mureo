@@ -1142,6 +1142,10 @@ def test_action_log_schema_accepts_generic_entity_identity() -> None:
     assert entry["dependentRequired"] == {
         "entity_type": ["entity_id"],
         "entity_id": ["entity_type"],
+        # #545: an external_id on a mureo-originated entry would poison
+        # change-import dedup, so the schema refuses it too — not only the
+        # model. Pinned as a whole dict so a rule cannot be dropped silently.
+        "external_id": ["origin"],
     }
 
 

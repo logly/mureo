@@ -186,6 +186,8 @@ mureo/
 │   ├── _handlers_rollback.py              # Rollback handlers (lazy-resolve dispatcher)
 │   ├── tools_batch.py                     # mureo_batch_begin / _end / _status
 │   ├── _handlers_batch.py                 # Batch lifecycle handlers
+│   ├── tools_change_import.py             # mureo_external_changes_import (#545)
+│   ├── _handlers_change_import.py         # Change-import handler
 │   ├── tools_analysis.py                  # analysis_anomalies_check / analysis_tracking_consistency_check
 │   ├── _handlers_analysis.py              # Anomaly detector composition handler
 │   ├── _handlers_tracking.py              # Tracking-parameter consistency handler (#550)
@@ -200,6 +202,13 @@ mureo/
 ├── learning/                # /learn knowledge base + advisor federation client
 ├── creative_studio/         # Creative Studio: image providers, art-direction scoring, HTML/CSS composer
 ├── analytics/               # Analytics-module protocol + registry (mureo.analytics entry-point group)
+├── change_import/           # Import changes made outside mureo into action_log (#545)
+│   ├── models.py            # ExternalChange / ChangeFeedResult / ChangeImportOutcome
+│   ├── protocol.py          # ChangeFeedProvider (mureo.change_feeds entry-point group)
+│   ├── registry.py          # Discovery + fault isolation + lookup
+│   ├── dedupe.py            # Already-imported vs mureo's own change
+│   ├── importer.py          # Window, action_log write, per-platform outcome
+│   └── builtin/google_ads.py  # change_event feed (the only native feed today)
 ├── byod/                    # Bring Your Own Data (XLSX bundle importer + CSV-backed read-only clients)
 ├── adapters/                # BYOD per-platform header-signature adapters
 ├── demo/                    # Synthetic demo workspace scaffolding
@@ -280,6 +289,8 @@ mureo assumes the caller is an AI agent susceptible to prompt injection, not a t
 5. **Rollback with allow-list gating** — `mureo/rollback/` turns agent-authored `reversible_params` hints into concrete `RollbackPlan` records. `reversible_params` is untrusted input for the rollback executor, so the planner enforces an explicit allow-list of operations (budget update + status toggles across Google/Meta Ads), refuses destructive verbs (`.delete` / `.remove` / `.destroy` / `.purge` / `.transfer`), and rejects unexpected parameter keys — a compromised agent cannot smuggle a privileged call through the rollback path. The `mureo rollback list` / `show` CLI commands are inspection-only; execution stays with the MCP dispatcher so it re-enters the same policy gate as forward actions, and control characters from STATE.json are stripped before terminal output to prevent ANSI-escape spoofing.
 
    A bulk change is planned as **one unit** (#549): `mureo_batch_begin` / `mureo_batch_end` declare the boundary, every `action_log` entry written in between is stamped with the batch id at the single `append_action_log` choke point (so native, hosted-connector and bridged/plugin recordings all join without any per-platform code), and `rollback_plan_get` takes that id and classifies **every** member. Coverage is reported overall and per platform as `full` / `partial` / `none` — because reversibility is not uniform across platforms, and a plan that quietly omitted the members mureo cannot reverse would read as a complete revert. The same allow-list decides each member, so nothing about the guarantee is loosened by grouping.
+
+   Change import (#545) is the read side of the same guarantee: `mureo/change_import/` polls each platform's change feed and records what mureo did **not** do, marked `origin: "external"` so it can never be confused with a change mureo dispatched. The rollback planner refuses every external entry before any other check — mureo never captured the prior value, so a "reversal" built from a hint on such an entry would be a fresh change dressed as a restoration, and a batch mixing the two reports `partial` coverage rather than promising a full revert. Platforms with no feed are reported `change_import_unavailable_for_<platform>`, never as "no changes" — see [change-import.md](change-import.md).
 
 See [SECURITY.md](../SECURITY.md) for the full threat model.
 
@@ -462,7 +473,7 @@ The Amazon bridge is the reason mureo sits in the request path rather than letti
 
 ## Command-Based Workflow System
 
-In addition to the 216 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
+In addition to the 217 individual MCP tools, mureo provides **workflow commands** as Claude Code native slash skills (deployed to `~/.claude/skills/`). These commands are **platform-agnostic orchestration instructions** that guide the AI agent to discover platforms, select tools, and synthesize cross-platform insights — all driven by the strategy context in `STRATEGY.md`.
 
 ### How It Works
 
