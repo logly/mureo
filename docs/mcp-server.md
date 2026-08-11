@@ -1,6 +1,6 @@
 # MCP Server Guide
 
-mureo exposes 208 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 184 advertising and SEO operation tools across Google Ads (86), Meta Ads (88), and Search Console (10), 2 rollback tools, 3 batch tools (group a bulk change into one revertible unit), 1 cross-platform anomaly-detection tool, 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
+mureo exposes 216 tools via the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP): 189 advertising and SEO operation tools across Google Ads (89), Meta Ads (90), and Search Console (10), 2 rollback tools, 3 batch tools (group a bulk change into one revertible unit), 3 cross-platform analysis tools (anomaly detection, the exclusion delivery-impact preview and tracking-parameter consistency), 9 mureo-context tools (strategy / state / reports / outcome evaluation), 2 analytics-registry tools, 2 learning tools (`mureo_learning_insights_get` for the operator's local `/learn` history and `mureo_consult_advisor` for federated retrieval against external advisor MCP servers — see [`docs/insight-federation.md`](insight-federation.md)), 1 learning-period pre-flight tool (`mureo_learning_reset_preflight` — is a pending change reset-triggering, and is the campaign already learning; see [Learning-period reset pre-flight](#learning-period-reset-pre-flight)), and 5 Creative Studio tools (text-free key-visual generation + banner composition). Any MCP-compatible client can connect and call these tools over stdio. Re-check this count when MCP tools are added or removed (`test_list_tools_returns_all_tools` pins the exact number). The count covers mureo's own tool families only — tools bridged from the official **Amazon Ads** MCP (and from any installed provider plugin) are appended on top at server start and vary per operator; see [Amazon Ads (official-MCP bridge)](#amazon-ads-official-mcp-bridge) below.
 
 ## Starting the Server
 
@@ -143,6 +143,16 @@ Or use `uv` to run it:
 | `google_ads_negative_keywords_remove` | Remove a negative keyword | `customer_id`, `campaign_id`, `criterion_id` |
 | `google_ads_negative_keywords_add_to_ad_group` | Add negative keywords to an ad group | `customer_id`, `ad_group_id`, `keywords` |
 | `google_ads_negative_keywords_suggest` | Suggest negative keywords based on search terms | `customer_id`, `campaign_id` |
+
+#### Negative Placements (delivery-surface exclusions)
+
+Excluded websites, mobile apps and mobile app categories — the placement side of exclusion, as opposed to the search-term side above.
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `google_ads_negative_placements_list` | List excluded websites / apps / app categories at campaign and ad group level | `customer_id` |
+| `google_ads_negative_placements_add` | Exclude websites / apps / app categories (batch, one revertible unit) | `customer_id`, one of `campaign_id` / `ad_group_id`, `placements` |
+| `google_ads_negative_placements_remove` | Lift exclusions by `criterion_id` (batch) | `customer_id`, one of `campaign_id` / `ad_group_id`, `criterion_ids` |
 
 #### Budget
 
@@ -378,6 +388,15 @@ Or use `uv` to run it:
 | `meta_ads_analysis_compare_ads` | Compare performance across ads | `account_id` |
 | `meta_ads_analysis_suggest_creative` | Suggest creative improvements based on data | `account_id` |
 
+#### Placement Exclusions
+
+Which publishers, Audience Network app categories and content types an ad set must NOT be delivered against. Stored inside the ad set's targeting spec; named as their own tools so mureo can record and reverse an exclusion change.
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `meta_ads_excluded_placements_get` | Read an ad set's current exclusion lists | `account_id`, `ad_set_id` |
+| `meta_ads_excluded_placements_set` | Replace the supplied exclusion facets on an ad set | `account_id`, `ad_set_id` |
+
 #### Product Catalog (DPA)
 
 | Tool | Description | Required Parameters |
@@ -551,13 +570,82 @@ Batch state lives in STATE.json (`batches`), not in process memory, so a host th
 
 ### Analysis
 
-Cross-platform anomaly detection that operates on STATE.json's `action_log` history rather than a platform API directly.
+Cross-platform analysis that operates on data the caller supplies — an `action_log` history, ad records, a delivery report — rather than on a platform API the tool picks for itself. `analysis_anomalies_check` and `analysis_tracking_consistency_check` reach no platform API at all, so they behave identically for native, plugin, bridged and hosted-connector platforms; `analysis_exclusion_impact_preview` issues one read of the account's own report unless the caller supplies `delivery_records`.
 
 | Tool | Description | Required Parameters |
 |------|-------------|-------------------|
 | `analysis_anomalies_check` | Compare a campaign's current metrics against a median-based baseline built from `action_log` history. Returns severity-ordered anomalies — zero spend (CRITICAL), CPA spike (HIGH/CRITICAL, gated by 30+ conversions), CTR drop (HIGH/CRITICAL, gated by 1000+ impressions). | `current` (`current.campaign_id` and `current.cost` required) |
+| `analysis_exclusion_impact_preview` | Size a bulk exclusion / block / negative-keyword batch before applying it: what share of the recent window's impressions, clicks, cost and conversions the excluded entities carried, incrementally and cumulatively. Returns `would_block` from the same rule the dispatcher enforces. | either `tool` (+ `arguments`) or `excluded_entities` |
+| `analysis_tracking_consistency_check` | Audit final-URL tracking parameters across ad records from any platform. Returns findings with `severity`, `delivery_state` (`served` / `not_served` / `unknown`), the ad ids and the evidence — a utm scheme belonging to exactly one other campaign, one landing page under two schemes, a parameter the rest of the campaign carries, and violations of a `## Tracking Convention` declared in STRATEGY.md. Pass `planned_ads` to pre-flight ads before creating them. | `ads` |
+
+#### `analysis_exclusion_impact_preview` (#547)
+
+Applying an exclusion batch without knowing its size is how a Display campaign
+goes to zero impressions. This tool answers "how much of *my current delivery*
+does this remove", from the account's own recent performance — never a platform
+reach estimator.
+
+Two calling conventions:
+
+- **`tool` + `arguments`** — the exact call you are about to make. mureo reads
+  the excluded entities out of the arguments and fetches the matching report
+  for that scope.
+- **`excluded_entities` + `delivery_records`** — you supply both sides. This
+  form **reaches no platform API**, so a platform mureo does not model is still
+  auditable whenever you can pull its own report.
+
+`window_days` defaults to STRATEGY.md's `exclusion_impact_window_days` (else
+30). `standing_exclusions` is optional; omit it (rather than passing `[]`) when
+the standing set is unknown — an empty list means "there are none", and the
+cumulative figure is withheld rather than understated when it is unknown.
+
+Coverage is `measured`, `partial` (some entity kinds are structurally
+unattributable on that basis) or `unknown`. `unknown` never means "no impact",
+and `incremental` is `null` rather than a row of zeroes. A window that served
+nothing reports `share_pct: null`, not `0`.
+
+Per-surface attribution:
+
+| Surface | Delivery source | Attributable |
+|---|---|---|
+| `google_ads_negative_placements_add` | `group_placement_view` over the window | Yes for `website` / `mobile_application`; `mobile_app_category` is not a placement that serves, so a mixed batch reports `partial` |
+| `google_ads_negative_keywords_add` / `_add_to_ad_group` | `search_term_view` over the window, matched per `EXACT` / `PHRASE` / `BROAD` | Yes. Negative keywords do not match close variants and neither does the estimate, so it is a lower bound |
+| `meta_ads_excluded_placements_set` | — | **No.** No insights breakdown attributes past delivery to publisher categories, publisher block lists or brand-safety content types. Reported `unknown` |
+| Plugin / bridged surfaces (Yahoo, LINE, SmartNews, LOGLY, Amazon) | Whatever the provider registers via `register_exclusion_surface`, else caller-supplied `delivery_records` | Provider-declared |
+
+**Cumulative tightening.** `cumulative` is the share attributable to the whole
+standing exclusion set once this batch lands, which is what catches a fortnight
+of individually-small passes: an entity excluded a week ago still carries its
+pre-exclusion impressions inside a 30-day window. Its limit is the window — an
+exclusion older than the window contributed nothing to it and is invisible — so
+the cumulative figure is a lower bound. It is withheld (`null` with a reason)
+for an ad-group-level Google placement write, because campaign-level exclusions
+also cover that ad group and are not reachable from the call's arguments, and
+for `google_ads_negative_keywords_add_to_ad_group`, because Google Ads exposes
+no ad-group-level negative keyword listing.
+
+**An inert rule says so.** Because the cumulative figure is withheld on those
+scopes, `max_cumulative_delivery_share_removed_pct` enforces **nothing** there
+— and that is the scope the motivating incident happened at. Pair it with
+`max_delivery_share_removed_pct`, which is per-batch and needs no standing
+list. When a rule the operator wrote could not be evaluated for a call, mureo
+names it rather than letting it pass silently: `unevaluated_rules` in this
+tool's response, and a `NOT ENFORCED on this call:` line (with the backstop to
+add) in the notice appended to the exclusion's own result.
+
+**Enforcement.** The three `STRATEGY.md` `## Guardrails` keys
+`max_delivery_share_removed_pct`,
+`max_cumulative_delivery_share_removed_pct` and
+`block_exclusions_without_impact_data` are enforced in the dispatcher before an
+exclusion tool runs. They are *not* in `StrategyPolicyGate`: the check needs one
+awaited platform read and the `PolicyGate` v1 ABI is synchronous by design and
+must stay pure and fast. With none of them written the check does no I/O at all
+and behaviour is unchanged. `MUREO_DISABLE_EXCLUSION_PREFLIGHT=1` turns it off
+entirely.
 
 `had_prior_spend` (default `true`) suppresses the zero-spend alert for fresh campaigns. `min_baseline_entries` (default `7`) controls how many history entries are required before a baseline is built; below this, `baseline` is `null` and only zero-spend is evaluated. Numeric fields accept int / float / numeric-string and reject `"N/A"` or booleans. `state_file` is sandboxed the same way as for the rollback tools. A parseable-but-corrupt `STATE.json` produces a `baseline_warning` in the response without silencing live zero-spend detection.
+
+`analysis_tracking_consistency_check` takes ad records (`ad_id`, `campaign_id`, `final_urls`, `platform`, optional `campaign_name` / `status` / `impressions`) that the caller assembles from `google_ads_ads_list`, `meta_ads_ads_list`, a plugin's own list tool or a bridged MCP — so a platform mureo cannot fetch ads for is still auditable whenever the agent can list them. Ads are only compared with ads carrying the same `platform` value. `impressions` grades the finding: `>0` makes it a data-integrity incident (`critical`), `0` a cheap fix (`high`), and omitting it leaves `delivery_state: unknown` with a note saying the severity may be understated — omitted is not `0`. Ads whose URL could not be read are listed in `ads_without_readable_url` rather than reported clean. See [docs/tracking-consistency.md](tracking-consistency.md) for the full list of what is and is not detectable.
 
 ### Mureo Context
 
@@ -594,6 +682,39 @@ Retrieve accumulated practitioner know-how before drawing diagnostic conclusions
 |------|-------------|-------------------|
 | `mureo_learning_insights_get` | Load every insight previously saved via `/learn` as raw Markdown | *(none)* |
 | `mureo_consult_advisor` | Query external advisor MCP servers (vector search) enriched with local campaign state; advisor responses are treated as untrusted external content | `question` |
+
+### Learning-period reset pre-flight
+
+Every automated-bidding system has a learning period, and a change that restarts it costs days of delivery — most damagingly while someone is troubleshooting a collapsed campaign, because troubleshooting means many changes in a row. This tool answers, *before* the change, whether it restarts learning and whether the campaign is already re-learning.
+
+| Tool | Description | Required Parameters |
+|------|-------------|-------------------|
+| `mureo_learning_reset_preflight` | Classify a pending change against the campaign's learning period: `reset_risk` (with the first-party source it rests on), `learning_state`, and whether `## Guardrails` would refuse it | `tool_name` |
+
+Read-only: it calls no platform API and changes nothing.
+
+**Three surfaces, of deliberately different strength.** MCP has no interposed confirmation step — mureo either runs a tool call or refuses it — so these are not interchangeable:
+
+| Surface | When | Strength |
+|---|---|---|
+| `## Guardrails` `block_learning_resets` / `block_learning_resets_during_incident` | before dispatch | **hard** — the call is refused by `StrategyPolicyGate`, before any API call |
+
+`block_learning_resets` is an account-wide freeze: it refuses every reset-triggering change, with or without an identifiable campaign. `block_learning_resets_during_incident` is narrower by name and in fact — it refuses only a change that **identifies a campaign** which is not positively known to be out of a learning period. An unknown state on an identified campaign is refused (fail-closed); a change that identifies no campaign at all (`google_ads_conversions_*` is account-level, `google_ads_budget_update` is keyed on a `budget_id`) has no subject and is not refused, or the rule would permanently block editing a conversion action with no relation to any incident.
+| `mureo_learning_reset_preflight` | before the change, when the agent calls it | advisory — as strong as the agent's compliance |
+| A notice appended to a reset-triggering call's own result | after that call | records the reset so the *next* change in the sequence is not made blind |
+
+**Per-platform coverage.** Reset triggers are sourced from first-party documentation only; where mureo has no such source it reports `unknown` and never `no_reset`, because a false "this resets nothing" turns a missing warning into implied approval.
+
+| Platform | Learning state readable by mureo? | Reset triggers known? |
+|---|---|---|
+| Google Ads | **Yes** — `bidding_details.bidding_strategy_system_status` on the campaign's STATE.json snapshot | **Yes** — Google's own `LEARNING_*` enum members ([`BiddingStrategySystemStatus`](https://developers.google.com/google-ads/api/reference/rpc/v23/BiddingStrategySystemStatusEnum.BiddingStrategySystemStatus)) |
+| Meta Ads | No — Meta exposes [`learning_stage_info`](https://developers.facebook.com/docs/marketing-api/reference/ad-campaign-learning-stage-info/) on the **ad set**; mureo's client does not request it and STATE.json is campaign-level | No — Meta documents that "significant edits" restart the phase without enumerating them |
+| Amazon Ads (official-MCP bridge) | No — no learning-state read exists on the bridged tool surface | No |
+| Yahoo / LINE / SmartNews / LOGLY (plugins) | No — unless the plugin registers rules | No — unless the plugin registers rules |
+
+A plugin or bridge advertises its own platform's rules through `mureo.policy.learning_rules.register_platform_learning_rules`, the same registry pattern the budget/bid declarations use.
+
+**The state read is local by design.** A policy gate runs on every tool call and must not make network calls, so the learning state comes from STATE.json rather than from the platform. Keep it fresh (`google_ads_campaigns_get` / `google_ads_campaigns_diagnose` → `mureo_state_upsert_campaign`); a missing observation is reported `unknown`, never `steady`.
 
 ### Creative Studio
 

@@ -235,6 +235,7 @@ from mureo.google_ads._ads import _AdsMixin  # noqa: E402
 from mureo.google_ads._ads_display import _DisplayAdsMixin  # noqa: E402
 from mureo.google_ads._extensions import _ExtensionsMixin  # noqa: E402
 from mureo.google_ads._keywords import _KeywordsMixin  # noqa: E402
+from mureo.google_ads._placements import _PlacementsMixin  # noqa: E402
 
 # Threshold ratio for warning when search partner CPA exceeds Google Search CPA
 PARTNER_CPA_WARNING_RATIO: float = 2.0
@@ -244,6 +245,7 @@ class GoogleAdsApiClient(  # type: ignore[misc]
     _AdsMixin,
     _DisplayAdsMixin,
     _KeywordsMixin,
+    _PlacementsMixin,
     _MonitoringMixin,
     _ExtensionsMixin,
     _DiagnosticsMixin,

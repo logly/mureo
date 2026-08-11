@@ -27,6 +27,7 @@ Failure modes:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from mureo.analysis.anomaly_detector import CampaignMetrics
@@ -269,6 +270,45 @@ def _row_to_campaign_metrics(
     )
 
 
+def _merge_campaign_metrics(
+    existing: CampaignMetrics, addition: CampaignMetrics
+) -> CampaignMetrics:
+    """Sum two rows for the same campaign into one :class:`CampaignMetrics`.
+
+    Both fan-out fetchers (Google and Meta) index rows by campaign and have to
+    fold a repeated campaign_id together. They used to rebuild the record by
+    enumerating five of its seven fields, so ``cpa`` / ``ctr`` were dropped —
+    inert only because nothing in this module populates them yet, which is
+    exactly the state the other instances of this bug were in before a field
+    was added.
+
+    ``dataclasses.replace`` carries every field this function does not name, so
+    a field added to :class:`CampaignMetrics` later survives a merge without
+    this function being edited.
+
+    ``cpa`` and ``ctr`` are named, and cleared, deliberately: they are RATIOS
+    and cannot be summed. Carrying the first row's value across would be worse
+    than dropping it — the merged record would report one row's CPA as the
+    total's. Clearing them lets ``derived_cpa`` / ``derived_ctr`` recompute
+    from the summed counters, which is the only correct answer for a sum. That
+    is also today's behaviour, so this fix changes nothing now while staying
+    correct if the API-supplied values the class docstring anticipates ever
+    start being populated.
+
+    Any future field that is likewise a ratio or an average must be added to
+    the cleared list; a field that is a counter or a label needs no change.
+    """
+    return replace(
+        existing,
+        cost=existing.cost + addition.cost,
+        impressions=existing.impressions + addition.impressions,
+        clicks=existing.clicks + addition.clicks,
+        conversions=existing.conversions + addition.conversions,
+        cpa=None,
+        ctr=None,
+    )
+
+
 def _index_google_rows_by_campaign(
     rows: list[dict[str, Any]],
 ) -> dict[str, CampaignMetrics]:
@@ -291,13 +331,7 @@ def _index_google_rows_by_campaign(
         if existing is None:
             indexed[metric.campaign_id] = metric
         else:
-            indexed[metric.campaign_id] = CampaignMetrics(
-                campaign_id=metric.campaign_id,
-                cost=existing.cost + metric.cost,
-                impressions=existing.impressions + metric.impressions,
-                clicks=existing.clicks + metric.clicks,
-                conversions=existing.conversions + metric.conversions,
-            )
+            indexed[metric.campaign_id] = _merge_campaign_metrics(existing, metric)
     return indexed
 
 
@@ -374,13 +408,7 @@ def _index_meta_rows_by_campaign(
         if existing is None:
             indexed[metric.campaign_id] = metric
         else:
-            indexed[metric.campaign_id] = CampaignMetrics(
-                campaign_id=metric.campaign_id,
-                cost=existing.cost + metric.cost,
-                impressions=existing.impressions + metric.impressions,
-                clicks=existing.clicks + metric.clicks,
-                conversions=existing.conversions + metric.conversions,
-            )
+            indexed[metric.campaign_id] = _merge_campaign_metrics(existing, metric)
     return indexed
 
 

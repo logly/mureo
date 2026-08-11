@@ -39,10 +39,13 @@ from mureo.rollback.models import RollbackPlan, RollbackStatus
 if TYPE_CHECKING:
     from mureo.context.models import ActionLogEntry
 
-# Operation name → frozenset of allowed parameter keys. Only non-destructive,
-# idempotent reversals are listed. Deletion/removal operations are
-# deliberately absent so an agent cannot log a "reversal" that drops a
-# campaign, keyword, or asset. Add entries as new reversible flows land.
+# Operation name → frozenset of allowed parameter keys. Only reversals mureo
+# has curated are listed; a general deletion/removal operation stays absent so
+# an agent cannot log a "reversal" that drops a campaign, keyword, or asset.
+# The one removal here (#544) is exempted explicitly below and is narrow by
+# construction — see _DESTRUCTIVE_VERB_EXEMPT for the reasoning and the
+# conditions any future exemption has to meet. Add entries as new reversible
+# flows land.
 # Every operation here must name a *registered* MCP tool with these exact
 # param keys — native status toggles are recorded automatically by
 # :mod:`mureo.mcp.native_reversal`, which builds reversals against these
@@ -64,7 +67,43 @@ _ALLOWED_OPERATIONS: dict[str, frozenset[str]] = {
     "meta_ads_ad_sets_enable": frozenset({"ad_set_id"}),
     "meta_ads_ads_pause": frozenset({"ad_id"}),
     "meta_ads_ads_enable": frozenset({"ad_id"}),
+    # Delivery-surface exclusions (#544). Adding an exclusion has an exact
+    # inverse — removing it — so the reversal is bounded to the level id plus
+    # the criterion ids the forward call created. Google's remove tool refuses
+    # any id that is not a negative placement criterion at that level, so this
+    # entry cannot be steered into deleting a keyword or an ad.
+    "google_ads_negative_placements_remove": frozenset(
+        {"campaign_id", "ad_group_id", "criterion_ids"}
+    ),
+    # Meta stores its exclusions inside the ad set's targeting spec, so the
+    # reversal is the same set tool carrying the PRIOR lists.
+    "meta_ads_excluded_placements_set": frozenset(
+        {
+            "ad_set_id",
+            "excluded_publisher_categories",
+            "excluded_publisher_list_ids",
+            "excluded_brand_safety_content_types",
+        }
+    ),
 }
+
+# Operations exempt from the destructive-verb net below (#544).
+#
+# That net is a heuristic for operations mureo did NOT curate: it stops an
+# agent-authored ``reversible_params`` from naming an arbitrary delete. It is
+# not a judgement about a specific operation, and for one shape of write it is
+# actively wrong — the inverse of "add an exclusion" IS a removal, and refusing
+# to plan it would leave the highest-risk bulk write in mureo irreversible.
+#
+# Membership here is therefore narrow and deliberate, and it is not sufficient
+# on its own: an exempt operation must ALSO be in _ALLOWED_OPERATIONS above
+# (which bounds its params) and must be safe by construction at the tool — the
+# one entry here removes only criteria it has verified to be negative placement
+# criteria at the named level. ``tests/test_placement_exclusions.py`` pins the
+# subset invariant and that other removals stay blocked.
+_DESTRUCTIVE_VERB_EXEMPT: frozenset[str] = frozenset(
+    {"google_ads_negative_placements_remove"}
+)
 
 # Underscore-prefixed verbs match the spec-compliant tool naming
 # (e.g. ``google_ads_campaigns_delete``). The pre-rename forms with
@@ -169,7 +208,9 @@ def plan_rollback(entry: ActionLogEntry) -> RollbackPlan | None:
         )
 
     normalized_operation = _normalize_separators(operation)
-    if any(verb in normalized_operation for verb in _DESTRUCTIVE_VERBS):
+    if operation not in _DESTRUCTIVE_VERB_EXEMPT and any(
+        verb in normalized_operation for verb in _DESTRUCTIVE_VERBS
+    ):
         return _not_supported(
             entry,
             notes=(

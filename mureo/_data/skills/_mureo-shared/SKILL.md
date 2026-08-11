@@ -265,6 +265,42 @@ When pausing or removing multiple entities:
 - Require explicit confirmation
 - **Wrap the whole pass in a batch** so it can be reviewed and reverted as ONE unit — see *Bulk changes are one revertible unit* above
 
+### 3b. Bulk Exclusions: Size Them Before Applying (#547)
+
+An exclusion / block / negative-keyword batch removes **inventory**, and the
+share of delivery it removes is not visible from the count of entities. Before
+any such call, run:
+
+```
+analysis_exclusion_impact_preview
+  tool: "<the exclusion tool you are about to call>"
+  arguments: { …exactly the arguments you will send… }
+```
+
+It returns the share of the recent window's impressions / clicks / cost /
+conversions those entities carried — **incrementally** (this batch) and
+**cumulatively** (every standing exclusion once this batch lands). Show the
+operator the share, not just the count. The cumulative figure is the one that
+matters for a sequence of small passes: each pass can look harmless while the
+set as a whole takes delivery to zero.
+
+For a platform mureo does not model — Yahoo Ads placement URL lists, LINE /
+SmartNews placement restrictions, LOGLY adspot blocks, Amazon negative
+targeting — the tool still works: pull that platform's own per-placement /
+per-adspot report yourself and pass `excluded_entities` + `delivery_records`.
+In that form it reaches no API at all.
+
+`coverage: "unknown"` is an honest answer and **never** means "no impact". Say
+"the size of this exclusion cannot be measured" rather than proceeding as if it
+were small.
+
+**LOGLY specifically:** the account's own numbers cannot tell "bad inventory"
+apart from "my creative mismatches this inventory". Before blocking an adspot,
+also check `logly_supply_adspot_summary` (all-advertiser CTR / CPC for the
+slot) and `logly_supply_adspot_cv_by_category` (whether other advertisers
+convert there). The delivery-impact preview sizes the loss; the supply-side
+view is what says whether the loss is worth taking.
+
 ### 4. Never Expose Raw Credentials
 
 - Never include token values from `credentials.json` in responses
@@ -278,12 +314,76 @@ When adding or removing large numbers of keywords:
 - Show progress after each batch
 - Allow the user to stop between batches
 
-### 6. Learning Period Awareness
+### 6. Learning Period Awareness (mechanised — call the pre-flight tool)
 
-For Google Ads campaigns using smart bidding:
-- Warn before making changes that reset the learning period
-- Affected operations: bidding strategy changes, budget changes > 20%, conversion setting changes
-- Display the current bidding system status if available
+This used to be prose telling you to "warn before changes that reset the
+learning period". It is now a real check, because the rule was least likely to
+be followed exactly when it mattered most: troubleshooting a broken campaign
+means making many changes quickly, and that is precisely when stacking a second
+learning reset delays recovery instead of speeding it up.
+
+**Before any bid-strategy, budget, conversion-setting, keyword or re-enable
+change, call `mureo_learning_reset_preflight`** with the tool name and the
+arguments you are about to pass, and put its answer in your confirmation to the
+operator. It is read-only, calls no platform API, and returns:
+
+- `reset_risk` — `resets` / `no_reset` / `unknown`, with the **first-party
+  source** the verdict rests on (`reset_verdict.evidence`).
+- `learning_state` — `learning` / `steady` / `unknown` / `unreportable` for the
+  campaign, read from STATE.json.
+- `would_block` — whether the operator's STRATEGY.md `## Guardrails` refuses
+  this call.
+
+**`unknown` and `unreportable` never mean safe.** They mean mureo has no
+answer: report them as "not known" to the operator rather than proceeding as if
+the change were harmless.
+
+Three surfaces, of deliberately different strength:
+
+| Surface | When | Strength |
+|---|---|---|
+| `## Guardrails` `block_learning_resets` / `block_learning_resets_during_incident` | before dispatch | **hard** — the call is refused |
+| `mureo_learning_reset_preflight` | before the change, when you call it | advisory — as strong as your compliance |
+| Automatic notice appended to a reset-triggering call's result | after that call | records the reset so the NEXT change is not made blind |
+
+MCP has no interposed confirmation step, so mureo cannot pause a call and ask.
+The guardrails are the only surface that stops one.
+
+**What mureo knows, per platform** (never claim more than this):
+
+| Platform | Learning state readable by mureo? | Reset triggers known? |
+|---|---|---|
+| Google Ads | Yes — `bidding_strategy_system_status` from the campaign snapshot in STATE.json | Yes — Google's own `LEARNING_*` enum members |
+| Meta Ads | No — Meta exposes `learning_stage_info` on the **ad set**, mureo does not fetch it and STATE.json is campaign-level | No — Meta documents "significant edits" without enumerating them |
+| Amazon Ads (bridge), Yahoo / LINE / SmartNews / LOGLY (plugins) | No — unless the plugin registers rules | No — unless the plugin registers rules |
+
+So the check is **complete on Google Ads and honest everywhere else**. For a
+Google campaign, keep `bidding_details.bidding_strategy_system_status` fresh in
+STATE.json (`google_ads_campaigns_get` / `google_ads_campaigns_diagnose` →
+`mureo_state_upsert_campaign`); without it the learning state is reported
+`unknown`, not `steady`.
+
+## Tracking-parameter pre-flight before creating ads
+
+> Applies to **every** platform and every ad-creation path — native (`google_ads_ads_create`, `google_ads_ads_create_display`, `meta_ads_ads_create`), plugin, bridged and hosted. Run it as part of the confirmation you show the user, before the create call.
+>
+> **On native Google Ads this is enforced, not advisory.** `google_ads_ads_create` and `google_ads_ads_create_display` run the check themselves before the mutation and **refuse** the create when the final URL carries another campaign's tracking identity — you will get `error: tracking_preflight_failed` with the findings, and no ad. They read STRATEGY.md's `## Tracking Convention` themselves, so a declared `identify:` / `differentiate:` applies there too; you do not pass it. Do not retry with `acknowledge_tracking_findings=true` to make the error go away: show the findings to the operator, get their decision, and only then acknowledge. If the same finding keeps recurring for a legitimate reason, the fix is a line in `## Tracking Convention`, not an acknowledgement every time. Everywhere else (Meta, plugin, bridged, hosted) the steps below are the only thing standing between a copy-paste and a month of unusable segment reporting.
+>
+> A successful create can come back with a `tracking_preflight` field starting `NOT CHECKED:` — that means the guardrail could not run and the ad went out unvalidated. Say so to the operator; do not treat it as a pass.
+
+An ad uploaded into the wrong campaign carrying another campaign's tracking parameters is a **silent** defect: delivery, spend and conversions all look healthy while segment-level reporting is quietly wrong, so nobody investigates. Copy-paste during multi-campaign setup is the routine cause, and it recurs.
+
+Before creating ads with destination URLs:
+
+1. List the ads already in the target campaign (and, where cheap, the rest of the account — the check gets much sharper when it can see the campaign a scheme was copied *from*).
+2. Call `analysis_tracking_consistency_check` with those ads as `ads` and the ads you are about to create as `planned_ads`. Pass STRATEGY.md's `## Tracking Convention` section verbatim as `convention_markdown` when the account has one. The tool is read-only and reaches no platform API.
+3. In pre-flight mode only the **planned** ads are reported on — the operator uploading one ad is never handed the account's backlog.
+4. **Any finding: stop and show it to the user before creating anything.** Report mureo's finding as-is; it names which parameters differ, the campaign the borrowed scheme belongs to and the ads involved. Do not decide for yourself which value is "right" — mureo deliberately does not, because guessing an account's naming convention is the failure this check exists to replace.
+5. Ads whose destination URL you could not read come back in `ads_without_readable_url`. That is **not** a pass — say which ads went unchecked.
+
+**What it compares, so you do not double-guess it:** only `utm_source` / `utm_medium` / `utm_campaign` identify a campaign, and they are compared as a whole signature. `utm_content` and `utm_term` vary per creative and per keyword by design and are deliberately NOT compared — do not raise a concern about them yourself. An account that carries something campaign-identifying in `utm_content` says so with `identify: utm_content` in its `## Tracking Convention`.
+
+Detection limits — including the cases where it **may flag something you meant** — are in `docs/tracking-consistency.md`. The account-wide version of the same check is `/tracking-health` step 8.
 
 ## Diagnostic preamble (learning insights + advisor consult)
 

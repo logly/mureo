@@ -570,6 +570,14 @@ def map_negative_keyword(criterion: Any) -> dict[str, Any]:
     }
 
 
+# === Negative Placements / placement performance ===
+#
+# ``map_negative_placement`` (#544) and ``map_placement_performance``
+# (#547) live in :mod:`mureo.google_ads._placement_mappers`, split out
+# the way ``_placements.py`` was split out of the client once this module
+# reached the project's 800-line file budget. Import them from there.
+
+
 # === Search Terms Report ===
 
 

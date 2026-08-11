@@ -21,6 +21,7 @@ from mureo.meta_ads._instagram import InstagramMixin
 from mureo.meta_ads._leads import LeadsMixin
 from mureo.meta_ads._page_posts import PagePostsMixin
 from mureo.meta_ads._pixels import PixelsMixin
+from mureo.meta_ads._placement_exclusions import PlacementExclusionsMixin
 from mureo.meta_ads._split_test import SplitTestMixin
 from mureo.meta_ads._targeting import TargetingMixin
 from mureo.meta_ads._videos import VideosMixin
@@ -85,6 +86,7 @@ def _rewind_file_parts(files: dict[str, Any] | None) -> None:
 class MetaAdsApiClient(
     CampaignsMixin,
     AdSetsMixin,
+    PlacementExclusionsMixin,
     AdsMixin,
     CreativesMixin,
     VideosMixin,

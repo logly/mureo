@@ -33,9 +33,15 @@ class AdsMixin:
     # ``issues_info`` / ``ad_review_feedback`` explaining why it is not, and
     # ``configured_status`` preserving the operator's own setting so the two
     # can be told apart (#468).
+    #
+    # ``creative{url_tags}`` carries the tracking parameters Meta appends to
+    # the destination link at delivery time. Without it the link read out of
+    # ``object_story_spec`` looks untagged even when it is not, and the
+    # tracking-consistency check (#550) would compare ads on the wrong string.
     _AD_FIELDS = (
         "id,name,status,effective_status,configured_status,adset_id,campaign_id,"
-        "creative{id,name,title,body,image_url,thumbnail_url,object_story_spec},"
+        "creative{id,name,title,body,image_url,thumbnail_url,object_story_spec,"
+        "url_tags},"
         "issues_info,ad_review_feedback,created_time,updated_time"
     )
 

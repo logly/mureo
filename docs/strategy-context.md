@@ -71,6 +71,23 @@ Key selling points extracted from the 2024 product deck.
 - Unknown section headings are logged as warnings and skipped during parsing.
 - The `# Strategy` top-level heading is generated automatically by the renderer.
 
+### `## Tracking Convention` (opt-in)
+
+A section the STRATEGY.md parser preserves verbatim (it has no `context_type` of its own) and the tracking-parameter consistency check reads:
+
+```markdown
+## Tracking Convention
+
+- recognize: utm_*, argument
+- require: utm_source, utm_medium, utm_campaign
+- pattern utm_source: google, yahoo
+- pattern utm_campaign: seg[ab]??
+```
+
+`recognize:` **adds** parameter-name globs to the default `utm_*`; `require:` names parameters every tagged final URL must carry; `pattern <name>:` lists the allowed value patterns for one parameter (a value matching any one of them conforms). Patterns are `fnmatch` globs (`*`, `?`, `[seq]`), not regular expressions.
+
+mureo parses this section itself — the agent passes the text through unchanged. Declaring nothing is fine: the zero-configuration checks still run. See [tracking-consistency.md](tracking-consistency.md).
+
 ### Python API
 
 ```python
