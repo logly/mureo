@@ -26,6 +26,10 @@ from mureo.mcp._helpers import (
     _require,
     api_error_handler,
 )
+from mureo.mcp._tracking_preflight import (
+    PreflightOutcome,
+    google_ads_create_preflight,
+)
 from mureo.throttle import GOOGLE_ADS_THROTTLE, Throttler
 
 logger = logging.getLogger(__name__)
@@ -278,6 +282,19 @@ async def handle_ads_list(args: dict[str, Any]) -> list[TextContent]:
     return _json_result(result)
 
 
+def _with_preflight_note(
+    result: dict[str, Any], outcome: PreflightOutcome
+) -> dict[str, Any]:
+    """Attach a "guardrail did not run" note to a successful create.
+
+    A returned copy, never a mutation of the client's dict. Silence and
+    "checked, clean" must not look the same to the operator.
+    """
+    if outcome.note is None:
+        return result
+    return {**result, "tracking_preflight": outcome.note}
+
+
 @api_error_handler
 async def handle_ads_create(args: dict[str, Any]) -> list[TextContent]:
     client = _get_client(args)
@@ -292,8 +309,16 @@ async def handle_ads_create(args: dict[str, Any]) -> list[TextContent]:
         val = _opt(args, key)
         if val is not None:
             params[key] = val
+    outcome = await google_ads_create_preflight(
+        client,
+        ad_group_id=params["ad_group_id"],
+        final_url=params.get("final_url"),
+        acknowledged=bool(_opt(args, "acknowledge_tracking_findings", False)),
+    )
+    if outcome.refusal is not None:
+        return outcome.refusal
     result = await client.create_ad(params)
-    return _json_result(result)
+    return _json_result(_with_preflight_note(result, outcome))
 
 
 @api_error_handler
@@ -317,8 +342,16 @@ async def handle_ads_create_display(args: dict[str, Any]) -> list[TextContent]:
     logos = _opt(args, "logo_image_paths")
     if logos is not None:
         params["logo_image_paths"] = logos
+    outcome = await google_ads_create_preflight(
+        client,
+        ad_group_id=params["ad_group_id"],
+        final_url=params.get("final_url"),
+        acknowledged=bool(_opt(args, "acknowledge_tracking_findings", False)),
+    )
+    if outcome.refusal is not None:
+        return outcome.refusal
     result = await client.create_display_ad(params)
-    return _json_result(result)
+    return _json_result(_with_preflight_note(result, outcome))
 
 
 @api_error_handler
@@ -438,6 +471,54 @@ async def handle_negative_keywords_add(args: dict[str, Any]) -> list[TextContent
         "keywords": _require(args, "keywords"),
     }
     result = await client.add_negative_keywords(params)
+    return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# Negative placements (delivery-surface exclusions, #544)
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_negative_placements_list(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    result = await client.list_negative_placements(
+        campaign_id=_opt(args, "campaign_id"),
+        ad_group_id=_opt(args, "ad_group_id"),
+    )
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_negative_placements_add(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    # The level keys stay optional here on purpose: the client enforces
+    # "exactly one of campaign_id / ad_group_id" in one place, so the two
+    # ways of getting it wrong (neither, both) produce the same message.
+    params: dict[str, Any] = {
+        "campaign_id": _opt(args, "campaign_id"),
+        "ad_group_id": _opt(args, "ad_group_id"),
+        "placements": _require(args, "placements"),
+    }
+    result = await client.add_negative_placements(params)
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_negative_placements_remove(args: dict[str, Any]) -> list[TextContent]:
+    client = _get_client(args)
+    if client is None:
+        return _no_google_creds()
+    params: dict[str, Any] = {
+        "campaign_id": _opt(args, "campaign_id"),
+        "ad_group_id": _opt(args, "ad_group_id"),
+        "criterion_ids": _require(args, "criterion_ids"),
+    }
+    result = await client.remove_negative_placements(params)
     return _json_result(result)
 
 
@@ -619,6 +700,9 @@ _HANDLERS_BASE: dict[str, Any] = {
     "google_ads_keywords_diagnose": handle_keywords_diagnose,
     "google_ads_negative_keywords_list": handle_negative_keywords_list,
     "google_ads_negative_keywords_add": handle_negative_keywords_add,
+    "google_ads_negative_placements_list": handle_negative_placements_list,
+    "google_ads_negative_placements_add": handle_negative_placements_add,
+    "google_ads_negative_placements_remove": handle_negative_placements_remove,
     "google_ads_budget_get": handle_budget_get,
     "google_ads_budget_update": handle_budget_update,
     "google_ads_performance_report": handle_performance_report,

@@ -304,7 +304,7 @@ Why this matters: `link_click` vs `pixel_lead` optimization is a tracking distin
 
 ### MCP server & tool list
 
-mureo exposes **207 MCP tools** over stdio: Google Ads (86), Meta Ads (88), Search Console (10), plus rollback, anomaly detection, delivery-collapse detection and diagnosis, strategy/state context, analytics registry, learning, and Creative Studio. When Amazon Ads is configured, the bridged Amazon tools are added on top from the local manifest (their names and count are Amazon's, not mureo's — see [docs/amazon-ads.md](docs/amazon-ads.md)). Any MCP-compatible client can connect:
+mureo exposes **215 MCP tools** over stdio: Google Ads (89), Meta Ads (90), Search Console (10), plus rollback, anomaly detection, delivery-collapse detection and diagnosis, exclusion delivery-impact preview, tracking-parameter consistency, strategy/state context, analytics registry, learning, learning-period reset pre-flight, and Creative Studio. When Amazon Ads is configured, the bridged Amazon tools are added on top from the local manifest (their names and count are Amazon's, not mureo's — see [docs/amazon-ads.md](docs/amazon-ads.md)). Any MCP-compatible client can connect:
 
 ```json
 {

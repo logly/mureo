@@ -1,4 +1,4 @@
-"""Before-state recording for reversible native mutations (#274).
+"""Before-state recording for reversible native mutations (#274, #544).
 
 Built-in Meta/Google **status-toggle** mutations are the native operations
 the rollback planner can actually dispatch. Unlike plugin tools — whose
@@ -7,10 +7,28 @@ mutations are promoted to STATE.json's ``action_log`` by
 mutations recorded nothing, so ``rollback_apply`` had no before-state to
 undo even though their tool descriptions promised reversibility.
 
-This module closes that gap for status toggles: it captures the entity's
-prior status **before** the mutation and appends an ``action_log`` entry
-whose ``reversible_params`` restores that exact status. Budget and
-collection/spec mutations are intentionally out of scope — their
+This module closes that gap for two families:
+
+1. **Status toggles** (#274) — the entity's prior status is captured
+   **before** the mutation and the ``action_log`` entry's
+   ``reversible_params`` restores that exact status.
+2. **Delivery-surface exclusions** (#544) — excluding a placement / app /
+   app category is a delivery-affecting bulk write with an exact inverse.
+   The two platforms need different before-states, so each gets its own
+   builder:
+
+   - Google: the reversal is "remove exactly the criteria this call
+     created", and the created ids are only knowable from the call's
+     RESULT — so no pre-mutation read is issued at all.
+   - Meta: the exclusion lists live in the ad set's targeting spec, so
+     the prior lists ARE readable beforehand and the reversal restores
+     them.
+
+   Either way one call — however many exclusions it carried — becomes one
+   ``action_log`` entry with one reversal, so a bad batch is undone as a
+   single unit.
+
+Budget and general collection/spec mutations remain out of scope — their
 before-state cannot be captured safely from the tool arguments alone
 (e.g. ``budget_update`` takes a ``budget_id`` but the only getter keys on
 ``campaign_id``), and recording a wrong reversal value would be worse than
@@ -22,6 +40,7 @@ no-ops when there is no STATE.json in the current working directory.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import timedelta
 from pathlib import Path
@@ -63,23 +82,144 @@ _STATUS_TOOLS: dict[str, tuple[str, str, tuple[str, ...]]] = {
     ),
 }
 
+# --- Delivery-surface exclusions (#544) ------------------------------------
+
+#: The exclusion WRITES this module records, mapped to their platform key.
+#: Reads (``*_list`` / ``*_get``) are deliberately absent — a read has
+#: nothing to undo and must never reach ``action_log``.
+_GOOGLE_PLACEMENTS_ADD = "google_ads_negative_placements_add"
+_GOOGLE_PLACEMENTS_REMOVE = "google_ads_negative_placements_remove"
+_META_EXCLUSIONS_SET = "meta_ads_excluded_placements_set"
+
+_EXCLUSION_TOOLS: dict[str, str] = {
+    _GOOGLE_PLACEMENTS_ADD: "google_ads",
+    _META_EXCLUSIONS_SET: "meta_ads",
+}
+
+#: The ad-set targeting keys ``meta_ads_excluded_placements_set`` can write.
+#: Kept in lockstep with ``mureo.meta_ads._placement_exclusions.EXCLUSION_KEYS``
+#: and with the param set the rollback allow-list bounds that operation to.
+_META_EXCLUSION_KEYS: tuple[str, ...] = (
+    "excluded_publisher_categories",
+    "excluded_publisher_list_ids",
+    "excluded_brand_safety_content_types",
+)
+
+#: What the action_log summary calls the change, keyed by "is an exclusion
+#: write". Two words, so ``/daily-check`` can tell a delivery-surface change
+#: from a status flip without re-reading the tool name.
+_SUMMARY_KIND = {False: "status change", True: "delivery-surface exclusion"}
+
 
 def is_reversible_native_tool(name: str) -> bool:
-    """True if ``name`` is a native status toggle this module can reverse."""
-    return name in _STATUS_TOOLS
+    """True if ``name`` is a native mutation this module can reverse."""
+    return name in _STATUS_TOOLS or name in _EXCLUSION_TOOLS
+
+
+def _platform_of(name: str) -> str | None:
+    """Platform key for a recordable native mutation (``None`` if not one)."""
+    spec = _STATUS_TOOLS.get(name)
+    if spec is not None:
+        return spec[0]
+    return _EXCLUSION_TOOLS.get(name)
+
+
+def _result_payload(result: list[Any] | None) -> Any:
+    """Decode a handler result's single JSON TextContent, or ``None``.
+
+    The created criterion ids only exist in the tool's RESULT, so the
+    Google reversal has to read them back out of the envelope the handler
+    produced. Any deviation from that envelope degrades to "not reversible"
+    rather than to a wrong reversal.
+    """
+    if not result:
+        return None
+    text = getattr(result[0], "text", None)
+    if not isinstance(text, str):
+        return None
+    try:
+        return json.loads(text)
+    except (ValueError, TypeError):
+        return None
+
+
+def _google_placements_reversal(
+    args: dict[str, Any], result: list[Any] | None
+) -> dict[str, Any] | None:
+    """Reverse an exclusion batch by removing exactly what it created."""
+    payload = _result_payload(result)
+    if not isinstance(payload, dict):
+        return None
+    created = payload.get("created")
+    if not isinstance(created, list):
+        return None
+    criterion_ids = [
+        str(item["criterion_id"])
+        for item in created
+        if isinstance(item, dict) and item.get("criterion_id")
+    ]
+    if not criterion_ids:
+        return None
+    # The level key the forward call used is the level the reversal targets.
+    for key in ("campaign_id", "ad_group_id"):
+        value = args.get(key)
+        if value:
+            return {
+                "operation": _GOOGLE_PLACEMENTS_REMOVE,
+                "params": {key: str(value), "criterion_ids": criterion_ids},
+            }
+    return None
+
+
+def _meta_exclusions_reversal(
+    args: dict[str, Any], prior_state: Any
+) -> dict[str, Any] | None:
+    """Restore the exclusion lists the call replaced.
+
+    Only the facets the forward call actually wrote are restored. A facet
+    that had no prior value is restored to the empty list — the forward
+    call created it, so reversing it means clearing it, not leaving the new
+    exclusion in place.
+    """
+    if not isinstance(prior_state, dict):
+        return None
+    ad_set_id = args.get("ad_set_id")
+    if not ad_set_id:
+        return None
+    params: dict[str, Any] = {"ad_set_id": str(ad_set_id)}
+    for key in _META_EXCLUSION_KEYS:
+        if args.get(key) is None:
+            continue
+        previous = prior_state.get(key)
+        params[key] = list(previous) if isinstance(previous, list) else []
+    if len(params) == 1:  # no facet was written ⇒ nothing to restore
+        return None
+    return {"operation": _META_EXCLUSIONS_SET, "params": params}
 
 
 def build_reversal(
-    name: str, args: dict[str, Any], prior_status: str | None
+    name: str,
+    args: dict[str, Any],
+    prior_status: Any,
+    result: list[Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Build ``reversible_params`` that restore ``prior_status``.
+    """Build ``reversible_params`` for a recordable native mutation.
 
-    Returns ``None`` when the tool is unknown, an id arg is missing, or
-    ``prior_status`` cannot be safely restored (e.g. ARCHIVED/REMOVED) — in
+    ``prior_status`` is the before-state :func:`capture_before_state`
+    produced: a status string for a status toggle, the prior exclusion
+    lists for a Meta exclusion write, and ``None`` for a Google exclusion
+    write (whose reversal comes from ``result`` instead).
+
+    Returns ``None`` when the tool is unknown, an id arg is missing, or the
+    before-state cannot be safely restored (e.g. ARCHIVED/REMOVED) — in
     which case the action is recorded as audit-only, not reversible.
     """
+    if name == _GOOGLE_PLACEMENTS_ADD:
+        return _google_placements_reversal(args, result)
+    if name == _META_EXCLUSIONS_SET:
+        return _meta_exclusions_reversal(args, prior_status)
     spec = _STATUS_TOOLS.get(name)
-    if spec is None or not prior_status:
+    if spec is None or not prior_status or not isinstance(prior_status, str):
         return None
     platform, entity, id_keys = spec
     params: dict[str, Any] = {}
@@ -104,25 +244,51 @@ def build_reversal(
     }
 
 
-async def capture_before_state(name: str, args: dict[str, Any]) -> str | None:
-    """Read the entity's current status *before* a status-toggle mutation.
+async def capture_before_state(name: str, args: dict[str, Any]) -> Any:
+    """Read the entity's state *before* a recordable native mutation.
 
-    Best-effort: returns ``None`` (skipping the network GET entirely) when
-    the tool is not a reversible status toggle or no STATE.json exists, and
-    swallows any error from the GET so it never blocks the mutation.
+    Returns a status string for a status toggle and the prior exclusion
+    lists (a dict) for a Meta exclusion write. Returns ``None`` — skipping
+    the network GET entirely — for anything else, including the Google
+    exclusion add, whose reversal is derived from the call's result rather
+    than from a pre-mutation read.
+
+    Best-effort: no-ops without a STATE.json in cwd, and swallows any error
+    from the GET so it never blocks the mutation.
     """
     spec = _STATUS_TOOLS.get(name)
-    if spec is None:
+    if spec is None and name != _META_EXCLUSIONS_SET:
         return None
     if not (Path.cwd() / "STATE.json").is_file():
         return None
     try:
+        if spec is None:
+            return await _read_meta_exclusions(args)
         return await _read_status(spec, args)
     except Exception:  # noqa: BLE001 — must never break the tool call
         logger.warning(
             "before-state capture failed for native tool %r", name, exc_info=True
         )
         return None
+
+
+async def _read_meta_exclusions(args: dict[str, Any]) -> dict[str, Any] | None:
+    """Read an ad set's current exclusion lists before they are replaced."""
+    from mureo.mcp._handlers_meta_ads import _get_client
+    from mureo.mcp._helpers import _close_clients
+
+    ad_set_id = args.get("ad_set_id")
+    if not ad_set_id:
+        return None
+    client = await _get_client(args)
+    if client is None:
+        return None
+    # Runs outside any handler's cleanup scope, so close the httpx pool here.
+    try:
+        record = await client.get_excluded_placements(str(ad_set_id))
+    finally:
+        await _close_clients([client])
+    return record if isinstance(record, dict) else None
 
 
 async def _read_status(
@@ -188,22 +354,23 @@ def _is_error_result(result: list[Any] | None) -> bool:
 def record_native_mutation(
     name: str,
     args: dict[str, Any],
-    prior_status: str | None,
+    prior_status: Any,
     result: list[Any] | None = None,
 ) -> None:
-    """Append a reversible status toggle to STATE.json's action_log.
+    """Append a recordable native mutation to STATE.json's action_log.
 
-    Records ``reversible_params`` that restore ``prior_status`` when one was
-    captured; otherwise records an audit-only entry (``reversible_params``
-    ``None``) so the change is still visible. Skips recording when ``result``
-    is an ``api_error_handler`` error envelope, so a failed mutation does not
+    Records ``reversible_params`` when a reversal could be built (from the
+    captured before-state, or from ``result`` for the Google exclusion add);
+    otherwise records an audit-only entry (``reversible_params`` ``None``)
+    so the change is still visible. Skips recording when ``result`` is an
+    ``api_error_handler`` error envelope, so a failed mutation does not
     pollute the log. (A missing-credentials failure is not that envelope, so
     it still produces an audit-only entry — harmless, since its reversal is
     ``None``.) Best-effort: never raises, and no-ops without a STATE.json in
     cwd.
     """
-    spec = _STATUS_TOOLS.get(name)
-    if spec is None or _is_error_result(result):
+    platform = _platform_of(name)
+    if platform is None or _is_error_result(result):
         return
     try:
         state_path = Path.cwd() / "STATE.json"
@@ -222,17 +389,17 @@ def record_native_mutation(
         entry = ActionLogEntry(
             timestamp=now.isoformat(timespec="seconds"),
             action=name,
-            platform=spec[0],
+            platform=platform,
             campaign_id=campaign_id,
             ad_id=ad_id,
             entity_type=entity_type,
             entity_id=entity_id,
-            summary=f"{name} (status change)",
+            summary=f"{name} ({_SUMMARY_KIND[name in _EXCLUSION_TOOLS]})",
             command=name,
             observation_due=(now + timedelta(days=_DEFAULT_OBSERVATION_DAYS))
             .date()
             .isoformat(),
-            reversible_params=build_reversal(name, args, prior_status),
+            reversible_params=build_reversal(name, args, prior_status, result),
         )
         append_action_log(state_path, entry)
     except Exception:  # noqa: BLE001 — must never break the tool call

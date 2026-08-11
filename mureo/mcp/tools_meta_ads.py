@@ -13,6 +13,7 @@ Tool definitions are split into category sub-modules:
   _tools_meta_ads_leads.py       -- Lead forms, leads
   _tools_meta_ads_other.py       -- Split tests, automated rules, page posts, Instagram
   _tools_meta_ads_conversions.py -- Conversions (CAPI)
+  _tools_meta_ads_placements.py  -- Ad-set publisher / placement exclusions
 """
 
 from __future__ import annotations
@@ -92,6 +93,8 @@ from mureo.mcp._handlers_meta_ads_extended import (
     handle_creatives_create_lead,
     handle_creatives_list,
     handle_creatives_upload_image,
+    handle_excluded_placements_get,
+    handle_excluded_placements_set,
     handle_pixels_create,
     handle_pixels_events,
     handle_pixels_get,
@@ -127,6 +130,7 @@ from mureo.mcp._tools_meta_ads_creatives import TOOLS as _TOOLS_CREATIVES
 from mureo.mcp._tools_meta_ads_insights import TOOLS as _TOOLS_INSIGHTS
 from mureo.mcp._tools_meta_ads_leads import TOOLS as _TOOLS_LEADS
 from mureo.mcp._tools_meta_ads_other import TOOLS as _TOOLS_OTHER
+from mureo.mcp._tools_meta_ads_placements import TOOLS as _TOOLS_PLACEMENTS
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +148,7 @@ TOOLS: list[Tool] = (
     + _TOOLS_LEADS
     + _TOOLS_CREATIVES
     + _TOOLS_OTHER
+    + _TOOLS_PLACEMENTS
 )
 
 # Tool name lookup set
@@ -261,6 +266,9 @@ _HANDLERS: dict[str, Any] = {
     "meta_ads_analysis_performance": handle_analysis_performance,
     "meta_ads_analysis_audience": handle_analysis_audience,
     "meta_ads_analysis_placements": handle_analysis_placements,
+    # Placement exclusions (#544)
+    "meta_ads_excluded_placements_get": handle_excluded_placements_get,
+    "meta_ads_excluded_placements_set": handle_excluded_placements_set,
     "meta_ads_analysis_cost": handle_analysis_cost,
     "meta_ads_analysis_compare_ads": handle_analysis_compare_ads,
     "meta_ads_analysis_suggest_creative": handle_analysis_suggest_creative,
