@@ -338,6 +338,28 @@ STATE.json (`google_ads_campaigns_get` / `google_ads_campaigns_diagnose` →
 `mureo_state_upsert_campaign`); without it the learning state is reported
 `unknown`, not `steady`.
 
+## Tracking-parameter pre-flight before creating ads
+
+> Applies to **every** platform and every ad-creation path — native (`google_ads_ads_create`, `google_ads_ads_create_display`, `meta_ads_ads_create`), plugin, bridged and hosted. Run it as part of the confirmation you show the user, before the create call.
+>
+> **On native Google Ads this is enforced, not advisory.** `google_ads_ads_create` and `google_ads_ads_create_display` run the check themselves before the mutation and **refuse** the create when the final URL carries another campaign's tracking identity — you will get `error: tracking_preflight_failed` with the findings, and no ad. They read STRATEGY.md's `## Tracking Convention` themselves, so a declared `identify:` / `differentiate:` applies there too; you do not pass it. Do not retry with `acknowledge_tracking_findings=true` to make the error go away: show the findings to the operator, get their decision, and only then acknowledge. If the same finding keeps recurring for a legitimate reason, the fix is a line in `## Tracking Convention`, not an acknowledgement every time. Everywhere else (Meta, plugin, bridged, hosted) the steps below are the only thing standing between a copy-paste and a month of unusable segment reporting.
+>
+> A successful create can come back with a `tracking_preflight` field starting `NOT CHECKED:` — that means the guardrail could not run and the ad went out unvalidated. Say so to the operator; do not treat it as a pass.
+
+An ad uploaded into the wrong campaign carrying another campaign's tracking parameters is a **silent** defect: delivery, spend and conversions all look healthy while segment-level reporting is quietly wrong, so nobody investigates. Copy-paste during multi-campaign setup is the routine cause, and it recurs.
+
+Before creating ads with destination URLs:
+
+1. List the ads already in the target campaign (and, where cheap, the rest of the account — the check gets much sharper when it can see the campaign a scheme was copied *from*).
+2. Call `analysis_tracking_consistency_check` with those ads as `ads` and the ads you are about to create as `planned_ads`. Pass STRATEGY.md's `## Tracking Convention` section verbatim as `convention_markdown` when the account has one. The tool is read-only and reaches no platform API.
+3. In pre-flight mode only the **planned** ads are reported on — the operator uploading one ad is never handed the account's backlog.
+4. **Any finding: stop and show it to the user before creating anything.** Report mureo's finding as-is; it names which parameters differ, the campaign the borrowed scheme belongs to and the ads involved. Do not decide for yourself which value is "right" — mureo deliberately does not, because guessing an account's naming convention is the failure this check exists to replace.
+5. Ads whose destination URL you could not read come back in `ads_without_readable_url`. That is **not** a pass — say which ads went unchecked.
+
+**What it compares, so you do not double-guess it:** only `utm_source` / `utm_medium` / `utm_campaign` identify a campaign, and they are compared as a whole signature. `utm_content` and `utm_term` vary per creative and per keyword by design and are deliberately NOT compared — do not raise a concern about them yourself. An account that carries something campaign-identifying in `utm_content` says so with `identify: utm_content` in its `## Tracking Convention`.
+
+Detection limits — including the cases where it **may flag something you meant** — are in `docs/tracking-consistency.md`. The account-wide version of the same check is `/tracking-health` step 8.
+
 ## Diagnostic preamble (learning insights + advisor consult)
 
 > Workflow skills (daily-check, rescue, budget-rebalance, goal-review,

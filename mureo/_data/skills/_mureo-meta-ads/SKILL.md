@@ -656,7 +656,10 @@ mureo does not implement yet.
 4. `creatives_create` with `video_id` + `video_thumbnail_image_url`
    (or `video_thumbnail_image_hash`) + `call_to_action` (required in
    video mode -- it carries the destination link) -> `creative_id`
-5. `ads_create` with that `creative_id`
+5. `ads_create` with that `creative_id` -- run the tracking-parameter
+   pre-flight from `../_mureo-shared/SKILL.md` first: the destination link
+   lives on the creative (`object_story_spec` link, plus `url_tags`), so a
+   copy-pasted creative carries the source campaign's tracking with it.
 
 ### split_tests
 
