@@ -586,22 +586,6 @@ def _batch_record_to_dict(b: BatchRecord) -> dict[str, Any]:
     return result
 
 
-def _batch_record_to_dict(b: BatchRecord) -> dict[str, Any]:
-    """Convert a :class:`BatchRecord` to a dictionary.
-
-    ``ended_at`` is emitted only once the batch is closed, so "open" is the
-    absence of the key rather than a null a reader could misparse as a time.
-    """
-    result: dict[str, Any] = {
-        "batch_id": b.batch_id,
-        "label": b.label,
-        "started_at": b.started_at,
-    }
-    if b.ended_at is not None:
-        result["ended_at"] = b.ended_at
-    return result
-
-
 def _snapshot_to_dict(c: CampaignSnapshot) -> dict[str, Any]:
     """Convert a CampaignSnapshot to a dictionary."""
     device_targeting: list[dict[str, Any]] | None = None
