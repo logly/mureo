@@ -451,3 +451,39 @@ async def handle_analysis_suggest_creative(
         period=_opt(args, "period", "last_7d"),
     )
     return _json_result(result)
+
+
+# ---------------------------------------------------------------------------
+# Ad-set publisher / placement exclusions (#544)
+# ---------------------------------------------------------------------------
+
+
+@api_error_handler
+async def handle_excluded_placements_get(args: dict[str, Any]) -> list[TextContent]:
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    result = await client.get_excluded_placements(_require(args, "ad_set_id"))
+    return _json_result(result)
+
+
+@api_error_handler
+async def handle_excluded_placements_set(args: dict[str, Any]) -> list[TextContent]:
+    client = await _get_client(args)
+    if client is None:
+        return _no_meta_creds()
+    ad_set_id = _require(args, "ad_set_id")
+    # Only forward the facets the caller actually supplied: an omitted facet
+    # must stay untouched, and passing None through would be indistinguishable
+    # from "clear it" once the client builds its delta.
+    facets = {
+        key: _opt(args, key)
+        for key in (
+            "excluded_publisher_categories",
+            "excluded_publisher_list_ids",
+            "excluded_brand_safety_content_types",
+        )
+        if _opt(args, key) is not None
+    }
+    result = await client.set_excluded_placements(ad_set_id, **facets)
+    return _json_result(result)

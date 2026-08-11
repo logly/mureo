@@ -275,7 +275,20 @@ _CAMPAIGN_PROPERTY = {
             ),
         },
         "bidding_strategy_type": {"type": "string"},
-        "bidding_details": {"type": "object"},
+        "bidding_details": {
+            "type": "object",
+            "description": (
+                "Free-form bidding detail (e.g. {'target_cpa': 5000}). One "
+                "key is read by mureo: for Google Ads, "
+                "'bidding_strategy_system_status' — the value "
+                "google_ads_campaigns_get / google_ads_campaigns_diagnose "
+                "returns — is what the learning-period pre-flight "
+                "(mureo_learning_reset_preflight, and the "
+                "block_learning_resets* guardrails) uses to tell whether the "
+                "campaign is already re-learning. Without it that state is "
+                "reported 'unknown', never 'steady'."
+            ),
+        },
         "daily_budget": {"type": "number"},
         "device_targeting": {"type": "array"},
         "campaign_goal": {"type": "string"},

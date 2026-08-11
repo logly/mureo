@@ -106,6 +106,8 @@ metadata:
 | 86 | `meta_ads_leads_export_csv` | Lead | Write (local) | Export form leads to a local CSV file |
 | 87 | `meta_ads_videos_get` | Video | Read | Get video processing status / metadata |
 | 88 | `meta_ads_videos_thumbnails` | Video | Read | List auto-generated video thumbnails |
+| 89 | `meta_ads_excluded_placements_get` | Placement Exclusion | Read | Read an ad set's publisher / app-category / brand-safety exclusions |
+| 90 | `meta_ads_excluded_placements_set` | Placement Exclusion | Write | Replace the supplied exclusion facets on an ad set |
 
 ## Key Differences from Google Ads
 
@@ -227,6 +229,42 @@ metadata:
   ```
   Required: account_id, ad_id
   ```
+
+### excluded_placements
+
+Delivery-surface exclusions: which publishers, Audience Network app categories and content
+types an ad set must **not** be delivered against. Meta stores these inside the ad set's
+`targeting` spec, but they get their own tools so mureo can record the change with an
+`observation_due` window and reverse it — a generic `ad_sets.update` targeting write is
+indistinguishable from any other targeting edit.
+
+- `get` -- Read the ad set's current exclusion lists. Always returns all three keys; an
+  unset facet reads as an empty array.
+  ```
+  Required: account_id, ad_set_id
+  ```
+
+- `set` -- Replace the supplied exclusion facets. **Requires user confirmation.** Each
+  supplied facet REPLACES its current value (Meta has no append here) — call `get` first and
+  send the full intended set. An omitted facet is left untouched; an empty array clears it.
+  The rest of the targeting spec is preserved by a read-modify-write merge.
+  ```
+  Required: account_id, ad_set_id
+  Optional: excluded_publisher_categories, excluded_publisher_list_ids,
+            excluded_brand_safety_content_types (arrays of string; at least one required)
+  ```
+
+  **Delivery impact is not measurable here, and mureo says so (#547).** None of Meta's
+  insights breakdowns attribute past delivery to publisher categories, publisher block
+  lists or brand-safety content types — `publisher_platform` / `platform_position` are a
+  different exclusion surface (ad-set targeting). So
+  `analysis_exclusion_impact_preview` reports `coverage: "unknown"` for this tool, never
+  "no impact", and the call's own result carries the same verdict. Tell the operator the
+  size is unknown rather than implying it is small. An operator who would rather refuse
+  than proceed blind sets `block_exclusions_without_impact_data: true` in STRATEGY.md
+  `## Guardrails`, which refuses this tool outright. To size such a change from real
+  data, pull the ad set's delivery yourself and pass it to the preview tool as
+  `delivery_records`.
 
 ### insights
 
@@ -618,7 +656,10 @@ mureo does not implement yet.
 4. `creatives_create` with `video_id` + `video_thumbnail_image_url`
    (or `video_thumbnail_image_hash`) + `call_to_action` (required in
    video mode -- it carries the destination link) -> `creative_id`
-5. `ads_create` with that `creative_id`
+5. `ads_create` with that `creative_id` -- run the tracking-parameter
+   pre-flight from `../_mureo-shared/SKILL.md` first: the destination link
+   lives on the creative (`object_story_spec` link, plus `url_tags`), so a
+   copy-pasted creative carries the source campaign's tracking with it.
 
 ### split_tests
 

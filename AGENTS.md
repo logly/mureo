@@ -29,9 +29,11 @@ mureo/
 ├── google_ads/          # Google Ads API client (Mixin composition)
 │   ├── client.py        # GoogleAdsApiClient (main entry)
 │   ├── mappers.py       # Response mapping to structured dicts
+│   ├── _placement_mappers.py # Negative-placement + group_placement_view row mappers (#544/#547)
 │   ├── _ads.py          # AdsMixin (RSA create/update/status/list)
 │   ├── _ads_display.py  # DisplayAdsMixin (RDA create + RDAUploadError)
 │   ├── _keywords.py     # KeywordsMixin (add/remove/suggest/diagnose)
+│   ├── _placements.py   # PlacementsMixin (negative placements: sites/apps/app categories, #544)
 │   ├── _analysis.py     # AnalysisMixin aggregator, composing the split modules below
 │   ├── _analysis_auction.py / _analysis_btob.py / _analysis_budget.py    # + _analysis_constants.py
 │   ├── _analysis_keywords.py / _analysis_performance.py / _analysis_rsa.py / _analysis_search_terms.py
@@ -58,6 +60,7 @@ mureo/
 │   ├── _videos.py       # VideosMixin (AdVideo upload/status/thumbnails)
 │   ├── _audiences.py    # AudiencesMixin
 │   ├── _pixels.py       # PixelsMixin
+│   ├── _placement_exclusions.py  # PlacementExclusionsMixin (ad-set publisher exclusions, #544)
 │   ├── _insights.py     # InsightsMixin
 │   ├── _analysis.py     # AnalysisMixin
 │   ├── _catalog.py      # CatalogMixin (product catalogs/feeds)
@@ -94,11 +97,15 @@ mureo/
 │   ├── _handlers_batch.py                 # Batch lifecycle handlers
 │   ├── tools_change_import.py             # mureo_external_changes_import (#545)
 │   ├── _handlers_change_import.py         # Change-import handler
-│   ├── tools_analysis.py                  # analysis_anomalies_check
+│   ├── tools_analysis.py                  # analysis_anomalies_check / analysis_exclusion_impact_preview
 │   ├── _handlers_analysis.py              # Anomaly detector composition handler
+│   ├── _handlers_exclusion_impact.py      # analysis_exclusion_impact_preview handler (#547)
+│   ├── exclusion_preflight.py             # Pre-dispatch exclusion sizing + refusal + notice (#547)
+│   ├── exclusion_sources.py               # Built-in per-platform delivery sources for the above (#547)
 │   ├── tools_analytics_registry.py        # mureo_analytics_modules_list / mureo_analytics_run (#440)
 │   ├── tools_creative_studio.py           # creative_studio_* (visual generation + compose)
 │   ├── tools_learning.py                  # mureo_learning_insights_get / mureo_consult_advisor
+│   ├── tools_learning_preflight.py        # mureo_learning_reset_preflight (#548)
 │   ├── tools_mureo_context.py             # STRATEGY.md / STATE.json + mureo_outcome_evaluate tools
 │   ├── _handlers_mureo_context.py         # Context (STRATEGY/STATE) handlers
 │   ├── _client_factory.py                 # Per-platform BYOD-vs-live client factory
@@ -126,7 +133,14 @@ mureo/
 │   └── errors.py        # Context-specific errors
 ├── analysis/            # Analysis utilities
 │   ├── lp_analyzer.py   # Landing page analyzer
-│   └── anomaly_detector.py  # Zero-spend / CPA-spike / CTR-drop detection (pure, sample-size-gated)
+│   ├── anomaly_detector.py  # Zero-spend / CPA-spike / CTR-drop detection (pure, sample-size-gated)
+│   ├── exclusion_impact/    # Delivery-impact preview for bulk exclusions (#547; pure)
+│   │   ├── models.py        # DeliveryRecord / ExclusionTarget / ExclusionImpact + coverage verdicts
+│   │   ├── matching.py      # Per-entity-kind match rules (host, app id, negative keyword match type)
+│   │   ├── estimator.py     # The share itself — incremental and cumulative
+│   │   ├── rules.py         # ## Guardrails exclusion keys, the one refusal decision, inert-rule reporting
+│   │   └── surfaces.py      # Which tools are exclusion surfaces (mureo's + plugin-registered)
+│   └── tracking/        # Tracking-parameter consistency: platform-neutral detector + per-platform URL accessors (#550)
 ├── rollback/            # Rollback feature (allow-list gated, append-only audit trail)
 │   ├── models.py        # RollbackStatus / RollbackPlan + batch verdicts (BatchCoverage, BatchRollbackPlan)
 │   ├── planner.py       # plan_rollback(ActionLogEntry) -> RollbackPlan | None
@@ -144,6 +158,8 @@ mureo/
 ├── core/                # Extension Protocols + file-backed impls + RuntimeContext; provider & skill discovery
 ├── providers/           # Official MCP provider catalog + one-command install helpers (#86)
 ├── policy/              # Built-in policy gates (strategy_gate) — ship with OSS, run by default
+│   ├── learning_rules.py     # Per-platform learning-period facts + their first-party sources (#548)
+│   └── learning_reset.py     # Reset-class + learning-state pre-flight the gate refuses on
 ├── learning/            # Read-side /learn companion: insight federation across configured sources
 ├── creative_studio/     # Creator-grade ad-creative (image) generation via pluggable providers
 ├── byod/                # Bring Your Own Data — CSV-backed offline analysis (see BYOD Mode below)
@@ -176,6 +192,8 @@ docs/integrations.md          # Platform discovery + external MCP integration gu
 | Ads | `ads.list`, `ads.create`, `ads.create_display`, `ads.update`, `ads.update_status`, `ads.policy_details` |
 | Keywords | `keywords.list`, `keywords.add`, `keywords.remove`, `keywords.suggest`, `keywords.diagnose`, `keywords.pause`, `keywords.audit`, `keywords.cross_adgroup_duplicates` |
 | Negative Keywords | `negative_keywords.list`, `negative_keywords.add`, `negative_keywords.remove`, `negative_keywords.add_to_ad_group`, `negative_keywords.suggest` |
+| Negative Placements | `negative_placements.list`, `negative_placements.add`, `negative_placements.remove` |
+| Placement Performance | (read used by `analysis_exclusion_impact_preview`: `group_placement_view` via `get_placement_performance`) |
 | Budget | `budget.get`, `budget.update`, `budget.create` |
 | Accounts | `accounts.list` |
 | Search Terms | `search_terms.report`, `search_terms.analyze` |
@@ -207,6 +225,7 @@ docs/integrations.md          # Platform discovery + external MCP integration gu
 | Conversions API | `conversions.send`, `conversions.send_purchase`, `conversions.send_lead` |
 | Pixels | `pixels.list`, `pixels.get`, `pixels.stats`, `pixels.events`, `pixels.create` |
 | Analysis | `analysis.performance`, `analysis.audience`, `analysis.placements`, `analysis.cost`, `analysis.compare_ads`, `analysis.suggest_creative` |
+| Placement Exclusions | `excluded_placements.get`, `excluded_placements.set` |
 | Product Catalog | `catalogs.list`, `catalogs.create`, `catalogs.get`, `catalogs.delete`, `products.list`, `products.add`, `products.get`, `products.update`, `products.delete`, `feeds.list`, `feeds.create` |
 | Lead Ads | `lead_forms.list`, `lead_forms.get`, `lead_forms.create`, `leads.get`, `leads.get_by_ad` |
 | Videos | `videos.upload`, `videos.upload_file` |
@@ -235,9 +254,10 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 | Rollback | `rollback_plan_get`, `rollback_apply` |
 | Batch (#549) | `mureo_batch_begin`, `mureo_batch_end`, `mureo_batch_status` |
 | Change Import (#545) | `mureo_external_changes_import` |
-| Analysis | `analysis_anomalies_check` |
+| Analysis | `analysis_anomalies_check`, `analysis_exclusion_impact_preview` |
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
+| Learning pre-flight (#548) | `mureo_learning_reset_preflight` |
 | mureo Context | `mureo_strategy_get`, `mureo_strategy_set`, `mureo_state_get`, `mureo_state_action_log_append`, `mureo_state_upsert_campaign`, `mureo_state_report_set`, `mureo_state_platform_metrics_set`, `mureo_state_set_conversion_events`, `mureo_outcome_evaluate` |
 
 ## Design Constraints

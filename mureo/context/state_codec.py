@@ -36,6 +36,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+from dataclasses import fields as dataclass_fields
 from typing import Any
 
 from mureo.context.models import (
@@ -48,6 +49,141 @@ from mureo.context.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Codec field coverage — checked at import, not only under pytest
+# ---------------------------------------------------------------------------
+#
+# Everywhere else in the tree, a field is carried across a rebuild by
+# ``dataclasses.replace`` and cannot be forgotten. This module is the one place
+# that CANNOT use it: it maps to an external JSON schema, so both halves list
+# every field by hand. A field added to a model but not to this file is
+# silently lost the moment a document is written and read back — the same
+# omission-shaped failure, in the one file where the structural fix does not
+# apply.
+#
+# So the omission is made loud instead. Each model below declares the fields
+# this codec handles, and the check runs at MODULE IMPORT: any `import mureo`,
+# a REPL, a `pytest -k` that never collects the round-trip test. Adding a field
+# without visiting this file raises immediately with the two functions to edit,
+# rather than costing an operator their data.
+#
+# This verifies DECLARATION, not behaviour — that the field is known here, not
+# that it survives. Behaviour is the round-trip test's job
+# (tests/test_dataclass_field_preservation.py::TestCodecRoundTrip).
+
+_CODEC_COVERAGE: tuple[tuple[type, frozenset[str], str], ...] = (
+    (
+        StateDocument,
+        frozenset(
+            {
+                "version",
+                "last_synced_at",
+                "customer_id",
+                "campaigns",
+                "platforms",
+                "action_log",
+                "reports",
+                "batches",
+            }
+        ),
+        "parse_state / render_state",
+    ),
+    (
+        PlatformState,
+        frozenset(
+            {
+                "account_id",
+                "campaigns",
+                "totals",
+                "metrics_period",
+                "periods",
+                "conversion_action_types",
+            }
+        ),
+        "parse_state / _platform_state_to_dict",
+    ),
+    (
+        ActionLogEntry,
+        frozenset(
+            {
+                "timestamp",
+                "action",
+                "platform",
+                "campaign_id",
+                "ad_id",
+                "entity_type",
+                "entity_id",
+                "summary",
+                "command",
+                "metrics_at_action",
+                "observation_due",
+                "reversible_params",
+                "rollback_of",
+                "evaluation_of",
+                "batch_id",
+                "origin",
+                "external_id",
+                "occurred_at",
+            }
+        ),
+        "_parse_action_log_entry / _action_log_entry_to_dict",
+    ),
+    (
+        CampaignSnapshot,
+        frozenset(
+            {
+                "campaign_id",
+                "campaign_name",
+                "status",
+                "bidding_strategy_type",
+                "bidding_details",
+                "daily_budget",
+                "device_targeting",
+                "campaign_goal",
+                "notes",
+                "metrics",
+                "ads",
+            }
+        ),
+        "_parse_campaign / _snapshot_to_dict",
+    ),
+    (
+        AdState,
+        frozenset({"ad_id", "name", "status", "effective_status", "as_of"}),
+        "_parse_ad / _ad_state_to_dict",
+    ),
+    (
+        BatchRecord,
+        frozenset({"batch_id", "label", "started_at", "ended_at"}),
+        "_parse_batches / _batch_record_to_dict",
+    ),
+)
+
+
+def _assert_codec_coverage() -> None:
+    """Fail loudly if a model has a field this codec does not name."""
+    for model, handled, functions in _CODEC_COVERAGE:
+        declared = {f.name for f in dataclass_fields(model)}
+        missing = declared - handled
+        if missing:
+            raise RuntimeError(
+                f"{model.__name__} has field(s) {sorted(missing)} that "
+                f"mureo.context.state_codec does not handle. Add them to BOTH "
+                f"halves of {functions} and to _CODEC_COVERAGE — otherwise the "
+                "field is silently dropped on every STATE.json write."
+            )
+        stale = handled - declared
+        if stale:
+            raise RuntimeError(
+                f"_CODEC_COVERAGE lists field(s) {sorted(stale)} that "
+                f"{model.__name__} no longer declares; remove them here and "
+                f"from {functions}."
+            )
+
+
+_assert_codec_coverage()
 
 
 # Required campaign fields
@@ -431,6 +567,22 @@ def _action_log_entry_to_dict(e: ActionLogEntry) -> dict[str, Any]:
         result["external_id"] = e.external_id
     if e.occurred_at is not None:
         result["occurred_at"] = e.occurred_at
+    return result
+
+
+def _batch_record_to_dict(b: BatchRecord) -> dict[str, Any]:
+    """Convert a :class:`BatchRecord` to a dictionary.
+
+    ``ended_at`` is emitted only once the batch is closed, so "open" is the
+    absence of the key rather than a null a reader could misparse as a time.
+    """
+    result: dict[str, Any] = {
+        "batch_id": b.batch_id,
+        "label": b.label,
+        "started_at": b.started_at,
+    }
+    if b.ended_at is not None:
+        result["ended_at"] = b.ended_at
     return result
 
 
