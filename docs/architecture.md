@@ -292,8 +292,6 @@ mureo assumes the caller is an AI agent susceptible to prompt injection, not a t
 
    Change import (#545) is the read side of the same guarantee: `mureo/change_import/` polls each platform's change feed and records what mureo did **not** do, marked `origin: "external"` so it can never be confused with a change mureo dispatched. The rollback planner refuses every external entry before any other check — mureo never captured the prior value, so a "reversal" built from a hint on such an entry would be a fresh change dressed as a restoration, and a batch mixing the two reports `partial` coverage rather than promising a full revert. Platforms with no feed are reported `change_import_unavailable_for_<platform>`, never as "no changes" — see [change-import.md](change-import.md).
 
-   A bulk change is planned as **one unit** (#549): `mureo_batch_begin` / `mureo_batch_end` declare the boundary, every `action_log` entry written in between is stamped with the batch id at the single `append_action_log` choke point (so native, hosted-connector and bridged/plugin recordings all join without any per-platform code), and `rollback_plan_get` takes that id and classifies **every** member. Coverage is reported overall and per platform as `full` / `partial` / `none` — because reversibility is not uniform across platforms, and a plan that quietly omitted the members mureo cannot reverse would read as a complete revert. The same allow-list decides each member, so nothing about the guarantee is loosened by grouping.
-
 See [SECURITY.md](../SECURITY.md) for the full threat model.
 
 ## Mixin Architecture
