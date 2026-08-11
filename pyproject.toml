@@ -161,6 +161,7 @@ markers = [
     "unit: Unit tests",
     "integration: Integration tests",
     "real_save: Opt out of the credentials-write stub and save for real (tmp_path)",
+    "slow: Exhaustive runs kept out of the default suite (pytest -m slow)",
 ]
 
 [tool.mypy]
