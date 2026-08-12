@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from mureo.core.auth_failure import PlatformAuthError
 from mureo.meta_ads.client import (
     MetaAdsApiClient,
 )
@@ -212,6 +213,86 @@ class TestRequest:
     async def test_unsupported_method_raises(self, client: MetaAdsApiClient) -> None:
         with pytest.raises(ValueError, match="Unsupported HTTP method"):
             await client._request("PATCH", "/test")
+
+
+# ---------------------------------------------------------------------------
+# Auth-failure classification (#580)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAuthFailureClassification:
+    """Meta answers an expired token with HTTP 400, not 401.
+
+    So the status code alone cannot tell a dead credential from a bad
+    request, and both used to arrive downstream as the same untyped
+    ``API error: ...`` string. ``OAuthException`` / code 190 is the
+    discriminator, and raising :class:`PlatformAuthError` is what lets
+    ``api_error_handler`` stamp the machine-readable envelope a report
+    skill can branch on (#580).
+    """
+
+    @pytest.fixture()
+    def client(self) -> MetaAdsApiClient:
+        return MetaAdsApiClient("token", "act_123")
+
+    @staticmethod
+    def _respond(client: MetaAdsApiClient, status: int, body: dict) -> None:
+        mock_resp = MagicMock()
+        mock_resp.status_code = status
+        mock_resp.text = json.dumps(body)
+        mock_resp.headers = {}
+        mock_resp.json.return_value = body
+        client._http = MagicMock()
+        client._http.get = AsyncMock(return_value=mock_resp)
+
+    @pytest.mark.asyncio
+    async def test_expired_token_400_is_an_auth_error(
+        self, client: MetaAdsApiClient
+    ) -> None:
+        self._respond(
+            client,
+            400,
+            {
+                "error": {
+                    "message": "Error validating access token: Session has expired",
+                    "type": "OAuthException",
+                    "code": 190,
+                    "error_subcode": 463,
+                }
+            },
+        )
+        with pytest.raises(PlatformAuthError, match="status=400"):
+            await client._get("/test")
+
+    @pytest.mark.asyncio
+    async def test_401_is_an_auth_error_whatever_the_body(
+        self, client: MetaAdsApiClient
+    ) -> None:
+        self._respond(client, 401, {"error": {"message": "Unauthorized"}})
+        with pytest.raises(PlatformAuthError):
+            await client._get("/test")
+
+    @pytest.mark.asyncio
+    async def test_ordinary_400_stays_a_plain_runtime_error(
+        self, client: MetaAdsApiClient
+    ) -> None:
+        """A validation failure must NOT be reported as a credential problem —
+        it would send the operator to re-authorize a healthy account."""
+        self._respond(
+            client,
+            400,
+            {
+                "error": {
+                    "message": "Invalid parameter",
+                    "type": "GraphMethodException",
+                    "code": 100,
+                }
+            },
+        )
+        with pytest.raises(RuntimeError) as excinfo:
+            await client._get("/test")
+        assert not isinstance(excinfo.value, PlatformAuthError)
 
 
 # ---------------------------------------------------------------------------

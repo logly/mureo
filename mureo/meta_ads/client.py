@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 import httpx
 
+from mureo.core.auth_failure import PlatformAuthError
 from mureo.meta_ads._ad_rules import AdRulesMixin
 from mureo.meta_ads._ad_sets import AdSetsMixin
 from mureo.meta_ads._ads import AdsMixin
@@ -39,6 +40,82 @@ _RATE_LIMIT_WARNING_THRESHOLD = 80
 # Retry configuration
 _MAX_RETRIES = 3
 _INITIAL_BACKOFF_SECONDS = 1.0
+
+# Meta answers an expired or revoked token with HTTP 400, not 401, so the
+# status code alone cannot tell a dead credential from a bad request.
+# ``OAuthException`` -- and error code 190 with its session sibling 102 -- is
+# the discriminator Meta documents, and it is what lets an auth failure reach
+# a report skill as a distinct outcome instead of as one more untyped
+# ``API error: ...`` string that reads like a quiet account (#580).
+_META_OAUTH_ERROR_TYPE = "OAuthException"
+_META_AUTH_ERROR_CODES = frozenset({102, 190})
+_META_AUTH_HTTP_STATUS = 401
+
+# Longest slice of a Meta error body kept for logs / fallback detail.
+_MAX_ERROR_BODY_CHARS = 500
+
+
+def _meta_error_detail(error: dict[str, Any]) -> str:
+    """Join the human-readable parts of a Meta ``error`` object."""
+    parts = [
+        str(error[key])
+        for key in ("message", "error_user_title", "error_user_msg")
+        if error.get(key)
+    ]
+    if error.get("error_subcode"):
+        parts.append(f"subcode={error['error_subcode']}")
+    if error.get("fbtrace_id"):
+        parts.append(f"fbtrace_id={error['fbtrace_id']}")
+    return " | ".join(parts)
+
+
+def _is_meta_auth_failure(status_code: int, error: dict[str, Any]) -> bool:
+    """True when Meta refused the credential rather than the request.
+
+    Deliberately narrow. Reporting a validation failure as an auth failure
+    would send the operator to re-authorize a healthy account and would
+    withhold a report section that had perfectly good data behind it.
+    """
+    if status_code == _META_AUTH_HTTP_STATUS:
+        return True
+    if error.get("type") == _META_OAUTH_ERROR_TYPE:
+        return True
+    code = error.get("code")
+    return (
+        isinstance(code, int)
+        and not isinstance(code, bool)
+        and code in _META_AUTH_ERROR_CODES
+    )
+
+
+def _raise_meta_api_error(resp: httpx.Response, method: str, path: str) -> NoReturn:
+    """Raise the exception class that matches a non-200 Meta response.
+
+    :class:`~mureo.core.auth_failure.PlatformAuthError` for a refused
+    credential, a plain ``RuntimeError`` for everything else.
+    """
+    error_body = resp.text[:_MAX_ERROR_BODY_CHARS]
+    logger.error(
+        "Meta API error: method=%s, path=%s, status=%d, body=%s",
+        method,
+        path,
+        resp.status_code,
+        error_body,
+    )
+    error: dict[str, Any] = {}
+    try:
+        payload = resp.json()
+        raw = payload.get("error") if isinstance(payload, dict) else None
+        error = raw if isinstance(raw, dict) else {}
+        detail = _meta_error_detail(error)
+    except Exception:  # noqa: BLE001 - an unparseable body still has to be reported
+        detail = error_body
+    message = (
+        f"Meta API request failed (status={resp.status_code}, path={path}): {detail}"
+    )
+    if _is_meta_auth_failure(resp.status_code, error):
+        raise PlatformAuthError(message)
+    raise RuntimeError(message)
 
 
 def _rewind_file_parts(files: dict[str, Any] | None) -> None:
@@ -282,37 +359,7 @@ class MetaAdsApiClient(
                     continue
 
                 if resp.status_code != 200:
-                    error_body = resp.text[:500]
-                    logger.error(
-                        "Meta API error: method=%s, path=%s, status=%d, body=%s",
-                        method,
-                        path,
-                        resp.status_code,
-                        error_body,
-                    )
-                    # Extract detailed error from Meta API response
-                    detail = ""
-                    try:
-                        err = resp.json().get("error", {})
-                        parts = []
-                        if err.get("message"):
-                            parts.append(err["message"])
-                        if err.get("error_user_title"):
-                            parts.append(err["error_user_title"])
-                        if err.get("error_user_msg"):
-                            parts.append(err["error_user_msg"])
-                        if err.get("error_subcode"):
-                            parts.append(f"subcode={err['error_subcode']}")
-                        if err.get("fbtrace_id"):
-                            parts.append(f"fbtrace_id={err['fbtrace_id']}")
-                        if parts:
-                            detail = " | ".join(parts)
-                    except Exception:
-                        detail = error_body
-                    raise RuntimeError(
-                        f"Meta API request failed "
-                        f"(status={resp.status_code}, path={path}): {detail}"
-                    )
+                    _raise_meta_api_error(resp, method, path)
 
                 return resp.json()  # type: ignore[no-any-return]
 

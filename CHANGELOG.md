@@ -1,10 +1,3 @@
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
 ## [Unreleased]
 
 ### Fixed
@@ -27,6 +20,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `account_id` are kept — updating a token should not cost the operator
   their app secret — and writes to other `meta_ads` fields leave the stamp
   alone, since it still describes the token on disk.
+
+- **A platform whose credentials failed still shipped a `/daily-check`
+  report that looked complete.** When a token had expired or no
+  credential was configured, the run went through every step and
+  delivered a report with error prose — `"API error: Meta API request
+  failed (status=400, ...)"` or `"Credentials not found. Set environment
+  variable ..."` — sitting where the numbers belonged, next to real
+  figures from the platforms that did answer, followed by the usual
+  recommendations. Nothing marked the report partial, so a reader
+  skimming it concluded the platform had been quiet rather than
+  unreadable.
+
+  The cause was that an auth failure arrived as an ordinary *successful*
+  tool result whose text happened to be a sentence about credentials, so
+  nothing downstream could tell "no spend" from "could not read". Auth
+  failure is now a first-class, machine-readable outcome on **every**
+  platform: the result carries `{"status": "auth_error", "auth_cause":
+  "no_credentials" | "token_invalid", "detail": ...}`, reusing the
+  `status`-field convention `blind_spots` and the delivery-collapse
+  report already use rather than adding a second one. `detail` keeps the
+  operator-facing sentence, so nothing readable is lost. The two causes
+  are separated because their recovery differs — configure the
+  credential vs. re-authorize a rejected one.
+
+  It is produced in the two places every platform routes through, so
+  Google Ads, Meta Ads and Search Console behave identically:
+  `_no_creds_result` for a missing credential, and `@api_error_handler`
+  for a rejected one (an HTTP 401/403, a Google Ads
+  `authentication_error` / `authorization_error`, or Meta's
+  `OAuthException` — Meta answers an expired token with HTTP 400, so the
+  Meta client now names that case explicitly instead of letting it
+  flatten into a generic API error). Classification is deliberately
+  narrow: an unrecognized failure stays an ordinary `API error:`, since
+  mislabelling a quota or validation error would send an operator to
+  re-authorize a healthy account.
+
+  `/daily-check` gained the branch it was missing. On an `auth_error` it
+  now marks the report **partial** in its opening line, names each
+  affected platform with its cause and recovery, withholds every
+  verdict, goal-progress line and recommendation that depends on the
+  missing platform's data, and still completes for every platform that
+  did answer.
+
+  The shared `is_error_result` detector recognises the new envelope too,
+  so a mutation refused for a missing or rejected credential is still
+  kept out of `action_log` — it would otherwise have been recorded as a
+  change that never happened, complete with an `observation_due`.
 
 ### Added
 
