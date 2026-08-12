@@ -104,6 +104,61 @@ Two guards are installed:
   Without that restriction the rule would have to deny every glob anyone
   types, ``fnmatch('.mureo', '*')`` being true.
 
+  Rules 1 and 2 both read the *directory* name, and for a long time that
+  was all the guard read.  It meant a command that never spelled the
+  directory at all walked straight past: ``find ~ -path '*mureo*' -exec
+  cat {} ;`` and ``find ~ -name credentials.json -exec cat {} ;`` both
+  printed the credentials, with no obfuscation and no adversarial intent
+  required.  "Look for any leftover credential files under my home
+  directory" is an ordinary instruction, and it is exactly the accident
+  this guard exists for.  Rules 3 and 4 read the two things such a command
+  does write down.
+
+  Rule 3 (a pattern reaching into the name without the dot).  Rule 2 only
+  considers components that begin with a literal ``.``, so ``*mureo*`` —
+  which ``find -path`` happily matches against the full path, leading
+  period included — was not a candidate.  Rule 3 denies when a glob
+  metacharacter stands immediately before the literal ``mureo``.  It is
+  deliberately narrower than "any pattern that could match": ``mureo`` has
+  to be written out, so working inside a checkout of this very repository
+  (``grep -r foo mureo/``) is untouched, while ``-path '*mureo*'`` and
+  ``-name '*mureo*'`` are not.
+
+  Rule 3 reads the raw command text as well as the normalized readings,
+  and that is the point of it.  Normalization models what the *shell*
+  expands, so it neutralizes a quoted ``*`` — correctly, for the shell.
+  But the quotes in ``-path '*mureo*'`` are there precisely to keep the
+  shell off the pattern so that ``find`` can expand it itself, and by the
+  time the normalized reading exists the pattern has become ``=mureo=``
+  and there is nothing left to match.  A pattern meant for a downstream
+  program is written literally in the command; that is where rule 3 looks
+  for it.  Every other rule stays on the normalized readings, because
+  every other rule is about what the shell will do.
+
+  Rule 4 (the protected filenames).  A tree search can name the file
+  instead of the directory, so the filenames are candidates in their own
+  right — but only where the name stands on its own, with no ``/`` before
+  it.  That restriction is the rule.  A name with a path in front of it is
+  not a search but a specific file, and which file it is has already been
+  settled by rules 1 to 3 from the directory: ``~/.mureo/credentials.json``
+  denies on rule 1, while ``~/backups/credentials.json`` is the user's own
+  file and refusing it would be the guard overreaching into a directory it
+  does not protect.  Without the restriction the rule also contradicted
+  three cases this file already reasons about and allows —
+  ``cat "$HOME/.mure?/credentials.json"`` and the two fully-quoted paths —
+  where the name is written but the shell cannot reach the directory.
+
+  ``config.json`` is deliberately NOT among them.  It is one of the most
+  common filenames in software, and denying it would stop ``cat
+  config.json`` in every project the agent ever works in — the guard is
+  judged by whether it makes the common accident less likely *without
+  blocking real work*, and that trade lands the wrong way.  The cost is
+  stated rather than hidden: ``find ~ -name config.json -exec cat {} ;``
+  still reads that one file.  The names that are matched are specific
+  enough that a project file colliding with one is rare, and when it does
+  the deny reason says to use the Read tool, which is guarded by path and
+  so allows a same-named file anywhere outside ``~/.mureo``.
+
   Normalization produces that one reading, and it is a left fold over the
   characters with a five-state quoting automaton — unquoted, single-quoted,
   double-quoted, and the two escaped states — because that is the only way
@@ -261,7 +316,16 @@ Two guards are installed:
     ``extglob`` set, and which ``fnmatch`` does not implement;
   - patterns for *sibling* names (``~/.mur*_backup``): rule 2 asks only
     whether a pattern matches ``.mureo`` itself, whereas rule 1 does deny
-    literal siblings such as ``~/.mureo_backup``.
+    literal siblings such as ``~/.mureo_backup``;
+  - ``config.json`` reached by a filename search, for the reason given
+    with rule 4: the name is too common to deny;
+  - a symlink into the directory under a name that mentions neither the
+    directory nor a protected filename (``cat ~/notes/backup.json`` where
+    that path is a link to the credentials file).  The *path* guard
+    resolves symlinks in both directions and closes this; the Bash guard
+    never touches the filesystem, so it cannot.  The two guards protect
+    the same directory with different reach, and this is where they
+    differ.
 
   The first two are not closable by inspecting command text, and no
   further rule should be added pretending otherwise.
@@ -593,6 +657,48 @@ _PATTERN_COMPONENT = "'[.][]a-z0-9_.*?[^{},' + chr(33) + '-]*'"
 
 _BASH_REASON = "mureo credential guard: commands that can reach ~/.mureo are blocked"
 
+# The files rule 4 matches by name, so a tree search cannot walk to them
+# without naming the directory. ``config.json`` is deliberately absent —
+# see rule 4 in the module docstring for why, and for what that costs.
+GUARDED_FILENAMES = (
+    "credentials.json",
+    "credentials.json.bak",
+    "agency.json",
+    "setup_state.json",
+)
+
+# One alternation over those names, matched only where the name stands on
+# its own — no ``/`` before it. That restriction is what keeps the rule on
+# its own subject. A name with a path in front of it is not a search, it
+# is a specific file, and which file it is has already been decided by
+# rules 1 to 3 from the directory: ``~/.mureo/credentials.json`` denies on
+# rule 1, and ``~/backups/credentials.json`` is somebody's own file that
+# the guard has no business refusing. Only the bare form — ``find ~ -name
+# credentials.json``, ``locate credentials.json`` — is the shape rule 4
+# exists for.
+#
+# Dots become ``[.]`` rather than ``\.`` because the payload may not
+# contain a backslash, and the trailing boundary is a character class
+# rather than ``$`` because it may not contain one of those either — the
+# candidate has a space appended before the search so the end of the
+# string counts as a boundary.
+_FILENAME_PATTERN = (
+    "'(^|[^a-z0-9_./-])("
+    + "|".join(n.replace(".", "[.]") for n in GUARDED_FILENAMES)
+    + ")[^a-z0-9_-]'"
+)
+
+# Rule 4 says what actually matched rather than borrowing _BASH_REASON.
+# Told the command "can reach ~/.mureo" when it never mentioned the
+# directory, an agent goes looking for a reference that is not there and
+# retries; told a credential filename appeared, it can tell at once
+# whether it meant its own project file, and the Read tool takes that one.
+_FILENAME_REASON = (
+    "mureo credential guard: this command names a mureo credential file; "
+    "if you meant a file of your own with the same name, read it with the "
+    "Read tool instead"
+)
+
 # A refusal is not a match, and the agent reading the reason acts on the
 # difference: told the command references ~/.mureo, it goes looking for a
 # reference that is not there and retries. This one says what actually
@@ -633,13 +739,38 @@ _BASH_GUARD_CODE = (
     + "p=[x for s in ls for x in re.findall("
     "'(?:^|[^a-z0-9_])(' + " + _PATTERN_COMPONENT + " + ')', s)]; "
     "g=[x for x in p if set('*?[') & set(x) and fnmatch.fnmatchcase('.mureo', x)]; "
+    # Rule 3: a metacharacter standing immediately before the written-out
+    # name. `find -path` matches the whole path, leading period included,
+    # so `*mureo*` reaches the directory although no component of it
+    # begins with a dot and rule 2 therefore never sees it.
+    #
+    # This one reads the RAW text as well as the normalized readings, and
+    # that is the whole point. Normalization models what the SHELL expands,
+    # so it correctly neutralizes a quoted `*` — but the quotes in
+    # `-path '*mureo*'` exist precisely to keep the shell off the pattern
+    # so that `find` can expand it itself. Judged on the normalized
+    # reading alone the pattern has already become `=mureo=` and nothing
+    # fires. What a downstream program will expand is written literally in
+    # the command, so that is where to look for it.
+    "h=[x for x in ls + [cc] if re.search('[]*?[]mureo', x)]; "
+    # Rule 4: the protected filenames, at a component boundary. A space is
+    # appended so the end of a candidate counts as a boundary without the
+    # pattern needing a `$`, which the payload may not contain.
+    "f=[s for s in ls if re.search(" + _FILENAME_PATTERN + ", s + chr(32))]; "
     # `un` first: structure the guard could not resolve denies on its own.
     # `bg` is answered separately below, because it needs its own reason.
-    "b=un or [s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)] or g; "
+    "b=un or [s for s in ls if re.search('(^|[^a-z0-9_])[.]mureo', s)]"
+    " or g or h; "
+    # Rule 4 carries its own reason: told the command "can reach ~/.mureo"
+    # when it never mentioned the directory, an agent goes looking for a
+    # reference that is not there. This one says what actually matched.
+    "fb=[] if b else f; "
     + _deny_expr(_OVERSIZE_REASON)
     + " if bg else ("
     + _deny_expr(_BASH_REASON)
-    + " if b else None)"
+    + " if b else ("
+    + _deny_expr(_FILENAME_REASON)
+    + " if fb else None))"
 )
 
 
