@@ -310,6 +310,9 @@ Quit Claude Desktop completely (`⌘Q`) and re-open. The config is only re-read 
 **Demo BYOD data persisting after switching to your real bundle**
 You probably installed both into the same workspace, or both targeted the legacy global `~/.mureo/byod/`. Use a separate `--workspace` for each (e.g. `~/mureo-demo` and `~/mureo-real`) or `mureo byod clear` to reset.
 
+**Something failed in the `mureo configure` UI and the message just says it failed**
+Read `~/.mureo/logs/configure.log` — every configure run writes there on every platform, and `mureo configure` prints the path on startup. It holds the cause the UI withholds (an expired token, a rejected account listing, an unwritable credentials file). For more detail, re-run as `MUREO_LOG_LEVEL=DEBUG mureo configure`. No token or secret is ever written to it. Details: [docs/cli.md — Configure log](cli.md#configure-log).
+
 **`/daily-check` (or other slash command) does not appear in Code**
 Check `ls ~/.claude/skills/` — `daily-check` should be a directory. If not, re-run `mureo setup claude-code`. If it appears but the slash picker still shows nothing, restart Claude Code.
 

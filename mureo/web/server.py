@@ -23,6 +23,7 @@ from pathlib import Path
 from mureo.core.providers import discover_providers
 from mureo.core.runtime_context import runtime_credentials_path
 from mureo.core.terminal import force_cooked_mode, terminal_fd
+from mureo.logging_setup import setup_configure_logging
 from mureo.web.extensions import (
     ServeContext,
     WebExtensionEntry,
@@ -426,7 +427,15 @@ def run_configure_wizard(
     was started), ``False`` when it started and ran its own server. The
     CLI uses this to print the right "already running" vs "stopped"
     message.
+
+    Logging (#581) is installed here rather than in the CLI callback:
+    every way the configure server starts — interactive, ``--serve``, and
+    all three auto-start backends — funnels through this function, and it
+    inherits the ``home`` seam so a test never writes to the real
+    ``~/.mureo``. It is a call, not an import side effect, so importing
+    mureo as a library still leaves logging to the host application.
     """
+    setup_configure_logging(home=home)
     serve_forever = timeout_seconds is None
     if preferred_port != 0 and probe_mureo_instance(bind_host, preferred_port):
         # Single-instance reuse: a mureo configure server already answers

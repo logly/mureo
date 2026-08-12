@@ -55,6 +55,7 @@ from mureo.auth_setup import (
     save_credentials,
 )
 from mureo.core.secret_store import FilesystemSecretStore
+from mureo.logging_setup import safe_http_log_line
 from mureo.oauth_authcode import OAuthExchangeError, exchange_authorization_code
 
 if TYPE_CHECKING:
@@ -1302,8 +1303,13 @@ class _WizardHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(encoded)
 
     def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
-        """Route HTTP access logs through the logger (quieter by default)."""
-        logger.debug(fmt, *args)
+        """Route HTTP access logs through the logger (quieter by default).
+
+        #581: the OAuth callbacks land here as ``GET /callback?code=…``,
+        so the query string — credential material — is scrubbed before
+        the line is logged. DEBUG now reaches a file, not /dev/null.
+        """
+        logger.debug("%s", safe_http_log_line(fmt, *args))
 
 
 # ---------------------------------------------------------------------------

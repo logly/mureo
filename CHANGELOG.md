@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`mureo configure` now writes a log you can actually read.** Nothing
+  in the package configured logging: every module took a
+  `logging.getLogger(__name__)` and no handler was ever installed, so
+  Python fell back to `lastResort` — `WARNING` and above went to stderr
+  unformatted and every `info` / `debug` was discarded. Diagnostics the
+  code deliberately preserves reached nobody, including the swallowed
+  Meta token-refresh failure, and the UI's intentionally generic error
+  messages ("Couldn't load accounts.") had no recoverable cause
+  anywhere. The one log file that existed was the macOS LaunchAgent's
+  stdout redirect, on one platform, in one run mode, and was named in no
+  documentation.
+
+  The configure server now installs a rotating file handler on **every**
+  platform at `~/.mureo/logs/configure.log` (1 MiB × 3 backups, created
+  owner-only), prints the path on startup, and keeps warnings on stderr
+  as before. Level defaults to `INFO` and is raised with
+  `MUREO_LOG_LEVEL` — an env var, not a flag, because the auto-start
+  daemon is launched by a supervisor with a fixed argv.
+
+  The handlers go on the `mureo` package logger and are installed by the
+  configure entry point, never at import time: importing mureo as a
+  library still leaves logging entirely to the host application, and no
+  third-party logger is switched on (the Google Ads SDK logs whole
+  request payloads at DEBUG, and raising mureo's level cannot reach it).
+  The path is deliberately *not* the LaunchAgent's
+  `~/.mureo/configure.log`, which launchd holds an open fd on — rotation
+  needs sole ownership of its file.
+
+  No log line at any level contains a token, secret or credential value.
+  Turning the handler on made three HTTP access-log call sites reachable
+  whose request line carries the OAuth callback's `?code=`; query
+  strings are now redacted before those lines are logged.
+
+  Documented in `docs/cli.md`, `docs/authentication.md` and both
+  getting-started guides.
+
 ## [0.10.44] - 2026-08-12
 
 ### Fixed

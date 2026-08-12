@@ -310,6 +310,9 @@ Claude Desktop を完全終了 (`⌘Q`) して再起動。設定は完全起動�
 **自前データに切り替えてもデモの BYOD データが残る**
 両方を同じワークスペースに入れたか、両方が legacy グローバル `~/.mureo/byod/` を指していた可能性。`--workspace` を分ける(`~/mureo-demo` と `~/mureo-real` 等)、または `mureo byod clear` でリセット。
 
+**`mureo configure` の UI で何かが失敗したが、画面には「失敗しました」としか出ない**
+`~/.mureo/logs/configure.log` を読んでください。全プラットフォームで configure の実行ごとに書き出され、起動時にパスも表示されます。UI が伏せている原因(期限切れトークン、アカウント一覧の取得失敗、書き込めない認証情報ファイル)はここにあります。さらに詳しく見るには `MUREO_LOG_LEVEL=DEBUG mureo configure` で再実行。トークンやシークレットの値はどのレベルでも記録されません。詳細は [docs/cli.md — Configure log](cli.md#configure-log)。
+
 **Code で `/daily-check` 等の slash command が出ない**
 `ls ~/.claude/skills/` を確認 — `daily-check` ディレクトリが無ければ `mureo setup claude-code` を再実行。あるのに slash ピッカーに出ない場合は Claude Code を再起動。
 

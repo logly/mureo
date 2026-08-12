@@ -72,6 +72,7 @@ from mureo.core.runtime_context import (
     runtime_ui_plugin_credential_fields,
 )
 from mureo.core.secret_store import FilesystemSecretStore, SecretStoreError
+from mureo.logging_setup import safe_http_log_line
 from mureo.meta_ads.accounts import (
     MetaAccountFetchError,
     MetaTokenInvalidError,
@@ -592,7 +593,13 @@ class ConfigureHandler(BaseHTTPRequestHandler):
     # Logging
     # ------------------------------------------------------------------
     def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
-        logger.debug(fmt, *args)
+        """Route HTTP access logs through the logger, query strings removed.
+
+        #581: with a log handler installed, DEBUG actually writes these
+        lines out. A request line can carry credential material in its
+        query (an OAuth ``?code=``), so it is scrubbed before logging.
+        """
+        logger.debug("%s", safe_http_log_line(fmt, *args))
 
     # ------------------------------------------------------------------
     # Dispatch

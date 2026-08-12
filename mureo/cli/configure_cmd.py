@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typer
 
+from mureo.logging_setup import LOG_LEVEL_ENV, configure_log_path
 from mureo.web import run_configure_wizard
 from mureo.web.server import DEFAULT_CONFIGURE_PORT
 
@@ -65,6 +66,13 @@ def configure(
     interactive terminal handling is required. This is the mode the
     auto-start service (``mureo service install``) launches.
     """
+    # #581: name the log before anything can go wrong in it — "check the
+    # log" is only actionable if the operator was told where it is. The
+    # server itself installs the handler (``run_configure_wizard``); this
+    # only prints the path it will use.
+    typer.echo(
+        f"Logs: {configure_log_path()} (raise detail with {LOG_LEVEL_ENV}=DEBUG)"
+    )
     if serve:
         # Headless daemon contract: never open a browser, never cap the
         # lifetime (``timeout_seconds=None`` → serve until a stop signal).
