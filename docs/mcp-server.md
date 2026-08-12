@@ -1026,26 +1026,36 @@ The `text` field contains a JSON string that your agent should parse.
 
 ### Authentication Errors
 
-If credentials are missing, tools return a descriptive error message (not an exception):
+An auth failure is returned as a result, not raised as an exception — but it is a **structured, machine-readable outcome**, not prose. Every platform uses the same envelope:
 
 ```json
 [
   {
     "type": "text",
-    "text": "Authentication credentials not found. Set environment variables or ~/.mureo/credentials.json."
+    "text": "{\"status\": \"auth_error\", \"auth_cause\": \"no_credentials\", \"detail\": \"Credentials not found. Set environment variable (META_ADS_ACCESS_TOKEN) or configure ~/.mureo/credentials.json.\"}"
   }
 ]
 ```
 
+| Field | Meaning |
+|-------|---------|
+| `status` | Always `auth_error`. This is the marker to branch on: mureo could not read this platform at all, so it produced **no data** for this call. |
+| `auth_cause` | `no_credentials` — nothing is configured for this platform. `token_invalid` — a credential exists and the platform rejected it (expired or revoked token, withdrawn permission). The two have different recovery actions. |
+| `detail` | The operator-facing sentence: which environment variable to set, or what the platform said. |
+
+Both causes are produced centrally, so every platform behaves identically: `no_credentials` from the shared `_no_creds_result` helper, `token_invalid` from `@api_error_handler` when the underlying exception is an auth failure (`PlatformAuthError`, an HTTP 401/403, or a Google Ads `authentication_error` / `authorization_error`). The vocabulary lives in `mureo/core/auth_failure.py`.
+
+**An agent must never render an `auth_error` result as data.** A platform that could not be read is not a platform that was quiet, and a report containing one is partial — see the `/daily-check` skill's partial-report rule. mureo also treats the envelope as a failed call internally: a mutation that returns it is never written to `action_log`.
+
 ### API Errors
 
-API errors (rate limits, invalid parameters, etc.) are caught by the `@api_error_handler` decorator and returned as text:
+API errors (rate limits, invalid parameters, etc.) are caught by the `@api_error_handler` decorator and returned as text, prefixed with `API error:`:
 
 ```json
 [
   {
     "type": "text",
-    "text": "API Error: Meta API request failed (status=400, path=/act_123/campaigns)"
+    "text": "API error: Meta API request failed (status=400, path=/act_123/campaigns)"
   }
 ]
 ```
