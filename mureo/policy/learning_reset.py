@@ -49,6 +49,7 @@ from typing import Any
 
 from mureo.core.strategy_reminder import is_mutating_builtin_tool
 from mureo.core.tool_names import is_read_only_tool_name
+from mureo.policy.declarations import declared_read_only_hint
 from mureo.policy.learning_rules import (
     Evidence,
     LearningState,
@@ -162,11 +163,37 @@ def _is_mutation(tool_name: str) -> bool:
     cannot restart a learning period on any platform. Getting this right is
     what keeps the check quiet — a check that fires on ``campaigns_list`` is
     a check that gets ignored.
+
+    For a tool mureo does not own, the NAME is a guess and the tool's own
+    ``annotations.readOnlyHint`` is a declaration, so the declaration wins in
+    both directions: a read-shaped name that declared ``readOnlyHint=False``
+    is a mutation (and gets its learning-period verdict), a mutation-shaped
+    name that declared ``readOnlyHint=True`` is a read (and is not refused
+    spuriously). The name is consulted only when nothing was declared. This
+    mirrors :func:`mureo.mcp.plugin_semantics._is_read` — same precedence, so
+    the two surfaces cannot drift apart on "is this a read?". The declarations
+    reach this pure layer through the registry in
+    :mod:`mureo.policy.declarations`, populated by ``mureo.mcp.server``.
+
+    What believing a declaration costs, stated rather than glossed: a plugin
+    that declares ``readOnlyHint=True`` on a real mutation is taken at its
+    word and escapes the ``block_learning_resets`` refusal, where the older
+    name-only rule would have caught a ``delete_``-shaped name. That is
+    accepted, for two reasons. Believing a declaration in one direction only
+    is the same name-beats-declaration inversion this ordering exists to
+    remove, and it would hard-refuse honest plugin reads whose names merely
+    look like mutations. And these guardrails defend the operator against an
+    agent's mistakes, not against an installed plugin that lies about itself:
+    such a plugin already escapes the money pattern-fallback scan the same way
+    (#517), and runs arbitrary code besides.
     """
     if is_mutating_builtin_tool(tool_name):
         return True
     if tool_name.startswith(_BUILTIN_PREFIXES):
         return False
+    hint = declared_read_only_hint(tool_name)
+    if hint is not None:
+        return not hint
     return not is_read_only_tool_name(tool_name)
 
 

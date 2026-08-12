@@ -1323,8 +1323,9 @@ def _semantics_for(*names: str) -> dict[str, Any]:
     """Semantics for tools that declare NOTHING — no annotations, no meta.
 
     This is the shape a manifest snapshot produces, and it is exactly the case
-    that matters: ``derive_semantics`` defaults an undeclared tool to
-    *mutating*, so the name is the only signal available.
+    that matters: with no ``readOnlyHint`` to go on, ``derive_semantics`` has
+    nothing but the NAME to classify the tool by (a name it does not read as a
+    read falls through to the conservative *mutating* default).
     """
     from mcp.types import Tool
 
@@ -1341,15 +1342,33 @@ def _semantics_for(*names: str) -> dict[str, Any]:
     return {t.name: derive_semantics(t) for t in tools}
 
 
+def _semantics_with_hint(read_only: bool, *names: str) -> dict[str, Any]:
+    """Semantics for tools that DECLARE ``readOnlyHint`` explicitly."""
+    from mcp.types import Tool, ToolAnnotations
+
+    from mureo.mcp.plugin_semantics import derive_semantics
+
+    tools = [
+        Tool(
+            name=name,
+            description="x",
+            inputSchema={"type": "object", "properties": {}},
+            annotations=ToolAnnotations(readOnlyHint=read_only),
+        )
+        for name in names
+    ]
+    return {t.name: derive_semantics(t) for t in tools}
+
+
 @pytest.mark.unit
 class TestReadNameExemption:
     """A read tool without ``readOnlyHint`` must not be denial-gated.
 
-    ``derive_semantics`` treats an undeclared tool as mutating (the right
-    default for auditing), and a manifest snapshot declares nothing — so every
-    read from a bridged surface arrived here as "mutating". Handing those to a
-    heuristic budget/bid scan can only produce FALSE DENIALS: a listing call
-    with a numeric budget-shaped *filter* argument would be refused.
+    A manifest snapshot declares nothing, so a bridged read arrives here with
+    the tool NAME as its only signal — and before #517 that meant it arrived as
+    "mutating". Handing those to a heuristic budget/bid scan can only produce
+    FALSE DENIALS: a listing call with a numeric budget-shaped *filter*
+    argument would be refused.
 
     The exemption is keyed on read-shaped NAMES rather than on a mutation
     allow-list because the error costs are asymmetric: platform mutations are
@@ -1427,6 +1446,89 @@ class TestReadNameExemption:
                 name, {"min_daily_budget_filter": 50_000}
             )
             assert decision.allowed is True
+        finally:
+            reset_runtime_context()
+            sg._cache.clear()
+
+
+@pytest.mark.unit
+class TestDeclarationBeatsNameGuess:
+    """A name guess must never overturn the tool's own ``readOnlyHint``.
+
+    The registration used to exempt every read-shaped NAME, declared or not.
+    So a plugin that correctly declared ``readOnlyHint=False`` on a tool like
+    ``list_and_delete_stale_campaigns`` silently lost its ``## Guardrails``
+    budget/bid cap to a guess about its name — the one case where the author
+    had told mureo outright that the call moves money.
+
+    The precedence has three legs, and all three are pinned here: a
+    declaration is believed in BOTH directions, and the name decides only for
+    a tool that declared nothing.
+    """
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "list_and_delete_stale_campaigns",
+            "campaign_management-list_and_pause_campaigns",
+        ],
+    )
+    def test_a_declared_mutation_on_a_read_shaped_name_is_registered(
+        self, name: str
+    ) -> None:
+        from mureo.mcp.server import _register_plugin_pattern_fallbacks
+
+        _register_plugin_pattern_fallbacks(_semantics_with_hint(False, name))
+        assert has_pattern_fallback(name) is True
+
+    def test_a_declared_read_on_a_read_shaped_name_is_not_registered(self) -> None:
+        from mureo.mcp.server import _register_plugin_pattern_fallbacks
+
+        name = "campaign_management-list_campaigns"
+        _register_plugin_pattern_fallbacks(_semantics_with_hint(True, name))
+        assert has_pattern_fallback(name) is False
+
+    def test_a_declared_read_on_a_mutation_shaped_name_is_not_registered(self) -> None:
+        """The declaration is believed in that direction too: scanning a tool
+        its author called a read would only cost false denials."""
+        from mureo.mcp.server import _register_plugin_pattern_fallbacks
+
+        name = "update_campaign"
+        _register_plugin_pattern_fallbacks(_semantics_with_hint(True, name))
+        assert has_pattern_fallback(name) is False
+
+    def test_an_undeclared_read_shaped_name_is_still_not_registered(self) -> None:
+        """The third leg — the ``TestReadNameExemption`` guarantee, restated
+        here so the precedence is readable in one place."""
+        from mureo.mcp.server import _register_plugin_pattern_fallbacks
+
+        name = "campaign_management-list_campaigns"
+        _register_plugin_pattern_fallbacks(_semantics_for(name))
+        assert has_pattern_fallback(name) is False
+
+    def test_a_declared_mutation_with_a_read_shaped_name_is_denied(
+        self, tmp_path: Any, monkeypatch: Any
+    ) -> None:
+        """The defect this closes, end to end through the real gate: an
+        over-cap budget on a tool whose author declared it a mutation."""
+        import mureo.policy.strategy_gate as sg
+        from mureo.core.runtime_context import reset_runtime_context
+        from mureo.mcp.server import _register_plugin_pattern_fallbacks
+        from mureo.policy.strategy_gate import StrategyPolicyGate
+
+        (tmp_path / "STRATEGY.md").write_text(
+            "## Guardrails\n- max_daily_budget_per_campaign: 10000\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        reset_runtime_context()
+        sg._cache.clear()
+        try:
+            name = "list_and_delete_stale_campaigns"
+            _register_plugin_pattern_fallbacks(_semantics_with_hint(False, name))
+            decision = StrategyPolicyGate().evaluate(name, {"dailyBudget": 25_000})
+            assert decision.allowed is False
+            assert "max_daily_budget_per_campaign" in (decision.reason or "")
         finally:
             reset_runtime_context()
             sg._cache.clear()

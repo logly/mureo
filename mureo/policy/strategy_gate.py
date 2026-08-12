@@ -113,10 +113,13 @@ from mureo.policy.declarations import (
     BudgetDeclaration,
     bid_declaration_for,
     budget_declaration_for,
+    declared_read_only_hint,
     register_bid_declaration,
     register_budget_declaration,
+    register_read_only_hint,
     reset_bid_declarations,
     reset_budget_declarations,
+    reset_read_only_hints,
 )
 
 # The learning-period pre-flight (#548) — "is this change reset-triggering,
@@ -163,6 +166,9 @@ __all__ = [
     "register_bid_declaration",
     "reset_budget_declarations",
     "reset_bid_declarations",
+    "declared_read_only_hint",
+    "register_read_only_hint",
+    "reset_read_only_hints",
     "_BUDGET_DECLARATIONS",
     "_BID_DECLARATIONS",
     "_UNREADABLE",

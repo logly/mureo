@@ -156,6 +156,46 @@ class TestHintLessToolsFallBackToTheNameVocabulary:
         )
         assert read.mutating is False
 
+    def test_the_raw_declaration_survives_derivation(self) -> None:
+        """``mutating`` is the derived answer and cannot be un-derived, so a
+        consumer that must not let a name guess beat a DECLARATION (the
+        guardrail pattern-fallback registration, the learning-reset
+        classifier) needs the raw hint carried alongside it."""
+        declared_read = derive_semantics(
+            _tool(
+                name="campaign_management-create_campaign",
+                annotations=ToolAnnotations(readOnlyHint=True),
+            )
+        )
+        assert declared_read.read_only_hint is True
+        assert declared_read.mutating is False
+
+        declared_mutation = derive_semantics(
+            _tool(
+                name="billing-list_invoice_summaries",
+                annotations=ToolAnnotations(readOnlyHint=False),
+            )
+        )
+        assert declared_mutation.read_only_hint is False
+        assert declared_mutation.mutating is True
+
+    def test_an_undeclared_hint_is_none_not_a_guess(self) -> None:
+        """``None`` is what tells the consumer the name was the only signal.
+        Annotations that OMIT the hint count as undeclared too — that is the
+        real shape the module docstring calls out (``destructiveHint`` only)."""
+        no_annotations = derive_semantics(_tool(name="billing-list_invoices"))
+        assert no_annotations.read_only_hint is None
+        assert no_annotations.mutating is False
+
+        other_annotations = derive_semantics(
+            _tool(
+                name="campaign_management-create_campaign",
+                annotations=ToolAnnotations(destructiveHint=True),
+            )
+        )
+        assert other_annotations.read_only_hint is None
+        assert other_annotations.mutating is True
+
     def test_the_fallback_uses_the_shared_read_vocabulary(self) -> None:
         """Same answer as the rollback planner and the guardrail
         pattern-fallback registration — three surfaces, one list."""
