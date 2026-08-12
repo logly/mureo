@@ -2,13 +2,26 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import timedelta
 from typing import Any
 
+from mureo.analysis.delivery_collapse import fill_missing_delivery_days
 from mureo.context.state import load_conversion_action_types
+from mureo.core import clock
 from mureo.meta_ads._conversion_count import count_conversions_from_actions
 from mureo.meta_ads._period import previous_period, resolve_period
 
 logger = logging.getLogger(__name__)
+
+#: Trailing window the delivery-collapse detector asks for by default.
+DAILY_DELIVERY_DEFAULT_DAYS = 60
+#: Hard ceiling on the requested window — a day-grain pull is one row per
+#: campaign per day, so an unbounded ``days`` is an accidental DoS on the
+#: Graph API (and on the caller's context window).
+_MAX_DELIVERY_DAYS = 180
+#: ``list_campaigns`` defaults to 50; the status join has to cover every
+#: campaign that appears in the insights rows, not the first page.
+_CAMPAIGN_JOIN_LIMIT = 500
 
 # Common Insights retrieval fields
 _INSIGHTS_FIELDS = (
@@ -23,6 +36,35 @@ _INSIGHTS_FIELDS = (
 # Protocol's ``DailyReportRow`` only needs date, volume, cost, and
 # action counts.
 _TIME_RANGE_INSIGHTS_FIELDS = "impressions,clicks,spend,actions,date_start,date_stop"
+
+# Day-grain fields for the delivery-collapse detector (#546). Narrower
+# than ``_INSIGHTS_FIELDS`` (no actions, no reach) because the detector
+# reads impressions and spend only, and carries ``campaign_id`` because
+# the rows are grouped per campaign.
+_DELIVERY_INSIGHTS_FIELDS = (
+    "campaign_id,campaign_name,impressions,clicks,spend,date_start"
+)
+
+
+def _delivery_row(row: dict[str, Any], campaign: dict[str, Any]) -> dict[str, Any]:
+    """Map one day-grain insights row + its campaign to the shared shape.
+
+    ``effective_status`` is preferred over ``status``: a campaign whose
+    configured status is ACTIVE but whose effective status is
+    ``CAMPAIGN_PAUSED`` / ``IN_PROCESS`` is not "serving but silent", it
+    is stopped — and the detector must not report a stop as a fault.
+    """
+    return {
+        "campaign_id": str(row.get("campaign_id") or ""),
+        "campaign_name": str(row.get("campaign_name") or campaign.get("name") or ""),
+        "status": str(campaign.get("effective_status") or campaign.get("status") or ""),
+        # ``stop_time`` is an ISO timestamp; the date half is the flight end.
+        "end_date": str(campaign.get("stop_time") or "")[:10],
+        "date": str(row.get("date_start") or ""),
+        "impressions": int(float(row.get("impressions") or 0)),
+        "clicks": int(float(row.get("clicks") or 0)),
+        "cost": float(row.get("spend") or 0),
+    }
 
 
 def _period_params(period: str) -> dict[str, Any]:
@@ -47,6 +89,12 @@ class InsightsMixin:
     async def _get(  # type: ignore[empty-body]
         self, path: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
+
+    # Provided by CampaignsMixin; declared here for the status join in
+    # ``get_daily_delivery_report``.
+    async def list_campaigns(  # type: ignore[empty-body]
+        self, *, status_filter: str | None = None, limit: int = 50
+    ) -> list[dict[str, Any]]: ...
 
     async def _get_all_insights(
         self, path: str, params: dict[str, Any]
@@ -148,6 +196,54 @@ class InsightsMixin:
             "level": level,
         }
         return await self._get_all_insights(f"/{node_id}/insights", params)
+
+    async def get_daily_delivery_report(
+        self, days: int = DAILY_DELIVERY_DEFAULT_DAYS
+    ) -> list[dict[str, Any]]:
+        """Return one row per (campaign, day) for the trailing ``days`` (#546).
+
+        The delivery-collapse detector baselines on the median of the
+        *same weekday* over several weeks, so it needs a real time
+        series; ``get_performance_report``'s ``date_preset`` totals
+        cannot feed it.
+
+        Rows follow the platform-agnostic delivery shape consumed by
+        :func:`mureo.analysis.delivery_collapse.delivery_series_from_rows`.
+        Missing days are reconciled up to the last date the report
+        proves was covered (Meta omits zero-delivery rows, and also
+        lags). Campaign status is joined from
+        ``list_campaigns`` because Meta's insights edge does not carry
+        it — and the *status says serving, nothing is serving*
+        contradiction is the entire signal, so a row whose campaign is
+        missing from that join is dropped rather than defaulted to
+        ENABLED.
+        """
+        window = max(1, min(int(days), _MAX_DELIVERY_DAYS))
+        until = clock.server_now().date()
+        since = until - timedelta(days=window)
+        params: dict[str, Any] = {
+            "fields": _DELIVERY_INSIGHTS_FIELDS,
+            "time_range": json.dumps(
+                {"since": since.isoformat(), "until": until.isoformat()}
+            ),
+            "time_increment": 1,
+            "level": "campaign",
+        }
+        rows = await self._get_all_insights(f"/{self._ad_account_id}/insights", params)
+        campaigns = await self.list_campaigns(limit=_CAMPAIGN_JOIN_LIMIT)
+        by_id = {str(c.get("id")): c for c in campaigns}
+        mapped = [
+            _delivery_row(row, by_id[str(row.get("campaign_id"))])
+            for row in rows
+            if str(row.get("campaign_id")) in by_id
+        ]
+        # Meta's insights edge omits a (campaign, day) row when there was
+        # no delivery rather than returning impressions=0 — exactly the
+        # days this detector exists to see. Reconcile against what the
+        # report proves was covered, NOT against the range requested:
+        # Meta lags, and filling an unreported day as zero reads as a
+        # 100% drop on a healthy campaign.
+        return fill_missing_delivery_days(mapped)
 
     async def analyze_performance(
         self,

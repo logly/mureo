@@ -97,8 +97,9 @@ mureo/
 │   ├── _handlers_batch.py                 # Batch lifecycle handlers
 │   ├── tools_change_import.py             # mureo_external_changes_import (#545)
 │   ├── _handlers_change_import.py         # Change-import handler
-│   ├── tools_analysis.py                  # analysis_anomalies_check / analysis_exclusion_impact_preview
+│   ├── tools_analysis.py                  # analysis_anomalies_check / analysis_delivery_collapse_* / analysis_exclusion_impact_preview
 │   ├── _handlers_analysis.py              # Anomaly detector composition handler
+│   ├── _handlers_delivery_collapse.py     # Delivery-collapse check / diagnose handlers (#546)
 │   ├── _handlers_exclusion_impact.py      # analysis_exclusion_impact_preview handler (#547)
 │   ├── exclusion_preflight.py             # Pre-dispatch exclusion sizing + refusal + notice (#547)
 │   ├── exclusion_sources.py               # Built-in per-platform delivery sources for the above (#547)
@@ -134,6 +135,11 @@ mureo/
 ├── analysis/            # Analysis utilities
 │   ├── lp_analyzer.py   # Landing page analyzer
 │   ├── anomaly_detector.py  # Zero-spend / CPA-spike / CTR-drop detection (pure, sample-size-gated)
+│   ├── delivery_collapse.py # Delivery-collapse detection (#546) — weekday-aware baseline taken
+│   │                        #   from the platform's own daily delivery, never from action_log
+│   ├── delivery_collapse_config.py  # ## Guardrails -> CollapseThresholds (the only I/O half)
+│   ├── collapse_diagnosis.py        # Change x metric timeline + elimination ladder; reports the
+│   │                                #   open questions, never a cause it did not evidence
 │   ├── exclusion_impact/    # Delivery-impact preview for bulk exclusions (#547; pure)
 │   │   ├── models.py        # DeliveryRecord / ExclusionTarget / ExclusionImpact + coverage verdicts
 │   │   ├── matching.py      # Per-entity-kind match rules (host, app id, negative keyword match type)
@@ -254,7 +260,7 @@ These families are not tied to a single ad platform. Tool names are the exact MC
 | Rollback | `rollback_plan_get`, `rollback_apply` |
 | Batch (#549) | `mureo_batch_begin`, `mureo_batch_end`, `mureo_batch_status` |
 | Change Import (#545) | `mureo_external_changes_import` |
-| Analysis | `analysis_anomalies_check`, `analysis_exclusion_impact_preview` |
+| Analysis | `analysis_anomalies_check`, `analysis_delivery_collapse_check`, `analysis_delivery_collapse_diagnose`, `analysis_exclusion_impact_preview` |
 | Creative Studio | `creative_studio_providers_list`, `creative_studio_generate_visual`, `creative_studio_edit_visual`, `creative_studio_compose`, `creative_studio_brand_kit_get` |
 | Learning | `mureo_learning_insights_get`, `mureo_consult_advisor` |
 | Learning pre-flight (#548) | `mureo_learning_reset_preflight` |
@@ -313,6 +319,17 @@ This rule was reinforced after PR #20 (2026-04-19, OAuth helper extraction — 6
 ## Test Coverage
 
 - Target: 80% minimum (enforced by `tool.coverage.report.fail_under`)
+- **Mutation check for the delivery-collapse detector**: `python scripts/mutation_check.py`
+  injects ~20 plausible wrong implementations and asserts the tests object to each.
+  Green tests prove the code passes its tests, not that the tests would notice if the
+  code were wrong — and for a detector whose failure mode is *silence on a dead
+  account*, "the suite is green" is exactly the reassurance that hides the bug. Two
+  CRITICALs in #546 shipped past a green suite. Run it when touching
+  `mureo/analysis/delivery_collapse*.py`, `collapse_diagnosis.py`, or any
+  `get_daily_delivery_report`. A **survivor is a gap in the tests**, not a pass: add the
+  missing assertion rather than deleting the mutation. `tests/test_mutation_harness.py`
+  asserts every anchor still resolves, so a refactor cannot turn the harness into a
+  no-op that always "passes".
 - Framework: pytest + pytest-asyncio
 - All external API calls (Google Ads, Meta Ads) **must** be mocked in tests
 - Use `@pytest.mark.unit` / `@pytest.mark.integration` for categorization

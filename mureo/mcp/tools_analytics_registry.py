@@ -85,10 +85,18 @@ TOOLS: list[Tool] = [
             "mureo_analytics_modules_list confirms the platform advertises "
             "the capability. capability is one of detect_anomalies, "
             "diagnose_performance, audit_creative, "
-            "analyze_budget_efficiency. window_days applies only to "
+            "analyze_budget_efficiency, detect_delivery_collapse. "
+            "detect_delivery_collapse (#546) flags campaigns whose delivery "
+            "collapsed while their status still says they should be serving; "
+            "its result carries status=ok | no_credentials | data_unavailable "
+            "— only status=ok means an empty signals list is an all-clear. "
+            "window_days applies only to "
             "detect_anomalies (trailing window, default 7); scope applies "
             "only to diagnose_performance (account | campaign | deep, "
-            "default account); both are ignored for the other capabilities. "
+            "default account); both are ignored for the other capabilities "
+            "(detect_delivery_collapse uses its own multi-week history "
+            "window, because a same-weekday baseline needs weeks of daily "
+            "data). "
             "Read-only diagnostics — never mutates the ad account. Returns "
             "status=ok with a result payload, or a structured status "
             "(no_analytics_module / capability_not_available / error) that "
@@ -222,6 +230,12 @@ async def _invoke_capability(
         return await module.diagnose_performance(account_id, scope=scope)
     if capability is AnalyticsCapability.AUDIT_CREATIVE:
         return await module.audit_creative(account_id)
+    if capability is AnalyticsCapability.DETECT_DELIVERY_COLLAPSE:
+        # No ``window_days``: a same-weekday baseline needs weeks of daily
+        # history, so the module's own multi-week window applies and the
+        # 7-day default that suits detect_anomalies would silently make
+        # the baseline unusable.
+        return await module.detect_delivery_collapse(account_id)
     return await module.analyze_budget_efficiency(account_id)
 
 

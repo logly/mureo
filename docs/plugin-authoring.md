@@ -2209,6 +2209,67 @@ fallback for misbehaving callers, not the primary signalling channel.
 acme_ads = "mureo_acme_ads.analytics:AcmeAdsAnalyticsModule"
 ```
 
+### Optional extension: `DeliveryCollapseModule` (#546)
+
+Delivery collapse — a campaign still set to serve whose impressions have
+gone to zero — is detected by shared core code; a platform only has to
+supply day-grain delivery. Opt in by implementing a **second** Protocol
+alongside `AnalyticsModule`:
+
+```python
+from mureo.analysis.delivery_collapse import delivery_series_from_rows
+from mureo.analytics import (
+    AnalyticsCapability,
+    DeliveryCollapseModule,
+    DeliveryCollapseReport,
+)
+from mureo.analysis.delivery_collapse import detect_delivery_collapses
+
+
+class AcmeAdsAnalyticsModule:
+    platform = "acme_ads"
+
+    def capabilities(self):
+        return frozenset({AnalyticsCapability.DETECT_DELIVERY_COLLAPSE})
+
+    async def detect_delivery_collapse(
+        self, account_id, *, history_days=60, thresholds=None, as_of=None
+    ) -> DeliveryCollapseReport:
+        rows = await self._daily_delivery(account_id, days=history_days)
+        series = delivery_series_from_rows(rows, platform=self.platform)
+        return DeliveryCollapseReport(
+            platform=self.platform,
+            account_id=account_id,
+            status="ok",
+            evaluated_campaigns=len(series),
+            signals=detect_delivery_collapses(
+                series, thresholds=thresholds, as_of=as_of
+            ),
+        )
+```
+
+Each row is `{campaign_id, campaign_name, status, end_date, date,
+impressions, clicks, cost}`; `status` is your platform's own spelling
+(mureo recognises `ENABLED` / `ACTIVE` / `ENABLE` / `RUNNING` /
+`SERVING` / `DELIVERING` / `ELIGIBLE` as "should be serving"). Do not
+write your own threshold logic — `detect_delivery_collapses` already
+handles the weekday-aware baseline, the partial-day exclusion and the
+operator's `## Guardrails` overrides, and its false-positive behaviour is
+what makes the detector usable unattended.
+
+**`status` is not decoration.** If you cannot produce day-grain
+delivery, return `status="data_unavailable"` with a `detail`, and
+`status="no_credentials"` when credentials are missing. Returning
+`status="ok"` with an empty `signals` tuple means *checked, everything is
+healthy* — using it for "could not check" is a false all-clear on an
+account that may be entirely dead.
+
+`AnalyticsModule` is `runtime_checkable`, so this method is deliberately
+NOT a member of it: adding one would break `isinstance` for every
+existing four-method module. See `docs/ABI-stability.md` §Analytics.
+
+### `pyproject.toml` — entry point (continued)
+
 `mureo.analytics` is independent of `mureo.providers`: a package may
 ship a provider only, an analytics module only, or both. The two
 groups have separate discovery paths and separate fault isolation.
@@ -2370,7 +2431,9 @@ heuristics.
 Skills then **run** an advertised capability via the MCP tool
 `mureo_analytics_run` (Issue #440), passing `platform`, `capability`, and
 `account_id` (plus `window_days` for `detect_anomalies` or `scope` for
-`diagnose_performance`). The dispatcher looks up your module, invokes the
+`diagnose_performance`; `detect_delivery_collapse` takes neither — it
+uses its own multi-week history window, because a same-weekday baseline
+needs weeks of daily data, and 7 days would make it unusable). The dispatcher looks up your module, invokes the
 method credential-lazily, and returns `status: ok` with a JSON-serialized
 `result` — or a structured non-`ok` status the skill reports without failing:
 

@@ -53,6 +53,13 @@ if TYPE_CHECKING:
 ANALYTICS_ENTRY_POINT_GROUP = "mureo.analytics"
 
 
+# NOTE: ``detect_delivery_collapse`` (#546) is deliberately absent from
+# both tuples below. Adding a fifth REQUIRED method would have de-registered
+# every already-published plugin that implements the four-method contract —
+# a silent capability loss across the ecosystem to add one optional feature.
+# A module that does not implement it simply never advertises
+# ``DETECT_DELIVERY_COLLAPSE``, and ``mureo_analytics_run`` reports
+# ``capability_not_available`` from the capability check it already does.
 _REQUIRED_MODULE_ATTRS: tuple[str, ...] = (
     "platform",
     "capabilities",
