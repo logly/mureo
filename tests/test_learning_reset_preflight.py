@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -43,6 +43,9 @@ from mureo.policy.strategy_gate import (
     evaluate_guardrails,
     parse_guardrails,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 pytestmark = pytest.mark.unit
 
@@ -533,6 +536,85 @@ class TestPreflightTool:
 # ---------------------------------------------------------------------------
 # Plugin / bridge registration hook
 # ---------------------------------------------------------------------------
+
+
+class TestDeclaredReadOnlyHintBeatsTheName:
+    """For a plugin tool the NAME is a guess; ``readOnlyHint`` is a declaration.
+
+    A plugin or bridge can register its own learning rules under a
+    ``tool_prefix``, so plugin tool names really do reach this classifier. With
+    only the name to go on it was wrong in both directions: a read-shaped name
+    that declares ``readOnlyHint=False`` got no learning-period notice and no
+    ``block_learning_resets`` refusal, and a mutation-shaped name that declares
+    ``readOnlyHint=True`` risked a spurious refusal. The declaration decides;
+    the name is the fallback for a tool that declared nothing.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean_hints(self) -> Iterator[None]:
+        """Isolate the process-global hint registry WITHOUT destroying it.
+
+        ``mureo.mcp.server`` populates it once at import from real plugin
+        discovery; a destructive clear would drop those registrations for the
+        rest of the pytest session.
+        """
+        from mureo.policy.declarations import _READ_ONLY_HINTS, reset_read_only_hints
+
+        saved = dict(_READ_ONLY_HINTS)
+        reset_read_only_hints()
+        yield
+        reset_read_only_hints()
+        _READ_ONLY_HINTS.update(saved)
+
+    def test_a_declared_mutation_on_a_read_shaped_name_is_a_mutation(self) -> None:
+        from mureo.policy.declarations import register_read_only_hint
+
+        tool = "acme-list_and_delete_campaigns"
+        register_read_only_hint(tool, False)
+        assessment = classify_change(tool, {})
+        assert assessment.risk is not ResetRisk.NO_RESET
+        assert "Read-only" not in assessment.detail
+
+    def test_a_declared_read_on_a_mutation_shaped_name_is_a_read(self) -> None:
+        from mureo.policy.declarations import register_read_only_hint
+
+        tool = "acme-update_report_layout"
+        register_read_only_hint(tool, True)
+        assessment = classify_change(tool, {})
+        assert assessment.risk is ResetRisk.NO_RESET
+        assert "Read-only" in assessment.detail
+
+    @pytest.mark.parametrize(
+        ("tool", "expected"),
+        [
+            ("acme-list_campaigns", ResetRisk.NO_RESET),
+            ("acme-update_campaign", ResetRisk.UNKNOWN),
+        ],
+    )
+    def test_with_nothing_declared_the_name_still_decides(
+        self, tool: str, expected: ResetRisk
+    ) -> None:
+        """The pre-existing behaviour for an undeclared tool, both ways."""
+        assert classify_change(tool, {}).risk is expected
+
+    def test_a_hint_cannot_reclassify_a_builtin_tool(self) -> None:
+        """mureo owns its own tool names, so the pinned built-in classifier
+        stays authoritative — a stray registration must not turn a real
+        mutation into a read (or the reverse)."""
+        from mureo.policy.declarations import register_read_only_hint
+
+        register_read_only_hint("google_ads_campaigns_update", True)
+        register_read_only_hint("google_ads_campaigns_list", False)
+        assert (
+            classify_change(
+                "google_ads_campaigns_update",
+                {"campaign_id": "C1", "bidding_strategy": "TARGET_CPA"},
+            ).risk
+            is ResetRisk.RESETS
+        )
+        assert classify_change("google_ads_campaigns_list", {}).risk is (
+            ResetRisk.NO_RESET
+        )
 
 
 class TestPluginRegistration:

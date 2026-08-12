@@ -405,6 +405,38 @@ def _register_plugin_bid_declarations(
             )
 
 
+def _register_plugin_read_only_hints(
+    semantics: dict[str, ToolSemantics],
+) -> None:
+    """Publish plugin ``readOnlyHint`` declarations to the pure policy layer.
+
+    The learning-period pre-flight (:mod:`mureo.policy.learning_reset`) has to
+    answer "is this call a mutation?" for a plugin/bridged tool too — a plugin
+    or bridge can register its own learning rules under a ``tool_prefix``, so
+    those names really do reach it. Without the declaration it had only the
+    NAME to go on and was wrong in both directions: a read-shaped name that
+    declares ``readOnlyHint=False`` got no learning-period notice and no
+    ``block_learning_resets`` refusal, and a mutation-shaped name that
+    declares ``readOnlyHint=True`` risked a spurious one. Only tools that
+    actually declared a hint are registered — absence must stay "undeclared",
+    never "read". Best-effort: a registry failure must not take the server
+    down.
+    """
+    from mureo.policy.declarations import register_read_only_hint
+
+    for name, sem in semantics.items():
+        if sem.read_only_hint is None:
+            continue
+        try:
+            register_read_only_hint(name, sem.read_only_hint)
+        except Exception:  # noqa: BLE001 — never break startup on a hint
+            logger.warning(
+                "could not register the readOnlyHint for plugin tool '%s'",
+                name,
+                exc_info=True,
+            )
+
+
 def _register_plugin_pattern_fallbacks(
     semantics: dict[str, ToolSemantics],
 ) -> None:
@@ -419,13 +451,27 @@ def _register_plugin_pattern_fallbacks(
     (:mod:`mureo.policy.pattern_scan`) for the channels no declaration covers.
 
     Reads are deliberately excluded — they move no money, so scanning their
-    arguments could only produce false denials — and "read" is decided by TWO
-    signals, because on this surface neither is sufficient alone:
+    arguments could only produce false denials — and "read" is decided by
+    DECLARATION first, NAME second: the same precedence
+    :func:`~mureo.mcp.plugin_semantics.derive_semantics` itself uses, so the
+    two surfaces cannot answer "is this a read?" differently.
 
-    - ``annotations.readOnlyHint``, when the tool declares it; and
+    - ``annotations.readOnlyHint``, when the tool declares it. An explicit
+      ``False`` is a plugin author saying "this moves money"; overturning it
+      with a name guess silently dropped that tool's budget/bid cap, which is
+      the one failure this ordering exists to prevent. A declaration is
+      evidence, a name shape is a guess.
     - the tool NAME, via the shared read vocabulary in
-      :mod:`mureo.core.tool_names`, single-sourced so the surfaces that use
-      it cannot drift.
+      :mod:`mureo.core.tool_names`, single-sourced so the surfaces that use it
+      cannot drift — consulted ONLY for a tool that declared nothing, which is
+      the case the fallback was introduced for: a manifest snapshot carries no
+      annotations at all, so a bridged read whose arguments carry a numeric
+      budget-shaped FILTER would otherwise be refused outright. The error
+      costs are asymmetric there: platform mutations are consistently
+      verb-named (``create_`` / ``update_`` / ``delete_`` / ``set_``), so a
+      read-shaped name is almost never a mutation, whereas a mutation-shaped
+      name that is really a read costs only a wasted scan of arguments that
+      carry no budget.
 
     The matcher here is the STRICT one, :func:`~mureo.core.tool_names.
     is_read_only_tool_name`, and that is deliberate. The rollback planner uses
@@ -435,21 +481,15 @@ def _register_plugin_pattern_fallbacks(
     mutation admitted here silently loses its ``## Guardrails`` cap. Do not
     "unify" the two — see that sibling's docstring for the argument.
 
-    The name check still matters after #517, which taught ``derive_semantics``
-    the same vocabulary for tools that declare NO ``readOnlyHint``: a plugin is
-    free to declare ``readOnlyHint=False`` on a read-shaped name, and that
-    declaration is believed for auditing (over-recording is harmless) but must
-    not turn a listing call carrying a numeric budget-shaped FILTER argument
-    into an outright refusal. The error costs are asymmetric: platform
-    mutations are consistently verb-named (``create_`` / ``update_`` /
-    ``delete_`` / ``set_``), so a read-shaped name is almost never a mutation,
-    whereas a mutation-shaped name that is really a read costs only a wasted
-    scan of arguments that carry no budget.
+    For semantics produced by ``derive_semantics`` the undeclared read-shaped
+    case already arrives as ``mutating=False``, so the name check below is a
+    belt-and-braces guard for any semantics map NOT built by that function
+    rather than a load-bearing step on the normal path.
 
-    Annotation coverage on a real bridged surface is now known rather than
-    assumed (#517): of 85 tools on one Amazon manifest, 83 declare
-    ``readOnlyHint`` and 2 omit it — good enough to lead with the declaration,
-    not good enough to drop the name fallback.
+    Annotation coverage on a real bridged surface is known rather than assumed
+    (#517): of 85 tools on one Amazon manifest, 83 declare ``readOnlyHint``
+    and 2 omit it — good enough to lead with the declaration, not good enough
+    to drop the name fallback.
 
     Best-effort: a registry failure must not take the server down.
     """
@@ -457,7 +497,11 @@ def _register_plugin_pattern_fallbacks(
     from mureo.policy.pattern_scan import register_pattern_fallback_tool
 
     for name, sem in semantics.items():
-        if not sem.mutating or is_read_only_tool_name(name):
+        if not sem.mutating:
+            continue
+        # The name is a fallback, not an override: it decides only for a tool
+        # that declared no readOnlyHint at all.
+        if sem.read_only_hint is None and is_read_only_tool_name(name):
             continue
         try:
             register_pattern_fallback_tool(name)
@@ -557,6 +601,7 @@ def _register_bridged_money_declarations(
 _register_plugin_budget_declarations(_PLUGIN_SEMANTICS)
 _register_plugin_bid_declarations(_PLUGIN_SEMANTICS)
 _register_bridged_money_declarations(_PLUGIN_SEMANTICS, _PLUGIN_DISPATCH)
+_register_plugin_read_only_hints(_PLUGIN_SEMANTICS)
 _register_plugin_pattern_fallbacks(_PLUGIN_SEMANTICS)
 
 

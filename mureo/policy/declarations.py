@@ -19,6 +19,10 @@ builds on:
 - Their process-wide registries and register / lookup / reset helpers,
   populated by ``mureo.mcp.server`` from plugin tool metadata at import so the
   pure decision layer stays I/O-free and needs no plugin imports.
+- The same for one tool's ``annotations.readOnlyHint``
+  (:func:`register_read_only_hint` / :func:`declared_read_only_hint` /
+  :func:`reset_read_only_hints`) — so a pure decision that has to ask "is this
+  a read?" can prefer the tool's own DECLARATION over the shape of its name.
 - :func:`_declared_amount` and its numeric helpers (:func:`_saturate`, the
   :data:`_UNREADABLE` sentinel) — the single reader that turns one declared
   argument key or path into currency units, distinguishing "absent" from
@@ -328,6 +332,39 @@ def bid_declaration_for(tool_name: str) -> BidDeclaration | None:
 def reset_bid_declarations() -> None:
     """Drop every bid registration (tests; a re-discovery re-registers)."""
     _BID_DECLARATIONS.clear()
+
+
+# Tool name → the tool's OWN ``annotations.readOnlyHint``. Populated by the
+# MCP server from plugin tool metadata at import, exactly like the two money
+# registries above, so the pure decision layer stays I/O-free. It holds only
+# what a tool DECLARED: absence means "undeclared", never "read".
+_READ_ONLY_HINTS: dict[str, bool] = {}
+
+
+def register_read_only_hint(tool_name: str, read_only: bool) -> None:
+    """Bind ``tool_name``'s declared ``readOnlyHint`` (last registration wins).
+
+    Only ever called for a tool that actually declared one. A pure decision
+    layer otherwise has nothing but the tool's NAME to go on, and a name shape
+    is a guess where a declaration is evidence — registering the declaration
+    lets the guess be demoted to a fallback.
+    """
+    _READ_ONLY_HINTS[tool_name] = read_only
+
+
+def declared_read_only_hint(tool_name: str) -> bool | None:
+    """``tool_name``'s DECLARED ``readOnlyHint``, or ``None`` when undeclared.
+
+    ``None`` is "the tool said nothing" and must not be read as "read": the
+    caller falls back to the name vocabulary for that case, which is the only
+    signal left.
+    """
+    return _READ_ONLY_HINTS.get(tool_name)
+
+
+def reset_read_only_hints() -> None:
+    """Drop every hint registration (tests; a re-discovery re-registers)."""
+    _READ_ONLY_HINTS.clear()
 
 
 class _Unreadable:

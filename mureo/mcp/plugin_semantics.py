@@ -112,6 +112,11 @@ class ToolSemantics:
     """Safety classification derived from a plugin tool's MCP metadata."""
 
     mutating: bool
+    #: The tool's OWN ``annotations.readOnlyHint``, ``None`` when it declared
+    #: none. ``mutating`` is the DERIVED answer; this is the raw declaration,
+    #: so a consumer can tell "declared a mutation" from "guessed a mutation"
+    #: — ``None`` means undeclared, i.e. the name was the only signal.
+    read_only_hint: bool | None = None
     reversal: dict[str, Any] | None = None
     throttle: ThrottleConfig | None = None
     observation_days: int | None = None
@@ -253,19 +258,28 @@ def _meta_mureo(tool: Tool) -> dict[str, Any]:
     return {}
 
 
+def _declared_read_only_hint(tool: Tool) -> bool | None:
+    """The tool's own ``readOnlyHint``, or ``None`` when it declares none."""
+    hint = getattr(getattr(tool, "annotations", None), "readOnlyHint", None)
+    return None if hint is None else hint is True
+
+
 def _is_read(tool: Tool) -> bool:
     """Is ``tool`` a read? Declaration first, name shape only as a fallback.
 
     An explicit ``readOnlyHint`` always wins — including an explicit
     ``False``, which is a plugin author saying "this mutates" and must not
     be overturned by a read-shaped name. Only when the hint is ABSENT does
-    the name decide, through the same vocabulary the rollback planner and
-    the guardrail pattern-fallback registration already share, so the three
-    surfaces cannot answer "is this a read?" differently (#517).
+    the name decide, through the STRICT matcher this surface shares with the
+    guardrail pattern-fallback registration, so the two cannot answer "is
+    this a read?" differently (#517). The rollback planner reads the same
+    vocabulary through a looser matcher of its own — see
+    :func:`mureo.core.tool_names.reads_as_a_report_only_action` for why that
+    one is deliberately separate rather than shared.
     """
-    hint = getattr(getattr(tool, "annotations", None), "readOnlyHint", None)
+    hint = _declared_read_only_hint(tool)
     if hint is not None:
-        return hint is True
+        return hint
     return is_read_only_tool_name(getattr(tool, "name", "") or "")
 
 
@@ -301,6 +315,7 @@ def derive_semantics(tool: Tool) -> ToolSemantics:
 
     return ToolSemantics(
         mutating=mutating,
+        read_only_hint=_declared_read_only_hint(tool),
         reversal=reversal,
         throttle=throttle,
         observation_days=observation_days,
