@@ -35,7 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   misread here would hide a real gap inside a batch claiming full coverage.
   That vocabulary is single-sourced from
   `mureo.byod._client_common._MUTATION_PREFIXES`, which AGENTS.md calls
-  authoritative, rather than hand-maintained a second time.
+  authoritative, rather than hand-maintained a second time, and extended with
+  abbreviations and blunt synonyms (`del`, `rm`, `kill`, `terminate`,
+  `revert`, `undo`, …) after a review defeated the first list with
+  `campaign_del_list`. Names are NFKC-normalized before matching, so a
+  fullwidth `ｄｅｌ` is the same verb as `del`. None of that makes the
+  vocabulary complete — a verb in another script is not reachable from a list
+  of English words — which is precisely why the strict matcher, and not this
+  one, guards the money scan.
 
 ### Added
 

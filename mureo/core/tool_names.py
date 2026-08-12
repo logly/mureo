@@ -43,6 +43,8 @@ exemption is keyed on read-shaped names rather than on a mutation allow-list.
 
 from __future__ import annotations
 
+import unicodedata
+
 __all__ = [
     "READ_ONLY_PREFIXES",
     "WRITE_VERBS",
@@ -92,6 +94,10 @@ def is_read_only_tool_name(name: str) -> bool:
 #:
 #: Only ever used to REFUSE a reading, never to assert that a name is a write,
 #: so an omission costs a missed read rather than a missed mutation.
+#:
+#: Computed once at import; the ``_MUTATION_PREFIXES`` import is written inside
+#: the function to keep the module-level import block free of a dependency on
+#: a higher layer, not to defer it.
 def _write_verbs() -> frozenset[str]:
     from mureo.byod._client_common import _MUTATION_PREFIXES
 
@@ -128,6 +134,21 @@ def _write_verbs() -> frozenset[str]:
         "rename",
         "move",
         "copy",
+        # Abbreviations and blunt synonyms. A review defeated an earlier
+        # version of this list with `campaign_del_list` and `budget_rm_check`:
+        # the trailing verb read as a report while the real verb was a
+        # shortening of one already listed.
+        "del",
+        "rm",
+        "kill",
+        "nuke",
+        "terminate",
+        "revert",
+        "undo",
+        "wipe",
+        "flush",
+        "prune",
+        "truncate",
         "merge",
         "execute",
         "run",
@@ -176,7 +197,13 @@ def reads_as_a_report_only_action(name: str) -> bool:
     That is a smaller harm than losing a money guardrail, which is why the
     guarded rule is acceptable here and not there.
     """
-    lowered = name.lower()
+    # NFKC first: a fullwidth `ｄｅｌ` is the same verb as `del` to a reader and
+    # a different string to `in`, and the whole guard is a string comparison.
+    # It does not make the vocabulary complete — a verb written in another
+    # script (`削除_list`) is not reachable from a list of English words, and
+    # this predicate does not pretend otherwise; see the honesty note above
+    # about what a misread costs on this surface.
+    lowered = unicodedata.normalize("NFKC", name).lower()
     for segment in lowered.split("-"):
         if any(segment.startswith(prefix) for prefix in READ_ONLY_PREFIXES):
             return True

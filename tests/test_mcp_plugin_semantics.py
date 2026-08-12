@@ -157,14 +157,44 @@ class TestHintLessToolsFallBackToTheNameVocabulary:
         assert read.mutating is False
 
     def test_the_fallback_uses_the_shared_read_vocabulary(self) -> None:
-        """Same answer as the rollback planner and the guardrail
-        pattern-fallback registration — three surfaces, one list."""
+        """One list across the surfaces that share the STRICT matcher.
+
+        The rollback planner reads the same list through a looser matcher of
+        its own (it also accepts a verb at the end of a name). This surface
+        does not — see ``mureo.core.tool_names.reads_as_a_report_only_action``
+        for why the two are separate.
+        """
         from mureo.core.tool_names import is_read_only_tool_name
 
         for name in ("billing-list_invoice_summaries", "acme-create_thing"):
             assert derive_semantics(_tool(name=name)).mutating is not (
                 is_read_only_tool_name(name)
             )
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            # Verb-last names. The rollback planner reads these as reads; this
+            # surface must not, or a plugin mutation stops being recorded in
+            # action_log at all.
+            "google_ads_campaigns_list",
+            "acme_ads_budget_get",
+            "yahoo_ads_patch_placement_url_list",
+            "yahoo_ads_cancel_placement_url_list",
+            "campaign_del_list",
+        ],
+    )
+    def test_a_trailing_verb_does_not_make_a_plugin_tool_a_read(
+        self, name: str
+    ) -> None:
+        """Pinned so pointing this consumer at the loose matcher goes red.
+
+        ``derive_semantics`` defaults an undeclared tool to mutating, which is
+        what gets it promoted into ``action_log``. Reading a verb-last name as
+        a read here would drop the record of a real mutation, and the loss is
+        silent.
+        """
+        assert derive_semantics(_tool(name=name)).mutating is True
 
 
 @pytest.mark.unit

@@ -424,8 +424,16 @@ def _register_plugin_pattern_fallbacks(
 
     - ``annotations.readOnlyHint``, when the tool declares it; and
     - the tool NAME, via the shared read vocabulary in
-      :mod:`mureo.core.tool_names` (the same list and matcher the rollback
-      planner uses, single-sourced so the two cannot drift).
+      :mod:`mureo.core.tool_names`, single-sourced so the surfaces that use
+      it cannot drift.
+
+    The matcher here is the STRICT one, :func:`~mureo.core.tool_names.
+    is_read_only_tool_name`, and that is deliberate. The rollback planner uses
+    a looser sibling that also reads a verb at the END of a name, because
+    mureo's own tools are named that way; this gate does not, because it
+    decides about PLUGIN tools whose names mureo does not choose, and a
+    mutation admitted here silently loses its ``## Guardrails`` cap. Do not
+    "unify" the two — see that sibling's docstring for the argument.
 
     The name check still matters after #517, which taught ``derive_semantics``
     the same vocabulary for tools that declare NO ``readOnlyHint``: a plugin is
