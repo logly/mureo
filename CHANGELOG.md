@@ -28,6 +28,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their app secret — and writes to other `meta_ads` fields leave the stamp
   alone, since it still describes the token on disk.
 
+### Added
+
+- **A Meta token expiry notice and a re-authenticate control on the Meta
+  credential row** (#579). A Meta access token expired and mureo said nothing,
+  before or after; the only Meta action on the dashboard was *Remove*, which
+  throws the credentials away, so deleting them first was the natural misread.
+  The first sign of expiry was Graph's own error 190 body, `fbtrace_id` and
+  all, echoed verbatim mid-task.
+
+  The status snapshot now carries a `meta_token` row (`access_token_age_days`,
+  `access_token_expiring`) alongside the existing `amazon_token` one, and the
+  Meta row renders the matching hint plus a **Re-authenticate** button that
+  opens the system-user token card in place — the wizard resets to its first
+  step and gates the Meta auth slot on choices the dashboard never hydrates,
+  so it is not a route back to that card. Only a token that *can* expire is
+  warned about: a Business Manager system-user token is stored without
+  `app_id` / `app_secret` and never expires, and a token with no
+  `token_obtained_at` stamp (a hand-entered one, #578) has an unknown age,
+  which is never read as an old one. The warning fires at 53 days, exactly
+  where mureo's own automatic renewal should already have replaced the token.
+
+  A rejected token is now reported in mureo's words — what happened and the
+  one thing to do about it — with Meta's reply kept underneath as secondary
+  detail rather than as the entire message.
+
 ## [0.10.44] - 2026-08-12
 
 ### Fixed

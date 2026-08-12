@@ -304,6 +304,20 @@ If `app_id` or `app_secret` are missing, auto-refresh is silently skipped and th
 }
 ```
 
+### When the refresh does not happen
+
+Auto-refresh runs on credential load, so a mureo that has not been used for two
+months, or an exchange Meta keeps rejecting, leaves an aging token on disk. The
+dashboard's **mureo integrations** list watches for exactly that: past 53 days
+the Meta row shows how old the token is and why that matters, next to a
+**Re-authenticate** button that opens the system-user token card in place — no
+need to re-run the setup wizard.
+
+Only a token that can expire is flagged. A system-user token is stored without
+`app_id` / `app_secret` (see above), and a token saved without a
+`token_obtained_at` stamp has an age mureo cannot know; neither is ever
+reported as expiring.
+
 ### Safety Features
 
 - **Concurrent protection** -- an `asyncio.Lock` prevents multiple simultaneous refresh attempts.
