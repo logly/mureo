@@ -491,6 +491,96 @@ class TestClientListPages:
         called_paths = [call.args[0] for call in get_mock.call_args_list]
         assert "/me/businesses" not in called_paths
 
+    @pytest.mark.asyncio
+    async def test_get_page_access_token_raises_runtime_error_for_token_less_page(
+        self,
+    ) -> None:
+        # Business-owned pages come back from /{business_id}/owned_pages
+        # WITHOUT an access_token. The caller must get the documented
+        # RuntimeError, not an opaque KeyError.
+        client = self._make_client()
+
+        async def fake_get(path, params=None):
+            if path == "/me/accounts":
+                return {"data": [{"id": "p1", "access_token": "tok-p1"}]}
+            if path == "/me/businesses":
+                return {"data": [{"id": "biz1"}]}
+            if path == "/biz1/owned_pages":
+                return {"data": [{"id": "p9"}, {"id": "p10"}]}
+            return {"data": []}
+
+        client._get = AsyncMock(side_effect=fake_get)
+        with pytest.raises(RuntimeError) as excinfo:
+            await client.get_page_access_token("p9")
+        assert "p9" in str(excinfo.value)
+
+    @pytest.mark.asyncio
+    async def test_get_page_access_token_keeps_token_beside_malformed_entry(
+        self,
+    ) -> None:
+        # Skipping token-less entries must not cost us the tokens a batch
+        # does carry: a malformed sibling sitting ahead of the target in the
+        # same batch must be stepped over, not derail the whole walk.
+        client = self._make_client()
+
+        async def fake_get(path, params=None):
+            if path == "/me/accounts":
+                return {"data": [{"id": "p1", "access_token": "tok-p1"}]}
+            if path == "/me/businesses":
+                return {"data": [{"id": "biz1"}]}
+            if path == "/biz1/owned_pages":
+                return {
+                    "data": [
+                        {"id": "p8"},
+                        {"id": "p9", "access_token": "tok-p9"},
+                    ]
+                }
+            return {"data": []}
+
+        client._get = AsyncMock(side_effect=fake_get)
+        assert await client.get_page_access_token("p9") == "tok-p9"
+
+    @pytest.mark.asyncio
+    async def test_get_page_access_token_resolves_from_second_business(self) -> None:
+        # The target lives in the second business's owned_pages batch: the
+        # walk must continue past a token-less first business.
+        client = self._make_client()
+
+        async def fake_get(path, params=None):
+            if path == "/me/accounts":
+                return {"data": []}
+            if path == "/me/businesses":
+                return {"data": [{"id": "biz1"}, {"id": "biz2"}]}
+            if path == "/biz1/owned_pages":
+                return {"data": [{"id": "p8"}]}
+            if path == "/biz2/owned_pages":
+                return {"data": [{"id": "p9", "access_token": "tok-p9"}]}
+            return {"data": []}
+
+        client._get = AsyncMock(side_effect=fake_get)
+        assert await client.get_page_access_token("p9") == "tok-p9"
+
+    @pytest.mark.asyncio
+    async def test_list_pages_skips_entries_without_id(self) -> None:
+        # A malformed Graph entry must be skipped, not crash the listing.
+        client = self._make_client()
+
+        async def fake_get(path, params=None):
+            if path == "/me/accounts":
+                return {
+                    "data": [
+                        {"id": "p1", "name": "Page One"},
+                        {"name": "No Id Page"},
+                    ]
+                }
+            if path == "/me/businesses":
+                return {"data": []}
+            return {"data": []}
+
+        client._get = AsyncMock(side_effect=fake_get)
+        pages = await client.list_pages()
+        assert [p["id"] for p in pages] == ["p1"]
+
 
 # ===========================================================================
 # AdsMixin tests

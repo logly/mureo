@@ -409,6 +409,8 @@ class MetaAdsApiClient(
 
         Tries /me/accounts first (personal pages), then falls back to
         business-owned pages via /me/businesses -> /{business_id}/owned_pages.
+        A page discovered only through the business-owned edge carries no
+        access_token, so it yields RuntimeError rather than a token.
 
         Args:
             page_id: Facebook page ID
@@ -424,7 +426,15 @@ class MetaAdsApiClient(
 
         async for batch in self._iter_page_batches("id,access_token"):
             for page in batch:
-                self._page_tokens[page["id"]] = page["access_token"]
+                # Business-owned pages from /{business_id}/owned_pages come
+                # back without an access_token, so cache only well-formed
+                # entries: a token-less page must fall through to the
+                # documented RuntimeError below, not raise KeyError at the
+                # caller.
+                entry_id = page.get("id")
+                token = page.get("access_token")
+                if entry_id and token:
+                    self._page_tokens[entry_id] = token
             # Short-circuit: stop before the business calls if we already
             # have the token from the personal-pages batch.
             if page_id in self._page_tokens:
@@ -453,12 +463,17 @@ class MetaAdsApiClient(
         pages: dict[str, dict[str, Any]] = {}
         async for batch in self._iter_page_batches("id,name,category"):
             for page in batch:
-                entry: dict[str, Any] = {"id": page["id"], "name": page.get("name")}
+                # Skip malformed Graph entries: an id-less page cannot be
+                # keyed or acted on, so drop it rather than raise KeyError.
+                page_id = page.get("id")
+                if not page_id:
+                    continue
+                entry: dict[str, Any] = {"id": page_id, "name": page.get("name")}
                 if "category" in page:
                     entry["category"] = page["category"]
                 # setdefault keeps the first-seen entry (personal batch
                 # wins) and dedupes ids shared across both sources.
-                pages.setdefault(page["id"], entry)
+                pages.setdefault(page_id, entry)
         return list(pages.values())
 
     async def _get_as_page(
