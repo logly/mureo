@@ -462,16 +462,24 @@ def _register_plugin_pattern_fallbacks(
       the one failure this ordering exists to prevent. A declaration is
       evidence, a name shape is a guess.
     - the tool NAME, via the shared read vocabulary in
-      :mod:`mureo.core.tool_names` (the same list and matcher the rollback
-      planner uses, single-sourced so the two cannot drift) — consulted ONLY
-      for a tool that declared nothing, which is the case the fallback was
-      introduced for: a manifest snapshot carries no annotations at all, so a
-      bridged read whose arguments carry a numeric budget-shaped FILTER would
-      otherwise be refused outright. The error costs are asymmetric there:
-      platform mutations are consistently verb-named (``create_`` /
-      ``update_`` / ``delete_`` / ``set_``), so a read-shaped name is almost
-      never a mutation, whereas a mutation-shaped name that is really a read
-      costs only a wasted scan of arguments that carry no budget.
+      :mod:`mureo.core.tool_names`, single-sourced so the surfaces that use it
+      cannot drift — consulted ONLY for a tool that declared nothing, which is
+      the case the fallback was introduced for: a manifest snapshot carries no
+      annotations at all, so a bridged read whose arguments carry a numeric
+      budget-shaped FILTER would otherwise be refused outright. The error
+      costs are asymmetric there: platform mutations are consistently
+      verb-named (``create_`` / ``update_`` / ``delete_`` / ``set_``), so a
+      read-shaped name is almost never a mutation, whereas a mutation-shaped
+      name that is really a read costs only a wasted scan of arguments that
+      carry no budget.
+
+    The matcher here is the STRICT one, :func:`~mureo.core.tool_names.
+    is_read_only_tool_name`, and that is deliberate. The rollback planner uses
+    a looser sibling that also reads a verb at the END of a name, because
+    mureo's own tools are named that way; this gate does not, because it
+    decides about PLUGIN tools whose names mureo does not choose, and a
+    mutation admitted here silently loses its ``## Guardrails`` cap. Do not
+    "unify" the two — see that sibling's docstring for the argument.
 
     For semantics produced by ``derive_semantics`` the undeclared read-shaped
     case already arrives as ``mutating=False``, so the name check below is a

@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A read written mureo's own way is now recognised as a read, in the one
+  place that can safely act on it** (#549 follow-up). mureo's tools put the
+  verb LAST (`google_ads_campaigns_list`); the shared read vocabulary only
+  matched a verb FIRST (`list_campaigns`, the bridged convention). Every
+  native read therefore reached the rollback planner as a write with no
+  reversal hint, so a batch containing one showed the operator a read among
+  the items they "cannot revert" and reported `partial` coverage for a change
+  set that was in fact fully revertible.
+
+  The fix is a SECOND predicate, `reads_as_a_report_only_action`, used by the
+  rollback planner alone. The shared `is_read_only_tool_name` is unchanged.
+
+  That split is the substance of the change. The shared predicate has three
+  other callers and all three decide things about PLUGIN tools, whose names
+  mureo does not choose: the guardrail money pattern-scan registration
+  (a denial), promotion into `action_log`, and whether a change can restart a
+  learning period. Loosening the shared rule widens all three at once — and a
+  mutation admitted there silently loses a `## Guardrails` cap. Since no
+  hardcoded verb list can be complete for names mureo does not control, those
+  three keep the strict rule, and a test pins that they do.
+
+  The trailing reading is still refused when a write verb appears in the same
+  segment, because this surface has its own honesty to keep: a plugin mutation
+  misread here would hide a real gap inside a batch claiming full coverage.
+  That vocabulary is single-sourced from
+  `mureo.byod._client_common._MUTATION_PREFIXES`, which AGENTS.md calls
+  authoritative, rather than hand-maintained a second time, and extended with
+  abbreviations and blunt synonyms (`del`, `rm`, `kill`, `terminate`,
+  `revert`, `undo`, …) after a review defeated the first list with
+  `campaign_del_list`. Names are NFKC-normalized before matching, so a
+  fullwidth `ｄｅｌ` is the same verb as `del`. None of that makes the
+  vocabulary complete — a verb in another script is not reachable from a list
+  of English words — which is precisely why the strict matcher, and not this
+  one, guards the money scan.
 - **An observed change no longer joins the operator's open batch** (#545 x
   #549). "Imports never join a batch" is stated in `docs/change-import.md`
   without qualification, but it was enforced in one place: the polled

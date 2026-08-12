@@ -651,3 +651,28 @@ class TestPluginRegistration:
         )
         assert classify_change("demo_update_target", {}).risk is ResetRisk.RESETS
         assert classify_change("demo_update_name", {}).risk is ResetRisk.NO_RESET
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "tool_name",
+    [
+        # Verb-last names on a platform with no enumerated trigger list. The
+        # rollback planner reads these as reads; this consumer must not, or a
+        # real mutation is declared unable to restart a learning period and
+        # the pre-flight goes quiet on exactly the change that matters.
+        "acme_ads_campaigns_list",
+        "acme_ads_budget_get",
+        "yahoo_ads_patch_placement_url_list",
+        "yahoo_ads_cancel_placement_url_list",
+        "campaign_del_list",
+    ],
+)
+def test_a_trailing_verb_does_not_make_a_change_a_read(tool_name: str) -> None:
+    """Pinned so pointing this consumer at the loose matcher goes red.
+
+    ``mureo.core.tool_names`` deliberately has two matchers: a strict one for
+    the plugin-facing decisions (this among them) and a looser one, used only
+    by the rollback planner, that also reads a verb at the end of a name.
+    """
+    assert classify_change(tool_name, {}).risk is not ResetRisk.NO_RESET

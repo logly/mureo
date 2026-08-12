@@ -270,9 +270,12 @@ def _is_read(tool: Tool) -> bool:
     An explicit ``readOnlyHint`` always wins — including an explicit
     ``False``, which is a plugin author saying "this mutates" and must not
     be overturned by a read-shaped name. Only when the hint is ABSENT does
-    the name decide, through the same vocabulary the rollback planner and
-    the guardrail pattern-fallback registration already share, so the three
-    surfaces cannot answer "is this a read?" differently (#517).
+    the name decide, through the STRICT matcher this surface shares with the
+    guardrail pattern-fallback registration, so the two cannot answer "is
+    this a read?" differently (#517). The rollback planner reads the same
+    vocabulary through a looser matcher of its own — see
+    :func:`mureo.core.tool_names.reads_as_a_report_only_action` for why that
+    one is deliberately separate rather than shared.
     """
     hint = _declared_read_only_hint(tool)
     if hint is not None:
