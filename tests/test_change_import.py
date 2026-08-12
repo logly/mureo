@@ -876,10 +876,16 @@ class TestProvenanceSurvivesBatchStamping:
         assert plan.coverage.value == "full"
         assert len(plan.apply_order) == 1
 
-    def test_rollback_still_refuses_a_batch_stamped_external_entry(
+    def test_rollback_refuses_an_external_entry_whether_batched_or_not(
         self, tmp_path: Path
     ) -> None:
-        """The consequence, asserted where an operator would feel it."""
+        """The refusal does not depend on the batch, and never did.
+
+        The name used to say "batch stamped", from when an observed change
+        recorded through this path acquired the open batch. It no longer
+        does, and the refusal is unaffected either way: ``plan_rollback``
+        keys on ``is_external``, not on membership.
+        """
         path = _write_state(tmp_path, {"tiktok_ads": "tt1"})
         begin_batch(path, label="monday exclusions")
 
