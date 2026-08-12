@@ -15,6 +15,7 @@ answer depends on quoting run the whole command through a real bash instead
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -402,6 +403,162 @@ class TestBashGuardBehavior:
         )
         assert proc.returncode == 0
         assert proc.stdout.strip() == "", command
+
+
+@pytest.mark.unit
+class TestSearchByNameRatherThanByDirectory:
+    """Rules 3 and 4: a command that never spells the directory.
+
+    Rules 1 and 2 read the directory name, so every test above hands the
+    guard some spelling of ``~/.mureo``.  A tree search does not have to
+    supply one: ``find ~ -name credentials.json -exec cat {} ;`` and
+    ``find ~ -path '*mureo*' -exec cat {} ;`` both print the credentials
+    while mentioning no directory rule 1 or 2 can see.  Neither needs
+    obfuscation, and "find any leftover credential files under my home
+    directory" is an ordinary instruction rather than an attack — which
+    is exactly the accident this guard exists to make less likely.
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # Rule 4 — the filename is the only thing written down.
+            "find ~ -name credentials.json -exec cat {} ;",
+            "find ~ -name credentials.json | xargs cat",
+            "find ~ -iname credentials.json",
+            "find / -name agency.json -exec cat {} ;",
+            "find ~ -name setup_state.json",
+            "find ~ -name 'credentials.json'",
+            "locate credentials.json",
+            "find ~ -name credentials.json.bak",
+            "fd credentials.json ~",
+            # The name reached through a substitution the guard cannot
+            # read still denies, because the name itself is written down.
+            "cat $(find ~ -name credentials.json)",
+        ],
+    )
+    def test_denies_a_protected_filename(self, fake_home: Path, command: str) -> None:
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert proc.returncode == 0
+        assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # Rule 3 — a pattern reaching the directory with no leading
+            # dot of its own. `find -path` matches the whole path, so the
+            # period is inside the part `*` covers.
+            "find ~ -path '*mureo*' -exec cat {} ;",
+            "find ~ -name '*mureo*'",
+            "find ~ -path *mureo*",
+            "grep -rl SECRET ~ --include='*mureo*'",
+            "ls ~/*mureo*",
+            "find ~ -path '?mureo'",
+        ],
+    )
+    def test_denies_a_pattern_reaching_the_name(
+        self, fake_home: Path, command: str
+    ) -> None:
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert proc.returncode == 0
+        assert deny_decision(proc) == "deny", command
+
+    def test_rule_three_reads_the_raw_text_not_only_the_expansion(
+        self, fake_home: Path
+    ) -> None:
+        """A quoted ``*`` is dead to the shell and alive to ``find``.
+
+        Normalization models what the SHELL expands, so it neutralizes the
+        metacharacters in ``-path '*mureo*'`` — correctly, because the
+        shell will not expand them.  But that is why the quotes are there:
+        they hand the pattern to ``find`` intact.  Judged only on the
+        normalized reading the pattern has already become ``=mureo=`` and
+        no rule fires, which is why rule 3 also reads the raw command.
+
+        Pinning both spellings keeps that property from being optimized
+        away by a future change that moves rule 3 onto the readings.
+        """
+        for command in ("find ~ -path '*mureo*'", "find ~ -path *mureo*"):
+            proc = run_guard(
+                _bash_guard_command(),
+                {"command": command},
+                fake_home,
+                tool_name="Bash",
+            )
+            assert deny_decision(proc) == "deny", command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            # `config.json` is deliberately not guarded by name: it is one
+            # of the most common filenames in software and denying it
+            # would block real work in every project. The cost is real and
+            # is stated in the module docstring rather than hidden.
+            "cat config.json",
+            "cat ./config.json",
+            "vim src/config.json",
+            "find . -name config.json",
+            # A project file whose name merely contains a guarded one.
+            "cat src/my_credentials.jsonl",
+            "cat app-credentials.jsonc",
+            "cat credentialsxjson",
+            # The written-out name with no pattern in front of it: working
+            # inside a checkout of this repository must stay possible.
+            "grep -r foo mureo/",
+            "ls mureo/skills",
+            "pytest tests/test_credential_guard.py",
+            # A path in front of the name is not a search. Which file it
+            # is has already been decided from the directory: this one is
+            # the user's own, under a directory the guard does not
+            # protect, and refusing it would be overreach.
+            "cp ~/backups/credentials.json /tmp/",
+            "tar cf /tmp/x.tar ~/x/credentials.json.bak",
+            "cat ./secrets/agency.json",
+        ],
+    )
+    def test_allows_ordinary_work(self, fake_home: Path, command: str) -> None:
+        proc = run_guard(
+            _bash_guard_command(), {"command": command}, fake_home, tool_name="Bash"
+        )
+        assert proc.returncode == 0
+        assert proc.stdout.strip() == "", command
+
+    def test_the_filename_rule_says_what_matched(self, fake_home: Path) -> None:
+        """A wrong reason costs a retry.
+
+        Told the command "can reach ~/.mureo" when it never named the
+        directory, an agent goes looking for a reference that is not
+        there.  Rule 4's reason names what actually matched and points at
+        the Read tool, which is guarded by path and so still opens a
+        same-named file of the user's own.
+        """
+        proc = run_guard(
+            _bash_guard_command(),
+            {"command": "find ~ -name credentials.json"},
+            fake_home,
+            tool_name="Bash",
+        )
+        reason = json.loads(proc.stdout)["hookSpecificOutput"][
+            "permissionDecisionReason"
+        ]
+        assert "credential file" in reason
+        assert "Read tool" in reason
+
+        # A directory reference keeps the original reason.
+        proc = run_guard(
+            _bash_guard_command(),
+            {"command": "cat ~/.mureo/credentials.json"},
+            fake_home,
+            tool_name="Bash",
+        )
+        reason = json.loads(proc.stdout)["hookSpecificOutput"][
+            "permissionDecisionReason"
+        ]
+        assert "~/.mureo" in reason
 
 
 # ---------------------------------------------------------------------------
