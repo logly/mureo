@@ -255,6 +255,11 @@ account, then **Save**. Because the token never expires, mureo stores it
 **without** `app_id` / `app_secret`, which keeps it out of the auto-refresh path
 below — nothing to rotate, nothing to expire.
 
+Prefer that card. Saving `META_ADS_ACCESS_TOKEN` through the Setup tab's
+**mureo Credentials (advanced)** form also works — a hand-entered token is
+stored as entered and stays off the auto-refresh clock — but it writes one
+field, so it neither validates the token nor lets you pick an ad account.
+
 System User tokens do not expire.
 
 ### App ID and App Secret

@@ -178,6 +178,37 @@ def _resolve_credentials_path(credentials_path: Path | None) -> Path:
     return Path.home() / ".mureo" / "credentials.json"
 
 
+def _clear_stale_refresh_clock(name: str, section_payload: dict[str, Any]) -> None:
+    """Drop ``token_obtained_at`` when a Meta token is written by hand (#578).
+
+    This writer merges field-wise, which is right for most fields and wrong
+    for a credential that another field describes. ``meta_ads`` keeps
+    ``token_obtained_at`` to age the token: :func:`mureo.auth._should_refresh`
+    compares it against ``_TOKEN_REFRESH_THRESHOLD_DAYS`` and, past that,
+    every Meta tool call hands the token to Graph's ``fb_exchange_token``
+    endpoint under the stored ``app_id``/``app_secret``.
+
+    A hand-pasted token therefore inherited the *previous* token's stamp —
+    already past the threshold, since that is why it was being replaced — so
+    the refresh fired on the very next call. Either the exchange succeeded and
+    overwrote a never-expiring system-user token with a ~60-day one, or the
+    token belonged to a different app, Graph rejected it, and the failure was
+    swallowed.
+
+    Clearing the stamp makes ``_should_refresh`` short-circuit on its
+    "no stamp" branch, which is what the dedicated paste card achieves by
+    dropping ``app_id``/``app_secret`` outright. We keep those: an operator
+    updating a token did not ask to lose the app secret, and the missing
+    stamp alone is enough to stay off the clock. Any path that legitimately
+    mints or refreshes a token re-stamps it.
+
+    Only the token write clears the stamp — writing ``META_ADS_ACCOUNT_ID``,
+    say, leaves the token untouched, so its stamp still describes it.
+    """
+    if name == "META_ADS_ACCESS_TOKEN":
+        section_payload.pop("token_obtained_at", None)
+
+
 def write_credential_env_var(
     name: str,
     value: str,
@@ -228,6 +259,7 @@ def write_credential_env_var(
         dict(section_payload_raw) if isinstance(section_payload_raw, dict) else {}
     )
     section_payload[target.field] = value
+    _clear_stale_refresh_clock(name, section_payload)
     merged: dict[str, Any] = dict(existing)
     merged[target.section] = section_payload
 
