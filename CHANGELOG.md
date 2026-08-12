@@ -43,6 +43,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vocabulary complete — a verb in another script is not reachable from a list
   of English words — which is precisely why the strict matcher, and not this
   one, guards the money scan.
+- **An observed change no longer joins the operator's open batch** (#545 x
+  #549). "Imports never join a batch" is stated in `docs/change-import.md`
+  without qualification, but it was enforced in one place: the polled
+  importer, which opts out by hand with `join_active_batch=False`. The
+  hosted-connector route — an agent recording what it read from a connector
+  mureo cannot poll, through `mureo_state_action_log_append` — went through
+  the default path and was stamped with whatever batch happened to be open.
+
+  Nothing dishonest came of it: `plan_rollback` still refused the entry and
+  the batch still reported the coverage gap. What it cost was sense. An
+  operator's fully-reversible Monday cleanup could report `partial` because
+  an unrelated UI edit was imported while the batch was open.
+
+  The rule now lives in `stamp_batch`, next to the membership decision
+  itself. #549 put that decision at the one point every recording path
+  converges on precisely so no caller has to know about batches; fixing this
+  in the handler instead would have left the next recording path to
+  rediscover it. An explicit `batch_id` still wins and is still validated, so
+  a deliberate backfill into its own declared batch remains possible — and
+  that batch correctly reports it as a gap.
+- **The Bash credential guard read only the directory name, so a search by
+  filename walked straight past it.** Rules 1 and 2 both ask whether the
+  command spells some form of `~/.mureo`. A tree search does not have to:
+  `find ~ -name credentials.json -exec cat {} \;` and
+  `find ~ -path '*mureo*' -exec cat {} \;` both printed the credentials
+  file, with no obfuscation and no adversarial intent required. "Look for
+  any leftover credential files under my home directory" is an ordinary
+  instruction, and the accident it causes is the one this guard exists to
+  make less likely.
+
+  Two rules close it. Rule 3 denies a glob metacharacter standing
+  immediately before the written-out `mureo`; it reads the raw command
+  text as well as the normalized readings, because the quotes in `-path
+  '*mureo*'` exist to keep the shell off the pattern so `find` can expand
+  it, and normalization — which models the shell — correctly erases the
+  very metacharacter that makes it dangerous. Rule 4 denies the protected
+  filenames where they stand on their own, with no `/` before them: a name
+  with a path in front of it is a specific file, not a search, and rules 1
+  to 3 have already judged it from the directory.
+
+  Two costs, stated rather than hidden. `config.json` is deliberately not
+  guarded by name — it is one of the most common filenames in software and
+  denying it would block real work in every project — so
+  `find ~ -name config.json` still reads that one file. And a bare
+  `cat credentials.json` in a project of your own now denies; the reason
+  says so and points at the Read tool, which is guarded by path and opens
+  a same-named file anywhere outside `~/.mureo`. The module docstring's
+  known-open-bypass list gains both, plus the symlink asymmetry between
+  the two guards: the path guard resolves symlinks in each direction, the
+  Bash guard never touches the filesystem and cannot.
 
 ### Added
 

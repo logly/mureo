@@ -299,6 +299,25 @@ def _fully_populated_entry() -> ActionLogEntry:
     return ActionLogEntry(**_ENTRY_FIELD_VALUES)
 
 
+#: The provenance trio, which only an OBSERVED change carries.
+_PROVENANCE_FIELDS = ("origin", "external_id", "occurred_at")
+
+
+def _fully_populated_own_entry() -> ActionLogEntry:
+    """The same entry, minus provenance: a change mureo itself made.
+
+    Only this kind reaches ``stamp_batch``'s rewrite at all. An observed
+    change is returned untouched (see
+    ``TestJoiningABatchPreservesTheEntry.test_an_observed_change_is_left_out``),
+    so driving the field-preservation check off an external entry would
+    assert on a code path it no longer takes and pass for the wrong reason.
+    """
+    values = {k: v for k, v in _ENTRY_FIELD_VALUES.items()}
+    for name in _PROVENANCE_FIELDS:
+        values[name] = None
+    return ActionLogEntry(**values)
+
+
 @pytest.mark.unit
 class TestJoiningABatchPreservesTheEntry:
     """Joining a batch must change ``batch_id`` and nothing else.
@@ -318,7 +337,7 @@ class TestJoiningABatchPreservesTheEntry:
 
     def test_stamp_batch_changes_only_batch_id(self) -> None:
         """The pure function, so a failure localizes here and not in the codec."""
-        entry = _fully_populated_entry()
+        entry = _fully_populated_own_entry()
         record = BatchRecord(
             batch_id="batch-x", label="pass", started_at="2026-08-07T09:00:00+09:00"
         )
@@ -343,7 +362,7 @@ class TestJoiningABatchPreservesTheEntry:
         """
         state_file = workspace / "STATE.json"
         batch = begin_batch(state_file, label="preserve everything")
-        entry = _fully_populated_entry()
+        entry = _fully_populated_own_entry()
         append_action_log(state_file, entry)
 
         stored = read_state_file(state_file).action_log[0]
@@ -351,10 +370,55 @@ class TestJoiningABatchPreservesTheEntry:
         for field in fields(ActionLogEntry):
             if field.name == "batch_id":
                 continue
-            assert getattr(stored, field.name) == _ENTRY_FIELD_VALUES[field.name], (
+            expected = (
+                None
+                if field.name in _PROVENANCE_FIELDS
+                else _ENTRY_FIELD_VALUES[field.name]
+            )
+            assert getattr(stored, field.name) == expected, (
                 f"{field.name!r} did not survive append_action_log with an open "
                 "batch — check stamp_batch and both halves of state_codec."
             )
+
+    def test_an_observed_change_is_left_out_of_the_batch(self) -> None:
+        """An imported change is not part of what the operator did.
+
+        A batch is a declared change set — "what I did on Monday". A UI edit
+        mureo merely read out of a platform's change history is not that, and
+        stamping it on would drop the batch's coverage to ``partial`` for no
+        reason but that the batch was open when the change was recorded.
+
+        The decision lives in ``stamp_batch`` rather than in a caller for the
+        same reason membership itself does (#549): every recording path
+        converges here, so no caller has to know. The polled importer opts
+        out by hand as well; the hosted-connector route, which records
+        through ``mureo_state_action_log_append``, has only this.
+        """
+        entry = _fully_populated_entry()
+        assert entry.is_external, "fixture must be an observed change"
+        record = BatchRecord(
+            batch_id="batch-x", label="pass", started_at="2026-08-07T09:00:00+09:00"
+        )
+
+        stamped = stamp_batch(entry, record)
+
+        assert stamped.batch_id is None
+        for field in fields(ActionLogEntry):
+            assert getattr(stamped, field.name) == getattr(entry, field.name)
+
+    def test_an_explicit_batch_id_still_wins_for_an_observed_change(self) -> None:
+        """Opting out of the implicit stamp is not a ban on deliberate ones.
+
+        A backfill that declares its own batch and records into it by id is a
+        real use, and the id is still validated against the declared batches
+        by ``ensure_joinable``. Only the silent join is withheld.
+        """
+        entry = ActionLogEntry(**{**_ENTRY_FIELD_VALUES, "batch_id": "batch-declared"})
+        record = BatchRecord(
+            batch_id="batch-open", label="pass", started_at="2026-08-07T09:00:00+09:00"
+        )
+
+        assert stamp_batch(entry, record).batch_id == "batch-declared"
 
 
 @pytest.mark.unit
