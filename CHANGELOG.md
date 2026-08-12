@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An observed change no longer joins the operator's open batch** (#545 x
+  #549). "Imports never join a batch" is stated in `docs/change-import.md`
+  without qualification, but it was enforced in one place: the polled
+  importer, which opts out by hand with `join_active_batch=False`. The
+  hosted-connector route — an agent recording what it read from a connector
+  mureo cannot poll, through `mureo_state_action_log_append` — went through
+  the default path and was stamped with whatever batch happened to be open.
+
+  Nothing dishonest came of it: `plan_rollback` still refused the entry and
+  the batch still reported the coverage gap. What it cost was sense. An
+  operator's fully-reversible Monday cleanup could report `partial` because
+  an unrelated UI edit was imported while the batch was open.
+
+  The rule now lives in `stamp_batch`, next to the membership decision
+  itself. #549 put that decision at the one point every recording path
+  converges on precisely so no caller has to know about batches; fixing this
+  in the handler instead would have left the next recording path to
+  rediscover it. An explicit `batch_id` still wins and is still validated, so
+  a deliberate backfill into its own declared batch remains possible — and
+  that batch correctly reports it as a gap.
 - **The Bash credential guard read only the directory name, so a search by
   filename walked straight past it.** Rules 1 and 2 both ask whether the
   command spells some form of `~/.mureo`. A tree search does not have to:

@@ -241,6 +241,28 @@ def stamp_batch(entry: ActionLogEntry, batch: BatchRecord | None) -> ActionLogEn
     """
     if batch is None or entry.batch_id is not None:
         return entry
+    # An observed change is not a member of the operator's change set (#545 x
+    # #549). A batch is "what I did on Monday"; a UI edit mureo merely read
+    # out of a platform's change history is by definition not that, and
+    # letting it join drops the whole batch's rollback coverage to ``partial``
+    # for no reason other than that the batch happened to be open when the
+    # change was recorded.
+    #
+    # This lives here, not in a caller, for the reason membership itself does:
+    # #549 put the decision at the one point every recording path converges on
+    # precisely so no caller has to know about batches. The polled importer
+    # already opted out by hand with ``join_active_batch=False``, but the
+    # hosted-connector route — an agent recording what it read from a
+    # connector mureo cannot poll, through ``mureo_state_action_log_append`` —
+    # went through the default path and joined. Fixing that in the handler
+    # would leave the next recording path to rediscover it; fixing it here
+    # means there is no next time.
+    #
+    # An explicit ``batch_id`` still wins, above: a deliberate backfill into
+    # its own declared batch is a real use, and it is still validated against
+    # the declared batches by ``ensure_joinable``.
+    if entry.is_external:
+        return entry
     return replace(entry, batch_id=batch.batch_id)
 
 
